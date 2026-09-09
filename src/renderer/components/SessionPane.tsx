@@ -86,6 +86,9 @@ export function SessionPane({
   defaultToolCallGroupsExpanded,
   thinkingDisplay,
   defaultTurnChangesExpanded,
+  goalEnabled,
+  goalMaxTurns,
+  revertEnabled,
   events = [],
   fastModeEnabled = false,
   isFocused = true,
@@ -132,6 +135,10 @@ export function SessionPane({
   defaultToolCallGroupsExpanded?: boolean;
   thinkingDisplay?: ThinkingDisplay;
   defaultTurnChangesExpanded?: boolean;
+  /** Settings → Agents → Conversation: show the goal strip / checkpoints panel. */
+  goalEnabled?: boolean;
+  goalMaxTurns?: number;
+  revertEnabled?: boolean;
   events?: TimelineEvent[];
   fastModeEnabled?: boolean;
   /** When false, the pane skips its document-level keyboard shortcuts so only the focused pane reacts. */
@@ -326,10 +333,15 @@ export function SessionPane({
   }, [agentsInOverlay, overlayCloseAll, sessionId]);
   useEffect(() => {
     if (!agentsInOverlay) return;
-    const dismiss = overlayTabs.tabIds.length > 0 ? overlayCloseAll : null;
-    onAgentsOverlayChange?.(dismiss);
+    const closeAgents = overlayTabs.tabIds.length > 0 ? overlayCloseAll : null;
+    onAgentsOverlayChange?.(closeAgents);
     return () => onAgentsOverlayChange?.(null);
-  }, [agentsInOverlay, onAgentsOverlayChange, overlayCloseAll, overlayTabs.tabIds.length]);
+  }, [
+    agentsInOverlay,
+    onAgentsOverlayChange,
+    overlayCloseAll,
+    overlayTabs.tabIds.length
+  ]);
   const openAgentOverlay = useCallback(
     (tool: ToolCall): void => overlayTabs.openTab(agentTabId(tool)),
     [overlayTabs]
@@ -657,6 +669,9 @@ export function SessionPane({
           review={reviewState}
           session={session}
           workspace={workspace}
+          goalEnabled={goalEnabled}
+          goalMaxTurns={goalMaxTurns}
+          revertEnabled={revertEnabled}
         />
 
         <ApprovalSurface

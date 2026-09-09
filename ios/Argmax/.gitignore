@@ -1,0 +1,5 @@
+*.xcodeproj/
+build/
+DerivedData/
+# Generated from project.yml by xcodegen.
+Sources/Info.plist

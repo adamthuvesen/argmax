@@ -33,6 +33,7 @@ import type {
   DiscoveredProvider,
   GhPrRecord,
   GitCommitInput,
+  Goal,
   GitCommitResult,
   GitCreateBranchInput,
   GitCreateBranchResult,
@@ -339,6 +340,12 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
         invokeCommand<SessionCostSummary>("session:cost-summary", input),
       search: (input) => invokeCommand<SessionSearchResult>("session:search", input)
     },
+    goals: {
+      set: (input) => invokeCommand<Goal>("goal:set", input),
+      get: (input) => invokeCommand<Goal | null>("goal:get", input),
+      list: (input) => invokeCommand<Goal[]>("goal:list", input),
+      clear: (input) => invokeCommand<Goal | null>("goal:clear", input),
+    },
     review: {
       stageFile: (input) => invokeCommand<void>("review:stage-file", input),
       unstageFile: (input) => invokeCommand<void>("review:unstage-file", input),
@@ -382,7 +389,6 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       run: (input: RunCheckInput) => invokeCommand<CheckRun>("checks:run", input)
     },
     checkpoints: {
-      create: (input) => invokeCommand<Checkpoint>("checkpoints:create", input),
       list: (input) => invokeCommand<Checkpoint[]>("checkpoints:list", input),
       previewRewind: (input) => invokeCommand<RewindPreview>("checkpoints:preview-rewind", input),
       rewindFiles: (input) => invokeCommand<RewindFilesResult>("checkpoints:rewind-files", input)

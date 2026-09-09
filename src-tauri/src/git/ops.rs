@@ -529,7 +529,7 @@ pub(crate) fn ensure_checkout_idle(
         .map_err(|error| ArgmaxError::service("GIT_WORKSPACE_PATH_INVALID", error.to_string()))?;
     let connection = database.read_connection();
     let mut statement = connection.prepare_cached(
-        "SELECT w.path FROM sessions s JOIN workspaces w ON w.id=s.workspace_id WHERE s.state IN ('running','waiting','blocked') AND (?1 IS NULL OR s.id != ?1) UNION SELECT w.path FROM goals g JOIN workspaces w ON w.id=g.workspace_id WHERE g.state='running' AND (?1 IS NULL OR g.session_id != ?1)"
+        "SELECT w.path FROM sessions s JOIN workspaces w ON w.id=s.workspace_id WHERE s.state IN ('running','waiting','blocked') AND (?1 IS NULL OR s.id != ?1) UNION SELECT w.path FROM goals g JOIN workspaces w ON w.id=g.workspace_id WHERE g.state='active' AND (?1 IS NULL OR g.session_id != ?1)"
     ).map_err(crate::persistence::sqlite_error)?;
     let paths = statement
         .query_map([allowed_session], |row| row.get::<_, String>(0))

@@ -816,7 +816,7 @@ function ScheduledTaskEditor({
 
           <footer className="sched-actions">
             <p className="sched-actions-note">
-              Scheduled runs use your Tool permissions setting and may wait for approval.
+              Scheduled runs use the permission setting for their provider and may wait for approval.
             </p>
             <div className="sched-actions-buttons">
               <button type="button" className="sched-button" onClick={onCancel}>

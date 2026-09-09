@@ -384,9 +384,33 @@ async reviewRevertHunk(input: ReviewIndexHunkInput) : Promise<Result<null, Argma
     else return { status: "error", error: e  as any };
 }
 },
-async checkpointsCreate(input: CheckpointsCreateInput) : Promise<Result<Checkpoint, ArgmaxError>> {
+async goalSet(input: GoalSetInput) : Promise<Result<Goal, ArgmaxError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("checkpoints_create", { input }) };
+    return { status: "ok", data: await TAURI_INVOKE("goal_set", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async goalGet(input: GoalSessionInput) : Promise<Result<Goal | null, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("goal_get", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async goalList(input: GoalListInput) : Promise<Result<Goal[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("goal_list", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async goalClear(input: GoalSessionInput) : Promise<Result<Goal | null, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("goal_clear", { input }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -1108,6 +1132,7 @@ group: string | null }
  * against a renderer list that is no longer the source of truth.
  */
 export type BrowserTabsEvent = { tabs: BrowserTabInfo[] }
+export type CapabilityAvailability = { available: boolean; reason?: string | null }
 export type ChangedFileSummary = { path: string; status: string; additions: number; deletions: number;
 /**
  * True when the index differs from HEAD for this path. A file can be
@@ -1118,7 +1143,6 @@ staged: boolean; oldPath?: string | null }
 export type CheckRun = { id: string; workspaceId: string; command: string; status: string; exitCode: number | null; summary: string | null; startedAt: string; completedAt: string | null }
 export type CheckoutFingerprint = { headSha: string; branch: string; worktreeTree: string; indexTree: string }
 export type Checkpoint = { id: string; workspaceId: string; sessionId: string | null; label: string; branch: string; headSha: string; worktreeTree: string; indexTree: string; untrackedPaths: string[]; turnBoundary: string | null; providerConversationId: string | null; recoveryOf: string | null; createdAt: string }
-export type CheckpointsCreateInput = { workspaceId: string; sessionId: string | null; label: string; turnBoundary: string | null; providerConversationId: string | null }
 export type CheckpointsListInput = { workspaceId: string; limit?: number }
 export type CheckpointsPreviewRewindInput = { workspaceId: string; checkpointId: string }
 export type CheckpointsRewindFilesInput = { workspaceId: string; checkpointId: string; expectedFingerprint: CheckoutFingerprint }
@@ -1189,6 +1213,27 @@ export type GitPushInput = { workspaceId: WorkspaceId }
 export type GitPushResult = { branch: string; upstreamSet: boolean }
 export type GitViewOrCreatePrInput = { sessionId: SessionId }
 export type GitViewOrCreatePrResult = { action: "opened"; url: string; prNumber: number } | { action: "created"; url: string; prNumber: number | null }
+export type Goal = { id: string; workspaceId: string; sessionId: string;
+/**
+ * The whole configuration: one free-text completion condition.
+ */
+condition: string; state: GoalState;
+/**
+ * Turns the evaluator has judged.
+ */
+turns: number;
+/**
+ * Enforced ceiling; the goal stops and hands back when reached.
+ */
+maxTurns: number;
+/**
+ * The evaluator's most recent reason, shown in the UI.
+ */
+lastReason: string | null; createdAt: string; updatedAt: string }
+export type GoalListInput = { workspaceId: string | null }
+export type GoalSessionInput = { sessionId: string }
+export type GoalSetInput = { workspaceId: string; sessionId: string; condition: string; maxTurns: number | null }
+export type GoalState = "active" | "achieved" | "impossible" | "stopped"
 export type HealthPingInput = Record<string, never>
 export type HealthPingOutput = { ok: boolean; timestamp: string }
 export type IdeId = "vscode" | "cursor" | "windsurf" | "zed" | "iterm" | "terminal"
@@ -1312,7 +1357,27 @@ authenticated: boolean | null; setupGuidance: string | null;
  * current structured runtime is observation-only for Claude/Codex and
  * has no Cursor gate detector, so the UI must not imply live approval.
  */
-approvalSupport: ApprovalSupport }
+approvalSupport: ApprovalSupport; goalSupport: ProviderGoalSupport }
+export type ProviderGoalSupport = {
+/**
+ * Finite continuation owned by Argmax. Every provider turn settles before
+ * Argmax advances into checks or review.
+ */
+appManaged: CapabilityAvailability;
+/**
+ * Whether the provider product is known to expose a native Goal feature.
+ * Product availability alone never enables host control.
+ */
+nativeProduct: boolean;
+/**
+ * Host control requires start/status/pause/stop/resume semantics that can
+ * survive Argmax's per-turn process lifecycle without a second loop.
+ */
+nativeControl: CapabilityAvailability;
+/**
+ * Fresh read-only subprocess plus a candidate-bound structured verdict.
+ */
+independentReviewer: CapabilityAvailability }
 export type ProviderId = "claude" | "codex" | "cursor" | "opencode" | "grok"
 export type ProvidersCancelQueuedMessageInput = { sessionId: SessionId; messageId: NonEmptyString }
 export type ProvidersDiscoverInput = {
@@ -1544,11 +1609,10 @@ export type SystemListDetectedIdesInput = Record<string, never>
 export type SystemOk = { ok: boolean }
 export type SystemOpenPathInput = { path: OpenPath; cwd: NonEmptyString | null }
 /**
- * The app-wide default agent (Settings → Agents). The renderer owns the
- * preference and mirrors it here so the sessions Argmax starts on its own —
- * the PR check-failure fix chat — launch on the same model the user picked.
+ * The app-wide default agent (Settings → Agents), including per-provider
+ * permission modes. The renderer mirrors it here for autonomous launches.
  */
-export type SystemSetDefaultAgentInput = { provider: ProviderId; permissionMode: PermissionMode | null; modelLabel: NonEmptyString; modelId: NonEmptyString;
+export type SystemSetDefaultAgentInput = { provider: ProviderId; permissionMode: PermissionMode | null; permissionModes: Partial<{ [key in ProviderId]: PermissionMode }> | null; modelLabel: NonEmptyString; modelId: NonEmptyString;
 /**
  * Absent for a fast model that has no effort control at all.
  */

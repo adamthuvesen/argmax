@@ -163,6 +163,10 @@ _Avoid_: Diff mode, comparison
 A note the user wrote on a line or range of a diff in the review panel. It attaches to the composer as an annotation and is serialized into the prompt as an `<argmax-diff-note>` block naming the file, line or range, side, and review comparison. Local to this machine, an agent addresses it by editing the worktree. GitHub's review comments are a different thing entirely, and calling this one a review comment is what sends an agent looking for a pull request.
 _Avoid_: Review comment, line comment, inline comment
 
+**Goal**:
+One free-text condition a chat keeps working toward. After each turn a separate cheap evaluator judges the transcript and returns met, not yet met, or impossible; "not yet met" starts another turn. Set with `/goal <condition>` or the `goal_set` agent tool. It is a condition and a verdict, not a configured workflow — there are no steps, no reviewer to pick, and no form.
+_Avoid_: Objective, acceptance criteria, task, mission
+
 **Checkpoint**:
 A saved marker of a workspace's tree at a moment — a git ref, a patch file, or both — so work can be recovered.
 

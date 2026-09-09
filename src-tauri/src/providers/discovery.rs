@@ -11,6 +11,53 @@ use super::{
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
+pub struct CapabilityAvailability {
+    pub available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+impl CapabilityAvailability {
+    fn available_when_installed(installed: bool, display_name: &str) -> Self {
+        if installed {
+            Self {
+                available: true,
+                reason: None,
+            }
+        } else {
+            Self {
+                available: false,
+                reason: Some(format!("{display_name} is not installed.")),
+            }
+        }
+    }
+
+    fn unavailable(reason: impl Into<String>) -> Self {
+        Self {
+            available: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderGoalSupport {
+    /// Finite continuation owned by Argmax. Every provider turn settles before
+    /// Argmax advances into checks or review.
+    pub app_managed: CapabilityAvailability,
+    /// Whether the provider product is known to expose a native Goal feature.
+    /// Product availability alone never enables host control.
+    pub native_product: bool,
+    /// Host control requires start/status/pause/stop/resume semantics that can
+    /// survive Argmax's per-turn process lifecycle without a second loop.
+    pub native_control: CapabilityAvailability,
+    /// Fresh read-only subprocess plus a candidate-bound structured verdict.
+    pub independent_reviewer: CapabilityAvailability,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
 pub struct ProviderCapabilityReport {
     pub provider: ProviderId,
     pub display_name: String,
@@ -29,6 +76,7 @@ pub struct ProviderCapabilityReport {
     /// current structured runtime is observation-only for Claude/Codex and
     /// has no Cursor gate detector, so the UI must not imply live approval.
     pub approval_support: ApprovalSupport,
+    pub goal_support: ProviderGoalSupport,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -120,16 +168,52 @@ async fn discover_uncached(provider_id: ProviderId) -> ProviderCapabilityReport 
         (true, _) => None,
     };
 
+    let installed = binary_path.is_some();
     ProviderCapabilityReport {
         provider: provider_id,
         display_name: definition.display_name.to_string(),
         binary_name: definition.binary_name.to_string(),
-        installed: binary_path.is_some(),
+        installed,
         binary_path: binary_path.clone(),
         version,
         authenticated,
         setup_guidance,
         approval_support: definition.approval_support,
+        goal_support: goal_support(provider_id, installed, definition.display_name),
+    }
+}
+
+fn goal_support(provider: ProviderId, installed: bool, display_name: &str) -> ProviderGoalSupport {
+    let native_product = !matches!(provider, ProviderId::Opencode);
+    let native_control_reason = match provider {
+        ProviderId::Codex => "Codex native Goal state CRUD is verified, but its autonomous continuation lifecycle is not controllable through Argmax's per-turn app-server host yet.",
+        ProviderId::Claude => "Claude Code has native Goals, but Argmax has not verified host-controlled lifecycle events through its current CLI transport.",
+        ProviderId::Cursor => "Cursor has native Goals, but Argmax has not verified host-controlled lifecycle events through ACP.",
+        ProviderId::Grok => "Grok Build has native Goals, but Argmax has not verified host-controlled lifecycle events through ACP.",
+        ProviderId::Opencode => "OpenCode does not expose a verified native Goal lifecycle.",
+    };
+    let independent_reviewer = match provider {
+        ProviderId::Claude => {
+            CapabilityAvailability::available_when_installed(installed, display_name)
+        }
+        ProviderId::Codex => CapabilityAvailability::unavailable(
+            "Codex read-only sandboxing is verified, but Argmax cannot yet prove that every installed customization and hook is excluded from a fresh reviewer invocation.",
+        ),
+        ProviderId::Cursor => CapabilityAvailability::unavailable(
+            "Cursor ask mode is read-only by convention, but Argmax has not verified an enforced no-write reviewer boundary for this CLI version.",
+        ),
+        ProviderId::Opencode => CapabilityAvailability::unavailable(
+            "OpenCode's plan agent is read-only by convention, but Argmax has not verified an enforced no-write reviewer boundary.",
+        ),
+        ProviderId::Grok => CapabilityAvailability::unavailable(
+            "Grok can restrict built-in tools, but its CLI still loads discovered MCP servers, plugins, and hooks during review.",
+        ),
+    };
+    ProviderGoalSupport {
+        app_managed: CapabilityAvailability::available_when_installed(installed, display_name),
+        native_product,
+        native_control: CapabilityAvailability::unavailable(native_control_reason),
+        independent_reviewer,
     }
 }
 
@@ -323,5 +407,27 @@ mod tests {
         assert!(opencode_helper_isolation(ProviderId::Codex).is_none());
         assert!(opencode_helper_isolation(ProviderId::Cursor).is_none());
         assert!(opencode_helper_isolation(ProviderId::Opencode).is_some());
+    }
+
+    #[test]
+    fn native_product_presence_does_not_claim_host_control() {
+        for provider in [
+            ProviderId::Claude,
+            ProviderId::Codex,
+            ProviderId::Cursor,
+            ProviderId::Grok,
+        ] {
+            let support = goal_support(provider, true, "provider");
+            assert!(support.native_product);
+            assert!(!support.native_control.available);
+            assert!(support.app_managed.available);
+            assert_eq!(
+                support.independent_reviewer.available,
+                provider == ProviderId::Claude
+            );
+        }
+        let opencode = goal_support(ProviderId::Opencode, true, "OpenCode");
+        assert!(!opencode.native_product);
+        assert!(!opencode.native_control.available);
     }
 }

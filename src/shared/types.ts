@@ -14,6 +14,11 @@ export type DebugSnapshot = Bindings.DebugSnapshot;
 export type BackendLogEntry = Bindings.LogEntry;
 export type PermissionMode = Bindings.PermissionMode;
 export type ProviderId = Bindings.ProviderId;
+export type Goal = Bindings.Goal;
+export type GoalState = Bindings.GoalState;
+export type GoalSetInput = Bindings.GoalSetInput;
+export type GoalSessionInput = Bindings.GoalSessionInput;
+export type GoalListInput = Bindings.GoalListInput;
 export type ReasoningEffort = Bindings.ReasoningEffort;
 export type UsageWindow = Bindings.UsageWindow;
 export type UsageResolution = Bindings.UsageResolution;
@@ -173,7 +178,6 @@ export type ReviewIndexFileInput = Bindings.ReviewIndexFileInput;
 export type ReviewIndexHunkInput = Bindings.ReviewIndexHunkInput;
 export type ReviewCommitStagedInput = Bindings.ReviewCommitStagedInput;
 export type Checkpoint = Bindings.Checkpoint;
-export type CheckpointsCreateInput = Bindings.CheckpointsCreateInput;
 export type CheckpointsListInput = Bindings.CheckpointsListInput;
 export type CheckpointsPreviewRewindInput = Bindings.CheckpointsPreviewRewindInput;
 export type CheckpointsRewindFilesInput = Bindings.CheckpointsRewindFilesInput;
@@ -416,6 +420,7 @@ export type DashboardDelta = {
   removedSessionIds?: string[];
   removedWorkspaceIds?: string[];
   changedSessionIds?: string[];
+  goalChangedIds?: string[];
   dashboardChanged?: boolean;
   resyncRequired?: boolean;
 };
@@ -499,6 +504,12 @@ export interface ArgmaxApi {
       rank: number;
     }>>;
   };
+  goals: {
+    set: (input: GoalSetInput) => Promise<Goal>;
+    get: (input: GoalSessionInput) => Promise<Goal | null>;
+    list: (input: GoalListInput) => Promise<Goal[]>;
+    clear: (input: GoalSessionInput) => Promise<Goal | null>;
+  };
   review: {
     stageFile: (input: ReviewIndexFileInput) => Promise<void>;
     unstageFile: (input: ReviewIndexFileInput) => Promise<void>;
@@ -537,7 +548,6 @@ export interface ArgmaxApi {
     run: (input: RunCheckInput) => Promise<CheckRun>;
   };
   checkpoints: {
-    create: (input: CheckpointsCreateInput) => Promise<Checkpoint>;
     list: (input: CheckpointsListInput) => Promise<Checkpoint[]>;
     previewRewind: (input: CheckpointsPreviewRewindInput) => Promise<RewindPreview>;
     rewindFiles: (input: CheckpointsRewindFilesInput) => Promise<RewindFilesResult>;
@@ -558,6 +568,7 @@ export interface ArgmaxApi {
     setDefaultAgent: (input: {
       provider: ProviderId;
       permissionMode?: PermissionMode | null;
+      permissionModes?: Partial<Record<ProviderId, PermissionMode>>;
       modelLabel: string;
       modelId: string;
       reasoningEffort?: ReasoningEffort | null;

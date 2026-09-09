@@ -149,8 +149,8 @@ pub async fn routines_run_now(
     };
     let app_data = crate::util::data_dir::app_data_dir(&app)
         .map_err(|error| ArgmaxError::service("APP_DATA_DIR", error.to_string()))?;
-    let permission_mode = crate::default_agent::read_default_agent(&app_data).permission_mode;
-    scheduler::fire_routine(&database, &workspaces, &providers, fields, permission_mode).await;
+    let default_agent = crate::default_agent::read_default_agent(&app_data);
+    scheduler::fire_routine(&database, &workspaces, &providers, fields, &default_agent).await;
     let connection = database.connection();
     find_routine_by_id(&connection, input.id.as_str())
 }

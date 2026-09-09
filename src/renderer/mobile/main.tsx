@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import "../lib/tauriBridge.js";
 import { AppErrorBoundary } from "../components/AppErrorBoundary.js";
 import { MobileApp } from "./MobileApp.js";
+import { registerServiceWorker } from "./registerServiceWorker.js";
 import "../styles.css";
 import "../styles/mobile.css";
 
@@ -18,3 +19,5 @@ const root = (
 createRoot(document.getElementById("root") as HTMLElement).render(
   import.meta.env.DEV ? <StrictMode>{root}</StrictMode> : root
 );
+
+registerServiceWorker();

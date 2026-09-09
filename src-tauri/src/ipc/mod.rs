@@ -16,6 +16,7 @@ pub mod checkpoints;
 pub mod checks;
 pub mod dashboard;
 pub mod git_ops;
+pub mod goals;
 pub mod health;
 pub mod learnings;
 pub mod projects;
@@ -82,7 +83,10 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "review:commit-staged",
     "review:revert-file",
     "review:revert-hunk",
-    "checkpoints:create",
+    "goal:set",
+    "goal:get",
+    "goal:list",
+    "goal:clear",
     "checkpoints:list",
     "checkpoints:preview-rewind",
     "checkpoints:rewind-files",
@@ -255,7 +259,10 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         review::review_commit_staged,
         review::review_revert_file,
         review::review_revert_hunk,
-        checkpoints::checkpoints_create,
+        goals::goal_set,
+        goals::goal_get,
+        goals::goal_list,
+        goals::goal_clear,
         checkpoints::checkpoints_list,
         checkpoints::checkpoints_preview_rewind,
         checkpoints::checkpoints_rewind_files,

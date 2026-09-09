@@ -359,6 +359,7 @@ fn persist_default_agent<R: Runtime>(
         .map_err(|error| ArgmaxError::service("DEFAULT_AGENT_DIR", error.to_string()))?;
     let body = serde_json::to_vec(&crate::default_agent::DefaultAgent {
         permission_mode: input.permission_mode.unwrap_or_default(),
+        permission_modes: input.permission_modes.clone().unwrap_or_default(),
         provider: input.provider.as_str().to_string(),
         model_label: input.model_label.as_str().to_string(),
         model_id: input.model_id.as_str().to_string(),

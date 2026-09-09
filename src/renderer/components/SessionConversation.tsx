@@ -12,6 +12,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -92,7 +93,7 @@ import { SelectionToolbar, type ChatSelection } from "./SelectionToolbar.js";
 import { QuestionDock } from "./QuestionDock.js";
 import { SessionComposer, type ComposerStatus, type NewSessionSeed } from "./SessionComposer.js";
 import { importChunk } from "../lib/importChunk.js";
-const CheckpointControls = lazy(() => importChunk(async () => ({ default: (await import("./CheckpointControls.js")).CheckpointControls })));
+const GoalStatus = lazy(() => importChunk(async () => ({ default: (await import("./GoalStatus.js")).GoalStatus })));
 import { SessionActionsMenu } from "./SessionActionsMenu.js";
 import { WorkspaceCard } from "./WorkspaceCard.js";
 import { ThinkingLabel } from "./ThinkingLabel.js";
@@ -105,6 +106,10 @@ import {
   SessionConversationUserMessage
 } from "./SessionConversationTurn.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
+import {
+  readCheckpointUnavailableReason,
+  useTurnCheckpoints
+} from "../hooks/useTurnCheckpoints.js";
 
 // How many transcript items are mounted at once.
 //
@@ -166,6 +171,9 @@ export function SessionConversation({
   onAttachToChat,
   headingLabel,
   floating = false,
+  goalEnabled = true,
+  goalMaxTurns,
+  revertEnabled = true,
   registerAnnotationSink,
   defaultIde = null,
   detectedIdes = [],
@@ -241,6 +249,11 @@ export function SessionConversation({
       the whole app window), no session-actions menu (its actions are
       pane-bound), and popup-flavored close labels. */
   floating?: boolean;
+  /** Settings → Agents → Conversation. Off hides the goal strip and the
+      `/goal` command; off for revert hides "Revert to here" on a turn. */
+  goalEnabled?: boolean;
+  goalMaxTurns?: number;
+  revertEnabled?: boolean;
   /** Lets the parent pane feed review-panel line comments into this
       conversation's annotation lane. Registered on mount, cleared on unmount. */
   registerAnnotationSink?: (sink: ((input: DiffNoteInput) => void) | null) => void;
@@ -607,6 +620,25 @@ export function SessionConversation({
   const [dismissedMultitasks, setDismissedMultitasks] = useState(readDismissedMultitasks);
   // A dismissed row stays gone unless its chat is running again: answering it
   // from the dock tab is new work, and new work belongs in the lane.
+  const { checkpointIds, refresh: refreshCheckpoints } = useTurnCheckpoints(
+    revertEnabled ? workspace?.id : undefined,
+    session?.state
+  );
+  // A turn whose before-turn checkpoint failed carries the reason on its own
+  // user message, keyed the same way `checkpointIds` is. Without this the
+  // Revert control simply never appeared for that turn, which reads as the
+  // feature being broken rather than as the checkpoint being missing.
+  const checkpointUnavailable = useMemo(() => {
+    const reasons = new Map<string, string>();
+    if (!revertEnabled) return reasons;
+    for (const event of events) {
+      if (event.type !== "user.message") continue;
+      const reason = readCheckpointUnavailableReason(event.payload);
+      if (reason) reasons.set(event.id, reason);
+    }
+    return reasons;
+  }, [events, revertEnabled]);
+
   const composerMultitaskNotices = useMemo(
     () =>
       renderItems
@@ -659,10 +691,14 @@ export function SessionConversation({
     () => transcriptRenderItems.slice(windowStart),
     [transcriptRenderItems, windowStart]
   );
-  const lastUserMessageId = useMemo(() => {
+  const lastTurnPromptId = useMemo(() => {
     for (let i = transcriptRenderItems.length - 1; i >= 0; i -= 1) {
       const item = transcriptRenderItems[i];
-      if (item && item.kind === "user-message") return item.event.id;
+      if (!item || item.kind !== "user-message") continue;
+      // A steer adds guidance to the active turn. Keep its scroll anchor and
+      // following/detached state instead of jumping to the guidance bubble.
+      const canonical = decodeTimelineEvent(item.event);
+      if (canonical.kind === "message" && canonical.delivery !== "steer") return item.event.id;
     }
     return null;
   }, [transcriptRenderItems]);
@@ -1154,7 +1190,7 @@ export function SessionConversation({
     showScrollToBottom,
     newBelowCount,
     scrollToBottom: scrollConversationToBottom
-  } = useConversationScroll({ sessionId, items: conversationItems, resetKey: lastUserMessageId });
+  } = useConversationScroll({ sessionId, items: conversationItems, resetKey: lastTurnPromptId });
   // The scroll controller preserves the reading anchor across this prepend.
   const showEarlierItems = (): void => {
     setVisibleCount((current) => current + CONVERSATION_WINDOW_STEP);
@@ -1196,7 +1232,13 @@ export function SessionConversation({
   // the reader can answer in their own words, and the question stays in the
   // transcript as the card it was before.
   const [dismissedQuestionId, setDismissedQuestionId] = useState<string | null>(null);
-  const questionDocked = liveQuestion !== null && liveQuestion.tool.id !== dismissedQuestionId;
+  const [composerFocused, setComposerFocused] = useState(false);
+  const questionDocked = liveQuestion !== null && liveQuestion.tool.id !== dismissedQuestionId && !composerFocused;
+  // Preserve the input on the arrival render, then keep this question inline
+  // after blur too. Docking on blur would remove a Send button mid-click.
+  useLayoutEffect(() => {
+    if (composerFocused && liveQuestion) setDismissedQuestionId(liveQuestion.tool.id);
+  }, [composerFocused, liveQuestion]);
   const answerLiveQuestion = useCallback(
     (answerMarkdown: string): Promise<boolean> => {
       if (!session || !liveQuestion) return Promise.resolve(false);
@@ -1324,7 +1366,7 @@ export function SessionConversation({
                       key={item.event.id}
                       event={item.event}
                       attachments={parseUserMessageAttachments(item)}
-                      isTurnAnchor={item.event.id === lastUserMessageId}
+                      isTurnAnchor={item.event.id === lastTurnPromptId}
                       onOpenSession={onOpenSession}
                     />
                   );
@@ -1355,6 +1397,13 @@ export function SessionConversation({
                     onOpenAgent={onOpenAgent}
                     onTerminateSession={onTerminateSession}
                     onForkSession={onForkSession}
+                    revertCheckpointIds={checkpointIds}
+                    revertCheckpointUnavailable={checkpointUnavailable}
+                    onReverted={() => {
+                      refreshCheckpoints();
+                      review.workspaceFiles.refreshList();
+                      review.openChangesPanel();
+                    }}
                     onSendSessionInput={sendSessionInput}
                     inputRef={inputRef}
                     shouldRefocusInput={shouldRefocusInput}
@@ -1421,13 +1470,10 @@ export function SessionConversation({
           checks={checks ?? []}
           onRunCheck={onRunCheck}
         />
+        {!floating && session && workspace && goalEnabled && <Suspense fallback={null}>
+          <GoalStatus key={`goal:${session.id}`} session={session} />
+        </Suspense>}
       </div>
-      {!floating && session && workspace && <Suspense fallback={null}>
-        <CheckpointControls key={session.id} session={session} workspace={workspace} onRestored={() => {
-          review.workspaceFiles.refreshList();
-          review.openChangesPanel();
-        }} />
-      </Suspense>}
       {composerMultitaskNotices.length > 0 ? (
         <section className="multitask-composer-lane" aria-label="Multitasks">
           {composerMultitaskNotices.map((notice) => {
@@ -1473,6 +1519,7 @@ export function SessionConversation({
         inputRef={inputRef}
         isQueueing={isQueueing}
         onFastModeEnabledChange={onFastModeEnabledChange}
+        onFocusChange={setComposerFocused}
         onCancelQueuedMessage={onCancelQueuedMessage}
         onSendQueuedMessageNow={onSendQueuedMessageNow}
         onMultitask={onMultitask}
@@ -1495,6 +1542,8 @@ export function SessionConversation({
         shouldRefocusInput={shouldRefocusInput}
         status={status}
         workspace={workspace}
+        goalEnabled={goalEnabled}
+        goalMaxTurns={goalMaxTurns}
       />
       )}
     </section>

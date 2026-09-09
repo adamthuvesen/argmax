@@ -224,7 +224,16 @@ fn watch_impl(service: &Arc<WorkspaceService>, workspace_id: &str) -> ArgmaxResu
             .watch(&watch_path, RecursiveMode::NonRecursive)
             .map_err(|e| ArgmaxError::service("WATCHER_WATCH_FAILED", e.to_string()))?;
     }
-
+    if let Some(git_metadata_path) = linked_git_metadata_path(&watch_path) {
+        // A linked worktree stores HEAD and index in the main repository's
+        // `.git/worktrees/<name>` directory. Watch that directory rather than
+        // either file so Git's atomic replacement of HEAD remains observable.
+        // Do not watch the common git directory: refs and objects there create
+        // high-volume events unrelated to this checkout.
+        watcher
+            .watch(&git_metadata_path, RecursiveMode::NonRecursive)
+            .map_err(|error| ArgmaxError::service("WATCHER_WATCH_FAILED", error.to_string()))?;
+    }
     let task = spawn_refresh_loop(Arc::downgrade(service), watch_path.clone(), rx);
 
     let mut registry = service.watchers.lock_or_recover("watchers");
@@ -260,6 +269,22 @@ pub(super) fn close_watcher(service: &WorkspaceService, workspace_id: &str) {
 /// slash, a `..` segment) still share a single stream.
 fn watch_key(path: &Path) -> PathBuf {
     path.canonicalize().unwrap_or_else(|_| normalize(path))
+}
+
+fn linked_git_metadata_path(checkout_path: &Path) -> Option<PathBuf> {
+    let dot_git = checkout_path.join(".git");
+    if dot_git.is_dir() {
+        return None;
+    }
+    let pointer = std::fs::read_to_string(dot_git).ok()?;
+    let target = Path::new(pointer.trim().strip_prefix("gitdir:")?.trim());
+    let git_metadata_path = if target.is_absolute() {
+        target.to_path_buf()
+    } else {
+        checkout_path.join(target)
+    };
+    let git_metadata_path = watch_key(&git_metadata_path);
+    (!git_metadata_path.starts_with(checkout_path)).then_some(git_metadata_path)
 }
 
 /// Filter events that can never change `git status` output.
@@ -414,5 +439,35 @@ mod tests {
             ..notify::Event::new(notify::EventKind::Any)
         };
         assert!(!is_status_relevant(&event));
+    }
+
+    #[test]
+    fn linked_git_metadata_path_resolves_relative_and_absolute_pointers() {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let checkout = directory.path().join("checkout");
+        let metadata = directory.path().join("common/worktrees/linked");
+        std::fs::create_dir_all(&checkout).expect("checkout");
+        std::fs::create_dir_all(&metadata).expect("metadata");
+
+        std::fs::write(
+            checkout.join(".git"),
+            "gitdir: ../common/worktrees/linked\n",
+        )
+        .expect("relative pointer");
+        let expected = metadata.canonicalize().expect("canonical metadata");
+        assert_eq!(
+            linked_git_metadata_path(&checkout).as_deref(),
+            Some(expected.as_path())
+        );
+
+        std::fs::write(
+            checkout.join(".git"),
+            format!("gitdir: {}\n", metadata.display()),
+        )
+        .expect("absolute pointer");
+        assert_eq!(
+            linked_git_metadata_path(&checkout).as_deref(),
+            Some(expected.as_path())
+        );
     }
 }

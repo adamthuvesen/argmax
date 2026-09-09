@@ -374,7 +374,11 @@
 }
 
 .conversation-surface .section-heading h2 {
-  font-size: var(--text-sm);
+  /* A step under the chat's body text. The strip names where you are; the
+     transcript under it is what you came to read, so it should not compete.
+     `.session-title-task` and the separator match, so repo and chat name stay
+     one size. */
+  font-size: var(--text-xs-plus);
   font-weight: 500;
   letter-spacing: -0.005em;
   color: var(--text-soft);
@@ -399,7 +403,7 @@
   /* Pull the slash in from the row's 7px gap so the two names read as one
      path rather than as two separate labels. */
   margin-inline: -2px;
-  font-size: var(--text-sm);
+  font-size: var(--text-xs-plus);
   color: color-mix(in oklab, var(--muted) 50%, transparent);
 }
 
@@ -421,7 +425,7 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: var(--text-sm);
+  font-size: var(--text-xs-plus);
   font-weight: 500;
   letter-spacing: -0.005em;
   color: var(--muted);

@@ -1302,9 +1302,145 @@ pub fn latest_agent_message(
     Ok(message)
 }
 
+/// What a Goal's evaluator reads: the end of the conversation, plus how much
+/// the agent actually did in its last turn.
+pub struct GoalTranscriptTail {
+    /// Labelled transcript lines, oldest first, clamped to the caller's budget.
+    pub text: String,
+    /// Tool calls since the last user turn. Zero across several turns running
+    /// is how the driver notices the agent has stopped making progress.
+    pub tool_calls_in_last_turn: u32,
+}
+
+/// Rows scanned for the tail. The budget cuts the text long before this in an
+/// ordinary session; the limit is what keeps a chatty one bounded.
+const GOAL_TAIL_SCAN_LIMIT: usize = 400;
+/// Per-row clamp, so one pasted build log cannot fill the whole budget.
+const GOAL_TAIL_ROW_CHARS: usize = 2_000;
+
+/// Reads the tail of `session_id` for a Goal verdict: assistant prose, tool
+/// calls and their outcomes, and the prompts they answered, newest rows first
+/// until `max_chars` is spent, then flipped back into reading order. Subagent
+/// and imported-trace rows are excluded, like the chat surface excludes them.
+pub fn goal_transcript_tail(
+    connection: &Connection,
+    session_id: &str,
+    max_chars: usize,
+) -> ArgmaxResult<GoalTranscriptTail> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+            SELECT type, substr(message, 1, ?)
+            FROM events
+            WHERE session_id = ?
+              AND type IN ('user.message', 'message.completed', 'command.started',
+                           'command.completed', 'error')
+              AND trim(message) <> ''
+              AND rowid > COALESCE((
+                SELECT MAX(rowid) FROM events cleared
+                WHERE cleared.session_id = events.session_id
+                  AND cleared.type = 'session.cleared'
+              ), 0)
+              AND json_extract(payload_json, '$.parent_tool_use_id') IS NULL
+              AND json_extract(payload_json, '$.traceImported') IS NULL
+            ORDER BY rowid DESC
+            LIMIT ?
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map(
+            params![GOAL_TAIL_ROW_CHARS, session_id, GOAL_TAIL_SCAN_LIMIT],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+
+    let mut lines = Vec::new();
+    let mut spent = 0usize;
+    for (kind, message) in rows {
+        let label = match kind.as_str() {
+            "user.message" => "USER",
+            "message.completed" => "AGENT",
+            "command.started" => "TOOL",
+            "command.completed" => "TOOL RESULT",
+            _ => "ERROR",
+        };
+        let line = format!("{label}: {}", message.trim());
+        if spent + line.len() > max_chars && !lines.is_empty() {
+            break;
+        }
+        spent += line.len();
+        lines.push(line);
+    }
+    lines.reverse();
+
+    Ok(GoalTranscriptTail {
+        text: lines.join("\n"),
+        tool_calls_in_last_turn: count_tool_calls_since_last_prompt(connection, session_id)?,
+    })
+}
+
+fn count_tool_calls_since_last_prompt(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<u32> {
+    connection
+        .prepare_cached(
+            r#"
+            SELECT COUNT(*) FROM events
+            WHERE session_id = ?1
+              AND type = 'command.started'
+              AND rowid > COALESCE((
+                SELECT MAX(rowid) FROM events prompt
+                WHERE prompt.session_id = ?1 AND prompt.type = 'user.message'
+              ), 0)
+            "#,
+        )
+        .map_err(sqlite_error)?
+        .query_row([session_id], |row| row.get::<_, u32>(0))
+        .map_err(sqlite_error)
+}
+
 /// When the current turn's prompt landed — what `session_status` ages to
 /// report how long a session has been working. Ignores subagent rows and
 /// anything before the last `/clear`, like the transcript itself does.
+/// The id of the turn a before-turn checkpoint belongs to.
+///
+/// Same slice as [`latest_user_message_at`]: the newest top-level user message
+/// since the last clear, ignoring subagent prompts. Recorded on the checkpoint
+/// as its `turn_boundary`, which is what lets a turn in the transcript offer
+/// "Revert to here" — the checkpoint is matched to the message rather than
+/// picked off a list of identical timestamps.
+pub fn latest_user_message_id(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Option<String>> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+            SELECT id
+            FROM events
+            WHERE session_id = ?
+              AND type = 'user.message'
+              AND rowid > COALESCE((
+                SELECT MAX(rowid) FROM events cleared
+                WHERE cleared.session_id = events.session_id
+                  AND cleared.type = 'session.cleared'
+              ), 0)
+              AND json_extract(payload_json, '$.parent_tool_use_id') IS NULL
+            ORDER BY rowid DESC
+            LIMIT 1
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    statement
+        .query_row([session_id], |row| row.get::<_, String>(0))
+        .optional()
+        .map_err(sqlite_error)
+}
+
 pub fn latest_user_message_at(
     connection: &Connection,
     session_id: &str,

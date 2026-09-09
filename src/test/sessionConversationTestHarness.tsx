@@ -116,6 +116,7 @@ type ConversationOptions = {
   defaultToolCallsDisplay?: "expanded" | "collapsed" | "single-line";
   defaultToolCallGroupsExpanded?: boolean;
   pendingMessages?: PendingMessage[];
+  goalEnabled?: boolean;
   // The conversation's own prop types, not `ReturnType<typeof vi.fn>`:
   // Vitest 4 types a bare `vi.fn()` as `Mock<Procedure | Constructable>`,
   // which no longer widens to a call signature, so a loose option type here
@@ -147,6 +148,7 @@ function conversationElement(
 ): JSX.Element {
   return (
     <SessionConversation
+      goalEnabled={options.goalEnabled ?? true}
       events={events}
       eventsBackfilled={options.eventsBackfilled ?? true}
       isLogOpen={false}

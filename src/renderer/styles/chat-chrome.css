@@ -198,7 +198,7 @@
 .composer > .composer-input,
 .composer > .composer-context,
 .composer > .composer-attachments,
-.composer > .composer-status {
+.composer > .launcher-error {
   position: relative;
   z-index: 1;
 }
@@ -486,7 +486,8 @@
    weight: they carry no dropdown caret and no leading icon, just a word. At rest
    they're plain quiet chips; when enabled (aria-pressed) they fill with the
    accent so the two launch toggles read as a family and their state is legible
-   at a glance. min-width keeps the row from jumping as Auto ↔ Plan toggles. */
+   at a glance. Auto renders no chip at all, so min-width is what keeps Plan and
+   Chat the same width as the row cycles. */
 .agent-mode-toggle {
   min-width: 52px;
   justify-content: center;

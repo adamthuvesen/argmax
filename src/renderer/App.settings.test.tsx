@@ -7,8 +7,10 @@ import { CHAT_WIDTH_KEY } from "./lib/chatWidth.js";
 import { LAUNCH_MODEL_KEY } from "./lib/launchModelPreference.js";
 import {
   CHAT_VERBOSITY_KEY,
+  TURN_REVERT_ENABLED_KEY,
   DESKTOP_NOTIFICATIONS_KEY,
   FAST_MODE_KEY,
+  GOAL_ENABLED_KEY,
   PR_MILESTONE_CELEBRATION_KEY,
   RANDOM_SESSION_ICON_KEY
 } from "./lib/uiPreferences.js";
@@ -249,6 +251,39 @@ describe("App settings", () => {
     );
   });
 
+  it("keeps goals and turn revert on by default and persists turning them off", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings("Agents");
+    await screen.findByRole("heading", { name: "Conversation" });
+
+    const goals = screen.getByRole("checkbox", { name: "Goals" });
+    const revert = screen.getByRole("checkbox", { name: "Revert to a turn" });
+    expect(goals).toBeChecked();
+    expect(revert).toBeChecked();
+
+    fireEvent.click(goals);
+    await waitFor(() => expect(window.localStorage.getItem(GOAL_ENABLED_KEY)).toBe("false"));
+
+    fireEvent.click(revert);
+    await waitFor(() => expect(window.localStorage.getItem(TURN_REVERT_ENABLED_KEY)).toBe("false"));
+  });
+
+  it("hides the goal turn budget when goals are off", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings("Agents");
+    await screen.findByRole("heading", { name: "Conversation" });
+    expect(screen.getByRole("slider", { name: "Turns a goal may spend" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Goals" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("slider", { name: "Turns a goal may spend" })).not.toBeInTheDocument()
+    );
+  });
+
   it("disables random session icons by default and persists turning them on", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
@@ -389,16 +424,16 @@ describe("App settings", () => {
     await openSettings("Agents");
     await screen.findByRole("heading", { name: "Permissions" });
 
-    const permissionTrigger = screen.getByRole("button", { name: "Tool permissions" });
+    const permissionTrigger = screen.getByRole("button", { name: "Claude tool permissions" });
     expect(permissionTrigger).toHaveTextContent("Provider defaults");
     fireEvent.click(permissionTrigger);
     fireEvent.click(
-      within(await screen.findByRole("listbox", { name: "Tool permissions" })).getByRole("button", {
+      within(await screen.findByRole("listbox", { name: "Claude tool permissions" })).getByRole("button", {
         name: "Ask for approval"
       })
     );
     await waitFor(() =>
-      expect(window.localStorage.getItem("argmax.permissionMode")).toBe("ask-each-time")
+      expect(JSON.parse(window.localStorage.getItem("argmax.providerPermissionModes")!)).toEqual(expect.objectContaining({ claude: "ask-each-time", codex: "provider-defaults" }))
     );
 
     // Toggle Settings closed to get back to the launcher.
@@ -414,6 +449,32 @@ describe("App settings", () => {
         expect.objectContaining({ permissionMode: "ask-each-time" })
       )
     );
+  });
+
+  it.each([
+    ["claude", "claude-opus-5", "auto-approve"],
+    ["codex", "gpt-5.6-sol", "provider-defaults"]
+  ] as const)("keeps provider choices independent after reload and launches %s with its own policy", async (provider, modelId, permissionMode) => {
+    window.localStorage.setItem("argmax.permissionMode", "auto-approve");
+    window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider, modelId }));
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+    await openSettings("Agents");
+    expect(screen.getByRole("button", { name: "Claude tool permissions" })).toHaveTextContent("Full access");
+    fireEvent.click(screen.getByRole("button", { name: "Codex tool permissions" }));
+    fireEvent.click(within(await screen.findByRole("listbox", { name: "Codex tool permissions" })).getByRole("button", { name: "Provider defaults" }));
+    await waitFor(() => expect(window.argmax!.system.setDefaultAgent).toHaveBeenLastCalledWith(
+      expect.objectContaining({ permissionModes: { claude: "auto-approve", codex: "provider-defaults", cursor: "auto-approve", opencode: "auto-approve", grok: "auto-approve" } })
+    ));
+    cleanup();
+    render(<App />);
+    await screen.findByRole("button", { name: "Codex tool permissions" });
+    expect(screen.getByRole("button", { name: "Claude tool permissions" })).toHaveTextContent("Full access");
+    expect(screen.getByRole("button", { name: "Codex tool permissions" })).toHaveTextContent("Provider defaults");
+    fireEvent.keyDown(document, { key: ",", metaKey: true });
+    fireEvent.change(await screen.findByLabelText("Task prompt"), { target: { value: "Use this provider policy" } });
+    fireEvent.click(screen.getByTitle("Start agent"));
+    await waitFor(() => expect(launchProvider).toHaveBeenCalledWith(expect.objectContaining({ provider, permissionMode })));
   });
 
   it("keeps browser preferences local instead of trying to save desktop defaults", async () => {
@@ -438,7 +499,7 @@ describe("App settings", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Scheduled and automatic chats still use the previous settings");
     fireEvent.click(screen.getByRole("button", { name: "Retry saving defaults" }));
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
-    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ permissionMode: "provider-defaults" }));
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ permissionModes: { claude: "provider-defaults", codex: "provider-defaults", cursor: "provider-defaults", opencode: "provider-defaults", grok: "provider-defaults" } }));
     expect(save).toHaveBeenCalledTimes(2);
   });
 
@@ -449,16 +510,16 @@ describe("App settings", () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
     await openSettings("Agents");
-    fireEvent.click(screen.getByRole("button", { name: "Tool permissions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Claude tool permissions" }));
     fireEvent.click(
-      within(await screen.findByRole("listbox", { name: "Tool permissions" })).getByRole("button", {
+      within(await screen.findByRole("listbox", { name: "Claude tool permissions" })).getByRole("button", {
         name: "Full access"
       })
     );
     expect(save).toHaveBeenCalledTimes(1);
     finishFirst({ ok: true });
     await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
-    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ permissionMode: "auto-approve" }));
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ permissionModes: { claude: "auto-approve", codex: "provider-defaults", cursor: "provider-defaults", opencode: "provider-defaults", grok: "provider-defaults" } }));
   });
 
   it.each([

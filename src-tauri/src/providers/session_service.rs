@@ -51,6 +51,7 @@ use crate::{
     checkpoints::service::{CheckpointService, CreateCheckpointInput},
     error::{ArgmaxError, ArgmaxResult},
     gh::service::{pr_numbers_from_command_event, GhService},
+    git::ops::checkout_write_lock,
     ipc::inputs::{
         ComposerAttachmentInput, ProvidersCancelQueuedMessageInput, ProvidersLaunchInput,
         ProvidersResizeInput, ProvidersSendInput, ProvidersSendQueuedMessageNowInput,
@@ -137,6 +138,35 @@ fn cap_notice_answer(answer: &str) -> String {
     capped
 }
 
+/// A goal turn is only allowed while its goal is still active on that chat.
+/// The driver checks the same thing before it sends, but it can lose the race
+/// with a user clearing the goal; this closes that window in the database,
+/// where the settle and the send are ordered against each other.
+///
+/// Goals reserve nothing else: the user can keep typing into a chat that has
+/// one, and other chats sharing the checkout are unaffected.
+fn ensure_goal_turn_admitted(
+    connection: &rusqlite::Connection,
+    session_id: &str,
+    identity: &GoalTurnIdentity,
+) -> ArgmaxResult<()> {
+    let admitted = connection
+        .prepare_cached("SELECT 1 FROM goals WHERE id=? AND session_id=? AND state='active'")
+        .map_err(sqlite_error)?
+        .query_row((identity.goal_id.as_str(), session_id), |_| Ok(()))
+        .optional()
+        .map_err(sqlite_error)?
+        .is_some();
+    if admitted {
+        Ok(())
+    } else {
+        Err(ArgmaxError::service(
+            "GOAL_NOT_ACTIVE",
+            "The goal stopped before its next turn could start.",
+        ))
+    }
+}
+
 /// Where a user turn came from, when it was not the person at the keyboard.
 /// Written onto the `user.message` payload as `origin`, which is what the chat
 /// renders as a "From <label>" bubble instead of an ordinary prompt.
@@ -174,6 +204,14 @@ struct CompletionNotice {
 pub struct SessionStateChange {
     pub session_id: String,
     pub state: SessionState,
+}
+
+/// Says which goal a turn is being sent for. Never exposed through IPC; the
+/// database re-checks that the goal is still active on that chat before the
+/// input is delivered.
+#[derive(Debug, Clone)]
+pub struct GoalTurnIdentity {
+    pub goal_id: String,
 }
 
 #[derive(Clone)]
@@ -344,6 +382,87 @@ impl ProviderSessionService {
             tracing::warn!("checkpoint service was already installed");
         }
     }
+
+    async fn capture_before_provider_turn(&self, session_id: &str) -> ArgmaxResult<()> {
+        let Some(checkpoints) = self.checkpoints.get() else {
+            return Ok(());
+        };
+        let (workspace_id, required, turn_boundary) = {
+            let connection = self.database.read_connection();
+            let session = find_session_by_id(&connection, session_id)?;
+            let workspace = find_workspace_by_id(&connection, &session.workspace_id)?;
+            if workspace.kind != "git" {
+                return Ok(());
+            }
+            let required =
+                crate::persistence::goals::find_active_goal_for_session(&connection, session_id)?
+                    .is_some();
+            // The user message this turn answers. It is already persisted by
+            // the time a launch reaches here, and it is what lets the turn in
+            // the transcript find its own checkpoint to revert to.
+            let turn_boundary =
+                crate::persistence::events::latest_user_message_id(&connection, session_id)?;
+            (workspace.id, required, turn_boundary)
+        };
+        if let Err(error) = checkpoints
+            .create_before_turn_checkpoint(CreateCheckpointInput {
+                workspace_id,
+                session_id: Some(session_id.to_string()),
+                label: "Before turn".to_string(),
+                turn_boundary: turn_boundary.clone(),
+                // Argmax's invocation UUID is not a native conversation
+                // boundary, and no provider can resume from an earlier message
+                // anyway — a revert restores files, not the conversation.
+                provider_conversation_id: None,
+                recovery_of: None,
+            })
+            .await
+        {
+            if required {
+                return Err(error);
+            }
+            if let Some(turn_boundary) = turn_boundary {
+                if let Some(event) = Self::mark_turn_checkpoint_unavailable(
+                    &self.database,
+                    &turn_boundary,
+                    &error.to_string(),
+                )? {
+                    self.publish(DashboardDelta {
+                        events: vec![event],
+                        ..DashboardDelta::default()
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn mark_turn_checkpoint_unavailable(
+        database: &Database,
+        turn_boundary: &str,
+        reason: &str,
+    ) -> ArgmaxResult<Option<TimelineEvent>> {
+        let connection = database.connection();
+        let Some(mut event) = find_event_by_id(&connection, turn_boundary)? else {
+            return Ok(None);
+        };
+        if event.r#type != "user.message" {
+            return Ok(None);
+        }
+        let mut payload = match event.payload {
+            Value::Object(map) => map,
+            _ => serde_json::Map::new(),
+        };
+        payload.insert("checkpointUnavailable".into(), Value::Bool(true));
+        payload.insert(
+            "checkpointUnavailableReason".into(),
+            Value::String(reason.to_string()),
+        );
+        event.payload = Value::Object(payload);
+        update_event_payload(&connection, turn_boundary, &event.payload)?;
+        Ok(Some(event))
+    }
+
     /// A queued follow-up and a scheduled disposal contradict each other: the
     /// follow-up expects the chat to still be here after this turn.
     pub fn ensure_after_turn_schedulable(
@@ -466,6 +585,12 @@ impl ProviderSessionService {
         let provider = input.provider;
         ensure_permission_mode_supported(provider, permission_mode)?;
         let admission = self.lifecycle.admit(input.workspace_id.as_str())?;
+        let checkout_path = {
+            let connection = self.database.read_connection();
+            find_workspace_by_id(&connection, input.workspace_id.as_str())?.path
+        };
+        let checkout_lock = checkout_write_lock(std::path::Path::new(&checkout_path)).await?;
+        let checkout_guard = checkout_lock.lock().await;
 
         let (session, workspace_path) = {
             let connection = self.database.connection();
@@ -560,6 +685,7 @@ impl ProviderSessionService {
         self.handles
             .lock_or_recover("handles")
             .insert(session_id.clone(), HandleEntry::Pending(Vec::new()));
+        drop(checkout_guard);
 
         let launch_input = ProviderLaunchInput {
             provider,
@@ -620,17 +746,31 @@ impl ProviderSessionService {
             let _admission = admission;
             let event_service = Arc::clone(&service);
             let callback_invocation_id = provider_invocation_id;
-            let handle = match service
-                .launcher
-                .launch(
-                    launch_input,
-                    Arc::new(move |event| {
-                        let event_service = Arc::clone(&event_service);
-                        event_service.handle_provider_event(event, callback_invocation_id.clone());
-                    }),
-                )
-                .await
-            {
+            let launch_result = async {
+                service.capture_before_provider_turn(&session_id).await?;
+                if !matches!(
+                    service.handles.lock_or_recover("handles").get(&session_id),
+                    Some(HandleEntry::Pending(_))
+                ) {
+                    return Err(ArgmaxError::service(
+                        "PROVIDER_LAUNCH_CANCELLED",
+                        "The turn was cancelled before launch.",
+                    ));
+                }
+                service
+                    .launcher
+                    .launch(
+                        launch_input,
+                        Arc::new(move |event| {
+                            let event_service = Arc::clone(&event_service);
+                            event_service
+                                .handle_provider_event(event, callback_invocation_id.clone());
+                        }),
+                    )
+                    .await
+            }
+            .await;
+            let handle = match launch_result {
                 Ok(handle) => handle,
                 Err(error) => {
                     let prior = service
@@ -692,7 +832,7 @@ impl ProviderSessionService {
         self: &Arc<Self>,
         input: ProvidersSendInput,
     ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_with_origin(input, None).await
+        self.send_input_scoped(input, None, None).await
     }
 
     /// The same turn, tagged with the session that wrote it. Everything the
@@ -705,6 +845,24 @@ impl ProviderSessionService {
         self: &Arc<Self>,
         input: ProvidersSendInput,
         origin: Option<MessageOrigin>,
+    ) -> ArgmaxResult<SendInputResult> {
+        self.send_input_scoped(input, origin, None).await
+    }
+
+    pub async fn send_goal_input(
+        self: &Arc<Self>,
+        input: ProvidersSendInput,
+        identity: GoalTurnIdentity,
+    ) -> ArgmaxResult<SendInputResult> {
+        self.send_input_scoped(input, None, Some(identity)).await
+    }
+
+    #[allow(clippy::unused_async)] // Callers await; the provider spawn is backgrounded.
+    async fn send_input_scoped(
+        self: &Arc<Self>,
+        input: ProvidersSendInput,
+        origin: Option<MessageOrigin>,
+        goal_turn: Option<GoalTurnIdentity>,
     ) -> ArgmaxResult<SendInputResult> {
         let session_id = input.session_id.as_str().to_string();
         let message = input.input.as_str().trim().to_string();
@@ -726,6 +884,9 @@ impl ProviderSessionService {
             let _send_generation = self.lock_send_generation(&session_id, send_generation)?;
             let connection = self.database.connection();
             let session = find_session_by_id(&connection, &session_id)?;
+            if let Some(goal_turn) = goal_turn.as_ref() {
+                ensure_goal_turn_admitted(&connection, &session_id, goal_turn)?;
+            }
             let target_provider = input.provider.unwrap_or(parse_provider(&session.provider)?);
             let target_model_id = input
                 .model_id
@@ -778,6 +939,10 @@ impl ProviderSessionService {
             gate.reached.notify_one();
             gate.release.notified().await;
         }
+        // Stop may have completed while this send was between its initial
+        // session read and checkout admission. Reject that generation before
+        // touching a checkout that the cancelled send no longer owns.
+        drop(self.lock_send_generation(&session_id, send_generation)?);
         ensure_permission_mode_supported(session_provider, session_permission_mode)?;
         let admission = self.lifecycle.admit(&workspace_id)?;
         let workspace_path = {
@@ -794,6 +959,12 @@ impl ProviderSessionService {
             }
             PathBuf::from(workspace.path)
         };
+        let checkout_lock = checkout_write_lock(&workspace_path).await?;
+        let checkout_guard = checkout_lock.lock().await;
+        if let Some(goal_turn) = goal_turn.as_ref() {
+            let connection = self.database.read_connection();
+            ensure_goal_turn_admitted(&connection, &session_id, goal_turn)?;
+        }
 
         let send_generation_guard = self.lock_send_generation(&session_id, send_generation)?;
         if let Some(handle) = self.live_handle(&session_id) {
@@ -1102,6 +1273,7 @@ impl ProviderSessionService {
                 .lock_or_recover("handles")
                 .insert(session_id.clone(), HandleEntry::Pending(Vec::new()));
         }
+        drop(checkout_guard);
         drop(send_generation_guard);
         // Same background spawn as `launch`: the user.message and running
         // state are already persisted and broadcast, so the composer can
@@ -3207,6 +3379,13 @@ impl ProviderSessionService {
         self.session_states.subscribe()
     }
 
+    pub fn publish_goal_changed(&self, goal_id: &str) {
+        self.publish(DashboardDelta {
+            goal_changed_ids: vec![goal_id.to_string()],
+            ..DashboardDelta::default()
+        });
+    }
+
     /// Mark the worktree where this turn starts, so a provider that reports a
     /// file write without saying what changed can still get a line stat. Off
     /// the send path: the mark costs a few hundred milliseconds on a large
@@ -4388,11 +4567,14 @@ mod tests {
             .await
             .expect("send task")
             .expect_err("pre-Stop send stays cancelled after markers clear");
-        assert!(matches!(
-            error,
-            ArgmaxError::ServiceError { ref sub_code, .. }
-                if sub_code == "PROVIDER_SEND_CANCELLED"
-        ));
+        assert!(
+            matches!(
+                error,
+                ArgmaxError::ServiceError { ref sub_code, .. }
+                    if sub_code == "PROVIDER_SEND_CANCELLED"
+            ),
+            "unexpected send error: {error:?}"
+        );
         tokio::task::yield_now().await;
         assert_eq!(launcher.launches.load(Ordering::SeqCst), 0);
         assert_eq!(service.open_handle_count(), 0);

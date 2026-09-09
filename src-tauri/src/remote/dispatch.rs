@@ -16,10 +16,10 @@ use serde_json::Value;
 use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 use crate::ipc::inputs::*;
 use crate::ipc::{
-    approvals, attachments, checkpoints, checks, dashboard, git_ops, health, learnings, projects,
-    providers, prs, review, session, skills, system, terminal, usage, workspace_files, workspaces,
+    approvals, attachments, checkpoints, checks, dashboard, git_ops, goals, health, learnings,
+    projects, providers, prs, review, session, skills, system, terminal, usage, workspace_files,
+    workspaces,
 };
-use crate::providers::PermissionMode;
 use crate::state::AppState;
 
 /// Channels whose handlers need an `AppHandle` (native dialogs, the shell
@@ -71,18 +71,25 @@ pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
 ];
 
 pub async fn dispatch(state: &AppState, channel: &str, input: Value) -> ArgmaxResult<Value> {
-    dispatch_with_permission_mode(state, channel, input, PermissionMode::default()).await
+    dispatch_with_default_agent(
+        state,
+        channel,
+        input,
+        crate::default_agent::DefaultAgent::factory(),
+    )
+    .await
 }
 
-pub fn dispatch_with_permission_mode<'a>(
+pub fn dispatch_with_default_agent<'a>(
     state: &'a AppState,
     channel: &'a str,
     input: Value,
-    default_permission_mode: PermissionMode,
+    default_agent: crate::default_agent::DefaultAgent,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ArgmaxResult<Value>> + Send + 'a>> {
     // Select before polling so workflow and general dispatch frames never share
     // the worker stack. Their combined debug frames exceed the stack budget.
-    if channel.starts_with("checkpoints:")
+    if channel.starts_with("goal:")
+        || channel.starts_with("checkpoints:")
         || matches!(
             channel,
             "review:stage-file"
@@ -96,12 +103,7 @@ pub fn dispatch_with_permission_mode<'a>(
     {
         Box::pin(dispatch_workflow(state, channel, input))
     } else {
-        Box::pin(dispatch_standard(
-            state,
-            channel,
-            input,
-            default_permission_mode,
-        ))
+        Box::pin(dispatch_standard(state, channel, input, default_agent))
     }
 }
 
@@ -109,7 +111,7 @@ async fn dispatch_standard(
     state: &AppState,
     channel: &str,
     input: Value,
-    default_permission_mode: PermissionMode,
+    default_agent: crate::default_agent::DefaultAgent,
 ) -> ArgmaxResult<Value> {
     if REMOTE_UNSUPPORTED_CHANNELS.contains(&channel) {
         return Err(ArgmaxError::service(
@@ -244,7 +246,7 @@ async fn dispatch_standard(
         }
         "providers:launch" => {
             let input: ProvidersLaunchInput = parse(channel, input)?;
-            encode(providers::providers_launch_impl(state, input, default_permission_mode).await?)
+            encode(providers::providers_launch_impl(state, input, &default_agent).await?)
         }
         "providers:send-input" => {
             let input: ProvidersSendInput = parse(channel, input)?;
@@ -459,8 +461,30 @@ async fn dispatch_workflow(state: &AppState, channel: &str, input: Value) -> Arg
         "review:revert-hunk" => {
             encode(review::review_revert_hunk_impl(state, parse(channel, input)?).await?)
         }
-        "checkpoints:create" => {
-            encode(checkpoints::checkpoints_create_impl(state, parse(channel, input)?).await?)
+        "goal:set" => encode(
+            goals::live_goals(state)?
+                .set(parse(channel, input)?)
+                .await?,
+        ),
+        "goal:list" => {
+            let input: crate::goals::service::GoalListInput = parse(channel, input)?;
+            let service = goals::live_goals(state)?;
+            encode(
+                crate::ipc::read_off_main(move || service.list(input.workspace_id.as_deref()))
+                    .await?,
+            )
+        }
+        "goal:get" => {
+            let input: crate::goals::service::GoalSessionInput = parse(channel, input)?;
+            let service = goals::live_goals(state)?;
+            encode(
+                crate::ipc::read_off_main(move || service.get_for_session(&input.session_id))
+                    .await?,
+            )
+        }
+        "goal:clear" => {
+            let input: crate::goals::service::GoalSessionInput = parse(channel, input)?;
+            encode(goals::live_goals(state)?.clear(&input.session_id).await?)
         }
         "checkpoints:list" => {
             encode(checkpoints::checkpoints_list_impl(state, parse(channel, input)?).await?)

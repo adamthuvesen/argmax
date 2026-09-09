@@ -1,0 +1,311 @@
+/* ============================================================
+   Session panels — Goal and Checkpoints, in the lane above the
+   composer.
+
+   Both used to hang under that lane as bare text toggles with
+   their own margins and their own field styling, so they read as
+   two loose links rather than part of the session. They are peers
+   of the Checks card (`.changed-files-card`), so they take its
+   frame: same border, radius, shadow, uppercase micro-title, and
+   chevron row. Three cards in one stack, one rhythm.
+
+   Quiet until reached for: row controls are ghost buttons that
+   surface a fill on hover, and the accent is spent in one place
+   only — the live Goal's dot and left rule.
+
+   Every colour, radius, and step comes from tokens.css.
+   ============================================================ */
+
+.session-panel {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  box-shadow: var(--shadow-1);
+  font-size: var(--text-sm);
+  min-width: 0;
+}
+
+/* ---------- Header ---------- */
+
+.session-panel-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.session-panel-head:hover {
+  background: var(--overlay-med);
+}
+
+.session-panel-head:focus-visible {
+  outline: none;
+  box-shadow: inset var(--ring);
+}
+
+.session-panel-chevron {
+  flex: 0 0 auto;
+  color: var(--muted);
+  transition: transform var(--duration-fast) var(--ease);
+}
+
+.session-panel-head[aria-expanded="true"] .session-panel-chevron {
+  transform: rotate(90deg);
+}
+
+.session-panel-title {
+  font-weight: 500;
+  color: var(--muted-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: var(--text-xs);
+}
+
+/* Right-hand status: the turn budget for a Goal, the saved count for
+   Checkpoints. Tabular so a ticking turn count doesn't jitter the row.
+   --chip-ink rather than --muted: both carry meaning at --text-xs, and on
+   paper --muted is 3.6:1, under AA at that size. */
+.session-panel-note {
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--chip-ink);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The one moving part in the lane, and only while a Goal is actually
+   running — a state worth catching from the corner of the eye. */
+.session-panel-dot {
+  flex: 0 0 auto;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  animation: session-panel-pulse 2s var(--ease-in-out) infinite;
+}
+
+@keyframes session-panel-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-panel-dot {
+    animation: none;
+  }
+}
+
+/* ---------- Body ---------- */
+
+.session-panel-body {
+  display: grid;
+  gap: var(--space-2_5);
+  padding: var(--space-2_5) var(--space-3) var(--space-3);
+  border-top: 1px solid var(--line-soft);
+  max-height: 340px;
+  overflow: auto;
+  overscroll-behavior-y: contain;
+}
+
+/* Carries the evaluator's reason and the restore explanation — content, not
+   decoration, so it takes the AA-safe muted step. */
+.session-panel-hint {
+  margin: 0;
+  color: var(--chip-ink);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.session-panel-error {
+  margin: 0;
+  color: var(--rose);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Field ---------- */
+
+/* One field in the whole surface: the optional checkpoint label. A goal is
+   set from the composer, so nothing here is a form. */
+.session-panel-body input {
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-1_5) var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-sunken);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  transition: border-color var(--duration-fast) var(--ease),
+    box-shadow var(--duration-fast) var(--ease);
+}
+
+.session-panel-body input::placeholder {
+  color: var(--muted);
+}
+
+.session-panel-body input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+.session-panel-body input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---------- Buttons ---------- */
+
+.session-panel-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1_5);
+  height: 26px;
+  padding: 0 var(--space-2_5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  color: var(--text-soft);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.session-panel-button:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
+.session-panel-button:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.session-panel-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.session-panel-button-primary {
+  color: var(--bubble-on-ink);
+  background: var(--accent);
+  border-color: transparent;
+}
+
+.session-panel-button-primary:hover:not(:disabled) {
+  color: var(--bubble-on-ink);
+  background: var(--accent-deep);
+  border-color: transparent;
+}
+
+/* A row control the card already frames: no hairline of its own, a fill
+   on hover. Same call the checks rows make. */
+.session-panel-button-quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted-strong);
+}
+
+.session-panel-button-quiet:hover:not(:disabled) {
+  background: var(--overlay-med);
+  border-color: transparent;
+}
+
+/* ---------- Footer ---------- */
+
+.session-panel-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.session-panel-foot > .session-panel-hint {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Pushes the action cluster right when no hint claims the space. */
+.session-panel-foot > .session-panel-actions {
+  display: inline-flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+/* ---------- Rows ---------- */
+
+.session-panel-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.session-panel-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1_5) 0;
+  border-top: 1px solid var(--line-soft);
+  min-width: 0;
+}
+
+.session-panel-row:first-child {
+  border-top: 0;
+}
+
+.session-panel-row-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.session-panel-row-text > strong {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.session-panel-row-text > time {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The restore control stays out of the way until the row is reached for.
+   Focus reveals it too, so it is never keyboard-only-invisible. */
+.session-panel-row > .session-panel-button {
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.session-panel-row:hover > .session-panel-button,
+.session-panel-row:focus-within > .session-panel-button {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .session-panel-row > .session-panel-button {
+    opacity: 1;
+  }
+}

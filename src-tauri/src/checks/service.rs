@@ -21,6 +21,7 @@ use uuid::Uuid;
 
 use crate::approvals::dangerous_action_policy::{classify_command_risk, CommandRiskLevel};
 use crate::error::{ArgmaxError, ArgmaxResult};
+use crate::git::ops::checkout_write_lock;
 use crate::persistence::checks::{
     persist_check, update_check, CheckRun, PersistCheckInput, UpdateCheckInput,
 };
@@ -151,6 +152,14 @@ impl CheckService {
         input: RunWorkspaceCheckInput,
         on_output: Option<OutputSink>,
     ) -> ArgmaxResult<CheckRun> {
+        self.run_workspace_check_inner(input, on_output).await
+    }
+
+    async fn run_workspace_check_inner(
+        self: &Arc<Self>,
+        input: RunWorkspaceCheckInput,
+        on_output: Option<OutputSink>,
+    ) -> ArgmaxResult<CheckRun> {
         // Reject obviously-destructive shell shapes BEFORE persisting or
         // spawning. `sh -c` interprets the full command string, so
         // without this gate a check like `rm -rf $HOME` runs
@@ -177,6 +186,8 @@ impl CheckService {
                 "Workspace archive is in progress; no new check can be started.",
             ));
         }
+        let checkout_lock = checkout_write_lock(std::path::Path::new(&workspace.path)).await?;
+        let checkout_guard = checkout_lock.lock().await;
         let admission = self.lifecycle.admit(&workspace.id)?;
         let check = {
             let conn = self.database.connection();
@@ -233,6 +244,7 @@ impl CheckService {
                 ));
             }
         };
+        drop(checkout_guard);
         // The check is now registered with a live child. Archive can cancel
         // it through the registry without racing a late spawn.
         drop(admission);

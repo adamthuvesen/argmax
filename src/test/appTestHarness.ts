@@ -392,12 +392,14 @@ export function setupAppTestMocks(): void {
       })
     );
 
+  const deltaListeners = new Set<(delta: DashboardDelta) => void>();
   window.argmax = {
     dashboard: {
       list: dashboardList,
       onDelta: (listener) => {
-        dashboardDeltaListener = listener;
-        return dashboardDeltaUnsubscribe;
+        deltaListeners.add(listener);
+        dashboardDeltaListener = (delta) => { for (const subscriber of [...deltaListeners]) subscriber(delta); };
+        return () => { deltaListeners.delete(listener); dashboardDeltaUnsubscribe(); };
       }
     },
     usage: {
@@ -560,9 +562,14 @@ export function setupAppTestMocks(): void {
       costSummary: sessionCostSummary,
       search: () => Promise.resolve([])
     },
+    goals: {
+      list: () => Promise.resolve([]),
+      get: () => Promise.resolve(null),
+      set: () => Promise.reject(new Error("Goal not stubbed")),
+      clear: () => Promise.resolve(null),
+    },
     checkpoints: {
       list: () => Promise.resolve([]),
-      create: () => Promise.reject(new Error("Checkpoint not stubbed")),
       previewRewind: () => Promise.reject(new Error("Checkpoint not stubbed")),
       rewindFiles: () => Promise.reject(new Error("Checkpoint not stubbed")),
     },

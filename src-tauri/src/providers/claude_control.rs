@@ -32,11 +32,15 @@ use tokio::{
     task::JoinSet,
 };
 
-const STEER_ACK_TIMEOUT: Duration = Duration::from_secs(20);
+/// How long the initial prompt may take to reach Claude before a steer gives up
+/// waiting for its turn to start, and how long a single stdin write may block.
+/// Neither bound covers the model's own pace: Claude replays a steered message
+/// only once the tool call it is inside returns, which is routinely minutes.
+const STEER_WRITE_TIMEOUT: Duration = Duration::from_secs(20);
 
 enum UserEcho {
     Initial,
-    Steer(oneshot::Sender<()>),
+    Steer,
 }
 
 struct PendingUserEcho {
@@ -47,6 +51,7 @@ struct PendingUserEcho {
 struct WriteRequest {
     message: Value,
     user_echo: Option<PendingUserEcho>,
+    written: Option<oneshot::Sender<()>>,
 }
 
 impl WriteRequest {
@@ -54,6 +59,7 @@ impl WriteRequest {
         Self {
             message,
             user_echo: None,
+            written: None,
         }
     }
 
@@ -64,7 +70,14 @@ impl WriteRequest {
                 prompt: prompt.to_string(),
                 acknowledgement,
             }),
+            written: None,
         }
+    }
+
+    fn acknowledged(mut self) -> (Self, oneshot::Receiver<()>) {
+        let (sender, receiver) = oneshot::channel();
+        self.written = Some(sender);
+        (self, receiver)
     }
 }
 
@@ -162,6 +175,9 @@ pub async fn launch_turn(
                 .write_all(format!("{}\n", request.message).as_bytes())
                 .await?;
             stdin.flush().await?;
+            if let Some(written) = request.written {
+                let _ = written.send(());
+            }
         }
         Ok::<(), std::io::Error>(())
     });
@@ -269,8 +285,7 @@ pub async fn launch_turn(
                                         let _ = ready_tx.send(true);
                                         continue;
                                     }
-                                    Some(UserEcho::Steer(sender)) => {
-                                        let _ = sender.send(());
+                                    Some(UserEcho::Steer) => {
                                         continue;
                                     }
                                     None => {}
@@ -380,10 +395,12 @@ impl ProviderRuntimeHandle for ControlHandle {
                 ));
             }
 
+            // Nothing has been written yet, so every way out of the readiness
+            // gate leaves the follow-up unsent rather than uncertain.
             let mut ready = self.ready.clone();
             if !*ready.borrow() {
                 let mut done = self.done.clone();
-                tokio::time::timeout(STEER_ACK_TIMEOUT, async {
+                tokio::time::timeout(STEER_WRITE_TIMEOUT, async {
                     tokio::select! {
                         result = ready.wait_for(|ready| *ready) => result.map(|_| ()),
                         result = done.wait_for(|done| *done) => result.map(|_| ()),
@@ -392,8 +409,8 @@ impl ProviderRuntimeHandle for ControlHandle {
                 .await
                 .map_err(|_| {
                     ArgmaxError::service(
-                        "STEER_DELIVERY_UNKNOWN",
-                        "Claude did not acknowledge its initial input before steering",
+                        "STEER_NOT_READY",
+                        "Claude has not taken up this turn's first message yet. The follow-up is still queued.",
                     )
                 })?
                 .map_err(|_| {
@@ -410,36 +427,43 @@ impl ProviderRuntimeHandle for ControlHandle {
                 }
             }
 
-            let (acknowledgement, delivered) = oneshot::channel();
-            self.writer
-                .send(WriteRequest::user(
-                    &self.provider_session_id,
-                    prompt,
-                    UserEcho::Steer(acknowledgement),
-                ))
-                .map_err(|_| {
-                    ArgmaxError::service(
-                        "STEER_NOT_RUNNING",
-                        "The Claude turn closed before steering could be sent",
-                    )
-                })?;
+            // Delivery is the write, not the replay. Claude echoes a steered
+            // message back only when it picks it up, which waits on whatever
+            // tool call the turn is inside — a long test run or a subagent
+            // holds it for minutes. The bytes on stdin are what decides
+            // whether Claude has the guidance; treating the echo as the
+            // acknowledgement reported a delivered follow-up as uncertain
+            // every time the current tool outlived the timeout. The echo is
+            // still tracked, so the reader keeps the turn open until Claude
+            // consumes it.
+            let (request, written) =
+                WriteRequest::user(&self.provider_session_id, prompt, UserEcho::Steer)
+                    .acknowledged();
+            self.writer.send(request).map_err(|_| {
+                ArgmaxError::service(
+                    "STEER_NOT_RUNNING",
+                    "The Claude turn closed before steering could be sent",
+                )
+            })?;
 
             let mut done = self.done.clone();
             tokio::select! {
-                result = tokio::time::timeout(STEER_ACK_TIMEOUT, delivered) => match result {
+                result = tokio::time::timeout(STEER_WRITE_TIMEOUT, written) => match result {
                     Ok(Ok(())) => Ok(()),
+                    // The writer stopped without flushing this line, so Claude
+                    // never saw a complete message.
                     Ok(Err(_)) => Err(ArgmaxError::service(
-                        "STEER_DELIVERY_UNKNOWN",
-                        "Claude closed before acknowledging the steering message",
+                        "STEER_NOT_RUNNING",
+                        "The Claude turn closed before steering could be sent",
                     )),
                     Err(_) => Err(ArgmaxError::service(
                         "STEER_DELIVERY_UNKNOWN",
-                        "Claude did not acknowledge the steering message",
+                        "Claude stopped reading its input while the guidance was being written",
                     )),
                 },
                 _ = done.wait_for(|done| *done) => Err(ArgmaxError::service(
                     "STEER_DELIVERY_UNKNOWN",
-                    "Claude completed before acknowledging the steering message",
+                    "The Claude turn ended while the guidance was being delivered",
                 )),
             }
         })
@@ -530,6 +554,60 @@ mod tests {
         assert_eq!(message["session_id"], "provider-session");
         assert_eq!(message["message"]["role"], "user");
         assert_eq!(replayed_user_prompt(&message), Some("steer-token"));
+    }
+
+    // Claude replays a steered message only when it picks it up, and a turn
+    // deep in a long tool call holds that for minutes. Delivery is decided by
+    // the write, so a silent reader must not turn a delivered follow-up into
+    // "Delivery uncertain".
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn steering_is_delivered_while_the_running_turn_withholds_its_echo() {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().unwrap();
+        let server = temp.path().join("fake-claude");
+        fs::write(
+            &server,
+            r#"#!/bin/sh
+user_count=0
+while IFS= read -r line; do
+  case "$line" in
+    *'"subtype":"initialize"'*)
+      printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"argmax-initialize","response":{}}}'
+      ;;
+    *'"type":"user"'*)
+      user_count=$((user_count + 1))
+      if [ "$user_count" -eq 1 ]; then
+        printf '%s\n' "$line"
+      fi
+      ;;
+  esac
+done
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&server, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let database = Arc::new(Database::open_in_memory().unwrap());
+        let approvals = ApprovalService::new(database);
+        let callback: EventCallback = Arc::new(move |_| {});
+        let mut input = launch_input(
+            PermissionMode::ProviderDefaults,
+            super::super::AgentMode::Auto,
+        );
+        input.workspace_path = temp.path().to_path_buf();
+        input.prompt = "original task".into();
+
+        let handle = launch_turn(server.to_str().unwrap(), &input, None, approvals, callback)
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(2), handle.steer("steer-token"))
+            .await
+            .expect("steering does not wait on the model's own pace")
+            .expect("a written follow-up is delivered");
+        handle.terminate().await.unwrap();
     }
 
     #[cfg(unix)]

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
@@ -854,14 +856,14 @@ pub struct SystemSetKeepAwakeInput {
     pub enabled: bool,
 }
 
-/// The app-wide default agent (Settings → Agents). The renderer owns the
-/// preference and mirrors it here so the sessions Argmax starts on its own —
-/// the PR check-failure fix chat — launch on the same model the user picked.
+/// The app-wide default agent (Settings → Agents), including per-provider
+/// permission modes. The renderer mirrors it here for autonomous launches.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SystemSetDefaultAgentInput {
     pub provider: ProviderId,
     pub permission_mode: Option<PermissionMode>,
+    pub permission_modes: Option<HashMap<ProviderId, PermissionMode>>,
     pub model_label: NonEmptyString,
     pub model_id: NonEmptyString,
     /// Absent for a fast model that has no effort control at all.
@@ -1040,6 +1042,44 @@ mod tests {
             "rows": 24
         });
         assert!(serde_json::from_value::<ProvidersLaunchInput>(multiline_prompt).is_ok());
+    }
+
+    #[test]
+    fn default_agent_permission_map_validates_provider_keys() {
+        let valid = serde_json::json!({
+            "provider": "codex",
+            "permissionModes": {
+                "claude": "ask-each-time",
+                "codex": "provider-defaults"
+            },
+            "modelLabel": "GPT-5.6 Sol",
+            "modelId": "gpt-5.6-sol"
+        });
+        let input = serde_json::from_value::<SystemSetDefaultAgentInput>(valid)
+            .expect("known provider keys accepted");
+        assert_eq!(
+            input
+                .permission_modes
+                .expect("permission map")
+                .get(&ProviderId::Codex),
+            Some(&PermissionMode::ProviderDefaults)
+        );
+
+        let invalid = serde_json::json!({
+            "provider": "codex",
+            "permissionModes": { "gemini": "auto-approve" },
+            "modelLabel": "GPT-5.6 Sol",
+            "modelId": "gpt-5.6-sol"
+        });
+        assert!(serde_json::from_value::<SystemSetDefaultAgentInput>(invalid).is_err());
+
+        let invalid = serde_json::json!({
+            "provider": "codex",
+            "permissionModes": { "codex": "always-approve" },
+            "modelLabel": "GPT-5.6 Sol",
+            "modelId": "gpt-5.6-sol"
+        });
+        assert!(serde_json::from_value::<SystemSetDefaultAgentInput>(invalid).is_err());
     }
 
     #[test]

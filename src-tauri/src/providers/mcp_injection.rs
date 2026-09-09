@@ -67,8 +67,11 @@ pub const BROWSER_COOKIE_PERMISSION: &str = "Cookie acceptance in the Argmax bro
 /// their session — for example by quitting the app to swap in a fresh build.
 pub const SELF_PRESERVATION_INSTRUCTION: &str = "Do not quit, kill, or replace the running Argmax application from inside this session — no osascript quit, killall/pkill, or swapping `/Applications/Argmax.app` while Argmax is hosting this chat. That ends your provider mid-turn. Build in the workspace and give the user the manual install steps instead.";
 
+/// Continuing in another checkout must move the chat's tools and UI with it.
+pub const CHECKOUT_MOVE_INSTRUCTION: &str = "When continuing this chat's work in another checkout or worktree, call `session_move` with its absolute `path` and a continuation `prompt`, then end the turn so the handoff can run. This updates the workspace card, composer branch, diff, files, terminal, and Git actions together. A shell `cd`, command `workdir`, or `git -C` only changes where that command runs and leaves the chat attached to its original checkout. For a branch switch within the same checkout, use Git normally and Argmax will refresh the branch.";
+
 pub fn agent_tools_instruction() -> String {
-    format!("{AGENT_TOOLS_INSTRUCTION} {BROWSER_COOKIE_PERMISSION} {SELF_PRESERVATION_INSTRUCTION}")
+    format!("{AGENT_TOOLS_INSTRUCTION} {BROWSER_COOKIE_PERMISSION} {SELF_PRESERVATION_INSTRUCTION} {CHECKOUT_MOVE_INSTRUCTION}")
 }
 
 /// What Grok and Cursor's one-shot PTY path were told before they could carry
@@ -90,7 +93,10 @@ pub fn strip_instruction(prompt: &str) -> &str {
             .strip_prefix(' ')
             .and_then(|rest| rest.strip_prefix(BROWSER_COOKIE_PERMISSION))
             .unwrap_or(without_tools);
-        return without_cookie_permission;
+        return without_cookie_permission
+            .strip_prefix(' ')
+            .and_then(|rest| rest.strip_prefix(SELF_PRESERVATION_INSTRUCTION))
+            .unwrap_or(without_cookie_permission);
     }
 
     prompt
@@ -639,9 +645,13 @@ mod tests {
         let current = format!("{}\n\nDo the work", agent_tools_instruction());
         let previous =
             format!("{AGENT_TOOLS_INSTRUCTION} {BROWSER_COOKIE_PERMISSION}\n\nDo the work");
+        let before_checkout_move = format!(
+            "{AGENT_TOOLS_INSTRUCTION} {BROWSER_COOKIE_PERMISSION} {SELF_PRESERVATION_INSTRUCTION}\n\nDo the work"
+        );
 
         assert_eq!(strip_instruction(&current), "\n\nDo the work");
         assert_eq!(strip_instruction(&previous), "\n\nDo the work");
+        assert_eq!(strip_instruction(&before_checkout_move), "\n\nDo the work");
     }
 
     #[test]
@@ -652,6 +662,7 @@ mod tests {
         assert!(instruction.contains("Use `session_launch` when the user explicitly asks"));
         assert!(instruction.contains("when the work needs its own independent, durable lifecycle"));
         assert!(instruction.contains("Do not launch a session merely for parallelism"));
+        assert!(instruction.contains(CHECKOUT_MOVE_INSTRUCTION));
     }
 
     #[test]

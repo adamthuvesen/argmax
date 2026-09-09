@@ -1430,6 +1430,36 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByText("follow-up").closest("[data-turn-anchor]")).not.toBeNull();
   });
 
+  it("keeps the turn's scroll anchor through steers and advances it for a new prompt", () => {
+    const session = baseSession({ provider: "claude", state: "running" });
+    let events = [
+      event("u1", "user.message", "Review the change", "2026-05-12T15:00:00.000Z"),
+      event("task", "command.started", "Agent", "2026-05-12T15:00:01.000Z", {
+        id: "reviewer", name: "Agent", input: { description: "Review changes" }
+      })
+    ];
+    const options = { defaultToolCallsDisplay: "collapsed" as const };
+    const view = renderConversation(session, events, options);
+    const agent = screen.getByRole("button", { name: startedAgentName("Review changes") });
+    const prompt = screen.getByText("Review the change");
+    expect(prompt.closest("[data-turn-anchor]")).not.toBeNull();
+
+    for (const [index, text] of ["Do not post yet", "Check the tests too"].entries()) {
+      events = [...events, event(`steer-${index}`, "user.message", text, `2026-05-12T15:00:0${index + 2}.000Z`, {
+        delivery: "steer"
+      })];
+      rerenderConversation(view.rerender, session, events, options);
+      expect(prompt.closest("[data-turn-anchor]")).not.toBeNull();
+      expect(screen.getByText(text).closest("[data-turn-anchor]")).toBeNull();
+      expect(agent).toBeInTheDocument();
+    }
+
+    events = [...events, event("u2", "user.message", "Now review another change", "2026-05-12T15:00:04.000Z")];
+    rerenderConversation(view.rerender, session, events, options);
+    expect(prompt.closest("[data-turn-anchor]")).toBeNull();
+    expect(screen.getByText("Now review another change").closest("[data-turn-anchor]")).not.toBeNull();
+  });
+
   it("hides Thinking for Codex once a visible tool starts running", () => {
     renderConversation(
       baseSession({ provider: "codex", state: "running" }),

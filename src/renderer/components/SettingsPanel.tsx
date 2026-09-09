@@ -1,3 +1,4 @@
+import type { ProviderId } from "../../shared/types.js";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
 import type {
   DetectedIde,
@@ -16,7 +17,7 @@ import { useAsyncLoad } from "../hooks/useAsyncLoad.js";
 import type { ReasoningEffort } from "../../shared/providerModels.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { NewSessionMode } from "../lib/newSessionMode.js";
-import type { PermissionMode } from "../lib/permissionMode.js";
+import type { PermissionMode, ProviderPermissionModes } from "../lib/permissionMode.js";
 import type { ChatWidth } from "../lib/chatWidth.js";
 import type { ReviewPanelSide } from "../lib/reviewPanelSide.js";
 import type { ChatVerbosity } from "../lib/uiPreferences.js";
@@ -59,6 +60,12 @@ export function SettingsPanel({
   fastModeEnabled,
   turnChangesExpanded,
   onTurnChangesExpandedChange,
+  goalEnabled,
+  onGoalEnabledChange,
+  goalMaxTurns,
+  onGoalMaxTurnsChange,
+  revertEnabled,
+  onRevertEnabledChange,
   onFastModeEnabledChange,
   fontFamily,
   onFontFamilyChange,
@@ -82,7 +89,7 @@ export function SettingsPanel({
   defaultAgentSaveError,
   isSavingDefaultAgent,
   onRetryDefaultAgentSave,
-  permissionMode,
+  permissionModes,
   onPermissionModeChange,
   newSessionMode,
   onNewSessionModeChange,
@@ -120,6 +127,12 @@ export function SettingsPanel({
   fastModeEnabled: boolean;
   turnChangesExpanded: boolean;
   onTurnChangesExpandedChange: (v: boolean) => void;
+  goalEnabled: boolean;
+  onGoalEnabledChange: (v: boolean) => void;
+  goalMaxTurns: number;
+  onGoalMaxTurnsChange: (v: number) => void;
+  revertEnabled: boolean;
+  onRevertEnabledChange: (v: boolean) => void;
   onFastModeEnabledChange: (v: boolean) => void;
   fontFamily: FontFamilyId;
   onFontFamilyChange: (id: FontFamilyId) => void;
@@ -143,8 +156,8 @@ export function SettingsPanel({
   defaultAgentSaveError?: string | null;
   isSavingDefaultAgent?: boolean;
   onRetryDefaultAgentSave?: () => void;
-  permissionMode: PermissionMode;
-  onPermissionModeChange: (mode: PermissionMode) => void;
+  permissionModes: ProviderPermissionModes;
+  onPermissionModeChange: (provider: ProviderId, mode: PermissionMode) => void;
   newSessionMode: NewSessionMode;
   onNewSessionModeChange: (mode: NewSessionMode) => void;
   randomSessionIconEnabled: boolean;
@@ -354,11 +367,17 @@ export function SettingsPanel({
               fastModeEnabled={fastModeEnabled}
               turnChangesExpanded={turnChangesExpanded}
               onTurnChangesExpandedChange={onTurnChangesExpandedChange}
+              goalEnabled={goalEnabled}
+              onGoalEnabledChange={onGoalEnabledChange}
+              goalMaxTurns={goalMaxTurns}
+              onGoalMaxTurnsChange={onGoalMaxTurnsChange}
+              revertEnabled={revertEnabled}
+              onRevertEnabledChange={onRevertEnabledChange}
               onFastModeEnabledChange={onFastModeEnabledChange}
               defaultAgentSaveError={defaultAgentSaveError}
               isSavingDefaultAgent={isSavingDefaultAgent}
               onRetryDefaultAgentSave={onRetryDefaultAgentSave}
-              permissionMode={permissionMode}
+              permissionModes={permissionModes}
               onPermissionModeChange={onPermissionModeChange}
               providers={providers}
               providerLoadError={providerLoadError}

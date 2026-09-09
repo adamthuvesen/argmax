@@ -63,7 +63,7 @@ describe("App side chat launcher", () => {
     fireEvent.keyDown(input, { key: "Tab" });
 
     expect(await screen.findByText(LAUNCHER_TITLE)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Agent mode" })).toHaveTextContent("Auto");
+    expect(screen.queryByRole("button", { name: "Agent mode" })).toBeNull();
     expect(screen.getByRole("button", { name: "Switch project" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Switch branch" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Worktree" })).toBeInTheDocument();

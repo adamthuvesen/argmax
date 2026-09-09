@@ -4,8 +4,7 @@ use tauri::State;
 
 use crate::{
     checkpoints::service::{
-        CheckoutFingerprint, CheckpointService, CreateCheckpointInput, RewindFilesInput,
-        RewindFilesResult, RewindPreview,
+        CheckoutFingerprint, CheckpointService, RewindFilesInput, RewindFilesResult, RewindPreview,
     },
     error::ArgmaxResult,
     persistence::checkpoints::Checkpoint,
@@ -13,16 +12,6 @@ use crate::{
 };
 
 use super::{live_database, read_off_main};
-
-#[derive(Debug, Clone, PartialEq, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct CheckpointsCreateInput {
-    pub workspace_id: String,
-    pub session_id: Option<String>,
-    pub label: String,
-    pub turn_boundary: Option<String>,
-    pub provider_conversation_id: Option<String>,
-}
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -49,31 +38,6 @@ pub struct CheckpointsRewindFilesInput {
 
 const fn default_limit() -> usize {
     50
-}
-
-#[tauri::command(rename = "checkpoints:create")]
-#[specta::specta]
-pub async fn checkpoints_create(
-    state: State<'_, AppState>,
-    input: CheckpointsCreateInput,
-) -> ArgmaxResult<Checkpoint> {
-    checkpoints_create_impl(&state, input).await
-}
-
-pub(crate) async fn checkpoints_create_impl(
-    state: &AppState,
-    input: CheckpointsCreateInput,
-) -> ArgmaxResult<Checkpoint> {
-    CheckpointService::new(live_database(state)?)
-        .create_checkpoint(CreateCheckpointInput {
-            workspace_id: input.workspace_id,
-            session_id: input.session_id,
-            label: input.label,
-            turn_boundary: input.turn_boundary,
-            provider_conversation_id: input.provider_conversation_id,
-            recovery_of: None,
-        })
-        .await
 }
 
 #[tauri::command(rename = "checkpoints:list")]

@@ -49,6 +49,32 @@ const ALL_TABLES: &[&str] = &[
 
 pub static EMPTY_EXPECTED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {};
 
+pub static FINITE_GOAL_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "goals" => &[
+        "active_elapsed_ms", "active_started_at", "attempt_count", "candidate_snapshot",
+        "checks_json", "config_revision", "created_at", "criteria_json", "current_step_index",
+        "failure_reason", "id", "max_active_ms", "max_attempts", "max_repair_rounds", "objective",
+        "phase", "repair_rounds", "reviewer_json", "session_id", "state", "steps_json",
+        "updated_at", "workspace_id",
+    ] as &'static [&'static str],
+    "goal_attempts" => &[
+        "candidate_snapshot", "config_revision", "goal_id", "id", "invocation_id", "kind",
+        "model_id", "provider", "result_json", "sequence", "session_id", "settled_at",
+        "started_at", "state",
+    ] as &'static [&'static str],
+};
+
+// v43 drops `goal_attempts` outright, so the head shape for it is "no table".
+// An empty expected set is how `verify_table_columns` says that: `PRAGMA
+// table_info` on a missing table returns no rows, which matches.
+pub static GOAL_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "goals" => &[
+        "condition", "created_at", "id", "last_reason", "max_turns", "session_id", "state",
+        "turns", "updated_at", "workspace_id",
+    ] as &'static [&'static str],
+    "goal_attempts" => &[] as &'static [&'static str],
+};
+
 pub static DURABLE_CHECKPOINT_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "checkpoints" => &[
         "branch", "created_at", "git_ref", "head_sha", "id", "index_tree", "label",
@@ -760,7 +786,80 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &DURABLE_CHECKPOINT_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 42,
+        name: "finite_goals",
+        up: FINITE_GOALS,
+        affected_tables: &["goals", "goal_attempts"],
+        expected_columns: &FINITE_GOAL_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 43,
+        name: "goals_reset",
+        up: crate::persistence::goals::MIGRATION_SQL,
+        affected_tables: &["goals", "goal_attempts"],
+        expected_columns: &GOAL_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+// The first Goal shape: an ordered work plan, a shell-check phase, an
+// out-of-process reviewer bound to a JSON report, and an attempt ledger. v43
+// replaces all of it with one free-text condition a per-turn evaluator judges,
+// but this body stays exactly as released — migrations are append-only, and
+// databases that ran it need their recorded checksum to keep matching.
+const FINITE_GOALS: &str = r#"
+CREATE TABLE goals (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  config_revision INTEGER NOT NULL,
+  objective TEXT NOT NULL,
+  criteria_json TEXT NOT NULL,
+  steps_json TEXT NOT NULL,
+  checks_json TEXT NOT NULL,
+  reviewer_json TEXT NOT NULL,
+  state TEXT NOT NULL,
+  phase TEXT NOT NULL,
+  current_step_index INTEGER NOT NULL,
+  repair_rounds INTEGER NOT NULL,
+  max_repair_rounds INTEGER NOT NULL,
+  attempt_count INTEGER NOT NULL,
+  max_attempts INTEGER NOT NULL,
+  active_started_at TEXT,
+  active_elapsed_ms INTEGER NOT NULL,
+  max_active_ms INTEGER NOT NULL,
+  candidate_snapshot TEXT,
+  failure_reason TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(session_id),
+  CHECK(state IN ('draft','running','paused','completed','cancelled')),
+  CHECK(phase IN ('work','checks','review','done'))
+);
+CREATE INDEX idx_goals_workspace_state ON goals(workspace_id, state, updated_at DESC);
+CREATE TABLE goal_attempts (
+  id TEXT PRIMARY KEY,
+  goal_id TEXT NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+  invocation_id TEXT NOT NULL UNIQUE,
+  kind TEXT NOT NULL,
+  sequence INTEGER NOT NULL,
+  provider TEXT,
+  model_id TEXT,
+  session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+  config_revision INTEGER NOT NULL,
+  candidate_snapshot TEXT,
+  state TEXT NOT NULL,
+  result_json TEXT,
+  started_at TEXT NOT NULL,
+  settled_at TEXT,
+  UNIQUE(goal_id, sequence),
+  CHECK(kind IN ('work','repair','check','review')),
+  CHECK(state IN ('running','succeeded','failed','cancelled','uncertain'))
+);
+CREATE INDEX idx_goal_attempts_goal_sequence ON goal_attempts(goal_id, sequence);
+"#;
 
 // Widen permission choices without rewriting existing chats or migration history.
 const SESSION_PERMISSION_PROVIDER_DEFAULTS: &str = r#"
@@ -2093,6 +2192,11 @@ mod tests {
                 (
                     41,
                     compute_migration_checksum(crate::persistence::checkpoints::MIGRATION_SQL)
+                ),
+                (42, compute_migration_checksum(FINITE_GOALS)),
+                (
+                    43,
+                    compute_migration_checksum(crate::persistence::goals::MIGRATION_SQL)
                 ),
             ]
         );

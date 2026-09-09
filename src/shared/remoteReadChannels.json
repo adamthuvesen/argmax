@@ -16,6 +16,8 @@
   "review:load-diff",
   "checkpoints:list",
   "checkpoints:preview-rewind",
+  "goal:get",
+  "goal:list",
   "workspace:list-files",
   "workspace:read-file",
   "workspace:stat-file",

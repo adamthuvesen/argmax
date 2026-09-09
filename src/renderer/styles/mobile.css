@@ -1420,6 +1420,46 @@ html:has(.mobile-shell) body {
   min-height: 0;
 }
 
+/* The goal sheet. The desktop body is a capped strip that scrolls inside the
+   composer lane; in the sheet it is the whole panel, so it fills and scrolls
+   there instead. */
+.mobile-agent-overlay-body .goal-body {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+  padding: 0 var(--space-4) var(--space-4);
+  border-top: 0;
+}
+
+.mobile-agent-overlay-body .goal-form {
+  gap: var(--space-3);
+}
+
+.mobile-agent-overlay-body .goal-form input,
+.mobile-agent-overlay-body .goal-form textarea,
+.mobile-agent-overlay-body .goal-form select {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  /* Under 16px, focusing a field zooms the page and iOS never zooms back. */
+  font-size: max(16px, var(--text-sm));
+}
+
+.mobile-agent-overlay-body .goal-form textarea {
+  min-height: 72px;
+}
+
+.mobile-agent-overlay-body .goal-body button {
+  min-height: 40px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+}
+
+.mobile-agent-overlay-body .goal-limits label {
+  flex: 1 1 96px;
+}
+
 /* The dock's tab strip is built for a mouse and a wide panel. On a phone it
    scrolls sideways, loses its close buttons — the overlay's own control does
    that job — and grows to a thumb-sized target. */

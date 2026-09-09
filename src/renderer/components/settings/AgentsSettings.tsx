@@ -1,11 +1,17 @@
 import { AlertTriangle, ChartNoAxesColumn, ExternalLink, RefreshCcw } from "lucide-react";
 import { useMemo, type JSX } from "react";
-import { REASONING_EFFORTS, type ReasoningEffort } from "../../../shared/providerModels.js";
-import type { DiscoveredProvider } from "../../../shared/types.js";
+import { PROVIDER_DISPLAY_NAMES, REASONING_EFFORTS, type ReasoningEffort } from "../../../shared/providerModels.js";
+import type { DiscoveredProvider, ProviderId } from "../../../shared/types.js";
 import { effortLabel, type ModelPickerSelection } from "../../lib/models.js";
-import type { PermissionMode } from "../../lib/permissionMode.js";
+import type { PermissionMode, ProviderPermissionModes } from "../../lib/permissionMode.js";
 import { PROVIDER_INSTALL_HINTS } from "../../lib/providerInstallHints.js";
-import { CHAT_VERBOSITY_HINTS, CHAT_VERBOSITY_LABELS, type ChatVerbosity } from "../../lib/uiPreferences.js";
+import {
+  CHAT_VERBOSITY_HINTS,
+  CHAT_VERBOSITY_LABELS,
+  GOAL_MAX_TURNS_MAX,
+  GOAL_MAX_TURNS_MIN,
+  type ChatVerbosity
+} from "../../lib/uiPreferences.js";
 import { CombinedModelSelector, type ProviderAvailability } from "../ModelSelector.js";
 import { WorkingNest } from "../WorkingNest.js";
 import {
@@ -27,11 +33,17 @@ export function AgentsSettings({
   fastModeEnabled,
   onFastModeEnabledChange,
   turnChangesExpanded,
+  goalEnabled,
+  onGoalEnabledChange,
+  goalMaxTurns,
+  onGoalMaxTurnsChange,
+  revertEnabled,
+  onRevertEnabledChange,
   onTurnChangesExpandedChange,
   defaultAgentSaveError,
   isSavingDefaultAgent,
   onRetryDefaultAgentSave,
-  permissionMode,
+  permissionModes,
   onPermissionModeChange,
   providers,
   providerLoadError,
@@ -48,12 +60,18 @@ export function AgentsSettings({
   fastModeEnabled: boolean;
   onFastModeEnabledChange: (v: boolean) => void;
   turnChangesExpanded: boolean;
+  goalEnabled: boolean;
+  onGoalEnabledChange: (v: boolean) => void;
+  goalMaxTurns: number;
+  onGoalMaxTurnsChange: (v: number) => void;
+  revertEnabled: boolean;
+  onRevertEnabledChange: (v: boolean) => void;
   onTurnChangesExpandedChange: (v: boolean) => void;
   defaultAgentSaveError?: string | null;
   isSavingDefaultAgent?: boolean;
   onRetryDefaultAgentSave?: () => void;
-  permissionMode: PermissionMode;
-  onPermissionModeChange: (mode: PermissionMode) => void;
+  permissionModes: ProviderPermissionModes;
+  onPermissionModeChange: (provider: ProviderId, mode: PermissionMode) => void;
   providers: DiscoveredProvider[] | null;
   providerLoadError: string | null;
   refreshingProviders: boolean;
@@ -71,8 +89,6 @@ export function AgentsSettings({
     }
     return map;
   }, [providers]);
-  const askEachTimeAvailable =
-    providers === null || providers.some((provider) => provider.approvalSupport === "respondable");
 
   return (
     <>
@@ -127,53 +143,43 @@ export function AgentsSettings({
         ) : isSavingDefaultAgent ? (
           <div role="status"><SettingNote>Saving default settings…</SettingNote></div>
         ) : null}
-        <SettingRow
-          label="Tool permissions"
-          htmlFor="settings-permission-mode"
-          control={
-            <SettingsListPicker
-              ariaLabel="Tool permissions"
-              inputId="settings-permission-mode"
-              value={permissionMode}
-              onChange={(v) => onPermissionModeChange(v)}
-              options={[
-                { value: "provider-defaults", label: "Provider defaults" },
-                { value: "auto-approve", label: "Full access" },
-                {
-                  value: "ask-each-time",
-                  label: "Ask for approval",
-                  disabled: !askEachTimeAvailable,
-                  title: askEachTimeAvailable
-                    ? undefined
-                    : "Unavailable until a provider supports live replies"
-                }
-              ]}
+        {(Object.keys(PROVIDER_DISPLAY_NAMES) as ProviderId[]).map((providerId) => {
+          const provider = providers?.find((entry) => entry.provider === providerId);
+          const askEachTimeAvailable = !provider || provider.approvalSupport === "respondable";
+          const name = PROVIDER_DISPLAY_NAMES[providerId];
+          return (
+            <SettingRow
+              key={providerId}
+              label={name}
+              htmlFor={`settings-permission-${providerId}`}
+              control={
+                <SettingsListPicker<PermissionMode>
+                  ariaLabel={`${name} tool permissions`}
+                  inputId={`settings-permission-${providerId}`}
+                  value={permissionModes[providerId]}
+                  onChange={(mode) => onPermissionModeChange(providerId, mode)}
+                  options={[
+                    { value: "provider-defaults", label: "Provider defaults" },
+                    { value: "auto-approve", label: "Full access" },
+                    {
+                      value: "ask-each-time",
+                      label: "Ask for approval",
+                      disabled: !askEachTimeAvailable,
+                      title: askEachTimeAvailable ? undefined : "This provider does not support live approval replies"
+                    }
+                  ]}
+                />
+              }
             />
-          }
-        />
-        {!askEachTimeAvailable ? (
-          <SettingNote tone="warn">
-            Install or update a provider to enable approval requests in the chat.
-          </SettingNote>
-        ) : null}
-        {permissionMode === "provider-defaults" ? (
-          <SettingNote>
-            Argmax adds no permission bypass. Claude Code, Codex, Cursor, OpenCode, and Grok follow
-            their native CLI configuration in <code>~/.claude</code>, <code>~/.codex</code>,{" "}
-            <code>~/.cursor</code>, <code>~/.config/opencode</code>, and <code>~/.grok</code>.
-          </SettingNote>
-        ) : permissionMode === "auto-approve" ? (
-          <SettingNote>
-            Let agents work with broad permissions without routine confirmation. Plan mode keeps its
-            restrictions. This applies to new chats.
-          </SettingNote>
-        ) : (
-          <SettingNote>
-            Show native approval requests in the chat and send your decision back to the provider.
-            Actions already allowed by the provider may still run without prompting. This applies to
-            new chats.
-          </SettingNote>
-        )}
+          );
+        })}
+        <SettingNote>
+          Applies to new chats you start for each provider. Existing chats keep their saved
+          permissions, and chats launched by an agent inherit that agent's permissions.
+          Provider defaults follows its native CLI
+          configuration, including Codex automatic review. Full access requests broad permissions.
+          Ask for approval shows native requests in the chat. Plan mode keeps its restrictions.
+        </SettingNote>
       </SettingGroup>
 
       <SettingGroup id="settings-conversation" label="Conversation">
@@ -199,6 +205,40 @@ export function AgentsSettings({
               ariaLabel="Changed files expanded"
               checked={turnChangesExpanded}
               onChange={onTurnChangesExpandedChange}
+            />
+          }
+        />
+        <SettingRow
+          label="Goals"
+          description="Offer /goal in the composer. A goal keeps a chat working until a separate model judges its condition met."
+          control={
+            <Toggle ariaLabel="Goals" checked={goalEnabled} onChange={onGoalEnabledChange} />
+          }
+        />
+        {goalEnabled && (
+          <SettingRow
+            label="Turns a goal may spend"
+            description="A goal stops and hands back once it reaches this many evaluated turns."
+            control={
+              <Slider
+                ariaLabel="Turns a goal may spend"
+                min={GOAL_MAX_TURNS_MIN}
+                max={GOAL_MAX_TURNS_MAX}
+                value={goalMaxTurns}
+                valueLabel={`${goalMaxTurns} turns`}
+                onChange={onGoalMaxTurnsChange}
+              />
+            }
+          />
+        )}
+        <SettingRow
+          label="Revert to a turn"
+          description="Offer Revert on a finished turn, restoring the files to how they were before it ran."
+          control={
+            <Toggle
+              ariaLabel="Revert to a turn"
+              checked={revertEnabled}
+              onChange={onRevertEnabledChange}
             />
           }
         />

@@ -19,6 +19,9 @@ Argmax manages Claude Code, Codex, Cursor Agent, OpenCode, and Grok Build throug
 
 Raw provider output is saved for debugging, but only normalized timeline events are displayed in chat. The persisted payload stays compatible with existing rows and provider fixtures. The renderer decodes it once through [canonicalTimeline.ts](../src/renderer/lib/canonicalTimeline.ts), then routes behavior from the resulting typed event instead of reading semantic payload keys in each feature.
 
+Goals work on every provider: the evaluator is a one-shot call Argmax makes
+itself rather than a provider capability. See [goals.md](goals.md).
+
 ## Verification profiles
 
 `npm run verify` starts a disposable profile with a scripted Claude executable.
@@ -68,8 +71,18 @@ While a turn is running, ordinary input stays queued. A queued follow-up has
 Both use `providers:send-queued-message-now`, with optional `delivery: "steer"`
 selecting guidance for the existing turn. Omitting delivery preserves interruption.
 Codex uses app-server `turn/steer` with `expectedTurnId`. Claude writes a user
-envelope to its existing stream-json connection and waits for the
-`--replay-user-messages` echo. Neither operation starts a replacement process.
+envelope to its existing stream-json connection; the flushed write is the
+acknowledgement. Neither operation starts a replacement process.
+
+Claude's `--replay-user-messages` echo is *not* the acknowledgement. Claude
+replays a steered message only when it picks it up, and a turn inside a long
+tool call holds that for minutes, so waiting on the echo reported delivered
+guidance as delivery-unknown. The echo is still tracked: the reader withholds
+the turn's `result` until Claude has consumed every written follow-up, and the
+replayed copy is suppressed because Argmax already persisted that user message.
+A follow-up that never reached stdin — the turn closed first, or Claude had not
+taken up the turn's first message yet (`STEER_NOT_READY`) — is unsent, not
+uncertain.
 
 Steering inherits the running turn's settings. A queued change to model, reasoning
 effort, or agent mode must wait for another turn. Accepted guidance is persisted
@@ -114,6 +127,41 @@ and the `surface: "todo"` stamp that hides the rows are documented in
 exist. The app-server reports the plan through `turn/plan/updated`, not through
 an item lifecycle, and that notification carries a real `inProgress` the `exec`
 projection throws away.
+
+### Questions the agent asks the user
+
+The question card is documented in [chat-cards.md](chat-cards.md). Two of the
+five providers reach it, and the two that do not are both blocked provider-side:
+
+**Codex asks through `request_user_input`, and Argmax does not enable it.** The
+tool is off unless the launch passes
+`-c tools.experimental_request_user_input.enabled=true`, so today the model is
+told it does not exist and writes the question as prose instead. Turning it on
+is not enough on its own: the question arrives as an app-server *server
+request*, `item/tool/requestUserInput`, not as a tool call, and
+`server_request_response` in
+[codex_app_server.rs](../src-tauri/src/providers/codex_app_server.rs)
+allow-lists only the three approval methods and answers anything else with
+`-32601`. Codex then follows its own instruction to continue with best
+judgment. Unlike Claude's card — which is answered by terminating the turn and
+sending a new message — Codex parks the turn on `waitingOnUserInput` and waits
+for the answer to be written back onto the open request, so the same turn
+resumes; a probe that held the response for 45 seconds got a turn that waited
+and then used the late answer. Wiring it up therefore needs a broker like
+`ApprovalService`, not the `sendAfterTerminate` path. Left unbuilt on purpose:
+the flag is marked experimental, as are the protocol types. An unrecognised
+`tools.*` key is ignored silently, so a future rename degrades back to prose
+rather than failing the turn; a *type* change on a known key does fail config
+parse outright.
+
+**Grok's `ask_user_question` is not exposed over ACP.** The binary carries the
+tool and documents it, and `features.ask_user_question` defaults to true, but
+over `grok agent stdio` — the only transport Argmax uses — Grok reports the tool
+is unavailable and answers in prose, under every permission mode and with
+`GROK_ASK_USER_QUESTION` set. Its `enter_plan_mode` / `exit_plan_mode` do arrive
+as ordinary ACP tool calls, so the gap is specific to the question tool. Asking
+Grok to recite its own tool list is not a check: it claims the tool and then
+cannot call it. OpenCode has no such tool at all.
 
 ### Session moves and the provider conversation
 

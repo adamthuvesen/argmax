@@ -19,6 +19,7 @@ pub mod error;
 pub mod files;
 pub mod gh;
 pub mod git;
+pub mod goals;
 pub mod ide;
 pub mod inbox_hook;
 pub mod ipc;
@@ -900,6 +901,17 @@ pub fn run() {
                                 tracing::warn!("check service state was already initialized");
                             }
                             let gh_service = gh::service::GhService::new(Arc::clone(&database));
+                            match goals::service::GoalService::new(
+                                Arc::clone(&database),
+                                Arc::clone(&providers),
+                            ) {
+                                Ok(goals) => {
+                                    if state.goals.set(goals).is_err() {
+                                        tracing::warn!("goal service state was already initialized");
+                                    }
+                                }
+                                Err(error) => tracing::error!(?error, "goal service failed to initialize"),
+                            }
                             let poller_database = Arc::clone(&database);
                             let poller_providers = Arc::clone(&providers);
                             let poller_notifications = Arc::clone(&notifications);
@@ -1307,6 +1319,7 @@ fn build_check_failure_follow_up_input(
     agent: &default_agent::DefaultAgent,
     context: &gh::poller::CheckFailureContext,
 ) -> error::ArgmaxResult<ipc::inputs::ProvidersLaunchInput> {
+    let provider = providers::runtime::parse_provider(&agent.provider)?;
     serde_json::from_value(json!({
         "workspaceId": workspace_id,
         "provider": agent.provider,
@@ -1319,7 +1332,7 @@ fn build_check_failure_follow_up_input(
         "modelLabel": agent.model_label,
         "modelId": agent.model_id,
         "reasoningEffort": agent.reasoning_effort,
-        "permissionMode": agent.permission_mode,
+        "permissionMode": agent.permission_mode_for(provider),
         "cols": 120,
         "rows": 36
     }))
@@ -1702,12 +1715,16 @@ mod tests {
             model_id: "gpt-5.6-luna".to_string(),
             reasoning_effort: Some("high".to_string()),
             permission_mode: providers::PermissionMode::AskEachTime,
+            permission_modes: std::collections::HashMap::from([(
+                providers::ProviderId::Codex,
+                providers::PermissionMode::ProviderDefaults,
+            )]),
         };
         let input = build_check_failure_follow_up_input("w1", &agent, &follow_up_context())
             .expect("follow-up input");
         assert_eq!(
             input.permission_mode,
-            Some(providers::PermissionMode::AskEachTime)
+            Some(providers::PermissionMode::ProviderDefaults)
         );
         assert_eq!(input.model_label.as_str(), "GPT-5.6 Luna");
         assert_eq!(input.model_id.as_str(), "gpt-5.6-luna");

@@ -535,7 +535,23 @@ function ReviewPanelPane({
   const [panelWidth, setPanelWidth] = useState(0);
   const [cursor, setCursor] = useState<EditorCursor | null>(null);
   const [collapsedDiffPath, setCollapsedDiffPath] = useState<string | null>(null);
+  const [reviewActionPending, setReviewActionPending] = useState(false);
+  const [reviewActionError, setReviewActionError] = useState<string | null>(null);
+  const reviewActionBusy = useRef(false);
+  const [commitDialogOpen, setCommitDialogOpen] = useState(false);
+  const [commitMessage, setCommitMessage] = useState("");
+  const [commitError, setCommitError] = useState<string | null>(null);
   const panelRef = useRef<HTMLElement>(null);
+  const runReviewAction = (action: () => Promise<void>): void => {
+    if (reviewActionBusy.current) return;
+    reviewActionBusy.current = true;
+    setReviewActionPending(true);
+    setReviewActionError(null);
+    void action().catch((error: unknown) => setReviewActionError(error instanceof Error ? error.message : "Review action failed.")).finally(() => {
+      reviewActionBusy.current = false;
+      setReviewActionPending(false);
+    });
+  };
 
   // One measurement feeds three things: the auto tree width, the wide-toolbar
   // switch, and the clamp that keeps a stored width off the preview column.
@@ -769,6 +785,13 @@ function ReviewPanelPane({
         </div>
         <div className="review-toolbar-actions">
           {isChanges ? <ReviewScopePicker review={review} /> : null}
+          {isChanges && review.terminalWorkspaceId ? <button
+            type="button"
+            className="small-icon"
+            aria-label="Commit staged changes"
+            title="Commit staged changes"
+            onClick={() => { setCommitDialogOpen(true); setCommitError(null); }}
+          >Commit</button> : null}
           <button
             className="small-icon"
             type="button"
@@ -872,6 +895,7 @@ function ReviewPanelPane({
         <div className={isChanges ? "review-diff" : "review-diff review-diff-files"}>
           {isChanges ? (
             <>
+              {reviewActionError && <p className="review-empty review-error" role="alert">{reviewActionError}</p>}
               {review.filesState === "ready" && review.files.length === 0 ? (
                 <p className="review-empty">
                   <span className="review-empty-mark" aria-hidden="true">∅</span>
@@ -900,6 +924,30 @@ function ReviewPanelPane({
                             <span className="review-file-row-path">{file.path}</span>
                           </button>
                           <ChangeCount additions={file.additions} deletions={file.deletions} />
+                          {review.changesScope === "uncommitted" && review.diff?.revision ? (
+                            <>
+                              <button
+                                type="button"
+                                className="small-icon"
+                                aria-label={`${file.staged ? "Unstage" : "Stage"} ${file.path}`}
+                                title={`${file.staged ? "Unstage" : "Stage"} ${file.path}`}
+                                disabled={reviewActionPending}
+                                onClick={() => runReviewAction(() => review.updateFileIndex(file.path, review.diff!.revision, !file.staged))}
+                              >
+                                {file.staged ? "Unstage" : "Stage"}
+                              </button>
+                              {review.terminalWorkspaceId && file.status !== "??" ? <button
+                                type="button"
+                                className="small-icon"
+                                aria-label={`Revert unstaged changes in ${file.path}`}
+                                title="Save a recovery checkpoint, then discard unstaged changes"
+                                disabled={reviewActionPending}
+                                onClick={() => runReviewAction(() => review.revertFile(file.path, review.diff!.revision))}
+                              >
+                                Revert
+                              </button> : null}
+                            </>
+                          ) : null}
                           <button
                             className="small-icon"
                             type="button"
@@ -927,12 +975,20 @@ function ReviewPanelPane({
                                 <span>No textual diff.</span>
                               </p>
                             ) : null}
+                            {review.changesScope === "uncommitted" && file.staged && file.status.length > 1 && <p className="review-empty">This file has staged and unstaged changes. Use file actions to change its staging.</p>}
                             {review.diffState === "ready" && diffBlocks.length > 0 ? (
                               <DiffBlocks
                                 blocks={diffBlocks}
                                 filePath={file.path}
                                 onAddComment={onAddDiffNote ? addDiffNote : undefined}
                                 onExpandContext={review.expandDiffContext}
+                                onIndexHunk={review.changesScope === "uncommitted" && review.diff?.revision && file.status !== "??" && !file.oldPath && !(file.staged && file.status.length > 1)
+                                  ? (hunkIndex) => runReviewAction(() => review.updateHunkIndex(file.path, review.diff!.revision, hunkIndex, !file.staged))
+                                  : undefined}
+                                onRevertHunk={review.changesScope === "uncommitted" && review.diff?.revision && review.terminalWorkspaceId && file.status !== "??" && !file.oldPath
+                                  ? (hunkIndex) => runReviewAction(() => review.revertHunk(file.path, review.diff!.revision, hunkIndex))
+                                  : undefined}
+                                indexHunkLabel={file.staged ? "Unstage" : "Stage"}
                               />
                             ) : null}
                           </div>
@@ -958,6 +1014,20 @@ function ReviewPanelPane({
           <span className="review-footer-text">{summaryStrip}</span>
         </footer>
       ) : null}
+      {commitDialogOpen ? createPortal(
+        <div className="commit-dialog-overlay" role="dialog" aria-modal="true" aria-label="Commit staged changes">
+          <div className="commit-dialog">
+            <header className="commit-dialog-header"><h2>Commit staged changes</h2><button type="button" aria-label="Close commit dialog" onClick={() => setCommitDialogOpen(false)} disabled={reviewActionPending}>×</button></header>
+            <label className="commit-dialog-message-label" htmlFor={`review-commit-${paneIndex}`}>Commit message</label>
+            <textarea id={`review-commit-${paneIndex}`} className="commit-dialog-message" autoFocus rows={4} value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} />
+            {commitError ? <p className="commit-dialog-feedback commit-dialog-feedback--error" role="alert">{commitError}</p> : null}
+            <div className="commit-dialog-actions"><button type="button" onClick={() => setCommitDialogOpen(false)} disabled={reviewActionPending}>Cancel</button><button type="button" disabled={reviewActionPending || !commitMessage.trim()} onClick={() => {
+              if (reviewActionPending) return;
+              setReviewActionPending(true); setCommitError(null);
+              void review.commitStaged(commitMessage.trim()).then(() => setCommitDialogOpen(false)).catch((error) => setCommitError(error instanceof Error ? error.message : "Commit failed.")).finally(() => setReviewActionPending(false));
+            }}>Commit</button></div>
+          </div>
+        </div>, document.body) : null}
       {isChanges || isAgents || isBrowser || isTerminal ? null : (
         <footer className="review-status-bar" aria-label="File status">
           <span className="review-status-path" title={files.selectedPath ?? sourceLabel}>

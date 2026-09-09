@@ -338,6 +338,21 @@ async fn wait_for_event(database: &Database, session_id: &str, event_type: &str)
 async fn a_multitask_shares_the_parents_worktree_not_the_projects_checkout() {
     let fixture = fixture();
     let worktree_path = format!("{}/.argmax/worktrees/rewrite-auth", fixture.repo_path);
+    let worktree_parent = std::path::Path::new(&worktree_path)
+        .parent()
+        .expect("worktree path has a parent");
+    std::fs::create_dir_all(worktree_parent).expect("create worktree parent");
+    crate::support::git_repo::run_git(
+        fixture._repo.path(),
+        &[
+            "worktree",
+            "add",
+            "-b",
+            "argmax/rewrite-auth",
+            worktree_path.as_str(),
+            "main",
+        ],
+    );
     {
         let connection = fixture.database.connection();
         connection

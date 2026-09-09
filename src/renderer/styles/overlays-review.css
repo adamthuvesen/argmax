@@ -678,8 +678,10 @@
      div's sibling, not its child. Without it here `.conversation-list`'s
      `padding: <fade> <gutter> <tail>` shorthand is invalid at computed-value
      time and collapses to zero on all four sides. Use the grid's shared floor
-     so chats and agent transcripts keep the same inset in this dock. */
-  --session-inline-padding: clamp(var(--session-inline-padding-min, 22px), calc((100% - var(--chat-content-width)) / 2), 2000px);
+     so chats and agent transcripts keep the same inset in this dock. The width
+     levels are declared on `.app-shell`, which the phone has no equivalent of,
+     so the fallback is what keeps this valid in the mobile overlay. */
+  --session-inline-padding: clamp(var(--session-inline-padding-min, 22px), calc((100% - var(--chat-content-width, 780px)) / 2), 2000px);
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;

@@ -61,7 +61,10 @@ export const DiffBlocks = memo(function DiffBlocks({
   blocks,
   filePath,
   onAddComment,
-  onExpandContext
+  onExpandContext,
+  onIndexHunk,
+  onRevertHunk,
+  indexHunkLabel = "Stage"
 }: {
   blocks: ParsedDiffBlock[];
   filePath?: string | null;
@@ -72,6 +75,11 @@ export const DiffBlocks = memo(function DiffBlocks({
   /** When provided, each between-hunk gap becomes a button that asks for more
    *  context. Omit it (chat cards) and the gaps render as static labels. */
   onExpandContext?: () => void;
+  /** Review-panel-only action. The index is derived from the server-rendered
+   * hunk order and paired with the diff revision by the caller. */
+  onIndexHunk?: (hunkIndex: number) => void;
+  onRevertHunk?: (hunkIndex: number) => void;
+  indexHunkLabel?: "Stage" | "Unstage";
 }): JSX.Element {
   // Subscribing to the ready signal re-renders the component as soon as the
   // shiki bundle finishes loading, swapping in highlighted tokens without
@@ -123,6 +131,9 @@ export const DiffBlocks = memo(function DiffBlocks({
                 appearance={appearance}
                 filePath={filePath ?? null}
                 onAddComment={onAddComment}
+                onIndexHunk={onIndexHunk ? () => onIndexHunk(Number(block.id.slice("hunk-".length))) : undefined}
+                onRevertHunk={onRevertHunk ? () => onRevertHunk(Number(block.id.slice("hunk-".length))) : undefined}
+                indexHunkLabel={indexHunkLabel}
                 selection={activeSelection?.block === block ? activeSelection : null}
                 onSelectionChange={setSelection}
               />
@@ -195,6 +206,9 @@ function UnifiedHunk({
   appearance,
   filePath,
   onAddComment,
+  onIndexHunk,
+  onRevertHunk,
+  indexHunkLabel,
   selection,
   onSelectionChange
 }: {
@@ -203,6 +217,9 @@ function UnifiedHunk({
   appearance: "light" | "dark";
   filePath: string | null;
   onAddComment?: (input: DiffNoteAnchor) => void;
+  onIndexHunk?: () => void;
+  onRevertHunk?: () => void;
+  indexHunkLabel: "Stage" | "Unstage";
   selection: CommentSelection | null;
   onSelectionChange: (selection: CommentSelection | null) => void;
 }): JSX.Element {
@@ -221,7 +238,11 @@ function UnifiedHunk({
     : `${filePath}:${startLine}${range ? `-${endLine}` : ""}`;
   return (
     <div className="diff-hunk">
-      <div className="diff-hunk-header">{block.header}</div>
+      <div className="diff-hunk-header">
+        <span>{block.header}</span>
+        {onIndexHunk ? <button type="button" onClick={onIndexHunk} aria-label={`${indexHunkLabel} hunk`}>{indexHunkLabel} hunk</button> : null}
+        {onRevertHunk ? <button type="button" onClick={onRevertHunk} aria-label="Revert unstaged hunk">Revert</button> : null}
+      </div>
       {block.lines.map((line, index) => {
         const key = `${block.id}-${index}`;
         const lineNumber = line.newLineNumber ?? line.oldLineNumber ?? null;

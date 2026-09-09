@@ -44,18 +44,18 @@ The row keeps the shape of a subagent launch row, because that is what a multita
 - **One row per multitask.** The finish event merges into the row the dispatch opened, keyed by child session id. Rows stay in launch order, and the lane scrolls once repeated multitasks reach its height cap.
 - **The session outranks the timeline.** The row takes its state *and its title* from the child's session and workspace rows whenever they are still in the snapshot, and falls back to the events otherwise. The timeline only knows what was written, so a multitask whose turn ended while the app was shut would otherwise claim to be running for good — and one dispatched a moment ago would keep wearing the first line of its prompt, because the generated title lands on the workspace a second or two after the dispatch row.
 - **A finished row says what it found.** The first line of the answer rides the status line (`Completed · Corrected the 0.4 heading to 2026.`), stripped of its markdown and cut at 120 characters by `multitaskAnswerPreview`. It is a pointer, not the delivery: the whole answer is in the dock tab, and the agent still gets it as a preamble on the next prompt.
-- **The mark says which it is.** Running, it shares the subagents' working nest — at that moment they are doing the same thing. Settled, it carries the Split glyph its dock tab uses, so the transcript and the tab strip name a multitask the same way. A multitask gets no emblem — Split is what says "this is a chat of its own", and its chip keeps the hashed `iconColor` rather than an agent's hue ([chat-cards.md](chat-cards.md)). Its status words are the launch row's own (`Running` / `Completed` / `Failed`) plus `Stopped`.
+- **The mark says which it is.** Running, it shares the subagents' working nest — at that moment they are doing the same thing. Settled, it carries the emblem its dock tab uses, so the transcript and the tab strip name a multitask the same way. The emblem is hashed off the session id — not the task label, so renaming the chat keeps the mark you have learned — and the chip is tinted from that emblem's hue, the same rule the subagents follow ([chat-cards.md](chat-cards.md)). It used to fall back to the first letter of the task label, which put a bare "M" beside the drawn marks. Its status words are the launch row's own (`Running` / `Completed` / `Failed`) plus `Stopped`.
 - **Stop rides the row.** A running multitask can be stopped without opening it; the button appears on hover, and whenever it is tabbed to. Stopping one stops only that session: the early-stop rule that hands a pane back to the launcher and archives that workspace ([earlyStop.ts](../src/renderer/lib/earlyStop.ts)) is a pane behaviour, and a multitask has no pane, so the chat that dispatched it stays exactly where it was — launcher draft included.
 
 Because a multitask shares the dock's tab strip with the subagents, it is counted in the workspace card's section beside it too ([subagentSummary.ts](../src/renderer/lib/subagentSummary.ts)); that section is named `Alongside` rather than `Subagents` once a multitask is in it.
 
 ## Not in the sidebar
 
-A multitask belongs to the chat that dispatched it, so it has no sidebar row: `hiddenMultitaskWorkspaceIds` ([multitask.ts](../src/renderer/lib/multitask.ts)) drops its workspace from every sidebar section. The one exception is an orphan — a multitask whose launching chat has left the snapshot. There is nowhere else to reach it from and its checkout may hold uncommitted work, so its row comes back.
+A multitask belongs to the chat that dispatched it, so it has no sidebar row: `hiddenMultitaskWorkspaceIds` ([multitask.ts](../src/renderer/lib/multitask.ts)) drops its workspace from every sidebar section and from the phone list. The one exception is an orphan — a multitask whose launching chat has left the snapshot. There is nowhere else to reach it from and its checkout may hold uncommitted work, so its row comes back.
 
 This is the only thing `sessions.launch_kind` reaches the renderer for: an agent-launched session is a chat in its own right and keeps its row, and only `multitask` loses one.
 
-Having no row, its turn shows on the row of the chat that dispatched it. A running multitask counts as work in progress on the parent's workspace ([priority.ts](../src/renderer/lib/priority.ts)), so that row keeps the working mark and its place at the top of Priority until the sibling settles — the alternative is a sidebar that goes still while an agent is still writing to the checkout. The parent's own state is unchanged: this is about what the row shows, not what the chat is doing.
+Having no row, its turn shows on the row of the chat that dispatched it. A running multitask counts as work in progress on the parent's workspace ([priority.ts](../src/renderer/lib/priority.ts)), so that row keeps the working mark and its place at the top of Priority until the sibling settles — the alternative is a list that goes still while an agent is still writing to the checkout. The parent's own state is unchanged: this is about what the row shows, not what the chat is doing. The phone list uses the same two helpers, so a finished parent with a live multitask still carries the nest.
 
 ## In the dock
 
@@ -67,7 +67,7 @@ Changed-file rows and their Review button open the containing dock's Changes vie
 
 The chat a multitask was dispatched from is reachable the other way too, once the multitask has a pane of its own: the session actions menu offers "Open launching chat". The docked panel has no actions menu — the chat that dispatched it is the one already on screen beside it.
 
-A surface that hands the pane no multitasks has no dock to host them — the phone — and its rows open the chat itself instead.
+A surface that hands the pane no dock — the phone — raises the same rows in an overlay over the transcript instead, and "Open as full chat" there switches the session.
 
 ## Testing
 

@@ -38,25 +38,26 @@ pub async fn providers_launch(
 ) -> ArgmaxResult<SessionSummary> {
     let app_data = crate::util::data_dir::app_data_dir(&app)
         .map_err(|error| ArgmaxError::service("APP_DATA_DIR", error.to_string()))?;
-    let default_permission_mode =
-        crate::default_agent::read_default_agent(&app_data).permission_mode;
-    providers_launch_impl(&state, input, default_permission_mode).await
+    let default_agent = crate::default_agent::read_default_agent(&app_data);
+    providers_launch_impl(&state, input, &default_agent).await
 }
 
 pub(crate) async fn providers_launch_impl(
     state: &AppState,
     mut input: ProvidersLaunchInput,
-    default_permission_mode: crate::providers::PermissionMode,
+    default_agent: &crate::default_agent::DefaultAgent,
 ) -> ArgmaxResult<SessionSummary> {
-    apply_launch_permission_default(&mut input, default_permission_mode);
+    apply_launch_permission_default(&mut input, default_agent);
     live_providers(state)?.launch(input).await
 }
 
 fn apply_launch_permission_default(
     input: &mut ProvidersLaunchInput,
-    default_permission_mode: crate::providers::PermissionMode,
+    default_agent: &crate::default_agent::DefaultAgent,
 ) {
-    input.permission_mode.get_or_insert(default_permission_mode);
+    input
+        .permission_mode
+        .get_or_insert_with(|| default_agent.permission_mode_for(input.provider));
 }
 
 #[tauri::command(rename = "providers:send-input")]
@@ -154,12 +155,17 @@ fn live_providers(state: &AppState) -> ArgmaxResult<Arc<ProviderSessionService>>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::PermissionMode;
+    use crate::default_agent::DefaultAgent;
+    use crate::providers::{PermissionMode, ProviderId};
+    use std::collections::HashMap;
 
-    fn launch_input(permission_mode: Option<PermissionMode>) -> ProvidersLaunchInput {
+    fn launch_input(
+        provider: ProviderId,
+        permission_mode: Option<PermissionMode>,
+    ) -> ProvidersLaunchInput {
         let mut value = serde_json::json!({
             "workspaceId": "w1",
-            "provider": "claude",
+            "provider": provider,
             "prompt": "hello",
             "modelLabel": "Opus 5",
             "modelId": "claude-opus-5",
@@ -173,13 +179,21 @@ mod tests {
     }
 
     #[test]
-    fn launch_uses_the_host_default_only_when_the_client_omits_permissions() {
-        let mut omitted = launch_input(None);
-        apply_launch_permission_default(&mut omitted, PermissionMode::AskEachTime);
-        assert_eq!(omitted.permission_mode, Some(PermissionMode::AskEachTime));
+    fn launch_uses_the_selected_providers_default_only_when_the_client_omits_permissions() {
+        let default_agent = DefaultAgent {
+            permission_mode: PermissionMode::ProviderDefaults,
+            permission_modes: HashMap::from([
+                (ProviderId::Claude, PermissionMode::AskEachTime),
+                (ProviderId::Codex, PermissionMode::AutoApprove),
+            ]),
+            ..DefaultAgent::factory()
+        };
+        let mut omitted = launch_input(ProviderId::Codex, None);
+        apply_launch_permission_default(&mut omitted, &default_agent);
+        assert_eq!(omitted.permission_mode, Some(PermissionMode::AutoApprove));
 
-        let mut explicit = launch_input(Some(PermissionMode::AutoApprove));
-        apply_launch_permission_default(&mut explicit, PermissionMode::AskEachTime);
-        assert_eq!(explicit.permission_mode, Some(PermissionMode::AutoApprove));
+        let mut explicit = launch_input(ProviderId::Codex, Some(PermissionMode::AskEachTime));
+        apply_launch_permission_default(&mut explicit, &default_agent);
+        assert_eq!(explicit.permission_mode, Some(PermissionMode::AskEachTime));
     }
 }

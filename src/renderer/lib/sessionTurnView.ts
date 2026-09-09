@@ -109,10 +109,30 @@ function deltaTextForBuffer(event: TimelineEvent, currentText: string): string {
  * instead of doubling the text. If increments never arrived (no partial
  * streaming) the buffer is empty and the complete block appends in full.
  */
+/**
+ * A reasoning burst ends where the provider stops thinking and starts working;
+ * the next burst arrives as another delta with nothing marking the seam. Grok
+ * makes this visible because its bursts end on a full stop with no trailing
+ * space, so raw concatenation reads "make a todo list firstThe files don't
+ * exist".
+ *
+ * The break is only inserted at that exact seam — a finished sentence meeting a
+ * capital with no whitespace between them, which a token stream never produces
+ * on its own. Whitespace on either side already separates the two, so a normal
+ * stream is left byte for byte as it arrived.
+ */
 function appendThinking(current: string, incoming: string): string {
-  return incoming.startsWith(current)
-    ? current + incoming.slice(current.length)
-    : current + incoming;
+  if (incoming.startsWith(current)) return current + incoming.slice(current.length);
+  if (isBurstSeam(current, incoming)) return `${current}\n\n${incoming}`;
+  return current + incoming;
+}
+
+function isBurstSeam(current: string, incoming: string): boolean {
+  if (current.length === 0 || incoming.length === 0) return false;
+  if (/\s$/.test(current) || /^\s/.test(incoming)) return false;
+  if (!".!?…".includes(current.charAt(current.length - 1))) return false;
+  const first = incoming.charAt(0);
+  return first !== first.toLowerCase();
 }
 
 /**

@@ -12,9 +12,11 @@ pub mod validation;
 pub mod approvals;
 pub mod attachments;
 pub mod browser;
+pub mod checkpoints;
 pub mod checks;
 pub mod dashboard;
 pub mod git_ops;
+pub mod goals;
 pub mod health;
 pub mod learnings;
 pub mod projects;
@@ -74,6 +76,20 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "session:suggest-follow-up",
     "review:list-changed-files",
     "review:load-diff",
+    "review:stage-file",
+    "review:unstage-file",
+    "review:stage-hunk",
+    "review:unstage-hunk",
+    "review:commit-staged",
+    "review:revert-file",
+    "review:revert-hunk",
+    "goal:set",
+    "goal:get",
+    "goal:list",
+    "goal:clear",
+    "checkpoints:list",
+    "checkpoints:preview-rewind",
+    "checkpoints:rewind-files",
     "workspace:list-files",
     "workspace:read-file",
     "workspace:write-file",
@@ -236,6 +252,20 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         session::session_suggest_follow_up,
         review::review_list_changed_files,
         review::review_load_diff,
+        review::review_stage_file,
+        review::review_unstage_file,
+        review::review_stage_hunk,
+        review::review_unstage_hunk,
+        review::review_commit_staged,
+        review::review_revert_file,
+        review::review_revert_hunk,
+        goals::goal_set,
+        goals::goal_get,
+        goals::goal_list,
+        goals::goal_clear,
+        checkpoints::checkpoints_list,
+        checkpoints::checkpoints_preview_rewind,
+        checkpoints::checkpoints_rewind_files,
         workspace_files::workspace_list_files,
         workspace_files::workspace_read_file,
         workspace_files::workspace_write_file,

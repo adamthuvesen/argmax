@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { EventType, TimelineEvent } from "../../shared/types.js";
 import { buildAgentActivity, persistentAgentRuns } from "./agentActivity.js";
+import { buildSessionToolCalls } from "./sessionConversationModel.js";
 
 function event(
   id: string,
@@ -20,6 +21,44 @@ function event(
 }
 
 describe("buildAgentActivity", () => {
+  it("settles unfinished native work on parent exit without reviving it on resume", () => {
+    const identity = { agentRootToolUseId: "spawn", agentRunId: "spawn" };
+    const events = [
+      event("spawn", "command.started", "2026-05-12T15:00:01.000Z", "Agent", {
+        id: "spawn", name: "Agent", input: { description: "Review" }
+      }),
+      event("receipt", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
+        tool_use_id: "spawn", content: "Async agent launched successfully."
+      }),
+      event("start", "agent.started", "2026-05-12T15:00:02.100Z", "Agent started", identity)
+    ];
+    const statuses = (rows: TimelineEvent[], sessionRunning: boolean) => [
+      buildSessionToolCalls(rows, sessionRunning)[0]?.status,
+      buildAgentActivity({ events: rows, parentToolUseId: "spawn", sessionRunning }).status
+    ];
+    // Waiting for approval does not terminate the provider or its child.
+    expect(statuses(events, false)).toEqual(["running", "running"]);
+    const exited = [...events,
+      event("exit", "session.completed", "2026-05-12T15:00:03.000Z")
+    ];
+    expect(statuses(exited, false)).toEqual(["error", "error"]);
+    expect(statuses(exited, true)).toEqual(["error", "error"]);
+    expect(buildSessionToolCalls(exited, false)[0]).toMatchObject({
+      completedAt: "2026-05-12T15:00:03.000Z",
+      error: "Session ended before the agent reported completion."
+    });
+    const completed = [...exited,
+      event("done", "agent.completed", "2026-05-12T15:00:02.500Z", "Reviewed", {
+        ...identity, status: "completed"
+      })
+    ];
+    expect(statuses(completed, false)).toEqual(["done", "done"]);
+    const resumed = [...completed,
+      event("restart", "agent.started", "2026-05-12T15:00:05.000Z", "Agent started", identity)
+    ];
+    expect(statuses(resumed, true)).toEqual(["running", "running"]);
+  });
+
   it("uses row cursors so same-time completed lifecycle rows win newest-first reads", () => {
     const identity = {
       providerParentConversationId: "parent-native",

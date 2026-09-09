@@ -23,7 +23,7 @@ use crate::persistence::database::Database;
 use crate::persistence::routines::{self, RoutineLaunchFields, RoutineRunTarget};
 use crate::persistence::time::now_iso;
 use crate::providers::session_service::ProviderSessionService;
-use crate::providers::{AgentMode, PermissionMode, ProviderId, ReasoningEffort};
+use crate::providers::{AgentMode, ProviderId, ReasoningEffort};
 use crate::session_control::{self, LaunchSpec};
 use crate::state::AppState;
 use crate::util::sync::LockOrRecover;
@@ -101,7 +101,7 @@ async fn tick(app: &tauri::AppHandle) -> ArgmaxResult<()> {
     };
     let app_data = crate::util::data_dir::app_data_dir(app)
         .map_err(|error| ArgmaxError::service("APP_DATA_DIR", error.to_string()))?;
-    let permission_mode = crate::default_agent::read_default_agent(&app_data).permission_mode;
+    let default_agent = crate::default_agent::read_default_agent(&app_data);
     let state = app.state::<AppState>();
     for fields in due {
         let Some(_run) = state.routine_runs.try_start(&fields.id) else {
@@ -126,7 +126,7 @@ async fn tick(app: &tauri::AppHandle) -> ArgmaxResult<()> {
             }
             routines::routine_launch_fields(&current)
         };
-        fire_routine(&database, &workspaces, &providers, fields, permission_mode).await;
+        fire_routine(&database, &workspaces, &providers, fields, &default_agent).await;
     }
     Ok(())
 }
@@ -139,7 +139,7 @@ pub(crate) async fn fire_routine(
     workspaces: &Arc<WorkspaceService>,
     providers: &Arc<ProviderSessionService>,
     mut fields: RoutineLaunchFields,
-    permission_mode: PermissionMode,
+    default_agent: &crate::default_agent::DefaultAgent,
 ) {
     let now = Utc::now();
     let last_run = now_iso();
@@ -172,7 +172,9 @@ pub(crate) async fn fire_routine(
         }
     };
 
-    let Some(provider) = parse_provider(&fields.provider) else {
+    let Some((provider, permission_mode)) =
+        resolve_routine_permissions(&fields.provider, default_agent)
+    else {
         let _ = mark(
             database,
             &fields,
@@ -424,9 +426,20 @@ fn parse_provider(value: &str) -> Option<ProviderId> {
     }
 }
 
+fn resolve_routine_permissions(
+    provider: &str,
+    default_agent: &crate::default_agent::DefaultAgent,
+) -> Option<(ProviderId, crate::providers::PermissionMode)> {
+    let provider = parse_provider(provider)?;
+    Some((provider, default_agent.permission_mode_for(provider)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::default_agent::DefaultAgent;
+    use crate::providers::PermissionMode;
+    use std::collections::HashMap;
 
     #[tokio::test]
     async fn routine_runs_guard_released_on_task_abort() {
@@ -453,5 +466,23 @@ mod tests {
         assert_eq!(parse_provider("claude"), Some(ProviderId::Claude));
         assert_eq!(parse_provider("opencode"), Some(ProviderId::Opencode));
         assert_eq!(parse_provider("gemini"), None);
+    }
+
+    #[test]
+    fn routine_uses_its_provider_permission_when_the_default_model_uses_another_provider() {
+        let default_agent = DefaultAgent {
+            provider: "claude".to_string(),
+            permission_mode: PermissionMode::AskEachTime,
+            permission_modes: HashMap::from([(
+                ProviderId::Codex,
+                PermissionMode::ProviderDefaults,
+            )]),
+            ..DefaultAgent::factory()
+        };
+
+        assert_eq!(
+            resolve_routine_permissions("codex", &default_agent),
+            Some((ProviderId::Codex, PermissionMode::ProviderDefaults))
+        );
     }
 }

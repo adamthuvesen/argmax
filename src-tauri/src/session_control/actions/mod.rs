@@ -1,3 +1,4 @@
+mod label;
 mod launch;
 mod messaging;
 mod move_archive;
@@ -11,6 +12,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use self::{
+    label::rename_session,
     launch::launch_session,
     messaging::{
         inbox_read, list_sessions_action, message_session, session_read, session_status,
@@ -21,8 +23,8 @@ use self::{
 };
 use super::{
     protocol::{
-        SessionControlAction, SessionControlError, SessionControlRequest, SessionControlResponse,
-        SessionControlResult,
+        GoalOutcome, GoalSetAction, SessionControlAction, SessionControlError,
+        SessionControlRequest, SessionControlResponse, SessionControlResult,
     },
     protocol_error,
     registry::{ParentLaunchSettings, SessionLaunchRegistry},
@@ -81,6 +83,13 @@ pub(super) async fn handle_session_control(
         SessionControlAction::Inbox(_) => inbox_read(parent, database),
         SessionControlAction::Wait(action) => {
             wait_for_sessions(action, parent, database, providers, registry).await
+        }
+        SessionControlAction::GoalSet(action) => {
+            set_goal(action, &parent, database, app.as_ref()).await
+        }
+        SessionControlAction::GoalClear => clear_goal(&parent, app.as_ref()).await,
+        SessionControlAction::Rename(action) => {
+            rename_session(action, parent, database, workspaces)
         }
         SessionControlAction::Browser(request) => {
             let app = app.ok_or_else(|| {
@@ -235,6 +244,76 @@ pub(super) fn terminal_rows(value: u16) -> Result<TerminalRows, SessionControlEr
             format!("Could not prepare terminal rows: {error}"),
         )
     })
+}
+
+/// The goal service lives on the app, not on the socket's own dependencies —
+/// the MCP process has no `AppHandle`, so these follow the browser tools and
+/// reach it through the running window.
+fn goal_service(
+    app: Option<&tauri::AppHandle>,
+) -> Result<Arc<crate::goals::service::GoalService>, SessionControlError> {
+    use tauri::Manager;
+    app.and_then(|app| app.try_state::<crate::state::AppState>())
+        .and_then(|state| state.goals.get().cloned())
+        .ok_or_else(|| {
+            protocol_error(
+                "GOAL_UNAVAILABLE",
+                "This Argmax instance cannot set goals right now.",
+            )
+        })
+}
+
+async fn set_goal(
+    action: GoalSetAction,
+    parent: &ParentLaunchSettings,
+    database: Arc<Database>,
+    app: Option<&tauri::AppHandle>,
+) -> Result<SessionControlResponse, SessionControlError> {
+    let goals = goal_service(app)?;
+    // The caller's own workspace: a goal belongs to the chat that set it, so
+    // the tool never takes a workspace argument to get wrong.
+    let workspace_id = crate::persistence::sessions::find_session_by_id(
+        &database.read_connection(),
+        &parent.session_id,
+    )
+    .map_err(|error| protocol_error("GOAL_SET_FAILED", error.to_string()))?
+    .workspace_id;
+    let goal = goals
+        .set(crate::goals::service::GoalSetInput {
+            workspace_id,
+            session_id: parent.session_id.clone(),
+            condition: action.condition,
+            max_turns: action.max_turns,
+        })
+        .await
+        .map_err(|error| protocol_error("GOAL_SET_FAILED", error.to_string()))?;
+    Ok(SessionControlResponse::new(SessionControlResult::Goal(
+        GoalOutcome {
+            active: true,
+            goal_id: Some(goal.id),
+            condition: Some(goal.condition),
+            max_turns: Some(goal.max_turns),
+        },
+    )))
+}
+
+async fn clear_goal(
+    parent: &ParentLaunchSettings,
+    app: Option<&tauri::AppHandle>,
+) -> Result<SessionControlResponse, SessionControlError> {
+    let goals = goal_service(app)?;
+    let cleared = goals
+        .clear(&parent.session_id)
+        .await
+        .map_err(|error| protocol_error("GOAL_CLEAR_FAILED", error.to_string()))?;
+    Ok(SessionControlResponse::new(SessionControlResult::Goal(
+        GoalOutcome {
+            active: false,
+            goal_id: cleared.as_ref().map(|goal| goal.id.clone()),
+            condition: cleared.map(|goal| goal.condition),
+            max_turns: None,
+        },
+    )))
 }
 
 #[cfg(test)]

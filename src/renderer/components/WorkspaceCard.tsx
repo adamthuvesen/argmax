@@ -243,16 +243,12 @@ function SubagentsSection({ cluster, onOpenAgents }: { cluster: SubagentCluster;
             data-icon-color={entry.iconColor}
             data-status={entry.status}
           >
-            {entry.emblem ? (
-              <AgentEmblem
-                shape={entry.emblem.shape}
-                hue={entry.emblem.hue}
-                size={18}
-                status={entry.status === "error" ? "error" : "done"}
-              />
-            ) : (
-              entry.codename.charAt(0)
-            )}
+            <AgentEmblem
+              shape={entry.emblem.shape}
+              hue={entry.emblem.hue}
+              size={18}
+              status={entry.status === "error" ? "error" : "done"}
+            />
           </span>
         ))}
         {overflow > 0 ? <span className="workspace-card-agent workspace-card-agent-more">+{overflow}</span> : null}

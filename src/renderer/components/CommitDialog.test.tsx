@@ -4,8 +4,8 @@ import type { ChangedFileSummary, GitCommitInput, GitCommitResult } from "../../
 import { CommitDialog } from "./CommitDialog.js";
 
 const FILES: ChangedFileSummary[] = [
-  { path: "src/a.ts", status: "modified", additions: 4, deletions: 1 },
-  { path: "src/b.ts", status: "added", additions: 12, deletions: 0 }
+  { path: "src/a.ts", status: "modified", additions: 4, deletions: 1 , staged: false },
+{ path: "src/b.ts", status: "added", additions: 12, deletions: 0 , staged: false },
 ];
 
 function installArgmax(commitMock: ReturnType<typeof vi.fn>): void {

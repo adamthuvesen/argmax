@@ -62,7 +62,9 @@ export const workspace: WorkspaceSummary = {
   icon: null,
   iconColor: null,
   prCreatedAt: null,
-  prMergedAt: null
+  prMergedAt: null,
+  prCheckState: null,
+  prActivityAt: null
 };
 
 export const project: ProjectSummary = {
@@ -114,6 +116,7 @@ type ConversationOptions = {
   defaultToolCallsDisplay?: "expanded" | "collapsed" | "single-line";
   defaultToolCallGroupsExpanded?: boolean;
   pendingMessages?: PendingMessage[];
+  goalEnabled?: boolean;
   // The conversation's own prop types, not `ReturnType<typeof vi.fn>`:
   // Vitest 4 types a bare `vi.fn()` as `Mock<Procedure | Constructable>`,
   // which no longer widens to a call signature, so a loose option type here
@@ -131,6 +134,8 @@ type ConversationOptions = {
   onOpenDetails?: (seedPrompt: string) => Promise<void>;
   registerAnnotationSink?: ConversationProps["registerAnnotationSink"];
   review?: ReviewState;
+  /** Defaults to the shared `workspace` fixture. */
+  workspace?: ConversationProps["workspace"];
   /** Defaults to true (events already present). Pass false to reproduce a real
       reopen, where the pane mounts empty and the backfill lands later. */
   eventsBackfilled?: boolean;
@@ -143,6 +148,7 @@ function conversationElement(
 ): JSX.Element {
   return (
     <SessionConversation
+      goalEnabled={options.goalEnabled ?? true}
       events={events}
       eventsBackfilled={options.eventsBackfilled ?? true}
       isLogOpen={false}
@@ -169,7 +175,7 @@ function conversationElement(
       rawOutputs={[]}
       review={options.review ?? reviewStub()}
       session={session}
-      workspace={workspace}
+      workspace={options.workspace ?? workspace}
     />
   );
 }

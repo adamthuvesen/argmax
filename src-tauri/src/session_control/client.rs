@@ -108,6 +108,8 @@ pub fn send_session_control(
         (SessionControlAction::Stop(_), SessionControlResult::Stopped(_)) => true,
         (SessionControlAction::Inbox(_), SessionControlResult::Inbox(_)) => true,
         (SessionControlAction::Wait(_), SessionControlResult::Waited(_)) => true,
+        (SessionControlAction::GoalSet(_), SessionControlResult::Goal(_)) => true,
+        (SessionControlAction::GoalClear, SessionControlResult::Goal(_)) => true,
         _ => false,
     };
     if !matches_action {

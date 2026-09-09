@@ -1,3 +1,6 @@
+import { PROVIDER_DISPLAY_NAMES } from "../../shared/providerModels.js";
+import type { ProviderId } from "../../shared/types.js";
+
 /**
  * User preference for provider permission gating.
  *
@@ -29,4 +32,23 @@ export function readStoredPermissionMode(): PermissionMode {
   }
   const stored = window.localStorage.getItem(PERMISSION_MODE_KEY);
   return isPermissionMode(stored) ? stored : DEFAULT_PERMISSION_MODE;
+}
+
+export type ProviderPermissionModes = Record<ProviderId, PermissionMode>;
+export const PROVIDER_PERMISSION_MODES_KEY = "argmax.providerPermissionModes";
+
+/** Seed every provider from the old global choice when upgrading. */
+export function readStoredProviderPermissionModes(): ProviderPermissionModes {
+  const fallback = readStoredPermissionMode();
+  let stored: unknown;
+  try {
+    stored = JSON.parse(window.localStorage.getItem(PROVIDER_PERMISSION_MODES_KEY) ?? "null");
+  } catch {
+    stored = null;
+  }
+  return Object.fromEntries(Object.keys(PROVIDER_DISPLAY_NAMES).map((provider) => {
+    const value: unknown = stored && typeof stored === "object" && provider in stored
+      ? Reflect.get(stored, provider) : undefined;
+    return [provider, isPermissionMode(value) ? value : fallback];
+  })) as ProviderPermissionModes;
 }

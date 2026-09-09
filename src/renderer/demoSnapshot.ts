@@ -46,7 +46,9 @@ export const demoSnapshot: DashboardSnapshot = {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     },
     {
       // The multitask dispatched from the review-studio chat: same checkout,
@@ -71,7 +73,9 @@ export const demoSnapshot: DashboardSnapshot = {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     },
     {
       id: "workspace-review-studio",
@@ -94,7 +98,9 @@ export const demoSnapshot: DashboardSnapshot = {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     },
     {
       id: "workspace-approval-gate",
@@ -117,7 +123,9 @@ export const demoSnapshot: DashboardSnapshot = {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     }
   ],
   sessions: [

@@ -1,12 +1,14 @@
-//! The app-wide default agent: one model and effort for the whole app, chosen
-//! in Settings → Agents. The renderer owns the preference and mirrors it to
+//! The app-wide default agent: one model and effort for the whole app, plus a
+//! permission mode for each provider, chosen in Settings → Agents. The
+//! renderer owns the preference and mirrors it to
 //! `default-agent.json` in the app data dir through `system:set-default-agent`,
-//! so the sessions Argmax starts on its own — the PR check-failure fix chat —
+//! so the sessions Argmax starts on its own, including PR check-failure fixes,
 //! launch on the same model the user picked rather than a hard-coded one.
 //!
 //! There is deliberately no per-project default: a project holds where its
 //! worktrees go and what its checks are, not which model to think with.
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -22,6 +24,8 @@ pub struct DefaultAgent {
     pub reasoning_effort: Option<String>,
     #[serde(default)]
     pub permission_mode: crate::providers::PermissionMode,
+    #[serde(default)]
+    pub permission_modes: HashMap<crate::providers::ProviderId, crate::providers::PermissionMode>,
 }
 
 impl DefaultAgent {
@@ -35,7 +39,20 @@ impl DefaultAgent {
             model_id: "claude-opus-5".to_string(),
             reasoning_effort: Some("medium".to_string()),
             permission_mode: crate::providers::PermissionMode::ProviderDefaults,
+            permission_modes: HashMap::new(),
         }
+    }
+
+    /// The provider-specific preference when present, or the legacy app-wide
+    /// preference for settings saved before per-provider permissions existed.
+    pub fn permission_mode_for(
+        &self,
+        provider: crate::providers::ProviderId,
+    ) -> crate::providers::PermissionMode {
+        self.permission_modes
+            .get(&provider)
+            .copied()
+            .unwrap_or(self.permission_mode)
     }
 }
 
@@ -75,6 +92,16 @@ mod tests {
             model_id: "gpt-5.6-sol".to_string(),
             reasoning_effort: Some("xhigh".to_string()),
             permission_mode: crate::providers::PermissionMode::AskEachTime,
+            permission_modes: HashMap::from([
+                (
+                    crate::providers::ProviderId::Claude,
+                    crate::providers::PermissionMode::AutoApprove,
+                ),
+                (
+                    crate::providers::ProviderId::Codex,
+                    crate::providers::PermissionMode::AskEachTime,
+                ),
+            ]),
         };
         std::fs::write(
             dir.path().join(DEFAULT_AGENT_FILE),
@@ -94,6 +121,49 @@ mod tests {
         assert_eq!(
             agent.permission_mode,
             crate::providers::PermissionMode::ProviderDefaults
+        );
+        assert!(agent.permission_modes.is_empty());
+    }
+
+    #[test]
+    fn legacy_single_permission_applies_to_every_provider() {
+        let dir = tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join(DEFAULT_AGENT_FILE),
+            br#"{"provider":"codex","modelLabel":"Custom","modelId":"custom-model","reasoningEffort":"high","permissionMode":"ask-each-time"}"#,
+        )
+        .expect("write legacy preference");
+
+        let agent = read_default_agent(dir.path());
+        assert!(agent.permission_modes.is_empty());
+        assert_eq!(
+            agent.permission_mode_for(crate::providers::ProviderId::Claude),
+            crate::providers::PermissionMode::AskEachTime
+        );
+        assert_eq!(
+            agent.permission_mode_for(crate::providers::ProviderId::Codex),
+            crate::providers::PermissionMode::AskEachTime
+        );
+    }
+
+    #[test]
+    fn provider_permission_overrides_the_legacy_fallback() {
+        let agent = DefaultAgent {
+            permission_mode: crate::providers::PermissionMode::AskEachTime,
+            permission_modes: HashMap::from([(
+                crate::providers::ProviderId::Codex,
+                crate::providers::PermissionMode::ProviderDefaults,
+            )]),
+            ..DefaultAgent::factory()
+        };
+
+        assert_eq!(
+            agent.permission_mode_for(crate::providers::ProviderId::Codex),
+            crate::providers::PermissionMode::ProviderDefaults
+        );
+        assert_eq!(
+            agent.permission_mode_for(crate::providers::ProviderId::Claude),
+            crate::providers::PermissionMode::AskEachTime
         );
     }
 

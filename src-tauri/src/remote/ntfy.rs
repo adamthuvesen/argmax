@@ -126,6 +126,7 @@ fn signal_for(session: &SessionSummary, mobile_url: Option<&str>) -> Option<Ntfy
     let prompt = truncated_prompt(&session.prompt);
     let (title, priority, tags) = match (session.attention, session.state) {
         (AttentionState::ApprovalNeeded, _) => ("Needs approval", "high", "raised_hand"),
+        (AttentionState::QuestionAsked, _) => ("Asked you a question", "high", "speech_balloon"),
         (AttentionState::Blocked, _) => ("Waiting on you", "high", "speech_balloon"),
         (_, SessionState::Failed) => ("Chat failed", "default", "x"),
         (_, SessionState::Complete) => ("Chat complete", "default", ""),

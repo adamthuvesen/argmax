@@ -45,6 +45,7 @@ import { readBoundedNumberPreference, type ThinkingDisplay, type ToolCallsDispla
 import type { ToolCall } from "../lib/toolCalls.js";
 import { agentTabId, multitaskTabId } from "../lib/agentTabs.js";
 import { useAgentTabs } from "../hooks/useAgentTabs.js";
+import { importChunk } from "../lib/importChunk.js";
 import { CommitDialog } from "./CommitDialog.js";
 import { ApprovalSurface } from "./ApprovalSurface.js";
 import { DebugPanel } from "./debug/DebugPanel.js";
@@ -52,12 +53,16 @@ import { DebugPanel } from "./debug/DebugPanel.js";
 // chunk shared with the LaunchSurface call site.
 // The phone's peek at delegated work. Lazy for the same reason ReviewPanel is:
 // most sessions never open one.
-const AgentOverlay = lazy(async () => ({
-  default: (await import("../mobile/AgentOverlay.js")).AgentOverlay
-}));
-const AgentsView = lazy(async () => ({
-  default: (await import("./AgentsView.js")).AgentsView
-}));
+const AgentOverlay = lazy(() =>
+  importChunk(async () => ({
+    default: (await import("../mobile/AgentOverlay.js")).AgentOverlay
+  }))
+);
+const AgentsView = lazy(() =>
+  importChunk(async () => ({
+    default: (await import("./AgentsView.js")).AgentsView
+  }))
+);
 const ReviewPanel = lazy(async () => ({
   default: (await import("./ReviewPanel.js")).ReviewPanel
 }));
@@ -81,6 +86,9 @@ export function SessionPane({
   defaultToolCallGroupsExpanded,
   thinkingDisplay,
   defaultTurnChangesExpanded,
+  goalEnabled,
+  goalMaxTurns,
+  revertEnabled,
   events = [],
   fastModeEnabled = false,
   isFocused = true,
@@ -116,6 +124,7 @@ export function SessionPane({
   session,
   agentsViewAvailable = true,
   agentsPresentation = "dock",
+  onAgentsOverlayChange,
   workspaceCardVisible = true,
   onWorkspaceCardVisibleChange,
   workspace
@@ -126,6 +135,10 @@ export function SessionPane({
   defaultToolCallGroupsExpanded?: boolean;
   thinkingDisplay?: ThinkingDisplay;
   defaultTurnChangesExpanded?: boolean;
+  /** Settings → Agents → Conversation: show the goal strip / checkpoints panel. */
+  goalEnabled?: boolean;
+  goalMaxTurns?: number;
+  revertEnabled?: boolean;
   events?: TimelineEvent[];
   fastModeEnabled?: boolean;
   /** When false, the pane skips its document-level keyboard shortcuts so only the focused pane reacts. */
@@ -191,6 +204,9 @@ export function SessionPane({
    *  review panel; "overlay" raises a sheet over the transcript, which is what
    *  the phone has room for. */
   agentsPresentation?: "dock" | "overlay";
+  /** Phone back-stack: called with a dismisser while the overlay is up, and
+   *  with null when it closes, so a hardware back can pop the peek first. */
+  onAgentsOverlayChange?: (dismiss: (() => void) | null) => void;
   /** User preference for the floating workspace card. Visible when enabled
       and the conversation column is wide enough to hold it beside the transcript. */
   workspaceCardVisible?: boolean;
@@ -310,6 +326,22 @@ export function SessionPane({
   // desktop dock as a side effect, and the phone has no dock to open — routing
   // through it laid the review panel over the chat.
   const overlayTabs = useAgentTabs();
+  const overlayCloseAll = overlayTabs.closeAllTabs;
+  useEffect(() => {
+    if (!agentsInOverlay) return;
+    overlayCloseAll();
+  }, [agentsInOverlay, overlayCloseAll, sessionId]);
+  useEffect(() => {
+    if (!agentsInOverlay) return;
+    const closeAgents = overlayTabs.tabIds.length > 0 ? overlayCloseAll : null;
+    onAgentsOverlayChange?.(closeAgents);
+    return () => onAgentsOverlayChange?.(null);
+  }, [
+    agentsInOverlay,
+    onAgentsOverlayChange,
+    overlayCloseAll,
+    overlayTabs.tabIds.length
+  ]);
   const openAgentOverlay = useCallback(
     (tool: ToolCall): void => overlayTabs.openTab(agentTabId(tool)),
     [overlayTabs]
@@ -637,6 +669,9 @@ export function SessionPane({
           review={reviewState}
           session={session}
           workspace={workspace}
+          goalEnabled={goalEnabled}
+          goalMaxTurns={goalMaxTurns}
+          revertEnabled={revertEnabled}
         />
 
         <ApprovalSurface
@@ -667,7 +702,14 @@ export function SessionPane({
               pendingMessages={pendingMessages}
               onCancelQueuedMessage={onCancelQueuedMessage}
               onClearSession={onClearSession}
-              onOpenFullChat={onOpenSession}
+              onOpenFullChat={
+                onOpenSession
+                  ? (sessionId) => {
+                      overlayCloseAll();
+                      onOpenSession(sessionId);
+                    }
+                  : undefined
+              }
               onSendQueuedMessageNow={onSendQueuedMessageNow}
               onSendSessionInput={onSendSessionInput}
               onTerminateSession={onTerminateSession}

@@ -1302,9 +1302,145 @@ pub fn latest_agent_message(
     Ok(message)
 }
 
+/// What a Goal's evaluator reads: the end of the conversation, plus how much
+/// the agent actually did in its last turn.
+pub struct GoalTranscriptTail {
+    /// Labelled transcript lines, oldest first, clamped to the caller's budget.
+    pub text: String,
+    /// Tool calls since the last user turn. Zero across several turns running
+    /// is how the driver notices the agent has stopped making progress.
+    pub tool_calls_in_last_turn: u32,
+}
+
+/// Rows scanned for the tail. The budget cuts the text long before this in an
+/// ordinary session; the limit is what keeps a chatty one bounded.
+const GOAL_TAIL_SCAN_LIMIT: usize = 400;
+/// Per-row clamp, so one pasted build log cannot fill the whole budget.
+const GOAL_TAIL_ROW_CHARS: usize = 2_000;
+
+/// Reads the tail of `session_id` for a Goal verdict: assistant prose, tool
+/// calls and their outcomes, and the prompts they answered, newest rows first
+/// until `max_chars` is spent, then flipped back into reading order. Subagent
+/// and imported-trace rows are excluded, like the chat surface excludes them.
+pub fn goal_transcript_tail(
+    connection: &Connection,
+    session_id: &str,
+    max_chars: usize,
+) -> ArgmaxResult<GoalTranscriptTail> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+            SELECT type, substr(message, 1, ?)
+            FROM events
+            WHERE session_id = ?
+              AND type IN ('user.message', 'message.completed', 'command.started',
+                           'command.completed', 'error')
+              AND trim(message) <> ''
+              AND rowid > COALESCE((
+                SELECT MAX(rowid) FROM events cleared
+                WHERE cleared.session_id = events.session_id
+                  AND cleared.type = 'session.cleared'
+              ), 0)
+              AND json_extract(payload_json, '$.parent_tool_use_id') IS NULL
+              AND json_extract(payload_json, '$.traceImported') IS NULL
+            ORDER BY rowid DESC
+            LIMIT ?
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map(
+            params![GOAL_TAIL_ROW_CHARS, session_id, GOAL_TAIL_SCAN_LIMIT],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+
+    let mut lines = Vec::new();
+    let mut spent = 0usize;
+    for (kind, message) in rows {
+        let label = match kind.as_str() {
+            "user.message" => "USER",
+            "message.completed" => "AGENT",
+            "command.started" => "TOOL",
+            "command.completed" => "TOOL RESULT",
+            _ => "ERROR",
+        };
+        let line = format!("{label}: {}", message.trim());
+        if spent + line.len() > max_chars && !lines.is_empty() {
+            break;
+        }
+        spent += line.len();
+        lines.push(line);
+    }
+    lines.reverse();
+
+    Ok(GoalTranscriptTail {
+        text: lines.join("\n"),
+        tool_calls_in_last_turn: count_tool_calls_since_last_prompt(connection, session_id)?,
+    })
+}
+
+fn count_tool_calls_since_last_prompt(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<u32> {
+    connection
+        .prepare_cached(
+            r#"
+            SELECT COUNT(*) FROM events
+            WHERE session_id = ?1
+              AND type = 'command.started'
+              AND rowid > COALESCE((
+                SELECT MAX(rowid) FROM events prompt
+                WHERE prompt.session_id = ?1 AND prompt.type = 'user.message'
+              ), 0)
+            "#,
+        )
+        .map_err(sqlite_error)?
+        .query_row([session_id], |row| row.get::<_, u32>(0))
+        .map_err(sqlite_error)
+}
+
 /// When the current turn's prompt landed — what `session_status` ages to
 /// report how long a session has been working. Ignores subagent rows and
 /// anything before the last `/clear`, like the transcript itself does.
+/// The id of the turn a before-turn checkpoint belongs to.
+///
+/// Same slice as [`latest_user_message_at`]: the newest top-level user message
+/// since the last clear, ignoring subagent prompts. Recorded on the checkpoint
+/// as its `turn_boundary`, which is what lets a turn in the transcript offer
+/// "Revert to here" — the checkpoint is matched to the message rather than
+/// picked off a list of identical timestamps.
+pub fn latest_user_message_id(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Option<String>> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+            SELECT id
+            FROM events
+            WHERE session_id = ?
+              AND type = 'user.message'
+              AND rowid > COALESCE((
+                SELECT MAX(rowid) FROM events cleared
+                WHERE cleared.session_id = events.session_id
+                  AND cleared.type = 'session.cleared'
+              ), 0)
+              AND json_extract(payload_json, '$.parent_tool_use_id') IS NULL
+            ORDER BY rowid DESC
+            LIMIT 1
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    statement
+        .query_row([session_id], |row| row.get::<_, String>(0))
+        .optional()
+        .map_err(sqlite_error)
+}
+
 pub fn latest_user_message_at(
     connection: &Connection,
     session_id: &str,
@@ -1331,6 +1467,124 @@ pub fn latest_user_message_at(
         .query_row((session_id,), |row| row.get::<_, String>(0))
         .optional()
         .map_err(sqlite_error)
+}
+
+/// Names whose tool call puts a question in front of the person and then waits
+/// for them. Kept in step with `isAskUserQuestionToolName` and
+/// `isExitPlanModeToolName` in `src/renderer/lib/turnInteractiveCards.ts`,
+/// which decide the same thing for the chat surface.
+const ASK_TOOL_NAMES: [&str; 3] = ["askuserquestion", "askquestiontoolcall", "sendusermessage"];
+const EXIT_PLAN_TOOL_NAME: &str = "exitplanmode";
+
+fn normalized_tool_name(name: &str) -> String {
+    name.chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .map(|character| character.to_ascii_lowercase())
+        .collect()
+}
+
+/// The tool's merged argument object. Providers put it under any of four keys
+/// and Cursor hands `input` over as a JSON string, so this mirrors
+/// `extractToolInput` rather than reading one field.
+fn merged_tool_input(payload: &Value) -> serde_json::Map<String, Value> {
+    let mut merged = serde_json::Map::new();
+    for key in ["parameters", "arguments", "args", "input"] {
+        let container = match payload.get(key) {
+            Some(Value::Object(object)) => object.clone(),
+            Some(Value::String(raw)) => match serde_json::from_str::<Value>(raw) {
+                Ok(Value::Object(object)) => object,
+                _ => continue,
+            },
+            _ => continue,
+        };
+        merged.extend(container);
+    }
+    merged
+}
+
+/// The tool's identity, mirroring the parts of `extractToolName` that can
+/// name an interactive ask: Cursor's ACP wraps the real tool as `other` and
+/// keeps its name in the input.
+fn ask_tool_identity(payload: &Value) -> Option<String> {
+    let payload_name = payload.get("name").and_then(Value::as_str);
+    if let Some(name) = payload_name {
+        if name.eq_ignore_ascii_case("other") {
+            if let Some(embedded) = merged_tool_input(payload)
+                .get("_toolName")
+                .and_then(Value::as_str)
+            {
+                if !embedded.is_empty() {
+                    return Some(normalized_tool_name(embedded));
+                }
+            }
+        }
+    }
+    payload_name.map(normalized_tool_name)
+}
+
+/// Whether this session is sitting on an ask the person has not answered: an
+/// `AskUserQuestion` or `ExitPlanMode` tool call newer than the last thing
+/// they said. The same rule `hasOutstandingCardAsk` applies in the renderer,
+/// evaluated here because the sidebar cannot see the transcript.
+///
+/// `answers_itself` auto-allows these tools, so the turn settles the instant
+/// the question is drawn and the session goes `complete` like any other. Left
+/// unasked, a pending question is indistinguishable from a finished job.
+///
+/// The SQL narrows on a substring of the tool name, which the payload could
+/// carry for other reasons (an agent reading this very file). Every candidate
+/// is re-checked against its `name` field before it counts.
+pub fn has_outstanding_card_ask(connection: &Connection, session_id: &str) -> ArgmaxResult<bool> {
+    let since = latest_user_message_at(connection, session_id)?.unwrap_or_default();
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+            SELECT payload_json
+            FROM events
+            WHERE session_id = ?1
+              AND type = 'command.started'
+              AND rowid > COALESCE((
+                SELECT MAX(rowid) FROM events cleared
+                WHERE cleared.session_id = ?1
+                  AND cleared.type = 'session.cleared'
+              ), 0)
+              AND created_at > ?2
+              AND (
+                payload_json LIKE '%skUserQuestion%'
+                OR payload_json LIKE '%skQuestionToolCall%'
+                OR payload_json LIKE '%endUserMessage%'
+                OR payload_json LIKE '%xitPlanMode%'
+              )
+            ORDER BY rowid DESC
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map((session_id, since.as_str()), |row| row.get::<_, String>(0))
+        .map_err(sqlite_error)?;
+    for row in rows {
+        let payload: Value = match serde_json::from_str(&row.map_err(sqlite_error)?) {
+            Ok(payload) => payload,
+            Err(_) => continue,
+        };
+        let Some(name) = ask_tool_identity(&payload) else {
+            continue;
+        };
+        if name == EXIT_PLAN_TOOL_NAME {
+            return Ok(true);
+        }
+        // A question tool with nothing to choose between draws no card, so it
+        // is not something the person can answer.
+        if ASK_TOOL_NAMES.contains(&name.as_str())
+            && merged_tool_input(&payload)
+                .get("questions")
+                .and_then(Value::as_array)
+                .is_some_and(|questions| !questions.is_empty())
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// How many times this chat has arrived somewhere by being moved. A move

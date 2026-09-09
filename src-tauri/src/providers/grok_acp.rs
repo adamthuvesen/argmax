@@ -589,7 +589,7 @@ impl GrokTurnTranslation {
                 .unwrap_or_default(),
             "agent_message_chunk" => content_text(update)
                 .map(|text| {
-                    self.assistant_text.push_str(&text);
+                    append_message_chunk(&mut self.assistant_text, &text);
                     vec![json!({
                         "type": "stream_event", "session_id": session_id,
                         "event": { "type": "content_block_delta", "index": 0,
@@ -644,6 +644,44 @@ impl GrokTurnTranslation {
             "result": self.assistant_text,
         })
     }
+}
+
+/// Grok answers in bursts, one `agent_message_chunk` per burst, and a burst
+/// ends at a full stop with no trailing whitespace. Concatenating them raw
+/// gives the turn's final text sentences with no space between them —
+/// "mark each item done as I go.The three files are missing" — which is what
+/// the chat renders once the turn ends.
+///
+/// A chunk that opens with whitespace, or continues mid-sentence, is the same
+/// burst carrying on and joins as-is. Anything else is a new burst and earns a
+/// blank line, so the answer reads as the paragraphs Grok wrote.
+fn append_message_chunk(accumulated: &mut String, chunk: &str) {
+    if chunk.is_empty() {
+        return;
+    }
+    if accumulated.is_empty() || continues_sentence(accumulated, chunk) {
+        accumulated.push_str(chunk);
+        return;
+    }
+    accumulated.push_str("\n\n");
+    accumulated.push_str(chunk.trim_start());
+}
+
+/// Deliberately narrow: the only seam worth breaking is a finished sentence
+/// followed immediately by a capital with no whitespace at all, which no token
+/// stream produces on its own. Whitespace on either side already separates the
+/// two, so leave it exactly as Grok sent it.
+fn continues_sentence(accumulated: &str, chunk: &str) -> bool {
+    if chunk.starts_with(char::is_whitespace) || accumulated.ends_with(char::is_whitespace) {
+        return true;
+    }
+    let Some(last) = accumulated.chars().next_back() else {
+        return true;
+    };
+    if !".!?…".contains(last) {
+        return true;
+    }
+    chunk.chars().next().is_none_or(|c| !c.is_uppercase())
 }
 
 fn grok_tool_result(update: &Value, call_id: &str, session_id: &str) -> Value {
@@ -718,6 +756,34 @@ impl ProviderRuntimeHandle for GrokTurnHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn message_chunks_from_separate_bursts_get_a_paragraph_break() {
+        // Captured from a live Grok ACP turn: each burst ends on a full stop
+        // with no trailing space, and the next one opens a new sentence.
+        let mut text = String::new();
+        append_message_chunk(&mut text, "I'll start with a todo list.");
+        append_message_chunk(
+            &mut text,
+            "The three files are missing, so I'll create them.",
+        );
+        append_message_chunk(&mut text, "Done.");
+        assert_eq!(
+            text,
+            "I'll start with a todo list.\n\nThe three files are missing, so I'll create them.\n\nDone."
+        );
+    }
+
+    #[test]
+    fn a_chunk_that_continues_the_sentence_joins_without_a_break() {
+        let mut text = String::new();
+        append_message_chunk(&mut text, "I'll read");
+        append_message_chunk(&mut text, " the docs");
+        // Lowercase after a full stop is Grok resuming a clause, not a burst.
+        append_message_chunk(&mut text, " and then write.");
+        append_message_chunk(&mut text, "then verify.");
+        assert_eq!(text, "I'll read the docs and then write.then verify.");
+    }
 
     #[test]
     fn grok_effort_caps_argmax_levels_at_the_native_maximum() {

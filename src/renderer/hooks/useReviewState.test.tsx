@@ -34,6 +34,8 @@ function makeWorkspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSumm
     iconColor: null,
     prCreatedAt: null,
     prMergedAt: null,
+    prCheckState: null,
+    prActivityAt: null,
     ...overrides
   };
 }
@@ -249,7 +251,14 @@ describe("useReviewState — IPC fan-out resistance", () => {
       value: {
         review: {
           listChangedFiles,
-          loadDiff: vi.fn().mockResolvedValue(null)
+          loadDiff: vi.fn().mockResolvedValue(null),
+          stageFile: vi.fn().mockResolvedValue(undefined),
+          unstageFile: vi.fn().mockResolvedValue(undefined),
+          revertFile: vi.fn().mockResolvedValue(undefined),
+          stageHunk: vi.fn().mockResolvedValue(undefined),
+          unstageHunk: vi.fn().mockResolvedValue(undefined),
+          revertHunk: vi.fn().mockResolvedValue(undefined),
+          commitStaged: vi.fn().mockResolvedValue(undefined)
         },
         workspace: {
           listFiles: listWorkspaceFiles,
@@ -333,9 +342,9 @@ describe("useReviewState — IPC fan-out resistance", () => {
 
   it("expands the first changed file when the Changes panel opens", async () => {
     listChangedFiles.mockResolvedValue([
-      { path: "src/a.ts", status: "M", additions: 1, deletions: 0 },
-      { path: "src/b.ts", status: "M", additions: 2, deletions: 0 }
-    ]);
+      { path: "src/a.ts", status: "M", additions: 1, deletions: 0 , staged: false },
+{ path: "src/b.ts", status: "M", additions: 2, deletions: 0 , staged: false },
+]);
     const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
 
     await waitFor(() => expect(result.current.files).toHaveLength(2));
@@ -350,8 +359,8 @@ describe("useReviewState — IPC fan-out resistance", () => {
 
   it("loads both Changes and Files data when both views are visible and Files is active", async () => {
     listChangedFiles.mockResolvedValue([
-      { path: "src/a.ts", status: "M", additions: 1, deletions: 0 }
-    ]);
+      { path: "src/a.ts", status: "M", additions: 1, deletions: 0 , staged: false },
+]);
     const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
     await waitFor(() => expect(result.current.files).toHaveLength(1));
 
@@ -388,9 +397,9 @@ describe("useReviewState — IPC fan-out resistance", () => {
 
   it("offers Last turn only with a transcript, and narrows the branch list to it", async () => {
     listChangedFiles.mockResolvedValue([
-      { path: "src/a.ts", status: "M", additions: 1, deletions: 0 },
-      { path: "src/b.ts", status: "M", additions: 2, deletions: 0 }
-    ]);
+      { path: "src/a.ts", status: "M", additions: 1, deletions: 0 , staged: false },
+{ path: "src/b.ts", status: "M", additions: 2, deletions: 0 , staged: false },
+]);
 
     const withoutTranscript = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
     expect(withoutTranscript.result.current.availableScopes).not.toContain("lastTurn");
@@ -410,7 +419,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
   });
 
   it("reloads the diff under the new baseline when the scope changes (cache busted)", async () => {
-    listChangedFiles.mockResolvedValue([{ path: "src/a.ts", status: "M", additions: 1, deletions: 0 }]);
+    listChangedFiles.mockResolvedValue([{ path: "src/a.ts", status: "M", additions: 1, deletions: 0, staged: false }]);
     const loadDiff = window.argmax!.review.loadDiff as ReturnType<typeof vi.fn>;
     loadDiff.mockResolvedValue({ workspaceId: "workspace-1", filePath: "src/a.ts", content: "diff" });
 
@@ -435,7 +444,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
   });
 
   it("climbs the context ladder and never serves the narrower cached diff", async () => {
-    listChangedFiles.mockResolvedValue([{ path: "src/a.ts", status: "M", additions: 1, deletions: 0 }]);
+    listChangedFiles.mockResolvedValue([{ path: "src/a.ts", status: "M", additions: 1, deletions: 0, staged: false }]);
     const loadDiff = window.argmax!.review.loadDiff as ReturnType<typeof vi.fn>;
     loadDiff.mockResolvedValue({ workspaceId: "workspace-1", filePath: "src/a.ts", content: "diff" });
 
@@ -473,9 +482,9 @@ describe("useReviewState — IPC fan-out resistance", () => {
 
   it("drops back to the default context when a different file is opened", async () => {
     listChangedFiles.mockResolvedValue([
-      { path: "src/a.ts", status: "M", additions: 1, deletions: 0 },
-      { path: "src/b.ts", status: "M", additions: 1, deletions: 0 }
-    ]);
+      { path: "src/a.ts", status: "M", additions: 1, deletions: 0 , staged: false },
+{ path: "src/b.ts", status: "M", additions: 1, deletions: 0 , staged: false },
+]);
     const loadDiff = window.argmax!.review.loadDiff as ReturnType<typeof vi.fn>;
     loadDiff.mockResolvedValue({ workspaceId: "workspace-1", filePath: "src/a.ts", content: "diff" });
 

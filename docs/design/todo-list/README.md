@@ -34,11 +34,13 @@ fixing one does not fix the others:
 | Codex | `adapters.rs:177` **and** `normalizer/codex.rs:354` | Two blockers, upstream first: `codex exec` does not expose `update_plan` at all unless launched with `-c tools.update_plan.enabled=true`, so Codex emits nothing to drop. With the flag on it emits `todo_list` as `item.started` + `item.updated`; those are then dropped by the normalizer, which has a test pinning the behaviour (`codex_todo_list_item_does_not_become_command_event`). |
 | OpenCode / Grok / Cursor | — | The payloads *are* persisted, and then `todowrite` is hidden too. Cursor's `updateTodosToolCall` survives as an unlabelled "other" row. |
 
-There is also an independent bug the same investigation turned up: `todo_write`
-matches the edit-bucket regex at `toolCalls.ts:264`
-(`/write|edit|create|patch|replace|…/`), so Grok's todo bookkeeping counts as
-file edits and inflates the "Edited files" headline. Grok has 69 such rows in
-the local database. That is worth fixing whatever is decided here.
+There is also an independent bug the same investigation turned up: only
+`todowrite` was in `HIDDEN_TOOL_NAMES`, so Grok's `todo_write` — with the
+underscore — stayed visible, and it matches the edit-bucket regex at
+`toolCalls.ts:264` (`/write|edit|create|patch|replace|…/`). A turn whose only
+"edit" was todo bookkeeping therefore read *"Edited a file"*. The `+N −N` stat
+was never affected: `interpretFileChange` returns null for these payloads, so
+only the rolled-up headline was wrong. Grok has 69 such rows locally.
 
 Claude Code headless is also not the interactive CLI: `TodoWrite` is absent from
 the init `tools` array even with `--allowedTools TodoWrite`. Any implementation
@@ -115,7 +117,7 @@ plus two live `codex exec` probes on CLI 0.153.4.
 | Provider | Tool | Shape | Item text | Statuses | Stable id |
 | --- | --- | --- | --- | --- | --- |
 | Claude | `TaskCreate` / `TaskUpdate` | delta, one task per call | `subject` on create only | `pending` `in_progress` `completed` `deleted` | only inside the result string |
-| Codex | `update_plan` → `todo_list` | full snapshot, `item.started` + `item.updated` | `text` | `completed: bool` — no active state | yes (`item_1`) |
+| Codex | `update_plan` → app-server `turn/plan/updated` | full snapshot | `step` | `pending` `inProgress` `completed` | yes (`turnId`) |
 | OpenCode | `todowrite` | full snapshot every call | `content` | `pending` `in_progress` `completed` | none |
 | Grok | `todo_write` | `merge:false` snapshot, `merge:true` delta | snapshots only — 33 of 69 calls carry none | `pending` `in_progress` `completed` | yes |
 | Cursor | four different names | mixed | mixed | `TODO_STATUS_*` or plain | mixed |
@@ -125,15 +127,16 @@ The consequences for A, in order of how much work they are:
 1. **A is fed by a reducer, not by a payload.** Three of five providers send
    deltas, so the card is per-session state folded from the event stream, not a
    projection of one tool call. That is the single structural decision.
-2. **Codex needs a launch flag.** `adapters.rs:177` builds `codex exec --json`;
-   without `-c tools.update_plan.enabled=true` the model is told the tool does
-   not exist ("The requested `update_plan` tool is not available in this
-   session"), which is the real reason nothing has been persisted since
-   2026-07-01. With the flag on, Codex emits a clean full snapshot per update.
-3. **Codex has no active state.** The exec JSON flattens the plan to
-   `{text, completed}`. Codex's own system prompt requires exactly one
-   `in_progress` item and forbids jumping pending → completed, so the active row
-   is the first incomplete item. Derived, and sound — but derived.
+2. **Codex needs a launch flag**, on the app-server rather than on `exec`.
+   `runtime.rs:289` routes every Codex turn through `codex_app_server`, so the
+   `exec` argv is not the live path; both now carry
+   `-c tools.update_plan.enabled=true`. Without it the model is told the tool
+   does not exist, which is the real reason nothing had been persisted since
+   2026-07-01.
+3. **Codex's active state is not derived after all.** The `exec` projection
+   flattens the plan to `{text, completed}`, but the app-server's
+   `turn/plan/updated` names the running step. Only the `exec` path falls back
+   to "first incomplete".
 4. **Grok and Cursor need id → text memory.** Their merge deltas carry a status
    and an id and no text. Lose the earlier snapshot and the row has no label,
    which is the `Task 7` case in `edge-dark.png`.
@@ -153,11 +156,11 @@ The consequences for A, in order of how much work they are:
 
 ## Decision
 
-**Open** — this page exists to make the call, and nothing has been implemented.
-
-The recommendation is **A · Checklist, expanded while the turn runs and
-collapsed to one line when it ends** — which is D's headline as A's resting
-state rather than a fifth variant.
+**A · Checklist, expanded while the turn runs and collapsed to one line when it
+ends** — D's headline as A's resting state rather than a fifth variant. Chosen
+2026-09-08 and shipped as `TodoCard.tsx` + `todo-card.css`; the architecture is
+in [docs/plan/todo-list-surface.md](../../plan/todo-list-surface.md) and the
+provider matrix in [docs/chat-cards.md](../../chat-cards.md).
 
 The case, from the captures: in `mid-dark.png` A is the only candidate that
 reads as the agent talking rather than as a panel; C's slab is a 300px document

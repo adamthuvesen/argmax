@@ -27,7 +27,9 @@ const workspaceBase: WorkspaceSummary = {
   icon: null,
   iconColor: null,
   prCreatedAt: null,
-  prMergedAt: null
+  prMergedAt: null,
+  prCheckState: null,
+  prActivityAt: null
 };
 
 const detectedIdes = [
@@ -645,7 +647,7 @@ describe("SidebarSessionRow", () => {
       <SidebarSessionRow
         {...props}
         workspace={{ ...workspaceBase, state: "complete" }}
-        priorityAttention="blocked"
+        priorityReason="blocked"
       />
     );
     expect(

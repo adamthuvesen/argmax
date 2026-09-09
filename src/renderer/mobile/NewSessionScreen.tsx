@@ -1,4 +1,4 @@
-import { ArrowUp, ChevronsUpDown, Folder, GitBranch, Paperclip, X } from "lucide-react";
+import { ChevronsUpDown, Folder, GitBranch, Paperclip, Play, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import { PROVIDER_TITLE_MODEL } from "../../shared/providerModels.js";
 import {
@@ -21,7 +21,6 @@ import {
   imageAttachmentReference,
   SUPPORTED_IMAGE_MIME_TYPES
 } from "../lib/composerAttachments.js";
-import { setViewportMeasurementPaused } from "./useVisualViewportInsets.js";
 import { clearDraft, launcherDraftKey } from "../lib/composerDrafts.js";
 import { persistLaunchModel, readStoredLaunchModel } from "../lib/launchModelPreference.js";
 import {
@@ -246,18 +245,6 @@ export function NewSessionScreen({
     persist: !launching
   });
 
-  useEffect(() => {
-    const input = attachmentInputRef.current;
-    if (!input) return;
-    const onCancel = (): void => setViewportMeasurementPaused(false);
-    input.addEventListener("cancel", onCancel);
-    return () => {
-      input.removeEventListener("cancel", onCancel);
-      // Leaving the screen with the picker open must not strand the hold.
-      setViewportMeasurementPaused(false);
-    };
-  }, [attachmentInputRef]);
-
   // Same default as the desktop launcher: seeded model if present, then
   // the stored global preference, then the factory pick (Claude Opus 5).
   const [model, setModel] = useState<ModelPickerSelection>(
@@ -422,10 +409,7 @@ export function NewSessionScreen({
             hidden
             aria-hidden="true"
             tabIndex={-1}
-            onChange={(event) => {
-              setViewportMeasurementPaused(false);
-              onAttachmentInputChange(event);
-            }}
+            onChange={onAttachmentInputChange}
           />
           <PendingAttachments
             attachments={pendingAttachments}
@@ -437,7 +421,9 @@ export function NewSessionScreen({
             ref={promptRef}
             className="mobile-new-prompt"
             aria-label="Task"
-            placeholder={sideChat ? SIDE_CHAT_PLACEHOLDER : "What are we building?"}
+            /* Not LAUNCHER_TITLE: the hero above already asks that, and the
+               same sentence twice on one screen reads as a rendering bug. */
+            placeholder={sideChat ? SIDE_CHAT_PLACEHOLDER : "Describe the task"}
             value={prompt}
             rows={1}
             // The screen opens from a deliberate "+" tap, so raising the
@@ -447,28 +433,6 @@ export function NewSessionScreen({
             onPaste={onComposerPaste}
           />
           <div className="mobile-new-composer-toolbar">
-            <button
-              type="button"
-              className="mobile-new-attach"
-              aria-label="Attach file or screenshot"
-              title="Attach file or screenshot"
-              onClick={() => {
-                // iOS anchors its menu at the tap, then dismisses the keyboard.
-                // Hold the viewport measurement so the shell keeps the height
-                // it had under the keyboard; pinning this screen's own height
-                // instead left it short inside a shell that had already grown
-                // back, which is where the blank strip came from.
-                setViewportMeasurementPaused(true);
-                openFilePicker();
-              }}
-            >
-              <Paperclip size={17} aria-hidden="true" />
-              {pendingAttachments.length > 0 ? (
-                <span className="mobile-new-attach-count" aria-hidden="true">
-                  {pendingAttachments.length}
-                </span>
-              ) : null}
-            </button>
             <LaunchModelSelector
               ariaLabel="Chat model"
               open={openSheet === "model"}
@@ -483,12 +447,26 @@ export function NewSessionScreen({
               }}
             />
             <button
+              type="button"
+              className="mobile-new-attach"
+              aria-label="Attach file or screenshot"
+              title="Attach file or screenshot"
+              onClick={openFilePicker}
+            >
+              <Paperclip size={17} aria-hidden="true" />
+              {pendingAttachments.length > 0 ? (
+                <span className="mobile-new-attach-count" aria-hidden="true">
+                  {pendingAttachments.length}
+                </span>
+              ) : null}
+            </button>
+            <button
               type="submit"
-              className="mobile-new-send"
+              className="session-send-button mobile-new-send"
               aria-label="Start chat"
               disabled={launching || prompt.trim().length === 0}
             >
-              <ArrowUp size={18} aria-hidden="true" />
+              <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" />
             </button>
           </div>
           {status ? (

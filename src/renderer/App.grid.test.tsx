@@ -80,7 +80,9 @@ describe("App grid", () => {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -157,7 +159,9 @@ describe("App grid", () => {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -242,7 +246,9 @@ describe("App grid", () => {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -579,7 +585,9 @@ describe("App grid", () => {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -1364,7 +1372,9 @@ describe("App grid", () => {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     };
     const newSession: DashboardSnapshot["sessions"][number] = {
       id: "session-new",
@@ -1492,7 +1502,9 @@ describe("App grid", () => {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     };
     const thirdWorkspace: DashboardSnapshot["workspaces"][number] = {
       id: "workspace-3",
@@ -1515,7 +1527,9 @@ describe("App grid", () => {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -1605,7 +1619,9 @@ describe("App grid", () => {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -1699,7 +1715,9 @@ describe("App grid", () => {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -1778,7 +1796,9 @@ describe("App grid", () => {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     };
     const thirdWorkspace: DashboardSnapshot["workspaces"][number] = {
       id: "workspace-3",
@@ -1801,7 +1821,9 @@ describe("App grid", () => {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -1901,7 +1923,9 @@ describe("App grid", () => {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -1986,7 +2010,9 @@ describe("App grid", () => {
       icon: null,
       iconColor: null,
       prCreatedAt: null,
-      prMergedAt: null
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",

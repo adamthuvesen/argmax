@@ -11,7 +11,10 @@ use tokio::{sync::Semaphore, task::JoinSet};
 
 use crate::{
     error::{ArgmaxError, ArgmaxResult},
-    git::exec::{reject_leading_dash, run_git_text, run_git_text_with_allowed_exit_codes},
+    git::{
+        exec::{reject_leading_dash, run_git_text, run_git_text_with_allowed_exit_codes},
+        ops::checkout_write_lock,
+    },
     persistence::database::Database,
     persistence::projects::require_project,
     persistence::workspaces::{find_workspace_by_id, WorkspaceSummary},
@@ -122,6 +125,10 @@ pub struct ChangedFileSummary {
     pub status: String,
     pub additions: usize,
     pub deletions: usize,
+    /// True when the index differs from HEAD for this path. A file can be
+    /// both staged and unstaged, in which case unstage is still the safe first
+    /// review action because it never overwrites the worktree.
+    pub staged: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub old_path: Option<String>,
 }
@@ -132,6 +139,10 @@ pub struct WorkspaceDiff {
     pub workspace_id: String,
     pub file_path: Option<String>,
     pub content: String,
+    /// Stable server-generated identity for the exact, uncapped diff shown to
+    /// the reviewer. Mutations must present this value so a stale screen
+    /// cannot operate on a later edit in a shared checkout.
+    pub revision: String,
 }
 
 pub async fn list_changed_files(
@@ -396,6 +407,7 @@ pub async fn load_diff_at_path(
 ) -> ArgmaxResult<WorkspaceDiff> {
     let repo_path = validate_repo_path(repo_path.as_ref())?;
     let comparison = resolve_comparison(&repo_path, baseline).await?;
+    let revision_before = review_revision_at_path(&repo_path).await?;
     let diff_workspace_id = diff_workspace_id.into();
     let content = match file_path {
         Some(path) => {
@@ -439,9 +451,7 @@ pub async fn load_diff_at_path(
                 }
                 None => {
                     let mut args = vec!["diff".to_owned()];
-                    if let Some(context) = context_lines {
-                        args.push(format!("-U{context}"));
-                    }
+                    args.push(format!("-U{}", context_lines.unwrap_or(3)));
                     args.push(comparison.diff_base.clone());
                     args.push("--".to_owned());
                     args.push(path.to_owned());
@@ -462,11 +472,391 @@ pub async fn load_diff_at_path(
         }
     };
 
+    let revision = review_revision_at_path(&repo_path).await?;
+    if revision != revision_before {
+        return Err(ArgmaxError::service(
+            "REVIEW_STALE_REVISION",
+            "The checkout changed while loading this diff. Refresh before acting on it.",
+        ));
+    }
     Ok(WorkspaceDiff {
         workspace_id: diff_workspace_id,
         file_path: file_path.map(ToOwned::to_owned),
         content,
+        revision,
     })
+}
+
+/// A deterministic, dependency-free FNV-1a fingerprint. This is an optimistic
+/// concurrency token, not a security primitive: it identifies the generated
+/// review payload and is always checked while the checkout write lock is held.
+pub fn review_diff_revision(content: &str) -> String {
+    let mut hash = 0xcbf29ce484222325_u64;
+    for byte in content.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("r{hash:016x}")
+}
+
+async fn review_revision_at_path(repo_path: &Path) -> ArgmaxResult<String> {
+    let head = run_git_text(repo_path, ["rev-parse", "HEAD"], GIT_TIMEOUT).await?;
+    let index = run_git_text(repo_path, ["write-tree"], GIT_TIMEOUT).await?;
+    let worktree = crate::git::tree_snapshot::snapshot_visible_worktree(repo_path).await?;
+    Ok(review_diff_revision(&format!(
+        "{head}\0{index}\0{worktree}"
+    )))
+}
+
+/// Apply a file-level index operation after confirming the review payload has
+/// not changed. These operations are deliberately limited to the uncommitted
+/// comparison: branch and committed diffs describe history, not mutable index
+/// state.
+pub async fn update_file_index(
+    database: &Database,
+    kind: WorkspaceTargetKind,
+    id: &str,
+    file_path: &str,
+    revision: &str,
+    stage: bool,
+) -> ArgmaxResult<()> {
+    let repo_path = review_target_path(database, kind, id)?;
+    validate_relative_review_path(&repo_path, file_path)?;
+    let lock = checkout_write_lock(&repo_path).await?;
+    let _guard = lock.lock().await;
+    crate::git::ops::ensure_checkout_idle(database, &repo_path, None)?;
+    ensure_current_review_revision(&repo_path, file_path, revision).await?;
+    if stage {
+        run_git_text(&repo_path, ["add", "--", file_path], GIT_TIMEOUT).await?;
+    } else {
+        let status =
+            run_git_text(&repo_path, ["status", "--porcelain=v1", "-z"], GIT_TIMEOUT).await?;
+        let files = parse_porcelain_z(&status);
+        let old_path = files
+            .iter()
+            .find(|file| file.path == file_path)
+            .and_then(|file| file.old_path.as_deref());
+        let mut args = vec!["restore", "--staged", "--", file_path];
+        if let Some(old_path) = old_path {
+            validate_relative_review_path(&repo_path, old_path)?;
+            args.push(old_path);
+        }
+        run_git_text(&repo_path, args, GIT_TIMEOUT).await?;
+    }
+    Ok(())
+}
+
+/// Reconstruct one selected hunk from the server's current diff, validate it
+/// with git apply, then apply it to the real index. The caller can only name a
+/// hunk number from a revision it received, never provide patch text.
+#[allow(clippy::too_many_arguments)]
+pub async fn update_hunk_index(
+    database: &Database,
+    kind: WorkspaceTargetKind,
+    id: &str,
+    file_path: &str,
+    revision: &str,
+    hunk_index: usize,
+    context_lines: Option<u32>,
+    stage: bool,
+) -> ArgmaxResult<()> {
+    let repo_path = review_target_path(database, kind, id)?;
+    validate_relative_review_path(&repo_path, file_path)?;
+    let lock = checkout_write_lock(&repo_path).await?;
+    let _guard = lock.lock().await;
+    crate::git::ops::ensure_checkout_idle(database, &repo_path, None)?;
+    if review_revision_at_path(&repo_path).await? != revision {
+        return Err(stale_review_error());
+    }
+    let status = run_git_text(
+        &repo_path,
+        ["status", "--porcelain=v1", "-z", "--", file_path],
+        GIT_TIMEOUT,
+    )
+    .await?;
+    if parse_porcelain_z(&status)
+        .iter()
+        .any(|file| file.staged && file.status.len() > 1)
+    {
+        return Err(ArgmaxError::service(
+            "REVIEW_HUNK_UNSUPPORTED",
+            "This file has both staged and unstaged changes. Use file actions to change its staging.",
+        ));
+    }
+    let diff = current_working_tree_file_diff(&repo_path, file_path, context_lines).await?;
+    let patch = extract_hunk_patch(&diff, hunk_index)?;
+    apply_patch_to_index(&repo_path, &patch, !stage).await
+}
+
+fn review_target_path(
+    database: &Database,
+    kind: WorkspaceTargetKind,
+    id: &str,
+) -> ArgmaxResult<PathBuf> {
+    let connection = database.connection();
+    let path = match kind {
+        WorkspaceTargetKind::Workspace => find_workspace_by_id(&connection, id)?.path,
+        WorkspaceTargetKind::Project => require_project(&connection, id)?.repo_path,
+    };
+    validate_repo_path(Path::new(&path))
+}
+
+async fn ensure_current_review_revision(
+    repo_path: &Path,
+    _file_path: &str,
+    revision: &str,
+) -> ArgmaxResult<()> {
+    if review_revision_at_path(repo_path).await? == revision {
+        Ok(())
+    } else {
+        Err(stale_review_error())
+    }
+}
+
+async fn current_working_tree_file_diff(
+    repo_path: &Path,
+    file_path: &str,
+    context_lines: Option<u32>,
+) -> ArgmaxResult<String> {
+    let porcelain = run_git_text(
+        repo_path,
+        ["status", "--porcelain=v1", "-z", "--", file_path],
+        GIT_TIMEOUT,
+    )
+    .await?;
+    if parse_porcelain_z(&porcelain)
+        .iter()
+        .any(|file| file.status == "??")
+    {
+        return Err(ArgmaxError::service(
+            "REVIEW_HUNK_UNSUPPORTED",
+            "Use Stage file for untracked files. Hunk actions require a tracked text file.",
+        ));
+    }
+    Ok(cap_diff(
+        run_git_text(
+            repo_path,
+            [
+                "diff",
+                &format!("-U{}", context_lines.unwrap_or(3)),
+                "HEAD",
+                "--",
+                file_path,
+            ],
+            GIT_TIMEOUT,
+        )
+        .await?,
+    ))
+}
+
+/// Discard only the unstaged version of a tracked file. A recovery checkpoint
+/// is captured by the IPC layer before this function is called. `git restore`
+/// deliberately leaves the index alone, preserving unrelated or partially
+/// staged work in the shared checkout.
+pub async fn revert_unstaged_file(
+    database: &Database,
+    workspace_id: &str,
+    file_path: &str,
+    revision: &str,
+) -> ArgmaxResult<()> {
+    let workspace = {
+        let connection = database.connection();
+        find_workspace_by_id(&connection, workspace_id)?
+    };
+    let repo_path = validate_repo_path(Path::new(&workspace.path))?;
+    validate_relative_review_path(&repo_path, file_path)?;
+    let lock = checkout_write_lock(&repo_path).await?;
+    let _guard = lock.lock().await;
+    crate::git::ops::ensure_checkout_idle(database, &repo_path, None)?;
+    ensure_current_review_revision(&repo_path, file_path, revision).await?;
+    let porcelain = run_git_text(
+        &repo_path,
+        ["status", "--porcelain=v1", "-z", "--", file_path],
+        GIT_TIMEOUT,
+    )
+    .await?;
+    if parse_porcelain_z(&porcelain)
+        .iter()
+        .any(|file| file.status == "??")
+    {
+        return Err(ArgmaxError::service(
+            "REVIEW_REVERT_UNTRACKED_UNSUPPORTED",
+            "Untracked files cannot be reverted from Review. Remove them from Files after saving a checkpoint.",
+        ));
+    }
+    run_git_text(
+        &repo_path,
+        ["restore", "--worktree", "--", file_path],
+        GIT_TIMEOUT,
+    )
+    .await?;
+    Ok(())
+}
+
+pub async fn revert_unstaged_hunk(
+    database: &Database,
+    workspace_id: &str,
+    file_path: &str,
+    revision: &str,
+    hunk_index: usize,
+    context_lines: Option<u32>,
+) -> ArgmaxResult<()> {
+    let workspace = {
+        let connection = database.connection();
+        find_workspace_by_id(&connection, workspace_id)?
+    };
+    let repo_path = validate_repo_path(Path::new(&workspace.path))?;
+    validate_relative_review_path(&repo_path, file_path)?;
+    let lock = checkout_write_lock(&repo_path).await?;
+    let _guard = lock.lock().await;
+    crate::git::ops::ensure_checkout_idle(database, &repo_path, None)?;
+    ensure_current_review_revision(&repo_path, file_path, revision).await?;
+    let displayed = current_working_tree_file_diff(&repo_path, file_path, context_lines).await?;
+    let selected_patch = extract_hunk_patch(&displayed, hunk_index)?;
+    let unstaged = run_git_text(
+        &repo_path,
+        [
+            "diff",
+            &format!("-U{}", context_lines.unwrap_or(3)),
+            "--",
+            file_path,
+        ],
+        GIT_TIMEOUT,
+    )
+    .await?;
+    let patch = matching_hunk_patch(&unstaged, &selected_patch)?;
+    apply_patch_to_worktree(&repo_path, &patch).await
+}
+
+fn matching_hunk_patch(unstaged_diff: &str, selected_patch: &str) -> ArgmaxResult<String> {
+    let selected_hunk = selected_patch
+        .split_once("@@ ")
+        .and_then(|(_, body)| body.split_once('+').map(|(_, lines)| lines))
+        .ok_or_else(|| {
+            ArgmaxError::service(
+                "REVIEW_HUNK_UNAVAILABLE",
+                "This hunk is no longer available.",
+            )
+        })?;
+    let mut index = 0;
+    while let Ok(candidate) = extract_hunk_patch(unstaged_diff, index) {
+        if candidate
+            .split_once("@@ ")
+            .and_then(|(_, body)| body.split_once('+').map(|(_, lines)| lines))
+            == Some(selected_hunk)
+        {
+            return Ok(candidate);
+        }
+        index += 1;
+    }
+    Err(ArgmaxError::service(
+        "REVIEW_HUNK_UNSTAGED_UNAVAILABLE",
+        "This hunk is staged or changed. Refresh the diff before reverting it.",
+    ))
+}
+
+fn stale_review_error() -> ArgmaxError {
+    ArgmaxError::service(
+        "REVIEW_STALE_REVISION",
+        "This diff changed before the action ran. Refresh it and try again.",
+    )
+}
+
+fn extract_hunk_patch(diff: &str, hunk_index: usize) -> ArgmaxResult<String> {
+    let mut preamble = Vec::new();
+    let mut hunks: Vec<Vec<&str>> = Vec::new();
+    let mut active: Option<Vec<&str>> = None;
+    for line in diff.lines() {
+        if line.starts_with("@@ ") {
+            if let Some(hunk) = active.take() {
+                hunks.push(hunk);
+            }
+            active = Some(vec![line]);
+        } else if let Some(hunk) = active.as_mut() {
+            hunk.push(line);
+        } else {
+            preamble.push(line);
+        }
+    }
+    if let Some(hunk) = active {
+        hunks.push(hunk);
+    }
+    let hunk = hunks.get(hunk_index).ok_or_else(|| {
+        ArgmaxError::service(
+            "REVIEW_HUNK_UNAVAILABLE",
+            "This hunk is no longer available.",
+        )
+    })?;
+    if preamble
+        .iter()
+        .any(|line| line.starts_with("Binary files ") || line.starts_with("similarity index"))
+    {
+        return Err(ArgmaxError::service(
+            "REVIEW_HUNK_UNSUPPORTED",
+            "Hunk actions are unavailable for binary files and renames.",
+        ));
+    }
+    let mut patch = preamble.join("\n");
+    patch.push('\n');
+    patch.push_str(&hunk.join("\n"));
+    patch.push('\n');
+    Ok(patch)
+}
+
+async fn apply_patch_to_index(repo_path: &Path, patch: &str, reverse: bool) -> ArgmaxResult<()> {
+    let patch_file = tempfile::NamedTempFile::new().map_err(|error| {
+        ArgmaxError::service(
+            "REVIEW_PATCH_TEMPFILE",
+            format!("could not create patch file: {error}"),
+        )
+    })?;
+    std::fs::write(patch_file.path(), patch).map_err(|error| {
+        ArgmaxError::service(
+            "REVIEW_PATCH_WRITE",
+            format!("could not write patch: {error}"),
+        )
+    })?;
+    let patch_path = patch_file.path().to_string_lossy().to_string();
+    let mut args = vec!["apply", "--cached", "--check"];
+    if reverse {
+        args.push("--reverse");
+    }
+    args.push("--");
+    args.push(&patch_path);
+    run_git_text(repo_path, &args, GIT_TIMEOUT).await?;
+    args[2] = "";
+    args.retain(|arg| !arg.is_empty());
+    run_git_text(repo_path, &args, GIT_TIMEOUT).await?;
+    Ok(())
+}
+
+async fn apply_patch_to_worktree(repo_path: &Path, patch: &str) -> ArgmaxResult<()> {
+    let patch_file = tempfile::NamedTempFile::new().map_err(|error| {
+        ArgmaxError::service(
+            "REVIEW_PATCH_TEMPFILE",
+            format!("could not create patch file: {error}"),
+        )
+    })?;
+    std::fs::write(patch_file.path(), patch).map_err(|error| {
+        ArgmaxError::service(
+            "REVIEW_PATCH_WRITE",
+            format!("could not write patch: {error}"),
+        )
+    })?;
+    let patch_path = patch_file.path().to_string_lossy().to_string();
+    run_git_text(
+        repo_path,
+        ["apply", "--check", "--reverse", "--", &patch_path],
+        GIT_TIMEOUT,
+    )
+    .await?;
+    run_git_text(
+        repo_path,
+        ["apply", "--reverse", "--", &patch_path],
+        GIT_TIMEOUT,
+    )
+    .await?;
+    Ok(())
 }
 
 /// Gather the changed-file list for a comparison.
@@ -686,9 +1076,7 @@ async fn load_file_diff(
         synthesize_untracked_diff(repo_path, &file.path).await?
     } else {
         let mut args = vec!["diff".to_owned()];
-        if let Some(context) = context_lines {
-            args.push(format!("-U{context}"));
-        }
+        args.push(format!("-U{}", context_lines.unwrap_or(3)));
         args.push(diff_base.to_owned());
         args.push("--".to_owned());
         // Pass both sides of a rename/copy so git renders one rename diff
@@ -736,6 +1124,11 @@ fn parse_porcelain_z(value: &str) -> Vec<ChangedFileSummary> {
             },
             additions: 0,
             deletions: 0,
+            staged: code
+                .as_bytes()
+                .first()
+                .copied()
+                .is_some_and(|value| value != b' ' && value != b'?'),
             old_path,
         });
         index += 1;
@@ -768,6 +1161,7 @@ fn parse_name_status_z(value: &str) -> Vec<ChangedFileSummary> {
                     status: code.to_string(),
                     additions: 0,
                     deletions: 0,
+                    staged: false,
                     old_path,
                 });
             }
@@ -778,6 +1172,7 @@ fn parse_name_status_z(value: &str) -> Vec<ChangedFileSummary> {
                 status: status_token.trim().to_owned(),
                 additions: 0,
                 deletions: 0,
+                staged: false,
                 old_path: None,
             });
         }

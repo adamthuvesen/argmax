@@ -1051,6 +1051,109 @@ async fn ask_raw(socket: String, token: String, action: serde_json::Value) -> St
     .expect("client task")
 }
 
+#[tokio::test]
+async fn session_rename_updates_the_callers_sidebar_label() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo.path().display().to_string(),
+        &[(
+            "session-agent",
+            "Long auto label from the opening prompt",
+            SessionState::Running,
+        )],
+    );
+    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
+    let providers = ProviderSessionService::with_launcher(
+        Arc::clone(&database),
+        Arc::new(RecordingLauncher::default()),
+        |_| {},
+    );
+    let (server, registry) =
+        SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
+    let (socket, token) = credential(&registry, repo.path(), "session-agent");
+    let _server = server
+        .start(
+            None,
+            Arc::clone(&database),
+            Arc::clone(&workspaces),
+            Arc::clone(&providers),
+        )
+        .expect("start control socket");
+
+    let response = ask_raw(
+        socket,
+        token,
+        json!({ "rename": { "taskLabel": "Ship the fix" } }),
+    )
+    .await;
+    let response: serde_json::Value = serde_json::from_str(&response).expect("response json");
+    assert_eq!(response["renamed"]["sessionId"], "session-agent");
+    assert_eq!(
+        response["renamed"]["workspaceId"],
+        "workspace-session-agent"
+    );
+    assert_eq!(response["renamed"]["taskLabel"], "Ship the fix");
+    assert_eq!(
+        response["renamed"]["previousTaskLabel"],
+        "Long auto label from the opening prompt"
+    );
+
+    let connection = database.connection();
+    let workspace =
+        find_workspace_by_id(&connection, "workspace-session-agent").expect("workspace");
+    assert_eq!(workspace.task_label, "Ship the fix");
+    let task_label_auto: i64 = connection
+        .query_row(
+            "SELECT task_label_auto FROM workspaces WHERE id = 'workspace-session-agent'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("task_label_auto");
+    assert_eq!(
+        task_label_auto, 0,
+        "a manual rename stops autotitle overwriting"
+    );
+}
+
+#[tokio::test]
+async fn session_rename_truncates_overlong_labels() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo.path().display().to_string(),
+        &[("session-agent", "Parent", SessionState::Running)],
+    );
+    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
+    let providers = ProviderSessionService::with_launcher(
+        Arc::clone(&database),
+        Arc::new(RecordingLauncher::default()),
+        |_| {},
+    );
+    let (server, registry) =
+        SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
+    let (socket, token) = credential(&registry, repo.path(), "session-agent");
+    let _server = server
+        .start(
+            None,
+            Arc::clone(&database),
+            Arc::clone(&workspaces),
+            Arc::clone(&providers),
+        )
+        .expect("start control socket");
+
+    let long = "å".repeat(80);
+    let response = ask_raw(socket, token, json!({ "rename": { "taskLabel": long } })).await;
+    let response: serde_json::Value = serde_json::from_str(&response).expect("response json");
+    let landed = response["renamed"]["taskLabel"]
+        .as_str()
+        .expect("task label");
+    assert!(landed.ends_with("..."));
+    assert!(landed.chars().count() <= 64);
+}
+
 /// The client refuses a reply over the ceiling it read with, and the rows in a
 /// refused reply have already been marked delivered — so a hand-over that
 /// ignored the ceiling would destroy exactly the messages it was carrying. Big

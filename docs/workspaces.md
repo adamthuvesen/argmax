@@ -7,7 +7,7 @@ Rust manages workspace lifecycle, file operations, and git integration under `sr
 [src-tauri/src/workspaces](../src-tauri/src/workspaces) handles workspace creation, status polling, pinning, archiving, and IDE launching.
 
 ### Lifecycle & Watchers
-- **Filesystem watchers:** Watchers are keyed by canonical checkout path so multiple sessions sharing a checkout share one watch. Events are debounced at 200 ms with a 1-second max interval. Changes inside `.git/objects`, `.git/lfs`, `.git/fsmonitor--daemon`, and `*.lock` are ignored.
+- **Filesystem watchers:** Watchers are keyed by canonical checkout path so multiple sessions sharing a checkout share one watch. Linked worktrees also watch their external Git metadata directory, so branch and index changes update the card and composer even when no working files change. Events are debounced at 200 ms with a 1-second max interval. Changes inside `.git/objects`, `.git/lfs`, `.git/fsmonitor--daemon`, and `*.lock` are ignored.
 - **Workspace modes:** The launcher offers two modes (stored in `localStorage.argmax.workspaceMode`):
   - `current`: Shared checkout (`create_current`).
   - `worktree`: Isolated worktree (`create_isolated`), branched as `argmax/<slug>-<short-id>`.
@@ -29,6 +29,12 @@ Rust manages workspace lifecycle, file operations, and git integration under `sr
 
 Exactly one destination is required. `--project` moves to another registered project. `--path` moves to another checkout of the *same* project — any directory `git worktree list` reports for its repository, including the main one. That is the supported answer to "this work belongs in a different worktree"; running `cd` inside a tool call only moves the agent's shell, leaving the workspace, its diff, and its commit and pull-request actions pointed at the checkout the session started in, and the next turn relaunches back there.
 
+Every provider's launch instructions and the MCP server instructions require
+`session_move` with `path` and a continuation `prompt` when continuing in another
+checkout. The agent then ends its turn so the handoff can run. Command `workdir`
+and `git -C` overrides also leave the chat's checkout unchanged. Branch switches
+within the same checkout use Git normally and flow through the status watcher.
+
 A `--path` destination is validated against the project's own `git worktree list`, so an arbitrary directory is refused rather than attached. It is always recorded as a shared checkout (`shared_workspace = 1`): Argmax did not create that worktree, so archiving the workspace must never delete it. A detached HEAD is refused too — a workspace records the branch it sits on.
 
 The prompt is required because a move relocates work in progress: it starts the destination chat's first turn there, so the chat carries on in the new checkout instead of waiting for a person. The destination keeps the source's launch lineage, so whoever dispatched the chat still hears when it finishes and the launch caps still count it. A chat that has arrived somewhere by moving more than three times stops continuing on its own and says so. See [agent-tools.md](agent-tools.md).
@@ -41,7 +47,7 @@ A cross-project move always leaves the provider conversation id empty. A `--path
 
 ## Scratch Workspaces
 
-`workspaces:create-scratch` initializes temporary workspaces in `local-state/side-chats/` with an empty git repository to support providers that require a git root. The launcher selects this path through Chat on the Auto / Plan / Chat mode chip (Tab), which attaches no project.
+`workspaces:create-scratch` initializes temporary workspaces in `local-state/side-chats/` with an empty git repository to support providers that require a git root. The launcher selects this path through Chat on the mode chip (Tab cycles Auto / Plan / Chat), which attaches no project.
 
 `workspaces.kind` supports three kinds (migration v15):
 - `git`: Standard repo checkouts (shared or isolated).
@@ -50,12 +56,23 @@ A cross-project move always leaves the provider conversation id empty. A `--path
 
 ## Sidebar Priority Section
 
-Workspaces with active attention (`approval-needed`, `blocked`, `failed`, or `review-ready`) and workspaces with a live turn share the Priority section beneath Pinned.
+Workspaces holding at least one live **reason**, and workspaces with a live turn, share the Priority section beneath Pinned. A reason is one claim on the reader with its own answer to "what makes this go away", which is what keeps the section from being a feed of everything that finished recently.
 
-- Calculated client-side in [src/renderer/lib/priority.ts](../src/renderer/lib/priority.ts). Entries remain while working and for 30 minutes after the last message (`PRIORITY_IDLE_MS`).
-- Order: working rows first (sorted by last message descending), followed by non-working rows (attention and manual adds) sorted by last message in descending order.
+| Reason | Raised by | Cleared by |
+| --- | --- | --- |
+| `approval-needed` | a pending approval | the decision |
+| `question-asked` | an unanswered `AskUserQuestion` / `ExitPlanMode` (see [chat-cards.md](chat-cards.md)) | answering it |
+| `blocked` | session `blocked` / `waiting` | 30 minutes of silence |
+| `failed` | session `failed` | 30 minutes of silence |
+| `ci-red` | the attributed PR's check rollup at `failure` ([gh.md](gh.md)) | checks going green, or the PR closing |
+| `review-ready` | a completed turn **whose reply is still unread** | opening the chat, or 30 minutes of silence |
+| `pr-open` | the attributed PR at `OPEN` | the PR merging or closing |
+
+- Calculated client-side in [src/renderer/lib/priority.ts](../src/renderer/lib/priority.ts). Only the reasons a clock can resolve carry `PRIORITY_IDLE_MS` (30 minutes from the last message); an approval, a question, a red check and an open PR are all still true half an hour later, so they wait for the event that ends them. A row leaves once *every* reason holding it has lapsed.
+- Reading is asymmetric: opening a chat resolves `review-ready` and nothing else. Unread state is this device's own (`localStorage`, see [sessionUnread.ts](../src/renderer/lib/sessionUnread.ts)), so the phone and the desktop disagree about what has been read.
+- Order: working rows first, then by the strength of the strongest reason (the table above is that order), then by last message descending. The row's accessible title names that strongest reason.
 - Pinned status takes precedence over Priority.
-- Right-click "Done" (`workspaces:set-priority-dismissed`) clears a priority item until new attention arrives. Manual adds (`workspaces:set-priority-added`) persist until cleared. A row that is only listed because its turn is running has no "Done" — it leaves when the turn ends — and the header's Clear skips it.
+- Right-click "Done" (`workspaces:set-priority-dismissed`) clears every reason that was already true, and nothing that happens afterwards: a PR going red after a dismissal brings the row back, because `ci-red` is newer than the dismissal. Each reason carries its own `since` for that comparison — a session reason uses `attention_changed_at`, a PR reason the poller's `pr_activity_at`. Manual adds (`workspaces:set-priority-added`) persist until cleared. A row that is only listed because its turn is running has no "Done" — it leaves when the turn ends — and the header's Clear skips it.
 - The "Priority section in sidebar" setting hides the whole section, running rows included; they fall back to their date bucket or project group.
 
 ## Custom Row Icons
@@ -86,6 +103,45 @@ Layouts live in `argmax.reviewPanel.layout.<sessionId>`. The launcher uses one s
 | Last turn | `branch` (client-filtered) | File-writing tool calls in the most recent turn |
 
 Base ref resolution checks `workspace.base_ref`, then `origin/<default>`, then local `<default>`.
+
+### Review actions
+
+The Uncommitted comparison offers file and hunk staging, unstaging, and reverting.
+Every mutation carries the displayed revision. Rust reconstructs the patch and
+checks HEAD, index, and working-tree state under the canonical checkout lock.
+An obsolete revision fails with a refresh instruction. Actions are refused while
+an active session or Goal owns the same checkout. Untracked files can be staged
+as whole files. Their preview hunks and rename hunks are not actionable. Files with both staged
+and unstaged edits use whole-file index actions because their combined preview
+does not represent one index patch.
+
+Reverting restores unstaged changes and saves a recovery checkpoint first.
+Untracked file deletion remains a Files action. **Commit staged** commits the
+existing index, including partial staging. It requires a commit message.
+
+### Revert to a turn
+
+Every provider turn in a Git workspace is preceded by an automatic checkpoint,
+recorded against the id of the user message it answers. That anchor is what puts
+**Revert** in a finished turn's footer, beside Copy and Fork: the turn finds its
+own checkpoint instead of the user picking from a list of identically named
+rows. There is no checkpoint panel and nothing to name — checkpoints are
+plumbing, and the turn is the thing you point at.
+
+Each checkpoint pins the index and visible working tree as Git trees, including
+non-ignored untracked files. Reverting previews the affected paths first and
+binds the restore to the current HEAD, branch, index, and worktree. It requires
+idle sessions on the same checkout and matching HEAD and branch, saves a
+recovery checkpoint, journals the operation, and restores the index and files,
+so the revert is itself undoable. Interrupted restores remain recoverable
+through that checkpoint. Unresolved merges and submodules are unsupported.
+
+**Revert restores files, not the conversation.** No provider CLI can resume from
+an earlier message — each takes one opaque conversation id and continues from
+its end — so rewinding the transcript would be a promise the backend cannot
+keep. The conversation stays as the record of what was tried, and Fork is the
+escape hatch for a clean continuation. Settings → Agents → Conversation turns
+the action off.
 
 ### Diff Notes
 

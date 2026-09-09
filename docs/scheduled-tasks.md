@@ -33,5 +33,5 @@ is stored in the same conditional settlement.
 
 - **Missed runs:** If the app was closed during scheduled run times, backlog collapses into a single run.
 - **Failures:** Recurring tasks back off by 15 minutes on launch failure. One-shot tasks are disabled with `last_error` recorded.
-- **Permissions:** New scheduled chats use Settings → Agents → Tool permissions. Provider defaults honors native configuration, and native approval requests wait in the chat. Follow-ups retain the existing chat’s stored permission choice.
+- **Permissions:** New scheduled chats use their provider’s choice in Settings → Agents → Permissions. Provider defaults honors native configuration, and native approval requests wait in the chat. Follow-ups retain the existing chat’s stored permission choice.
 - **Targeting:** Each task picks where a run lands — a fresh chat in the shared checkout (`new_session`), a follow-up in the same chat every time (`same_session`, tracked by `last_session_id`), or a fresh isolated worktree (`worktree`, the default). Same-chat tasks send follow-ups via `ProvidersSendInput`; if the chat is gone, the next run starts fresh and re-points the routine. Use `routines:reset-session` (or **Fresh chat next run** in the panel) to drop the pointer deliberately.

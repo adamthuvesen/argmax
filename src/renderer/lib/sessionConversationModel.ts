@@ -438,11 +438,25 @@ function correlateToolEvents(events: readonly TimelineEvent[]): StartedTool[] {
   return started;
 }
 
+export function latestSessionEndAt(events: readonly TimelineEvent[]): string {
+  let endedAt = "";
+  for (const event of events) {
+    const decoded = decodeTimelineEvent(event);
+    if (decoded.kind === "lifecycle" && !decoded.isRaw && !decoded.parentToolUseId &&
+      (decoded.name === "completed" || decoded.name === "cancelled" || decoded.name === "recovered-from-crash") &&
+      event.createdAt > endedAt) {
+      endedAt = event.createdAt;
+    }
+  }
+  return endedAt;
+}
+
 export function buildSessionToolCalls(
   events: readonly TimelineEvent[],
   sessionRunning = true,
   sessionInterrupted = false
 ): ToolCall[] {
+  const sessionEndAt = latestSessionEndAt(events);
   const nativeRunMetadata = new Map<string, Record<string, unknown>>();
   const nativeRunLifecycle = new Map<string, { phase: "started" | "completed"; createdAt: string; rowCursor?: number; status: string | null }>();
   for (const event of events) {
@@ -571,9 +585,13 @@ export function buildSessionToolCalls(
         status === "done" &&
         sessionRunning &&
         isStillRunningAgentLaunch(name, input, output, completion);
+      // An exit ends unfinished native work even when the provider exits cleanly.
+      // Use the persisted boundary so resuming the parent cannot revive old runs.
+      const nativeRunEnded = nativeLifecycle?.phase === "started" &&
+        sessionEndAt >= nativeLifecycle.createdAt;
       const renderedStatus: ToolCall["status"] = nativeLifecycle
         ? nativeLifecycle.phase === "started"
-          ? sessionInterrupted ? "error" : "running"
+          ? sessionInterrupted || nativeRunEnded ? "error" : "running"
           : nativeLifecycle.status === "completed" || nativeLifecycle.status === "success"
             ? "done"
             : "error"
@@ -596,6 +614,8 @@ export function buildSessionToolCalls(
         // of a stale, ever-climbing timer.
         completedAt: renderedStatus === "running"
           ? null
+          : nativeRunEnded
+            ? sessionEndAt
           : nativeLifecycle?.phase === "completed"
             ? nativeLifecycle.createdAt
           : completion
@@ -603,7 +623,9 @@ export function buildSessionToolCalls(
             : status === "done"
               ? event.createdAt
               : null,
-        error: completion && isError ? extractToolError(completion.payload) : null,
+        error: nativeRunEnded
+          ? "Session ended before the agent reported completion."
+          : completion && isError ? extractToolError(completion.payload) : null,
         backgroundLaunch: isBackgroundLaunch,
         parentToolUseId,
         providerChildSessionId: canonicalStart.providerChildSessionId

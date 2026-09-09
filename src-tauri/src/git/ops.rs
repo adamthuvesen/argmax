@@ -222,6 +222,64 @@ impl GitOpsService {
         })
     }
 
+    /// Commit exactly the real index. Review actions deliberately stage only
+    /// selected files or hunks, so this must never run `git add -A`.
+    pub async fn commit_staged(&self, input: GitCommitInput) -> ArgmaxResult<GitCommitResult> {
+        let workspace = {
+            let conn = self.database.connection();
+            find_workspace_by_id(&conn, &input.workspace_id)?
+        };
+        if workspace.path.is_empty() {
+            return Err(ArgmaxError::service(
+                "WORKSPACE_NO_PATH",
+                "Workspace has no path on disk yet.",
+            ));
+        }
+        let message = input.message.trim();
+        if message.is_empty() {
+            return Err(ArgmaxError::service(
+                "GIT_COMMIT_MESSAGE_EMPTY",
+                "Commit message cannot be empty.",
+            ));
+        }
+        if message.starts_with('-') {
+            return Err(ArgmaxError::service(
+                "GIT_COMMIT_MESSAGE_LEADING_DASH",
+                "Commit message cannot start with '-'",
+            ));
+        }
+        let checkout_lock = checkout_write_lock(Path::new(&workspace.path)).await?;
+        let _checkout_guard = checkout_lock.lock().await;
+        ensure_checkout_idle(&self.database, Path::new(&workspace.path), None)?;
+        let before_head = git_head(&workspace.path).await.ok();
+        let output = run_git_text(&workspace.path, ["commit", "-m", message], GIT_TIMEOUT).await?;
+        let sha = match git_head(&workspace.path).await {
+            Ok(sha) => sha,
+            Err(_) => extract_commit_sha(&output).unwrap_or_else(|| "unknown".to_owned()),
+        };
+        if before_head.as_deref() == Some(sha.as_str()) {
+            return Err(ArgmaxError::service(
+                "GIT_COMMIT_HEAD_UNCHANGED",
+                "Git completed the commit command without advancing HEAD.",
+            ));
+        }
+        let branch = run_git_text(&workspace.path, ["branch", "--show-current"], GIT_TIMEOUT)
+            .await
+            .unwrap_or_else(|_| workspace.branch.clone())
+            .trim()
+            .to_owned();
+        Ok(GitCommitResult {
+            commit_sha: sha,
+            branch: if branch.is_empty() {
+                workspace.branch
+            } else {
+                branch
+            },
+            index_cleanup_warning: None,
+            post_commit_warning: None,
+        })
+    }
+
     pub async fn push(&self, input: GitPushInput) -> ArgmaxResult<GitPushResult> {
         let workspace = {
             let conn = self.database.connection();
@@ -462,6 +520,29 @@ impl GitOpsService {
     }
 }
 
+pub(crate) fn ensure_checkout_idle(
+    database: &Database,
+    checkout: &Path,
+    allowed_session: Option<&str>,
+) -> ArgmaxResult<()> {
+    let canonical = std::fs::canonicalize(checkout)
+        .map_err(|error| ArgmaxError::service("GIT_WORKSPACE_PATH_INVALID", error.to_string()))?;
+    let connection = database.read_connection();
+    let mut statement = connection.prepare_cached(
+        "SELECT w.path FROM sessions s JOIN workspaces w ON w.id=s.workspace_id WHERE s.state IN ('running','waiting','blocked') AND (?1 IS NULL OR s.id != ?1) UNION SELECT w.path FROM goals g JOIN workspaces w ON w.id=g.workspace_id WHERE g.state='active' AND (?1 IS NULL OR g.session_id != ?1)"
+    ).map_err(crate::persistence::sqlite_error)?;
+    let paths = statement
+        .query_map([allowed_session], |row| row.get::<_, String>(0))
+        .map_err(crate::persistence::sqlite_error)?;
+    for path in paths {
+        let path = path.map_err(crate::persistence::sqlite_error)?;
+        if std::fs::canonicalize(path).ok().as_ref() == Some(&canonical) {
+            return Err(ArgmaxError::service("CHECKPOINT_ACTIVE_WRITERS", "Pause every active session and Goal using this checkout before modifying files or the index."));
+        }
+    }
+    Ok(())
+}
+
 async fn commit_selected_files(
     workspace_path: &Path,
     selected: &[&str],
@@ -518,7 +599,12 @@ async fn git_head(workspace_path: &str) -> ArgmaxResult<String> {
     )
 }
 
-async fn checkout_write_lock(workspace_path: &Path) -> ArgmaxResult<Arc<tokio::sync::Mutex<()>>> {
+/// Serialize index and working-tree writes for a canonical checkout. This is
+/// shared by review and rewind operations because distinct workspace rows may
+/// point at the same checkout.
+pub(crate) async fn checkout_write_lock(
+    workspace_path: &Path,
+) -> ArgmaxResult<Arc<tokio::sync::Mutex<()>>> {
     let canonical_path = tokio::fs::canonicalize(workspace_path)
         .await
         .map_err(|error| {

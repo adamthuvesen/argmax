@@ -484,9 +484,11 @@ export function Sidebar({
 
   // Side chats live in their own bottom section and are conversational by
   // nature — they never escalate into the Priority triage list.
-  // The section ages rows out 30 minutes after their last message, so it has
-  // to move without a delta to prompt it. Rather than poll a clock, arm one
-  // timer for the exact moment the next listed row crosses that line.
+  // An unread reply ages out 30 minutes after it lands, so the section has to
+  // move without a delta to prompt it. Rather than poll a clock, arm one timer
+  // for the exact moment the next listed row crosses that line. Rows held by
+  // an approval, a question, or a pull request have no such line and never
+  // arm it — they leave when the thing that raised them is dealt with.
   const [priorityNow, setPriorityNow] = useState(() => Date.now());
   const priorityEntries = useMemo(
     () =>
@@ -494,10 +496,11 @@ export function Sidebar({
         ? computePriorityEntries(
             sidebarWorkspaces.filter((workspace) => workspace.kind === "git"),
             snapshot.sessions,
-            priorityNow
+            priorityNow,
+            unreadWorkspaces
           )
         : [],
-    [showPriority, sidebarWorkspaces, snapshot.sessions, priorityNow]
+    [showPriority, sidebarWorkspaces, snapshot.sessions, priorityNow, unreadWorkspaces]
   );
 
   const nextPriorityIdle = nextPriorityIdleAt(priorityEntries);
@@ -1236,7 +1239,7 @@ export function Sidebar({
                       ? onRemoveFromPriority
                       : undefined
                   }
-                  priorityAttention={entry.attention ?? undefined}
+                  priorityReason={entry.reason ?? undefined}
                   onWorkspaceDragStart={beginWorkspaceDrag}
                   onWorkspaceDragEnd={endWorkspaceDrag}
                   detectedIdes={detectedIdes}

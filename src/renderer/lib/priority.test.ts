@@ -22,6 +22,8 @@ const workspace = (id: string, overrides: Partial<WorkspaceSummary> = {}): Works
   prNumber: null,
   prCreatedAt: null,
   prMergedAt: null,
+  prCheckState: null,
+  prActivityAt: null,
   icon: null,
   iconColor: null,
   ...overrides
@@ -311,5 +313,126 @@ describe("computePriorityEntries", () => {
       NOW
     );
     expect(entries).toEqual([]);
+  });
+});
+
+describe("priority reasons", () => {
+  const OPEN_PR = {
+    prState: "OPEN" as const,
+    prNumber: 412,
+    prActivityAt: "2026-05-12T09:00:00.000Z"
+  };
+  // Long past the idle window, so nothing but the PR can be holding the row.
+  const QUIET = { lastActivityAt: "2026-05-10T09:00:00.000Z" };
+
+  it("keeps a workspace with an open pull request even after its chat goes quiet", () => {
+    const entries = computePriorityEntries(
+      [workspace("w-pr", { ...QUIET, ...OPEN_PR })],
+      [session("w-pr", "review-ready", QUIET)],
+      NOW
+    );
+    expect(entries.map((entry) => entry.reason)).toEqual(["pr-open"]);
+    // Nothing about it is on a clock: it leaves when the PR does.
+    expect(entries[0]?.idleAt).toBeNull();
+    expect(nextPriorityIdleAt(entries)).toBeNull();
+  });
+
+  it("says the checks are failing when they are, and ranks that above the PR itself", () => {
+    const entries = computePriorityEntries(
+      [workspace("w-red", { ...QUIET, ...OPEN_PR, prCheckState: "failure" })],
+      [session("w-red", "review-ready", QUIET)],
+      NOW
+    );
+    expect(entries[0]?.reason).toBe("ci-red");
+    expect(entries[0]?.reasons.map((reason) => reason.kind)).toEqual(["ci-red", "pr-open"]);
+    // A PR reason is not something a session row can wear.
+    expect(entries[0]?.attention).toBeNull();
+  });
+
+  it("leaves a merged pull request alone", () => {
+    const entries = computePriorityEntries(
+      [workspace("w-merged", { ...QUIET, ...OPEN_PR, prState: "MERGED" })],
+      [session("w-merged", "review-ready", QUIET)],
+      NOW
+    );
+    expect(entries).toEqual([]);
+  });
+
+  it("holds an unanswered question past the idle window", () => {
+    const entries = computePriorityEntries(
+      [workspace("w-asked", QUIET)],
+      [session("w-asked", "question-asked", QUIET)],
+      NOW
+    );
+    expect(entries.map((entry) => entry.reason)).toEqual(["question-asked"]);
+    expect(entries[0]?.idleAt).toBeNull();
+  });
+
+  it("drops a review-ready row the reader has already opened, and keeps every other reason", () => {
+    const read = new Set<string>();
+    const entries = computePriorityEntries(
+      [workspace("w-read"), workspace("w-asked"), workspace("w-pr", OPEN_PR)],
+      [
+        session("w-read", "review-ready"),
+        session("w-asked", "question-asked"),
+        session("w-pr", "review-ready")
+      ],
+      NOW,
+      read
+    );
+    // Reading resolves "there is a reply you have not seen" and nothing else.
+    expect(entries.map((entry) => entry.workspace.id)).toEqual(["w-asked", "w-pr"]);
+  });
+
+  it("still lists a review-ready row while its reply is unread", () => {
+    const entries = computePriorityEntries(
+      [workspace("w-unread")],
+      [session("w-unread", "review-ready")],
+      NOW,
+      new Set(["w-unread"])
+    );
+    expect(entries.map((entry) => entry.reason)).toEqual(["review-ready"]);
+    // This one *is* on a clock — it is the only reason silence resolves.
+    expect(entries[0]?.idleAt).not.toBeNull();
+  });
+
+  it("spends a dismissal on what was true when it was made, not on what happens next", () => {
+    const dismissedAt = "2026-05-12T10:00:00.000Z";
+    const stale = computePriorityEntries(
+      [workspace("w-pr", { ...QUIET, ...OPEN_PR, priorityDismissedAt: dismissedAt })],
+      [session("w-pr", "review-ready", QUIET)],
+      NOW
+    );
+    expect(stale).toEqual([]);
+
+    // The poller sees the PR again after the dismissal: the row comes back.
+    const revived = computePriorityEntries(
+      [
+        workspace("w-pr", {
+          ...QUIET,
+          ...OPEN_PR,
+          prActivityAt: "2026-05-12T11:00:00.000Z",
+          priorityDismissedAt: dismissedAt
+        })
+      ],
+      [session("w-pr", "review-ready", QUIET)],
+      NOW
+    );
+    expect(revived.map((entry) => entry.reason)).toEqual(["pr-open"]);
+  });
+
+  it("ranks a stronger reason above a newer one", () => {
+    const entries = computePriorityEntries(
+      [
+        workspace("w-pr", { lastActivityAt: "2026-05-12T17:59:00.000Z", ...OPEN_PR }),
+        workspace("w-approval", { lastActivityAt: "2026-05-12T17:30:00.000Z" })
+      ],
+      [
+        session("w-pr", "normal", { lastActivityAt: "2026-05-12T17:59:00.000Z" }),
+        session("w-approval", "approval-needed", { lastActivityAt: "2026-05-12T17:30:00.000Z" })
+      ],
+      NOW
+    );
+    expect(entries.map((entry) => entry.workspace.id)).toEqual(["w-approval", "w-pr"]);
   });
 });

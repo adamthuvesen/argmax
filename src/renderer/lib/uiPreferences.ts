@@ -16,6 +16,14 @@ export const RANDOM_SESSION_ICON_KEY = "argmax.sessionIcon.random.enabled";
 export const DESKTOP_NOTIFICATIONS_KEY = "argmax.desktopNotifications.enabled";
 export const KEEP_AWAKE_KEY = "argmax.keepAwake.enabled";
 export const BROWSER_PAGE_OPEN_KEY = "argmax.browser.pageOpen";
+export const GOAL_ENABLED_KEY = "argmax.goal.enabled";
+export const TURN_REVERT_ENABLED_KEY = "argmax.turnRevert.enabled";
+export const GOAL_MAX_TURNS_KEY = "argmax.goal.maxTurns";
+
+/** Turn budget a goal may spend before it stops and hands back. */
+export const GOAL_MAX_TURNS_MIN = 5;
+export const GOAL_MAX_TURNS_MAX = 50;
+export const GOAL_MAX_TURNS_DEFAULT = 20;
 
 export const PrMilestoneCelebrationContext = createContext(false);
 
@@ -61,6 +69,24 @@ export function useBooleanUiPreference(key: string, fallback: boolean): [boolean
       writeBooleanPreference(key, next);
     },
     [key]
+  );
+  return [value, setPreference];
+}
+
+/** Bounded integer UI preference with mirrored localStorage persistence. */
+export function useBoundedNumberPreference(
+  key: string,
+  bounds: { min: number; max: number; fallback: number }
+): [number, (value: number) => void] {
+  const [value, setValue] = useState(() => readBoundedNumberPreference(key, bounds));
+  const { min, max } = bounds;
+  const setPreference = useCallback(
+    (next: number) => {
+      const clamped = Math.max(min, Math.min(max, Math.round(next)));
+      setValue(clamped);
+      if (typeof window !== "undefined") window.localStorage.setItem(key, String(clamped));
+    },
+    [key, max, min]
   );
   return [value, setPreference];
 }

@@ -294,6 +294,7 @@ impl ProviderProcessLauncher for FakeLauncher {
 struct GatedLauncher {
     handle: Arc<FakeHandle>,
     release: Arc<tokio::sync::Notify>,
+    started: Option<Arc<tokio::sync::Notify>>,
 }
 
 impl ProviderProcessLauncher for GatedLauncher {
@@ -304,7 +305,11 @@ impl ProviderProcessLauncher for GatedLauncher {
     ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
         let handle = self.handle.clone() as Arc<dyn ProviderRuntimeHandle>;
         let release = Arc::clone(&self.release);
+        let started = self.started.clone();
         Box::pin(async move {
+            if let Some(started) = started {
+                started.notify_one();
+            }
             release.notified().await;
             Ok(handle)
         })
@@ -421,8 +426,10 @@ async fn wait_for_resolved(service: &ProviderSessionService, session_id: &str) {
 const PROJECT_ID: &str = "p-test";
 const WORKSPACE_ID: &str = "w-test";
 
-fn seed_project_and_workspace(db: &Database) {
-    seed_project_and_workspace_at(db, "/tmp/repo");
+fn seed_project_and_workspace(db: &Database) -> tempfile::TempDir {
+    let workspace = tempfile::tempdir().expect("create workspace checkout");
+    seed_project_and_workspace_at(db, &workspace.path().to_string_lossy());
+    workspace
 }
 
 fn seed_project_and_workspace_at(db: &Database, workspace_path: &str) {
@@ -432,7 +439,7 @@ fn seed_project_and_workspace_at(db: &Database, workspace_path: &str) {
         &PersistProjectInput {
             id: PROJECT_ID.to_owned(),
             name: "argmax-test".to_owned(),
-            repo_path: "/tmp/repo".to_owned(),
+            repo_path: workspace_path.to_owned(),
             current_branch: "main".to_owned(),
             default_branch: Some("main".to_owned()),
             settings: ProjectSettings {
@@ -608,7 +615,7 @@ async fn wait_for_event(database: &Database, session_id: &str, event_type: &str,
 #[tokio::test]
 async fn launch_persists_session_and_seeds_timeline() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let handle = FakeHandle::new(true);
     let service = ProviderSessionService::with_launcher(
         database.clone(),
@@ -648,7 +655,7 @@ async fn launch_persists_session_and_seeds_timeline() {
 #[tokio::test]
 async fn fake_cli_streams_normalized_events_to_db_and_dashboard_delta() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let deltas = Arc::new(Mutex::new(Vec::<DashboardDelta>::new()));
     let launcher = Arc::new(FakeCliLauncher::default());
     let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), {
@@ -734,7 +741,7 @@ async fn fake_cli_streams_normalized_events_to_db_and_dashboard_delta() {
 #[tokio::test]
 async fn cursor_follow_up_infers_missing_resume_id_from_raw_output() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let launcher = Arc::new(FakeCliLauncher::default());
     let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
 
@@ -807,7 +814,7 @@ async fn cursor_follow_up_infers_missing_resume_id_from_raw_output() {
 #[tokio::test]
 async fn cursor_follow_up_after_clear_does_not_resume_pre_clear_id() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let launcher = Arc::new(FakeCliLauncher::default());
     let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
 
@@ -880,7 +887,7 @@ async fn cursor_follow_up_after_clear_does_not_resume_pre_clear_id() {
 #[tokio::test]
 async fn provider_switch_relaunches_new_provider_fresh() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let launcher = Arc::new(FakeCliLauncher::default());
     let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
 
@@ -982,7 +989,7 @@ async fn provider_switch_relaunches_new_provider_fresh() {
 async fn completed_session_follow_up_launch_without_native_resume_includes_visible_transcript_context(
 ) {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let launcher = Arc::new(FakeCliLauncher::default());
     let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
 
@@ -1077,7 +1084,7 @@ async fn completed_session_follow_up_launch_without_native_resume_includes_visib
 #[tokio::test]
 async fn completed_session_follow_up_launch_with_native_resume_sends_message_alone() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let launcher = Arc::new(FakeCliLauncher::default());
     let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
 
@@ -1159,7 +1166,7 @@ async fn completed_session_follow_up_launch_with_native_resume_sends_message_alo
 #[tokio::test]
 async fn send_input_routes_to_handle_when_accepting() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let handle = FakeHandle::new(true);
     let service = ProviderSessionService::with_launcher(
         database.clone(),
@@ -1201,7 +1208,7 @@ async fn send_input_routes_to_handle_when_accepting() {
 #[tokio::test]
 async fn send_input_queues_when_handle_rejecting() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let handle = FakeHandle::new(false);
     let service = ProviderSessionService::with_launcher(
         database.clone(),
@@ -1242,7 +1249,7 @@ async fn send_input_queues_when_handle_rejecting() {
 #[tokio::test]
 async fn send_queued_message_now_interrupts_without_dropping_the_rest_of_the_queue() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let deltas = Arc::new(Mutex::new(Vec::<DashboardDelta>::new()));
     let handle = FakeHandle::new(false);
     let service = ProviderSessionService::with_launcher(
@@ -1330,7 +1337,7 @@ async fn send_queued_message_now_interrupts_without_dropping_the_rest_of_the_que
 #[tokio::test]
 async fn queued_follow_up_drains_after_provider_thread_completion() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let launcher = Arc::new(ManualExitLauncher::default());
     let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
 
@@ -1421,7 +1428,7 @@ async fn queued_follow_up_drains_after_provider_thread_completion() {
 #[tokio::test]
 async fn a_queued_message_is_marked_delivered_once_the_drain_sends_it() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let launcher = Arc::new(ManualExitLauncher::default());
     let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
 
@@ -1503,7 +1510,7 @@ async fn a_queued_message_is_marked_delivered_once_the_drain_sends_it() {
 #[tokio::test]
 async fn a_failed_turn_pauses_the_queue_and_preserves_the_inbox() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let launcher = Arc::new(ManualExitLauncher::default());
     let deltas = Arc::new(Mutex::new(Vec::<DashboardDelta>::new()));
     let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), {
@@ -1593,7 +1600,7 @@ async fn a_failed_turn_pauses_the_queue_and_preserves_the_inbox() {
 #[tokio::test]
 async fn queued_cross_provider_switch_keeps_current_provider_and_model() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let launcher = Arc::new(ManualExitLauncher::default());
     let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
 
@@ -1645,7 +1652,7 @@ async fn queued_cross_provider_switch_keeps_current_provider_and_model() {
 #[tokio::test]
 async fn terminate_disposes_handle_and_cancels_session() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let handle = FakeHandle::new(true);
     let service = ProviderSessionService::with_launcher(
         database.clone(),
@@ -1685,7 +1692,7 @@ async fn terminate_disposes_handle_and_cancels_session() {
 #[tokio::test]
 async fn clear_idle_session_drops_resume_id_and_writes_watermark() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let service = ProviderSessionService::with_launcher(
         database.clone(),
         Arc::new(FakeLauncher::new(FakeHandle::new(true))),
@@ -1751,7 +1758,7 @@ async fn clear_idle_session_drops_resume_id_and_writes_watermark() {
 #[tokio::test]
 async fn clear_running_session_stops_provider() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let handle = FakeHandle::new(true);
     let service = ProviderSessionService::with_launcher(
         database.clone(),
@@ -1786,7 +1793,7 @@ async fn clear_running_session_stops_provider() {
 #[tokio::test]
 async fn terminate_workspace_cancels_a_blocked_live_provider() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let handle = FakeHandle::new(true);
     let release = Arc::new(tokio::sync::Notify::new());
     let service = ProviderSessionService::with_launcher(
@@ -1794,6 +1801,7 @@ async fn terminate_workspace_cancels_a_blocked_live_provider() {
         Arc::new(GatedLauncher {
             handle: handle.clone(),
             release: release.clone(),
+            started: None,
         }),
         |_| {},
     );
@@ -1833,7 +1841,7 @@ async fn terminate_workspace_cancels_a_blocked_live_provider() {
 #[tokio::test]
 async fn send_input_during_spawn_queues_instead_of_relaunching() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let handle = FakeHandle::new(true);
     let release = Arc::new(tokio::sync::Notify::new());
     let service = ProviderSessionService::with_launcher(
@@ -1841,6 +1849,7 @@ async fn send_input_during_spawn_queues_instead_of_relaunching() {
         Arc::new(GatedLauncher {
             handle: handle.clone(),
             release: release.clone(),
+            started: None,
         }),
         |_| {},
     );
@@ -1889,7 +1898,7 @@ async fn send_input_during_spawn_queues_instead_of_relaunching() {
 #[tokio::test]
 async fn send_input_during_exit_teardown_queues_instead_of_relaunching() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let launcher = Arc::new(ManualExitLauncher::default());
     let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
 
@@ -1948,14 +1957,16 @@ async fn send_input_during_exit_teardown_queues_instead_of_relaunching() {
 #[tokio::test]
 async fn terminate_during_spawn_disposes_handle_on_resolve() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let handle = FakeHandle::new(true);
     let release = Arc::new(tokio::sync::Notify::new());
+    let started = Arc::new(tokio::sync::Notify::new());
     let service = ProviderSessionService::with_launcher(
         database.clone(),
         Arc::new(GatedLauncher {
             handle: handle.clone(),
             release: release.clone(),
+            started: Some(Arc::clone(&started)),
         }),
         |_| {},
     );
@@ -1965,6 +1976,7 @@ async fn terminate_during_spawn_disposes_handle_on_resolve() {
         .await
         .expect("launch ok");
     let session_id = session.id.clone();
+    started.notified().await;
 
     // Terminate while still Pending — removes the entry and cancels the session.
     service
@@ -1996,7 +2008,7 @@ async fn terminate_during_spawn_disposes_handle_on_resolve() {
 #[tokio::test]
 async fn terminate_during_follow_up_spawn_disposes_handle_on_resolve() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let handle = FakeHandle::new(true);
     let release = Arc::new(tokio::sync::Notify::new());
     let service = ProviderSessionService::with_launcher(
@@ -2004,6 +2016,7 @@ async fn terminate_during_follow_up_spawn_disposes_handle_on_resolve() {
         Arc::new(GatedLauncher {
             handle: handle.clone(),
             release: release.clone(),
+            started: None,
         }),
         |_| {},
     );
@@ -2103,7 +2116,7 @@ async fn terminate_during_follow_up_spawn_disposes_handle_on_resolve() {
 #[tokio::test]
 async fn follow_up_send_input_returns_before_provider_spawn() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let handle = FakeHandle::new(true);
     let service = ProviderSessionService::with_launcher(
         database.clone(),
@@ -2112,6 +2125,7 @@ async fn follow_up_send_input_returns_before_provider_spawn() {
             // Never released: a regression that awaits spawn fails the
             // timeout below instead of hanging the suite.
             release: Arc::new(tokio::sync::Notify::new()),
+            started: None,
         }),
         |_| {},
     );
@@ -2188,7 +2202,7 @@ async fn follow_up_send_input_returns_before_provider_spawn() {
 #[test]
 fn recover_orphaned_sessions_marks_running_rows_failed() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let connection = database.connection();
     let orphan = persist_session(
         &connection,
@@ -2241,7 +2255,7 @@ fn recover_orphaned_sessions_marks_running_rows_failed() {
 #[test]
 fn recover_orphaned_sessions_tells_the_chat_that_dispatched_a_multitask() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let connection = database.connection();
     let seed = |id: &str, state: SessionState| {
         persist_session(
@@ -2301,7 +2315,7 @@ fn recover_orphaned_sessions_tells_the_chat_that_dispatched_a_multitask() {
 #[test]
 fn recover_orphaned_sessions_marks_waiting_and_blocked_rows_failed() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let workspace = seed_project_and_workspace(&database);
     let connection = database.connection();
     for (session_id, state) in [
         ("orphan-running", SessionState::Running),
@@ -2334,7 +2348,7 @@ fn recover_orphaned_sessions_marks_waiting_and_blocked_rows_failed() {
                 id: format!("approval-{session_id}"),
                 session_id: session_id.to_owned(),
                 command: "git push".to_owned(),
-                cwd: "/tmp/repo".to_owned(),
+                cwd: workspace.path().to_string_lossy().into_owned(),
                 provider: "claude".to_owned(),
                 provider_invocation_id: Some(format!("invocation-{session_id}")),
                 provider_request_id: Some(format!("request-{session_id}")),
@@ -2413,7 +2427,7 @@ fn recover_orphaned_sessions_marks_waiting_and_blocked_rows_failed() {
 #[tokio::test]
 async fn idle_flush_publishes_buffered_line_before_terminate() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let deltas = Arc::new(Mutex::new(Vec::<DashboardDelta>::new()));
     let service =
         ProviderSessionService::with_launcher(database.clone(), Arc::new(StallLineLauncher), {
@@ -2498,7 +2512,7 @@ impl ProviderProcessLauncher for SequenceLauncher {
 #[tokio::test]
 async fn panic_inside_locked_section_does_not_cascade_to_other_sessions() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
-    seed_project_and_workspace(&database);
+    let _workspace = seed_project_and_workspace(&database);
     let armed = Arc::new(AtomicBool::new(false));
     let healthy_handle = FakeHandle::new(true);
     let launcher = Arc::new(SequenceLauncher {

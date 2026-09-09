@@ -14,8 +14,8 @@ use rmcp::{
 use serde::Deserialize;
 
 use crate::session_control::{
-    ArchiveAction, InboxAction, LaunchAction, ListAction, MessageAction, MoveAction, ReadAction,
-    SessionControlAction, StatusAction, StopAction, WaitAction,
+    ArchiveAction, GoalSetAction, InboxAction, LaunchAction, ListAction, MessageAction, MoveAction,
+    ReadAction, RenameAction, SessionControlAction, StatusAction, StopAction, WaitAction,
 };
 
 #[derive(Clone)]
@@ -121,6 +121,26 @@ pub struct InboxReadParams {}
 
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct WorkspaceArchiveParams {}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GoalSetParams {
+    /// The completion condition, in your own words. Write something this
+    /// session's own output can demonstrate — the evaluator reads the
+    /// transcript and cannot run commands or open files itself.
+    pub condition: String,
+    /// Turns to spend before giving up. Defaults to the user's setting.
+    pub max_turns: Option<u32>,
+}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct GoalClearParams {}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SessionRenameParams {
+    /// Sidebar label for this chat. The first line is used, trimmed and capped
+    /// like a launch label. Pass the name once you know what the work is.
+    pub task_label: String,
+}
 
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct SessionWaitParams {
@@ -285,6 +305,41 @@ rather than repeating the whole task. You cannot stop yourself."
     }
 
     #[tool(
+        name = "goal_set",
+        description = "Set the condition this session should keep working toward. After every \
+turn a separate model reads the transcript and judges whether the condition holds; while it does \
+not, you are handed another turn automatically with its reason as guidance, until it holds, it is \
+judged impossible, or the turn budget runs out. Set one when the user describes work with a \
+verifiable end state — a suite that must pass, a migration that must finish, a queue that must \
+empty — rather than a single edit. Write the condition so your own output can demonstrate it: the \
+evaluator has no tools and only sees what you actually showed, so work you claim without evidence \
+does not count. Setting a goal replaces any goal already on this session."
+    )]
+    async fn goal_set(
+        &self,
+        Parameters(params): Parameters<GoalSetParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(SessionControlAction::GoalSet(GoalSetAction {
+            condition: params.condition,
+            max_turns: params.max_turns,
+        }))
+        .await
+    }
+
+    #[tool(
+        name = "goal_clear",
+        description = "Drop this session's goal, so turns stop being handed to you automatically. \
+Use it when the user changes direction, or when you judge the condition no longer worth pursuing. \
+It reports the condition it ended, or that there was none."
+    )]
+    async fn goal_clear(
+        &self,
+        Parameters(_params): Parameters<GoalClearParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(SessionControlAction::GoalClear).await
+    }
+
+    #[tool(
         name = "session_wait",
         description = "Block until a session you are watching finishes or a message arrives for \
 you, then return what happened. With no arguments it watches every session you launched and waits \
@@ -324,6 +379,23 @@ only ends the chat."
         Parameters(_params): Parameters<WorkspaceArchiveParams>,
     ) -> Result<CallToolResult, ErrorData> {
         call(SessionControlAction::Archive(ArchiveAction {})).await
+    }
+
+    #[tool(
+        name = "session_rename",
+        description = "Rename this session's sidebar label once you know what the work is. The \
+row is what the user scans across open chats, so a long opening prompt often makes a poor name. \
+Only this chat can be renamed — to name a child session, pass task_label to session_launch \
+instead. Returns the label that landed and the one it replaced."
+    )]
+    async fn session_rename(
+        &self,
+        Parameters(params): Parameters<SessionRenameParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(SessionControlAction::Rename(RenameAction {
+            task_label: params.task_label,
+        }))
+        .await
     }
 
     #[tool(

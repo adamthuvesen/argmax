@@ -37,6 +37,9 @@ pub enum SessionControlAction {
     Stop(StopAction),
     Inbox(InboxAction),
     Wait(WaitAction),
+    GoalSet(GoalSetAction),
+    GoalClear,
+    Rename(RenameAction),
 }
 
 /// Start a new top-level session. Provider and model default to the calling
@@ -129,6 +132,15 @@ pub struct StopAction {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct InboxAction {}
 
+/// Rename the calling session's sidebar label. There is no target argument:
+/// only this chat's workspace may be renamed, the same way `ArchiveAction`
+/// and `GoalSetAction` are scoped to the caller.
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RenameAction {
+    pub task_label: String,
+}
+
 /// Block until a watched session settles or a message arrives. With no
 /// `sessions`, the watch list is every session this caller has launched.
 #[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
@@ -172,7 +184,34 @@ pub enum SessionControlResult {
     Stopped(SessionStopped),
     Inbox(InboxDelivery),
     Waited(WaitOutcome),
+    Goal(GoalOutcome),
+    Renamed(SessionRenamed),
     Error(SessionControlError),
+}
+
+/// Attach a completion condition to the calling session. The condition is the
+/// whole configuration — see [`crate::goals`].
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GoalSetAction {
+    pub condition: String,
+    #[serde(default)]
+    pub max_turns: Option<u32>,
+}
+
+/// What a goal tool leaves behind. `condition` is absent when a clear found no
+/// goal to end, which is how the caller tells "stopped one" from "there was
+/// none".
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GoalOutcome {
+    pub active: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub goal_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub condition: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_turns: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -209,6 +248,15 @@ pub struct ScheduledArchive {
 pub struct SessionList {
     pub sessions: Vec<SessionListEntry>,
     pub truncated: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionRenamed {
+    pub session_id: String,
+    pub workspace_id: String,
+    pub task_label: String,
+    pub previous_task_label: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -443,6 +491,9 @@ mod tests {
             SessionControlAction::Message(MessageAction {
                 session_id: "s1".to_string(),
                 message: "ping".to_string(),
+            }),
+            SessionControlAction::Rename(RenameAction {
+                task_label: "Ship the fix".to_string(),
             }),
         ] {
             let encoded = serde_json::to_string(&action).expect("encode");

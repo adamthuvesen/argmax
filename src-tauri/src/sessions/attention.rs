@@ -1,10 +1,17 @@
 // Attention is the renderer's "what does this session need from me right
 // now?" pill. The policy is:
-//   - any pending approval → approval-needed
-//   - blocked / waiting    → blocked
-//   - failed               → failed
-//   - complete             → review-ready
-//   - everything else      → normal
+//   - any pending approval  → approval-needed
+//   - an unanswered ask     → question-asked
+//   - blocked / waiting     → blocked
+//   - failed                → failed
+//   - complete              → review-ready
+//   - everything else       → normal
+//
+// `question-asked` sits directly under `approval-needed` because the agent
+// asked for something and then *stopped*: the turn settled, so nothing else
+// will arrive until the person answers. It has to outrank `review-ready`,
+// which every completed turn earns whether or not it wants anything, or the
+// two are indistinguishable on the row.
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -18,6 +25,7 @@ pub enum AttentionState {
     Blocked,
     Failed,
     ReviewReady,
+    QuestionAsked,
     ApprovalNeeded,
 }
 
@@ -28,6 +36,7 @@ impl AttentionState {
             AttentionState::Blocked => "blocked",
             AttentionState::Failed => "failed",
             AttentionState::ReviewReady => "review-ready",
+            AttentionState::QuestionAsked => "question-asked",
             AttentionState::ApprovalNeeded => "approval-needed",
         }
     }
@@ -39,6 +48,7 @@ impl AttentionState {
             "blocked" => Some(AttentionState::Blocked),
             "failed" => Some(AttentionState::Failed),
             "review-ready" => Some(AttentionState::ReviewReady),
+            "question-asked" => Some(AttentionState::QuestionAsked),
             "approval-needed" => Some(AttentionState::ApprovalNeeded),
             _ => None,
         }
@@ -50,11 +60,26 @@ impl AttentionState {
 pub struct SessionAttentionInput {
     pub state: SessionState,
     pub has_pending_approval: bool,
+    /// An interactive ask (AskUserQuestion, ExitPlanMode) newer than the last
+    /// thing the person said — see
+    /// [`crate::persistence::events::has_outstanding_card_ask`].
+    pub has_outstanding_question: bool,
 }
 
 pub fn compute_session_attention(input: SessionAttentionInput) -> AttentionState {
     if input.has_pending_approval {
         return AttentionState::ApprovalNeeded;
+    }
+    // Only once the turn has settled. Mid-turn the ask is on screen with its
+    // own card and the row is already marked as working; `created` has nothing
+    // to have asked yet, and a cancelled turn's question died with it.
+    if input.has_outstanding_question
+        && !matches!(
+            input.state,
+            SessionState::Created | SessionState::Running | SessionState::Cancelled
+        )
+    {
+        return AttentionState::QuestionAsked;
     }
     match input.state {
         SessionState::Blocked | SessionState::Waiting => AttentionState::Blocked,
@@ -75,6 +100,7 @@ mod tests {
         let attention = compute_session_attention(SessionAttentionInput {
             state: SessionState::Complete,
             has_pending_approval: true,
+            has_outstanding_question: false,
         });
         assert_eq!(attention, AttentionState::ApprovalNeeded);
     }
@@ -85,6 +111,7 @@ mod tests {
             compute_session_attention(SessionAttentionInput {
                 state: SessionState::Blocked,
                 has_pending_approval: false,
+                has_outstanding_question: false,
             }),
             AttentionState::Blocked,
         );
@@ -92,6 +119,7 @@ mod tests {
             compute_session_attention(SessionAttentionInput {
                 state: SessionState::Waiting,
                 has_pending_approval: false,
+                has_outstanding_question: false,
             }),
             AttentionState::Blocked,
         );
@@ -102,7 +130,8 @@ mod tests {
         assert_eq!(
             compute_session_attention(SessionAttentionInput {
                 state: SessionState::Failed,
-                has_pending_approval: false
+                has_pending_approval: false,
+                has_outstanding_question: false,
             }),
             AttentionState::Failed,
         );
@@ -110,6 +139,7 @@ mod tests {
             compute_session_attention(SessionAttentionInput {
                 state: SessionState::Complete,
                 has_pending_approval: false,
+                has_outstanding_question: false,
             }),
             AttentionState::ReviewReady,
         );
@@ -117,9 +147,55 @@ mod tests {
             compute_session_attention(SessionAttentionInput {
                 state: SessionState::Running,
                 has_pending_approval: false,
+                has_outstanding_question: false,
             }),
             AttentionState::Normal,
         );
+    }
+
+    #[test]
+    fn an_unanswered_question_ranks_under_an_approval_and_over_the_rest() {
+        // The approval has the provider parked behind it; the question does
+        // not, so it yields.
+        assert_eq!(
+            compute_session_attention(SessionAttentionInput {
+                state: SessionState::Waiting,
+                has_pending_approval: true,
+                has_outstanding_question: true,
+            }),
+            AttentionState::ApprovalNeeded,
+        );
+        // Otherwise it wins, and in particular it must not read as
+        // review-ready — every completed turn earns that.
+        assert_eq!(
+            compute_session_attention(SessionAttentionInput {
+                state: SessionState::Complete,
+                has_pending_approval: false,
+                has_outstanding_question: true,
+            }),
+            AttentionState::QuestionAsked,
+        );
+    }
+
+    #[test]
+    fn a_question_only_counts_once_the_turn_has_settled() {
+        // Mid-turn the ask is on screen with its own card and the row already
+        // reads as working; a cancelled turn's question died with it.
+        for state in [
+            SessionState::Created,
+            SessionState::Running,
+            SessionState::Cancelled,
+        ] {
+            assert_eq!(
+                compute_session_attention(SessionAttentionInput {
+                    state,
+                    has_pending_approval: false,
+                    has_outstanding_question: true,
+                }),
+                AttentionState::Normal,
+                "{state} should not show a question",
+            );
+        }
     }
 
     #[test]
@@ -129,6 +205,7 @@ mod tests {
             AttentionState::Blocked,
             AttentionState::Failed,
             AttentionState::ReviewReady,
+            AttentionState::QuestionAsked,
             AttentionState::ApprovalNeeded,
         ] {
             assert_eq!(

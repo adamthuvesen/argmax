@@ -139,8 +139,8 @@ describe("ScheduledTasksPanel", () => {
     render(<ScheduledTasksPanel projects={[project()]} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "New task" }));
-    expect(screen.getByText(/use your Tool permissions setting/)).toHaveTextContent(
-      "Scheduled runs use your Tool permissions setting and may wait for approval."
+    expect(screen.getByText(/use the permission setting for their provider/)).toHaveTextContent(
+      "Scheduled runs use the permission setting for their provider and may wait for approval."
     );
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Nightly triage" } });
     fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Triage the board" } });

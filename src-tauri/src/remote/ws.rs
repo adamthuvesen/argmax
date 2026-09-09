@@ -29,7 +29,7 @@ use serde_json::{json, Value};
 use tauri::Manager;
 use tokio::sync::{broadcast, mpsc, OwnedSemaphorePermit, Semaphore};
 
-use super::dispatch::dispatch_with_permission_mode;
+use super::dispatch::dispatch_with_default_agent;
 use super::operations::{self, OperationId};
 use super::server::RemoteBridge;
 use super::RemoteEvent;
@@ -178,11 +178,9 @@ async fn serve_client(socket: WebSocket, bridge: Arc<RemoteBridge>) {
                 tauri::async_runtime::spawn(async move {
                     let _request_slot = request_slot;
                     let state = app.state::<AppState>();
-                    let default_permission_mode = if channel == "providers:launch" {
+                    let default_agent = if channel == "providers:launch" {
                         match crate::util::data_dir::app_data_dir(&app) {
-                            Ok(app_data) => {
-                                crate::default_agent::read_default_agent(&app_data).permission_mode
-                            }
+                            Ok(app_data) => crate::default_agent::read_default_agent(&app_data),
                             Err(error) => {
                                 let error = ArgmaxError::service(
                                     "APP_DATA_DIR",
@@ -193,27 +191,22 @@ async fn serve_client(socket: WebSocket, bridge: Arc<RemoteBridge>) {
                             }
                         }
                     } else {
-                        crate::providers::PermissionMode::default()
+                        crate::default_agent::DefaultAgent::factory()
                     };
                     let result = if operations::is_read(&channel) {
                         Ok(operations::outcome(
-                            dispatch_with_permission_mode(
-                                &state,
-                                &channel,
-                                input,
-                                default_permission_mode,
-                            )
-                            .await,
+                            dispatch_with_default_agent(&state, &channel, input, default_agent)
+                                .await,
                         ))
                     } else if let Some(operation) = operation {
                         match state.db.get() {
                             Some(db) => {
                                 operations::execute(db, &operation, &channel, &input, || {
-                                    dispatch_with_permission_mode(
+                                    dispatch_with_default_agent(
                                         &state,
                                         &channel,
                                         input.clone(),
-                                        default_permission_mode,
+                                        default_agent,
                                     )
                                 })
                                 .await

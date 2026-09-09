@@ -1,0 +1,39 @@
+# Regenerate the Xcode project with `xcodegen` (from this directory). The
+# .xcodeproj is derived and gitignored, so this file is the source of truth for
+# the target, its signing, and its Info.plist.
+name: Argmax
+options:
+  bundleIdPrefix: com.argmax
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+targets:
+  Argmax:
+    type: application
+    platform: iOS
+    sources: [Sources]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.argmax.remote
+        PRODUCT_NAME: Argmax
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIStatusBarStyle: UIStatusBarStyleLightContent
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        TARGETED_DEVICE_FAMILY: "1"
+        # Signing is yours to fill: open the project once and pick your team,
+        # or pass DEVELOPMENT_TEAM=<id> to xcodebuild. A free Apple Account
+        # works — its profile just expires every 7 days.
+        CODE_SIGN_STYLE: Automatic
+    info:
+      path: Sources/Info.plist
+      properties:
+        CFBundleDisplayName: Argmax
+        UILaunchScreen: {}
+        NSAppTransportSecurity:
+          # The bridge serves plain HTTP over the tailnet, and a *.ts.net host
+          # is an ordinary DNS name, so NSAllowsLocalNetworking does not cover
+          # it. Drop this once Tailscale Serve terminates TLS.
+          NSAllowsArbitraryLoads: true

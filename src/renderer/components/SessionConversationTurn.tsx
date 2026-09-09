@@ -37,6 +37,7 @@ import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
 import { ToolCallRow } from "./ToolCallRow.js";
 import { TurnChangesCard } from "./TurnChangesCard.js";
 import { TurnBlock, type TurnBodyChild } from "./TurnBlock.js";
+import { TurnRevert } from "./TurnRevert.js";
 import { StreamingMarkdown } from "./StreamingMarkdown.js";
 import { WebLink } from "./WebLink.js";
 import {
@@ -64,6 +65,9 @@ function SessionConversationTurnInner({
   onOpenReview,
   onTerminateSession,
   onForkSession,
+  revertCheckpointIds,
+  revertCheckpointUnavailable,
+  onReverted,
   onSendSessionInput,
   inputRef,
   shouldRefocusInput,
@@ -92,6 +96,11 @@ function SessionConversationTurnInner({
   onOpenReview?: () => void;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   onForkSession?: (sessionId: string) => Promise<void>;
+  /** Before-turn checkpoint id, keyed by the user-message event it answers. */
+  revertCheckpointIds?: ReadonlyMap<string, string>;
+  /** Why Revert is unavailable, keyed by the same user-message event id. */
+  revertCheckpointUnavailable?: ReadonlyMap<string, string>;
+  onReverted?: () => void;
   onSendSessionInput: SessionConversationSendInput;
   inputRef: MutableRefObject<HTMLTextAreaElement | null>;
   shouldRefocusInput: MutableRefObject<boolean>;
@@ -524,6 +533,30 @@ function SessionConversationTurnInner({
     session.state !== "running" &&
     session.state !== "waiting" &&
     onForkSession !== undefined;
+  // The turn's own id is synthetic; the checkpoint was anchored to the user
+  // message this turn answers, which is the render item just above it.
+  const revertUserMessageId =
+    priorItem?.kind === "user-message" ? priorItem.event.id : undefined;
+  const revertCheckpointId = revertUserMessageId
+    ? revertCheckpointIds?.get(revertUserMessageId)
+    : undefined;
+  const revertUnavailableReason =
+    revertUserMessageId && !revertCheckpointId
+      ? revertCheckpointUnavailable?.get(revertUserMessageId)
+      : undefined;
+  const revert =
+    (revertCheckpointId || revertUnavailableReason) &&
+    workspace &&
+    onReverted &&
+    !isTurnLiveTicking ? (
+      <TurnRevert
+        workspaceId={workspace.id}
+        {...(revertCheckpointId ? { checkpointId: revertCheckpointId } : {})}
+        {...(revertUnavailableReason ? { unavailableReason: revertUnavailableReason } : {})}
+        disabled={session?.state === "running" || session?.state === "waiting"}
+        onReverted={onReverted}
+      />
+    ) : null;
   return (
     <TurnBlock
       key={item.id}
@@ -539,6 +572,7 @@ function SessionConversationTurnInner({
       {...(turnMarkdown ? { turnMarkdown } : {})}
       {...(changesCard ? { changes: changesCard } : {})}
       {...(forkable && session ? { onFork: () => void onForkSession?.(session.id) } : {})}
+      {...(revert ? { revert } : {})}
     />
   );
 }

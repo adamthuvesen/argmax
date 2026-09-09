@@ -16,10 +16,10 @@ use serde_json::Value;
 use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 use crate::ipc::inputs::*;
 use crate::ipc::{
-    approvals, attachments, checks, dashboard, git_ops, health, learnings, projects, providers,
-    prs, review, session, skills, system, terminal, usage, workspace_files, workspaces,
+    approvals, attachments, checkpoints, checks, dashboard, git_ops, goals, health, learnings,
+    projects, providers, prs, review, session, skills, system, terminal, usage, workspace_files,
+    workspaces,
 };
-use crate::providers::PermissionMode;
 use crate::state::AppState;
 
 /// Channels whose handlers need an `AppHandle` (native dialogs, the shell
@@ -71,14 +71,47 @@ pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
 ];
 
 pub async fn dispatch(state: &AppState, channel: &str, input: Value) -> ArgmaxResult<Value> {
-    dispatch_with_permission_mode(state, channel, input, PermissionMode::default()).await
+    dispatch_with_default_agent(
+        state,
+        channel,
+        input,
+        crate::default_agent::DefaultAgent::factory(),
+    )
+    .await
 }
 
-pub async fn dispatch_with_permission_mode(
+pub fn dispatch_with_default_agent<'a>(
+    state: &'a AppState,
+    channel: &'a str,
+    input: Value,
+    default_agent: crate::default_agent::DefaultAgent,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = ArgmaxResult<Value>> + Send + 'a>> {
+    // Select before polling so workflow and general dispatch frames never share
+    // the worker stack. Their combined debug frames exceed the stack budget.
+    if channel.starts_with("goal:")
+        || channel.starts_with("checkpoints:")
+        || matches!(
+            channel,
+            "review:stage-file"
+                | "review:unstage-file"
+                | "review:stage-hunk"
+                | "review:unstage-hunk"
+                | "review:commit-staged"
+                | "review:revert-file"
+                | "review:revert-hunk"
+        )
+    {
+        Box::pin(dispatch_workflow(state, channel, input))
+    } else {
+        Box::pin(dispatch_standard(state, channel, input, default_agent))
+    }
+}
+
+async fn dispatch_standard(
     state: &AppState,
     channel: &str,
     input: Value,
-    default_permission_mode: PermissionMode,
+    default_agent: crate::default_agent::DefaultAgent,
 ) -> ArgmaxResult<Value> {
     if REMOTE_UNSUPPORTED_CHANNELS.contains(&channel) {
         return Err(ArgmaxError::service(
@@ -213,7 +246,7 @@ pub async fn dispatch_with_permission_mode(
         }
         "providers:launch" => {
             let input: ProvidersLaunchInput = parse(channel, input)?;
-            encode(providers::providers_launch_impl(state, input, default_permission_mode).await?)
+            encode(providers::providers_launch_impl(state, input, &default_agent).await?)
         }
         "providers:send-input" => {
             let input: ProvidersSendInput = parse(channel, input)?;
@@ -305,7 +338,6 @@ pub async fn dispatch_with_permission_mode(
             let input: ReviewLoadDiffInput = parse(channel, input)?;
             encode(review::review_load_diff_impl(state, input).await?)
         }
-
         "workspace:list-files" => {
             let input: WorkspaceListFilesInput = parse(channel, input)?;
             encode(workspace_files::workspace_list_files_impl(state, input).await?)
@@ -402,6 +434,73 @@ fn parse<T: DeserializeOwned>(channel: &str, input: Value) -> ArgmaxResult<T> {
             format!("{channel}: {error}"),
         ))
     })
+}
+
+async fn dispatch_workflow(state: &AppState, channel: &str, input: Value) -> ArgmaxResult<Value> {
+    match channel {
+        "review:stage-file" | "review:unstage-file" => {
+            let input: review::ReviewIndexFileInput = parse(channel, input)?;
+            encode(
+                review::review_update_file_index_impl(state, input, channel == "review:stage-file")
+                    .await?,
+            )
+        }
+        "review:stage-hunk" | "review:unstage-hunk" => {
+            let input: review::ReviewIndexHunkInput = parse(channel, input)?;
+            encode(
+                review::review_update_hunk_index_impl(state, input, channel == "review:stage-hunk")
+                    .await?,
+            )
+        }
+        "review:commit-staged" => {
+            encode(review::review_commit_staged_impl(state, parse(channel, input)?).await?)
+        }
+        "review:revert-file" => {
+            encode(review::review_revert_file_impl(state, parse(channel, input)?).await?)
+        }
+        "review:revert-hunk" => {
+            encode(review::review_revert_hunk_impl(state, parse(channel, input)?).await?)
+        }
+        "goal:set" => encode(
+            goals::live_goals(state)?
+                .set(parse(channel, input)?)
+                .await?,
+        ),
+        "goal:list" => {
+            let input: crate::goals::service::GoalListInput = parse(channel, input)?;
+            let service = goals::live_goals(state)?;
+            encode(
+                crate::ipc::read_off_main(move || service.list(input.workspace_id.as_deref()))
+                    .await?,
+            )
+        }
+        "goal:get" => {
+            let input: crate::goals::service::GoalSessionInput = parse(channel, input)?;
+            let service = goals::live_goals(state)?;
+            encode(
+                crate::ipc::read_off_main(move || service.get_for_session(&input.session_id))
+                    .await?,
+            )
+        }
+        "goal:clear" => {
+            let input: crate::goals::service::GoalSessionInput = parse(channel, input)?;
+            encode(goals::live_goals(state)?.clear(&input.session_id).await?)
+        }
+        "checkpoints:list" => {
+            encode(checkpoints::checkpoints_list_impl(state, parse(channel, input)?).await?)
+        }
+        "checkpoints:preview-rewind" => encode(
+            checkpoints::checkpoints_preview_rewind_impl(state, parse(channel, input)?).await?,
+        ),
+        "checkpoints:rewind-files" => {
+            encode(checkpoints::checkpoints_rewind_files_impl(state, parse(channel, input)?).await?)
+        }
+
+        _ => Err(ArgmaxError::service(
+            "UNKNOWN_CHANNEL",
+            format!("Unknown channel: {channel}"),
+        )),
+    }
 }
 
 fn encode<T: Serialize>(value: T) -> ArgmaxResult<Value> {

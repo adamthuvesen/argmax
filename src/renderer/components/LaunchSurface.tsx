@@ -33,6 +33,7 @@ import {
   type ProjectSummary
 } from "../../shared/types.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
+import { errorMessage } from "../../shared/error.js";
 import {
   appendReferencesToPrompt,
   imageAttachmentReference
@@ -411,13 +412,14 @@ export function LaunchSurface({
 
   const openBranchPicker = useCallback(async (): Promise<void> => {
     if (!window.argmax || !activeProject) return;
+    setStatus(null);
     try {
       const list = await window.argmax.projects.listBranches(activeProject.id);
       setBranches(list);
       setBranchPickerOpen(true);
     } catch (error) {
       setBranchPickerOpen(false);
-      setStatus(error instanceof Error ? error.message : "Could not load branches.");
+      setStatus(errorMessage(error) || "Could not load branches.");
     }
   }, [activeProject]);
 
@@ -426,11 +428,13 @@ export function LaunchSurface({
     setBranchPickerOpen(false);
     setCompactContextOpen(false);
     if (branch === activeProject.currentBranch) return;
+    setStatus(null);
     try {
       const updated = await window.argmax.projects.switchBranch(activeProject.id, branch);
       onBranchSwitch(updated);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Could not switch branch.");
+      setStatus(errorMessage(error) || "Could not switch branch.");
+      promptInputRef.current?.focus();
     }
   }, [activeProject, onBranchSwitch]);
   // Typing into an open picker filters it through useTypeToFilter. The lists take
@@ -712,7 +716,7 @@ export function LaunchSurface({
       setPrompt("");
       clearAttachments();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Could not start agent.");
+      setStatus(errorMessage(error) || "Could not start agent.");
     } finally {
       setIsSubmitting(false);
     }
@@ -1082,16 +1086,20 @@ export function LaunchSurface({
             <Plus size={14} />
           </button>
           <div className="composer-context-group composer-context-group--behavior">
-            <button
-              type="button"
-              className="composer-context-chip agent-mode-toggle"
-              aria-label="Agent mode"
-              aria-pressed={launcherMode !== "auto"}
-              title={launcherModeTitle(launcherMode, chatAvailable)}
-              onClick={toggleMode}
-            >
-              {LAUNCHER_MODE_LABELS[launcherMode]}
-            </button>
+            {/* Auto is the resting mode and carries no flags, so it stays unlabelled;
+                the chip appears only once Tab or the palette picks Plan or Chat. */}
+            {launcherMode === "auto" ? null : (
+              <button
+                type="button"
+                className="composer-context-chip agent-mode-toggle"
+                aria-label="Agent mode"
+                aria-pressed
+                title={launcherModeTitle(launcherMode, chatAvailable)}
+                onClick={toggleMode}
+              >
+                {LAUNCHER_MODE_LABELS[launcherMode]}
+              </button>
+            )}
             {chatMode ? null : (
               <button
                 type="button"
@@ -1111,10 +1119,20 @@ export function LaunchSurface({
           </div>
         </div>
         {status ? (
-          <p className="composer-status" role="status">
-            <span className="composer-status-dot" aria-hidden="true" />
-            {status}
-          </p>
+          <div className="launcher-error" role="alert">
+            <span>{status}</span>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Dismiss error"
+              onClick={() => {
+                setStatus(null);
+                promptInputRef.current?.focus();
+              }}
+            >
+              <X size={14} />
+            </button>
+          </div>
         ) : null}
       </form>
       </div>

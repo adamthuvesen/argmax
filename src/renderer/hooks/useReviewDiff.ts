@@ -18,6 +18,11 @@ export interface UseReviewDiffResult {
   resetForSourceChange: () => void;
   /** Ask git for more unchanged context around the open file's hunks. */
   expandDiffContext: () => void;
+  updateFileIndex: (filePath: string, revision: string, stage: boolean) => Promise<void>;
+  revertFile: (filePath: string, revision: string) => Promise<void>;
+  revertHunk: (filePath: string, revision: string, hunkIndex: number) => Promise<void>;
+  commitStaged: (message: string) => Promise<void>;
+  updateHunkIndex: (filePath: string, revision: string, hunkIndex: number, stage: boolean) => Promise<void>;
 }
 
 export function useReviewDiff(args: {
@@ -46,6 +51,7 @@ export function useReviewDiff(args: {
   const [diff, setDiff] = useState<WorkspaceDiff | null>(null);
   const [diffState, setDiffState] = useState<AsyncState>("idle");
   const [diffError, setDiffError] = useState<string | null>(null);
+  const [actionRevision, setActionRevision] = useState(0);
   // Which file the expanded context belongs to, so selecting a different file
   // drops back to git's default without a reset effect racing the load.
   const [expandedContext, setExpandedContext] = useState<{
@@ -75,7 +81,7 @@ export function useReviewDiff(args: {
   const diffCache = useRef(new Map<string, WorkspaceDiff>());
   useEffect(() => {
     diffCache.current.clear();
-  }, [sourceId, changedFilesKey, comparison]);
+  }, [sourceId, changedFilesKey, comparison, actionRevision]);
 
   // Identifies which (source, comparison, file) the loaded diff belongs to. A
   // re-fetch within the same context — the changed-files signature moved as the
@@ -137,7 +143,7 @@ export function useReviewDiff(args: {
         setFilesState("error");
         setFilesError(errorMessage(error) || "Could not load changed files.");
       });
-  }, [sourceId, sourceKind, changedFilesKey, comparison, dispatch]);
+  }, [sourceId, sourceKind, changedFilesKey, comparison, dispatch, actionRevision]);
 
   useEffect(() => {
     const firstFile = files[0];
@@ -197,7 +203,7 @@ export function useReviewDiff(args: {
         setDiffState("error");
         setDiffError(errorMessage(error) || "Could not load diff.");
       });
-  }, [sourceId, sourceKind, selectedFilePath, changedFilesKey, comparison, contextLines, dispatch]);
+  }, [sourceId, sourceKind, selectedFilePath, changedFilesKey, comparison, contextLines, dispatch, actionRevision]);
 
   const openFile = useCallback(
     (filePath: string): void => {
@@ -216,6 +222,47 @@ export function useReviewDiff(args: {
     });
   }, [selectedFilePath]);
 
+  const updateFileIndex = useCallback(async (filePath: string, revision: string, stage: boolean): Promise<void> => {
+    if (!dispatch) throw new Error("Review actions are unavailable.");
+    try { await (stage ? dispatch.stageFile(filePath, revision) : dispatch.unstageFile(filePath, revision)); }
+    finally { setActionRevision((value) => value + 1); }
+  }, [dispatch]);
+
+  const updateHunkIndex = useCallback(async (
+    filePath: string,
+    revision: string,
+    hunkIndex: number,
+    stage: boolean
+  ): Promise<void> => {
+    if (!dispatch) throw new Error("Review actions are unavailable.");
+    try { await (stage
+      ? dispatch.stageHunk(filePath, revision, hunkIndex, contextLines)
+      : dispatch.unstageHunk(filePath, revision, hunkIndex, contextLines)); }
+    finally { setActionRevision((value) => value + 1); }
+  }, [dispatch, contextLines]);
+
+  const revertFile = useCallback(async (filePath: string, revision: string): Promise<void> => {
+    if (!dispatch) throw new Error("Review actions are unavailable.");
+    try { await dispatch.revertFile(filePath, revision); }
+    finally { setActionRevision((value) => value + 1); }
+  }, [dispatch]);
+
+  const revertHunk = useCallback(async (
+    filePath: string,
+    revision: string,
+    hunkIndex: number
+  ): Promise<void> => {
+    if (!dispatch) throw new Error("Review actions are unavailable.");
+    try { await dispatch.revertHunk(filePath, revision, hunkIndex, contextLines); }
+    finally { setActionRevision((value) => value + 1); }
+  }, [dispatch, contextLines]);
+
+  const commitStaged = useCallback(async (message: string): Promise<void> => {
+    if (!dispatch) throw new Error("Review actions are unavailable.");
+    await dispatch.commitStaged(message);
+    setActionRevision((value) => value + 1);
+  }, [dispatch]);
+
   return {
     files,
     filesState,
@@ -226,6 +273,11 @@ export function useReviewDiff(args: {
     diffError,
     openFile,
     resetForSourceChange,
-    expandDiffContext
+    expandDiffContext,
+    updateFileIndex,
+    revertFile,
+    revertHunk,
+    commitStaged,
+    updateHunkIndex
   };
 }

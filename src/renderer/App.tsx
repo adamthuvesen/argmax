@@ -260,6 +260,8 @@ export function App(): JSX.Element {
     setChatFontSize,
     inkStrength,
     setInkStrength,
+    backgroundIntensity,
+    setBackgroundIntensity,
     defaultIde,
     setDefaultIde,
     detectedIdes
@@ -1621,6 +1623,8 @@ export function App(): JSX.Element {
           onChatFontSizeChange: setChatFontSize,
           inkStrength,
           onInkStrengthChange: setInkStrength,
+          backgroundIntensity,
+          onBackgroundIntensityChange: setBackgroundIntensity,
           chatVerbosity,
           onChatVerbosityChange: setChatVerbosity
         },
@@ -1656,6 +1660,8 @@ export function App(): JSX.Element {
       setChatFontSize,
       inkStrength,
       setInkStrength,
+      backgroundIntensity,
+      setBackgroundIntensity,
       chatVerbosity,
       setChatVerbosity
     ]
@@ -1996,9 +2002,9 @@ export function App(): JSX.Element {
           {loadState === "error" ? (
             <EmptyState message={loadError} onRetry={() => void loadDashboard()} />
           ) : loadState === "loading" && grid.rows.length === 0 && !standalonePageOpen && !isBrowserPageOpen ? (
-            <SkeletonPane />
+            <SkeletonPane label="Loading workspace" />
           ) : isSettingsOpen ? (
-            <Suspense fallback={<SkeletonPane />}>
+            <Suspense fallback={<SkeletonPane label="Loading settings" />}>
               <SettingsPanel
                 activeGroup={settingsGroup}
                 onGroupChange={(group) => showSettings(group)}
@@ -2032,6 +2038,8 @@ export function App(): JSX.Element {
                 onChatFontSizeChange={setChatFontSize}
                 inkStrength={inkStrength}
                 onInkStrengthChange={setInkStrength}
+                backgroundIntensity={backgroundIntensity}
+                onBackgroundIntensityChange={setBackgroundIntensity}
                 themeMode={themeMode}
                 onThemeModeChange={handleThemeModeChange}
                 accentId={accentId}
@@ -2064,11 +2072,11 @@ export function App(): JSX.Element {
               />
             </Suspense>
           ) : isScheduledTasksOpen ? (
-            <Suspense fallback={<SkeletonPane />}>
+            <Suspense fallback={<SkeletonPane label="Loading scheduled tasks" />}>
               <ScheduledTasksPanel projects={realProjects} onOpenSession={openSessionById} />
             </Suspense>
           ) : isUsageOpen ? (
-            <Suspense fallback={<SkeletonPane />}>
+            <Suspense fallback={<SkeletonPane label="Loading usage" />}>
               <UsagePanel />
             </Suspense>
           ) : isBrowserPageOpen ? (

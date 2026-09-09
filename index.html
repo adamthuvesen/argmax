@@ -18,6 +18,10 @@
                 : "light"
               : mode;
           document.documentElement.setAttribute("data-theme", resolved);
+          var backgroundIntensity = localStorage.getItem("argmax.background.intensity");
+          if (/^(?:[1-9]|10)$/.test(backgroundIntensity || "")) {
+            document.documentElement.setAttribute("data-background-intensity", backgroundIntensity);
+          }
         } catch (e) {
           document.documentElement.setAttribute("data-theme", "dark");
         }

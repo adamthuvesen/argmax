@@ -307,8 +307,7 @@
 /* ---------- Messages and empty state ---------- */
 
 .sched-status,
-.sched-alert,
-.sched-loading {
+.sched-alert {
   margin: 0;
   font-size: var(--text-sm);
 }
@@ -321,8 +320,9 @@
   color: var(--rose);
 }
 
+/* The loading line brings its own mark, size and colour (styles/loading.css);
+   the panel only says where it sits. */
 .sched-loading {
-  color: var(--muted);
   padding: var(--space-6) 0;
 }
 

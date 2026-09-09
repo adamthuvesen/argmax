@@ -490,6 +490,8 @@ export function buildSessionToolCalls(
       const canonical = decodeTimelineEvent(event);
       return (
         canonical.kind === "tool" &&
+        // A row that belongs to another surface is that surface's to show.
+        canonical.surface !== "todo" &&
         (canonical.providerName === null || !isHiddenToolName(canonical.providerName))
       );
     })

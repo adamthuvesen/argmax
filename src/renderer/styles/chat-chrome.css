@@ -210,6 +210,10 @@
 
 .composer-input {
   position: relative;
+  /* The textarea's height bounds are shared: the slash-command mirror has to
+     land on the textarea's box, not this taller, centring one. */
+  --composer-field-min-height: 52px;
+  --composer-field-max-height: 168px;
   min-height: 60px;
   padding: 0;
   border: 0;
@@ -226,8 +230,8 @@
 .composer-input textarea {
   min-width: 0;
   flex: 1;
-  min-height: 52px;
-  max-height: 168px;
+  min-height: var(--composer-field-min-height);
+  max-height: var(--composer-field-max-height);
   padding: 0 var(--space-2);
   color: var(--text);
   border: 0;

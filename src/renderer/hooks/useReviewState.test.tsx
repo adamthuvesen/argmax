@@ -88,6 +88,9 @@ describe("useReviewState — IPC fan-out resistance", () => {
   it.each(["browser", "files", "agents", "terminal", "changes"] as const)(
     "remembers panel mode %s per session after leaving and returning",
     (mode) => {
+      if (mode === "browser") {
+        (window.argmax as ArgmaxApi).browser = {} as ArgmaxApi["browser"];
+      }
       const source = workspaceSource(makeWorkspace());
       const first = renderHook(() => useReviewState(source, null, { sessionId: "session-1" }));
       act(() => {
@@ -113,6 +116,106 @@ describe("useReviewState — IPC fan-out resistance", () => {
       expect(closed.result.current.mode).toBe(mode);
     }
   );
+
+  it("persists a split layout per session and keeps it across whole-panel close and reopen", () => {
+    const source = workspaceSource(makeWorkspace());
+    const first = renderHook(() => useReviewState(source, null, { sessionId: "session-split" }));
+    act(() => {
+      first.result.current.openChangesPanel();
+      first.result.current.splitMode("files", "bottom");
+      first.result.current.setSplitRatio(0.65);
+      first.result.current.closePanel();
+    });
+    first.unmount();
+
+    const restored = renderHook(() => useReviewState(source, null, { sessionId: "session-split" }));
+    expect(restored.result.current.isPanelOpen).toBe(false);
+    expect(restored.result.current.layout).toEqual({
+      modes: ["changes", "files"],
+      activeIndex: 1,
+      ratio: 0.65
+    });
+
+    act(() => restored.result.current.togglePanel());
+    expect(restored.result.current.isPanelOpen).toBe(true);
+    expect(restored.result.current.layout.modes).toEqual(["changes", "files"]);
+  });
+
+  it("restores the legacy per-session mode when no layout has been saved yet", () => {
+    window.localStorage.setItem("argmax.reviewPanel.mode.session-legacy", "terminal");
+
+    const { result } = renderHook(() =>
+      useReviewState(workspaceSource(makeWorkspace()), null, { sessionId: "session-legacy" })
+    );
+
+    expect(result.current.layout).toEqual({ modes: ["terminal"], activeIndex: 0, ratio: 0.5 });
+  });
+
+  it("focuses visible modes, swaps duplicate pane selections, and promotes a survivor", () => {
+    const source = workspaceSource(makeWorkspace());
+    const { result } = renderHook(() => useReviewState(source, null, { sessionId: "session-layout" }));
+    act(() => {
+      result.current.openChangesPanel();
+      result.current.splitMode("files", "bottom");
+      result.current.setMode("changes");
+    });
+    expect(result.current.layout).toMatchObject({ modes: ["changes", "files"], activeIndex: 0 });
+
+    act(() => result.current.setPaneMode(0, "files"));
+    expect(result.current.layout).toMatchObject({ modes: ["files", "changes"], activeIndex: 0 });
+
+    act(() => result.current.closePane(0));
+    expect(result.current.isPanelOpen).toBe(true);
+    expect(result.current.layout).toMatchObject({ modes: ["changes"], activeIndex: 0 });
+
+    act(() => result.current.closePane(0));
+    expect(result.current.isPanelOpen).toBe(false);
+    expect(result.current.layout.modes).toEqual(["changes"]);
+  });
+
+  it("removes a visible terminal pane when toggled and leaves its neighbour open", () => {
+    const source = workspaceSource(makeWorkspace());
+    const { result } = renderHook(() => useReviewState(source, null, { sessionId: "session-terminal" }));
+    act(() => {
+      result.current.openChangesPanel();
+      result.current.splitMode("terminal", "bottom");
+    });
+
+    act(() => result.current.toggleTerminal());
+    expect(result.current.isPanelOpen).toBe(true);
+    expect(result.current.layout.modes).toEqual(["changes"]);
+  });
+
+  it("normalizes modes that a project-backed launcher cannot show", () => {
+    window.localStorage.setItem(
+      "argmax.reviewPanel.layout.launcher",
+      JSON.stringify({ modes: ["terminal", "agents"], activeIndex: 1, ratio: 0.6 })
+    );
+
+    const { result } = renderHook(() => useReviewState(projectSource(makeProject())));
+    expect(result.current.layout).toEqual({
+      modes: ["changes", "files"],
+      activeIndex: 0,
+      ratio: 0.6
+    });
+  });
+
+  it("keeps an explicitly open mobile-style review surface unsplit", () => {
+    window.localStorage.setItem(
+      "argmax.reviewPanel.layout.session-mobile",
+      JSON.stringify({ modes: ["changes", "files"], activeIndex: 1, ratio: 0.6 })
+    );
+
+    const { result } = renderHook(() =>
+      useReviewState(workspaceSource(makeWorkspace()), null, {
+        editable: false,
+        initiallyOpen: true,
+        sessionId: "session-mobile"
+      })
+    );
+    expect(result.current.isPanelOpen).toBe(true);
+    expect(result.current.layout).toEqual({ modes: ["changes"], activeIndex: 0, ratio: 0.5 });
+  });
 
   beforeEach(() => {
     // The Local/Branch toggle persists to localStorage; clear it so each test
@@ -243,6 +346,23 @@ describe("useReviewState — IPC fan-out resistance", () => {
     });
 
     await waitFor(() => expect(result.current.selectedFilePath).toBe("src/a.ts"));
+  });
+
+  it("loads both Changes and Files data when both views are visible and Files is active", async () => {
+    listChangedFiles.mockResolvedValue([
+      { path: "src/a.ts", status: "M", additions: 1, deletions: 0 }
+    ]);
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
+    await waitFor(() => expect(result.current.files).toHaveLength(1));
+
+    act(() => {
+      result.current.openChangesPanel();
+      result.current.splitMode("files", "bottom");
+    });
+
+    expect(result.current.mode).toBe("files");
+    await waitFor(() => expect(result.current.selectedFilePath).toBe("src/a.ts"));
+    await waitFor(() => expect(listWorkspaceFiles).toHaveBeenCalledTimes(1));
   });
 
   it("defaults to the whole branch and refetches when the scope changes", async () => {

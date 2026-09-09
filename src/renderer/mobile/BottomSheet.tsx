@@ -36,10 +36,14 @@ export function BottomSheet({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
+  // `data-type-scale="chrome"` below: a sheet is chrome, not the screen that
+  // opened it. Without it the sheet inherits the chat's larger scale and its
+  // rows come out a third bigger than the same picker opened from the list.
   return (
     <div className="mobile-sheet-backdrop" role="presentation" onClick={onClose}>
       <div
         className="mobile-sheet"
+        data-type-scale="chrome"
         role="dialog"
         aria-modal="true"
         aria-label={label}
@@ -52,15 +56,22 @@ export function BottomSheet({
   );
 }
 
-/** A sheet row. `selected` marks the current value in a picker; leave it false
- *  for an action row, which shows no checkmark. */
+/** A sheet row, built like the desktop picker's ledger rows: the check leads a
+ *  reserved gutter so every label starts on the same edge, and `detail` carries
+ *  the qualifier — a branch, a path — on its own muted line. Folding that
+ *  qualifier into `label` instead is what wrapped these rows to three lines.
+ *
+ *  `selected` marks the current value in a picker; leave it false for an action
+ *  row, which shows no checkmark. */
 export function SheetOption({
   label,
+  detail,
   selected = false,
   danger = false,
   onSelect
 }: {
   label: string;
+  detail?: string;
   selected?: boolean;
   danger?: boolean;
   onSelect: () => void;
@@ -73,8 +84,13 @@ export function SheetOption({
       aria-pressed={selected}
       onClick={onSelect}
     >
-      <span>{label}</span>
-      {selected ? <Check size={16} aria-hidden="true" /> : null}
+      <span className="mobile-sheet-option-check">
+        {selected ? <Check size={16} aria-hidden="true" /> : null}
+      </span>
+      <span className="mobile-sheet-option-text">
+        <span className="mobile-sheet-option-label">{label}</span>
+        {detail ? <span className="mobile-sheet-option-detail">{detail}</span> : null}
+      </span>
     </button>
   );
 }

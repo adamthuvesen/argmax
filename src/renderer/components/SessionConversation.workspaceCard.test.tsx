@@ -105,7 +105,8 @@ describe("SessionConversation workspace card", () => {
         tabIds: ["task-1"],
         activeTabId: null,
         selectTab,
-        closeTab: vi.fn()
+        closeTab: vi.fn(),
+        closeAllTabs: vi.fn()
       },
       openAgent,
       openAgents

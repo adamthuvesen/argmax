@@ -179,7 +179,7 @@ html:has(.mobile-shell) body {
 }
 
 .mobile-section {
-  margin-top: 28px;
+  margin-top: 20px;
 }
 
 /* The first label sits under the header's hairline, which already reads as a
@@ -230,7 +230,9 @@ html:has(.mobile-shell) body {
   gap: var(--space-3);
   flex: 1;
   min-width: 0;
-  min-height: 72px;
+  /* Two lines of text plus this padding already stand ~57px tall, well clear
+     of the 44px touch minimum, so a taller floor only bought empty space. */
+  min-height: 56px;
   padding: var(--space-2_5) var(--space-1) var(--space-2_5) var(--space-6);
   background: none;
   border: none;
@@ -337,7 +339,9 @@ html:has(.mobile-shell) body {
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: var(--text-md-plus);
+  /* Floored at 16px so the list scale can shrink without iOS zooming the page
+     when this field takes focus. */
+  font-size: max(16px, var(--text-md-plus));
 }
 
 .mobile-list-search input::placeholder {
@@ -371,22 +375,17 @@ html:has(.mobile-shell) body {
   background: var(--amber);
 }
 
-.mobile-session-marker[data-running] {
+/* A reply that landed while you were elsewhere. Still, deliberately: the
+   working nest beside it is the thing that moves, and two pulsing accent dots
+   would read as one state at arm's length. */
+.mobile-session-marker[data-unread] {
   background: var(--accent);
-  animation: mobile-live-pulse 1.6s ease-in-out infinite;
-  animation-play-state: var(--loop-play-state, running);
 }
 
-@keyframes mobile-live-pulse {
-  50% {
-    opacity: 0.35;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mobile-session-marker[data-running] {
-    animation: none;
-  }
+.mobile-session-nest {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
 }
 
 /* ---- Session screen ---- */
@@ -453,6 +452,9 @@ html:has(.mobile-shell) body {
 }
 
 .mobile-session-screen .session-main-column {
+  /* The agent overlay anchors to this box so it can stop at the composer's top
+     edge without measuring the whole screen. */
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -545,10 +547,14 @@ html:has(.mobile-shell) body {
 }
 
 /* Both composers use the same scale so their prompt text matches the
-   conversation's 17px body text. */
+   conversation's body text. The composer anchors to the chrome step rather
+   than the surrounding screen (see [data-type-scale="composer"] in
+   tokens.css), so on the phone it needs one step less than the desktop to
+   land on the conversation. The 16px is a floor, not taste: iOS zooms the
+   page when a focused field is smaller. */
 .mobile-shell .session-input textarea,
 .mobile-shell .mobile-new-prompt {
-  font-size: var(--text-md-plus);
+  font-size: max(16px, var(--text-md));
   line-height: 1.45;
 }
 
@@ -663,9 +669,8 @@ html:has(.mobile-shell) body {
   flex-shrink: 0;
 }
 
-/* The native select (or a plain button for rows that open our own sheet)
-   stretches invisibly over the row so a tap anywhere opens the picker while
-   the styled row underneath shows the value. */
+/* A button stretches invisibly over the row so a tap anywhere opens the sheet
+   while the styled row underneath shows the value. */
 .mobile-new-row-select {
   position: absolute;
   inset: 0;
@@ -676,7 +681,7 @@ html:has(.mobile-shell) body {
   background: transparent;
   appearance: none;
   /* 16px+ keeps iOS Safari from zooming the page on focus. */
-  font-size: var(--text-md-plus);
+  font-size: max(16px, var(--text-md-plus));
 }
 
 /* Bottom-sheet picker for lists too long for iOS's native select menu (the
@@ -726,16 +731,52 @@ html:has(.mobile-shell) body {
 .mobile-sheet-option {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: var(--space-2_5);
   width: 100%;
-  min-height: 48px;
+  min-height: 52px;
   padding: var(--space-2) var(--space-1);
   border: 0;
   border-bottom: 1px solid var(--line-soft);
   background: transparent;
   color: var(--text);
-  font-size: var(--text-md);
   text-align: left;
+}
+
+/* Reserved whether or not this row is the selected one, so every label starts
+   on the same edge and the list reads as a column rather than a ragged stack. */
+.mobile-sheet-option-check {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  color: var(--accent-deep);
+}
+
+.mobile-sheet-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+/* One line each, clipped. A branch name long enough to wrap turned a row into
+   a paragraph and the sheet into a wall of text. */
+.mobile-sheet-option-label,
+.mobile-sheet-option-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-sheet-option-label {
+  font-size: var(--text-md-plus);
+}
+
+.mobile-sheet-option-detail {
+  font-size: var(--text-sm);
+  color: var(--muted);
 }
 
 .mobile-sheet-group .mobile-sheet-option:last-child {
@@ -1156,13 +1197,20 @@ html:has(.mobile-shell) body {
 }
 
 .mobile-review-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1_5);
   appearance: none;
   border: 1px solid var(--line-soft);
   border-radius: 999px;
   background: transparent;
   color: var(--text);
   font-size: var(--text-sm);
-  padding: var(--space-1) var(--space-3);
+  padding: var(--space-1) var(--space-2_5) var(--space-1) var(--space-3);
+}
+
+.mobile-review-scope > svg {
+  color: var(--muted);
 }
 
 .mobile-review-totals {
@@ -1228,4 +1276,118 @@ html:has(.mobile-shell) body {
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
   padding: 0 12px calc(16px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Delegated work, raised over the transcript.
+   ------------------------------------------
+   Anchored inside the session column and stopped short of the composer, so the
+   parent chat stays legible above and answerable below: a subagent result is
+   something you read and then reply to, and a full screen would make that two
+   navigations instead of none. */
+.mobile-agent-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+/* Only over the transcript. The composer sits below this layer and stays live. */
+.mobile-agent-overlay-scrim {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in oklab, var(--bg) 62%, transparent);
+  pointer-events: auto;
+}
+
+.mobile-agent-overlay-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 76%;
+  border-top: 1px solid var(--line);
+  border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+  background: var(--panel);
+  box-shadow: 0 -18px 40px -24px rgb(0 0 0 / 0.75);
+  pointer-events: auto;
+  animation: mobile-agent-overlay-rise var(--duration-medium, 220ms) var(--ease) both;
+}
+
+@keyframes mobile-agent-overlay-rise {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-agent-overlay-panel {
+    animation: none;
+  }
+}
+
+.mobile-agent-overlay-grip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2) var(--space-2) 0;
+}
+
+.mobile-agent-overlay-close {
+  position: absolute;
+  right: var(--space-2);
+  top: var(--space-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+}
+
+.mobile-agent-overlay-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.mobile-agent-overlay-body .review-agents {
+  flex: 1;
+  min-height: 0;
+}
+
+/* The dock's tab strip is built for a mouse and a wide panel. On a phone it
+   scrolls sideways, loses its close buttons — the overlay's own control does
+   that job — and grows to a thumb-sized target. */
+.mobile-agent-overlay-body .file-tabs {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.mobile-agent-overlay-body .file-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.mobile-agent-overlay-body .file-tab button[role="tab"] {
+  min-height: 40px;
+}
+
+.mobile-agent-overlay-body .file-tab-close {
+  display: none;
+}
+
+/* One tab is the overlay's subject, not a choice — the strip only earns its
+   space once there is something to switch between. */
+.mobile-agent-overlay-body .file-tabs:not(:has(.file-tab + .file-tab)) {
+  display: none;
 }

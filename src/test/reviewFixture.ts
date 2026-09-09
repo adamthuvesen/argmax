@@ -11,6 +11,12 @@ export function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
     diffError: null,
     isPanelOpen: false,
     mode: "changes",
+    layout: { modes: [overrides.mode ?? "changes"], activeIndex: 0, ratio: 0.5 },
+    setPaneMode: () => {},
+    focusPane: () => {},
+    splitMode: () => {},
+    closePane: () => {},
+    setSplitRatio: () => {},
     setMode: () => {},
     changesScope: "branch",
     setChangesScope: () => {},
@@ -20,7 +26,8 @@ export function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
       tabIds: [],
       activeTabId: null,
       selectTab: () => {},
-      closeTab: () => {}
+      closeTab: () => {},
+      closeAllTabs: () => {}
     },
     openAgent: () => {},
     openAgents: () => {},

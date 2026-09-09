@@ -11,6 +11,7 @@ import {
 } from "react";
 import { buildFileTree, type TreeNode } from "../lib/fileTree.js";
 import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
+import { LoadingLine } from "./LoadingLine.js";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
 
 type VisibleRow = {
@@ -285,7 +286,7 @@ export function WorkspaceTree({
   if (state.listState === "loading") {
     return withToolbar(
       <div className="workspace-tree workspace-tree-empty" style={bodyStyle} aria-label="Workspace files">
-        <p className="review-empty">Loading files…</p>
+        <LoadingLine label="Loading files…" />
       </div>
     );
   }

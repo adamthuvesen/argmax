@@ -24,7 +24,7 @@ create a new session keep their independent lifecycle.
 
 The terminal is a mode of the review panel — the fifth, beside Changes, Files, Agents, and [Browser](browser.md) — so shells sit in the same dock as the diff and the files they act on. The tab is shown only where a workspace backs the panel: the launcher's project-backed panel has no worktree to run in, and the mobile remote has no terminal at all.
 
-`Cmd/Ctrl+J` shows the terminal for the active workspace, and hides the panel when the terminal is already the thing on screen. The workspace card's Terminal row does the same. Switching to another panel mode leaves the PTYs running.
+`Cmd/Ctrl+J` shows the terminal for the active workspace. If Terminal is already visible in a split panel, the shortcut closes that half and expands the other view. If Terminal fills the panel, it hides the panel. The workspace card's Terminal row does the same. Switching views leaves the PTYs running.
 
 ## Renderer Lifecycle
 
@@ -36,7 +36,7 @@ Terminal state persists across session switches:
 - **Contrast:** The xterm theme sets `minimumContrastRatio: 4.5` ([terminalRuntime.ts](../src/renderer/lib/terminalRuntime.ts)) to ensure prompt readability.
 - **Caret:** A 2px bar in the user's `--accent`, not xterm's default block — a block fills the whole cell, and at `lineHeight: 1.2` that is a slab taller than the glyphs beside it, covering the character it sits on. Unfocused falls back to xterm's hollow outline. The caret is the one terminal color that isn't shell output, so [xtermTheme.ts](../src/renderer/lib/xtermTheme.ts) reads `--accent` live and the appearance observer watches `data-accent` alongside `data-theme`. A shell that sets its own shape (DECSCUSR, vi-mode, a TUI) still wins.
 
-Panes are keyed by session, so the review panel's mode dies on every session switch. The `showing` flag in the store is what survives it: [useReviewState.ts](../src/renderer/hooks/useReviewState.ts) seeds its initial mode from that flag and writes back what the panel shows. Nothing else reads it.
+The review panel restores its saved layout per session. For sessions without a saved preference, [useReviewState.ts](../src/renderer/hooks/useReviewState.ts) falls back to the workspace's `showing` flag. It writes back whether Terminal is visible in either half, so shortcuts also work while another view has focus. The panel mounts one terminal host per workspace.
 
 ## How ⌘J Reaches The Panel
 
@@ -48,4 +48,4 @@ The request carries a target state rather than "toggle" on purpose: a pane mount
 
 [TerminalTabsPanel.tsx](../src/renderer/components/TerminalTabsPanel.tsx) wears the panel's own tab grammar — the `.file-tabs` strip that Files and Agents use, plus a trailing `+` and a `.review-status-bar` footer naming the working directory and the active shell. Inactive tabs stay mounted (`display: none`) so switching is instant. Closing the last tab rests on an empty state with a "New terminal" button rather than yanking the reader out of the mode.
 
-The terminal surface sits on `--bg`, a shade below the panel, so a shell reads as a window onto the machine rather than as more chrome.
+The terminal surface sits on `--bg`, a shade below the panel, so a shell reads as a window onto the machine rather than as more chrome. Background intensity also updates the xterm canvas through `--terminal-surface`. Level 7 keeps the original terminal palette. Other levels scale its background with the page, and the runtime observes `data-background-intensity` so open terminals update immediately.

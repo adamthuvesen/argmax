@@ -20,6 +20,12 @@ import {
   INK_STRENGTH_MIN,
   type InkStrength
 } from "./inkStrength.js";
+import {
+  BACKGROUND_INTENSITY_HINTS,
+  BACKGROUND_INTENSITY_MAX,
+  BACKGROUND_INTENSITY_MIN,
+  type BackgroundIntensity
+} from "./backgroundIntensity.js";
 import { THEME_OPTIONS, type ThemeMode } from "./theme.js";
 import { CHAT_VERBOSITY_HINTS, CHAT_VERBOSITY_LABELS, type ChatVerbosity } from "./uiPreferences.js";
 
@@ -43,6 +49,8 @@ export type SettingCommandsInput = {
   onChatVerbosityChange: (verbosity: ChatVerbosity) => void;
   inkStrength: InkStrength;
   onInkStrengthChange: (strength: InkStrength) => void;
+  backgroundIntensity: BackgroundIntensity;
+  onBackgroundIntensityChange: (intensity: BackgroundIntensity) => void;
 };
 
 const THEME_ICON: Record<ThemeMode, LucideIcon> = { light: Sun, dark: Moon, system: Monitor };
@@ -57,6 +65,11 @@ const CHAT_VERBOSITY_LEVELS: ChatVerbosity[] = [1, 2, 3, 4];
 const INK_STRENGTH_LEVELS: InkStrength[] = Array.from(
   { length: INK_STRENGTH_MAX - INK_STRENGTH_MIN + 1 },
   (_, index) => (INK_STRENGTH_MIN + index) as InkStrength
+);
+
+const BACKGROUND_INTENSITY_LEVELS: BackgroundIntensity[] = Array.from(
+  { length: BACKGROUND_INTENSITY_MAX - BACKGROUND_INTENSITY_MIN + 1 },
+  (_, index) => (BACKGROUND_INTENSITY_MIN + index) as BackgroundIntensity
 );
 
 /**
@@ -137,6 +150,38 @@ function inkStrengthCommands(
   return [stepRow("stronger"), stepRow("softer"), ...levels];
 }
 
+function backgroundIntensityCommands(
+  current: BackgroundIntensity,
+  onChange: (intensity: BackgroundIntensity) => void
+): PaletteItem[] {
+  const stepRow = (direction: "stronger" | "softer"): PaletteItem => {
+    const next = direction === "stronger" ? current + 1 : current - 1;
+    const inRange = next >= BACKGROUND_INTENSITY_MIN && next <= BACKGROUND_INTENSITY_MAX;
+    return {
+      id: `setting:background-intensity:${direction}`,
+      label: `Background intensity: ${direction}`,
+      subtitle: inRange
+        ? `Page color · now level ${current}`
+        : `Page color · already the ${direction === "stronger" ? "strongest" : "softest"} background`,
+      group: "Settings",
+      icon: Contrast,
+      keepOpen: true,
+      run: () => {
+        if (inRange) onChange(next as BackgroundIntensity);
+      }
+    };
+  };
+  const levels: PaletteItem[] = BACKGROUND_INTENSITY_LEVELS.map((level) => ({
+    id: `setting:background-intensity:${level}`,
+    label: `Background intensity ${level}`,
+    subtitle: `Page color · ${BACKGROUND_INTENSITY_HINTS[level]}`,
+    group: "Settings",
+    icon: level === current ? Check : Contrast,
+    run: () => onChange(level)
+  }));
+  return [stepRow("stronger"), stepRow("softer"), ...levels];
+}
+
 export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[] {
   const themes: PaletteItem[] = THEME_OPTIONS.map((option) => ({
     id: `setting:theme:${option.id}`,
@@ -187,6 +232,10 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
       input.chatFontSize,
       input.onChatFontSizeChange
     ),
-    ...inkStrengthCommands(input.inkStrength, input.onInkStrengthChange)
+    ...inkStrengthCommands(input.inkStrength, input.onInkStrengthChange),
+    ...backgroundIntensityCommands(
+      input.backgroundIntensity,
+      input.onBackgroundIntensityChange
+    )
   ];
 }

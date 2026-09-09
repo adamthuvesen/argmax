@@ -8,6 +8,7 @@ import type {
 } from "../../shared/types.js";
 import type { FontFamilyId, FontSize } from "../lib/fonts.js";
 import type { InkStrength } from "../lib/inkStrength.js";
+import type { BackgroundIntensity } from "../lib/backgroundIntensity.js";
 import type { ThemeMode } from "../lib/theme.js";
 import type { AccentId } from "../lib/accent.js";
 import type { UserBubbleTint } from "../lib/userBubbleTint.js";
@@ -67,6 +68,8 @@ export function SettingsPanel({
   onChatFontSizeChange,
   inkStrength,
   onInkStrengthChange,
+  backgroundIntensity,
+  onBackgroundIntensityChange,
   themeMode,
   onThemeModeChange,
   accentId,
@@ -126,6 +129,8 @@ export function SettingsPanel({
   onChatFontSizeChange: (id: FontSize) => void;
   inkStrength: InkStrength;
   onInkStrengthChange: (strength: InkStrength) => void;
+  backgroundIntensity: BackgroundIntensity;
+  onBackgroundIntensityChange: (intensity: BackgroundIntensity) => void;
   themeMode: ThemeMode;
   onThemeModeChange: (mode: ThemeMode) => void;
   accentId: AccentId;
@@ -314,6 +319,8 @@ export function SettingsPanel({
             onChatFontSizeChange={onChatFontSizeChange}
             inkStrength={inkStrength}
             onInkStrengthChange={onInkStrengthChange}
+            backgroundIntensity={backgroundIntensity}
+            onBackgroundIntensityChange={onBackgroundIntensityChange}
             themeMode={themeMode}
             onThemeModeChange={onThemeModeChange}
             accentId={accentId}

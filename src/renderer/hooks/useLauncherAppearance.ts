@@ -19,6 +19,12 @@ import {
   type InkStrength
 } from "../lib/inkStrength.js";
 import {
+  applyBackgroundIntensityToDocument,
+  BACKGROUND_INTENSITY_STORAGE_KEY,
+  readStoredBackgroundIntensity,
+  type BackgroundIntensity
+} from "../lib/backgroundIntensity.js";
+import {
   applyAccentToDocument,
   readStoredAccent,
   writeStoredAccent,
@@ -58,6 +64,8 @@ export function useLauncherAppearance(): {
   setChatFontSize: (fontSize: FontSize) => void;
   inkStrength: InkStrength;
   setInkStrength: (strength: InkStrength) => void;
+  backgroundIntensity: BackgroundIntensity;
+  setBackgroundIntensity: (intensity: BackgroundIntensity) => void;
   defaultIde: IdeId | null;
   setDefaultIde: (ide: IdeId | null) => void;
   detectedIdes: DetectedIde[];
@@ -71,6 +79,9 @@ export function useLauncherAppearance(): {
   const [fontSize, setFontSize] = useState<FontSize>(() => readStoredFontSize());
   const [chatFontSize, setChatFontSize] = useState<FontSize>(() => readStoredChatFontSize());
   const [inkStrength, setInkStrength] = useState<InkStrength>(() => readStoredInkStrength());
+  const [backgroundIntensity, setBackgroundIntensity] = useState<BackgroundIntensity>(() =>
+    readStoredBackgroundIntensity()
+  );
   const [defaultIde, setDefaultIde] = useState<IdeId | null>(() => readStoredDefaultIde());
   const [detectedIdes, setDetectedIdes] = useState<DetectedIde[]>([]);
   const ideListLoadedRef = useRef(false);
@@ -98,6 +109,12 @@ export function useLauncherAppearance(): {
     window.localStorage.setItem(INK_STRENGTH_STORAGE_KEY, String(inkStrength));
     applyInkStrengthToDocument(inkStrength);
   }, [inkStrength]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(BACKGROUND_INTENSITY_STORAGE_KEY, String(backgroundIntensity));
+    applyBackgroundIntensityToDocument(backgroundIntensity);
+  }, [backgroundIntensity]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -172,6 +189,8 @@ export function useLauncherAppearance(): {
     setChatFontSize,
     inkStrength,
     setInkStrength,
+    backgroundIntensity,
+    setBackgroundIntensity,
     defaultIde,
     setDefaultIde,
     detectedIdes

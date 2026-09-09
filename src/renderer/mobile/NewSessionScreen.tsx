@@ -21,6 +21,7 @@ import {
   imageAttachmentReference,
   SUPPORTED_IMAGE_MIME_TYPES
 } from "../lib/composerAttachments.js";
+import { setViewportMeasurementPaused } from "./useVisualViewportInsets.js";
 import { clearDraft, launcherDraftKey } from "../lib/composerDrafts.js";
 import { persistLaunchModel, readStoredLaunchModel } from "../lib/launchModelPreference.js";
 import {
@@ -187,7 +188,6 @@ export function NewSessionScreen({
   const [launching, setLaunching] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
-  const [attachmentPickerHeight, setAttachmentPickerHeight] = useState<number | null>(null);
   const screenRef = useRef<HTMLDivElement | null>(null);
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -249,9 +249,13 @@ export function NewSessionScreen({
   useEffect(() => {
     const input = attachmentInputRef.current;
     if (!input) return;
-    const onCancel = (): void => setAttachmentPickerHeight(null);
+    const onCancel = (): void => setViewportMeasurementPaused(false);
     input.addEventListener("cancel", onCancel);
-    return () => input.removeEventListener("cancel", onCancel);
+    return () => {
+      input.removeEventListener("cancel", onCancel);
+      // Leaving the screen with the picker open must not strand the hold.
+      setViewportMeasurementPaused(false);
+    };
   }, [attachmentInputRef]);
 
   // Same default as the desktop launcher: seeded model if present, then
@@ -366,7 +370,6 @@ export function NewSessionScreen({
     <div
       ref={screenRef}
       className="mobile-new-screen"
-      style={attachmentPickerHeight === null ? undefined : { height: attachmentPickerHeight, flex: "none" }}
     >
       <MobileScreenHeader onBack={onClose} backLabel={backLabel ?? "Back to chats"} title="New chat" />
 
@@ -420,7 +423,7 @@ export function NewSessionScreen({
             aria-hidden="true"
             tabIndex={-1}
             onChange={(event) => {
-              setAttachmentPickerHeight(null);
+              setViewportMeasurementPaused(false);
               onAttachmentInputChange(event);
             }}
           />
@@ -451,8 +454,11 @@ export function NewSessionScreen({
               title="Attach file or screenshot"
               onClick={() => {
                 // iOS anchors its menu at the tap, then dismisses the keyboard.
-                // Keep the composer there until the native picker closes.
-                setAttachmentPickerHeight(screenRef.current?.getBoundingClientRect().height ?? null);
+                // Hold the viewport measurement so the shell keeps the height
+                // it had under the keyboard; pinning this screen's own height
+                // instead left it short inside a shell that had already grown
+                // back, which is where the blank strip came from.
+                setViewportMeasurementPaused(true);
                 openFilePicker();
               }}
             >
@@ -527,7 +533,8 @@ export function NewSessionScreen({
             {projects.length === 0 ? null : (
               <>
                 <SheetOption
-                  label={`Current branch${project?.currentBranch ? ` (${project.currentBranch})` : ""}`}
+                  label="Current branch"
+                  detail={project?.currentBranch ?? undefined}
                   selected={!sideChat && workspaceMode === "current"}
                   onSelect={() => {
                     chooseWorkspaceMode("current");
@@ -544,10 +551,14 @@ export function NewSessionScreen({
                     onOpenSheetChange(null);
                   }}
                 />
+                {projectWorktrees.length > 0 ? (
+                  <p className="mobile-sheet-group-label">Branch from a worktree</p>
+                ) : null}
                 {projectWorktrees.map((wt) => (
                   <SheetOption
                     key={wt.id}
-                    label={`New worktree from “${wt.taskLabel}” (${wt.branch})`}
+                    label={wt.taskLabel}
+                    detail={wt.branch}
                     selected={
                       !sideChat &&
                       workspaceMode === "worktree" &&

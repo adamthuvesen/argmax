@@ -36,10 +36,20 @@ function reviewStub(): ReviewState {
     openChangesPanel: vi.fn(),
     openPanelInFilesMode: vi.fn(),
     openInFilesView: vi.fn(),
+    setPaneMode: vi.fn(),
+    focusPane: vi.fn(),
+    splitMode: vi.fn(),
+    closePane: vi.fn(),
+    setSplitRatio: vi.fn(),
     closePanel: vi.fn(),
     togglePanel: vi.fn(),
     toggleChangesPanel: vi.fn()
   });
+}
+
+function setReviewMode(review: ReviewState, mode: ReviewState["mode"]): void {
+  review.mode = mode;
+  review.layout = { ...review.layout, modes: [mode], activeIndex: 0 };
 }
 
 describe("ReviewPanel changes layout", () => {
@@ -177,7 +187,7 @@ describe("ReviewPanel changes layout", () => {
 
   it("anchors Files mode with a status bar naming the open file, and drops it in Changes mode", () => {
     const review = reviewStub();
-    review.mode = "files";
+    setReviewMode(review, "files");
     review.workspaceFiles.entries = [{ path: "src/index.ts" }, { path: "README.md" }];
     review.workspaceFiles.selectedPath = "src/index.ts";
     review.workspaceFiles.buffer = "one\ntwo\nthree";
@@ -189,14 +199,14 @@ describe("ReviewPanel changes layout", () => {
     expect(status).toHaveTextContent("3 lines");
 
     const changes = reviewStub();
-    changes.mode = "changes";
+    setReviewMode(changes, "changes");
     rerender(<ReviewPanel review={changes} />);
     expect(screen.queryByLabelText("File status")).not.toBeInTheDocument();
   });
 
   it("falls back to the workspace file count when nothing is open", () => {
     const review = reviewStub();
-    review.mode = "files";
+    setReviewMode(review, "files");
     review.workspaceFiles.entries = [{ path: "README.md" }];
     render(<ReviewPanel review={review} />);
 
@@ -205,7 +215,7 @@ describe("ReviewPanel changes layout", () => {
 
   it("keeps the resizable workspace file tree in Files mode", () => {
     const review = reviewStub();
-    review.mode = "files";
+    setReviewMode(review, "files");
     render(<ReviewPanel review={review} />);
     const leftCol = document.querySelector<HTMLElement>(".review-list-col");
 
@@ -218,7 +228,7 @@ describe("ReviewPanel changes layout", () => {
     const clientWidth = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(500);
     window.localStorage.setItem("argmax.reviewPanel.leftColumnWidth", "600");
     const review = reviewStub();
-    review.mode = "files";
+    setReviewMode(review, "files");
     render(<ReviewPanel review={review} />);
 
     expect(document.querySelector<HTMLElement>(".review-list-col")?.style.width).toBe("335px");
@@ -227,7 +237,7 @@ describe("ReviewPanel changes layout", () => {
 
   it("persists the Files-mode left column width to localStorage when the handle is dragged", () => {
     const review = reviewStub();
-    review.mode = "files";
+    setReviewMode(review, "files");
     render(<ReviewPanel review={review} />);
     const handle = screen.getByRole("separator", { name: "Resize file list width" });
 
@@ -243,7 +253,7 @@ describe("ReviewPanel changes layout", () => {
   it("keeps room for the preview column when the Files divider is dragged wide", () => {
     const clientWidth = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(500);
     const review = reviewStub();
-    review.mode = "files";
+    setReviewMode(review, "files");
     render(<ReviewPanel review={review} />);
 
     const handle = screen.getByRole("separator", { name: "Resize file list width" });
@@ -265,7 +275,7 @@ describe("ReviewPanel file tabs", () => {
     const review = reviewStub();
     const selectTab = vi.fn();
     const closeTab = vi.fn();
-    review.mode = "files";
+    setReviewMode(review, "files");
     review.workspaceFiles = {
       ...review.workspaceFiles,
       tabs: [
@@ -297,7 +307,7 @@ describe("ReviewPanel file tabs", () => {
     const saveDirtyTabAndClose = vi.fn().mockResolvedValue(undefined);
     const discardDirtyTabAndClose = vi.fn();
     const cancelDirtyTabClose = vi.fn();
-    review.mode = "files";
+    setReviewMode(review, "files");
     review.workspaceFiles = {
       ...review.workspaceFiles,
       tabs: [{ path: "src/index.ts", isDirty: true, saveState: "idle", externalChange: false }],
@@ -325,7 +335,7 @@ describe("ReviewPanel file tabs", () => {
   it("routes Cmd+W to the active file tab while Files mode has a tab open", () => {
     const review = reviewStub();
     const closeTab = vi.fn();
-    review.mode = "files";
+    setReviewMode(review, "files");
     review.workspaceFiles = {
       ...review.workspaceFiles,
       listState: "ready",
@@ -350,7 +360,7 @@ describe("ReviewPanel file tabs", () => {
   it("routes Cmd+W from the file tree to the active tab", () => {
     const review = reviewStub();
     const closeTab = vi.fn();
-    review.mode = "files";
+    setReviewMode(review, "files");
     review.workspaceFiles = {
       ...review.workspaceFiles,
       listState: "ready",
@@ -373,7 +383,7 @@ describe("ReviewPanel file tabs", () => {
   it("registers a menu-level close handler while Files mode has a tab open", () => {
     const review = reviewStub();
     const closeTab = vi.fn();
-    review.mode = "files";
+    setReviewMode(review, "files");
     review.workspaceFiles = {
       ...review.workspaceFiles,
       tabs: [{ path: "src/index.ts", isDirty: false, saveState: "idle", externalChange: false }],
@@ -394,7 +404,7 @@ describe("ReviewPanel file tabs", () => {
   it("ignores Cmd+W while the pane holding the panel is unfocused", () => {
     const review = reviewStub();
     const closeTab = vi.fn();
-    review.mode = "files";
+    setReviewMode(review, "files");
     review.workspaceFiles = {
       ...review.workspaceFiles,
       tabs: [{ path: "src/index.ts", isDirty: false, saveState: "idle", externalChange: false }],
@@ -413,7 +423,7 @@ describe("ReviewPanel file tabs", () => {
   it("saves a dirty file on Cmd+S pressed from the file tab strip", () => {
     const review = reviewStub();
     const saveFile = vi.fn().mockResolvedValue(undefined);
-    review.mode = "files";
+    setReviewMode(review, "files");
     review.workspaceFiles = {
       ...review.workspaceFiles,
       tabs: [{ path: "src/index.ts", isDirty: true, saveState: "idle", externalChange: false }],
@@ -433,7 +443,7 @@ describe("ReviewPanel file tabs", () => {
   it("ignores Cmd+S in Files mode while the file is clean", () => {
     const review = reviewStub();
     const saveFile = vi.fn().mockResolvedValue(undefined);
-    review.mode = "files";
+    setReviewMode(review, "files");
     review.workspaceFiles = {
       ...review.workspaceFiles,
       tabs: [{ path: "src/index.ts", isDirty: false, saveState: "idle", externalChange: false }],
@@ -452,7 +462,7 @@ describe("ReviewPanel file tabs", () => {
   it("leaves Cmd+W alone in Files mode when no file tab is open", () => {
     const review = reviewStub();
     const closeTab = vi.fn();
-    review.mode = "files";
+    setReviewMode(review, "files");
     review.workspaceFiles = {
       ...review.workspaceFiles,
       closeTab
@@ -487,7 +497,7 @@ describe("ReviewPanel — drag listener cleanup on unmount", () => {
     const removeListener = vi.spyOn(document, "removeEventListener");
 
     const review = reviewStub();
-    review.mode = "files";
+    setReviewMode(review, "files");
     const { unmount } = render(<ReviewPanel review={review} />);
 
     // Start a drag: mousedown on the resize handle activates the cursor
@@ -552,17 +562,17 @@ describe("ReviewPanel browser mode", () => {
     expect(screen.queryByRole("tab", { name: "Browser" })).toBeNull();
   });
 
-  it("opens the browser from the tab, taking the surface rather than only switching mode", () => {
+  it("opens the browser in the pane whose tab was clicked", () => {
     const review = reviewStub();
     render(<ReviewPanel review={review} />);
     fireEvent.click(screen.getByRole("tab", { name: "Browser" }));
+    expect(review.setPaneMode).toHaveBeenCalledWith(0, "browser");
     expect(review.openBrowser).toHaveBeenCalled();
-    expect(review.setMode).not.toHaveBeenCalled();
   });
 
   it("renders the browser chrome for the panel that owns the surface", () => {
     const review = reviewStub();
-    review.mode = "browser";
+    setReviewMode(review, "browser");
     review.browserOwner = true;
     review.browserRequest = { url: "https://argmax.dev", seq: 1 };
     const { container } = render(<ReviewPanel review={review} />);
@@ -576,7 +586,7 @@ describe("ReviewPanel browser mode", () => {
 
   it("shows a placeholder in a panel that lost the surface, and claims it back", () => {
     const review = reviewStub();
-    review.mode = "browser";
+    setReviewMode(review, "browser");
     review.browserOwner = false;
     render(<ReviewPanel review={review} />);
 
@@ -610,17 +620,16 @@ describe("ReviewPanel terminal mode", () => {
     expect(screen.queryByRole("tab", { name: "Terminal" })).toBeNull();
   });
 
-  it("opens the terminal from the tab", () => {
+  it("opens the terminal in the pane whose tab was clicked", () => {
     const review = reviewStub();
     render(<ReviewPanel review={review} />);
     fireEvent.click(screen.getByRole("tab", { name: "Terminal" }));
-    expect(review.openTerminal).toHaveBeenCalled();
-    expect(review.setMode).not.toHaveBeenCalled();
+    expect(review.setPaneMode).toHaveBeenCalledWith(0, "terminal");
   });
 
   it("gives Terminal mode the body to itself, with no Files or Changes furniture", async () => {
     const review = reviewStub();
-    review.mode = "terminal";
+    setReviewMode(review, "terminal");
     const { container } = render(<ReviewPanel review={review} />);
 
     await waitFor(() => {
@@ -650,7 +659,7 @@ describe("ReviewPanel terminal mode", () => {
 
   it("falls back to Changes when the mode outlives the workspace", () => {
     const review = reviewStub();
-    review.mode = "terminal";
+    setReviewMode(review, "terminal");
     review.terminalWorkspaceId = null;
     const { container } = render(<ReviewPanel review={review} />);
 

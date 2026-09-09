@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type JSX } from "react";
+import { ChevronsUpDown } from "lucide-react";
 import type { WorkspaceSummary } from "../../shared/types.js";
 import { ChangeCount } from "../components/ChangeCount.js";
 import { DiffBlocks } from "../components/DiffBlocks.js";
@@ -8,10 +9,10 @@ import { WorkspaceTree } from "../components/WorkspaceTree.js";
 import {
   REVIEW_SCOPE_LABELS,
   useReviewState,
-  type ReviewChangesScope,
   type ReviewSource
 } from "../hooks/useReviewState.js";
 import { statusLabel, summarizeChangedFiles } from "../lib/changedFiles.js";
+import { BottomSheet, SheetOption } from "./BottomSheet.js";
 import { MobileScreenHeader } from "./MobileScreenHeader.js";
 import { parseUnifiedDiff } from "../lib/diff.js";
 
@@ -51,6 +52,7 @@ export function MobileReviewScreen({
   const review = useReviewState(source, null, { editable: false, initiallyOpen: true });
 
   const [collapsedDiffPath, setCollapsedDiffPath] = useState<string | null>(null);
+  const [scopeSheetOpen, setScopeSheetOpen] = useState(false);
 
   const { openInFilesView } = review;
   useEffect(() => {
@@ -120,18 +122,20 @@ export function MobileReviewScreen({
 
       {isChanges ? (
         <div className="mobile-review-meta">
-          <select
+          {/* A sheet, like every other picker on the phone. A native select
+              anchors its menu to this row, which is what BottomSheet exists to
+              avoid — and it was the one control here that did not. */}
+          <button
+            type="button"
             className="mobile-review-scope"
             aria-label="Changes shown"
-            value={review.changesScope}
-            onChange={(event) => review.setChangesScope(event.target.value as ReviewChangesScope)}
+            aria-haspopup="dialog"
+            aria-expanded={scopeSheetOpen}
+            onClick={() => setScopeSheetOpen(true)}
           >
-            {review.availableScopes.map((scope) => (
-              <option key={scope} value={scope}>
-                {REVIEW_SCOPE_LABELS[scope]}
-              </option>
-            ))}
-          </select>
+            {REVIEW_SCOPE_LABELS[review.changesScope]}
+            <ChevronsUpDown size={13} aria-hidden="true" />
+          </button>
           {review.files.length > 0 ? (
             <span className="mobile-review-totals">
               {review.files.length} file{review.files.length === 1 ? "" : "s"} · +{totals.additions}{" "}
@@ -139,6 +143,24 @@ export function MobileReviewScreen({
             </span>
           ) : null}
         </div>
+      ) : null}
+
+      {scopeSheetOpen ? (
+        <BottomSheet label="Changes shown" onClose={() => setScopeSheetOpen(false)}>
+          <div className="mobile-sheet-group">
+            {review.availableScopes.map((scope) => (
+              <SheetOption
+                key={scope}
+                label={REVIEW_SCOPE_LABELS[scope]}
+                selected={scope === review.changesScope}
+                onSelect={() => {
+                  review.setChangesScope(scope);
+                  setScopeSheetOpen(false);
+                }}
+              />
+            ))}
+          </div>
+        </BottomSheet>
       ) : null}
 
       <div className="mobile-review-body">

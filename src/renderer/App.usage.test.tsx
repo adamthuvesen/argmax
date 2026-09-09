@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "./App.js";
 import {
@@ -242,6 +242,33 @@ describe("App usage", () => {
     expect(cursor).not.toBeNull();
     expect(within(cursor as HTMLElement).getByText("Teams")).toBeInTheDocument();
     expect(within(cursor as HTMLElement).queryByText(/% left/)).not.toBeInTheDocument();
+  });
+
+  it("holds the skeleton until both reads land, so the page arrives in one piece", async () => {
+    let landRemaining = (): void => {};
+    usageRemaining.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          landRemaining = () => resolve(usageRemainingFixture());
+        })
+    );
+    await openUsage();
+    await waitFor(() => {
+      expect(usageSummary).toHaveBeenCalled();
+    });
+    // Let the ledger's promise settle into state: it has landed, and it still
+    // waits for the card below it.
+    await act(async () => {});
+
+    expect(screen.getByRole("status", { name: "Loading usage" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Total cost")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Remaining on your plans" })).not.toBeInTheDocument();
+
+    landRemaining();
+
+    expect(await screen.findByLabelText("Total cost")).toHaveTextContent("$100.00");
+    expect(screen.getByRole("region", { name: "Remaining on your plans" })).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Loading usage" })).not.toBeInTheDocument();
   });
 
   it("keeps the local spend up when remaining usage fails", async () => {

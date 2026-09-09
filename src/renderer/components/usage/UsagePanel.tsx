@@ -2,12 +2,12 @@ import { CalendarDays } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type JSX } from "react";
 import type { ProviderId, UsageRemaining, UsageSummary, UsageWindow } from "../../../shared/types.js";
 import { SegmentedControl, SettingsListPicker } from "../settings/settingsPrimitives.js";
-import { SkeletonPane } from "../SkeletonPane.js";
 import { UsageAreaChart } from "./UsageAreaChart.js";
 import { UsageBreakdown } from "./UsageBreakdown.js";
 import { UsageHero } from "./UsageHero.js";
 import { UsageProviderRows } from "./UsageProviderRows.js";
 import { UsageRemainingCard } from "./UsageRemaining.js";
+import { UsageSkeleton } from "./UsageSkeleton.js";
 import { UsageTokenFlow } from "./UsageTokenFlow.js";
 import { formatCount, formatRangeLabel, formatScanStamp } from "./usageFormat.js";
 import type { UsageDelta } from "./usageInsights.js";
@@ -23,6 +23,13 @@ import {
 const REFRESH_MS = 60_000;
 /** The first scan is still walking the transcripts, so the numbers move. */
 const SCANNING_REFRESH_MS = 2_000;
+/**
+ * How long the page holds its skeleton waiting for the remaining-plan read
+ * before painting the ledger without it. That read calls out to four provider
+ * accounts behind a 10-second backend timeout, and a signed-out or slow login
+ * must not keep the local numbers off the screen.
+ */
+const REMAINING_HOLD_MS = 2_000;
 
 const WINDOW_OPTIONS: ReadonlyArray<{ value: UsageWindow; label: string }> = [
   { value: "24h", label: "Last 24 hours" },
@@ -102,6 +109,7 @@ export function UsagePanel(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [remaining, setRemaining] = useState<UsageRemaining | null>(null);
   const [remainingError, setRemainingError] = useState<string | null>(null);
+  const [remainingHoldOver, setRemainingHoldOver] = useState(false);
   const timeZoneRef = useRef(hostTimeZone());
   // Only the newest request may write state: a slow 30-day scan must not
   // land on top of the 24h window the user switched to while it ran.
@@ -155,6 +163,19 @@ export function UsagePanel(): JSX.Element {
     void loadRemaining();
   }, [loadRemaining]);
 
+  useEffect(() => {
+    const timer = globalThis.setTimeout(() => setRemainingHoldOver(true), REMAINING_HOLD_MS);
+    return () => globalThis.clearTimeout(timer);
+  }, []);
+
+  // The page arrives as one picture. The ledger and the remaining-plan read are
+  // separate fetches, and painting whichever landed first made the page build
+  // itself under the reader; the skeleton covers both until the slower one is
+  // in — or until the hold runs out. Once the read has settled it stays
+  // settled, so a later window switch skeletons the ledger alone and the
+  // remaining card, which does not follow the window, keeps its numbers up.
+  const remainingSettled = remaining !== null || remainingError !== null || remainingHoldOver;
+
   const scanning = summary?.scan.phase === "scanning";
   useEffect(() => {
     const period = scanning ? SCANNING_REFRESH_MS : REFRESH_MS;
@@ -162,9 +183,12 @@ export function UsagePanel(): JSX.Element {
     return () => globalThis.clearInterval(timer);
   }, [load, provider, scanning, usageWindow]);
 
-  const rangeLabel = summary
-    ? formatRangeLabel(summary.rangeStart, summary.rangeEnd, summary.resolution, summary.timeZone)
-    : "";
+  // The range and the scan stamp qualify the numbers below them, so they wait
+  // for the same reveal.
+  const rangeLabel =
+    summary && remainingSettled
+      ? formatRangeLabel(summary.rangeStart, summary.rangeEnd, summary.resolution, summary.timeZone)
+      : "";
   const chartTitle = summary?.resolution === "hour" ? "Hourly" : "Daily";
   const chartHeading = `${chartTitle} ${metric === "cost" ? "cost" : "tokens"}`;
   const scanStamp = summary ? formatScanStamp(summary.scan.lastCompletedAt, summary.timeZone) : null;
@@ -216,32 +240,38 @@ export function UsagePanel(): JSX.Element {
           </div>
         </header>
 
-        {error ? (
-          <div className="usage-notice" data-tone="error" role="alert">
-            <span>{error}</span>
-            <button type="button" className="sched-button" onClick={() => void load(usageWindow, provider)}>
-              Try again
-            </button>
-          </div>
-        ) : null}
+        {remainingSettled ? (
+          <>
+            {error ? (
+              <div className="usage-notice" data-tone="error" role="alert">
+                <span>{error}</span>
+                <button type="button" className="sched-button" onClick={() => void load(usageWindow, provider)}>
+                  Try again
+                </button>
+              </div>
+            ) : null}
 
-        {summary ? (
-          <UsageBody
-            summary={summary}
-            metric={metric}
-            chartHeading={chartHeading}
-            provider={provider}
-            onSelectProvider={setProvider}
-          />
-        ) : null}
-        {!summary && !error ? <SkeletonPane /> : null}
+            {summary ? (
+              <UsageBody
+                summary={summary}
+                metric={metric}
+                chartHeading={chartHeading}
+                provider={provider}
+                onSelectProvider={setProvider}
+              />
+            ) : null}
+            {!summary && !error ? <UsageSkeleton /> : null}
 
-        <UsageRemainingCard
-          remaining={remaining}
-          error={remainingError}
-          timeZone={timeZoneRef.current}
-          onRefresh={() => void loadRemaining()}
-        />
+            <UsageRemainingCard
+              remaining={remaining}
+              error={remainingError}
+              timeZone={timeZoneRef.current}
+              onRefresh={() => void loadRemaining()}
+            />
+          </>
+        ) : (
+          <UsageSkeleton />
+        )}
       </div>
     </div>
   );

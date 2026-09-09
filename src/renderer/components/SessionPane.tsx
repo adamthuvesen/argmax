@@ -43,12 +43,21 @@ import { readStoredReviewPanelSide } from "../lib/reviewPanelSide.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import { readBoundedNumberPreference, type ThinkingDisplay, type ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { ToolCall } from "../lib/toolCalls.js";
-import { agentTabId } from "../lib/agentTabs.js";
+import { agentTabId, multitaskTabId } from "../lib/agentTabs.js";
+import { useAgentTabs } from "../hooks/useAgentTabs.js";
 import { CommitDialog } from "./CommitDialog.js";
 import { ApprovalSurface } from "./ApprovalSurface.js";
 import { DebugPanel } from "./debug/DebugPanel.js";
 // ReviewPanel lazy-mounted (ralph B4); Vite emits a single ReviewPanel-*
 // chunk shared with the LaunchSurface call site.
+// The phone's peek at delegated work. Lazy for the same reason ReviewPanel is:
+// most sessions never open one.
+const AgentOverlay = lazy(async () => ({
+  default: (await import("../mobile/AgentOverlay.js")).AgentOverlay
+}));
+const AgentsView = lazy(async () => ({
+  default: (await import("./AgentsView.js")).AgentsView
+}));
 const ReviewPanel = lazy(async () => ({
   default: (await import("./ReviewPanel.js")).ReviewPanel
 }));
@@ -106,6 +115,7 @@ export function SessionPane({
   debugLogToggleSignal,
   session,
   agentsViewAvailable = true,
+  agentsPresentation = "dock",
   workspaceCardVisible = true,
   onWorkspaceCardVisibleChange,
   workspace
@@ -177,6 +187,10 @@ export function SessionPane({
   /** Whether this surface has a dock to host the Agents view. False on the
       phone, where a launch row is a record of the delegated work, not a way in. */
   agentsViewAvailable?: boolean;
+  /** Where a tapped subagent or multitask row opens. "dock" is the desktop's
+   *  review panel; "overlay" raises a sheet over the transcript, which is what
+   *  the phone has room for. */
+  agentsPresentation?: "dock" | "overlay";
   /** User preference for the floating workspace card. Visible when enabled
       and the conversation column is wide enough to hold it beside the transcript. */
   workspaceCardVisible?: boolean;
@@ -240,7 +254,7 @@ export function SessionPane({
   const reviewColumnWidth = `${rightPanelWidth}px`;
   const logColumnWidth = reviewState.isPanelOpen ? "clamp(300px, 32vw, 480px)" : `${rightPanelWidth}px`;
   // The terminal is a review-panel view, so "open" is that panel showing it.
-  const terminalOpen = reviewState.isPanelOpen && reviewState.mode === "terminal";
+  const terminalOpen = reviewState.isPanelOpen && reviewState.layout.modes.includes("terminal");
   const gridStyle = {
     "--session-main-column-min-width": `${CHAT_PANE_MIN_WIDTH_PX}px`,
     "--session-review-panel-width": reviewColumnWidth,
@@ -260,7 +274,8 @@ export function SessionPane({
   const reviewOpenInFilesView = reviewState.openInFilesView;
   const reviewOpenPanelInFilesMode = reviewState.openPanelInFilesMode;
   const reviewIsPanelOpen = reviewState.isPanelOpen;
-  const reviewMode = reviewState.mode;
+  const reviewModes = reviewState.layout.modes;
+  const reviewClosePane = reviewState.closePane;
   const onRightPanelWidthChangeRef = useRef(onRightPanelWidthChange);
   useEffect(() => {
     onRightPanelWidthChangeRef.current = onRightPanelWidthChange;
@@ -290,7 +305,20 @@ export function SessionPane({
     },
     [openAgentInPanel]
   );
-  const handleOpenAgent = agentsViewAvailable ? openAgent : undefined;
+  const agentsInOverlay = agentsPresentation === "overlay";
+  // The overlay keeps its own tab list. `reviewState.openAgent` opens the
+  // desktop dock as a side effect, and the phone has no dock to open — routing
+  // through it laid the review panel over the chat.
+  const overlayTabs = useAgentTabs();
+  const openAgentOverlay = useCallback(
+    (tool: ToolCall): void => overlayTabs.openTab(agentTabId(tool)),
+    [overlayTabs]
+  );
+  const handleOpenAgent = agentsInOverlay
+    ? openAgentOverlay
+    : agentsViewAvailable
+      ? openAgent
+      : undefined;
 
   // A multitask row opens its chat in the same dock, one tab over from the
   // subagents: both are work running alongside this one.
@@ -298,9 +326,18 @@ export function SessionPane({
   // (the phone), and its rows open the chat itself instead.
   const openMultitaskInPanel = reviewState.openMultitask;
   const hostsMultitasks = (multitasks?.length ?? 0) > 0;
+  const openMultitaskOverlay = useCallback(
+    (sessionId: string): void => overlayTabs.openTab(multitaskTabId(sessionId)),
+    [overlayTabs]
+  );
   const handleOpenMultitask = useMemo(
-    () => (hostsMultitasks ? openMultitaskInPanel : undefined),
-    [hostsMultitasks, openMultitaskInPanel]
+    () =>
+      agentsInOverlay
+        ? openMultitaskOverlay
+        : hostsMultitasks
+          ? openMultitaskInPanel
+          : undefined,
+    [agentsInOverlay, hostsMultitasks, openMultitaskInPanel, openMultitaskOverlay]
   );
 
   const handleOpenCommitDialog = useCallback(() => setIsCommitDialogOpen(true), []);
@@ -440,8 +477,8 @@ export function SessionPane({
       }
       if (key === "g") {
         event.preventDefault();
-        if (reviewIsPanelOpen && reviewMode === "files") {
-          reviewClosePanel();
+        if (reviewIsPanelOpen && reviewModes.includes("files")) {
+          reviewClosePane(reviewModes[0] === "files" ? 0 : 1);
         } else {
           reviewOpenPanelInFilesMode();
         }
@@ -454,7 +491,8 @@ export function SessionPane({
     isLogOpen,
     reviewClosePanel,
     reviewIsPanelOpen,
-    reviewMode,
+    reviewModes,
+    reviewClosePane,
     reviewOpenPanelInFilesMode,
     reviewTogglePanel
   ]);
@@ -606,6 +644,37 @@ export function SessionPane({
           events={visibleEvents}
           onResolveApproval={onResolveApproval}
         />
+      {agentsInOverlay && overlayTabs.tabIds.length > 0 ? (
+        <Suspense fallback={null}>
+          <AgentOverlay
+            label="Delegated work"
+            onClose={() => overlayTabs.closeAllTabs()}
+          >
+            <AgentsView
+              events={visibleEvents}
+              defaultToolCallsDisplay={defaultToolCallsDisplay}
+              defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
+              thinkingDisplay={thinkingDisplay}
+              isFocused={isFocused}
+              parentSession={session}
+              agentTabs={overlayTabs}
+              workspace={workspace}
+              onLoadAgentEvents={onLoadAgentEvents}
+              onLoadSessionEvents={onLoadSessionEvents}
+              onOpenAgent={handleOpenAgent}
+              onOpenFile={handleOpenFile}
+              multitasks={multitasks}
+              pendingMessages={pendingMessages}
+              onCancelQueuedMessage={onCancelQueuedMessage}
+              onClearSession={onClearSession}
+              onOpenFullChat={onOpenSession}
+              onSendQueuedMessageNow={onSendQueuedMessageNow}
+              onSendSessionInput={onSendSessionInput}
+              onTerminateSession={onTerminateSession}
+            />
+          </AgentOverlay>
+        </Suspense>
+      ) : null}
       </div>
       {reviewState.isPanelOpen ? (
         <Suspense fallback={null}>

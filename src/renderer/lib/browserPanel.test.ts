@@ -17,6 +17,7 @@ import {
   openBrowserPanel,
   openInBrowserPanel,
   isBrowserTabMaterialized,
+  rememberBrowserUrl,
   releaseBrowserSurface,
   requestAgentBrowserOpen,
   requestCloseActiveBrowserTab,
@@ -179,7 +180,10 @@ describe("tab persistence", () => {
 });
 
 describe("mirroring the app's tab registry", () => {
-  afterEach(() => resetBrowserTabsForTests());
+  afterEach(() => {
+    resetBrowserTabsForTests();
+    resetBrowserSurfaceForTests();
+  });
 
   const registryTab = (
     tabId: string,
@@ -248,6 +252,29 @@ describe("mirroring the app's tab registry", () => {
     applyBrowserTabs([registryTab("agent-1")]);
     expect(listener).not.toHaveBeenCalled();
     unsubscribe();
+  });
+
+  // The pushes arrive with no browser chrome mounted, which is exactly when a
+  // reopen has to know where the tab went: reopening at a URL the tab has
+  // navigated away from would navigate it back.
+  it("reopens at the URL the registry last reported for the active tab", () => {
+    applyBrowserTabs([registryTab("tab-1", { url: "https://github.com" })]);
+    activateBrowserTab("tab-1");
+    applyBrowserTabs([registryTab("tab-1", { url: "https://github.com/pulls" })]);
+
+    expect(lastBrowsedUrl()).toBe("https://github.com/pulls");
+  });
+
+  it("reopens at the active tab, not a page a background tab reported", () => {
+    applyBrowserTabs([
+      registryTab("tab-1", { url: "https://github.com" }),
+      registryTab("agent-1", { ownerSessionId: "s1", url: "https://example.com" })
+    ]);
+    activateBrowserTab("tab-1");
+    // A hidden tab loading its own page still reports state.
+    rememberBrowserUrl("https://example.com");
+
+    expect(lastBrowsedUrl()).toBe("https://github.com");
   });
 });
 

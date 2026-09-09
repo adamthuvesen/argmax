@@ -17,9 +17,12 @@ export function useStandaloneBrowserLinks(options: {
   const { active, onOpenInAppBrowser } = options;
 
   useEffect(() => {
-    if (!active) return;
     if (!pendingBrowserRequest || pendingBrowserRequest.seq === handledBrowserSeq.current) return;
+    // Track the sequence even while no standalone page is showing: a request a
+    // review panel already handled must not be replayed the moment Settings
+    // opens, which would swap the page the user asked for with the browser.
     handledBrowserSeq.current = pendingBrowserRequest.seq;
+    if (!active) return;
     if (isRemoteBridge()) return;
 
     const url = pendingBrowserRequest.url;

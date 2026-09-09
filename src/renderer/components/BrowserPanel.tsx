@@ -55,6 +55,8 @@ interface BrowserPanelProps {
    * page with a different set of refs.
    */
   requestTabId?: string;
+  /** A split swap can move the surface without changing its size. */
+  panePosition?: "top" | "bottom";
   onClose: () => void;
 }
 
@@ -102,14 +104,14 @@ function TabFavicon({ url }: { url: string }): JSX.Element {
  * paint above the renderer DOM, so this component hides the active one
  * while the collapsed sidebar peeks or a dialog overlaps the surface.
  *
- * Only the review panel that owns the browser surface mounts this, so moving
- * the browser between panes is a plain unmount/mount: the unmount effect hides
- * the webview and the mount effect re-glues it to the new panel's surface.
+ * Only the owner mounts this chrome. Changing owners unmounts it, while
+ * swapping halves inside a split panel keeps it mounted and updates its bounds.
  */
 export function BrowserPanel({
   url,
   requestSeq,
   requestTabId,
+  panePosition,
   onClose
 }: BrowserPanelProps): JSX.Element {
   const browser = window.argmax?.browser ?? null;
@@ -158,7 +160,7 @@ export function BrowserPanel({
     const right = bounds.x + bounds.width;
     const bottom = bounds.y + bounds.height;
     if (bounds.width <= 0 || bounds.height <= 0) return false;
-    return Array.from(document.querySelectorAll('[role="dialog"]')).some((overlay) => {
+    return Array.from(document.querySelectorAll('[role="dialog"], [data-browser-overlay="true"]')).some((overlay) => {
       const rect = overlay.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return false;
       return rect.left < right && rect.right > bounds.x && rect.top < bottom && rect.bottom > bounds.y;
@@ -425,6 +427,7 @@ export function BrowserPanel({
   useEffect(() => {
     const surface = surfaceRef.current;
     if (!surface) return;
+    syncBounds();
     const observer = new ResizeObserver(() => syncBounds());
     observer.observe(surface);
     window.addEventListener("resize", syncBounds);
@@ -432,7 +435,7 @@ export function BrowserPanel({
       observer.disconnect();
       window.removeEventListener("resize", syncBounds);
     };
-  }, [syncBounds]);
+  }, [syncBounds, panePosition]);
 
   // Peeking changes chrome state without resizing the browser surface or
   // inserting a dialog, so the existing observers would not hide the webview.
@@ -444,7 +447,7 @@ export function BrowserPanel({
     const update = (): void => {
       // Streaming chat fires this on every DOM batch, so take the cheap
       // selector first and measure rects only once an overlay exists.
-      const anyOverlay = document.querySelector('[role="dialog"]') !== null;
+      const anyOverlay = document.querySelector('[role="dialog"], [data-browser-overlay="true"]') !== null;
       if (!anyOverlay && !overlayOpenRef.current) return;
       const bounds = measureBounds();
       if (!bounds) return;

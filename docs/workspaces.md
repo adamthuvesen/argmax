@@ -68,7 +68,11 @@ An attributed pull request replaces the default status marker with a GitHub PR g
 
 ## Review
 
-The session review panel remembers its open/closed state per session in localStorage. Returning to a chat or restarting the app restores that visibility. Full-screen review surfaces keep their explicit initial visibility.
+The review panel can show two views stacked vertically. Right-click a view tab and choose **Split below**, or drag a tab onto the upper or lower half of the panel. Drag the divider to resize the views, or focus it and use the arrow keys. Each view appears once. Selecting a tab already shown in the other half swaps the views. Actions from the chat use the half where the requested view is already visible. Closing either half expands the remaining view.
+
+The session review panel remembers its visibility, view arrangement, and divider position per session in localStorage. Returning to a chat or restarting the app restores them. Closing the whole sidebar preserves the arrangement for its next open. Full-screen review surfaces keep their explicit initial visibility and a single view.
+
+Layouts live in `argmax.reviewPanel.layout.<sessionId>`. The launcher uses one shared `argmax.reviewPanel.layout.launcher` preference across projects. Existing single-mode session preferences remain the fallback until a layout is saved.
 
 [src-tauri/src/review/git_review.rs](../src-tauri/src/review/git_review.rs) provides diff calculations and file lists.
 

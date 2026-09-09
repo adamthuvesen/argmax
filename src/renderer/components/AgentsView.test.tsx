@@ -76,6 +76,7 @@ function agentTabs(overrides: Partial<AgentTabsState> = {}): AgentTabsState {
     activeTabId: null,
     selectTab: vi.fn(),
     closeTab: vi.fn(),
+    closeAllTabs: vi.fn(),
     replaceTab: vi.fn(),
     ...overrides
   };

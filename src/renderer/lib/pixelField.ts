@@ -5,6 +5,8 @@
 
 export type Rgb = { r: number; g: number; b: number };
 
+let colorContext: CanvasRenderingContext2D | null | undefined;
+
 function parseRgb(value: string): Rgb {
   const match = value.match(/(\d+(?:\.\d+)?)/g);
   if (!match || match.length < 3) return { r: 90, g: 143, b: 114 };
@@ -18,9 +20,23 @@ export function readColorToken(varName: string, host: HTMLElement): Rgb {
   const probe = document.createElement("span");
   probe.style.cssText = `position:absolute;visibility:hidden;color:var(${varName})`;
   host.appendChild(probe);
-  const rgb = parseRgb(getComputedStyle(probe).color);
+  const color = getComputedStyle(probe).color;
   probe.remove();
-  return rgb;
+  if (/^rgba?\(/.test(color)) return parseRgb(color);
+
+  // Mixed surface tokens can resolve to color(srgb ...) or oklab(...).
+  // Let the browser convert them to sRGB bytes, as it does when painting CSS.
+  if (colorContext === undefined) {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 1;
+    colorContext = canvas.getContext("2d", { willReadFrequently: true });
+  }
+  if (!colorContext) return parseRgb(color);
+  colorContext.clearRect(0, 0, 1, 1);
+  colorContext.fillStyle = color;
+  colorContext.fillRect(0, 0, 1, 1);
+  const [r, g, b] = colorContext.getImageData(0, 0, 1, 1).data;
+  return { r, g, b };
 }
 
 // Relative luminance, 0..1. Every field weighs its accent against the surface

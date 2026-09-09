@@ -909,6 +909,19 @@ button.composer-compact-context-row:hover,
   content: "\200b";
 }
 
+/* In the launcher the field is 60px tall and centres a 52px textarea, so a
+   mirror stretched to the field paints its text above the real one — 4px on a
+   single line, closing to 0 once the prompt wraps past the field's minimum.
+   Give the mirror the textarea's own height bounds and let the field's
+   centring place it on the same box. */
+.composer-input > .composer-highlight-backdrop {
+  top: 50%;
+  bottom: auto;
+  min-height: var(--composer-field-min-height);
+  max-height: var(--composer-field-max-height);
+  transform: translateY(-50%);
+}
+
 /* One treatment in both composers and sent prompts. Keep glyph metrics intact
    so the textarea caret and mirror remain aligned, including wrapped tokens. */
 .skill-token {
@@ -1004,15 +1017,13 @@ button.composer-compact-context-row:hover,
 
 .slash-menu-label,
 .file-popover-name {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 0 0 auto;
   font-weight: 500;
 }
 
-/* Right-aligned so short hints hug the panel edge like the reference menu,
-   and long ones simply fill the gap and clip. */
+/* The hint yields when the row runs out of room; the skill or command name
+   stays intact. Short hints hug the panel edge; long ones fill the gap and
+   clip with an ellipsis. */
 .slash-menu-hint {
   flex: 1 1 auto;
   min-width: 0;

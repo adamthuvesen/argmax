@@ -69,6 +69,7 @@ import { ProjectMoveNotice } from "./ProjectMoveNotice.js";
 import { ProviderSwitchNotice } from "./ProviderSwitchNotice.js";
 import { SessionNote } from "./SessionNote.js";
 import { foldConversationItems, foldRenderItems, type RenderItem } from "../lib/foldConversation.js";
+import { todoListsByTurn } from "../lib/todoList.js";
 import {
   collectAskUserQuestionState,
   hasOutstandingCardAsk as sessionHasOutstandingCardAsk,
@@ -625,6 +626,27 @@ export function SessionConversation({
       ),
     [renderItems]
   );
+  // The plan is folded once for the session and sliced by turn, so scrolling
+  // back shows the plan as it stood then rather than as it stands now.
+  const todoByTurn = useMemo(() => {
+    const starts = transcriptRenderItems
+      .filter((item): item is Extract<RenderItem, { kind: "turn" }> => item.kind === "turn")
+      .map((item) => ({
+        id: item.id,
+        // A turn owns the updates from its first content until the next turn's.
+        // The oldest turn reaches back to the start so a plan published before
+        // any renderable content still lands somewhere.
+        startedAt: item.assistantEvents[0]?.createdAt ?? item.toolItems[0]?.tool.createdAt ?? ""
+      }));
+    return todoListsByTurn(
+      liveEvents,
+      starts.map((turn, index) => ({
+        id: turn.id,
+        from: index === 0 ? "" : turn.startedAt,
+        to: starts[index + 1]?.startedAt ?? null
+      }))
+    );
+  }, [transcriptRenderItems, liveEvents]);
   const [visibleCount, setVisibleCount] = useState(CONVERSATION_WINDOW);
   // A different session starts from the bottom again.
   useEffect(() => setVisibleCount(CONVERSATION_WINDOW), [sessionId]);
@@ -688,10 +710,10 @@ export function SessionConversation({
       fileCount: review.files.length,
       additions: totals.additions,
       deletions: totals.deletions,
-      isOpen: review.isPanelOpen && review.mode === "changes",
+      isOpen: review.isPanelOpen && review.layout.modes.includes("changes"),
       onOpen: review.toggleChangesPanel
     };
-  }, [review.files, review.filesState, review.isPanelOpen, review.mode, review.toggleChangesPanel]);
+  }, [review.files, review.filesState, review.isPanelOpen, review.layout.modes, review.toggleChangesPanel]);
   // Composer is enabled whenever the session is alive. During `running`,
   // typed messages get queued in main and drain when the current turn
   // finishes. `complete` and `cancelled` are also enabled because main's
@@ -1326,6 +1348,7 @@ export function SessionConversation({
                     defaultTurnChangesExpanded={defaultTurnChangesExpanded}
                     restoringTranscript={restoringTranscript}
                     questionIsDocked={questionDocked && index === transcriptRenderItems.length - 1}
+                    todo={todoByTurn.get(item.id) ?? null}
                     onOpenDiff={review.openFile}
                     onOpenReview={review.openChangesPanel}
                   />

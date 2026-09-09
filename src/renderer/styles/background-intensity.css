@@ -1,0 +1,149 @@
+/* Level 7 owns no rule, so the default setting and an absent attribute retain
+   every shipped literal in tokens.css. Other rungs move the neutral surfaces
+   together while preserving the offsets that distinguish app chrome, live
+   composers, nested panels, code, and picker rows. Lines and scrollbars move
+   with them so their contrast remains proportional. */
+:root:is([data-background-intensity="1"], [data-background-intensity="2"], [data-background-intensity="3"], [data-background-intensity="4"], [data-background-intensity="5"], [data-background-intensity="6"], [data-background-intensity="8"], [data-background-intensity="9"], [data-background-intensity="10"]) {
+  --bg: color-mix(in oklab, #fdfdfd, var(--background-bg-target) var(--background-pull));
+  --sidebar: color-mix(in oklab, #fafbfb, var(--background-sidebar-target) var(--background-pull));
+  --panel: color-mix(in oklab, #ffffff, var(--background-panel-target) var(--background-pull));
+  --review-panel: color-mix(in oklab, #ffffff, var(--background-review-panel-target) var(--background-pull));
+  --review-sidebar: color-mix(in oklab, #f6f7f8, var(--background-review-sidebar-target) var(--background-pull));
+  --panel-soft: color-mix(in oklab, #fafafa, var(--background-panel-soft-target) var(--background-pull));
+  --composer-surface: color-mix(in oklab, #ffffff, var(--background-composer-target) var(--background-pull));
+  --panel-sunken: color-mix(in oklab, #eef0f1, var(--background-sunken-target) var(--background-pull));
+  --code-surface: color-mix(in oklab, #f4f6f7, var(--background-code-target) var(--background-pull));
+  --terminal-surface: color-mix(in oklab, #fbfbfa, var(--background-terminal-target) var(--background-pull));
+  --tool-block-surface: color-mix(in oklab, #f5f6f7, var(--background-tool-target) var(--background-pull));
+  --line: color-mix(in oklab, #e3e6e8, var(--background-line-target) var(--background-pull));
+  --line-soft: color-mix(in oklab, #eceeef, var(--background-line-soft-target) var(--background-pull));
+  --line-strong: color-mix(in oklab, #cfd5d8, var(--background-line-strong-target) var(--background-pull));
+  --scrollbar-thumb: color-mix(in oklab, #dce1e4, var(--background-scrollbar-target) var(--background-pull));
+  --scrollbar-thumb-hover: color-mix(in oklab, #cfd5d8, var(--background-scrollbar-hover-target) var(--background-pull));
+  --overlay-panel: color-mix(in oklab, #ffffff, var(--background-overlay-target) var(--background-pull));
+  --overlay-panel-raised: color-mix(in oklab, #eef0f1, var(--background-overlay-raised-target) var(--background-pull));
+}
+
+:root[data-theme="dark"]:is([data-background-intensity="1"], [data-background-intensity="2"], [data-background-intensity="3"], [data-background-intensity="4"], [data-background-intensity="5"], [data-background-intensity="6"], [data-background-intensity="8"], [data-background-intensity="9"], [data-background-intensity="10"]) {
+  --bg: color-mix(in oklab, #141414, var(--background-bg-target) var(--background-pull));
+  --sidebar: color-mix(in oklab, #1a1a1a, var(--background-sidebar-target) var(--background-pull));
+  --panel: color-mix(in oklab, #1a1a1a, var(--background-panel-target) var(--background-pull));
+  --review-panel: color-mix(in oklab, #1a1a1a, var(--background-review-panel-target) var(--background-pull));
+  --review-sidebar: color-mix(in oklab, #202020, var(--background-review-sidebar-target) var(--background-pull));
+  --panel-soft: color-mix(in oklab, #212121, var(--background-panel-soft-target) var(--background-pull));
+  --composer-surface: color-mix(in oklab, #202020, var(--background-composer-target) var(--background-pull));
+  --panel-sunken: color-mix(in oklab, #0f0f0f, var(--background-sunken-target) var(--background-pull));
+  --code-surface: color-mix(in oklab, #0f0f0f, var(--background-code-target) var(--background-pull));
+  --terminal-surface: color-mix(in oklab, #141414, var(--background-terminal-target) var(--background-pull));
+  --tool-block-surface: color-mix(in oklab, #181818, var(--background-tool-target) var(--background-pull));
+  --line: color-mix(in oklab, #2b2b29, var(--background-line-target) var(--background-pull));
+  --line-soft: color-mix(in oklab, #212120, var(--background-line-soft-target) var(--background-pull));
+  --line-strong: color-mix(in oklab, #3a3a37, var(--background-line-strong-target) var(--background-pull));
+  --scrollbar-thumb: color-mix(in oklab, #3a3a37, var(--background-scrollbar-target) var(--background-pull));
+  --scrollbar-thumb-hover: color-mix(in oklab, #8a857b, var(--background-scrollbar-hover-target) var(--background-pull));
+  --overlay-panel: color-mix(in oklab, #171716, var(--background-overlay-target) var(--background-pull));
+  --overlay-panel-raised: color-mix(in oklab, #292926, var(--background-overlay-raised-target) var(--background-pull));
+}
+
+:root:is([data-background-intensity="1"], [data-background-intensity="2"], [data-background-intensity="3"], [data-background-intensity="4"], [data-background-intensity="5"], [data-background-intensity="6"]) {
+  --background-bg-target: #e3e3e3;
+  --background-sidebar-target: #e8e9ea;
+  --background-panel-target: #ededed;
+  --background-review-panel-target: #ededed;
+  --background-review-sidebar-target: #e6e7e8;
+  --background-panel-soft-target: #eaeaea;
+  --background-composer-target: #ededed;
+  --background-sunken-target: #d9dcde;
+  --background-code-target: #dfe2e4;
+  --background-terminal-target: #e1e1e1;
+  --background-tool-target: #e0e2e4;
+  --background-line-target: #c9ccce;
+  --background-line-soft-target: #d2d5d7;
+  --background-line-strong-target: #b5babd;
+  --background-scrollbar-target: #c2c6c9;
+  --background-scrollbar-hover-target: #b5babd;
+  --background-overlay-target: #ededed;
+  --background-overlay-raised-target: #d9dcde;
+}
+
+:root[data-theme="dark"]:is([data-background-intensity="1"], [data-background-intensity="2"], [data-background-intensity="3"], [data-background-intensity="4"], [data-background-intensity="5"], [data-background-intensity="6"]) {
+  --background-bg-target: #2c2c2c;
+  --background-sidebar-target: #323232;
+  --background-panel-target: #323232;
+  --background-review-panel-target: #323232;
+  --background-review-sidebar-target: #383838;
+  --background-panel-soft-target: #393939;
+  --background-composer-target: #383838;
+  --background-sunken-target: #272727;
+  --background-code-target: #272727;
+  --background-terminal-target: #2c2c2c;
+  --background-tool-target: #303030;
+  --background-line-target: #434341;
+  --background-line-soft-target: #393938;
+  --background-line-strong-target: #52524f;
+  --background-scrollbar-target: #52524f;
+  --background-scrollbar-hover-target: #8a857b;
+  --background-overlay-target: #2f2f2e;
+  --background-overlay-raised-target: #41413f;
+}
+
+:root:is([data-background-intensity="8"], [data-background-intensity="9"], [data-background-intensity="10"]) {
+  --background-bg-target: #ffffff;
+  --background-sidebar-target: #fdfefe;
+  --background-panel-target: #ffffff;
+  --background-review-panel-target: #ffffff;
+  --background-review-sidebar-target: #fafbfc;
+  --background-panel-soft-target: #fdfdfd;
+  --background-composer-target: #ffffff;
+  --background-sunken-target: #f2f4f5;
+  --background-code-target: #f7f8f9;
+  --background-terminal-target: #ffffff;
+  --background-tool-target: #f8f9fa;
+  --background-line-target: #e7eaec;
+  --background-line-soft-target: #f0f1f2;
+  --background-line-strong-target: #d5dadd;
+  --background-scrollbar-target: #e0e4e6;
+  --background-scrollbar-hover-target: #d5dadd;
+  --background-overlay-target: #ffffff;
+  --background-overlay-raised-target: #f2f4f5;
+}
+
+:root[data-theme="dark"]:is([data-background-intensity="8"], [data-background-intensity="9"], [data-background-intensity="10"]) {
+  --background-bg-target: #000000;
+  --background-sidebar-target: #060606;
+  --background-panel-target: #060606;
+  --background-review-panel-target: #060606;
+  --background-review-sidebar-target: #0c0c0c;
+  --background-panel-soft-target: #0d0d0d;
+  --background-composer-target: #0c0c0c;
+  --background-sunken-target: #000000;
+  --background-code-target: #000000;
+  --background-terminal-target: #000000;
+  --background-tool-target: #040404;
+  --background-line-target: #171716;
+  --background-line-soft-target: #10100f;
+  --background-line-strong-target: #242421;
+  --background-scrollbar-target: #242421;
+  --background-scrollbar-hover-target: #8a857b;
+  --background-overlay-target: #030303;
+  --background-overlay-raised-target: #151513;
+}
+
+:root[data-background-intensity="1"] { --background-pull: 100%; }
+:root[data-background-intensity="2"] { --background-pull: 83%; }
+:root[data-background-intensity="3"] { --background-pull: 67%; }
+:root[data-background-intensity="4"] { --background-pull: 50%; }
+:root[data-background-intensity="5"] { --background-pull: 33%; }
+:root[data-background-intensity="6"] { --background-pull: 17%; }
+:root[data-background-intensity="8"] { --background-pull: 33%; }
+:root[data-background-intensity="9"] { --background-pull: 67%; }
+:root[data-background-intensity="10"] { --background-pull: 100%; }
+
+/* Dark mode's useful low end starts at the former level 4. Spread that
+   smaller interval across six rungs for finer control near shipped charcoal. */
+:root[data-theme="dark"][data-background-intensity="1"] { --background-pull: 50%; }
+:root[data-theme="dark"][data-background-intensity="2"] { --background-pull: 42%; }
+:root[data-theme="dark"][data-background-intensity="3"] { --background-pull: 33%; }
+:root[data-theme="dark"][data-background-intensity="4"] { --background-pull: 25%; }
+:root[data-theme="dark"][data-background-intensity="5"] { --background-pull: 17%; }
+:root[data-theme="dark"][data-background-intensity="6"] { --background-pull: 8%; }

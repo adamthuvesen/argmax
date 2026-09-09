@@ -154,7 +154,7 @@ fn claude_common_args(
     args.extend(claude_reasoning_args(input));
     args.extend(claude_settings_args(input, mcp));
     args.extend(mcp_injection::mcp_args(ProviderId::Claude, mcp));
-    args.extend(["--model".to_string(), input.model_id.clone()]);
+    args.extend(["--model".to_string(), claude_model_arg(&input.model_id)]);
     if let Some(session_id) = session_id {
         args.extend(["--session-id".to_string(), session_id.to_string()]);
     }
@@ -207,6 +207,7 @@ fn codex_common_args(
     let mut args = codex_permission_args(input);
     args.extend(["--model".to_string(), input.model_id.clone()]);
     args.extend(codex_reasoning_summary_args(input));
+    args.extend(codex_update_plan_args(input));
     args.extend(codex_reasoning_args(input));
     args.extend(codex_fast_mode_args(input));
     args.extend(mcp_injection::mcp_args(ProviderId::Codex, mcp));
@@ -669,6 +670,25 @@ fn claude_settings_args(
     ]
 }
 
+// Claude reads a model's context window from a first-party lookup that a custom
+// ANTHROPIC_BASE_URL (a proxy, a gateway) puts out of reach: the bare id then
+// falls back to the CLI's 200k default for an unrecognized model, and
+// auto-compact fires a fifth of the way into the window the picker advertises.
+// The `[1m]` spelling asks for the long-context beta by name, so the session
+// gets the catalog's window on any endpoint. Mirrors the 1M entries of
+// PROVIDER_MODELS.claude (providerModels.ts). Only the launch flag carries the
+// suffix — the CLI reports the bare id back on every message, so usage rows and
+// pricing keep matching MODEL_PRICING.
+const CLAUDE_LONG_CONTEXT_MODELS: [&str; 2] = ["claude-fable-5-1", "claude-opus-5"];
+
+fn claude_model_arg(model_id: &str) -> String {
+    if CLAUDE_LONG_CONTEXT_MODELS.contains(&model_id) {
+        format!("{model_id}[1m]")
+    } else {
+        model_id.to_string()
+    }
+}
+
 // Codex "fast mode" is the priority service tier (1.5× speed), set as a TOML
 // config override like the reasoning effort above — the value needs quotes to
 // parse as a TOML string. Omitted when off so the account default applies.
@@ -713,6 +733,13 @@ fn codex_reasoning_summary_args(_input: &ProviderLaunchInput) -> Vec<String> {
         "-c".to_string(),
         r#"model_reasoning_summary="auto""#.to_string(),
     ]
+}
+
+// `update_plan` is Codex's todo list, and `codex exec` withholds it unless the
+// config says otherwise — without this the model is told the tool does not
+// exist and the chat never sees a plan. On everywhere else it is the default.
+fn codex_update_plan_args(_input: &ProviderLaunchInput) -> Vec<String> {
+    vec!["-c".to_string(), "tools.update_plan.enabled=true".to_string()]
 }
 
 pub(super) fn prompt_for_agent_mode(prompt: &str, agent_mode: AgentMode) -> String {
@@ -763,6 +790,33 @@ mod tests {
             ]
         );
         assert_eq!((definition.structured_stdin)(&input), None);
+    }
+
+    #[test]
+    fn claude_million_token_models_launch_on_the_1m_spelling() {
+        let definition = get_provider_definition(ProviderId::Claude);
+        for (model_id, expected) in [
+            ("claude-opus-5", "claude-opus-5[1m]"),
+            ("claude-fable-5-1", "claude-fable-5-1[1m]"),
+            ("claude-sonnet-5", "claude-sonnet-5"),
+            ("claude-haiku-4-5", "claude-haiku-4-5"),
+        ] {
+            let input = ProviderLaunchInput {
+                model_id: model_id.to_string(),
+                ..launch_input(ProviderId::Claude)
+            };
+
+            for args in [
+                (definition.structured_args)(&input, None),
+                (definition.structured_resume_args)(&input, "conv-1", None),
+            ] {
+                let i = args
+                    .iter()
+                    .position(|arg| arg == "--model")
+                    .expect("model flag");
+                assert_eq!(args[i + 1], expected);
+            }
+        }
     }
 
     #[test]
@@ -933,6 +987,9 @@ mod tests {
                 "gpt-5.6-sol",
                 "-c",
                 "model_reasoning_summary=\"auto\"",
+                // Codex's todo list, which `exec` withholds without this.
+                "-c",
+                "tools.update_plan.enabled=true",
                 "-c",
                 "model_reasoning_effort=\"low\"",
                 "-",
@@ -1072,6 +1129,9 @@ mod tests {
                 "gpt-5.6-sol",
                 "-c",
                 "model_reasoning_summary=\"auto\"",
+                // Codex's todo list, which `exec` withholds without this.
+                "-c",
+                "tools.update_plan.enabled=true",
                 "-c",
                 "model_reasoning_effort=\"low\"",
                 "thread-1",

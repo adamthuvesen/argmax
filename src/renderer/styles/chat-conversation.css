@@ -419,7 +419,7 @@
   .session-multigrid-cell:first-child
   .session-grid.review-open
   > .review-panel
-  .review-toolbar {
+  .review-panel-pane[data-pane-position="top"] > .review-toolbar {
   padding-left: var(--titlebar-leading-inset);
 }
 

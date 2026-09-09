@@ -18,6 +18,7 @@ function stubBridge(): void {
     configurable: true,
     writable: true,
     value: {
+      browser: {},
       review: { listChangedFiles: vi.fn().mockResolvedValue([]), loadDiff: vi.fn().mockResolvedValue(null) },
       workspace: { listFiles: vi.fn().mockResolvedValue([]) }
     }
@@ -158,6 +159,21 @@ describe("useReviewState — browser mode", () => {
 
     act(() => panel.result.current.openBrowser());
     panel.unmount();
+    expect(getBrowserOwnerId()).toBeNull();
+  });
+
+  it("keeps the browser surface while Browser remains visible in an inactive split pane", () => {
+    const panel = renderPanel(true);
+    act(() => {
+      panel.result.current.openBrowser();
+      panel.result.current.splitMode("files", "bottom");
+    });
+
+    expect(panel.result.current.mode).toBe("files");
+    expect(panel.result.current.layout.modes).toEqual(["browser", "files"]);
+    expect(panel.result.current.browserOwner).toBe(true);
+
+    act(() => panel.result.current.closePane(0));
     expect(getBrowserOwnerId()).toBeNull();
   });
 

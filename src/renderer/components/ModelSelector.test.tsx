@@ -77,11 +77,50 @@ describe("ModelSelector — one row per model", () => {
     expect(onChange).toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
-    const labels = within(screen.getByRole("listbox", { name: "Chat model" }))
+    const list = screen.getByRole("listbox", { name: "Chat model" });
+    const recentHeader = within(list).getByText("Recent");
+    const claudeHeader = within(list).getByText("Claude");
+    expect(recentHeader.compareDocumentPosition(claudeHeader) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    const labels = within(list)
       .getAllByRole("option")
       .map((option) => optionName(option));
-    expect(labels[0]).toBe("Haiku 4.5");
-    expect(labels.slice(1)).toEqual(["Fable 5.1", "Opus 5", "Sonnet 5", "Haiku 4.5"]);
+    expect(labels).toEqual(["Haiku 4.5", "Fable 5.1", "Opus 5", "Sonnet 5", "Haiku 4.5"]);
+  });
+
+  it("splits Codex recents from the catalog with a Codex header", () => {
+    window.localStorage.setItem(
+      LAUNCH_MODEL_RECENCY_KEY,
+      JSON.stringify(["codex:gpt-6-astra", "codex:gpt-5.6-luna", "codex:gpt-5.6-terra"])
+    );
+    const value: ProviderModelSelection = {
+      label: "GPT-5.6 Terra",
+      modelId: "gpt-5.6-terra",
+      reasoningEffort: "high"
+    };
+    render(<ModelSelector ariaLabel="Chat model" provider="codex" value={value} onChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
+
+    const list = screen.getByRole("listbox", { name: "Chat model" });
+    const recentHeader = within(list).getByText("Recent");
+    const codexHeader = within(list).getByText("Codex");
+    expect(recentHeader.compareDocumentPosition(codexHeader) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(within(list).getAllByRole("option").map((option) => optionName(option))).toEqual([
+      "GPT-6 Astra",
+      "GPT-5.6 Luna",
+      "GPT-5.6 Terra",
+      "GPT-6 Astra",
+      "GPT-5.6 Sol",
+      "GPT-5.6 Terra",
+      "GPT-5.6 Luna"
+    ]);
+    expect(within(list).getAllByRole("option", { selected: true }).map((option) => optionName(option))).toEqual([
+      "GPT-5.6 Terra",
+      "GPT-5.6 Terra"
+    ]);
   });
 
   it("shows at most three recent models before the full catalog", () => {

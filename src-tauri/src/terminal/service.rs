@@ -1201,7 +1201,9 @@ mod tests {
         svc.write(&result.terminal_id, commands.as_bytes())
             .expect("start background and detached fixtures");
 
-        let handshake_deadline = Instant::now() + Duration::from_secs(5);
+        // Shared macOS runners often take >5s to exec python3 + setsid on a
+        // freshly spawned PTY while 900 other tests are still winding down.
+        let handshake_deadline = Instant::now() + Duration::from_secs(15);
         while !background_pid_path.is_file() || !detached_pid_path.is_file() {
             assert!(
                 Instant::now() < handshake_deadline,

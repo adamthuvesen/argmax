@@ -282,8 +282,8 @@ Historical events without `providerInvocationId` use chronological unmatched-pai
 
 Sessions can launch, list, message, and move other sessions, and drive Argmax's
 own browser. Every provider gets those as tools on the `argmax` MCP server, and
-every launch carries the same one-line instruction. The `argmax session …` CLI
-still speaks the same socket from a terminal. See
+host policy rides in that server's `instructions` — not on the user prompt.
+The `argmax session …` CLI still speaks the same socket from a terminal. See
 [agent-tools.md](agent-tools.md) and
 [ADR 0005](adr/0005-agent-tools-are-one-mcp-server.md).
 

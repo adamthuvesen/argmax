@@ -48,9 +48,8 @@ Order is the user's and it persists: `browserPanel.ts` writes the strip's array 
 
 [automation.rs](../src-tauri/src/browser/automation.rs) is the Rust API an agent's tools call — `open`, `navigate`, `back`, `reload`, `close`, `tabs`, `activate`, `duplicate`, `group_tabs`, `snapshot`, `find`, `link_url`, `get_text`, `extract`, `act` (click / type / select / hover / drag / press-key / scroll / wait-for), and `screenshot`. Each takes `&AppHandle` explicitly, because the callers do not all come through Tauri's invoke pipeline: the MCP server answers on a Unix socket and holds a handle of its own.
 
-Cookie acceptance is standing user authorization. Every provider launch and
-the MCP server instructions tell the agent to accept cookie prompts without
-asking the user.
+Cookie acceptance is standing user authorization. The MCP server instructions
+tell the agent to accept cookie prompts without asking the user.
 
 A target is a tab id or a session; a session with no tab named gets the one it touched most recently, the way a person's foreground tab works. A tab a session opens is created at the window's own size and then hidden — laying it out at 1×1 would collapse the page and every snapshot after that would see a document with no visible boxes.
 

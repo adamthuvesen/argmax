@@ -140,8 +140,6 @@ pub async fn launch_turn(
             })?
             .to_string();
 
-        // The process launcher prepends the shared Argmax tool instruction
-        // before choosing this transport. Add only Codex's plan-mode guard.
         let prompt = prompt_for_agent_mode(&input.prompt, input.agent_mode);
         let turn_response = rpc
             .request("turn/start", turn_params(input, &thread_id, prompt))

@@ -192,7 +192,7 @@ impl Default for RealProviderProcessLauncher {
 impl ProviderProcessLauncher for RealProviderProcessLauncher {
     fn launch<'a>(
         &'a self,
-        mut input: ProviderLaunchInput,
+        input: ProviderLaunchInput,
         on_event: EventCallback,
     ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
         Box::pin(async move {
@@ -220,17 +220,11 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
             // than in the process environment. A failed handshake is surfaced
             // instead of silently losing native approval handling.
             if super::cursor_acp::is_acp_eligible(&input) {
-                // ACP receives the same launch instructions as the other
-                // native transports. Handshake failures return to the caller.
-                let mut acp_input = input.clone();
-                if let Some(config) = session_launch.as_ref() {
-                    acp_input.prompt = config.prepend_instruction(&input.prompt);
-                }
                 match self
                     .cursor_acp
                     .launch_turn_with_approvals(
                         binary_path.as_str(),
-                        &acp_input,
+                        &input,
                         session_launch.as_ref(),
                         self.approvals.clone(),
                         Arc::clone(&on_event),
@@ -240,10 +234,6 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
                     Ok(handle) => return Ok(handle),
                     Err(error) => return Err(error),
                 }
-            }
-
-            if let Some(config) = session_launch.as_ref() {
-                input.prompt = config.prepend_instruction(&input.prompt);
             }
 
             // A fork is the one Grok launch ACP cannot serve: `session/load`

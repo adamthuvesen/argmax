@@ -345,10 +345,11 @@ fn is_sidechain(value: &Value) -> bool {
 
 /// A session's title from its first user message. The raw text is often not
 /// the thing the human typed: a slash-command launch records an XML wrapper,
-/// and Argmax prepends its own launch instruction to the prompt it sends.
-/// Both are exactly identifiable, so strip them instead of titling a session
-/// with protocol scaffolding. Anything else is left alone — a long first
-/// prompt is indistinguishable from a preamble, and guessing would be worse.
+/// and older Argmax launches prepended a host-policy instruction to the
+/// prompt they sent. Both are exactly identifiable, so strip them instead of
+/// titling a session with protocol scaffolding. Anything else is left alone
+/// — a long first prompt is indistinguishable from a preamble, and guessing
+/// would be worse.
 fn title_from_prompt(raw: &str) -> Option<String> {
     let text = raw.trim();
 

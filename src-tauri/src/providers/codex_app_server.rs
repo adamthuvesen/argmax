@@ -566,6 +566,10 @@ fn spawn_stderr_reader(
     tokio::spawn(async move {
         let mut lines = BufReader::new(stderr).lines();
         while let Ok(Some(line)) = lines.next_line().await {
+            if is_macos_malloc_diagnostic(&line) {
+                tracing::debug!(session_id, line, "dropped Codex stderr noise");
+                continue;
+            }
             emit(
                 &on_event,
                 &session_id,
@@ -576,6 +580,14 @@ fn spawn_stderr_reader(
             );
         }
     });
+}
+
+/// macOS libmalloc answers a system-wide "turn off stack logging"
+/// notification by printing a diagnostic to the stderr of every process,
+/// including Codex's sandbox helpers. It carries no failure, and rendering it
+/// as an Error card teaches users to ignore the cards that matter.
+fn is_macos_malloc_diagnostic(line: &str) -> bool {
+    line.contains("MallocStackLogging:")
 }
 
 trait NativeApprovalBroker: Send + Sync {
@@ -1170,6 +1182,16 @@ mod tests {
             cols: 80,
             rows: 24,
         }
+    }
+
+    #[test]
+    fn malloc_stack_logging_diagnostic_is_noise() {
+        assert!(is_macos_malloc_diagnostic(
+            "codex(76996) MallocStackLogging: can't turn off malloc stack logging because it was not enabled."
+        ));
+        assert!(!is_macos_malloc_diagnostic(
+            "ERROR codex_rmcp_client::oauth::refresh_transaction: error=failed to refresh OAuth tokens"
+        ));
     }
 
     /// `last` is the final model request of the turn; a turn that ran three of

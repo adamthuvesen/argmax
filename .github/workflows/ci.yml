@@ -52,53 +52,69 @@ jobs:
     # lane runs only the Rust crate and nothing that Linux could do instead.
     runs-on: macos-latest
     timeout-minutes: 12
+    env:
+      CARGO_INCREMENTAL: 1
+      # Keep local debugging unchanged. CI needs test assertions, not DWARF.
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
     steps:
       - uses: actions/checkout@v6
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: "1.95"
           components: clippy, rustfmt
 
-      # Cache the Cargo registry + `src-tauri/target` so `cargo test` doesn't
-      # recompile every dependency from scratch — the single biggest cost in
-      # this job cold. Keyed on Cargo.lock. `cache-on-failure` keeps a failing
-      # PR's warm build for its next attempt.
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-          cache-on-failure: true
-
-      # rust-cache drops the workspace crate's artifacts and sets
-      # CARGO_INCREMENTAL=0, so every run recompiles all of argmax from
-      # scratch (~2 min on this runner) even for a one-line change. Keep
-      # rustc's incremental session for the crate across runs instead: a PR
-      # restores the newest entry main saved for this lockfile, and rustc
-      # reuses every codegen unit the change did not touch. Only main saves,
-      # so PR runs neither upload nor churn the repository's cache quota.
-      - id: incremental
+      # Preserve Cargo's workspace fingerprints and incremental state together.
+      # A source change still rebuilds affected targets. The SHA lets main
+      # refresh the immutable cache instead of retaining an old workspace build.
+      - id: rust-cache
         uses: actions/cache/restore@v4
         with:
-          path: src-tauri/target/debug/incremental
-          key: incremental-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock', 'rust-toolchain.toml') }}-${{ github.sha }}
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: rust-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'rust-toolchain.toml', '.github/workflows/ci.yml') }}-${{ github.sha }}
           restore-keys: |
-            incremental-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock', 'rust-toolchain.toml') }}-
+            rust-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'rust-toolchain.toml', '.github/workflows/ci.yml') }}-
 
       # One build, one link: the unit tests and the single `integration` test
       # binary. The bindings freshness check is a test in that binary
       # (`generated_ipc_files_are_current`), so no second `cargo run` is needed.
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
 
-      - run: cargo test --manifest-path src-tauri/Cargo.toml
-        env:
-          CARGO_INCREMENTAL: 1
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --locked --no-run
 
-      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+      # Cargo normally executes these two harnesses serially. Build once above,
+      # then overlap their process/IO waits and Clippy. Keep doctests as well.
+      # New integration modules belong in the existing integration binary.
+      - name: Rust tests and Clippy
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --lib &
+          unit=$!
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --test integration &
+          integration=$!
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --doc &
+          doctests=$!
+          cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings &
+          clippy=$!
+          result=0
+          for pid in "$unit" "$integration" "$doctests" "$clippy"; do
+            wait "$pid" || result=1
+          done
+          exit "$result"
 
-      - if: ${{ github.ref == 'refs/heads/main' }}
+      # Main refreshes the shared build. A cold PR can seed its own scoped
+      # cache so verification does not require merging an unmeasured change.
+      - if: ${{ github.ref == 'refs/heads/main' || steps.rust-cache.outputs.cache-matched-key == '' }}
         uses: actions/cache/save@v4
         with:
-          path: src-tauri/target/debug/incremental
-          key: ${{ steps.incremental.outputs.cache-primary-key }}
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ steps.rust-cache.outputs.cache-primary-key }}
 
   js-static:
     name: js lint · typecheck · parity
@@ -116,7 +132,17 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run lint
+      # Type-aware rules depend on imported files, not just the file being
+      # linted. Reuse results only when the whole TS program and config match.
+      - id: eslint-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/eslint/.eslintcache
+          key: eslint-${{ runner.os }}-${{ hashFiles('src/**', '*.ts', '*.js', '*.json') }}
+
+      - run: |
+          mkdir -p "$RUNNER_TEMP/eslint"
+          npm run lint -- --cache --cache-strategy content --cache-location "$RUNNER_TEMP/eslint/.eslintcache"
 
       - run: npm run typecheck
 
@@ -125,19 +151,23 @@ jobs:
 
       - run: npm run check:main-thread
 
+      - if: ${{ steps.eslint-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/eslint/.eslintcache
+          key: ${{ steps.eslint-cache.outputs.cache-primary-key }}
+
   js-tests:
-    name: js tests (${{ matrix.shard }}/2)
+    name: js tests (${{ matrix.shard }}/8)
     needs: changes
     if: ${{ needs.changes.outputs.js == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
-    # The suite is CPU-bound on a four-core runner, not bound by one slow
-    # file, so two shards halve the wall time. Measured locally at four
-    # workers: 21 s whole, 11.5 s + 11.0 s sharded.
+    # Eight independent shards distribute the test files across runners.
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v6
 
@@ -148,7 +178,7 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run test:unit -- --shard=${{ matrix.shard }}/2
+      - run: npm run test:unit -- --shard=${{ matrix.shard }}/8
 
       # The perf budgets are one short file; they ride on the first shard.
       - if: ${{ matrix.shard == 1 }}

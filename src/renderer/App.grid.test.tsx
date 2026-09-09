@@ -649,13 +649,13 @@ describe("App grid", () => {
     expect(within(grid).getAllByRole("region", { name: "Follow up task" })).toHaveLength(1);
   });
 
-  it("opens a second subagent as another tab in the same review panel", async () => {
+  it.each(["transcript", "panel"])("shows the session's subagents when opened from the %s", async (entryPoint) => {
     mockDashboardSnapshot({
       ...snapshot,
       sessions: snapshot.sessions.map((session) => ({
         ...session,
-        state: "complete" as const,
-        completedAt: "2026-05-08T15:55:00.000Z"
+        state: entryPoint === "panel" ? "running" as const : "complete" as const,
+        completedAt: entryPoint === "panel" ? null : "2026-05-08T15:55:00.000Z"
       })),
       events: [
         {
@@ -688,12 +688,16 @@ describe("App grid", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
-    await screen.findByRole("region", { name: /^Agent activity: / });
-
+    if (entryPoint === "panel") {
+      fireEvent.keyDown(document, { key: "b", metaKey: true });
+      fireEvent.click(await screen.findByRole("tab", { name: "Agents" }));
+    } else {
+      fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
+    }
+    const tablist = await screen.findByRole("tablist", { name: "Subagents and multitasks" });
+    expect(within(tablist).getAllByRole("tab")).toHaveLength(2);
     fireEvent.click(screen.getByRole("button", { name: startedAgentName("Write tests") }));
 
-    const tablist = await screen.findByRole("tablist", { name: "Subagents and multitasks" });
     const tabLabels = within(tablist).getAllByRole("tab").map((tab) => tab.textContent);
     expect(tabLabels).toHaveLength(2);
     // Each spawn gets its own distinct scientist codename as the tab label.
@@ -728,6 +732,13 @@ describe("App grid", () => {
       expect(within(tablist).getAllByRole("tab")).toHaveLength(1);
     });
     expect(screen.getAllByRole("region", { name: /^Agent activity: / })).toHaveLength(1);
+    if (entryPoint === "panel") {
+      fireEvent.keyDown(document, { key: "b", metaKey: true });
+      expect(screen.queryByRole("tablist", { name: "Subagents and multitasks" })).toBeNull();
+      fireEvent.keyDown(document, { key: "b", metaKey: true });
+      const reopenedTabs = await screen.findByRole("tablist", { name: "Subagents and multitasks" });
+      expect(within(reopenedTabs).getAllByRole("tab")).toHaveLength(2);
+    }
   });
 
   it("prunes a superseded subagent tab on session stop while keeping the panel", async () => {
@@ -811,8 +822,8 @@ describe("App grid", () => {
       await Promise.resolve();
     });
 
-    // While the session runs, both tabs survive.
-    expect(within(subagentTabs).getAllByRole("tab")).toHaveLength(2);
+    // While the session runs, both original tabs survive and the retry is discovered.
+    expect(within(subagentTabs).getAllByRole("tab")).toHaveLength(3);
 
     await act(async () => {
       dashboardDeltaListener?.({
@@ -825,12 +836,12 @@ describe("App grid", () => {
       await Promise.resolve();
     });
 
-    // The superseded spawn tab is pruned; the panel survives on the Task tab.
+    // Only the superseded spawn is pruned. The Task and discovered retry remain.
     await waitFor(() => {
-      expect(within(subagentTabs).getAllByRole("tab")).toHaveLength(1);
+      expect(within(subagentTabs).getAllByRole("tab")).toHaveLength(2);
     });
     expect(screen.getAllByRole("region", { name: /^Agent activity: / })).toHaveLength(1);
-    expect(screen.getByRole("region", { name: /^Agent activity: .+ — Write tests$/ })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /^Agent activity: .+ — Map renderer$/ })).toBeInTheDocument();
   });
 
   it("renders imported child tool rows instead of the limited-data notice", async () => {
@@ -1055,7 +1066,8 @@ describe("App grid", () => {
     });
 
     await waitFor(() => {
-      expect(screen.queryByRole("region", { name: /^Agent activity: / })).toBeNull();
+      expect(document.getElementById("review-agent-item_1")).toBeNull();
+      expect(screen.getByRole("region", { name: /^Agent activity: .+ — Map renderer$/ })).toBeInTheDocument();
     });
     expect(screen.getAllByRole("button", { name: startedAgentName("Map renderer") })).toHaveLength(1);
   });

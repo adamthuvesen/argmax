@@ -860,6 +860,7 @@ function ReviewPanelPane({
             isFocused={isFocused}
             parentSession={agents.parentSession}
             agentTabs={review.agentTabs}
+            onDiscoverTabs={review.agentTabs.openTabs}
             workspace={agents.workspace}
             onLoadAgentEvents={agents.onLoadAgentEvents}
             onLoadSessionEvents={agents.onLoadSessionEvents}

@@ -1,7 +1,7 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EventType, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
-import type { AgentTabsState } from "../hooks/useAgentTabs.js";
+import { useAgentTabs, type AgentTabsState } from "../hooks/useAgentTabs.js";
 import { SessionTimelineProvider } from "../hooks/useSessionTimeline.js";
 import type { MultitaskChild } from "../lib/multitask.js";
 import { SessionTimelines } from "../lib/sessionTimelines.js";
@@ -101,6 +101,29 @@ function renderView(
 }
 
 describe("AgentsView", () => {
+  it("discovers existing and later agents without a transcript click and preserves selection and closed tabs", () => {
+    function Dock({ events }: { events: TimelineEvent[] }) {
+      const tabs = useAgentTabs();
+      return <AgentsView events={events} parentSession={session} workspace={workspace}
+        agentTabs={tabs} onDiscoverTabs={tabs.openTabs} />;
+    }
+    const events = [launch("a", "Explore"), launch("b", "Review")];
+    const { rerender } = render(<Dock events={[]} />);
+    rerender(<Dock events={events} />);
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    const selected = screen.getAllByRole("tab")[1];
+    fireEvent.click(selected);
+
+    const moreEvents = [...events, launch("c", "Implement")];
+    rerender(<Dock events={moreEvents} />);
+    expect(screen.getAllByRole("tab")).toHaveLength(3);
+    expect(selected).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(selected, { key: "Delete" });
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    rerender(<Dock events={[...moreEvents, event("message", "message.completed", "2026-05-12T15:00:05.000Z")]} />);
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+  });
+
   it("upgrades a provisional Claude tab without changing the selected agent", () => {
     const replaceTab = vi.fn();
     renderView(
@@ -124,6 +147,39 @@ describe("AgentsView", () => {
       "task-root",
       "native-agent:task-root:parent-native:child-native"
     );
+  });
+
+  it("keeps a closed provisional agent closed when native identity arrives", () => {
+    function Dock({ events }: { events: TimelineEvent[] }) {
+      const tabs = useAgentTabs();
+      return <AgentsView events={events} parentSession={session} workspace={workspace}
+        agentTabs={tabs} onDiscoverTabs={tabs.openTabs} />;
+    }
+    const start = event("task", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+      id: "task-root", name: "Task", providerInvocationId: "invocation-1",
+      input: { description: "Explore repo" }
+    });
+    const { rerender } = render(<Dock events={[start]} />);
+    fireEvent.keyDown(screen.getByRole("tab"), { key: "Delete" });
+    const native = event("native-start", "agent.started", "2026-05-12T15:00:02.000Z", "Agent started", {
+      providerInvocationId: "invocation-1", providerChildSessionId: "child-native",
+      providerParentConversationId: "parent-native", agentRootToolUseId: "task-root", agentRunId: "task-root"
+    });
+    rerender(<Dock events={[native, start]} />);
+    expect(screen.queryByRole("tab")).toBeNull();
+
+    rerender(<Dock events={[
+      event("second-start", "agent.started", "2026-05-12T15:00:04.000Z", "Agent started", {
+        providerInvocationId: "invocation-2", providerChildSessionId: "child-second",
+        providerParentConversationId: "parent-native", agentRootToolUseId: "task-root", agentRunId: "task-root"
+      }),
+      event("second-task", "command.started", "2026-05-12T15:00:03.000Z", "Task", {
+        id: "task-root", name: "Task", providerInvocationId: "invocation-2",
+        input: { description: "Review repo" }
+      }), native, start
+    ]} />);
+    expect(screen.getAllByRole("tab")).toHaveLength(1);
+    expect(screen.getByRole("heading", { name: "Review repo" })).toBeInTheDocument();
   });
 
   it("keeps two native children with the same raw Task id in distinct panes", () => {

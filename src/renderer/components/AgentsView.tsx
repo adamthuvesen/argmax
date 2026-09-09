@@ -17,6 +17,7 @@ import type { ModelPickerSelection } from "../lib/models.js";
 import { multitaskRowStatus, type MultitaskChild } from "../lib/multitask.js";
 import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 import { buildSessionToolCalls } from "../lib/sessionConversationModel.js";
+import { buildSubagentCluster } from "../lib/subagentSummary.js";
 import { decodeTimelineEvent } from "../lib/canonicalTimeline.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { AgentActivity } from "./AgentActivity.js";
@@ -67,6 +68,7 @@ export function AgentsView({
   workspace,
   onCancelQueuedMessage,
   onClearSession,
+  onDiscoverTabs,
   onLoadAgentEvents,
   onLoadSessionEvents,
   onOpenAgent,
@@ -94,6 +96,8 @@ export function AgentsView({
   workspace: WorkspaceSummary | null;
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
   onClearSession?: (sessionId: string) => Promise<void>;
+  /** The desktop dock discovers available work when opened directly. */
+  onDiscoverTabs?: (tabIds: string[]) => void;
   onLoadAgentEvents?: (
     sessionId: string,
     parentToolUseId: string,
@@ -119,6 +123,36 @@ export function AgentsView({
   // `activeTabId` is kept inside the list, but a tab closed in the same
   // render still has to resolve to something to show.
   const activeId = activeTabId ?? tabIds[0] ?? null;
+
+  const discoveredTabs = useRef(new Set<string>());
+  const provisionalDiscoveries = useRef(new Set<string>());
+  useEffect(() => {
+    if (!onDiscoverTabs) return;
+    const tools = buildSessionToolCalls(events, parentSession?.state === "running",
+      parentSession?.state === "failed" || parentSession?.state === "cancelled");
+    const cluster = buildSubagentCluster(tools, assignAgentCodenames(tools), multitasks);
+    const ids = (cluster?.entries ?? []).map((entry) =>
+      entry.multitask ? multitaskTabId(entry.toolUseId) : entry.toolUseId);
+    // Remember discoveries for this visit so live updates respect closed tabs.
+    // Remounting the dock discovers all available work again.
+    const newIds: string[] = [];
+    for (const id of ids) {
+      if (discoveredTabs.current.has(id)) continue;
+      discoveredTabs.current.add(id);
+      const tab = readAgentTab(id);
+      if (tab.kind === "subagent") {
+        if (tab.providerChildSessionId) {
+          // Native identity enriches an existing launch. The upgrade effect
+          // handles an open tab, and a closed provisional tab stays closed.
+          if (provisionalDiscoveries.current.delete(tab.toolUseId)) continue;
+        } else {
+          provisionalDiscoveries.current.add(tab.toolUseId);
+        }
+      }
+      newIds.push(id);
+    }
+    if (newIds.length > 0) onDiscoverTabs(newIds);
+  }, [events, multitasks, onDiscoverTabs, parentSession?.state]);
 
   const tabs = useMemo((): DockTab[] => {
     const sessionRunning = parentSession?.state === "running";

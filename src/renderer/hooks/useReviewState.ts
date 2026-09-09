@@ -190,8 +190,8 @@ export interface ReviewState {
    *  is active. */
   comparisonBaseLabel: string | null;
   workspaceFiles: WorkspaceFilesState;
-  /** Subagents and multitasks open in the Agents view. Empty until one is
-   *  opened from the transcript, which is also the only way one gets here. */
+  /** Subagents and multitasks open in the Agents view, discovered when the
+   *  dock opens or selected explicitly from the transcript. */
   agentTabs: AgentTabsState;
   /** Open the panel on a subagent, adding its tab if it is not open yet. */
   openAgent: (parentToolUseId: string) => void;

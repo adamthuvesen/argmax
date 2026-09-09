@@ -13,6 +13,8 @@ export interface AgentTabsState {
   selectTab: (tabId: string) => void;
   closeTab: (tabId: string) => void;
   closeAllTabs: () => void;
+  /** Add discovered tabs without moving an existing selection. */
+  openTabs?: (tabIds: string[]) => void;
   replaceTab?: (fromTabId: string, toTabId: string) => void;
 }
 
@@ -35,6 +37,14 @@ export function useAgentTabs(): AgentTabs {
       tabIds: current.tabIds.includes(tabId) ? current.tabIds : [...current.tabIds, tabId],
       activeTabId: tabId
     }));
+  }, []);
+
+  const openTabs = useCallback((ids: string[]): void => {
+    setTabs((current) => {
+      const tabIds = [...new Set([...current.tabIds, ...ids])];
+      if (tabIds.length === current.tabIds.length) return current;
+      return { tabIds, activeTabId: current.activeTabId ?? tabIds[0] ?? null };
+    });
   }, []);
 
   const selectTab = useCallback((tabId: string): void => {
@@ -70,5 +80,5 @@ export function useAgentTabs(): AgentTabs {
     }));
   }, []);
 
-  return { tabIds, activeTabId, openTab, selectTab, closeTab, replaceTab, closeAllTabs, resetForSourceChange: closeAllTabs };
+  return { tabIds, activeTabId, openTab, openTabs, selectTab, closeTab, replaceTab, closeAllTabs, resetForSourceChange: closeAllTabs };
 }

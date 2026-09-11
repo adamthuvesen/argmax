@@ -209,9 +209,8 @@ private final class PopGestureDelegate: NSObject, UIGestureRecognizerDelegate {
         return stack.viewControllers.count > 1 && stack.transitionCoordinator == nil
     }
 
-    /// The transcript is a full-screen web view whose own scroller starts at
-    /// the left edge. The pop has to win there, or the chat becomes the one
-    /// screen you cannot swipe out of.
+    /// The transcript's scroller starts at the left edge. The pop has to win
+    /// there so a horizontal swipe can still leave the chat.
     func gestureRecognizer(
         _ gestureRecognizer: UIGestureRecognizer,
         shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer

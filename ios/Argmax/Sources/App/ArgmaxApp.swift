@@ -45,6 +45,7 @@ struct ArgmaxApp: App {
     static var startsUnpaired: Bool {
         #if DEBUG
         return ProcessInfo.processInfo.arguments.contains("-argmax-unpaired")
+            || ProcessInfo.processInfo.arguments.contains("-argmax-transcript-scenario")
         #else
         return false
         #endif
@@ -74,16 +75,31 @@ struct ArgmaxApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if let paired {
-                    RootView(paired: paired, push: push, onUnpair: unpair).id(paired.id)
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("-argmax-transcript-scenario") {
+                    TranscriptScenario()
                 } else {
-                    PairingScreen { pair(with: $0) }
+                    pairedContent
                 }
+                #else
+                pairedContent
+                #endif
             }
             .environmentObject(appearance)
-            .appearance(appearance)
             .onOpenURL(perform: openPairingLink)
         }
+    }
+
+    @ViewBuilder
+    private var pairedContent: some View {
+        Group {
+            if let paired {
+                RootView(paired: paired, push: push, onUnpair: unpair).id(paired.id)
+            } else {
+                PairingScreen { pair(with: $0) }
+            }
+        }
+        .appearance(appearance)
     }
 
     /// `argmax://pair?url=<pairing link>` pairs without touching the phone.

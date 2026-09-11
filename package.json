@@ -12,7 +12,6 @@
     "build:icons": "node scripts/build-icons.mjs",
     "export:provider-models": "node scripts/export-provider-models.mjs",
     "export:ios-tool-icons": "node scripts/export-ios-tool-icons.mjs",
-    "build:ios-rich-content": "node scripts/build-ios-rich-content.mjs",
     "lint": "eslint .",
     "test": "npm run test:unit && npm run test:perf && npm run test:rust",
     "test:unit": "vitest run",

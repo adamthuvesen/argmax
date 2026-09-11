@@ -5,116 +5,170 @@ import XCTest
 
 @MainActor
 final class NativeTranscriptListTests: XCTestCase {
-    func testInitialLayoutAndResizeStayAtTheLatestRow() async {
+    func testInitialLayoutResizeAndContentGrowthStayAtTheLatestRow() async {
         let state = TranscriptListTestState(items: transcriptItems(count: 24))
         let host = TranscriptListTestHost(state: state, size: CGSize(width: 320, height: 240))
         defer { host.close() }
 
-        guard let table = await waitForTable(in: host, where: { table in
-            table.numberOfRows(inSection: 0) == state.items.count
-                && table.contentSize.height > table.bounds.height
-                && abs(tailGap(in: table)) < 1
+        guard let scrollView = await waitForScrollView(in: host, where: {
+            $0.contentSize.height > $0.bounds.height && abs(tailGap(in: $0)) < 1
         }) else {
             return XCTFail("The hosted transcript never laid out at its tail")
         }
 
         XCTAssertTrue(state.following)
-
-        let originalHeight = table.bounds.height
+        let originalHeight = scrollView.bounds.height
         host.resize(to: CGSize(width: 320, height: 360))
 
-        guard await waitForTable(in: host, where: { table in
-            abs(table.bounds.height - originalHeight - 120) < 1 && abs(tailGap(in: table)) < 1
+        guard await waitForScrollView(in: host, where: {
+            abs($0.bounds.height - originalHeight - 120) < 1 && abs(tailGap(in: $0)) < 1
         }) != nil else {
-            return XCTFail("A pinned transcript did not follow its tail after resizing: table=\(table.bounds), window=\(host.window.bounds), safeArea=\(table.safeAreaInsets), gap=\(tailGap(in: table))")
+            return XCTFail("A pinned transcript did not follow its tail after resizing")
         }
 
-        XCTAssertEqual(tailGap(in: table), 0, accuracy: 1)
+        let oldContentHeight = scrollView.contentSize.height
+        state.items[state.items.count - 1].height += 96
+
+        guard await waitForScrollView(in: host, where: {
+            $0.contentSize.height >= oldContentHeight + 95 && abs(tailGap(in: $0)) < 1
+        }) != nil else {
+            return XCTFail("A streaming row height change moved the transcript from its tail")
+        }
+
         XCTAssertTrue(state.following)
     }
 
-    func testDragDetachesAndHistoryChangesPreserveTheVisibleRow() async {
+    func testDetachedHistoryChangesPreserveTheReadingPosition() async {
         let state = TranscriptListTestState(items: transcriptItems(count: 28))
         let host = TranscriptListTestHost(state: state, size: CGSize(width: 320, height: 260))
         defer { host.close() }
 
-        guard let table = await waitForTable(in: host, where: { table in
-            table.numberOfRows(inSection: 0) == state.items.count
-                && abs(tailGap(in: table)) < 1
+        guard let scrollView = await waitForScrollView(in: host, where: {
+            $0.contentSize.height > $0.bounds.height && abs(tailGap(in: $0)) < 1
         }) else {
             return XCTFail("The hosted transcript did not finish its initial layout")
         }
 
-        table.delegate?.scrollViewWillBeginDragging?(table)
-        table.scrollToRow(at: IndexPath(row: 12, section: 0), at: .top, animated: false)
-        table.delegate?.scrollViewDidEndDragging?(table, willDecelerate: false)
+        state.following = false
+        await settle(host)
+        state.rowFrames.removeAll()
+        scrollView.setContentOffset(CGPoint(x: 0, y: 500), animated: false)
 
-        guard let detachedTable = await waitForTable(in: host, where: { table in
-            !state.following
-                && (table.indexPathsForVisibleRows?.first?.row ?? 0) > 2
-                && tailGap(in: table) > 28
-        }), let anchor = detachedTable.indexPathsForVisibleRows?.first else {
-            return XCTFail("Dragging did not detach the transcript from the live tail")
+        guard await waitForScrollView(in: host, where: {
+            !$0.isDragging && abs($0.contentOffset.y - 500) < 1
+        }) != nil else {
+            return XCTFail("The test transcript did not move to its reading position")
         }
+        await settle(host)
 
-        let anchorID = state.items[anchor.row].id
-        let anchorY = detachedTable.rectForRow(at: anchor).minY - detachedTable.contentOffset.y
+        let oldContentHeight = scrollView.contentSize.height
+        let viewport = scrollView.convert(scrollView.bounds, to: host.window)
+        guard let anchor = state.rowFrames
+            .filter({ $0.value.frame.maxY > viewport.minY && $0.value.frame.minY < viewport.maxY })
+            .min(by: { $0.value.frame.minY < $1.value.frame.minY }) else {
+            return XCTFail("The hosted transcript did not report a visible reading anchor")
+        }
         var revised = state.items
-        revised[anchor.row - 2].height += 72
-        let older = transcriptItems(count: 4, prefix: "older")
-        let updated = older + revised
-        guard let newAnchorRow = updated.firstIndex(where: { $0.id == anchorID }) else {
-            return XCTFail("The visible row disappeared from the updated test data")
-        }
-        let newAnchor = IndexPath(row: newAnchorRow, section: 0)
+        revised[2].height += 72
+        state.items = transcriptItems(count: 4, prefix: "older") + revised
 
-        state.items = updated
-
-        guard let updatedTable = await waitForTable(in: host, where: { table in
-            guard table.numberOfRows(inSection: 0) == updated.count else { return false }
-            let updatedY = table.rectForRow(at: newAnchor).minY - table.contentOffset.y
-            return abs(updatedY - anchorY) < 1
+        guard let updated = await waitForScrollView(in: host, where: {
+            $0.contentSize.height >= oldContentHeight + 4 * 44 - 1
+                && state.rowFrames[anchor.key]?.itemCount == state.items.count
+                && abs((state.rowFrames[anchor.key]?.frame.minY ?? CGFloat.infinity)
+                    - anchor.value.frame.minY) < 1
         }) else {
-            return XCTFail("Prepending and resizing rows moved the reader's visible anchor")
+            return XCTFail(
+                "Prepending and resizing earlier rows moved \(anchor.key); "
+                    + "y=\(state.rowFrames[anchor.key]?.frame.minY ?? CGFloat.infinity), "
+                    + "expected=\(anchor.value.frame.minY)"
+            )
         }
 
+        guard let updatedAnchorY = state.rowFrames[anchor.key]?.frame.minY else {
+            return XCTFail("The visible reading anchor disappeared after prepending history")
+        }
         XCTAssertFalse(state.following)
-        XCTAssertEqual(
-            updatedTable.rectForRow(at: newAnchor).minY - updatedTable.contentOffset.y,
-            anchorY,
-            accuracy: 1
-        )
+        XCTAssertEqual(updatedAnchorY, anchor.value.frame.minY, accuracy: 1)
+        XCTAssertGreaterThan(updated.contentSize.height, oldContentHeight)
     }
 
-    func testExplicitScrollRequestReturnsADetachedReaderToLatest() async {
+    func testExplicitScrollRequestAndSessionResetReturnToLatest() async {
         let state = TranscriptListTestState(items: transcriptItems(count: 24))
         let host = TranscriptListTestHost(state: state, size: CGSize(width: 320, height: 240))
         defer { host.close() }
 
-        guard let table = await waitForTable(in: host, where: { table in
-            table.numberOfRows(inSection: 0) == state.items.count
-                && abs(tailGap(in: table)) < 1
+        guard let scrollView = await waitForScrollView(in: host, where: {
+            $0.contentSize.height > $0.bounds.height && abs(tailGap(in: $0)) < 1
         }) else {
             return XCTFail("The hosted transcript did not finish its initial layout")
         }
 
-        table.delegate?.scrollViewWillBeginDragging?(table)
-        table.scrollToRow(at: IndexPath(row: 5, section: 0), at: .top, animated: false)
-        table.delegate?.scrollViewDidEndDragging?(table, willDecelerate: false)
+        state.following = false
+        await settle(host)
+        scrollView.setContentOffset(CGPoint(x: 0, y: 160), animated: false)
 
-        guard await waitForTable(in: host, where: {
-            !state.following && tailGap(in: $0) > 28
+        guard await waitForScrollView(in: host, where: {
+            tailGap(in: $0) > 28 && abs($0.contentOffset.y - 160) < 1
         }) != nil else {
-            return XCTFail("The transcript did not detach before the explicit request")
+            return XCTFail("The transcript did not settle at its detached reading position")
         }
-
+        await settle(host)
         state.scrollRequest += 1
 
-        guard await waitForTable(in: host, where: {
+        guard await waitForScrollView(in: host, where: {
             state.following && abs(tailGap(in: $0)) < 1
         }) != nil else {
             return XCTFail("The explicit scroll request did not return to the latest row")
         }
+
+        state.following = false
+        await settle(host)
+        scrollView.setContentOffset(CGPoint(x: 0, y: 160), animated: false)
+        await settle(host)
+        state.sessionID = "session-2"
+
+        guard await waitForScrollView(in: host, where: {
+            state.following && abs(tailGap(in: $0)) < 1
+        }) != nil else {
+            return XCTFail("A new session did not start at its latest row")
+        }
+    }
+
+    func testLazyStackOnlyPresentsTheVisibleRows() async {
+        let state = TranscriptListTestState(items: transcriptItems(count: 500))
+        let host = TranscriptListTestHost(state: state, size: CGSize(width: 320, height: 240))
+        defer { host.close() }
+
+        guard await waitForScrollView(in: host, where: {
+            abs(tailGap(in: $0)) < 1 && !state.appearedIDs.isEmpty
+        }) != nil else {
+            return XCTFail("The lazy transcript did not present its tail rows")
+        }
+
+        XCTAssertLessThan(state.appearedIDs.count, state.items.count / 2)
+        XCTAssertTrue(state.appearedIDs.contains("item-499"))
+    }
+
+    func testUserScrollPhasesDetachUntilTheReaderFinishesNearTheTail() {
+        XCTAssertFalse(TranscriptScrollBehavior.following(
+            from: .idle, after: .tracking, tailGap: 0, current: true
+        ))
+        XCTAssertFalse(TranscriptScrollBehavior.following(
+            from: .interacting, after: .decelerating, tailGap: 4, current: false
+        ))
+        XCTAssertFalse(TranscriptScrollBehavior.following(
+            from: .decelerating, after: .idle, tailGap: 120, current: false
+        ))
+        XCTAssertTrue(TranscriptScrollBehavior.following(
+            from: .decelerating, after: .idle, tailGap: 27, current: false
+        ))
+        XCTAssertTrue(TranscriptScrollBehavior.following(
+            from: .idle, after: .animating, tailGap: 120, current: true
+        ))
+        XCTAssertTrue(TranscriptScrollBehavior.following(
+            from: .animating, after: .idle, tailGap: 120, current: true
+        ))
     }
 }
 
@@ -123,11 +177,19 @@ private struct TranscriptListTestItem: Identifiable, Equatable {
     var height: CGFloat
 }
 
+private struct TranscriptListTestRowGeometry: Equatable {
+    let frame: CGRect
+    let itemCount: Int
+}
+
 @MainActor
 private final class TranscriptListTestState: ObservableObject {
     @Published var items: [TranscriptListTestItem]
     @Published var following = true
     @Published var scrollRequest = 0
+    @Published var sessionID = "session-1"
+    @Published var appearedIDs: Set<String> = []
+    var rowFrames: [String: TranscriptListTestRowGeometry] = [:]
 
     init(items: [TranscriptListTestItem]) {
         self.items = items
@@ -138,15 +200,25 @@ private struct TranscriptListTestView: View {
     @ObservedObject var state: TranscriptListTestState
 
     var body: some View {
+        let itemCount = state.items.count
         NativeTranscriptList(
             items: state.items,
-            sessionID: "session-1",
+            sessionID: state.sessionID,
             scrollRequest: state.scrollRequest,
             following: $state.following
         ) { item in
             Text(item.id)
                 .frame(maxWidth: .infinity, minHeight: item.height, alignment: .leading)
                 .accessibilityIdentifier(item.id)
+                .onAppear { state.appearedIDs.insert(item.id) }
+                .onGeometryChange(for: TranscriptListTestRowGeometry.self) { proxy in
+                    TranscriptListTestRowGeometry(
+                        frame: proxy.frame(in: .global),
+                        itemCount: itemCount
+                    )
+                } action: { value in
+                    state.rowFrames[item.id] = value
+                }
         }
     }
 }
@@ -166,8 +238,8 @@ private final class TranscriptListTestHost {
         layout()
     }
 
-    var table: NativeTranscriptTableView? {
-        descendant(of: NativeTranscriptTableView.self, in: controller.view)
+    var scrollView: UIScrollView? {
+        descendant(of: UIScrollView.self, in: controller.view)
     }
 
     func resize(to size: CGSize) {
@@ -190,17 +262,26 @@ private final class TranscriptListTestHost {
 }
 
 @MainActor
-private func waitForTable(
+private func waitForScrollView(
     in host: TranscriptListTestHost,
-    where condition: (NativeTranscriptTableView) -> Bool
-) async -> NativeTranscriptTableView? {
-    for _ in 0..<100 {
+    where condition: (UIScrollView) -> Bool
+) async -> UIScrollView? {
+    for _ in 0..<120 {
         host.layout()
-        if let table = host.table, condition(table) { return table }
+        if let scrollView = host.scrollView, condition(scrollView) { return scrollView }
         await Task.yield()
         try? await Task.sleep(nanoseconds: 5_000_000)
     }
     return nil
+}
+
+@MainActor
+private func settle(_ host: TranscriptListTestHost) async {
+    for _ in 0..<3 {
+        host.layout()
+        await Task.yield()
+        try? await Task.sleep(nanoseconds: 5_000_000)
+    }
 }
 
 @MainActor
@@ -217,7 +298,7 @@ private func transcriptItems(count: Int, prefix: String = "item") -> [Transcript
 }
 
 @MainActor
-private func tailGap(in table: UITableView) -> CGFloat {
-    table.contentSize.height + table.adjustedContentInset.bottom
-        - table.contentOffset.y - table.bounds.height
+private func tailGap(in scrollView: UIScrollView) -> CGFloat {
+    scrollView.contentSize.height + scrollView.adjustedContentInset.bottom
+        - scrollView.contentOffset.y - scrollView.bounds.height
 }

@@ -5,8 +5,16 @@ name: Argmax
 options:
   bundleIdPrefix: com.argmax
   deploymentTarget:
-    iOS: "17.0"
+    iOS: "18.0"
   createIntermediateGroups: true
+
+packages:
+  SwaTex:
+    url: https://github.com/PhraseHQ/SwaTex.git
+    exactVersion: 0.5.0
+  MermaidKit:
+    url: https://github.com/2389-research/MermaidKit.git
+    exactVersion: 2.2.0
 
 targets:
   Argmax:
@@ -33,9 +41,13 @@ targets:
         buildPhase: resources
       - path: Resources/toolIcons.json
         buildPhase: resources
-      - path: Resources/RichContent
-        type: folder
+      - path: Resources/ThirdPartyNotices.txt
         buildPhase: resources
+    dependencies:
+      - package: SwaTex
+        product: SwaTexRender
+      - package: MermaidKit
+        product: MermaidRender
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.argmax.remote
@@ -101,14 +113,27 @@ targets:
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Argmax.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Argmax"
         BUNDLE_LOADER: "$(TEST_HOST)"
 
+  ArgmaxUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: Argmax
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.argmax.remote.uitests
+        SWIFT_VERSION: "5.0"
+        GENERATE_INFOPLIST_FILE: YES
+
 schemes:
   Argmax:
     build:
       targets:
         Argmax: all
         ArgmaxTests: [test]
+        ArgmaxUITests: [test]
     run:
       config: Debug
     test:
       config: Debug
-      targets: [ArgmaxTests]
+      targets: [ArgmaxTests, ArgmaxUITests]

@@ -17,5 +17,5 @@
     "jsx": "react-jsx",
     "types": ["vitest/globals", "@testing-library/jest-dom", "vite/client"]
   },
-  "include": ["src/renderer", "src/shared", "src/test", "ios/Argmax/RichContent", "vite.config.ts", "vitest.config.ts"]
+  "include": ["src/renderer", "src/shared", "src/test", "vite.config.ts", "vitest.config.ts"]
 }

@@ -240,6 +240,7 @@ private struct ChatRowActionPresentations: ViewModifier {
     }
 }
 
+#if DEBUG
 #Preview("Row actions") {
     // A list, because the swipe actions only exist inside one.
     let center = ChatRowActionCenter(store: previewStore(), client: previewClient())
@@ -249,3 +250,4 @@ private struct ChatRowActionPresentations: ViewModifier {
     }
     .chatRowActionPresentations(center)
 }
+#endif

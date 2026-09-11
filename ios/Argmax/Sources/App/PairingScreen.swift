@@ -32,7 +32,7 @@ struct PairingScreen: View {
 
                 if rejected {
                     // Plain http is the trap: App Transport Security refuses
-                    // it before WebKit ever connects, so refuse it here with
+                    // it before the bridge connects, so refuse it here with
                     // a reason instead of letting the load fail silently
                     // later. Under the field in attention red, not an alert.
                     Text("That is not a pairing link. It has to be https:// and carry the #token= fragment.")

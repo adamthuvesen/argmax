@@ -38,8 +38,8 @@ enum ThemeChoice: String, CaseIterable, Identifiable, Sendable {
 /// — but the values are not synced from the Mac: appearance is per device,
 /// which is the rule the desktop's own phone menu already follows.
 ///
-/// The embedded transcript is told about both changes over the native
-/// contract, so the page inside the shell never disagrees with the shell.
+/// SwiftUI propagates appearance changes to the transcript and rich viewers
+/// through the same environment as the rest of the app.
 @MainActor
 final class Appearance: ObservableObject {
     static let themeKey = "argmax.theme.mode"

@@ -1,0 +1,24 @@
+{
+  "originHash" : "5c9d9f2cb788df9b6435733413dca43e23f44611adaf05ca273402fe1a69a319",
+  "pins" : [
+    {
+      "identity" : "mermaidkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/2389-research/MermaidKit.git",
+      "state" : {
+        "revision" : "85fdc08f347897959248cef97d39bad7f5337dd6",
+        "version" : "2.2.0"
+      }
+    },
+    {
+      "identity" : "swatex",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/PhraseHQ/SwaTex.git",
+      "state" : {
+        "revision" : "2b38d0b9b9b9466ac1302ab93b37f3b90b8c74fc",
+        "version" : "0.5.0"
+      }
+    }
+  ],
+  "version" : 3
+}

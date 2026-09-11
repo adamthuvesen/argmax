@@ -1,9 +1,10 @@
 # Argmax for iPhone
 
 The iPhone app uses native navigation, a native transcript, and a native
-composer over the paired Mac's authenticated WebSocket bridge. SwiftUI draws
-messages and controls inside reusable UIKit transcript cells. Mermaid and
-math use isolated, bundled rich-content viewers.
+composer over the paired Mac's authenticated WebSocket bridge. SwiftUI owns
+transcript scrolling, messages, and controls. MermaidKit draws diagrams and
+SwaTex draws equations locally without WebKit or JavaScript. Requires iOS 18
+or later.
 
 See [the native transcript decision](../../docs/adr/0008-native-iphone-transcript.md)
 for the boundary and maintenance tradeoff.
@@ -26,7 +27,7 @@ for the boundary and maintenance tradeoff.
   the shared connection.
 - `Sources/Transcript/TranscriptProjection.swift` turns normalized events
   into messages, tool groups, plans, questions, approvals, and delegated work.
-- `Sources/Transcript/NativeTranscriptList.swift` owns reusable cells and
+- `Sources/Transcript/NativeTranscriptList.swift` owns lazy SwiftUI rows and
   reading position. `TranscriptMarkdown.swift` renders native prose and code.
 - `Sources/Transcript/TranscriptScreen.swift` connects the transcript to the
   existing composer, review routes, and chat actions.
@@ -124,9 +125,8 @@ the numbers. This is the app you actually carry.
 
 ## Driving it on a simulator
 
-A simulator cannot be tapped from a script, and `argmax://pair` raises an
-"Open in Argmax?" alert that only a hand can answer — so a run started from a
-terminal could never get past the pairing screen. Three debug-only launch
+`simctl` can launch the app but cannot tap through its pairing alert.
+Three debug-only launch
 arguments exist for that, and for taking the screenshots the design brief asks
 for:
 
@@ -148,7 +148,6 @@ The project is generated, so start there:
 ```bash
 brew install xcodegen   # once, if you don't have it
 npm run build:icons     # only after the fox sprite changes
-npm run build:ios-rich-content  # after rich-viewer source or dependency changes
 cd ios/Argmax && xcodegen
 open Argmax.xcodeproj
 ```
@@ -184,8 +183,10 @@ xcodebuild -project Argmax.xcodeproj -scheme Argmax \
 
 ## Tests
 
-`ArgmaxTests` is a hosted unit-test bundle: the models, the delta merge, and
-the list grouping, with no socket and no simulator interaction.
+`ArgmaxTests` covers models, projection, native rendering, and hosted scroll
+behavior. `ArgmaxUITests` drives real gestures against a deterministic debug
+transcript with the production composer and rows. Neither suite needs a paired
+Mac or a paid provider session.
 
 ```bash
 cd ios/Argmax && xcodegen
@@ -244,10 +245,33 @@ messages, code, tables, diagrams, images, and file links in both appearances
 and with larger accessibility text.
 
 `Tests/Transcript*Tests.swift` cover event projection, revision recovery,
-card actions, and Markdown structure. The rich viewer bundle is generated
-from the repository's locked Mermaid and KaTeX dependencies by
-`npm run build:ios-rich-content`. Commit regenerated resources with changes
-to the viewer or those dependencies.
+card actions, Markdown structure, and native rich rendering.
+`NativeTranscriptListTests` hosts the SwiftUI list to check reading position
+and following streamed content. Native packages are pinned in `project.yml`
+and `Argmax.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`.
+Regenerate the project with `xcodegen` after changing package configuration.
+
+The UI scenarios check streaming, reading older messages while history changes,
+Jump to latest, keyboard dismissal, larger text, and full-screen rich content
+with zoom controls. Their screenshots are retained as test attachments.
+To inspect the same fixture manually in a debug simulator build:
+
+```bash
+xcrun simctl launch booted com.argmax.remote -argmax-transcript-scenario
+```
+
+The Stream and Prepend buttons update the real transcript store. Rich shows
+equations, a diagram, a table, and code. Theme and Size switch the rendering
+environment without changing saved preferences. Add `-scenario-wide` to test
+very wide equations and diagrams. These controls are excluded from release
+builds.
+
+MermaidKit supports core diagram syntax rather than every Mermaid extension.
+SwaTex supports KaTeX-compatible math. The native viewers retain the source
+for copying and inspection. Math accessibility currently reads the LaTeX
+source rather than navigating MathML. Code and diff views keep TextKit 2 for
+continuous text selection and large-file layout. UIKit also supplies the
+swipe-back and shake-to-re-pair gesture helpers.
 
 Native tool icons reuse the desktop artwork in `src/renderer/lib/serverIcons.ts`.
 After changing that artwork or its native aliases, run `npm run export:ios-tool-icons`

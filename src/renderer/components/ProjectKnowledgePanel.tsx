@@ -150,9 +150,10 @@ export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[]
             return (
               <li key={learning.id} className="project-knowledge-row" data-verified={learning.verified ? "true" : "false"}>
                 <span className="project-knowledge-kind">{learning.kind}</span>
-                <input
+                <textarea
                   className="project-knowledge-summary"
                   aria-label={`Edit summary for learning ${learning.id}`}
+                  rows={2}
                   value={draftActive ? draft : learning.summary}
                   onChange={(event) =>
                     setDraftSummaries((current) => ({ ...current, [learning.id]: event.target.value }))

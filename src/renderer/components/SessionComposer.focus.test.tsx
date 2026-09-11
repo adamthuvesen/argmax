@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { baseSession, event, renderConversation, rerenderConversation } from "../../test/sessionConversationTestHarness.js";
 
@@ -15,6 +15,38 @@ const questionEvents = [
 
 describe("SessionComposer focus during background updates", () => {
   afterEach(cleanup);
+
+  it("does not steal a neighboring draft when an unfocused pane mounts", () => {
+    const neighborView = render(<textarea aria-label="Neighbor draft" />);
+    const neighbor = within(neighborView.container).getByRole<HTMLTextAreaElement>("textbox", {
+      name: "Neighbor draft"
+    });
+    neighbor.focus();
+
+    // Mount another background pane after the reader has started typing. Its
+    // composer must not claim focus merely because its input became available.
+    const background = renderConversation(baseSession({ id: "session-b" }), [], {
+      isFocused: false
+    });
+
+    expect(within(background.container).getByRole("textbox", { name: "Chat prompt" })).not.toHaveFocus();
+    expect(neighbor).toHaveFocus();
+  });
+
+  it("focuses the composer when its pane becomes active", () => {
+    const options = { isFocused: false };
+    const { rerender } = renderConversation(baseSession(), [], options);
+    const prompt = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Chat prompt" });
+    const neighborView = render(<textarea aria-label="Neighbor draft" />);
+    const neighbor = within(neighborView.container).getByRole<HTMLTextAreaElement>("textbox", {
+      name: "Neighbor draft"
+    });
+    neighbor.focus();
+
+    rerenderConversation(rerender, baseSession(), [], { isFocused: true });
+
+    expect(prompt).toHaveFocus();
+  });
 
   it("docks an arriving question in an unfocused pane without stealing the neighboring draft", () => {
     const session = baseSession({ provider: "claude", state: "running" });

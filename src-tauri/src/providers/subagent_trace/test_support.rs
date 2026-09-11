@@ -132,6 +132,25 @@ pub(super) fn child_trace(finished: bool) -> String {
     lines
 }
 
+/// The rollout Codex writes for the guardian that judges a pending action.
+/// It names the same parent thread a subagent would, and nothing spawned it.
+pub(super) fn guardian_review_trace() -> String {
+    let mut lines = String::new();
+    lines.push_str(
+        r#"{"timestamp":"2026-07-08T14:46:49.290Z","type":"session_meta","payload":{"id":"child-thread","parent_thread_id":"parent-thread","source":{"subagent":{"other":"guardian"}},"thread_source":"guardian_review"}}"#,
+    );
+    lines.push('\n');
+    lines.push_str(
+        r#"{"timestamp":"2026-07-08T14:47:01.533Z","type":"event_msg","payload":{"type":"agent_message","message":"{\"outcome\":\"allow\"}"}}"#,
+    );
+    lines.push('\n');
+    lines.push_str(
+        r#"{"timestamp":"2026-07-08T14:47:01.900Z","type":"event_msg","payload":{"type":"task_complete","last_agent_message":"{\"outcome\":\"allow\"}"}}"#,
+    );
+    lines.push('\n');
+    lines
+}
+
 /// Reconciliation looks in the day window around the session's start, so
 /// the fixture lands where a rollout written now would.
 pub(super) fn write_codex_child_trace(home: &Path, child_id: &str, contents: &str) {

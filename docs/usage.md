@@ -1,18 +1,19 @@
 # Usage
 
-The Usage page (sidebar → Usage) shows tokens and cost per provider over the
-last 24 hours, 7 days, or 30 days: a summary band (the total, then one tile
-per provider), a full-width chart, a token-flow band, and a breakdown by
-model or day. It reads every provider
-transcript on disk, not only the sessions Argmax launched, so it is the same
-number a terminal-only user would get.
+The Usage page (sidebar → Hacking → Usage) shows tokens and cost per provider
+over the last 24 hours, 7 days, or 30 days: a summary band (the total, then one
+tile per provider), a full-width chart, a token-flow band, and a breakdown by
+model or day. It reads every provider transcript on disk, not only the sessions
+Argmax launched, so it is the same number a terminal-only user would get.
 
 Below that ledger is **Remaining on your plans**: live included usage left on
 each provider login (plan name, remaining percent, next reset). Those figures
 come from the provider account, including use outside Argmax, and are not the
 list-price spend above. Enterprise, Teams, API-key, and unsigned-in rows show
 a label instead of remaining bars. Fetch happens once when the page opens;
-Refresh on that card retries remaining only.
+Refresh on that card retries remaining only. The iPhone app shows the same
+read as a card on its Usage page
+([ios/Argmax/README.md](../ios/Argmax/README.md)).
 
 The page arrives in one piece: the ledger and the remaining read are separate
 fetches, and the skeleton covers both until the slower one lands, so no part
@@ -152,6 +153,11 @@ re-prices history without a rescan.
   opened; the page shows "Scanning N of M transcripts". Later sweeps are warm,
   run inline on every `usage:summary`, and take well under a second.
 - At boot, a ledger that has completed before is refreshed in the background.
+- After the dashboard is ready, the renderer prefetches the default 30-day
+  summary and the remaining-plan read on an idle tick (in parallel) and stores
+  both in memory, so the first Usage open can paint from cache while a warm
+  sweep runs on Rust's blocking pool. Hovering Hacking in the sidebar kicks
+  the same warm if idle prefetch has not finished yet.
 
 Day buckets follow the machine's local zone (`chrono::Local`), which is the
 zone the renderer resolves too. Hour buckets are UTC hours.

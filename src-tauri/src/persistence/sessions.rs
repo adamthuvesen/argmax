@@ -167,7 +167,9 @@ pub struct SessionSummary {
     /// row so dashboard reads need no join; see `synced_sessions`.
     pub imported: bool,
     /// The model's context-window size, when the provider reports it (Codex).
-    /// The renderer falls back to a per-model table when this is null.
+    /// Cleared on a provider or model-id change. The renderer falls back to a
+    /// per-model table when this is null, and ignores a leftover value on any
+    /// provider other than Codex.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_window: Option<i64>,
     /// The session whose agent launched this one with the `argmax` MCP tools.
@@ -521,7 +523,9 @@ pub fn update_session_model(
         .prepare_cached(
             r#"
         UPDATE sessions
-        SET model_label = ?, model_id = ?, reasoning_effort = ?,
+        SET
+            context_window = CASE WHEN model_id = ? THEN context_window ELSE NULL END,
+            model_label = ?, model_id = ?, reasoning_effort = ?,
             last_model_id = ?, last_activity_at = ?
         WHERE id = ?
         "#,
@@ -530,6 +534,7 @@ pub fn update_session_model(
     let timestamp = now_iso();
     statement
         .execute((
+            input.model_id.as_str(),
             input.model_label.as_str(),
             input.model_id.as_str(),
             input.reasoning_effort.as_deref(),
@@ -545,7 +550,9 @@ pub fn update_session_model(
 /// supplied (provider model lists don't overlap), and the source provider's
 /// native resume id is cleared: Claude/Codex/Cursor conversation ids are mutually
 /// unintelligible, so the next launch starts the new provider fresh and rebuilds
-/// context from the visible transcript (`compose_follow_up_prompt`).
+/// context from the visible transcript (`compose_follow_up_prompt`). The previous
+/// model's reported `context_window` is dropped too: only Codex writes that
+/// column, and leaving it would pin Claude's ring to the Codex ceiling.
 pub fn update_session_provider(
     connection: &Connection,
     session_id: &str,
@@ -556,7 +563,8 @@ pub fn update_session_provider(
             r#"
         UPDATE sessions
         SET provider = ?, model_label = ?, model_id = ?, reasoning_effort = ?,
-            last_model_id = ?, provider_conversation_id = NULL, last_activity_at = ?
+            last_model_id = ?, provider_conversation_id = NULL, context_window = NULL,
+            last_activity_at = ?
         WHERE id = ?
         "#,
         )

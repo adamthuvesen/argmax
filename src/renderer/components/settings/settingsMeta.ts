@@ -57,7 +57,7 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
     id: "integrations",
     label: "Integrations",
     sections: [
-      { id: "settings-mcp", label: "MCP servers" },
+      { id: "settings-mcp", label: "Connections" },
       { id: "settings-remote", label: "Remote access" }
     ]
   },
@@ -66,6 +66,7 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
     label: "Advanced",
     dividerBefore: true,
     sections: [
+      { id: "settings-chat-history", label: "Chat history" },
       { id: "settings-knowledge", label: "Project knowledge" },
       { id: "settings-diagnostics", label: "Diagnostics" },
       { id: "settings-about", label: "About" }

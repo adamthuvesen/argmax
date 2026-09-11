@@ -96,6 +96,31 @@ impl WorkspaceLifecycle {
         })
     }
 
+    /// Close process admission for metadata cleanup. An already archived
+    /// workspace is already closed, so it needs no new lease.
+    pub fn begin_cleanup(
+        self: &Arc<Self>,
+        workspace_id: &str,
+    ) -> ArgmaxResult<Option<WorkspaceArchiveLease>> {
+        let mut entries = self.entries.lock_or_recover("workspace lifecycle");
+        let entry = entries.entry(workspace_id.to_string()).or_default();
+        match entry.state {
+            LifecycleState::Open => {
+                entry.state = LifecycleState::Archiving;
+                Ok(Some(WorkspaceArchiveLease {
+                    lifecycle: Arc::clone(self),
+                    workspace_id: workspace_id.to_string(),
+                    finished: false,
+                }))
+            }
+            LifecycleState::Archived => Ok(None),
+            LifecycleState::Archiving | LifecycleState::Failed => Err(ArgmaxError::service(
+                "WORKSPACE_CLEANUP_BLOCKED",
+                "Workspace lifecycle work is still in progress.",
+            )),
+        }
+    }
+
     pub async fn wait_for_admissions(&self, workspace_id: &str, bound: Duration) -> bool {
         timeout(bound, async {
             loop {
@@ -228,5 +253,25 @@ mod tests {
         let retry = lifecycle.begin_archive("w1").expect("explicit retry");
         retry.finish(ArchiveOutcome::Reopened);
         assert!(lifecycle.admit("w1").is_ok());
+    }
+
+    #[test]
+    fn cleanup_closes_admission_and_accepts_an_already_archived_workspace() {
+        let lifecycle = WorkspaceLifecycle::new();
+        let cleanup = lifecycle
+            .begin_cleanup("open")
+            .expect("begin cleanup")
+            .expect("open workspace needs a lease");
+        assert!(lifecycle.admit("open").is_err());
+        cleanup.finish(ArchiveOutcome::Reopened);
+        assert!(lifecycle.admit("open").is_ok());
+
+        let archive = lifecycle.begin_archive("archived").expect("archive lease");
+        archive.finish(ArchiveOutcome::Archived);
+        assert!(lifecycle
+            .begin_cleanup("archived")
+            .expect("already archived is safe")
+            .is_none());
+        assert!(lifecycle.admit("archived").is_err());
     }
 }

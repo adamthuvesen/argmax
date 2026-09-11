@@ -28,7 +28,10 @@ use crate::{
         workspaces::find_workspace_by_id,
     },
     providers::session_service::ProviderSessionService,
-    workspaces::{orchestration::WorkspacesCreateAlongsideInput, WorkspaceService},
+    workspaces::{
+        orchestration::{resolve_registered_checkout, WorkspacesCreateAlongsideInput},
+        WorkspaceService,
+    },
 };
 
 /// Everything needed to launch a top-level session. The session-launch
@@ -41,6 +44,13 @@ pub(crate) struct LaunchSpec {
     /// project root whenever that chat is itself in a worktree. Ignored when
     /// `worktree` is set, which asks for an isolated tree by definition.
     pub alongside: Option<AlongsideCheckout>,
+    /// Existing checkout of the target project, from `git worktree list`.
+    /// Mutually exclusive with `worktree`. Ignored when `alongside` is set.
+    pub path: Option<String>,
+    /// Git ref the new session should work from. With `worktree`, the isolated
+    /// worktree forks from this ref. With `path`, the checkout must already be
+    /// on this branch. Never switches another checkout's branch by itself.
+    pub branch: Option<String>,
     pub prompt: String,
     pub worktree: bool,
     pub provider: crate::providers::ProviderId,
@@ -68,6 +78,8 @@ pub(crate) struct LaunchOutcome {
     pub workspace_id: String,
     pub project_id: String,
     pub project_name: String,
+    pub path: String,
+    pub branch: String,
 }
 
 /// Resolve the project, create the workspace, and launch the provider —
@@ -97,16 +109,57 @@ pub(crate) async fn launch_with_spec(
     let cols = terminal_cols(120)?;
     let rows = terminal_rows(32)?;
 
+    if spec.worktree && spec.path.is_some() {
+        return Err(protocol_error(
+            "LAUNCH_WORKTREE_WITH_PATH",
+            "worktree creates a new worktree; path launches into one that exists. Pass only one.",
+        ));
+    }
+    if spec.branch.is_some() && !spec.worktree && spec.path.is_none() {
+        return Err(protocol_error(
+            "LAUNCH_BRANCH_NEEDS_DESTINATION",
+            "Pass worktree to fork an isolated worktree from this branch, or path to a checkout that already has it. Launch will not switch another checkout's branch.",
+        ));
+    }
+
     let workspace = if spec.worktree {
-        let base_ref =
-            BaseRef::try_from(project.current_branch.clone()).map_err(invalid_input_error)?;
+        let base_ref = match spec.branch.as_deref() {
+            Some(branch) => Some(BaseRef::try_from(branch.to_string()).map_err(invalid_input_error)?),
+            None => Some(
+                BaseRef::try_from(project.current_branch.clone()).map_err(invalid_input_error)?,
+            ),
+        };
         workspaces
             .create_isolated(WorkspacesCreateIsolatedInput {
                 project_id,
                 task_label,
-                base_ref: Some(base_ref),
+                base_ref,
             })
             .await
+    } else if let Some(requested) = spec.path.as_deref() {
+        let (path, branch) = resolve_registered_checkout(&project.repo_path, requested)
+            .await
+            .map_err(argmax_protocol_error)?;
+        if let Some(expected) = spec.branch.as_deref() {
+            if expected != branch {
+                return Err(protocol_error(
+                    "LAUNCH_BRANCH_MISMATCH",
+                    format!(
+                        "{path} is on '{branch}', not '{expected}'. Check out that branch there first, or omit branch to use '{branch}'."
+                    ),
+                ));
+            }
+        }
+        workspaces.create_alongside(WorkspacesCreateAlongsideInput {
+            project_id,
+            task_label,
+            path,
+            branch,
+            base_ref: project
+                .default_branch
+                .clone()
+                .unwrap_or_else(|| project.current_branch.clone()),
+        })
     } else if let Some(checkout) = spec.alongside {
         // The dispatching chat's own checkout, which is the project root only
         // when that chat is not in a worktree. Taking the project's instead put
@@ -164,6 +217,8 @@ pub(crate) async fn launch_with_spec(
         workspace_id: workspace.id,
         project_id: project.id,
         project_name: project.name,
+        path: workspace.path,
+        branch: workspace.branch,
     })
 }
 
@@ -231,14 +286,19 @@ pub(super) async fn launch_session(
             // own worktree.
             alongside: None,
             project: action.project,
+            path: action.path,
+            branch: action.branch,
             prompt: action.prompt,
             worktree: action.worktree,
             provider,
             model_label,
             model_id,
-            reasoning_effort,
+            // An explicit effort wins over whatever the model choice implied,
+            // so `reasoning` means the same thing whether or not `model` was
+            // named alongside it.
+            reasoning_effort: action.reasoning.or(reasoning_effort),
             fast_mode: parent.fast_mode,
-            permission_mode: parent.permission_mode,
+            permission_mode: action.permission_mode.unwrap_or(parent.permission_mode),
             agent_mode: parent.agent_mode,
             task_label: action.task_label,
         },
@@ -265,6 +325,8 @@ pub(super) async fn launch_session(
             workspace_id: outcome.workspace_id,
             project_id: outcome.project_id,
             project_name: outcome.project_name,
+            path: outcome.path,
+            branch: outcome.branch,
         },
     )))
 }

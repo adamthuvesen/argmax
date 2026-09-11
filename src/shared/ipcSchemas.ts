@@ -41,6 +41,8 @@ export const IPC_CHANNELS = [
   "session:multitask",
   "session:clear",
   "session:suggest-follow-up",
+  "settings:preview-chat-cleanup",
+  "settings:delete-old-chats",
   "review:list-changed-files",
   "review:load-diff",
   "review:stage-file",
@@ -64,6 +66,7 @@ export const IPC_CHANNELS = [
   "workspace:grep-content",
   "checks:run",
   "skills:list",
+  "connections:list",
   "system:open-path",
   "system:list-detected-ides",
   "system:diagnostics",
@@ -93,6 +96,11 @@ export const IPC_CHANNELS = [
   "remote:get-status",
   "remote:set-config",
   "remote:test-notification",
+  "remote:set-apns-config",
+  "remote:register-push-device",
+  "remote:unregister-push-device",
+  "remote:push-test",
+  "remote:push-capability",
   "sync:get-status",
   "sync:set-config",
   "sync:run-now",
@@ -122,6 +130,7 @@ export const IPC_CHANNELS = [
   "routines:reset-session",
   "usage:summary",
   "usage:remaining",
+  "activity:summary",
 ] as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[number];

@@ -11,13 +11,14 @@ Rust manages workspace lifecycle, file operations, and git integration under `sr
 - **Workspace modes:** The launcher offers two modes (stored in `localStorage.argmax.workspaceMode`):
   - `current`: Shared checkout (`create_current`).
   - `worktree`: Isolated worktree (`create_isolated`), branched as `argmax/<slug>-<short-id>`.
+  Agent `session_launch` can also attach to an existing checkout (`path`) or fork an isolated worktree from a named `branch`. See [agent-tools.md](agent-tools.md).
 - **Setup commands:** For isolated worktrees, the project's configured setup command runs via `CheckService` after creation. Failures are recorded as check rows and do not block workspace creation.
 - **Archiving:**
   - Successful archives quietly leave the active list. Recovery access lives in Settings, while notifications are reserved for failures or changes that need attention.
   - Shared checkouts mark `archived` immediately and drain child processes in the background.
   - Isolated worktrees mark `archiving`, cancel child processes, expire pending approvals, evict warm Cursor ACP instances, and use `git worktree move` to retain the complete checkout under `local-state/workspace-archive/<workspace-id>`. The moved checkout stays registered with Git, so tracked, untracked, and ignored files remain available. Settings → Advanced → Diagnostics → Archived workspaces opens the recovery root.
   - Dirty worktrees return to `kept` unless `force: true` is passed. An `archive-failed` retry never implies force. The renderer confirms against the current dirty state before retrying with force.
-  - A worktree can carry more than one workspace row — a multitask dispatched from a chat inside it shares that checkout ([multitask.md](multitask.md)). Only the isolated row owns the tree, so archiving it archives every co-located row first, before the move; otherwise they would point at nothing, never reclassify (both reconcile branches skip shared rows), and keep a watcher and an agent alive over the archive location. If one of them still has a turn in flight the archive is refused, naming that workspace, unless `force: true` is passed. `session move --path` refuses to create this shape in the first place.
+  - A worktree can carry more than one workspace row — a multitask dispatched from a chat inside it shares that checkout ([multitask.md](multitask.md)), and `session_launch` with `path` can share one the same way. Only the isolated row owns the tree, so archiving it archives every co-located row first, before the move; otherwise they would point at nothing, never reclassify (both reconcile branches skip shared rows), and keep a watcher and an agent alive over the archive location. If one of them still has a turn in flight the archive is refused, naming that workspace, unless `force: true` is passed. `session move --path` refuses to create this shape in the first place.
   - Archive recovery has no automatic expiry. Repeating an archive after the row reaches `archived` returns the same recovery path. Startup recovery recognizes a checkout already moved into its deterministic recovery path and completes the interrupted archive without moving or deleting it again.
   - Archiving is also how a workspace is disposed of automatically. A project with `archive_on_merge` on (Settings → Projects) has each of its *isolated* workspaces archived by the gh poller once the PR on that workspace's branch merges, never forced — see [gh.md](gh.md).
   - An agent can ask for the same thing from inside: the `workspace_archive` MCP tool archives the caller's own workspace once its turn settles, which is how `ship`'s babysit mode disposes of a worktree it is standing in without pulling the floor out from under itself — see [agent-tools.md](agent-tools.md).
@@ -109,11 +110,13 @@ Base ref resolution checks `workspace.base_ref`, then `origin/<default>`, then l
 The Uncommitted comparison offers file and hunk staging, unstaging, and reverting.
 Every mutation carries the displayed revision. Rust reconstructs the patch and
 checks HEAD, index, and working-tree state under the canonical checkout lock.
-An obsolete revision fails with a refresh instruction. Actions are refused while
-an active session or Goal owns the same checkout. Untracked files can be staged
-as whole files. Their preview hunks and rename hunks are not actionable. Files with both staged
-and unstaged edits use whole-file index actions because their combined preview
-does not represent one index patch.
+An obsolete revision fails with a refresh instruction. Another session working in
+the same checkout does not reserve the tree: sharing a checkout is the normal
+case, and the revision check is what catches an action taken against a tree that
+has moved on. Untracked files can be staged as whole files. Their preview hunks
+and rename hunks are not actionable. Files with both staged and unstaged edits
+use whole-file index actions because their combined preview does not represent
+one index patch.
 
 Reverting restores unstaged changes and saves a recovery checkpoint first.
 Untracked file deletion remains a Files action. **Commit staged** commits the
@@ -128,13 +131,19 @@ own checkpoint instead of the user picking from a list of identically named
 rows. There is no checkpoint panel and nothing to name — checkpoints are
 plumbing, and the turn is the thing you point at.
 
+A capture that fails never blocks the turn. The turn runs and its footer says no
+checkpoint was saved, so a checkout Argmax cannot snapshot still gets its work
+done.
+
 Each checkpoint pins the index and visible working tree as Git trees, including
 non-ignored untracked files. Reverting previews the affected paths first and
-binds the restore to the current HEAD, branch, index, and worktree. It requires
-idle sessions on the same checkout and matching HEAD and branch, saves a
-recovery checkpoint, journals the operation, and restores the index and files,
-so the revert is itself undoable. Interrupted restores remain recoverable
-through that checkpoint. Unresolved merges and submodules are unsupported.
+binds the restore to the current HEAD, branch, index, and worktree. Restoring is
+the one action that still requires idle sessions on the same checkout, because it
+overwrites files another agent may be editing right now. It also requires
+matching HEAD and branch, saves a recovery checkpoint, journals the operation,
+and restores the index and files, so the revert is itself undoable. Interrupted
+restores remain recoverable through that checkpoint. Unresolved merges and
+submodules are unsupported.
 
 **Revert restores files, not the conversation.** No provider CLI can resume from
 an earlier message — each takes one opaque conversation id and continues from

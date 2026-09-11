@@ -51,4 +51,18 @@ describe("ImageLightbox", () => {
     fireEvent.mouseDown(screen.getByRole("dialog", { name: "Attached image" }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it("portals onto the conversation surface so the transcript scroller cannot clip it", () => {
+    render(
+      <div className="conversation-surface">
+        <div style={{ overflow: "hidden", width: 160 }}>
+          <LightboxHarness />
+        </div>
+      </div>
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open preview" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Attached image" });
+    expect(dialog.parentElement).toHaveClass("conversation-surface");
+  });
 });

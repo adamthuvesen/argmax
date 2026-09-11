@@ -83,4 +83,22 @@ describe("ContextRing", () => {
     // Opus 5's 1M table entry → 100000 / 1000000 = 10%.
     expect(screen.getByRole("button", { name: /Context window 10% full/ })).toBeInTheDocument();
   });
+
+  it("ignores a persisted Codex window after switching to Claude", () => {
+    render(
+      <ContextRing
+        session={{
+          ...base,
+          provider: "claude",
+          modelId: "claude-fable-5-1",
+          modelLabel: "Fable 5.1",
+          contextTokens: 320_000,
+          contextWindow: 258_400
+        }}
+      />
+    );
+    // Fable's 1M catalog, not the leftover 258k Codex ceiling.
+    // 320000 / 1000000 = 32%.
+    expect(screen.getByRole("button", { name: /Context window 32% full/ })).toBeInTheDocument();
+  });
 });

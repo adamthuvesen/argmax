@@ -16,14 +16,15 @@ use serde_json::Value;
 use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 use crate::ipc::inputs::*;
 use crate::ipc::{
-    approvals, attachments, checkpoints, checks, dashboard, git_ops, goals, health, learnings,
-    projects, providers, prs, review, session, skills, system, terminal, usage, workspace_files,
-    workspaces,
+    activity, approvals, attachments, checkpoints, checks, connections, dashboard, git_ops, goals,
+    health, learnings, projects, providers, prs, remote, review, session, skills, system, terminal,
+    usage, workspace_files, workspaces,
 };
 use crate::state::AppState;
 
-/// Channels whose handlers need an `AppHandle` (native dialogs, the shell
-/// opener, window theming) and therefore cannot run for a browser client.
+/// Channels a remote client cannot run: their handlers need an `AppHandle`
+/// (native dialogs, the shell opener, window theming), or they belong to the
+/// desktop app alone because of what they hand out or take in.
 pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
     "projects:pick-folder",
     "system:open-path",
@@ -34,9 +35,17 @@ pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
     "system:set-notifications-enabled",
     "system:set-keep-awake",
     "system:test-notification",
+    // Destructive history cleanup is confirmed in desktop Settings.
+    "settings:preview-chat-cleanup",
+    "settings:delete-old-chats",
+    // Remote access as Settings owns it: the status hands out the pairing
+    // token and QR, and the config writes take a filesystem path to the APNs
+    // auth key. Pairing a phone is not in here — see `remote:*-push-device`
+    // below, which the phone calls for itself.
     "remote:get-status",
     "remote:set-config",
     "remote:test-notification",
+    "remote:set-apns-config",
     // Session sync reads the desktop app's own config file and app-data dir.
     "sync:get-status",
     "sync:set-config",
@@ -162,6 +171,10 @@ async fn dispatch_standard(
         "usage:summary" => {
             let input: UsageSummaryInput = parse(channel, input)?;
             encode(usage::usage_summary_impl(state, input).await?)
+        }
+        "activity:summary" => {
+            let input: ActivitySummaryInput = parse(channel, input)?;
+            encode(activity::activity_summary_impl(state, input).await?)
         }
         "usage:remaining" => {
             let input: UsageRemainingInput = parse(channel, input)?;
@@ -367,6 +380,10 @@ async fn dispatch_standard(
             let input: SkillsListInput = parse(channel, input)?;
             encode(skills::skills_list_impl(state, input)?)
         }
+        "connections:list" => {
+            let input: ConnectionsListInput = parse(channel, input)?;
+            encode(connections::connections_list_impl(state, input).await?)
+        }
 
         // The desktop debug panel polls this; over the bridge it is the
         // machine-readable window into the log ring and IPC latency stats —
@@ -378,6 +395,27 @@ async fn dispatch_standard(
         "system:vacuum-database" => {
             let _input: SystemVacuumDatabaseInput = parse(channel, input)?;
             encode(system::system_vacuum_database_impl(state).await?)
+        }
+
+        // Only the phone knows its own APNs device token, and Apple may
+        // rotate it, so pairing runs from the phone rather than from
+        // Settings. `remote:push-capability` is what it checks before asking
+        // iOS for notification permission.
+        "remote:register-push-device" => {
+            let input: RemoteRegisterPushDeviceInput = parse(channel, input)?;
+            encode(remote::remote_register_push_device_impl(state, input)?)
+        }
+        "remote:unregister-push-device" => {
+            let input: RemoteUnregisterPushDeviceInput = parse(channel, input)?;
+            encode(remote::remote_unregister_push_device_impl(state, input)?)
+        }
+        "remote:push-test" => {
+            let _input: RemotePushTestInput = parse(channel, input)?;
+            encode(remote::remote_push_test_impl(state).await?)
+        }
+        "remote:push-capability" => {
+            let _input: RemotePushCapabilityInput = parse(channel, input)?;
+            encode(remote::remote_push_capability_impl(state)?)
         }
 
         "learnings:list" => {
@@ -614,6 +652,106 @@ mod tests {
         let path = saved["filePath"].as_str().expect("saved file path");
         assert!(path.starts_with(&dir.path().to_string_lossy().to_string()));
         assert_eq!(std::fs::read(path).expect("saved image"), b"M");
+    }
+
+    /// The phone pairs itself, so the whole push-device round trip has to
+    /// work with nothing but `&AppState` — no `AppHandle` in reach.
+    #[tokio::test]
+    async fn a_phone_pairs_and_unpairs_itself_over_the_bridge() {
+        let dir = tempfile::tempdir().expect("app data dir");
+        let state = AppState::new();
+        state
+            .app_data_dir
+            .set(dir.path().to_path_buf())
+            .expect("app data dir once cell");
+
+        let paired = dispatch(
+            &state,
+            "remote:register-push-device",
+            serde_json::json!({"token": "A1B2C3D4", "name": "Adam's iPhone"}),
+        )
+        .await
+        .expect("register over remote bridge");
+        assert_eq!(paired.as_array().expect("devices").len(), 1);
+        assert_eq!(paired[0]["token"], "a1b2c3d4", "tokens are normalized");
+        assert_eq!(paired[0]["name"], "Adam's iPhone");
+
+        // Apple hands the app the same token on the next launch, and the app
+        // re-registers unconditionally. That is a rename, not a second row.
+        let repaired = dispatch(
+            &state,
+            "remote:register-push-device",
+            serde_json::json!({"token": "a1b2c3d4", "name": "Work iPhone"}),
+        )
+        .await
+        .expect("re-register over remote bridge");
+        assert_eq!(repaired.as_array().expect("devices").len(), 1);
+        assert_eq!(repaired[0]["name"], "Work iPhone");
+
+        let persisted = crate::remote::load_or_create_config(dir.path());
+        assert_eq!(persisted.apns.devices.len(), 1);
+        assert_eq!(persisted.apns.devices[0].name, "Work iPhone");
+
+        let remaining = dispatch(
+            &state,
+            "remote:unregister-push-device",
+            serde_json::json!({"token": "a1b2c3d4"}),
+        )
+        .await
+        .expect("unregister over remote bridge");
+        assert!(remaining.as_array().expect("devices").is_empty());
+        assert!(crate::remote::load_or_create_config(dir.path())
+            .apns
+            .devices
+            .is_empty());
+    }
+
+    /// Reachability is the point: the test push has to fail on *its own*
+    /// error, not on `REMOTE_UNSUPPORTED`.
+    #[tokio::test]
+    async fn a_test_push_with_no_paired_phone_reports_that_and_not_unsupported() {
+        let dir = tempfile::tempdir().expect("app data dir");
+        let state = AppState::new();
+        state
+            .app_data_dir
+            .set(dir.path().to_path_buf())
+            .expect("app data dir once cell");
+
+        let error = dispatch(&state, "remote:push-test", serde_json::json!({}))
+            .await
+            .expect_err("no phone is paired");
+
+        assert!(
+            matches!(&error, ArgmaxError::InvalidInput { issues, .. }
+                if issues.iter().any(|issue| issue.code == "APNS_NO_DEVICES")),
+            "unexpected error: {error:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn push_capability_reports_whether_the_host_holds_a_key() {
+        let dir = tempfile::tempdir().expect("app data dir");
+        let state = AppState::new();
+        state
+            .app_data_dir
+            .set(dir.path().to_path_buf())
+            .expect("app data dir once cell");
+
+        let unconfigured = dispatch(&state, "remote:push-capability", serde_json::json!({}))
+            .await
+            .expect("capability over remote bridge");
+        assert_eq!(unconfigured["configured"], false);
+
+        let mut config = crate::remote::load_or_create_config(dir.path());
+        config.apns.key_path = Some("/keys/AuthKey_ABC1234567.p8".to_string());
+        config.apns.key_id = Some("ABC1234567".to_string());
+        config.apns.team_id = Some("TEAM123456".to_string());
+        crate::remote::save_config(dir.path(), &config).expect("save");
+
+        let configured = dispatch(&state, "remote:push-capability", serde_json::json!({}))
+            .await
+            .expect("capability over remote bridge");
+        assert_eq!(configured["configured"], true);
     }
 
     #[tokio::test]

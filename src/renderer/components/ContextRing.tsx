@@ -30,10 +30,10 @@ function formatCompact(tokens: number): string {
 
 /**
  * Context-window occupancy for a session: a small ring showing how full the
- * model's context is, expanding on click to the exact token counts. Pure
- * projection of the session row (contextTokens / contextWindow), pushed on the
- * dashboard delta like the cost panel. Renders nothing when the window is
- * unknown or nothing has been used yet.
+ * model's context is, expanding on click to the exact token counts. Occupancy
+ * is the session row's `contextTokens`; the denominator is Codex's reported
+ * window when present, otherwise the current model's catalog size. Renders
+ * nothing when the window is unknown or nothing has been used yet.
  */
 export function ContextRing({ session }: { session: SessionSummary }): JSX.Element | null {
   const [open, setOpen] = useState(false);
@@ -48,12 +48,15 @@ export function ContextRing({ session }: { session: SessionSummary }): JSX.Eleme
   if (session.provider === "cursor") return null;
 
   const used = session.contextTokens ?? 0;
-  // Every provider falls back to the model table when the session row carries
-  // no window. Codex used to be carved out of this on the grounds that it
-  // reports its own — it does, but only inside `event_msg`/`token_count` rows,
-  // which `codex exec --json` stopped emitting. The carve-out then meant a
-  // silently missing ring rather than an approximate one.
-  const windowSize = session.contextWindow ?? contextWindowForModel(session.modelId);
+  // Codex is the only provider that writes `sessions.context_window` (from
+  // `model_context_window` on `token_count`). Claude, Cursor, OpenCode, and
+  // Grok leave the column alone, so after a Codex → other switch it still
+  // holds the previous model's ceiling. Trust a persisted window only while
+  // this session is on Codex; everyone else uses the catalog for the current
+  // model. Codex still falls back to the catalog when `codex exec --json`
+  // omits `token_count` and the column is empty.
+  const catalog = contextWindowForModel(session.modelId);
+  const windowSize = session.provider === "codex" ? (session.contextWindow ?? catalog) : catalog;
   if (!windowSize || windowSize <= 0 || used <= 0) return null;
 
   const fraction = Math.min(1, used / windowSize);

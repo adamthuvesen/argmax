@@ -35,7 +35,15 @@ empty_input!(SystemDiagnosticsInput);
 empty_input!(SystemVacuumDatabaseInput);
 empty_input!(RemoteGetStatusInput);
 empty_input!(RemoteTestNotificationInput);
+empty_input!(RemotePushTestInput);
+empty_input!(RemotePushCapabilityInput);
 empty_input!(SystemTestNotificationInput);
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DeleteOldChatsInput {
+    pub cleanup_id: String,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -53,6 +61,36 @@ pub struct RemoteSetConfigInput {
     /// Raw topic field from the Settings form: empty clears push, a full
     /// http(s) URL is kept as-is, a bare topic name maps to ntfy.sh.
     pub ntfy_topic: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RemoteRegisterPushDeviceInput {
+    /// APNs device token as the native app reports it: hex, no spaces. The
+    /// app re-registers on every launch, so an existing token is an update
+    /// rather than a second row.
+    pub token: String,
+    /// Shown in Settings so the user can tell two phones apart.
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RemoteUnregisterPushDeviceInput {
+    pub token: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RemoteSetApnsConfigInput {
+    /// Absolute path to the `.p8` auth key. Empty clears APNs push, which is
+    /// how the Settings panel turns it off.
+    pub key_path: String,
+    pub key_id: String,
+    pub team_id: String,
+    /// Send to Apple's development host, which is where a debug build of the
+    /// phone app's tokens live.
+    pub sandbox: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -833,6 +871,13 @@ pub struct SkillsListInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConnectionsListInput {
+    pub provider: ProviderId,
+    pub workspace_id: Option<WorkspaceId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SystemOpenPathInput {
     pub path: OpenPath,
     pub cwd: Option<NonEmptyString>,
@@ -1257,6 +1302,20 @@ pub struct RoutinesRunNowInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RoutinesResetSessionInput {
     pub id: NonEmptyString,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ActivitySummaryInput {
+    pub window: crate::activity::ActivityWindow,
+    /// Narrow the totals, series, streaks, cadence, pull requests and reviews
+    /// to one project. `repositories` and `heatmap` always cover every
+    /// repository, so the page can still offer the others.
+    #[serde(default)]
+    pub project_id: Option<ProjectId>,
+    /// IANA zone name, e.g. `Europe/Stockholm`. Every day, week, and hour
+    /// bucket is cut on it, and the handler rejects a name it cannot resolve.
+    pub time_zone: NonEmptyString,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

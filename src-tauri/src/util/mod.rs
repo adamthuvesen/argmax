@@ -2,6 +2,7 @@
 
 pub mod app_nap;
 pub mod data_dir;
+pub mod file_limits;
 pub mod gh_runner;
 pub mod instance_lock;
 pub mod ipc_latency;

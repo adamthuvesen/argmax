@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-font-size="5" data-accent="green">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Argmax — blockquote mockups</title>
+
+    <!-- The real thing: app tokens, the real chat prose rules, the real Geist
+         faces. Every sample is a `.chat-bubble.assistant > .markdown` exactly as
+         the transcript renders one; a candidate only overrides
+         `.markdown blockquote` under its own `[data-variant]`. -->
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-400.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-500.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-700.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource-variable/geist-mono/wght.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/tokens.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/chat-conversation.css" />
+
+    <style>
+      html { background: var(--bg); }
+      body {
+        margin: 0;
+        background: var(--bg);
+        font-family: var(--font-ui);
+        font-weight: var(--weight-ui);
+        color: var(--text);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* ---- page chrome (dim, so it never competes with the samples) ---- */
+      .page-head {
+        position: sticky; top: 0; z-index: 60;
+        display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap;
+        padding: 12px 28px;
+        background: color-mix(in oklab, var(--bg) 92%, transparent);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--line);
+      }
+      .page-head h1 { font-size: var(--text-sm); font-weight: 500; margin: 0; color: var(--text-soft); }
+      .page-head label { font-size: var(--text-xs); color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+      .page-head .note { font-size: var(--text-xs); color: var(--muted); margin-left: auto; }
+      .page-head kbd { font-family: var(--font-mono); font-size: var(--text-2xs); padding: 1px 4px; border: 1px solid var(--line); border-radius: 3px; }
+      .page-head select {
+        font: inherit; font-size: var(--text-xs);
+        background: var(--panel); color: var(--text);
+        border: 1px solid var(--line); border-radius: var(--radius-sm);
+        padding: 3px 6px;
+      }
+      section { padding: 34px 28px 6px; }
+      section > h2 {
+        font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.08em;
+        font-weight: 500; color: var(--muted); margin: 0 0 4px;
+      }
+      section > .lede { font-size: var(--text-xs); color: var(--muted); margin: 0 0 22px; max-width: 76ch; line-height: 1.6; }
+      .lede b { color: var(--text-soft); font-weight: 500; }
+      .tag {
+        font-family: var(--font-mono); font-size: var(--text-2xs);
+        color: var(--muted); letter-spacing: 0.02em;
+        display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-bottom: 12px;
+      }
+      .tag .name { color: var(--text-soft); }
+      body[data-only] .page-head,
+      body[data-only] section[hidden],
+      body[data-only] section > h2,
+      body[data-only] section > .lede { display: none; }
+      body[data-only] section { padding-top: 22px; }
+
+      /* The transcript slice every sample sits in. Same measure the chat uses. */
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(520px, 1fr)); gap: 30px 34px; align-items: start; }
+      .grid[data-cols="1"] { grid-template-columns: minmax(0, 640px); }
+      .stage {
+        --chat-content-width: 600px;
+        max-width: 640px;
+        padding: 2px 0 8px;
+        background: var(--bg);
+      }
+      .stage .chat-bubble { animation: none; }
+      .stage-user {
+        display: inline-block; max-width: 80%;
+        padding: 9px 14px; margin: 0 0 22px;
+        border-radius: var(--radius-2xl);
+        background: var(--user-message-bg); color: var(--user-message-fg);
+        font-size: var(--text-base); line-height: 1.5;
+      }
+
+      /* ==================================================================
+         Candidates. Each resets everything `.markdown blockquote` ships and
+         states its own shape. The one thing all four agree on: the quoted
+         text keeps `--prose-ink`. It is the payload of the paragraph around
+         it, so dimming it (the shipped `--text-soft`) is backwards.
+         ================================================================== */
+      .stage[data-variant] .markdown blockquote {
+        position: relative;
+        margin: 18px 0;
+        padding: 0;
+        background: none;
+        border: 0;
+        border-radius: 0;
+        color: var(--prose-ink);
+      }
+      .stage[data-variant] .markdown blockquote > p { margin: 0 0 10px; }
+      .stage[data-variant] .markdown blockquote > p:last-child { margin-bottom: 0; }
+
+      /* A — Hairline. The answered QuestionCard's rule (`.question-ask.is-answered`
+         is 2px `--line-strong`), drawn as a pseudo so it spans the text's own
+         extent rather than the padding box. Notion / GitHub / Claude.ai lineage:
+         the rule says "set apart", nothing about who or why. */
+      .stage[data-variant="a"] .markdown blockquote { padding-left: 16px; }
+      .stage[data-variant="a"] .markdown blockquote::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0.3em;
+        bottom: 0.3em;
+        width: 2px;
+        border-radius: 1px;
+        background: var(--line-strong);
+      }
+
+      /* B — Specimen. The `pre` chrome (`--tool-block-surface`, 1px `--line`,
+         `--radius-md`) with prose inside instead of code. A quote of text and a
+         quote of code then belong to one family: this is material, not the
+         agent's voice. No rule — the surface already says "set apart". */
+      .stage[data-variant="b"] .markdown blockquote {
+        padding: 11px 16px 12px;
+        background: var(--tool-block-surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-md);
+      }
+
+      /* C — Margin mark. No rule, no fill: an opening quotation mark hangs in
+         the gutter at `--muted`, and the text indents under it. The editorial
+         answer — the glyph *is* the meaning, so nothing else has to be drawn. */
+      .stage[data-variant="c"] .markdown blockquote { padding-left: 22px; }
+      .stage[data-variant="c"] .markdown blockquote::before {
+        content: "\201C";
+        position: absolute;
+        left: 0;
+        top: -0.02em;
+        font-family: var(--font-prose);
+        font-size: 1.85em;
+        line-height: 1;
+        font-weight: 500;
+        color: var(--muted);
+        pointer-events: none;
+        user-select: none;
+      }
+
+      /* D — Thread. The shipped design minus the fill: a 2px sage rule mixed
+         toward the line so it is still the accent but no longer a signal
+         (accent at full strength is what the live QuestionCard uses for
+         "waiting on you"). The smallest change from today. */
+      .stage[data-variant="d"] .markdown blockquote { padding-left: 16px; }
+      .stage[data-variant="d"] .markdown blockquote::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0.3em;
+        bottom: 0.3em;
+        width: 2px;
+        border-radius: 1px;
+        background: color-mix(in oklab, var(--accent) 55%, var(--line-strong));
+      }
+
+      /* Nested quotes: one level in, the same shape again, at the same inset.
+         Only the specimen stacks a surface on a surface, which is why B's
+         second level drops the fill and keeps just the line. */
+      .stage[data-variant="b"] .markdown blockquote blockquote {
+        margin: 10px 0 0;
+        padding: 0 0 0 14px;
+        background: none;
+        border: 0;
+        border-left: 1px solid var(--line-strong);
+        border-radius: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="page-head">
+      <h1>Blockquote — mockups</h1>
+      <label>Theme
+        <select id="theme">
+          <option value="dark">dark</option>
+          <option value="light">light</option>
+        </select>
+      </label>
+      <label>App font
+        <select id="size">
+          <option>3</option><option>4</option><option selected>5</option><option>6</option><option>7</option>
+        </select>
+      </label>
+      <label>Accent
+        <select id="accent">
+          <option>green</option><option>purple</option><option>neutral</option><option>black</option><option>orange</option><option>blue</option><option>coral</option>
+        </select>
+      </label>
+      <label>Variant (§2, §3)
+        <select id="variant">
+          <option value="shipped">shipped</option>
+          <option value="a">A · hairline</option>
+          <option value="b">B · specimen</option>
+          <option value="c">C · margin mark</option>
+          <option value="d">D · thread</option>
+        </select>
+      </label>
+      <span class="note"><kbd>←</kbd> <kbd>→</kbd> swap the variant in place</span>
+    </header>
+
+    <!-- =============================== 1 =============================== -->
+    <section data-key="1">
+      <h2>1 · Side by side</h2>
+      <p class="lede">
+        The exact passage from the report, once as it ships and once per
+        candidate, at the chat's own measure. What is wrong today is not that
+        the block is plain: it is a <b>filled accent slab</b>, which reads as a
+        success callout (green fill, green rule) beside green code ink, and it
+        dims the quoted text to <b>--text-soft</b> when that text is the whole
+        point of the paragraph. It also borrows the live QuestionCard's colour,
+        which the app reserves for "waiting on you".
+      </p>
+      <div class="grid" id="side-by-side"></div>
+    </section>
+
+    <!-- =============================== 2 =============================== -->
+    <section data-key="2">
+      <h2>2 · Edge cases</h2>
+      <p class="lede">
+        One column, the selected variant. A quote that carries a list and a
+        code span, a quote straight after a heading, a one-liner, a two
+        paragraph quote, a nested quote, and a quote of the user's own words.
+        A shape that only works on a three-line paragraph is not a shape.
+      </p>
+      <div class="grid" data-cols="1">
+        <div class="stage" data-variant="a" data-follows>
+          <div class="chat-bubble assistant"><div class="markdown">
+            <h3>What the hook rejects</h3>
+            <blockquote>
+              <p>Every commit message is checked against three rules before the hook lets it through:</p>
+              <ul>
+                <li>no <code>Co-Authored-By</code> trailer naming an assistant</li>
+                <li>no <code>🤖</code> in the subject or body</li>
+                <li>the subject fits <code>type(scope): message</code></li>
+              </ul>
+            </blockquote>
+            <p>So the failure you hit is the first rule, not the third. The trailer is added by the CLI, not by the prompt, which is why removing it from the message text did nothing.</p>
+            <blockquote><p>Ship it.</p></blockquote>
+            <p>That is the whole instruction the skill received, and it is enough: the skill treats a bare imperative as authorization for the branch it is already on.</p>
+            <blockquote>
+              <p>Do not commit unless the user asked for one. Their <code>/commit</code> or "commit this" <em>is</em> that ask; proceed without a confirmation round.</p>
+              <p>Another skill routing here is not. A skill can call this one to <em>prepare</em> a commit, but the user still has to say the word.</p>
+            </blockquote>
+            <p>You wrote, earlier in this session:</p>
+            <blockquote>
+              <p>I think this looks a bit too rough and doesn't really fit in.</p>
+              <blockquote><p>Can you create a few mockups for how we can render these blocks?</p></blockquote>
+            </blockquote>
+            <p>Both are true, and the second is the one this page answers.</p>
+          </div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =============================== 3 =============================== -->
+    <section data-key="3">
+      <h2>3 · Flicker compare</h2>
+      <p class="lede">
+        One block, the same three quotes as §1, swapped in place with
+        <b>←</b> / <b>→</b>. The only reliable way to judge a two-pixel move.
+      </p>
+      <div class="grid" data-cols="1"><div class="stage" id="flicker" data-variant="a" data-follows></div></div>
+    </section>
+
+    <script>
+      const PASSAGE = `
+        <div class="chat-bubble assistant"><div class="markdown">
+          <ol start="2"><li>Scope Gate step 4 ("if scope is unclear, ask") has no floor, so it fires even when every dirty file came from the task you just asked for.</li></ol>
+          <p><strong>Proposed wording</strong></p>
+          <p><code>AGENTS.md:117</code>, replace the one sentence:</p>
+          <blockquote><p>Commit when the user asks for it — <code>/commit</code>, <code>/ship</code>, "commit this," "ship it" — and don't ask again; that ask covers everything in scope, including work you did earlier in the session. Without a delivery instruction, leave changes uncommitted and say so in the summary.</p></blockquote>
+          <p><code>SKILL.md</code> first NEVER bullet:</p>
+          <blockquote><p>Do not commit unless the user asked for one. Their <code>/commit</code> or "commit this" <em>is</em> that ask — proceed without a confirmation round. Another skill routing here is not.</p></blockquote>
+          <p><code>SKILL.md</code> Scope Gate step 4, add the floor:</p>
+          <blockquote><p>If the tree holds changes <strong>you did not make</strong> and scope is unclear, show the groups and ask which belong.</p></blockquote>
+          <p><strong>Best way to handle it generally:</strong> state each gated action as a matched pair — the default <em>and</em> what counts as authorization — in one canonical spot, and keep the mirrors pointing at it rather than restating.</p>
+          <p>Want me to apply those three edits?</p>
+        </div></div>`;
+
+      const VARIANTS = [
+        ["shipped", "Shipped", "no override · reads the live chat-conversation.css · was: accent-soft fill · 3px accent rule · text-soft"],
+        ["a", "A · Hairline", "2px line-strong rule · no fill · prose ink"],
+        ["b", "B · Specimen", "tool-block-surface · 1px line · radius-md · no rule"],
+        ["c", "C · Margin mark", "hanging “ at muted · 22px indent · nothing else"],
+        ["d", "D · Thread", "2px sage rule mixed 55% toward line-strong · no fill"],
+      ];
+
+      const side = document.getElementById("side-by-side");
+      for (const [key, name, spec] of VARIANTS) {
+        const wrap = document.createElement("div");
+        wrap.innerHTML = `<div class="tag"><span class="name">${name}</span><span>${spec}</span></div>` +
+          `<div class="stage" ${key === "shipped" ? "" : `data-variant="${key}"`}>${PASSAGE}</div>`;
+        side.append(wrap);
+      }
+      document.getElementById("flicker").innerHTML = PASSAGE;
+
+      // ---- controls ----
+      const q = new URLSearchParams(location.search);
+      const root = document.documentElement;
+      const $ = (id) => document.getElementById(id);
+
+      function applyVariant(key) {
+        for (const el of document.querySelectorAll(".stage[data-follows]")) {
+          if (key === "shipped") el.removeAttribute("data-variant");
+          else el.dataset.variant = key;
+        }
+        $("variant").value = key;
+      }
+
+      $("theme").onchange = (e) => (root.dataset.theme = e.target.value);
+      $("size").onchange = (e) => (root.dataset.fontSize = e.target.value);
+      $("accent").onchange = (e) => (root.dataset.accent = e.target.value);
+      $("variant").onchange = (e) => applyVariant(e.target.value);
+
+      if (q.get("theme")) { root.dataset.theme = q.get("theme"); $("theme").value = q.get("theme"); }
+      if (q.get("size")) { root.dataset.fontSize = q.get("size"); $("size").value = q.get("size"); }
+      if (q.get("accent")) { root.dataset.accent = q.get("accent"); $("accent").value = q.get("accent"); }
+      applyVariant(q.get("variant") || "a");
+      if (q.get("only")) {
+        document.body.dataset.only = q.get("only");
+        for (const s of document.querySelectorAll("section")) s.hidden = s.dataset.key !== q.get("only");
+      }
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+        const keys = VARIANTS.map((v) => v[0]);
+        const i = keys.indexOf($("variant").value);
+        applyVariant(keys[(i + (e.key === "ArrowRight" ? 1 : keys.length - 1)) % keys.length]);
+      });
+    </script>
+  </body>
+</html>

@@ -82,7 +82,9 @@ Renderer code routes timeline meaning through [canonicalTimeline.ts](../src/rend
 
 The [Browser page](browser.md) is a workspace-column surface, not a grid cell: the left-rail Browser item fills the workspace with the in-app browser while the session sidebar stays. Settings, Schedule, and Usage still replace the sidebar; this page does not.
 
-"New chat here" in the pane menu opens a launcher adjacent to the active pane without replacing the grid.
+"New chat here" in the pane menu opens a launcher adjacent to the active pane without replacing the grid. The grid supports at most four cells in two rows and two columns. Two cells can sit side by side or stack vertically. Three cells use a split row and a full-width row, and four form an aligned 2×2 grid. Both rows share the same column divider, and layout changes rebalance it.
+
+Dragging a sidebar session over a cell previews an available split in the outer quarter of each edge. The center opens it in that cell. At capacity the whole cell is a replacement target. Dragging an already-open session onto another cell swaps them. Drop previews label the action, and divider movement is batched to animation frames.
 
 ## Shared: `src/shared`
 

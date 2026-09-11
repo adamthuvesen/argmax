@@ -2,8 +2,10 @@ mod label;
 mod launch;
 mod messaging;
 mod move_archive;
+mod project_tools;
 mod resume;
 mod wait;
+mod workspace_tools;
 
 pub(crate) use launch::{launch_with_spec, AlongsideCheckout, LaunchSpec};
 pub use resume::resume_after_turn_actions;
@@ -19,7 +21,14 @@ use self::{
         stop_session,
     },
     move_archive::{schedule_session_move, schedule_workspace_archive},
+    project_tools::{
+        add_learning, cancel_schedule, list_projects_action, list_schedules, resume_schedule,
+        schedule_followup, search_learnings_action,
+    },
     wait::wait_for_sessions,
+    workspace_tools::{
+        read_terminal, run_checks, spawn_terminal, workspace_diff, workspace_status,
+    },
 };
 use super::{
     protocol::{
@@ -91,6 +100,37 @@ pub(super) async fn handle_session_control(
         SessionControlAction::Rename(action) => {
             rename_session(action, parent, database, workspaces)
         }
+        SessionControlAction::ChecksRun(action) => {
+            run_checks(action, parent, database, app.as_ref()).await
+        }
+        SessionControlAction::WorkspaceStatus(action) => workspace_status(action, parent, database),
+        SessionControlAction::WorkspaceDiff(action) => {
+            workspace_diff(action, parent, database).await
+        }
+        SessionControlAction::LearningsAdd(action) => add_learning(action, parent, database),
+        SessionControlAction::LearningsSearch(action) => {
+            search_learnings_action(action, parent, database)
+        }
+        SessionControlAction::TerminalSpawn(action) => {
+            // Spawning opens a PTY and forks a shell. Keep that work off the
+            // async runtime for the same reason the renderer's terminal IPC
+            // does.
+            tauri::async_runtime::spawn_blocking(move || {
+                spawn_terminal(action, parent, database, app.as_ref())
+            })
+            .await
+            .map_err(|error| protocol_error("TERMINAL_SPAWN_JOIN", error.to_string()))?
+        }
+        SessionControlAction::TerminalRead(action) => {
+            read_terminal(action, parent, database, app.as_ref())
+        }
+        SessionControlAction::Projects(_) => list_projects_action(database),
+        SessionControlAction::ScheduleFollowup(action) => {
+            schedule_followup(action, parent, database)
+        }
+        SessionControlAction::ScheduleList(action) => list_schedules(action, parent, database),
+        SessionControlAction::ScheduleCancel(action) => cancel_schedule(action, parent, database),
+        SessionControlAction::ScheduleResume(action) => resume_schedule(action, parent, database),
         SessionControlAction::Browser(request) => {
             let app = app.ok_or_else(|| {
                 protocol_error(

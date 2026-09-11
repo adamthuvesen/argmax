@@ -54,58 +54,69 @@ describe("openWorkspaceInGrid", () => {
     expect(next.focused).toEqual({ row: 0, col: 1 });
   });
 
-  it("falls back to replace when a split would exceed the row cap", () => {
-    const start: GridState = {
-      rows: [[cell(1), cell(2), cell(3)]],
-      focused: { row: 0, col: 2 }
-    };
-    const next = openWorkspaceInGrid(start, cell(4), { ctrlOrMeta: true, alt: false });
-    expect(next.rows).toEqual([[cell(1), cell(2), cell(4)]]);
-    expect(next.focused).toEqual({ row: 0, col: 2 });
-  });
-
-  it("opens below when split-right would exceed the measured layout cap", () => {
+  it("starts a second row when split-right reaches the two-column cap", () => {
     const start: GridState = {
       rows: [[cell(1), cell(2)]],
       focused: { row: 0, col: 1 }
     };
-    const next = openWorkspaceInGrid(
-      start,
-      cell(3),
-      { ctrlOrMeta: true, alt: false },
-      { maxColumns: 2 }
-    );
+    const next = openWorkspaceInGrid(start, cell(3), { ctrlOrMeta: true, alt: false });
     expect(next.rows).toEqual([[cell(1), cell(2)], [cell(3)]]);
     expect(next.focused).toEqual({ row: 1, col: 0 });
   });
 
-  it("falls back to replace when a split below would exceed the row count cap", () => {
+  it("opens below when split-right would exceed the measured layout cap", () => {
     const start: GridState = {
-      rows: [[cell(1)], [cell(2)], [cell(3)]],
-      focused: { row: 2, col: 0 }
+      rows: [[cell(1)]],
+      focused: { row: 0, col: 0 }
     };
-    const next = openWorkspaceInGrid(start, cell(4), { ctrlOrMeta: false, alt: true });
-    expect(next.rows).toEqual([[cell(1)], [cell(2)], [cell(4)]]);
-    expect(next.focused).toEqual({ row: 2, col: 0 });
+    const next = openWorkspaceInGrid(
+      start,
+      cell(2),
+      { ctrlOrMeta: true, alt: false },
+      { maxColumns: 1 }
+    );
+    expect(next.rows).toEqual([[cell(1)], [cell(2)]]);
+    expect(next.focused).toEqual({ row: 1, col: 0 });
   });
 
-  it("respects the global 9-cell cap", () => {
-    let g: GridState = EMPTY_GRID;
-    for (let i = 1; i <= 9; i++) {
-      const lastRow = g.rows.length === 0 ? undefined : g.rows[g.rows.length - 1];
-      const mods = !lastRow || lastRow.length === 3
-        ? { ctrlOrMeta: false, alt: true }
-        : { ctrlOrMeta: true, alt: false };
-      g = openWorkspaceInGrid(g, cell(i), mods);
+  it("fills another row before replacing when a modifier split cannot use the focused row", () => {
+    const start: GridState = {
+      rows: [[cell(1)], [cell(2), cell(3)]],
+      focused: { row: 1, col: 1 }
+    };
+    const next = openWorkspaceInGrid(start, cell(4), { ctrlOrMeta: false, alt: true });
+    expect(next.rows).toEqual([[cell(1), cell(4)], [cell(2), cell(3)]]);
+    expect(next.focused).toEqual({ row: 0, col: 1 });
+  });
+
+  it("never exceeds two rows, two columns, or four cells for any modifier sequence", () => {
+    const modifierChoices = [
+      { ctrlOrMeta: true, alt: false },
+      { ctrlOrMeta: false, alt: true }
+    ];
+
+    for (let sequence = 0; sequence < 16; sequence++) {
+      let grid = openWorkspaceInGrid(EMPTY_GRID, cell(1), {
+        ctrlOrMeta: false,
+        alt: false
+      });
+      for (let step = 0; step < 4; step++) {
+        grid = openWorkspaceInGrid(grid, cell(step + 2), modifierChoices[(sequence >> step) & 1]);
+        expect(grid.rows.length).toBeLessThanOrEqual(2);
+        expect(grid.rows.every((row) => row.length <= 2)).toBe(true);
+        expect(grid.rows.flat()).toHaveLength(Math.min(step + 2, MAX_CELLS));
+      }
     }
-    let total = 0;
-    for (const row of g.rows) total += row.length;
-    expect(total).toBe(MAX_CELLS);
-    // 10th attempt falls back to replace.
-    g = openWorkspaceInGrid(g, cell(10), { ctrlOrMeta: true, alt: false });
-    let total2 = 0;
-    for (const row of g.rows) total2 += row.length;
-    expect(total2).toBe(MAX_CELLS);
+  });
+
+  it("replaces the focused cell only after all four slots are occupied", () => {
+    const start: GridState = {
+      rows: [[cell(1), cell(2)], [cell(3), cell(4)]],
+      focused: { row: 1, col: 0 }
+    };
+    const next = openWorkspaceInGrid(start, cell(5), { ctrlOrMeta: true, alt: false });
+    expect(next.rows).toEqual([[cell(1), cell(2)], [cell(5), cell(4)]]);
+    expect(next.focused).toEqual({ row: 1, col: 0 });
   });
 });
 
@@ -136,23 +147,23 @@ describe("openLauncherInGrid", () => {
     expect(next.focused).toEqual({ row: 0, col: 1 });
   });
 
-  it("adds the launcher below when the focused row already has 3 columns", () => {
+  it("adds the launcher below when the focused row already has 2 columns", () => {
     const start: GridState = {
-      rows: [[cell(1), cell(2), cell(3)]],
+      rows: [[cell(1), cell(2)]],
       focused: { row: 0, col: 1 }
     };
     const next = openLauncherInGrid(start, launcher());
-    expect(next.rows).toEqual([[cell(1), cell(2), cell(3)], [launcher()]]);
+    expect(next.rows).toEqual([[cell(1), cell(2)], [launcher()]]);
     expect(next.focused).toEqual({ row: 1, col: 0 });
   });
 
   it("adds the launcher below when the measured layout cap is reached", () => {
     const start: GridState = {
-      rows: [[cell(1), cell(2)]],
-      focused: { row: 0, col: 1 }
+      rows: [[cell(1)]],
+      focused: { row: 0, col: 0 }
     };
-    const next = openLauncherInGrid(start, launcher(), { maxColumns: 2 });
-    expect(next.rows).toEqual([[cell(1), cell(2)], [launcher()]]);
+    const next = openLauncherInGrid(start, launcher(), { maxColumns: 1 });
+    expect(next.rows).toEqual([[cell(1)], [launcher()]]);
     expect(next.focused).toEqual({ row: 1, col: 0 });
   });
 
@@ -164,6 +175,24 @@ describe("openLauncherInGrid", () => {
     const next = openLauncherInGrid(start, launcher(2));
     expect(next.rows).toEqual([[cell(1), launcher()]]);
     expect(next.focused).toEqual({ row: 0, col: 1 });
+  });
+
+  it("fills the other row when the focused row is full", () => {
+    const start: GridState = {
+      rows: [[cell(1)], [cell(2), cell(3)]],
+      focused: { row: 1, col: 1 }
+    };
+    const next = openLauncherInGrid(start, launcher());
+    expect(next.rows).toEqual([[cell(1), launcher()], [cell(2), cell(3)]]);
+    expect(next.focused).toEqual({ row: 0, col: 1 });
+  });
+
+  it("does nothing when all four slots are occupied", () => {
+    const start: GridState = {
+      rows: [[cell(1), cell(2)], [cell(3), cell(4)]],
+      focused: { row: 0, col: 0 }
+    };
+    expect(openLauncherInGrid(start, launcher())).toBe(start);
   });
 
   it("does nothing when the grid is empty", () => {
@@ -184,26 +213,36 @@ describe("dropWorkspaceInGrid", () => {
   });
 
   it("left inserts a new cell before the target", () => {
-    const next = dropWorkspaceInGrid(start, cell(9), { row: 0, col: 1, position: "left" });
-    expect(next.rows).toEqual([[cell(1), cell(9), cell(2)], [cell(3)]]);
-    expect(next.focused).toEqual({ row: 0, col: 1 });
+    const openRow: GridState = {
+      rows: [[cell(1)], [cell(3)]],
+      focused: { row: 0, col: 0 }
+    };
+    const next = dropWorkspaceInGrid(openRow, cell(9), { row: 0, col: 0, position: "left" });
+    expect(next.rows).toEqual([[cell(9), cell(1)], [cell(3)]]);
+    expect(next.focused).toEqual({ row: 0, col: 0 });
   });
 
   it("right inserts a new cell after the target", () => {
-    const next = dropWorkspaceInGrid(start, cell(9), { row: 0, col: 0, position: "right" });
-    expect(next.rows).toEqual([[cell(1), cell(9), cell(2)], [cell(3)]]);
+    const openRow: GridState = {
+      rows: [[cell(1)], [cell(3)]],
+      focused: { row: 0, col: 0 }
+    };
+    const next = dropWorkspaceInGrid(openRow, cell(9), { row: 0, col: 0, position: "right" });
+    expect(next.rows).toEqual([[cell(1), cell(9)], [cell(3)]]);
     expect(next.focused).toEqual({ row: 0, col: 1 });
   });
 
   it("above inserts a new row above the target row", () => {
-    const next = dropWorkspaceInGrid(start, cell(9), { row: 1, col: 0, position: "above" });
-    expect(next.rows).toEqual([[cell(1), cell(2)], [cell(9)], [cell(3)]]);
-    expect(next.focused).toEqual({ row: 1, col: 0 });
+    const oneRow: GridState = { rows: [[cell(1), cell(2)]], focused: { row: 0, col: 0 } };
+    const next = dropWorkspaceInGrid(oneRow, cell(9), { row: 0, col: 0, position: "above" });
+    expect(next.rows).toEqual([[cell(9)], [cell(1), cell(2)]]);
+    expect(next.focused).toEqual({ row: 0, col: 0 });
   });
 
   it("below inserts a new row below the target row", () => {
-    const next = dropWorkspaceInGrid(start, cell(9), { row: 0, col: 0, position: "below" });
-    expect(next.rows).toEqual([[cell(1), cell(2)], [cell(9)], [cell(3)]]);
+    const oneRow: GridState = { rows: [[cell(1), cell(2)]], focused: { row: 0, col: 0 } };
+    const next = dropWorkspaceInGrid(oneRow, cell(9), { row: 0, col: 0, position: "below" });
+    expect(next.rows).toEqual([[cell(1), cell(2)], [cell(9)]]);
     expect(next.focused).toEqual({ row: 1, col: 0 });
   });
 
@@ -213,35 +252,61 @@ describe("dropWorkspaceInGrid", () => {
     expect(next.focused).toEqual({ row: 0, col: 0 });
   });
 
-  it("refocuses existing workspace instead of duplicating", () => {
+  it("keeps an existing workspace in place for an edge drop", () => {
     const next = dropWorkspaceInGrid(start, cell(2), { row: 1, col: 0, position: "right" });
     expect(next.rows).toEqual([[cell(1), cell(2)], [cell(3)]]);
     expect(next.focused).toEqual({ row: 0, col: 1 });
+    expect(
+      next.rows.flat().filter((item) => item.kind !== "launcher" && item.workspaceId === "w2")
+    ).toHaveLength(1);
   });
 
-  it("falls back to replace when split-right would exceed row cap (3 cols full)", () => {
-    const full3x3: GridState = {
-      rows: [
-        [cell(1), cell(2), cell(3)],
-        [cell(4), cell(5), cell(6)],
-        [cell(7), cell(8), cell(9)]
-      ],
+  it("swaps existing workspaces dropped onto another occupied cell", () => {
+    const next = dropWorkspaceInGrid(start, cell(1), {
+      row: 1,
+      col: 0,
+      position: "replace"
+    });
+    expect(next.rows).toEqual([[cell(3), cell(2)], [cell(1)]]);
+    expect(next.focused).toEqual({ row: 1, col: 0 });
+    expect(
+      next.rows.flat().filter((item) => item.kind !== "launcher" && item.workspaceId === "w1")
+    ).toHaveLength(1);
+    expect(
+      next.rows.flat().filter((item) => item.kind !== "launcher" && item.workspaceId === "w3")
+    ).toHaveLength(1);
+  });
+
+  it("does nothing when an existing workspace is dropped onto itself", () => {
+    const next = dropWorkspaceInGrid(start, cell(2), {
+      row: 0,
+      col: 1,
+      position: "replace"
+    });
+    expect(next).toBe(start);
+  });
+
+  it("falls back to replace when split-right would exceed the two-column cap", () => {
+    const full2x2: GridState = {
+      rows: [[cell(1), cell(2)], [cell(3), cell(4)]],
       focused: { row: 1, col: 1 }
     };
-    const next = dropWorkspaceInGrid(full3x3, cell(99), { row: 0, col: 1, position: "left" });
-    // Capped — falls back to replacing the target cell at (0, 1).
-    expect(next.rows[0]).toEqual([cell(1), cell(99), cell(3)]);
+    const next = dropWorkspaceInGrid(full2x2, cell(99), { row: 0, col: 1, position: "left" });
+    expect(next.rows).toEqual([[cell(1), cell(99)], [cell(3), cell(4)]]);
     expect(next.focused).toEqual({ row: 0, col: 1 });
   });
 
-  it("falls back to replace when split-below would exceed row count cap (3 rows full)", () => {
-    const full3Rows: GridState = {
-      rows: [[cell(1)], [cell(2)], [cell(3)]],
+  it("falls back to replace when split-below would exceed the two-row cap", () => {
+    const full2Rows: GridState = {
+      rows: [[cell(1)], [cell(2)]],
       focused: { row: 0, col: 0 }
     };
-    const next = dropWorkspaceInGrid(full3Rows, cell(99), { row: 1, col: 0, position: "below" });
-    // Capped — replaces target at (1, 0) instead of inserting a new row.
-    expect(next.rows).toEqual([[cell(1)], [cell(99)], [cell(3)]]);
+    const next = dropWorkspaceInGrid(full2Rows, cell(99), {
+      row: 1,
+      col: 0,
+      position: "below"
+    });
+    expect(next.rows).toEqual([[cell(1)], [cell(99)]]);
     expect(next.focused).toEqual({ row: 1, col: 0 });
   });
 
@@ -260,12 +325,12 @@ describe("dropWorkspaceInGrid", () => {
 describe("closeCell", () => {
   it("removes the cell and reflows survivors", () => {
     const start: GridState = {
-      rows: [[cell(1), cell(2), cell(3)]],
+      rows: [[cell(1), cell(2)]],
       focused: { row: 0, col: 1 }
     };
-    const next = closeCell(start, 0, 1);
-    expect(next.rows).toEqual([[cell(1), cell(3)]]);
-    expect(next.focused).toEqual({ row: 0, col: 1 });
+    const next = closeCell(start, 0, 0);
+    expect(next.rows).toEqual([[cell(2)]]);
+    expect(next.focused).toEqual({ row: 0, col: 0 });
   });
 
   it("drops the row when its last cell is removed", () => {
@@ -299,12 +364,11 @@ describe("closeCell", () => {
 
   it("keeps focus on the same row when a non-last cell is closed in a multi-cell row", () => {
     const start: GridState = {
-      rows: [[cell(1), cell(2), cell(3)]],
+      rows: [[cell(1), cell(2)]],
       focused: { row: 0, col: 0 }
     };
     const next = closeCell(start, 0, 0);
-    expect(next.rows).toEqual([[cell(2), cell(3)]]);
-    // col was clamped to length - 1 = 1, but Math.min(0, 1) = 0 so focus stays at 0.
+    expect(next.rows).toEqual([[cell(2)]]);
     expect(next.focused).toEqual({ row: 0, col: 0 });
   });
 });

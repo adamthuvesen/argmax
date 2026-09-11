@@ -41,6 +41,7 @@ import { TurnRevert } from "./TurnRevert.js";
 import { StreamingMarkdown } from "./StreamingMarkdown.js";
 import { WebLink } from "./WebLink.js";
 import {
+  parseUserMessageAttachments,
   sendAfterTerminate,
   type SessionConversationSendInput,
   type UserMessageAttachment
@@ -55,6 +56,7 @@ function SessionConversationTurnInner({
   item,
   priorItem,
   isLatestTurn,
+  openRunAt = null,
   session,
   selectedModel,
   workspace,
@@ -84,6 +86,8 @@ function SessionConversationTurnInner({
   item: TurnRenderItem;
   priorItem: RenderItem | null;
   isLatestTurn: boolean;
+  /** `session.streaming` timestamp when nothing has closed that run yet. */
+  openRunAt?: string | null;
   session: SessionSummary | null;
   selectedModel: ModelPickerSelection;
   workspace: WorkspaceSummary | null;
@@ -117,7 +121,19 @@ function SessionConversationTurnInner({
    *  touched one. */
   todo?: TodoList | null;
 }): JSX.Element {
-  const sessionIsLive = session?.state === "running";
+  // A turn is live when the session row says so — or when this session's
+  // transcript is ahead of that row and still inside an open provider run.
+  // Session state reaches a client through a `dashboard:list` round trip
+  // (deltas carry no session rows), while transcript events arrive on their
+  // own revision feed, so a phone routinely holds a row from before the turn
+  // began while the turn's edits stream in. That stale row used to settle the
+  // whole turn mid-work and post every file it had written as a Changed-files
+  // card. Comparing against the row's own clock keeps the row authoritative
+  // whenever it is the newer of the two, so a run that died without a closing
+  // marker cannot tick forever.
+  const transcriptIsAheadOfRow =
+    isLatestTurn && openRunAt !== null && openRunAt > (session?.lastActivityAt ?? "");
+  const sessionIsLive = session?.state === "running" || transcriptIsAheadOfRow;
   const isStreamingTurn = isLatestTurn && sessionIsLive;
   // Memoized because the state it returns is the input to everything below:
   // `hiddenToolIds` is a fresh Set per call, and it is the only dep of
@@ -129,12 +145,20 @@ function SessionConversationTurnInner({
     () =>
       buildTurnRenderState({
         assistantEvents: item.assistantEvents,
+        assistantHardSplitAt: item.steerEvents.map((event) => event.createdAt),
         toolItems: item.toolItems,
         priorItem,
         assistantTimestamps: item.assistantTimestamps,
         isStreamingTurn
       }),
-    [item.assistantEvents, item.toolItems, priorItem, item.assistantTimestamps, isStreamingTurn]
+    [
+      item.assistantEvents,
+      item.steerEvents,
+      item.toolItems,
+      priorItem,
+      item.assistantTimestamps,
+      isStreamingTurn
+    ]
   );
   const {
     visibleAssistantGroups,
@@ -279,6 +303,7 @@ function SessionConversationTurnInner({
     agentTools?: ToolCall[];
     // Flat tool list this child contributes to an activity group.
     runTools?: ToolCall[];
+    sortPriority?: number;
   };
   const lastToolCreatedAt = latestToolCreatedAt(item.toolItems);
   // Finished Minimal keeps the answer: assistant text after the last tool.
@@ -431,13 +456,31 @@ function SessionConversationTurnInner({
           )
         };
     });
-  const sortedChildren = [...assistantChildren, ...toolChildren]
+  const steerChildren: AnnotatedChild[] = item.steerEvents.map((event) => ({
+    kind: "assistant",
+    id: `steer-${event.id}`,
+    createdAt: event.createdAt,
+    sortAt: event.createdAt,
+    sortPriority: -1,
+    node: (
+      <SessionConversationUserMessage
+        key={event.id}
+        event={event}
+        attachments={parseUserMessageAttachments({ kind: "user-message", event })}
+      />
+    )
+  }));
+  const sortedChildren = [...assistantChildren, ...toolChildren, ...steerChildren]
     .sort((a, b) => {
       const cmp = a.sortAt.localeCompare(b.sortAt);
       if (cmp !== 0) return cmp;
-      // Cursor can emit a narration delta and the tool start in the same
-      // millisecond. The delta is the thing the user should read first.
-      return (a.kind === "assistant" ? -1 : 0) - (b.kind === "assistant" ? -1 : 0);
+      // A steer precedes the response it influenced when both share a
+      // timestamp. Otherwise assistant narration precedes a tool that starts
+      // in the same millisecond.
+      const priorityCmp =
+        (a.sortPriority ?? (a.kind === "assistant" ? 0 : 1)) -
+        (b.sortPriority ?? (b.kind === "assistant" ? 0 : 1));
+      return priorityCmp;
     });
   const coalescedChildren: AnnotatedChild[] = [];
   for (const child of sortedChildren) {

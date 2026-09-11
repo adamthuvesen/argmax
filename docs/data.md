@@ -26,6 +26,8 @@ Rust manages SQLite storage under [src-tauri/src/persistence](../src-tauri/src/p
 - `sessions.pr_branch_at_start`, `sessions.pr_branch_last_active`, and `gh_pr.attribution` (v37) separate shared-checkout session history from the checkout's live branch. Existing PR associations remain `legacy`, while new observations distinguish `inferred` and `explicit` evidence. These fields stay private to persistence. GitHub-owned PR state synchronizes within each project. See [gh.md](gh.md).
 - `checkpoints` (v41) adds pinned worktree and index trees, HEAD, session boundaries, and recovery links to legacy checkpoint rows. `turn_boundary` holds the user-message event id a before-turn checkpoint was taken for, which is what maps a turn to its revert. `checkpoint_rewinds` journals each restore and its recovery checkpoint. Legacy rows remain readable but cannot restore files without tree snapshots.
 - `goals` (v42) persists one row per Goal: its condition, state, evaluated turn count, turn budget, and the evaluator's last reason. A partial unique index on `session_id WHERE state = 'active'` is what enforces one active Goal per chat. Restart recovery stops Goals whose driver did not survive.
+- `activity_commits`, `activity_scan_meta`, `activity_github_prs`, `activity_github_reviews`, and `activity_github_meta` (v44) back the Activity page: one row per commit SHA the user authored across every registered project, the sweep's parser version and matched author emails, and the cached `gh` half — authored pull requests, one row per review submission, and the login the cache belongs to. `activity_commits.project_id` deliberately carries no foreign key: the sweep reconciles it against the `projects` table, so a project removed while the app was closed is forgotten by the next sweep rather than by a cascade nobody ran. Timestamps are stored as RFC 3339 UTC because the ledger is range-scanned as text. See [activity.md](activity.md).
+- `synced_session_tombstones` (v45) retains provider conversation ids for chats deliberately deleted in Settings, whether Argmax launched or imported them. Provider transcripts stay untouched on disk, and session sync consults these tombstones so those chats do not reappear.
 
 Reads take pooled `SQLITE_OPEN_READ_ONLY` connections through `Database::read_connection`, not the writer `Mutex<Connection>`, so a read never queues behind a write. A write attempted on the read path fails loudly; that is the point. See [performance.md](performance.md).
 
@@ -41,6 +43,10 @@ Focused reads in `dashboard.rs`:
 - `dashboard:list`: Returns projects, workspaces, sessions, and checks.
 - `session:events-since`: A cursorless request returns an authoritative bounded
   tail and its change-sequence high-water mark from the same read transaction.
+  The tail is the newest 500 rows plus the newest 2000 durable rows (every
+  type but `message.delta`), so a long thinking turn cannot push the user
+  message and earlier turns out of the initial read; those turns come back
+  without their thinking blocks, since `message.completed` carries the answer.
   Later requests page at most 500 durable changes, including updates and
   deletions. If a cursor predates its session's retained history or is ahead of
   the database, the response requests replacement with a fresh bounded tail.
@@ -54,6 +60,8 @@ resume keeps the child id and parent conversation id.
 - `approvals:pending`: Returns outstanding approval requests.
 
 A background sweeper deletes raw provider output older than 7 days. `system:vacuum-database` runs `VACUUM` in a background task.
+
+Settings can preview and permanently delete chats whose last activity is older than 7 days. The confirmed cleanup rechecks activity and protects active sessions, queued follow-ups, after-turn actions, active Goals, running checks, and live terminals. It removes chat attachments and empty workspace records so the sidebar has no ghost rows, while leaving every checkout and worktree on disk.
 
 ## Subagent Trace Persistence
 

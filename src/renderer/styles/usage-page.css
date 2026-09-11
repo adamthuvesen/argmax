@@ -120,6 +120,19 @@
   margin-right: 1px;
 }
 
+/* ---------- Rail navigation, shared with Activity ---------- */
+
+/* Usage and Activity are two views of the same work, so the rail carries both
+   under the way back rather than making the reader leave to cross between
+   them. It reuses `.settings-rail-list` / `.settings-rail-link` exactly — the
+   settings rail's own rows — so a highlighted page and a highlighted settings
+   group are the same mark; only the divider above the list is ours. */
+.ledger-rail-list {
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 0.5px solid var(--line);
+}
+
 /* ---------- Notices: scanning, errors ---------- */
 
 .usage-notice {
@@ -288,6 +301,12 @@
   text-align: center;
   font-size: var(--text-sm);
   color: var(--muted);
+}
+
+/* Parked ledger pages stay mounted so Usage ↔ Activity and a return visit
+   reuse warm React state; hidden from layout and screen readers while parked. */
+.ledger-page-parked {
+  display: none;
 }
 
 /* The chart's data as a table: reachable by screen reader and by selection,

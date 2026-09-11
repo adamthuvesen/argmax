@@ -7,6 +7,7 @@ import {
   lastAgentResponseEvent,
   lastSignificantSessionEvent,
   eventsAfterLatestClear,
+  openRunMarkerAt,
   subAgentToolUseIds
 } from "./sessionConversationModel.js";
 
@@ -259,6 +260,46 @@ describe("hasRenderableSessionContent", () => {
       ...onlyUser
     ];
     expect(hasRenderableSessionContent(buildConversationEvents(withBeacon), withBeacon)).toBe(true);
+  });
+});
+
+describe("openRunMarkerAt", () => {
+  const beacon = (at: string): TimelineEvent => event(`beacon-${at}`, "session.streaming", at);
+
+  it("reports the beacon of a run nothing has closed", () => {
+    expect(openRunMarkerAt([beacon("2026-05-12T15:00:02.000Z")])).toBe("2026-05-12T15:00:02.000Z");
+  });
+
+  it("closes on a completion, a cancellation, or a real error", () => {
+    const closers: EventType[] = ["session.completed", "session.cancelled", "error"];
+    for (const type of closers) {
+      expect(
+        openRunMarkerAt([
+          event("close", type, "2026-05-12T15:00:03.000Z"),
+          beacon("2026-05-12T15:00:02.000Z")
+        ])
+      ).toBeNull();
+    }
+  });
+
+  it("keeps the run open across a truncated payload and a later beacon", () => {
+    // Truncation is a delivery failure, not the turn ending.
+    expect(
+      openRunMarkerAt([
+        event("truncated", "error", "2026-05-12T15:00:03.000Z", "event payload truncated", {
+          truncatedEventId: "e1"
+        }),
+        beacon("2026-05-12T15:00:02.000Z")
+      ])
+    ).toBe("2026-05-12T15:00:02.000Z");
+
+    expect(
+      openRunMarkerAt([
+        beacon("2026-05-12T15:00:04.000Z"),
+        event("close", "session.completed", "2026-05-12T15:00:03.000Z"),
+        beacon("2026-05-12T15:00:02.000Z")
+      ])
+    ).toBe("2026-05-12T15:00:04.000Z");
   });
 });
 
@@ -693,6 +734,85 @@ describe("buildSessionToolCalls", () => {
       status: "done",
       completedAt: "2026-05-12T15:00:02.000Z"
     });
+  });
+
+  it("keeps a Cursor task row running after its parent turn ends when only a dispatch receipt exists", () => {
+    const tools = buildSessionToolCalls([
+      event("task-end", "command.completed", "2026-05-12T15:00:01.120Z", "task", {
+        call_id: "call-task",
+        providerInvocationId: "invoke-task",
+        name: "task",
+        input: { _toolName: "task", description: "Map session workspace tools" },
+        result: { durationMs: 34, isBackground: true }
+      }),
+      event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "task", {
+        call_id: "call-task",
+        providerInvocationId: "invoke-task",
+        name: "task",
+        input: { _toolName: "task", description: "Map session workspace tools" }
+      })
+    ], false);
+
+    expect(tools).toHaveLength(1);
+    expect(tools[0]).toMatchObject({
+      toolUseId: "call-task",
+      name: "task",
+      status: "running",
+      completedAt: null
+    });
+  });
+
+  it("settles a Cursor background task when its child finishes before the parent turn", () => {
+    const tools = buildSessionToolCalls([
+      event("child-done", "agent.completed", "2026-05-12T15:00:07.000Z", "Agent completed", {
+        providerInvocationId: "invoke-task",
+        providerChildSessionId: "child-task",
+        agentRootToolUseId: "call-task",
+        agentRunId: "call-task",
+        status: "completed",
+        traceImported: true
+      }),
+      event("task-end", "command.completed", "2026-05-12T15:00:01.120Z", "task", {
+        call_id: "call-task",
+        providerInvocationId: "invoke-task",
+        name: "task",
+        input: { _toolName: "task", description: "Map session workspace tools" },
+        result: { durationMs: 34, isBackground: true }
+      }),
+      event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "task", {
+        call_id: "call-task",
+        providerInvocationId: "invoke-task",
+        name: "task",
+        input: { _toolName: "task", description: "Map session workspace tools" }
+      })
+    ], true);
+
+    expect(tools).toHaveLength(1);
+    expect(tools[0]).toMatchObject({
+      toolUseId: "call-task",
+      status: "done",
+      completedAt: "2026-05-12T15:00:07.000Z",
+      providerChildSessionId: "child-task"
+    });
+  });
+
+  it("settles a Cursor task row that returned its agent's own result", () => {
+    const tools = buildSessionToolCalls([
+      event("task-end", "command.completed", "2026-05-12T15:02:00.000Z", "task", {
+        call_id: "call-task",
+        name: "task",
+        input: { _toolName: "task", description: "Map session workspace tools" },
+        result: { success: { agentId: "child-1" }, durationMs: 94_000, isBackground: false }
+      }),
+      event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "task", {
+        call_id: "call-task",
+        name: "task",
+        input: { _toolName: "task", description: "Map session workspace tools" }
+      })
+    ], true);
+
+    expect(tools).toHaveLength(1);
+    expect(tools[0]).toMatchObject({ toolUseId: "call-task", name: "task", status: "done" });
   });
 
   it("keeps a subagent launch with run_in_background running while the session is running", () => {

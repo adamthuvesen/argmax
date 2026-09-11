@@ -19,6 +19,7 @@ import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { agentStatusLabel } from "../lib/agentLaunch.js";
 import { openWebUrl } from "../lib/openWebUrl.js";
 import type { SubagentCluster } from "../lib/subagentSummary.js";
+import { refreshSessionPrs } from "../lib/sessionPrs.js";
 import { AgentEmblem } from "./AgentEmblem.js";
 import { WorkingNest } from "./WorkingNest.js";
 import { ChangeCount } from "./ChangeCount.js";
@@ -90,9 +91,10 @@ export function WorkspaceCard({
 
   useEffect(() => {
     if (!session?.id || workspace.kind !== "git" || !window.argmax?.prs?.refresh) return;
-    void window.argmax.prs
-      .refresh({ sessionId: session.id })
-      .catch(() => undefined);
+    // The rows land on the actions menu; the card is here for the workspace
+    // publish `prs:refresh` performs on its way out, which is why it shares
+    // that call rather than making a second one.
+    void refreshSessionPrs(session.id)?.catch(() => undefined);
   }, [session?.id, workspace.kind, workspace.branch]);
 
   // Same one-call flow as the git actions menu: an existing PR opens in the
@@ -231,7 +233,7 @@ function SubagentsSection({ cluster, onOpenAgents }: { cluster: SubagentCluster;
   const noun = cluster.hasMultitask ? "running alongside" : cluster.entries.length === 1 ? "subagent" : "subagents";
   const title = `${cluster.entries.length} ${noun}: ${roster}`;
   const firstRunning = cluster.entries.find((entry) => entry.status === "running");
-  const label = cluster.hasMultitask ? "Alongside" : "Subagents";
+  const label = cluster.hasMultitask ? "Alongside" : "Agents";
 
   const content = (
     <>

@@ -27,6 +27,25 @@ const REDUNDANT_INPUT_KEYS = new Set([
   "streamContent",
   "text"
 ]);
+// A diff the provider handed over is drawn by the file-change card below, so
+// it is not also an argument. Only redundant once that card is rendering it:
+// on any other tool a `patch` or `diff` argument is a value the agent supplied
+// and the detail is the only place it appears.
+const RENDERED_DIFF_INPUT_KEYS = new Set([
+  ...REDUNDANT_INPUT_KEYS,
+  "changes",
+  "diff",
+  "edits",
+  "new_string",
+  "newString",
+  "old_string",
+  "oldString",
+  "operation",
+  "patch",
+  "replace_all",
+  "replaceAll",
+  "unified_diff"
+]);
 const BASH_COMMAND_INPUT_KEYS = ["command", "cmd", "shell_command", "script"] as const;
 // Claude's Bash carries `description` + `timeout`; Codex uses `timeout_ms`.
 // None of that is a reason to dump the whole input JSON under the command.
@@ -214,7 +233,11 @@ export function ToolCallDetail({
   // receiver thread ids are the only detail Codex gives us, so keep those
   // expandable instead of making the row feel dead.
   const isAgent = getToolTypeBucket(tool.name) === "agent";
-  const redundantKeys = bashCommand ? REDUNDANT_BASH_INPUT_KEYS : REDUNDANT_INPUT_KEYS;
+  const redundantKeys = bashCommand
+    ? REDUNDANT_BASH_INPUT_KEYS
+    : changes
+      ? RENDERED_DIFF_INPUT_KEYS
+      : REDUNDANT_INPUT_KEYS;
   // Only the leftover keys become arguments. Dumping the whole input used to
   // re-emit the command as one escaped JSON string under a disclosure labelled
   // Input, printed *below* the result it produced.

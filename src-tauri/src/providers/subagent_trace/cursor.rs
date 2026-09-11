@@ -30,6 +30,11 @@ pub(super) fn cursor_trace_events(home: &Path, context: &AgentTraceContext) -> T
         let source = key.path.to_string_lossy().into_owned();
         let lines = read_trace_lines(&key.path);
         let real_result_ids = cursor_real_result_ids(&lines);
+        let terminal_status = cursor_terminal_status(&lines).map(str::to_string);
+        let terminal_timestamp = terminal_status.as_ref().and_then(|_| {
+            cursor_file_modified_utc(&key.path)
+                .map(|time| time.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
+        });
         let mut seen_messages = HashSet::new();
         // Keep imported IDs stable when another child transcript grows.
         let mut sequence = 0;
@@ -226,6 +231,51 @@ pub(super) fn cursor_trace_events(home: &Path, context: &AgentTraceContext) -> T
                 }
             }
         }
+        if context.cursor_background_launch {
+            if let Some(status) = terminal_status.as_deref() {
+                let event_sequence = sequence;
+                let mut payload = Map::new();
+                stamp_trace_payload(&mut payload, context, child_id, &source, event_sequence);
+                payload.insert(
+                    "agentRootToolUseId".to_string(),
+                    Value::String(context.parent_tool_use_id.clone()),
+                );
+                payload.insert(
+                    "agentRunId".to_string(),
+                    Value::String(context.parent_tool_use_id.clone()),
+                );
+                if let Some(parent_id) = context.provider_conversation_id.as_deref() {
+                    payload.insert(
+                        "providerParentConversationId".to_string(),
+                        Value::String(parent_id.to_string()),
+                    );
+                }
+                if let Some(invocation_id) = context.provider_invocation_id.as_deref() {
+                    payload.insert(
+                        "providerInvocationId".to_string(),
+                        Value::String(invocation_id.to_string()),
+                    );
+                }
+                let succeeded = status == "success";
+                payload.insert(
+                    "status".to_string(),
+                    Value::String(if succeeded { "completed" } else { "failed" }.to_string()),
+                );
+                events.push(trace_event(
+                    context,
+                    child_id,
+                    event_sequence,
+                    "agent.completed",
+                    if succeeded {
+                        "Agent completed"
+                    } else {
+                        "Agent failed"
+                    },
+                    payload,
+                    terminal_timestamp,
+                ));
+            }
+        }
         if let Some(stamp) = stamp {
             stamps.push((key, stamp));
         }
@@ -329,7 +379,7 @@ fn find_cursor_trace_files_by_prompt(
     let parent_time = DateTime::parse_from_rfc3339(parent_created_at)
         .ok()
         .map(|time| time.with_timezone(&Utc));
-    let cutoff = parent_time.map(|time| time - Duration::minutes(1));
+    let cutoff = parent_time.map(|time| time - Duration::seconds(1));
     for project in cursor_prompt_project_roots(home, workspace_path) {
         let transcripts = project.join("agent-transcripts");
         if !transcripts.exists() {
@@ -347,7 +397,7 @@ fn find_cursor_trace_files_by_prompt(
                 continue;
             }
             if let Some(cutoff) = cutoff {
-                if cursor_file_modified_utc(path).is_some_and(|modified| modified < cutoff) {
+                if cursor_file_created_utc(path).is_some_and(|created| created < cutoff) {
                     continue;
                 }
             }
@@ -360,8 +410,8 @@ fn find_cursor_trace_files_by_prompt(
         let Some(parent_time) = parent_time else {
             return i64::MAX;
         };
-        cursor_file_modified_utc(path)
-            .map(|modified| (modified - parent_time).num_milliseconds().abs())
+        cursor_file_created_utc(path)
+            .map(|created| (created - parent_time).num_milliseconds().abs())
             .unwrap_or(i64::MAX)
     });
     files.into_iter().take(1).collect()
@@ -418,8 +468,17 @@ fn cursor_trace_file_prompt_matches(path: &Path, prompt: &str) -> bool {
         return false;
     }
     cursor_first_user_text(path)
-        .map(|text| normalize_cursor_match_text(&text).contains(&needle))
+        .map(|text| {
+            let query = cursor_user_query(&text).unwrap_or(&text);
+            normalize_cursor_match_text(query) == needle
+        })
         .unwrap_or(false)
+}
+
+fn cursor_user_query(text: &str) -> Option<&str> {
+    let (_, tail) = text.split_once("<user_query>")?;
+    let (query, _) = tail.split_once("</user_query>")?;
+    Some(query.trim())
 }
 
 /// The opening prompt of a Cursor transcript. Streamed and stopped at the first
@@ -495,6 +554,15 @@ fn cursor_file_modified_utc(path: &Path) -> Option<DateTime<Utc>> {
         .map(DateTime::<Utc>::from)
 }
 
+fn cursor_file_created_utc(path: &Path) -> Option<DateTime<Utc>> {
+    let metadata = path.metadata().ok()?;
+    metadata
+        .created()
+        .or_else(|_| metadata.modified())
+        .ok()
+        .map(DateTime::<Utc>::from)
+}
+
 fn cursor_real_result_ids(lines: &[TraceLine]) -> HashSet<String> {
     let mut ids = HashSet::new();
     for line in lines {
@@ -528,6 +596,13 @@ fn cursor_real_result_ids(lines: &[TraceLine]) -> HashSet<String> {
         }
     }
     ids
+}
+
+fn cursor_terminal_status(lines: &[TraceLine]) -> Option<&str> {
+    let object = lines.last()?.value.as_object()?;
+    (object.get("type").and_then(Value::as_str) == Some("turn_ended"))
+        .then(|| object.get("status").and_then(Value::as_str))
+        .flatten()
 }
 
 fn clean_cursor_text(text: &str) -> Option<String> {
@@ -808,6 +883,161 @@ mod tests {
     }
 
     #[test]
+    fn cursor_background_child_completes_only_when_its_trace_turn_ends() {
+        let database = Database::open_in_memory().expect("db");
+        let connection = database.connection();
+        seed_session(&connection, "cursor", "s1");
+        seed_parent_agent(
+            &connection,
+            "call-task",
+            json!({
+                "call_id": "call-task",
+                "providerInvocationId": "invoke-task",
+                "name": "task",
+                "input": {
+                    "description": "Inspect renderer",
+                    "prompt": "Inspect the renderer files."
+                }
+            }),
+            json!({
+                "call_id": "call-task",
+                "providerInvocationId": "invoke-task",
+                "result": { "durationMs": 34, "isBackground": true }
+            }),
+        );
+        let home = TempDir::new().expect("home");
+        let trace_dir = home
+            .path()
+            .join(".cursor/projects/tmp-repo/agent-transcripts/background-child");
+        fs::create_dir_all(&trace_dir).expect("trace dir");
+        let trace_path = trace_dir.join("background-child.jsonl");
+        let running_trace =
+            r#"{"role":"user","message":{"content":[{"type":"text","text":"Inspect the renderer files."}]}}"#
+                .to_string()
+                + "\n"
+                + r#"{"role":"assistant","message":{"content":[{"type":"text","text":"Still working."}]}}"#
+                + "\n";
+        fs::write(&trace_path, &running_trace).expect("running trace");
+
+        import_subagent_trace_events_from_home(&connection, "s1", "call-task", home.path())
+            .expect("running import");
+        let running_events = list_session_agent_events(&connection, "s1", "call-task")
+            .expect("running events")
+            .events;
+        assert!(!running_events
+            .iter()
+            .any(|event| event.r#type == "agent.completed"));
+
+        fs::write(
+            &trace_path,
+            running_trace + r#"{"type":"turn_ended","status":"success"}"# + "\n",
+        )
+        .expect("finished trace");
+        import_subagent_trace_events_from_home(&connection, "s1", "call-task", home.path())
+            .expect("finished import");
+        let finished_events = list_session_agent_events(&connection, "s1", "call-task")
+            .expect("finished events")
+            .events;
+        let completion = finished_events
+            .iter()
+            .find(|event| event.r#type == "agent.completed")
+            .expect("agent completion");
+        assert_eq!(
+            completion.payload["providerChildSessionId"],
+            "background-child"
+        );
+        assert_eq!(completion.payload["agentRootToolUseId"], "call-task");
+        assert_eq!(completion.payload["agentRunId"], "call-task");
+        assert_eq!(completion.payload["providerInvocationId"], "invoke-task");
+        assert_eq!(completion.payload["status"], "completed");
+    }
+
+    #[test]
+    fn cursor_background_lookup_does_not_complete_from_the_parent_transcript() {
+        let database = Database::open_in_memory().expect("db");
+        let connection = database.connection();
+        seed_session(&connection, "cursor", "s1");
+        let home = TempDir::new().expect("home");
+        let transcripts = home
+            .path()
+            .join(".cursor/projects/tmp-repo/agent-transcripts");
+        let prompt = "Inspect the renderer files.";
+        let parent_dir = transcripts.join("parent-chat");
+        fs::create_dir_all(&parent_dir).expect("parent dir");
+        fs::write(
+            parent_dir.join("parent-chat.jsonl"),
+            format!(
+                r#"{{"role":"user","message":{{"content":[{{"type":"text","text":"<user_query>{prompt}</user_query>"}}]}}}}"#
+            ) + "\n"
+                + r#"{"type":"turn_ended","status":"success"}"#
+                + "\n",
+        )
+        .expect("parent trace");
+        std::thread::sleep(std::time::Duration::from_millis(1_100));
+
+        let launched_at = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        for (id, event_type, payload) in [
+            (
+                "parent-start",
+                "command.started",
+                json!({
+                    "call_id": "call-task",
+                    "providerInvocationId": "invoke-task",
+                    "name": "task",
+                    "input": { "description": "Inspect renderer", "prompt": prompt }
+                }),
+            ),
+            (
+                "parent-complete",
+                "command.completed",
+                json!({
+                    "call_id": "call-task",
+                    "providerInvocationId": "invoke-task",
+                    "result": { "durationMs": 34, "isBackground": true }
+                }),
+            ),
+        ] {
+            persist_timeline_event(
+                &connection,
+                &PersistTimelineEventInput {
+                    id: id.to_string(),
+                    session_id: "s1".to_string(),
+                    r#type: event_type.to_string(),
+                    message: "task".to_string(),
+                    payload,
+                    created_at: Some(launched_at.clone()),
+                },
+            )
+            .expect("parent event");
+        }
+        let child_dir = transcripts.join("real-child");
+        fs::create_dir_all(&child_dir).expect("child dir");
+        fs::write(
+            child_dir.join("real-child.jsonl"),
+            format!(
+                r#"{{"role":"user","message":{{"content":[{{"type":"text","text":"<user_query>{prompt}</user_query>"}}]}}}}"#
+            ) + "\n"
+                + r#"{"role":"assistant","message":{"content":[{"type":"text","text":"Still working."}]}}"#
+                + "\n",
+        )
+        .expect("child trace");
+
+        import_subagent_trace_events_from_home(&connection, "s1", "call-task", home.path())
+            .expect("import");
+        let events = list_session_agent_events(&connection, "s1", "call-task")
+            .expect("events")
+            .events;
+        assert!(!events.iter().any(|event| event.r#type == "agent.completed"));
+        assert!(events.iter().any(|event| {
+            event.message == "Still working."
+                && event.payload["providerChildSessionId"] == "real-child"
+        }));
+        assert!(!events
+            .iter()
+            .any(|event| event.payload["providerChildSessionId"] == "parent-chat"));
+    }
+
+    #[test]
     fn cursor_trace_lookup_skips_the_prompt_walk_once_every_child_id_resolved() {
         let home = TempDir::new().expect("home");
         let transcripts = home
@@ -832,8 +1062,10 @@ mod tests {
             parent_tool_use_id: "call-task".to_string(),
             parent_created_at: "2026-07-08T14:46:49.000Z".to_string(),
             provider_conversation_id: None,
+            provider_invocation_id: None,
             workspace_path: None,
             cursor_prompt: Some("Inspect the renderer files.".to_string()),
+            cursor_background_launch: false,
             child_ids,
             codex_runs: Vec::new(),
         };

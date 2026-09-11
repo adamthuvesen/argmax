@@ -37,7 +37,7 @@ use crate::{
     providers::{
         one_shot,
         runtime::parse_provider,
-        session_service::{GoalTurnIdentity, ProviderSessionService, SessionStateChange},
+        session_service::{self, GoalTurnIdentity, ProviderSessionService, SessionStateChange},
         AgentMode,
     },
     sessions::state::SessionState,
@@ -217,12 +217,23 @@ impl GoalService {
         )?;
         self.providers.publish_goal_changed(&goal.id);
 
-        // Started before the driver so a provider that refuses the turn fails
-        // the caller's `set`, rather than leaving a goal that looks active and
-        // never moves.
-        if let Err(error) = self.send_turn(&goal, opening_prompt(&goal.condition)).await {
-            self.settle(&goal.id, GoalState::Stopped, Some(&error.to_string()))?;
-            return Err(error);
+        // A goal set from inside a running turn — the agent calling `goal_set`
+        // on itself — gets no opening prompt. The turn in flight is already the
+        // goal's first turn, and the prompt would only queue behind it as a
+        // follow-up telling the agent to start work it is doing. The driver
+        // picks that turn up when it settles, the same way `providers:launch`
+        // attaches a goal to its own opening prompt.
+        let turn_in_flight = !find_session_by_id(&self.database.read_connection(), &session.id)?
+            .state
+            .is_settled();
+        if !turn_in_flight {
+            // Started before the driver so a provider that refuses the turn
+            // fails the caller's `set`, rather than leaving a goal that looks
+            // active and never moves.
+            if let Err(error) = self.send_turn(&goal, opening_prompt(&goal.condition)).await {
+                self.settle(&goal.id, GoalState::Stopped, Some(&error.to_string()))?;
+                return Err(error);
+            }
         }
         self.spawn_driver(goal.id.clone());
         Ok(goal)
@@ -375,8 +386,21 @@ impl GoalService {
                 )?;
                 return Ok(());
             }
-            self.send_turn(&goal, follow_up_prompt(&goal.condition, reason.as_deref()))
-                .await?;
+            // A turn can start between the settle we judged and this send: the
+            // user types, or a queued follow-up drains. The send is refused
+            // rather than queued, and the right answer is to judge that turn
+            // too when it settles — queueing would leave the goal's guidance in
+            // the composer looking hand-typed, with another copy behind it
+            // every time round.
+            match self
+                .send_turn(&goal, follow_up_prompt(&goal.condition, reason.as_deref()))
+                .await
+            {
+                Ok(()) => {}
+                Err(ArgmaxError::ServiceError { ref sub_code, .. })
+                    if sub_code == session_service::TURN_IN_FLIGHT => {}
+                Err(error) => return Err(error),
+            }
         }
     }
 

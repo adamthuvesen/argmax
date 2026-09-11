@@ -15,6 +15,7 @@ import {
   getBrowserOwnerId,
   getBrowserRequest,
   lastBrowsedUrl,
+  LAUNCHER_BROWSER_SCOPE_ID,
   releaseBrowserSurface,
   subscribeAgentBrowserOpen,
   subscribeBrowserOwner,
@@ -24,6 +25,7 @@ import {
 import { filterToLastTurn } from "../lib/lastTurnFiles.js";
 import {
   consumeTerminalRequest,
+  ensureAgentTerminalSync,
   getTerminalRequest,
   getWorkspaceTerminalState,
   setTerminalShowing,
@@ -214,6 +216,8 @@ export interface ReviewState {
   /** True when this panel holds the browser surface. Only the owner mounts the
    *  browser chrome; every other panel in Browser mode shows a placeholder. */
   browserOwner: boolean;
+  /** Chat, launcher, or Browser-page strip this panel shows. */
+  browserScopeId: string;
   /** Where the Browser view should be, and a sequence number that re-navigates
    *  even when the URL is the one the page is already on. Null until this
    *  panel has been asked for the browser at least once. */
@@ -259,6 +263,10 @@ export function useReviewState(
     /** Session this panel belongs to. A tab that session's agent opens is
      *  shown here, so the user watches it browse. Null on the launcher. */
     sessionId?: string | null;
+    /** Shared checkout workspace for a project-backed panel's terminal. PTYs
+     *  are still scoped to a workspace row; project sources have none of their
+     *  own. */
+    terminalWorkspaceId?: string | null;
   }
 ): ReviewState {
   const sourceKind = source?.kind ?? null;
@@ -276,7 +284,10 @@ export function useReviewState(
     [sourceKind, sourceId]
   );
 
-  const terminalWorkspaceId = source?.kind === "workspace" ? source.workspace.id : null;
+  const terminalWorkspaceId =
+    source?.kind === "workspace"
+      ? source.workspace.id
+      : options?.terminalWorkspaceId ?? null;
   const availablePanelModes = useMemo<ReviewPanelMode[]>(() => {
     const modes: ReviewPanelMode[] = ["changes", "files"];
     if (options?.sessionId) modes.push("agents");
@@ -416,25 +427,29 @@ export function useReviewState(
   // One native browser surface exists, so one panel shows it at a time. This
   // id identifies the panel to the surface-ownership store.
   const panelId = useId();
+  const browserScopeId = options?.sessionId ?? LAUNCHER_BROWSER_SCOPE_ID;
   const [browserRequest, setBrowserRequest] = useState<BrowserOpenRequest | null>(() =>
-    layout.modes.includes("browser") ? { url: lastBrowsedUrl(), seq: 0 } : null
+    layout.modes.includes("browser") ? { url: lastBrowsedUrl(browserScopeId), seq: 0 } : null
   );
   const browserOwner = useSyncExternalStore(subscribeBrowserOwner, getBrowserOwnerId) === panelId;
 
   const openBrowserAt = useCallback(
-    (url: string, tabId?: string): void => {
+    (url: string, tabId?: string, newTab?: boolean): void => {
       // Claim here, not only in the effect below: a demoted panel is already
       // in Browser mode with the panel open, so neither of the effect's deps
       // changes and "Show here" would be a no-op.
       claimBrowserSurface(panelId);
-      setBrowserRequest((current) => ({ url, tabId, seq: (current?.seq ?? 0) + 1 }));
+      setBrowserRequest((current) => ({ url, tabId, newTab, seq: (current?.seq ?? 0) + 1 }));
       setMode("browser");
       setIsPanelOpen(true);
     },
     [panelId, setMode]
   );
 
-  const openBrowser = useCallback((): void => openBrowserAt(lastBrowsedUrl()), [openBrowserAt]);
+  const openBrowser = useCallback(
+    (): void => openBrowserAt(lastBrowsedUrl(browserScopeId)),
+    [browserScopeId, openBrowserAt]
+  );
 
   const showsBrowser = isPanelOpen && layout.modes.includes("browser");
   // Entering Browser mode by any path takes the surface; leaving it, closing
@@ -454,6 +469,7 @@ export function useReviewState(
   // browser chrome on screen — so the subscription has to exist wherever a
   // review panel does, not only where one is showing the browser.
   useEffect(() => ensureBrowserTabSync(), []);
+  useEffect(() => ensureAgentTerminalSync(), []);
 
   const pendingBrowserRequest = useSyncExternalStore(subscribeBrowserRequest, getBrowserRequest);
   const claimsBrowserRequests = useRef(options?.claimsBrowserRequests ?? false);
@@ -463,8 +479,12 @@ export function useReviewState(
     if (!pendingBrowserRequest || pendingBrowserRequest.seq === handledBrowserSeq.current) return;
     handledBrowserSeq.current = pendingBrowserRequest.seq;
     if (!claimsBrowserRequests.current) return;
-    openBrowserAt(pendingBrowserRequest.url, pendingBrowserRequest.tabId);
-  }, [openBrowserAt, pendingBrowserRequest]);
+    openBrowserAt(
+      pendingBrowserRequest.url || lastBrowsedUrl(browserScopeId),
+      pendingBrowserRequest.tabId,
+      pendingBrowserRequest.newTab
+    );
+  }, [browserScopeId, openBrowserAt, pendingBrowserRequest]);
 
   // A tab this panel's session opened: show it here, so the user watches the
   // agent browse. Every panel sees the request; only the one whose session
@@ -756,6 +776,7 @@ export function useReviewState(
     openMultitask,
     openBrowser,
     browserOwner,
+    browserScopeId,
     browserRequest,
     terminalWorkspaceId,
     openTerminal,

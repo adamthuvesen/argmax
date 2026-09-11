@@ -37,6 +37,12 @@ describe("synthesizeHunk", () => {
     expect(adds).toBe(3);
     expect(dels).toBe(2);
   });
+
+  it("does not count a trailing newline as an empty added line", () => {
+    const { diff, adds } = synthesizeHunk("", "alpha\n");
+    expect(adds).toBe(1);
+    expect(diff).toBe("@@ -0,0 +1,1 @@\n+alpha");
+  });
 });
 
 describe("interpretFileChange — Claude Write", () => {
@@ -93,6 +99,7 @@ describe("interpretFileChange — Claude Edit", () => {
     if (change.kind !== "edit") return;
     expect(change.addCount).toBe(3);
     expect(change.delCount).toBe(2);
+    expect(change.noLineNumbers).toBe(true);
   });
 
   it("marks replace_all with a note", () => {
@@ -142,6 +149,7 @@ describe("interpretFileChange — opencode camelCase inputs", () => {
     if (change.kind !== "edit") return;
     expect(change.addCount).toBe(3);
     expect(change.delCount).toBe(2);
+    expect(change.noLineNumbers).toBe(true);
   });
 
   it("renders a create diff from filePath/content", () => {
@@ -235,6 +243,37 @@ describe("interpretFileChange — Codex file_change", () => {
     expect(change.hunks.length).toBeGreaterThan(0);
   });
 
+  // Current app-server payloads use an object kind, while older fixtures use
+  // a string. A new file's `diff` is its body rather than a unified diff.
+  it("reads a current object-kind add and its body correctly", () => {
+    const { change } = firstChange("file_change", {
+      changes: [
+        {
+          path: "/repo/new.md",
+          kind: { type: "add", move_path: null },
+          diff: "# New file\n\nBody\n"
+        }
+      ]
+    });
+    expect(change.kind).toBe("create");
+    if (change.kind !== "create") return;
+    expect(change.addCount).toBe(3);
+    expect(change.hunks).toHaveLength(1);
+  });
+
+  it("reads a current object-kind delete as a deletion", () => {
+    const { change } = firstChange("file_change", {
+      changes: [
+        {
+          path: "/repo/gone.md",
+          kind: { type: "delete" },
+          diff: ""
+        }
+      ]
+    });
+    expect(change).toEqual({ kind: "delete", path: "/repo/gone.md" });
+  });
+
   it("prefers the content Codex did send over a measured diff", () => {
     const { change } = firstChange("file_change", {
       changes: [
@@ -242,7 +281,22 @@ describe("interpretFileChange — Codex file_change", () => {
       ]
     });
     if (change.kind !== "create") throw new Error("bad kind");
-    expect(change.addCount).toBe(2);
+    expect(change.addCount).toBe(1);
+  });
+});
+
+describe("interpretFileChange — Grok", () => {
+  it("recognises search_replace as an edit", () => {
+    const { change } = firstChange("search_replace", {
+      file_path: "/repo/greet.ts",
+      old_string: 'return "hello";',
+      new_string: 'return "hi there";'
+    });
+    expect(change.kind).toBe("edit");
+    if (change.kind !== "edit") return;
+    expect(change.addCount).toBe(1);
+    expect(change.delCount).toBe(1);
+    expect(change.noLineNumbers).toBe(true);
   });
 });
 
@@ -264,6 +318,56 @@ describe("interpretFileChange — Cursor", () => {
   it("recognises deleteToolCall", () => {
     const { change } = firstChange("deleteToolCall", { path: "x.ts" });
     expect(change.kind).toBe("delete");
+  });
+
+  // Cursor's ACP stream sends whole-file before/after text, reduced to a
+  // unified diff in cursor_acp.rs, so the row reads the diff rather than a
+  // pair that would render as a wholly rewritten file.
+  it("reads the diff an edit hands over", () => {
+    const { change } = firstChange("edit", {
+      path: "/repo/greet.ts",
+      unified_diff: '@@ -1,3 +1,3 @@\n export function greet() {\n-  return "hello";\n+  return "hi there";\n }'
+    });
+    expect(change.kind).toBe("edit");
+    if (change.kind !== "edit") return;
+    expect(change.path).toBe("/repo/greet.ts");
+    expect(change.addCount).toBe(1);
+    expect(change.delCount).toBe(1);
+    expect(change.hunks).toHaveLength(1);
+  });
+
+  it("reads a diff with no left side as a create", () => {
+    const { change } = firstChange("edit", {
+      path: "/repo/note.txt",
+      unified_diff: "@@ -0,0 +1,2 @@\n+alpha\n+beta"
+    });
+    expect(change.kind).toBe("create");
+    if (change.kind !== "create") return;
+    expect(change.addCount).toBe(2);
+  });
+
+  it("keeps create and delete operations when no content hunk exists", () => {
+    const created = firstChange("edit", {
+      path: "/repo/empty.txt",
+      operation: "create"
+    }).change;
+    expect(created.kind).toBe("create");
+    if (created.kind === "create") expect(created.addCount).toBe(0);
+
+    const deleted = firstChange("edit", {
+      path: "/repo/gone.txt",
+      operation: "delete"
+    }).change;
+    expect(deleted).toEqual({ kind: "delete", path: "/repo/gone.txt" });
+  });
+
+  it("falls back to the before/after pair when no diff came with the write", () => {
+    const { change } = firstChange("edit", {
+      path: "/repo/greet.ts",
+      old_string: "a",
+      new_string: "b"
+    });
+    expect(change.kind).toBe("edit");
   });
 });
 

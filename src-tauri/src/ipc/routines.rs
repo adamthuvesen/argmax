@@ -117,7 +117,7 @@ pub fn routines_set_enabled(
     let connection = database.connection();
     let next_run_at = if input.enabled {
         let existing = find_routine_by_id(&connection, input.id.as_str())?;
-        schedule_next_run(&existing, Utc::now())?
+        schedule::next_run_from_now(&existing, Utc::now())?
     } else {
         None
     };
@@ -150,7 +150,14 @@ pub async fn routines_run_now(
     let app_data = crate::util::data_dir::app_data_dir(&app)
         .map_err(|error| ArgmaxError::service("APP_DATA_DIR", error.to_string()))?;
     let default_agent = crate::default_agent::read_default_agent(&app_data);
-    scheduler::fire_routine(&database, &workspaces, &providers, fields, &default_agent).await;
+    let outcome =
+        scheduler::fire_routine(&database, &workspaces, &providers, fields, &default_agent).await;
+    if outcome == scheduler::FireOutcome::Deferred {
+        return Err(ArgmaxError::service(
+            "ROUTINE_CHAT_BUSY",
+            "This task's chat is working on a turn. The task stays due and runs when that turn finishes.",
+        ));
+    }
     let connection = database.connection();
     find_routine_by_id(&connection, input.id.as_str())
 }
@@ -173,22 +180,6 @@ pub fn routines_reset_session(
     }
     routines::set_routine_last_session(&connection, input.id.as_str(), None)?;
     find_routine_by_id(&connection, input.id.as_str())
-}
-
-/// The next stored `next_run_at` for a routine, recomputed from now. A
-/// one-shot keeps its own time (past times stay due so the scheduler fires
-/// them late-once); recurring schedules get their next future occurrence.
-fn schedule_next_run(
-    routine: &Routine,
-    now: chrono::DateTime<Utc>,
-) -> ArgmaxResult<Option<String>> {
-    match &routine.run_once_at {
-        Some(time) => Ok(Some(time.clone())),
-        None => Ok(
-            schedule::next_occurrence(routine.cron_expr.as_deref(), None, now)?
-                .map(schedule::format_rfc3339),
-        ),
-    }
 }
 
 fn launch_services(

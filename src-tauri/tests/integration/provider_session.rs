@@ -18,8 +18,8 @@ use std::sync::{
 use std::{path::PathBuf, process::Command, time::Duration};
 
 use argmax_lib::approvals::service::ApprovalService;
-use argmax_lib::error::ArgmaxResult;
-use argmax_lib::goals::service::GoalService;
+use argmax_lib::error::{ArgmaxError, ArgmaxResult};
+use argmax_lib::goals::service::{GoalService, GoalSetInput};
 use argmax_lib::ipc::inputs::{
     ComposerAttachmentInput, ProvidersLaunchInput, ProvidersSendInput,
     ProvidersSendQueuedMessageNowInput, ProvidersTerminateInput, SessionClearInput, TerminalCols,
@@ -51,7 +51,9 @@ use argmax_lib::providers::runtime::{
     BoxFuture, EventCallback, ProviderProcessLauncher, ProviderRuntimeEvent,
     ProviderRuntimeEventType, ProviderRuntimeHandle,
 };
-use argmax_lib::providers::session_service::{MessageOrigin, ProviderSessionService};
+use argmax_lib::providers::session_service::{
+    GoalTurnIdentity, MessageOrigin, ProviderSessionService, TURN_IN_FLIGHT,
+};
 use argmax_lib::providers::{
     flush_queue::DashboardDelta, normalizer::ProviderOutputStream, ProviderLaunchInput,
 };
@@ -699,6 +701,71 @@ async fn launch_attaches_goal_before_sending_the_single_opening_turn() {
     goals.clear(&session.id).await.expect("stop goal driver");
 }
 
+/// An agent setting its own goal through `goal_set` is mid-turn by definition.
+/// That turn is already the goal's first turn, so the opening prompt must not
+/// queue behind it as a follow-up telling the agent to start the work it is
+/// doing; the driver picks the turn up when it settles.
+#[tokio::test]
+async fn goal_set_during_a_turn_queues_no_opening_prompt() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    let _workspace = seed_project_and_workspace(&database);
+    let handle = FakeHandle::new(false);
+    let service = ProviderSessionService::with_launcher(
+        database.clone(),
+        Arc::new(FakeLauncher::new(handle.clone())),
+        |_| {},
+    );
+    let goals = GoalService::new(database.clone(), Arc::clone(&service)).expect("goal service");
+
+    let session = service
+        .launch(build_launch_input())
+        .await
+        .expect("launch ok");
+    wait_for_resolved(&service, &session.id).await;
+    wait_for_session_state(&database, &session.id, SessionState::Running).await;
+
+    goals
+        .set(GoalSetInput {
+            workspace_id: WORKSPACE_ID.to_owned(),
+            session_id: session.id.clone(),
+            condition: "the suite is green".to_owned(),
+            max_turns: None,
+        })
+        .await
+        .expect("set goal mid-turn");
+
+    assert!(
+        service
+            .pending_messages_snapshot()
+            .get(&session.id)
+            .is_none_or(Vec::is_empty),
+        "the goal's opening prompt must not queue behind the turn that set it",
+    );
+    assert!(
+        handle
+            .state
+            .lock()
+            .expect("fake handle poisoned")
+            .sent_inputs
+            .is_empty(),
+        "no goal turn should reach the provider while its first turn runs",
+    );
+    {
+        let connection = database.connection();
+        let tail = list_session_events_since(&connection, &session.id, None, None)
+            .expect("list session events");
+        let user_messages: Vec<_> = tail
+            .events
+            .iter()
+            .filter(|event| event.r#type == "user.message")
+            .collect();
+        assert_eq!(user_messages.len(), 1);
+        assert_eq!(user_messages[0].message, "hello world");
+    }
+
+    goals.clear(&session.id).await.expect("stop goal driver");
+}
+
 #[tokio::test]
 async fn fake_cli_streams_normalized_events_to_db_and_dashboard_delta() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
@@ -1291,6 +1358,134 @@ async fn send_input_queues_when_handle_rejecting() {
         .sent_inputs
         .clone();
     assert!(sent.is_empty(), "rejected handle should not receive bytes");
+}
+
+/// The follow-up queue belongs to the person: a message they typed during a
+/// turn is meant to wait there. A scheduled wake is a turn of its own, so it
+/// is refused instead — queued, it would read as something the user typed and
+/// the next tick would stack another copy behind it.
+#[tokio::test]
+async fn scheduled_wake_is_refused_instead_of_joining_the_follow_up_queue() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    let _workspace = seed_project_and_workspace(&database);
+    let handle = FakeHandle::new(false);
+    let service = ProviderSessionService::with_launcher(
+        database.clone(),
+        Arc::new(FakeLauncher::new(handle.clone())),
+        |_| {},
+    );
+
+    let session = service
+        .launch(build_launch_input())
+        .await
+        .expect("launch ok");
+    wait_for_resolved(&service, &session.id).await;
+
+    let error = service
+        .send_scheduled_input(ProvidersSendInput {
+            agent_references: None,
+            session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
+            input: Prompt::try_from("Continue babysitting the PR".to_owned())
+                .expect("prompt valid"),
+            provider: None,
+            model_label: None,
+            model_id: None,
+            reasoning_effort: None,
+            fast_mode: false,
+            agent_mode: None,
+            attachments: None,
+        })
+        .await
+        .expect_err("a scheduled wake must not queue behind a running turn");
+    assert!(
+        matches!(error, ArgmaxError::ServiceError { ref sub_code, .. } if sub_code == TURN_IN_FLIGHT),
+        "unexpected error: {error:?}"
+    );
+    assert!(
+        service
+            .pending_messages_snapshot()
+            .get(&session.id)
+            .is_none_or(Vec::is_empty),
+        "the refused wake must leave the user's queue untouched",
+    );
+    assert!(
+        handle
+            .state
+            .lock()
+            .expect("fake handle poisoned")
+            .sent_inputs
+            .is_empty(),
+        "a rejecting handle must not receive the wake either",
+    );
+}
+
+/// The same rule for a goal continuation. A turn can start between the settle
+/// the driver judged and its send; queueing the guidance would leave it in the
+/// composer looking hand-typed, with another copy behind it every time the
+/// driver judged the turn that overtook it.
+#[tokio::test]
+async fn goal_turn_is_refused_instead_of_joining_the_follow_up_queue() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    let _workspace = seed_project_and_workspace(&database);
+    let handle = FakeHandle::new(false);
+    let service = ProviderSessionService::with_launcher(
+        database.clone(),
+        Arc::new(FakeLauncher::new(handle.clone())),
+        |_| {},
+    );
+    let goals = GoalService::new(database.clone(), Arc::clone(&service)).expect("goal service");
+
+    let session = service
+        .launch(build_launch_input())
+        .await
+        .expect("launch ok");
+    wait_for_resolved(&service, &session.id).await;
+    wait_for_session_state(&database, &session.id, SessionState::Running).await;
+
+    let goal = goals
+        .set(GoalSetInput {
+            workspace_id: WORKSPACE_ID.to_owned(),
+            session_id: session.id.clone(),
+            condition: "the suite is green".to_owned(),
+            max_turns: None,
+        })
+        .await
+        .expect("set goal mid-turn");
+
+    let error = service
+        .send_goal_input(
+            ProvidersSendInput {
+                agent_references: None,
+                session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
+                input: Prompt::try_from("The goal is not met yet".to_owned())
+                    .expect("prompt valid"),
+                provider: None,
+                model_label: None,
+                model_id: None,
+                reasoning_effort: None,
+                fast_mode: false,
+                agent_mode: None,
+                attachments: None,
+            },
+            GoalTurnIdentity {
+                goal_id: goal.id.clone(),
+            },
+        )
+        .await
+        .expect_err("a goal turn must not queue behind a running turn");
+    assert!(
+        matches!(error, ArgmaxError::ServiceError { ref sub_code, .. } if sub_code == TURN_IN_FLIGHT),
+        "unexpected error: {error:?}"
+    );
+    assert!(
+        service
+            .pending_messages_snapshot()
+            .get(&session.id)
+            .is_none_or(Vec::is_empty),
+        "the refused goal turn must leave the user's queue untouched",
+    );
+
+    goals.clear(&session.id).await.expect("stop goal driver");
 }
 
 #[tokio::test]

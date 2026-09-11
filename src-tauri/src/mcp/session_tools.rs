@@ -14,8 +14,11 @@ use rmcp::{
 use serde::Deserialize;
 
 use crate::session_control::{
-    ArchiveAction, GoalSetAction, InboxAction, LaunchAction, ListAction, MessageAction, MoveAction,
-    ReadAction, RenameAction, SessionControlAction, StatusAction, StopAction, WaitAction,
+    ArchiveAction, ChecksRunAction, GoalSetAction, InboxAction, LaunchAction, LearningsAddAction,
+    LearningsSearchAction, ListAction, MessageAction, MoveAction, ProjectsAction, ReadAction,
+    RenameAction, ScheduleCancelAction, ScheduleFollowupAction, ScheduleListAction,
+    ScheduleResumeAction, SessionControlAction, StatusAction, StopAction, TerminalReadAction,
+    TerminalSpawnAction, WaitAction, WorkspaceDiffAction, WorkspaceStatusAction,
 };
 
 #[derive(Clone)]
@@ -49,10 +52,143 @@ pub struct SessionLaunchParams {
     pub model: Option<String>,
     /// Give the new session its own git worktree instead of sharing the
     /// project's checkout. Use it when the work would collide with yours.
+    /// Mutually exclusive with `path`.
     #[serde(default)]
     pub worktree: bool,
+    /// Absolute path of an existing checkout of the target project. Any
+    /// directory `git worktree list` reports for it, including the main one.
+    /// The new session shares that checkout. Mutually exclusive with `worktree`.
+    pub path: Option<String>,
+    /// Git ref the new session should work from. With `worktree`, the isolated
+    /// worktree forks from this ref instead of the project's current branch.
+    /// With `path`, the checkout must already be on this branch. Pass `worktree`
+    /// or `path` as well. This does not switch another checkout's branch.
+    pub branch: Option<String>,
     /// Sidebar label for the new session. Defaults to the prompt's first line.
     pub task_label: Option<String>,
+    /// Thinking effort: low, medium, high, xhigh, max, or ultra. Not every
+    /// model takes every level. Defaults to this session's own.
+    pub reasoning: Option<String>,
+    /// How the new session answers permission prompts: auto-approve,
+    /// ask-each-time, or provider-defaults. Defaults to this session's own,
+    /// which is auto-approve unless the user changed it. Use ask-each-time
+    /// when the work touches something you would want a person to see first.
+    #[serde(rename = "permissionMode", alias = "permission_mode")]
+    pub permission_mode: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct ChecksRunParams {
+    /// Session whose workspace to check. Defaults to your own.
+    pub session: Option<String>,
+    /// One shell command to run in that checkout. Omit it to run the
+    /// project's configured check commands in order.
+    pub command: Option<String>,
+    /// Wall-clock cap for the whole command sequence, in milliseconds.
+    /// Defaults to five minutes and is capped at 30 minutes.
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct WorkspaceStatusParams {
+    /// Session whose workspace to describe. Defaults to your own.
+    pub session: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct WorkspaceDiffParams {
+    /// Session whose workspace to diff. Defaults to your own.
+    pub session: Option<String>,
+    /// Narrow the diff to one path, relative to the checkout root.
+    pub file_path: Option<String>,
+    /// `workingTree` (default) is uncommitted work; `branch` is everything
+    /// different from the base branch; `committed` is only what has landed as
+    /// commits.
+    pub comparison: Option<String>,
+    /// Character budget for the diff. Defaults to 16000, capped at 40000.
+    pub max_chars: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct LearningsAddParams {
+    /// `pitfall` for a trap to avoid, `convention` for how this repo does
+    /// things, `command` for an invocation worth reusing.
+    pub kind: String,
+    /// One sentence the next agent can act on, specific enough to be wrong.
+    pub summary: String,
+    /// Project to file it under, by name, id, or absolute repo path. Defaults
+    /// to your own.
+    pub project: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct LearningsSearchParams {
+    /// Free text. Omit it to get the project's most-used learnings.
+    pub query: Option<String>,
+    /// Project to search, by name, id, or absolute repo path. Defaults to your
+    /// own.
+    pub project: Option<String>,
+    /// How many to return. Defaults to 10, capped at 40.
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct TerminalSpawnParams {
+    /// Session whose workspace the terminal opens in. Defaults to your own.
+    pub session: Option<String>,
+    /// A command line to type into the shell, run as if the user typed it.
+    pub command: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct TerminalReadParams {
+    /// Terminal to read, from terminal_spawn. Omit it to list what a
+    /// workspace has running instead.
+    pub terminal_id: Option<String>,
+    /// Session whose workspace to list. Defaults to your own. Ignored when
+    /// terminal_id is given.
+    pub session: Option<String>,
+    /// Characters from the newest output to return, in chronological order.
+    /// Defaults to 8000, capped at 40000.
+    pub max_chars: Option<u32>,
+}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct ProjectListParams {}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct ScheduleFollowupParams {
+    /// The turn this chat runs when it wakes. Write it to stand on its own —
+    /// your transcript is there, but say what to check and what to do about it.
+    pub prompt: String,
+    /// Seconds from now. Give this or `at`, not both. Rounded up to 30
+    /// seconds, which is how often the scheduler looks.
+    pub in_seconds: Option<u64>,
+    /// An RFC 3339 instant. Give this or `in_seconds`, not both.
+    pub at: Option<String>,
+    /// Name for the row in Scheduled Tasks. Defaults to the prompt's first line.
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct ScheduleListParams {
+    /// Project name, id, or path. Defaults to this chat's own project.
+    pub project: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct ScheduleCancelParams {
+    /// Id of the scheduled task, from schedule_list or schedule_followup.
+    pub schedule_id: String,
+    /// Pause it instead of deleting it. The task keeps its prompt and its
+    /// schedule and stops firing; schedule_resume switches it back on.
+    pub disable: Option<bool>,
+}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct ScheduleResumeParams {
+    /// Id of the paused scheduled task, from schedule_list.
+    pub schedule_id: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -187,7 +323,9 @@ current chat using your provider's native subagents. The user-facing multitask f
 should run alongside the chat. Do not use this merely for parallelism, fresh context, model choice, \
 or context relief. A new session starts cold, so put everything it needs in the prompt. It is a \
 top-level sidebar session, not a subagent. It is visible to the user, spends real tokens, and outlives \
-your turn. Launches are capped at two levels deep and ten per session."
+your turn. Launches are capped at two levels deep and ten per session. Pass `project` for another \
+registered project, `path` for an existing checkout of that project, and `worktree` plus optional \
+`branch` to fork an isolated worktree from that ref."
     )]
     async fn session_launch(
         &self,
@@ -197,13 +335,278 @@ your turn. Launches are capped at two levels deep and ten per session."
             Ok(provider) => provider,
             Err(message) => return Ok(CallToolResult::error(vec![ContentBlock::text(message)])),
         };
+        let reasoning = match params.reasoning.as_deref().map(parse_reasoning).transpose() {
+            Ok(reasoning) => reasoning,
+            Err(message) => return Ok(CallToolResult::error(vec![ContentBlock::text(message)])),
+        };
+        let permission_mode = match params
+            .permission_mode
+            .as_deref()
+            .map(parse_permission_mode)
+            .transpose()
+        {
+            Ok(mode) => mode,
+            Err(message) => return Ok(CallToolResult::error(vec![ContentBlock::text(message)])),
+        };
         call(SessionControlAction::Launch(LaunchAction {
             prompt: params.prompt,
             project: params.project,
             worktree: params.worktree,
+            path: params.path,
+            branch: params.branch,
             provider,
             model: params.model,
             task_label: params.task_label,
+            reasoning,
+            permission_mode,
+        }))
+        .await
+    }
+
+    #[tool(
+        name = "checks_run",
+        description = "Run a workspace's check commands and return each one's status, exit code, \
+and output tail. With no `command` it runs the project's configured checks in order and stops at \
+the first failure. Takes an optional `session`, so you can check a workspace another session is \
+working in as well as your own. Use it to make \"is this done\" evidence rather than prose — \
+before reporting work finished, before deciding a session you launched has really landed its \
+change, and before a goal claims a suite passes. A destructive command is refused outright."
+    )]
+    async fn checks_run(
+        &self,
+        Parameters(params): Parameters<ChecksRunParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(SessionControlAction::ChecksRun(ChecksRunAction {
+            session: params.session,
+            command: params.command,
+            timeout_ms: params.timeout_ms,
+        }))
+        .await
+    }
+
+    #[tool(
+        name = "workspace_status",
+        description = "What Argmax knows about a checkout that a shell in it cannot say: whether \
+it is an isolated worktree or a checkout the user also works in, the branch and the base it came \
+from, how many files have changed, any pull request attributed to it with its check rollup, and \
+whether archiving it would dispose of a worktree or only close the chat. Takes an optional \
+`session`, which is the point: for your own tree `git status` already works, so reach for this to \
+read a peer's workspace before you message, wait for, or duplicate its work."
+    )]
+    async fn workspace_status(
+        &self,
+        Parameters(params): Parameters<WorkspaceStatusParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(SessionControlAction::WorkspaceStatus(
+            WorkspaceStatusAction {
+                session: params.session,
+            },
+        ))
+        .await
+    }
+
+    #[tool(
+        name = "workspace_diff",
+        description = "Read what a workspace has changed: the changed-file list with per-file \
+line counts, plus the diff itself, capped in characters. Takes an optional `session` for a peer's \
+workspace and an optional `file_path` to narrow it. `comparison` picks the baseline — uncommitted \
+work, everything different from the base branch, or only what has been committed. A reply marked \
+`truncated` is the cue to name a file, not to ask for more bytes."
+    )]
+    async fn workspace_diff(
+        &self,
+        Parameters(params): Parameters<WorkspaceDiffParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let comparison = match params
+            .comparison
+            .as_deref()
+            .map(parse_comparison)
+            .transpose()
+        {
+            Ok(comparison) => comparison,
+            Err(message) => return Ok(CallToolResult::error(vec![ContentBlock::text(message)])),
+        };
+        call(SessionControlAction::WorkspaceDiff(WorkspaceDiffAction {
+            session: params.session,
+            file_path: params.file_path,
+            comparison,
+            max_chars: params.max_chars,
+        }))
+        .await
+    }
+
+    #[tool(
+        name = "learnings_add",
+        description = "File one durable, non-obvious thing you learned about this repository, so \
+the next agent in it does not pay for it again: a trap that cost you a failed attempt, a \
+convention the code follows without saying so, an invocation that turned out to be the right one. \
+It is project memory the user can see and edit, shared across every provider. Write a summary \
+specific enough to be wrong. Skip task progress, anything the docs already answer clearly, and \
+anything you are guessing at."
+    )]
+    async fn learnings_add(
+        &self,
+        Parameters(params): Parameters<LearningsAddParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(SessionControlAction::LearningsAdd(LearningsAddAction {
+            kind: params.kind,
+            summary: params.summary,
+            project: params.project,
+        }))
+        .await
+    }
+
+    #[tool(
+        name = "learnings_search",
+        description = "Search this project's filed learnings — the pitfalls, conventions, and \
+commands earlier sessions wrote down with learnings_add. Worth a call before you plan work in an \
+unfamiliar part of the repo, and after a failure that smells like something someone has hit \
+before. With no query it returns the project's most-used entries. Current code and docs win when \
+they disagree with a learning; say so and file the correction."
+    )]
+    async fn learnings_search(
+        &self,
+        Parameters(params): Parameters<LearningsSearchParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(SessionControlAction::LearningsSearch(
+            LearningsSearchAction {
+                query: params.query,
+                project: params.project,
+                limit: params.limit,
+            },
+        ))
+        .await
+    }
+
+    #[tool(
+        name = "terminal_spawn",
+        description = "Start a terminal in a workspace and optionally type a command into it. \
+This is the only process you can start that outlives your turn: your own shell dies when the turn \
+ends, so a dev server, a watcher, or a tunnel started from Bash is gone by the time you are asked \
+about it. The PTY belongs to Argmax, and the user can see and type in it. Read it back with \
+terminal_read; it keeps running until it exits or someone closes it."
+    )]
+    async fn terminal_spawn(
+        &self,
+        Parameters(params): Parameters<TerminalSpawnParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(SessionControlAction::TerminalSpawn(TerminalSpawnAction {
+            session: params.session,
+            command: params.command,
+        }))
+        .await
+    }
+
+    #[tool(
+        name = "terminal_read",
+        description = "Read a terminal's captured output, newest last, or — with no terminal_id — \
+list what a workspace has running: each terminal's command, whether its shell is still up, and \
+how it exited if not. Use the list to answer \"is something already serving here\" before \
+starting a second one, and the read to see what a long-running process has logged since you last \
+looked."
+    )]
+    async fn terminal_read(
+        &self,
+        Parameters(params): Parameters<TerminalReadParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(SessionControlAction::TerminalRead(TerminalReadAction {
+            terminal_id: params.terminal_id,
+            session: params.session,
+            max_chars: params.max_chars,
+        }))
+        .await
+    }
+
+    #[tool(
+        name = "project_list",
+        description = "List every repository registered in Argmax, with its path, current and \
+default branch, configured check commands, and how many sessions are active in it. session_list \
+only reveals projects that already have open chats, so this is how you find out what else you \
+could launch into, and which project name or path to pass to session_launch."
+    )]
+    async fn project_list(
+        &self,
+        Parameters(_params): Parameters<ProjectListParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(SessionControlAction::Projects(ProjectsAction {})).await
+    }
+
+    #[tool(
+        name = "schedule_followup",
+        description = "Wake this chat with a prompt at a time, once. Use it instead of blocking on \
+session_wait or sleeping in a shell when what you are waiting for takes minutes and belongs to \
+someone else: a CI run, a deploy, a review. Your turn ends, the user gets their chat back, and \
+the prompt arrives as a fresh turn with this transcript intact. The scheduler looks every 30 \
+seconds, so a wake is never early, and it never lands in the middle of a turn: a wake whose time \
+passes while this chat is still working waits for it to finish rather than queueing behind what \
+the user has typed. It appears in Scheduled Tasks, where the user can see and cancel it."
+    )]
+    async fn schedule_followup(
+        &self,
+        Parameters(params): Parameters<ScheduleFollowupParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(SessionControlAction::ScheduleFollowup(
+            ScheduleFollowupAction {
+                prompt: params.prompt,
+                in_seconds: params.in_seconds,
+                at: params.at,
+                name: params.name,
+            },
+        ))
+        .await
+    }
+
+    #[tool(
+        name = "schedule_list",
+        description = "Every scheduled task in a project: the wakes chats set with \
+schedule_followup and the recurring routines the user wrote by hand, each with its prompt, cron \
+expression or one-shot time, whether it is switched on, when it next runs, and how its last run \
+went. This is where a schedule_cancel finds its id, and how you tell a task that is failing every \
+night from one nobody turned on."
+    )]
+    async fn schedule_list(
+        &self,
+        Parameters(params): Parameters<ScheduleListParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(SessionControlAction::ScheduleList(ScheduleListAction {
+            project: params.project,
+        }))
+        .await
+    }
+
+    #[tool(
+        name = "schedule_cancel",
+        description = "Stop a scheduled task from firing: deleted by default, or paused with \
+disable so the user can switch it back on. Use it to drop a follow-up you no longer need — a wake \
+you set to watch CI that has already gone green — and to turn off a routine when the user asks. \
+Pause rather than delete anything the user wrote themselves unless they asked for it gone: a \
+deleted task takes its prompt and its history with it. Only tasks in this chat's project can be \
+cancelled."
+    )]
+    async fn schedule_cancel(
+        &self,
+        Parameters(params): Parameters<ScheduleCancelParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(SessionControlAction::ScheduleCancel(ScheduleCancelAction {
+            schedule_id: params.schedule_id,
+            disable: params.disable.unwrap_or(false),
+        }))
+        .await
+    }
+
+    #[tool(
+        name = "schedule_resume",
+        description = "Switch a paused scheduled task back on. Its next run is recomputed from \
+now, so a recurring task picks up at its next occurrence instead of firing once for every run it \
+slept through; a one-shot whose time has already passed runs on the next tick. Only tasks in this \
+chat's project can be resumed."
+    )]
+    async fn schedule_resume(
+        &self,
+        Parameters(params): Parameters<ScheduleResumeParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(SessionControlAction::ScheduleResume(ScheduleResumeAction {
+            schedule_id: params.schedule_id,
         }))
         .await
     }
@@ -438,6 +841,26 @@ fn parse_provider(value: &str) -> Result<crate::providers::ProviderId, String> {
     })
 }
 
+fn parse_reasoning(value: &str) -> Result<crate::providers::ReasoningEffort, String> {
+    serde_json::from_value(serde_json::json!(value)).map_err(|_| {
+        format!("'{value}' is not a reasoning level. Use low, medium, high, xhigh, max, or ultra.")
+    })
+}
+
+fn parse_permission_mode(value: &str) -> Result<crate::providers::PermissionMode, String> {
+    serde_json::from_value(serde_json::json!(value)).map_err(|_| {
+        format!(
+            "'{value}' is not a permission mode. Use auto-approve, ask-each-time, or provider-defaults."
+        )
+    })
+}
+
+fn parse_comparison(value: &str) -> Result<crate::review::git_review::ReviewComparison, String> {
+    serde_json::from_value(serde_json::json!(value)).map_err(|_| {
+        format!("'{value}' is not a diff baseline. Use workingTree, branch, or committed.")
+    })
+}
+
 /// One socket round trip, off the async runtime because the client is
 /// blocking, with the response handed back as the JSON the agent reads. When
 /// the app flags unread inbox mail, a second content block says so — the one
@@ -494,4 +917,27 @@ async fn call(_action: SessionControlAction) -> Result<CallToolResult, ErrorData
         "Argmax session control is not supported on this platform".to_string(),
         None,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SessionLaunchParams;
+
+    #[test]
+    fn launch_permission_mode_uses_the_public_camel_case_name() {
+        let params: SessionLaunchParams = serde_json::from_value(serde_json::json!({
+            "prompt": "Review this",
+            "permissionMode": "ask-each-time"
+        }))
+        .expect("public tool arguments");
+        assert_eq!(params.permission_mode.as_deref(), Some("ask-each-time"));
+
+        // Keep accepting the Rust-shaped spelling for old generated clients.
+        let compatible: SessionLaunchParams = serde_json::from_value(serde_json::json!({
+            "prompt": "Review this",
+            "permission_mode": "auto-approve"
+        }))
+        .expect("legacy tool arguments");
+        assert_eq!(compatible.permission_mode.as_deref(), Some("auto-approve"));
+    }
 }

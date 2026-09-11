@@ -7,11 +7,13 @@
 //! same functions, which is also what makes the harness and the agent exercise
 //! one code path.
 //!
-//! Two scripts do the work inside the page (`snapshot.js`, `actions.js`). They
+//! Two on-demand scripts do the DOM work (`snapshot.js`, `actions.js`). They
 //! are re-sent with every call, guarded by `window.__argmax.v`, so the install
 //! costs one property read on a warm page and re-arms itself automatically
-//! after a navigation wipes the world. Refs survive that, because they live in
-//! the DOM rather than in a table on the Rust side.
+//! after a navigation wipes the world. Agent-owned tabs also install
+//! `capture.js` before page scripts run. Refs survive navigation only when the
+//! same DOM node survives, because they live in the DOM rather than in a table
+//! on the Rust side.
 
 use std::time::{Duration, Instant};
 
@@ -874,6 +876,70 @@ pub async fn screenshot(
 /// `wrap_for_errors` catches inside the page, because WebKit's completion
 /// handler drops the `NSError` and a script that threw would otherwise be
 /// indistinguishable from one that returned `undefined`.
+/// Which capture buffer a read wants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CaptureKind {
+    Console,
+    Network,
+}
+
+impl CaptureKind {
+    fn reader(self) -> &'static str {
+        match self {
+            CaptureKind::Console => "readConsole",
+            CaptureKind::Network => "readNetwork",
+        }
+    }
+}
+
+/// The tab's captured console lines or network records, newest last.
+///
+/// `capture.js` is an initialization script on agent-opened tabs only, so a
+/// tab that has none is a tab this session did not open — or one created
+/// before an app update added the script. Either way the honest answer is that
+/// nothing was recorded, not an empty list that reads like a clean page.
+pub async fn read_capture(
+    app: &AppHandle,
+    target: &TabTarget,
+    kind: CaptureKind,
+    limit: Option<u32>,
+    clear: bool,
+) -> ArgmaxResult<Value> {
+    let tab_id = resolve_tab(app, target)?;
+    let value = call(
+        app,
+        &tab_id,
+        &format!(
+            "(window.__argmaxCapture ? window.__argmaxCapture.{}({}, {}) : {{ unavailable: true }})",
+            kind.reader(),
+            json!(limit.unwrap_or(50)),
+            json!(clear)
+        ),
+        READ_TIMEOUT,
+    )
+    .await?;
+    if value
+        .get("unavailable")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        return Err(ArgmaxError::service(
+            "BROWSER_CAPTURE_UNAVAILABLE",
+            "this tab has no capture installed — reopen the page with browser_open so the \
+             recorder is in place before the page loads",
+        ));
+    }
+    Ok(json!({
+        "tabId": tab_id,
+        "url": string_field(&value, "url"),
+        "entries": value.get("entries").cloned().unwrap_or(json!([])),
+        "truncated": value
+            .get("truncated")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+    }))
+}
+
 pub async fn evaluate(
     app: &AppHandle,
     target: &TabTarget,

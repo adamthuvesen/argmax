@@ -29,6 +29,24 @@ An agent can set a Goal for itself through the `argmax` MCP server's `goal_set`
 and `goal_clear` tools, so "keep going until the suite is green" in prose lands
 the same way the command does. See [agent-tools.md](agent-tools.md).
 
+Setting a Goal only starts an opening turn when the chat is idle. A Goal set
+from inside a running turn — which every agent `goal_set` is — gets none: that
+turn is already the Goal's first turn, and an opening prompt would queue behind
+it as a follow-up telling the agent to begin work it is already doing. The
+driver evaluates the turn when it settles, exactly as it does for a Goal
+attached at launch.
+
+A Goal turn never joins the chat's follow-up queue. A turn can start between
+the settle the driver judged and its send — the user types, or a queued
+follow-up drains — and the send is refused (`SESSION_TURN_IN_FLIGHT`) rather
+than queued. The driver treats that as ordinary and judges the turn that
+overtook it when *it* settles. Queueing instead would leave the Goal's guidance
+in the composer looking hand-typed, and put another copy behind it every time
+round the loop.
+
+Other chats may share the same checkout, branch, or worktree while a Goal is
+active. Overlap is the user's to coordinate.
+
 A compact Goal bar sits above the composer, using the same surface as queued
 follow-ups. It shows the condition and a clear button, with no turn counter.
 Click the condition to expand its full text. Expanded text scrolls within a

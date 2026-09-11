@@ -130,6 +130,22 @@ pub enum BrowserRequest {
         tab: Option<String>,
         expression: String,
     },
+    Console {
+        #[serde(default)]
+        tab: Option<String>,
+        #[serde(default)]
+        limit: Option<u32>,
+        #[serde(default)]
+        clear: bool,
+    },
+    Network {
+        #[serde(default)]
+        tab: Option<String>,
+        #[serde(default)]
+        limit: Option<u32>,
+        #[serde(default)]
+        clear: bool,
+    },
     #[serde(rename_all = "camelCase")]
     HandleDialog {
         #[serde(default)]
@@ -343,6 +359,32 @@ async fn run(
                 automation::evaluate(app, &target, &expression).await?,
             ))
         }
+        BrowserRequest::Console { tab, limit, clear } => {
+            let target = owned_target(app, session_id, tab)?;
+            Ok(BrowserOutcome::json(
+                automation::read_capture(
+                    app,
+                    &target,
+                    automation::CaptureKind::Console,
+                    limit,
+                    clear,
+                )
+                .await?,
+            ))
+        }
+        BrowserRequest::Network { tab, limit, clear } => {
+            let target = owned_target(app, session_id, tab)?;
+            Ok(BrowserOutcome::json(
+                automation::read_capture(
+                    app,
+                    &target,
+                    automation::CaptureKind::Network,
+                    limit,
+                    clear,
+                )
+                .await?,
+            ))
+        }
         BrowserRequest::HandleDialog {
             tab,
             accept,
@@ -476,5 +518,34 @@ mod tests {
                 prompt_text: None
             }
         );
+    }
+
+    #[test]
+    fn capture_requests_carry_bounds_and_clear_across_the_wire() {
+        for (encoded, expected) in [
+            (
+                r#"{"console":{"tab":"tab-1","limit":12,"clear":true}}"#,
+                BrowserRequest::Console {
+                    tab: Some("tab-1".to_string()),
+                    limit: Some(12),
+                    clear: true,
+                },
+            ),
+            (
+                r#"{"network":{"limit":200,"clear":false}}"#,
+                BrowserRequest::Network {
+                    tab: None,
+                    limit: Some(200),
+                    clear: false,
+                },
+            ),
+        ] {
+            let decoded = serde_json::from_str::<BrowserRequest>(encoded).expect("decode");
+            assert_eq!(decoded, expected);
+            let round_trip =
+                serde_json::from_str::<BrowserRequest>(&serde_json::to_string(&decoded).unwrap())
+                    .expect("round trip");
+            assert_eq!(round_trip, expected);
+        }
     }
 }

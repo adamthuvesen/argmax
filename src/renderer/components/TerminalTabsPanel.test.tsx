@@ -1,8 +1,18 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
-import type { ArgmaxApi, TerminalDataEvent, TerminalExitEvent } from "../../shared/types.js";
+import type {
+  ArgmaxApi,
+  TerminalAgentOpenEvent,
+  TerminalDataEvent,
+  TerminalExitEvent
+} from "../../shared/types.js";
 import { TerminalTabsPanel } from "./TerminalTabsPanel.js";
-import { resetTerminalTabsForTests } from "../lib/terminalTabs.js";
+import {
+  addAgentTerminalTab,
+  closeTerminalTab,
+  ensureAgentTerminalSync,
+  resetTerminalTabsForTests
+} from "../lib/terminalTabs.js";
 import { resetTerminalRuntimesForTests } from "../lib/terminalRuntime.js";
 
 const terminalMockState = vi.hoisted(() => ({
@@ -56,11 +66,13 @@ interface ArgmaxStub {
   terminate: Mock<() => Promise<{ ok: true }>>;
   emitData: (event: TerminalDataEvent) => void;
   emitExit: (event: TerminalExitEvent) => void;
+  emitAgentOpen: (event: TerminalAgentOpenEvent) => void;
 }
 
 function installArgmaxStub(): ArgmaxStub {
   const dataListeners = new Set<(event: TerminalDataEvent) => void>();
   const exitListeners = new Set<(event: TerminalExitEvent) => void>();
+  const agentOpenListeners = new Set<(event: TerminalAgentOpenEvent) => void>();
 
   let nextId = 0;
   const spawn = vi.fn(() => {
@@ -88,6 +100,12 @@ function installArgmaxStub(): ArgmaxStub {
         return () => {
           exitListeners.delete(listener);
         };
+      },
+      onAgentOpen: (listener: (event: TerminalAgentOpenEvent) => void) => {
+        agentOpenListeners.add(listener);
+        return () => {
+          agentOpenListeners.delete(listener);
+        };
       }
     }
   } as unknown as ArgmaxApi;
@@ -102,6 +120,9 @@ function installArgmaxStub(): ArgmaxStub {
     },
     emitExit: (event) => {
       for (const l of exitListeners) l(event);
+    },
+    emitAgentOpen: (event) => {
+      for (const l of agentOpenListeners) l(event);
     }
   };
 }
@@ -148,6 +169,53 @@ describe("TerminalTabsPanel", () => {
     expect(stub.spawn).toHaveBeenCalledWith(
       expect.objectContaining({ workspaceId: "ws-1" })
     );
+  });
+
+  it("adopts an agent-spawned PTY instead of starting a second shell", async () => {
+    addAgentTerminalTab("ws-1", "agent-pty", "npm run dev");
+
+    render(<TerminalTabsPanel workspaceId="ws-1" visible />);
+
+    expect(screen.getByRole("tab", { name: "npm run dev" })).toBeInTheDocument();
+    await act(async () => Promise.resolve());
+    expect(stub.spawn).not.toHaveBeenCalled();
+
+    act(() => stub.emitData({ terminalId: "agent-pty", data: "server ready\r\n" }));
+    expect(terminalMockState.instances[0]?.write).toHaveBeenCalledWith("server ready\r\n");
+
+    fireEvent.click(screen.getByRole("button", { name: "Close npm run dev" }));
+    await waitFor(() => expect(stub.terminate).toHaveBeenCalledWith("agent-pty"));
+  });
+
+  it("replays output produced before an agent terminal mounts", async () => {
+    ensureAgentTerminalSync();
+    act(() => {
+      stub.emitAgentOpen({
+        workspaceId: "ws-1",
+        terminalId: "fast-pty",
+        command: "printf done"
+      });
+      stub.emitData({ terminalId: "fast-pty", data: "done\r\n" });
+      stub.emitExit({ terminalId: "fast-pty", exitCode: 0, signal: null });
+    });
+
+    render(<TerminalTabsPanel workspaceId="ws-1" visible />);
+
+    await waitFor(() =>
+      expect(terminalMockState.instances[0]?.write).toHaveBeenCalledWith("done\r\n")
+    );
+    expect(terminalMockState.instances[0]?.write).toHaveBeenCalledWith(
+      expect.stringContaining("process exited with code 0")
+    );
+    expect(stub.spawn).not.toHaveBeenCalled();
+  });
+
+  it("terminates an agent PTY closed before its xterm mounts", async () => {
+    const tabId = addAgentTerminalTab("ws-1", "unmounted-pty", "npm run dev");
+
+    closeTerminalTab("ws-1", tabId);
+
+    await waitFor(() => expect(stub.terminate).toHaveBeenCalledWith("unmounted-pty"));
   });
 
   it("uses typography tokens when constructing xterm", async () => {

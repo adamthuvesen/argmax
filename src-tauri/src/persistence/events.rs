@@ -71,6 +71,9 @@ pub struct SessionEventsSinceResult {
 }
 
 pub const SESSION_EVENT_PAGE_LIMIT: usize = 500;
+// Durable rows (everything but `message.delta`) the cursorless tail keeps in
+// addition to the newest page. Same size as the renderer's protected budget.
+pub const SESSION_TAIL_DURABLE_LIMIT: usize = 2000;
 pub const SESSION_RAW_OUTPUT_PAGE_LIMIT: usize = 100;
 pub const SESSION_CHANGE_PAGE_LIMIT: usize = 500;
 // `session:agent-events` scans the session tail on every pane poll, so the
@@ -1130,6 +1133,29 @@ pub fn delete_event_row(connection: &Connection, row_cursor: i64) -> ArgmaxResul
     Ok(())
 }
 
+/// Drops placeholder launch rows outright, for a child the timeline should
+/// never have shown. Unlike a takeover there is nothing to hand the rows to, so
+/// they leave as deletions the renderer's delta channel carries.
+pub fn delete_synthetic_launch_events(
+    connection: &Connection,
+    session_id: &str,
+    tool_use_id: &str,
+) -> ArgmaxResult<usize> {
+    let deleted = connection
+        .prepare_cached(
+            r#"
+        DELETE FROM events
+        WHERE session_id = ?
+          AND json_extract(payload_json, '$.traceSyntheticLaunch') = 1
+          AND json_extract(payload_json, '$.id') = ?
+        "#,
+        )
+        .map_err(sqlite_error)?
+        .execute((session_id, tool_use_id))
+        .map_err(sqlite_error)?;
+    Ok(deleted)
+}
+
 /// Rewrites placeholder launch rows as cursor-visible tombstones after a real
 /// launch takes over. Re-inserting the same event ids gives them fresh rowids,
 /// so an incremental renderer replaces and hides its stale launch cards.
@@ -1233,10 +1259,11 @@ pub fn persist_raw_output(
 /// Every timeline row for a session, oldest first and unpaged.
 ///
 /// `list_session_events_since` is the renderer's pager: called with no cursor
-/// it returns only the newest `SESSION_EVENT_PAGE_LIMIT` rows. Copying a
-/// transcript (session fork) needs all of it — a long run passes 500 rows
-/// easily, since every tool call and assistant chunk is a row, and paging
-/// would otherwise drop the beginning of the conversation with no warning.
+/// it returns only the newest `SESSION_EVENT_PAGE_LIMIT` rows plus the newest
+/// `SESSION_TAIL_DURABLE_LIMIT` durable rows. Copying a transcript (session
+/// fork) needs all of it — a long run passes those caps easily, since every
+/// tool call and assistant chunk is a row, and paging would otherwise drop the
+/// beginning of the conversation with no warning.
 pub fn list_all_session_events(
     connection: &Connection,
     session_id: &str,
@@ -1850,12 +1877,40 @@ fn list_event_rows(
             Ok(rows)
         }
         None => {
-            let mut statement = connection.prepare_cached("SELECT * FROM (SELECT rowid AS row_cursor, * FROM events WHERE session_id = ? ORDER BY rowid DESC LIMIT ?) ORDER BY row_cursor ASC",
-            )
-            .map_err(sqlite_error)?;
+            // The newest rows plus every durable row back to its own cap. A
+            // flat newest-N tail is mostly streaming deltas: one long thinking
+            // turn (2000+ rows) pushed the user bubble and every earlier turn
+            // out of the initial read, and nothing pages further back. Durable
+            // rows (user messages, tool calls, completions) carry the whole
+            // transcript on their own since `message.completed` holds the full
+            // answer, so keeping them restores the earlier turns at the cost
+            // of their thinking blocks. The cap mirrors the renderer's
+            // protected-row budget in snapshot.ts.
+            let mut statement = connection
+                .prepare_cached(
+                    "SELECT * FROM (
+                    SELECT rowid AS row_cursor, * FROM events WHERE rowid IN (
+                        SELECT rowid FROM (
+                            SELECT rowid FROM events WHERE session_id = ?1
+                            ORDER BY rowid DESC LIMIT ?2
+                        )
+                        UNION
+                        SELECT rowid FROM (
+                            SELECT rowid FROM events
+                            WHERE session_id = ?1 AND type <> 'message.delta'
+                            ORDER BY rowid DESC LIMIT ?3
+                        )
+                    )
+                ) ORDER BY row_cursor ASC",
+                )
+                .map_err(sqlite_error)?;
             let rows = statement
                 .query_map(
-                    (session_id, SESSION_EVENT_PAGE_LIMIT as i64),
+                    (
+                        session_id,
+                        SESSION_EVENT_PAGE_LIMIT as i64,
+                        SESSION_TAIL_DURABLE_LIMIT as i64,
+                    ),
                     event_row_to_timeline_event,
                 )
                 .map_err(sqlite_error)?
@@ -2092,6 +2147,51 @@ mod change_feed_tests {
         assert!(!next.reset_required);
         assert_eq!(ids(&next.events), vec!["e2"]);
         assert!(next.deleted_event_ids.is_empty());
+    }
+
+    #[test]
+    fn initial_tail_keeps_durable_rows_behind_a_delta_flood() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_typed_event(&connection, "prompt", "s1", "user.message", "fix it");
+        insert_typed_event(&connection, "tool", "s1", "command.started", "read");
+        for index in 0..(SESSION_EVENT_PAGE_LIMIT + 10) {
+            insert_typed_event(
+                &connection,
+                &format!("delta-{index}"),
+                "s1",
+                "message.delta",
+                "thinking",
+            );
+        }
+        insert_event(&connection, "answer", "s1", "done");
+
+        let initial =
+            list_session_changes_since(&connection, "s1", None, None, None).expect("initial");
+        let ids = ids(&initial.events);
+        assert_eq!(
+            &ids[..2],
+            ["prompt", "tool"],
+            "durable rows precede the tail"
+        );
+        assert_eq!(ids.last(), Some(&"answer"));
+        assert!(
+            !ids.contains(&"delta-10"),
+            "the oldest deltas still fall out"
+        );
+        assert!(
+            ids.contains(&"delta-11"),
+            "the newest page of deltas is kept"
+        );
+        assert_eq!(ids.len(), SESSION_EVENT_PAGE_LIMIT + 2);
+        assert_eq!(
+            initial.event_cursor,
+            initial
+                .events
+                .last()
+                .and_then(|event| event.row_cursor)
+                .unwrap()
+        );
     }
 
     #[test]
@@ -2422,12 +2522,22 @@ mod change_feed_tests {
     }
 
     fn insert_event(connection: &Connection, id: &str, session_id: &str, message: &str) {
+        insert_typed_event(connection, id, session_id, "message.completed", message);
+    }
+
+    fn insert_typed_event(
+        connection: &Connection,
+        id: &str,
+        session_id: &str,
+        r#type: &str,
+        message: &str,
+    ) {
         persist_timeline_event(
             connection,
             &PersistTimelineEventInput {
                 id: id.to_owned(),
                 session_id: session_id.to_owned(),
-                r#type: "message.completed".to_owned(),
+                r#type: r#type.to_owned(),
                 message: message.to_owned(),
                 payload: serde_json::json!({}),
                 created_at: Some(TIME.to_owned()),

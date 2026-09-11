@@ -1,4 +1,4 @@
-import { Check, Copy, RefreshCw } from "lucide-react";
+import { Check, Copy, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useState, type JSX } from "react";
 import { errorMessage } from "../../../shared/error.js";
 import type { RemoteStatus } from "../../../shared/types.js";
@@ -8,13 +8,17 @@ import { SettingGroup, SettingNote, SettingRow, Toggle } from "./settingsPrimiti
 
 /**
  * Settings → Integrations → Remote access: pair a phone with the local
- * bridge (QR encodes the tailnet URL + token) and configure ntfy push.
+ * bridge (QR encodes the tailnet URL + token) and configure both push sinks —
+ * ntfy through a relay, or APNs straight from this Mac to Apple.
  */
 export function RemoteSettings(): JSX.Element {
   const [status, setStatus] = useState<RemoteStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [portField, setPortField] = useState("");
   const [topicField, setTopicField] = useState("");
+  const [keyPathField, setKeyPathField] = useState("");
+  const [keyIdField, setKeyIdField] = useState("");
+  const [teamIdField, setTeamIdField] = useState("");
   const [note, setNote] = useState<{ kind: "saved" | "error"; message: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -22,6 +26,9 @@ export function RemoteSettings(): JSX.Element {
     setStatus(next);
     setPortField(String(next.port));
     setTopicField(next.ntfyTopic ?? "");
+    setKeyPathField(next.apns.keyPath ?? "");
+    setKeyIdField(next.apns.keyId ?? "");
+    setTeamIdField(next.apns.teamId ?? "");
   }, []);
 
   const loadStatus = useCallback(async (): Promise<void> => {
@@ -93,8 +100,81 @@ export function RemoteSettings(): JSX.Element {
     }
   }, []);
 
+  const saveApnsConfig = useCallback(
+    async (sandbox: boolean): Promise<void> => {
+      if (!window.argmax) return;
+      setBusy(true);
+      setNote(null);
+      try {
+        adoptStatus(
+          await window.argmax.remote.setApnsConfig({
+            keyPath: keyPathField,
+            keyId: keyIdField,
+            teamId: teamIdField,
+            sandbox
+          })
+        );
+        setNote({ kind: "saved", message: "Saved." });
+      } catch (error) {
+        setNote({ kind: "error", message: errorMessage(error) });
+      } finally {
+        setBusy(false);
+      }
+    },
+    [adoptStatus, keyIdField, keyPathField, teamIdField]
+  );
+
+  const removeDevice = useCallback(async (token: string): Promise<void> => {
+    if (!window.argmax) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      const devices = await window.argmax.remote.unregisterPushDevice({ token });
+      setStatus((current) => (current ? { ...current, apns: { ...current.apns, devices } } : current));
+    } catch (error) {
+      setNote({ kind: "error", message: errorMessage(error) });
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  const sendTestPush = useCallback(async (): Promise<void> => {
+    if (!window.argmax) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      const results = await window.argmax.remote.pushTest();
+      const failed = results.filter((result) => !result.ok);
+      setNote(
+        failed.length === 0
+          ? {
+              kind: "saved",
+              message: `Test push sent to ${results.length} device${results.length === 1 ? "" : "s"}.`
+            }
+          : {
+              kind: "error",
+              // Naming the device matters: one retired phone in a list of two
+              // is a very different problem from a bad auth key.
+              message: failed
+                .map((result) => `${result.name}: ${result.error ?? "failed"}`)
+                .join("; ")
+            }
+      );
+    } catch (error) {
+      setNote({ kind: "error", message: `Test push failed: ${errorMessage(error)}` });
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
   const dirty =
     status !== null && (portField !== String(status.port) || topicField !== (status.ntfyTopic ?? ""));
+
+  const apnsDirty =
+    status !== null &&
+    (keyPathField !== (status.apns.keyPath ?? "") ||
+      keyIdField !== (status.apns.keyId ?? "") ||
+      teamIdField !== (status.apns.teamId ?? ""));
 
   return (
     <SettingGroup id="settings-remote" label="Remote access">
@@ -187,6 +267,117 @@ export function RemoteSettings(): JSX.Element {
               />
             }
           />
+
+          <h4 className="settings-remote-subhead">Push notifications</h4>
+
+          <SettingRow
+            label="APNs key file"
+            description="Push straight from this Mac to Apple, for the native Argmax app. Download the .p8 from Apple Developer → Keys and give its full path here."
+            htmlFor="settings-remote-apns-key-path"
+            control={
+              <input
+                id="settings-remote-apns-key-path"
+                className="settings-text-input"
+                placeholder="/Users/you/Keys/AuthKey_ABC1234567.p8"
+                value={keyPathField}
+                onChange={(event) => setKeyPathField(event.target.value)}
+              />
+            }
+          />
+
+          <SettingRow
+            label="Key ID"
+            htmlFor="settings-remote-apns-key-id"
+            control={
+              <input
+                id="settings-remote-apns-key-id"
+                className="settings-text-input settings-remote-port"
+                placeholder="ABC1234567"
+                value={keyIdField}
+                onChange={(event) => setKeyIdField(event.target.value)}
+              />
+            }
+          />
+
+          <SettingRow
+            label="Team ID"
+            htmlFor="settings-remote-apns-team-id"
+            control={
+              <input
+                id="settings-remote-apns-team-id"
+                className="settings-text-input settings-remote-port"
+                placeholder="TEAM123456"
+                value={teamIdField}
+                onChange={(event) => setTeamIdField(event.target.value)}
+              />
+            }
+          />
+
+          <SettingRow
+            label="Apple sandbox"
+            description="Send to Apple's development host. A token from a debug build of the phone app only works there."
+            control={
+              <Toggle
+                ariaLabel="Use the Apple sandbox host"
+                checked={status.apns.sandbox}
+                onChange={(next) => void saveApnsConfig(next)}
+              />
+            }
+          />
+
+          {status.apns.devices.length > 0 ? (
+            <ul className="settings-remote-devices" aria-label="Paired phones">
+              {status.apns.devices.map((device) => (
+                <li key={device.token} className="settings-remote-device">
+                  <span className="settings-remote-device-name">{device.name}</span>
+                  <code className="settings-remote-device-token">{device.token.slice(0, 12)}…</code>
+                  <button
+                    type="button"
+                    className="settings-button"
+                    aria-label={`Remove ${device.name}`}
+                    disabled={busy}
+                    onClick={() => void removeDevice(device.token)}
+                  >
+                    <X size={13} aria-hidden="true" />
+                    <span>Remove</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="settings-note">
+              No phones paired yet. The Argmax app registers itself the first time you open it on a
+              paired phone.
+            </p>
+          )}
+
+          <div className="settings-remote-actions">
+            <button
+              type="button"
+              className="settings-button"
+              disabled={busy || !apnsDirty}
+              onClick={() => void saveApnsConfig(status.apns.sandbox)}
+            >
+              Save push key
+            </button>
+            <button
+              type="button"
+              className="settings-button"
+              disabled={busy || !status.apns.configured || status.apns.devices.length === 0 || apnsDirty}
+              title={
+                !status.apns.configured
+                  ? "Set the key path, key id, and team id first"
+                  : status.apns.devices.length === 0
+                    ? "Pair a phone first"
+                    : apnsDirty
+                      ? "Save your changes first"
+                      : undefined
+              }
+              onClick={() => void sendTestPush()}
+            >
+              Send test push
+            </button>
+          </div>
 
           <div className="settings-remote-actions">
             <button

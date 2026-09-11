@@ -112,9 +112,8 @@
 }
 
 /* Drop-zone overlay — appears inside each cell while a sidebar drag is in
-   flight. A single hit target computes the nearest edge so the user can only
-   split above/right/below/left. Hovered zones tint with the accent color so
-   the user can preview where the drop will land. */
+   flight. Outer quarters select an available split, the center replaces.
+   Hovered zones tint with the accent color and label the drop action. */
 .multigrid-drop-overlay {
   position: absolute;
   inset: 0;
@@ -128,7 +127,21 @@
   background: var(--accent-soft);
   outline: 2px dashed var(--accent);
   outline-offset: -4px;
-  transition: background var(--duration-fast, 140ms) var(--ease, ease);
+  display: grid;
+  place-items: center;
+}
+
+.multigrid-drop-zone[data-position="replace"] {
+  inset: 0;
+}
+
+.multigrid-drop-label {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 600;
 }
 
 /* Edge-only previews. Above/below span the full pane width so row splits read
@@ -137,28 +150,28 @@
   top: 0;
   bottom: 0;
   left: 0;
-  width: 34%;
+  width: 50%;
 }
 
 .multigrid-drop-zone[data-position="right"] {
   top: 0;
   bottom: 0;
   right: 0;
-  width: 34%;
+  width: 50%;
 }
 
 .multigrid-drop-zone[data-position="above"] {
   top: 0;
   left: 0;
   right: 0;
-  height: 34%;
+  height: 50%;
 }
 
 .multigrid-drop-zone[data-position="below"] {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 34%;
+  height: 50%;
 }
 
 .session-grid {
@@ -271,11 +284,34 @@
 
 .session-main-column {
   container-type: inline-size;
-  /* Width levels live on `.app-shell`. The phone never mounts that, and a
-     missing `--chat-content-width` makes this calc invalid so every padding
-     shorthand that reads the gutter collapses — landscape is wide enough to
-     miss the 760px compact override that hides the same hole in portrait. */
-  --session-inline-padding: clamp(var(--session-inline-padding-min, 22px), calc((100% - var(--chat-content-width, 780px)) / 2), 2000px);
+  /* The measure this column centers on. Width levels live on `.app-shell`. The
+     phone never mounts that, and a missing `--chat-content-width` makes the
+     padding calc below invalid so every padding shorthand that reads the gutter
+     collapses — landscape is wide enough to miss the 760px compact override
+     that hides the same hole in portrait. Docking a panel only swaps the
+     measure; the formulas below all read this one value. */
+  --session-measure: var(--chat-content-width, 780px);
+  --session-inline-padding: clamp(var(--session-inline-padding-min, 22px), calc((100% - var(--session-measure)) / 2), 2000px);
+  /* The gutter the workspace card takes over. It only applies while the card
+     is on screen: chat-workspace-card.css swaps it in inside the same
+     container queries that reveal the card, so the transcript slides left to
+     clear the card instead of the card disappearing the moment the centered
+     gutter is a few pixels short. `min()` keeps the centered value while it is
+     the tighter of the two, so nothing moves until the card would overlap; the
+     clamp's floor is where the transcript runs out of room and the card goes. */
+  --session-inline-padding-beside-card: clamp(
+    var(--session-inline-padding-min, 22px),
+    min(
+      calc((100% - var(--session-measure)) / 2),
+      calc(100% - var(--session-measure) - var(--workspace-card-gutter))
+    ),
+    2000px
+  );
+  /* Right-hand space the transcript gave up to the card. Zero until the card
+     claims the gutter, which is the one place that sets it
+     (chat-workspace-card.css). Anything that hangs off the transcript's right
+     edge rather than the pane's adds it. */
+  --workspace-card-shift: 0px;
   display: grid;
   min-width: 0;
   min-height: 0;
@@ -290,15 +326,24 @@
 
 .session-grid.review-open .session-main-column,
 .session-grid.log-open .session-main-column {
-  --session-inline-padding: clamp(var(--session-inline-padding-min, 22px), calc((100% - var(--chat-content-width-docked, 740px)) / 2), 2000px);
+  --session-measure: var(--chat-content-width-docked, 740px);
 }
 
 .session-grid.review-open.log-open .session-main-column {
-  --session-inline-padding: clamp(var(--session-inline-padding-min, 22px), calc((100% - var(--chat-content-width-tight, 680px)) / 2), 2000px);
+  --session-measure: var(--chat-content-width-tight, 680px);
 }
 
 .conversation-surface {
   container-type: inline-size;
+  /* The gutter's other half. Every box the column stacks — the transcript
+     list, the checks lane, the queued card, the composer — closes on this
+     rather than on --session-inline-padding, so the column keeps one right
+     edge and a right-aligned child (the user bubble) never lands under the
+     card. It has to be declared here, not on .session-main-column: a custom
+     property substitutes the values of the element it is declared on, and the
+     shift is set on this surface, so a definition further up would read the
+     ancestor's 0px and never move. */
+  --session-inline-padding-end: calc(var(--session-inline-padding) + var(--workspace-card-shift, 0px));
   /* Height of the fade at the scroll box's top and bottom edges. The list's
      own end padding matches it, so at rest the fade lands on empty space and
      only bites once content is actually scrolling past the edge. Compact
@@ -389,9 +434,11 @@
    is the part that gives up characters when the pane narrows. */
 .session-title[data-titled="true"] > h2 {
   /* Shrinks three times faster than the title: the repo gives up characters
-     first, and in a truly narrow pane it leaves entirely (below). */
+     first, and in a truly narrow pane it leaves entirely (below). Keep
+     min-width at 0 so short repo names hug their text; a ch floor left a
+     visible gap before the slash. */
   flex: 0 3 auto;
-  min-width: 4ch;
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -892,7 +939,7 @@
   position: absolute;
   bottom: var(--space-8);
   left: calc(var(--session-inline-padding) - 12px);
-  width: calc(100% - 2 * var(--session-inline-padding) + 24px);
+  width: calc(100% - 2 * var(--session-inline-padding) - var(--workspace-card-shift, 0px) + 24px);
   height: min(var(--turn-exhale-band, 132px), 100%);
   z-index: -1;
   pointer-events: none;
@@ -916,6 +963,21 @@
     .question-ask
   ) {
   animation-duration: 0s;
+}
+
+/* Until the backfill's last page lands the list stays laid out — the scroll
+   controller keeps pinning its bottom — but is not painted, so the reader
+   never sees the transcript grow page by page. */
+.conversation-scroll[data-loading="true"] > .conversation-list {
+  visibility: hidden;
+}
+
+.conversation-loading {
+  position: absolute;
+  inset: 0;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
 }
 
 .conversation-list {
@@ -944,6 +1006,7 @@
      the edge fade, as the head gap does, so neither fade touches content while
      the list sits at one of its ends. */
   padding: var(--conversation-edge-fade) var(--session-inline-padding) var(--space-8);
+  padding-inline-end: var(--session-inline-padding-end, var(--session-inline-padding));
 }
 
 /* The Thinking line's slot: reserved whether the line is in it or not, so the
@@ -1009,6 +1072,15 @@
 .markdown {
   font-family: var(--font-prose);
   font-size: var(--text-base);
+  /* Prose carries unbreakable tokens — absolute paths, worktree branch names,
+     ids — and a line box that can't hold one lets it run past the container.
+     The chat bubble breaks them on its own `p`; every other markdown surface
+     (a subagent brief, an agent result) had nothing, which on the phone's
+     narrow overlay put the tail of a path off-screen. `break-word` rather than
+     `anywhere` so a token still only breaks when its line can't hold it, and
+     min-content sizing — what a scrolling table measures itself by — is left
+     alone. */
+  overflow-wrap: break-word;
   /* Book-column leading (1.9) floated headings so far from their first line
      that they stopped reading as owning the section below them. 1.74 keeps the
      transcript airy without breaking that attachment. */
@@ -1549,14 +1621,39 @@
   background: transparent;
 }
 
+/* The answered QuestionCard's rule (`.question-ask.is-answered`, 2px
+   `--line-strong`), so a quote and a settled question read as two beats of the
+   same conversation. Drawn as a pseudo inset 0.3em top and bottom: the rule
+   then spans the text rather than the padding box. No fill — a quote is prose,
+   and the one filled prose-adjacent block is `pre`, which is not prose; the
+   accent is reserved for the *live* question, which means "waiting on you".
+   The text stays on `--prose-ink` because the quoted sentence is the payload,
+   not an aside. See docs/design/blockquote. */
 .markdown blockquote {
   position: relative;
   margin: 18px 0;
-  padding: 10px 14px 10px 18px;
-  background: var(--accent-soft);
-  border-left: 3px solid var(--accent);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  color: var(--text-soft);
+  padding: 0 0 0 16px;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  color: var(--prose-ink);
+}
+
+.markdown blockquote::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.3em;
+  bottom: 0.3em;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--line-strong);
+}
+
+/* A quote is one thought, so its paragraphs sit tighter than body prose. The
+   last one is zeroed by the reset below. */
+.markdown blockquote > p {
+  margin-bottom: 10px;
 }
 
 .markdown blockquote > *:first-child {
@@ -1764,9 +1861,11 @@
 .scroll-to-bottom-fab {
   position: absolute;
   bottom: 12px;
-  right: calc(var(--session-inline-padding) + var(--space-1_5));
+  right: calc(var(--session-inline-padding) + var(--workspace-card-shift, 0px) + var(--space-1_5));
   /* Dock to the right edge instead of floating centered — a control on
-     the gutter reads as UI; a centered control reads as orphan content. */
+     the gutter reads as UI; a centered control reads as orphan content. The
+     edge it docks to is the transcript's, so it follows the column left when
+     the workspace card takes the right gutter. */
   align-self: flex-end;
   display: inline-grid;
   place-items: center;

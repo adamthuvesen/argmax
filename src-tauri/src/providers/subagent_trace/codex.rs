@@ -622,6 +622,33 @@ pub(super) struct CodexTraceMeta {
     pub(super) role: Option<String>,
     pub(super) task_name: Option<String>,
     pub(super) started_at: Option<String>,
+    /// One of Codex's own review threads rather than a subagent the agent
+    /// spawned. See [`is_codex_review_thread`].
+    pub(super) review_thread: bool,
+}
+
+/// Codex runs review threads of its own: the guardian that judges a pending
+/// action before it runs, and the reviewer behind `/review`. Each is written as
+/// a child rollout naming the parent thread, exactly like a subagent, but
+/// nobody spawned it and it carries no task of its own — so it does not belong
+/// on the agents list.
+///
+/// The marker moved between CLI versions: older rollouts only tag the thread
+/// through `source.subagent`, newer ones also set `thread_source`.
+fn is_codex_review_thread(payload: &Map<String, Value>) -> bool {
+    if payload.get("thread_source").and_then(Value::as_str) == Some("guardian_review") {
+        return true;
+    }
+    let kind = payload
+        .get("source")
+        .and_then(Value::as_object)
+        .and_then(|source| source.get("subagent"))
+        .and_then(|subagent| match subagent {
+            Value::String(kind) => Some(kind.as_str()),
+            Value::Object(fields) => fields.get("other").and_then(Value::as_str),
+            _ => None,
+        });
+    matches!(kind, Some("guardian" | "review"))
 }
 
 /// Codex writes `session_meta` as the first record of a rollout. Reconciliation
@@ -708,6 +735,7 @@ fn read_codex_trace_file_meta(path: &Path) -> Option<CodexTraceMeta> {
                 .and_then(Value::as_str)
                 .filter(|timestamp| !timestamp.is_empty())
                 .map(str::to_string),
+            review_thread: is_codex_review_thread(payload),
         });
     }
     None
@@ -944,8 +972,10 @@ mod tests {
             parent_tool_use_id: "item_5".to_string(),
             parent_created_at: "2026-09-06T06:50:53.000Z".to_string(),
             provider_conversation_id: Some("parent-thread".to_string()),
+            provider_invocation_id: None,
             workspace_path: None,
             cursor_prompt: None,
+            cursor_background_launch: false,
             child_ids: vec!["child-thread".to_string()],
             codex_runs: vec![run("item_5", "invoke-1"), run("item_3", "invoke-2")],
         };
@@ -1005,8 +1035,10 @@ mod tests {
             parent_tool_use_id: "item_5".to_string(),
             parent_created_at: "2026-09-06T06:50:53.000Z".to_string(),
             provider_conversation_id: Some("parent-thread".to_string()),
+            provider_invocation_id: None,
             workspace_path: None,
             cursor_prompt: None,
+            cursor_background_launch: false,
             child_ids: vec!["child-thread".to_string()],
             codex_runs: vec![CodexNativeRun {
                 child_id: "child-thread".to_string(),

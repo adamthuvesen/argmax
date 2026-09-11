@@ -2,6 +2,11 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "./App.js";
 import {
+  setCachedUsageRemaining,
+  setCachedUsageSummary
+} from "./lib/ledgerPageState.js";
+import { resetLedgerPrefetchForTests } from "./lib/ledgerPrefetch.js";
+import {
   setupAppTestMocks,
   usageRemaining,
   usageRemainingFixture,
@@ -14,16 +19,33 @@ function pickOption(name: string): void {
   fireEvent.click(within(screen.getByRole("option", { name })).getByRole("button"));
 }
 
+/** Opens Hacking from the sidebar, then crosses to Usage on its rail. */
+function crossToUsage(): void {
+  fireEvent.click(screen.getByRole("button", { name: "Hacking" }));
+  const rail = screen.getByRole("complementary", { name: "Hacking" });
+  fireEvent.click(within(rail).getByRole("button", { name: "Usage" }));
+}
+
+/**
+ * The parked Activity view stays mounted beside Usage and words some of its
+ * numbers the same way ("vs the previous 30 days"), so anything that reads a
+ * date or a comparison has to say which page it means.
+ */
+function usagePage(): HTMLElement {
+  return screen.getByRole("heading", { name: "Usage" }).closest(".usage-page") as HTMLElement;
+}
+
 async function openUsage(): Promise<void> {
   render(<App />);
   await screen.findByRole("button", { name: "Build dashboard" });
-  fireEvent.click(screen.getByRole("button", { name: "Usage" }));
+  crossToUsage();
   await screen.findByRole("heading", { name: "Usage" });
 }
 
 describe("App usage", () => {
   afterEach(() => {
     cleanup();
+    resetLedgerPrefetchForTests();
   });
 
   beforeEach(() => {
@@ -33,11 +55,11 @@ describe("App usage", () => {
   it("opens as a standalone page and yields the sidebar column to a back rail", async () => {
     await openUsage();
 
-    expect(screen.getByRole("complementary", { name: "Usage" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Hacking" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Build dashboard" })).not.toBeInTheDocument();
     expect(await screen.findByText("Aug 4 to Sep 2")).toBeInTheDocument();
 
-    const rail = screen.getByRole("complementary", { name: "Usage" });
+    const rail = screen.getByRole("complementary", { name: "Hacking" });
     fireEvent.click(within(rail).getByRole("button", { name: "Back" }));
 
     expect(await screen.findByRole("button", { name: "Build dashboard" })).toBeInTheDocument();
@@ -53,10 +75,10 @@ describe("App usage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Time range" }));
     pickOption("Last 7 days");
 
-    expect(await screen.findByText("Aug 27 to Sep 2")).toBeInTheDocument();
+    expect(await within(usagePage()).findByText("Aug 27 to Sep 2")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Time range" })).toHaveTextContent("Last 7 days");
     expect(usageSummary).toHaveBeenCalledWith(expect.objectContaining({ window: "7d" }));
-    expect(screen.queryByText("Aug 4 to Sep 2")).not.toBeInTheDocument();
+    expect(within(usagePage()).queryByText("Aug 4 to Sep 2")).not.toBeInTheDocument();
   });
 
   it("swaps the hero from dollars to tokens", async () => {
@@ -172,7 +194,7 @@ describe("App usage", () => {
     // $100 against the previous window's $74.50. The chip is the parent of
     // the "vs …" clause; the direction is a word for a reader who cannot see
     // the caret.
-    const chip = (await screen.findByText(/vs the previous 30 days/)).parentElement;
+    const chip = (await within(usagePage()).findByText(/vs the previous 30 days/)).parentElement;
     expect(chip).toHaveTextContent("34%");
     expect(chip).toHaveTextContent("up");
 
@@ -184,7 +206,7 @@ describe("App usage", () => {
     await openUsage();
 
     expect(await screen.findByLabelText("Total cost")).toHaveTextContent("$100.00");
-    expect(screen.queryByText(/vs the previous/)).not.toBeInTheDocument();
+    expect(within(usagePage()).queryByText(/vs the previous/)).not.toBeInTheDocument();
   });
 
   it("breaks the tokens into their four parts and names what the cache saved", async () => {
@@ -278,6 +300,43 @@ describe("App usage", () => {
     expect(await screen.findByLabelText("Total cost")).toHaveTextContent("$100.00");
     const remaining = await screen.findByRole("region", { name: "Remaining on your plans" });
     expect(within(remaining).getByText("Claude remaining usage returned HTTP 429.")).toBeInTheDocument();
+  });
+
+  it("opens the ledger without skeleton when boot prefetch warmed the cache", async () => {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    setCachedUsageSummary("30d", null, timeZone, usageSummaryFixture());
+    setCachedUsageRemaining(usageRemainingFixture(), null);
+
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+    crossToUsage();
+
+    expect(await screen.findByLabelText("Total cost")).toHaveTextContent("$100.00");
+    expect(screen.queryByRole("status", { name: "Loading usage" })).not.toBeInTheDocument();
+  });
+
+  it("reopens with the last numbers instead of skeletoning again", async () => {
+    await openUsage();
+    const usagePage = screen
+      .getByRole("heading", { name: "Usage" })
+      .closest(".usage-page") as HTMLElement;
+    expect(await within(usagePage).findByText("Aug 4 to Sep 2")).toBeInTheDocument();
+
+    const rail = screen.getByRole("complementary", { name: "Hacking" });
+    fireEvent.click(within(rail).getByRole("button", { name: "Back" }));
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    usageSummary.mockClear();
+    crossToUsage();
+
+    const reopened = screen
+      .getByRole("heading", { name: "Usage" })
+      .closest(".usage-page") as HTMLElement;
+    expect(within(reopened).getByText("Aug 4 to Sep 2")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Loading usage" })).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(usageSummary).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("refreshes remaining usage without asking for a new summary", async () => {

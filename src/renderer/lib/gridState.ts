@@ -28,8 +28,8 @@ export type SplitPosition = "replace" | "left" | "right" | "above" | "below";
 
 export const EMPTY_GRID: GridState = { rows: [], focused: null };
 
-export const MAX_ROWS = 3;
-export const MAX_COLS = 3;
+export const MAX_ROWS = 2;
+export const MAX_COLS = 2;
 export const MAX_CELLS = MAX_ROWS * MAX_COLS;
 
 export const WORKSPACE_DRAG_MIME = "application/x-argmax-workspace";
@@ -140,6 +140,28 @@ function insertRow(rows: GridCell[][], at: number, cell: GridCell): GridCell[][]
   return [...rows.slice(0, at), [cell], ...rows.slice(at)];
 }
 
+function insertInAvailableRow(
+  grid: GridState,
+  cell: GridCell,
+  preferred: GridCoord,
+  rowCap: number
+): GridState | null {
+  const rowIndexes = [
+    preferred.row,
+    ...grid.rows.map((_, rowIndex) => rowIndex).filter((rowIndex) => rowIndex !== preferred.row)
+  ];
+  const rowIndex = rowIndexes.find((candidate) => (grid.rows[candidate]?.length ?? rowCap) < rowCap);
+  if (rowIndex === undefined) return null;
+
+  const row = grid.rows[rowIndex];
+  if (!row) return null;
+  const colIndex = rowIndex === preferred.row ? Math.min(preferred.col + 1, row.length) : row.length;
+  return {
+    rows: insertCellInRow(grid.rows, rowIndex, colIndex, cell),
+    focused: { row: rowIndex, col: colIndex }
+  };
+}
+
 /**
  * Open a workspace in the grid. Modifier flags pick the insertion mode:
  *  - none → replace focused cell (or create the first cell when empty).
@@ -147,7 +169,7 @@ function insertRow(rows: GridCell[][], at: number, cell: GridCell): GridCell[][]
  *  - alt → new row immediately below the focused row.
  *
  * If the workspace is already in the grid, the focus moves to that cell —
- * no duplicates. If the requested split would exceed the 3x3 cap, falls
+ * no duplicates. If the requested split would exceed the 2x2 cap, falls
  * back to replacing the focused cell.
  */
 export function openWorkspaceInGrid(
@@ -175,14 +197,7 @@ export function openWorkspaceInGrid(
     };
   }
 
-  if (
-    modifiers.ctrlOrMeta &&
-    canSplit &&
-    focusedRow &&
-    focusedRow.length >= rowCap &&
-    rowCap < MAX_COLS &&
-    grid.rows.length < MAX_ROWS
-  ) {
+  if (modifiers.ctrlOrMeta && canSplit && focusedRow && grid.rows.length < MAX_ROWS) {
     return {
       rows: insertRow(grid.rows, fr + 1, cell),
       focused: { row: fr + 1, col: 0 }
@@ -194,6 +209,11 @@ export function openWorkspaceInGrid(
       rows: insertRow(grid.rows, fr + 1, cell),
       focused: { row: fr + 1, col: 0 }
     };
+  }
+
+  if ((modifiers.ctrlOrMeta || modifiers.alt) && canSplit) {
+    const filled = insertInAvailableRow(grid, cell, grid.focused, rowCap);
+    if (filled) return filled;
   }
 
   return replaceWorkspaceContext(grid, { row: fr, col: fc }, cell);
@@ -231,6 +251,9 @@ export function openLauncherInGrid(
     };
   }
 
+  const filled = insertInAvailableRow(grid, cell, grid.focused, rowCap);
+  if (filled) return filled;
+
   return grid;
 }
 
@@ -246,7 +269,19 @@ export function dropWorkspaceInGrid(
   layout?: { maxColumns?: number }
 ): GridState {
   const existing = findWorkspaceCell(grid, cell.workspaceId);
-  if (existing) return { ...grid, focused: existing };
+  if (existing) {
+    if (target.position !== "replace") return { ...grid, focused: existing };
+    if (existing.row === target.row && existing.col === target.col) return grid;
+
+    const targetCell = grid.rows[target.row]?.[target.col];
+    if (!targetCell) return { ...grid, focused: existing };
+    const rows = replaceCell(
+      replaceCell(grid.rows, existing, targetCell),
+      { row: target.row, col: target.col },
+      grid.rows[existing.row]?.[existing.col] ?? cell
+    );
+    return { rows, focused: { row: target.row, col: target.col } };
+  }
 
   if (grid.rows.length === 0) {
     return { rows: [[cell]], focused: { row: 0, col: 0 } };

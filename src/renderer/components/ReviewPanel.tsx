@@ -5,8 +5,11 @@ import {
   FolderOpen,
   GitBranch,
   Globe,
+  Minus,
   PanelRightClose,
+  Plus,
   SquareTerminal,
+  Undo2,
   X
 } from "lucide-react";
 import {
@@ -70,6 +73,7 @@ import {
   MIN_REVIEW_SPLIT_RATIO,
   isReviewPanelMode
 } from "../lib/reviewLayout.js";
+import { importChunk } from "../lib/importChunk.js";
 import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
 import { closeTerminalTab, getWorkspaceTerminalState, subscribeTerminalTabs } from "../lib/terminalTabs.js";
 import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
@@ -77,9 +81,11 @@ import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js"
 // The Terminal view pulls in @xterm/xterm + addons + xterm CSS — heavy, and
 // only needed once the reader actually asks for a shell. SessionPane warms
 // the same chunk on idle, so the first ⌘J paints immediately.
-const TerminalTabsPanel = lazy(async () => ({
-  default: (await import("./TerminalTabsPanel.js")).TerminalTabsPanel
-}));
+const TerminalTabsPanel = lazy(() =>
+  importChunk(async () => ({
+    default: (await import("./TerminalTabsPanel.js")).TerminalTabsPanel
+  }))
+);
 
 /** What the Agents view needs from the pane that owns the panel. */
 export interface AgentsPanelContext {
@@ -538,9 +544,6 @@ function ReviewPanelPane({
   const [reviewActionPending, setReviewActionPending] = useState(false);
   const [reviewActionError, setReviewActionError] = useState<string | null>(null);
   const reviewActionBusy = useRef(false);
-  const [commitDialogOpen, setCommitDialogOpen] = useState(false);
-  const [commitMessage, setCommitMessage] = useState("");
-  const [commitError, setCommitError] = useState<string | null>(null);
   const panelRef = useRef<HTMLElement>(null);
   const runReviewAction = (action: () => Promise<void>): void => {
     if (reviewActionBusy.current) return;
@@ -785,13 +788,6 @@ function ReviewPanelPane({
         </div>
         <div className="review-toolbar-actions">
           {isChanges ? <ReviewScopePicker review={review} /> : null}
-          {isChanges && review.terminalWorkspaceId ? <button
-            type="button"
-            className="small-icon"
-            aria-label="Commit staged changes"
-            title="Commit staged changes"
-            onClick={() => { setCommitDialogOpen(true); setCommitError(null); }}
-          >Commit</button> : null}
           <button
             className="small-icon"
             type="button"
@@ -820,9 +816,11 @@ function ReviewPanelPane({
         {isBrowser ? (
           review.browserOwner ? (
             <BrowserPanel
+              scopeId={review.browserScopeId}
               url={review.browserRequest?.url ?? DEFAULT_BROWSER_URL}
               requestSeq={review.browserRequest?.seq}
               requestTabId={review.browserRequest?.tabId}
+              requestNewTab={review.browserRequest?.newTab}
               panePosition={panePosition}
               onClose={review.closePanel}
             />
@@ -935,7 +933,11 @@ function ReviewPanelPane({
                                 disabled={reviewActionPending}
                                 onClick={() => runReviewAction(() => review.updateFileIndex(file.path, review.diff!.revision, !file.staged))}
                               >
-                                {file.staged ? "Unstage" : "Stage"}
+                                {file.staged ? (
+                                  <Minus size={14} aria-hidden="true" />
+                                ) : (
+                                  <Plus size={14} aria-hidden="true" />
+                                )}
                               </button>
                               {review.terminalWorkspaceId && file.status !== "??" ? <button
                                 type="button"
@@ -945,7 +947,7 @@ function ReviewPanelPane({
                                 disabled={reviewActionPending}
                                 onClick={() => runReviewAction(() => review.revertFile(file.path, review.diff!.revision))}
                               >
-                                Revert
+                                <Undo2 size={14} aria-hidden="true" />
                               </button> : null}
                             </>
                           ) : null}
@@ -1015,20 +1017,6 @@ function ReviewPanelPane({
           <span className="review-footer-text">{summaryStrip}</span>
         </footer>
       ) : null}
-      {commitDialogOpen ? createPortal(
-        <div className="commit-dialog-overlay" role="dialog" aria-modal="true" aria-label="Commit staged changes">
-          <div className="commit-dialog">
-            <header className="commit-dialog-header"><h2>Commit staged changes</h2><button type="button" aria-label="Close commit dialog" onClick={() => setCommitDialogOpen(false)} disabled={reviewActionPending}>×</button></header>
-            <label className="commit-dialog-message-label" htmlFor={`review-commit-${paneIndex}`}>Commit message</label>
-            <textarea id={`review-commit-${paneIndex}`} className="commit-dialog-message" autoFocus rows={4} value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} />
-            {commitError ? <p className="commit-dialog-feedback commit-dialog-feedback--error" role="alert">{commitError}</p> : null}
-            <div className="commit-dialog-actions"><button type="button" onClick={() => setCommitDialogOpen(false)} disabled={reviewActionPending}>Cancel</button><button type="button" disabled={reviewActionPending || !commitMessage.trim()} onClick={() => {
-              if (reviewActionPending) return;
-              setReviewActionPending(true); setCommitError(null);
-              void review.commitStaged(commitMessage.trim()).then(() => setCommitDialogOpen(false)).catch((error) => setCommitError(error instanceof Error ? error.message : "Commit failed.")).finally(() => setReviewActionPending(false));
-            }}>Commit</button></div>
-          </div>
-        </div>, document.body) : null}
       {isChanges || isAgents || isBrowser || isTerminal ? null : (
         <footer className="review-status-bar" aria-label="File status">
           <span className="review-status-path" title={files.selectedPath ?? sourceLabel}>

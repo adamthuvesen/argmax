@@ -388,6 +388,7 @@ export function AgentsView({
             >
               {tab.multitask ? (
                 <MultitaskPanel
+                  isFocused={Boolean(isFocused && isActive)}
                   pendingMessages={pendingMessages?.[tab.multitask.session.id] ?? []}
                   session={tab.multitask.session}
                   taskLabel={tab.name}

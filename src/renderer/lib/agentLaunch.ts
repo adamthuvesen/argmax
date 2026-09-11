@@ -30,7 +30,11 @@ export function isInternalAgentLaunchMetadata(output: string): boolean {
     // Grok's spawn_subagent receipt. The child keeps running in its own
     // session; this text is the dispatch ack, not the agent's answer.
     normalized.includes("subagent started in background") ||
-    normalized.includes("agent launched successfully")
+    normalized.includes("agent launched successfully") ||
+    // Claude's SendMessage resume receipt. The child is already running; the
+    // JSON is the delivery ack (id + pin), not the agent's answer. Showing it
+    // as the result panel is what a raw `resumedAgentId` blob in the dock is.
+    normalized.includes("resumedagentid")
   );
 }
 

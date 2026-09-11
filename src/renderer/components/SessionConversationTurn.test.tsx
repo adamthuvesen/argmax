@@ -63,6 +63,7 @@ const turn: Extract<RenderItem, { kind: "turn" }> = {
   kind: "turn",
   id: "turn-user-1",
   multitasks: [],
+  steerEvents: [],
   assistantEvents: [
     {
       id: "answer",
@@ -78,7 +79,11 @@ const turn: Extract<RenderItem, { kind: "turn" }> = {
 };
 
 function renderTurn(
-  overrides: { item?: Extract<RenderItem, { kind: "turn" }>; session?: SessionSummary } = {}
+  overrides: {
+    item?: Extract<RenderItem, { kind: "turn" }>;
+    session?: SessionSummary;
+    openRunAt?: string | null;
+  } = {}
 ): { rerender: () => void; container: HTMLElement } {
   const inputRef = createRef<HTMLTextAreaElement>();
   const shouldRefocusInput = { current: false };
@@ -89,6 +94,7 @@ function renderTurn(
       item={overrides.item ?? turn}
       priorItem={null}
       isLatestTurn
+      openRunAt={overrides.openRunAt ?? null}
       session={overrides.session ?? session}
       selectedModel={MODEL}
       workspace={null}
@@ -157,6 +163,27 @@ describe("SessionConversationTurn", () => {
     fireEvent.click(screen.getByRole("button", { name: "Copy reply" }));
 
     expect(writeText).toHaveBeenCalledWith("Done.");
+  });
+
+  it("holds the changed-files card back while the transcript is ahead of a stale session row", () => {
+    // A phone reads session state through a `dashboard:list` round trip while
+    // transcript events arrive on their own feed, so the row can still say
+    // "complete" from before the turn began. The card is a coda to a finished
+    // turn, and used to appear mid-work with every file written so far.
+    collectTurnFileChanges.mockReturnValue([
+      { path: "src/app.ts", kind: "edit", adds: 1, dels: 1, writes: 1 }
+    ] as never);
+
+    const { container } = renderTurn({ openRunAt: "2026-05-12T15:00:12.000Z" });
+    expect(container.querySelector(".turn-changes")).toBeNull();
+
+    cleanup();
+    // Once the run's closing marker lands the card is due, without waiting for
+    // the row to catch up.
+    const settled = renderTurn({ openRunAt: null });
+    expect(settled.container.querySelector(".turn-changes")).not.toBeNull();
+
+    collectTurnFileChanges.mockReturnValue([]);
   });
 
   it("shows a live thought in full, without the answer bubble's paced reveal", () => {

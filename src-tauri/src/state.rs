@@ -5,6 +5,7 @@
 // `tauri::Builder::run`), the prune sweeper, the GH poller. Each owner
 // installs its handle into the matching cell once initialized.
 //
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use tokio::sync::broadcast;
 
@@ -31,6 +32,11 @@ pub type LiveDockBadgeService = DockBadgeService<TauriDockBadgeSink<tauri::Wry>>
 
 pub struct AppState {
     pub startup_timer: Arc<StartupTimer>,
+    /// The resolved app data directory (`ARGMAX_DATA_DIR` honored), installed
+    /// once during setup. Handlers that read or write a profile file reach it
+    /// here rather than through the `AppHandle`, because the remote bridge
+    /// dispatches those same handlers with no `AppHandle` in reach.
+    pub app_data_dir: OnceLock<PathBuf>,
     pub db: OnceLock<Arc<Database>>,
     /// Why the database never opened, when it never opened. A migration abort
     /// (checksum drift, a failed statement) leaves `db` empty and every handler
@@ -57,6 +63,10 @@ pub struct AppState {
     /// The Usage page's transcript scanner. Installed with the database;
     /// the first cold sweep waits for the page to be opened.
     pub usage_scanner: OnceLock<Arc<crate::usage::scanner::UsageScanner>>,
+    /// The Activity page's git-history scanner. Installed with the database
+    /// alongside the usage scanner; the first cold sweep waits for the page to
+    /// be opened.
+    pub activity_scanner: OnceLock<Arc<crate::activity::scanner::ActivityScanner>>,
     pub notifications: OnceLock<Arc<LiveNotificationService>>,
     /// Dock badge showing pending approvals + waiting sessions; updated from
     /// the `dashboard:delta` emit loop and cleared through the same service on
@@ -65,6 +75,10 @@ pub struct AppState {
     /// Phone push via ntfy; installed by `remote::apply` when the config names
     /// a topic, and swapped in place when the topic changes in Settings.
     pub ntfy: std::sync::RwLock<Option<Arc<crate::remote::ntfy::NtfyPublisher>>>,
+    /// Phone push straight to Apple for the native remote app; installed
+    /// by `remote::apply` once the config names an auth key and at least
+    /// one paired device, and swapped in place when either changes.
+    pub apns: std::sync::RwLock<Option<Arc<crate::remote::apns::ApnsPublisher>>>,
     /// Running remote-bridge server task, if any. `remote::apply` aborts and
     /// replaces it when the bridge is toggled or re-configured in Settings.
     pub remote_server: std::sync::Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
@@ -84,6 +98,11 @@ pub struct AppState {
     /// second `synced_sessions` insert trips the provider/external unique
     /// index and aborts the sweep with the duplicate session already persisted.
     pub sync_sweep: Arc<std::sync::Mutex<()>>,
+    /// Most recent destructive chat-history preview. The candidate ids and
+    /// cutoff are held together so confirmation applies exactly what the user
+    /// reviewed, then revalidates those rows before deletion.
+    pub chat_cleanup_plan:
+        std::sync::Mutex<Option<crate::persistence::chat_cleanup::ChatCleanupPlan>>,
     pub routine_runs: crate::routines::scheduler::RoutineRuns,
     /// Skill discovery, held here so its per-provider cache survives across
     /// calls: a fresh registry per `skills:list` re-walks every skill tree.
@@ -105,6 +124,7 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             startup_timer: Arc::default(),
+            app_data_dir: OnceLock::new(),
             db: OnceLock::new(),
             db_open_error: OnceLock::new(),
             approvals: OnceLock::new(),
@@ -120,14 +140,17 @@ impl Default for AppState {
             attachments: OnceLock::new(),
             gh_poller: OnceLock::new(),
             usage_scanner: OnceLock::new(),
+            activity_scanner: OnceLock::new(),
             notifications: OnceLock::new(),
             dock_badge: OnceLock::new(),
             ntfy: std::sync::RwLock::new(None),
+            apns: std::sync::RwLock::new(None),
             remote_server: std::sync::Mutex::new(None),
             remote_events: broadcast::channel(REMOTE_EVENT_CAPACITY).0,
             remote_terminal_events: broadcast::channel(REMOTE_TERMINAL_EVENT_CAPACITY).0,
             sync_report: std::sync::Mutex::new(None),
             sync_sweep: Arc::new(std::sync::Mutex::new(())),
+            chat_cleanup_plan: std::sync::Mutex::new(None),
             routine_runs: Default::default(),
             skills: Arc::new(SkillRegistry::from_env()),
             keep_awake: Arc::default(),
@@ -139,6 +162,17 @@ impl Default for AppState {
 impl AppState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// The app data directory, or the one error every profile-backed handler
+    /// reports when setup never resolved one.
+    pub fn require_app_data_dir(&self) -> crate::error::ArgmaxResult<&Path> {
+        self.app_data_dir
+            .get()
+            .map(PathBuf::as_path)
+            .ok_or_else(|| {
+                crate::error::ArgmaxError::service("APP_DATA_DIR", "app data dir unavailable")
+            })
     }
 
     pub fn with_startup_timer(startup_timer: Arc<StartupTimer>) -> Self {

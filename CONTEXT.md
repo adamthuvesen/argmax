@@ -75,7 +75,7 @@ Reset a session's provider conversation in place. Drops the native resume id, hi
 _Avoid_: Reset, new session, wipe
 
 **Turn**:
-One user message and everything the agent produced in response, up to the next user message. The unit the chat surface renders and groups cards into.
+One user prompt and everything the agent produces in response, grouped together on the chat surface until the next prompt starts new work. Steering messages add guidance within the active turn without ending it or starting another.
 
 **Launched by**:
 The session whose agent started this one with the `argmax` MCP tools, held on the row as `launched_by_session_id` with the chain's depth in `launch_depth`. It names lineage, not hierarchy: a launched session is a top-level sidebar session that outlives its launcher, not a subagent, and it is what the launch caps (two levels deep, ten per session) are counted over.
@@ -173,6 +173,10 @@ A saved marker of a workspace's tree at a moment — a git ref, a patch file, or
 **Learning**:
 A durable fact extracted from a session and stored against its project: a `pitfall`, a `convention`, or a `command`. Carries the session and event it came from, plus whether the user verified it.
 _Avoid_: Memory, note, insight
+
+**Connection**:
+An external capability a provider can make available to a session. Its kind is an MCP server, plugin, or provider connector. Availability and authentication are separate claims: **connected** means the provider health-check succeeded, **needs authentication** means the provider asked for login, and **unknown** means the provider does not report login validity.
+_Avoid_: Integration, tool
 
 ### The app's own plumbing
 

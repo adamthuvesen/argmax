@@ -32,110 +32,201 @@
   animation: surface-in var(--motion-base) var(--ease-out);
 }
 
-/* The card lives in the gutter beside the transcript, never on top of it, so
-   it only appears once that gutter can hold it. The transcript is centered, so
-   both gutters grow together: the pane has to be the measure plus a card
-   column on each side (224px card + 20px inset + 14px clearance = 258px). One
-   threshold per chat width, because the measure is what moves. The container
-   is `.session-main-column` / `.conversation-surface`. Docking a right-hand panel
-   (review or log) narrows the available space, and the card remains visible
-   whenever that remaining space can hold it beside the transcript.
+/* The gutter the card claims: its 224px width, the 20px inset it sits at, and
+   14px of clearance from the transcript. It restates the width on purpose —
+   --workspace-card-width lives on the card, and an ancestor cannot read it —
+   so keep the two in step. The column's gutter formulas read this. */
+.session-main-column {
+  --workspace-card-gutter: 258px;
+}
+
+/* The card lives in the right gutter, never on top of the transcript. While
+   the centered gutter can hold it (224px card + 20px inset + 14px clearance =
+   --workspace-card-gutter) nothing moves. Below that the transcript gives the
+   gutter up and slides left instead of losing the card, one pixel per pixel,
+   until its own left gutter is down to --session-inline-padding-min. That is
+   the threshold each query below names: measure + card gutter + minimum left
+   gutter. Narrower than that there is nowhere left to slide, so the card goes
+   and the transcript recenters. The sliding half lives in
+   --session-inline-padding-beside-card (chat-conversation.css); these queries
+   only decide when it applies, so the card and the shift switch together.
+
+   The container is `.session-main-column` / `.conversation-surface`, the same
+   width either way. Docking a right-hand panel narrows the pane but also the
+   measure, so the card survives to a narrower pane, not a wider one.
 
    Every rule names its chat width outright. A bare `.app-shell` here would
    read as "the default width", but it matches every shell, so widths 4 and 5
    would also take width 3's lower threshold and the card would land on the
    transcript. */
-@container (min-width: 1036px) {
+@container (min-width: 806px) {
   .app-shell[data-chat-width="1"] .workspace-card {
     display: flex;
   }
+
+  .app-shell[data-chat-width="1"] .conversation-surface[data-workspace-card="true"] {
+    --session-inline-padding: var(--session-inline-padding-beside-card);
+    --workspace-card-shift: max(0px, calc(100% - 2 * var(--session-inline-padding) - var(--session-measure)));
+  }
 }
 
-@container (min-width: 1156px) {
+@container (min-width: 926px) {
   .app-shell[data-chat-width="2"] .workspace-card {
     display: flex;
   }
+
+  .app-shell[data-chat-width="2"] .conversation-surface[data-workspace-card="true"] {
+    --session-inline-padding: var(--session-inline-padding-beside-card);
+    --workspace-card-shift: max(0px, calc(100% - 2 * var(--session-inline-padding) - var(--session-measure)));
+  }
 }
 
-@container (min-width: 1296px) {
+@container (min-width: 1066px) {
   .app-shell[data-chat-width="3"] .workspace-card {
     display: flex;
   }
+
+  .app-shell[data-chat-width="3"] .conversation-surface[data-workspace-card="true"] {
+    --session-inline-padding: var(--session-inline-padding-beside-card);
+    --workspace-card-shift: max(0px, calc(100% - 2 * var(--session-inline-padding) - var(--session-measure)));
+  }
 }
 
-@container (min-width: 1456px) {
+@container (min-width: 1226px) {
   .app-shell[data-chat-width="4"] .workspace-card {
     display: flex;
   }
+
+  .app-shell[data-chat-width="4"] .conversation-surface[data-workspace-card="true"] {
+    --session-inline-padding: var(--session-inline-padding-beside-card);
+    --workspace-card-shift: max(0px, calc(100% - 2 * var(--session-inline-padding) - var(--session-measure)));
+  }
 }
 
-@container (min-width: 1616px) {
+@container (min-width: 1386px) {
   .app-shell[data-chat-width="5"] .workspace-card {
     display: flex;
   }
+
+  .app-shell[data-chat-width="5"] .conversation-surface[data-workspace-card="true"] {
+    --session-inline-padding: var(--session-inline-padding-beside-card);
+    --workspace-card-shift: max(0px, calc(100% - 2 * var(--session-inline-padding) - var(--session-measure)));
+  }
 }
 
-/* Docked: one side panel open (review or log). The transcript measure is 40px narrower
-   (--chat-content-width-docked), so the gutter can hold the card 40px earlier. */
-@container (min-width: 996px) {
+/* Docked: one side panel open (review or log). The measure is 40px narrower
+   (--chat-content-width-docked) and the minimum gutter 6px tighter, so the
+   card holds on to a 46px narrower pane. */
+@container (min-width: 760px) {
   .app-shell[data-chat-width="1"] :is(.session-grid.review-open, .session-grid.log-open) .workspace-card {
     display: flex;
   }
+
+  .app-shell[data-chat-width="1"] :is(.session-grid.review-open, .session-grid.log-open) .conversation-surface[data-workspace-card="true"] {
+    --session-inline-padding: var(--session-inline-padding-beside-card);
+    --workspace-card-shift: max(0px, calc(100% - 2 * var(--session-inline-padding) - var(--session-measure)));
+  }
 }
 
-@container (min-width: 1116px) {
+@container (min-width: 880px) {
   .app-shell[data-chat-width="2"] :is(.session-grid.review-open, .session-grid.log-open) .workspace-card {
     display: flex;
   }
+
+  .app-shell[data-chat-width="2"] :is(.session-grid.review-open, .session-grid.log-open) .conversation-surface[data-workspace-card="true"] {
+    --session-inline-padding: var(--session-inline-padding-beside-card);
+    --workspace-card-shift: max(0px, calc(100% - 2 * var(--session-inline-padding) - var(--session-measure)));
+  }
 }
 
-@container (min-width: 1256px) {
+@container (min-width: 1020px) {
   .app-shell[data-chat-width="3"] :is(.session-grid.review-open, .session-grid.log-open) .workspace-card {
     display: flex;
   }
+
+  .app-shell[data-chat-width="3"] :is(.session-grid.review-open, .session-grid.log-open) .conversation-surface[data-workspace-card="true"] {
+    --session-inline-padding: var(--session-inline-padding-beside-card);
+    --workspace-card-shift: max(0px, calc(100% - 2 * var(--session-inline-padding) - var(--session-measure)));
+  }
 }
 
-@container (min-width: 1416px) {
+@container (min-width: 1180px) {
   .app-shell[data-chat-width="4"] :is(.session-grid.review-open, .session-grid.log-open) .workspace-card {
     display: flex;
   }
+
+  .app-shell[data-chat-width="4"] :is(.session-grid.review-open, .session-grid.log-open) .conversation-surface[data-workspace-card="true"] {
+    --session-inline-padding: var(--session-inline-padding-beside-card);
+    --workspace-card-shift: max(0px, calc(100% - 2 * var(--session-inline-padding) - var(--session-measure)));
+  }
 }
 
-@container (min-width: 1576px) {
+@container (min-width: 1340px) {
   .app-shell[data-chat-width="5"] :is(.session-grid.review-open, .session-grid.log-open) .workspace-card {
     display: flex;
   }
+
+  .app-shell[data-chat-width="5"] :is(.session-grid.review-open, .session-grid.log-open) .conversation-surface[data-workspace-card="true"] {
+    --session-inline-padding: var(--session-inline-padding-beside-card);
+    --workspace-card-shift: max(0px, calc(100% - 2 * var(--session-inline-padding) - var(--session-measure)));
+  }
 }
 
-/* Tight: both review and log panels open. The transcript measure is 80px narrower
-   (--chat-content-width-tight), so the gutter can hold the card 80px earlier. */
-@container (min-width: 956px) {
+/* Tight: both review and log panels open. The measure is 80px to 100px
+   narrower (--chat-content-width-tight, per width level) and the minimum
+   gutter 8px tighter again. */
+@container (min-width: 718px) {
   .app-shell[data-chat-width="1"] .session-grid.review-open.log-open .workspace-card {
     display: flex;
   }
+
+  .app-shell[data-chat-width="1"] .session-grid.review-open.log-open .conversation-surface[data-workspace-card="true"] {
+    --session-inline-padding: var(--session-inline-padding-beside-card);
+    --workspace-card-shift: max(0px, calc(100% - 2 * var(--session-inline-padding) - var(--session-measure)));
+  }
 }
 
-@container (min-width: 1076px) {
+@container (min-width: 838px) {
   .app-shell[data-chat-width="2"] .session-grid.review-open.log-open .workspace-card {
     display: flex;
   }
+
+  .app-shell[data-chat-width="2"] .session-grid.review-open.log-open .conversation-surface[data-workspace-card="true"] {
+    --session-inline-padding: var(--session-inline-padding-beside-card);
+    --workspace-card-shift: max(0px, calc(100% - 2 * var(--session-inline-padding) - var(--session-measure)));
+  }
 }
 
-@container (min-width: 1196px) {
+@container (min-width: 958px) {
   .app-shell[data-chat-width="3"] .session-grid.review-open.log-open .workspace-card {
     display: flex;
   }
-}
 
-@container (min-width: 1356px) {
-  .app-shell[data-chat-width="4"] .session-grid.review-open.log-open .workspace-card {
-    display: flex;
+  .app-shell[data-chat-width="3"] .session-grid.review-open.log-open .conversation-surface[data-workspace-card="true"] {
+    --session-inline-padding: var(--session-inline-padding-beside-card);
+    --workspace-card-shift: max(0px, calc(100% - 2 * var(--session-inline-padding) - var(--session-measure)));
   }
 }
 
-@container (min-width: 1516px) {
+@container (min-width: 1118px) {
+  .app-shell[data-chat-width="4"] .session-grid.review-open.log-open .workspace-card {
+    display: flex;
+  }
+
+  .app-shell[data-chat-width="4"] .session-grid.review-open.log-open .conversation-surface[data-workspace-card="true"] {
+    --session-inline-padding: var(--session-inline-padding-beside-card);
+    --workspace-card-shift: max(0px, calc(100% - 2 * var(--session-inline-padding) - var(--session-measure)));
+  }
+}
+
+@container (min-width: 1278px) {
   .app-shell[data-chat-width="5"] .session-grid.review-open.log-open .workspace-card {
     display: flex;
+  }
+
+  .app-shell[data-chat-width="5"] .session-grid.review-open.log-open .conversation-surface[data-workspace-card="true"] {
+    --session-inline-padding: var(--session-inline-padding-beside-card);
+    --workspace-card-shift: max(0px, calc(100% - 2 * var(--session-inline-padding) - var(--session-measure)));
   }
 }
 

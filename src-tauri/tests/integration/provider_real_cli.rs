@@ -167,6 +167,88 @@ async fn real_cursor_acp_turn_and_warm_follow_up() {
     assert_eq!(second_init["transport"], "acp");
 }
 
+// A real Cursor edit has to reach the chat as a file path and a diff.
+//
+// Cursor opens every tool call nameless and reports a write as the file's
+// whole text before and after, so the row used to read "Edited file" with no
+// path, no `+N −N`, and nothing in the changed-files card. The unit tests
+// cover the translation against captured payloads; this one is what notices
+// when Cursor changes the payloads.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires installed, logged-in `cursor-agent`; run manually"]
+async fn real_cursor_edit_reports_its_path_and_diff() {
+    let workspace = tempfile::TempDir::new().expect("temp workspace");
+    std::fs::write(
+        workspace.path().join("greet.ts"),
+        "export function greet() {\n  return \"hello\";\n}\n",
+    )
+    .expect("seed the file the agent will edit");
+
+    let (events, callback) = collect_events();
+    let _handle = RealProviderProcessLauncher::new()
+        .launch(
+            ProviderLaunchInput {
+                provider: ProviderId::Cursor,
+                session_id: uuid::Uuid::new_v4().to_string(),
+                workspace_path: workspace.path().to_path_buf(),
+                prompt: "In greet.ts, change the returned string from \"hello\" to \"hi there\". \
+                         Change nothing else and do not explain."
+                    .to_string(),
+                model_label: "Composer 2.5 (Cursor)".to_string(),
+                model_id: "composer-2.5".to_string(),
+                reasoning_effort: None,
+                fast_mode: false,
+                resume_conversation_id: None,
+                resume_fork: false,
+                permission_mode: PermissionMode::AutoApprove,
+                agent_mode: AgentMode::Auto,
+                cols: 120,
+                rows: 32,
+            },
+            callback,
+        )
+        .await
+        .expect("ACP launcher returns a handle");
+
+    let snapshot = wait_for(
+        &events,
+        |events| {
+            events
+                .iter()
+                .any(|event| event.r#type == ProviderRuntimeEventType::Exit)
+        },
+        Duration::from_secs(180),
+        "Exit lifecycle event",
+    );
+
+    let write = snapshot
+        .iter()
+        .filter(|event| event.r#type == ProviderRuntimeEventType::Output)
+        .flat_map(|event| event.message.lines())
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line.trim()).ok())
+        .filter(|line| line["type"] == "tool_call" && line["subtype"] == "completed")
+        .filter_map(|line| {
+            let args = line["tool_call"]["edit"]["args"].clone();
+            args.get("unified_diff").is_some().then_some(args)
+        })
+        .next()
+        .unwrap_or_else(|| panic!("no completed edit carried a diff; events: {snapshot:?}"));
+
+    assert!(
+        write["path"]
+            .as_str()
+            .is_some_and(|path| path.ends_with("greet.ts")),
+        "the edit row names no file: {write}"
+    );
+    let diff = write["unified_diff"].as_str().expect("a diff");
+    assert!(diff.contains("-  return \"hello\";"), "{diff}");
+    assert!(diff.contains("+  return \"hi there\";"), "{diff}");
+    assert!(
+        !diff.contains("-export function greet() {"),
+        "an unchanged line must not be reported as rewritten: {diff}"
+    );
+}
+
 #[tokio::test]
 #[ignore = "requires installed `claude` CLI + API credit; run manually"]
 async fn real_claude_launcher_streams_json_and_exits_cleanly() {

@@ -21,26 +21,6 @@ const STUCK_VIEWPORT_MAX_PX = 80;
  * Writes are batched into a frame because iOS fires `resize` and `scroll` on
  * every frame of the keyboard animation.
  */
-/**
- * Hold the published viewport where it is.
- *
- * Opening a native picker makes iOS dismiss the keyboard, which grows the
- * visual viewport back to full height. Republishing that mid-gesture drops the
- * composer to the bottom of a screen the picker is covering, and it only
- * returns under the thumb once the sheet closes. Holding the last measurement
- * keeps the composer where the user tapped.
- */
-let measurementPaused = false;
-let republishMeasurement: (() => void) | null = null;
-
-export function setViewportMeasurementPaused(paused: boolean): void {
-  if (measurementPaused === paused) return;
-  measurementPaused = paused;
-  // Catch up in one write on release: the held values are stale by exactly the
-  // keyboard.
-  if (!paused) republishMeasurement?.();
-}
-
 export function useVisualViewportInsets(shellRef: RefObject<HTMLElement | null>): void {
   useEffect(() => {
     const viewport = window.visualViewport;
@@ -86,7 +66,6 @@ export function useVisualViewportInsets(shellRef: RefObject<HTMLElement | null>)
 
     const apply = (): void => {
       frame = 0;
-      if (measurementPaused) return;
       if (standalone) remeasureStuckViewport();
       root.style.setProperty("--mobile-viewport-height", `${viewport.height}px`);
       root.style.setProperty("--mobile-viewport-offset", `${viewport.offsetTop}px`);
@@ -99,11 +78,9 @@ export function useVisualViewportInsets(shellRef: RefObject<HTMLElement | null>)
     };
 
     apply();
-    republishMeasurement = apply;
     viewport.addEventListener("resize", schedule);
     viewport.addEventListener("scroll", schedule);
     return () => {
-      republishMeasurement = null;
       if (frame !== 0) window.cancelAnimationFrame(frame);
       viewport.removeEventListener("resize", schedule);
       viewport.removeEventListener("scroll", schedule);

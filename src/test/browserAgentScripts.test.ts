@@ -11,6 +11,20 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 const SNAPSHOT_JS = readFileSync("src-tauri/src/browser/snapshot.js", "utf8");
 const ACTIONS_JS = readFileSync("src-tauri/src/browser/actions.js", "utf8");
 const DIALOG_JS = readFileSync("src-tauri/src/browser/dialog.js", "utf8");
+const CAPTURE_JS = readFileSync("src-tauri/src/browser/capture.js", "utf8");
+const nativeConsole = {
+  log: console.log,
+  info: console.info,
+  warn: console.warn,
+  error: console.error,
+  debug: console.debug
+};
+const nativeFetch = window.fetch;
+// Stored so each test reinstalls the shipped wrapper on a clean XHR prototype.
+// eslint-disable-next-line @typescript-eslint/unbound-method
+const nativeXhrOpen = XMLHttpRequest.prototype.open;
+// eslint-disable-next-line @typescript-eslint/unbound-method
+const nativeXhrSend = XMLHttpRequest.prototype.send;
 
 interface FoundElement {
   ref: string;
@@ -115,6 +129,30 @@ function installDialogCapture(): void {
   new Function(DIALOG_JS)();
 }
 
+interface CaptureApi {
+  readConsole: (limit?: number, clear?: boolean) => {
+    entries: Array<{ level: string; text: string; url: string }>;
+    truncated: boolean;
+  };
+  readNetwork: (limit?: number, clear?: boolean) => {
+    entries: Array<{
+      kind: string;
+      method: string | null;
+      url: string;
+      status: number | null;
+      ok: boolean | null;
+      error: string | null;
+    }>;
+    truncated: boolean;
+  };
+}
+
+function installCapture(): CaptureApi {
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval, @typescript-eslint/no-unsafe-call -- loading the shipped script text is what is under test
+  new Function(CAPTURE_JS)();
+  return (window as unknown as { __argmaxCapture: CaptureApi }).__argmaxCapture;
+}
+
 beforeAll(() => {
   // jsdom lays nothing out, so every rect is zero and the snapshot's
   // visibility filter would drop the whole document. Give elements a box
@@ -155,6 +193,11 @@ beforeEach(() => {
   document.body.innerHTML = "";
   delete (window as unknown as { __argmax?: AgentApi }).__argmax;
   delete (window as unknown as { __argmaxDialog?: unknown }).__argmaxDialog;
+  delete (window as unknown as { __argmaxCapture?: unknown }).__argmaxCapture;
+  Object.assign(console, nativeConsole);
+  window.fetch = nativeFetch;
+  XMLHttpRequest.prototype.open = nativeXhrOpen;
+  XMLHttpRequest.prototype.send = nativeXhrSend;
 });
 
 describe("snapshot.js", () => {
@@ -839,5 +882,61 @@ describe("dialog.js", () => {
     install();
 
     expect(api().handleDialog(true).error).toContain("only tabs a session opened");
+  });
+});
+
+describe("capture.js", () => {
+  it("records console calls and clears only after returning them", () => {
+    console.log = vi.fn();
+    console.error = vi.fn();
+    const capture = installCapture();
+
+    console.log("server", { ready: true });
+    console.error(new Error("render failed"));
+
+    const first = capture.readConsole(50, true);
+    expect(first.entries).toHaveLength(2);
+    expect(first.entries[0]).toMatchObject({
+      level: "log",
+      text: 'server {"ready":true}'
+    });
+    expect(first.entries[1]?.level).toBe("error");
+    expect(first.entries[1]?.text).toContain("Error: render failed");
+    expect(first.entries[1]?.url).toBe(window.location.href);
+    expect(capture.readConsole().entries).toEqual([]);
+  });
+
+  it("records fetch status, method, URL, and failures without consuming responses", async () => {
+    const response = { status: 404, ok: false };
+    window.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(response)
+      .mockRejectedValueOnce(new Error("offline"));
+    const capture = installCapture();
+
+    await expect(
+      window.fetch(new URL("/missing", window.location.href), { method: "post" })
+    ).resolves.toBe(response);
+    await expect(window.fetch("/offline")).rejects.toThrow("offline");
+
+    const entries = capture.readNetwork().entries;
+    expect(entries).toEqual([
+      expect.objectContaining({
+        kind: "fetch",
+        method: "POST",
+        url: "http://localhost:3000/missing",
+        status: 404,
+        ok: false,
+        error: null
+      }),
+      expect.objectContaining({
+        kind: "fetch",
+        method: "GET",
+        url: "http://localhost:3000/offline",
+        status: null,
+        ok: false
+      })
+    ]);
+    expect(entries[1]?.error).toContain("offline");
   });
 });

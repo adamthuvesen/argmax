@@ -5,6 +5,7 @@ import {
   DEFAULT_BROWSER_URL,
   ensureBrowserTabSync,
   getBrowserOwnerId,
+  getBrowserRequest,
   lastBrowsedUrl,
   releaseBrowserSurface,
   subscribeBrowserOwner
@@ -20,10 +21,15 @@ import { BrowserPanel } from "./BrowserPanel.js";
 export function BrowserPage({ onClose }: { onClose: () => void }): JSX.Element {
   const ownerId = useSyncExternalStore(subscribeBrowserOwner, getBrowserOwnerId);
   const browserOwner = ownerId === BROWSER_PAGE_OWNER_ID;
-  const [request, setRequest] = useState(() => ({
-    url: lastBrowsedUrl(),
-    seq: 1
-  }));
+  const [request, setRequest] = useState(() => {
+    const pending = getBrowserRequest();
+    return {
+      url: pending?.url || lastBrowsedUrl(BROWSER_PAGE_OWNER_ID),
+      seq: pending?.seq ?? 1,
+      tabId: pending?.tabId,
+      newTab: pending?.newTab
+    };
+  });
 
   useLayoutEffect(() => {
     claimBrowserSurface(BROWSER_PAGE_OWNER_ID);
@@ -46,15 +52,23 @@ export function BrowserPage({ onClose }: { onClose: () => void }): JSX.Element {
 
   const showHere = useCallback((): void => {
     claimBrowserSurface(BROWSER_PAGE_OWNER_ID);
-    setRequest((current) => ({ url: lastBrowsedUrl(), seq: current.seq + 1 }));
+    setRequest((current) => ({
+      url: lastBrowsedUrl(BROWSER_PAGE_OWNER_ID),
+      seq: current.seq + 1,
+      tabId: undefined,
+      newTab: undefined
+    }));
   }, []);
 
   return (
     <section className="browser-page" aria-label="Browser">
       {browserOwner ? (
         <BrowserPanel
+          scopeId={BROWSER_PAGE_OWNER_ID}
           url={request.url || DEFAULT_BROWSER_URL}
           requestSeq={request.seq}
+          requestTabId={request.tabId}
+          requestNewTab={request.newTab}
           onClose={onClose}
         />
       ) : (

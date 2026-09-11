@@ -195,7 +195,7 @@ function ProjectSettingsForm({
       <div className="settings-form-footer">
         <button
           type="button"
-          className="primary-action"
+          className="settings-button"
           onClick={() => void save()}
           disabled={saving || !dirty}
         >

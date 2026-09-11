@@ -19,7 +19,7 @@ import { resolveMonoFontStack, resolveTerminalFontSize } from "./fonts.js";
 import type { TerminalDataEvent, TerminalExitEvent } from "../../shared/types.js";
 import { readActiveXtermTheme } from "./xtermTheme.js";
 import { errorMessage } from "../../shared/error.js";
-import { registerTerminalTabDisposer } from "./terminalTabs.js";
+import { claimAgentTerminalReplay, registerTerminalTabDisposer } from "./terminalTabs.js";
 import "@xterm/xterm/css/xterm.css";
 
 const DEFAULT_TERMINAL_COLS = 80;
@@ -90,7 +90,8 @@ const runtimes = new Map<string, RuntimeEntry>();
 export function attachTerminalTab(
   tabId: string,
   workspaceId: string,
-  container: HTMLElement
+  container: HTMLElement,
+  existingTerminalId?: string
 ): TerminalTabRuntime {
   const existing = runtimes.get(tabId);
   if (existing) {
@@ -136,7 +137,7 @@ export function attachTerminalTab(
   const entry: RuntimeEntry = {
     term,
     fit,
-    terminalId: null,
+    terminalId: existingTerminalId ?? null,
     lastSentSize: null,
     host,
     disposed: false,
@@ -167,8 +168,10 @@ export function attachTerminalTab(
 
   const pendingData = new Map<string, string[]>();
   const pendingExits = new Map<string, TerminalExitEvent>();
+  let existingReplayClaimed = !existingTerminalId;
 
   const dataSub = window.argmax!.terminal.onData((event: TerminalDataEvent) => {
+    if (existingTerminalId && !existingReplayClaimed) return;
     if (!entry.terminalId) {
       const chunks = pendingData.get(event.terminalId) ?? [];
       chunks.push(event.data);
@@ -181,6 +184,7 @@ export function attachTerminalTab(
   entry.cleanups.push(dataSub);
 
   const exitSub = window.argmax!.terminal.onExit((event: TerminalExitEvent) => {
+    if (existingTerminalId && !existingReplayClaimed) return;
     if (!entry.terminalId) {
       pendingExits.set(event.terminalId, event);
       return;
@@ -193,6 +197,13 @@ export function attachTerminalTab(
   void Promise.all([dataSub.ready ?? Promise.resolve(), exitSub.ready ?? Promise.resolve()])
     .then(() => {
       if (entry.disposed) return;
+      if (existingTerminalId) {
+        const replay = claimAgentTerminalReplay(existingTerminalId);
+        for (const chunk of replay.chunks) term.write(chunk);
+        if (replay.exit) writeExitLine(term, replay.exit);
+        existingReplayClaimed = true;
+        return { terminalId: existingTerminalId };
+      }
       return window.argmax!.terminal.spawn({ workspaceId, cols, rows });
     })
     .then((result) => {
@@ -253,9 +264,12 @@ export function detachTerminalTab(tabId: string): void {
 }
 
 /** Full teardown: unsubscribe, terminate the PTY, dispose xterm. */
-export function disposeTerminalTab(tabId: string): void {
+export function disposeTerminalTab(tabId: string, terminalId?: string): void {
   const entry = runtimes.get(tabId);
-  if (!entry) return;
+  if (!entry) {
+    if (terminalId) void window.argmax?.terminal.terminate(terminalId);
+    return;
+  }
   runtimes.delete(tabId);
   entry.disposed = true;
   for (const cleanup of entry.cleanups) cleanup();

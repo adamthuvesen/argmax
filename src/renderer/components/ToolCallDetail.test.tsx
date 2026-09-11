@@ -46,6 +46,53 @@ describe("ToolCallDetail", () => {
     expect(screen.queryByText("Raw input")).not.toBeInTheDocument();
   });
 
+  // A Cursor write arrives as a unified diff on the input. The card draws it,
+  // so it must not also appear as an escaped argument above the card.
+  it("draws a provider's diff as a change card, not as an argument", () => {
+    const { container } = render(
+      <ToolCallDetail
+        workspaceCwd="/repo"
+        tool={tool({
+          name: "edit",
+          inputPreview: "/repo/greet.ts",
+          inputFull: {
+            path: "/repo/greet.ts",
+            unified_diff: '@@ -1,3 +1,3 @@\n export function greet() {\n-  return "hello";\n+  return "hi there";\n }'
+          }
+        })}
+      />
+    );
+
+    const card = container.querySelector(".file-change-card");
+    expect(card?.getAttribute("data-kind")).toBe("edit");
+    expect(card?.getAttribute("aria-label")).toBe("Edited /repo/greet.ts");
+    expect(container.querySelector(".tool-call-args")).toBeNull();
+  });
+
+  it.each([
+    ["Codex", "file_change", {
+      changes: [{ path: "/repo/greet.ts", kind: "update", diff: "@@ -1 +1 @@\n-old\n+new" }]
+    }],
+    ["Claude", "Edit", { file_path: "/repo/greet.ts", old_string: "old", new_string: "new" }],
+    ["OpenCode", "edit", { filePath: "/repo/greet.ts", oldString: "old", newString: "new" }],
+    ["Grok", "search_replace", {
+      file_path: "/repo/greet.ts",
+      old_string: "old",
+      new_string: "new",
+      replace_all: false
+    }]
+  ])("does not repeat %s replacement text above its rendered diff", (_provider, name, inputFull) => {
+    render(
+      <ToolCallDetail
+        workspaceCwd="/repo"
+        tool={tool({ name, inputPreview: "/repo/greet.ts", inputFull })}
+      />
+    );
+
+    expect(screen.getByLabelText("Edited /repo/greet.ts")).toBeInTheDocument();
+    expect(screen.queryByRole("definition")).toBeNull();
+  });
+
   it("shows an MCP result's payload instead of its envelope", () => {
     render(
       <ToolCallDetail

@@ -5,7 +5,7 @@ import { dirname, resolve } from "node:path";
 import { readBundledCss } from "../styles/readBundledCss.js";
 import { FilePreview } from "./FilePreview.js";
 import { resolveMarkdownImageSrc } from "../lib/markdownImageSrc.js";
-import { createBrowserTab, getBrowserRequest, getBrowserTabs, resetBrowserTabsForTests, subscribeBrowserRequest } from "../lib/browserPanel.js";
+import { BROWSER_PAGE_OWNER_ID, createBrowserTab, getBrowserRequest, getBrowserTabs, resetBrowserTabsForTests, subscribeBrowserRequest } from "../lib/browserPanel.js";
 import { LINK_TARGET_KEY } from "../lib/linkTarget.js";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
 import { WORKSPACE_ASSET_PROTOCOL_SCHEME } from "../../shared/assetProtocol.js";
@@ -66,7 +66,7 @@ describe("FilePreview", () => {
     });
     try {
       resetBrowserTabsForTests();
-      const existingTab = createBrowserTab("https://example.com/already-open");
+      const existingTab = createBrowserTab(BROWSER_PAGE_OWNER_ID, "https://example.com/already-open");
       const content = `[docs](${href})`;
       render(<FilePreview state={makeState({
         selectedPath: "README.md",
@@ -82,16 +82,12 @@ describe("FilePreview", () => {
       } else {
         expect(opened).toEqual([expectedUrl]);
         expect(openPath).not.toHaveBeenCalled();
-        const newTabId = getBrowserRequest()?.tabId;
-        expect(newTabId).toBeDefined();
-        expect(newTabId).not.toBe(existingTab.id);
-        expect(getBrowserTabs()).toEqual([
-          existingTab,
-          expect.objectContaining({ id: newTabId, url: expectedUrl })
-        ]);
+        expect(getBrowserRequest()).toMatchObject({ url: expectedUrl, newTab: true });
+        expect(getBrowserRequest()?.tabId).toBeUndefined();
+        expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID)).toEqual([existingTab]);
         fireEvent.click(link, modifiers);
-        expect(getBrowserTabs()).toHaveLength(3);
-        expect(getBrowserRequest()?.tabId).not.toBe(newTabId);
+        expect(getBrowserRequest()?.seq).toBeGreaterThan(1);
+        expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID)).toEqual([existingTab]);
       }
     } finally {
       unsubscribe();

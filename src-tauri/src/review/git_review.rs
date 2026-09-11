@@ -524,7 +524,6 @@ pub async fn update_file_index(
     validate_relative_review_path(&repo_path, file_path)?;
     let lock = checkout_write_lock(&repo_path).await?;
     let _guard = lock.lock().await;
-    crate::git::ops::ensure_checkout_idle(database, &repo_path, None)?;
     ensure_current_review_revision(&repo_path, file_path, revision).await?;
     if stage {
         run_git_text(&repo_path, ["add", "--", file_path], GIT_TIMEOUT).await?;
@@ -564,7 +563,6 @@ pub async fn update_hunk_index(
     validate_relative_review_path(&repo_path, file_path)?;
     let lock = checkout_write_lock(&repo_path).await?;
     let _guard = lock.lock().await;
-    crate::git::ops::ensure_checkout_idle(database, &repo_path, None)?;
     if review_revision_at_path(&repo_path).await? != revision {
         return Err(stale_review_error());
     }
@@ -667,7 +665,6 @@ pub async fn revert_unstaged_file(
     validate_relative_review_path(&repo_path, file_path)?;
     let lock = checkout_write_lock(&repo_path).await?;
     let _guard = lock.lock().await;
-    crate::git::ops::ensure_checkout_idle(database, &repo_path, None)?;
     ensure_current_review_revision(&repo_path, file_path, revision).await?;
     let porcelain = run_git_text(
         &repo_path,
@@ -709,7 +706,6 @@ pub async fn revert_unstaged_hunk(
     validate_relative_review_path(&repo_path, file_path)?;
     let lock = checkout_write_lock(&repo_path).await?;
     let _guard = lock.lock().await;
-    crate::git::ops::ensure_checkout_idle(database, &repo_path, None)?;
     ensure_current_review_revision(&repo_path, file_path, revision).await?;
     let displayed = current_working_tree_file_diff(&repo_path, file_path, context_lines).await?;
     let selected_patch = extract_hunk_patch(&displayed, hunk_index)?;

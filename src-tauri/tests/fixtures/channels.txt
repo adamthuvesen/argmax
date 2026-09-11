@@ -37,6 +37,8 @@ session:fork
 session:multitask
 session:clear
 session:suggest-follow-up
+settings:preview-chat-cleanup
+settings:delete-old-chats
 review:list-changed-files
 review:load-diff
 review:stage-file
@@ -60,6 +62,7 @@ workspace:stat-file
 workspace:grep-content
 checks:run
 skills:list
+connections:list
 system:open-path
 system:list-detected-ides
 system:diagnostics
@@ -89,6 +92,11 @@ git:view-or-create-pr
 remote:get-status
 remote:set-config
 remote:test-notification
+remote:set-apns-config
+remote:register-push-device
+remote:unregister-push-device
+remote:push-test
+remote:push-capability
 sync:get-status
 sync:set-config
 sync:run-now
@@ -118,3 +126,4 @@ routines:run-now
 routines:reset-session
 usage:summary
 usage:remaining
+activity:summary

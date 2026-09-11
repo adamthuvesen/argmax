@@ -22,7 +22,7 @@ use crate::ipc::validation::{NonEmptyString, Prompt, SessionId};
 use crate::persistence::database::Database;
 use crate::persistence::routines::{self, RoutineLaunchFields, RoutineRunTarget};
 use crate::persistence::time::now_iso;
-use crate::providers::session_service::ProviderSessionService;
+use crate::providers::session_service::{self, ProviderSessionService};
 use crate::providers::{AgentMode, ProviderId, ReasoningEffort};
 use crate::session_control::{self, LaunchSpec};
 use crate::state::AppState;
@@ -131,6 +131,17 @@ async fn tick(app: &tauri::AppHandle) -> ArgmaxResult<()> {
     Ok(())
 }
 
+/// Whether the attempt landed on the row. `Recorded` covers a launch, a
+/// follow-up, and the failures that book a `last_error`; `Deferred` means the
+/// row was left exactly as it was, still due for a later tick. The tick has
+/// nowhere to report the difference, but `routines:run-now` does — a button
+/// press that starts nothing has to say why.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FireOutcome {
+    Recorded,
+    Deferred,
+}
+
 /// Launches one routine as a top-level session and records the outcome.
 /// Callers hold a RoutineRun claim until this returns. Ticks also launch their
 /// due routines sequentially to bound concurrent worktree creation.
@@ -140,7 +151,7 @@ pub(crate) async fn fire_routine(
     providers: &Arc<ProviderSessionService>,
     mut fields: RoutineLaunchFields,
     default_agent: &crate::default_agent::DefaultAgent,
-) {
+) -> FireOutcome {
     let now = Utc::now();
     let last_run = now_iso();
     let is_once = fields.run_once_at.is_some();
@@ -168,7 +179,7 @@ pub(crate) async fn fire_routine(
                 false,
                 None,
             );
-            return;
+            return FireOutcome::Recorded;
         }
     };
 
@@ -184,13 +195,14 @@ pub(crate) async fn fire_routine(
             false,
             None,
         );
-        return;
+        return FireOutcome::Recorded;
     };
 
     // A `same_session` routine reuses one chat: if a previous run left a live
-    // session behind, the prompt goes in as a follow-up turn — queued behind a
-    // running turn like any other message. A missing session falls through to a
-    // fresh launch below, which re-points the routine at it.
+    // session behind, the prompt goes in as a turn of its own. A chat that is
+    // still mid-turn leaves the row due for the next tick instead. A missing
+    // session falls through to a fresh launch below, which re-points the
+    // routine at it.
     if matches!(fields.run_target, RoutineRunTarget::SameSession) {
         if let Some(session_id) = fields.last_session_id.clone() {
             match send_routine_follow_up(providers, &fields, provider, &session_id).await {
@@ -204,19 +216,32 @@ pub(crate) async fn fire_routine(
                         stays_scheduled.enabled(),
                         None,
                     );
-                    return;
+                    return FireOutcome::Recorded;
+                }
+                // Nothing is recorded and nothing is queued: `next_run_at` is
+                // already in the past, so the row stays due and the wake lands
+                // as its own turn on the first tick after the chat settles.
+                // Ticks that pass while it is busy collapse into that one run,
+                // the same way a backlog missed while the app was closed does.
+                FollowUpOutcome::Busy => {
+                    tracing::debug!(
+                        routine_id = %fields.id,
+                        session_id = %session_id,
+                        "scheduled task is waiting for its chat to finish its turn"
+                    );
+                    return FireOutcome::Deferred;
                 }
                 FollowUpOutcome::Missing => {
                     let connection = database.connection();
                     let current = match routines::find_routine_by_id(&connection, &fields.id) {
                         Ok(current) if current.updated_at == fields.updated_at => current,
-                        _ => return,
+                        _ => return FireOutcome::Recorded,
                     };
                     if routines::set_routine_last_session(&connection, &current.id, None).is_err() {
-                        return;
+                        return FireOutcome::Recorded;
                     }
                     let Ok(current) = routines::find_routine_by_id(&connection, &fields.id) else {
-                        return;
+                        return FireOutcome::Recorded;
                     };
                     fields = routines::routine_launch_fields(&current);
                 }
@@ -230,7 +255,7 @@ pub(crate) async fn fire_routine(
                         stays_scheduled.enabled(),
                         None,
                     );
-                    return;
+                    return FireOutcome::Recorded;
                 }
             }
         }
@@ -239,6 +264,8 @@ pub(crate) async fn fire_routine(
     let spec = LaunchSpec {
         alongside: None,
         project: Some(fields.project_id.clone()),
+        path: None,
+        branch: None,
         prompt: fields.prompt.clone(),
         worktree: matches!(fields.run_target, RoutineRunTarget::Worktree),
         provider,
@@ -297,13 +324,17 @@ pub(crate) async fn fire_routine(
             );
         }
     }
+    FireOutcome::Recorded
 }
 
-/// What a shared-chat follow-up attempt decided. `Missing` means the chat is
-/// gone (deleted session, archived workspace) and the caller should launch a
-/// fresh chat instead; `Failed` is a real error to record with a backoff.
+/// What a shared-chat follow-up attempt decided. `Busy` means a turn is still
+/// running there, so the wake waits for the chat rather than joining the user's
+/// follow-up queue. `Missing` means the chat is gone (deleted session, archived
+/// workspace) and the caller should launch a fresh chat instead; `Failed` is a
+/// real error to record with a backoff.
 enum FollowUpOutcome {
     Sent,
+    Busy,
     Missing,
     Failed(String),
 }
@@ -331,10 +362,9 @@ async fn send_routine_follow_up(
         Err(error) => return FollowUpOutcome::Failed(error.message),
     };
     // The routine's current provider and model ride along, so editing the task
-    // moves the shared chat with it. While a turn runs the switch is ignored
-    // and the message queues under the current provider instead.
+    // moves the shared chat with it.
     let result = providers
-        .send_input(ProvidersSendInput {
+        .send_scheduled_input(ProvidersSendInput {
             session_id,
             input,
             provider: Some(provider),
@@ -350,6 +380,11 @@ async fn send_routine_follow_up(
     match result {
         Ok(_) => FollowUpOutcome::Sent,
         Err(ArgmaxError::RecordNotFound { .. }) => FollowUpOutcome::Missing,
+        Err(ArgmaxError::ServiceError { sub_code, .. })
+            if sub_code == session_service::TURN_IN_FLIGHT =>
+        {
+            FollowUpOutcome::Busy
+        }
         Err(ArgmaxError::ServiceError { sub_code, .. })
             if sub_code == "WORKSPACE_ARCHIVING" || sub_code == "ARCHIVE_ALREADY_PENDING" =>
         {

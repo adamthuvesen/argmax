@@ -2,7 +2,6 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getBrowserOwnerId,
-  getBrowserRequest,
   openInBrowserPanel,
   rememberBrowserUrl,
   requestAgentBrowserOpen,
@@ -50,7 +49,7 @@ describe("useReviewState — browser mode", () => {
   it("restores Browser with the current tab URL instead of the start page", () => {
     const first = renderPanel(true, "session-a");
     act(() => first.result.current.openBrowser());
-    act(() => rememberBrowserUrl("https://example.com/current-page"));
+    act(() => rememberBrowserUrl("https://example.com/current-page", "session-a"));
     first.unmount();
 
     const restored = renderPanel(true, "session-a");
@@ -98,8 +97,8 @@ describe("useReviewState — browser mode", () => {
     expect(claiming.result.current.isPanelOpen).toBe(true);
     expect(claiming.result.current.browserOwner).toBe(true);
     expect(claiming.result.current.browserRequest?.url).toBe("https://argmax.dev");
-    expect(claiming.result.current.browserRequest?.tabId).toBe(getBrowserRequest()?.tabId);
-    expect(claiming.result.current.browserRequest?.tabId).toBeDefined();
+    expect(claiming.result.current.browserRequest?.newTab).toBe(true);
+    expect(claiming.result.current.browserRequest?.tabId).toBeUndefined();
     expect(idle.result.current.mode).toBe("changes");
     expect(idle.result.current.browserOwner).toBe(false);
   });

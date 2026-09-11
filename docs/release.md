@@ -30,6 +30,7 @@ sprite [Mascot.tsx](../src/renderer/components/Mascot.tsx) renders in the app:
 | `assets/Argmax.icon` | Icon Composer source package |
 | `src-tauri/icons/icon.icns` | macOS icon bundle |
 | `src-tauri/icons/Assets.car` | macOS appearance-aware icon asset catalog |
+| `ios/Argmax/Sources/Assets.xcassets` | iPhone app icon, light and dark |
 
 Requires Xcode on macOS. Never manually edit generated icon outputs.
 

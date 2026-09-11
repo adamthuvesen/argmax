@@ -250,7 +250,6 @@ impl GitOpsService {
         }
         let checkout_lock = checkout_write_lock(Path::new(&workspace.path)).await?;
         let _checkout_guard = checkout_lock.lock().await;
-        ensure_checkout_idle(&self.database, Path::new(&workspace.path), None)?;
         let before_head = git_head(&workspace.path).await.ok();
         let output = run_git_text(&workspace.path, ["commit", "-m", message], GIT_TIMEOUT).await?;
         let sha = match git_head(&workspace.path).await {
@@ -518,29 +517,6 @@ impl GitOpsService {
             pr_number: created.map(|row| row.pr_number).or(pr_number),
         })
     }
-}
-
-pub(crate) fn ensure_checkout_idle(
-    database: &Database,
-    checkout: &Path,
-    allowed_session: Option<&str>,
-) -> ArgmaxResult<()> {
-    let canonical = std::fs::canonicalize(checkout)
-        .map_err(|error| ArgmaxError::service("GIT_WORKSPACE_PATH_INVALID", error.to_string()))?;
-    let connection = database.read_connection();
-    let mut statement = connection.prepare_cached(
-        "SELECT w.path FROM sessions s JOIN workspaces w ON w.id=s.workspace_id WHERE s.state IN ('running','waiting','blocked') AND (?1 IS NULL OR s.id != ?1) UNION SELECT w.path FROM goals g JOIN workspaces w ON w.id=g.workspace_id WHERE g.state='active' AND (?1 IS NULL OR g.session_id != ?1)"
-    ).map_err(crate::persistence::sqlite_error)?;
-    let paths = statement
-        .query_map([allowed_session], |row| row.get::<_, String>(0))
-        .map_err(crate::persistence::sqlite_error)?;
-    for path in paths {
-        let path = path.map_err(crate::persistence::sqlite_error)?;
-        if std::fs::canonicalize(path).ok().as_ref() == Some(&canonical) {
-            return Err(ArgmaxError::service("CHECKPOINT_ACTIVE_WRITERS", "Pause every active session and Goal using this checkout before modifying files or the index."));
-        }
-    }
-    Ok(())
 }
 
 async fn commit_selected_files(

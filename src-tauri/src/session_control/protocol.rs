@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::PROTOCOL_VERSION;
 use crate::mcp::browser_bridge::{BrowserOutcome, BrowserRequest};
-use crate::sessions::state::SessionState;
+use crate::sessions::{attention::AttentionState, state::SessionState};
 
 /// One request on the session-control socket.
 ///
@@ -40,6 +40,156 @@ pub enum SessionControlAction {
     GoalSet(GoalSetAction),
     GoalClear,
     Rename(RenameAction),
+    ChecksRun(ChecksRunAction),
+    WorkspaceStatus(WorkspaceStatusAction),
+    WorkspaceDiff(WorkspaceDiffAction),
+    LearningsAdd(LearningsAddAction),
+    LearningsSearch(LearningsSearchAction),
+    TerminalSpawn(TerminalSpawnAction),
+    TerminalRead(TerminalReadAction),
+    Projects(ProjectsAction),
+    ScheduleFollowup(ScheduleFollowupAction),
+    ScheduleList(ScheduleListAction),
+    ScheduleCancel(ScheduleCancelAction),
+    ScheduleResume(ScheduleResumeAction),
+}
+
+/// Which session an inspection is about. Every session-addressable action
+/// carries this and nothing else: omitting it means the caller's own session,
+/// which is the only one it can name without first listing.
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ChecksRunAction {
+    #[serde(default)]
+    pub session: Option<String>,
+    /// One command to run. Omitted, the project's configured check commands
+    /// run in order and the first failure stops the run.
+    #[serde(default)]
+    pub command: Option<String>,
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceStatusAction {
+    #[serde(default)]
+    pub session: Option<String>,
+}
+
+/// A bounded read of what a workspace has changed. `file_path` narrows it to
+/// one file; without it the reply is the changed-file list plus as much of the
+/// combined diff as the character budget allows.
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceDiffAction {
+    #[serde(default)]
+    pub session: Option<String>,
+    #[serde(default)]
+    pub file_path: Option<String>,
+    /// `workingTree` (default), `branch`, or `committed`.
+    #[serde(default)]
+    pub comparison: Option<crate::review::git_review::ReviewComparison>,
+    #[serde(default)]
+    pub max_chars: Option<u32>,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LearningsAddAction {
+    /// `pitfall`, `convention`, or `command`.
+    pub kind: String,
+    pub summary: String,
+    /// Project to file it under. Defaults to the caller's own project.
+    #[serde(default)]
+    pub project: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LearningsSearchAction {
+    /// Free text. Empty returns the project's most-used learnings instead.
+    #[serde(default)]
+    pub query: Option<String>,
+    #[serde(default)]
+    pub project: Option<String>,
+    #[serde(default)]
+    pub limit: Option<u32>,
+}
+
+/// Start a PTY in a workspace that outlives this turn. `command` is typed into
+/// the shell, so a dev server keeps running after the turn ends.
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TerminalSpawnAction {
+    #[serde(default)]
+    pub session: Option<String>,
+    #[serde(default)]
+    pub command: Option<String>,
+}
+
+/// Read a terminal's output, or list what is running in a workspace when no
+/// terminal is named.
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TerminalReadAction {
+    #[serde(default)]
+    pub terminal_id: Option<String>,
+    #[serde(default)]
+    pub session: Option<String>,
+    #[serde(default)]
+    pub max_chars: Option<u32>,
+}
+
+/// No arguments: every registered project, whether or not it has open chats.
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectsAction {}
+
+/// Wake this session with a prompt at a time. One-shot, and always aimed at
+/// the caller: a follow-up is how a chat waits for CI without polling.
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScheduleFollowupAction {
+    pub prompt: String,
+    /// Seconds from now. Mutually exclusive with `at`.
+    #[serde(default)]
+    pub in_seconds: Option<u64>,
+    /// RFC 3339 instant. Mutually exclusive with `in_seconds`.
+    #[serde(default)]
+    pub at: Option<String>,
+    /// Sidebar name for the scheduled task. Defaults to the prompt's first line.
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+/// Every scheduled task in one project: the wakes this chat set, and the
+/// routines the user wrote by hand. Reading them is how a cancel finds an id.
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScheduleListAction {
+    /// Project name, id, or path. Omitted, the caller's own project.
+    #[serde(default)]
+    pub project: Option<String>,
+}
+
+/// Switch a paused scheduled task back on. Its next run is recomputed from
+/// now, so a recurring task resumes at its next occurrence.
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScheduleResumeAction {
+    pub schedule_id: String,
+}
+
+/// Stop one scheduled task from firing, by pausing or deleting it.
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScheduleCancelAction {
+    pub schedule_id: String,
+    /// Pause rather than delete: the row stays in Scheduled Tasks with its
+    /// prompt and schedule intact, and the user can switch it back on.
+    #[serde(default)]
+    pub disable: bool,
 }
 
 /// Start a new top-level session. Provider and model default to the calling
@@ -52,12 +202,30 @@ pub struct LaunchAction {
     pub project: Option<String>,
     #[serde(default)]
     pub worktree: bool,
+    /// Existing checkout of the target project. Any directory
+    /// `git worktree list` reports for it, including the main one.
+    /// Mutually exclusive with `worktree`.
+    #[serde(default)]
+    pub path: Option<String>,
+    /// Git ref the new session should work from. With `worktree`, the isolated
+    /// worktree forks from this ref. With `path`, the checkout must already be
+    /// on this branch.
+    #[serde(default)]
+    pub branch: Option<String>,
     #[serde(default)]
     pub provider: Option<crate::providers::ProviderId>,
     #[serde(default)]
     pub model: Option<String>,
     #[serde(default)]
     pub task_label: Option<String>,
+    /// Thinking effort for a model that takes one. Defaults to the calling
+    /// session's own.
+    #[serde(default)]
+    pub reasoning: Option<crate::providers::ReasoningEffort>,
+    /// How the new session answers permission prompts. Defaults to the
+    /// calling session's own, which is auto-approve unless the user changed it.
+    #[serde(default)]
+    pub permission_mode: Option<crate::providers::PermissionMode>,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
@@ -186,7 +354,245 @@ pub enum SessionControlResult {
     Waited(WaitOutcome),
     Goal(GoalOutcome),
     Renamed(SessionRenamed),
+    Checked(ChecksOutcome),
+    WorkspaceStatus(WorkspaceStatusOutcome),
+    WorkspaceDiff(WorkspaceDiffOutcome),
+    Learned(LearningRecord),
+    LearningsFound(LearningsSearchOutcome),
+    TerminalStarted(TerminalStarted),
+    TerminalOutput(TerminalOutput),
+    Projects(ProjectListOutcome),
+    Followup(ScheduledFollowup),
+    Schedules(ScheduleListOutcome),
+    ScheduleCancelled(ScheduleCancelled),
+    ScheduleResumed(ScheduleResumed),
     Error(SessionControlError),
+}
+
+/// One check command's result, as the runner recorded it.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CheckOutcome {
+    pub command: String,
+    /// `passed`, `failed`, or `cancelled` (which covers a timeout).
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i64>,
+    /// The tail of stdout and stderr, as the checks panel shows it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ChecksOutcome {
+    pub session_id: String,
+    pub workspace_id: String,
+    /// True only when every command ran and passed.
+    pub passed: bool,
+    pub checks: Vec<CheckOutcome>,
+}
+
+/// What Argmax knows about a checkout that `git status` in it cannot say.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceStatusOutcome {
+    pub session_id: String,
+    pub workspace_id: String,
+    pub project_id: String,
+    pub project_name: String,
+    pub task_label: String,
+    pub path: String,
+    pub branch: String,
+    pub base_ref: String,
+    /// False for an isolated worktree Argmax created and can archive; true for
+    /// a checkout the user also works in, which archiving never deletes.
+    pub shared_checkout: bool,
+    pub state: String,
+    pub dirty: bool,
+    pub changed_files: i64,
+    /// Whether `workspace_archive` on this workspace would dispose of a
+    /// worktree, rather than only closing the chat.
+    pub archivable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pr_number: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pr_state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pr_check_state: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ChangedFile {
+    pub path: String,
+    pub status: String,
+    pub additions: usize,
+    pub deletions: usize,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceDiffOutcome {
+    pub session_id: String,
+    pub workspace_id: String,
+    pub comparison: crate::review::git_review::ReviewComparison,
+    pub files: Vec<ChangedFile>,
+    pub diff: String,
+    /// True when the character budget cut the diff short; narrow it with
+    /// `file_path` rather than asking for more.
+    pub truncated: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LearningRecord {
+    pub id: String,
+    pub project_id: String,
+    pub kind: String,
+    pub summary: String,
+    pub verified: bool,
+    pub hits: i64,
+    pub created_at: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LearningsSearchOutcome {
+    pub project_id: String,
+    pub learnings: Vec<LearningRecord>,
+    pub truncated: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TerminalStarted {
+    pub terminal_id: String,
+    pub session_id: String,
+    pub workspace_id: String,
+    pub path: String,
+    /// The command line that was typed into the shell, when one was given.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+}
+
+/// One PTY in a workspace. `running` is false once its shell has exited, which
+/// is how "is the dev server still up" is answered.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TerminalSummary {
+    pub terminal_id: String,
+    pub running: bool,
+    pub started_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TerminalOutput {
+    pub workspace_id: String,
+    /// Every terminal this workspace has, newest first.
+    pub terminals: Vec<TerminalSummary>,
+    /// The terminal `output` came from, when one was read.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub terminal_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    /// True when older output was dropped to fit the budget.
+    pub truncated: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectEntry {
+    pub project_id: String,
+    pub name: String,
+    pub repo_path: String,
+    pub current_branch: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_branch: Option<String>,
+    /// The commands `checks_run` runs when it is given no command.
+    pub check_commands: Vec<String>,
+    pub active_sessions: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latest_activity_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectListOutcome {
+    pub projects: Vec<ProjectEntry>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScheduledFollowup {
+    pub followup_id: String,
+    pub session_id: String,
+    pub name: String,
+    /// When the prompt lands, RFC 3339. The scheduler ticks every 30 seconds,
+    /// so a wake can be that much late but never early.
+    pub run_at: String,
+}
+
+/// One scheduled task as an agent reads it. `sessionId` is the chat a
+/// same-chat task fires into: equal to the caller's own id, this row is a
+/// wake that chat set for itself.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScheduleEntry {
+    pub schedule_id: String,
+    pub name: String,
+    pub prompt: String,
+    pub enabled: bool,
+    /// Exactly one of the two: a cron expression for a recurring task, or an
+    /// RFC 3339 instant for a one-shot.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cron_expr: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run_once_at: Option<String>,
+    /// `new_session`, `same_session`, or `worktree`.
+    pub run_target: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_run_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_run_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScheduleListOutcome {
+    pub project_id: String,
+    pub schedules: Vec<ScheduleEntry>,
+    pub truncated: bool,
+}
+
+/// What a cancel left behind. `deleted` separates the two endings: the row is
+/// gone, or it is still there and switched off.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScheduleCancelled {
+    pub schedule_id: String,
+    pub name: String,
+    pub deleted: bool,
+}
+
+/// What a resume left behind. `nextRunAt` is absent for a recurring schedule
+/// with no future occurrence left.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScheduleResumed {
+    pub schedule_id: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_run_at: Option<String>,
 }
 
 /// Attach a completion condition to the calling session. The condition is the
@@ -221,6 +627,8 @@ pub struct LaunchedSession {
     pub workspace_id: String,
     pub project_id: String,
     pub project_name: String,
+    pub path: String,
+    pub branch: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -276,6 +684,10 @@ pub struct SessionListEntry {
     pub task_label: String,
     pub provider: String,
     pub state: SessionState,
+    /// Whether a person needs to look at this session, and why. Anything but
+    /// `normal` is waiting on a human: an approval, an unanswered question, a
+    /// failure, or a finished turn nobody has reviewed.
+    pub attention: AttentionState,
     pub last_activity_at: String,
     /// The session that launched this one, when an agent did.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -290,6 +702,9 @@ pub struct SessionStatus {
     pub provider: String,
     pub model_id: String,
     pub state: SessionState,
+    /// Whether a person needs to look at this session, and why — see
+    /// [`SessionListEntry::attention`].
+    pub attention: AttentionState,
     /// Seconds since the current turn's prompt landed. `None` once the session
     /// has settled — there is no turn running to age.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -467,13 +882,23 @@ mod tests {
                 prompt: "Do it".to_string(),
                 project: Some("Argmax".to_string()),
                 worktree: true,
+                path: None,
+                branch: Some("main".to_string()),
                 provider: Some(ProviderId::Claude),
                 model: Some("claude-opus-5".to_string()),
                 task_label: Some("Side quest".to_string()),
+                reasoning: Some(crate::providers::ReasoningEffort::High),
+                permission_mode: Some(crate::providers::PermissionMode::AskEachTime),
             }),
         };
         let encoded = serde_json::to_value(&request).expect("encode");
         assert_eq!(encoded["action"]["launch"]["provider"], "claude");
+        assert_eq!(encoded["action"]["launch"]["reasoning"], "high");
+        assert_eq!(encoded["action"]["launch"]["branch"], "main");
+        assert_eq!(
+            encoded["action"]["launch"]["permissionMode"],
+            "ask-each-time"
+        );
         assert_eq!(
             serde_json::from_value::<SessionControlRequest>(encoded).expect("decode"),
             request
@@ -494,6 +919,54 @@ mod tests {
             }),
             SessionControlAction::Rename(RenameAction {
                 task_label: "Ship the fix".to_string(),
+            }),
+            SessionControlAction::ChecksRun(ChecksRunAction {
+                session: Some("s1".to_string()),
+                command: Some("npm test".to_string()),
+                timeout_ms: None,
+            }),
+            SessionControlAction::WorkspaceStatus(WorkspaceStatusAction {
+                session: Some("s1".to_string()),
+            }),
+            SessionControlAction::WorkspaceDiff(WorkspaceDiffAction {
+                session: None,
+                file_path: Some("src/main.rs".to_string()),
+                comparison: Some(crate::review::git_review::ReviewComparison::Branch),
+                max_chars: Some(4000),
+            }),
+            SessionControlAction::LearningsAdd(LearningsAddAction {
+                kind: "pitfall".to_string(),
+                summary: "The bridge check runs before typecheck".to_string(),
+                project: None,
+            }),
+            SessionControlAction::LearningsSearch(LearningsSearchAction {
+                query: Some("bridge".to_string()),
+                project: None,
+                limit: Some(5),
+            }),
+            SessionControlAction::TerminalSpawn(TerminalSpawnAction {
+                session: None,
+                command: Some("npm run dev".to_string()),
+            }),
+            SessionControlAction::TerminalRead(TerminalReadAction {
+                terminal_id: Some("t1".to_string()),
+                session: None,
+                max_chars: None,
+            }),
+            SessionControlAction::Projects(ProjectsAction {}),
+            SessionControlAction::ScheduleFollowup(ScheduleFollowupAction {
+                prompt: "Check the CI run".to_string(),
+                in_seconds: Some(300),
+                at: None,
+                name: None,
+            }),
+            SessionControlAction::ScheduleList(ScheduleListAction { project: None }),
+            SessionControlAction::ScheduleCancel(ScheduleCancelAction {
+                schedule_id: "routine-1".to_string(),
+                disable: true,
+            }),
+            SessionControlAction::ScheduleResume(ScheduleResumeAction {
+                schedule_id: "routine-1".to_string(),
             }),
         ] {
             let encoded = serde_json::to_string(&action).expect("encode");

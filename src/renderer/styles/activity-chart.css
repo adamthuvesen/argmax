@@ -1,0 +1,311 @@
+/* ============================================================
+   Activity charts — the stacked area, the repository sparks,
+   and the cadence small multiples. All hand-rolled SVG
+   (Argmax ships no chart library), all with their geometry in
+   SVG attributes, so everything visual lives here.
+
+   The stacked chart's colours come from --activity-series,
+   which activity-page.css sets once per slot; the cadence bars
+   and the heatmap are single-series, so they take --sage.
+   ============================================================ */
+
+/* The plot states its own height rather than taking whatever the card has
+   left over: nothing shares a row with it, and an unbounded plot on a tall
+   window pushed the repository list below the fold for nothing. */
+.activity-chart {
+  position: relative;
+  min-width: 0;
+  flex: none;
+  height: clamp(200px, 26vh, 268px);
+}
+
+.activity-chart-svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+
+.activity-chart-svg:focus-visible {
+  outline: none;
+  border-radius: var(--radius-md);
+  box-shadow: var(--ring);
+}
+
+/* ---------- Axes and grid: recessive by construction ---------- */
+
+.activity-chart-gridline {
+  stroke: var(--line-soft);
+  stroke-width: 1;
+}
+
+.activity-chart-gridline[data-baseline="true"] {
+  stroke: var(--line);
+}
+
+.activity-chart-tick,
+.activity-chart-xlabel {
+  fill: var(--muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-chart-xlabel {
+  letter-spacing: 0.04em;
+}
+
+/* ---------- Bands ---------- */
+
+/* The bands stack, so each fill is opaque enough to separate from its
+   neighbour but stays well under its own stroke: the top edge is what the
+   reader traces, and a fill at full strength turns five bands into one slab.
+   The `fill` itself is a gradient reference set on the element, because a
+   gradient id is geometry, not style. */
+.activity-chart-area {
+  stroke: none;
+}
+
+.activity-chart-area-stop {
+  stop-color: var(--activity-series);
+}
+
+.activity-chart-area-stop[data-stop="top"] {
+  stop-opacity: 0.34;
+}
+
+.activity-chart-area-stop[data-stop="bottom"] {
+  stop-opacity: 0.16;
+}
+
+.activity-chart-line {
+  fill: none;
+  stroke: var(--activity-series);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.activity-chart-point {
+  fill: var(--activity-series);
+  stroke: var(--panel);
+  stroke-width: 2;
+}
+
+/* ---------- Hover / keyboard cursor ---------- */
+
+.activity-chart-crosshair {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+/* One marker, on the stack's top edge: the bands are cumulative, so a dot per
+   band would sit on boundaries the reader is not reading. */
+.activity-chart-marker {
+  fill: var(--text);
+  stroke: var(--panel);
+  stroke-width: 1.75;
+}
+
+.activity-chart-tooltip-box {
+  fill: var(--panel);
+  stroke: var(--line);
+  stroke-width: 0.5;
+  filter: drop-shadow(0 8px 20px rgb(0 0 0 / 12%));
+}
+
+.activity-chart-tooltip-title {
+  fill: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.activity-chart-tooltip-name {
+  fill: var(--text-soft);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+}
+
+.activity-chart-tooltip-value {
+  fill: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-chart-tooltip-empty {
+  fill: var(--muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+}
+
+.activity-chart-tooltip-dot {
+  fill: var(--activity-series);
+}
+
+.activity-chart-tooltip-rule {
+  stroke: var(--line);
+  stroke-width: 0.5;
+}
+
+/* ---------- Legend ---------- */
+
+/* The chart's key, in the card head beside its title. Decorative: the numbers
+   live in the chart's clipped table, and the repository rows below already
+   name every colour to a screen reader. */
+.activity-chart-legend {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.activity-chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1_5);
+  font-size: var(--text-xs);
+  color: var(--muted-strong);
+  white-space: nowrap;
+}
+
+/* ---------- Repository sparklines ---------- */
+
+.activity-spark {
+  display: block;
+  width: 84px;
+  height: 20px;
+  overflow: visible;
+}
+
+.activity-spark-line {
+  fill: none;
+  stroke: var(--activity-series);
+  stroke-width: 1.25;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.activity-spark-area {
+  fill: var(--activity-series);
+  opacity: 0.1;
+  stroke: none;
+}
+
+.activity-spark-dot {
+  fill: var(--activity-series);
+}
+
+/* ---------- Cadence: two small multiples of one bar routine ---------- */
+
+.activity-cadence-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+@media (max-width: 1080px) {
+  .activity-cadence-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.activity-multiple {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.activity-multiple + .activity-multiple {
+  padding-left: var(--space-6);
+  border-left: 0.5px solid var(--line);
+}
+
+@media (max-width: 1080px) {
+  .activity-multiple + .activity-multiple {
+    padding-left: 0;
+    padding-top: var(--space-5);
+    border-left: 0;
+    border-top: 0.5px solid var(--line);
+  }
+}
+
+.activity-multiple-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.activity-multiple-title {
+  font-size: var(--text-sm);
+  color: var(--text-soft);
+}
+
+.activity-multiple-peak {
+  font-size: var(--text-xs);
+  color: var(--muted-strong);
+}
+
+.activity-multiple-peak strong {
+  font-weight: 500;
+  color: var(--sage);
+}
+
+.activity-bars {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* The bars are the field and the peak is the reading, so only one of them
+   carries colour. */
+.activity-bars-bar {
+  fill: color-mix(in oklab, var(--muted) 55%, var(--panel));
+}
+
+.activity-bars [data-peak="true"] .activity-bars-bar {
+  fill: var(--sage);
+}
+
+.activity-bars-base {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.activity-bars-value,
+.activity-bars-label {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-bars-value {
+  fill: var(--muted-strong);
+}
+
+.activity-bars-label {
+  fill: var(--muted);
+}
+
+.activity-bars [data-peak="true"] .activity-bars-value {
+  fill: var(--sage);
+}
+
+/* The sentence the two charts add up to, under both of them. */
+.activity-cadence-reading {
+  margin: 0;
+  padding-top: var(--space-4);
+  border-top: 0.5px solid var(--line);
+  max-width: 78ch;
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--text-soft);
+}

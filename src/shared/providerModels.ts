@@ -509,8 +509,10 @@ export function __resetUnknownModelLog(): void {
 
 /**
  * The model's context-window size in tokens from its definition, or null when
- * unknown. Codex reports its own window on the session row; Claude and Cursor
- * fall back to this.
+ * unknown. Codex can replace this with a live `model_context_window` on the
+ * session row; other providers never write that column, so they always fall
+ * back here — including after a switch away from Codex that left a stale
+ * window behind.
  */
 export function contextWindowForModel(modelId: string): number | null {
   const id = normalizeModelId(modelId);

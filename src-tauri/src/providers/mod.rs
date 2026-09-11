@@ -20,6 +20,7 @@ pub mod pricing;
 pub mod runtime;
 pub mod session_service;
 pub mod subagent_trace;
+pub mod unified_diff;
 pub mod verification;
 
 use std::path::PathBuf;

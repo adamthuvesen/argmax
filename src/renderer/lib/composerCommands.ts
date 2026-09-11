@@ -36,14 +36,22 @@ export function dispatchedCommandNames({
   goalEnabled: boolean;
 }): Set<string> {
   const names = new Set(["clear"]);
-  if (hasSession && canMultitask) names.add("multitask");
-  if (hasSession && goalEnabled) names.add("goal");
+  if (hasSession) {
+    names.add("mcp");
+    if (canMultitask) names.add("multitask");
+    if (goalEnabled) names.add("goal");
+  }
   return names;
 }
 
 /** True when the composer draft is exactly `/clear` (optional trailing space). */
 export function isClearCommand(input: string): boolean {
   return /^\/clear\s*$/i.test(input.trim());
+}
+
+/** True when the composer draft is exactly `/mcp` (optional trailing space). */
+export function isMcpCommand(input: string): boolean {
+  return /^\/mcp\s*$/i.test(input.trim());
 }
 
 /** Badge on a skill row, saying where the skill was discovered. */

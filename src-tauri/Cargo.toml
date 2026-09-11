@@ -70,6 +70,31 @@ tower-http = { version = "0.6", features = ["compression-gzip"] }
 # fired from a throwaway thread. Small on purpose — reqwest would drag a
 # second HTTP/TLS stack onto the boot path for a fire-and-forget request.
 ureq = "2"
+# Phone push via APNs (src/remote/apns.rs). Apple requires HTTP/2, which ureq
+# above cannot speak, so this rides the reqwest client tauri-plugin-updater
+# already pulls in — `http2` adds the `h2` crate and nothing else, and the
+# rustls stack and roots are the ones already in the tree (the provider is
+# not — see the `rustls` entry below). The
+# maintained `a2` APNs crate was the other candidate; it pins rustls ^0.22 and
+# hyper-rustls ^0.26 against the tree's 0.23/0.27, so it would have compiled a
+# second, older TLS stack into the binary (9 new crates), and its `APS` struct
+# carries neither `thread-id` nor `interruption-level`, both of which we send.
+reqwest = { version = "0.13", default-features = false, features = [
+    "http2",
+    "json",
+    "rustls-no-provider",
+] }
+# `rustls-no-provider` above means nothing picks a default `CryptoProvider`
+# automatically; reqwest's client builder panics rather than erroring when
+# none is installed. `run()` installs the `ring` one explicitly, once, before
+# any client (APNs today) can be built.
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+# ES256 signing for the APNs provider token. Already in the tree as rustls'
+# crypto provider; `EcdsaKeyPair` with `ECDSA_P256_SHA256_FIXED_SIGNING` emits
+# the raw r||s pair a JWT wants, with no DER unwrapping in between.
+ring = "0.17"
+# base64url for the same JWT, and PKCS#8 out of Apple's `.p8` PEM wrapper.
+base64 = "0.22"
 # Pairing QR code in Settings → Remote access, rendered straight to SVG.
 # svg-only: the image feature would pull in an unused raster stack.
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
@@ -97,6 +122,11 @@ notify = "6"
 tempfile = "3"
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
+# The Activity page cuts its day buckets on an IANA zone the renderer names,
+# not on the machine zone `chrono::Local` gives (which is all the Usage page
+# needs). `default-features = false` keeps the crate to `std` — no serde impls,
+# no `Local`-shim feature we would never call.
+chrono-tz = { version = "0.10", default-features = false, features = ["std"] }
 # Cron expression parsing/iteration for the scheduled-task scheduler. The
 # `cron` dialect (sec min hour dom month dow [year]) is what the renderer
 # generates from its friendly schedule controls.
@@ -104,7 +134,7 @@ cron = "0.15"
 sha2 = "0.11"
 regex = "1"
 walkdir = "2"
-nix = { version = "0.31", features = ["signal", "fs", "term", "process", "poll"] }
+nix = { version = "0.31", features = ["signal", "fs", "term", "process", "poll", "resource"] }
 phf = { version = "0.13", features = ["macros"] }
 
 # `tauri-specta` emits TypeScript bindings from the Rust command surface

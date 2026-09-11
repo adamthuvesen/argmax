@@ -1,0 +1,473 @@
+/* ============================================================
+   Activity — a standalone page, and Usage's sibling: same
+   shell (rail in the sidebar column, empty topbar for drag,
+   the title in the content column), same measure, same card
+   shape, same picker chrome. The two answer one question from
+   two ends — what the agents cost, and what came out the other
+   end — so a reader crossing between them should not feel a
+   change of design.
+
+   Every figure on the page is set in tabular numerals, and
+   every colour, radius, and step comes from tokens.css.
+   ============================================================ */
+
+:root {
+  /* The same dashboard measure Usage uses: a full-width stacked chart and a
+     six-column repository row do not fit a form's column. */
+  --activity-measure: 1180px;
+}
+
+.activity-main {
+  display: grid;
+  gap: var(--space-6);
+  align-content: start;
+  width: min(100%, var(--activity-measure));
+  min-width: 0;
+  margin-inline: auto;
+  padding: 34px clamp(var(--space-6), 3vw, 40px) 72px;
+  font-variant-numeric: tabular-nums;
+  animation: activity-rise var(--motion-base) var(--ease-out);
+}
+
+@keyframes activity-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activity-main {
+    animation: none;
+  }
+}
+
+/* ---------- Topbar: title and range left, controls right ---------- */
+
+.activity-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.activity-titles {
+  display: grid;
+  gap: var(--space-1_5);
+  min-width: 0;
+}
+
+/* The window's dates, how many repositories carried it, which identity the
+   commits were matched on, and when the clones were last walked. All four
+   qualify every figure below them, so they sit with the range rather than as
+   footnotes under whichever card they came from. */
+.activity-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1_5);
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--muted-strong);
+}
+
+.activity-range-quiet {
+  color: var(--muted);
+}
+
+.activity-dot-sep {
+  color: var(--muted);
+}
+
+.activity-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.activity-controls .settings-picker {
+  width: auto;
+  min-width: 0;
+  margin-left: 0;
+}
+
+.activity-controls .settings-picker-trigger {
+  height: 100%;
+  min-height: 28px;
+  padding: 0 var(--space-2) 0 var(--space-2_5);
+}
+
+.activity-controls .settings-picker-trigger > .activity-series-dot,
+.activity-controls .settings-picker-trigger > svg {
+  flex: none;
+}
+
+/* The picker's menu hangs off a trigger that hugs its label, so it keeps a
+   width of its own rather than the trigger's. Twelve repository names need
+   more room than five provider names. */
+.activity-controls .settings-picker-popover {
+  min-width: 220px;
+}
+
+.activity-controls .project-picker-item > .activity-series-dot {
+  margin-right: 1px;
+}
+
+/* ---------- Cards ---------- */
+
+/* Every card on the page is one shape: a bordered panel with its title in the
+   top-left corner and its small print in the top-right. */
+.activity-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+  padding: var(--space-6);
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+.activity-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 28px;
+}
+
+.activity-card-title {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.activity-card-note {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.activity-card-note strong {
+  font-weight: 500;
+  color: var(--text);
+}
+
+/* A small-caps label that names the block under it. Same voice everywhere on
+   the page, so a card reads as parts of one thing. */
+.activity-eyebrow {
+  margin: 0;
+  font-size: var(--text-2xs);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* The ledgers sit side by side: pull requests need the width, reviews are a
+   column of small figures. */
+.activity-two-col {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 336px;
+  gap: var(--space-6);
+  align-items: start;
+  min-width: 0;
+}
+
+/* Below the measure the reviews column stops paying for itself: a 336px card
+   beside a squeezed ledger leaves the titles at three words each. */
+@media (max-width: 1080px) {
+  .activity-two-col,
+  .activity-skeleton-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------- Shared series colour tokens ---------- */
+
+/* One rule sets the colour every mark on the page reads — the dot, the band,
+   the bar, the repository chip — so they can never drift apart. The five
+   values are the Usage page's provider palette, which was validated for CVD
+   separation on both surfaces in both themes; a repository takes a slot by
+   its rank in commits, and everything past the fifth shares one muted tail
+   rather than inventing a sixth colour nobody can tell from the fifth. */
+.activity-series[data-slot="1"] {
+  --activity-series: var(--usage-claude);
+}
+
+.activity-series[data-slot="2"] {
+  --activity-series: var(--usage-codex);
+}
+
+.activity-series[data-slot="3"] {
+  --activity-series: var(--usage-opencode);
+}
+
+.activity-series[data-slot="4"] {
+  --activity-series: var(--usage-cursor);
+}
+
+.activity-series[data-slot="5"] {
+  --activity-series: var(--usage-grok);
+}
+
+.activity-series[data-slot="tail"] {
+  --activity-series: var(--muted);
+}
+
+.activity-series-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--activity-series, var(--muted));
+}
+
+/* ---------- The delta chip ---------- */
+
+/* Neutral ink on purpose: committing less this month than last is not an
+   error state, and painting it in --rose would be the page moralising about
+   the user's own week. */
+.activity-delta {
+  display: inline-flex;
+  align-items: baseline;
+  justify-self: start;
+  gap: var(--space-1);
+  padding: 3px var(--space-2);
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-soft);
+  font-size: var(--text-xs);
+  color: var(--text-soft);
+  white-space: nowrap;
+}
+
+.activity-delta-glyph {
+  font-size: var(--text-2xs);
+  color: var(--muted-strong);
+}
+
+.activity-delta-vs {
+  color: var(--muted);
+}
+
+/* ---------- +/- line counts ---------- */
+
+/* The one place on the page that takes a semantic colour: added and removed
+   lines are a measurement with a direction, not a verdict on the work. */
+.activity-plus {
+  color: var(--sage);
+}
+
+.activity-minus {
+  color: var(--rose);
+}
+
+/* ---------- Notices and empty states ---------- */
+
+.activity-notice {
+  display: grid;
+  gap: var(--space-1_5);
+  justify-items: start;
+  padding: var(--space-3) var(--space-4);
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-soft);
+  color: var(--text-soft);
+  font-size: var(--text-sm);
+}
+
+.activity-notice-line {
+  margin: 0;
+  color: var(--text);
+}
+
+.activity-notice-hint {
+  margin: 0;
+  max-width: 52ch;
+  font-size: var(--text-xs);
+  line-height: 1.55;
+  color: var(--muted-strong);
+}
+
+.activity-notice-hint code {
+  padding: 1px 4px;
+  border-radius: var(--radius-xs);
+  background: var(--panel-sunken);
+  font-family: var(--font-code);
+  font-feature-settings: var(--code-font-features);
+  font-size: 0.94em;
+  color: var(--text);
+}
+
+.activity-notice[data-tone="scanning"] {
+  border-color: color-mix(in oklab, var(--amber) 34%, var(--line));
+  background: var(--amber-soft);
+}
+
+.activity-notice[data-tone="error"] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  border-color: color-mix(in oklab, var(--rose) 34%, var(--line));
+  background: var(--rose-soft);
+}
+
+.activity-blank {
+  display: grid;
+  gap: var(--space-1_5);
+  justify-items: center;
+  text-align: center;
+  padding: 72px var(--space-6);
+  border: 0.5px dashed var(--line);
+  border-radius: var(--radius-lg);
+}
+
+.activity-blank-headline {
+  margin: 0;
+  font-size: var(--text-md);
+  color: var(--text);
+}
+
+.activity-blank-body {
+  margin: 0;
+  max-width: 52ch;
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--muted-strong);
+}
+
+.activity-empty-note {
+  margin: 0;
+  padding: var(--space-6) 0;
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+/* ---------- Numeric columns and the clipped data tables ---------- */
+
+/* Named element-and-class where it lands in a table, because a bare class
+   loses on specificity to `.activity-ledger td` — the same trap the usage
+   table documents. */
+.activity-num,
+.activity-ledger th.activity-num,
+.activity-ledger td.activity-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A figure's numbers as a table: reachable by screen reader and by selection,
+   never painted. Clipped rather than `display: none` so it stays in the
+   accessibility tree. */
+.activity-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- Skeleton: the page's own shape, not the generic pane ---------- */
+
+.activity-skeleton {
+  display: grid;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+.activity-skeleton-hero {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  gap: var(--space-6) 32px;
+  padding: var(--space-6);
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+.activity-skeleton-left {
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+}
+
+.activity-skeleton-figure {
+  height: 66px;
+  border-radius: var(--radius-md);
+}
+
+.activity-skeleton-stat {
+  height: 12px;
+  border-radius: var(--radius-xs);
+}
+
+.activity-skeleton-heat {
+  height: 128px;
+  border-radius: var(--radius-md);
+}
+
+/* The chart block is clipped into a rising silhouette: at 240px a plain
+   rectangle reads as a hole punched in the page. */
+.activity-skeleton-chart {
+  height: 236px;
+  border-radius: var(--radius-lg);
+  clip-path: polygon(
+    0 100%,
+    0 72%,
+    12% 58%,
+    24% 66%,
+    38% 40%,
+    52% 52%,
+    66% 22%,
+    78% 34%,
+    90% 12%,
+    100% 20%,
+    100% 100%
+  );
+}
+
+.activity-skeleton-rows {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-6);
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+.activity-skeleton-row {
+  height: 20px;
+  border-radius: var(--radius-xs);
+}
+
+.activity-skeleton-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 336px;
+  gap: var(--space-6);
+}
+
+.activity-skeleton-half {
+  height: 300px;
+  border-radius: var(--radius-lg);
+}
+
+.activity-skeleton-note {
+  margin: 0;
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--muted-strong);
+}

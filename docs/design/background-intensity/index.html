@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en" data-background-intensity="7">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Argmax — background intensity ladder</title>
+    <!--
+      The real tokens and the real ladder, nothing re-implemented: this page
+      only flips `data-background-intensity` and `data-theme` on <html>.
+
+      Serve the repo root (`python3 -m http.server 8123`) and open
+      /docs/design/background-intensity/. ← / → step the level in place,
+      T flips the theme. Every rung prints the colour it resolved to, because
+      a two-unit move is invisible on screen and obvious in the hex — which
+      is how levels 7-10 in light mode stayed identical for a while.
+    -->
+    <link rel="stylesheet" href="/src/renderer/styles/tokens.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/background-intensity.css" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--font-ui);
+      }
+      main {
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 500;
+      }
+      .level {
+        font-variant-numeric: tabular-nums;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .sheet {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--panel);
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 12px;
+      }
+      .swatch {
+        width: 120px;
+        height: 40px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+      }
+      .name {
+        width: 190px;
+        color: var(--muted);
+      }
+      .value {
+        font-family: var(--font-mono, ui-monospace, monospace);
+      }
+      .sunken {
+        background: var(--panel-sunken);
+        border-radius: 8px;
+        padding: 12px;
+      }
+      pre {
+        margin: 0;
+        background: var(--code-surface);
+        border: 1px solid var(--line-soft);
+        border-radius: 8px;
+        padding: 12px;
+        font-family: var(--font-mono, ui-monospace, monospace);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Background intensity <span class="level" id="level"></span></h1>
+      <div class="sheet">
+        <div class="sunken">A sunken panel, with a code block inside it.</div>
+        <pre>const intensity = 7; // the shipped palette</pre>
+        <div id="rows"></div>
+      </div>
+    </main>
+    <script type="module">
+      const TOKENS = [
+        "--bg",
+        "--sidebar",
+        "--panel",
+        "--panel-soft",
+        "--panel-sunken",
+        "--code-surface",
+        "--tool-block-surface",
+        "--review-sidebar",
+        "--terminal-surface",
+        "--line",
+        "--line-soft",
+        "--line-strong"
+      ];
+      const rows = document.getElementById("rows");
+      const level = document.getElementById("level");
+      for (const token of TOKENS) {
+        const row = document.createElement("div");
+        row.className = "row";
+        row.innerHTML =
+          `<span class="swatch" data-token="${token}"></span>` +
+          `<span class="name">${token}</span>` +
+          `<span class="value" data-value="${token}"></span>`;
+        rows.append(row);
+      }
+      // Chrome resolves a mix made in oklab to an `oklab(...)` string, which
+      // is unreadable next to a palette written in hex — so it goes through a
+      // canvas, which is the one place the browser will spell a colour in
+      // bytes.
+      const probe = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+      function hex(color) {
+        probe.clearRect(0, 0, 1, 1);
+        probe.fillStyle = color;
+        probe.fillRect(0, 0, 1, 1);
+        const [r, g, b] = probe.getImageData(0, 0, 1, 1).data;
+        return "#" + [r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("");
+      }
+
+      function paint() {
+        const styles = getComputedStyle(document.documentElement);
+        level.textContent = `${document.documentElement.dataset.backgroundIntensity} · ${
+          document.documentElement.dataset.theme ?? "light"
+        }`;
+        for (const token of TOKENS) {
+          const swatch = document.querySelector(`[data-token="${token}"]`);
+          swatch.style.background = styles.getPropertyValue(token).trim();
+          // Read it back off the swatch: a custom property's own computed
+          // value is still the unresolved `color-mix(…)` expression, and the
+          // resolved colour is the whole point of this page.
+          document.querySelector(`[data-value="${token}"]`).textContent = hex(
+            getComputedStyle(swatch).backgroundColor
+          );
+        }
+      }
+      addEventListener("keydown", (event) => {
+        const root = document.documentElement;
+        const current = Number(root.dataset.backgroundIntensity);
+        if (event.key === "ArrowRight") root.dataset.backgroundIntensity = String(Math.min(10, current + 1));
+        else if (event.key === "ArrowLeft") root.dataset.backgroundIntensity = String(Math.max(1, current - 1));
+        else if (event.key.toLowerCase() === "t")
+          root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+        else return;
+        paint();
+      });
+      // Repaint on any change to the attributes, not just on the keys above:
+      // a screenshot harness sets them from outside the page.
+      new MutationObserver(paint).observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["data-background-intensity", "data-theme"]
+      });
+      paint();
+    </script>
+  </body>
+</html>

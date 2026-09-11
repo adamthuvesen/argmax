@@ -71,6 +71,18 @@ describe("SessionConversation workspace card", () => {
     expect(screen.queryByRole("complementary", { name: "Workspace" })).not.toBeInTheDocument();
   });
 
+  // The transcript slides left to clear the card, and only a mounted card
+  // earns that. CSS reads the flag off the surface; the widths where it bites
+  // are container queries jsdom cannot run.
+  it("marks the surface only while the card is in the tree", () => {
+    const { container } = renderPane();
+    expect(container.querySelector(".conversation-surface")).toHaveAttribute("data-workspace-card", "true");
+
+    cleanup();
+    const off = renderPane({ workspaceCardEnabled: false });
+    expect(off.container.querySelector(".conversation-surface")).not.toHaveAttribute("data-workspace-card");
+  });
+
   it("toggles from the session actions menu, which reports the preference rather than what is on screen", () => {
     const onToggleWorkspaceCard = vi.fn();
     renderPane({ review: reviewStub({ isPanelOpen: true }), onToggleWorkspaceCard });
@@ -128,7 +140,7 @@ describe("SessionConversation workspace card", () => {
       review
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Open Subagents" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open Agents" }));
 
     expect(openAgent).toHaveBeenCalledWith("task-2");
     expect(selectTab).toHaveBeenCalledWith("task-1");

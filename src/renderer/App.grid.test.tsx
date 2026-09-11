@@ -23,6 +23,53 @@ import {
 } from "./lib/terminalTabs.js";
 import { CHAT_VERBOSITY_KEY } from "./lib/uiPreferences.js";
 
+function gridWorkspace(index: number, taskLabel: string): DashboardSnapshot["workspaces"][number] {
+  const baseWorkspace = snapshot.workspaces[0];
+  if (!baseWorkspace) throw new Error("Expected the dashboard fixture to include a workspace");
+  return {
+    ...baseWorkspace,
+    id: `workspace-${index}`,
+    taskLabel,
+    branch: `argmax/grid-${index}`,
+    path: `/tmp/worktrees/grid-${index}`,
+    state: "complete",
+    sharedWorkspace: false,
+    lastActivityAt: `2026-05-08T16:0${index}:00.000Z`
+  };
+}
+
+function gridSession(index: number, prompt: string): DashboardSnapshot["sessions"][number] {
+  const baseSession = snapshot.sessions[0];
+  if (!baseSession) throw new Error("Expected the dashboard fixture to include a session");
+  return {
+    ...baseSession,
+    id: `session-${index}`,
+    workspaceId: `workspace-${index}`,
+    providerConversationId: `session-${index}`,
+    prompt,
+    state: "complete",
+    attention: "review-ready",
+    completedAt: `2026-05-08T16:0${index}:00.000Z`,
+    lastActivityAt: `2026-05-08T16:0${index}:00.000Z`
+  };
+}
+
+function fireGridDragEvent(
+  target: Element,
+  type: "dragover" | "drop",
+  clientX: number,
+  clientY: number,
+  dataTransfer: { types: never[]; getData: ReturnType<typeof vi.fn>; dropEffect: string }
+): void {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperties(event, {
+    clientX: { value: clientX },
+    clientY: { value: clientY },
+    dataTransfer: { value: dataTransfer }
+  });
+  fireEvent(target, event);
+}
+
 vi.mock("./components/TerminalTabsPanel.js", async () => {
   const { useEffect } = await import("react");
   const { addTerminalTab, getWorkspaceTerminalState } = await import("./lib/terminalTabs.js");
@@ -345,6 +392,43 @@ describe("App grid", () => {
     const rows = document.querySelectorAll(".session-multigrid-row");
     expect(rows).toHaveLength(1);
     expect(rows[0]?.querySelectorAll(".session-multigrid-cell")).toHaveLength(2);
+  });
+
+  it("moves composer focus with the active pane between new chat and an existing chat", async () => {
+    window.localStorage.setItem("argmax.newSessionMode", "embedded");
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    const sessionPane = await screen.findByRole("region", { name: "Build dashboard" });
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    const launcher = await screen.findByRole("region", { name: "New chat for Argmax" });
+    const chatPrompt = within(sessionPane).getByLabelText("Chat prompt");
+    const launcherPrompt = within(launcher).getByLabelText<HTMLTextAreaElement>("Task prompt");
+    expect(launcherPrompt).toHaveFocus();
+    fireEvent.change(launcherPrompt, { target: { value: "Keep this new-chat draft" } });
+    launcherPrompt.setSelectionRange(5, 9);
+
+    fireEvent.pointerDown(sessionPane);
+    expect(chatPrompt).toHaveFocus();
+    fireEvent.pointerDown(launcher);
+    expect(launcherPrompt).toHaveFocus();
+    expect(launcherPrompt).toHaveValue("Keep this new-chat draft");
+    expect(launcherPrompt.selectionStart).toBe(5);
+    expect(launcherPrompt.selectionEnd).toBe(9);
+
+    act(() => chatPrompt.focus());
+    expect(sessionPane).toHaveAttribute("aria-current", "true");
+    expect(launcher).not.toHaveAttribute("aria-current", "true");
+    expect(chatPrompt).toHaveFocus();
+
+    const projectPicker = within(launcher).getByRole("button", { name: "Switch project" });
+    act(() => projectPicker.focus());
+    expect(launcher).toHaveAttribute("aria-current", "true");
+    expect(projectPicker).toHaveFocus();
+
+    const sessionControl = within(sessionPane).getByRole("button", { name: "Chat actions" });
+    act(() => sessionControl.focus());
+    expect(sessionPane).toHaveAttribute("aria-current", "true");
+    expect(sessionControl).toHaveFocus();
   });
 
   it("keeps the chat composer focused when a neighboring launcher's project refreshes", async () => {
@@ -1123,6 +1207,98 @@ describe("App grid", () => {
     });
   });
 
+  it("settles a Cursor background launch from its child trace without opening the Agents pane", async () => {
+    mockDashboardSnapshot({
+      ...snapshot,
+      sessions: snapshot.sessions.map((session) => ({
+        ...session,
+        provider: "cursor" as const,
+        state: "complete" as const,
+        completedAt: "2026-05-08T15:55:00.000Z"
+      })),
+      events: [
+        {
+          id: "task-end",
+          sessionId: "session-1",
+          type: "command.completed",
+          message: "task",
+          payload: {
+            call_id: "call-task",
+            providerInvocationId: "invoke-task",
+            name: "task",
+            input: { _toolName: "task", description: "Map renderer" },
+            result: { durationMs: 34, isBackground: true }
+          },
+          createdAt: "2026-05-08T15:54:02.120Z"
+        },
+        {
+          id: "task-start",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "task",
+          payload: {
+            call_id: "call-task",
+            providerInvocationId: "invoke-task",
+            name: "task",
+            input: { _toolName: "task", description: "Map renderer" }
+          },
+          createdAt: "2026-05-08T15:54:02.000Z"
+        }
+      ]
+    });
+    const completedChild = {
+      events: [{
+        id: "child-done",
+        sessionId: "session-1",
+        type: "agent.completed",
+        message: "Agent completed",
+        payload: {
+          providerInvocationId: "invoke-task",
+          providerChildSessionId: "child-task",
+          agentRootToolUseId: "call-task",
+          agentRunId: "call-task",
+          status: "completed",
+          traceImported: true
+        },
+        createdAt: "2026-05-08T15:54:08.000Z",
+        rowCursor: 3
+      }],
+      rawOutputs: [],
+      eventCursor: 3,
+      rawOutputCursor: 0,
+      changeCursor: null,
+      deletedEventIds: [],
+      deletedRawOutputIds: [],
+      resetRequired: false,
+      hasMore: false
+    } satisfies SessionEventsSinceResult;
+    let resolveAgentEvents!: (value: SessionEventsSinceResult) => void;
+    sessionAgentEvents.mockImplementation(
+      () => new Promise((resolve) => {
+        resolveAgentEvents = resolve;
+      })
+    );
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+
+    expect(await screen.findByText("Running")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(sessionAgentEvents).toHaveBeenCalledWith({
+        sessionId: "session-1",
+        parentToolUseId: "call-task"
+      });
+    });
+    await act(async () => {
+      resolveAgentEvents(completedChild);
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Completed")).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("region", { name: /^Agent activity: / })).toBeNull();
+  });
+
   it("keeps Thinking after an empty backfill while the agent is still running", async () => {
     mockDashboardSnapshot({
       ...snapshot,
@@ -1492,101 +1668,13 @@ describe("App grid", () => {
     expect(window.localStorage.getItem("argmax.newSessionMode")).toBe("full");
   });
 
-  it("opens the Cmd+N launcher below when the focused row already has 3 panes", async () => {
-    const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
-      id: "workspace-2",
-      projectId: "project-1",
-      taskLabel: "Second pane",
-      branch: "argmax/second-pane",
-      baseRef: "main",
-      path: "/tmp/worktrees/second-pane",
-      state: "complete",
-      sharedWorkspace: false,
-      kind: "git",
-      dirty: false,
-      changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:04:00.000Z",
-      pinned: false,
-      priorityDismissedAt: null,
-      priorityAddedAt: null,
-      prState: null,
-      prNumber: null,
-      icon: null,
-      iconColor: null,
-      prCreatedAt: null,
-      prMergedAt: null,
-      prCheckState: null,
-      prActivityAt: null
-    };
-    const thirdWorkspace: DashboardSnapshot["workspaces"][number] = {
-      id: "workspace-3",
-      projectId: "project-1",
-      taskLabel: "Third pane",
-      branch: "argmax/third-pane",
-      baseRef: "main",
-      path: "/tmp/worktrees/third-pane",
-      state: "complete",
-      sharedWorkspace: false,
-      kind: "git",
-      dirty: false,
-      changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:05:00.000Z",
-      pinned: false,
-      priorityDismissedAt: null,
-      priorityAddedAt: null,
-      prState: null,
-      prNumber: null,
-      icon: null,
-      iconColor: null,
-      prCreatedAt: null,
-      prMergedAt: null,
-      prCheckState: null,
-      prActivityAt: null
-    };
-    const secondSession: DashboardSnapshot["sessions"][number] = {
-      id: "session-2",
-      workspaceId: "workspace-2",
-      provider: "claude",
-      modelLabel: "Sonnet 5",
-      modelId: "claude-sonnet-5",
-      permissionMode: "auto-approve",
-      providerConversationId: "session-2",
-      prompt: "Second pane",
-      state: "complete",
-      attention: "review-ready",
-      startedAt: "2026-05-08T16:00:00.000Z",
-      completedAt: "2026-05-08T16:04:00.000Z",
-      lastActivityAt: "2026-05-08T16:04:00.000Z",
-      costUsd: 0,
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextTokens: 0,
-      imported: false,
-      launchKind: "agent",
-    };
-    const thirdSession: DashboardSnapshot["sessions"][number] = {
-      id: "session-3",
-      workspaceId: "workspace-3",
-      provider: "claude",
-      modelLabel: "Sonnet 5",
-      modelId: "claude-sonnet-5",
-      permissionMode: "auto-approve",
-      providerConversationId: "session-3",
-      prompt: "Third pane",
-      state: "complete",
-      attention: "review-ready",
-      startedAt: "2026-05-08T16:00:00.000Z",
-      completedAt: "2026-05-08T16:05:00.000Z",
-      lastActivityAt: "2026-05-08T16:05:00.000Z",
-      costUsd: 0,
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextTokens: 0,
-      imported: false,
-      launchKind: "agent",
-    };
+  it("opens the Cmd+N launcher below when the focused row already has 2 panes", async () => {
+    const secondWorkspace = gridWorkspace(2, "Second pane");
+    const secondSession = gridSession(2, "Second pane");
     mockDashboardSnapshot({
       ...snapshot,
-      workspaces: [...snapshot.workspaces, secondWorkspace, thirdWorkspace],
-      sessions: [...snapshot.sessions, secondSession, thirdSession]
+      workspaces: [...snapshot.workspaces, secondWorkspace],
+      sessions: [...snapshot.sessions, secondSession]
     });
 
     window.localStorage.setItem("argmax.newSessionMode", "embedded");
@@ -1595,9 +1683,8 @@ describe("App grid", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     await screen.findByRole("heading", { name: "Argmax" });
     fireEvent.click(screen.getByRole("button", { name: "Second pane" }), { metaKey: true });
-    fireEvent.click(screen.getByRole("button", { name: "Third pane" }), { metaKey: true });
     await waitFor(() => {
-      expect(screen.getAllByRole("heading", { name: "Argmax" })).toHaveLength(3);
+      expect(screen.getAllByRole("heading", { name: "Argmax" })).toHaveLength(2);
     });
 
     fireEvent.keyDown(document, { key: "n", metaKey: true });
@@ -1605,7 +1692,7 @@ describe("App grid", () => {
     expect(await screen.findByRole("region", { name: "New chat for Argmax" })).toBeInTheDocument();
     const rows = document.querySelectorAll(".session-multigrid-row");
     expect(rows).toHaveLength(2);
-    expect(rows[0]?.querySelectorAll(".session-multigrid-cell")).toHaveLength(3);
+    expect(rows[0]?.querySelectorAll(".session-multigrid-cell")).toHaveLength(2);
     expect(rows[1]?.querySelectorAll(".session-multigrid-cell")).toHaveLength(1);
   });
 
@@ -1692,16 +1779,138 @@ describe("App grid", () => {
       getData: vi.fn(() => ""),
       dropEffect: "move"
     };
-    expect(document.querySelector('.multigrid-drop-zone[data-position="replace"]')).toBeNull();
-    fireEvent.dragOver(dropOverlay, { clientX: 790, clientY: 300, dataTransfer });
+    fireGridDragEvent(dropOverlay, "dragover", 790, 300, dataTransfer);
     await waitFor(() => {
-      expect(document.querySelector('.multigrid-drop-zone[data-hovered="true"]')).toBeInTheDocument();
+      expect(within(dropOverlay).getByText("Split right")).toBeInTheDocument();
+      expect(document.querySelector('.multigrid-drop-zone[data-position="right"]')).toBeInTheDocument();
     });
 
-    fireEvent.drop(dropOverlay, { clientX: 790, clientY: 300, dataTransfer });
+    fireGridDragEvent(dropOverlay, "drop", 790, 300, dataTransfer);
 
     await waitFor(() => {
       expect(screen.getAllByRole("heading", { name: "Argmax" })).toHaveLength(2);
+    });
+  });
+
+  it("replaces a pane when a new sidebar chat is dropped in the center of a full grid", async () => {
+    const paneFixtures = [
+      [2, "Upper right"],
+      [3, "Bottom left"],
+      [4, "Bottom right"],
+      [5, "Replacement pane"]
+    ] as const;
+    mockDashboardSnapshot({
+      ...snapshot,
+      workspaces: [
+        ...snapshot.workspaces,
+        ...paneFixtures.map(([index, label]) => gridWorkspace(index, label))
+      ],
+      sessions: [
+        ...snapshot.sessions,
+        ...paneFixtures.map(([index, label]) => gridSession(index, label))
+      ]
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    for (const label of ["Upper right", "Bottom left", "Bottom right"]) {
+      fireEvent.click(screen.getByRole("button", { name: label }), { metaKey: true });
+    }
+    await waitFor(() => {
+      const rows = screen.getAllByRole("group", { name: /^Pane row/ });
+      expect(rows).toHaveLength(2);
+      const [firstRow, secondRow] = rows;
+      if (!firstRow || !secondRow) throw new Error("Expected two pane rows");
+      expect(within(firstRow).getAllByRole("region", { name: /^(Build dashboard|Upper right)$/ })).toHaveLength(2);
+      expect(within(secondRow).getAllByRole("region", { name: /^(Bottom left|Bottom right)$/ })).toHaveLength(2);
+    });
+
+    const sourceRow = screen.getByRole("button", { name: "Replacement pane" }).closest(".session-row-wrap");
+    if (!(sourceRow instanceof HTMLElement)) throw new Error("Expected sidebar session row wrapper");
+    fireEvent.dragStart(sourceRow, {
+      dataTransfer: {
+        setData: vi.fn(),
+        setDragImage: vi.fn(),
+        effectAllowed: "move"
+      }
+    });
+
+    const targetPane = screen.getByRole("region", { name: "Bottom right" });
+    const dropOverlay = await within(targetPane).findByRole("group", { name: "Drop chat here" });
+    Object.defineProperty(dropOverlay, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ width: 800, height: 600, top: 0, right: 800, bottom: 600, left: 0, x: 0, y: 0, toJSON: () => ({}) })
+    });
+    const dataTransfer = { types: [], getData: vi.fn(() => ""), dropEffect: "move" };
+
+    fireGridDragEvent(dropOverlay, "dragover", 400, 300, dataTransfer);
+    expect(await within(dropOverlay).findByText("Open here")).toBeInTheDocument();
+    fireGridDragEvent(dropOverlay, "drop", 400, 300, dataTransfer);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("region", { name: "Bottom right" })).toBeNull();
+      expect(screen.getByRole("region", { name: "Replacement pane" })).toBeInTheDocument();
+      expect(document.querySelectorAll(".session-multigrid-cell")).toHaveLength(4);
+    });
+  });
+
+  it("swaps two open chats when one is dropped in the center of the other", async () => {
+    const paneFixtures = [
+      [2, "Upper right"],
+      [3, "Bottom left"],
+      [4, "Bottom right"]
+    ] as const;
+    mockDashboardSnapshot({
+      ...snapshot,
+      workspaces: [
+        ...snapshot.workspaces,
+        ...paneFixtures.map(([index, label]) => gridWorkspace(index, label))
+      ],
+      sessions: [
+        ...snapshot.sessions,
+        ...paneFixtures.map(([index, label]) => gridSession(index, label))
+      ]
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    for (const label of ["Upper right", "Bottom left", "Bottom right"]) {
+      fireEvent.click(screen.getByRole("button", { name: label }), { metaKey: true });
+    }
+    await screen.findByRole("region", { name: "Bottom right" });
+
+    const sourceRow = screen.getByRole("button", { name: "Build dashboard" }).closest(".session-row-wrap");
+    if (!(sourceRow instanceof HTMLElement)) throw new Error("Expected sidebar session row wrapper");
+    fireEvent.dragStart(sourceRow, {
+      dataTransfer: {
+        setData: vi.fn(),
+        setDragImage: vi.fn(),
+        effectAllowed: "move"
+      }
+    });
+
+    const targetPane = screen.getByRole("region", { name: "Bottom right" });
+    const dropOverlay = await within(targetPane).findByRole("group", { name: "Drop chat here" });
+    Object.defineProperty(dropOverlay, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ width: 800, height: 600, top: 0, right: 800, bottom: 600, left: 0, x: 0, y: 0, toJSON: () => ({}) })
+    });
+    const dataTransfer = { types: [], getData: vi.fn(() => ""), dropEffect: "move" };
+
+    fireGridDragEvent(dropOverlay, "dragover", 400, 300, dataTransfer);
+    expect(await within(dropOverlay).findByText("Swap chats")).toBeInTheDocument();
+    fireGridDragEvent(dropOverlay, "drop", 400, 300, dataTransfer);
+
+    await waitFor(() => {
+      const rows = screen.getAllByRole("group", { name: /^Pane row/ });
+      const [firstRow, secondRow] = rows;
+      if (!firstRow || !secondRow) throw new Error("Expected two pane rows");
+      expect(within(firstRow).getAllByRole("region", { name: /^(Bottom right|Upper right)$/ }).map((pane) => pane.getAttribute("aria-label")))
+        .toEqual(["Bottom right", "Upper right"]);
+      expect(within(secondRow).getAllByRole("region", { name: /^(Bottom left|Build dashboard)$/ }).map((pane) => pane.getAttribute("aria-label")))
+        .toEqual(["Bottom left", "Build dashboard"]);
     });
   });
 
@@ -1786,7 +1995,7 @@ describe("App grid", () => {
     expect(Math.min(...frWidths)).toBeGreaterThanOrEqual(MIN_RESIZABLE_CELL_WIDTH_PX - 1);
   });
 
-  it("rebalances a row when adding another pane after a manual resize", async () => {
+  it("keeps the divider aligned across both rows while resizing a four-pane grid", async () => {
     const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
       id: "workspace-2",
       projectId: "project-1",
@@ -1877,10 +2086,12 @@ describe("App grid", () => {
       imported: false,
       launchKind: "agent",
     };
+    const fourthWorkspace = gridWorkspace(4, "Bottom right");
+    const fourthSession = gridSession(4, "Bottom right");
     mockDashboardSnapshot({
       ...snapshot,
-      workspaces: [...snapshot.workspaces, secondWorkspace, thirdWorkspace],
-      sessions: [...snapshot.sessions, secondSession, thirdSession]
+      workspaces: [...snapshot.workspaces, secondWorkspace, thirdWorkspace, fourthWorkspace],
+      sessions: [...snapshot.sessions, secondSession, thirdSession, fourthSession]
     });
 
     render(<App />);
@@ -1888,29 +2099,38 @@ describe("App grid", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     await screen.findByRole("heading", { name: "Argmax" });
     fireEvent.click(screen.getByRole("button", { name: "Wide pane" }), { metaKey: true });
+    fireEvent.click(screen.getByRole("button", { name: "Dropped pane" }), { metaKey: true });
+    fireEvent.click(screen.getByRole("button", { name: "Bottom right" }), { metaKey: true });
 
-    const handle = await screen.findByRole("separator", { name: /Resize Build dashboard/ });
     const grid = screen.getByRole("group", { name: "Chat panes" });
-    const row = grid.firstElementChild;
-    if (!(row instanceof HTMLElement)) throw new Error("Expected a grid row");
-    Object.defineProperty(row, "getBoundingClientRect", {
+    const rows = await within(grid).findAllByRole("group", { name: /^Pane row/ });
+    expect(rows).toHaveLength(2);
+    const [firstRow, secondRow] = rows;
+    if (!(firstRow instanceof HTMLElement) || !(secondRow instanceof HTMLElement)) {
+      throw new Error("Expected two grid rows");
+    }
+    expect(within(firstRow).getAllByRole("region", { name: /^(Build dashboard|Wide pane)$/ })).toHaveLength(2);
+    expect(within(secondRow).getAllByRole("region", { name: /^(Dropped pane|Bottom right)$/ })).toHaveLength(2);
+    Object.defineProperty(firstRow, "getBoundingClientRect", {
       configurable: true,
       value: () => ({ width: 1200, height: 600, top: 0, right: 1200, bottom: 600, left: 0, x: 0, y: 0, toJSON: () => ({}) })
     });
+    const before = firstRow.style.gridTemplateColumns;
+    expect(secondRow.style.gridTemplateColumns).toBe(before);
 
+    const handle = await screen.findByRole("separator", { name: /Resize Build dashboard/ });
     fireEvent.mouseDown(handle, { clientX: 450 });
     fireEvent.mouseMove(document, { clientX: 2000 });
     fireEvent.mouseUp(document);
 
-    fireEvent.click(screen.getByRole("button", { name: "Dropped pane" }), { metaKey: true });
-
     await waitFor(() => {
-      expect(row.querySelectorAll(".session-multigrid-cell")).toHaveLength(3);
-      const frWidths = [...row.style.gridTemplateColumns.matchAll(/([\d.]+)fr/g)].map((match) =>
-        Number(match[1])
-      );
-      expect(frWidths).toEqual([1, 1, 1]);
+      expect(firstRow.style.gridTemplateColumns).not.toBe(before);
+      expect(secondRow.style.gridTemplateColumns).toBe(firstRow.style.gridTemplateColumns);
     });
+    const frWidths = [...firstRow.style.gridTemplateColumns.matchAll(/([\d.]+)fr/g)].map((match) =>
+      Number(match[1])
+    );
+    expect(Math.min(...frWidths)).toBeGreaterThanOrEqual(MIN_RESIZABLE_CELL_WIDTH_PX - 1);
   });
 
   it("⌘W closes the focused pane", async () => {

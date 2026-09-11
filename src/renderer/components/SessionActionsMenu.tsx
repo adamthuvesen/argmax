@@ -15,6 +15,7 @@ import { useCallback, useEffect, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
 import type { DetectedIde, GhPrRecord, IdeId, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { openBrowserPanel } from "../lib/browserPanel.js";
+import { refreshSessionPrs } from "../lib/sessionPrs.js";
 import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { GitActionsMenu } from "./GitActionsMenu.js";
@@ -93,14 +94,11 @@ export function SessionActionsMenu({
           message: error instanceof Error ? error.message : "Could not load pull requests."
         });
       });
-    if (window.argmax.prs.refresh) {
-      void window.argmax.prs
-        .refresh({ sessionId: session.id })
-        .then((rows) => {
-          if (!cancelled) setPrs(rows);
-        })
-        .catch(() => undefined);
-    }
+    void refreshSessionPrs(session.id)
+      ?.then((rows) => {
+        if (!cancelled) setPrs(rows);
+      })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };

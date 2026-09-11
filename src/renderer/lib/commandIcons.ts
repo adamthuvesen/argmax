@@ -24,17 +24,24 @@ export function parseCommandIconRules(value: unknown): CommandIconRule[] {
   });
 }
 
+// Shipped with every build: `gh` is the GitHub CLI everywhere, so a row that
+// opens a PR or reads a check run carries the GitHub mark without local setup.
+// Plain `git` stays unmarked — a remote is not necessarily GitHub.
+export const DEFAULT_RULES: CommandIconRule[] = parseCommandIconRules([
+  { commandPattern: "^(?:[\\w./-]*/)?gh(?=\\s|$)", server: "github" }
+]);
+
 // Optional build input: personal rules stay out of the public checkout.
 const localFiles = import.meta.glob<unknown>("../../../argmax-icons.local.json", { eager: true, import: "default" });
-const localRules = parseCommandIconRules(Object.values(localFiles)[0] ?? []);
+const rules = [...parseCommandIconRules(Object.values(localFiles)[0] ?? []), ...DEFAULT_RULES];
 
 /** Match the full shell input, before the row preview truncates long paths. */
-export function commandIconServer(tool: ToolCall, rules: CommandIconRule[] = localRules): string | null {
+export function commandIconServer(tool: ToolCall, matchers: CommandIconRule[] = rules): string | null {
   if (!isBashLikeTool(tool.name)) return null;
   const input = tool.inputFull;
   const command = [input?.command, input?.cmd, input?.shell_command, input?.script]
     .find((value): value is string => typeof value === "string") ?? tool.inputPreview;
   if (!command) return null;
   const unwrapped = unwrapBashCommand(command);
-  return rules.find((rule) => new RegExp(rule.commandPattern).test(unwrapped))?.server ?? null;
+  return matchers.find((rule) => new RegExp(rule.commandPattern).test(unwrapped))?.server ?? null;
 }

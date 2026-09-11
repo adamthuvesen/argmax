@@ -98,6 +98,30 @@ describe("collectTurnFileChanges", () => {
     expect(changes[0]?.dels).toBe(0);
   });
 
+  it("includes current Grok and Codex write shapes in changed files", () => {
+    const changes = collectTurnFileChanges(
+      turnOf([
+        tool("search_replace", {
+          file_path: "/repo/grok.ts",
+          old_string: "old",
+          new_string: "new"
+        }, "grok"),
+        tool("file_change", {
+          changes: [{
+            path: "/repo/codex.ts",
+            kind: { type: "add", move_path: null },
+            diff: "export const codex = true;\n"
+          }]
+        }, "codex")
+      ])
+    );
+
+    expect(changes).toEqual([
+      { path: "/repo/grok.ts", kind: "edit", adds: 1, dels: 1, writes: 1 },
+      { path: "/repo/codex.ts", kind: "create", adds: 1, dels: 0, writes: 1 }
+    ]);
+  });
+
   it("reads tools nested under an agent", () => {
     const agent: TurnToolItem = {
       kind: "tool",

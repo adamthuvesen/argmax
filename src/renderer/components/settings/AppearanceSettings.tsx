@@ -37,6 +37,7 @@ import {
   toBackgroundIntensity,
   type BackgroundIntensity
 } from "../../lib/backgroundIntensity.js";
+import { setMascotVisible, useMascotVisible } from "../../lib/mascotVisibility.js";
 import { toScaleLevel } from "../../lib/scaleLevel.js";
 import type { ReviewPanelSide } from "../../lib/reviewPanelSide.js";
 import { THEME_OPTIONS, type ThemeMode } from "../../lib/theme.js";
@@ -140,6 +141,9 @@ export function AppearanceSettings({
   // source of truth. See lib/activityMark.ts.
   const activityMark = useActivityMark();
   const sessionUnderline = useSessionUnderline();
+  // Same reason as the activity mark: the fox renders from four unrelated
+  // places, so it reads its own store rather than a prop. See lib/mascotVisibility.ts.
+  const mascotVisible = useMascotVisible();
 
   return (
     <>
@@ -330,6 +334,13 @@ export function AppearanceSettings({
               checked={workspaceCardVisible}
               onChange={onWorkspaceCardVisibleChange}
             />
+          }
+        />
+        <SettingRow
+          label="Fox mascot"
+          description="Draw the fox on the launch screen, in the sidebar's Argmax chip, and on the mobile new-chat screen."
+          control={
+            <Toggle ariaLabel="Fox mascot" checked={mascotVisible} onChange={setMascotVisible} />
           }
         />
         <SettingRow

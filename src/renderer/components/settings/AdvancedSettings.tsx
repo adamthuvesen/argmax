@@ -6,6 +6,7 @@ import { formatBytes } from "../../lib/formatBytes.js";
 import { saveLogsFile } from "../../lib/logDownload.js";
 import { LoadingLine } from "../LoadingLine.js";
 import { ProjectKnowledgePanel } from "../ProjectKnowledgePanel.js";
+import { ChatHistorySettings } from "./ChatHistorySettings.js";
 import {
   COLD_START_BUDGET_MS,
   ColdStartSummary,
@@ -40,6 +41,7 @@ export function AdvancedSettings({
 
   return (
     <>
+      <ChatHistorySettings />
       <SettingGroup id="settings-knowledge" label="Project knowledge" card={false}>
         <ProjectKnowledgePanel projects={projects} />
       </SettingGroup>

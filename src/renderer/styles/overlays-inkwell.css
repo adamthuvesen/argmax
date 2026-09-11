@@ -462,31 +462,48 @@
    Image lightbox — centered full-image preview
    Opened by clicking an attached image in the composer or a
    sent message. Dismiss on backdrop click, Escape, or close.
+
+   Window-fixed is the fallback when there is no pane to host it
+   (tests, mobile new-chat). Inside a session or the launcher it
+   is `position: absolute` against the pane surface, so a wide
+   screenshot cannot spill into the review panel and the native
+   browser webview is not treated as covered.
    ============================================================ */
 
 .image-lightbox-overlay {
   position: fixed;
   inset: 0;
   display: grid;
-  place-items: center;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
   padding: 4vh 4vw;
   background: rgba(14, 14, 12, 0.72);
   z-index: 150;
   animation: inkwell-fade 140ms var(--ease);
 }
 
+.conversation-surface > .image-lightbox-overlay,
+.launcher-surface > .image-lightbox-overlay {
+  position: absolute;
+}
+
 .image-lightbox-content {
   position: relative;
-  max-width: 100%;
-  max-height: 100%;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
   display: flex;
+  align-items: center;
+  justify-content: center;
   animation: inkwell-rise 240ms var(--ease);
 }
 
 .image-lightbox-image {
   display: block;
   max-width: 100%;
-  max-height: 92vh;
+  max-height: 100%;
   width: auto;
   height: auto;
   object-fit: contain;

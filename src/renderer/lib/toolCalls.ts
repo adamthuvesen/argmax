@@ -22,10 +22,10 @@ export type ToolCall = {
   // is a sub-agent's tool call. Lets the group bubble nest children under their
   // agent banner. Absent for top-level calls.
   parentToolUseId?: string | null;
-  /** A launch receipt, not a result: the row spins on because the agent it
-   *  dispatched is still working, and no completion for it will ever arrive.
-   *  Such a row shows no progress of its own, so it must not stand in for the
-   *  progress cue the way a genuinely executing tool does. */
+  /** A launch receipt, not a result: the row spins while the dispatched agent
+   *  works, until that child reports its own terminal state. Such a row shows
+   *  no progress of its own, so it must not stand in for the progress cue the
+   *  way a genuinely executing tool does. */
   backgroundLaunch?: boolean;
   /** Stable native identity when this call belongs to a resumable subagent. */
   providerChildSessionId?: string | null;
@@ -220,6 +220,7 @@ function parseOpenCodeServerTool(name: string): { server: string; tool: string }
 export function mcpToolLabel(name: string): string | null {
   const parsed = parseMcpToolName(name);
   if (!parsed) return null;
+  if (parsed.server === "cua repl") return "Computer use";
   return `${parsed.server.charAt(0).toUpperCase()}${parsed.server.slice(1)} ${parsed.tool}`;
 }
 

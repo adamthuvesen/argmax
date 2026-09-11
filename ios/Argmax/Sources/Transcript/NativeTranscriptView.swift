@@ -14,15 +14,16 @@ struct NativeTranscriptView: View {
     @State private var scrollRequest = 0
 
     private var rows: [MobileTranscriptRow] {
-        var rows = MobileTranscriptRow.rows(transcript.items.filter { item in
+        MobileTranscriptRow.rows(transcript.items.filter { item in
             if case .question = item { return false }
             return true
         }, detail: appearance.chatDetail)
-        if transcript.phase == .ready, transcript.connection == .live,
-           let thinking = transcript.thinkingStart ?? TranscriptThinking.current(items: transcript.items, session: transcript.session) {
-            rows.append(.thinking(thinking))
-        }
-        return rows
+    }
+
+    private var thinking: TranscriptThinking? {
+        guard transcript.phase == .ready, transcript.connection == .live else { return nil }
+        return transcript.thinkingStart
+            ?? TranscriptThinking.current(items: transcript.items, session: transcript.session)
     }
 
     var body: some View {
@@ -57,6 +58,12 @@ struct NativeTranscriptView: View {
                     .environment(\.accentTint, accent)
                     .environment(\.transcriptWorkspacePath, workspacePath)
                     .environment(\.mobileChatDetail, appearance.chatDetail)
+            } footer: {
+                if let thinking {
+                    TranscriptThinkingLabel(thinking: thinking)
+                        .id(thinking)
+                        .padding(.vertical, Spacing.snug)
+                }
             }
             .overlay(alignment: .bottom) {
                 if !following && !rows.isEmpty {

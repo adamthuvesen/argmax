@@ -3,7 +3,7 @@ import SwiftUI
 /// A lazy SwiftUI transcript that follows live output until the reader moves
 /// away from it. Stable row identities let SwiftUI retain the visible reading
 /// position when older history arrives above the viewport.
-struct NativeTranscriptList<Item: Identifiable & Equatable, Row: View>: View
+struct NativeTranscriptList<Item: Identifiable & Equatable, Row: View, Footer: View>: View
 where Item.ID == String {
     let items: [Item]
     let sessionID: String
@@ -11,6 +11,13 @@ where Item.ID == String {
     var presentationID = ""
     @Binding var following: Bool
     @ViewBuilder var row: (Item) -> Row
+    /// Live state under the last row: the thinking cue. It sits outside the
+    /// lazy stack on purpose. A lazy row that comes and goes is sized by the
+    /// stack's estimate (the average realised row, hundreds of points) for a
+    /// layout pass before it is measured, and following the tail through
+    /// that pass is the transcript lurching down and back on every tool
+    /// start and finish. A plain footer is measured the moment it appears.
+    @ViewBuilder var footer: () -> Footer
 
     @State private var position = ScrollPosition(idType: String.self)
     @State private var geometry = TranscriptScrollGeometry()
@@ -19,14 +26,19 @@ where Item.ID == String {
 
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(items) { item in
-                    row(item)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, Spacing.gutter)
+            VStack(spacing: 0) {
+                LazyVStack(spacing: 0) {
+                    ForEach(items) { item in
+                        row(item)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, Spacing.gutter)
+                    }
                 }
+                .scrollTargetLayout()
+                footer()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, Spacing.gutter)
             }
-            .scrollTargetLayout()
             .padding(.top, 16)
             .padding(.bottom, 20)
         }
@@ -120,6 +132,20 @@ private struct TranscriptScrollGeometry: Equatable {
     }
 
     var isAtTail: Bool { tailGap <= 0.5 }
+}
+
+extension NativeTranscriptList where Footer == EmptyView {
+    init(
+        items: [Item],
+        sessionID: String,
+        scrollRequest: Int,
+        presentationID: String = "",
+        following: Binding<Bool>,
+        @ViewBuilder row: @escaping (Item) -> Row
+    ) {
+        self.init(items: items, sessionID: sessionID, scrollRequest: scrollRequest,
+                  presentationID: presentationID, following: following, row: row) { EmptyView() }
+    }
 }
 
 private extension ScrollPhase {

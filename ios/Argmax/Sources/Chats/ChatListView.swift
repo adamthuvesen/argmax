@@ -159,7 +159,7 @@ struct ChatListView: View {
 
     private var header: some View {
         VStack(spacing: 0) {
-            ScreenHeader(title: "", showsMark: true, trailing: {
+            ScreenHeader(title: "", trailing: {
                 HStack(spacing: Spacing.tight) {
                     HeaderGlyphButton(systemName: "chart.bar", label: "Insights", tint: Theme.ink, weight: .semibold, filled: true) {
                         Haptics.light()

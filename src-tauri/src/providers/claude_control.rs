@@ -292,8 +292,8 @@ pub async fn launch_turn(
                                 let tool_input = message.pointer("/request/input").cloned().unwrap_or(json!({}));
                                 let command = tool_input.get("command").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| format!("{}\n{}", message.pointer("/request/tool_name").and_then(Value::as_str).unwrap_or("Tool request"), tool_input));
                                 let tool_name = message.pointer("/request/tool_name").and_then(Value::as_str);
-                                if tool_name.is_some_and(super::asks_the_user_a_question) {
-                                    let _ = writer.send(WriteRequest::control(question_shown_response(&request_id)));
+                                if let Some(message) = tool_name.and_then(card_shown_message) {
+                                    let _ = writer.send(WriteRequest::control(card_shown_response(&request_id, message)));
                                     return;
                                 }
                                 if answers_itself(&request_input, tool_name) {
@@ -405,22 +405,40 @@ fn answers_itself(input: &ProviderLaunchInput, tool_name: Option<&str>) -> bool 
         && input.agent_mode == super::AgentMode::Auto
 }
 
-/// What the model reads back from `AskUserQuestion`. The chat draws the
-/// question in the composer's dock and the answer arrives as the next user
-/// message, so the CLI never sees answers. Allowing the call makes it report
-/// "The user did not answer the questions." before the user has even seen
-/// them, which models read as a dismissal and fall back to asking in prose.
-/// Denying lets the message carry the contract instead.
+/// What the model reads back from a card tool. The chat draws the question
+/// in the composer's dock and the plan as a card, and the user's answer
+/// arrives as the next user message, so the CLI never sees it. Allowing the
+/// call makes it report an outcome before the user has seen the card:
+/// "The user did not answer the questions." for `AskUserQuestion`, which
+/// models read as a dismissal and fall back to asking in prose, and "User has
+/// approved your plan. You can now start coding." for `ExitPlanMode`, which
+/// starts the implementation before the plan card is pressed. Denying lets
+/// the message carry the contract instead.
 const QUESTION_SHOWN_MESSAGE: &str = "The question is now in front of the user in the chat. \
 Their answer arrives as your next user message, so end this turn now: no further questions, \
 no prose restatement of the options, and no work that depends on the answer. \
 This is not a dismissal, so do not call AskUserQuestion again until the user has replied.";
 
-fn question_shown_response(id: &str) -> Value {
+const PLAN_SHOWN_MESSAGE: &str = "The plan is now in front of the user as a card in the chat. \
+Their decision arrives as your next user message, so end this turn now: do not start \
+implementing, do not restate the plan, and do not call ExitPlanMode again until the user has replied. \
+This is not a rejection.";
+
+fn card_shown_message(tool_name: &str) -> Option<&'static str> {
+    if super::asks_the_user_a_question(tool_name) {
+        Some(QUESTION_SHOWN_MESSAGE)
+    } else if super::exits_plan_mode(tool_name) {
+        Some(PLAN_SHOWN_MESSAGE)
+    } else {
+        None
+    }
+}
+
+fn card_shown_response(id: &str, message: &str) -> Value {
     json!({"type":"control_response","response":{"subtype":"success","request_id":id,"response":{
         "behavior":"deny",
-        "message":QUESTION_SHOWN_MESSAGE,
-        "decisionReason":{"type":"other","reason":"question shown in the Argmax chat"}
+        "message":message,
+        "decisionReason":{"type":"other","reason":"card shown in the Argmax chat"}
     }}})
 }
 
@@ -617,15 +635,20 @@ mod tests {
     }
 
     #[test]
-    fn a_question_is_denied_with_the_dock_contract_not_allowed_unanswered() {
-        let response = question_shown_response("req-1");
+    fn card_tools_are_denied_with_their_contract_not_allowed_unanswered() {
+        let question = card_shown_message("AskUserQuestion").unwrap();
+        assert!(question.contains("next user message"), "{question}");
+        assert!(question.contains("not a dismissal"), "{question}");
+        let plan = card_shown_message("ExitPlanMode").unwrap();
+        assert!(plan.contains("do not start"), "{plan}");
+        assert!(plan.contains("not a rejection"), "{plan}");
+        assert!(card_shown_message("SendUserMessage").is_none());
+        assert!(card_shown_message("Bash").is_none());
+
+        let response = card_shown_response("req-1", question);
         assert_eq!(response["response"]["request_id"], "req-1");
         assert_eq!(response["response"]["response"]["behavior"], "deny");
-        let message = response["response"]["response"]["message"]
-            .as_str()
-            .unwrap();
-        assert!(message.contains("next user message"), "{message}");
-        assert!(message.contains("not a dismissal"), "{message}");
+        assert_eq!(response["response"]["response"]["message"], question);
     }
 
     #[test]

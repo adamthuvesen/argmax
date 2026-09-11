@@ -128,6 +128,12 @@ pub fn asks_the_user_a_question(tool_name: &str) -> bool {
     )
 }
 
+/// Whether the call is Claude's `ExitPlanMode`, whose plan the user approves
+/// from the chat's plan card rather than in the tool result.
+pub fn exits_plan_mode(tool_name: &str) -> bool {
+    folded_tool_name(tool_name) == "exitplanmode"
+}
+
 fn folded_tool_name(tool_name: &str) -> String {
     tool_name
         .chars()
@@ -164,5 +170,13 @@ mod tests {
         assert!(asks_the_user_a_question("askQuestionToolCall"));
         assert!(!asks_the_user_a_question("ExitPlanMode"));
         assert!(!asks_the_user_a_question("SendUserMessage"));
+    }
+
+    #[test]
+    fn only_exit_plan_mode_exits_plan_mode() {
+        use super::exits_plan_mode;
+        assert!(exits_plan_mode("ExitPlanMode"));
+        assert!(exits_plan_mode("exit_plan_mode"));
+        assert!(!exits_plan_mode("AskUserQuestion"));
     }
 }

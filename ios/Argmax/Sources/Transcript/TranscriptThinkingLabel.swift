@@ -67,25 +67,46 @@ struct TranscriptThinking: Hashable {
 }
 
 struct TranscriptThinkingLabel: View {
-    let thinking: TranscriptThinking
+    /// Nil holds the line's height without drawing it. The cue comes and goes
+    /// several times within a turn, and collapsing its slot each time shortens
+    /// the transcript under a reader pinned to the tail and walks the view up
+    /// and down. Desktop reserves the same slot in `.conversation-tail`.
+    let thinking: TranscriptThinking?
     @State private var mountedAt = Date()
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            let start = parseWireTimestamp(thinking.startedAt) ?? mountedAt
-            HStack(spacing: Spacing.snug) {
-                WorkingNest(size: 16)
-                Text(thinking.word)
-                if context.date.timeIntervalSince(start) >= 3 {
-                    let seconds = Int(context.date.timeIntervalSince(start))
-                    Text(seconds < 60 ? "\(seconds)s" : "\(seconds / 60)m \(seconds % 60)s")
-                        .monospacedDigit()
+        Group {
+            if let thinking {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    let start = parseWireTimestamp(thinking.startedAt) ?? mountedAt
+                    line(word: thinking.word, elapsed: context.date.timeIntervalSince(start), live: true)
                 }
+            } else {
+                line(word: "Thinking", elapsed: 0, live: false).hidden()
             }
-            .typeStyle(.footnote)
-            .foregroundStyle(Theme.muted)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Thinking")
+        .accessibilityHidden(thinking == nil)
+    }
+
+    private func line(word: String, elapsed: TimeInterval, live: Bool) -> some View {
+        HStack(spacing: Spacing.snug) {
+            // The nest redraws every frame it is in the tree, so the reserved
+            // slot holds its size with nothing in it.
+            if live {
+                WorkingNest(size: 16)
+            } else {
+                Color.clear.frame(width: 16, height: 16)
+            }
+            Text(word)
+            if elapsed >= 3 {
+                let seconds = Int(elapsed)
+                Text(seconds < 60 ? "\(seconds)s" : "\(seconds / 60)m \(seconds % 60)s")
+                    .monospacedDigit()
+            }
+        }
+        .typeStyle(.footnote)
+        .foregroundStyle(Theme.muted)
     }
 }

@@ -51,11 +51,9 @@ struct NativeTranscriptView: View {
                 }
                     .padding(.vertical, row.verticalPadding)
             } footer: {
-                if let thinking {
-                    TranscriptThinkingLabel(thinking: thinking)
-                        .id(thinking)
-                        .padding(.vertical, Spacing.snug)
-                }
+                TranscriptThinkingLabel(thinking: thinking)
+                    .id(thinking)
+                    .padding(.vertical, Spacing.snug)
             }
             .overlay(alignment: .bottom) {
                 if !following && !rows.isEmpty {

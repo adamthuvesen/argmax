@@ -26,7 +26,7 @@ struct TranscriptMarkdownDocument {
     let blocks: [TranscriptMarkdownBlock]
     let math: [String: TranscriptMath]
 
-    init(markdown: String) {
+    init(markdown: String, workspacePath: String? = nil, isThinking: Bool = false) {
         let prepared = TranscriptMarkdownPreparation(markdown: markdown)
         math = prepared.math
         guard var attributed = try? AttributedString(
@@ -37,11 +37,23 @@ struct TranscriptMarkdownDocument {
             return
         }
         Self.linkInlineFileReferences(in: &attributed)
+        if isThinking {
+            for run in Array(attributed.runs) {
+                var intent = run.inlinePresentationIntent
+                intent?.remove(.stronglyEmphasized)
+                attributed[run.range].inlinePresentationIntent = intent
+            }
+        }
 
         var parsed: [TranscriptMarkdownBlock] = []
         var previousIdentity: Int?
         for run in attributed.runs {
-            let content = AttributedString(attributed[run.range])
+            var content = AttributedString(attributed[run.range])
+            if let link = run.link, Self.isLocalLink(link) {
+                let label = String(content.characters)
+                let relative = TranscriptProjection.relativePath(label, workspacePath: workspacePath)
+                if relative != label { content = AttributedString(relative, attributes: run.attributes) }
+            }
             guard let intent = run.presentationIntent else {
                 Self.append(content, as: .paragraph, merge: false, to: &parsed)
                 previousIdentity = nil

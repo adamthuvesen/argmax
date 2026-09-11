@@ -6,24 +6,29 @@ import SwiftUI
 /// The small preparation pass only lifts content Foundation cannot represent:
 /// GFM tables, images, and math.
 struct TranscriptMarkdown: View {
-    let document: TranscriptMarkdownDocument
+    let text: String
+    let isThinking: Bool
+    @Environment(\.transcriptWorkspacePath) private var workspacePath
     let client: BridgeClient?
     let onOpenFile: (String) -> Void
 
     init(
         text: String,
         client: BridgeClient? = nil,
-        onOpenFile: @escaping (String) -> Void = { _ in }
+        onOpenFile: @escaping (String) -> Void = { _ in },
+        isThinking: Bool = false
     ) {
-        document = TranscriptMarkdownDocument(markdown: text)
+        self.text = text
+        self.isThinking = isThinking
         self.client = client
         self.onOpenFile = onOpenFile
     }
 
     var body: some View {
+        let document = TranscriptMarkdownDocument(markdown: text, workspacePath: workspacePath, isThinking: isThinking)
         VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(document.blocks.enumerated()), id: \.offset) { _, block in
-                blockView(block)
+                blockView(block, math: document.math)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -39,35 +44,35 @@ struct TranscriptMarkdown: View {
     }
 
     @ViewBuilder
-    private func blockView(_ block: TranscriptMarkdownBlock) -> some View {
+    private func blockView(_ block: TranscriptMarkdownBlock, math: [String: TranscriptMath]) -> some View {
         switch block {
         case .paragraph(let text):
-            TranscriptInlineMarkdown(text: text, math: document.math)
-                .font(.body)
-                .foregroundStyle(Theme.ink)
+            TranscriptInlineMarkdown(text: text, math: math)
+                .font(isThinking ? .footnote : .body)
+                .foregroundStyle(isThinking ? Theme.muted : Theme.ink)
         case .heading(let level, let text):
-            TranscriptInlineMarkdown(text: text, math: document.math)
-                .font(headingFont(level))
-                .foregroundStyle(Theme.ink)
+            TranscriptInlineMarkdown(text: text, math: math)
+                .font(isThinking ? .footnote : headingFont(level))
+                .foregroundStyle(isThinking ? Theme.muted : Theme.ink)
                 .padding(.top, level == 1 ? 6 : 2)
                 .accessibilityAddTraits(.isHeader)
         case .listItem(let ordinal, let depth, let text):
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(ordinal.map { "\($0)." } ?? "•")
-                    .font(.body.monospacedDigit())
+                    .font(isThinking ? .footnote.monospacedDigit() : .body.monospacedDigit())
                     .foregroundStyle(Theme.muted)
                     .frame(minWidth: 15, alignment: .trailing)
                     .accessibilityHidden(true)
-                TranscriptInlineMarkdown(text: text, math: document.math)
-                    .font(.body)
-                    .foregroundStyle(Theme.ink)
+                TranscriptInlineMarkdown(text: text, math: math)
+                    .font(isThinking ? .footnote : .body)
+                    .foregroundStyle(isThinking ? Theme.muted : Theme.ink)
             }
             .padding(.leading, CGFloat(max(depth - 1, 0)) * 18)
         case .quote(let text):
             HStack(alignment: .top, spacing: 10) {
                 Capsule().fill(Theme.line).frame(width: 3)
-                TranscriptInlineMarkdown(text: text, math: document.math)
-                    .font(.body)
+                TranscriptInlineMarkdown(text: text, math: math)
+                    .font(isThinking ? .footnote : .body)
                     .foregroundStyle(Theme.muted)
             }
             .fixedSize(horizontal: false, vertical: true)

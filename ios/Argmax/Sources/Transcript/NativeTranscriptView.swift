@@ -9,14 +9,15 @@ struct NativeTranscriptView: View {
     @EnvironmentObject private var appearance: Appearance
     @EnvironmentObject private var navigator: ChatNavigator
     @Environment(\.accentTint) private var accent
+    @Environment(\.transcriptWorkspacePath) private var workspacePath
     @State private var following = true
     @State private var scrollRequest = 0
 
-    private var rows: [TranscriptItem] {
-        transcript.items.filter { item in
+    private var rows: [MobileTranscriptRow] {
+        MobileTranscriptRow.rows(transcript.items.filter { item in
             if case .question = item { return false }
             return true
-        }
+        }, detail: appearance.chatDetail)
     }
 
     var body: some View {
@@ -36,16 +37,20 @@ struct NativeTranscriptView: View {
                 items: rows,
                 sessionID: transcript.session?.sessionId ?? "",
                 scrollRequest: scrollRequest,
-                presentationID: appearance.tint.rawValue + appearance.bubbleTint,
+                presentationID: appearance.tint.rawValue + appearance.bubbleTint + (workspacePath ?? "") + String(appearance.chatDetail.rawValue),
                 following: $following
-            ) { item in
+            ) { row in
+                MobileTranscriptRowView(row: row) { item in
                 TranscriptContentRow(item: item, client: client,
                                      onOpenFile: onOpenFile, onRevisePlan: onRevisePlan,
                                      onOpenSession: { navigator.awaitingSessionID = $0 })
+                }
                     .environmentObject(transcript)
                     .environmentObject(dashboard)
                     .environmentObject(appearance)
                     .environment(\.accentTint, accent)
+                    .environment(\.transcriptWorkspacePath, workspacePath)
+                    .environment(\.mobileChatDetail, appearance.chatDetail)
             }
             .overlay(alignment: .bottom) {
                 if !following && !rows.isEmpty {

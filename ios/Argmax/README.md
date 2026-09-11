@@ -36,6 +36,14 @@ workspace. Labels shorten the path before truncating it so the filename stays
 visible. Raw tool inputs and file-opening targets retain their original paths.
 Paths outside the workspace keep their full location.
 
+Settings → Chat detail controls this iPhone independently of the desktop.
+Compact is the default and folds thoughts and tool activity together between
+messages. Minimal also folds interim narration once an answer arrives.
+Balanced shows short thought previews inline. Detailed shows individual tool
+steps with longer thought previews, while raw inputs and outputs stay folded.
+Failures and requests for input remain visible at every level. The same
+setting applies to subagent and multitask details.
+
 - `Sources/Bridge/Channels.swift` — typed calls for the channels the phone
   writes on, each input mirroring its generated binding key for key. Whether a
   request carries an `operation` record is decided by
@@ -234,6 +242,10 @@ card actions, and Markdown structure. The rich viewer bundle is generated
 from the repository's locked Mermaid and KaTeX dependencies by
 `npm run build:ios-rich-content`. Commit regenerated resources with changes
 to the viewer or those dependencies.
+
+Native tool icons reuse the desktop artwork in `src/renderer/lib/serverIcons.ts`.
+After changing that artwork or its native aliases, run `npm run export:ios-tool-icons`
+and commit the generated `Assets.xcassets/Integrations` and `Resources/toolIcons.json`.
 
 ## Known edges
 

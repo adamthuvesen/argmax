@@ -60,6 +60,7 @@ final class Appearance: ObservableObject {
     /// halves of the phone. The value is the page's too — "accent" or
     /// "neutral", not a boolean — so the shell can hand it over unchanged.
     static let bubbleTintKey = "argmax.chat.bubbleTint"
+    static let chatDetailKey = "argmax.phone.chatDetail"
 
     @Published var theme: ThemeChoice {
         didSet { store.set(theme.rawValue, forKey: Self.themeKey) }
@@ -105,6 +106,11 @@ final class Appearance: ObservableObject {
         didSet { store.set(bubbleTint, forKey: Self.bubbleTintKey) }
     }
 
+    /// How much supporting activity the transcript shows on this phone.
+    @Published var chatDetail: MobileChatDetail {
+        didSet { store.set(chatDetail.rawValue, forKey: Self.chatDetailKey) }
+    }
+
     /// The value the page keys its stylesheet off (`data-user-bubble`).
     var bubbleTint: String { accentBubbles ? "accent" : "neutral" }
 
@@ -125,6 +131,7 @@ final class Appearance: ObservableObject {
         // Accent is the page's own default, so anything unreadable — and the
         // absence of the key — lands there rather than on gray.
         accentBubbles = store.string(forKey: Self.bubbleTintKey) != "neutral"
+        chatDetail = MobileChatDetail(rawValue: store.integer(forKey: Self.chatDetailKey)) ?? .compact
     }
 }
 
@@ -138,6 +145,7 @@ extension View {
             .environment(\.chatIcons, appearance.chatIcons)
             .environment(\.providerMarks, appearance.providerMarks)
             .environment(\.mascotVisible, appearance.mascot)
+            .environment(\.mobileChatDetail, appearance.chatDetail)
             .tint(appearance.tint.color)
             .preferredColorScheme(appearance.theme.colorScheme)
     }

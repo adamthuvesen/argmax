@@ -47,10 +47,24 @@ struct TranscriptThoughtRow: View {
     let thought: TranscriptThought
     let client: BridgeClient
     let onOpenFile: (String) -> Void
+    @Environment(\.mobileChatDetail) private var detail
+    @State private var showFullThought = false
 
     var body: some View {
+        if detail == .balanced || detail == .detailed {
+            VStack(alignment: .leading, spacing: Spacing.tight) {
+                TranscriptMarkdown(text: visibleText, client: client, onOpenFile: onOpenFile, isThinking: true)
+                if thought.text.count > previewLength {
+                    Button(showFullThought ? "Show less thinking" : "Show more thinking") {
+                        showFullThought.toggle()
+                    }
+                    .font(.caption)
+                    .frame(minHeight: 44)
+                }
+            }
+        } else {
         DisclosureGroup {
-            TranscriptMarkdown(text: thought.text, client: client, onOpenFile: onOpenFile)
+            TranscriptMarkdown(text: thought.text, client: client, onOpenFile: onOpenFile, isThinking: true)
                 .padding(.top, Spacing.snug)
         } label: {
             Label(thought.isStreaming ? "Thinking" : "Thought process", systemImage: "sparkle")
@@ -59,17 +73,32 @@ struct TranscriptThoughtRow: View {
                 .frame(minHeight: 44)
         }
         .tint(Theme.muted)
+        }
+    }
+
+    private var previewLength: Int { detail == .detailed ? 800 : 400 }
+    private var visibleText: String {
+        showFullThought || thought.text.count <= previewLength
+            ? thought.text : String(thought.text.prefix(previewLength)) + "…"
     }
 }
 
 struct TranscriptToolsRow: View {
     let group: TranscriptToolGroup
     let onOpenFile: (String) -> Void
+    @Environment(\.mobileChatDetail) private var detail
 
     private var running: Bool { group.tools.contains { $0.status == .running } }
     private var failed: Int { group.tools.filter { $0.status == .failed }.count }
 
     var body: some View {
+        if detail == .detailed {
+            VStack(alignment: .leading, spacing: Spacing.snug) {
+                ForEach(group.tools) { tool in
+                    TranscriptToolRow(tool: tool, onOpenFile: onOpenFile)
+                }
+            }
+        } else {
         DisclosureGroup {
             VStack(alignment: .leading, spacing: Spacing.snug) {
                 ForEach(group.tools) { tool in
@@ -80,6 +109,9 @@ struct TranscriptToolsRow: View {
             HStack(spacing: Spacing.snug) {
                 if running { WorkingNest(size: 16) }
                 else { Image(systemName: failed > 0 ? "exclamationmark.circle" : "checkmark") }
+                ForEach(iconTools) { tool in
+                    TranscriptToolIcon(name: tool.name)
+                }
                 Text(summary)
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -90,6 +122,7 @@ struct TranscriptToolsRow: View {
             .contentShape(.rect)
         }
         .tint(Theme.muted)
+        }
     }
 
     private var summary: String {
@@ -101,6 +134,16 @@ struct TranscriptToolsRow: View {
             return tool.summary.isEmpty ? tool.name : tool.summary
         }
         return "\(group.tools.count) actions completed"
+    }
+
+    private var iconTools: [TranscriptTool] {
+        var seen = Set<String>()
+        return Array(group.tools.filter { tool in
+            guard let asset = TranscriptToolIcon.assetName(for: tool.name) else {
+                return group.tools.count == 1
+            }
+            return seen.insert(asset).inserted
+        }.prefix(3))
     }
 }
 
@@ -120,8 +163,14 @@ private struct TranscriptToolRow: View {
                 }
                 .padding(.vertical, Spacing.snug)
             } label: {
-                Label(tool.summary.isEmpty ? tool.name : tool.summary,
-                      systemImage: tool.status == .failed ? "exclamationmark.circle" : "terminal")
+                Label {
+                    Text(tool.summary.isEmpty ? tool.name : tool.summary)
+                } icon: {
+                    HStack(spacing: 4) {
+                        TranscriptToolIcon(name: tool.name)
+                        if tool.status == .failed { Image(systemName: "exclamationmark.circle") }
+                    }
+                }
                     .font(.footnote)
                     .foregroundStyle(tool.status == .failed ? Theme.rose : Theme.ink)
                     .lineLimit(3)

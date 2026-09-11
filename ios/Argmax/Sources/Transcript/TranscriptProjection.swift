@@ -381,7 +381,11 @@ enum TranscriptProjection {
         to items: inout [TranscriptItem]
     ) {
         if case .thought(var previous)? = items.last {
-            previous.text = combinedText(previous.text, event.message)
+            if event.payloadObject["providerEventType"]?.string == "item.completed" {
+                previous.text = completedThoughtText(existing: previous.text, event: event)
+            } else {
+                previous.text = combinedText(previous.text, event.message)
+            }
             previous.isStreaming = streaming
             items[items.count - 1] = .thought(previous)
             return
@@ -392,6 +396,30 @@ enum TranscriptProjection {
             createdAt: event.createdAt,
             isStreaming: streaming
         )))
+    }
+
+    private static func completedThoughtText(existing: String, event: TranscriptEvent) -> String {
+        let completed = event.message
+        guard !completed.isEmpty else { return existing }
+
+        // Codex first emits live summary fragments, then an authoritative item.completed
+        // whose summary array contains those same fragments with final separators.
+        let streamedSummary = (event.payloadObject["summary"]?.array ?? [])
+            .compactMap(\.string)
+            .joined()
+        let streamedCandidates = [completed, streamedSummary].filter { !$0.isEmpty }
+        if let streamed = streamedCandidates.first(where: { existing.hasSuffix($0) }) {
+            let prefix = String(existing.dropLast(streamed.count))
+            return joinThoughtParagraphs(prefix, completed)
+        }
+        return joinThoughtParagraphs(existing, completed)
+    }
+
+    private static func joinThoughtParagraphs(_ existing: String, _ incoming: String) -> String {
+        guard !existing.isEmpty else { return incoming }
+        if existing.hasSuffix("\n\n") { return existing + incoming }
+        if existing.hasSuffix("\n") { return existing + "\n" + incoming }
+        return existing + "\n\n" + incoming
     }
 
     private static func appendLog(_ event: TranscriptEvent, stream: String, to items: inout [TranscriptItem]) {

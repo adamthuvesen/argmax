@@ -236,13 +236,6 @@ final class TranscriptStore: ObservableObject {
         )
     }
 
-    /// Load a dispatched multitask's chat without changing the parent
-    /// transcript on screen.
-    func loadMultitaskEvents(sessionID: String) async throws -> [TranscriptItem] {
-        let page = try await client.transcriptEvents(sessionID: sessionID)
-        return TranscriptProjection.project(events: page.events)
-    }
-
     // MARK: - Serialized reads
 
     private func scheduleReads() {

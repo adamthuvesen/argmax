@@ -2,6 +2,62 @@ import XCTest
 @testable import Argmax
 
 final class TranscriptProjectionTests: XCTestCase {
+    func testCompletedThoughtItemsReplaceTheirLiveSummariesWithoutDuplication() throws {
+        let completed = TranscriptProjection.project(events: [
+            event("live-1", "message.delta", "**Inspecting files**", 1, [
+                "thinking": .bool(true)
+            ]),
+            event("completed-1", "message.delta", "**Inspecting files**", 2, [
+                "thinking": .bool(true),
+                "providerEventType": .string("item.completed"),
+                "summary": .array([.string("**Inspecting files**")])
+            ]),
+            event("live-2a", "message.delta", "**Separating concerns**", 3, [
+                "thinking": .bool(true)
+            ]),
+            event("live-2b", "message.delta", "**Preparing the patch file**", 4, [
+                "thinking": .bool(true)
+            ]),
+            event("completed-2", "message.delta", "**Separating concerns**\n**Preparing the patch file**", 5, [
+                "thinking": .bool(true),
+                "providerEventType": .string("item.completed"),
+                "summary": .array([
+                    .string("**Separating concerns**"),
+                    .string("**Preparing the patch file**")
+                ])
+            ])
+        ])
+        guard case .thought(let completedThought) = completed.first else { return XCTFail("expected thought") }
+        XCTAssertEqual(
+            completedThought.text,
+            "**Inspecting files**\n\n**Separating concerns**\n**Preparing the patch file**"
+        )
+    }
+
+    func testCompletedThoughtItemsKeepParagraphsWhileStreamingFragmentsStayJoined() throws {
+        let completed = TranscriptProjection.project(events: [
+            event("completed-1", "message.delta", "**Inspecting files**", 1, [
+                "thinking": .bool(true), "providerEventType": .string("item.completed")
+            ]),
+            event("completed-2", "message.delta", "**Separating concerns**", 2, [
+                "thinking": .bool(true), "providerEventType": .string("item.completed")
+            ])
+        ])
+        guard case .thought(let completedThought) = completed.first else { return XCTFail("expected thought") }
+        XCTAssertEqual(completedThought.text, "**Inspecting files**\n\n**Separating concerns**")
+
+        let streaming = TranscriptProjection.project(events: [
+            event("streaming-1", "message.delta", "Inspect", 1, [
+                "thinking": .bool(true), "providerEventType": .string("thinking")
+            ]),
+            event("streaming-2", "message.delta", "ing files", 2, [
+                "thinking": .bool(true), "providerEventType": .string("thinking")
+            ])
+        ])
+        guard case .thought(let stream) = streaming.first else { return XCTFail("expected thought") }
+        XCTAssertEqual(stream.text, "Inspecting files")
+    }
+
     func testMalformedQuestionDoesNotHideLaterAnswer() {
         let payload: [String: TranscriptJSONValue] = [
             "id": .string("tool-1"),

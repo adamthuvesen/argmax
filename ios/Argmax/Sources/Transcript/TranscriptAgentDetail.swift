@@ -13,6 +13,7 @@ struct TranscriptAgentDetail: View {
     @State private var loadInFlight = false
     @State private var reloadRequested = false
     @EnvironmentObject private var dashboard: DashboardStore
+    @Environment(\.mobileChatDetail) private var detail
 
     var body: some View {
         NavigationStack {
@@ -46,12 +47,14 @@ struct TranscriptAgentDetail: View {
                                     .frame(maxWidth: .infinity, alignment: .center)
                                     .padding(.vertical, Spacing.section)
                             }
-                            ForEach(items) { item in
+                            ForEach(MobileTranscriptRow.rows(items, detail: detail)) { row in
+                                MobileTranscriptRowView(row: row) { item in
                                 TranscriptAgentActivityRow(
                                     item: item,
                                     client: client,
                                     onOpenFile: openFile
                                 )
+                                }
                             }
                         }
                         .screenGutter()
@@ -126,12 +129,7 @@ struct TranscriptAgentActivityRow: View {
                 TranscriptMarkdown(text: message.text, client: client, onOpenFile: onOpenFile)
             }
         case .thought(let thought):
-            DisclosureGroup("Thinking") {
-                TranscriptMarkdown(text: thought.text, client: client, onOpenFile: onOpenFile)
-                    .padding(.top, Spacing.snug)
-            }
-            .font(.footnote)
-            .foregroundStyle(Theme.muted)
+            TranscriptThoughtRow(thought: thought, client: client, onOpenFile: onOpenFile)
         case .tools(let group):
             TranscriptToolsRow(group: group, onOpenFile: onOpenFile)
         case .error(let error):

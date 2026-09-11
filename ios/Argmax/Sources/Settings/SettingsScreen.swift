@@ -45,6 +45,21 @@ struct SettingsScreen: View {
                         isOn: $appearance.accentBubbles
                     )
                     HairlineDivider(inset: Spacing.row)
+                    VStack(alignment: .leading, spacing: Spacing.row) {
+                        Text("Chat detail").typeContent()
+                        Segmented(
+                            options: MobileChatDetail.allCases,
+                            selection: $appearance.chatDetail,
+                            label: \.label
+                        )
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(appearance.chatDetail.hint)
+                            Text("This setting applies only to this iPhone.")
+                        }
+                        .typeMeta()
+                    }
+                    .padding(Spacing.row)
+                    HairlineDivider(inset: Spacing.row)
                     SettingToggle(
                         label: "Chat icons",
                         detail: "The icon, pull request, or CLI mark at the left of a chat. Off, only a running chat is marked.",

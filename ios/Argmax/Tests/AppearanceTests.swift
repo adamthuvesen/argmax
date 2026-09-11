@@ -27,6 +27,21 @@ final class AppearanceTests: XCTestCase {
         XCTAssertEqual(appearance.theme, .system)
         XCTAssertNil(appearance.theme.colorScheme)
         XCTAssertEqual(appearance.tint, .orange)
+        XCTAssertEqual(appearance.chatDetail, .compact)
+    }
+
+    func testChatDetailSurvivesARelaunch() {
+        let first = Appearance(store: store)
+        first.chatDetail = .detailed
+
+        XCTAssertEqual(store.integer(forKey: Appearance.chatDetailKey), MobileChatDetail.detailed.rawValue)
+        XCTAssertEqual(Appearance(store: store).chatDetail, .detailed)
+    }
+
+    func testUnreadableChatDetailFallsBackToCompact() {
+        store.set(99, forKey: Appearance.chatDetailKey)
+
+        XCTAssertEqual(Appearance(store: store).chatDetail, .compact)
     }
 
     /// The bubble tint is stored as the page's own word under the page's own

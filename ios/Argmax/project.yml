@@ -31,6 +31,8 @@ targets:
       # Argmax.app/Resources/, where `Bundle.url(forResource:)` does not look.
       - path: Resources/providerModels.json
         buildPhase: resources
+      - path: Resources/toolIcons.json
+        buildPhase: resources
       - path: Resources/RichContent
         type: folder
         buildPhase: resources

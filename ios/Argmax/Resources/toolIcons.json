@@ -1,0 +1,115 @@
+{
+  "generatedBy": "scripts/export-ios-tool-icons.mjs",
+  "icons": [
+    {
+      "key": "argmax",
+      "title": "Argmax",
+      "aliases": [
+        "argmax"
+      ]
+    },
+    {
+      "key": "slack",
+      "title": "Slack",
+      "aliases": [
+        "slack"
+      ]
+    },
+    {
+      "key": "notion",
+      "title": "Notion",
+      "aliases": [
+        "notion"
+      ]
+    },
+    {
+      "key": "google-drive",
+      "title": "Google Drive",
+      "aliases": [
+        "google drive",
+        "gdrive",
+        "drive"
+      ]
+    },
+    {
+      "key": "gmail",
+      "title": "Gmail",
+      "aliases": [
+        "gmail"
+      ]
+    },
+    {
+      "key": "google-calendar",
+      "title": "Google Calendar",
+      "aliases": [
+        "google calendar",
+        "gcal",
+        "calendar"
+      ]
+    },
+    {
+      "key": "snowflake",
+      "title": "Snowflake",
+      "aliases": [
+        "snowflake"
+      ]
+    },
+    {
+      "key": "spotify",
+      "title": "Spotify",
+      "aliases": [
+        "spotify"
+      ]
+    },
+    {
+      "key": "linear",
+      "title": "Linear",
+      "aliases": [
+        "linear"
+      ]
+    },
+    {
+      "key": "github",
+      "title": "GitHub",
+      "aliases": [
+        "github"
+      ]
+    },
+    {
+      "key": "vercel",
+      "title": "Vercel",
+      "aliases": [
+        "vercel"
+      ]
+    },
+    {
+      "key": "engram",
+      "title": "Engram",
+      "aliases": [
+        "engram"
+      ]
+    },
+    {
+      "key": "shunt",
+      "title": "Shunt",
+      "aliases": [
+        "shunt"
+      ]
+    },
+    {
+      "key": "trace",
+      "title": "Trace",
+      "aliases": [
+        "trace",
+        "trace hq"
+      ]
+    }
+  ],
+  "mcpServersWithoutIcons": [
+    "browser use",
+    "confidence experiments",
+    "context7",
+    "hex",
+    "profound"
+  ]
+}

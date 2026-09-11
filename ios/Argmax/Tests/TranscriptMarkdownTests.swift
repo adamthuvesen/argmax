@@ -3,6 +3,33 @@ import XCTest
 @testable import Argmax
 
 final class TranscriptMarkdownTests: XCTestCase {
+    func testWorkspacePathsUseRelativeLabelsAndKeepOriginalLinks() {
+        let document = TranscriptMarkdownDocument(
+            markdown: "Open `/Users/adam/project/src/file.swift:42` and [the guide](/Users/adam/project/docs/guide.md).",
+            workspacePath: "/Users/adam/project/"
+        )
+        guard case .paragraph(let paragraph) = document.blocks.first else {
+            return XCTFail("expected paragraph")
+        }
+        XCTAssertEqual(String(paragraph.characters), "Open src/file.swift:42 and the guide.")
+        let targets = Set(paragraph.runs.compactMap { $0.link?.relativeString })
+        XCTAssertTrue(targets.contains("/Users/adam/project/src/file.swift"))
+        XCTAssertTrue(targets.contains("/Users/adam/project/docs/guide.md"))
+    }
+
+    func testThinkingRemovesBoldWithoutChangingAnswerMarkdown() {
+        let markdown = "**Checking files** then *considering options*"
+        let ordinary = TranscriptMarkdownDocument(markdown: markdown)
+        let thinking = TranscriptMarkdownDocument(markdown: markdown, isThinking: true)
+        guard case .paragraph(let answer) = ordinary.blocks.first,
+              case .paragraph(let thought) = thinking.blocks.first else {
+            return XCTFail("expected paragraphs")
+        }
+        XCTAssertTrue(answer.runs.contains { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true })
+        XCTAssertFalse(thought.runs.contains { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true })
+        XCTAssertEqual(String(answer.characters), String(thought.characters))
+    }
+
     func testFoundationStructureBecomesNativeBlocksWithoutFlatteningParagraphs() throws {
         let document = TranscriptMarkdownDocument(markdown: """
         # Result

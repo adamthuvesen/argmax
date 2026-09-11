@@ -228,15 +228,17 @@ struct TranscriptInteractiveRow: View {
     }
 
     private func loadMultitask(_ sessionID: String) async throws -> TranscriptMultitaskDetailSnapshot {
-        async let items = transcript.loadMultitaskEvents(sessionID: sessionID)
+        async let page = client.transcriptEvents(sessionID: sessionID)
         async let dashboard = client.transcriptDashboard()
-        let (loadedItems, loadedDashboard) = try await (items, dashboard)
+        let (loadedPage, loadedDashboard) = try await (page, dashboard)
         guard let session = loadedDashboard.sessions.first(where: { $0.id == sessionID }) else {
             throw BridgeError.malformedResponse
         }
+        let workspacePath = loadedDashboard.workspaces.first { $0.id == session.workspaceId }?.path
         return TranscriptMultitaskDetailSnapshot(
-            items: loadedItems,
-            sendContext: context(for: session)
+            items: TranscriptProjection.project(events: loadedPage.events, workspacePath: workspacePath),
+            sendContext: context(for: session),
+            workspacePath: workspacePath
         )
     }
 }

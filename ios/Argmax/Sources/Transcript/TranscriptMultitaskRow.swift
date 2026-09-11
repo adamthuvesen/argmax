@@ -3,6 +3,7 @@ import SwiftUI
 struct TranscriptMultitaskDetailSnapshot: Sendable {
     var items: [TranscriptItem]
     var sendContext: TranscriptSendContext
+    var workspacePath: String?
 }
 
 enum TranscriptMultitaskDismissals {
@@ -224,6 +225,7 @@ private struct TranscriptMultitaskDetail: View {
     @StateObject private var actions: TranscriptInteractionCoordinator
     @FocusState private var composerFocused: Bool
     @EnvironmentObject private var dashboard: DashboardStore
+    @Environment(\.mobileChatDetail) private var detail
 
     init(
         title: String,
@@ -260,10 +262,13 @@ private struct TranscriptMultitaskDetail: View {
                                         .foregroundStyle(Theme.rose)
                                         .accessibilityLabel("Action failed. \(displayedFailure)")
                                 }
-                                ForEach(snapshot.items) { item in
-                                    detailRow(item, context: snapshot.sendContext)
+                                ForEach(MobileTranscriptRow.rows(snapshot.items, detail: detail)) { row in
+                                    MobileTranscriptRowView(row: row) { item in
+                                        detailRow(item, context: snapshot.sendContext)
+                                    }
                                 }
                             }
+                            .environment(\.transcriptWorkspacePath, snapshot.workspacePath)
                             .screenGutter()
                             .padding(.vertical, Spacing.row)
                         }

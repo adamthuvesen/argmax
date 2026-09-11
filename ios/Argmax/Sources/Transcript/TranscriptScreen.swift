@@ -20,6 +20,8 @@ struct TranscriptScreen: View {
             draft = "Please revise the plan: "
             focusRequest += 1
         }
+        .environment(\.transcriptWorkspacePath,
+                     store.snapshot.workspaces.first { $0.id == row.workspace.id }?.path ?? row.workspace.path)
         .background(Theme.ground.ignoresSafeArea())
         .safeAreaInset(edge: .top, spacing: 0) { header }
         .safeAreaInset(edge: .bottom, spacing: 0) {

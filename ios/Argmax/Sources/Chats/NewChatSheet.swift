@@ -45,6 +45,7 @@ struct NewChatSheet: View {
     @State private var draftBeforeDictation = ""
     @FocusState private var promptFocused: Bool
     @Environment(\.accentTint) private var accent
+    @Environment(\.mascotVisible) private var mascotVisible
 
     /// Which chip is open. One at a time, so one sheet.
     private enum Picking: String, Identifiable {
@@ -81,7 +82,7 @@ struct NewChatSheet: View {
             store.snapshot.workspaces.first { $0.id == id }
         }
         let branchable = source.map { $0.kind == .git && !$0.sharedWorkspace && !$0.branch.isEmpty } ?? false
-        _mode = State(initialValue: seeded.isEmpty ? .sideChat : (branchable ? .branchFrom : .worktree))
+        _mode = State(initialValue: seeded.isEmpty ? .sideChat : (branchable ? .branchFrom : .current))
         _baseRef = State(initialValue: branchable ? source?.branch : nil)
         _projectID = State(
             initialValue: source?.projectId ?? preselectedProjectID ?? seeded.first?.id
@@ -145,7 +146,7 @@ struct NewChatSheet: View {
     /// greeting rather than an instruction (the placeholder is that).
     private var hero: some View {
         VStack(spacing: Spacing.row) {
-            FoxMark(size: 72)
+            if mascotVisible { FoxMark(size: 72) }
             Text(Self.greeting(for: mode))
                 .font(.body.weight(.medium))
                 .foregroundStyle(Theme.ink.opacity(0.85))

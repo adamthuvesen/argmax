@@ -44,6 +44,19 @@ final class AppearanceTests: XCTestCase {
         XCTAssertFalse(Appearance(store: store).accentBubbles, "and it survives a relaunch")
     }
 
+    /// The fox ships on and is opted out of, and the choice outlives the
+    /// launch that made it — `bool(forKey:)` alone would read a never-written
+    /// key as "hidden".
+    func testTheFoxShipsOnAndStaysOffOnceTurnedOff() {
+        let first = Appearance(store: store)
+        XCTAssertTrue(first.mascot)
+
+        first.mascot = false
+
+        XCTAssertEqual(store.object(forKey: "argmax.mascot.visible") as? Bool, false)
+        XCTAssertFalse(Appearance(store: store).mascot)
+    }
+
     func testBothChoicesSurviveARelaunch() {
         let first = Appearance(store: store)
         first.theme = .dark

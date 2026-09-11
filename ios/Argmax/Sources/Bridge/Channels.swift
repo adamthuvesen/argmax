@@ -440,9 +440,25 @@ extension BridgeClient {
 
     /// What each provider login says is left of its included usage. The Mac
     /// calls five provider endpoints behind a 10-second timeout, so this is
-    /// a screen-opens read, never a poll. See Settings/PlanLimits.swift.
+    /// a screen-opens read, never a poll. See Insights/PlanLimits.swift.
     func planLimits() async throws -> PlanLimits {
         try await request("usage:remaining", as: PlanLimits.self)
+    }
+
+    /// The Usage page ledger: totals, per-provider cards, daily series, token
+    /// split, and model breakdown for one window. Always fetched unfiltered —
+    /// the provider filter is applied client-side so the cards stay global.
+    /// A read (`src/shared/remoteReadChannels.json`), never a poll.
+    func usageSummary(_ input: UsageSummaryInput) async throws -> UsageSummary {
+        try await request("usage:summary", input: input, as: UsageSummary.self)
+    }
+
+    /// The Activity page ledger: totals, repos, daily series, 365-day
+    /// heatmap, streaks, cadence, PRs, and reviews for one window. Always
+    /// fetched unfiltered; the project filter applies client-side so the
+    /// heatmap and repository shares stay global. A read, never a poll.
+    func activitySummary(_ input: ActivitySummaryInput) async throws -> ActivitySummary {
+        try await request("activity:summary", input: input, as: ActivitySummary.self)
     }
 
     // Mutations. Each carries a fresh `operation`, and none is retried.

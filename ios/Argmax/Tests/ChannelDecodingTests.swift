@@ -72,4 +72,78 @@ final class ChannelDecodingTests: XCTestCase {
         let offerable = projects.filter { $0.id != scratchProjectID }
         XCTAssertEqual(offerable.map(\.name), ["argmax", "dotfiles"])
     }
+
+    // MARK: - usage:summary
+
+    /// Shaped after the real `usage:summary` payload (`bindings.d.ts`
+    /// `UsageSummary`): hero totals, provider cards, series, models, days —
+    /// plus one unknown top-level column, which must decode to nothing.
+    func testDecodesAUsageSummary() throws {
+        let summary = try fixture("usage-summary", as: UsageSummary.self)
+        XCTAssertEqual(summary.window, "30d")
+        XCTAssertEqual(summary.sessions, 3106)
+        XCTAssertEqual(summary.costUsd, 18196.95, accuracy: 0.001)
+        XCTAssertEqual(summary.tokens.cacheRead, 21800000000, accuracy: 1)
+        XCTAssertEqual(summary.providers.map(\.provider), ["claude", "codex", "cursor"])
+        XCTAssertFalse(summary.providers.last?.available ?? true)
+        XCTAssertEqual(summary.series.count, 3)
+        XCTAssertEqual(summary.models.map(\.modelId), ["claude-opus-5", "gpt-5.6-sol"])
+        XCTAssertEqual(summary.days.count, 2)
+        XCTAssertEqual(summary.previous?.sessions, 2890)
+        XCTAssertEqual(summary.scanPhase, "idle")
+    }
+
+    // MARK: - activity:summary
+    /// Shaped after the real `activity:summary` payload: totals, repos,
+    /// series, heatmap, streaks, cadence, PRs, reviews — plus one unknown
+    /// column, which must decode to nothing.
+    func testDecodesAnActivitySummary() throws {
+        let summary = try fixture("activity-summary", as: ActivitySummary.self)
+        XCTAssertEqual(summary.window, "30d")
+        XCTAssertEqual(summary.totals.commits, 1557)
+        XCTAssertEqual(summary.totals.prsMerged, 226)
+        XCTAssertEqual(summary.repositories.map(\.name), ["argmax", "revops-backoffice"])
+        XCTAssertEqual(summary.series.count, 2)
+        XCTAssertEqual(summary.heatmap.count, 19)
+        XCTAssertEqual(summary.streaks.currentDays, 23)
+        XCTAssertEqual(summary.streaks.busiestDay?.commits, 136)
+        XCTAssertEqual(summary.cadence.byWeekday.count, 7)
+        XCTAssertEqual(summary.cadence.byHour.count, 24)
+        XCTAssertEqual(summary.pullRequests.count, 2)
+        XCTAssertEqual(summary.pullRequests.first?.cycleSeconds, 1080)
+        XCTAssertEqual(summary.reviews.map(\.state), ["approved", "commented"])
+        XCTAssertEqual(summary.medianCycleSeconds, 540)
+        XCTAssertTrue(summary.github.available)
+        XCTAssertEqual(summary.scanPhase, "complete")
+    }
+
+    // MARK: - Disk cache round-trips
+
+    /// The Insights disk cache encodes what it decoded. A lossy mirror would
+    /// paint last week's numbers as this week's, so the trip there and back
+    /// is pinned on the fixtures.
+    func testUsageSummaryRoundTripsThroughCache() throws {
+        let summary = try fixture("usage-summary", as: UsageSummary.self)
+        let again = try JSONDecoder().decode(
+            UsageSummary.self, from: JSONEncoder().encode(summary)
+        )
+        XCTAssertEqual(again.window, "30d")
+        XCTAssertEqual(again.costUsd, 18196.95, accuracy: 0.001)
+        XCTAssertEqual(again.providers.map(\.provider), ["claude", "codex", "cursor"])
+        XCTAssertEqual(again.models.map(\.modelId), ["claude-opus-5", "gpt-5.6-sol"])
+        XCTAssertEqual(again.scanPhase, "idle")
+    }
+
+    func testActivitySummaryRoundTripsThroughCache() throws {
+        let summary = try fixture("activity-summary", as: ActivitySummary.self)
+        let again = try JSONDecoder().decode(
+            ActivitySummary.self, from: JSONEncoder().encode(summary)
+        )
+        XCTAssertEqual(again.window, "30d")
+        XCTAssertEqual(again.totals.commits, 1557)
+        XCTAssertEqual(again.repositories.map(\.name), ["argmax", "revops-backoffice"])
+        XCTAssertEqual(again.heatmap.count, 19)
+        XCTAssertEqual(again.cadence.byHour.count, 24)
+        XCTAssertEqual(again.scanPhase, "complete")
+    }
 }

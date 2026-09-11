@@ -183,11 +183,13 @@ struct EmptyState: View {
     let message: String
     var action: (title: String, run: () -> Void)?
 
+    @Environment(\.mascotVisible) private var mascotVisible
+
     var body: some View {
         VStack(spacing: Spacing.gutter) {
             switch mark {
             case .fox:
-                FoxMark(size: 84).opacity(0.9)
+                if mascotVisible { FoxMark(size: 84).opacity(0.9) }
             case .glyph(let name):
                 Image(systemName: name)
                     .font(.system(size: 30, weight: .medium))

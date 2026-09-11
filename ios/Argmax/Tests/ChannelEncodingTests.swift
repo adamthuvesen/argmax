@@ -44,6 +44,9 @@ final class ChannelEncodingTests: XCTestCase {
             "projects:list",
             "projects:list-branches",
             "providers:discover",
+            "usage:summary",
+            "usage:remaining",
+            "activity:summary",
             "remote:push-capability"
         ] {
             let sent = try frame(channel, EmptyInput())
@@ -174,6 +177,29 @@ final class ChannelEncodingTests: XCTestCase {
     func testListBranches() throws {
         let body = try input("projects:list-branches", ListBranchesInput(projectId: "p-1"))
         XCTAssertEqual(Set(body.keys), ["projectId"])
+    }
+
+    /// Insights always fetches unfiltered — the pickers narrow client-side so
+    /// the cards and heatmap stay global — and a nil filter rides as `null`,
+    /// never dropped, per the host's `deny_unknown_fields` inputs.
+    func testUsageSummaryInput() throws {
+        let body = try input(
+            "usage:summary",
+            UsageSummaryInput(window: "30d", timeZone: "Europe/Stockholm", provider: nil)
+        )
+        XCTAssertEqual(Set(body.keys), ["window", "timeZone", "provider"])
+        XCTAssertEqual(body["window"] as? String, "30d")
+        XCTAssertTrue(body["provider"] is NSNull)
+    }
+
+    func testActivitySummaryInput() throws {
+        let body = try input(
+            "activity:summary",
+            ActivitySummaryInput(window: "30d", projectId: nil, timeZone: "Europe/Stockholm")
+        )
+        XCTAssertEqual(Set(body.keys), ["window", "projectId", "timeZone"])
+        XCTAssertEqual(body["window"] as? String, "30d")
+        XCTAssertTrue(body["projectId"] is NSNull)
     }
 
     func testRegisterPushDevice() throws {

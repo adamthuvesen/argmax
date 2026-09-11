@@ -1062,31 +1062,31 @@ html:has(.mobile-shell[data-embed]) body,
 }
 
 .mobile-accent-chip[data-accent-id="orange"] {
-  --accent-swatch-color: #b15810;
+  --accent-swatch-color: #a25408;
 }
 
 .mobile-accent-chip[data-accent-id="blue"] {
-  --accent-swatch-color: #446b95;
+  --accent-swatch-color: #396696;
 }
 
 .mobile-accent-chip[data-accent-id="coral"] {
-  --accent-swatch-color: #a35450;
+  --accent-swatch-color: #944b3e;
 }
 
 :root[data-theme="dark"] .mobile-accent-chip[data-accent-id="purple"] {
-  --accent-swatch-color: #a18bc5;
+  --accent-swatch-color: #ad94d0;
 }
 
 :root[data-theme="dark"] .mobile-accent-chip[data-accent-id="orange"] {
-  --accent-swatch-color: #ee9a50;
+  --accent-swatch-color: #db9152;
 }
 
 :root[data-theme="dark"] .mobile-accent-chip[data-accent-id="blue"] {
-  --accent-swatch-color: #80a2c6;
+  --accent-swatch-color: #7ea6cf;
 }
 
 :root[data-theme="dark"] .mobile-accent-chip[data-accent-id="coral"] {
-  --accent-swatch-color: #cb8b86;
+  --accent-swatch-color: #d18e82;
 }
 
 /* ---- New-chat composer ----

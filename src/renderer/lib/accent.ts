@@ -37,7 +37,7 @@ export const ACCENT_OPTIONS: AccentOption[] = [
     id: "neutral",
     label: "Neutral",
     hint: "A quiet black/gray tint for the lowest-key interface.",
-    swatch: { color: "#2f2f2b", soft: "#ededeb" }
+    swatch: { color: "#6c6960", soft: "#ecebea" }
   },
   {
     id: "black",
@@ -49,19 +49,19 @@ export const ACCENT_OPTIONS: AccentOption[] = [
     id: "orange",
     label: "Orange",
     hint: "A warm orange accent for chrome without changing warnings or diffs.",
-    swatch: { color: "#b15810", soft: "#fff0e2" }
+    swatch: { color: "#a25408", soft: "#f8eae1" }
   },
   {
     id: "blue",
     label: "Blue",
     hint: "A cool blue accent for selection, focus, and transcript chrome.",
-    swatch: { color: "#446b95", soft: "#e8eef5" }
+    swatch: { color: "#396696", soft: "#e8eef5" }
   },
   {
     id: "coral",
     label: "Coral",
     hint: "A warm red accent for chrome. Error states keep their own rose tint.",
-    swatch: { color: "#a35450", soft: "#f6eae8" }
+    swatch: { color: "#944b3e", soft: "#f8eae6" }
   }
 ];
 

@@ -208,8 +208,9 @@ Adam's calls after using the design-pass build on his phone, binding:
   Cursor (`#14120B`/`#F7F7F4`) and xAI monochrome, near-black on light and
   near-white on dark; opencode (no published palette) in the ink — 16pt, from
   official vector assets (done: `Design/ProviderMark.swift`); and Settings → Appearance gets a
-  "Provider marks" toggle that hides the glyph column entirely (text moves
-  to the gutter).
+  "Provider marks" toggle that hides the bare mark, under a "Chat icons"
+  toggle that hides every glyph but a running chat's nest (the column itself
+  stays either way, so the titles never move).
 - The header's "+" becomes the compose glyph (`square.and.pencil`, the
   `SquarePen` the desktop's "New chat here" uses) in the **ink**, same as the
   gear — not the accent — and no circle. (Accent in the list is for the
@@ -225,7 +226,8 @@ Adam's calls after using the design-pass build on his phone, binding:
   the desktop's icon picker) when there is one, else the accent. A chat that is
   not running shows its own icon (`icon`, the desktop's curated SF-Symbol-like
   set — map the names to SF Symbols) in `iconColor` when set; else the provider
-  brand mark, subject to the "Provider marks" toggle.
+  brand mark, subject to the "Provider marks" toggle — and both under the
+  "Chat icons" toggle.
 
 - Section titles (Pinned · Priority · Chats) must scroll with the content —
   `List`'s plain-style section headers pin to the top; render them as plain

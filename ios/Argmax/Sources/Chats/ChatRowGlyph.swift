@@ -15,10 +15,13 @@ import SwiftUI
 //      chat with both a picked icon and an open PR shows only the icon.
 //   4. Otherwise the provider's mark.
 //
-// Settings → Appearance's "Provider marks" switch reaches step 4 and nothing
-// else: it hides the mark, not the column. An earlier pass dropped the whole
-// 36pt column when the switch was off, which moved every title on the screen
-// and left a running chat with nowhere to say it was running.
+// Settings → Appearance holds two switches over this order. "Chat icons"
+// reaches steps 2 through 4: off, a row draws nothing but the nest, because a
+// turn in flight is the one thing the column says that a title cannot.
+// "Provider marks", under it, reaches step 4 alone — the bare CLI badge on
+// chats that picked nothing. Neither closes the column: an earlier pass
+// dropped the whole 36pt column, which moved every title on the screen the
+// moment a chat started or stopped working.
 //
 // The choice is a value rather than a `ViewBuilder` so the order can be
 // tested without a renderer; `ChatRowGlyphView` is the only thing that turns
@@ -35,14 +38,16 @@ enum ChatRowGlyph: Equatable {
     /// The workspace's most recent PR still open, in `--pr-open` sage.
     case prOpen(number: Int?)
     case providerMark(provider: String)
-    /// Nothing to show: no icon, no PR, and the marks are switched off. The
-    /// column stands empty rather than closing, so the titles stay on their
-    /// column.
+    /// Nothing to show: the icons are switched off, or there was never
+    /// anything to draw. The column stands empty rather than closing, so the
+    /// titles stay on their column.
     case empty
 
-    init(row: ChatRow, providerMarks: Bool) {
+    init(row: ChatRow, chatIcons: Bool, providerMarks: Bool) {
         if row.working {
             self = .nest(tint: row.workspace.iconColor)
+        } else if !chatIcons {
+            self = .empty
         } else if let icon = row.workspace.icon, SessionIcon.symbol(for: icon) != nil {
             self = .icon(name: icon, tint: row.workspace.iconColor)
         } else if row.workspace.prState == "MERGED" {

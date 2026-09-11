@@ -22,10 +22,6 @@ struct SettingsScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.section) {
-                SettingGroup("Notifications") {
-                    NotificationsSetting(push: push)
-                }
-
                 SettingGroup("Appearance") {
                     VStack(alignment: .leading, spacing: Spacing.row) {
                         Text("Theme").typeContent()
@@ -50,8 +46,15 @@ struct SettingsScreen: View {
                     )
                     HairlineDivider(inset: Spacing.row)
                     SettingToggle(
+                        label: "Chat icons",
+                        detail: "The icon, pull request, or CLI mark at the left of a chat. Off, only a running chat is marked.",
+                        isOn: $appearance.chatIcons
+                    )
+                    HairlineDivider(inset: Spacing.row)
+                    SettingToggle(
                         label: "Provider marks",
                         detail: "The CLI's mark on chats with no icon of their own.",
+                        enabled: appearance.chatIcons,
                         isOn: $appearance.providerMarks
                     )
                     HairlineDivider(inset: Spacing.row)
@@ -60,6 +63,10 @@ struct SettingsScreen: View {
                         detail: "The fox in the Chats header, on a new chat, and on an empty screen.",
                         isOn: $appearance.mascot
                     )
+                }
+
+                SettingGroup("Notifications") {
+                    NotificationsSetting(push: push)
                 }
 
                 SettingGroup("Your Mac") {
@@ -180,17 +187,23 @@ struct SettingRow: View {
 struct SettingToggle: View {
     let label: String
     var detail: String?
+    /// A switch its own parent setting has taken out of play: it still reads,
+    /// so the hierarchy is legible, but it cannot be flicked.
+    var enabled = true
     @Binding var isOn: Bool
 
     var body: some View {
         Toggle(isOn: $isOn) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(label).typeContent()
+                Text(label)
+                    .typeContent()
+                    .foregroundStyle(enabled ? Theme.ink : Theme.muted)
                 if let detail {
                     Text(detail).typeMeta()
                 }
             }
         }
+        .disabled(!enabled)
         .padding(Spacing.row)
         .onChange(of: isOn) { _, _ in Haptics.light() }
     }

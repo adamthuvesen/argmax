@@ -501,15 +501,17 @@ struct ChatListRow: View {
     var stagger = 0
     let open: () -> Void
 
-    /// Settings → Appearance. It hides the provider's mark and nothing else:
-    /// a running chat still shows its nest and a chat with an icon still
-    /// shows that, so the column stays and the titles keep their column.
+    /// Settings → Appearance. With icons off the leading column draws only a
+    /// running chat's nest; with marks off it drops the bare CLI badge. The
+    /// column itself stays either way, so the titles keep their column
+    /// whether a turn is in flight or not.
+    @Environment(\.chatIcons) private var chatIcons
     @Environment(\.providerMarks) private var providerMarks
 
     var body: some View {
         Button(action: open) {
             HStack(alignment: .top, spacing: 0) {
-                ChatRowGlyphView(glyph: ChatRowGlyph(row: row, providerMarks: providerMarks))
+                ChatRowGlyphView(glyph: ChatRowGlyph(row: row, chatIcons: chatIcons, providerMarks: providerMarks))
                     // Optically on the title's line rather than on the row's
                     // top edge.
                     .padding(.top, 2)

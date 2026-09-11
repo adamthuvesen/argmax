@@ -47,6 +47,9 @@ final class Appearance: ObservableObject {
     /// No web counterpart: the phone list is the only place in Argmax with a
     /// glyph column to turn off, so the key is namespaced to this app rather
     /// than borrowed from the web client's vocabulary.
+    static let chatIconsKey = "argmax.phone.chatIcons"
+    /// Same reason, and the narrower of the two: it reaches only the bare
+    /// provider mark, under the switch that reaches the whole column.
     static let providerMarksKey = "argmax.phone.providerMarks"
     /// The web client's own key (`argmax.mascot.visible`), the way theme and
     /// accent borrow theirs: the fox is one setting across both halves of
@@ -66,10 +69,21 @@ final class Appearance: ObservableObject {
         didSet { store.set(tint.rawValue, forKey: Self.accentKey) }
     }
 
+    /// Whether a chat row draws anything in its leading column — the icon
+    /// picked on the Mac, the workspace's pull request, the provider's mark.
+    /// On by default: the column is how a list of a hundred chats says which
+    /// CLI is on the other end without spending a word on it. Off, only a
+    /// running chat's nest is left, and the column stays reserved so a turn
+    /// starting doesn't shove every title sideways.
+    @Published var chatIcons: Bool {
+        didSet { store.set(chatIcons, forKey: Self.chatIconsKey) }
+    }
+
     /// Whether a chat row falls back to its provider's mark when it has no
-    /// icon of its own. On by default — the mark is how a list of a hundred
-    /// chats says which CLI is on the other end without spending a word on
-    /// it. Off, the column stays: a running chat still shows its nest.
+    /// icon and no pull request of its own. On by default — the mark is how
+    /// a list of a hundred chats says which CLI is on the other end without
+    /// spending a word on it. It only matters while `chatIcons` is on, which
+    /// is why Settings greys it out underneath.
     @Published var providerMarks: Bool {
         didSet { store.set(providerMarks, forKey: Self.providerMarksKey) }
     }
@@ -105,6 +119,7 @@ final class Appearance: ObservableObject {
         tint = AccentTint(rawValue: store.string(forKey: Self.accentKey) ?? "") ?? .fallback
         // `bool(forKey:)` is false for a key that was never written, which
         // is the wrong default here — so the absence is read first.
+        chatIcons = store.object(forKey: Self.chatIconsKey) as? Bool ?? true
         providerMarks = store.object(forKey: Self.providerMarksKey) as? Bool ?? true
         mascot = store.object(forKey: Self.mascotKey) as? Bool ?? true
         // Accent is the page's own default, so anything unreadable — and the
@@ -120,6 +135,7 @@ extension View {
     /// controls read.
     func appearance(_ appearance: Appearance) -> some View {
         environment(\.accentTint, appearance.tint)
+            .environment(\.chatIcons, appearance.chatIcons)
             .environment(\.providerMarks, appearance.providerMarks)
             .environment(\.mascotVisible, appearance.mascot)
             .tint(appearance.tint.color)
@@ -129,11 +145,16 @@ extension View {
 
 /// Handed down the tree the way the accent is, so a row reads it without an
 /// `@EnvironmentObject` every `#Preview` would then have to supply.
+private struct ChatIconsKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+/// The narrower switch under it, handed down the same way.
 private struct ProviderMarksKey: EnvironmentKey {
     static let defaultValue = true
 }
 
-/// Same reason as the provider marks: the fox is drawn from the header, the
+/// Same reason as the chat icons: the fox is drawn from the header, the
 /// new-chat sheet and the empty state, and none of them should need an
 /// `@EnvironmentObject` a `#Preview` would have to supply.
 private struct MascotVisibleKey: EnvironmentKey {
@@ -141,6 +162,11 @@ private struct MascotVisibleKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
+    var chatIcons: Bool {
+        get { self[ChatIconsKey.self] }
+        set { self[ChatIconsKey.self] = newValue }
+    }
+
     var providerMarks: Bool {
         get { self[ProviderMarksKey.self] }
         set { self[ProviderMarksKey.self] = newValue }

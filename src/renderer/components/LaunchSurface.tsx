@@ -256,6 +256,7 @@ export function LaunchSurface({
   const [branches, setBranches] = useState<string[]>([]);
   const branchPickerRef = useRef<HTMLDivElement | null>(null);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [effortPickerOpen, setEffortPickerOpen] = useState(false);
   const [compactContextOpen, setCompactContextOpen] = useState(false);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const compactContextRef = useRef<HTMLDivElement | null>(null);
@@ -370,6 +371,50 @@ export function LaunchSurface({
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [activeProject, reviewClosePane, reviewIsPanelOpen, reviewModes, reviewOpenPanelInFilesMode, toggleReviewPanel]);
+
+  // ⌘⇧M, ⌘⇧E and ⌘⇧R open the model, effort and folder pickers. Only the
+  // focused launcher answers, and the folder picker exists only on the task
+  // launcher: a side chat has no project to switch.
+  const supportsEffort = model.reasoningEffort != null;
+  useEffect(() => {
+    if (!isFocused) return undefined;
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.altKey) return;
+      if (event.isComposing || event.repeat) return;
+      const key = event.key.toLowerCase();
+      if (key === "m") {
+        event.preventDefault();
+        setProjectPickerOpen(false);
+        setBranchPickerOpen(false);
+        setEffortPickerOpen(false);
+        setModelPickerOpen((open) => !open);
+        return;
+      }
+      if (key === "e" && supportsEffort) {
+        event.preventDefault();
+        setProjectPickerOpen(false);
+        setBranchPickerOpen(false);
+        setModelPickerOpen(false);
+        setEffortPickerOpen((open) => !open);
+        return;
+      }
+      if (key === "r" && !chatMode) {
+        event.preventDefault();
+        setBranchPickerOpen(false);
+        setModelPickerOpen(false);
+        setEffortPickerOpen(false);
+        // Narrow, the folder chip folds behind the "…" and its list only
+        // shows inside the open compact panel, so unfold first.
+        const compactTrigger = compactContextRef.current?.querySelector<HTMLElement>(
+          ".composer-compact-context-trigger"
+        );
+        if (compactTrigger?.offsetParent) setCompactContextOpen(true);
+        setProjectPickerOpen((open) => !open);
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [chatMode, isFocused, supportsEffort]);
 
   useEffect(() => {
     if (resetSignal === lastResetSignal.current) return;
@@ -992,6 +1037,8 @@ export function LaunchSurface({
               open={modelPickerOpen}
               onOpenChange={setModelPickerOpen}
               withEffortSlider
+              effortOpen={effortPickerOpen}
+              onEffortOpenChange={setEffortPickerOpen}
               value={model}
               onChange={onModelChange}
               onFastModeEnabledChange={onFastModeEnabledChange}

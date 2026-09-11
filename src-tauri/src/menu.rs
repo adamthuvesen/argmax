@@ -383,12 +383,13 @@ fn append_item<R: Runtime>(
                 submenu.append(&item)?;
             }
             NativeItem::DevForceReload => {
+                // Reserve Cmd+Shift+R for the launcher's folder picker.
                 let item = MenuItem::with_id(
                     app,
                     "argmax:dev-force-reload",
                     "Force Reload",
                     true,
-                    Some("CmdOrCtrl+Shift+R"),
+                    None::<&str>,
                 )?;
                 submenu.append(&item)?;
             }

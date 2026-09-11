@@ -141,16 +141,24 @@ export function ModelSelector({
   fastModeEnabled = false,
   onFastModeEnabledChange,
   onChange,
+  onOpenChange,
+  open,
   provider,
   withEffortSlider = false,
+  effortOpen,
+  onEffortOpenChange,
   value
 }: {
   ariaLabel: string;
   fastModeEnabled?: boolean;
   onFastModeEnabledChange?: (enabled: boolean) => void;
   onChange: (model: ProviderModelSelection) => void;
+  onOpenChange?: (open: boolean) => void;
+  open?: boolean;
   provider: ProviderId;
   withEffortSlider?: boolean;
+  effortOpen?: boolean;
+  onEffortOpenChange?: (open: boolean) => void;
   value: ProviderModelSelection;
 }): JSX.Element {
   const options: Array<ChipModelOption<ProviderModelSelection>> = PROVIDER_MODELS[provider].map((model) => ({
@@ -176,9 +184,13 @@ export function ModelSelector({
       isSelected={(model) => model.modelId === value.modelId}
       onChange={onChange}
       onFastModeEnabledChange={onFastModeEnabledChange}
+      onOpenChange={onOpenChange}
+      open={open}
       options={options}
       reasoningEffortsForValue={(model) => reasoningEffortsForModel(provider, model.modelId)}
       withEffortSlider={withEffortSlider}
+      effortOpen={effortOpen}
+      onEffortOpenChange={onEffortOpenChange}
       supportsFastModeForValue={(model) => modelSupportsFastMode({ provider, modelId: model.modelId })}
       value={value}
     />
@@ -333,6 +345,12 @@ function EffortSlider({
   useEffect(() => {
     if (!dragging) setPos(index);
   }, [index, dragging]);
+
+  // The track takes focus on open so the arrow keys move the effort at once,
+  // whether the slider was opened by a click or by ⌘⇧E from the composer.
+  useEffect(() => {
+    if (open) trackRef.current?.focus({ preventScroll: true });
+  }, [open]);
 
   // Suppress page-wide text selection for the duration of a drag — otherwise a
   // drag past the track edge selects the composer text behind the popover.

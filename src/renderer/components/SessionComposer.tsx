@@ -256,6 +256,8 @@ export function SessionComposer({
   const [pendingProviderSwitch, setPendingProviderSwitch] = useState<
     { sessionId: string; model: ModelPickerSelection } | null
   >(null);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [effortPickerOpen, setEffortPickerOpen] = useState(false);
   const { availability: providerAvailability } = useProviderAvailability();
   // The placeholder answers the agent's last message instead of repeating the
   // same generic hint at every turn. Not gated on an empty draft: the
@@ -301,6 +303,33 @@ export function SessionComposer({
   useEffect(() => {
     onDraftPresentChange?.(input.trim() !== "" || pendingAttachments.length > 0);
   }, [input, pendingAttachments, onDraftPresentChange]);
+
+  // ⌘⇧M and ⌘⇧E open the model and effort pickers. Document-level like the
+  // pane's ⌘B / ⌘G, and gated on focus the same way, so the chord works while
+  // the draft has the caret and only the focused pane answers it.
+  const hasSession = Boolean(session);
+  const supportsEffort = selectedModel.reasoningEffort != null;
+  useEffect(() => {
+    if (!isFocused || !hasSession) return undefined;
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.altKey) return;
+      if (event.isComposing || event.repeat) return;
+      const key = event.key.toLowerCase();
+      if (key === "m") {
+        event.preventDefault();
+        setEffortPickerOpen(false);
+        setModelPickerOpen((open) => !open);
+        return;
+      }
+      if (key === "e" && supportsEffort) {
+        event.preventDefault();
+        setModelPickerOpen(false);
+        setEffortPickerOpen((open) => !open);
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [hasSession, isFocused, supportsEffort]);
 
   const toggleMode = useCallback((): void => {
     setAgentMode((mode) => toggleAgentMode(mode));
@@ -1049,7 +1078,11 @@ export function SessionComposer({
                 onChange={(model) => setSelectedModel({ provider: session.provider, ...model })}
                 fastModeEnabled={fastModeEnabled}
                 onFastModeEnabledChange={onFastModeEnabledChange}
+                open={modelPickerOpen}
+                onOpenChange={setModelPickerOpen}
                 withEffortSlider
+                effortOpen={effortPickerOpen}
+                onEffortOpenChange={setEffortPickerOpen}
                 ariaLabel="Chat model"
               />
             ) : (
@@ -1077,7 +1110,11 @@ export function SessionComposer({
                 }}
                 fastModeEnabled={fastModeEnabled}
                 onFastModeEnabledChange={onFastModeEnabledChange}
+                open={modelPickerOpen}
+                onOpenChange={setModelPickerOpen}
                 withEffortSlider
+                effortOpen={effortPickerOpen}
+                onEffortOpenChange={setEffortPickerOpen}
                 ariaLabel="Chat model"
               />
             )}

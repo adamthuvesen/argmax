@@ -116,5 +116,8 @@ export const RENDERER_ONLY_KEYBINDINGS: readonly RendererOnlyKeybinding[] = [
   { displayAccelerator: "⌘F", label: "Open command palette on Messages" },
   { displayAccelerator: "⌘⇧F", label: "Open command palette on File Contents" },
   { displayAccelerator: "⌘J", label: "Toggle integrated terminal" },
+  { displayAccelerator: "⌘⇧M", label: "Open the model picker" },
+  { displayAccelerator: "⌘⇧E", label: "Open the effort picker" },
+  { displayAccelerator: "⌘⇧R", label: "Open the folder picker (new chat)" },
   { displayAccelerator: "Esc", label: "Close the topmost overlay" }
 ] as const;

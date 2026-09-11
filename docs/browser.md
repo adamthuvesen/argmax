@@ -150,7 +150,7 @@ Both are async commands with a deadline. WebKit answers on the main queue and th
 - Enter in the address bar: go to the URL. Reloads when it's already the current page — WKWebView does not navigate to the URL it is already showing.
 - `⌘T`: New tab.
 - `⌘⇧T`: Reopen last closed tab.
-- `⌘R`: Reload the tab when focused in the page or browser chrome. In development builds, app reload stays available in View → Reload and via `⌘⇧R`.
+- `⌘R`: Reload the tab when focused in the page or browser chrome. In development builds, app reload stays available in View → Reload and View → Force Reload, neither with a shortcut: `⌘⇧R` opens the launcher's folder picker.
 - `⌃Tab` / `⌃⇧Tab`: Next / previous tab.
 - `⌥←` / `⌥→` with a tab focused: move that tab one slot, the keyboard's way to reorder.
 - `⌘W`: Closes the active browser tab whenever the browser is mounted. The menu command tries the browser first, then the review panel's file tabs, then the focused pane — `requestCloseActiveBrowserTab()` reports whether a mounted browser consumed it.

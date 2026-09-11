@@ -805,6 +805,120 @@
     0 0 12px 2px color-mix(in oklab, var(--accent) 70%, transparent);
 }
 
+/* Heat tiers. The popover carries data-heat for xhigh / max / ultra (the
+   draft effort, set in ModelSelector) so the chrome around the canvas
+   escalates with it: the cursor runs hotter, then pulses, then at ultra the
+   whole rail shakes and the label glitches. Transform and opacity only,
+   apart from the 3px cursor's glow, which is too small to cost anything. */
+.effort-slider-popover[data-heat] .effort-slider-cursor {
+  background: color-mix(in oklab, var(--accent) 70%, var(--text));
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--panel) 70%, transparent),
+    0 0 14px 2px color-mix(in oklab, var(--accent) 80%, transparent);
+}
+
+.effort-slider-popover[data-heat="max"] .effort-slider-cursor,
+.effort-slider-popover[data-heat="ultra"] .effort-slider-cursor {
+  animation: effort-cursor-surge 820ms ease-in-out infinite;
+}
+
+.effort-slider-popover[data-heat="ultra"] .effort-slider-cursor {
+  background: color-mix(in oklab, var(--accent) 35%, var(--text));
+  animation-duration: 260ms;
+}
+
+/* Blooms the glow rather than the bar, so the rail's edge stays crisp. */
+@keyframes effort-cursor-surge {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--panel) 70%, transparent),
+      0 0 12px 2px color-mix(in oklab, var(--accent) 75%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--panel) 70%, transparent),
+      0 0 24px 6px color-mix(in oklab, var(--accent) 95%, transparent);
+  }
+}
+
+.effort-slider-popover[data-heat="ultra"] .effort-slider-track {
+  animation: effort-shake 240ms steps(1, end) infinite;
+}
+
+/* Stepped, not eased: a jolt every frame or two, never a wobble. */
+@keyframes effort-shake {
+  0% { transform: translate(0, 0); }
+  10% { transform: translate(-1px, 1px); }
+  20% { transform: translate(1.5px, -1px); }
+  30% { transform: translate(-1.5px, 0); }
+  40% { transform: translate(1px, 1px); }
+  50% { transform: translate(0, -1.5px); }
+  60% { transform: translate(-1px, -1px); }
+  70% { transform: translate(1.5px, 0.5px); }
+  80% { transform: translate(-0.5px, 1.5px); }
+  90% { transform: translate(1px, -0.5px); }
+  100% { transform: translate(0, 0); }
+}
+
+.effort-slider-popover[data-heat="max"] .effort-slider-current,
+.effort-slider-popover[data-heat="max"] .effort-slider-stop[data-active] {
+  text-shadow: 0 0 10px color-mix(in oklab, var(--accent) 60%, transparent);
+}
+
+.effort-slider-popover[data-heat="ultra"] .effort-slider-current,
+.effort-slider-popover[data-heat="ultra"] .effort-slider-stop[data-active] {
+  color: color-mix(in oklab, var(--accent) 60%, var(--text));
+  animation: effort-glitch 1.3s steps(1, end) infinite;
+}
+
+.effort-slider-popover[data-heat="ultra"] .effort-slider-stop[data-active] {
+  animation-delay: -0.6s;
+}
+
+/* Mostly steady, with two chromatic splits per cycle: the label tears into
+   an accent ghost and an ink ghost for a frame, then snaps back. */
+@keyframes effort-glitch {
+  0%, 100% {
+    transform: none;
+    text-shadow: 0 0 12px color-mix(in oklab, var(--accent) 80%, transparent);
+  }
+  7% {
+    transform: translate(-1px, 0);
+    text-shadow:
+      2px 0 color-mix(in oklab, var(--accent) 85%, transparent),
+      -2px 0 color-mix(in oklab, var(--text) 70%, transparent);
+  }
+  11% {
+    transform: translate(1px, 0);
+    text-shadow:
+      -2px 0 color-mix(in oklab, var(--accent) 85%, transparent),
+      2px 0 color-mix(in oklab, var(--text) 70%, transparent);
+  }
+  14%, 61% {
+    transform: none;
+    text-shadow: 0 0 12px color-mix(in oklab, var(--accent) 80%, transparent);
+  }
+  64% {
+    transform: translate(1px, -1px);
+    text-shadow:
+      -3px 0 color-mix(in oklab, var(--accent) 85%, transparent),
+      3px 0 color-mix(in oklab, var(--text) 70%, transparent);
+  }
+  67% {
+    transform: none;
+    text-shadow: 0 0 12px color-mix(in oklab, var(--accent) 80%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .effort-slider-popover[data-heat] .effort-slider-cursor,
+  .effort-slider-popover[data-heat] .effort-slider-track,
+  .effort-slider-popover[data-heat] .effort-slider-current,
+  .effort-slider-popover[data-heat] .effort-slider-stop {
+    animation: none;
+  }
+}
+
 /* Stops under the rail: one tick + short label per effort, placed on the
    same --effort-pos scale as the cursor so each sits exactly under its
    position. Levels at or below the draft light up with the field; the

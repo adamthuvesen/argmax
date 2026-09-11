@@ -4,6 +4,7 @@ import {
   clampEffort,
   DEFAULT_REASONING_EFFORT,
   PROVIDER_MODELS,
+  REASONING_EFFORTS,
   reasoningEffortsForModel,
   type ProviderModelSelection,
   type ReasoningEffort
@@ -276,6 +277,29 @@ type EffortPosStyle = CSSProperties & { "--effort-pos"?: string };
 
 // Stop labels under the rail. Short so six of them fit the popover width;
 // the head above carries the full name of the live draft.
+// Heat tiers the popover exposes to CSS (cursor glow, surge pulse, the ultra
+// shake and label glitch). The canvas ramps continuously; these are the
+// discrete cues around it.
+const EFFORT_HEAT_TIER: Partial<Record<ReasoningEffort, "xhigh" | "max" | "ultra">> = {
+  xhigh: "xhigh",
+  max: "max",
+  ultra: "ultra"
+};
+
+// Heat of a continuous thumb position over a provider's `efforts`, on the
+// canonical low→ultra scale (0..1). A provider that stops at Max puts Max at
+// the right end of its rail, but the field burns like Max, not like Ultra —
+// the same effort looks the same on every provider.
+function canonicalHeat(pos: number, efforts: readonly ReasoningEffort[]): number {
+  const top = REASONING_EFFORTS.length - 1;
+  const lower = efforts[Math.floor(pos)];
+  const upper = efforts[Math.ceil(pos)];
+  if (!lower || !upper) return 0;
+  const from = REASONING_EFFORTS.indexOf(lower) / top;
+  const to = REASONING_EFFORTS.indexOf(upper) / top;
+  return from + (to - from) * (pos - Math.floor(pos));
+}
+
 const SHORT_EFFORT_LABELS: Record<ReasoningEffort, string> = {
   low: "Low",
   medium: "Med",
@@ -365,6 +389,7 @@ function EffortSlider({
   }, [dragging]);
 
   const fraction = maxIndex === 0 ? 0 : pos / maxIndex;
+  const heat = canonicalHeat(pos, efforts);
 
   const selectIndex = (next: number): void => {
     const clamped = Math.min(maxIndex, Math.max(0, next));
@@ -414,6 +439,7 @@ function EffortSlider({
           data-type-scale="chrome"
           role="dialog"
           aria-label={ariaLabel}
+          data-heat={EFFORT_HEAT_TIER[draft]}
           ref={flyout.setPopover}
           style={flyout.floatingStyles}
         >
@@ -465,7 +491,7 @@ function EffortSlider({
             onPointerCancel={() => setDragging(false)}
           >
             <div className="effort-slider-fieldclip">
-              <EffortPixelField level={fraction} flowRate={fraction} />
+              <EffortPixelField level={fraction} heat={heat} />
             </div>
             <div
               className="effort-slider-cursor"

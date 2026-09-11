@@ -12,6 +12,33 @@ final class TranscriptUITests: XCTestCase {
         XCTAssertTrue(app.scrollViews["native-transcript"].waitForExistence(timeout: 10))
     }
 
+    func testLongUserBubbleExpandsAndCollapses() {
+        app.terminate()
+        app.launchArguments.append("-scenario-user-bubble")
+        app.launch()
+        let more = app.buttons["Show more"]
+        XCTAssertTrue(more.waitForExistence(timeout: 10))
+        XCTAssertEqual(app.buttons.matching(identifier: "Show more").count, 1)
+        XCTAssertTrue(app.staticTexts["Short prompt"].isHittable)
+        XCTAssertEqual(more.value as? String, "Collapsed")
+        screenshot("user-bubble-collapsed")
+        more.tap()
+        let less = app.buttons["Show less"]
+        XCTAssertTrue(less.waitForExistence(timeout: 5))
+        XCTAssertEqual(less.value as? String, "Expanded")
+        let scroll = app.scrollViews["native-transcript"]
+        for _ in 0..<6 where !less.isHittable { scroll.swipeUp() }
+        XCTAssertTrue(less.isHittable)
+        screenshot("user-bubble-expanded")
+        less.tap()
+        XCTAssertTrue(more.waitForExistence(timeout: 5))
+        XCTAssertEqual(more.value as? String, "Collapsed")
+        XCTAssertTrue(app.staticTexts["Reply after the prompt"].isHittable)
+        app.buttons["Size"].tap()
+        XCTAssertTrue(more.exists)
+        screenshot("user-bubble-accessibility-type")
+    }
+
     func testStreamingDetachesPreservesHistoryAndJumpsBack() {
         let scroll = app.scrollViews["native-transcript"]
         app.buttons["Stream"].tap()
@@ -48,6 +75,7 @@ final class TranscriptUITests: XCTestCase {
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
         composer.tap()
         composer.typeText("A draft that stays here")
+        XCTAssertEqual(composer.value as? String, "A draft that stays here")
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Stream end 1"].isHittable)
         screenshot("keyboard-open")
@@ -62,6 +90,35 @@ final class TranscriptUITests: XCTestCase {
         screenshot("accessibility-type")
     }
 
+    func testComposerUsesTheStandardEditMenuForTextPaste() {
+        let composer = app.descendants(matching: .any).matching(identifier: "Message").firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Paste image"].exists)
+        composer.tap()
+        composer.typeText("Paste me")
+
+        composer.press(forDuration: 1)
+        let selectAll = app.menuItems["Select All"]
+        XCTAssertTrue(selectAll.waitForExistence(timeout: 5))
+        selectAll.tap()
+        let copy = app.menuItems["Copy"]
+        XCTAssertTrue(copy.waitForExistence(timeout: 5))
+        copy.tap()
+
+        let insertionPoint = composer.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5))
+        insertionPoint.tap()
+        insertionPoint.press(forDuration: 1)
+        let paste = app.menuItems["Paste"]
+        XCTAssertTrue(paste.waitForExistence(timeout: 5))
+        paste.tap()
+
+        let duplicated = expectation(
+            for: NSPredicate(format: "value == %@", "Paste me Paste me"),
+            evaluatedWith: composer
+        )
+        wait(for: [duplicated], timeout: 5)
+    }
+
     func testNativeRichContentInLightAndDarkAndExpanded() {
         app.buttons["Rich"].tap()
         let scroll = app.scrollViews["native-transcript"]
@@ -73,6 +130,31 @@ final class TranscriptUITests: XCTestCase {
         screenshot("rich-dark")
         app.buttons["Size"].tap()
         screenshot("rich-dark-accessibility")
+    }
+
+    func testActivityUsesSemanticColoursAndKeepsIntegrationArtwork() {
+        app.terminate()
+        app.launchArguments.append("-scenario-activity")
+        app.launch()
+
+        let summary = "Read files, edited a file, searched files, viewed an image, loaded tools, ran a command, used a computer, used a tool"
+        let collapsed = app.buttons[summary]
+        XCTAssertTrue(collapsed.waitForExistence(timeout: 10))
+        screenshot("activity-colours-collapsed")
+        collapsed.tap()
+
+        XCTAssertEqual(app.buttons.matching(identifier: summary).count, 1)
+        XCTAssertTrue(app.buttons["Edited App.swift"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Viewed wireframe.png"].exists)
+        screenshot("activity-colours-expanded")
+
+        app.scrollViews["native-transcript"].swipeUp()
+        XCTAssertTrue(app.buttons["Used a computer"].waitForExistence(timeout: 5))
+        screenshot("activity-computer-use")
+        XCTAssertTrue(app.buttons["Used Linear list issues"].waitForExistence(timeout: 5))
+        screenshot("activity-integration-artwork")
+        app.buttons["Theme"].tap()
+        screenshot("activity-colours-dark")
     }
 
     func testWideContentKeepsZoomControlsReachable() {

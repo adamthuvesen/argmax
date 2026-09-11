@@ -174,16 +174,16 @@ struct ChatListView: View {
                 // what you are looking at, then whether the line to it is up.
                 VStack(spacing: 2) {
                     Text("Remote")
-                        .font(.headline)
+                        .typeStyle(.headline)
                         .foregroundStyle(Theme.ink)
                     HStack(spacing: 5) {
                         Circle()
                             .fill(connectionTint)
                             .frame(width: 6, height: 6)
                         Image(systemName: "laptopcomputer")
-                            .font(.caption.weight(.medium))
+                            .typeSymbol(.caption, weight: .medium)
                         Text(MacName.from(host: store.client.socketURL.host()))
-                            .font(.caption)
+                            .typeStyle(.caption)
                     }
                     .foregroundStyle(Theme.muted)
                     .animation(.easeOut(duration: 0.2), value: store.connection)
@@ -206,7 +206,7 @@ struct ChatListView: View {
             navigator.newChat = NewChatRequest()
         } label: {
             Image(systemName: "square.and.pencil")
-                .font(.system(size: 22, weight: .medium))
+                .typeSymbol(size: 22, weight: .medium)
                 .foregroundStyle(Theme.ground)
                 .frame(width: 56, height: 56)
                 .background(Theme.ink, in: Circle())

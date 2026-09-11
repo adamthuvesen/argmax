@@ -275,7 +275,7 @@
   background: transparent;
   font-family: var(--font-code);
   font-size: inherit;
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   line-height: inherit;
   text-align: left;
   overflow-wrap: anywhere;
@@ -374,7 +374,7 @@
   padding: var(--space-1) var(--workspace-card-row-inset) 0;
   color: var(--muted);
   font-size: var(--text-3xs);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -451,7 +451,7 @@
 
 .workspace-card-row-meta .change-count {
   gap: var(--space-1);
-  font-weight: 400;
+  font-weight: calc(400 + var(--font-weight-offset));
 }
 
 .workspace-card-quiet {

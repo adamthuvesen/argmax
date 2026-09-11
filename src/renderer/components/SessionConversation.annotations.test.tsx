@@ -86,6 +86,26 @@ describe("SessionConversation selection annotations", () => {
     );
   });
 
+  it.each(["click", "Enter"])("sends only a conversation excerpt via %s", async (method) => {
+    const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
+    renderConversation(baseSession(), EVENTS, { onSendSessionInput });
+    selectAssistantText();
+    fireEvent.click(screen.getByRole("button", { name: "Add selection to chat" }));
+
+    const prompt = screen.getByLabelText("Chat prompt");
+    expect(prompt).toHaveValue("");
+    const send = screen.getByRole("button", { name: "Send follow-up" });
+    expect(send).toBeEnabled();
+    if (method === "click") fireEvent.click(send);
+    else fireEvent.keyDown(prompt, { key: "Enter" });
+
+    await waitFor(() => expect(onSendSessionInput).toHaveBeenCalledOnce());
+    expect(onSendSessionInput.mock.calls[0]?.[1]).toBe(
+      "Regarding this excerpt from our conversation above:\n\n> Day two looks reassuringly boring."
+    );
+    await waitFor(() => expect(screen.queryByLabelText(/^Annotation:/)).toBeNull());
+  });
+
   it("removes an annotation from its chip without sending", () => {
     renderConversation(baseSession(), EVENTS);
     selectAssistantText();
@@ -171,7 +191,7 @@ describe("SessionConversation selection annotations", () => {
     expect(sent.endsWith("\n\nfix it")).toBe(true);
   });
 
-  it("sends a diff note with no typed message", async () => {
+  it.each(["click", "Enter"])("sends a diff note with no typed message via %s", async (method) => {
     const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
     let sink: ((input: DiffNoteInput) => void) | null = null;
     renderConversation(baseSession(), EVENTS, {
@@ -189,7 +209,8 @@ describe("SessionConversation selection annotations", () => {
     });
 
     expect(send.hasAttribute("disabled")).toBe(false);
-    fireEvent.click(send);
+    if (method === "click") fireEvent.click(send);
+    else fireEvent.keyDown(screen.getByLabelText("Chat prompt"), { key: "Enter" });
 
     await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
     const sent = onSendSessionInput.mock.calls[0]?.[1] as string;

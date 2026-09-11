@@ -139,7 +139,7 @@
    stronger color rather than extra weight. */
 .composer-chips-model .composer-context-chip {
   color: var(--muted-strong);
-  font-weight: 400;
+  font-weight: calc(400 + var(--font-weight-offset));
 }
 
 /* Inside the filled pill the model takes full ink — it is the headline of the
@@ -1084,7 +1084,7 @@
 .slash-menu-label,
 .file-popover-name {
   flex: 0 0 auto;
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
 }
 
 /* The hint yields when the row runs out of room; the skill or command name
@@ -1114,7 +1114,7 @@
   padding: var(--space-2_5) var(--space-3) var(--space-1) 34px;
   color: var(--muted);
   font-size: var(--text-2xs);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   line-height: 1.2;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1161,6 +1161,10 @@
 .session-input input::placeholder,
 .session-input textarea::placeholder {
   color: var(--muted);
+}
+
+.session-input textarea[data-placeholder-kind="suggested-follow-up"]::placeholder {
+  color: var(--composer-suggestion);
 }
 
 /* Holds the running turn's controls — Stop, and on touch the queue button —

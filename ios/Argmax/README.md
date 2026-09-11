@@ -43,13 +43,69 @@ completed reply read on either device leaves Priority on both. Newer replies
 become unread again. Questions, failures, and open pull requests retain their
 own Priority rules. This requires a host build with shared read-state support.
 
+## Type
+
+Every piece of text goes through a role in `Sources/Design/Typography.swift`
+— `typeOutput()`, `typeChrome()`, `typeMeta()`, `typeChip()`, and the
+`typeStyle` / `typeSize` escape hatches. That is the only place a font is
+named, because Settings → Typeface can only reach a call site that asks the
+`TypeScale` in the environment for its font. `npm run check:ios-fonts` fails
+the push on a `.font(...)`, a hand-built `UIFont`, or a fourth type size in
+the transcript; a call site with a real exception says so in a
+`// type-exception:` comment on the line.
+
+SF Symbols are the standing exception and take `typeSymbol()`: a symbol is
+drawn by SF, and sizing it off a face with no glyph for it is meaningless.
+
+Four typefaces ship: SF Pro (and SF Mono for identifiers), SF Rounded, Geist,
+and Inter. SF Pro is the default because it is the closest match to the
+ChatGPT-style iPhone reference. The ids are the desktop's own where a choice
+is shared, from `src/renderer/lib/fonts.ts`, under the desktop's key
+(`argmax.font.family`), but the value is per device the way theme and accent
+are. A desktop-only choice reads as the default rather than as nothing.
+
+The faces themselves are generated, not vendored: `npm run build:ios-fonts`
+converts the `@fontsource` woff2 the renderer already ships into the TrueType
+`UIAppFonts` wants, and creates the static Geist and Inter cuts the type scale
+uses. Geist's two italic cuts are sheared, while Inter's are taken from its
+actual italic font. The `.ttf` files are committed so an Xcode build never
+needs Python. Adding a weight means adding it to `Resources/Fonts` *and* to
+`UIAppFonts` in `project.yml`; `TypographyTests` fails if a declared face does
+not register.
+
+Geist Mono is intentionally not part of the iOS app. Code, paths, and other
+identifiers use Apple's SF Mono in every typeface, which keeps the transcript
+closer to the native iOS and ChatGPT reference styling.
+
+The transcript runs on three sizes and only three: output at `.body`, all
+chrome at `.footnote`, badges at `.caption2` semibold. Output prose has 4pt of
+extra line spacing so wrapped agent paragraphs do not form a dense wall, while
+thinking previews and tool details stay compact. Hierarchy inside the chrome
+tier comes from weight and colour. Two exceptions: mono — a command in its
+activity row, the payload under an opened one — sits at `.caption`, because
+mono reads larger than sans at the same nominal size; and narration folded
+into an activity group drops to `.subheadline` in muted-strong, so what the
+agent said on the way does not read as the reply.
+
+An opened activity group is a ledger, the desktop's grammar
+(`docs/chat-cards.md`, "Activity Rows"): one 36pt line per step, `icon · verb ·
+target`, no fill and no chevron, down a 2pt rail. A command row peeks through
+the `/bin/zsh -lc` launcher; a thought row is titled by its reasoning's first
+line. Opening a row grows one block — arguments (never for a command), payload,
+footer — and nothing else moves. The mockups the shape was chosen from are in
+`docs/design/phone-activity-group`.
+
 Settings → Chat detail controls this iPhone independently of the desktop.
 Compact is the default and folds thoughts and tool activity together between
 messages. Minimal also folds interim narration once an answer arrives.
 Balanced shows short thought previews inline. Detailed shows individual tool
 steps with longer thought previews, while raw inputs and outputs stay folded.
-Failures and requests for input remain visible at every level. The same
-setting applies to subagent and multitask details.
+Session errors and requests for input remain visible at every level. A failed
+tool call is not one of them: the agent reads the error and tries again, so a
+recovered turn used to arrive as a screen of red. It folds with the rest of the
+work, and its error text is rose under an `Error` label once the row is
+expanded — the desktop's rule. A cancelled call is an interruption, not a
+failure. The same setting applies to subagent and multitask details.
 
 - `Sources/Bridge/Channels.swift` — typed calls for the channels the phone
   writes on, each input mirroring its generated binding key for key. Whether a
@@ -286,9 +342,11 @@ xcrun simctl launch booted com.argmax.remote -argmax-transcript-scenario
 
 The Stream and Prepend buttons update the real transcript store. Rich shows
 equations, a diagram, a table, and code. Theme and Size switch the rendering
-environment without changing saved preferences. Add `-scenario-wide` to test
-very wide equations and diagrams. These controls are excluded from release
-builds.
+environment without changing saved preferences. Ask docks a live question in
+the composer's slot. Add `-scenario-wide` to test very wide equations and
+diagrams, `-scenario-ask` to start on the docked question, or
+`-scenario-activity` to inspect semantic activity icons and MCP artwork. These
+controls are excluded from release builds.
 
 MermaidKit supports core diagram syntax rather than every Mermaid extension.
 SwaTex supports KaTeX-compatible math. The native viewers retain the source

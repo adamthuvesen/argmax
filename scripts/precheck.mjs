@@ -75,6 +75,7 @@ function changedFiles(base) {
   return new Set(`${tracked}${untracked}`.split("\0").filter(Boolean));
 }
 
+const IOS_PATHS = [/^ios\//];
 const RUST_PATHS = [/^src-tauri\/(?!target\/)/, /^rust-toolchain\.toml$/, /^\.github\/workflows\//];
 const JS_PATHS = [
   /^src\//,
@@ -95,17 +96,18 @@ function touches(files, patterns) {
 
 function decideScope() {
   if (runEverything) {
-    return { rust: true, js: true, bundle: true, reason: "--all" };
+    return { rust: true, js: true, bundle: true, ios: true, reason: "--all" };
   }
   const base = mergeBase();
   if (!base) {
-    return { rust: true, js: true, bundle: true, reason: "no main to diff against" };
+    return { rust: true, js: true, bundle: true, ios: true, reason: "no main to diff against" };
   }
   const files = changedFiles(base);
   return {
     rust: touches(files, RUST_PATHS),
     js: touches(files, JS_PATHS),
     bundle: touches(files, JS_PATHS),
+    ios: touches(files, IOS_PATHS),
     reason: `${files.size} file(s) differ from ${base.ref}`
   };
 }
@@ -123,7 +125,9 @@ function step(label, command, commandArgs) {
 }
 
 const scope = decideScope();
-const lanes = [scope.js && "js", scope.rust && "rust", scope.bundle && "bundle"].filter(Boolean);
+const lanes = [scope.js && "js", scope.rust && "rust", scope.bundle && "bundle", scope.ios && "ios"].filter(
+  Boolean
+);
 if (lanes.length === 0) {
   console.log(`precheck: nothing to check (${scope.reason}).`);
   process.exit(0);
@@ -161,6 +165,12 @@ if (scope.rust) {
     "-D",
     "warnings"
   ]);
+}
+
+// Seconds, and no Xcode: the phone app's whole build is not a pre-push gate,
+// but a font named outside the type roles is caught by reading the source.
+if (scope.ios) {
+  step("iOS typography", "node", ["scripts/check-ios-fonts.mjs"]);
 }
 
 if (scope.bundle) {

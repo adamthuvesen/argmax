@@ -37,15 +37,40 @@ struct ReviewFileTabsState: Equatable {
     }
 }
 
+/// How a viewer draws its own chrome.
+///
+/// Pushed on its own, a viewer has to say which file it is and offer a way
+/// back. Inside the review screen's tab strip the tab already says both, and
+/// a second title under it is the same name twice in a row.
+enum ViewerChrome {
+    case pushed
+    case embedded
+}
+
+/// Whether the embedded diff still has unchanged lines to reveal. The control
+/// rides the tab strip, which is the only bar an embedded viewer has.
+struct DiffCanExpandKey: PreferenceKey {
+    static let defaultValue = false
+
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = value || nextValue()
+    }
+}
+
 /// A phone-sized version of the desktop editor tabs. Each tab says whether it
 /// is a checkout file or a diff, since the same path can be open in both forms
 /// and in more than one review comparison.
-struct ReviewFileTabs: View {
+///
+/// The strip is also the embedded viewer's toolbar: the trailing slot carries
+/// whatever the open file can do, so the viewer under it is code and nothing
+/// else.
+struct ReviewFileTabs<Trailing: View>: View {
     let details: [ReviewDetail]
     let active: ReviewDetail?
     let onSelect: (ReviewDetail) -> Void
     let onClose: (ReviewDetail) -> Void
     let onShowList: () -> Void
+    @ViewBuilder var trailing: () -> Trailing
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -70,7 +95,9 @@ struct ReviewFileTabs: View {
                         }
                     }
                     .padding(.horizontal, Spacing.gutter)
-                    .padding(.vertical, Spacing.snug)
+                    // The tabs are 44pt tall on their own, which with a hair
+                    // of air is the same 52pt bar every other screen wears.
+                    .padding(.vertical, Spacing.tight)
                 }
                 .onChange(of: active) { _, detail in
                     guard let detail else { return }
@@ -83,6 +110,7 @@ struct ReviewFileTabs: View {
                     }
                 }
             }
+            trailing()
         }
         .background(Theme.ground)
         .overlay(alignment: .bottom) { Rectangle().fill(Theme.line).frame(height: 1) }
@@ -139,6 +167,29 @@ struct ReviewFileTabs: View {
             RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
                 .strokeBorder(Theme.line, lineWidth: 1)
         }
+    }
+}
+
+/// Climb to the next context rung. It sits in the tab strip when the viewer
+/// is embedded and in the header when the diff was pushed on its own, which
+/// is why it takes its target size rather than assuming one.
+struct ReviewContextButton: View {
+    var size: CGFloat = 44
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            Haptics.light()
+            action()
+        } label: {
+            Image(systemName: "arrow.up.and.down.text.horizontal")
+                .typeSymbol(.body, weight: .medium)
+                .foregroundStyle(Theme.muted)
+                .frame(width: size, height: size)
+                .contentShape(.rect)
+        }
+        .buttonStyle(PressDim())
+        .accessibilityLabel("Show more unchanged lines")
     }
 }
 

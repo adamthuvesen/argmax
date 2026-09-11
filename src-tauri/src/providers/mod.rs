@@ -9,6 +9,7 @@ pub mod flush_queue;
 mod follow_up;
 pub mod grok_acp;
 pub mod grok_trust;
+mod heredoc_activity;
 pub mod mcp_injection;
 pub mod measured_diffs;
 pub mod normalizer;
@@ -20,6 +21,7 @@ pub mod pricing;
 pub mod runtime;
 pub mod session_service;
 pub mod subagent_trace;
+pub mod tool_activity;
 pub mod unified_diff;
 pub mod verification;
 

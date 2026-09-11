@@ -18,6 +18,7 @@ struct TranscriptScreen: View {
     @State private var draftWrite: Task<Void, Never>?
     @Environment(\.scenePhase) private var scenePhase
     @State private var focusRequest = 0
+    @State private var screenHeight: CGFloat = 0
 
     var body: some View {
         NativeTranscriptView(client: store.client, onOpenFile: { openReview(filePath: $0) }) {
@@ -32,12 +33,16 @@ struct TranscriptScreen: View {
             TranscriptComposerFloor(
                 workspaceID: row.workspace.id,
                 client: store.client,
+                screenHeight: screenHeight,
                 draft: $draft,
                 focusRequest: $focusRequest
             )
             .id(row.session.id)
             .background(Theme.ground)
         }
+        // Measured outside the insets, so the question dock's own growth
+        // cannot feed back into the height it is allowed to grow to.
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { screenHeight = $0 }
         .toolbar(.hidden, for: .navigationBar)
         .interactivePop()
         .onAppear {
@@ -109,8 +114,11 @@ struct TranscriptScreen: View {
                 Text("Saved on this iPhone. Updating when your Mac is available.").typeMeta()
             }
             if case .reconnecting = store.connection {
-                Label("Reconnecting to your Mac…", systemImage: "wifi.slash")
-                    .font(.caption)
+                Label {
+                    Text("Reconnecting to your Mac…").typeStyle(.footnote)
+                } icon: {
+                    Image(systemName: "wifi.slash").typeSymbol(.caption)
+                }
                     .foregroundStyle(Theme.muted)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, Spacing.snug)
@@ -132,7 +140,7 @@ struct TranscriptScreen: View {
                 openReview(filePath: nil)
             } label: {
                 Image(systemName: "arrow.triangle.branch")
-                    .font(.body.weight(.medium))
+                    .typeSymbol(.body, weight: .medium)
                     .foregroundStyle(Theme.muted)
                     .frame(width: 32, height: 32)
                     .overlay(alignment: .topTrailing) { changedBadge }
@@ -153,7 +161,9 @@ struct TranscriptScreen: View {
     private var changedBadge: some View {
         if changedFiles > 0 {
             Text(verbatim: changedFiles > 99 ? "99+" : "\(changedFiles)")
-                .font(.system(size: 10, weight: .semibold))
+                // A badge numeral, below every text style: caption2 is the
+                // nearest step, so it scales with the smallest type.
+                .typeSize(10, relativeTo: .caption2, weight: .semibold)
                 .monospacedDigit()
                 .foregroundStyle(Theme.ground)
                 .padding(.horizontal, 4)
@@ -226,7 +236,7 @@ struct TranscriptScreen: View {
             .tint(Color.primary)
         } label: {
             Image(systemName: "ellipsis")
-                .font(.body.weight(.semibold))
+                .typeSymbol(.body, weight: .semibold)
                 .foregroundStyle(Theme.muted)
                 .frame(width: 32, height: 32)
                 .contentShape(.rect)

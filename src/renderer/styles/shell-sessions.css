@@ -16,7 +16,7 @@
   background: transparent;
   cursor: pointer;
   font-size: var(--text-sm);
-  font-weight: 400;
+  font-weight: calc(400 + var(--font-weight-offset));
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
 
@@ -443,7 +443,7 @@
   font-family: var(--font-mono);
   color: var(--text);
   font-size: var(--text-sm);
-  font-weight: 400;
+  font-weight: calc(400 + var(--font-weight-offset));
   letter-spacing: -0.003em;
   overflow: hidden;
   text-overflow: ellipsis;

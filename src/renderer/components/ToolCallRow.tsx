@@ -16,6 +16,7 @@ import type { FileChipOpenOptions } from "./FileChip.js";
 import { ToolCallDetail, toolCallHasExpandableDetail } from "./ToolCallDetail.js";
 import { ServerIcon } from "./ServerIcon.js";
 import { WorkingNest } from "./WorkingNest.js";
+import { ToolActivityIcon } from "./ToolActivityIcon.js";
 
 function verbForChanges(changes: FileChange[]): string | null {
   let creates = 0;
@@ -79,14 +80,15 @@ function ToolCallRowInner({
     () => interpretFileChange(tool.name, tool.inputFull),
     [tool.name, tool.inputFull]
   );
-  const counts = tool.status === "done" && tool.completionObserved !== false && changes && changes.length > 0
+  const counts = tool.status === "done" && !tool.cancelled && tool.completionObserved !== false && changes && changes.length > 0
     ? summarizeFileChanges(changes)
     : null;
-  const overrideVerb = changes && changes.length > 0 ? verbForChanges(changes) : null;
+  const overrideVerb = !tool.activity && counts && changes && changes.length > 0 ? verbForChanges(changes) : null;
   const verb = overrideVerb ?? baseSplit.verb;
   const target = baseSplit.rest;
   const toolTypeBucket = getToolTypeBucket(tool.name);
   const mcpServer = parseMcpToolName(tool.name)?.server ?? null;
+  const iconServer = tool.activity?.kind === "computer" ? null : mcpServer ?? commandIconServer(tool);
   const hasLeadingContent = Boolean(childTools && childTools.length > 0);
   const hasDetail = toolCallHasExpandableDetail(tool, { hasLeadingContent });
   const expanded =
@@ -121,7 +123,8 @@ function ToolCallRowInner({
     ) : null;
   const rowContent = (
     <>
-      <ServerIcon server={mcpServer ?? commandIconServer(tool)} web={isWebToolName(tool.name)} />
+      {iconServer || (!tool.activity && isWebToolName(tool.name)) ? <ServerIcon server={iconServer} web={isWebToolName(tool.name)} />
+        : <ToolActivityIcon kind={tool.activity?.kind ?? "tool"} />}
       <span className="tool-call-row-verb">{verb}</span>
       {target ? (
         <span className="tool-call-row-target">{shortenPathsInText(target)}</span>
@@ -208,6 +211,9 @@ function sameChildTools(a: ToolCall[] | undefined, b: ToolCall[] | undefined): b
       left.inputFull !== right.inputFull ||
       left.id !== right.id ||
       left.status !== right.status ||
+      left.activity !== right.activity ||
+      left.cancelled !== right.cancelled ||
+      left.completionObserved !== right.completionObserved ||
       left.error !== right.error ||
       left.completedAt !== right.completedAt ||
       left.output !== right.output ||
@@ -234,6 +240,8 @@ export const ToolCallRow = memo(ToolCallRowInner, (prev, next) => {
     prev.tool.inputFull === next.tool.inputFull &&
     prev.tool.id === next.tool.id &&
     prev.tool.status === next.tool.status &&
+    prev.tool.activity === next.tool.activity &&
+    prev.tool.cancelled === next.tool.cancelled &&
     prev.tool.error === next.tool.error &&
     prev.tool.completedAt === next.tool.completedAt &&
     prev.tool.completionObserved === next.tool.completionObserved &&

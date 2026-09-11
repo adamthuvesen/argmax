@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 import type { DashboardSnapshot } from "../shared/types.js";
@@ -7,6 +7,7 @@ import { CHAT_WIDTH_KEY } from "./lib/chatWidth.js";
 import { LAUNCH_MODEL_KEY } from "./lib/launchModelPreference.js";
 import {
   CHAT_VERBOSITY_KEY,
+  COMPOSER_CONTEXT_INDICATOR_KEY,
   TURN_REVERT_ENABLED_KEY,
   DESKTOP_NOTIFICATIONS_KEY,
   FAST_MODE_KEY,
@@ -27,6 +28,7 @@ import {
   openInIde,
   providersDiscover,
   closeSettings,
+  dashboardDeltaListener,
   openSettings,
   setNotificationsEnabledStub,
   setupAppTestMocks,
@@ -235,6 +237,37 @@ describe("App settings", () => {
     await waitFor(() =>
       expect(window.localStorage.getItem("argmax.composer.pixelField.enabled")).toBe("true")
     );
+  });
+
+  it("disables the composer context indicator by default and persists turning it on", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings("Appearance");
+    await screen.findByRole("heading", { name: "Layout" });
+
+    const toggle = screen.getByRole("checkbox", { name: "Context indicator in composer" });
+    expect(toggle).not.toBeChecked();
+
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(window.localStorage.getItem(COMPOSER_CONTEXT_INDICATOR_KEY)).toBe("true")
+    );
+
+    await closeSettings();
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    await screen.findByText("Dashboard ready.");
+    await act(async () => {
+      dashboardDeltaListener?.({
+        sessions: [{ ...snapshot.sessions[0], contextTokens: 10_000, contextWindow: 100_000 }]
+      });
+      await Promise.resolve();
+    });
+    expect(
+      await screen.findByRole("button", {
+        name: "Context window 10% full — 10,000 of 100,000 tokens"
+      })
+    ).toBeInTheDocument();
   });
 
   it("keeps the sidebar opaque by default and persists its translucent surface settings", async () => {
@@ -608,7 +641,10 @@ describe("App settings", () => {
     );
   });
 
-  it("settings Appearance page switches the font family and persists it", async () => {
+  it.each([
+    ["System Sans (SF Pro)", "system"],
+    ["DM Sans", "dm-sans"]
+  ])("settings Appearance page switches to %s and persists it", async (label, id) => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
@@ -616,14 +652,35 @@ describe("App settings", () => {
     await screen.findByRole("heading", { name: "Theme" });
 
     fireEvent.click(screen.getByRole("button", { name: "Font family" }));
-    fireEvent.click(screen.getByRole("button", { name: "JetBrains Mono" }));
+    fireEvent.click(screen.getByRole("button", { name: label }));
 
     await waitFor(() =>
-      expect(window.localStorage.getItem("argmax.font.family")).toBe("jetbrains-mono")
+      expect(window.localStorage.getItem("argmax.font.family")).toBe(id)
     );
-    expect(document.documentElement.getAttribute("data-font")).toBe("jetbrains-mono");
+    expect(document.documentElement.getAttribute("data-font")).toBe(id);
     expect(window.localStorage.getItem("argmax.font.scale")).toBe("6");
     expect(document.documentElement.getAttribute("data-font-size")).toBe("6");
+  });
+
+  it("persists font heaviness independently of ink and restores it on remount", async () => {
+    const view = render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+    await openSettings("Appearance");
+    const slider = screen.getByRole("slider", { name: "Font heaviness" });
+    expect(slider).toHaveValue("5");
+    const ink = document.documentElement.getAttribute("data-ink-strength");
+    fireEvent.change(slider, { target: { value: "10" } });
+    expect(window.localStorage.getItem("argmax.font.heaviness")).toBe("10");
+    expect(document.documentElement.style.getPropertyValue("--font-weight-offset")).toBe("125");
+    expect(document.documentElement.getAttribute("data-ink-strength")).toBe(ink);
+    view.unmount();
+    document.documentElement.style.removeProperty("--font-weight-offset");
+    render(<App />);
+    await openSettings("Appearance");
+    expect(screen.getByRole("slider", { name: "Font heaviness" })).toHaveValue("10");
+    expect(document.documentElement.style.getPropertyValue("--font-weight-offset")).toBe("125");
+    fireEvent.change(screen.getByRole("slider", { name: "Font heaviness" }), { target: { value: "5" } });
+    expect(document.documentElement.style.getPropertyValue("--font-weight-offset")).toBe("0");
   });
 
   it("settings Appearance page switches the app font size and persists it", async () => {
@@ -655,7 +712,7 @@ describe("App settings", () => {
 
     const appFontSize = screen.getByRole("slider", { name: "App font size" });
     const chatFontSize = screen.getByRole("slider", { name: "Agent window font size" });
-    expect(chatFontSize).toHaveValue("8");
+    expect(chatFontSize).toHaveValue("6");
 
     fireEvent.change(chatFontSize, { target: { value: "7" } });
     await waitFor(() => expect(window.localStorage.getItem("argmax.font.scale.chat")).toBe("7"));
@@ -678,6 +735,10 @@ describe("App settings", () => {
 
     const grid = await screen.findByRole("group", { name: "Chat panes" });
     expect(grid).toHaveAttribute("data-font-size", "5");
+    expect((await screen.findByLabelText("Chat prompt")).closest("form")).toHaveAttribute(
+      "data-font-size",
+      "5"
+    );
     expect(document.documentElement.getAttribute("data-font-size")).toBe("6");
   });
 
@@ -809,8 +870,7 @@ describe("App settings", () => {
 
     for (const [label, id] of [
       ["System Mono", "system-mono"],
-      ["Menlo", "menlo"],
-      ["Monaco", "monaco"]
+      ["System Sans (SF Pro)", "system"]
     ] as const) {
       fireEvent.click(screen.getByRole("button", { name: "Font family" }));
       fireEvent.click(screen.getByRole("button", { name: label }));

@@ -1988,12 +1988,15 @@ fn list_raw_output_rows(
 
 fn event_row_to_timeline_event(row: &Row<'_>) -> rusqlite::Result<TimelineEvent> {
     let payload_json: String = row.get("payload_json")?;
+    let event_type: String = row.get("type")?;
+    let mut payload = parse_event_payload(&payload_json);
+    crate::providers::tool_activity::enrich_tool_activity(&event_type, &mut payload);
     Ok(TimelineEvent {
         id: row.get("id")?,
         session_id: row.get("session_id")?,
-        r#type: row.get("type")?,
+        r#type: event_type,
         message: row.get("message")?,
-        payload: parse_event_payload(&payload_json),
+        payload,
         created_at: row.get("created_at")?,
         row_cursor: Some(row.get("row_cursor")?),
     })
@@ -2500,6 +2503,48 @@ mod change_feed_tests {
         let error = list_session_changes_since(&connection, "s1", None, None, Some(-1))
             .expect_err("negative cursor");
         assert!(matches!(error, ArgmaxError::InvalidInput { .. }));
+    }
+
+    #[test]
+    fn historical_activity_is_enriched_without_rewriting_the_event() {
+        let database = seeded_database();
+        let connection = database.connection();
+        let original = serde_json::json!({"id": "read-1", "name": "Read", "input": {"file_path": "/repo/a.ts"}});
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: "read-event".into(),
+                session_id: "s1".into(),
+                r#type: "command.started".into(),
+                message: "Read".into(),
+                payload: original.clone(),
+                created_at: Some(TIME.into()),
+            },
+        )
+        .expect("insert old tool event");
+        let page =
+            list_session_changes_since(&connection, "s1", None, None, None).expect("read tail");
+        let event = page
+            .events
+            .iter()
+            .find(|event| event.id == "read-event")
+            .expect("tool event");
+        assert_eq!(event.payload["activity"]["kind"], "read");
+        assert_eq!(
+            event.payload["activity"]["targets"],
+            serde_json::json!(["/repo/a.ts"])
+        );
+        let stored: String = connection
+            .query_row(
+                "SELECT payload_json FROM events WHERE id = ?",
+                ["read-event"],
+                |row| row.get(0),
+            )
+            .expect("stored event");
+        assert_eq!(
+            serde_json::from_str::<Value>(&stored).expect("stored JSON"),
+            original
+        );
     }
 
     fn seeded_database() -> Database {

@@ -106,27 +106,27 @@ struct TranscriptMultitaskRow: View {
                     VStack(alignment: .leading, spacing: Spacing.hair) {
                         HStack(spacing: Spacing.snug) {
                             Text(multitask.taskLabel)
-                                .font(.subheadline.weight(.medium))
+                                .typeStyle(.footnote, weight: .medium)
                                 .foregroundStyle(Theme.ink)
                                 .lineLimit(2)
                             Text("Multitask")
-                                .font(.caption)
+                                .typeStyle(.footnote)
                                 .foregroundStyle(Theme.muted)
                         }
                         HStack(spacing: Spacing.tight) {
                             Text(state.label)
-                                .font(.footnote)
+                                .typeStyle(.footnote)
                                 .foregroundStyle(agentStatusColor(state.status))
                             if state.status != .running,
                                let preview = transcriptMultitaskAnswerPreview(multitask.answer) {
                                 Text("· \(preview)")
-                                    .font(.footnote)
+                                    .typeStyle(.footnote)
                                     .foregroundStyle(Theme.muted)
                                     .lineLimit(1)
                             }
                         }
                         if let failure {
-                            Text(failure).font(.caption).foregroundStyle(Theme.rose)
+                            Text(failure).typeStyle(.footnote).foregroundStyle(Theme.rose)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -258,7 +258,7 @@ private struct TranscriptMultitaskDetail: View {
                             LazyVStack(alignment: .leading, spacing: Spacing.tight) {
                                 if let displayedFailure {
                                     Text(displayedFailure)
-                                        .font(.footnote)
+                                        .typeStyle(.footnote)
                                         .foregroundStyle(Theme.rose)
                                         .accessibilityLabel("Action failed. \(displayedFailure)")
                                 }

@@ -199,7 +199,10 @@ async fn list_files_at_path(repo_path: &str) -> ArgmaxResult<Vec<WorkspaceFileEn
     .await?;
     // Sort borrowed paths before allocating the response strings, avoiding
     // tree nodes and duplicate String allocations for large inventories.
-    let mut paths: Vec<&str> = stdout.split('\0').filter(|entry| !entry.is_empty()).collect();
+    let mut paths: Vec<&str> = stdout
+        .split('\0')
+        .filter(|entry| !entry.is_empty())
+        .collect();
     paths.sort_unstable();
     paths.dedup();
     Ok(paths

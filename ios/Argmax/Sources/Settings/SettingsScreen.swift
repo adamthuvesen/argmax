@@ -36,6 +36,28 @@ struct SettingsScreen: View {
                     .padding(Spacing.row)
                     HairlineDivider(inset: Spacing.row)
                     VStack(alignment: .leading, spacing: Spacing.row) {
+                        Text("Typeface").typeContent()
+                        Segmented(
+                            options: AppTypeface.allCases,
+                            selection: $appearance.typeface,
+                            label: \.label
+                        )
+                        Text(appearance.typeface.hint).typeMeta()
+                    }
+                    .padding(Spacing.row)
+                    HairlineDivider(inset: Spacing.row)
+                    VStack(alignment: .leading, spacing: Spacing.row) {
+                        Text("Text size").typeContent()
+                        Segmented(
+                            options: AppFontScale.allCases,
+                            selection: $appearance.fontScale,
+                            label: \.label
+                        )
+                        Text("1 is smallest, 3 is the current size, and 5 is largest.").typeMeta()
+                    }
+                    .padding(Spacing.row)
+                    HairlineDivider(inset: Spacing.row)
+                    VStack(alignment: .leading, spacing: Spacing.row) {
                         Text("Accent").typeContent()
                         AccentChips(selection: $appearance.tint)
                     }
@@ -183,13 +205,13 @@ struct SettingRow: View {
             Spacer(minLength: Spacing.snug)
             if let detail, mono {
                 Text(detail)
-                    .font(.argmaxMono(.footnote))
+                    .typeStyle(.footnote, mono: true)
                     .foregroundStyle(Theme.muted)
                     .lineLimit(1)
                     .truncationMode(.head)
             } else if action != nil {
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .typeSymbol(.caption, weight: .semibold)
                     .foregroundStyle(Theme.muted)
             }
         }
@@ -252,7 +274,7 @@ struct Segmented<Option: Hashable & Identifiable>: View {
                     selection = option
                 } label: {
                     Text(label(option))
-                        .font(.footnote.weight(.semibold))
+                        .typeStyle(.footnote, weight: .semibold)
                         .lineLimit(1)
                         // Six efforts across a phone: "Extra High" gives a
                         // little rather than breaking the row's height.
@@ -327,7 +349,7 @@ struct NotificationsSetting: View {
                 // Amber, the needs-you colour: a gap someone has to close,
                 // and not one on this device.
                 Text(leadLine)
-                    .font(.footnote)
+                    .typeStyle(.footnote)
                     .foregroundStyle(Theme.amber)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(Spacing.row)

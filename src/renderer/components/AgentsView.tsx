@@ -13,6 +13,7 @@ import { buildAgentActivity } from "../lib/agentActivity.js";
 import { emblemForCodename, emblemForKey, type Emblem } from "../lib/agentEmblems.js";
 import { agentTabId, multitaskTabId, readAgentTab } from "../lib/agentTabs.js";
 import { agentRootToolUseId, assignAgentCodenames, codenameForTool, fallbackCodename } from "../lib/agentNames.js";
+import type { FontSize } from "../lib/fonts.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { multitaskRowStatus, type MultitaskChild } from "../lib/multitask.js";
 import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
@@ -56,6 +57,7 @@ interface DockTab {
  * CSS) so each keeps loading and polling in the background.
  */
 export function AgentsView({
+  chatFontSize,
   events,
   defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
@@ -81,6 +83,8 @@ export function AgentsView({
   onTerminateSession
 }: {
   events: TimelineEvent[];
+  /** Settings → Appearance: the agent-window scale shared by delegated chats. */
+  chatFontSize?: FontSize;
   /** Chat verbosity, forwarded so a subagent's transcript is as quiet or as
    *  detailed as the chat that launched it. */
   defaultToolCallsDisplay?: ToolCallsDisplay;
@@ -399,6 +403,10 @@ export function AgentsView({
             >
               {tab.multitask ? (
                 <MultitaskPanel
+                  chatFontSize={chatFontSize}
+                  defaultToolCallsDisplay={defaultToolCallsDisplay}
+                  defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
+                  thinkingDisplay={thinkingDisplay}
                   isFocused={Boolean(isFocused && isActive)}
                   pendingMessages={pendingMessages?.[tab.multitask.session.id] ?? []}
                   session={tab.multitask.session}

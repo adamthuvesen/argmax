@@ -33,6 +33,7 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
+import type { FontSize } from "../lib/fonts.js";
 import { useSessionTimeline } from "../hooks/useSessionTimeline.js";
 import { CHAT_PANE_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
 import { useStableFilter } from "../hooks/useStableFilter.js";
@@ -89,6 +90,7 @@ const SESSION_LOG_PANEL_MIN = 300;
 export function SessionPane({
   approvals,
   checks,
+  chatFontSize,
   defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
   thinkingDisplay,
@@ -136,10 +138,13 @@ export function SessionPane({
   nativeComposerFloor = false,
   workspaceCardVisible = true,
   onWorkspaceCardVisibleChange,
+  contextIndicatorEnabled = false,
   workspace
 }: {
   approvals: ApprovalRequest[];
   checks?: CheckRun[];
+  /** Settings → Appearance: the font scale shared by the transcript and composer. */
+  chatFontSize?: FontSize;
   defaultToolCallsDisplay?: ToolCallsDisplay;
   defaultToolCallGroupsExpanded?: boolean;
   thinkingDisplay?: ThinkingDisplay;
@@ -232,6 +237,8 @@ export function SessionPane({
       and the conversation column is wide enough to hold it beside the transcript. */
   workspaceCardVisible?: boolean;
   onWorkspaceCardVisibleChange?: (visible: boolean) => void;
+  /** Settings → Appearance: show context-window usage in the active composer. */
+  contextIndicatorEnabled?: boolean;
   workspace: WorkspaceSummary | null;
   /** When this pane is focused, it registers its workspace file source +
       review-pane file-pick handler with the command palette so its Files
@@ -725,6 +732,7 @@ export function SessionPane({
       <div className="session-main-column">
         <SessionConversation
           isFocused={isFocused}
+          chatFontSize={chatFontSize}
           checks={checks}
           defaultToolCallsDisplay={defaultToolCallsDisplay}
           defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
@@ -771,6 +779,7 @@ export function SessionPane({
           review={reviewState}
           session={session}
           workspace={workspace}
+          contextIndicatorEnabled={contextIndicatorEnabled}
           goalEnabled={goalEnabled}
           goalMaxTurns={goalMaxTurns}
           nativeComposerFloor={nativeComposerFloor}
@@ -792,6 +801,7 @@ export function SessionPane({
             onExited={() => setPeekPresent(false)}
           >
             <AgentsView
+              chatFontSize={chatFontSize}
               events={visibleEvents}
               defaultToolCallsDisplay={defaultToolCallsDisplay}
               defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}

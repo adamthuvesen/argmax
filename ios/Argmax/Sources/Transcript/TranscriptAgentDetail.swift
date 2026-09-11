@@ -33,38 +33,50 @@ struct TranscriptAgentDetail: View {
                     )
                 } else {
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: Spacing.tight) {
+                        // The same rhythm as the main transcript: the stack
+                        // itself adds nothing, and each row pays for the air it
+                        // needs. Prose wants a gap on both sides; a disclosure
+                        // row already carries a 44-point tap target.
+                        LazyVStack(alignment: .leading, spacing: 0) {
                             if let failure {
                                 Text("Some activity could not be loaded. \(failure)")
-                                    .font(.footnote)
+                                    .typeStyle(.footnote)
                                     .foregroundStyle(Theme.rose)
+                                    .padding(.bottom, Spacing.row)
                             }
                             if items.isEmpty {
-                                Text(agent.status == .running
-                                    ? "Waiting for agent activity."
-                                    : "This provider reported the agent run without child activity.")
-                                    .typeMeta()
-                                    .frame(maxWidth: .infinity, alignment: .center)
-                                    .padding(.vertical, Spacing.section)
+                                // Held in the scroll view rather than replacing
+                                // it, so a run that has not reported yet is
+                                // still a pull away from reporting.
+                                EmptyState(
+                                    mark: .glyph("circle.hexagongrid"),
+                                    message: agent.status == .running
+                                        ? "Waiting for agent activity."
+                                        : "This provider reported the agent run without child activity."
+                                )
+                                .containerRelativeFrame(.vertical)
                             }
                             ForEach(MobileTranscriptRow.rows(items, detail: detail)) { row in
                                 MobileTranscriptRowView(row: row) { item in
-                                TranscriptAgentActivityRow(
-                                    item: item,
-                                    client: client,
-                                    onOpenFile: openFile
-                                )
+                                    TranscriptAgentActivityRow(
+                                        item: item,
+                                        client: client,
+                                        onOpenFile: openFile
+                                    )
                                 }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, row.verticalPadding)
                             }
                         }
                         .screenGutter()
-                        .padding(.vertical, Spacing.row)
+                        .padding(.top, Spacing.row)
+                        .padding(.bottom, Spacing.gutter)
                     }
                     .refreshable { await requestReload() }
                 }
             }
             .background(Theme.ground)
-            .navigationTitle(agent.agentCodename ?? agent.name)
+            .navigationTitle(agentTitle(agent))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -122,26 +134,28 @@ struct TranscriptAgentActivityRow: View {
     var body: some View {
         switch item {
         case .user(let message), .assistant(let message):
-            VStack(alignment: .leading, spacing: Spacing.tight) {
-                Text(message.role == .user ? "Steering" : "Agent")
-                    .typeChip()
-                    .foregroundStyle(Theme.muted)
-                TranscriptMarkdown(text: message.text, client: client, onOpenFile: onOpenFile)
-            }
+            // Every word in this sheet is the one agent's, so a role chip over
+            // each paragraph only repeats itself. The transcript's own message
+            // row already distinguishes steering from answer, and it keeps
+            // attachments, selection and the copy menu.
+            TranscriptMessageRow(message: message, client: client, onOpenFile: onOpenFile)
         case .thought(let thought):
             TranscriptThoughtRow(thought: thought, client: client, onOpenFile: onOpenFile)
         case .tools(let group):
             TranscriptToolsRow(group: group, onOpenFile: onOpenFile)
         case .error(let error):
-            Label(error.message, systemImage: "exclamationmark.triangle")
-                .font(.footnote)
+            Label {
+                Text(error.message).typeStyle(.footnote)
+            } icon: {
+                Image(systemName: "exclamationmark.triangle").typeSymbol(.footnote)
+            }
                 .foregroundStyle(Theme.rose)
         case .notice(let notice):
             Text(notice.text).typeMeta()
         case .plan(let plan):
             TranscriptMarkdown(text: plan.markdown, client: client, onOpenFile: onOpenFile)
         case .question(let question):
-            Text(question.questions.first?.question ?? "Question from agent").typeContent()
+            Text(question.questions.first?.question ?? "Question from agent").typeChrome()
         case .approval(let approval):
             Label(approval.command, systemImage: "lock.shield").typeMeta()
         case .todo(let list):
@@ -152,7 +166,16 @@ struct TranscriptAgentActivityRow: View {
                 }
             }
         case .agents(let group):
-            Text("\(group.agents.count) nested agent\(group.agents.count == 1 ? "" : "s")").typeMeta()
+            // Named, because an agent that delegated further is the one thing
+            // in this sheet the reader cannot open from here.
+            Label {
+                Text(group.agents.count == 1
+                    ? "Delegated to \(group.agents.map(agentTitle).joined())"
+                    : "Delegated to \(group.agents.count) agents")
+            } icon: {
+                Image(systemName: "circle.hexagongrid.fill").typeSymbol(.footnote)
+            }
+            .typeMeta()
         case .multitask(let multitask):
             Text(multitask.taskLabel).typeMeta()
         }

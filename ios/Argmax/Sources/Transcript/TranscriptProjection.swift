@@ -413,7 +413,7 @@ enum TranscriptProjection {
             if event.payloadObject["providerEventType"]?.string == "item.completed" {
                 previous.text = completedThoughtText(existing: previous.text, event: event)
             } else {
-                previous.text = combinedText(previous.text, event.message)
+                previous.text = combinedThoughtText(previous.text, event.message)
             }
             previous.isStreaming = streaming
             items[items.count - 1] = .thought(previous)
@@ -436,12 +436,52 @@ enum TranscriptProjection {
         let streamedSummary = (event.payloadObject["summary"]?.array ?? [])
             .compactMap(\.string)
             .joined()
-        let streamedCandidates = [completed, streamedSummary].filter { !$0.isEmpty }
-        if let streamed = streamedCandidates.first(where: { existing.hasSuffix($0) }) {
-            let prefix = String(existing.dropLast(streamed.count))
-            return joinThoughtParagraphs(prefix, completed)
+        // The fragments we already hold carry the separators we gave them, so
+        // the match has to ignore whitespace or the summary lands twice.
+        for candidate in [completed, streamedSummary] where !candidate.isEmpty {
+            if let matched = trailingMatch(of: candidate, in: existing) {
+                return joinThoughtParagraphs(String(existing.dropLast(matched)), completed)
+            }
         }
         return joinThoughtParagraphs(existing, completed)
+    }
+
+    /// How many trailing characters of `existing` spell `candidate`, ignoring
+    /// whitespace on either side, or nil when it does not end with it.
+    private static func trailingMatch(of candidate: String, in existing: String) -> Int? {
+        var existingIndex = existing.endIndex
+        var candidateIndex = candidate.endIndex
+        var consumed = 0
+        while candidateIndex > candidate.startIndex {
+            let nextCandidate = candidate.index(before: candidateIndex)
+            candidateIndex = nextCandidate
+            if candidate[nextCandidate].isWhitespace { continue }
+            var matched = false
+            while existingIndex > existing.startIndex {
+                let nextExisting = existing.index(before: existingIndex)
+                existingIndex = nextExisting
+                consumed += 1
+                if existing[nextExisting].isWhitespace { continue }
+                guard existing[nextExisting] == candidate[nextCandidate] else { return nil }
+                matched = true
+                break
+            }
+            guard matched else { return nil }
+        }
+        return consumed
+    }
+
+    /// Codex sends each reasoning summary as its own `**Header**` fragment.
+    /// Glued end to end the delimiters collapse into `****` and the summaries
+    /// render as one run-on line, so a fragment that opens a header opens a
+    /// paragraph too. Mid-word deltas still join without a seam.
+    private static func combinedThoughtText(_ existing: String, _ incoming: String) -> String {
+        if incoming.hasPrefix(existing) { return incoming }
+        if existing.hasSuffix(incoming) { return existing }
+        if incoming.hasPrefix("**") && existing.hasSuffix("**") {
+            return joinThoughtParagraphs(existing, incoming)
+        }
+        return existing + incoming
     }
 
     private static func joinThoughtParagraphs(_ existing: String, _ incoming: String) -> String {
@@ -506,6 +546,9 @@ enum TranscriptProjection {
         var providerParentConversationId: String?
         var agentCodename: String?
         var workspacePath: String?
+        var activity: TranscriptToolActivity
+        var completionObserved: Bool
+        var completionStatus: String?
 
         var isAgent: Bool { TranscriptProjection.isAgentTool(normalizedToolName(name)) }
         var preview: String? {
@@ -514,11 +557,11 @@ enum TranscriptProjection {
 
         var presentation: TranscriptTool {
             let filePath = TranscriptProjection.path(in: inputObject)
-            return TranscriptTool(
+            var tool = TranscriptTool(
                 id: "tool-\(id)",
                 toolUseId: toolUseId,
                 name: name,
-                summary: TranscriptProjection.summary(name: name, preview: preview),
+                summary: "",
                 input: inputText,
                 output: output,
                 error: error,
@@ -526,8 +569,13 @@ enum TranscriptProjection {
                 createdAt: createdAt,
                 completedAt: completedAt,
                 filePath: filePath,
-                fileLabel: filePath.map { TranscriptProjection.relativePath($0, workspacePath: workspacePath) }
+                fileLabel: filePath.map { TranscriptProjection.relativePath($0, workspacePath: workspacePath) },
+                activity: activity,
+                completionObserved: completionObserved,
+                completionStatus: completionStatus
             )
+            tool.summary = TranscriptProjection.toolSummary(tool, name: name, preview: preview)
+            return tool
         }
     }
 
@@ -537,6 +585,14 @@ enum TranscriptProjection {
         workspacePath: String? = nil
     ) -> [String: ProjectedTool] {
         let completions = events.filter { $0.type == "command.completed" }
+        let latestAnswer = events.last { event in
+            let payload = event.payloadObject
+            return event.type == "message.completed" || (
+                event.type == "message.delta" &&
+                    payload["thinking"]?.bool != true &&
+                    payload["stream"]?.string == nil
+            )
+        }
         var usedCompletions = Set<String>()
         var result: [String: ProjectedTool] = [:]
         for start in events where start.type == "command.started" {
@@ -555,8 +611,13 @@ enum TranscriptProjection {
             let input = mergedInput(payload, endPayload)
             let name = toolName(payload)
             let failed = isFailed(endPayload)
+            let hasLaterAnswer = latestAnswer.map { compare(start, $0) == .orderedAscending } ?? false
+            let activity = mergedActivity(
+                start: decodedActivity(payload["activity"]),
+                end: decodedActivity(endPayload["activity"])
+            ) ?? legacyActivity(name: name, input: input)
             let status: TranscriptToolStatus = completion == nil
-                ? (sessionRunning ? .running : .done)
+                ? (sessionRunning && (!hasLaterAnswer || isAgentTool(normalizedToolName(name))) ? .running : .done)
                 : (failed ? .failed : .done)
             result[start.id] = ProjectedTool(
                 id: start.id,
@@ -574,7 +635,10 @@ enum TranscriptProjection {
                 providerChildSessionId: payload["providerChildSessionId"]?.string,
                 providerParentConversationId: payload["providerParentConversationId"]?.string,
                 agentCodename: string(payload, keys: ["agentCodename", "agentNickname"]),
-                workspacePath: workspacePath
+                workspacePath: workspacePath,
+                activity: activity,
+                completionObserved: completion != nil,
+                completionStatus: completionStatus(endPayload)
             )
         }
         return result
@@ -613,6 +677,106 @@ enum TranscriptProjection {
         return decoded.object ?? [:]
     }
 
+    private static func decodedActivity(_ value: TranscriptJSONValue?) -> TranscriptToolActivity? {
+        guard let object = value?.object,
+              object["version"]?.number == 1,
+              let kindValue = object["kind"]?.string,
+              let kind = TranscriptToolActivityKind(rawValue: kindValue),
+              let evidenceValue = object["evidence"]?.string,
+              let evidence = TranscriptToolActivityEvidence(rawValue: evidenceValue),
+              let targetValues = object["targets"]?.array
+        else { return nil }
+        let targets = targetValues.compactMap(\.string)
+        guard targets.count == targetValues.count else { return nil }
+        let operation: TranscriptToolActivityOperation?
+        if let value = object["operation"]?.string {
+            guard let decoded = TranscriptToolActivityOperation(rawValue: value) else { return nil }
+            operation = decoded
+        } else {
+            operation = nil
+        }
+        let toolCount: Int?
+        if let value = object["toolCount"]?.number {
+            guard value >= 0, value.rounded(.towardZero) == value, value <= Double(Int.max) else { return nil }
+            toolCount = Int(value)
+        } else {
+            toolCount = nil
+        }
+        return TranscriptToolActivity(
+            version: 1,
+            kind: kind,
+            evidence: evidence,
+            targets: targets,
+            operation: operation,
+            toolCount: toolCount
+        )
+    }
+
+    /// A completion may add result-derived facts such as the number of tools
+    /// discovered. A generic completion must never erase the specific action
+    /// already reported at start.
+    private static func mergedActivity(
+        start: TranscriptToolActivity?,
+        end: TranscriptToolActivity?
+    ) -> TranscriptToolActivity? {
+        guard let end else { return start }
+        guard let start else { return end }
+        let preservesStartKind = end.kind == .tool ||
+            ([.imageCapture, .imageGenerate, .computer].contains(start.kind) && end.kind == .image)
+        return TranscriptToolActivity(
+            version: end.version,
+            kind: preservesStartKind ? start.kind : end.kind,
+            evidence: preservesStartKind ? start.evidence : end.evidence,
+            targets: end.targets.isEmpty ? start.targets : end.targets,
+            operation: end.operation ?? start.operation,
+            toolCount: end.toolCount ?? start.toolCount
+        )
+    }
+
+    private static func completionStatus(_ payload: [String: TranscriptJSONValue]) -> String? {
+        if payload["cancelled"]?.bool == true || payload["canceled"]?.bool == true {
+            return "cancelled"
+        }
+        return payload["status"]?.string
+    }
+
+    /// Old timeline rows predate the activity contract. Keep their labels
+    /// useful with exact, provider-observed tool identities; arbitrary shell
+    /// source remains command activity.
+    private static func legacyActivity(
+        name: String,
+        input: [String: TranscriptJSONValue]
+    ) -> TranscriptToolActivity {
+        let leaf = name.components(separatedBy: "__").last?
+            .components(separatedBy: ".").last ?? name
+        let normalized = normalizedToolName(leaf)
+        let kind: TranscriptToolActivityKind
+        switch normalized {
+        case "read", "readfile", "shuntread": kind = .read
+        case "edit", "write", "writefile", "filechange", "searchreplace", "applypatch": kind = .edit
+        case "imageview", "viewimage": kind = .image
+        case "grep", "search", "searchfiles", "findinfiles": kind = .search
+        case "glob", "list", "listfiles", "findfiles": kind = .list
+        case "websearch", "searchquery": kind = .webSearch
+        case "webfetch", "fetchurl": kind = .webFetch
+        case "toolsearch", "searchtool", "getmcptoolstoolcall": kind = .discovery
+        case "commandexecution", "bash", "shell", "runterminalcommand", "exec", "execcommand": kind = .command
+        case "skill", "useskill", "loadskill": kind = .skill
+        case "screenshot", "capturescreenshot": kind = .imageCapture
+        case "imagegen", "imagegenerate", "generateimage": kind = .imageGenerate
+        default: kind = .tool
+        }
+        let targets = path(in: input).map { [$0] } ?? []
+        return TranscriptToolActivity(
+            version: 1,
+            kind: kind,
+            evidence: kind == .command ? .command : .tool,
+            targets: targets,
+            operation: nil,
+            toolCount: nil
+        )
+    }
+
     private static func output(_ payload: [String: TranscriptJSONValue]) -> String? {
         if let content = payload["content"]?.string { return unwrapTextEnvelope(content) }
         if let content = payload["content"]?.array {
@@ -639,7 +803,12 @@ enum TranscriptProjection {
         let status = payload["status"]?.string?.lowercased()
         // A cancelled call is an interruption, not a failure — the desktop's
         // `detectToolError` does not count one either.
+        if ["cancelled", "canceled", "interrupted"].contains(status) ||
+            payload["cancelled"]?.bool == true || payload["canceled"]?.bool == true {
+            return false
+        }
         if status == "failed" || status == "error" { return true }
+        if payload["is_error"]?.bool == true || payload["isError"]?.bool == true { return true }
         if let exitCode = payload["exit_code"]?.number, exitCode != 0 { return true }
         if let error = payload["error"] {
             if error.bool == true { return true }
@@ -670,8 +839,7 @@ enum TranscriptProjection {
     private static func isHiddenTool(_ name: String) -> Bool {
         [
             "taskcreate", "taskupdate", "todowrite", "updatetodostoolcall", "updatetodos",
-            "getcommandorsubagentoutput", "wait", "closeagent", "sendmessagetothread",
-            "getmcptoolstoolcall", "toolsearch"
+            "getcommandorsubagentoutput", "wait", "closeagent", "sendmessagetothread"
         ].contains(name)
     }
 
@@ -751,15 +919,92 @@ enum TranscriptProjection {
     ) -> String? {
         let normalized = normalizedToolName(name)
         if isAgentTool(normalized) {
-            return string(input, keys: ["description", "subagent_type", "subagentType", "prompt"])
+            guard let text = string(input, keys: ["description", "subagent_type", "subagentType", "prompt"])
+            else { return nil }
+            let stripped = withoutImageMarkers(text)
+            return stripped.isEmpty ? nil : stripped
         }
         if normalized.contains("bash") || normalized.contains("shell") || normalized.contains("exec") {
-            return string(input, keys: ["command", "cmd"])?.split(separator: "\n").first.map(String.init)
+            return string(input, keys: ["command", "cmd"])
+                .map(unwrapShellCommand)?
+                .split(separator: "\n").first.map(String.init)
         }
         if let path = path(in: input) {
             return relativePath(path, workspacePath: workspacePath)
         }
         return string(input, keys: ["query", "pattern", "search_term", "url"])
+    }
+
+    /// The command as the agent meant it, peeking through the `/bin/zsh -lc
+    /// '…'` / `bash -c "…"` launcher a provider wraps it in: the desktop's
+    /// `unwrapBashCommand` (`toolCalls.ts`). Left in, the launcher was most
+    /// of what a row had room to show.
+    static func unwrapShellCommand(_ command: String) -> String {
+        let launcher = try! NSRegularExpression(
+            pattern: "^(?:[\\w./-]+/)?(?:zsh|bash|sh)\\s+-l?c\\s+(.+)$",
+            options: [.caseInsensitive, .dotMatchesLineSeparators]
+        )
+        var text = withoutOuterQuotes(command.trimmingCharacters(in: .whitespacesAndNewlines))
+        for _ in 0..<2 {
+            let range = NSRange(text.startIndex..., in: text)
+            guard let match = launcher.firstMatch(in: text, range: range),
+                  let innerRange = Range(match.range(at: 1), in: text) else { break }
+            let inner = withoutOuterQuotes(String(text[innerRange]).trimmingCharacters(in: .whitespacesAndNewlines))
+            if inner.isEmpty || inner == text { break }
+            text = inner
+        }
+        return text
+    }
+
+    private static func withoutOuterQuotes(_ text: String) -> String {
+        guard let first = text.first, let last = text.last, text.count >= 2,
+              first == last, "'\"`".contains(first) else { return text }
+        return String(text.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Generic commands and integration calls still need the useful detail
+    /// they carried before activity metadata supplied their lifecycle verb.
+    private static func toolSummary(_ tool: TranscriptTool, name: String, preview: String?) -> String {
+        switch tool.activity.kind {
+        case .command:
+            guard let preview, !preview.isEmpty else { return tool.activitySummary }
+            let command = String(preview.prefix(72))
+            switch tool.activityState {
+            case .running: return "Running \(command)"
+            case .succeeded: return "Ran \(command)"
+            default: return "\(tool.activitySummary): \(command)"
+            }
+        case .tool:
+            let detail = toolDetail(name: name, preview: preview)
+            switch tool.activityState {
+            case .running: return "Using \(detail)"
+            case .succeeded: return "Used \(detail)"
+            case .failed: return "\(detail) failed"
+            case .cancelled: return "\(detail) cancelled"
+            case .unconfirmed: return "\(detail) (unconfirmed)"
+            }
+        default:
+            return tool.activitySummary
+        }
+    }
+
+    private static func toolDetail(name: String, preview: String?) -> String {
+        var parts = name.split { !$0.isLetter && !$0.isNumber }.map(String.init)
+        if parts.first?.lowercased() == "mcp" { parts.removeFirst() }
+        let words = parts.joined(separator: " ")
+        let title = words.isEmpty ? "Tool" : words.prefix(1).uppercased() + words.dropFirst()
+        guard let preview, !preview.isEmpty else { return title }
+        return "\(title) · \(String(preview.prefix(72)))"
+    }
+
+    /// Codex passes an attached image to a subagent as a `[local_image:/abs/path]`
+    /// marker at the head of the prompt. In a one-line row that path is all the
+    /// reader sees, so drop the markers and keep the instruction.
+    private static func withoutImageMarkers(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "\\[local_image:[^\\]]*\\]", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func path(in input: [String: TranscriptJSONValue]) -> String? {
@@ -773,14 +1018,6 @@ enum TranscriptProjection {
         let prefix = root == "/" ? root : "\(root)/"
         guard path.hasPrefix(prefix) else { return path }
         return String(path.dropFirst(prefix.count))
-    }
-
-    private static func summary(name: String, preview: String?) -> String {
-        let words = name
-            .replacingOccurrences(of: "_", with: " ")
-            .replacingOccurrences(of: "-", with: " ")
-        guard let preview, !preview.isEmpty else { return words }
-        return "\(words) · \(String(preview.prefix(72)))"
     }
 
     private static func formatted(_ object: [String: TranscriptJSONValue]) -> String? {

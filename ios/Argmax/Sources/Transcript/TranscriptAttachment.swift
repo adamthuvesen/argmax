@@ -57,8 +57,11 @@ struct TranscriptAttachmentStrip: View {
                             .frame(width: 168, height: 120)
                         } else {
                             Button { onOpenFile(attachment.filePath) } label: {
-                                Label(attachment.name, systemImage: "doc")
-                                    .font(.footnote)
+                                Label {
+                                    Text(attachment.name).typeStyle(.footnote)
+                                } icon: {
+                                    Image(systemName: "doc").typeSymbol(.footnote)
+                                }
                                     .lineLimit(2)
                                     .padding(10)
                                     .frame(width: 168, height: 54, alignment: .leading)
@@ -208,8 +211,12 @@ private struct TranscriptFileFallback: View {
 
     var body: some View {
         Button { onOpenFile(source.target) } label: {
-            Label(source.alt.isEmpty ? URL(fileURLWithPath: source.target).lastPathComponent : source.alt, systemImage: "photo")
-                .font(.footnote)
+            Label {
+                Text(source.alt.isEmpty ? URL(fileURLWithPath: source.target).lastPathComponent : source.alt)
+                    .typeStyle(.footnote)
+            } icon: {
+                Image(systemName: "photo").typeSymbol(.footnote)
+            }
                 .foregroundStyle(Theme.ink)
                 .padding(10)
                 .background(Theme.raised, in: RoundedRectangle(cornerRadius: 10, style: .continuous))

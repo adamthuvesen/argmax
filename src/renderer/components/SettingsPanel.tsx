@@ -1,3 +1,4 @@
+import type { FontHeaviness } from "../lib/fontHeaviness.js";
 import type { ProviderId } from "../../shared/types.js";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
 import type {
@@ -55,6 +56,8 @@ export function SettingsPanel({
   onWorkspaceCardVisibleChange,
   pixelFieldEnabled,
   onPixelFieldEnabledChange,
+  contextIndicatorEnabled,
+  onContextIndicatorEnabledChange,
   prMilestoneCelebrationEnabled,
   onPrMilestoneCelebrationEnabledChange,
   chatWidth,
@@ -77,6 +80,8 @@ export function SettingsPanel({
   onFontSizeChange,
   chatFontSize,
   onChatFontSizeChange,
+  fontHeaviness,
+  onFontHeavinessChange,
   inkStrength,
   onInkStrengthChange,
   backgroundIntensity,
@@ -126,6 +131,8 @@ export function SettingsPanel({
   onWorkspaceCardVisibleChange: (v: boolean) => void;
   pixelFieldEnabled: boolean;
   onPixelFieldEnabledChange: (v: boolean) => void;
+  contextIndicatorEnabled: boolean;
+  onContextIndicatorEnabledChange: (v: boolean) => void;
   prMilestoneCelebrationEnabled: boolean;
   onPrMilestoneCelebrationEnabledChange: (v: boolean) => void;
   chatWidth: ChatWidth;
@@ -148,6 +155,8 @@ export function SettingsPanel({
   onFontSizeChange: (id: FontSize) => void;
   chatFontSize: FontSize;
   onChatFontSizeChange: (id: FontSize) => void;
+  fontHeaviness: FontHeaviness;
+  onFontHeavinessChange: (heaviness: FontHeaviness) => void;
   inkStrength: InkStrength;
   onInkStrengthChange: (strength: InkStrength) => void;
   backgroundIntensity: BackgroundIntensity;
@@ -338,6 +347,8 @@ export function SettingsPanel({
             onFontSizeChange={onFontSizeChange}
             chatFontSize={chatFontSize}
             onChatFontSizeChange={onChatFontSizeChange}
+            fontHeaviness={fontHeaviness}
+            onFontHeavinessChange={onFontHeavinessChange}
             inkStrength={inkStrength}
             onInkStrengthChange={onInkStrengthChange}
             backgroundIntensity={backgroundIntensity}
@@ -358,6 +369,8 @@ export function SettingsPanel({
             onWorkspaceCardVisibleChange={onWorkspaceCardVisibleChange}
             pixelFieldEnabled={pixelFieldEnabled}
             onPixelFieldEnabledChange={onPixelFieldEnabledChange}
+            contextIndicatorEnabled={contextIndicatorEnabled}
+            onContextIndicatorEnabledChange={onContextIndicatorEnabledChange}
             prMilestoneCelebrationEnabled={prMilestoneCelebrationEnabled}
             onPrMilestoneCelebrationEnabledChange={onPrMilestoneCelebrationEnabledChange}
             chatWidth={chatWidth}

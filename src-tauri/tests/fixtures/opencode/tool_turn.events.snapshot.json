@@ -5,6 +5,8 @@
     "message": "read",
     "payload": {
       "name": "read",
+      "status": "completed",
+      "activity": { "version": 1, "kind": "read", "evidence": "tool", "targets": ["/repo/src"] },
       "input": { "filePath": "/repo/src" },
       "call_id": "call_1",
       "raw": {
@@ -26,6 +28,8 @@
     "message": "read",
     "payload": {
       "name": "read",
+      "status": "completed",
+      "activity": { "version": 1, "kind": "read", "evidence": "tool", "targets": ["/repo/src"] },
       "input": { "filePath": "/repo/src" },
       "call_id": "call_1",
       "result": "<entries>index.ts</entries>",

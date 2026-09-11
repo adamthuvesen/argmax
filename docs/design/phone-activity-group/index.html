@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-font-size="5" data-accent="green">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Argmax — phone activity group, opened</title>
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-400.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-500.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-700.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource-variable/geist-mono/wght.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/tokens.css" />
+    <style>
+      html { background: var(--bg); }
+      body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font-ui); -webkit-font-smoothing: antialiased; }
+      .page-head { display: flex; gap: 16px; align-items: baseline; padding: 14px 28px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+      .page-head h1 { font-size: 13px; font-weight: 500; margin: 0; color: var(--text); }
+      .frames { display: flex; gap: 28px; padding: 28px; align-items: flex-start; }
+      .frame { width: 393px; flex: 0 0 auto; }
+      .frame h2 { font-size: 12px; font-weight: 500; margin: 0 0 4px 20px; color: var(--text); }
+      .frame p { font-size: 11px; line-height: 1.4; margin: 0 0 12px 20px; color: var(--muted); min-height: 60px; }
+      .phone { border: 1px solid var(--line); border-radius: 28px; overflow: hidden; background: var(--bg); padding: 16px 20px 24px; }
+
+      /* shared transcript type: body 17 / subhead 15 / footnote 13 / caption 12 */
+      .phone .prose { font-size: 17px; line-height: 24px; color: var(--text); margin: 0 0 12px; }
+      .prose.answer { margin-top: 20px; }
+      .ink-strong { color: var(--muted-strong); }
+      .mono { font-family: var(--font-mono); font-variant-ligatures: none; }
+      .ico { width: 16px; height: 16px; flex: 0 0 auto; }
+      .ico svg { width: 100%; height: 100%; }
+      .blue { color: var(--activity-blue, #8aaef2); }
+      .amber { color: var(--activity-amber, #d9a566); }
+      .stat { font-variant-numeric: tabular-nums; font-size: 12px; }
+      .add { color: var(--diff-add-gutter-fg, #7fb494); }
+      .del { color: var(--diff-del-gutter-fg, #f0707f); }
+      .chev { width: 12px; height: 12px; color: var(--muted); opacity: .6; flex: 0 0 auto; margin-left: auto; }
+      .chev svg { width: 100%; height: 100%; }
+
+      /* ---- Shipped ---- */
+      .v-shipped .fold { display: flex; gap: 12px; }
+      .v-shipped .rail { width: 1px; background: var(--line); flex: 0 0 auto; }
+      .v-shipped .fold > div:last-child { flex: 1; min-width: 0; }
+      .v-shipped .thought { display: flex; align-items: center; min-height: 44px; font-size: 13px; color: var(--muted); }
+      .v-shipped .card { display: flex; align-items: flex-start; gap: 12px; padding: 10px 12px; margin: 0 0 8px; border-radius: 10px; background: color-mix(in oklab, var(--bg) 96%, var(--text)); font-size: 13px; line-height: 17px; color: var(--text); }
+      .v-shipped .card .chev { margin-top: 3px; }
+      .v-shipped .card .ico { margin-top: 1px; }
+      .v-shipped .prose { font-size: 17px; }
+      .v-shipped .card.open { flex-direction: column; }
+      .v-shipped .card.open .head { display: flex; gap: 12px; }
+      .v-shipped .card .in { font-size: 13px; color: var(--muted); display: flex; justify-content: space-between; align-items: center; min-height: 44px; }
+      .v-shipped .card pre { margin: 0; font-size: 12px; white-space: pre; overflow: hidden; color: var(--text); }
+
+      /* ---- A · Ledger ---- */
+      .v-ledger .fold { border-left: 2px solid var(--line); padding-left: 14px; margin: 4px 0 4px 0; }
+      .v-ledger .row { display: flex; align-items: center; gap: 10px; min-height: 36px; font-size: 13px; line-height: 17px; color: var(--muted); }
+      .v-ledger .row .verb { color: var(--muted-strong); flex: 0 0 auto; }
+      .v-ledger .row .target { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .v-ledger .row .target.mono { font-size: 12px; }
+      .v-ledger .row.thought .ico { color: var(--muted); opacity: .7; }
+      .v-ledger .note { font-size: 15px; line-height: 21px; color: var(--muted-strong); margin: 6px 0 8px; }
+      .v-ledger .block { margin: 2px 0 10px 26px; padding: 10px 12px; border-radius: 8px; background: var(--tool-block-surface, color-mix(in oklab, var(--bg) 96%, var(--text))); font-size: 12px; line-height: 17px; color: color-mix(in oklab, var(--text) 72%, var(--muted-strong)); }
+      .v-ledger .block pre { margin: 0; white-space: pre; overflow: hidden; }
+      .v-ledger .block .foot { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); display: flex; gap: 12px; }
+      .v-ledger .foldhead { display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: 13px; color: var(--muted); }
+
+      /* ---- B · Timeline ---- */
+      .v-tl .fold { position: relative; padding-left: 24px; margin: 6px 0; }
+      .v-tl .fold::before { content: ""; position: absolute; left: 7px; top: 14px; bottom: 14px; width: 1px; background: var(--line); }
+      .v-tl .step { position: relative; padding: 8px 0; }
+      .v-tl .step::before { content: ""; position: absolute; left: -21px; top: 13px; width: 7px; height: 7px; border-radius: 50%; background: var(--bg); border: 1.5px solid var(--muted); box-sizing: border-box; }
+      .v-tl .step.cmd::before, .v-tl .step.read::before { border-color: var(--activity-blue, #8aaef2); }
+      .v-tl .step.edit::before { border-color: var(--activity-amber, #d9a566); background: var(--activity-amber, #d9a566); }
+      .v-tl .step.thought::before { border-color: var(--line); background: var(--line); width: 5px; height: 5px; left: -20px; top: 14px; }
+      .v-tl .step .h { font-size: 13px; line-height: 17px; color: var(--muted-strong); display: flex; gap: 8px; align-items: baseline; }
+      .v-tl .step .h .dur { color: var(--muted); font-size: 12px; margin-left: auto; font-variant-numeric: tabular-nums; }
+      .v-tl .step .cmdline { font-size: 12px; line-height: 17px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+      .v-tl .step .files { font-size: 12px; line-height: 17px; color: var(--muted); margin-top: 2px; display: flex; flex-direction: column; gap: 2px; }
+      .v-tl .step .files span { display: flex; gap: 8px; }
+      .v-tl .step.note { font-size: 15px; line-height: 21px; color: var(--muted-strong); }
+      .v-tl .step.note::before { display: none; }
+      .v-tl .out { margin-top: 8px; padding: 10px 12px; border-radius: 8px; background: var(--tool-block-surface, color-mix(in oklab, var(--bg) 96%, var(--text))); font-size: 12px; line-height: 17px; color: color-mix(in oklab, var(--text) 72%, var(--muted-strong)); }
+      .v-tl .out pre { margin: 0; white-space: pre; overflow: hidden; }
+      .v-tl .out .foot { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); }
+      .v-tl .thought .body { font-size: 13px; line-height: 18px; color: var(--muted); margin-top: 4px; }
+      .v-tl .foldhead { display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: 13px; color: var(--muted); }
+
+      /* ---- C · Story ---- */
+      .v-story .prose { font-size: 17px; }
+      .v-story .beat { display: flex; align-items: center; gap: 8px; min-height: 36px; font-size: 13px; color: var(--muted); margin: -4px 0 14px; }
+      .v-story .beat .ico { width: 14px; height: 14px; }
+      .v-story .beat .n { color: var(--muted-strong); }
+      .v-story .thoughtline { font-size: 13px; color: var(--muted); margin: -4px 0 10px; display: flex; gap: 8px; align-items: center; }
+      .v-story .sheet { margin-top: 20px; border-radius: 16px 16px 0 0; background: color-mix(in oklab, var(--bg) 94%, var(--text)); padding: 8px 16px 16px; }
+      .v-story .sheet .grab { width: 36px; height: 4px; border-radius: 2px; background: var(--line); margin: 0 auto 12px; }
+      .v-story .sheet h3 { margin: 0 0 4px; font-size: 15px; font-weight: 500; color: var(--text); }
+      .v-story .sheet .sub { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+      .v-story .sheet .row { display: flex; align-items: center; gap: 10px; min-height: 40px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); }
+      .v-story .sheet .row:first-of-type { border-top: 0; }
+      .v-story .sheet .row .verb { color: var(--muted-strong); flex: 0 0 auto; }
+      .v-story .sheet .row .target { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .v-story .sheet .row .target.mono { font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="page-head">
+      <h1>Phone activity group, opened</h1>
+      <span>One turn from "Chief of Brain": narration, five commands, one edit, four thoughts, the answer. The sed command is opened in each frame.</span>
+    </div>
+    <div class="frames" id="frames"></div>
+    <script>
+      const I = {
+        term: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>',
+        pencil: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>',
+        thought: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8" stroke-dasharray="3 3"/></svg>',
+        chevR: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>',
+        chevD: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
+        copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>',
+        layers: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 8.5 4.5L12 11 3.5 6.5 12 2Z"/><path d="m3.5 11.5 8.5 4.5 8.5-4.5"/><path d="m3.5 16.5 8.5 4.5 8.5-4.5"/></svg>',
+      };
+      const narration = "I'm using the Brain Curate skill for this cleanup. The log check requires the first entry to be dated today, which explains why yesterday's entry failed. The missing PQA macro also appears to be historical, so I'll preserve its provenance and distinguish it from the current V2 source.";
+      const answer = "Both checks now pass with no errors or warnings, and Trace has refreshed successfully.";
+      const cmdSed = "sed -n '130,236p' wiki/source-summaries/menti-pqa-scoring-v2.md";
+      const sedOut = `## Scoring inputs\n\nThe PQA macro pulls from \`fct_presentation_quality\`\nand joins \`dim_presentation\` on presentation_id.\nThe V2 source replaced the macro on 2026-06-04;\nrows before that carry the legacy score.\n…`;
+      const cmdGit = "git -C ../dbt-transform rev-parse e125290d6^; git -C ../dbt-transform log -1 --format=%H";
+      const cmdBrain = ".venv/bin/brain ingest-check; .venv/bin/brain lint; UV_CACHE_DIR=.uv trace reindex";
+      const cmdDiff = "git diff --check; git diff --stat; git status --short";
+
+      const variants = [
+        { cls: "v-shipped", name: "Shipped", note: "Every command is a filled card carrying the /bin/zsh -lc wrapper at ink weight; thoughts are bare 44pt rows between the cards; narration sits inside the fold at answer size. Expanding shows Input as one line of JSON.",
+          html: `
+            <div class="fold"><div class="rail"></div><div>
+              <div class="thought">Thought process <span class="chev">${I.chevR}</span></div>
+              <p class="prose">${narration}</p>
+              <div class="card open"><div class="head"><span class="ico blue">${I.term}</span><span>Ran /bin/zsh -lc "sed -n '130,236p' wiki/source-summaries/menti-pqa-scoring-</span><span class="chev">${I.chevD}</span></div>
+                <div class="in">Input <span class="ico">${I.copy}</span></div><pre class="mono">{\n  "command" : "/bin/zsh -lc \\"sed -n '130,236p'\n}</pre></div>
+              <div class="thought">Thought process <span class="chev">${I.chevR}</span></div>
+              <div class="card"><span class="ico blue">${I.term}</span><span>Ran /bin/zsh -lc 'git -C ../dbt-transform rev-parse e125290d6''^; git -C ../</span><span class="chev">${I.chevR}</span></div>
+              <div class="thought">Thought process <span class="chev">${I.chevR}</span></div>
+              <div class="card"><span class="ico amber">${I.pencil}</span><span>Edited files</span><span class="chev">${I.chevR}</span></div>
+              <div class="card"><span class="ico blue">${I.term}</span><span>Ran /bin/zsh -lc '.venv/bin/brain ingest-check; .venv/bin/brain lint; UV_CAC</span><span class="chev">${I.chevR}</span></div>
+              <div class="thought">Thought process <span class="chev">${I.chevR}</span></div>
+              <div class="card"><span class="ico blue">${I.term}</span><span>Ran /bin/zsh -lc 'git diff --check; git diff --stat; git status --short'</span><span class="chev">${I.chevR}</span></div>
+              <div class="thought">Thought process <span class="chev">${I.chevR}</span></div>
+            </div></div>
+            <p class="prose answer">${answer}</p>` },
+
+        { cls: "v-ledger", name: "A · Ledger", note: "The desktop grammar on the phone: icon · verb · target, one 36pt line each, no fills, no chevrons. Shell wrapper stripped, command in mono one step down. A thought is a row that names itself from its first line. Narration inside the fold drops to 15pt and muted-strong: something the agent said on the way, not the answer. An opened row grows one block: payload, then a footer.",
+          html: `
+            <div class="foldhead"><span class="ico blue">${I.term}</span><span class="ico amber">${I.pencil}</span> Ran 5 commands, edited 2 files <span class="chev">${I.chevD}</span></div>
+            <div class="fold">
+              <div class="row thought"><span class="ico">${I.thought}</span><span class="verb">Thought</span><span class="target">Reading the skill first</span></div>
+              <p class="note">${narration}</p>
+              <div class="row"><span class="ico blue">${I.term}</span><span class="verb">Ran</span><span class="target mono">${cmdSed}</span></div>
+              <div class="block"><pre class="mono">${sedOut}</pre><div class="foot"><span>107 lines</span><span>0.2s</span><span style="margin-left:auto">Show all</span></div></div>
+              <div class="row thought"><span class="ico">${I.thought}</span><span class="verb">Thought</span><span class="target">Obtaining full parent</span></div>
+              <div class="row"><span class="ico blue">${I.term}</span><span class="verb">Ran</span><span class="target mono">${cmdGit}</span></div>
+              <div class="row thought"><span class="ico">${I.thought}</span><span class="verb">Thought</span><span class="target">Checking deletion history</span></div>
+              <div class="row"><span class="ico amber">${I.pencil}</span><span class="verb">Edited</span><span class="target">menti-pqa-scoring-v2.md</span><span class="stat"><span class="add">+6</span> <span class="del">−2</span></span></div>
+              <div class="row"><span class="ico amber">${I.pencil}</span><span class="verb">Edited</span><span class="target">log.md</span><span class="stat"><span class="add">+3</span></span></div>
+              <div class="row"><span class="ico blue">${I.term}</span><span class="verb">Ran</span><span class="target mono">${cmdBrain}</span></div>
+              <div class="row thought"><span class="ico">${I.thought}</span><span class="verb">Thought</span><span class="target">Verifying checks</span></div>
+              <div class="row"><span class="ico blue">${I.term}</span><span class="verb">Ran</span><span class="target mono">${cmdDiff}</span></div>
+            </div>
+            <p class="prose answer">${answer}</p>` },
+
+        { cls: "v-tl", name: "B · Timeline", note: "Steps on a rail, the way a phone shows an order or a build. Each dot is coloured by the kind of work; a thought is a small filled dot. The headline is what happened, the second line is the command or the files. An opened thought shows its reasoning in place at 13pt; an opened command shows its output. Time per step on the right.",
+          html: `
+            <div class="foldhead"><span class="ico blue">${I.term}</span><span class="ico amber">${I.pencil}</span> Ran 5 commands, edited 2 files <span class="chev">${I.chevD}</span></div>
+            <div class="fold">
+              <div class="step thought"><div class="h">Reading the skill first <span class="dur">3s</span></div></div>
+              <div class="step note">${narration}</div>
+              <div class="step cmd"><div class="h">Ran a command <span class="dur">0.2s</span></div><div class="cmdline mono">${cmdSed}</div>
+                <div class="out"><pre class="mono">${sedOut}</pre><div class="foot">107 lines · Show all</div></div></div>
+              <div class="step thought"><div class="h">Obtaining full parent <span class="dur">4s</span></div></div>
+              <div class="step cmd"><div class="h">Ran a command <span class="dur">0.1s</span></div><div class="cmdline mono">${cmdGit}</div></div>
+              <div class="step thought"><div class="h">Checking deletion history <span class="dur">6s</span></div>
+                <div class="body">The macro was removed in the V2 migration, not lost. Keep the provenance line and mark it historical rather than deleting it.</div></div>
+              <div class="step edit"><div class="h">Edited 2 files <span class="dur">1s</span></div><div class="files"><span>menti-pqa-scoring-v2.md <span class="stat"><span class="add">+6</span> <span class="del">−2</span></span></span><span>log.md <span class="stat"><span class="add">+3</span></span></span></div></div>
+              <div class="step cmd"><div class="h">Ran a command <span class="dur">8s</span></div><div class="cmdline mono">${cmdBrain}</div></div>
+              <div class="step thought"><div class="h">Verifying checks <span class="dur">2s</span></div></div>
+              <div class="step cmd"><div class="h">Ran a command <span class="dur">0.3s</span></div><div class="cmdline mono">${cmdDiff}</div></div>
+            </div>
+            <p class="prose answer">${answer}</p>` },
+
+        { cls: "v-story", name: "C · Story, inspector as a sheet", note: "The transcript stays a story: narration at answer size, and the work between two pieces of prose folds to one quiet line. A thought that has a title keeps it as a one-liner. Tapping the line opens a bottom sheet that holds the ledger, which is where a phone puts detail. The sheet is drawn here docked open.",
+          html: `
+            <div class="thoughtline"><span class="ico">${I.thought}</span> Reading the skill first</div>
+            <p class="prose">${narration}</p>
+            <div class="beat"><span class="ico blue">${I.term}</span><span class="ico amber">${I.pencil}</span><span><span class="n">5 commands</span>, <span class="n">2 files</span>, 3 thoughts · 24s</span><span class="chev">${I.chevR}</span></div>
+            <p class="prose answer" style="margin-top:0">${answer}</p>
+            <div class="sheet">
+              <div class="grab"></div>
+              <h3>Ran 5 commands, edited 2 files</h3>
+              <div class="sub">24s · between "I'm using the Brain Curate skill…" and the answer</div>
+              <div class="row"><span class="ico blue">${I.term}</span><span class="verb">Ran</span><span class="target mono">${cmdSed}</span><span class="chev">${I.chevR}</span></div>
+              <div class="row"><span class="ico">${I.thought}</span><span class="verb">Thought</span><span class="target">Obtaining full parent</span><span class="chev">${I.chevR}</span></div>
+              <div class="row"><span class="ico blue">${I.term}</span><span class="verb">Ran</span><span class="target mono">${cmdGit}</span><span class="chev">${I.chevR}</span></div>
+              <div class="row"><span class="ico">${I.thought}</span><span class="verb">Thought</span><span class="target">Checking deletion history</span><span class="chev">${I.chevR}</span></div>
+              <div class="row"><span class="ico amber">${I.pencil}</span><span class="verb">Edited</span><span class="target">menti-pqa-scoring-v2.md</span><span class="stat"><span class="add">+6</span> <span class="del">−2</span></span><span class="chev">${I.chevR}</span></div>
+              <div class="row"><span class="ico amber">${I.pencil}</span><span class="verb">Edited</span><span class="target">log.md</span><span class="stat"><span class="add">+3</span></span><span class="chev">${I.chevR}</span></div>
+              <div class="row"><span class="ico blue">${I.term}</span><span class="verb">Ran</span><span class="target mono">${cmdBrain}</span><span class="chev">${I.chevR}</span></div>
+              <div class="row"><span class="ico">${I.thought}</span><span class="verb">Thought</span><span class="target">Verifying checks</span><span class="chev">${I.chevR}</span></div>
+              <div class="row"><span class="ico blue">${I.term}</span><span class="verb">Ran</span><span class="target mono">${cmdDiff}</span><span class="chev">${I.chevR}</span></div>
+            </div>` },
+      ];
+      const params = new URLSearchParams(location.search);
+      if (params.get("theme")) document.documentElement.dataset.theme = params.get("theme");
+      const only = params.get("only");
+      const host = document.getElementById("frames");
+      for (const v of variants) {
+        if (only && !v.name.startsWith(only)) continue;
+        const el = document.createElement("div");
+        el.className = "frame";
+        el.innerHTML = `<h2>${v.name}</h2><p>${v.note}</p><div class="phone ${v.cls}">${v.html}</div>`;
+        host.appendChild(el);
+      }
+    </script>
+  </body>
+</html>

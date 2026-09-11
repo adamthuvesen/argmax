@@ -55,8 +55,7 @@ enum MobileTranscriptRow: Equatable, Identifiable {
         for item in items {
             let fold: Bool
             switch item {
-            case .thought, .todo: fold = true
-            case .tools(let group): fold = !group.tools.contains { $0.status == .failed }
+            case .thought, .todo, .tools: fold = true
             case .assistant: fold = narration.contains(item.id)
             default: fold = false
             }
@@ -85,20 +84,43 @@ struct MobileTranscriptRowView<Content: View>: View {
         case .thinking(let thinking): TranscriptThinkingLabel(thinking: thinking).id(thinking)
         case .activity(let items):
             DisclosureGroup(isExpanded: $expanded) {
-                VStack(alignment: .leading, spacing: Spacing.snug) {
-                    ForEach(items) { item in content(item) }
+                // Unfolded work used to sit flush with the answers around it,
+                // so a nested "Thought process" read as a sibling of the reply
+                // above it. One rule down the left says where the fold ends.
+                HStack(alignment: .top, spacing: Spacing.row + Spacing.hair) {
+                    Theme.line.frame(width: 2)
+                    // Folded rows keep the rhythm of the list they came out
+                    // of: an activity row reserves its own height, and
+                    // stacking a gap on top of it opened a hole.
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(items) { item in
+                            content(item)
+                                .padding(.vertical, MobileTranscriptRow.item(item).verticalPadding)
+                                .environment(\.activityToolsAreRevealed, true)
+                                .environment(\.foldedNarration, true)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    // SwiftUI resets a custom style for the groups a style's
+                    // own body renders, so the thinking inside this fold drew
+                    // the system chevron — heavier and brighter than the one
+                    // that opened it. Asking for the style again restores it.
+                    .disclosureGroupStyle(TranscriptDisclosureStyle())
                 }
                 .padding(.top, Spacing.snug)
+                .padding(.bottom, Spacing.tight)
             } label: {
                 HStack(spacing: Spacing.snug) {
                     if tools(in: items).contains(where: { $0.status == .running }) {
                         WorkingNest(size: 16)
                     }
-                    ForEach(iconTools(in: items)) { tool in TranscriptToolIcon(name: tool.name) }
+                    ForEach(iconTools(in: items)) { tool in
+                        TranscriptToolIcon(name: tool.name, activity: tool.activity)
+                    }
                     Text(summary(items)).lineLimit(1)
                     Spacer(minLength: 0)
                 }
-                .font(.footnote)
+                .typeStyle(.footnote)
                 .foregroundStyle(Theme.muted)
                 .frame(minHeight: 44)
                 .contentShape(.rect)
@@ -118,21 +140,39 @@ struct MobileTranscriptRowView<Content: View>: View {
     private func iconTools(in items: [TranscriptItem]) -> [TranscriptTool] {
         var seen = Set<String>()
         return Array(tools(in: items).filter { tool in
-            guard let asset = TranscriptToolIcon.assetName(for: tool.name) else { return false }
-            return seen.insert(asset).inserted
+            let identity = TranscriptToolIcon.assetName(for: tool.name, activity: tool.activity)
+                ?? "activity:\(tool.activity.kind.rawValue)"
+            return seen.insert(identity).inserted
         }.prefix(detail == .minimal ? 1 : 3))
     }
 
     private func summary(_ items: [TranscriptItem]) -> String {
         let tools = tools(in: items)
-        let running = tools.contains { $0.status == .running }
         if tools.isEmpty { return "Thought process and activity" }
-        return "\(running ? "Working" : "Activity") · \(tools.count) action\(tools.count == 1 ? "" : "s")"
+        return TranscriptToolActivity.summary(for: tools).headline
+    }
+}
+
+private struct ActivityToolsAreRevealedKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var activityToolsAreRevealed: Bool {
+        get { self[ActivityToolsAreRevealedKey.self] }
+        set { self[ActivityToolsAreRevealedKey.self] = newValue }
     }
 }
 
 /// Keep the whole row tappable without the system disclosure's extra insets.
-private struct TranscriptDisclosureStyle: DisclosureGroupStyle {
+///
+/// A group headline keeps its chevron: it is sometimes a turn's only
+/// control. The rows inside a fold drop it — every line wearing one read as
+/// a column of controls — and sit at the ledger's own height.
+struct TranscriptDisclosureStyle: DisclosureGroupStyle {
+    var chevron = true
+    var minHeight: CGFloat = 44
+
     func makeBody(configuration: Configuration) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
@@ -140,13 +180,15 @@ private struct TranscriptDisclosureStyle: DisclosureGroupStyle {
             } label: {
                 HStack(spacing: Spacing.snug) {
                     configuration.label
-                    Spacer(minLength: 0)
-                    Image(systemName: configuration.isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Theme.muted)
-                        .accessibilityHidden(true)
+                    if chevron {
+                        Spacer(minLength: 0)
+                        Image(systemName: configuration.isExpanded ? "chevron.down" : "chevron.right")
+                            .typeSymbol(.caption, weight: .semibold)
+                            .foregroundStyle(Theme.muted)
+                            .accessibilityHidden(true)
+                    }
                 }
-                .frame(minHeight: 44)
+                .frame(minHeight: minHeight)
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)

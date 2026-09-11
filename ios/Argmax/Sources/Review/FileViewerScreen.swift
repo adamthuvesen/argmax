@@ -21,6 +21,7 @@ struct FileViewerScreen: View {
 
     private var revision = ""
     private var onBack: (() -> Void)?
+    private var chrome: ViewerChrome = .pushed
     @State private var contentRevision = 0
     @State private var token = 0
 
@@ -33,8 +34,12 @@ struct FileViewerScreen: View {
     var body: some View {
         ZStack {
             Theme.ground.ignoresSafeArea()
-            content
-                .safeAreaInset(edge: .top, spacing: 0) { header }
+            switch chrome {
+            case .pushed:
+                content.safeAreaInset(edge: .top, spacing: 0) { header }
+            case .embedded:
+                content
+            }
         }
         .toolbar(.hidden, for: .navigationBar)
         .interactivePop()
@@ -44,12 +49,21 @@ struct FileViewerScreen: View {
         }
     }
 
-    init(workspaceID: String, path: String, client: BridgeClient, workspacePath: String, revision: String = "", onBack: (() -> Void)? = nil) {
+    init(
+        workspaceID: String,
+        path: String,
+        client: BridgeClient,
+        workspacePath: String,
+        revision: String = "",
+        chrome: ViewerChrome = .pushed,
+        onBack: (() -> Void)? = nil
+    ) {
         self.workspaceID = workspaceID
         self.path = path
         self.client = client
         self.workspacePath = workspacePath
         self.revision = revision
+        self.chrome = chrome
         self.onBack = onBack
     }
 

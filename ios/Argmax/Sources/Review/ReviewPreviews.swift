@@ -110,7 +110,7 @@ struct ChangedFileRow: View {
     var body: some View {
         HStack(spacing: Spacing.row) {
             Text(ChangedFileStatus.glyph(file.status))
-                .font(.argmaxMono(.footnote).weight(.semibold))
+                .typeStyle(.footnote, weight: .semibold, mono: true)
                 .foregroundStyle(ChangedFileStatus.tint(file.status))
                 .frame(width: Spacing.glyphColumn, alignment: .leading)
             Spacer(minLength: Spacing.snug)
@@ -205,6 +205,26 @@ struct ReviewPreviewFrame<Content: View>: View {
 #Preview("Diff · light") {
     ReviewPreviewFrame {
         DiffScreen(path: "src/renderer/mobile/nativeHost.ts", blocks: previewDiffBlocks)
+    }
+    .preferredColorScheme(.light)
+}
+
+/// What the review screen actually shows once a file is open: the tab says
+/// which file this is, so the viewer under it is code and nothing else.
+#Preview("Diff · in the tab strip") {
+    let detail = ReviewDetail.diff(workspaceID: "preview", path: ".gitattributes", scope: .branch)
+    return ReviewPreviewFrame {
+        VStack(spacing: 0) {
+            ReviewFileTabs(
+                details: [detail],
+                active: detail,
+                onSelect: { _ in },
+                onClose: { _ in },
+                onShowList: {},
+                trailing: { ReviewContextButton {} }
+            )
+            DiffScreen(path: ".gitattributes", blocks: previewDiffBlocks, chrome: .embedded)
+        }
     }
     .preferredColorScheme(.light)
 }

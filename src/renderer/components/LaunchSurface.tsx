@@ -55,6 +55,7 @@ import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
 import { LAUNCHER_TITLE, SIDE_CHAT_PLACEHOLDER, SIDE_CHAT_TITLE } from "../lib/launcherTitle.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
+import type { FontSize } from "../lib/fonts.js";
 import {
   persistLaunchProjectId,
   sortProjectsByLaunchRecency
@@ -129,6 +130,7 @@ export function LaunchSurface({
   fastModeEnabled = false,
   goalEnabled = true,
   hasRunningSession = false,
+  chatFontSize,
   pixelFieldEnabled = false,
   model,
   onAddProject,
@@ -158,6 +160,8 @@ export function LaunchSurface({
   /** True while an agent is running in this launcher's project. The hero fox
    *  stays awake rather than dozing. */
   hasRunningSession?: boolean;
+  /** Settings → Appearance: keep the launcher's composer on the agent-window scale. */
+  chatFontSize?: FontSize;
   pixelFieldEnabled?: boolean;
   model: ModelPickerSelection;
   onAddProject: () => void;
@@ -763,10 +767,12 @@ export function LaunchSurface({
     }
   };
 
+  const hasSendableContent = prompt.trim().length > 0 || pendingAttachments.length > 0;
+
   const submitPrompt = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     const trimmedPrompt = prompt.trim();
-    if (!trimmedPrompt || isSubmitting) {
+    if (!hasSendableContent || isSubmitting) {
       return;
     }
     if (isMcpCommand(trimmedPrompt)) {
@@ -861,8 +867,8 @@ export function LaunchSurface({
       <form
         className="composer"
         data-drag-active={isDraggingFiles ? "true" : undefined}
-        // One step above app chrome, same as the session composer. See tokens.css.
-        data-type-scale="composer"
+        data-font-size={chatFontSize === undefined ? undefined : String(chatFontSize)}
+        data-type-scale={chatFontSize === undefined ? "composer" : undefined}
         ref={formRef}
         onSubmit={(event) => void submitPrompt(event)}
         onDragEnter={onComposerDragEnter}
@@ -961,7 +967,7 @@ export function LaunchSurface({
           <button
             className="send-button"
             type="submit"
-            disabled={isSubmitting || !prompt.trim()}
+            disabled={isSubmitting || !hasSendableContent}
             title="Start agent"
             aria-label="Start agent"
           >

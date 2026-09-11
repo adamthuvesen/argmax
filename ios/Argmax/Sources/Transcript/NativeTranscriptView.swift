@@ -29,10 +29,10 @@ struct NativeTranscriptView: View {
         VStack(spacing: 0) {
             if case .failed(let message) = transcript.phase {
                 HStack(alignment: .top, spacing: Spacing.snug) {
-                    Text(message).font(.footnote).foregroundStyle(Theme.rose)
+                    Text(message).typeStyle(.footnote).foregroundStyle(Theme.rose)
                     Spacer(minLength: 0)
                     Button("Retry") { Task { await transcript.reload() } }
-                        .font(.footnote.weight(.semibold))
+                        .typeStyle(.footnote, weight: .semibold)
                         .frame(minHeight: 44)
                 }
                 .screenGutter()
@@ -63,8 +63,11 @@ struct NativeTranscriptView: View {
                     Button {
                         scrollRequest += 1
                     } label: {
-                        Label("Jump to latest", systemImage: "arrow.down")
-                            .font(.footnote.weight(.medium))
+                        Label {
+                            Text("Jump to latest").typeStyle(.footnote, weight: .medium)
+                        } icon: {
+                            Image(systemName: "arrow.down").typeSymbol(.footnote, weight: .medium)
+                        }
                             .padding(.horizontal, Spacing.row)
                             .frame(minHeight: 44)
                             .background(Theme.raised, in: .capsule)
@@ -77,7 +80,7 @@ struct NativeTranscriptView: View {
             .overlay {
                 if transcript.phase == .ready && rows.isEmpty {
                     Text("Send a message to start the conversation.")
-                        .font(.body)
+                        .typeStyle(.body)
                         .foregroundStyle(Theme.muted)
                         .multilineTextAlignment(.center)
                         .screenGutter()
@@ -108,16 +111,15 @@ struct TranscriptContentRow: View {
             TranscriptTodoRow(list: list)
         case .notice(let notice):
             Text(notice.text)
-                .font(.caption)
+                .typeStyle(.footnote)
                 .foregroundStyle(Theme.muted)
                 .frame(maxWidth: .infinity, alignment: .center)
         case .error(let error):
             Label {
-                Text(error.message).textSelection(.enabled)
+                Text(error.message).textSelection(.enabled).typeStyle(.footnote)
             } icon: {
-                Image(systemName: "exclamationmark.circle")
+                Image(systemName: "exclamationmark.circle").typeSymbol(.footnote)
             }
-            .font(.footnote)
             .foregroundStyle(Theme.rose)
             .padding(Spacing.row)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -134,19 +136,31 @@ struct TranscriptContentRow: View {
 
 struct TranscriptComposerFloor: View {
     let workspaceID: String
+    /// Full height of the screen the floor sits in, measured outside the safe
+    /// area insets so it does not move when the dock grows.
+    let screenHeight: CGFloat
     @Binding var draft: String
     @Binding var focusRequest: Int
     @EnvironmentObject private var transcript: TranscriptStore
     @EnvironmentObject private var dashboard: DashboardStore
     @StateObject private var interactions: TranscriptInteractionCoordinator
     @State private var dismissed: Set<String> = []
+    @State private var dockHeight: CGFloat = 0
 
-    init(workspaceID: String, client: BridgeClient,
+    init(workspaceID: String, client: BridgeClient, screenHeight: CGFloat,
          draft: Binding<String>, focusRequest: Binding<Int>) {
         self.workspaceID = workspaceID
+        self.screenHeight = screenHeight
         _draft = draft
         _focusRequest = focusRequest
         _interactions = StateObject(wrappedValue: TranscriptInteractionCoordinator(client: client))
+    }
+
+    /// The dock keeps its slot at the bottom but may grow up over most of the
+    /// screen, so a question with long options is read in place instead of
+    /// scrolled inside a short window. A peek of the transcript stays above it.
+    private var dockCeiling: CGFloat {
+        screenHeight > 0 ? screenHeight * 0.72 : 380
     }
 
     private var question: TranscriptQuestionCard? {
@@ -184,10 +198,15 @@ struct TranscriptComposerFloor: View {
                         return resolved
                     })
                     .id(question.id)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { dockHeight = $0 }
                 }
-                .frame(maxHeight: 380)
+                // maxHeight, not height: the scroll view is greedy, so it takes
+                // the question's own height, and gives the space back when the
+                // keyboard leaves it less room than that.
+                .frame(maxHeight: min(dockHeight > 0 ? dockHeight : dockCeiling, dockCeiling))
+                .scrollBounceBehavior(.basedOnSize)
                 if let failure = interactions.failure {
-                    Text(failure).font(.footnote).foregroundStyle(Theme.rose).screenGutter()
+                    Text(failure).typeStyle(.footnote).foregroundStyle(Theme.rose).screenGutter()
                 }
             }
             // Keep the composer mounted while a question occupies its slot.

@@ -137,6 +137,7 @@ import {
   BROWSER_PAGE_OPEN_KEY,
   TURN_REVERT_ENABLED_KEY,
   COMPOSER_PIXEL_FIELD_KEY,
+  COMPOSER_CONTEXT_INDICATOR_KEY,
   DESKTOP_NOTIFICATIONS_KEY,
   FAST_MODE_KEY,
   GOAL_ENABLED_KEY,
@@ -243,6 +244,10 @@ export function App(): JSX.Element {
     fallback: GOAL_MAX_TURNS_DEFAULT
   });
   const [pixelFieldEnabled, setPixelFieldEnabled] = useBooleanUiPreference(COMPOSER_PIXEL_FIELD_KEY, false);
+  const [contextIndicatorEnabled, setContextIndicatorEnabled] = useBooleanUiPreference(
+    COMPOSER_CONTEXT_INDICATOR_KEY,
+    false
+  );
   const [prMilestoneCelebrationEnabled, setPrMilestoneCelebrationEnabled] = useBooleanUiPreference(
     PR_MILESTONE_CELEBRATION_KEY,
     false
@@ -302,6 +307,8 @@ export function App(): JSX.Element {
     setFontSize,
     chatFontSize,
     setChatFontSize,
+    fontHeaviness,
+    setFontHeaviness,
     inkStrength,
     setInkStrength,
     backgroundIntensity,
@@ -1721,12 +1728,30 @@ export function App(): JSX.Element {
           onFontSizeChange: setFontSize,
           chatFontSize,
           onChatFontSizeChange: setChatFontSize,
+          fontHeaviness,
+          onFontHeavinessChange: setFontHeaviness,
           inkStrength,
           onInkStrengthChange: setInkStrength,
           backgroundIntensity,
           onBackgroundIntensityChange: setBackgroundIntensity,
           chatVerbosity,
-          onChatVerbosityChange: setChatVerbosity
+          onChatVerbosityChange: setChatVerbosity,
+          chatWidth,
+          onChatWidthChange: setChatWidth,
+          reviewPanelSide,
+          onReviewPanelSideChange: setReviewPanelSide,
+          fontFamily,
+          onFontFamilyChange: setFontFamily,
+          desktopNotificationsEnabled,
+          onDesktopNotificationsEnabledChange: setDesktopNotificationsEnabled,
+          keepAwakeEnabled,
+          onKeepAwakeEnabledChange: setKeepAwakeEnabled,
+          fastModeEnabled,
+          onFastModeEnabledChange: setFastModeEnabled,
+          turnChangesExpanded,
+          onTurnChangesExpandedChange: setTurnChangesExpanded,
+          contextIndicatorEnabled,
+          onContextIndicatorEnabledChange: setContextIndicatorEnabled
         },
         onStopSession: (sessionId) => void terminateSession(sessionId),
         onOpenWorkspace: openWorkspaceChat,
@@ -1758,12 +1783,29 @@ export function App(): JSX.Element {
       setFontSize,
       chatFontSize,
       setChatFontSize,
+      fontHeaviness,
+      setFontHeaviness,
       inkStrength,
       setInkStrength,
       backgroundIntensity,
       setBackgroundIntensity,
       chatVerbosity,
-      setChatVerbosity
+      setChatVerbosity,
+      chatWidth,
+      reviewPanelSide,
+      setReviewPanelSide,
+      fontFamily,
+      setFontFamily,
+      desktopNotificationsEnabled,
+      setDesktopNotificationsEnabled,
+      keepAwakeEnabled,
+      setKeepAwakeEnabled,
+      fastModeEnabled,
+      setFastModeEnabled,
+      turnChangesExpanded,
+      setTurnChangesExpanded,
+      contextIndicatorEnabled,
+      setContextIndicatorEnabled
     ]
   );
 
@@ -1869,6 +1911,7 @@ export function App(): JSX.Element {
       <LaunchSurface
         isFocused={options.isFocused ?? true}
         claimsBrowserRequests={!options.embedded}
+        chatFontSize={chatFontSize}
         fastModeEnabled={fastModeEnabled}
         hasRunningSession={projectIdsWithRunningSession.has((project ?? launcherProject)?.id ?? "")}
         pixelFieldEnabled={pixelFieldEnabled}
@@ -1907,6 +1950,7 @@ export function App(): JSX.Element {
       handleCheckoutWorkspaceCreated,
       handleProjectUpdated,
       handleLaunchModelChange,
+      chatFontSize,
       launcherResetSignal,
       launcherSideChatMode,
       launchModel,
@@ -2053,6 +2097,10 @@ export function App(): JSX.Element {
       {detailsPopupWorkspace && detailsPopupSession ? (
         <DetailsPopup
           approvals={snapshot.approvals}
+          chatFontSize={chatFontSize}
+          defaultToolCallsDisplay={toolCallsDisplay}
+          defaultToolCallGroupsExpanded={toolCallGroupsExpanded}
+          thinkingDisplay={thinkingDisplay}
           onResolveApproval={resolveApproval}
           onAttachToChat={detailsPopup?.attachToChat}
           onCancelQueuedMessage={cancelQueuedMessage}
@@ -2155,6 +2203,8 @@ export function App(): JSX.Element {
                 onWorkspaceCardVisibleChange={setWorkspaceCardVisible}
                 pixelFieldEnabled={pixelFieldEnabled}
                 onPixelFieldEnabledChange={setPixelFieldEnabled}
+                contextIndicatorEnabled={contextIndicatorEnabled}
+                onContextIndicatorEnabledChange={setContextIndicatorEnabled}
                 prMilestoneCelebrationEnabled={prMilestoneCelebrationEnabled}
                 onPrMilestoneCelebrationEnabledChange={setPrMilestoneCelebrationEnabled}
                 chatWidth={chatWidth}
@@ -2177,6 +2227,8 @@ export function App(): JSX.Element {
                 onFontSizeChange={setFontSize}
                 chatFontSize={chatFontSize}
                 onChatFontSizeChange={setChatFontSize}
+                fontHeaviness={fontHeaviness}
+                onFontHeavinessChange={setFontHeaviness}
                 inkStrength={inkStrength}
                 onInkStrengthChange={setInkStrength}
                 backgroundIntensity={backgroundIntensity}
@@ -2253,6 +2305,7 @@ export function App(): JSX.Element {
               fastModeEnabled={fastModeEnabled}
               workspaceCardVisible={workspaceCardVisible}
               onWorkspaceCardVisibleChange={setWorkspaceCardVisible}
+              contextIndicatorEnabled={contextIndicatorEnabled}
               rightPanelToggleSignal={rightPanelToggleSignal}
               debugLogToggleSignal={debugLogToggleSignal}
               maxColumnsPerRow={maxGridColumnsPerRow}

@@ -61,6 +61,14 @@ final class Appearance: ObservableObject {
     /// "neutral", not a boolean — so the shell can hand it over unchanged.
     static let bubbleTintKey = "argmax.chat.bubbleTint"
     static let chatDetailKey = "argmax.phone.chatDetail"
+    /// The web client's own key (`argmax.font.family`), so the typeface is
+    /// one setting across both halves of Argmax. The phone reads only the
+    /// ids it ships a face for and lands anything else — a desktop-only
+    /// choice like `fira-code` — on its own default.
+    static let typefaceKey = "argmax.font.family"
+    /// The phone's own five-step type scale. It stays device-local because
+    /// the desktop has a different range and separate app/chat scales.
+    static let fontScaleKey = "argmax.phone.font.scale"
 
     @Published var theme: ThemeChoice {
         didSet { store.set(theme.rawValue, forKey: Self.themeKey) }
@@ -111,6 +119,18 @@ final class Appearance: ObservableObject {
         didSet { store.set(chatDetail.rawValue, forKey: Self.chatDetailKey) }
     }
 
+    /// The face the whole app is set in. SF Pro is the iOS-native default and
+    /// is the closest match to the ChatGPT-style transcript reference.
+    @Published var typeface: AppTypeface {
+        didSet { store.set(typeface.rawValue, forKey: Self.typefaceKey) }
+    }
+
+    /// The whole phone's text size. Dynamic Type still applies on top of this
+    /// deliberate app-level adjustment.
+    @Published var fontScale: AppFontScale {
+        didSet { store.set(fontScale.rawValue, forKey: Self.fontScaleKey) }
+    }
+
     /// The value the page keys its stylesheet off (`data-user-bubble`).
     var bubbleTint: String { accentBubbles ? "accent" : "neutral" }
 
@@ -132,6 +152,8 @@ final class Appearance: ObservableObject {
         // absence of the key — lands there rather than on gray.
         accentBubbles = store.string(forKey: Self.bubbleTintKey) != "neutral"
         chatDetail = MobileChatDetail(rawValue: store.integer(forKey: Self.chatDetailKey)) ?? .compact
+        typeface = AppTypeface(rawValue: store.string(forKey: Self.typefaceKey) ?? "") ?? .system
+        fontScale = AppFontScale(rawValue: store.integer(forKey: Self.fontScaleKey)) ?? .standard
     }
 }
 
@@ -141,7 +163,8 @@ extension View {
     /// the design system reads, and the tint the handful of remaining stock
     /// controls read.
     func appearance(_ appearance: Appearance) -> some View {
-        environment(\.accentTint, appearance.tint)
+        typeScale(appearance.typeface, fontScale: appearance.fontScale)
+            .environment(\.accentTint, appearance.tint)
             .environment(\.chatIcons, appearance.chatIcons)
             .environment(\.providerMarks, appearance.providerMarks)
             .environment(\.mascotVisible, appearance.mascot)

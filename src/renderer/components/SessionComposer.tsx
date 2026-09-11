@@ -91,6 +91,7 @@ import { LaunchModelSelector, ModelSelector } from "./ModelSelector.js";
 import { ProviderSwitchDialog } from "./ProviderSwitchDialog.js";
 import { SlashCommandMenu } from "./SlashCommandMenu.js";
 import { useProviderAvailability } from "../hooks/useProviderAvailability.js";
+import type { FontSize } from "../lib/fonts.js";
 
 const PROMPT_MAX_HEIGHT_PX = 168;
 
@@ -123,6 +124,7 @@ export interface ComposerChangeSummary {
 export function SessionComposer({
   agentMode,
   canSend,
+  chatFontSize,
   changeSummary = null,
   fastModeEnabled = false,
   floating = false,
@@ -160,6 +162,8 @@ export function SessionComposer({
 }: {
   agentMode: AgentMode;
   canSend: boolean;
+  /** Settings → Appearance: keep this composer on the agent-window scale. */
+  chatFontSize?: FontSize;
   changeSummary?: ComposerChangeSummary | null;
   fastModeEnabled?: boolean;
   /** The "More details" popup: too narrow for the workspace-context cluster
@@ -538,10 +542,10 @@ export function SessionComposer({
     }
   };
 
-  // An annotation is a message on its own: "Add to chat" and diff notes
-  // already name what the agent should look at, so send stays available with
-  // an empty draft once a chip is attached.
-  const hasSendableContent = input.trim().length > 0 || pendingAnnotations.length > 0;
+  // Images, conversation excerpts, and diff notes can be the whole message.
+  // Their references or quoted context become the prompt at delivery time.
+  const hasSendableContent =
+    input.trim().length > 0 || pendingAttachments.length > 0 || pendingAnnotations.length > 0;
 
   /**
    * Build the prompt from the draft plus attachments and hand it to `deliver`.
@@ -688,11 +692,8 @@ export function SessionComposer({
   return (
     <form
       className="session-composer-stack"
-      // The agent window carries its own type scale (Settings → chat font
-      // size), which is about reading the transcript. The composer is chrome —
-      // model chip, repo, branch, changed files — so it holds the composer
-      // scale instead, matching the launcher's composer. See tokens.css.
-      data-type-scale="composer"
+      data-font-size={chatFontSize === undefined ? undefined : String(chatFontSize)}
+      data-type-scale={chatFontSize === undefined ? "composer" : undefined}
       ref={inputFormRef}
       onSubmit={(event) => void submitInput(event)}
       onDragEnter={onComposerDragEnter}
@@ -988,6 +989,9 @@ export function SessionComposer({
         <textarea
           className={skillHighlight ? "composer-input--highlighting" : undefined}
           aria-label="Chat prompt"
+          data-placeholder-kind={
+            followUpSuggestion !== null && !isQueueing ? "suggested-follow-up" : undefined
+          }
           aria-autocomplete="list"
           aria-expanded={slashAutocomplete.popoverOpen || fileAutocomplete.popoverOpen}
           aria-controls={

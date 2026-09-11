@@ -18,6 +18,11 @@ struct ReviewScreen: View {
     @State private var scopeSheet = false
     @State private var tabs: ReviewFileTabsState
     @State private var fileRevision = 0
+    /// The context rung the embedded diff is read at, and whether it has any
+    /// unchanged lines left to give. The control lives on the tab strip, so
+    /// the state it drives lives here rather than inside the viewer.
+    @State private var diffContext: Int?
+    @State private var canExpandDiff = false
     @State private var refreshTask: Task<Void, Never>?
     /// A canvas render has no Mac to read from, so the screen skips its own
     /// reads and draws whatever the store was seeded with.
@@ -63,7 +68,8 @@ struct ReviewScreen: View {
                         active: tabs.active,
                         onSelect: { tabs.select($0) },
                         onClose: { tabs.close($0) },
-                        onShowList: { tabs.showList() }
+                        onShowList: { tabs.showList() },
+                        trailing: { expandControl }
                     )
                 }
                 if let detail = tabs.active {
@@ -71,11 +77,14 @@ struct ReviewScreen: View {
                         detail: detail,
                         store: dashboard,
                         revision: reviewRevision,
+                        chrome: .embedded,
+                        contextLines: $diffContext,
                         onBack: onBack
                     )
                     // Diff and file viewers own local load and scrolling
                     // state. A tab switch must construct the selected one.
                     .id(detail)
+                    .onPreferenceChange(DiffCanExpandKey.self) { canExpandDiff = $0 }
                 } else {
                     metaRow
                     body(for: mode)
@@ -106,6 +115,11 @@ struct ReviewScreen: View {
         .onDisappear {
             refreshTask?.cancel()
             refreshTask = nil
+        }
+        .onChange(of: tabs.active) { _, _ in
+            // The rung is shared by every tab, so it starts over with each.
+            diffContext = nil
+            canExpandDiff = false
         }
         .onChange(of: mode) { _, current in
             tabs.showList()
@@ -149,6 +163,15 @@ struct ReviewScreen: View {
         }
     }
 
+    /// The open diff's one control: climb to the next context rung. Only
+    /// while there is a rung left, which is the viewer's answer, not ours.
+    @ViewBuilder
+    private var expandControl: some View {
+        if canExpandDiff {
+            ReviewContextButton { diffContext = DiffParser.nextContext(after: diffContext) }
+        }
+    }
+
     /// One quiet line under the header: which slice, and what it adds up to.
     /// Files has nothing to say here — the tree is the whole worktree — so the
     /// row goes rather than standing empty.
@@ -162,7 +185,7 @@ struct ReviewScreen: View {
                     HStack(spacing: Spacing.tight) {
                         Text(store.scope.label)
                         Image(systemName: "chevron.up.chevron.down")
-                            .font(.caption2.weight(.semibold))
+                            .typeSymbol(.caption2, weight: .semibold)
                     }
                     .typeMeta()
                     .foregroundStyle(Theme.ink)
@@ -293,7 +316,7 @@ struct ReviewModeSwitch: View {
             mode = value
         } label: {
             Text(label)
-                .font(.footnote.weight(selected ? .semibold : .regular))
+                .typeStyle(.footnote, weight: selected ? .semibold : .regular)
                 .foregroundStyle(selected ? Theme.ink : Theme.muted)
                 .contentShape(.rect)
         }
@@ -320,7 +343,7 @@ struct ChangedFileRow: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: Spacing.snug) {
             Text(ChangedFileStatus.glyph(file.status))
-                .font(.argmaxMono(.caption2).weight(.semibold))
+                .typeStyle(.caption2, weight: .semibold, mono: true)
                 .foregroundStyle(ChangedFileStatus.tint(file.status))
                 .frame(width: Self.statusColumn, alignment: .leading)
                 .accessibilityLabel(ChangedFileStatus.label(file.status))
@@ -355,7 +378,7 @@ struct ChangedFileRow: View {
             Spacer(minLength: Spacing.snug)
             ChangeCount(additions: file.additions, deletions: file.deletions)
             Image(systemName: "chevron.right")
-                .font(.caption2.weight(.semibold))
+                .typeSymbol(.caption2, weight: .semibold)
                 .foregroundStyle(Theme.muted.opacity(0.5))
                 .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
         }
@@ -403,8 +426,7 @@ struct ChangeCount: View {
                 Text(verbatim: "−\(deletions)").foregroundStyle(Theme.diffDelInk)
             }
         }
-        .font(.argmaxMono(.caption2))
-        .monospacedDigit()
+        .typeStyle(.caption2, mono: true, monospacedDigit: true)
         .accessibilityLabel("\(additions) added, \(deletions) removed")
     }
 }
@@ -505,17 +527,23 @@ private struct ReviewDetailScreen: View {
     let detail: ReviewDetail
     @ObservedObject var store: DashboardStore
     private let revisionOverride: String?
+    private let chrome: ViewerChrome
+    private let contextLines: Binding<Int?>?
     private let onBack: (() -> Void)?
 
     init(
         detail: ReviewDetail,
         store: DashboardStore,
         revision: String? = nil,
+        chrome: ViewerChrome = .pushed,
+        contextLines: Binding<Int?>? = nil,
         onBack: (() -> Void)? = nil
     ) {
         self.detail = detail
         _store = ObservedObject(wrappedValue: store)
         revisionOverride = revision
+        self.chrome = chrome
+        self.contextLines = contextLines
         self.onBack = onBack
     }
 
@@ -528,6 +556,8 @@ private struct ReviewDetailScreen: View {
                 scope: scope,
                 client: store.client,
                 revision: revision,
+                chrome: chrome,
+                contextLines: contextLines,
                 onBack: onBack
             )
         case .file(let workspaceID, let filePath):
@@ -538,6 +568,7 @@ private struct ReviewDetailScreen: View {
                 workspacePath: store.snapshot.workspaces
                     .first { $0.id == workspaceID }?.path ?? "",
                 revision: revision,
+                chrome: chrome,
                 onBack: onBack
             )
         }

@@ -559,9 +559,9 @@ describe("SessionConversation — streaming & composer", () => {
   // collapsed Thought, so nothing on screen said the agent was still working:
   // observed as a 20 s dead transcript on a running Codex turn.
   it.each([
-    { label: "balanced", display: "collapsed" as const },
-    { label: "single-line", display: "single-line" as const }
-  ])("shows the generic indicator while reasoning continues after an answer ($label)", ({ display }) => {
+    { label: "compact", display: "collapsed" as const, thinkingDisplay: "collapsed" as const },
+    { label: "minimal", display: "single-line" as const, thinkingDisplay: "collapsed" as const }
+  ])("shows the generic indicator while reasoning continues after an answer ($label)", ({ display, thinkingDisplay }) => {
     vi.useFakeTimers();
     // The cue's waits count from the newest event, so a pane that watches it
     // land has its clock sitting on that event's timestamp.
@@ -588,7 +588,7 @@ describe("SessionConversation — streaming & composer", () => {
         }),
         event("u1", "user.message", "reorder the lanes", "2026-05-12T15:00:00.000Z")
       ],
-      { defaultToolCallsDisplay: display }
+      { defaultToolCallsDisplay: display, thinkingDisplay }
     );
 
     expect(screen.queryByRole("article", { name: "Thinking" })).not.toBeInTheDocument();
@@ -602,9 +602,10 @@ describe("SessionConversation — streaming & composer", () => {
   });
 
   it.each([
-    { label: "balanced", display: "collapsed" as const },
-    { label: "single-line", display: "single-line" as const }
-  ])("leaves the pre-answer beat to the live Thought block alone ($label)", ({ display }) => {
+    { label: "compact", display: "collapsed" as const, thinkingDisplay: "collapsed" as const },
+    { label: "balanced", display: "collapsed" as const, thinkingDisplay: "inline" as const },
+    { label: "minimal", display: "single-line" as const, thinkingDisplay: "collapsed" as const }
+  ])("leaves the pre-answer beat to the live Thought block alone ($label)", ({ display, thinkingDisplay, label }) => {
     vi.useFakeTimers();
     renderConversation(
       baseSession({ provider: "codex", state: "running" }),
@@ -614,15 +615,23 @@ describe("SessionConversation — streaming & composer", () => {
         }),
         event("u1", "user.message", "map the renderer", "2026-05-12T15:00:00.000Z")
       ],
-      { defaultToolCallsDisplay: display }
+      { defaultToolCallsDisplay: display, thinkingDisplay }
     );
 
     act(() => {
       vi.advanceTimersByTime(3000);
     });
 
-    // Exactly one cue: the reasoning itself, expanded and labelled "Thinking".
-    expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute("aria-expanded", "true");
+    // Compact keeps the live activity disclosure collapsed, Balanced keeps the
+    // thought inline, and Minimal retains its expanded live Thought block.
+    if (label === "compact") {
+      expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute("aria-expanded", "false");
+    } else if (label === "balanced") {
+      expect(screen.getByText("Mapping the renderer")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Thinking" })).not.toBeInTheDocument();
+    } else {
+      expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute("aria-expanded", "true");
+    }
     expect(screen.queryByRole("article", { name: "Thinking" })).not.toBeInTheDocument();
   });
 
@@ -744,14 +753,20 @@ describe("SessionConversation — streaming & composer", () => {
       }
     );
 
-    expect(screen.getByRole("button", { name: "Thought" })).toHaveAttribute("aria-expanded", "false");
+    const activity = screen.getByRole("button", { name: "Read a file" });
+    expect(activity).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText(thinking)).toBeNull();
 
     // Chip starts collapsed (tool defaults off); expanding it reveals the
     // Thought block too, not just the tool rows.
     fireEvent.click(screen.getByRole("button", { name: /Worked/ }));
 
-    expect(screen.getByRole("button", { name: "Thought" })).toHaveAttribute("aria-expanded", "true");
+    expect(activity).toHaveAttribute("aria-expanded", "true");
+    const detailsId = activity.getAttribute("aria-controls");
+    expect(detailsId).toBeTruthy();
+    const details = detailsId ? document.getElementById(detailsId) : null;
+    expect(details).not.toBeNull();
+    if (details) expect(within(details).getByRole("button", { name: "Thought" })).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText(thinking)).toBeTruthy();
   });
 

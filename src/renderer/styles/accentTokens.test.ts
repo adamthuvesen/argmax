@@ -44,7 +44,7 @@ function contrast(foreground: string, background: string): number {
 }
 
 function fontWeight(rule: string): number {
-  const match = /font-weight:\s*(?<weight>\d+);/.exec(rule);
+  const match = /font-weight:\s*(?:calc\()?(?<weight>\d+)/.exec(rule);
   expect(match?.groups?.weight).toBeDefined();
   return Number(match?.groups?.weight ?? 0);
 }

@@ -35,6 +35,7 @@ import { loadDashboardSnapshot } from "../lib/loadDashboardSnapshot.js";
 import { mergeDashboardDelta } from "../lib/snapshot.js";
 import { useUnreadWorkspaceIds } from "../lib/sessionUnread.js";
 import { chatSessionByWorkspace } from "../lib/workspaceChat.js";
+import { resolveChatVerbosity, useChatVerbosityPreference } from "../lib/uiPreferences.js";
 import {
   computePriorityEntries,
   computeWorkspaceAttention,
@@ -362,6 +363,11 @@ export function MobileApp(): JSX.Element {
   // cannot change without a reload, so pin it at mount: every embed branch
   // below reads a constant rather than re-deciding per render.
   const [embedded] = useState(isEmbedded);
+  const [chatVerbosity] = useChatVerbosityPreference();
+  const { toolCallsDisplay, toolCallGroupsExpanded, thinkingDisplay } = useMemo(
+    () => resolveChatVerbosity(chatVerbosity),
+    [chatVerbosity]
+  );
   // Whether native has taken over the composer (`setComposer`). Native calls
   // this once the shell is drawing its own card under the web view; a state
   // rather than a constant because the call — like every other native → web
@@ -1352,6 +1358,9 @@ export function MobileApp(): JSX.Element {
               <SessionPane
                 approvals={snapshot.approvals}
                 checks={snapshot.checks}
+                defaultToolCallsDisplay={toolCallsDisplay}
+                defaultToolCallGroupsExpanded={toolCallGroupsExpanded}
+                thinkingDisplay={thinkingDisplay}
                 pendingMessages={snapshot.pendingMessages}
                 session={selectedSession}
                 workspace={selectedWorkspace}

@@ -121,12 +121,88 @@ struct TranscriptThought: Hashable, Sendable, Identifiable {
     var text: String
     var createdAt: String
     var isStreaming: Bool
+
+    /// The first line of the reasoning with its markdown emphasis and any
+    /// heading marks stripped, or nil for an empty burst. The phone's folded
+    /// thought row is titled by it.
+    static func title(of text: String) -> String? {
+        guard let line = text.split(whereSeparator: \.isNewline)
+            .map({ $0.trimmingCharacters(in: .whitespaces) })
+            .first(where: { !$0.isEmpty }) else { return nil }
+        let stripped = line
+            .replacingOccurrences(of: "^#+\\s*", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "[*_`]", with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces.union(.punctuationCharacters))
+        return stripped.isEmpty ? nil : stripped
+    }
 }
 
 enum TranscriptToolStatus: String, Hashable, Sendable {
     case running
     case done
     case failed
+}
+
+enum TranscriptToolActivityKind: String, CaseIterable, Hashable, Sendable {
+    case read
+    case edit
+    case image
+    case search
+    case list
+    case webSearch = "web-search"
+    case webFetch = "web-fetch"
+    case discovery
+    case command
+    case computer
+    case tool
+    case agent
+    case skill
+    case imageCapture = "image-capture"
+    case imageGenerate = "image-generate"
+}
+
+enum TranscriptToolActivityEvidence: String, Hashable, Sendable {
+    case native
+    case tool
+    case command
+}
+
+enum TranscriptToolActivityOperation: String, Hashable, Sendable {
+    case create
+    case edit
+    case delete
+    case move
+}
+
+/// Provider-neutral evidence describing what a tool call did.
+///
+/// The host owns classification. The phone keeps unknown future versions out
+/// of this model and falls back to ordinary tool presentation instead of
+/// guessing at a new contract.
+struct TranscriptToolActivity: Hashable, Sendable {
+    var version: Int
+    var kind: TranscriptToolActivityKind
+    var evidence: TranscriptToolActivityEvidence
+    var targets: [String]
+    var operation: TranscriptToolActivityOperation?
+    var toolCount: Int?
+
+    static let generic = TranscriptToolActivity(
+        version: 1,
+        kind: .tool,
+        evidence: .tool,
+        targets: [],
+        operation: nil,
+        toolCount: nil
+    )
+}
+
+enum TranscriptToolActivityState: Hashable, Sendable {
+    case running
+    case succeeded
+    case failed
+    case cancelled
+    case unconfirmed
 }
 
 struct TranscriptTool: Hashable, Sendable, Identifiable {
@@ -142,12 +218,132 @@ struct TranscriptTool: Hashable, Sendable, Identifiable {
     var completedAt: String?
     var filePath: String?
     var fileLabel: String?
+    var activity: TranscriptToolActivity = .generic
+    /// True only when a matching provider completion event was present.
+    var completionObserved: Bool = false
+    /// Kept separate from the legacy three-state status so a cancelled call
+    /// cannot be worded as successful merely because its completion arrived.
+    var completionStatus: String? = nil
+
+    var activityState: TranscriptToolActivityState {
+        if status == .running { return .running }
+        if ["cancelled", "canceled", "interrupted"].contains(completionStatus?.lowercased()) {
+            return .cancelled
+        }
+        if status == .failed { return .failed }
+        return completionObserved ? .succeeded : .unconfirmed
+    }
+
+    var activitySummary: String {
+        let target: String? = activity.targets.count == 1
+            ? activity.targets[0].split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init)
+            : nil
+        return activity.label(state: activityState, plural: activity.targets.count > 1, target: target)
+    }
 }
 
 struct TranscriptToolGroup: Hashable, Sendable, Identifiable {
     var id: String
     var tools: [TranscriptTool]
     var createdAt: String
+
+    var activitySummary: String { TranscriptToolActivity.summary(for: tools).headline }
+}
+
+extension TranscriptToolActivity {
+    func label(state: TranscriptToolActivityState, plural: Bool = false, target: String? = nil) -> String {
+        let file = target ?? (plural ? "files" : "a file")
+        let image = target ?? (plural ? "images" : "an image")
+        let labels: (running: String, succeeded: String, neutral: String)
+        switch kind {
+        case .read:
+            labels = ("Reading \(file)", "Read \(file)", "File read")
+        case .edit:
+            let verbs: (String, String)
+            switch operation {
+            case .create: verbs = ("Creating", "Created")
+            case .delete: verbs = ("Deleting", "Deleted")
+            case .move: verbs = ("Moving", "Moved")
+            default: verbs = ("Editing", "Edited")
+            }
+            labels = ("\(verbs.0) \(file)", "\(verbs.1) \(file)", "File change")
+        case .image:
+            labels = ("Viewing \(image)", "Viewed \(image)", "Image view")
+        case .imageCapture:
+            labels = ("Capturing a screenshot", "Captured a screenshot", "Screenshot capture")
+        case .imageGenerate:
+            labels = ("Generating \(image)", "Generated \(image)", "Image generation")
+        case .search:
+            labels = ("Searching files", "Searched files", "File search")
+        case .list:
+            labels = ("Listing files", "Listed files", "File listing")
+        case .webSearch:
+            labels = ("Searching the web", "Searched the web", "Web search")
+        case .webFetch:
+            labels = ("Fetching a URL", "Fetched a URL", "Web request")
+        case .discovery:
+            let loaded = (toolCount ?? 0) > 0
+                ? "Loaded \(toolCount == 1 && !plural ? "a tool" : "tools")"
+                : "Searched tools"
+            labels = ("Searching for tools", loaded, "Tool discovery")
+        case .command:
+            labels = (plural ? "Running commands" : "Running a command",
+                      plural ? "Ran commands" : "Ran a command", "Command")
+        case .computer:
+            labels = ("Using a computer", "Used a computer", "Computer use")
+        case .agent:
+            labels = ("Starting an agent", plural ? "Started agents" : "Started an agent", "Agent launch")
+        case .skill:
+            labels = ("Activating a skill", "Activated a skill", "Skill activation")
+        case .tool:
+            labels = (plural ? "Using tools" : "Using a tool",
+                      plural ? "Used tools" : "Used a tool", "Tool call")
+        }
+        switch state {
+        case .running: return labels.running
+        case .succeeded: return labels.succeeded
+        case .failed: return "\(labels.neutral) failed"
+        case .cancelled: return "\(labels.neutral) cancelled"
+        case .unconfirmed: return "\(labels.neutral) (unconfirmed)"
+        }
+    }
+
+    static func summary(for tools: [TranscriptTool]) -> (headline: String, iconKind: TranscriptToolActivityKind) {
+        struct Group: Hashable {
+            var activity: TranscriptToolActivity
+            var state: TranscriptToolActivityState
+            var count: Int
+            var targets: Set<String>
+        }
+        var seen = Set<String>()
+        var groups: [Group] = []
+        for tool in tools where seen.insert(tool.id).inserted {
+            let state = tool.activityState
+            let activity = tool.activity
+            let key = "\(activity.kind.rawValue):\(activity.operation?.rawValue ?? ""):\(state):"
+                + "\(activity.kind == .discovery && (activity.toolCount ?? 0) > 0)"
+            if let index = groups.firstIndex(where: { group in
+                "\(group.activity.kind.rawValue):\(group.activity.operation?.rawValue ?? ""):\(group.state):"
+                    + "\(group.activity.kind == .discovery && (group.activity.toolCount ?? 0) > 0)" == key
+            }) {
+                groups[index].count += 1
+                groups[index].targets.formUnion(activity.targets)
+            } else {
+                groups.append(Group(activity: activity, state: state, count: 1, targets: Set(activity.targets)))
+            }
+        }
+        let labels = groups.map { group in
+            group.activity.label(
+                state: group.state,
+                plural: group.targets.isEmpty ? group.count > 1 : group.targets.count > 1
+            )
+        }
+        let headline = labels.enumerated().map { index, label in
+            guard index > 0, let first = label.first else { return label }
+            return first.lowercased() + label.dropFirst()
+        }.joined(separator: ", ")
+        return (headline, groups.first?.activity.kind ?? .tool)
+    }
 }
 
 struct TranscriptQuestionOption: Hashable, Sendable, Identifiable {

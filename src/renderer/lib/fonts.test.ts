@@ -36,10 +36,19 @@ describe("fonts", () => {
     expect(DEFAULT_FONT_ID).toBe("geist-sans");
   });
 
-  it("reads a previously stored font id", () => {
-    window.localStorage.setItem(FONT_STORAGE_KEY, "jetbrains-mono");
-    expect(readStoredFont()).toBe("jetbrains-mono");
+  it.each(["system", "dm-sans"])("reads a previously stored font id %s", (id) => {
+    window.localStorage.setItem(FONT_STORAGE_KEY, id);
+    expect(readStoredFont()).toBe(id);
   });
+
+  it.each(["menlo", "monaco", "jetbrains-mono", "fira-code", "manrope"])(
+    "falls back to Geist Sans for removed font %s",
+    (id) => {
+      window.localStorage.setItem(FONT_STORAGE_KEY, id);
+      expect(readStoredFont()).toBe(DEFAULT_FONT_ID);
+      expect(FONT_OPTIONS.some((option) => option.id === id)).toBe(false);
+    }
+  );
 
   it("falls back to default when storage holds an unknown id", () => {
     window.localStorage.setItem(FONT_STORAGE_KEY, "comic-sans");
@@ -103,10 +112,10 @@ describe("fonts", () => {
     expect(readStoredFontSize()).toBe(DEFAULT_FONT_SIZE);
   });
 
-  it("defaults the app to 15px and the agent window to 17px on first run", () => {
+  it("defaults both the app and the agent window to 15px on first run", () => {
     expect(fontSizeBasePx(DEFAULT_FONT_SIZE)).toBe(15);
     expect(readStoredChatFontSize()).toBe(DEFAULT_CHAT_FONT_SIZE);
-    expect(fontSizeBasePx(DEFAULT_CHAT_FONT_SIZE)).toBe(17);
+    expect(fontSizeBasePx(DEFAULT_CHAT_FONT_SIZE)).toBe(15);
 
     window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, "8");
     expect(readStoredChatFontSize()).toBe(8);

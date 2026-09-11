@@ -31,10 +31,13 @@ enum CodeMetrics {
     /// `.footnote`-sized mono. Smaller than body on purpose — code is read in
     /// lines, not in sentences, and a step up costs a fifth of the columns —
     /// but scaled, so accessibility sizes still grow it.
-    static func font(for category: UIContentSizeCategory) -> UIFont {
-        let base = UIFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        let traits = UITraitCollection(preferredContentSizeCategory: category)
-        return UIFontMetrics(forTextStyle: .footnote).scaledFont(for: base, compatibleWith: traits)
+    static func font(for category: UIContentSizeCategory, scale: TypeScale) -> UIFont {
+        scale.uiFont(
+            size: 12,
+            relativeTo: .footnote,
+            mono: true,
+            compatibleWith: UITraitCollection(preferredContentSizeCategory: category)
+        )
     }
 
     /// One character's advance. Every character is this wide in a monospace
@@ -118,6 +121,8 @@ final class WashTextView: UITextView {
 struct CodeTextView: UIViewRepresentable {
     let document: CodeDocument
 
+    @Environment(\.typeScale) private var typeScale
+
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIView(context: Context) -> WashTextView {
@@ -150,11 +155,13 @@ struct CodeTextView: UIViewRepresentable {
     }
 
     func updateUIView(_ textView: WashTextView, context: Context) {
-        let font = CodeMetrics.font(for: context.environment.legacyContentSizeCategory)
+        let font = CodeMetrics.font(for: context.environment.legacyContentSizeCategory, scale: typeScale)
         // Identity, not equality: rebuilding a 3000-line attributed string on
         // every SwiftUI update is the one cost that would undo all of this.
         // The key is cheap to compute; the string is not, so the key decides.
-        let key = "\(document.key)|\(font.pointSize)"
+        // Both inputs to the font are in it: a new content size moves the
+        // point size, a new typeface moves the face's name.
+        let key = "\(document.key)|\(font.fontName)|\(font.pointSize)"
         guard context.coordinator.renderKey != key else { return }
         context.coordinator.renderKey = key
         context.coordinator.task?.cancel()

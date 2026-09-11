@@ -179,7 +179,7 @@ struct DictateButton: View {
             dictation.toggle()
         } label: {
             Image(systemName: dictation.listening ? "waveform" : "mic")
-                .font(.body.weight(.medium))
+                .typeSymbol(.body, weight: .medium)
                 .foregroundStyle(dictation.listening ? Theme.stop : Theme.ink)
                 .symbolEffect(.variableColor.iterative, isActive: dictation.listening)
                 .composerGlyphSurface()

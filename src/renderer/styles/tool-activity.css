@@ -1,0 +1,19 @@
+.tool-activity-icon {
+  flex: 0 0 auto;
+  color: var(--session-icon-blue);
+  animation: none;
+  transition: none;
+  transform: none;
+}
+
+.tool-activity-icon[data-activity="edit"] {
+  color: var(--session-icon-amber);
+}
+
+.tool-activity-icon:is([data-activity="search"], [data-activity="list"], [data-activity="web-search"], [data-activity="web-fetch"]) {
+  color: var(--session-icon-teal);
+}
+
+.tool-activity-icon:is([data-activity="image"], [data-activity="image-capture"], [data-activity="image-generate"], [data-activity="discovery"], [data-activity="skill"], [data-activity="agent"], [data-activity="tool"]) {
+  color: var(--session-icon-violet);
+}

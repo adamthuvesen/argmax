@@ -7,7 +7,7 @@
 .project-source-form { display: grid; gap: 12px; padding-top: 12px; }
 .project-source-activity { color: var(--muted); font-size: 12px; padding: 8px 0; }
 .project-source-activity summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; cursor: pointer; }
-.project-source-activity summary strong { font-weight: 500; overflow-wrap: anywhere; }
+.project-source-activity summary strong { font-weight: calc(500 + var(--font-weight-offset)); overflow-wrap: anywhere; }
 .project-source-activity-details { display: grid; gap: 8px; padding: 12px 0 4px 22px; }
 
 .project-source-list li p { padding: 0; border: 0; }

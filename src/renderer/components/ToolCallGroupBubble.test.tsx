@@ -1,12 +1,42 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildToolCallGroup, type ToolCall } from "../lib/toolCalls.js";
+import type { ActivityMember } from "../lib/turnChildren.js";
 import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
 
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
   vi.restoreAllMocks();
+});
+
+describe("observed activity", () => {
+  it("keeps the Argmax mascot on browser activity summaries and rows", () => {
+    const browser = tool("browser", { name: "mcp__argmax__browser_click", completionObserved: true, activity: { version: 1, kind: "tool", evidence: "tool", targets: [] } });
+    render(<ToolCallGroupBubble compact group={buildToolCallGroup([browser])} />);
+    expect(screen.getByRole("img", { name: "Argmax" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Used a tool" }));
+    expect(screen.getAllByRole("img", { name: "Argmax" })).toHaveLength(2);
+    expect(screen.queryByRole("img", { name: "Computer use" })).not.toBeInTheDocument();
+  });
+  it("updates a live action and preserves disclosure after its result arrives", () => {
+    const read = tool("read", { completionObserved: true, activity: { version: 1, kind: "read", evidence: "tool", targets: ["/repo/read.ts"] } });
+    const edit = tool("edit", { name: "Edit", status: "running", completionObserved: false, activity: { version: 1, kind: "edit", evidence: "tool", targets: ["/repo/edit.ts"] } });
+    const { rerender } = render(<ToolCallGroupBubble compact group={buildToolCallGroup([read, edit])} />);
+    const header = screen.getByRole("button", { name: "Read a file, editing a file" });
+    fireEvent.click(header);
+    expect(screen.getByRole("button", { name: "Editing edit.ts" })).toBeInTheDocument();
+    rerender(<ToolCallGroupBubble compact group={buildToolCallGroup([read, { ...edit, status: "done", completionObserved: true }])} />);
+    expect(screen.getByRole("button", { name: "Read a file, edited a file" })).toBe(header);
+    expect(header).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("does not call failed or unconfirmed work successful in a mixed group", () => {
+    const edit = tool("edit", { status: "error", activity: { version: 1, kind: "edit", evidence: "tool", targets: [] } });
+    const read = tool("read", { completionObserved: false, activity: { version: 1, kind: "read", evidence: "tool", targets: [] } });
+    render(<ToolCallGroupBubble compact group={buildToolCallGroup([edit, read])} />);
+    expect(screen.getByRole("button", { name: "File change failed, file read (unconfirmed)" })).toHaveAttribute("aria-expanded", "false");
+  });
 });
 
 function tool(id: string, overrides: Partial<ToolCall> = {}): ToolCall {
@@ -118,6 +148,52 @@ describe("ToolCallGroupBubble", () => {
     expect(header).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("Tests failed")).not.toBeInTheDocument();
     expect(screen.queryByText("npm test")).toBeNull();
+  });
+
+  it("keeps mixed thought and tool activity behind one disclosure", () => {
+    const command = tool("command", {
+      name: "Bash",
+      inputPreview: "git status --short",
+      inputFull: { command: "git status --short" }
+    });
+    const activityMembers: ActivityMember[] = [
+      { kind: "thought", id: "thought", node: <span>Weighing options.</span> },
+      { kind: "tools", id: "command", tools: [command] }
+    ];
+    render(
+      <ToolCallGroupBubble
+        compact
+        disclosureId="session-test"
+        group={buildToolCallGroup([command])}
+        activityMembers={activityMembers}
+      />
+    );
+
+    const header = screen.getByRole("button", { name: "Ran a command" });
+    expect(header).toHaveAttribute("aria-expanded", "false");
+    expect(header).toHaveAttribute("aria-controls", "session-test-thought");
+    expect(screen.queryByText("Weighing options.")).toBeNull();
+
+    fireEvent.click(header);
+
+    expect(screen.getByText("Weighing options.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ran git status --short" })).toBeInTheDocument();
+  });
+
+  it("uses Thinking as the live headline for thought-only activity", () => {
+    render(
+      <ToolCallGroupBubble
+        compact
+        group={buildToolCallGroup([])}
+        activityMembers={[{ kind: "thought", id: "thought", node: <span>Working</span>, live: true }]}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Thinking" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Thinking" }).parentElement).toHaveAttribute(
+      "data-status",
+      "running"
+    );
   });
 
   it("holds the edit total back until the group stops working", () => {

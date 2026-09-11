@@ -105,7 +105,7 @@ struct TranscriptQuestionDock: View {
             VStack(alignment: .leading, spacing: Spacing.row) {
                 header(question)
                 Text(question.question)
-                    .font(.body.weight(.medium))
+                    .typeStyle(.body, weight: .medium)
                     .foregroundStyle(Theme.ink)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -127,7 +127,7 @@ struct TranscriptQuestionDock: View {
                         }
                     }
                     .textFieldStyle(.plain)
-                    .font(.body)
+                    .typeStyle(.body)
                     .foregroundStyle(Theme.ink)
                     .padding(.horizontal, Spacing.row)
                     .frame(minHeight: 48)
@@ -145,7 +145,7 @@ struct TranscriptQuestionDock: View {
                 }
                 if let failure {
                     Text(failure)
-                        .font(.footnote)
+                        .typeStyle(.footnote)
                         .foregroundStyle(Theme.rose)
                         .accessibilityLabel("Could not send answer. \(failure)")
                 }
@@ -193,7 +193,7 @@ struct TranscriptQuestionDock: View {
     private func header(_ question: TranscriptQuestion) -> some View {
         HStack(spacing: Spacing.snug) {
             Text(question.header.isEmpty ? "Question" : question.header)
-                .font(.subheadline.weight(.semibold))
+                .typeStyle(.footnote, weight: .semibold)
                 .foregroundStyle(Theme.ink)
                 .lineLimit(1)
             Spacer(minLength: Spacing.snug)
@@ -239,17 +239,17 @@ struct TranscriptQuestionDock: View {
                 Image(systemName: selected
                     ? (currentQuestion?.allowsMultiple == true ? "checkmark.square.fill" : "largecircle.fill.circle")
                     : (currentQuestion?.allowsMultiple == true ? "square" : "circle"))
-                    .font(.body)
+                    .typeSymbol(.body)
                     .foregroundStyle(selected ? AnyShapeStyle(accentColor) : AnyShapeStyle(Theme.muted))
                     .frame(width: 22, height: 22)
                 VStack(alignment: .leading, spacing: Spacing.hair) {
                     Text(label)
-                        .font(.subheadline.weight(.medium))
+                        .typeStyle(.footnote, weight: .medium)
                         .foregroundStyle(Theme.ink)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     if let detail, !detail.isEmpty {
                         Text(detail)
-                            .font(.footnote)
+                            .typeStyle(.footnote)
                             .foregroundStyle(Theme.muted)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }

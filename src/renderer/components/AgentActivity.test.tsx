@@ -541,6 +541,63 @@ describe("AgentActivity", () => {
     }
   });
 
+  it("groups Compact thoughts and tools into one ordered activity disclosure", () => {
+    render(
+      <AgentActivity
+        events={[
+          event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+            id: "task-1",
+            name: "Task",
+            input: { description: "Explore repo", prompt: "Map the repo." }
+          }),
+          event("child-think-1", "message.delta", "2026-05-12T15:00:02.000Z", "Inspecting.", {
+            parent_tool_use_id: "task-1",
+            thinking: true
+          }),
+          event("child-bash-1", "command.started", "2026-05-12T15:00:03.000Z", "Bash", {
+            id: "child-bash-1",
+            name: "Bash",
+            parent_tool_use_id: "task-1",
+            input: { command: "git status --short" }
+          }),
+          event("child-bash-1-done", "command.completed", "2026-05-12T15:00:04.000Z", "Bash", {
+            tool_use_id: "child-bash-1",
+            output: "clean"
+          }),
+          event("child-think-2", "message.delta", "2026-05-12T15:00:05.000Z", "Comparing.", {
+            parent_tool_use_id: "task-1",
+            thinking: true
+          }),
+          event("child-bash-2", "command.started", "2026-05-12T15:00:06.000Z", "Bash", {
+            id: "child-bash-2",
+            name: "Bash",
+            parent_tool_use_id: "task-1",
+            input: { command: "git diff --stat" }
+          }),
+          event("child-bash-2-done", "command.completed", "2026-05-12T15:00:07.000Z", "Bash", {
+            tool_use_id: "child-bash-2",
+            output: "clean"
+          })
+        ]}
+        defaultToolCallsDisplay="collapsed"
+        defaultToolCallGroupsExpanded={false}
+        thinkingDisplay="collapsed"
+        parentSession={{ ...session, state: "complete" }}
+        parentToolUseId="task-1"
+        workspace={workspace}
+      />
+    );
+
+    const pane = screen.getByRole("region", { name: "Agent activity: Explore repo" });
+    const group = within(pane).getByRole("button", { name: "Ran commands" });
+    expect(within(pane).queryByRole("button", { name: "Thought" })).toBeNull();
+
+    fireEvent.click(group);
+
+    expect(within(pane).getAllByRole("button", { name: "Thought" })).toHaveLength(2);
+    expect(within(pane).getByRole("button", { name: "Ran git status --short" })).toBeInTheDocument();
+  });
+
   it("keeps prose and nested agent launches between regular tool runs", () => {
     render(
       <AgentActivity
@@ -722,7 +779,7 @@ describe("AgentActivity", () => {
   it.each([
     ["Minimal", "single-line"],
     ["Compact", "collapsed"]
-  ] as const)("keeps a failed nested agent visible in a finished %s run", (_label, defaultToolCallsDisplay) => {
+  ] as const)("keeps a failed nested agent inspectable in a finished %s run", (_label, defaultToolCallsDisplay) => {
     render(
       <AgentActivity
         events={[
@@ -757,6 +814,10 @@ describe("AgentActivity", () => {
     );
 
     const pane = screen.getByRole("region", { name: "Agent activity: Explore repo" });
+    if (defaultToolCallsDisplay === "single-line") {
+      expect(within(pane).queryByRole("button", { name: "Started agent Nested audit" })).toBeNull();
+      fireEvent.click(within(pane).getByRole("button", { name: /^Worked/ }));
+    }
     const nestedAgent = within(pane).getByRole("button", { name: "Started agent Nested audit" });
     expect(nestedAgent.closest("[data-status]")).toHaveAttribute("data-status", "error");
     expect(within(pane).queryByText("The nested agent could not start.")).toBeNull();

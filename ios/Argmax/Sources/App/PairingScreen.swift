@@ -36,7 +36,7 @@ struct PairingScreen: View {
                     // a reason instead of letting the load fail silently
                     // later. Under the field in attention red, not an alert.
                     Text("That is not a pairing link. It has to be https:// and carry the #token= fragment.")
-                        .font(.footnote)
+                        .typeStyle(.footnote)
                         .foregroundStyle(Theme.rose)
                         .padding(.top, Spacing.snug)
                         .transition(.opacity)
@@ -57,7 +57,7 @@ struct PairingScreen: View {
 
     private var field: some View {
         TextField("", text: $link, axis: .vertical)
-            .font(.argmaxMono(.footnote))
+            .typeStyle(.footnote, mono: true)
             .foregroundStyle(Theme.ink)
             .tint(Theme.ink)
             .textInputAutocapitalization(.never)
@@ -72,7 +72,7 @@ struct PairingScreen: View {
                 // muted ink at mono, and has to survive the vertical axis.
                 if link.isEmpty {
                     Text(verbatim: "https://your-mac.ts.net/mobile.html#token=…")
-                        .font(.argmaxMono(.footnote))
+                        .typeStyle(.footnote, mono: true)
                         .foregroundStyle(Theme.muted)
                         .lineLimit(1)
                         .allowsHitTesting(false)

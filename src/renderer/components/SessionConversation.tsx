@@ -46,6 +46,8 @@ import {
   sessionAgentModeKey,
   writeStoredAgentMode
 } from "../lib/agentMode.js";
+import { readStoredSessionModel, writeStoredSessionModel } from "../lib/sessionModelPreference.js";
+import type { FontSize } from "../lib/fonts.js";
 import { summarizeChangedFiles } from "../lib/changedFiles.js";
 import { decodeTimelineEvent } from "../lib/canonicalTimeline.js";
 import {
@@ -156,6 +158,7 @@ function remainingDelayMs(fullMs: number, startedAt: string | null): number {
 
 export function SessionConversation({
   checks,
+  chatFontSize,
   defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
   thinkingDisplay,
@@ -209,9 +212,12 @@ export function SessionConversation({
   review,
   session,
   workspaceCardEnabled = true,
+  contextIndicatorEnabled = false,
   workspace
 }: {
   checks?: CheckRun[];
+  /** Settings → Appearance: the font scale shared by the transcript and composer. */
+  chatFontSize?: FontSize;
   defaultToolCallsDisplay?: ToolCallsDisplay;
   defaultToolCallGroupsExpanded?: boolean;
   thinkingDisplay?: ThinkingDisplay;
@@ -232,6 +238,8 @@ export function SessionConversation({
   /** User preference for the workspace card. Visible when enabled and the
       conversation column is wide enough to hold it beside the transcript. */
   workspaceCardEnabled?: boolean;
+  /** Settings → Appearance: show context-window usage in the active composer. */
+  contextIndicatorEnabled?: boolean;
   /** When provided, a close (×) button is rendered in the header — used by the multi-pane grid. */
   onClose?: () => void;
   /** Opens a launcher pane beside this one, for a task in any repository. */
@@ -350,13 +358,23 @@ export function SessionConversation({
       if (statusTimerRef.current !== null) window.clearTimeout(statusTimerRef.current);
     };
   }, []);
-  const [selectedModel, setSelectedModel] = useState<ModelPickerSelection>(() => modelPickerSelectionFromSession(session));
+  const [selectedModel, setSelectedModel] = useState<ModelPickerSelection>(() => {
+    const fallback = modelPickerSelectionFromSession(session);
+    return session ? readStoredSessionModel(session.id, fallback) : fallback;
+  });
   const [agentMode, setAgentMode] = useState<AgentMode>(() =>
     session ? readStoredAgentMode(sessionAgentModeKey(session.id), session.agentMode ?? "auto") : "auto"
   );
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const shouldRefocusInput = useRef(false);
   const sessionId = session?.id ?? null;
+  const setSelectedModelForSession = useCallback(
+    (model: ModelPickerSelection): void => {
+      setSelectedModel(model);
+      if (sessionId) writeStoredSessionModel(sessionId, model);
+    },
+    [sessionId]
+  );
   const eventsRef = useRef(events);
   eventsRef.current = events;
   const [optimisticUserMessages, setOptimisticUserMessages] = useState<OptimisticUserMessage[]>([]);
@@ -1236,7 +1254,8 @@ export function SessionConversation({
   // SessionSummary references on every dashboard delta, which would otherwise
   // overwrite the user's per-session model pick on every streaming event.
   useEffect(() => {
-    setSelectedModel(modelPickerSelectionFromSession(session));
+    const fallback = modelPickerSelectionFromSession(session);
+    setSelectedModel(sessionId ? readStoredSessionModel(sessionId, fallback) : fallback);
     setAgentMode(session ? readStoredAgentMode(sessionAgentModeKey(session.id), session.agentMode ?? "auto") : "auto");
     // eslint-disable-next-line react-hooks/exhaustive-deps -- session.id is the identity gate; `session` mutates per-tick by design
   }, [sessionId]);
@@ -1376,9 +1395,9 @@ export function SessionConversation({
   // phone shell it is not: `setComposer(true)` hides that whole stack, and a
   // goal bar hidden with it leaves a running goal with no clear button
   // anywhere on the phone. So it gets its own stack above the native card,
-  // exempt from that rule the way a docked question is, and carrying the
-  // composer's type scale rather than the transcript's — it is chrome, and the
-  // shell reads the transcript two steps up.
+  // exempt from that rule the way a docked question is. On desktop it follows
+  // the agent-window scale through the session grid, while the phone keeps its
+  // own native composer scale.
   const goalInComposer = !nativeComposerFloor;
 
   return (
@@ -1644,7 +1663,12 @@ export function SessionConversation({
         </section>
       ) : null}
       {goalInComposer || !goalStatus ? null : (
-        <div className="session-composer-stack" data-goal data-type-scale="composer">
+        <div
+          className="session-composer-stack"
+          data-goal
+          data-font-size={chatFontSize === undefined ? undefined : String(chatFontSize)}
+          data-type-scale={chatFontSize === undefined ? "composer" : undefined}
+        >
           {goalStatus}
         </div>
       )}
@@ -1664,7 +1688,9 @@ export function SessionConversation({
         isFocused={isFocused}
         agentMode={agentMode}
         canSend={canSend}
+        chatFontSize={chatFontSize}
         changeSummary={changeSummary}
+        contextIndicatorEnabled={contextIndicatorEnabled}
         fastModeEnabled={fastModeEnabled}
         floating={floating}
         inputRef={inputRef}
@@ -1688,7 +1714,7 @@ export function SessionConversation({
         selectedModel={selectedModel}
         session={session}
         setAgentMode={setAgentMode}
-        setSelectedModel={setSelectedModel}
+        setSelectedModel={setSelectedModelForSession}
         setStatus={setStatus}
         shouldRefocusInput={shouldRefocusInput}
         status={status}

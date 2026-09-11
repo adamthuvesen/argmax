@@ -37,6 +37,60 @@ final class TranscriptToolIconTests: XCTestCase {
             "Integrations/notion"
         )
         XCTAssertEqual(TranscriptToolIcon.assetName(for: "session_list"), "Integrations/argmax")
+        XCTAssertEqual(
+            TranscriptToolIcon.assetName(
+                for: "mcp__linear__list_issues",
+                activity: activity(.search)
+            ),
+            "Integrations/linear"
+        )
+    }
+
+    func testEveryActivityKindHasTheExpectedColoredSystemFallback() {
+        let expectedSymbols: [TranscriptToolActivityKind: String] = [
+            .read: "book", .edit: "pencil", .image: "photo.on.rectangle.angled",
+            .search: "magnifyingglass", .list: "folder", .webSearch: "globe",
+            .webFetch: "globe", .discovery: "wrench.adjustable", .command: "terminal",
+            .computer: "desktopcomputer", .tool: "wrench.and.screwdriver", .agent: "cpu", .skill: "sparkles",
+            .imageCapture: "camera", .imageGenerate: "sparkles"
+        ]
+        for kind in TranscriptToolActivityKind.allCases {
+            XCTAssertEqual(
+                TranscriptToolIcon.source(for: "plain", activity: activity(kind)),
+                .system(name: expectedSymbols[kind]!)
+            )
+            XCTAssertNotNil(UIImage(systemName: expectedSymbols[kind]!))
+        }
+
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .read), style: .light), [63, 127, 216])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .command), style: .dark), [138, 174, 242])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .computer), style: .light), [63, 127, 216])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .search), style: .light), [47, 128, 121])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .image), style: .dark), [179, 146, 240])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .edit), style: .light), [181, 135, 47])
+    }
+
+    func testComputerActivityOverridesAnIntegrationBrand() {
+        XCTAssertEqual(
+            TranscriptToolIcon.source(for: "mcp__linear__computer_use", activity: activity(.computer)),
+            .system(name: "desktopcomputer")
+        )
+        XCTAssertNil(TranscriptToolIcon.assetName(
+            for: "mcp__linear__computer_use",
+            activity: activity(.computer)
+        ))
+        XCTAssertEqual(
+            TranscriptToolIcon.assetName(for: "mcp__linear__list_issues", activity: activity(.tool)),
+            "Integrations/linear"
+        )
+        XCTAssertEqual(
+            TranscriptToolIcon.assetName(for: "mcp__argmax__browser_click", activity: activity(.tool)),
+            "Integrations/argmax"
+        )
+        XCTAssertEqual(
+            TranscriptToolIcon.assetName(for: "argmax.browser_screenshot", activity: activity(.tool)),
+            "Integrations/argmax"
+        )
     }
 
     func testUnknownAndGenericToolsKeepDistinctFallbacks() {
@@ -63,5 +117,22 @@ final class TranscriptToolIconTests: XCTestCase {
             XCTAssertGreaterThan(image.size.height, 0, "\(name) has no intrinsic height")
             XCTAssertNotNil(image.imageAsset, "\(name) is not backed by an asset catalogue image")
         }
+    }
+
+
+    private func activity(_ kind: TranscriptToolActivityKind) -> TranscriptToolActivity {
+        TranscriptToolActivity(
+            version: 1, kind: kind, evidence: .native, targets: [], operation: nil, toolCount: nil
+        )
+    }
+
+    private func components(_ color: UIColor, style: UIUserInterfaceStyle) -> [Int] {
+        let resolved = color.resolvedColor(with: UITraitCollection(userInterfaceStyle: style))
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        XCTAssertTrue(resolved.getRed(&red, green: &green, blue: &blue, alpha: &alpha))
+        return [red, green, blue].map { Int(($0 * 255).rounded()) }
     }
 }

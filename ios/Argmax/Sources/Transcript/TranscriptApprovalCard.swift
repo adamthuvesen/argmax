@@ -105,8 +105,11 @@ struct TranscriptApprovalCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.row) {
             HStack(alignment: .firstTextBaseline) {
-                Label("Approval needed", systemImage: "lock.shield")
-                    .font(.subheadline.weight(.semibold))
+                Label {
+                    Text("Approval needed").typeStyle(.footnote, weight: .semibold)
+                } icon: {
+                    Image(systemName: "lock.shield").typeSymbol(.subheadline, weight: .semibold)
+                }
                     .foregroundStyle(Theme.ink)
                 Spacer(minLength: Spacing.snug)
                 if let riskLevel = approval.riskLevel, riskLevel != "low" {
@@ -118,7 +121,7 @@ struct TranscriptApprovalCard: View {
             }
 
             Text(action.title)
-                .font(.argmaxMono(.subheadline))
+                .typeStyle(.footnote, mono: true)
                 .foregroundStyle(Theme.ink)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
@@ -131,7 +134,7 @@ struct TranscriptApprovalCard: View {
                                 .typeChip()
                                 .foregroundStyle(Theme.muted)
                             Text(argument.value)
-                                .font(.argmaxMono(.footnote))
+                                .typeStyle(.footnote, mono: true)
                                 .foregroundStyle(Theme.ink)
                                 .textSelection(.enabled)
                                 .lineLimit(3)
@@ -141,8 +144,11 @@ struct TranscriptApprovalCard: View {
             }
 
             if let workingDirectory = approval.workingDirectory, !workingDirectory.isEmpty {
-                Label(workingDirectory, systemImage: "folder")
-                    .font(.argmaxMono(.caption))
+                Label {
+                    Text(workingDirectory).typeStyle(.caption, mono: true)
+                } icon: {
+                    Image(systemName: "folder").typeSymbol(.caption)
+                }
                     .foregroundStyle(Theme.muted)
                     .lineLimit(2)
                     .textSelection(.enabled)
@@ -150,7 +156,7 @@ struct TranscriptApprovalCard: View {
 
             if let failure {
                 Text(failure)
-                    .font(.footnote)
+                    .typeStyle(.footnote)
                     .foregroundStyle(Theme.rose)
                     .accessibilityLabel("Could not send response. \(failure)")
             }
@@ -171,8 +177,11 @@ struct TranscriptApprovalCard: View {
                     .disabled(submitting != nil)
                 }
             } else {
-                Label(statusLabel, systemImage: statusImage)
-                    .font(.footnote.weight(.medium))
+                Label {
+                    Text(statusLabel).typeStyle(.footnote, weight: .medium)
+                } icon: {
+                    Image(systemName: statusImage).typeSymbol(.footnote, weight: .medium)
+                }
                     .foregroundStyle(statusColor)
                     .accessibilityLabel(statusLabel)
             }

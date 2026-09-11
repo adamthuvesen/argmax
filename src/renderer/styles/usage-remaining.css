@@ -43,7 +43,7 @@
 
 .usage-remaining-name {
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   color: var(--text);
 }
 

@@ -7,6 +7,8 @@ struct TranscriptScenario: View {
     @StateObject private var scenario = TranscriptScenarioState()
     @StateObject private var navigator = ChatNavigator()
     @State private var input = ""
+    @State private var focusRequest = 0
+    @State private var screenHeight: CGFloat = 0
     @State private var dark = ProcessInfo.processInfo.arguments.contains("-scenario-dark")
     @State private var large = ProcessInfo.processInfo.arguments.contains("-scenario-large")
 
@@ -16,16 +18,25 @@ struct TranscriptScenario: View {
                 Button("Stream", action: scenario.stream)
                 Button("Prepend", action: scenario.prepend)
                 Button("Rich", action: scenario.showRich)
+                Button("Ask", action: scenario.ask)
                 Button("Theme") { dark.toggle() }
                 Button("Size") { large.toggle() }
             }
-            .font(.caption)
+            .typeStyle(.caption)  // type-exception: the #if DEBUG scenario toolbar, which never ships
             .buttonStyle(.bordered)
             .frame(minHeight: 44)
             .dynamicTypeSize(.large)
             NativeTranscriptView(client: scenario.client, onOpenFile: { _ in }, onRevisePlan: {})
-            TranscriptComposer(workspaceID: "w-scenario", input: $input)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    // The floor, not the bare composer: an outstanding question
+                    // takes this slot, and its ceiling is read off the screen.
+                    TranscriptComposerFloor(workspaceID: "w-scenario", client: scenario.client,
+                                            screenHeight: screenHeight,
+                                            draft: $input, focusRequest: $focusRequest)
+                        .background(Theme.ground)
+                }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { screenHeight = $0 }
         .background(Theme.ground)
         .environmentObject(scenario.transcript)
         .environmentObject(scenario.dashboard)
@@ -54,6 +65,87 @@ private final class TranscriptScenarioState: ObservableObject {
                    text: "Answer \(index)\n\nThis is a transcript paragraph used to verify stable reading while the conversation changes.")]
         }
         transcript.preview(page: page(events), metadata: metadata)
+        if ProcessInfo.processInfo.arguments.contains("-scenario-user-bubble") {
+            transcript.preview(page: page([
+                event(1, type: "user.message", text: "Short prompt"),
+                event(2, type: "user.message", text: String(repeating: "A long pasted prompt wraps across the phone.\n\n", count: 8)),
+                event(3, type: "message.completed", text: "Reply after the prompt")
+            ]), metadata: metadata)
+        }
+        if ProcessInfo.processInfo.arguments.contains("-scenario-activity") {
+            transcript.preview(page: page(activityEvents()), metadata: metadata)
+        }
+        if ProcessInfo.processInfo.arguments.contains("-scenario-ask") { ask() }
+    }
+
+    /// Provider-neutral activity metadata rendered through the production
+    /// projection. The fixture includes all four semantic colours and one MCP
+    /// mark, so a simulator screenshot catches both palette and precedence.
+    private func activityEvents() -> [TranscriptEvent] {
+        var events = [event(1, type: "user.message", text: "Polish the transcript activity")]
+        let calls: [(String, String, String, [String], Int?)] = [
+            ("read", "Read", "read", ["Sources/App.swift", "Sources/Store.swift"], nil),
+            ("edit", "Edit", "edit", ["Sources/App.swift"], nil),
+            ("search", "Grep", "search", [], nil),
+            ("image", "ViewImage", "image", ["design/wireframe.png"], nil),
+            ("discover", "ToolSearch", "discovery", [], 3),
+            ("command", "Bash", "command", [], nil),
+            ("computer", "computer", "computer", [], nil),
+            ("linear", "mcp__linear__list_issues", "tool", [], nil)
+        ]
+        for (offset, call) in calls.enumerated() {
+            let cursor = 2 + offset * 2
+            let activity = activity(kind: call.2, targets: call.3, toolCount: call.4)
+            events.append(toolEvent(cursor, type: "command.started", id: call.0, name: call.1,
+                                    activity: activity, completed: false))
+            events.append(toolEvent(cursor + 1, type: "command.completed", id: call.0, name: call.1,
+                                    activity: activity, completed: true))
+        }
+        events.append(event(18, type: "message.completed", text: "The activity summary is ready."))
+        return events
+    }
+
+    private func activity(
+        kind: String,
+        targets: [String],
+        toolCount: Int?
+    ) -> TranscriptJSONValue {
+        var object: [String: TranscriptJSONValue] = [
+            "version": .number(1),
+            "kind": .string(kind),
+            "evidence": .string("native"),
+            "targets": .array(targets.map(TranscriptJSONValue.string))
+        ]
+        if let toolCount { object["toolCount"] = .number(Double(toolCount)) }
+        return .object(object)
+    }
+
+    private func toolEvent(
+        _ index: Int,
+        type: String,
+        id: String,
+        name: String,
+        activity: TranscriptJSONValue,
+        completed: Bool
+    ) -> TranscriptEvent {
+        var payload: [String: TranscriptJSONValue] = [
+            completed ? "tool_use_id" : "id": .string(id),
+            "activity": activity
+        ]
+        if completed {
+            payload["output"] = .string("Completed")
+        } else {
+            payload["name"] = .string(name)
+        }
+        return TranscriptEvent(
+            id: "activity-\(id)-\(completed ? "end" : "start")",
+            sessionId: "s-scenario",
+            type: type,
+            message: name,
+            payload: .object(payload),
+            createdAt: String(format: "2026-01-01T00:01:%02d.000Z", index),
+            rowCursor: Int64(index)
+        )
     }
 
     func stream() {
@@ -73,6 +165,37 @@ private final class TranscriptScenarioState: ObservableObject {
              event(index * 2 + 1, type: "message.completed", text: "Answer \(index)\n\nEarlier history loaded above the reader.")]
         }
         transcript.ingest(page: page(events), for: metadata.id)
+    }
+
+    /// A live question with the long option descriptions that made the dock
+    /// scroll internally when it was capped at a fixed height.
+    func ask() {
+        let options: [(String, String)] = [
+            ("Per-device (Recommended)",
+             "Matches how theme, accent and mascot already work on the phone: it borrows the web key name (argmax.font.family) but holds its own value in UserDefaults."),
+            ("Follow the Mac",
+             "The phone reads the desktop's font setting over the bridge. New plumbing, and breaks the established per-device appearance rule.")
+        ]
+        let payload: [String: TranscriptJSONValue] = [
+            "id": .string("ask-tool"),
+            "name": .string("AskUserQuestion"),
+            "input": .object(["questions": .array([
+                .object([
+                    "question": .string("Should the choice sync from the Mac or stay per-device?"),
+                    "header": .string("Sync"),
+                    "options": .array(options.map {
+                        .object(["label": .string($0.0), "description": .string($0.1)])
+                    })
+                ])
+            ])])
+        ]
+        revision += 1
+        transcript.preview(page: page([
+            event(1, type: "user.message", text: "Add custom font support"),
+            TranscriptEvent(id: "ask-start", sessionId: "s-scenario", type: "command.started",
+                            message: "AskUserQuestion", payload: .object(payload),
+                            createdAt: "2026-01-01T00:01:00.000Z", rowCursor: 2)
+        ]), metadata: metadata)
     }
 
     func showRich() {

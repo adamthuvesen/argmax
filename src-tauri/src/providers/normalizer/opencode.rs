@@ -209,6 +209,9 @@ fn normalize_tool_use(
         flattened.insert("call_id".to_string(), Value::String(call_id.to_string()));
     }
     flattened.insert("raw".to_string(), Value::Object(part.clone()));
+    if let Some(status) = state.and_then(|state| string_value(state.get("status"))) {
+        flattened.insert("status".to_string(), Value::String(status.to_string()));
+    }
 
     // OpenCode's `todowrite` sends the whole list every time, so the update
     // rides alongside the row that carries it and the row itself is hidden.
@@ -394,8 +397,10 @@ mod tests {
         assert_eq!(result.events[0].message, "bash");
         assert_eq!(result.events[0].payload["input"]["command"], "npm test");
         assert_eq!(result.events[0].payload["call_id"], "call_1");
+        assert_eq!(result.events[0].payload["status"], "completed");
         assert_eq!(result.events[1].r#type, "command.completed");
         assert_eq!(result.events[1].payload["result"], "42 passing");
+        assert_eq!(result.events[1].payload["status"], "completed");
     }
 
     #[test]

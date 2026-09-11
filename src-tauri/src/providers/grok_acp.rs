@@ -13,7 +13,7 @@ use std::sync::{
 };
 use std::time::Duration;
 
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use tokio::sync::watch;
 use uuid::Uuid;
 
@@ -567,6 +567,12 @@ async fn run_turn(
 #[derive(Default)]
 struct GrokTurnTranslation {
     assistant_text: String,
+    tools: HashMap<String, GrokToolInfo>,
+}
+
+struct GrokToolInfo {
+    name: String,
+    input: Value,
 }
 
 impl GrokTurnTranslation {
@@ -601,12 +607,10 @@ impl GrokTurnTranslation {
                 let Some(call_id) = update.get("toolCallId").and_then(Value::as_str) else {
                     return Vec::new();
                 };
-                let name = update
-                    .pointer("/rawInput/_toolName")
-                    .and_then(Value::as_str)
-                    .or_else(|| update.get("title").and_then(Value::as_str))
-                    .unwrap_or("tool");
-                let input = update.get("rawInput").cloned().unwrap_or_else(|| json!({}));
+                let info = grok_tool_info(update);
+                let name = info.name.clone();
+                let input = info.input.clone();
+                self.tools.insert(call_id.to_string(), info);
                 let mut lines = vec![json!({
                     "type": "stream_event", "session_id": session_id,
                     "event": { "type": "content_block_start", "index": 0,
@@ -615,22 +619,44 @@ impl GrokTurnTranslation {
                 })];
                 if matches!(
                     update.get("status").and_then(Value::as_str),
-                    Some("completed" | "failed")
+                    Some("completed" | "failed" | "cancelled" | "canceled" | "interrupted")
                 ) {
-                    lines.push(grok_tool_result(update, call_id, session_id));
+                    let info = self.tools.remove(call_id);
+                    lines.push(grok_tool_result(update, call_id, session_id, info));
                 }
                 lines
             }
             "tool_call_update"
+                if !matches!(
+                    update.get("status").and_then(Value::as_str),
+                    Some("completed" | "failed" | "cancelled" | "canceled" | "interrupted")
+                ) =>
+            {
+                if let Some(call_id) = update.get("toolCallId").and_then(Value::as_str) {
+                    merge_grok_tool_info(
+                        self.tools
+                            .entry(call_id.to_string())
+                            .or_insert_with(|| grok_tool_info(update)),
+                        update,
+                    );
+                }
+                Vec::new()
+            }
+            "tool_call_update"
                 if matches!(
                     update.get("status").and_then(Value::as_str),
-                    Some("completed" | "failed")
+                    Some("completed" | "failed" | "cancelled" | "canceled" | "interrupted")
                 ) =>
             {
                 let Some(call_id) = update.get("toolCallId").and_then(Value::as_str) else {
                     return Vec::new();
                 };
-                vec![grok_tool_result(update, call_id, session_id)]
+                let mut info = self
+                    .tools
+                    .remove(call_id)
+                    .unwrap_or_else(|| grok_tool_info(update));
+                merge_grok_tool_info(&mut info, update);
+                vec![grok_tool_result(update, call_id, session_id, Some(info))]
             }
             _ => Vec::new(),
         }
@@ -684,17 +710,95 @@ fn continues_sentence(accumulated: &str, chunk: &str) -> bool {
     chunk.chars().next().is_none_or(|c| !c.is_uppercase())
 }
 
-fn grok_tool_result(update: &Value, call_id: &str, session_id: &str) -> Value {
+fn grok_tool_result(
+    update: &Value,
+    call_id: &str,
+    session_id: &str,
+    info: Option<GrokToolInfo>,
+) -> Value {
+    let status = update
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or("completed");
     let output = update
         .get("rawOutput")
         .map(Value::to_string)
         .unwrap_or_default();
+    let mut block = json!({
+        "type": "tool_result", "tool_use_id": call_id, "content": output,
+        "status": status,
+        "is_error": matches!(status, "failed" | "cancelled" | "canceled" | "interrupted")
+    });
+    if let (Some(fields), Some(info)) = (block.as_object_mut(), info) {
+        fields.insert("tool_name".to_string(), Value::String(info.name));
+        fields.insert("input".to_string(), info.input);
+    }
     json!({
         "type": "user", "session_id": session_id,
-        "message": { "role": "user", "content": [{
-            "type": "tool_result", "tool_use_id": call_id, "content": output
-        }]}
+        "message": { "role": "user", "content": [block]}
     })
+}
+
+fn grok_tool_info(update: &Value) -> GrokToolInfo {
+    let name = update
+        .pointer("/rawInput/_toolName")
+        .and_then(Value::as_str)
+        .or_else(|| update.get("title").and_then(Value::as_str))
+        .or_else(|| update.get("kind").and_then(Value::as_str))
+        .unwrap_or("tool")
+        .to_string();
+    let mut input = update
+        .get("rawInput")
+        .cloned()
+        .unwrap_or_else(|| Value::Object(Map::new()));
+    adopt_grok_locations(&mut input, update);
+    GrokToolInfo { name, input }
+}
+
+fn merge_grok_tool_info(info: &mut GrokToolInfo, update: &Value) {
+    if let Some(name) = update
+        .pointer("/rawInput/_toolName")
+        .and_then(Value::as_str)
+        .or_else(|| update.get("title").and_then(Value::as_str))
+        .or_else(|| update.get("kind").and_then(Value::as_str))
+        .filter(|name| !name.is_empty())
+    {
+        info.name = name.to_string();
+    }
+    if let (Some(current), Some(late)) = (
+        info.input.as_object_mut(),
+        update.get("rawInput").and_then(Value::as_object),
+    ) {
+        for (key, value) in late {
+            current.insert(key.clone(), value.clone());
+        }
+    }
+    adopt_grok_locations(&mut info.input, update);
+}
+
+fn adopt_grok_locations(input: &mut Value, update: &Value) {
+    let paths = update
+        .get("locations")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|location| location.get("path").and_then(Value::as_str))
+        .filter(|path| !path.is_empty())
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let Some(fields) = input.as_object_mut() else {
+        return;
+    };
+    if let Some(path) = paths.first() {
+        fields
+            .entry("path")
+            .or_insert_with(|| Value::String(path.clone()));
+    }
+    if paths.len() > 1 {
+        fields
+            .entry("paths")
+            .or_insert_with(|| Value::Array(paths.into_iter().map(Value::String).collect()));
+    }
 }
 
 fn content_text(update: &Value) -> Option<String> {
@@ -863,6 +967,52 @@ mod tests {
         assert_eq!(
             completed[0]["message"]["content"][0]["tool_use_id"],
             "call-1"
+        );
+        assert_eq!(completed[0]["message"]["content"][0]["status"], "completed");
+        assert_eq!(completed[0]["message"]["content"][0]["is_error"], false);
+    }
+
+    #[test]
+    fn grok_cancelled_tool_results_are_not_reported_as_success() {
+        let mut translation = GrokTurnTranslation::default();
+        let completed = translation.translate(
+            &json!({"update": {"sessionUpdate": "tool_call_update",
+                "toolCallId": "call-1", "status": "cancelled"}}),
+            "g1",
+        );
+        let result = &completed[0]["message"]["content"][0];
+        assert_eq!(result["status"], "cancelled");
+        assert_eq!(result["is_error"], true);
+    }
+
+    #[test]
+    fn grok_completion_keeps_late_tool_identity_and_locations() {
+        let mut translation = GrokTurnTranslation::default();
+        translation.translate(
+            &json!({"update": {"sessionUpdate": "tool_call",
+                "toolCallId": "call-1", "title": "Read File", "rawInput": {}}}),
+            "g1",
+        );
+        assert!(translation
+            .translate(
+                &json!({"update": {"sessionUpdate": "tool_call_update",
+                    "toolCallId": "call-1", "status": "in_progress",
+                    "rawInput": {"_toolName": "read_file"},
+                    "locations": [{"path": "/repo/one.rs"}, {"path": "/repo/two.rs"}]}}),
+                "g1",
+            )
+            .is_empty());
+        let completed = translation.translate(
+            &json!({"update": {"sessionUpdate": "tool_call_update",
+                "toolCallId": "call-1", "status": "completed"}}),
+            "g1",
+        );
+        let result = &completed[0]["message"]["content"][0];
+        assert_eq!(result["tool_name"], "read_file");
+        assert_eq!(result["input"]["path"], "/repo/one.rs");
+        assert_eq!(
+            result["input"]["paths"],
+            json!(["/repo/one.rs", "/repo/two.rs"])
         );
     }
 

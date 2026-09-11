@@ -14,10 +14,11 @@ struct TranscriptToolIcon: View {
 
     let name: String
     var size: CGFloat = 16
+    var activity: TranscriptToolActivity? = nil
 
     var body: some View {
         Group {
-            switch Self.source(for: name) {
+            switch Self.source(for: name, activity: activity) {
             case .asset(let assetName, _):
                 Image(assetName)
                     .renderingMode(.original)
@@ -27,25 +28,55 @@ struct TranscriptToolIcon: View {
                 Image(systemName: systemName)
                     .resizable()
                     .scaledToFit()
-                    .foregroundStyle(Theme.muted)
+                    .foregroundStyle(activity.map { Color(Self.uiColor(for: $0.kind)) } ?? Theme.muted)
             }
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
     }
 
-    static func source(for toolName: String) -> Source {
+    static func source(for toolName: String, activity: TranscriptToolActivity? = nil) -> Source {
+        if activity?.kind == .computer { return .system(name: systemSymbol(for: .computer)) }
         if let server = serverName(in: toolName), let icon = catalogue.icon(for: server) {
             return .asset(name: "Integrations/\(icon.key)", title: icon.title)
         }
+        if let activity { return .system(name: systemSymbol(for: activity.kind)) }
         if isWebTool(toolName) { return .system(name: "globe") }
         if serverName(in: toolName) != nil { return .system(name: "powerplug") }
         return .system(name: "terminal")
     }
 
-    static func assetName(for toolName: String) -> String? {
-        guard case .asset(let name, _) = source(for: toolName) else { return nil }
+    static func assetName(for toolName: String, activity: TranscriptToolActivity? = nil) -> String? {
+        guard case .asset(let name, _) = source(for: toolName, activity: activity) else { return nil }
         return name
+    }
+
+    static func systemSymbol(for kind: TranscriptToolActivityKind) -> String {
+        switch kind {
+        case .read: return "book"
+        case .edit: return "pencil"
+        case .image: return "photo.on.rectangle.angled"
+        case .search: return "magnifyingglass"
+        case .list: return "folder"
+        case .webSearch, .webFetch: return "globe"
+        case .discovery: return "wrench.adjustable"
+        case .command: return "terminal"
+        case .computer: return "desktopcomputer"
+        case .tool: return "wrench.and.screwdriver"
+        case .agent: return "cpu"
+        case .skill, .imageGenerate: return "sparkles"
+        case .imageCapture: return "camera"
+        }
+    }
+
+    static func uiColor(for kind: TranscriptToolActivityKind) -> UIColor {
+        switch kind {
+        case .read, .command, .computer: return Theme.activityBlueColor
+        case .edit: return Theme.activityAmberColor
+        case .search, .list, .webSearch, .webFetch: return Theme.activityTealColor
+        case .image, .discovery, .tool, .agent, .skill, .imageCapture, .imageGenerate:
+            return Theme.activityVioletColor
+        }
     }
 
     /// Used by the asset-integrity test so adding an exported mark cannot fail

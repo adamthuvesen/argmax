@@ -91,7 +91,8 @@ final class ReviewFileTabsTests: XCTestCase {
                 active: details[0],
                 onSelect: { _ in },
                 onClose: { _ in },
-                onShowList: {}
+                onShowList: {},
+                trailing: { ReviewContextButton {} }
             )
             .environment(\.colorScheme, scheme)
             .environment(\.dynamicTypeSize, typeSize)

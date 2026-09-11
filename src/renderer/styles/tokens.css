@@ -75,6 +75,10 @@
      replaced the carets: the fill is what says a control is a control. */
   --composer-chip: color-mix(in oklab, var(--text) 5%, var(--composer-surface));
   --composer-chip-hover: color-mix(in oklab, var(--text) 9%, var(--composer-surface));
+  /* Model-suggested follow-ups are guidance, not entered text. Light
+     composers lift them above the regular placeholder so they read as a
+     suggestion without competing with the prompt. */
+  --composer-suggestion: var(--muted);
 
   /* Ink-strength ladder. Level 7 is what Argmax ships: --ink-pull is 0% and
      each token resolves to the hex beside it. Below 7 the endpoint is the
@@ -104,15 +108,20 @@
   --prose-ink: color-mix(in oklab, #1f1e1a, var(--ink-toward) var(--ink-pull));
   --prose-ink-strong: color-mix(in oklab, #1d1c19, var(--ink-toward) var(--ink-pull));
 
-  /* Text weight. The default Geist Sans ships static weights (the browser
-     clamps to the nearest), while Inter Variable exposes a `wght` axis, so
+  /* Text weight. Settings writes --font-weight-offset onto <html>, and every
+     authored weight adds it so headings keep their emphasis relative to body
+     text. Level 5 is the shipped appearance and therefore offsets by zero.
+
+     The default Geist Sans ships static weights (the browser
+     selects an available face), while Inter Variable exposes a `wght` axis, so
      the under-regular shave below is a real render for variable picks.
      Chrome (sidebar, palette, settings, titlebar, tabs) inherits --weight-ui
      from :root; chat prose opts back up to --weight-prose so messages stay
      a touch more present than chrome. Dark mode lowers both, because
      light-on-dark strokes bloom. */
-  --weight-ui: 400;
-  --weight-prose: 400;
+  --font-weight-offset: 0;
+  --weight-ui: calc(400 + var(--font-weight-offset));
+  --weight-prose: calc(400 + var(--font-weight-offset));
 
   --sage: #446c56;
   --sage-soft: #e7efe7;
@@ -299,11 +308,11 @@
 
   /* Selected-row fill, shared by the sidebar's sessions, the model picker, the
      settings nav, and the agent tabs. Defined once so those four surfaces
-     cannot drift apart again. Each theme points it at the quiet gray one step
-     off its own ground: in light that is --panel-sunken, because --panel-soft
-     (#fafafa) is a single step from the sidebar's #fafbfb and disappears
-     there. See the dark override for why dark cannot use --panel-sunken. */
-  --row-selected: var(--panel-sunken);
+     cannot drift apart again. Light selection leans slightly toward the line
+     color so it stays visible at the near-white end of the intensity ladder
+     without making every other sunken surface darker. See the dark override
+     for why dark cannot use --panel-sunken. */
+  --row-selected: color-mix(in oklab, var(--panel-sunken) 67%, var(--line));
 
   font-family: var(--font-ui);
   font-weight: var(--weight-ui);
@@ -316,15 +325,15 @@
    to canvas and cannot inherit CSS, so `resolveTerminalFontSize()` reads this
    value back. An unregistered custom property is *substituted*, not computed —
    `getPropertyValue` would hand back the literal string
-   "calc(13px + var(--type-step))" rather than pixels, and the px parse would
-   fall back to a hardcoded 13 at every level, pinning the terminal while the
+   "calc(11px + var(--type-step))" rather than pixels, and the px parse would
+   fall back to a hardcoded 11 at every level, pinning the terminal while the
    rest of the app resized. Registering it as a <length> makes the engine
    compute it, so the readback is real pixels. Keep the initial-value in sync
    with the declaration below. */
 @property --text-terminal {
   syntax: "<length>";
   inherits: true;
-  initial-value: 13px;
+  initial-value: 11px;
 }
 
 /* Type-size tokens. One scale, shifted whole pixels by `--type-step`: level 6
@@ -396,13 +405,22 @@
   --type-step: var(--chrome-type-step);
 }
 
-/* Both composers — the launcher's and the session's — sit one step above the
-   chrome scale. They are the surfaces the user reads and types into most, and
-   at chrome size the prompt text and its chips (model, repo, branch) came out
-   a touch too small to be comfortable. Anchored to the chrome step, not the
-   surrounding container's, so the composer tracks the app font size. */
+/* The fallback composer scale sits one step above chrome. Desktop launch and
+   session forms write the agent-window level directly when it is available,
+   while mobile and isolated component previews keep this comfortable fallback
+   until they receive a surrounding scale. */
 [data-type-scale="composer"] {
   --type-step: calc(var(--chrome-type-step) + 1px);
+}
+
+/* Desktop session composers sit inside the agent window, whose type step is
+   the value controlled by Settings → Appearance → Agent window font size.
+   Keep their existing marker for shared composer styling, but inherit the
+   session scale instead of resetting to app chrome. Standalone launchers put
+   their chat scale directly on the composer form. Mobile keeps its own
+   intentional composer step outside this desktop scope. */
+.session-multigrid [data-type-scale="composer"] {
+  --type-step: inherit;
 }
 
 /* Light composer controls need stronger ink at their compact label size.
@@ -411,6 +429,7 @@
   --muted: color-mix(in oklab, #716c63, var(--ink-toward) var(--ink-pull));
   --muted-strong: color-mix(in oklab, #49463f, var(--ink-toward) var(--ink-pull));
   --chip-ink: color-mix(in oklab, var(--muted) 65%, var(--muted-strong));
+  --composer-suggestion: color-mix(in oklab, var(--muted) 70%, var(--composer-surface));
 }
 
 :root,
@@ -435,7 +454,7 @@
   --text-xl: calc(20px + var(--type-step));
   --text-2xl: calc(22px + var(--type-step));
   --text-display: calc(23px + var(--type-step));
-  --text-terminal: calc(13px + var(--type-step));
+  --text-terminal: var(--text-xs);
 }
 
 /* Dark theme — "Warm Charcoal Editorial".
@@ -499,8 +518,8 @@
   --prose-ink: color-mix(in oklab, #ebe9e4, var(--ink-toward) var(--ink-pull));
   --prose-ink-strong: color-mix(in oklab, #f5f3ed, var(--ink-toward) var(--ink-pull));
 
-  --weight-ui: 380;
-  --weight-prose: 390;
+  --weight-ui: calc(380 + var(--font-weight-offset));
+  --weight-prose: calc(390 + var(--font-weight-offset));
 
   --sage: #6dab86;
   --sage-soft: rgba(109, 171, 134, 0.14);
@@ -851,29 +870,31 @@
   }
 }
 
-:root[data-font="system-mono"] {
-  --font-ui: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", monospace;
+/* These static families previously resolved dark's 380/390 requests to 400.
+   Keep that face at the default now that their lighter 300 face is available. */
+:root[data-font="geist-sans"],
+:root[data-font="ibm-plex-sans"],
+:root[data-font="ibm-plex-mono"] {
+  --weight-ui: calc(400 + var(--font-weight-offset));
+  --weight-prose: calc(400 + var(--font-weight-offset));
+}
+
+/* Mono choices retain Geist Sans for prose, including after switching away
+   from Geist Sans has loaded its light face. */
+:root[data-font="system-mono"],
+:root[data-font="geist-mono"] {
+  --weight-prose: calc(400 + var(--font-weight-offset));
+}
+
+:root[data-font="system"] {
+  --font-ui: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif;
+  --font-prose: var(--font-ui);
   --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", monospace;
 }
 
-:root[data-font="menlo"] {
-  --font-ui: Menlo, ui-monospace, Consolas, monospace;
-  --font-mono: Menlo, ui-monospace, Consolas, monospace;
-}
-
-:root[data-font="monaco"] {
-  --font-ui: Monaco, Menlo, ui-monospace, Consolas, monospace;
-  --font-mono: Monaco, Menlo, ui-monospace, Consolas, monospace;
-}
-
-:root[data-font="jetbrains-mono"] {
-  --font-ui: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
-  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
-}
-
-:root[data-font="fira-code"] {
-  --font-ui: "Fira Code Variable", "Fira Code", ui-monospace, "SFMono-Regular", Consolas, monospace;
-  --font-mono: "Fira Code Variable", "Fira Code", ui-monospace, "SFMono-Regular", Consolas, monospace;
+:root[data-font="system-mono"] {
+  --font-ui: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", monospace;
+  --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", monospace;
 }
 
 :root[data-font="geist-mono"] {
@@ -892,6 +913,12 @@
   --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
 }
 
+:root[data-font="dm-sans"] {
+  --font-ui: "DM Sans Variable", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-prose: var(--font-ui);
+  --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
+}
+
 :root[data-font="geist-sans"] {
   --font-ui: "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-prose: var(--font-ui);
@@ -905,11 +932,6 @@
   --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
 }
 
-:root[data-font="manrope"] {
-  --font-ui: "Manrope Variable", Manrope, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --font-prose: var(--font-ui);
-  --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
-}
 
 * {
   box-sizing: border-box;

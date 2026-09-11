@@ -49,7 +49,7 @@
   /* Geist ships 400/500/700 statics and CSS rounds a request above 500
      upward, so 500 is the top of the display range before the face jumps to
      bold. */
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   line-height: 0.96;
   letter-spacing: -0.035em;
   color: var(--text);
@@ -86,7 +86,7 @@
 .activity-hero-stat dd {
   margin: 0;
   font-size: var(--text-md);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   color: var(--text);
 }
 
@@ -109,7 +109,7 @@
 .activity-hero-eyebrow-note {
   letter-spacing: 0;
   text-transform: none;
-  font-weight: 400;
+  font-weight: calc(400 + var(--font-weight-offset));
   color: var(--muted);
 }
 
@@ -216,5 +216,5 @@
 }
 
 .activity-hero-streak strong {
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
 }

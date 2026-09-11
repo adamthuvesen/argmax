@@ -6,28 +6,65 @@ struct TranscriptMessageRow: View {
     let onOpenFile: (String) -> Void
     @EnvironmentObject private var appearance: Appearance
     @Environment(\.accentTint) private var accent
+    @ScaledMetric(relativeTo: .body) private var previewHeight = 6 * 1.68 * 17.0
+    @State private var contentHeight: CGFloat = 0
+    @State private var expanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.snug) {
-            if message.isSteering {
-                Label("Sent during the turn", systemImage: "arrow.turn.down.right")
-                    .font(.caption)
-                    .foregroundStyle(Theme.muted)
-            }
-            TranscriptMarkdown(text: message.text, client: client, onOpenFile: onOpenFile)
             if !message.attachments.isEmpty {
                 TranscriptAttachmentStrip(attachments: message.attachments, client: client,
                                           onOpenFile: onOpenFile)
             }
-            if let origin = message.originLabel {
-                Text(origin).font(.caption).foregroundStyle(Theme.muted)
-            }
-        }
-        .padding(message.role == .user ? Spacing.row : 0)
-        .background {
-            if message.role == .user {
-                RoundedRectangle(cornerRadius: Radius.card)
-                    .fill(appearance.accentBubbles ? accent.color.opacity(0.12) : Theme.raised)
+            if hasMessageCopy {
+                VStack(alignment: .leading, spacing: 0) {
+                    if message.role == .user {
+                        messageContent
+                            .fixedSize(horizontal: false, vertical: true)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
+                                contentHeight = $0
+                            }
+                            .frame(maxHeight: expanded ? nil : previewHeight, alignment: .top)
+                            .mask {
+                                if contentHeight > previewHeight + 1 && !expanded {
+                                    VStack(spacing: 0) {
+                                        Rectangle()
+                                        LinearGradient(colors: [.black, .clear],
+                                                       startPoint: .top, endPoint: .bottom)
+                                            .frame(height: 26)
+                                    }
+                                } else {
+                                    Rectangle()
+                                }
+                            }
+                        if contentHeight > previewHeight + 1 {
+                            Button {
+                                expanded.toggle()
+                            } label: {
+                                HStack(spacing: Spacing.tight) {
+                                    Text(expanded ? "Show less" : "Show more").typeStyle(.footnote)
+                                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                                        .typeSymbol(.caption)
+                                }
+                                .frame(minHeight: 44)
+                                .contentShape(.rect)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Theme.muted)
+                            .accessibilityValue(expanded ? "Expanded" : "Collapsed")
+                        }
+                    } else {
+                        messageContent
+                    }
+                }
+                .padding(message.role == .user ? Spacing.row : 0)
+                .background {
+                    if message.role == .user {
+                        RoundedRectangle(cornerRadius: Radius.card)
+                            .fill(appearance.accentBubbles ? accent.color.opacity(0.12) : Theme.raised)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -40,6 +77,30 @@ struct TranscriptMessageRow: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(message.role == .user ? "Your message" : "Assistant message")
+    }
+
+    private var messageContent: some View {
+        VStack(alignment: .leading, spacing: Spacing.snug) {
+            if message.isSteering {
+                Label {
+                    Text("Sent during the turn").typeStyle(.footnote)
+                } icon: {
+                    Image(systemName: "arrow.turn.down.right").typeSymbol(.caption)
+                }
+                    .foregroundStyle(Theme.muted)
+            }
+            if !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                TranscriptMarkdown(text: message.text, client: client, onOpenFile: onOpenFile)
+            }
+            if let origin = message.originLabel {
+                Text(origin).typeStyle(.footnote).foregroundStyle(Theme.muted)
+            }
+        }
+    }
+
+    private var hasMessageCopy: Bool {
+        !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            message.isSteering || message.originLabel != nil
     }
 }
 
@@ -58,20 +119,32 @@ struct TranscriptThoughtRow: View {
                     Button(showFullThought ? "Show less thinking" : "Show more thinking") {
                         showFullThought.toggle()
                     }
-                    .font(.caption)
+                    .typeStyle(.footnote)
                     .frame(minHeight: 44)
                 }
             }
         } else {
         DisclosureGroup {
             TranscriptMarkdown(text: thought.text, client: client, onOpenFile: onOpenFile, isThinking: true)
-                .padding(.top, Spacing.snug)
+                .padding(.top, Spacing.tight)
+                .padding(.bottom, Spacing.snug)
+                .padding(.leading, TranscriptActivityRow<EmptyView>.targetInset)
         } label: {
-            Text(thought.isStreaming ? "Thinking" : "Thought process")
-                .font(.footnote)
-                .foregroundStyle(Theme.muted)
-                .frame(minHeight: 44)
+            // The row names itself from the reasoning's first line — a model
+            // titles each burst ("Checking deletion history") — so nine rows
+            // in a fold are nine different things rather than nine copies of
+            // "Thought process".
+            TranscriptActivityRow(
+                verb: thought.isStreaming ? "Thinking" : "Thought",
+                target: thought.isStreaming ? nil : TranscriptThought.title(of: thought.text)
+            ) {
+                Image(systemName: "circle.dashed")
+                    .typeSymbol(size: 14)
+                    .foregroundStyle(Theme.muted)
+                    .frame(width: 16, height: 16)
+            }
         }
+        .disclosureGroupStyle(TranscriptDisclosureStyle(chevron: false, minHeight: TranscriptActivityRow<EmptyView>.height))
         .tint(Theme.muted)
         }
     }
@@ -87,20 +160,21 @@ struct TranscriptToolsRow: View {
     let group: TranscriptToolGroup
     let onOpenFile: (String) -> Void
     @Environment(\.mobileChatDetail) private var detail
+    @Environment(\.activityToolsAreRevealed) private var activityToolsAreRevealed
 
     private var running: Bool { group.tools.contains { $0.status == .running } }
-    private var failed: Int { group.tools.filter { $0.status == .failed }.count }
 
     var body: some View {
-        if detail == .detailed {
-            VStack(alignment: .leading, spacing: Spacing.snug) {
+        // A row reserves its own height, so the rows stack without a gap.
+        if detail == .detailed || activityToolsAreRevealed {
+            VStack(alignment: .leading, spacing: 0) {
                 ForEach(group.tools) { tool in
                     TranscriptToolRow(tool: tool, onOpenFile: onOpenFile)
                 }
             }
         } else {
         DisclosureGroup {
-            VStack(alignment: .leading, spacing: Spacing.snug) {
+            VStack(alignment: .leading, spacing: 0) {
                 ForEach(group.tools) { tool in
                     TranscriptToolRow(tool: tool, onOpenFile: onOpenFile)
                 }
@@ -108,16 +182,15 @@ struct TranscriptToolsRow: View {
         } label: {
             HStack(spacing: Spacing.snug) {
                 if running { WorkingNest(size: 16) }
-                else { Image(systemName: failed > 0 ? "exclamationmark.circle" : "checkmark") }
                 ForEach(iconTools) { tool in
-                    TranscriptToolIcon(name: tool.name)
+                    TranscriptToolIcon(name: tool.name, activity: tool.activity)
                 }
                 Text(summary)
+                    .typeStyle(.footnote)
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .font(.footnote)
-            .foregroundStyle(failed > 0 ? Theme.rose : Theme.muted)
+            .foregroundStyle(Theme.muted)
             .frame(minHeight: 44)
             .contentShape(.rect)
         }
@@ -125,25 +198,61 @@ struct TranscriptToolsRow: View {
         }
     }
 
+    /// A failed call is not news on its own: the agent reads the error and tries
+    /// again in the next call, so counting failures here marked a recovered turn
+    /// as a broken one. The failure lives in the row's expanded body, where the
+    /// reader has asked for it.
     private var summary: String {
-        if failed > 0 { return "\(failed) failed · \(group.tools.count) actions" }
-        if running, let tool = group.tools.last(where: { $0.status == .running }) {
-            return tool.summary.isEmpty ? tool.name : tool.summary
-        }
-        if group.tools.count == 1, let tool = group.tools.first {
-            return tool.summary.isEmpty ? tool.name : tool.summary
-        }
-        return "\(group.tools.count) actions completed"
+        group.activitySummary
     }
 
     private var iconTools: [TranscriptTool] {
         var seen = Set<String>()
         return Array(group.tools.filter { tool in
-            guard let asset = TranscriptToolIcon.assetName(for: tool.name) else {
-                return group.tools.count == 1
-            }
-            return seen.insert(asset).inserted
+            let identity = TranscriptToolIcon.assetName(for: tool.name, activity: tool.activity)
+                ?? "activity:\(tool.activity.kind.rawValue)"
+            return seen.insert(identity).inserted
         }.prefix(3))
+    }
+}
+
+/// One line of the activity ledger: `icon · verb · target`, the desktop's
+/// grammar (`docs/chat-cards.md`, "Activity Rows") on the phone. The verb
+/// sits a token step above the target; a command's target is mono one type
+/// step down, since Geist Mono reads larger than sans at the same nominal
+/// size. No fill and no chevron — the fold's rail says where the work is,
+/// and a filled card per call read as a stack of cards inside a card.
+struct TranscriptActivityRow<Icon: View>: View {
+    static var height: CGFloat { 36 }
+    /// Where a row's target starts: icon plus the gap, so an opened row's
+    /// block and a thought's reasoning line up under the words.
+    static var targetInset: CGFloat { 16 + Spacing.snug + Spacing.hair }
+
+    let verb: String?
+    let target: String?
+    var mono = false
+    @ViewBuilder let icon: () -> Icon
+
+    var body: some View {
+        HStack(alignment: .center, spacing: Spacing.snug + Spacing.hair) {
+            icon()
+            if let verb {
+                Text(verb)
+                    .typeStyle(.footnote)
+                    .foregroundStyle(Theme.mutedStrong)
+                    .fixedSize()
+            }
+            if let target {
+                Text(target)
+                    .typeStyle(mono ? .caption : .footnote, mono: mono)
+                    .foregroundStyle(Theme.muted)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(minHeight: Self.height)
+        .contentShape(.rect)
     }
 }
 
@@ -151,69 +260,110 @@ private struct TranscriptToolRow: View {
     let tool: TranscriptTool
     let onOpenFile: (String) -> Void
 
+    private var isCommand: Bool { tool.activity.kind == .command }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.tight) {
-            DisclosureGroup {
-                VStack(alignment: .leading, spacing: Spacing.row) {
-                    if let input = tool.input, !input.isEmpty { detail("Input", input) }
-                    if let output = tool.output, !output.isEmpty { detail("Output", output) }
-                    if let error = tool.error, !error.isEmpty {
-                        Text(error).foregroundStyle(Theme.rose).textSelection(.enabled)
-                    }
-                }
-                .padding(.vertical, Spacing.snug)
-            } label: {
-                Label {
-                    Text(tool.summary.isEmpty ? tool.name : tool.summary)
-                } icon: {
-                    HStack(spacing: 4) {
-                        TranscriptToolIcon(name: tool.name)
-                        if tool.status == .failed { Image(systemName: "exclamationmark.circle") }
-                    }
-                }
-                    .font(.footnote)
-                    .foregroundStyle(tool.status == .failed ? Theme.rose : Theme.ink)
-                    .lineLimit(3)
-                    .frame(minHeight: 44)
-            }
-            if let path = tool.filePath {
-                let label = tool.fileLabel ?? path
-                Button { onOpenFile(path) } label: {
-                    Label(label, systemImage: "doc.text")
-                        .font(.caption)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .frame(minHeight: 44)
-                }
-                .accessibilityLabel("Open \(label)")
+        DisclosureGroup {
+            block
+                .padding(.leading, TranscriptActivityRow<EmptyView>.targetInset)
+                .padding(.top, Spacing.hair)
+                .padding(.bottom, Spacing.snug)
+        } label: {
+            let parts = Self.splitLeadingVerb(tool.summary.isEmpty ? tool.name : tool.summary)
+            TranscriptActivityRow(verb: parts.verb, target: parts.target, mono: isCommand && parts.verb != nil) {
+                TranscriptToolIcon(name: tool.name, activity: tool.activity)
             }
         }
-        .padding(.horizontal, Spacing.row)
-        .background(Theme.raised, in: .rect(cornerRadius: Radius.control))
+        .disclosureGroupStyle(TranscriptDisclosureStyle(chevron: false, minHeight: TranscriptActivityRow<EmptyView>.height))
+        .tint(Theme.muted)
     }
 
-    private func detail(_ title: String, _ text: String) -> some View {
-        VStack(alignment: .leading, spacing: Spacing.tight) {
-            HStack {
-                Text(title).font(.caption).foregroundStyle(Theme.muted)
-                Spacer()
-                Button {
-                    UIPasteboard.general.string = text
-                } label: {
-                    Image(systemName: "doc.on.doc").frame(width: 44, height: 44)
-                }
-                .accessibilityLabel("Copy \(title.lowercased())")
+    /// The opened row grows one block, in the order the call happened:
+    /// arguments (never for a command, whose row already states it), then
+    /// the payload, then a footer of facts and actions. One fill, hairlines
+    /// inside it, so it reads as one object rather than three.
+    @ViewBuilder
+    private var block: some View {
+        let input = isCommand ? nil : tool.input?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let output = tool.output?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let error = tool.error?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasPayload = [input, output, error].contains { !($0 ?? "").isEmpty }
+        if !hasPayload, tool.filePath == nil {
+            Text("No output")
+                .typeStyle(.footnote)
+                .foregroundStyle(Theme.muted)
+                .padding(.vertical, Spacing.tight)
+        } else {
+            VStack(alignment: .leading, spacing: 0) {
+                if let input, !input.isEmpty { payload(input, label: "Input") }
+                if let output, !output.isEmpty { payload(output, label: nil) }
+                if let error, !error.isEmpty { payload(error, label: "Error", ink: Theme.rose) }
+                footer(lines: output.map { $0.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).count } ?? 0,
+                       copyText: output ?? input ?? error)
             }
-            // A bounded preview keeps a large command result from turning
-            // expansion into a multi-screen scroll through one tool.
+            .background(Theme.raised, in: .rect(cornerRadius: Radius.control - Spacing.hair))
+        }
+    }
+
+    private func payload(_ text: String, label: String?, ink: Color? = nil) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.tight) {
+            if let label {
+                Text(label).typeStyle(.footnote).foregroundStyle(Theme.muted)
+            }
+            // A bounded preview keeps a large result from turning expansion
+            // into a multi-screen scroll through one tool.
             ScrollView([.horizontal, .vertical]) {
                 Text(text)
-                    .font(.system(.caption, design: .monospaced))
+                    .typeStyle(.caption, mono: true)
+                    .foregroundStyle(ink ?? Theme.mutedStrong)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: true, vertical: true)
             }
             .frame(maxHeight: 240)
         }
+        .padding(.horizontal, Spacing.row)
+        .padding(.vertical, Spacing.snug + Spacing.hair)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .bottom) { Theme.line.frame(height: 1) }
+    }
+
+    private func footer(lines: Int, copyText: String?) -> some View {
+        HStack(spacing: Spacing.row) {
+            if lines > 1 {
+                Text("\(lines) lines").monospacedDigit()
+            }
+            if let path = tool.filePath {
+                let label = tool.fileLabel ?? path
+                Button("Open") { onOpenFile(path) }
+                    .accessibilityLabel("Open \(label)")
+            }
+            Spacer(minLength: 0)
+            if let copyText, !copyText.isEmpty {
+                Button("Copy") { UIPasteboard.general.string = copyText }
+            }
+        }
+        .typeStyle(.footnote)
+        .foregroundStyle(Theme.muted)
+        .buttonStyle(.plain)
+        .frame(minHeight: 32)
+        .padding(.horizontal, Spacing.row)
+    }
+
+    /// "Ran cargo test" → ("Ran", "cargo test"); "Command failed" → (nil, whole).
+    /// Only a leading verb the labels use gets split, so a tool's own name
+    /// never loses its first word.
+    static func splitLeadingVerb(_ summary: String) -> (verb: String?, target: String?) {
+        let verbs: Set<String> = [
+            "Ran", "Running", "Read", "Reading", "Edited", "Editing", "Created", "Creating",
+            "Deleted", "Deleting", "Moved", "Moving", "Viewed", "Viewing", "Captured", "Capturing",
+            "Generated", "Generating", "Searched", "Searching", "Listed", "Listing", "Fetched",
+            "Fetching", "Loaded", "Used", "Using", "Started", "Starting", "Activated", "Activating"
+        ]
+        guard let space = summary.firstIndex(of: " "), verbs.contains(String(summary[..<space])) else {
+            return (nil, summary)
+        }
+        let target = summary[summary.index(after: space)...].trimmingCharacters(in: .whitespaces)
+        return (String(summary[..<space]), target.isEmpty ? nil : target)
     }
 }
 
@@ -224,8 +374,11 @@ struct TranscriptTodoRow: View {
         DisclosureGroup {
             VStack(alignment: .leading, spacing: Spacing.row) {
                 ForEach(list.items) { item in
-                    Label(item.text ?? "Task", systemImage: symbol(item.status))
-                        .font(.footnote)
+                    Label {
+                        Text(item.text ?? "Task").typeStyle(.footnote)
+                    } icon: {
+                        Image(systemName: symbol(item.status)).typeSymbol(.footnote)
+                    }
                         .foregroundStyle(item.status == .active ? Theme.ink : Theme.muted)
                         .strikethrough(item.status == .cancelled)
                 }
@@ -233,7 +386,7 @@ struct TranscriptTodoRow: View {
             .padding(.bottom, Spacing.snug)
         } label: {
             Text("Plan · \(list.items.filter { $0.status == .done }.count) of \(list.items.count) complete")
-                .font(.footnote)
+                .typeStyle(.footnote)
                 .foregroundStyle(Theme.muted)
                 .frame(minHeight: 44)
         }

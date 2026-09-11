@@ -4,6 +4,7 @@ import type { RemoteConnectionState } from "../lib/wsTransport.js";
 import { ACCENT_STORAGE_KEY, DEFAULT_ACCENT_ID } from "../lib/accent.js";
 import { CHAT_FONT_SIZE_STORAGE_KEY, FONT_SIZE_STORAGE_KEY } from "../lib/fonts.js";
 import { THEME_STORAGE_KEY } from "../lib/theme.js";
+import { CHAT_VERBOSITY_KEY } from "../lib/uiPreferences.js";
 import {
   DEFAULT_USER_BUBBLE_TINT,
   USER_BUBBLE_TINT_STORAGE_KEY
@@ -250,11 +251,17 @@ describe("MobileApp embed mode", () => {
         }
       ]
     });
+    // This interaction intentionally inspects the individual Write row. The
+    // mobile shell now honors the shared verbosity setting, so use Compact for
+    // this test instead of relying on the old undefined default.
+    window.localStorage.setItem(CHAT_VERBOSITY_KEY, "2");
     await renderEmbedded();
     act(() => window.argmaxNative?.openSession("session-1"));
     await screen.findByRole("region", { name: "Conversation" });
 
-    // The chip opens the change inline; "Open" beside it is the file itself.
+    // Compact first opens the grouped activity. The individual Write row then
+    // opens the file change card, whose "Open" action is the file itself.
+    fireEvent.click(await screen.findByRole("button", { name: "Edited a file" }));
     fireEvent.click(await screen.findByRole("button", { name: "Edited panel.ts" }));
     fireEvent.click(
       await screen.findByRole("button", { name: "Open /tmp/worktrees/dashboard/src/panel.ts" })

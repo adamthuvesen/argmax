@@ -161,14 +161,14 @@ struct InsightsScreen: View {
     private func filterPill(icon: String, text: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
-                .font(.caption.weight(.semibold))
+                .typeSymbol(.caption, weight: .semibold)
                 .foregroundStyle(Theme.muted)
             Text(text)
-                .font(.footnote.weight(.semibold))
+                .typeStyle(.footnote, weight: .semibold)
                 .foregroundStyle(Theme.ink)
                 .lineLimit(1)
             Image(systemName: "chevron.down")
-                .font(.caption2.weight(.semibold))
+                .typeSymbol(.caption2, weight: .semibold)
                 .foregroundStyle(Theme.muted)
         }
         .padding(.horizontal, Spacing.row)

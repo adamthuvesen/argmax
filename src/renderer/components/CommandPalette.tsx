@@ -598,6 +598,10 @@ export function CommandPalette({
             type="search"
             placeholder={SCOPE_PLACEHOLDER[scope]}
             aria-label="Command palette query"
+            spellCheck={false}
+            autoCorrect="off"
+            autoCapitalize="off"
+            autoComplete="off"
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);

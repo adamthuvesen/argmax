@@ -324,6 +324,73 @@ describe("AgentsView", () => {
     expect(screen.queryByText("Parent result")).not.toBeInTheDocument();
   });
 
+  it("forwards Minimal verbosity to a multitask transcript", () => {
+    const child: MultitaskChild = {
+      session: {
+        ...session,
+        id: "child-1",
+        workspaceId: "child-workspace",
+        state: "complete",
+        completedAt: "2026-05-12T15:00:04.000Z",
+        lastActivityAt: "2026-05-12T15:00:04.000Z",
+        launchKind: "multitask",
+        launchedBySessionId: session.id,
+        prompt: "Review the implementation"
+      },
+      workspace
+    };
+    const childEvent = (eventValue: TimelineEvent): TimelineEvent => ({
+      ...eventValue,
+      sessionId: child.session.id
+    });
+    const timelines = new SessionTimelines();
+    timelines.merge(
+      [
+        childEvent(event("child-answer", "message.completed", "2026-05-12T15:00:04.000Z", "Child result")),
+        childEvent(event("command-2-done", "command.completed", "2026-05-12T15:00:03.000Z", "tool_result", {
+          tool_use_id: "command-2",
+          content: "ok"
+        })),
+        childEvent(event("command-2-start", "command.started", "2026-05-12T15:00:02.000Z", "Bash", {
+          id: "command-2",
+          name: "Bash",
+          input: { command: "echo two" }
+        })),
+        childEvent(event("command-1-done", "command.completed", "2026-05-12T15:00:01.000Z", "tool_result", {
+          tool_use_id: "command-1",
+          content: "ok"
+        })),
+        childEvent(event("command-1-start", "command.started", "2026-05-12T15:00:00.000Z", "Bash", {
+          id: "command-1",
+          name: "Bash",
+          input: { command: "echo one" }
+        }))
+      ],
+      []
+    );
+
+    render(
+      <SessionTimelineProvider store={timelines}>
+        <AgentsView
+          defaultToolCallsDisplay="single-line"
+          defaultToolCallGroupsExpanded={false}
+          thinkingDisplay="collapsed"
+          events={[]}
+          parentSession={session}
+          agentTabs={agentTabs({
+            tabIds: ["multitask:child-1"],
+            activeTabId: "multitask:child-1"
+          })}
+          multitasks={[child]}
+          workspace={workspace}
+        />
+      </SessionTimelineProvider>
+    );
+
+    expect(screen.getByText("Child result")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ran commands" })).toBeNull();
+  });
+
   it("closes a subagent from its tab", () => {
     const closeTab = vi.fn();
     renderView(

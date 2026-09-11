@@ -52,6 +52,15 @@
   max-width: 180px;
 }
 
+/* Read-only branch label, not a switcher — the session composer doesn't
+   support changing branch mid-chat, so this chip doesn't invite a click. */
+.session-input-toolbar .branch-chip {
+  flex: 0 1 auto;
+  overflow: hidden;
+  max-width: 180px;
+  cursor: default;
+}
+
 .session-input-toolbar .composer-footer-chip--changes {
   flex: 0 0 auto;
   max-width: none;
@@ -63,7 +72,7 @@
      pixels the counts dominate a row where they are the secondary fact. */
   font-size: var(--text-2xs);
   font-variant-numeric: tabular-nums;
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
 }
 
 /* Composer-only tint. Everything else in this row is grey, so at full
@@ -98,7 +107,7 @@
 
 .session-input-toolbar .composer-footer-chip--changes .change-count {
   gap: 5px;
-  font-weight: 400;
+  font-weight: calc(400 + var(--font-weight-offset));
 }
 
 .session-input-toolbar .composer-footer-chip-label {
@@ -346,7 +355,7 @@
   white-space: nowrap;
   font-family: var(--font-ui);
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   letter-spacing: -0.01em;
   color: var(--text-soft);
 }

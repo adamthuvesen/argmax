@@ -170,16 +170,16 @@ struct ActivityHeatmap: View {
 
     private var weekdayGutter: some View {
         VStack(spacing: 3) {
-            Text("").font(.caption2).frame(height: 14)
+            Text("").typeStyle(.caption2).frame(height: 14)
             ForEach(Array(["Mon", "", "Wed", "", "Fri", "", ""].enumerated()), id: \.offset) { _, day in
-                Text(day).font(.caption2).foregroundStyle(Theme.muted)
+                Text(day).typeStyle(.caption2).foregroundStyle(Theme.muted)
                     .frame(width: 26, height: 11, alignment: .leading)
             }
         }
     }
 
     private func monthLabel(for index: Int) -> some View {
-        Text(monthLabels[index]).font(.caption2).foregroundStyle(Theme.muted)
+        Text(monthLabels[index]).typeStyle(.caption2).foregroundStyle(Theme.muted)
             .frame(height: 14, alignment: .leading)
     }
 
@@ -307,7 +307,7 @@ struct ActivityDailyChart: View {
                         if let date = value.as(Date.self) {
                             AxisValueLabel {
                                 Text(DateFormatter.cachedAxis.string(from: date))
-                                    .font(.caption2).foregroundStyle(Theme.muted)
+                                    .typeStyle(.caption2).foregroundStyle(Theme.muted)
                             }
                         }
                         AxisGridLine(stroke: .init(lineWidth: 0.5))
@@ -319,7 +319,7 @@ struct ActivityDailyChart: View {
                         if let number = value.as(Double.self) {
                             AxisValueLabel {
                                 Text(InsightsFormat.compact(number))
-                                    .font(.caption2).foregroundStyle(Theme.muted)
+                                    .typeStyle(.caption2).foregroundStyle(Theme.muted)
                             }
                         }
                         AxisGridLine(stroke: .init(lineWidth: 0.5))
@@ -424,7 +424,7 @@ struct ActivityRepositories: View {
                 Text(InsightsFormat.relative(repo.lastCommitAt))
                     .foregroundStyle(Theme.muted)
             }
-            .font(.caption).monospacedDigit()
+            .typeStyle(.caption).monospacedDigit()
         }
         .padding(.vertical, Spacing.snug)
         .accessibilityElement(children: .combine)
@@ -548,7 +548,7 @@ struct ActivityReviews: View {
         InsightsCard(title: "Reviews given", trailing: nil) {
             HStack(alignment: .firstTextBaseline, spacing: Spacing.snug) {
                 Text("\(totals.reviewsGiven)")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .typeSize(34, relativeTo: .largeTitle, weight: .bold, design: .rounded)
                     .monospacedDigit().foregroundStyle(Theme.ink)
                 Text("reviews on \(uniquePRs) pull requests")
                     .typeMeta().foregroundStyle(Theme.muted)
@@ -661,7 +661,7 @@ struct ActivityCadenceCard: View {
             )
             .cornerRadius(4)
             .annotation(position: .top, alignment: .center) {
-                Text("\(Int(point.value))").font(.caption2).foregroundStyle(Theme.muted)
+                Text("\(Int(point.value))").typeStyle(.caption2).foregroundStyle(Theme.muted)
             }
         }
         .chartLegend(.hidden)
@@ -670,7 +670,7 @@ struct ActivityCadenceCard: View {
             AxisMarks { value in
                 AxisValueLabel {
                     if let day = value.as(String.self) {
-                        Text(day).font(.caption2).foregroundStyle(Theme.muted)
+                        Text(day).typeStyle(.caption2).foregroundStyle(Theme.muted)
                     }
                 }
             }
@@ -701,7 +701,7 @@ struct ActivityCadenceCard: View {
             AxisMarks(values: [0, 6, 12, 18, 23]) { value in
                 AxisValueLabel {
                     if let hour = value.as(Int.self) {
-                        Text("\(hour)").font(.caption2).foregroundStyle(Theme.muted)
+                        Text("\(hour)").typeStyle(.caption2).foregroundStyle(Theme.muted)
                     }
                 }
             }

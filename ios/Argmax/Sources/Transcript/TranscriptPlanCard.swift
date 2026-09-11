@@ -45,7 +45,7 @@ struct TranscriptPlanCard: View {
                 Image(systemName: "list.bullet.clipboard")
                     .foregroundStyle(Theme.muted)
                 Text(transcriptPlanTitle(plan.markdown))
-                    .font(.subheadline.weight(.semibold))
+                    .typeStyle(.footnote, weight: .semibold)
                     .foregroundStyle(Theme.ink)
                     .lineLimit(collapsed ? 1 : 2)
                 Spacer(minLength: Spacing.tight)
@@ -78,7 +78,7 @@ struct TranscriptPlanCard: View {
 
                 if let failure {
                     Text(failure)
-                        .font(.footnote)
+                        .typeStyle(.footnote)
                         .foregroundStyle(Theme.rose)
                         .accessibilityLabel("Could not accept plan. \(failure)")
                 }
@@ -102,8 +102,11 @@ struct TranscriptPlanCard: View {
                         .disabled(accepting)
                     }
                 } else if submitted {
-                    Label("Submitted", systemImage: "checkmark.circle.fill")
-                        .font(.footnote.weight(.medium))
+                    Label {
+                        Text("Submitted").typeStyle(.footnote, weight: .medium)
+                    } icon: {
+                        Image(systemName: "checkmark.circle.fill").typeSymbol(.footnote, weight: .medium)
+                    }
                         .foregroundStyle(Theme.sage)
                 }
             }

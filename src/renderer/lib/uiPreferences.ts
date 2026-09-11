@@ -16,6 +16,7 @@ export const TOOL_CALL_GROUPS_EXPANDED_KEY = "argmax.toolCalls.groups.expanded";
 export const TURN_CHANGES_EXPANDED_KEY = "argmax.turnChanges.expanded";
 export const FAST_MODE_KEY = "argmax.fastMode.enabled";
 export const COMPOSER_PIXEL_FIELD_KEY = "argmax.composer.pixelField.enabled";
+export const COMPOSER_CONTEXT_INDICATOR_KEY = "argmax.composer.contextIndicator.enabled";
 export const PR_MILESTONE_CELEBRATION_KEY = "argmax.prMilestones.celebrate";
 export const RANDOM_SESSION_ICON_KEY = "argmax.sessionIcon.random.enabled";
 export const DESKTOP_NOTIFICATIONS_KEY = "argmax.desktopNotifications.enabled";
@@ -122,7 +123,7 @@ export const CHAT_VERBOSITY_LABELS: Record<ChatVerbosity, string> = {
 };
 
 export const CHAT_VERBOSITY_HINTS: Record<ChatVerbosity, string> = {
-  1: "Activity summaries while working. Finished turns keep the answer and failures. Click Worked for to inspect the work.",
+  1: "Activity summaries while working. Finished turns keep the answer. Expand Worked to inspect all tool activity, including failed attempts.",
   2: "One short activity summary between messages. Expand to see commands, files, and agent activity.",
   3: "One short activity summary between messages, with thoughts always shown inline.",
   4: "Tool calls and groups open on the latest turn, with thoughts always shown inline."

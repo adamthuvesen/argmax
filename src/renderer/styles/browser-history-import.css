@@ -93,7 +93,7 @@
   gap: var(--space-1_5);
   color: var(--muted-strong);
   font-size: var(--text-xs);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
 }
 
 .browser-history-import-profile select {
@@ -106,7 +106,7 @@
   background: var(--panel-sunken);
   color: var(--text);
   font: inherit;
-  font-weight: 400;
+  font-weight: calc(400 + var(--font-weight-offset));
 }
 
 .browser-history-import-profile select:focus-visible {

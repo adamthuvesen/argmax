@@ -24,7 +24,7 @@ struct TranscriptRichBlock: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 2) {
                 Text(kind == .mermaid ? "Diagram" : "Equation")
-                    .font(.caption.weight(.semibold))
+                    .typeStyle(.footnote, weight: .semibold)
                     .foregroundStyle(Theme.muted)
                 Spacer()
                 Button { UIPasteboard.general.string = source } label: {
@@ -227,7 +227,7 @@ private struct TranscriptRichZoomCanvas<Content: View>: View {
             .accessibilityLabel("Zoom out")
             Button { reset() } label: {
                 Text("\(Int((scale * 100).rounded()))%")
-                    .font(.caption.monospacedDigit())
+                    .typeStyle(.footnote, monospacedDigit: true)
                     .frame(minWidth: 48, minHeight: 42)
             }
             .accessibilityLabel("Reset zoom")
@@ -272,8 +272,11 @@ struct TranscriptRichSourceFallback: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(message, systemImage: "exclamationmark.triangle")
-                .font(.caption)
+            Label {
+                Text(message).typeStyle(.footnote)
+            } icon: {
+                Image(systemName: "exclamationmark.triangle").typeSymbol(.caption)
+            }
                 .foregroundStyle(Theme.amber)
                 .fixedSize(horizontal: false, vertical: true)
             TranscriptRichSource(source: source)
@@ -290,8 +293,11 @@ private struct TranscriptRichSourceNote: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label(message, systemImage: "info.circle")
-                .font(.caption)
+            Label {
+                Text(message).typeStyle(.footnote)
+            } icon: {
+                Image(systemName: "info.circle").typeSymbol(.caption)
+            }
                 .foregroundStyle(Theme.muted)
                 .fixedSize(horizontal: false, vertical: true)
             ScrollView(.vertical) {
@@ -308,7 +314,7 @@ private struct TranscriptRichSource: View {
     var body: some View {
         ScrollView(.horizontal) {
             Text(source)
-                .font(.argmaxMono(.caption))
+                .typeStyle(.caption, mono: true)
                 .foregroundStyle(Theme.ink)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: true, vertical: true)

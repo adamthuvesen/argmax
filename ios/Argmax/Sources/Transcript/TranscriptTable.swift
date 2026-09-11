@@ -71,7 +71,7 @@ struct TranscriptTableBlock: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("Table").font(.caption.weight(.semibold)).foregroundStyle(Theme.muted)
+                Text("Table").typeStyle(.footnote, weight: .semibold).foregroundStyle(Theme.muted)
                 Spacer()
                 Button { UIPasteboard.general.string = table.tabSeparatedText } label: {
                     Image(systemName: "doc.on.doc").frame(width: 32, height: 32)
@@ -123,7 +123,7 @@ struct TranscriptTableBlock: View {
         GridRow {
             ForEach(Array(cells.enumerated()), id: \.offset) { _, cell in
                 Text((try? AttributedString(markdown: cell, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(cell))
-                    .font(header ? .footnote.weight(.semibold) : .footnote)
+                    .typeStyle(.footnote, weight: header ? .semibold : nil)
                     .foregroundStyle(Theme.ink)
                     .textSelection(.enabled)
                     .frame(minWidth: 104, maxWidth: 240, alignment: .leading)

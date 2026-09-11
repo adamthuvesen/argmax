@@ -6,6 +6,9 @@ tile per provider), a full-width chart, a token-flow band, and a breakdown by
 model or day. It reads every provider transcript on disk, not only the sessions
 Argmax launched, so it is the same number a terminal-only user would get.
 
+The iPhone model breakdown shows the top 12 models in descending order of the
+selected metric (tokens or cost). Its bars use that same metric.
+
 Below that ledger is **Remaining on your plans**: live included usage left on
 each provider login (plan name, remaining percent, next reset). Those figures
 come from the provider account, including use outside Argmax, and are not the

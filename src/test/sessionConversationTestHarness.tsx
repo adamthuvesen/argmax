@@ -141,6 +141,7 @@ type ConversationOptions = {
   review?: ReviewState;
   /** Defaults to the shared `workspace` fixture. */
   workspace?: ConversationProps["workspace"];
+  contextIndicatorEnabled?: ConversationProps["contextIndicatorEnabled"];
   /** Defaults to true (events already present). Pass false to reproduce a real
       reopen, where the pane mounts empty and the backfill lands later. */
   eventsBackfilled?: boolean;
@@ -185,6 +186,7 @@ function conversationElement(
       review={options.review ?? reviewStub()}
       session={session}
       workspace={options.workspace ?? workspace}
+      contextIndicatorEnabled={options.contextIndicatorEnabled ?? false}
     />
   );
 }

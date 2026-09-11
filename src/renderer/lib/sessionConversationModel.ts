@@ -2,6 +2,7 @@ import type { EventType, TimelineEvent } from "../../shared/types.js";
 import { isPlainObject, stringValue } from "../../shared/typeGuards.js";
 import { isInternalAgentLaunchMetadata } from "./agentLaunch.js";
 import { decodeTimelineEvent } from "./canonicalTimeline.js";
+import { mergeToolActivity } from "./toolActivity.js";
 import {
   cleanToolInput,
   extractToolError,
@@ -655,6 +656,8 @@ export function buildSessionToolCalls(
         output,
         status: renderedStatus,
         completionObserved: completion !== null,
+        cancelled: canonicalCompletion?.kind === "tool" && canonicalCompletion.outcome === "cancelled",
+        activity: mergeToolActivity(canonicalStart.activity, canonicalCompletion?.kind === "tool" ? canonicalCompletion.activity : null),
         createdAt: event.createdAt,
         // No real completion timestamp exists for a dropped completion; anchor
         // the inferred-done case at the start so the chip shows a check instead

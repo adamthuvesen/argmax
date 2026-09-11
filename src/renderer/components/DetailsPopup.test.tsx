@@ -21,12 +21,98 @@ const EVENTS: TimelineEvent[] = [
   event("m1", "user.message", "Explain this excerpt in more detail: vector clocks", "2026-05-12T15:00:00.000Z")
 ];
 
+const MINIMAL_TOOL_EVENTS: TimelineEvent[] = [
+  event("answer", "message.completed", "The file tabs are ready.", "2026-05-12T15:00:13.000Z"),
+  event("run-4-b-done", "command.completed", "tool_result", "2026-05-12T15:00:12.000Z", {
+    tool_use_id: "run-4-b",
+    content: "ok"
+  }),
+  event("run-4-b-start", "command.started", "Bash", "2026-05-12T15:00:11.000Z", {
+    id: "run-4-b",
+    name: "Bash",
+    input: { command: "echo four-b" }
+  }),
+  event("run-4-a-done", "command.completed", "tool_result", "2026-05-12T15:00:10.000Z", {
+    tool_use_id: "run-4-a",
+    content: "ok"
+  }),
+  event("run-4-a-start", "command.started", "Bash", "2026-05-12T15:00:09.000Z", {
+    id: "run-4-a",
+    name: "Bash",
+    input: { command: "echo four-a" }
+  }),
+  event("narration-4", "message.completed", "Checking the final state.", "2026-05-12T15:00:08.000Z"),
+  event("run-3-b-done", "command.completed", "tool_result", "2026-05-12T15:00:07.000Z", {
+    tool_use_id: "run-3-b",
+    content: "ok"
+  }),
+  event("run-3-b-start", "command.started", "Bash", "2026-05-12T15:00:06.000Z", {
+    id: "run-3-b",
+    name: "Bash",
+    input: { command: "echo three-b" }
+  }),
+  event("run-3-a-done", "command.completed", "tool_result", "2026-05-12T15:00:05.000Z", {
+    tool_use_id: "run-3-a",
+    content: "ok"
+  }),
+  event("run-3-a-start", "command.started", "Bash", "2026-05-12T15:00:04.000Z", {
+    id: "run-3-a",
+    name: "Bash",
+    input: { command: "echo three-a" }
+  }),
+  event("narration-3", "message.completed", "Checking the third pass.", "2026-05-12T15:00:03.000Z"),
+  event("run-2-b-done", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
+    tool_use_id: "run-2-b",
+    content: "ok"
+  }),
+  event("run-2-b-start", "command.started", "Bash", "2026-05-12T15:00:01.900Z", {
+    id: "run-2-b",
+    name: "Bash",
+    input: { command: "echo two-b" }
+  }),
+  event("run-2-a-done", "command.completed", "tool_result", "2026-05-12T15:00:01.800Z", {
+    tool_use_id: "run-2-a",
+    content: "ok"
+  }),
+  event("run-2-a-start", "command.started", "Bash", "2026-05-12T15:00:01.700Z", {
+    id: "run-2-a",
+    name: "Bash",
+    input: { command: "echo two-a" }
+  }),
+  event("narration-2", "message.completed", "Checking the second pass.", "2026-05-12T15:00:01.600Z"),
+  event("run-1-b-done", "command.completed", "tool_result", "2026-05-12T15:00:01.500Z", {
+    tool_use_id: "run-1-b",
+    content: "ok"
+  }),
+  event("run-1-b-start", "command.started", "Bash", "2026-05-12T15:00:01.400Z", {
+    id: "run-1-b",
+    name: "Bash",
+    input: { command: "echo one-b" }
+  }),
+  event("run-1-a-done", "command.completed", "tool_result", "2026-05-12T15:00:01.300Z", {
+    tool_use_id: "run-1-a",
+    content: "ok"
+  }),
+  event("run-1-a-start", "command.started", "Bash", "2026-05-12T15:00:01.200Z", {
+    id: "run-1-a",
+    name: "Bash",
+    input: { command: "echo one-a" }
+  }),
+  event("narration-1", "message.completed", "Checking the first pass.", "2026-05-12T15:00:01.100Z"),
+  event("seed", "user.message", "Add file tabs.", "2026-05-12T15:00:01.000Z")
+];
+
 // The popup's own prop types, not `ReturnType<typeof vi.fn>`: Vitest 4 types
 // a bare `vi.fn()` as `Mock<Procedure | Constructable>`, which no longer
 // widens to a call signature, so a loose override type poisons the prop.
 type DetailsPopupProps = Parameters<typeof DetailsPopup>[0];
 
 function renderPopup(overrides: {
+  defaultToolCallsDisplay?: DetailsPopupProps["defaultToolCallsDisplay"];
+  defaultToolCallGroupsExpanded?: DetailsPopupProps["defaultToolCallGroupsExpanded"];
+  thinkingDisplay?: DetailsPopupProps["thinkingDisplay"];
+  chatFontSize?: DetailsPopupProps["chatFontSize"];
+  events?: DetailsPopupProps["events"];
   approvals?: DetailsPopupProps["approvals"];
   onResolveApproval?: DetailsPopupProps["onResolveApproval"];
   onClose?: DetailsPopupProps["onClose"];
@@ -36,7 +122,11 @@ function renderPopup(overrides: {
     <DetailsPopup
       approvals={overrides.approvals}
       onResolveApproval={overrides.onResolveApproval}
-      events={EVENTS}
+      defaultToolCallsDisplay={overrides.defaultToolCallsDisplay}
+      defaultToolCallGroupsExpanded={overrides.defaultToolCallGroupsExpanded}
+      thinkingDisplay={overrides.thinkingDisplay}
+      chatFontSize={overrides.chatFontSize}
+      events={overrides.events ?? EVENTS}
       onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
       onClose={overrides.onClose ?? vi.fn(() => {})}
       onLoadSessionEvents={overrides.onLoadSessionEvents ?? vi.fn(() => Promise.resolve())}
@@ -76,6 +166,31 @@ describe("DetailsPopup", () => {
     // Floating composer: no attach or workspace-context cluster — the popup
     // is too narrow for them at its minimum width.
     expect(screen.queryByRole("button", { name: "Attach file" })).toBeNull();
+  });
+
+  it("keeps the floating composer on the agent-window font scale", () => {
+    renderPopup({ chatFontSize: 10 });
+
+    expect(screen.getByRole("dialog", { name: "More details" }))
+      .toHaveAttribute("data-font-size", "10");
+    expect(screen.getByRole("textbox", { name: "Chat prompt" }).closest("form"))
+      .toHaveAttribute("data-font-size", "10");
+  });
+
+  it("forwards Minimal verbosity so successful tool groups stay behind Worked", () => {
+    renderPopup({
+      events: MINIMAL_TOOL_EVENTS,
+      defaultToolCallsDisplay: "single-line",
+      defaultToolCallGroupsExpanded: false,
+      thinkingDisplay: "collapsed"
+    });
+
+    expect(screen.getByText("The file tabs are ready.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Worked/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ran commands" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Worked/ }));
+    expect(screen.getAllByRole("button", { name: "Ran commands" })).toHaveLength(4);
   });
 
   it("hides the seed prompt but keeps typed follow-ups", () => {

@@ -115,7 +115,7 @@ struct FileTreeView: View {
                 withAnimation(.easeOut(duration: 0.16)) { expanded.removeAll() }
             } label: {
                 Image(systemName: "chevron.up.chevron.down")
-                    .font(.footnote.weight(.semibold))
+                    .typeSymbol(.footnote, weight: .semibold)
                     .foregroundStyle(Theme.ink)
                     .frame(width: 40, height: 40)
                     .background(Theme.raised, in: .circle)
@@ -147,7 +147,7 @@ struct FileTreeRowLabel: View {
             }
             HStack(spacing: Spacing.snug) {
                 Image(systemName: glyph)
-                    .font(.footnote.weight(.medium))
+                    .typeSymbol(.footnote, weight: .medium)
                     .foregroundStyle(row.isDirectory ? Theme.muted : Theme.muted.opacity(0.7))
                     .frame(width: 16)
                     .rotationEffect(.degrees(row.isDirectory && isOpen ? 90 : 0))

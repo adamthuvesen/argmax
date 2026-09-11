@@ -406,7 +406,7 @@ body:has(.app-shell[data-sidebar-translucent="true"]) {
   flex: 1 1 auto;
   color: var(--muted);
   font-size: var(--text-2xs);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
@@ -631,7 +631,7 @@ body:has(.app-shell[data-sidebar-translucent="true"]) {
 
 .project-actions-confirm-text strong {
   color: var(--text);
-  font-weight: 600;
+  font-weight: calc(600 + var(--font-weight-offset));
 }
 
 .project-actions-confirm-buttons {
@@ -648,7 +648,7 @@ body:has(.app-shell[data-sidebar-translucent="true"]) {
   width: auto;
   padding: var(--space-1_5) var(--space-2_5);
   justify-content: center;
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
 }
 
 .project-actions-confirm-cancel {
@@ -742,7 +742,7 @@ body:has(.app-shell[data-sidebar-translucent="true"]) {
   white-space: nowrap;
   text-transform: none;
   font-size: var(--text-sm);
-  font-weight: 400;
+  font-weight: calc(400 + var(--font-weight-offset));
   letter-spacing: 0.01em;
 }
 

@@ -36,7 +36,17 @@ struct PickerOption<Value: Hashable>: Identifiable {
     var groupDetail: String?
     var glyph: AnyView?
 
-    var id: Value { value }
+    /// Group first, so a row the model picker shows twice — once under
+    /// "Recent", once under its own CLI — is two identities. Keyed on the
+    /// value alone, the lazy stack treats the second copy as a repeat of the
+    /// first and leaves its slot blank, which is how a recent model went
+    /// missing from its provider's group.
+    struct RowID: Hashable {
+        let group: String?
+        let value: Value
+    }
+
+    var id: RowID { RowID(group: group, value: value) }
 }
 
 struct PickerSheet<Value: Hashable>: View {
@@ -100,12 +110,12 @@ struct PickerSheet<Value: Hashable>: View {
             // column their checks do.
             .frame(width: 18, alignment: .center)
             Text(group.name ?? "")
-                .font(.caption2.weight(.semibold))
+                .typeStyle(.caption2, weight: .semibold)
                 .tracking(0.6)
                 .foregroundStyle(Theme.muted)
             if let detail = lead?.groupDetail {
                 Text(detail)
-                    .font(.caption2)
+                    .typeStyle(.caption2)
                     .foregroundStyle(Theme.muted)
                     .lineLimit(1)
             }
@@ -136,22 +146,24 @@ struct PickerSheet<Value: Hashable>: View {
                         glyph
                     } else if option.value == selection {
                         Image(systemName: "checkmark")
-                            .font(.footnote.weight(.semibold))
+                            .typeSymbol(.footnote, weight: .semibold)
                             .foregroundStyle(accent.color)
                     }
                 }
                 .frame(width: 18, alignment: .center)
                 Text(option.label)
-                    .font(option.mono
-                        ? .argmaxMono(.subheadline)
-                        : .subheadline.weight(option.value == selection ? .semibold : .regular))
+                    .typeStyle(
+                        .subheadline,
+                        weight: option.mono ? nil : (option.value == selection ? .semibold : .regular),
+                        mono: option.mono
+                    )
                     .foregroundStyle(Theme.ink)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer(minLength: Spacing.snug)
                 if let detail = option.detail {
                     Text(detail)
-                        .font(option.detailMono ? .argmaxMono(.caption2) : .caption2)
+                        .typeStyle(.caption2, mono: option.detailMono)
                         .foregroundStyle(Theme.muted)
                         .lineLimit(1)
                 }

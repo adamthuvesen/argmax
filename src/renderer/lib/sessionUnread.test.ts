@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 describe("session unread stamps", () => {
-  it("acknowledges only the observed activity of the open shared chat", async () => {
+  it("acknowledges only the observed activity of the open shared chat", () => {
     const descriptor = Object.getOwnPropertyDescriptor(window, "argmax");
     const markWorkspacesViewed = vi.fn().mockResolvedValue([]);
     Object.defineProperty(window, "argmax", { configurable: true, value: { markWorkspacesViewed } });
@@ -33,7 +33,7 @@ describe("session unread stamps", () => {
       expect(markWorkspacesViewed).toHaveBeenCalledExactlyOnceWith({
         workspaces: [{ workspaceId: "w1", observedActivityAt: later }]
       });
-      await act(async () => { rerender({ lastViewedAt: later }); });
+      act(() => { rerender({ lastViewedAt: later }); });
       expect(markWorkspacesViewed).toHaveBeenCalledTimes(1);
       unmount();
     } finally {

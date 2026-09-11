@@ -222,7 +222,7 @@
 
 .empty-state h2 {
   margin: 0;
-  font-weight: 520;
+  font-weight: calc(520 + var(--font-weight-offset));
   letter-spacing: -0.005em;
 }
 
@@ -240,7 +240,7 @@
   color: var(--text);
   background: var(--panel);
   cursor: pointer;
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   transition: background var(--duration-fast) var(--ease), transform var(--duration-fast) var(--ease);
 }
 

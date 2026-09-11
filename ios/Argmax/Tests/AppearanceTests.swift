@@ -28,6 +28,7 @@ final class AppearanceTests: XCTestCase {
         XCTAssertNil(appearance.theme.colorScheme)
         XCTAssertEqual(appearance.tint, .orange)
         XCTAssertEqual(appearance.chatDetail, .compact)
+        XCTAssertEqual(appearance.fontScale, .standard)
     }
 
     func testChatDetailSurvivesARelaunch() {
@@ -70,6 +71,39 @@ final class AppearanceTests: XCTestCase {
 
         XCTAssertEqual(store.object(forKey: "argmax.mascot.visible") as? Bool, false)
         XCTAssertFalse(Appearance(store: store).mascot)
+    }
+
+    /// The phone ships in SF Pro, the closest match to the ChatGPT-style
+    /// reference, and keeps the choice under the shared font key.
+    func testTheTypefaceDefaultsToSFProAndSurvivesARelaunch() {
+        let first = Appearance(store: store)
+        XCTAssertEqual(first.typeface, .system)
+
+        first.typeface = .system
+
+        XCTAssertEqual(store.string(forKey: "argmax.font.family"), "system")
+        XCTAssertEqual(Appearance(store: store).typeface, .system)
+    }
+
+    /// A value the phone cannot draw must land on its SF Pro default.
+    func testADesktopOnlyFontFallsBackToTheDefault() {
+        store.set("fira-code", forKey: Appearance.typefaceKey)
+
+        XCTAssertEqual(Appearance(store: store).typeface, .system)
+    }
+
+    func testFontScaleSurvivesARelaunch() {
+        let first = Appearance(store: store)
+        first.fontScale = .five
+
+        XCTAssertEqual(store.integer(forKey: Appearance.fontScaleKey), 5)
+        XCTAssertEqual(Appearance(store: store).fontScale, .five)
+    }
+
+    func testUnreadableFontScaleFallsBackToTheCurrentSize() {
+        store.set(99, forKey: Appearance.fontScaleKey)
+
+        XCTAssertEqual(Appearance(store: store).fontScale, .standard)
     }
 
     func testBothChoicesSurviveARelaunch() {

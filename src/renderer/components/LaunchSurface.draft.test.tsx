@@ -1,10 +1,11 @@
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { optionName } from "../../test/optionName.js";
 import { App } from "../App.js";
 import { persistLaunchProjectId } from "../lib/launchProjectPreference.js";
 import {
   dashboardDeltaListener,
+  launchProvider,
   mockDashboardSnapshot,
   primaryProject,
   secondProject,
@@ -229,6 +230,28 @@ describe("launcher prompt across context changes", () => {
       window.localStorage.getItem("argmax.composer.drafts") ?? "{}"
     ) as Record<string, { attachments?: unknown[] } | undefined>;
     expect(stored["launch-project-2"]?.attachments ?? []).toEqual([]);
+  });
+
+  it.each(["click", "Enter"])("starts a chat with only a screenshot via %s", async (method) => {
+    const attachment = { filePath: "/tmp/shot.png", mimeType: "image/png", sizeBytes: 10 };
+    window.localStorage.setItem(
+      "argmax.composer.drafts",
+      JSON.stringify({ "launch-project-1": { text: "", attachments: [attachment] } })
+    );
+    render(<App />);
+
+    const prompt = await screen.findByLabelText("Task prompt");
+    expect(prompt).toHaveValue("");
+    const send = screen.getByRole("button", { name: "Start agent" });
+    expect(send).toBeEnabled();
+    if (method === "click") fireEvent.click(send);
+    else fireEvent.keyDown(prompt, { key: "Enter" });
+
+    await waitFor(() => expect(launchProvider).toHaveBeenCalledOnce());
+    expect(launchProvider.mock.calls[0]?.[0]).toMatchObject({
+      prompt: "@/tmp/shot.png",
+      attachments: [attachment]
+    });
   });
 
   it("opens a stored launcher screenshot in the image preview", async () => {

@@ -105,7 +105,7 @@ html:has(.mobile-shell[data-embed]) body,
 
 .mobile-list-header h1 {
   font-size: var(--text-lg);
-  font-weight: 600;
+  font-weight: calc(600 + var(--font-weight-offset));
   line-height: 1.15;
   margin: 0;
 }
@@ -177,7 +177,7 @@ html:has(.mobile-shell[data-embed]) body,
   background: var(--amber-soft);
   color: var(--amber);
   font-size: var(--text-2xs);
-  font-weight: 600;
+  font-weight: calc(600 + var(--font-weight-offset));
   letter-spacing: 0.02em;
   z-index: 1;
 }
@@ -239,7 +239,7 @@ html:has(.mobile-shell[data-embed]) body,
   margin: 0;
   padding: 0 var(--space-6) var(--space-2_5);
   font-size: var(--text-lg);
-  font-weight: 600;
+  font-weight: calc(600 + var(--font-weight-offset));
   letter-spacing: -0.01em;
   color: var(--text);
 }
@@ -325,7 +325,7 @@ html:has(.mobile-shell[data-embed]) body,
 
 .mobile-session-title {
   font-size: var(--text-lg-tight);
-  font-weight: 400;
+  font-weight: calc(400 + var(--font-weight-offset));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -473,7 +473,7 @@ html:has(.mobile-shell[data-embed]) body,
   flex: 1;
   text-align: center;
   font-size: var(--text-base-plus);
-  font-weight: 600;
+  font-weight: calc(600 + var(--font-weight-offset));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -784,7 +784,7 @@ html:has(.mobile-shell[data-embed]) body,
 
 .mobile-new-hero .launcher-hero-title {
   font-size: var(--text-lg-tight);
-  font-weight: 400;
+  font-weight: calc(400 + var(--font-weight-offset));
   line-height: 1.2;
 }
 
@@ -984,7 +984,7 @@ html:has(.mobile-shell[data-embed]) body,
   color: var(--muted-strong);
   font: inherit;
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
 }
 
 .mobile-segmented button[aria-checked="true"] {
@@ -1216,7 +1216,7 @@ html:has(.mobile-shell[data-embed]) body,
   background: var(--accent-deep);
   color: var(--panel);
   font-size: var(--text-3xs);
-  font-weight: 600;
+  font-weight: calc(600 + var(--font-weight-offset));
   line-height: 14px;
   text-align: center;
 }
@@ -1235,7 +1235,7 @@ html:has(.mobile-shell[data-embed]) body,
   padding: 6px 14px;
   border-radius: 999px;
   font-size: var(--text-base);
-  font-weight: 600;
+  font-weight: calc(600 + var(--font-weight-offset));
   color: var(--muted);
 }
 

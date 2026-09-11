@@ -16,7 +16,11 @@ import {
   liveThoughtOwnsProgress,
   preToolNarrationGroupIds
 } from "../lib/sessionTurnView.js";
-import { foldToolRunsToSummaries } from "../lib/turnChildren.js";
+import {
+  foldActivityRunsToSummaries,
+  foldToolRunsToSummaries,
+  type ActivityRun
+} from "../lib/turnChildren.js";
 import { buildToolCallGroup, isAgentToolName, type ToolCall, type TurnToolItem } from "../lib/toolCalls.js";
 import type { TodoList } from "../lib/todoList.js";
 import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
@@ -198,7 +202,11 @@ function SessionConversationTurnInner({
   // self-updating line while the turn is live, then the finished turn hides
   // those working rows behind the chip so only the answer remains.
   const minimalActivity = defaultToolCallsDisplay === "single-line";
-  const compactActivity = defaultToolCallsDisplay === "collapsed" && defaultToolCallGroupsExpanded !== true;
+  const compactThinkingDisplay = thinkingDisplay ?? "collapsed";
+  const compactToolSummaries =
+    defaultToolCallsDisplay === "collapsed" &&
+    defaultToolCallGroupsExpanded !== true;
+  const compactActivity = compactToolSummaries && compactThinkingDisplay === "collapsed";
   const toolsExpandedDefault =
     isLatestTurn && !minimalActivity
       ? (defaultToolCallGroupsExpanded ?? defaultToolCallsDisplay === "expanded")
@@ -327,7 +335,23 @@ function SessionConversationTurnInner({
             />
           </ThoughtBlock>
         );
-        return { kind: "assistant", id: group.id, node, createdAt: group.createdAt, sortAt: group.lastActivityAt };
+        return {
+          kind: "assistant",
+          id: group.id,
+          node,
+          ...(compactActivity
+            ? {
+                activityMember: {
+                  kind: "thought" as const,
+                  id: group.id,
+                  node,
+                  live: groupLive
+                }
+              }
+            : {}),
+          createdAt: group.createdAt,
+          sortAt: group.lastActivityAt
+        };
       }
       if (group.error) {
         if (!assistantGroupHasVisibleChat(group)) return null;
@@ -462,10 +486,12 @@ function SessionConversationTurnInner({
       child.agentTools ? { ...child, agentTools: [...child.agentTools] } : child
     );
   }
-  const bodySource = foldToolRunsToSummaries(coalescedChildren, (tools) => (
+  const renderActivityGroup = ({ tools, members }: ActivityRun): ReactNode => (
     <ToolCallGroupBubble
       group={buildToolCallGroup(tools)}
-      compact={compactActivity}
+      activityMembers={members}
+      disclosureId={`session-${session?.id ?? "unknown"}-${item.id}`}
+      compact={compactToolSummaries}
       defaultExpanded={!minimalActivity && toolsExpanded}
       defaultToolsExpanded={toolRowsExpanded}
       workspaceCwd={workspace?.path ?? null}
@@ -473,7 +499,13 @@ function SessionConversationTurnInner({
       onOpenFile={onOpenFile}
       onOpenAgent={onOpenAgent}
     />
-  )).filter((child) => child.agentTools || child.node !== null);
+  );
+  const bodySource = (compactActivity
+    ? foldActivityRunsToSummaries(coalescedChildren, renderActivityGroup)
+    : foldToolRunsToSummaries(coalescedChildren, (tools) =>
+        renderActivityGroup({ tools, members: [] })
+      )
+  ).filter((child) => child.agentTools || child.node !== null);
   const bodyChildren: TurnBodyChild[] = bodySource.map((child) => {
     if (child.agentTools) {
       const first = child.agentTools[0];
@@ -481,7 +513,6 @@ function SessionConversationTurnInner({
       return {
         kind: "tool" as const,
         id,
-        hasErrors: child.agentTools.some((tool) => tool.status === "error"),
         node: (
           <AgentLaunchList
             key={id}
@@ -495,7 +526,7 @@ function SessionConversationTurnInner({
         )
       };
     }
-    return { kind: child.kind, id: child.id, node: child.node, hasErrors: child.hasErrors };
+    return { kind: child.kind, id: child.id, node: child.node };
   });
   const earliestCreatedAt = [...assistantChildren, ...toolChildren]
     .map((c) => c.createdAt)
@@ -573,6 +604,7 @@ function SessionConversationTurnInner({
       isTurnActive={isTurnLiveTicking}
       toolsExpanded={toolsExpanded}
       onToggleTools={() => setToolsExpandOverride(!toolsExpanded)}
+      hasCollapsibleActivity={compactActivity && bodyChildren.some((child) => child.kind === "tool")}
       hideWorkingWhenCollapsed={minimalActivity}
       body={bodyChildren}
       {...(earliestCreatedAt ? { headerTimestampIso: earliestCreatedAt } : {})}

@@ -82,7 +82,7 @@ struct TranscriptThinkingLabel: View {
                         .monospacedDigit()
                 }
             }
-            .font(.footnote)
+            .typeStyle(.footnote)
             .foregroundStyle(Theme.muted)
         }
         .accessibilityElement(children: .ignore)

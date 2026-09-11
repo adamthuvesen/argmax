@@ -34,6 +34,25 @@ final class TranscriptProjectionTests: XCTestCase {
         )
     }
 
+    func testLiveSummaryFragmentsOpenParagraphsRatherThanCollidingDelimiters() throws {
+        // Without a completed item to correct them — which is every provider
+        // but Codex — two summaries glued end to end rendered as one line
+        // reading "…default****Searching…".
+        let items = TranscriptProjection.project(events: [
+            event("live-1", "message.delta", "**Adding missing session default**", 1, [
+                "thinking": .bool(true)
+            ]),
+            event("live-2", "message.delta", "**Searching session completion events**", 2, [
+                "thinking": .bool(true)
+            ])
+        ])
+        guard case .thought(let thought) = items.first else { return XCTFail("expected thought") }
+        XCTAssertEqual(
+            thought.text,
+            "**Adding missing session default**\n\n**Searching session completion events**"
+        )
+    }
+
     func testCompletedThoughtItemsKeepParagraphsWhileStreamingFragmentsStayJoined() throws {
         let completed = TranscriptProjection.project(events: [
             event("completed-1", "message.delta", "**Inspecting files**", 1, [
@@ -224,7 +243,7 @@ final class TranscriptProjectionTests: XCTestCase {
         }.first)
         XCTAssertEqual(agent.agentCodename, "Gauss")
         XCTAssertEqual(agent.providerChildSessionId, "child-1")
-        XCTAssertEqual(agent.children.first?.summary, "Bash · npm test")
+        XCTAssertEqual(agent.children.first?.summary, "Command (unconfirmed)")
 
         let todo = try XCTUnwrap(items.compactMap { item -> TranscriptTodoList? in
             guard case .todo(let list) = item else { return nil }
@@ -278,7 +297,7 @@ final class TranscriptProjectionTests: XCTestCase {
                 return group.tools.first
             }.first)
 
-            XCTAssertEqual(tool.summary, "Edit · \(testCase.label)")
+            XCTAssertEqual(tool.summary, "File change (unconfirmed)")
             XCTAssertEqual(tool.fileLabel, testCase.label)
             XCTAssertEqual(tool.filePath, path)
             XCTAssertTrue(tool.input?.contains(path) == true)
@@ -307,9 +326,31 @@ final class TranscriptProjectionTests: XCTestCase {
             return group.agents.first?.children.first
         }.first)
 
-        XCTAssertEqual(child.summary, "Edit · src/App.swift")
+        XCTAssertEqual(child.summary, "File change (unconfirmed)")
         XCTAssertEqual(child.fileLabel, "src/App.swift")
         XCTAssertEqual(child.filePath, "/Users/dev/argmax/src/App.swift")
+    }
+
+    func testAgentNameDropsCodexImageMarker() throws {
+        let items = TranscriptProjection.project(
+            events: [
+                event("agent", "command.started", "collab_tool_call", 1, [
+                    "id": .string("agent-tool"),
+                    "name": .string("collab_tool_call"),
+                    "input": .object([
+                        "prompt": .string(
+                            "[local_image:/Users/dev/Library/Application Support/com.argmax.rs/shot.png]\nReview the screenshot."
+                        )
+                    ])
+                ])
+            ]
+        )
+        let agent = try XCTUnwrap(items.compactMap { item -> TranscriptAgent? in
+            guard case .agents(let group) = item else { return nil }
+            return group.agents.first
+        }.first)
+
+        XCTAssertEqual(agent.name, "Review the screenshot.")
     }
 
     func testWorkspacePathDoesNotRewriteCommandsOrQueries() throws {
@@ -334,9 +375,265 @@ final class TranscriptProjectionTests: XCTestCase {
         }.flatMap { $0 }
 
         XCTAssertEqual(tools.map(\.summary), [
-            "Bash · /Users/dev/argmax/scripts/check.sh",
-            "Search · /Users/dev/argmax/src"
+            "Command (unconfirmed)",
+            "File search (unconfirmed)"
         ])
+    }
+
+    func testActivityMetadataDrivesSuccessfulLiveAndUnconfirmedWording() throws {
+        let activity: TranscriptJSONValue = .object([
+            "version": .number(1),
+            "kind": .string("read"),
+            "evidence": .string("native"),
+            "targets": .array([.string("/Users/dev/argmax/src/App.swift")])
+        ])
+        let started: [String: TranscriptJSONValue] = [
+            "id": .string("read-1"),
+            "name": .string("Read"),
+            "activity": activity
+        ]
+        let runningSession = TranscriptSessionMetadata(
+            id: "session-1", workspaceId: "workspace-1", provider: "claude",
+            modelLabel: "Claude", modelId: "claude", prompt: "Read it", state: .running,
+            attention: .normal, reasoningEffort: nil, agentMode: "auto"
+        )
+
+        let live = try XCTUnwrap(firstTool(TranscriptProjection.project(
+            events: [event("read", "command.started", "Read", 1, started)],
+            session: runningSession
+        )))
+        XCTAssertEqual(live.activity.kind, .read)
+        XCTAssertEqual(live.activity.evidence, .native)
+        XCTAssertEqual(live.summary, "Reading App.swift")
+        XCTAssertFalse(live.completionObserved)
+
+        let completed = try XCTUnwrap(firstTool(TranscriptProjection.project(events: [
+            event("read", "command.started", "Read", 1, started),
+            event("read-end", "command.completed", "done", 2, [
+                "tool_use_id": .string("read-1"),
+                "status": .string("completed")
+            ])
+        ])))
+        XCTAssertEqual(completed.summary, "Read App.swift")
+        XCTAssertTrue(completed.completionObserved)
+
+        let unconfirmed = try XCTUnwrap(firstTool(TranscriptProjection.project(
+            events: [event("read", "command.started", "Read", 1, started)]
+        )))
+        XCTAssertEqual(unconfirmed.summary, "File read (unconfirmed)")
+    }
+
+    func testGenericToolAndCommandCaptionsKeepTheirUsefulPreviewAndLifecycle() throws {
+        let events = [
+            event("mcp", "command.started", "Linear", 1, [
+                "id": .string("mcp-1"),
+                "name": .string("mcp__linear__list_issues"),
+                "input": .object(["query": .string("ENG-123")])
+            ]),
+            event("mcp-end", "command.completed", "done", 2, [
+                "tool_use_id": .string("mcp-1")
+            ]),
+            event("command", "command.started", "Bash", 3, [
+                "id": .string("command-1"),
+                "name": .string("Bash"),
+                "input": .object(["command": .string("cargo test --lib")])
+            ]),
+            event("command-end", "command.completed", "done", 4, [
+                "tool_use_id": .string("command-1")
+            ])
+        ]
+        let tools = TranscriptProjection.project(events: events).compactMap { item -> [TranscriptTool]? in
+            guard case .tools(let group) = item else { return nil }
+            return group.tools
+        }.flatMap { $0 }
+
+        XCTAssertEqual(tools.map(\.summary), [
+            "Used Linear list issues · ENG-123",
+            "Ran cargo test --lib"
+        ])
+    }
+
+    func testCommandPreviewPeeksThroughTheShellLauncher() {
+        XCTAssertEqual(
+            TranscriptProjection.unwrapShellCommand("/bin/zsh -lc \"sed -n '1,80p' src/a.ts\""),
+            "sed -n '1,80p' src/a.ts"
+        )
+        XCTAssertEqual(TranscriptProjection.unwrapShellCommand("bash -c 'git status --short'"), "git status --short")
+        XCTAssertEqual(TranscriptProjection.unwrapShellCommand("cargo test --lib"), "cargo test --lib")
+        XCTAssertEqual(TranscriptProjection.unwrapShellCommand("zsh -lc"), "zsh -lc")
+    }
+
+    func testThoughtTitleIsTheFirstLineWithoutMarkdown() {
+        XCTAssertEqual(TranscriptThought.title(of: "**Checking deletion history**\n\nThe macro was…"), "Checking deletion history")
+        XCTAssertEqual(TranscriptThought.title(of: "\n## Obtaining full parent:\nbody"), "Obtaining full parent")
+        XCTAssertNil(TranscriptThought.title(of: "  \n\n"))
+    }
+
+    func testComputerActivityDecodesWithExactLifecycleCaptions() throws {
+        let activity: TranscriptJSONValue = .object([
+            "version": .number(1), "kind": .string("computer"),
+            "evidence": .string("native"), "targets": .array([])
+        ])
+        let runningSession = TranscriptSessionMetadata(
+            id: "session-1", workspaceId: "workspace-1", provider: "codex",
+            modelLabel: "GPT", modelId: "gpt", prompt: "Use the app", state: .running,
+            attention: .normal, reasoningEffort: nil, agentMode: "auto"
+        )
+        let start = event("computer", "command.started", "computer", 1, [
+            "id": .string("computer-1"), "name": .string("mcp__computer__use"), "activity": activity
+        ])
+
+        let running = try XCTUnwrap(firstTool(TranscriptProjection.project(
+            events: [start], session: runningSession
+        )))
+        XCTAssertEqual(running.activity.kind, .computer)
+        XCTAssertEqual(running.summary, "Using a computer")
+
+        let succeeded = try XCTUnwrap(firstTool(TranscriptProjection.project(events: [
+            start,
+            event("computer-end", "command.completed", "done", 2, [
+                "tool_use_id": .string("computer-1")
+            ])
+        ])))
+        XCTAssertEqual(succeeded.summary, "Used a computer")
+        XCTAssertEqual(succeeded.activity.label(state: .failed), "Computer use failed")
+        XCTAssertEqual(succeeded.activity.label(state: .cancelled), "Computer use cancelled")
+        XCTAssertEqual(succeeded.activity.label(state: .unconfirmed), "Computer use (unconfirmed)")
+    }
+
+    func testVisibleAssistantProgressSettlesAnUnmatchedNonAgentTool() throws {
+        let runningSession = TranscriptSessionMetadata(
+            id: "session-1", workspaceId: "workspace-1", provider: "claude",
+            modelLabel: "Claude", modelId: "claude", prompt: "Read it", state: .running,
+            attention: .normal, reasoningEffort: nil, agentMode: "auto"
+        )
+        let tool = try XCTUnwrap(firstTool(TranscriptProjection.project(events: [
+            event("read", "command.started", "Read", 1, [
+                "id": .string("read-1"), "name": .string("Read")
+            ]),
+            event("answer", "message.delta", "I found the issue.", 2)
+        ], session: runningSession)))
+
+        XCTAssertEqual(tool.status, .done)
+        XCTAssertFalse(tool.completionObserved)
+        XCTAssertEqual(tool.summary, "File read (unconfirmed)")
+    }
+
+    func testClaudeIsErrorCompletionMarksTheToolFailed() throws {
+        let tool = try XCTUnwrap(firstTool(TranscriptProjection.project(events: [
+            event("read", "command.started", "Read", 1, [
+                "id": .string("read-1"), "name": .string("Read")
+            ]),
+            event("read-end", "command.completed", "missing", 2, [
+                "tool_use_id": .string("read-1"),
+                "is_error": .bool(true),
+                "content": .string("missing")
+            ])
+        ])))
+
+        XCTAssertEqual(tool.status, .failed)
+        XCTAssertEqual(tool.error, "missing")
+        XCTAssertEqual(tool.summary, "File read failed")
+    }
+
+    func testCompletionActivityAddsDiscoveryCountWithoutGenericActivityErasingStart() throws {
+        let discovery: TranscriptJSONValue = .object([
+            "version": .number(1), "kind": .string("discovery"),
+            "evidence": .string("tool"), "targets": .array([])
+        ])
+        let generic: TranscriptJSONValue = .object([
+            "version": .number(1), "kind": .string("tool"),
+            "evidence": .string("tool"), "targets": .array([]), "toolCount": .number(1)
+        ])
+        let specificItems = TranscriptProjection.project(events: [
+            event("search", "command.started", "ToolSearch", 1, [
+                "id": .string("search-1"), "name": .string("ToolSearch"), "activity": discovery
+            ]),
+            event("search-end", "command.completed", "done", 2, [
+                "tool_use_id": .string("search-1"),
+                "activity": .object([
+                    "version": .number(1), "kind": .string("discovery"),
+                    "evidence": .string("native"), "targets": .array([]), "toolCount": .number(3)
+                ])
+            ])
+        ])
+        let specific = try XCTUnwrap(firstTool(specificItems))
+        XCTAssertEqual(specific.activity.kind, .discovery)
+        XCTAssertEqual(specific.activity.toolCount, 3)
+        XCTAssertEqual(specific.summary, "Loaded tools")
+
+        let genericItems = TranscriptProjection.project(events: [
+            event("search", "command.started", "ToolSearch", 1, [
+                "id": .string("search-1"), "name": .string("ToolSearch"), "activity": discovery
+            ]),
+            event("search-end", "command.completed", "done", 2, [
+                "tool_use_id": .string("search-1"), "activity": generic
+            ])
+        ])
+        XCTAssertEqual(try XCTUnwrap(firstTool(genericItems)).activity.kind, .discovery)
+        XCTAssertEqual(try XCTUnwrap(firstTool(genericItems)).activity.toolCount, 1)
+        XCTAssertEqual(try XCTUnwrap(firstTool(genericItems)).summary, "Loaded a tool")
+    }
+
+    func testAnonymousImageResultKeepsTheIntentReportedAtStart() throws {
+        let activity: (String) -> TranscriptJSONValue = { kind in
+            .object([
+                "version": .number(1), "kind": .string(kind),
+                "evidence": .string("native"), "targets": .array([])
+            ])
+        }
+        let tool = try XCTUnwrap(firstTool(TranscriptProjection.project(events: [
+            event("capture", "command.started", "Screenshot", 1, [
+                "id": .string("capture-1"), "name": .string("Screenshot"),
+                "activity": activity("image-capture")
+            ]),
+            event("capture-end", "command.completed", "image", 2, [
+                "tool_use_id": .string("capture-1"), "activity": activity("image")
+            ])
+        ])))
+
+        XCTAssertEqual(tool.activity.kind, .imageCapture)
+        XCTAssertEqual(tool.summary, "Captured a screenshot")
+    }
+
+    func testAnonymousImageResultKeepsComputerUseIntent() throws {
+        let activity: (String) -> TranscriptJSONValue = { kind in
+            .object([
+                "version": .number(1), "kind": .string(kind),
+                "evidence": .string("native"), "targets": .array([])
+            ])
+        }
+        let tool = try XCTUnwrap(firstTool(TranscriptProjection.project(events: [
+            event("computer", "command.started", "computer", 1, [
+                "id": .string("computer-1"), "name": .string("computer"),
+                "activity": activity("computer")
+            ]),
+            event("computer-end", "command.completed", "image", 2, [
+                "tool_use_id": .string("computer-1"), "activity": activity("image")
+            ])
+        ])))
+
+        XCTAssertEqual(tool.activity.kind, .computer)
+        XCTAssertEqual(tool.summary, "Used a computer")
+        XCTAssertEqual(
+            TranscriptToolIcon.source(for: tool.name, activity: tool.activity),
+            .system(name: "desktopcomputer")
+        )
+    }
+
+    func testInvalidActivityMetadataFallsBackToExactLegacyToolIdentity() throws {
+        let tool = try XCTUnwrap(firstTool(TranscriptProjection.project(events: [
+            event("edit", "command.started", "search_replace", 1, [
+                "id": .string("edit-1"),
+                "name": .string("search_replace"),
+                "activity": .object([
+                    "version": .number(2), "kind": .string("read"),
+                    "evidence": .string("native"), "targets": .array([])
+                ])
+            ])
+        ])))
+        XCTAssertEqual(tool.activity.kind, .edit)
+        XCTAssertEqual(tool.summary, "File change (unconfirmed)")
     }
 
     func testQuestionUsesFirstValidRetryAndSuppressesPostCardProse() throws {
@@ -651,6 +948,14 @@ final class TranscriptProjectionTests: XCTestCase {
         }.flatMap(\.tools)
         XCTAssertEqual(tools.map(\.status), [.done, .failed])
         XCTAssertNil(tools.first?.error)
+        XCTAssertEqual(tools.map(\.activitySummary), ["File read cancelled", "Command failed"])
+    }
+
+    private func firstTool(_ items: [TranscriptItem]) -> TranscriptTool? {
+        items.compactMap { item -> TranscriptTool? in
+            guard case .tools(let group) = item else { return nil }
+            return group.tools.first
+        }.first
     }
 
     private func event(

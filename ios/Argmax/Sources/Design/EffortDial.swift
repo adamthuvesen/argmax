@@ -144,9 +144,9 @@ struct EffortDial: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.snug) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Effort").font(.caption).foregroundStyle(Theme.muted)
+                Text("Effort").typeStyle(.caption).foregroundStyle(Theme.muted)
                 Spacer()
-                Text(label(selection)).font(.caption.weight(.medium)).foregroundStyle(accent.color)
+                Text(label(selection)).typeStyle(.caption, weight: .medium).foregroundStyle(accent.color)
             }
             rail
                 .frame(height: 44)
@@ -282,7 +282,7 @@ struct EffortDial: View {
                         .fill(active ? accent.color : (lit ? accent.color.opacity(0.7) : Theme.line))
                         .frame(width: 1, height: active ? 7 : 5)
                     Text(label(effort))
-                        .font(.caption2.weight(active ? .medium : .regular))
+                        .typeStyle(.caption2, weight: active ? .medium : .regular)
                         .foregroundStyle(active ? accent.color : (lit ? Theme.ink.opacity(0.75) : Theme.muted))
                         .lineLimit(1)
                         .fixedSize()

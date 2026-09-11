@@ -40,11 +40,7 @@ describe("App workspace follow", () => {
     expect(
       await screen.findByRole("button", { name: "Copy branch name adam/updated-checkout" })
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", {
-        name: "Workspace details: branch adam/updated-checkout"
-      })
-    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Workspace details/ })).toBeNull();
   });
 
   it("follows a session move to the destination workspace and routes actions to the destination ids", async () => {
@@ -170,11 +166,7 @@ describe("App workspace follow", () => {
     expect(
       await screen.findByRole("button", { name: "Copy branch name adam/feature-branch" })
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", {
-        name: "Workspace details: branch adam/feature-branch, 1 file changed"
-      })
-    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Workspace details/ })).toBeNull();
 
     await waitFor(() => {
       expect(

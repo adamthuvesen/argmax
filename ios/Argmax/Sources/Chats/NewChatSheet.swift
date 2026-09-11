@@ -43,7 +43,7 @@ struct NewChatSheet: View {
     /// The draft as it stood when the mic was opened. Partial results rewrite
     /// the tail after it rather than stacking on each other.
     @State private var draftBeforeDictation = ""
-    @FocusState private var promptFocused: Bool
+    @State private var promptFocused = false
     @Environment(\.accentTint) private var accent
     @Environment(\.mascotVisible) private var mascotVisible
 
@@ -98,7 +98,7 @@ struct NewChatSheet: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             if let failure {
                 Text(failure)
-                    .font(.footnote)
+                    .typeStyle(.footnote)
                     .foregroundStyle(Theme.rose)
                     .screenGutter()
                     .padding(.bottom, Spacing.snug)
@@ -148,7 +148,7 @@ struct NewChatSheet: View {
         VStack(spacing: Spacing.row) {
             if mascotVisible { FoxMark(size: 72) }
             Text(Self.greeting(for: mode))
-                .font(.body.weight(.medium))
+                .typeStyle(.body, weight: .medium)
                 .foregroundStyle(Theme.ink.opacity(0.85))
         }
         .allowsHitTesting(false)
@@ -162,18 +162,21 @@ struct NewChatSheet: View {
             if !images.isEmpty {
                 ComposerImageStrip(images: images)
             }
-            TextField(
+            ComposerTextInput(
                 mode == .sideChat ? "Ask anything" : "Describe the task",
                 text: $prompt,
-                axis: .vertical
-            )
-            .font(.body)
-            .foregroundStyle(Theme.ink)
-            .tint(accent.color)
-            .lineLimit(2...6)
-            .focused($promptFocused)
-            .submitLabel(.return)
-            .accessibilityLabel("Task")
+                accessibilityLabel: "Task",
+                lineLimits: 2...6,
+                focused: $promptFocused
+            ) { providers in
+                Task {
+                    failure = await images.attach(
+                        pasted: providers,
+                        storeKey: attachmentStoreKey,
+                        client: client
+                    )
+                }
+            }
             HStack(alignment: .center, spacing: Spacing.snug) {
                 AttachImageButton(picks: $photoPicks, busy: images.attaching)
                 HStack(spacing: Spacing.snug) {
@@ -241,14 +244,14 @@ struct NewChatSheet: View {
     private var modelEffortControl: some View {
         ComposerChipButton { picking = .model } content: {
             Text(model.label)
-                .font(.subheadline)
+                .typeStyle(.subheadline)
                 .foregroundStyle(Theme.ink)
         }
         .accessibilityLabel("Model, \(model.label)")
         if selectedModel?.supportsReasoningEffort == true {
             ComposerChipButton { picking = .effort } content: {
                 Text(catalog.label(for: effortBinding.wrappedValue))
-                    .font(.subheadline)
+                    .typeStyle(.subheadline)
                     .foregroundStyle(Theme.muted)
             }
             .accessibilityLabel("Effort, \(catalog.label(for: effortBinding.wrappedValue))")
@@ -264,7 +267,7 @@ struct NewChatSheet: View {
                     ProgressView().tint(Theme.ground)
                 } else {
                     Image(systemName: "arrow.up")
-                        .font(.body.weight(.semibold))
+                        .typeSymbol(.body, weight: .semibold)
                         .foregroundStyle(Theme.ground)
                 }
             }
@@ -518,15 +521,15 @@ private struct ChoiceRow: View {
         Button(action: action) {
             HStack(spacing: Spacing.row) {
                 Image(systemName: systemImage)
-                    .font(.body.weight(.medium))
+                    .typeSymbol(.body, weight: .medium)
                     .foregroundStyle(Theme.muted)
                     .frame(width: 22, alignment: .center)
                 Text(value)
-                    .font(mono ? .body.monospaced() : .body)
+                    .typeStyle(.body, mono: mono)
                     .foregroundStyle(Theme.ink)
                     .lineLimit(1)
                 Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption.weight(.semibold))
+                    .typeSymbol(.caption, weight: .semibold)
                     .foregroundStyle(Theme.muted)
                 Spacer(minLength: 0)
             }

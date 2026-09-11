@@ -6,6 +6,7 @@ import type { RenderItem } from "../lib/foldConversation.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import type * as TurnFileChanges from "../lib/turnFileChanges.js";
+import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 
 const collectTurnFileChanges = vi.hoisted(() => vi.fn(() => []));
 
@@ -83,6 +84,9 @@ function renderTurn(
     item?: Extract<RenderItem, { kind: "turn" }>;
     session?: SessionSummary;
     openRunAt?: string | null;
+    defaultToolCallsDisplay?: ToolCallsDisplay;
+    defaultToolCallGroupsExpanded?: boolean;
+    thinkingDisplay?: ThinkingDisplay;
   } = {}
 ): { rerender: () => void; container: HTMLElement } {
   const inputRef = createRef<HTMLTextAreaElement>();
@@ -105,6 +109,9 @@ function renderTurn(
       shouldRefocusInput={shouldRefocusInput}
       setStatus={() => undefined}
       setAgentMode={() => undefined}
+      defaultToolCallsDisplay={overrides.defaultToolCallsDisplay}
+      defaultToolCallGroupsExpanded={overrides.defaultToolCallGroupsExpanded}
+      thinkingDisplay={overrides.thinkingDisplay}
     />
   );
   const result = render(element());
@@ -213,5 +220,159 @@ describe("SessionConversationTurn", () => {
 
     expect(container.textContent).toContain(thinking);
     vi.useRealTimers();
+  });
+
+  it("groups alternating thoughts and tools around readable progress in Compact", () => {
+    const editTwo = { ...edit, id: "edit-2", toolUseId: "edit-2", createdAt: "2026-05-12T15:00:04.000Z" };
+    const editThree = { ...edit, id: "edit-3", toolUseId: "edit-3", createdAt: "2026-05-12T15:00:06.000Z" };
+    const compactTurn: Extract<RenderItem, { kind: "turn" }> = {
+      ...turn,
+      toolItems: [
+        { kind: "tool", tool: edit },
+        { kind: "tool", tool: editTwo },
+        { kind: "tool", tool: editThree }
+      ],
+      assistantEvents: [
+        {
+          id: "thought-1",
+          sessionId: "session-a",
+          type: "message.delta",
+          message: "Inspecting the repository.",
+          payload: { thinking: true },
+          createdAt: "2026-05-12T15:00:01.000Z"
+        },
+        {
+          id: "thought-2",
+          sessionId: "session-a",
+          type: "message.delta",
+          message: "Checking the relevant files.",
+          payload: { thinking: true },
+          createdAt: "2026-05-12T15:00:03.000Z"
+        },
+        {
+          id: "progress",
+          sessionId: "session-a",
+          type: "message.completed",
+          message: "I found the mismatch.",
+          payload: {},
+          createdAt: "2026-05-12T15:00:05.000Z"
+        },
+        {
+          id: "thought-3",
+          sessionId: "session-a",
+          type: "message.delta",
+          message: "Planning the smallest fix.",
+          payload: { thinking: true },
+          createdAt: "2026-05-12T15:00:07.000Z"
+        }
+      ],
+      assistantTimestamps: [
+        Date.parse("2026-05-12T15:00:01.000Z"),
+        Date.parse("2026-05-12T15:00:03.000Z"),
+        Date.parse("2026-05-12T15:00:05.000Z"),
+        Date.parse("2026-05-12T15:00:07.000Z")
+      ]
+    };
+
+    renderTurn({
+      item: compactTurn,
+      defaultToolCallsDisplay: "collapsed",
+      defaultToolCallGroupsExpanded: false,
+      thinkingDisplay: "collapsed"
+    });
+
+    expect(screen.getByText("I found the mismatch.")).toBeInTheDocument();
+    const activityGroups = screen.getAllByRole("button", { name: /^Edited/ });
+    expect(activityGroups).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "Thought" })).toBeNull();
+
+    fireEvent.click(activityGroups[0]);
+
+    expect(screen.getAllByRole("button", { name: "Thought" })).toHaveLength(2);
+  });
+
+  it("keeps a thought-only Compact activity run connected to the turn chip", () => {
+    const thoughtOnlyTurn: Extract<RenderItem, { kind: "turn" }> = {
+      ...turn,
+      toolItems: [],
+      assistantEvents: [
+        {
+          id: "thought-only",
+          sessionId: "session-a",
+          type: "message.delta",
+          message: "Reviewing the request.",
+          payload: { thinking: true },
+          createdAt: "2026-05-12T15:00:01.000Z"
+        }
+      ],
+      assistantTimestamps: [Date.parse("2026-05-12T15:00:01.000Z")]
+    };
+
+    renderTurn({
+      item: thoughtOnlyTurn,
+      defaultToolCallsDisplay: "collapsed",
+      defaultToolCallGroupsExpanded: false,
+      thinkingDisplay: "collapsed"
+    });
+
+    const chip = screen.getByRole("button", { name: /^Worked/ });
+    expect(chip).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(chip);
+    expect(chip).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getAllByRole("button", { name: "Thought" })).toHaveLength(2);
+  });
+
+  it("names thought-first turn disclosures uniquely", () => {
+    const firstTurn: Extract<RenderItem, { kind: "turn" }> = {
+      ...turn,
+      id: "turn-thought-1",
+      toolItems: [],
+      assistantEvents: [
+        {
+          id: "thought-1",
+          sessionId: "session-a",
+          type: "message.delta",
+          message: "Reviewing the first request.",
+          payload: { thinking: true },
+          createdAt: "2026-05-12T15:00:01.000Z"
+        }
+      ]
+    };
+    const secondTurn: Extract<RenderItem, { kind: "turn" }> = {
+      ...firstTurn,
+      id: "turn-thought-2",
+      assistantEvents: [
+        {
+          ...firstTurn.assistantEvents[0],
+          id: "thought-2",
+          message: "Reviewing the second request."
+        }
+      ]
+    };
+
+    renderTurn({
+      item: firstTurn,
+      defaultToolCallsDisplay: "collapsed",
+      defaultToolCallGroupsExpanded: false,
+      thinkingDisplay: "collapsed"
+    });
+    renderTurn({
+      item: secondTurn,
+      defaultToolCallsDisplay: "collapsed",
+      defaultToolCallGroupsExpanded: false,
+      thinkingDisplay: "collapsed"
+    });
+
+    const disclosures = screen.getAllByRole("button", { name: "Thought" });
+    expect(disclosures).toHaveLength(2);
+    fireEvent.click(disclosures[0]);
+    fireEvent.click(disclosures[1]);
+
+    const targetIds = disclosures.map((disclosure) => disclosure.getAttribute("aria-controls"));
+    expect(new Set(targetIds).size).toBe(2);
+    for (const targetId of targetIds) {
+      expect(targetId).not.toBeNull();
+      expect(targetId ? document.getElementById(targetId) : null).not.toBeNull();
+    }
   });
 });

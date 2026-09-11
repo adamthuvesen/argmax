@@ -46,7 +46,7 @@
   overflow: auto;
   padding: var(--space-1_5);
   font-family: var(--font-ui);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
 }
 
 /* Under the strip the scroller needs less of its own top gap; surfaces with no
@@ -141,7 +141,7 @@
 .workspace-tree-file[aria-pressed="true"] {
   color: var(--text);
   background-color: color-mix(in oklab, var(--review-sidebar) 86%, var(--text));
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
 }
 
 .workspace-tree-file[aria-pressed="true"]::before {
@@ -305,7 +305,7 @@
 .file-tab-dirty {
   flex: 0 0 auto;
   color: var(--sage-deep);
-  font-weight: 700;
+  font-weight: calc(700 + var(--font-weight-offset));
 }
 
 .file-tab-close {
@@ -349,7 +349,7 @@
 
 .file-tab-close-prompt strong {
   color: var(--text);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
 }
 
 .file-tab-close-prompt-error {
@@ -516,7 +516,7 @@
   min-width: 0;
   font-family: var(--font-ui);
   font-size: var(--text-xs);
-  font-weight: 400;
+  font-weight: calc(400 + var(--font-weight-offset));
   color: var(--muted);
 }
 
@@ -528,7 +528,7 @@
 
 .file-preview-path-leaf {
   color: var(--text);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
 }
 
 .file-preview-heading-meta {
@@ -539,7 +539,7 @@
 
 .file-preview-dirty {
   color: var(--sage-deep);
-  font-weight: 700;
+  font-weight: calc(700 + var(--font-weight-offset));
 }
 
 /* Stale-buffer banner — fires when fs.watch / focus polling spots an external
@@ -769,7 +769,7 @@
 .file-preview-editor .cm-panel.cm-search button[name="select"]::before {
   content: "All";
   font-size: var(--text-2xs-plus);
-  font-weight: 600;
+  font-weight: calc(600 + var(--font-weight-offset));
 }
 
 .file-preview-editor .cm-panel.cm-search label {
@@ -807,7 +807,7 @@
 
 .file-preview-editor .cm-panel.cm-search label::after {
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: calc(600 + var(--font-weight-offset));
   line-height: 1;
 }
 
@@ -942,7 +942,7 @@
   .file-preview-editor .cm-panel.cm-search button[name="replaceAll"]::before {
     content: "All";
     font-size: var(--text-2xs-plus);
-    font-weight: 600;
+    font-weight: calc(600 + var(--font-weight-offset));
   }
 
   .file-preview-editor .cm-panel.cm-search button[name="close"] {
@@ -1212,7 +1212,7 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted-strong);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
 }
 
 .project-knowledge-summary {
@@ -1386,7 +1386,7 @@
   background: var(--accent-soft);
   border-color: transparent;
   color: var(--accent-deep);
-  font-weight: 600;
+  font-weight: calc(600 + var(--font-weight-offset));
 }
 
 .diff-comment-submit:hover:not(:disabled) {

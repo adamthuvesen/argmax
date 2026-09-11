@@ -14,7 +14,7 @@ struct TranscriptComposer: View {
     @Environment(\.accentTint) private var accent
     @Environment(\.openURL) private var openURL
 
-    @FocusState private var focused: Bool
+    @State private var focused = false
     @State private var sending = false
     @State private var stopping = false
     @State private var openingPullRequest = false
@@ -104,8 +104,7 @@ struct TranscriptComposer: View {
             HStack(spacing: Spacing.tight) {
                 GitPullRequestStatusMark(kind: pullRequest.kind, size: 14)
                 Text("PR #\(pullRequest.number)")
-                    .font(.caption2.weight(.semibold))
-                    .monospacedDigit()
+                    .typeStyle(.caption2, weight: .semibold, monospacedDigit: true)
                     .foregroundStyle(pullRequest.tint)
             }
             .padding(.horizontal, 10)
@@ -125,21 +124,29 @@ struct TranscriptComposer: View {
         return VStack(alignment: .leading, spacing: Spacing.row) {
             if let failure {
                 Text(failure)
-                    .font(.footnote)
+                    .typeStyle(.footnote)
                     .foregroundStyle(Theme.rose)
             }
             if !images.isEmpty {
                 ComposerImageStrip(images: images)
             }
-            TextField("Message", text: $input, axis: .vertical)
-                .font(.body)
-                .foregroundStyle(Theme.ink)
-                .tint(accent.color)
-                .lineLimit(1...6)
-                .focused($focused)
-                .submitLabel(.send)
-                .onSubmit { send(composer) }
-                .accessibilityLabel("Message")
+            ComposerTextInput(
+                "Message",
+                text: $input,
+                accessibilityLabel: "Message",
+                lineLimits: 1...6,
+                submitsOnReturn: true,
+                focused: $focused,
+                onSubmit: { send(composer) }
+            ) { providers in
+                Task {
+                    failure = await images.attach(
+                        pasted: providers,
+                        storeKey: composer.sessionId,
+                        client: store.client
+                    )
+                }
+            }
             HStack(alignment: .center, spacing: Spacing.snug) {
                 AttachImageButton(picks: $photoPicks, busy: images.attaching)
                 HStack(spacing: Spacing.snug) {
@@ -161,7 +168,7 @@ struct TranscriptComposer: View {
                         send(composer)
                     } label: {
                         Image(systemName: "arrow.up")
-                            .font(.body.weight(.semibold))
+                            .typeSymbol(.body, weight: .semibold)
                             .foregroundStyle(Theme.ink)
                             .frame(width: Spacing.composerControl, height: Spacing.composerControl)
                             .background(Theme.raised, in: .circle)
@@ -222,14 +229,14 @@ struct TranscriptComposer: View {
     private func modelEffortControl(_ composer: NativeComposerState, model: ModelSelection) -> some View {
         ComposerChipButton { picking = .model } content: {
             Text(model.label)
-                .font(.subheadline)
+                .typeStyle(.footnote)
                 .foregroundStyle(Theme.ink)
         }
         .accessibilityLabel("Model, \(model.label)")
         if supportsEffort(composer) {
             ComposerChipButton { picking = .effort } content: {
                 Text(catalog.label(for: effortBinding(composer).wrappedValue))
-                    .font(.subheadline)
+                    .typeStyle(.footnote)
                     .foregroundStyle(Theme.muted)
             }
             .accessibilityLabel("Effort, \(catalog.label(for: effortBinding(composer).wrappedValue))")
@@ -256,7 +263,7 @@ struct TranscriptComposer: View {
                         .frame(width: 11, height: 11)
                 } else {
                     Image(systemName: "arrow.up")
-                        .font(.body.weight(.semibold))
+                        .typeSymbol(.body, weight: .semibold)
                         .foregroundStyle(Theme.ground)
                 }
             }
@@ -293,11 +300,11 @@ struct TranscriptComposer: View {
             ForEach(composer.queued, id: \.id) { message in
                 HStack(spacing: Spacing.tight) {
                     Image(systemName: "arrow.turn.down.right")
-                        .font(.caption2)
+                        .typeSymbol(.caption2)
                         .foregroundStyle(Theme.muted)
                         .accessibilityHidden(true)
                     Text(message.text)
-                        .font(.footnote)
+                        .typeStyle(.footnote)
                         .foregroundStyle(Theme.ink)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -348,7 +355,7 @@ struct TranscriptComposer: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.caption.weight(.semibold))
+                .typeSymbol(.caption, weight: .semibold)
                 .foregroundStyle(tint)
                 .frame(width: 30, height: 30)
                 .contentShape(.rect)
@@ -657,10 +664,10 @@ private struct ProviderSwitchConfirmation: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.row) {
             Text("Switch to \(toName)?")
-                .font(.body.weight(.semibold))
+                .typeStyle(.body, weight: .semibold)
                 .foregroundStyle(Theme.ink)
             Text("\(toName) can't resume this chat. It starts fresh from a short summary of it.")
-                .font(.subheadline)
+                .typeStyle(.subheadline)  // type-exception: a sheet's explanatory copy, sized like every other sheet in the app rather than like transcript chrome
                 .foregroundStyle(Theme.muted)
             HStack(spacing: Spacing.snug) {
                 QuietButton(title: "Cancel", action: onCancel)

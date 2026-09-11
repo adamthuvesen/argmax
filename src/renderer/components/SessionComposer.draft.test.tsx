@@ -180,17 +180,23 @@ describe("SessionComposer unsent drafts", () => {
     expect(attachedScreenshots()).toEqual([]);
   });
 
-  it("forgets the screenshot once the message sends", async () => {
+  it.each(["click", "Enter", "queue"])("sends only a screenshot via %s and clears the draft", async (method) => {
     const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
-    renderConversation(baseSession(), [], { onSendSessionInput });
+    renderConversation(baseSession({ state: method === "queue" ? "running" : "complete" }), [], { onSendSessionInput });
     pasteScreenshot();
     await waitFor(() => expect(attachedScreenshots()).toHaveLength(1));
 
-    fireEvent.change(prompt(), { target: { value: "what is this" } });
-    fireEvent.keyDown(prompt(), { key: "Enter" });
+    expect(prompt()).toHaveValue("");
+    if (method === "click") {
+      const send = screen.getByRole("button", { name: "Send follow-up" });
+      expect(send).toBeEnabled();
+      fireEvent.click(send);
+    } else {
+      fireEvent.keyDown(prompt(), { key: "Enter" });
+    }
 
     await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
-    expect(onSendSessionInput.mock.calls[0]?.[1]).toBe(`what is this @${SCREENSHOT_PATH}`);
+    expect(onSendSessionInput.mock.calls[0]?.[1]).toBe(`@${SCREENSHOT_PATH}`);
     expect(onSendSessionInput.mock.calls[0]?.[4]).toEqual([
       { filePath: SCREENSHOT_PATH, mimeType: "image/png", sizeBytes: 4 }
     ]);

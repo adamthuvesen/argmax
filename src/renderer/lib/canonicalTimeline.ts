@@ -65,7 +65,7 @@ export type CanonicalToolEvent = CanonicalCommon & {
    *  todo card. Stamped by the normalizer so the renderer never has to know
    *  which of the providers' shifting tool names means "plan". */
   surface: string | null;
-  outcome: "succeeded" | "failed" | null;
+  outcome: "succeeded" | "failed" | "cancelled" | null;
   running: boolean;
   traceSyntheticLaunch: boolean;
 };
@@ -330,7 +330,10 @@ function decodeTool(raw: TimelineEvent, payload: Record<string, unknown>): Canon
     invocationId: extractProviderInvocationId(payload),
     activity: decodeToolActivity(payload.activity),
     surface: stringValue(payload.surface),
-    outcome: phase === "completed" ? (detectToolError(payload) ? "failed" : "succeeded") : null,
+    outcome: phase === "completed"
+      ? payload.cancelled === true || payload.canceled === true || status && ["cancelled", "canceled", "interrupted"].includes(status) ? "cancelled"
+        : detectToolError(payload) ? "failed" : "succeeded"
+      : null,
     running: phase !== "completed" || status === "running" || status === "started" || status === "in_progress",
     traceSyntheticLaunch: payload.traceSyntheticLaunch === true
   };

@@ -244,7 +244,7 @@ struct TranscriptInteractiveRow: View {
 
             if let failure = actions.failure {
                 Text(failure)
-                    .font(.footnote)
+                    .typeStyle(.footnote)
                     .foregroundStyle(Theme.rose)
                     .accessibilityLabel("Action failed. \(failure)")
             }

@@ -72,6 +72,7 @@ export function TurnBlock({
   isTurnActive,
   toolsExpanded,
   onToggleTools,
+  hasCollapsibleActivity = false,
   hideWorkingWhenCollapsed,
   headerTimestampIso,
   turnMarkdown,
@@ -99,6 +100,8 @@ export function TurnBlock({
   // entirely, leaving the chip and the answer.
   toolsExpanded?: boolean;
   onToggleTools?: () => void;
+  /** True when a Compact thought-only activity run still has a disclosure. */
+  hasCollapsibleActivity?: boolean;
   hideWorkingWhenCollapsed?: boolean;
   // The canonical timestamp shown in the turn header (typically the earliest
   // assistant event in the turn). Per-paragraph timestamps inside the body
@@ -124,7 +127,6 @@ export function TurnBlock({
   const running = isTurnActive ?? toolRunning;
   const wasRunning = useRef(running);
   const [settling, setSettling] = useState(false);
-  const [inspectingActivity, setInspectingActivity] = useState(false);
   // Minimal keeps freshly finished activity readable for one brief beat.
   // Restored history starts collapsed, and the status settles immediately.
   useLayoutEffect(() => {
@@ -132,7 +134,6 @@ export function TurnBlock({
     wasRunning.current = running;
     if (!hideWorkingWhenCollapsed || running) {
       setSettling(false);
-      setInspectingActivity(false);
       return;
     }
     if (!justFinished) return;
@@ -159,8 +160,8 @@ export function TurnBlock({
   // verbosity where a finished turn drops the working rows from the body.
   const toolsAreExpanded = toolsExpanded ?? true;
   const visibleBody =
-    hideWorkingWhenCollapsed && !running && !toolsAreExpanded && !settling && !inspectingActivity
-      ? body.filter((child) => child.kind !== "tool" || child.hasErrors)
+    hideWorkingWhenCollapsed && !running && !toolsAreExpanded && !settling
+      ? body.filter((child) => child.kind !== "tool")
       : body;
 
   const elapsedLabel = formatElapsedSeconds(elapsedMs);
@@ -185,7 +186,8 @@ export function TurnBlock({
   // same visual reset as Codex. Tool turns remain clickable/collapsible; pure
   // text turns render static metadata.
   const showChip = running || hasTools || body.length > 0;
-  const interactiveChip = running || hasTools;
+  const hasDisclosure = hasTools || hasCollapsibleActivity;
+  const interactiveChip = running || hasDisclosure;
 
   const liveStartMs = running && startedAtMs > 0 ? startedAtMs : null;
   const liveRef = useRef<HTMLSpanElement | null>(null);
@@ -242,9 +244,8 @@ export function TurnBlock({
             className="turn-block-chip"
             aria-label={staticChipLabel}
             title={staticChipLabel}
-            {...(hasTools ? { "aria-expanded": toolsAreExpanded } : {})}
-            {...(hasTools && onToggleTools ? { onClick: () => {
-              setInspectingActivity(false);
+            {...(hasDisclosure ? { "aria-expanded": toolsAreExpanded } : {})}
+            {...(hasDisclosure && onToggleTools ? { onClick: () => {
               onToggleTools();
             } } : {})}
           >
@@ -255,7 +256,7 @@ export function TurnBlock({
             ) : (
               <span>{staticChipLabel}</span>
             )}
-            {hasTools ? (
+            {hasDisclosure ? (
               <ChevronRight
                 size={11}
                 className={`turn-block-chevron${toolsAreExpanded ? " expanded" : ""}`}
@@ -271,16 +272,6 @@ export function TurnBlock({
         <div
           className="turn-block-body"
           data-just-revealed={justRevealed ? "true" : undefined}
-          onClickCapture={(event) => {
-            if (settling && event.target instanceof Element && event.target.closest(".turn-block-tools")) {
-              setInspectingActivity(true);
-            }
-          }}
-          onFocusCapture={(event) => {
-            if (settling && event.target.closest(".turn-block-tools")) {
-              setInspectingActivity(true);
-            }
-          }}
         >
           {groupToolRuns(visibleBody)}
         </div>

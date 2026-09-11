@@ -18,7 +18,7 @@ struct TranscriptCodeBlock: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 2) {
                     Text(language?.isEmpty == false ? language! : "Code")
-                        .font(.caption.weight(.semibold))
+                        .typeStyle(.footnote, weight: .semibold)
                         .foregroundStyle(Theme.muted)
                     Spacer()
                     Button { UIPasteboard.general.string = source } label: {
@@ -58,7 +58,7 @@ struct TranscriptCodeBlock: View {
 
     private var code: some View {
         Text(source)
-            .font(.argmaxMono(.footnote))
+            .typeStyle(.footnote, mono: true)
             .foregroundStyle(Theme.ink)
             .textSelection(.enabled)
             .fixedSize(horizontal: true, vertical: true)

@@ -32,6 +32,11 @@ enum Theme {
     /// it a third of the way toward `--muted-strong` (`--chip-ink`). Dark
     /// keeps the value, which already clears 4.5:1 on charcoal.
     static let mutedColor = dynamic(light: 0x7A_76_6C, dark: 0x8A_85_7B)
+    /// `--muted-strong`: a token step above muted, for the verb of an
+    /// activity row and for narration folded inside a group — text the
+    /// transcript reports rather than says, one notch under the ink. A
+    /// step rather than an opacity fade, so it keeps its contrast on paper.
+    static let mutedStrongColor = dynamic(light: 0x5D_59_4F, dark: 0xAE_AA_A1)
     /// Hairline separators, inset to the text column by their callers.
     static let lineColor = dynamic(light: 0xE3_E6_E8, dark: 0x2B_2B_29)
 
@@ -41,6 +46,12 @@ enum Theme {
     static let amberColor = dynamic(light: 0xB0_80_39, dark: 0xD9_A5_66)
     static let roseColor = dynamic(light: 0xB8_57_63, dark: 0xE0_85_91)
     static let sageColor = dynamic(light: 0x44_6C_56, dark: 0x6D_AB_86)
+    /// Tool activity uses the desktop session-icon palette. These hues name
+    /// the kind of work, while rose/sage/amber above continue to name status.
+    static let activityBlueColor = dynamic(light: 0x3F_7F_D8, dark: 0x8A_AE_F2)
+    static let activityTealColor = dynamic(light: 0x2F_80_79, dark: 0x63_B3_AA)
+    static let activityVioletColor = dynamic(light: 0x7B_56_D6, dark: 0xB3_92_F0)
+    static let activityAmberColor = dynamic(light: 0xB5_87_2F, dark: 0xD9_A5_66)
     /// `--pr-merged`. GitHub's own merged-purple, not a token this app
     /// otherwise uses — a merged PR is the one thing worth a colour no other
     /// row state wears, so it can't be read as attention or as the accent.
@@ -80,12 +91,17 @@ enum Theme {
     static var pressed: Color { Color(pressedColor) }
     static var ink: Color { Color(inkColor) }
     static var muted: Color { Color(mutedColor) }
+    static var mutedStrong: Color { Color(mutedStrongColor) }
     static var line: Color { Color(lineColor) }
     static var stop: Color { Color(stopColor) }
     static var amber: Color { Color(amberColor) }
     static var rose: Color { Color(roseColor) }
     static var sage: Color { Color(sageColor) }
     static var violet: Color { Color(violetColor) }
+    static var activityBlue: Color { Color(activityBlueColor) }
+    static var activityTeal: Color { Color(activityTealColor) }
+    static var activityViolet: Color { Color(activityVioletColor) }
+    static var activityAmber: Color { Color(activityAmberColor) }
     static var diffAddInk: Color { Color(diffAddInkColor) }
     static var diffDelInk: Color { Color(diffDelInkColor) }
 

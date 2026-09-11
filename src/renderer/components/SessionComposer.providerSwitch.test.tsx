@@ -1,5 +1,5 @@
-import { cleanup, fireEvent, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   baseSession,
   renderConversation,
@@ -18,6 +18,7 @@ function pickModel(label: string): void {
 // The session is Codex; "Sonnet 5" belongs to Claude, so picking it crosses
 // providers. A same-provider model change must not raise the dialog at all.
 describe("SessionComposer provider switch confirmation", () => {
+  beforeEach(() => window.localStorage.clear());
   afterEach(cleanup);
 
   it("holds a cross-provider pick behind a confirmation instead of applying it", () => {
@@ -122,5 +123,40 @@ describe("SessionComposer provider switch confirmation", () => {
     pickModel("Sonnet 5");
 
     expect(screen.queryByRole("button", { name: "New chat" })).toBeNull();
+  });
+
+  it("keeps a running chat's changed effort for its next turn after navigation", async () => {
+    const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
+    const onTerminateSession = vi.fn().mockResolvedValue(undefined);
+    const session = baseSession({
+      modelLabel: "GPT-5.6 Luna",
+      modelId: "gpt-5.6-luna",
+      state: "running"
+    });
+    const { rerender } = renderConversation(session, [], { onSendSessionInput, onTerminateSession });
+
+    const effortChip = screen.getByRole("button", { name: "Chat model effort" });
+    fireEvent.click(effortChip);
+    fireEvent.click(screen.getByRole("button", { name: "Set effort to Max" }));
+    fireEvent.click(effortChip);
+
+    expect(effortChip).toHaveTextContent("Max");
+    expect(onTerminateSession).not.toHaveBeenCalled();
+
+    rerenderConversation(rerender, baseSession({ id: "session-b" }), [], {
+      onSendSessionInput,
+      onTerminateSession
+    });
+    rerenderConversation(rerender, session, [], { onSendSessionInput, onTerminateSession });
+
+    expect(screen.getByRole("button", { name: "Chat model effort" })).toHaveTextContent("Max");
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Chat prompt" }), {
+      target: { value: "Continue" }
+    });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Chat prompt" }), { key: "Enter" });
+
+    await waitFor(() => expect(onSendSessionInput).toHaveBeenCalledTimes(1));
+    expect(onSendSessionInput.mock.calls[0]?.[2]).toMatchObject({ reasoningEffort: "max" });
   });
 });

@@ -1125,7 +1125,7 @@ describe("buildSessionToolCalls", () => {
     expect(tools.map((tool) => tool.toolUseId)).toEqual(["toolu_1", "toolu_2"]);
   });
 
-  it("hides discovery and bookkeeping while preserving the real external call", () => {
+  it("shows discovery and the real external call while hiding bookkeeping", () => {
     const tools = buildSessionToolCalls([
       event("search", "command.started", "2026-05-12T15:00:01.000Z", "ToolSearch", {
         id: "search",
@@ -1157,8 +1157,8 @@ describe("buildSessionToolCalls", () => {
       })
     ], false);
 
-    expect(tools).toHaveLength(1);
-    expect(tools[0]).toMatchObject({
+    expect(tools.map((tool) => tool.toolUseId)).toEqual(["search", "discover", "fetch"]);
+    expect(tools[2]).toMatchObject({
       name: "mcp__plugin-notion-workspace-notion__notion-fetch",
       inputFull: { id: "page-1" }
     });

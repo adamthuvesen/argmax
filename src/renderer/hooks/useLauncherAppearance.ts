@@ -1,3 +1,9 @@
+import {
+  applyFontHeavinessToDocument,
+  FONT_HEAVINESS_STORAGE_KEY,
+  readStoredFontHeaviness,
+  type FontHeaviness
+} from "../lib/fontHeaviness.js";
 import { useEffect, useRef, useState } from "react";
 import {
   applyFontSizeToDocument,
@@ -62,6 +68,8 @@ export function useLauncherAppearance(): {
   setFontSize: (fontSize: FontSize) => void;
   chatFontSize: FontSize;
   setChatFontSize: (fontSize: FontSize) => void;
+  fontHeaviness: FontHeaviness;
+  setFontHeaviness: (heaviness: FontHeaviness) => void;
   inkStrength: InkStrength;
   setInkStrength: (strength: InkStrength) => void;
   backgroundIntensity: BackgroundIntensity;
@@ -78,6 +86,7 @@ export function useLauncherAppearance(): {
   const [fontFamily, setFontFamily] = useState<FontFamilyId>(() => readStoredFont());
   const [fontSize, setFontSize] = useState<FontSize>(() => readStoredFontSize());
   const [chatFontSize, setChatFontSize] = useState<FontSize>(() => readStoredChatFontSize());
+  const [fontHeaviness, setFontHeaviness] = useState<FontHeaviness>(readStoredFontHeaviness);
   const [inkStrength, setInkStrength] = useState<InkStrength>(() => readStoredInkStrength());
   const [backgroundIntensity, setBackgroundIntensity] = useState<BackgroundIntensity>(() =>
     readStoredBackgroundIntensity()
@@ -103,6 +112,11 @@ export function useLauncherAppearance(): {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(CHAT_FONT_SIZE_STORAGE_KEY, String(chatFontSize));
   }, [chatFontSize]);
+
+  useEffect(() => {
+    window.localStorage.setItem(FONT_HEAVINESS_STORAGE_KEY, String(fontHeaviness));
+    applyFontHeavinessToDocument(fontHeaviness);
+  }, [fontHeaviness]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -187,6 +201,8 @@ export function useLauncherAppearance(): {
     setFontSize,
     chatFontSize,
     setChatFontSize,
+    fontHeaviness,
+    setFontHeaviness,
     inkStrength,
     setInkStrength,
     backgroundIntensity,

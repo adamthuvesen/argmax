@@ -54,6 +54,12 @@ targets:
         buildPhase: resources
       - path: Resources/ThirdPartyNotices.txt
         buildPhase: resources
+      # Geist and Inter, converted from the woff2 the renderer already ships by
+      # `npm run build:ios-fonts`. Named as a folder so a new weight needs no
+      # second edit here; every file in it must also be listed under
+      # UIAppFonts below, which is what actually registers it.
+      - path: Resources/Fonts
+        buildPhase: resources
     dependencies:
       - package: SwaTex
         product: SwaTexRender
@@ -102,6 +108,23 @@ targets:
         # makes everywhere else.
         NSMicrophoneUsageDescription: Argmax uses the microphone to dictate a prompt into the composer.
         NSSpeechRecognitionUsageDescription: Argmax turns dictated prompts into text on this iPhone wherever it can, and through Apple's speech service where this iPhone has no model for your language.
+        # The bundled faces, registered at launch. iOS reads this list once,
+        # so a file present in Resources/Fonts and absent here is half a
+        # megabyte of app that never draws — TypographyTests asserts every
+        # name resolves, and that the italics are reachable as a family.
+        UIAppFonts:
+          - Geist-Regular.ttf
+          - Geist-Medium.ttf
+          - Geist-SemiBold.ttf
+          - Geist-Bold.ttf
+          - Geist-Italic.ttf
+          - Geist-BoldItalic.ttf
+          - Inter-Regular.ttf
+          - Inter-Medium.ttf
+          - Inter-SemiBold.ttf
+          - Inter-Bold.ttf
+          - Inter-Italic.ttf
+          - Inter-BoldItalic.ttf
         # argmax://pair?url=<pairing link>, see ArgmaxApp.
         CFBundleURLTypes:
           - CFBundleURLName: com.argmax.remote.pair

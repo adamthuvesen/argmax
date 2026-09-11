@@ -19,25 +19,19 @@ struct TranscriptAgentGroupView: View {
                         agentMark(agent)
                             .frame(width: 24, height: 24)
                         VStack(alignment: .leading, spacing: Spacing.hair) {
-                            HStack(spacing: Spacing.snug) {
-                                Text(agent.name.isEmpty ? "Delegated work" : agent.name)
-                                    .font(.subheadline.weight(.medium))
-                                    .foregroundStyle(Theme.ink)
-                                    .lineLimit(2)
-                                if let codename = agent.agentCodename, !codename.isEmpty {
-                                    Text(codename)
-                                        .font(.caption)
-                                        .foregroundStyle(Theme.muted)
-                                        .lineLimit(1)
-                                }
-                            }
+                            // A named agent projects its codename as its name,
+                            // so the second line here only ever repeated it.
+                            Text(agentTitle(agent))
+                                .typeStyle(.footnote, weight: .medium)
+                                .foregroundStyle(Theme.ink)
+                                .lineLimit(2)
                             Text(agentStatusLabel(agent.status))
-                                .font(.footnote)
+                                .typeStyle(.footnote)
                                 .foregroundStyle(agentStatusColor(agent.status))
                         }
                         Spacer(minLength: Spacing.snug)
                         Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
+                            .typeSymbol(.caption, weight: .semibold)
                             .foregroundStyle(Theme.muted)
                     }
                     .padding(.horizontal, Spacing.row)
@@ -46,7 +40,7 @@ struct TranscriptAgentGroupView: View {
                     .contentShape(.rect)
                 }
                 .buttonStyle(PressDim())
-                .accessibilityLabel("Open agent: \(agent.name), \(agentStatusLabel(agent.status))")
+                .accessibilityLabel("Open agent: \(agentTitle(agent)), \(agentStatusLabel(agent.status))")
 
                 if agent.id != group.agents.last?.id {
                     HairlineDivider(inset: 36)
@@ -76,6 +70,20 @@ struct TranscriptAgentGroupView: View {
                 .accessibilityHidden(true)
         }
     }
+}
+
+/// What to call an agent on a card and over its sheet.
+///
+/// Without a codename the name is the first slice of the prompt, and a prompt
+/// that opens with an attachment token used to put `[local_image:/Users/…]`
+/// in the navigation bar — a file path where the reader looks for a task.
+func agentTitle(_ agent: TranscriptAgent) -> String {
+    if let codename = agent.agentCodename, !codename.isEmpty { return codename }
+    let stripped = agent.name.replacing(/\[[a-z_]+:[^\]]*\]/, with: " ")
+    let title = stripped
+        .split(whereSeparator: \.isWhitespace)
+        .joined(separator: " ")
+    return title.isEmpty ? "Delegated work" : title
 }
 
 func agentStatusLabel(_ status: TranscriptToolStatus) -> String {

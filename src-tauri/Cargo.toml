@@ -25,6 +25,11 @@ name = "export-bindings"
 path = "src/bin/export-bindings.rs"
 test = false
 
+[[bin]]
+name = "audit-tool-activity"
+path = "src/bin/audit-tool-activity.rs"
+test = false
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

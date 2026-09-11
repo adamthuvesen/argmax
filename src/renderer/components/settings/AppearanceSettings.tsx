@@ -1,3 +1,10 @@
+import {
+  FONT_HEAVINESS_HINTS,
+  FONT_HEAVINESS_MIN,
+  FONT_HEAVINESS_MAX,
+  toFontHeaviness,
+  type FontHeaviness
+} from "../../lib/fontHeaviness.js";
 import type { JSX } from "react";
 import { ACCENT_OPTIONS, type AccentId } from "../../lib/accent.js";
 import {
@@ -78,6 +85,8 @@ export function AppearanceSettings({
   onWorkspaceCardVisibleChange,
   pixelFieldEnabled,
   onPixelFieldEnabledChange,
+  contextIndicatorEnabled,
+  onContextIndicatorEnabledChange,
   prMilestoneCelebrationEnabled,
   onPrMilestoneCelebrationEnabledChange,
   chatWidth,
@@ -88,6 +97,8 @@ export function AppearanceSettings({
   onFontSizeChange,
   chatFontSize,
   onChatFontSizeChange,
+  fontHeaviness,
+  onFontHeavinessChange,
   inkStrength,
   onInkStrengthChange,
   backgroundIntensity,
@@ -99,6 +110,8 @@ export function AppearanceSettings({
   onFontSizeChange: (size: FontSize) => void;
   chatFontSize: FontSize;
   onChatFontSizeChange: (size: FontSize) => void;
+  fontHeaviness: FontHeaviness;
+  onFontHeavinessChange: (heaviness: FontHeaviness) => void;
   inkStrength: InkStrength;
   onInkStrengthChange: (strength: InkStrength) => void;
   backgroundIntensity: BackgroundIntensity;
@@ -119,6 +132,8 @@ export function AppearanceSettings({
   onWorkspaceCardVisibleChange: (v: boolean) => void;
   pixelFieldEnabled: boolean;
   onPixelFieldEnabledChange: (v: boolean) => void;
+  contextIndicatorEnabled: boolean;
+  onContextIndicatorEnabledChange: (v: boolean) => void;
   prMilestoneCelebrationEnabled: boolean;
   onPrMilestoneCelebrationEnabledChange: (v: boolean) => void;
   chatWidth: ChatWidth;
@@ -276,6 +291,23 @@ export function AppearanceSettings({
           }
         />
         <SettingRow
+          label="Font heaviness"
+          description={`Lighter or heavier text throughout the app. ${FONT_HEAVINESS_HINTS[fontHeaviness]} Some fonts change in larger steps.`}
+          control={
+            <Slider
+              ariaLabel="Font heaviness"
+              min={FONT_HEAVINESS_MIN}
+              max={FONT_HEAVINESS_MAX}
+              value={fontHeaviness}
+              valueLabel={String(fontHeaviness)}
+              onChange={(raw) => {
+                const heaviness = toFontHeaviness(raw);
+                if (heaviness) onFontHeavinessChange(heaviness);
+              }}
+            />
+          }
+        />
+        <SettingRow
           label="Ink strength"
           description={`How hard text sits against the page, everywhere in the app. ${INK_STRENGTH_HINTS[inkStrength]}`}
           control={
@@ -389,6 +421,17 @@ export function AppearanceSettings({
               ariaLabel="Pixel field in composer"
               checked={pixelFieldEnabled}
               onChange={onPixelFieldEnabledChange}
+            />
+          }
+        />
+        <SettingRow
+          label="Context indicator in composer"
+          description="Show the session's context-window usage beside the model in active chats."
+          control={
+            <Toggle
+              ariaLabel="Context indicator in composer"
+              checked={contextIndicatorEnabled}
+              onChange={onContextIndicatorEnabledChange}
             />
           }
         />

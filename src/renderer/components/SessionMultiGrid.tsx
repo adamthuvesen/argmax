@@ -81,6 +81,7 @@ interface SessionMultiGridProps {
   fastModeEnabled?: boolean;
   workspaceCardVisible?: boolean;
   onWorkspaceCardVisibleChange?: (visible: boolean) => void;
+  contextIndicatorEnabled?: boolean;
   maxColumnsPerRow?: number;
   rightPanelToggleSignal?: number;
   debugLogToggleSignal?: number;
@@ -162,6 +163,7 @@ export function SessionMultiGrid({
   fastModeEnabled,
   workspaceCardVisible = true,
   onWorkspaceCardVisibleChange,
+  contextIndicatorEnabled = false,
   maxColumnsPerRow = MAX_COLS,
   rightPanelToggleSignal,
   debugLogToggleSignal,
@@ -408,6 +410,7 @@ export function SessionMultiGrid({
                       <SessionPane
                         approvals={approvals}
                         checks={checks}
+                        chatFontSize={chatFontSize}
                         defaultToolCallsDisplay={defaultToolCallsDisplay}
                         defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
                         thinkingDisplay={thinkingDisplay}
@@ -418,6 +421,7 @@ export function SessionMultiGrid({
                         fastModeEnabled={fastModeEnabled}
                         workspaceCardVisible={workspaceCardVisible}
                         onWorkspaceCardVisibleChange={onWorkspaceCardVisibleChange}
+                        contextIndicatorEnabled={contextIndicatorEnabled}
                         isFocused={focused}
                         onClose={() => onClosePane({ row: r, col: c })}
                         onFastModeEnabledChange={onFastModeEnabledChange}

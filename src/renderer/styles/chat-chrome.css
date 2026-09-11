@@ -156,7 +156,7 @@
 
 .composer-drop-overlay span {
   font-size: var(--text-sm-plus);
-  font-weight: 650;
+  font-weight: calc(650 + var(--font-weight-offset));
   letter-spacing: -0.01em;
 }
 
@@ -418,7 +418,7 @@
    in an otherwise quiet toolbar so it still reads first without extra weight. */
 .composer-context-group--model .composer-context-chip {
   color: var(--muted-strong);
-  font-weight: 400;
+  font-weight: calc(400 + var(--font-weight-offset));
 }
 
 .composer-context-group--model .composer-context-chip:hover {
@@ -731,7 +731,7 @@
 .effort-slider-current {
   color: var(--accent);
   font-size: var(--text-xs);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
 }
 
 /* Track hosts a clipped accent pixel field (the <canvas> that fills to the
@@ -852,7 +852,7 @@
 
 .effort-slider-stop[data-active] {
   color: var(--accent);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
 }
 
 .effort-slider-stop[data-active] .effort-slider-stop-tick {
@@ -908,7 +908,7 @@
 .project-picker-item[aria-pressed="true"],
 .project-picker-item[aria-checked="true"] {
   color: var(--text);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
 }
 
 .project-picker-item:disabled,
@@ -958,7 +958,7 @@
   padding-left: var(--space-3);
   color: var(--muted);
   font-size: var(--text-2xs-plus);
-  font-weight: 400;
+  font-weight: calc(400 + var(--font-weight-offset));
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.01em;
 }
@@ -1150,7 +1150,7 @@
 .git-actions-label {
   color: var(--muted-strong);
   font-size: var(--text-xs);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -1184,7 +1184,7 @@
   background: var(--accent);
   color: var(--on-accent, var(--bubble-on-ink));
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   cursor: pointer;
 }
 
@@ -1241,7 +1241,7 @@
   padding: 9px 9px 3px 7px;
   color: var(--muted);
   font-size: var(--text-2xs);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   line-height: 1.2;
   letter-spacing: 0.06em;
   text-transform: uppercase;

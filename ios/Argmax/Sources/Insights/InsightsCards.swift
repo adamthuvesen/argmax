@@ -53,7 +53,7 @@ struct InsightsHeroNumber: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 44, weight: .bold, design: .rounded))
+            .typeSize(44, relativeTo: .largeTitle, weight: .bold, design: .rounded)
             .monospacedDigit()
             .foregroundStyle(Theme.ink)
             .minimumScaleFactor(0.6)

@@ -1121,12 +1121,14 @@ pub(crate) fn timeline_event(
     event: &ProviderOutputEvent,
     event_type: impl Into<String>,
     message: impl Into<String>,
-    payload: Value,
+    mut payload: Value,
 ) -> PersistTimelineEventInput {
+    let event_type = event_type.into();
+    crate::providers::tool_activity::enrich_tool_activity(&event_type, &mut payload);
     PersistTimelineEventInput {
         id: Uuid::new_v4().to_string(),
         session_id: event.session_id.clone(),
-        r#type: event_type.into(),
+        r#type: event_type,
         message: message.into(),
         payload,
         created_at: Some(event.created_at.clone()),

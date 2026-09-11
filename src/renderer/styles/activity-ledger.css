@@ -47,7 +47,7 @@
   padding-bottom: var(--space-2);
   border-bottom: 0.5px solid var(--line);
   font-size: var(--text-2xs);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
@@ -112,7 +112,7 @@
 
 .activity-repo-count {
   font-size: var(--text-base);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   color: var(--text);
 }
 
@@ -169,7 +169,7 @@
   padding: 0 0 var(--space-2);
   border-bottom: 0.5px solid var(--line);
   font-size: var(--text-2xs);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
@@ -180,7 +180,7 @@
   padding: 9px 0;
   border-bottom: 0.5px solid var(--line-soft);
   vertical-align: middle;
-  font-weight: 400;
+  font-weight: calc(400 + var(--font-weight-offset));
   color: var(--text-soft);
 }
 
@@ -292,7 +292,7 @@
 
 .activity-reviews-figure {
   font-size: 30px;
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   line-height: 1;
   letter-spacing: -0.025em;
   color: var(--text);
@@ -346,7 +346,7 @@
 }
 
 .activity-split-key strong {
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   color: var(--text-soft);
 }
 

@@ -25,9 +25,9 @@ struct PrimaryButton: View {
                         .controlSize(.small)
                         .tint(accent.onAccent)
                 } else if let systemImage {
-                    Image(systemName: systemImage).font(.subheadline.weight(.semibold))
+                    Image(systemName: systemImage).typeSymbol(.subheadline, weight: .semibold)
                 }
-                Text(title).font(.body.weight(.semibold))
+                Text(title).typeStyle(.body, weight: .semibold)
             }
             // Off, it drops the fill entirely rather than fading it: a 35%
             // accent slab is still the loudest thing on the screen, and it
@@ -61,9 +61,9 @@ struct QuietButton: View {
         Button(action: action) {
             HStack(spacing: Spacing.tight + 2) {
                 if let systemImage {
-                    Image(systemName: systemImage).font(.subheadline.weight(.medium))
+                    Image(systemName: systemImage).typeSymbol(.subheadline, weight: .medium)
                 }
-                Text(title).font(.subheadline.weight(.semibold))
+                Text(title).typeStyle(.subheadline, weight: .semibold)
             }
             .foregroundStyle(Theme.ink)
             .frame(maxWidth: .infinity, minHeight: 44)
@@ -104,14 +104,14 @@ struct PickerCell: View {
             HStack(spacing: Spacing.snug) {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(label)
-                        .font(.caption2)
+                        .typeStyle(.caption2)
                         .foregroundStyle(Theme.muted)
                         .lineLimit(1)
                         .truncationMode(.tail)
                     HStack(spacing: Spacing.tight + 2) {
                         if let glyph { glyph }
                         Text(value)
-                            .font(mono ? .argmaxMono(.subheadline) : .subheadline)
+                            .typeStyle(.subheadline, mono: mono)
                             .foregroundStyle(Theme.ink)
                             .lineLimit(1)
                             // Tail, not middle: the head of a project or
@@ -123,7 +123,7 @@ struct PickerCell: View {
                 }
                 Spacer(minLength: Spacing.tight)
                 Image(systemName: "chevron.down")
-                    .font(.caption2.weight(.semibold))
+                    .typeSymbol(.caption2, weight: .semibold)
                     .foregroundStyle(Theme.muted)
             }
             .padding(.horizontal, Spacing.row)
@@ -192,7 +192,7 @@ struct EmptyState: View {
                 if mascotVisible { FoxMark(size: 84).opacity(0.9) }
             case .glyph(let name):
                 Image(systemName: name)
-                    .font(.system(size: 30, weight: .medium))
+                    .typeSymbol(size: 30, weight: .medium)
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(Theme.muted)
             }
@@ -221,7 +221,7 @@ struct ReconnectingStrip: View {
                 .controlSize(.mini)
                 .tint(Theme.muted)
             Text(message)
-                .font(.caption2)
+                .typeStyle(.caption2)
                 .foregroundStyle(Theme.muted)
         }
         .frame(maxWidth: .infinity, minHeight: 28)

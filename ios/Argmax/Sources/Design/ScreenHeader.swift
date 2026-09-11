@@ -32,7 +32,7 @@ struct ScreenHeader<Trailing: View, Center: View>: View {
             if let onBack {
                 Button(action: onBack) {
                     Image(systemName: "chevron.left")
-                        .font(.body.weight(.semibold))
+                        .typeSymbol(.body, weight: .semibold)
                         .foregroundStyle(Theme.ink)
                         // A thumb-sized target around a small glyph, pulled
                         // back into the gutter so the chevron itself sits on
@@ -126,7 +126,7 @@ struct HeaderGlyphButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.body.weight(weight))
+                .typeSymbol(.body, weight: weight)
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(tint ?? accent.color)
                 .frame(width: filled ? 40 : 32, height: filled ? 40 : 32)

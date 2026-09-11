@@ -855,6 +855,7 @@ impl TurnTranslation {
         vec![json!({
             "type": "tool_call",
             "subtype": "completed",
+            "status": update.get("status").cloned().unwrap_or_else(|| json!("completed")),
             "call_id": call_id,
             "tool_call": { info.key: Value::Object(body) },
         })]
@@ -921,13 +922,19 @@ fn non_empty_object(value: Option<&Value>) -> Option<&Map<String, Value>> {
 /// Give a tool's arguments the file it says it is about to touch, unless they
 /// already name one. Returns whether anything was added.
 fn adopt_location_path(args: &mut Value, update: &Value) -> bool {
-    let Some(path) = first_location_path(update) else {
+    let paths = location_paths(update);
+    let Some(path) = paths.first() else {
         return false;
     };
     let Some(args) = args.as_object_mut() else {
         return false;
     };
-    args.entry("path").or_insert(Value::String(path));
+    args.entry("path")
+        .or_insert_with(|| Value::String(path.clone()));
+    if paths.len() > 1 {
+        args.entry("paths")
+            .or_insert_with(|| Value::Array(paths.into_iter().map(Value::String).collect()));
+    }
     true
 }
 
@@ -935,13 +942,19 @@ fn adopt_location_path(args: &mut Value, update: &Value) -> bool {
 /// touch. It is how Cursor names the target of a read or an edit whose
 /// `rawInput` has not arrived.
 fn first_location_path(update: &Value) -> Option<String> {
-    update
-        .get("locations")?
-        .as_array()?
+    location_paths(update).into_iter().next()
+}
+
+fn location_paths(update: &Value) -> Vec<String> {
+    let Some(locations) = update.get("locations").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    locations
         .iter()
-        .find_map(|location| location.get("path").and_then(Value::as_str))
+        .filter_map(|location| location.get("path").and_then(Value::as_str))
         .filter(|path| !path.is_empty())
         .map(str::to_string)
+        .collect()
 }
 
 /// Fold the diff a completed write reports into the tool's arguments, where
@@ -1022,7 +1035,7 @@ fn title_args(update: &Value) -> Value {
 fn is_terminal_status(update: &Value) -> bool {
     matches!(
         update.get("status").and_then(Value::as_str),
-        Some("completed" | "failed")
+        Some("completed" | "failed" | "cancelled" | "canceled" | "interrupted")
     )
 }
 
@@ -1155,11 +1168,30 @@ mod tests {
             "rawOutput": { "output": "hi" },
         })));
         assert_eq!(completed[0]["subtype"], "completed");
+        assert_eq!(completed[0]["status"], "completed");
         assert_eq!(
             completed[0]["tool_call"]["shell"]["args"]["command"],
             "echo hi"
         );
         assert_eq!(completed[0]["tool_call"]["shell"]["result"]["output"], "hi");
+    }
+
+    #[test]
+    fn cancelled_tool_calls_complete_with_their_status() {
+        let mut translation = TurnTranslation::default();
+        translation.translate(&update(json!({
+            "sessionUpdate": "tool_call",
+            "toolCallId": "tool-1",
+            "kind": "execute",
+            "rawInput": { "command": "npm test" },
+        })));
+        let completed = translation.translate(&update(json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "tool-1",
+            "status": "cancelled",
+        })));
+        assert_eq!(completed[0]["subtype"], "completed");
+        assert_eq!(completed[0]["status"], "cancelled");
     }
 
     #[test]
@@ -1484,11 +1516,15 @@ mod tests {
         let started = translation.translate(&update(json!({
             "sessionUpdate": "tool_call_update",
             "toolCallId": "tool-1",
-            "locations": [{ "path": "/repo/greet.ts" }],
+            "locations": [{ "path": "/repo/greet.ts" }, { "path": "/repo/types.ts" }],
         })));
         assert_eq!(
             started[0]["tool_call"]["read"]["args"]["path"],
             "/repo/greet.ts"
+        );
+        assert_eq!(
+            started[0]["tool_call"]["read"]["args"]["paths"],
+            json!(["/repo/greet.ts", "/repo/types.ts"])
         );
     }
 

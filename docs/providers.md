@@ -309,6 +309,51 @@ The provider stream can't be made to supply it either. Timed against a real run,
 
 ## Tool Event Identity
 
+Tool events carry optional versioned `payload.activity` metadata from
+`providers/tool_activity.rs`. The same Rust classifier enriches historical
+timeline reads without rewriting SQLite. Desktop and iPhone consume its kind,
+targets, evidence source, and optional file operation or discovered-tool count.
+Native fields and exact known tool identities take precedence over narrowly
+recognized commands. Safe sequences of reads, searches, and listings also
+qualify, including `cat file | head` and `sed -n 1,40p file; grep pattern file`.
+The first read or search determines a mixed read-only row's identity. Recognized
+in-place substitutions with `sed -i` or `perl -pi -e` use edit activity, even
+when followed by read-only checks.
+`tail`, including live log following with `tail -f`, uses read activity.
+Explicit `cat > file` and `cat >> file` writes with quoted heredoc delimiters
+use edit activity, including when followed by build checks. Heredoc bodies
+remain opaque, so embedded examples cannot invent edits. Other unknown programs,
+script execution, substitutions, and redirects stay command activity.
+Unsupported shell syntax also falls back to command activity, including
+descriptor duplication on a heredoc write and quoted tilde targets.
+A file path alone does not establish an edit or image view,
+and workspace diffs do not attribute opaque commands in a shared checkout.
+Grok's `use_tool` wrapper exposes the invoked tool's name and input to both
+clients, preserving the original wrapper in `toolWrapper` so integration
+artwork and call details survive discovery.
+Computer activity recognizes Codex's `cua_repl` server. Bare `js` and the
+`node_repl` server remain generic tools. Argmax browser calls retain their
+mascot and integration identity. A screenshot result does not replace a known
+computer interaction or Argmax browser call with an image-view activity.
+Image detection inspects returned content blocks, excluding server icons and
+structured domain data. Historical v1 image and generic command classifications
+are refreshed on read so recognition fixes reach old events without rewriting SQLite.
+
+The clients pair starts with results before describing success. An unpaired
+start that settles when a session stops remains unconfirmed. Failure and
+cancellation status survive provider transport translation. Raw input, output,
+and existing diff evidence remain available behind the activity disclosure.
+
+For a bounded, read-only coverage report against real history:
+
+```bash
+cargo run --manifest-path src-tauri/Cargo.toml --bin audit-tool-activity -- /path/to/argmax.sqlite 1000
+```
+
+The sample limit is per provider. Counts describe recorded tool starts, not
+unique operations or successful file accesses. The report includes generic
+fallback names and never prints command arguments or result bodies.
+
 Provider tool IDs are local to a provider invocation and may repeat in a long session. The renderer pairs `command.started` and `command.completed` by the provider-native ID scoped with `payload.providerInvocationId`:
 - Claude: `id` on `tool_use`, then `tool_use_id` on `tool_result`.
 - Codex: item `id`.

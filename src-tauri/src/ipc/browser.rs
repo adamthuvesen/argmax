@@ -32,6 +32,8 @@ use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::state::AppState;
 
 pub const BROWSER_WEBVIEW_LABEL_PREFIX: &str = "browser-";
+const BROWSER_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
+    AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Safari/605.1.15";
 
 /// Event pushed to the main webview whenever a tab navigates, starts loading,
 /// or finishes loading. `title` is only present on load-finish.
@@ -44,12 +46,12 @@ pub struct BrowserStateEvent {
     pub loading: bool,
 }
 
-/// Pushed when a page asks for a popup or `target="_blank"` — the renderer
+/// Pushed when a page asks for a `target="_blank"` link — the renderer
 /// answers by creating a new tab at `url`.
 #[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct BrowserNewTabEvent {
-    /// Tab whose page requested the popup.
+    /// Tab whose page requested the link.
     pub tab_id: String,
     pub url: String,
 }
@@ -72,27 +74,29 @@ pub struct BrowserFillResult {
     pub item_title: String,
 }
 
-/// `window.open` popups and `target="_blank"` anchors would be dead ends in a
-/// child webview — route them through the `argmax-newtab:` scheme instead,
+/// Route `target="_blank"` anchors through the `argmax-newtab:` scheme,
 /// which `on_navigation` intercepts and turns into a real new tab. The same
 /// scheme carries browser shortcuts pressed while the page has focus: without
 /// interception those fall through to the app menu, where ⌘W is Close Window
 /// and would take the whole app with it.
 const BROWSER_INIT_SCRIPT: &str = r#"
 (function () {
+  // Tauri rejects WebKit's empty popup URL before its new-window callback.
+  // Keep the real WindowProxy, including for blank-then-navigate auth flows.
+  var openWindow = window.open;
+  window.open = function (url, target, features) {
+    return openWindow.call(window, url === undefined || url === "" ? "about:blank" : url, target, features);
+  };
   var requestTab = function (url) {
     try {
       var absolute = new URL(url, window.location.href).href;
       window.location.href = "argmax-newtab://open?u=" + encodeURIComponent(absolute);
     } catch (e) {}
   };
-  window.open = function (url) {
-    if (url) requestTab(url);
-    return null;
-  };
   document.addEventListener(
     "click",
     function (event) {
+      if (window.__argmaxBrowserPopup) return;
       var target = event.target;
       if (!target || !target.closest) return;
       // Cmd/Ctrl-click on any link opens a new tab, like every browser.
@@ -115,6 +119,7 @@ const BROWSER_INIT_SCRIPT: &str = r#"
   window.addEventListener(
     "keydown",
     function (event) {
+      if (window.__argmaxBrowserPopup) return;
       if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
       var key = event.key.toLowerCase();
       var command =
@@ -132,6 +137,7 @@ const BROWSER_INIT_SCRIPT: &str = r#"
   // webview's, so relay them as commands and let the pane drive navigation —
   // history.back() inside the page would skip the pane's toolbar state.
   var historyCommand = function (button) {
+    if (window.__argmaxBrowserPopup) return null;
     return button === 3 ? "back" : button === 4 ? "forward" : null;
   };
   window.addEventListener(
@@ -370,15 +376,52 @@ pub(crate) fn open_tab(
     let nav_tab = tab_id.to_string();
     let load_app = app.clone();
     let load_tab = tab_id.to_string();
+    let popup_app = app.clone();
     let builder = tauri::webview::WebviewBuilder::new(&label, WebviewUrl::External(url))
         // WKWebView's default UA reads as an embedded webview; Google (and
         // others) then warn "browser no longer supported" and refuse OAuth.
         // Present as desktop Safari, which is what this engine actually is.
-        .user_agent(
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 \
-             (KHTML, like Gecko) Version/18.5 Safari/605.1.15",
-        )
+        .user_agent(BROWSER_USER_AGENT)
         .initialization_script(init_script(owner_session_id.is_some()))
+        .on_new_window(move |url, features| {
+            // Auth SDKs open a blank window, then navigate it and wait for
+            // postMessage or closure. A separate tab loses that opener link.
+            // window_features carries WebKit's required opener configuration.
+            if !matches!(url.scheme(), "http" | "https" | "about" | "blob") {
+                return tauri::webview::NewWindowResponse::Deny;
+            }
+            let window = tauri::WebviewWindowBuilder::new(
+                &popup_app,
+                format!("browser-popup-{}", uuid::Uuid::new_v4()),
+                WebviewUrl::External(Url::parse("about:blank").expect("valid blank URL")),
+            )
+            .title("Browser")
+            .inner_size(600.0, 720.0)
+            .window_features(features)
+            .user_agent(BROWSER_USER_AGENT)
+            // Inherited panel scripts run before this marker. Check it at
+            // event time, since OAuth redirects can sever window.opener.
+            .initialization_script("window.__argmaxBrowserPopup = true;")
+            .on_navigation(|url| matches!(url.scheme(), "http" | "https" | "about" | "blob"))
+            .on_document_title_changed(|window, title| {
+                let _ = window.set_title(&title);
+            })
+            .build();
+            match window {
+                Ok(window) => {
+                    if let Err(error) = crate::browser::popup::install_close_handler(&window) {
+                        tracing::error!(%error, "could not install browser popup close callback");
+                        let _ = window.close();
+                        return tauri::webview::NewWindowResponse::Deny;
+                    }
+                    tauri::webview::NewWindowResponse::Create { window }
+                }
+                Err(error) => {
+                    tracing::error!(%error, "could not create browser popup");
+                    tauri::webview::NewWindowResponse::Deny
+                }
+            }
+        })
         .on_navigation(move |url| {
             if url.scheme() == "argmax-newtab" {
                 if let Some(target) = new_tab_request_url(url) {

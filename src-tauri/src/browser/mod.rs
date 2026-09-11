@@ -13,6 +13,7 @@
 
 pub mod automation;
 pub mod eval;
+pub mod popup;
 pub mod registry;
 pub mod snapshot_image;
 

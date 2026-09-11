@@ -53,15 +53,19 @@ import { DebugPanel } from "./debug/DebugPanel.js";
 // ReviewPanel lazy-mounted (ralph B4); Vite emits a single ReviewPanel-*
 // chunk shared with the LaunchSurface call site.
 // The phone's peek at delegated work. Lazy for the same reason ReviewPanel is:
-// most sessions never open one.
+// most sessions never open one. Named imports so a surface that *can* raise
+// the peek warms them on idle — a lazy chunk fetched on the tap paints an
+// empty sheet for as long as it takes to arrive.
+const importAgentOverlay = () => import("../mobile/AgentOverlay.js");
+const importAgentsView = () => import("./AgentsView.js");
 const AgentOverlay = lazy(() =>
   importChunk(async () => ({
-    default: (await import("../mobile/AgentOverlay.js")).AgentOverlay
+    default: (await importAgentOverlay()).AgentOverlay
   }))
 );
 const AgentsView = lazy(() =>
   importChunk(async () => ({
-    default: (await import("./AgentsView.js")).AgentsView
+    default: (await importAgentsView()).AgentsView
   }))
 );
 const ReviewPanel = lazy(() =>
@@ -129,6 +133,7 @@ export function SessionPane({
   agentsViewAvailable = true,
   agentsPresentation = "dock",
   onAgentsOverlayChange,
+  nativeComposerFloor = false,
   workspaceCardVisible = true,
   onWorkspaceCardVisibleChange,
   workspace
@@ -213,8 +218,15 @@ export function SessionPane({
    *  the phone has room for. */
   agentsPresentation?: "dock" | "overlay";
   /** Phone back-stack: called with a dismisser while the overlay is up, and
-   *  with null when it closes, so a hardware back can pop the peek first. */
+   *  with null the moment it starts to close, so a hardware back can pop the
+   *  peek first and the host can take its floor back without waiting out the
+   *  animation. The dismisser is the sheet's own, so back rides out the same
+   *  way a tap on the scrim does. */
   onAgentsOverlayChange?: (dismiss: (() => void) | null) => void;
+  /** Whether the host draws the composer natively below the web view. Raising
+   *  the peek hands that floor back, which resizes the page: the sheet waits
+   *  for the new height before it rises rather than animating into it. */
+  nativeComposerFloor?: boolean;
   /** User preference for the floating workspace card. Visible when enabled
       and the conversation column is wide enough to hold it beside the transcript. */
   workspaceCardVisible?: boolean;
@@ -367,24 +379,65 @@ export function SessionPane({
   // through it laid the review panel over the chat.
   const overlayTabs = useAgentTabs();
   const overlayCloseAll = overlayTabs.closeAllTabs;
+  const overlayOpenTab = overlayTabs.openTab;
+  // Whether the peek should be up, and whether it is still on screen. Two
+  // states, not one: the intent turns the phone's composer floor back over at
+  // the *start* of the ride out — the native card rises behind a sheet that is
+  // still there — while presence keeps the sheet mounted until it has gone.
+  // Tab count used to stand in for both, so closing wiped the tabs before the
+  // sheet could animate and the floor stayed empty for the whole trip.
+  const [peekOpen, setPeekOpen] = useState(false);
+  const [peekPresent, setPeekPresent] = useState(false);
+  const closePeek = useCallback((): void => setPeekOpen(false), []);
+  // Navigating away from the chat takes the peek with it: no ride out, since
+  // the surface it belongs to is going too.
+  const dropPeek = useCallback((): void => {
+    setPeekOpen(false);
+    setPeekPresent(false);
+  }, []);
   useEffect(() => {
     if (!agentsInOverlay) return;
+    dropPeek();
     overlayCloseAll();
-  }, [agentsInOverlay, overlayCloseAll, sessionId]);
+  }, [agentsInOverlay, dropPeek, overlayCloseAll, sessionId]);
+  // Last tab closed from inside the sheet: the peek has nothing left to show.
+  const peekTabCount = overlayTabs.tabIds.length;
+  useEffect(() => {
+    if (!agentsInOverlay || !peekOpen || peekTabCount > 0) return;
+    setPeekOpen(false);
+  }, [agentsInOverlay, peekOpen, peekTabCount]);
   useEffect(() => {
     if (!agentsInOverlay) return;
-    const closeAgents = overlayTabs.tabIds.length > 0 ? overlayCloseAll : null;
-    onAgentsOverlayChange?.(closeAgents);
+    onAgentsOverlayChange?.(peekOpen ? closePeek : null);
     return () => onAgentsOverlayChange?.(null);
-  }, [
-    agentsInOverlay,
-    onAgentsOverlayChange,
-    overlayCloseAll,
-    overlayTabs.tabIds.length
-  ]);
+  }, [agentsInOverlay, closePeek, onAgentsOverlayChange, peekOpen]);
+  // Warm the peek's chunks on idle, the way the terminal's are warmed below:
+  // on the phone a launch row is a tap away from the moment the chat opens.
+  useEffect(() => {
+    if (!agentsInOverlay) return undefined;
+    const warm = (): void => {
+      void importAgentOverlay().catch(() => undefined);
+      void importAgentsView().catch(() => undefined);
+    };
+    const idle = window.requestIdleCallback;
+    if (typeof idle === "function") {
+      const id = idle(warm);
+      return () => window.cancelIdleCallback?.(id);
+    }
+    const timer = window.setTimeout(warm, 1500);
+    return () => window.clearTimeout(timer);
+  }, [agentsInOverlay]);
+  const openPeekTab = useCallback(
+    (tabId: string): void => {
+      overlayOpenTab(tabId);
+      setPeekPresent(true);
+      setPeekOpen(true);
+    },
+    [overlayOpenTab]
+  );
   const openAgentOverlay = useCallback(
-    (tool: ToolCall): void => overlayTabs.openTab(agentTabId(tool)),
-    [overlayTabs]
+    (tool: ToolCall): void => openPeekTab(agentTabId(tool)),
+    [openPeekTab]
   );
   const handleOpenAgent = agentsInOverlay
     ? openAgentOverlay
@@ -399,8 +452,8 @@ export function SessionPane({
   const openMultitaskInPanel = reviewState.openMultitask;
   const hostsMultitasks = (multitasks?.length ?? 0) > 0;
   const openMultitaskOverlay = useCallback(
-    (sessionId: string): void => overlayTabs.openTab(multitaskTabId(sessionId)),
-    [overlayTabs]
+    (sessionId: string): void => openPeekTab(multitaskTabId(sessionId)),
+    [openPeekTab]
   );
   const handleOpenMultitask = useMemo(
     () =>
@@ -722,11 +775,14 @@ export function SessionPane({
           events={visibleEvents}
           onResolveApproval={onResolveApproval}
         />
-      {agentsInOverlay && overlayTabs.tabIds.length > 0 ? (
+      {agentsInOverlay && peekPresent ? (
         <Suspense fallback={null}>
           <AgentOverlay
             label="Delegated work"
-            onClose={() => overlayTabs.closeAllTabs()}
+            open={peekOpen}
+            awaitsFloorChange={nativeComposerFloor}
+            onClose={closePeek}
+            onExited={() => setPeekPresent(false)}
           >
             <AgentsView
               events={visibleEvents}
@@ -756,6 +812,7 @@ export function SessionPane({
               onOpenFullChat={
                 onOpenSession
                   ? (sessionId) => {
+                      dropPeek();
                       overlayCloseAll();
                       onOpenSession(sessionId);
                     }

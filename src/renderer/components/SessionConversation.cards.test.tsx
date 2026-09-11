@@ -224,6 +224,35 @@ describe("SessionConversation — cards", () => {
     expect(screen.getByLabelText("Chat prompt")).toBeInTheDocument();
   });
 
+  it("drops the question from the transcript once it is answered", () => {
+    // The answer is the record. Leaving the card behind re-asked a question the
+    // reader had already settled, complete with a live Send button.
+    renderConversation(baseSession({ provider: "claude", state: "complete" }), [
+      event("u1", "user.message", "what should we do", "2026-05-12T15:00:00.000Z", {}),
+      event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
+        type: "tool_use",
+        id: "tu_q_answered",
+        name: "AskUserQuestion",
+        input: {
+          questions: [
+            {
+              question: "Pick a direction",
+              header: "Direction",
+              multiSelect: false,
+              options: [{ label: "Fix audit findings" }, { label: "General maintenance" }]
+            }
+          ]
+        }
+      }),
+      event("u2", "user.message", "**Direction**: Fix audit findings", "2026-05-12T15:00:05.000Z", {})
+    ]);
+
+    expect(screen.queryByLabelText("Question from agent")).not.toBeInTheDocument();
+    expect(screen.queryByText("Pick a direction")).not.toBeInTheDocument();
+    // …and the composer is the reader's again.
+    expect(screen.getByLabelText("Chat prompt")).toBeInTheDocument();
+  });
+
   it("docks a question that arrives while the composer still holds focus from the last send, and stays inline for a typed draft", () => {
     const questionEvents = [
       event("u1", "user.message", "what should we do", "2026-05-12T15:00:00.000Z", {}),

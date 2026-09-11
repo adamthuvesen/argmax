@@ -269,11 +269,18 @@ describe("MobileApp embed mode", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Close Delegated work" }));
 
+    // The moment the sheet starts to leave, not once it has gone: the card
+    // rises behind a peek that is still on screen. Waiting for the unmount
+    // left the floor empty for the animation plus a bridge round trip, which
+    // read as the composer being taken away a second time.
+    expect(posted("agents")).toEqual([
+      { type: "agents", open: true },
+      { type: "agents", open: false }
+    ]);
+    expect(screen.getByRole("dialog", { name: "Delegated work" })).toBeInTheDocument();
+
     await waitFor(() =>
-      expect(posted("agents")).toEqual([
-        { type: "agents", open: true },
-        { type: "agents", open: false }
-      ])
+      expect(screen.queryByRole("dialog", { name: "Delegated work" })).not.toBeInTheDocument()
     );
   });
 

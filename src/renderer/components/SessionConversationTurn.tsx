@@ -80,7 +80,7 @@ function SessionConversationTurnInner({
   thinkingDisplay,
   defaultTurnChangesExpanded,
   restoringTranscript = false,
-  questionIsDocked = false,
+  questionIsInline = false,
   todo = null
 }: {
   item: TurnRenderItem;
@@ -115,8 +115,9 @@ function SessionConversationTurnInner({
   thinkingDisplay?: ThinkingDisplay;
   defaultTurnChangesExpanded?: boolean;
   restoringTranscript?: boolean;
-  /** The live question owns the composer slot, so this turn must not draw it too. */
-  questionIsDocked?: boolean;
+  /** Draw the question here: it is still live and the reader closed the dock.
+   *  Otherwise the dock owns it, or it is answered and belongs to the past. */
+  questionIsInline?: boolean;
   /** The agent's plan as it stood when this turn ended, or null if it never
    *  touched one. */
   todo?: TodoList | null;
@@ -247,7 +248,7 @@ function SessionConversationTurnInner({
       reportSendError
     );
   };
-  const questionCard: JSX.Element | null = askUserQuestionTool && !questionIsDocked
+  const questionCard: JSX.Element | null = askUserQuestionTool && questionIsInline
     ? (
         <QuestionCard
           key={`question-${askUserQuestionTool.id}`}

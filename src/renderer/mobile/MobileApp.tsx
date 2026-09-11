@@ -1373,6 +1373,7 @@ export function MobileApp(): JSX.Element {
                 agentsViewAvailable={false}
                 agentsPresentation="overlay"
                 onAgentsOverlayChange={(dismiss) => setDismissAgentsOverlay(() => dismiss)}
+                nativeComposerFloor={composerHidden}
                 workspaceCardVisible={false}
                 // Restoring a checkout to a before-turn checkpoint is a desktop
                 // move: it rewrites files you cannot see or check from a phone.

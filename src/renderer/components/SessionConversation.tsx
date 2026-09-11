@@ -1252,6 +1252,11 @@ export function SessionConversation({
   const [composerDraftPresent, setComposerDraftPresent] = useState(false);
   const questionDocked =
     liveQuestion !== null && liveQuestion.tool.id !== dismissedQuestionId && !composerDraftPresent;
+  // The scrollback draws the question only as a stand-in for the dock: still
+  // live, but closed in favour of the composer. An answered question is history
+  // — the answer that follows it is the record — so it leaves the transcript
+  // rather than sitting there re-askable.
+  const questionIsInline = liveQuestion !== null && !questionDocked;
   // A draft the reader typed outranks the dock, which would cover it. Composer
   // *focus* must not: sending refocuses the input and it keeps that focus for
   // the whole turn, so gating on focus left almost every question inline until
@@ -1480,7 +1485,7 @@ export function SessionConversation({
                     thinkingDisplay={thinkingDisplay}
                     defaultTurnChangesExpanded={defaultTurnChangesExpanded}
                     restoringTranscript={restoringTranscript}
-                    questionIsDocked={questionDocked && index === transcriptRenderItems.length - 1}
+                    questionIsInline={questionIsInline && index === transcriptRenderItems.length - 1}
                     todo={todoByTurn.get(item.id) ?? null}
                     onOpenDiff={onOpenDiff ?? review.openFile}
                     onOpenReview={onOpenChanges ?? review.openChangesPanel}

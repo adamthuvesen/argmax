@@ -1,11 +1,11 @@
 # Chat Surface and Interactive Cards
 
-The chat surface renders assistant bubbles, tools, and interactive cards: **PlanCard** (Claude Code plan mode), the question surfaces for `AskUserQuestion` / Cursor's `askQuestionToolCall` — **QuestionDock** while the agent is waiting, **QuestionCard** for a question already in the scrollback — and **TodoCard**, the agent's own running plan.
+The chat surface renders assistant bubbles, tools, and interactive cards: **PlanCard** (Claude Code plan mode), the question surfaces for `AskUserQuestion` / Cursor's `askQuestionToolCall` — **QuestionDock** while the agent is waiting, **QuestionCard** for a live question whose dock the reader closed — and **TodoCard**, the agent's own running plan.
 
 ## Components and Structure
 
 - **Conversation Shell:** [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx) derives timeline projections, thinking states, turn models, and scroll anchoring.
-- **Turns & Cards:** [SessionConversationTurn.tsx](../src/renderer/components/SessionConversationTurn.tsx) renders individual turns, card containers, and card submission handlers via [PlanCard.tsx](../src/renderer/components/PlanCard.tsx) and [QuestionCard.tsx](../src/renderer/components/QuestionCard.tsx). The *live* question is the exception: [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx) hoists it into [QuestionDock.tsx](../src/renderer/components/QuestionDock.tsx) and passes `questionIsDocked` so the turn does not draw it twice.
+- **Turns & Cards:** [SessionConversationTurn.tsx](../src/renderer/components/SessionConversationTurn.tsx) renders individual turns, card containers, and card submission handlers via [PlanCard.tsx](../src/renderer/components/PlanCard.tsx) and [QuestionCard.tsx](../src/renderer/components/QuestionCard.tsx). The question is the exception: [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx) hoists the live one into [QuestionDock.tsx](../src/renderer/components/QuestionDock.tsx) and passes `questionIsInline` — true only for a live question with no dock — so the turn never draws it twice, and an answered one not at all.
 - **Timeline Logic:** [canonicalTimeline.ts](../src/renderer/lib/canonicalTimeline.ts) decodes persisted rows into one typed event contract. [sessionConversationModel.ts](../src/renderer/lib/sessionConversationModel.ts) uses that contract for event filtering, raw transcript suppression checks, tool pairing, and last-significant-event selection.
 - **Composer:** [SessionComposer.tsx](../src/renderer/components/SessionComposer.tsx) handles prompt inputs, file attachments, model/mode chips, follow-up queues, send/stop, and `/clear`. The launcher composer in [LaunchSurface.tsx](../src/renderer/components/LaunchSurface.tsx) cycles Auto / Plan / Chat with Tab; Auto is the resting mode and shows no chip, so the chip appears only on Plan or Chat (both composers behave this way, and the command palette lists all three). Chat launches a scratch workspace with no repository attached, so the project picker hides and no longer offers a Chat row. The project chip is the source of truth while composing: Full-view new chat hides the grid without dropping it, and a dashboard delta must not retarget the picker back to that hidden session's repo. The last project the user picked is persisted ([launchProjectPreference.ts](../src/renderer/lib/launchProjectPreference.ts)) and survives leaving new chat to open a session: the next new chat shows that project, not the session they just viewed. Both the project picker and the model picker list recently chosen rows first. Stopping a just-launched chat within 10 seconds restores this composer with the prompt and target kept, and archives the workspace so the cancelled chat does not stay in the sidebar ([earlyStop.ts](../src/renderer/lib/earlyStop.ts)).
 - **Actions Menu:** [SessionActionsMenu.tsx](../src/renderer/components/SessionActionsMenu.tsx) handles workspace actions, PR refreshes, git shortcuts, and panel toggles.
@@ -216,13 +216,17 @@ The live question can only be in the last turn (answering it sends a user
 message, which starts a new one), so `SessionConversation` reads it off the last
 render item and the turn stops drawing its card.
 
+An **answered** question leaves the transcript entirely. The answer that follows
+it is the record; the card behind it would restate the question the reader just
+settled, under a live Send button that could send it again.
+
 - **Several questions page, they do not stack.** `‹ 1 of 3 ›` in the header, so
   the slot is the same height whether the agent asked one thing or four. A
   single-select pick settles its question and moves to the next by itself; the
   `→` is drawn only on rows whose pick advances.
 - **Closing is not declining.** The `✕` ("Answer in your own words") puts the
-  composer back and leaves the question in the transcript as a QuestionCard, so
-  the reader can reply in prose instead of picking.
+  composer back and leaves the question in the transcript as a QuestionCard —
+  still live, still answerable — so the reader can reply in prose instead.
 - **Send is explicit.** It enables once every question is answered. Clicking an
   option never submits on its own — a card answer terminates the running probe
   (see Submission Flow), so a misclick would cut the turn short.
@@ -249,8 +253,9 @@ not keep a question inline. (It once did, and since sending refocuses the input
 and it keeps focus for the rest of the turn, nearly every question landed in the
 scrollback until the chat was reopened.)
 
-A QuestionCard in the scrollback collapses to a single-line summary with an
-expand chevron after submission.
+A QuestionCard collapses to a single-line summary with an expand chevron on
+submit, which is what the reader sees in the gap before the answer lands as a
+user message and the card leaves with it.
 
 ### Submission Flow
 

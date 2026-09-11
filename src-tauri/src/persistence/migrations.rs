@@ -201,6 +201,18 @@ pub static WORKSPACE_KIND_COLUMNS: phf::Map<&'static str, &'static [&'static str
     ] as &'static [&'static str],
 };
 
+// Post-v47 `workspaces` shape: records the latest activity timestamp the user
+// actually viewed. Existing rows start read so an upgrade does not promote the
+// entire history into Priority; new rows receive their creation timestamp.
+pub static WORKSPACE_LAST_VIEWED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "workspaces" => &[
+        "base_ref", "branch", "changed_files", "created_at", "dirty", "icon",
+        "icon_color", "id", "kind", "last_activity_at", "last_viewed_at", "path",
+        "pinned", "priority_added_at", "priority_dismissed_at", "project_id",
+        "shared_workspace", "state", "task_label", "task_label_auto", "updated_at",
+    ] as &'static [&'static str],
+};
+
 // Post-v16 `sessions` shape: adds the `resume_fork` flag consumed (and
 // cleared) by the next resumed launch of a forked session.
 pub static SESSION_RESUME_FORK_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
@@ -861,7 +873,20 @@ pub static MIGRATIONS: &[Migration] = &[
         },
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 47,
+        name: "workspace_last_viewed_at",
+        up: WORKSPACE_LAST_VIEWED_AT,
+        affected_tables: &["workspaces"],
+        expected_columns: &WORKSPACE_LAST_VIEWED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+const WORKSPACE_LAST_VIEWED_AT: &str = r#"
+ALTER TABLE workspaces ADD COLUMN last_viewed_at TEXT;
+UPDATE workspaces SET last_viewed_at = last_activity_at;
+"#;
 
 // Machine-specific settings upgrades cannot embed local paths in schema SQL.
 // Record their completion atomically with the corresponding data update.
@@ -2176,7 +2201,7 @@ mod tests {
             .expect("projects");
         verify_table_columns(&connection, &SESSION_PR_ATTRIBUTION_COLUMNS, "sessions")
             .expect("sessions");
-        verify_table_columns(&connection, &WORKSPACE_KIND_COLUMNS, "workspaces")
+        verify_table_columns(&connection, &WORKSPACE_LAST_VIEWED_COLUMNS, "workspaces")
             .expect("workspaces");
         verify_table_columns(
             &connection,
@@ -2284,6 +2309,7 @@ mod tests {
                 ),
                 (45, compute_migration_checksum(SYNCED_SESSION_TOMBSTONES)),
                 (46, compute_migration_checksum(DATA_MIGRATIONS)),
+                (47, compute_migration_checksum(WORKSPACE_LAST_VIEWED_AT)),
             ]
         );
 
@@ -2380,8 +2406,32 @@ mod tests {
         run_migrations(&mut connection).expect("first migrate");
         run_migrations(&mut connection).expect("second migrate");
 
-        verify_table_columns(&connection, &WORKSPACE_KIND_COLUMNS, "workspaces")
+        verify_table_columns(&connection, &WORKSPACE_LAST_VIEWED_COLUMNS, "workspaces")
             .expect("head workspace shape");
+    }
+
+    #[test]
+    fn workspace_read_state_migration_starts_existing_rows_as_viewed() {
+        let mut connection = Connection::open_in_memory().expect("open db");
+        run_migrations_with(&mut connection, &MIGRATIONS[..46]).expect("migrate through v46");
+        seed_minimal_session(&connection);
+        connection
+            .execute(
+                "UPDATE workspaces SET last_activity_at = '2026-09-12T10:15:00.000Z' WHERE id = 'w1'",
+                [],
+            )
+            .expect("seed workspace activity");
+
+        run_migrations(&mut connection).expect("apply read-state migration");
+
+        let (activity, viewed): (String, String) = connection
+            .query_row(
+                "SELECT last_activity_at, last_viewed_at FROM workspaces WHERE id = 'w1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read migrated workspace");
+        assert_eq!(viewed, activity);
     }
 
     #[test]

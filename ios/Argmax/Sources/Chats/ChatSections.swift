@@ -183,7 +183,7 @@ private func isInPlay(_ workspace: WorkspaceSummary) -> Bool {
 
 /// Every live, undismissed reason per workspace, strongest first.
 ///
-/// `unreadWorkspaceIDs` is this phone's own reading state and nil means "not
+/// `unreadWorkspaceIDs` comes from shared host read stamps and nil means "not
 /// tracked yet", which reads every row as unread — the same default the
 /// renderer's optional parameter has.
 func computeWorkspaceReasons(

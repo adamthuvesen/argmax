@@ -4,7 +4,7 @@ import SwiftUI
 /// The chat list: the app's root screen and the only place a chat is opened
 /// from.
 ///
-/// Three sections in a fixed order — Pinned, Priority, Chats — grouped by
+/// Pinned, Priority, then the desktop's recency buckets, grouped by
 /// `ChatSections.swift`, which ports the desktop's rules rather than
 /// inventing phone ones. The rows are the web list redrawn: the same
 /// information, our own type and surfaces, and none of `List`'s stock cell
@@ -234,7 +234,9 @@ struct ChatListView: View {
         List {
             section("Pinned", rows: store.sections.pinned, from: 0)
             section("Priority", rows: store.sections.priority, from: store.sections.pinned.count)
-            section("Chats", rows: store.sections.chats, from: store.sections.pinned.count + store.sections.priority.count)
+            ForEach(groupChatsByDate(store.sections.chats, now: store.now)) { group in
+                section(group.label, rows: group.rows, from: store.sections.pinned.count + store.sections.priority.count)
+            }
             // The last row needs somewhere to end, and the home indicator is
             // not it.
             Color.clear.frame(height: Spacing.section).plainRow()

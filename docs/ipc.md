@@ -29,6 +29,12 @@ client to continue paging. Legacy event/raw row cursors remain supported.
 
 `session:multitask` dispatches a sibling chat from a session that may still be mid-turn, and returns the new session and workspace ids so the composer can draw the card without waiting for the dashboard delta. See [multitask.md](multitask.md).
 
+`workspaces:mark-viewed` acknowledges a batch of `{ workspaceId, observedActivityAt }`
+entries under `workspaces`. Read stamps only advance to activity the client
+observed, so a newer reply remains unread. Updated workspace rows carry
+`lastViewedAt` through `dashboard:delta` so desktop and mobile agree on unread
+completed replies.
+
 `settings:preview-chat-cleanup` returns a fixed seven-day cutoff, a confirmation id, and the number of eligible chats. `settings:delete-old-chats` accepts that id and applies only the previewed candidate set. The deletion transaction rechecks activity and active work, and reports chats skipped because they changed after the preview.
 
 `connections:list` takes a provider and optional workspace id. It returns the MCP servers, plugins, and provider connectors available at that scope, plus the strongest authentication result the provider exposes. The handler runs provider health checks with a timeout and returns **Unknown** when a CLI does not report token validity.

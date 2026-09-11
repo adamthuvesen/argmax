@@ -45,6 +45,7 @@ struct NativeTranscriptView: View {
                                      onOpenFile: onOpenFile, onRevisePlan: onRevisePlan,
                                      onOpenSession: { navigator.awaitingSessionID = $0 })
                 }
+                    .padding(.vertical, row.verticalPadding)
                     .environmentObject(transcript)
                     .environmentObject(dashboard)
                     .environmentObject(appearance)

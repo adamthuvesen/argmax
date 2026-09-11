@@ -115,6 +115,26 @@ final class DeltaMergeTests: XCTestCase {
         XCTAssertTrue(store.sections.isEmpty)
     }
 
+    @MainActor
+    func testReadOnAnotherDeviceClearsPriorityAndANewReplyRestoresIt() throws {
+        let url = try XCTUnwrap(URL(string: "https://mac.tail.ts.net/mobile.html#token=t"))
+        let now = try XCTUnwrap(parseWireTimestamp("2026-09-11T17:00:00.000Z"))
+        let store = DashboardStore(client: try BridgeClient(pairingURL: url), now: now)
+        var workspace = makeWorkspace(id: "read-sync", lastActivityAt: "2026-09-11T16:59:00.000Z")
+        workspace.lastViewedAt = "2026-09-11T16:58:00.000Z"
+        let session = makeSession(id: "read-session", workspaceId: workspace.id, attention: .reviewReady,
+                                  attentionChangedAt: workspace.lastActivityAt, lastActivityAt: workspace.lastActivityAt)
+        store.ingest(snapshot: DashboardSnapshot(workspaces: [workspace], sessions: [session]))
+        XCTAssertEqual(store.sections.priority.map(\.id), [workspace.id])
+        workspace.lastViewedAt = workspace.lastActivityAt
+        store.ingest(delta: DashboardDelta(workspaces: [workspace]))
+        XCTAssertTrue(store.sections.priority.isEmpty)
+        XCTAssertEqual(store.sections.chats.map(\.id), [workspace.id])
+        workspace.lastActivityAt = "2026-09-11T16:59:30.000Z"
+        store.ingest(delta: DashboardDelta(workspaces: [workspace]))
+        XCTAssertEqual(store.sections.priority.map(\.id), [workspace.id])
+    }
+
     /// What a launch relies on: seeding the rows it was answered with makes
     /// the chat's row available in the same call, so the New chat screen can
     /// be replaced by the transcript without a trip back to the list.

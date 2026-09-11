@@ -960,6 +960,19 @@ pub struct WorkspacesSetPinnedInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceViewedObservationInput {
+    pub workspace_id: WorkspaceId,
+    pub observed_activity_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspacesMarkViewedInput {
+    pub workspaces: Vec<WorkspaceViewedObservationInput>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspacesSetPriorityDismissedInput {
     pub workspace_id: WorkspaceId,
     pub dismissed: bool,

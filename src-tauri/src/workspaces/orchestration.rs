@@ -40,8 +40,9 @@ use crate::git::exec::{run_git_text, run_git_text_blocking, GIT_DEFAULT_TIMEOUT}
 use crate::ipc::inputs::{
     OpenIdeChoice, ScratchWorkspaceKind, WorkspacesArchiveInput, WorkspacesAutotitleInput,
     WorkspacesCreateCurrentInput, WorkspacesCreateIsolatedInput, WorkspacesCreateScratchInput,
-    WorkspacesKeepInput, WorkspacesOpenInIdeInput, WorkspacesSetIconInput, WorkspacesSetLabelInput,
-    WorkspacesSetPinnedInput, WorkspacesSetPriorityAddedInput, WorkspacesSetPriorityDismissedInput,
+    WorkspacesKeepInput, WorkspacesMarkViewedInput, WorkspacesOpenInIdeInput,
+    WorkspacesSetIconInput, WorkspacesSetLabelInput, WorkspacesSetPinnedInput,
+    WorkspacesSetPriorityAddedInput, WorkspacesSetPriorityDismissedInput,
 };
 use crate::persistence::database::Database;
 use crate::persistence::events::{
@@ -57,10 +58,11 @@ use crate::persistence::sessions::{
     SessionSummary,
 };
 use crate::persistence::workspaces::{
-    find_workspace_by_id, persist_workspace, set_workspace_icon, set_workspace_label,
-    set_workspace_label_auto, set_workspace_pinned, set_workspace_priority_added,
-    set_workspace_priority_dismissed, update_workspace_state, update_workspace_status,
-    PersistWorkspaceInput, WorkspaceStatusInput, WorkspaceSummary,
+    find_workspace_by_id, mark_workspaces_viewed, persist_workspace, set_workspace_icon,
+    set_workspace_label, set_workspace_label_auto, set_workspace_pinned,
+    set_workspace_priority_added, set_workspace_priority_dismissed, update_workspace_state,
+    update_workspace_status, PersistWorkspaceInput, WorkspaceStatusInput, WorkspaceSummary,
+    WorkspaceViewedObservation,
 };
 use crate::providers::cursor_acp::CursorAcpSessions;
 use crate::providers::flush_queue::DashboardDelta;
@@ -2587,6 +2589,69 @@ impl WorkspaceService {
             ..DashboardDelta::default()
         });
         Ok(workspace)
+    }
+
+    pub fn mark_viewed(
+        self: &Arc<Self>,
+        input: WorkspacesMarkViewedInput,
+    ) -> ArgmaxResult<Vec<WorkspaceSummary>> {
+        const MAX_BATCH_SIZE: usize = 100;
+        if input.workspaces.len() > MAX_BATCH_SIZE {
+            return Err(ArgmaxError::invalid(crate::error::InvalidInputIssue::at(
+                vec!["workspaces".to_owned()],
+                "WORKSPACE_VIEW_BATCH_TOO_LARGE",
+                format!("at most {MAX_BATCH_SIZE} workspaces may be marked viewed at once"),
+            )));
+        }
+
+        let now = chrono::Utc::now();
+        let observations = input
+            .workspaces
+            .into_iter()
+            .enumerate()
+            .map(|(index, observation)| {
+                let parsed =
+                    chrono::DateTime::parse_from_rfc3339(&observation.observed_activity_at)
+                        .map_err(|_| {
+                            ArgmaxError::invalid(crate::error::InvalidInputIssue::at(
+                                vec![
+                                    "workspaces".to_owned(),
+                                    index.to_string(),
+                                    "observedActivityAt".to_owned(),
+                                ],
+                                "TIMESTAMP_INVALID",
+                                "observed activity timestamp must be RFC 3339",
+                            ))
+                        })?;
+                if parsed > now {
+                    return Err(ArgmaxError::invalid(crate::error::InvalidInputIssue::at(
+                        vec![
+                            "workspaces".to_owned(),
+                            index.to_string(),
+                            "observedActivityAt".to_owned(),
+                        ],
+                        "TIMESTAMP_FUTURE",
+                        "observed activity timestamp must not be in the future",
+                    )));
+                }
+                Ok(WorkspaceViewedObservation {
+                    workspace_id: observation.workspace_id.to_string(),
+                    observed_activity_at: parsed
+                        .with_timezone(&chrono::Utc)
+                        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+                })
+            })
+            .collect::<ArgmaxResult<Vec<_>>>()?;
+
+        let connection = self.database.connection();
+        let changed = mark_workspaces_viewed(&connection, &observations)?;
+        if !changed.is_empty() {
+            self.publish(DashboardDelta {
+                workspaces: changed.clone(),
+                ..DashboardDelta::default()
+            });
+        }
+        Ok(changed)
     }
 
     pub fn set_priority_added(

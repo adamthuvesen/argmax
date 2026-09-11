@@ -26,10 +26,32 @@ final class DashboardStore: ObservableObject {
     /// events do not change the parent's projected rows.
     @Published private(set) var transcriptRevision = 0
 
-    /// Chats whose latest reply this phone has not opened. Reading clears
-    /// `review-ready` and nothing else. Nil until the UI tracks it, which
-    /// reads every row as unread — the renderer's own default.
-    var unreadWorkspaceIDs: Set<String>? { didSet { regroup() } }
+    /// Read acknowledgements arrive in the same dashboard rows on every device.
+    var unreadWorkspaceIDs: Set<String> {
+        Set(snapshot.workspaces.filter { workspace in
+            guard let viewed = workspace.lastViewedAt.flatMap(parseWireTimestamp),
+                  let activity = parseWireTimestamp(workspace.lastActivityAt) else { return false }
+            return activity > viewed
+        }.map(\.id))
+    }
+
+    func markViewed(_ workspace: WorkspaceSummary) async {
+        guard let viewed = workspace.lastViewedAt.flatMap(parseWireTimestamp),
+              let activity = parseWireTimestamp(workspace.lastActivityAt), activity > viewed else { return }
+        do {
+            let _: [WorkspaceSummary] = try await client.request(
+                "workspaces:mark-viewed",
+                input: MarkWorkspacesViewedInput(workspaces: [
+                    .init(workspaceId: workspace.id, observedActivityAt: workspace.lastActivityAt)
+                ]),
+                as: [WorkspaceSummary].self
+            )
+            // The host delta supplies authoritative rows. Applying an RPC
+            // response here could overwrite newer activity received meanwhile.
+        } catch {
+            Self.log.error("Could not sync viewed chat: \(String(describing: error), privacy: .public)")
+        }
+    }
 
     /// The clock the 30-minute Priority idle rule runs against. A view ticks
     /// it once a minute; a test sets it outright.

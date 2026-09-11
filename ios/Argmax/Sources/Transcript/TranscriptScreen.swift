@@ -45,6 +45,16 @@ struct TranscriptScreen: View {
             guard transcript.relinquish(screenID) else { return }
             if push.openSessionID == row.session.id { push.openSessionID = nil }
         }
+        .task(id: viewedActivityKey) {
+            guard transcript.phase == .ready, store.connection == .live,
+                  let workspace = store.snapshot.workspaces.first(where: { $0.id == row.workspace.id }) else { return }
+            await store.markViewed(workspace)
+        }
+    }
+
+    private var viewedActivityKey: String {
+        let workspace = store.snapshot.workspaces.first { $0.id == row.workspace.id }
+        return "\(workspace?.lastActivityAt ?? "")|\(transcript.phase)|\(store.connection)"
     }
 
     // MARK: - Header

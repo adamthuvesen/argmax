@@ -33,7 +33,7 @@ struct TranscriptAgentDetail: View {
                     )
                 } else {
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: Spacing.row) {
+                        LazyVStack(alignment: .leading, spacing: Spacing.tight) {
                             if let failure {
                                 Text("Some activity could not be loaded. \(failure)")
                                     .font(.footnote)

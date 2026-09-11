@@ -255,7 +255,7 @@ private struct TranscriptMultitaskDetail: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if let snapshot {
                         ScrollView {
-                            LazyVStack(alignment: .leading, spacing: Spacing.row) {
+                            LazyVStack(alignment: .leading, spacing: Spacing.tight) {
                                 if let displayedFailure {
                                     Text(displayedFailure)
                                         .font(.footnote)

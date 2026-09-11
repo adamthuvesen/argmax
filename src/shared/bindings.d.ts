@@ -656,6 +656,14 @@ async workspacesSetPinned(input: WorkspacesSetPinnedInput) : Promise<Result<Work
     else return { status: "error", error: e  as any };
 }
 },
+async workspacesMarkViewed(input: WorkspacesMarkViewedInput) : Promise<Result<WorkspaceSummary[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspaces_mark_viewed", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async workspacesSetPriorityAdded(input: WorkspacesSetPriorityAddedInput) : Promise<Result<WorkspaceSummary, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("workspaces_set_priority_added", { input }) };
@@ -2098,7 +2106,13 @@ export type WorkspaceSummary = { id: string; projectId: string; taskLabel: strin
  * repo-coupled surface (review, gh, branch chips, sidebar grouping) gates
  * on this rather than on which UI created the workspace.
  */
-kind: string; dirty: boolean; changedFiles: number; lastActivityAt: string; pinned: boolean;
+kind: string; dirty: boolean; changedFiles: number; lastActivityAt: string;
+/**
+ * Latest workspace activity timestamp a client actually displayed. This
+ * is advanced from an observed snapshot, never from the acknowledgement
+ * request's wall clock, so activity racing the request stays unread.
+ */
+lastViewedAt: string | null; pinned: boolean;
 /**
  * When the user marked this workspace done in the sidebar's Priority
  * section. The dismissal is spent (ignored by the renderer) once the
@@ -2155,6 +2169,7 @@ icon: string | null;
 iconColor: string | null }
 export type WorkspaceTargetId = string
 export type WorkspaceTargetKind = "workspace" | "project"
+export type WorkspaceViewedObservationInput = { workspaceId: WorkspaceId; observedActivityAt: string }
 export type WorkspaceWriteFileInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath; content: FileContent; expectedMtimeMs: NullableExpectedMtimeMs }
 export type WorkspacesArchiveInput = { workspaceId: WorkspaceId; force: boolean | null }
 export type WorkspacesAutotitleInput = { workspaceId: WorkspaceId; provider: ProviderId; modelId: NonEmptyString; prompt: Prompt }
@@ -2162,6 +2177,7 @@ export type WorkspacesCreateCurrentInput = { projectId: ProjectId; taskLabel: Ta
 export type WorkspacesCreateIsolatedInput = { projectId: ProjectId; taskLabel: TaskLabel; baseRef: BaseRef | null }
 export type WorkspacesCreateScratchInput = { taskLabel: TaskLabel; kind: ScratchWorkspaceKind | null }
 export type WorkspacesKeepInput = { workspaceId: WorkspaceId }
+export type WorkspacesMarkViewedInput = { workspaces: WorkspaceViewedObservationInput[] }
 export type WorkspacesOpenInIdeInput = { workspaceId: WorkspaceId; ide: OpenIdeChoice }
 export type WorkspacesRefreshStatusInput = { workspaceId: WorkspaceId }
 /**

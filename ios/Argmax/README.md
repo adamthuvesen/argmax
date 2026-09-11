@@ -18,7 +18,7 @@ for the boundary and maintenance tradeoff.
   `dashboard:delta`, grouped into Pinned / Priority / Chats by the same rules
   the desktop sidebar and `mobile.html` apply.
 - `Sources/Chats/ChatListView.swift` — the list itself: Pinned / Priority /
-  Chats, custom rows rather than stock cells, search, pull to refresh, and the
+  Today / Yesterday / Last 7 Days / Older, custom rows, search, pull to refresh, and the
   quiet connection states. The brief it is drawn to is in
   [the plan](../../docs/plan/hybrid-native-phone.md#design-brief-phase-2-3-5).
 - `Sources/Transcript/TranscriptStore.swift` owns transcript history, cursor
@@ -35,6 +35,12 @@ Tool action labels and file links display paths relative to the chat's
 workspace. Labels shorten the path before truncating it so the filename stays
 visible. Raw tool inputs and file-opening targets retain their original paths.
 Paths outside the workspace keep their full location.
+
+Workspace read timestamps are shared through the host dashboard. Opening a
+chat acknowledges its observed activity with `workspaces:mark-viewed`, so a
+completed reply read on either device leaves Priority on both. Newer replies
+become unread again. Questions, failures, and open pull requests retain their
+own Priority rules. This requires a host build with shared read-state support.
 
 Settings → Chat detail controls this iPhone independently of the desktop.
 Compact is the default and folds thoughts and tool activity together between

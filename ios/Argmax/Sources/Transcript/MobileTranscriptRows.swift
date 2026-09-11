@@ -13,6 +13,18 @@ enum MobileTranscriptRow: Equatable, Identifiable {
         }
     }
 
+    /// Activity controls already reserve a 44-point tap target.
+    var verticalPadding: CGFloat {
+        switch self {
+        case .activity: return 0
+        case .item(let item):
+            switch item {
+            case .thought, .tools, .todo, .notice: return 0
+            default: return Spacing.snug
+            }
+        }
+    }
+
     static func rows(_ items: [TranscriptItem], detail: MobileChatDetail) -> [MobileTranscriptRow] {
         guard detail == .minimal || detail == .compact else { return items.map(Self.item) }
         var narration = Set<String>()
@@ -60,6 +72,11 @@ struct MobileTranscriptRowView<Content: View>: View {
     @Environment(\.mobileChatDetail) private var detail
 
     var body: some View {
+        rowContent.disclosureGroupStyle(TranscriptDisclosureStyle())
+    }
+
+    @ViewBuilder
+    private var rowContent: some View {
         switch row {
         case .item(let item): content(item)
         case .activity(let items):
@@ -72,8 +89,6 @@ struct MobileTranscriptRowView<Content: View>: View {
                 HStack(spacing: Spacing.snug) {
                     if tools(in: items).contains(where: { $0.status == .running }) {
                         WorkingNest(size: 16)
-                    } else {
-                        Image(systemName: "sparkle")
                     }
                     ForEach(iconTools(in: items)) { tool in TranscriptToolIcon(name: tool.name) }
                     Text(summary(items)).lineLimit(1)
@@ -109,5 +124,30 @@ struct MobileTranscriptRowView<Content: View>: View {
         let running = tools.contains { $0.status == .running }
         if tools.isEmpty { return "Thought process and activity" }
         return "\(running ? "Working" : "Activity") · \(tools.count) action\(tools.count == 1 ? "" : "s")"
+    }
+}
+
+/// Keep the whole row tappable without the system disclosure's extra insets.
+private struct TranscriptDisclosureStyle: DisclosureGroupStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                configuration.isExpanded.toggle()
+            } label: {
+                HStack(spacing: Spacing.snug) {
+                    configuration.label
+                    Spacer(minLength: 0)
+                    Image(systemName: configuration.isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.muted)
+                        .accessibilityHidden(true)
+                }
+                .frame(minHeight: 44)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(configuration.isExpanded ? "Expanded" : "Collapsed")
+            if configuration.isExpanded { configuration.content }
+        }
     }
 }

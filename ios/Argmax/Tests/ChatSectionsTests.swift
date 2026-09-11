@@ -177,6 +177,45 @@ final class ChatSectionsTests: XCTestCase {
         XCTAssertEqual(sections.chats.map(\.id), ["w-read"])
     }
 
+    /// Desktop and phone must feed the same read state into the shared
+    /// Priority rules. Recent completed chats belong in Chats after they have
+    /// been opened, while work in flight and open pull requests still float.
+    func testReadStateKeepsRecentCompletedChatsOutOfPriorityOnBothClients() {
+        let snapshot = DashboardSnapshot(
+            workspaces: [
+                makeWorkspace(id: "w-running-a", state: .running),
+                makeWorkspace(id: "w-running-b", state: .running),
+                makeWorkspace(id: "w-read-a"),
+                makeWorkspace(id: "w-read-b"),
+                makeWorkspace(id: "w-read-c"),
+                makeWorkspace(id: "w-pr-a", prState: "OPEN", prActivityAt: "2026-09-10T12:00:00.000Z"),
+                makeWorkspace(id: "w-pr-b", prState: "OPEN", prActivityAt: "2026-09-10T12:00:00.000Z")
+            ],
+            sessions: [
+                makeSession(id: "s-running-a", workspaceId: "w-running-a", state: .running),
+                makeSession(id: "s-running-b", workspaceId: "w-running-b", state: .running),
+                makeSession(id: "s-read-a", workspaceId: "w-read-a", attention: .reviewReady),
+                makeSession(id: "s-read-b", workspaceId: "w-read-b", attention: .reviewReady),
+                makeSession(id: "s-read-c", workspaceId: "w-read-c", attention: .reviewReady),
+                makeSession(id: "s-pr-a", workspaceId: "w-pr-a"),
+                makeSession(id: "s-pr-b", workspaceId: "w-pr-b")
+            ]
+        )
+
+        let read = groupChatRows(snapshot: snapshot, now: testNow, unreadWorkspaceIDs: [])
+        XCTAssertEqual(read.priority.count, 4)
+        XCTAssertEqual(Set(read.priority.map(\.id)), ["w-running-a", "w-running-b", "w-pr-a", "w-pr-b"])
+        XCTAssertEqual(Set(read.chats.map(\.id)), ["w-read-a", "w-read-b", "w-read-c"])
+
+        let oneNewReply = groupChatRows(
+            snapshot: snapshot,
+            now: testNow,
+            unreadWorkspaceIDs: ["w-read-b"]
+        )
+        XCTAssertEqual(oneNewReply.priority.count, 5)
+        XCTAssertTrue(oneNewReply.priority.contains { $0.id == "w-read-b" })
+    }
+
     /// A row from before the attention-changed column existed stays out,
     /// rather than flooding the section with every chat that ever failed.
     func testAReasonWithNoTimestampIsNotYetAReason() {

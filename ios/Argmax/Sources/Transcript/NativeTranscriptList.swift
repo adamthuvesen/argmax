@@ -59,7 +59,6 @@ where Item.ID == String {
                     self.parent.row(item)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, Spacing.gutter)
-                        .padding(.vertical, Spacing.snug)
                 }.margins(.all, 0)
                 return cell
             }

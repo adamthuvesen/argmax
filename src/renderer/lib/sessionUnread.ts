@@ -1,7 +1,9 @@
 import { useEffect, useMemo } from "react";
+import { logger } from "../../shared/logger.js";
 
 /**
- * When the user last looked at each sidebar chat, keyed by workspace id.
+ * The host shares lastViewedAt across desktop and phone. Local stamps remain
+ * a fallback for older hosts and standalone previews without that field.
  *
  * A row is unread when `lastActivityAt` has moved past that stamp and the
  * chat is not the one on screen. First sight of a workspace seeds the stamp
@@ -61,6 +63,7 @@ function persist(next: ViewedMap): void {
 export type WorkspaceActivity = {
   id: string;
   lastActivityAt: string;
+  lastViewedAt?: string | null;
 };
 
 /**
@@ -96,7 +99,7 @@ export function workspaceHasUnreadResponse(
 ): boolean {
   if (options.working || workspace.id === options.selectedWorkspaceId) return false;
   ensureLoaded();
-  const viewedAt = viewed[workspace.id];
+  const viewedAt = workspace.lastViewedAt ?? viewed[workspace.id];
   if (!viewedAt) return false;
   const activity = Date.parse(workspace.lastActivityAt);
   const seen = Date.parse(viewedAt);
@@ -112,6 +115,14 @@ export function useUnreadWorkspaceIds(
 ): Set<string> {
   useEffect(() => {
     syncWorkspaceViewed(workspaces, selectedWorkspaceId);
+    const selected = workspaces.find((workspace) => workspace.id === selectedWorkspaceId);
+    if (!selected?.lastViewedAt || !window.argmax?.markWorkspacesViewed) return;
+    if (Date.parse(selected.lastActivityAt) <= Date.parse(selected.lastViewedAt)) return;
+    void window.argmax.markWorkspacesViewed({
+      workspaces: [{ workspaceId: selected.id, observedActivityAt: selected.lastActivityAt }]
+    }).catch((error: unknown) => {
+      logger.warn("renderer.sessionUnread", "Could not sync viewed chat", { error: String(error) });
+    });
   }, [workspaces, selectedWorkspaceId]);
   return useMemo(() => {
     const unread = new Set<string>();

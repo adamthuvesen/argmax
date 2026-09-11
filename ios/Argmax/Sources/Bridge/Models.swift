@@ -240,6 +240,8 @@ struct WorkspaceSummary: Codable, Hashable, Sendable, Identifiable {
     /// colour: the value is a token both clients resolve against their own
     /// theme, which is how one pick reads right on paper and on charcoal.
     var iconColor: String?
+    /// Shared host acknowledgement of the activity actually shown on a device.
+    var lastViewedAt: String? = nil
 }
 
 /// `SessionSummary` — one chat with one provider.

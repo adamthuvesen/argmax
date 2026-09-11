@@ -98,6 +98,7 @@ export type CreateWorkspaceInput = Bindings.WorkspacesCreateIsolatedInput;
 export type CreateCurrentWorkspaceInput = Bindings.WorkspacesCreateCurrentInput;
 export type CreateScratchWorkspaceInput = Bindings.WorkspacesCreateScratchInput;
 export type AutotitleWorkspaceInput = Bindings.WorkspacesAutotitleInput;
+export type WorkspacesMarkViewedInput = Bindings.WorkspacesMarkViewedInput;
 type OptionalNullable<T, K extends keyof T> = Omit<T, K> & {
   [P in K]?: T[P];
 };
@@ -290,6 +291,8 @@ export type WorkspaceSummary = Retype<
     prState: GhPrState | null;
     /** Check rollup for that PR as the poller last saw it. Null when there is no PR. */
     prCheckState: GhCheckState | null;
+    /** Absent on snapshots from hosts predating shared read state. */
+    lastViewedAt?: string | null;
   }
 >;
 
@@ -442,6 +445,7 @@ export type DashboardDelta = {
 };
 
 export interface ArgmaxApi {
+  markWorkspacesViewed?: (input: WorkspacesMarkViewedInput) => Promise<WorkspaceSummary[]>;
   dashboard: {
     list: () => Promise<DashboardListSnapshot>;
     onDelta: (listener: (delta: DashboardDelta) => void) => () => void;

@@ -32,10 +32,11 @@ use super::sessions::{
 };
 use super::usage::{get_session_cost_summary, insert_usage_event, InsertUsageEventInput};
 use super::workspaces::{
-    find_workspace_by_id, persist_workspace, set_workspace_icon, set_workspace_label,
-    set_workspace_label_auto, set_workspace_pinned, set_workspace_priority_added,
-    set_workspace_priority_dismissed, update_workspace_state, update_workspace_status,
-    PersistWorkspaceInput, WorkspaceStatusInput,
+    find_workspace_by_id, mark_workspaces_viewed, persist_workspace, set_workspace_icon,
+    set_workspace_label, set_workspace_label_auto, set_workspace_pinned,
+    set_workspace_priority_added, set_workspace_priority_dismissed, update_workspace_state,
+    update_workspace_status, PersistWorkspaceInput, WorkspaceStatusInput,
+    WorkspaceViewedObservation,
 };
 use crate::error::ArgmaxError;
 use crate::sessions::state::SessionState;
@@ -84,6 +85,10 @@ fn project_workspace_and_session_repositories_round_trip() {
     let workspace = persist_workspace(&connection, &workspace_input()).expect("persist workspace");
     assert_eq!(workspace.project_id, "p1");
     assert!(!workspace.pinned);
+    assert_eq!(
+        workspace.last_viewed_at.as_deref(),
+        Some(workspace.last_activity_at.as_str())
+    );
 
     let status = update_workspace_status(
         &connection,
@@ -197,6 +202,65 @@ fn project_workspace_and_session_repositories_round_trip() {
     delete_project(&connection, "p1").expect("delete project");
     let deleted = require_project(&connection, "p1").expect_err("project deleted");
     assert!(matches!(deleted, ArgmaxError::RecordNotFound { .. }));
+}
+
+#[test]
+fn workspace_read_state_is_observation_bound_and_monotonic() {
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+
+    connection
+        .execute(
+            "UPDATE workspaces SET last_activity_at = '2026-09-12T10:02:00.000Z', last_viewed_at = '2026-09-12T10:00:00.000Z' WHERE id = 'w1'",
+            [],
+        )
+        .expect("seed unread activity");
+
+    // The client saw 10:01, then another response landed before its
+    // acknowledgement. Only the observed activity becomes read.
+    let changed = mark_workspaces_viewed(
+        &connection,
+        &[WorkspaceViewedObservation {
+            workspace_id: "w1".to_owned(),
+            observed_activity_at: "2026-09-12T10:01:00.000Z".to_owned(),
+        }],
+    )
+    .expect("mark observed activity");
+    assert_eq!(changed.len(), 1);
+    assert_eq!(
+        changed[0].last_viewed_at.as_deref(),
+        Some("2026-09-12T10:01:00.000Z")
+    );
+    assert_eq!(changed[0].last_activity_at, "2026-09-12T10:02:00.000Z");
+
+    // A delayed client cannot move the watermark backward.
+    let unchanged = mark_workspaces_viewed(
+        &connection,
+        &[WorkspaceViewedObservation {
+            workspace_id: "w1".to_owned(),
+            observed_activity_at: "2026-09-12T10:00:30.000Z".to_owned(),
+        }],
+    )
+    .expect("ignore stale observation");
+    assert!(unchanged.is_empty());
+    assert_eq!(
+        find_workspace_by_id(&connection, "w1")
+            .expect("workspace")
+            .last_viewed_at
+            .as_deref(),
+        Some("2026-09-12T10:01:00.000Z")
+    );
+
+    let ahead = mark_workspaces_viewed(
+        &connection,
+        &[WorkspaceViewedObservation {
+            workspace_id: "w1".to_owned(),
+            observed_activity_at: "2026-09-12T10:03:00.000Z".to_owned(),
+        }],
+    );
+    assert!(matches!(ahead, Err(ArgmaxError::InvalidInput { .. })));
 }
 
 #[test]

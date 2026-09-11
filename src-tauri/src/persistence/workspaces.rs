@@ -5,7 +5,13 @@ use specta::Type;
 use super::gh::latest_pr_for_workspace;
 use super::time::now_iso;
 use super::{bool_to_i64, json_error, sqlite_error};
-use crate::error::{ArgmaxError, ArgmaxResult};
+use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct WorkspaceViewedObservation {
+    pub workspace_id: String,
+    pub observed_activity_at: String,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PersistWorkspaceInput {
@@ -50,6 +56,10 @@ pub struct WorkspaceSummary {
     pub dirty: bool,
     pub changed_files: i64,
     pub last_activity_at: String,
+    /// Latest workspace activity timestamp a client actually displayed. This
+    /// is advanced from an observed snapshot, never from the acknowledgement
+    /// request's wall clock, so activity racing the request stays unread.
+    pub last_viewed_at: Option<String>,
     pub pinned: bool,
     /// When the user marked this workspace done in the sidebar's Priority
     /// section. The dismissal is spent (ignored by the renderer) once the
@@ -183,9 +193,9 @@ pub fn persist_workspace(
             r#"
         INSERT INTO workspaces (
           id, project_id, task_label, branch, base_ref, path, state, shared_workspace,
-          kind, dirty, changed_files, last_activity_at, created_at, updated_at
+          kind, dirty, changed_files, last_activity_at, last_viewed_at, created_at, updated_at
         ) VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
         "#,
         )
@@ -206,9 +216,67 @@ pub fn persist_workspace(
             timestamp.as_str(),
             timestamp.as_str(),
             timestamp.as_str(),
+            timestamp.as_str(),
         ))
         .map_err(sqlite_error)?;
     find_workspace_by_id(connection, &input.id)
+}
+
+/// Advances read state to activity timestamps the client actually observed.
+/// The transaction makes the comparison and update atomic with concurrent
+/// provider activity. It returns only rows whose read state moved.
+pub fn mark_workspaces_viewed(
+    connection: &Connection,
+    observations: &[WorkspaceViewedObservation],
+) -> ArgmaxResult<Vec<WorkspaceSummary>> {
+    if observations.is_empty() {
+        return Ok(Vec::new());
+    }
+    let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+    let mut changed_ids = Vec::new();
+
+    for observation in observations {
+        let current_activity: String = transaction
+            .prepare_cached("SELECT last_activity_at FROM workspaces WHERE id = ?")
+            .map_err(sqlite_error)?
+            .query_row([observation.workspace_id.as_str()], |row| row.get(0))
+            .map_err(|error| match error {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    ArgmaxError::record_not_found("workspace", &observation.workspace_id)
+                }
+                other => sqlite_error(other),
+            })?;
+
+        if observation.observed_activity_at > current_activity {
+            return Err(ArgmaxError::invalid(InvalidInputIssue::at(
+                vec!["workspaces".to_owned(), "observedActivityAt".to_owned()],
+                "WORKSPACE_ACTIVITY_NOT_OBSERVED",
+                "observed activity timestamp is newer than the workspace activity",
+            )));
+        }
+
+        let changes = transaction
+            .prepare_cached(
+                r#"
+                UPDATE workspaces
+                SET last_viewed_at = ?1, updated_at = ?2
+                WHERE id = ?3 AND (last_viewed_at IS NULL OR last_viewed_at < ?1)
+                "#,
+            )
+            .map_err(sqlite_error)?
+            .execute((
+                observation.observed_activity_at.as_str(),
+                now_iso(),
+                observation.workspace_id.as_str(),
+            ))
+            .map_err(sqlite_error)?;
+        if changes > 0 && !changed_ids.contains(&observation.workspace_id) {
+            changed_ids.push(observation.workspace_id.clone());
+        }
+    }
+
+    transaction.commit().map_err(sqlite_error)?;
+    list_workspaces(connection, Some(&changed_ids), changed_ids.len())
 }
 
 pub fn update_workspace_state(
@@ -440,6 +508,7 @@ pub fn workspace_row_to_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceSumm
         dirty: row.get::<_, i64>("dirty")? == 1,
         changed_files: row.get("changed_files")?,
         last_activity_at: row.get("last_activity_at")?,
+        last_viewed_at: row.get("last_viewed_at")?,
         pinned: row.get::<_, i64>("pinned")? == 1,
         priority_dismissed_at: row.get("priority_dismissed_at")?,
         priority_added_at: row.get("priority_added_at")?,

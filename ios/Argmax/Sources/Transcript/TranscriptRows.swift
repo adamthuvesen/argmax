@@ -67,7 +67,7 @@ struct TranscriptThoughtRow: View {
             TranscriptMarkdown(text: thought.text, client: client, onOpenFile: onOpenFile, isThinking: true)
                 .padding(.top, Spacing.snug)
         } label: {
-            Label(thought.isStreaming ? "Thinking" : "Thought process", systemImage: "sparkle")
+            Text(thought.isStreaming ? "Thinking" : "Thought process")
                 .font(.footnote)
                 .foregroundStyle(Theme.muted)
                 .frame(minHeight: 44)

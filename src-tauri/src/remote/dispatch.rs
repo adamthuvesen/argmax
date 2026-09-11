@@ -234,6 +234,10 @@ async fn dispatch_standard(
             let input: WorkspacesSetPinnedInput = parse(channel, input)?;
             encode(workspaces::workspaces_set_pinned_impl(state, input)?)
         }
+        "workspaces:mark-viewed" => {
+            let input: WorkspacesMarkViewedInput = parse(channel, input)?;
+            encode(workspaces::workspaces_mark_viewed_impl(state, input).await?)
+        }
         "workspaces:set-priority-added" => {
             let input: WorkspacesSetPriorityAddedInput = parse(channel, input)?;
             encode(workspaces::workspaces_set_priority_added_impl(

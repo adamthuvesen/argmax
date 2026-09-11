@@ -102,7 +102,8 @@ import type {
   WorkspaceStatusInput,
   WorkspaceTarget,
   WorkspaceStatusSnapshot,
-  WorkspaceSummary
+  WorkspaceSummary,
+  WorkspacesMarkViewedInput
 } from "../../shared/types.js";
 import { errorMessage } from "../../shared/error.js";
 import { logger } from "../../shared/logger.js";
@@ -271,6 +272,8 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
   };
 
   return {
+    markWorkspacesViewed: (input: WorkspacesMarkViewedInput) =>
+      invokeCommand<WorkspaceSummary[]>("workspaces:mark-viewed", input),
     dashboard: {
       list: () => invokeCommand<DashboardListSnapshot>("dashboard:list"),
       onDelta

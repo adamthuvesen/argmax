@@ -233,8 +233,8 @@
 }
 
 .accent-picker-chip[data-accent-id="purple"] {
-  --accent-swatch-color: #613e9a;
-  --accent-swatch-soft: #ece4fb;
+  --accent-swatch-color: #70558f;
+  --accent-swatch-soft: #eee9f3;
 }
 
 .accent-picker-chip[data-accent-id="neutral"] {
@@ -252,18 +252,34 @@
 }
 
 .accent-picker-chip[data-accent-id="orange"] {
-  --accent-swatch-color: #bd580f;
-  --accent-swatch-soft: #fff0e3;
+  --accent-swatch-color: #9a603b;
+  --accent-swatch-soft: #f5ece5;
 }
 
 .accent-picker-chip[data-accent-id="blue"] {
-  --accent-swatch-color: #30609a;
-  --accent-swatch-soft: #e5eef9;
+  --accent-swatch-color: #446b95;
+  --accent-swatch-soft: #e8eef5;
 }
 
 .accent-picker-chip[data-accent-id="coral"] {
-  --accent-swatch-color: #a64354;
-  --accent-swatch-soft: #fee6e8;
+  --accent-swatch-color: #a35450;
+  --accent-swatch-soft: #f6eae8;
+}
+
+:root[data-theme="dark"] .accent-picker-chip[data-accent-id="purple"] {
+  --accent-swatch-color: #a18bc5;
+}
+
+:root[data-theme="dark"] .accent-picker-chip[data-accent-id="orange"] {
+  --accent-swatch-color: #cc956f;
+}
+
+:root[data-theme="dark"] .accent-picker-chip[data-accent-id="blue"] {
+  --accent-swatch-color: #80a2c6;
+}
+
+:root[data-theme="dark"] .accent-picker-chip[data-accent-id="coral"] {
+  --accent-swatch-color: #cb8b86;
 }
 
 /* ---- Refresh button ---- */

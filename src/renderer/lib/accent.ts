@@ -31,7 +31,7 @@ export const ACCENT_OPTIONS: AccentOption[] = [
     id: "purple",
     label: "Purple",
     hint: "A soft purple accent for chrome.",
-    swatch: { color: "#613e9a", soft: "#ece4fb" }
+    swatch: { color: "#70558f", soft: "#eee9f3" }
   },
   {
     id: "neutral",
@@ -49,19 +49,19 @@ export const ACCENT_OPTIONS: AccentOption[] = [
     id: "orange",
     label: "Orange",
     hint: "A warm orange accent for chrome without changing warnings or diffs.",
-    swatch: { color: "#bd580f", soft: "#fff0e3" }
+    swatch: { color: "#9a603b", soft: "#f5ece5" }
   },
   {
     id: "blue",
     label: "Blue",
     hint: "A cool blue accent for selection, focus, and transcript chrome.",
-    swatch: { color: "#30609a", soft: "#e5eef9" }
+    swatch: { color: "#446b95", soft: "#e8eef5" }
   },
   {
     id: "coral",
     label: "Coral",
-    hint: "A hot pink-red accent. Shares a hue with the --rose error token, so risk states read less distinctly.",
-    swatch: { color: "#a64354", soft: "#fee6e8" }
+    hint: "A warm red accent for chrome. Error states keep their own rose tint.",
+    swatch: { color: "#a35450", soft: "#f6eae8" }
   }
 ];
 

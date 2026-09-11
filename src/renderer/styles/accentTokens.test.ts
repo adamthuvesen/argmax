@@ -46,6 +46,23 @@ function fontWeight(rule: string): number {
 }
 
 describe("CSS contracts that cannot be exercised in jsdom", () => {
+  it.each(["purple", "orange", "blue", "coral"])("keeps %s highlights and bubbles readable in both themes", (accent) => {
+    const tokens = readSource("src/renderer/styles/tokens.css");
+    for (const theme of ["light", "dark"]) {
+      const base = cssRuleBody(tokens, theme === "dark" ? ':root[data-theme="dark"]' : ":root");
+      const palette = cssRuleBody(tokens, `${theme === "dark" ? ':root[data-theme="dark"]' : ":root"}[data-accent="${accent}"]`);
+      for (const surface of ["bg", "sidebar", "panel"]) {
+        expect(contrast(readHex(palette, "accent"), readHex(base, surface))).toBeGreaterThanOrEqual(4.5);
+        expect(contrast(readHex(palette, "accent-deep"), readHex(base, surface))).toBeGreaterThanOrEqual(4.5);
+      }
+      const bubble = readHex(palette, theme === "dark" ? "user-message-bg" : "accent");
+      expect(contrast("#ffffff", bubble)).toBeGreaterThanOrEqual(4.5);
+      if (theme === "dark") {
+        expect(luminance(bubble)).toBeLessThan(luminance(readHex(palette, "accent")));
+      }
+    }
+  });
+
   it("registers the terminal length token consumed by the canvas renderer", () => {
     const tokens = readSource("src/renderer/styles/tokens.css");
     const registration = /@property\s+--text-terminal\s*\{(?<body>[^}]+)\}/.exec(tokens);

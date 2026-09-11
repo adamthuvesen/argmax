@@ -673,9 +673,9 @@
    stay on --sage, --amber, --rose, and the diff tokens so code additions
    remain green. */
 :root[data-accent="purple"] {
-  --accent: #613e9a;
-  --accent-soft: #ece4fb;
-  --accent-deep: #46287b;
+  --accent: #70558f;
+  --accent-soft: #eee9f3;
+  --accent-deep: #553b73;
 }
 
 :root[data-accent="neutral"] {
@@ -685,21 +685,21 @@
 }
 
 :root[data-accent="orange"] {
-  --accent: #bd580f;
-  --accent-soft: #fff0e3;
-  --accent-deep: #9c450b;
+  --accent: #9a603b;
+  --accent-soft: #f5ece5;
+  --accent-deep: #794624;
 }
 
 :root[data-accent="blue"] {
-  --accent: #30609a;
-  --accent-soft: #e5eef9;
-  --accent-deep: #224878;
+  --accent: #446b95;
+  --accent-soft: #e8eef5;
+  --accent-deep: #305176;
 }
 
 :root[data-accent="coral"] {
-  --accent: #a64354;
-  --accent-soft: #fee6e8;
-  --accent-deep: #862b3c;
+  --accent: #a35450;
+  --accent-soft: #f6eae8;
+  --accent-deep: #803b38;
 }
 
 :root[data-accent="black"] {
@@ -709,14 +709,12 @@
 }
 
 :root[data-theme="dark"][data-accent="purple"] {
-  --accent: #714fb0;
-  --accent-soft: rgba(113, 79, 176, 0.16);
-  --accent-deep: #8366b3;
-  /* Purple keeps the lifted accent as the bubble fill. Charcoal ink on
-     that fill is 3.05:1, so white stays. */
-  --on-accent: #ffffff;
-  --user-message-bg: var(--accent);
-  --user-message-fg: var(--on-accent);
+  --accent: #a18bc5;
+  --accent-soft: rgba(161, 139, 197, 0.14);
+  --accent-deep: #b6a2d5;
+  /* Keep small highlights lifted without brightening the whole bubble. */
+  --user-message-bg: #5c4778;
+  --user-message-fg: #ffffff;
 }
 
 :root[data-theme="dark"][data-accent="neutral"] {
@@ -739,29 +737,26 @@
 }
 
 :root[data-theme="dark"][data-accent="orange"] {
-  --accent: #e88845;
-  --accent-soft: rgba(232, 136, 69, 0.16);
-  --accent-deep: #f2a56c;
-  --user-message-bg: #98470f;
+  --accent: #cc956f;
+  --accent-soft: rgba(204, 149, 111, 0.14);
+  --accent-deep: #dfad89;
+  --user-message-bg: #785035;
   --user-message-fg: #ffffff;
 }
 
 :root[data-theme="dark"][data-accent="blue"] {
-  --accent: #6693c9;
-  --accent-soft: rgba(102, 147, 201, 0.16);
-  --accent-deep: #8facd8;
-  --user-message-bg: #3d5d83;
+  --accent: #80a2c6;
+  --accent-soft: rgba(128, 162, 198, 0.14);
+  --accent-deep: #9ab7d6;
+  --user-message-bg: #3e5978;
   --user-message-fg: #ffffff;
 }
 
-/* Coral runs hotter than the other accents (chroma 0.155 against blue's
-   0.095) because a muted coral reads as the dusty --rose it shares a hue
-   with. The bubble drops to the same mid-deep lightness as the rest. */
 :root[data-theme="dark"][data-accent="coral"] {
-  --accent: #e96c7f;
-  --accent-soft: rgba(233, 108, 127, 0.16);
-  --accent-deep: #f38a97;
-  --user-message-bg: #913948;
+  --accent: #cb8b86;
+  --accent-soft: rgba(203, 139, 134, 0.14);
+  --accent-deep: #dfa49e;
+  --user-message-bg: #804844;
   --user-message-fg: #ffffff;
 }
 

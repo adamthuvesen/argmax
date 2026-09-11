@@ -1046,7 +1046,7 @@ html:has(.mobile-shell[data-embed]) body,
 }
 
 .mobile-accent-chip[data-accent-id="purple"] {
-  --accent-swatch-color: #613e9a;
+  --accent-swatch-color: #70558f;
 }
 
 .mobile-accent-chip[data-accent-id="neutral"] {
@@ -1062,15 +1062,31 @@ html:has(.mobile-shell[data-embed]) body,
 }
 
 .mobile-accent-chip[data-accent-id="orange"] {
-  --accent-swatch-color: #bd580f;
+  --accent-swatch-color: #9a603b;
 }
 
 .mobile-accent-chip[data-accent-id="blue"] {
-  --accent-swatch-color: #30609a;
+  --accent-swatch-color: #446b95;
 }
 
 .mobile-accent-chip[data-accent-id="coral"] {
-  --accent-swatch-color: #a64354;
+  --accent-swatch-color: #a35450;
+}
+
+:root[data-theme="dark"] .mobile-accent-chip[data-accent-id="purple"] {
+  --accent-swatch-color: #a18bc5;
+}
+
+:root[data-theme="dark"] .mobile-accent-chip[data-accent-id="orange"] {
+  --accent-swatch-color: #cc956f;
+}
+
+:root[data-theme="dark"] .mobile-accent-chip[data-accent-id="blue"] {
+  --accent-swatch-color: #80a2c6;
+}
+
+:root[data-theme="dark"] .mobile-accent-chip[data-accent-id="coral"] {
+  --accent-swatch-color: #cb8b86;
 }
 
 /* ---- New-chat composer ----

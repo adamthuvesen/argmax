@@ -5,10 +5,8 @@ struct NativeTranscriptView: View {
     let onOpenFile: (String) -> Void
     let onRevisePlan: () -> Void
     @EnvironmentObject private var transcript: TranscriptStore
-    @EnvironmentObject private var dashboard: DashboardStore
     @EnvironmentObject private var appearance: Appearance
     @EnvironmentObject private var navigator: ChatNavigator
-    @Environment(\.accentTint) private var accent
     @Environment(\.transcriptWorkspacePath) private var workspacePath
     @State private var following = true
     @State private var scrollRequest = 0
@@ -52,12 +50,6 @@ struct NativeTranscriptView: View {
                                      onOpenSession: { navigator.awaitingSessionID = $0 })
                 }
                     .padding(.vertical, row.verticalPadding)
-                    .environmentObject(transcript)
-                    .environmentObject(dashboard)
-                    .environmentObject(appearance)
-                    .environment(\.accentTint, accent)
-                    .environment(\.transcriptWorkspacePath, workspacePath)
-                    .environment(\.mobileChatDetail, appearance.chatDetail)
             } footer: {
                 if let thinking {
                     TranscriptThinkingLabel(thinking: thinking)

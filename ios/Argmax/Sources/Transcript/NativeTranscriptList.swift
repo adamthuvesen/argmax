@@ -20,7 +20,9 @@ where Item.ID == String {
     @ViewBuilder var footer: () -> Footer
 
     @State private var position = ScrollPosition(idType: String.self)
-    @State private var geometry = TranscriptScrollGeometry()
+    // Scroll geometry is read where it is needed and never stored: a state
+    // write per scroll frame re-evaluated this body, and with it every
+    // realised row's layout, on every frame of a drag.
     @State private var phase: ScrollPhase = .idle
     @State private var tailScrollScheduled = false
 
@@ -55,17 +57,16 @@ where Item.ID == String {
         .onScrollGeometryChange(for: TranscriptScrollGeometry.self) { value in
             TranscriptScrollGeometry(value)
         } action: { _, next in
-            geometry = next
             if following && !phase.isUserControlled && !next.isAtTail {
                 requestScrollToTail()
             }
         }
-        .onScrollPhaseChange { previous, next in
+        .onScrollPhaseChange { previous, next, context in
             phase = next
             let updated = TranscriptScrollBehavior.following(
                 from: previous,
                 after: next,
-                tailGap: geometry.tailGap,
+                tailGap: TranscriptScrollGeometry(context.geometry).tailGap,
                 current: following
             )
             if following != updated { following = updated }

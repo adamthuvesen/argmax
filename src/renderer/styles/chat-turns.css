@@ -1527,6 +1527,9 @@ button.tool-call-row-button {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   gap: 1px 0;
+  max-height: min(320px, 40dvh);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
   padding: 0 8px 9px;
 }
 

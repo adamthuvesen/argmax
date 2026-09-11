@@ -9,6 +9,7 @@ mod test_support;
 
 use std::path::{Path, PathBuf};
 
+pub(crate) use cursor::cursor_project_slug;
 use rusqlite::Connection;
 use serde_json::Value;
 

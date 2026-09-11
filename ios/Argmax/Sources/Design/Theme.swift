@@ -51,6 +51,30 @@ enum Theme {
     /// never rides `--accent` either.
     static let stopColor = dynamic(light: 0xC4_72_6C, dark: 0xC8_58_50)
 
+    // The diff washes, `tokens.css` verbatim (`--diff-*`). These are the one
+    // place the phone takes a desktop colour rather than re-deriving it from
+    // the ground: both appearances already run the same two hues there and
+    // vary only the alpha, so an added line reads as the same green on the
+    // Mac and in a pocket. The gutter wash stacks on the line wash, which is
+    // why its alpha is the higher of the two.
+    //
+    // Deliberately the *only* colour in a diff. There is no syntax
+    // highlighting on the phone: at this size the information is what
+    // changed, the wash already carries it, and token colours painted over a
+    // 16% wash on the light ground land back in the contrast hole that
+    // `--muted` did. Revisit only if reading diffs here grates after a week
+    // of daily use, and then as a two-class dimmer (comments and strings
+    // muted), never a grammar library.
+    static let diffAddLineColor = wash(0x3F_BE_78, light: 0.18, dark: 0.16)
+    static let diffDelLineColor = wash(0xE3_4A_52, light: 0.16, dark: 0.16)
+    static let diffAddGutterColor = wash(0x3F_BE_78, light: 0.20, dark: 0.30)
+    static let diffDelGutterColor = wash(0xE3_4A_52, light: 0.20, dark: 0.30)
+    /// `--diff-add-gutter-fg` / `--diff-del-gutter-fg`: the line number's own
+    /// ink, which is the only place a diff says "added" in text rather than
+    /// in a fill.
+    static let diffAddInkColor = dynamic(light: 0x00_7A_35, dark: 0x5F_D0_95)
+    static let diffDelInkColor = dynamic(light: 0xC9_18_22, dark: 0xF4_73_7E)
+
     static var ground: Color { Color(groundColor) }
     static var raised: Color { Color(raisedColor) }
     static var pressed: Color { Color(pressedColor) }
@@ -62,6 +86,17 @@ enum Theme {
     static var rose: Color { Color(roseColor) }
     static var sage: Color { Color(sageColor) }
     static var violet: Color { Color(violetColor) }
+    static var diffAddInk: Color { Color(diffAddInkColor) }
+    static var diffDelInk: Color { Color(diffDelInkColor) }
+
+    /// One hue at two alphas — the shape every `--diff-*` token has. Kept
+    /// separate from `dynamic` because the colour is the same in both
+    /// appearances and only its weight moves.
+    static func wash(_ rgb: UInt32, light: CGFloat, dark: CGFloat) -> UIColor {
+        UIColor { traits in
+            UIColor(rgb: rgb).withAlphaComponent(traits.userInterfaceStyle == .dark ? dark : light)
+        }
+    }
 
     /// A colour that changes with the appearance the view is resolved in.
     static func dynamic(light: UInt32, dark: UInt32) -> UIColor {

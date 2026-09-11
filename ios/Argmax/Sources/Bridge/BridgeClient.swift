@@ -174,6 +174,39 @@ actor BridgeClient {
         connectionContinuation.finish()
     }
 
+    /// An authenticated `GET` for one file's bytes.
+    ///
+    /// The socket carries JSON, so image bytes take the host's own HTTP side
+    /// (`/api/workspace-assets/…`, see `docs/remote.md`) — the same endpoint
+    /// the transcript's screenshots load through, and the same one
+    /// `workspaceAssetUrl` builds for the browser. The token rides in the
+    /// header rather than the query so it stays out of any cache key.
+    ///
+    /// `nonisolated` because it reads nothing but two immutable lets: fetching
+    /// an image should not queue behind whatever the actor is decoding.
+    nonisolated func assetRequest(absolutePath: String) -> URLRequest? {
+        guard var components = URLComponents(url: socketURL, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+        components.scheme = socketURL.scheme == "wss" ? "https" : "http"
+        // Each segment is encoded on its own so a space or a `#` in a path
+        // survives the trip and the host's `percent_decode` gets it back.
+        let segments = absolutePath.split(separator: "/").map {
+            String($0).addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(
+                CharacterSet(charactersIn: "-._~")
+            )) ?? String($0)
+        }
+        // `percentEncodedPath`, not `path`: assigning `path` encodes what it
+        // is given, so a segment already encoded here comes out doubled — a
+        // space becomes `%2520` and the host looks for a file whose name
+        // contains the literal characters `%20`.
+        components.percentEncodedPath = "/api/workspace-assets/" + segments.joined(separator: "/")
+        guard let url = components.url else { return nil }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        return request
+    }
+
     // MARK: - Lifecycle
 
     /// Open the socket and keep it open. Idempotent, and a no-op once the

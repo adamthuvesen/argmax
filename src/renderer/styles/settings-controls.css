@@ -402,6 +402,13 @@
   color: var(--sage-deep);
 }
 
+.settings-engram-fields {
+  display: grid;
+  gap: var(--space-4);
+  padding: 12px 14px;
+  min-width: 0;
+}
+
 /* ---- Remote access (Settings → Integrations) ---- */
 
 .settings-remote-pairing {

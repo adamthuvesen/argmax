@@ -5,6 +5,7 @@ import type { ProviderId } from "../../../shared/types.js";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard.js";
 import { PROVIDER_SETUP, PROVIDER_SETUP_ORDER } from "../../lib/providerSetup.js";
 import { ConnectionCatalog } from "../ConnectionCatalog.js";
+import { EngramSettings } from "./EngramSettings.js";
 import { RemoteSettings } from "./RemoteSettings.js";
 import { SettingGroup, SettingNote, SettingRow } from "./settingsPrimitives.js";
 
@@ -13,6 +14,7 @@ export function IntegrationsSettings(): JSX.Element {
   const setup = PROVIDER_SETUP[provider];
   return (
     <>
+      <EngramSettings provider={provider} onProviderChange={setProvider} />
       <SettingGroup id="settings-mcp" label="Connections">
         <SettingNote>
           MCP servers, plugins, and provider connectors available to each agent. Authentication is

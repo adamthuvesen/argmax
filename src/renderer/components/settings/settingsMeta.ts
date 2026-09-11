@@ -57,6 +57,7 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
     id: "integrations",
     label: "Integrations",
     sections: [
+      { id: "settings-engram", label: "Engram" },
       { id: "settings-mcp", label: "Connections" },
       { id: "settings-remote", label: "Remote access" }
     ]

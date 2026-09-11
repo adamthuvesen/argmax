@@ -68,6 +68,25 @@ Authentication stays with the provider. A connection row can copy the provider's
 
 *Codex connectors note:* `codex exec` runs without ChatGPT desktop app connectors (Notion, Linear, Google Drive). Use direct remote MCP URLs via `codex mcp add --url <url>` instead.
 
+### Optional Engram setup
+
+Settings → Integrations → Engram guides users through connecting an existing
+[Engram installation](https://github.com/adamthuvesen/engram#run-it). Enter its
+absolute installation path and choose a provider to generate a native MCP
+command or configuration snippet. Run the command in a terminal, or merge the
+snippet into the provider's existing configuration. Refresh Connections and
+start a new chat with that provider to use its memory tools.
+
+Engram is optional and separately installed. Argmax does not install it, store
+its credentials, or write provider configuration through this guide. The setup
+uses user-scoped connections, so it applies to the provider outside Argmax too.
+Remove or disable the connection through the provider's own MCP settings.
+
+Agents retrieve Engram memories through tool calls. Connecting it does not
+automatically inject memories into every chat. Use project-scoped recall and
+verify changeable claims against current code or sources. Argmax's built-in
+project learnings remain separate (see [memory.md](memory.md)).
+
 ## Session Lifecycle and Follow-ups
 
 An idle follow-up persists the user message and returns, then spawns the provider in the background. The PTY/CLI spawn does not block the send IPC.

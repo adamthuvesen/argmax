@@ -63,7 +63,11 @@ import {
 } from "./hooks/useLazyOverlayPrefetch.js";
 import { useLedgerPrefetch } from "./hooks/useLedgerPrefetch.js";
 import { useGlobalKeybindings } from "./hooks/useGlobalKeybindings.js";
-import { DEFAULT_WORKSPACE_MIN_WIDTH_PX, useSidebarResize } from "./hooks/useSidebarResize.js";
+import {
+  DEFAULT_WORKSPACE_MIN_WIDTH_PX,
+  SIDEBAR_MIN_WIDTH_PX,
+  useSidebarResize
+} from "./hooks/useSidebarResize.js";
 import {
   hideCommandPalette,
   hideKeyboardCheatSheet,
@@ -165,7 +169,7 @@ import { isRemoteBridge, isTauriRuntime } from "./lib/tauriBridge.js";
 import { withToast } from "./lib/withToast.js";
 
 const APP_MIN_HEIGHT_PX = 640;
-const STATIC_APP_MIN_WIDTH_PX = 1024;
+const STATIC_APP_MIN_WIDTH_PX = 600;
 
 function widestGridRowColumnCount(rows: unknown[][]): number {
   return rows.reduce((max, row) => Math.max(max, row.length), 0);
@@ -473,11 +477,19 @@ export function App(): JSX.Element {
       : DEFAULT_WORKSPACE_MIN_WIDTH_PX;
     return Math.max(DEFAULT_WORKSPACE_MIN_WIDTH_PX, gridColumnWidth, sessionGridRequiredWorkspaceMinWidth);
   }, [requiredGridColumns, sessionGridRequiredWorkspaceMinWidth]);
-  const { sidebarWidth, isResizing, onResizeMouseDown } = useSidebarResize(requiredWorkspaceMinWidth);
+  const {
+    sidebarWidth,
+    responsiveCollapsed: sidebarResponsiveCollapsed,
+    isResizing,
+    onResizeMouseDown
+  } = useSidebarResize(requiredWorkspaceMinWidth);
+  const effectiveSidebarCollapsed = !standalonePageOpen && (sidebarCollapsed || sidebarResponsiveCollapsed);
   const requiredWindowMinWidth = useMemo(() => {
-    const sidebarPart = sidebarCollapsed ? 0 : sidebarWidth;
-    return Math.max(STATIC_APP_MIN_WIDTH_PX, requiredWorkspaceMinWidth + sidebarPart);
-  }, [requiredWorkspaceMinWidth, sidebarCollapsed, sidebarWidth]);
+    // The native floor must leave room for the folded layout. If it includes
+    // the current sidebar width, the window stops before the sidebar can
+    // shrink or fold and the composer absorbs the squeeze instead.
+    return Math.max(STATIC_APP_MIN_WIDTH_PX, requiredWorkspaceMinWidth, SIDEBAR_MIN_WIDTH_PX);
+  }, [requiredWorkspaceMinWidth]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -1941,7 +1953,7 @@ export function App(): JSX.Element {
           // and is shown even when the app sidebar is collapsed.
           standalonePageOpen
             ? "var(--settings-rail-width) minmax(0, 1fr)"
-            : sidebarCollapsed
+            : effectiveSidebarCollapsed
               ? "minmax(0, 1fr)"
               : `${sidebarWidth}px minmax(0, 1fr)`,
         ["--sidebar-width" as string]: `${sidebarWidth}px`
@@ -1954,21 +1966,31 @@ export function App(): JSX.Element {
       data-usage-open={isUsageOpen ? "true" : undefined}
       data-activity-open={isActivityOpen ? "true" : undefined}
       data-browser-page-open={isBrowserPageOpen && !standalonePageOpen ? "true" : undefined}
-      data-sidebar-collapsed={sidebarCollapsed && !standalonePageOpen ? "true" : undefined}
-      data-sidebar-peek={sidebarCollapsed && sidebarPeek ? "true" : undefined}
+      data-sidebar-collapsed={effectiveSidebarCollapsed ? "true" : undefined}
+      data-sidebar-peek={effectiveSidebarCollapsed && sidebarPeek ? "true" : undefined}
     >
       {standalonePageOpen ? null : (
         <button
           type="button"
           className="sidebar-toggle"
-          title={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
-          aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
-          onClick={toggleSidebarCollapsed}
+          title={effectiveSidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+          aria-label={effectiveSidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+          onClick={() => {
+            // An automatic fold is governed by window width. The existing
+            // toggle remains the manual preference and is intentionally not
+            // allowed to persist a responsive fold. A click at that width
+            // opens the existing hover-peek overlay instead.
+            if (sidebarResponsiveCollapsed && !sidebarCollapsed) {
+              setSidebarPeek(true);
+              return;
+            }
+            toggleSidebarCollapsed();
+          }}
         >
           <PanelLeft size={16} strokeWidth={1.75} />
         </button>
       )}
-      {sidebarCollapsed && !standalonePageOpen ? (
+      {effectiveSidebarCollapsed ? (
         <div
           className="sidebar-peek-zone"
           aria-hidden="true"

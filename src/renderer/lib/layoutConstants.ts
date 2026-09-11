@@ -1,7 +1,8 @@
-/** Smallest useful pane width for multi-session split views. */
-export const SESSION_CELL_MIN_WIDTH_PX = 460;
+/** Smallest desktop composer width that keeps its controls comfortable. */
+export const COMPOSER_MIN_WIDTH_PX = 400;
 
-/** Chat floor when a review/log panel is docked. 320 is the practical limit:
- *  the composer's narrowest compact tier (chat-composer-chips.css) needs about
- *  280px before the model chip ellipsizes into uselessness. */
-export const CHAT_PANE_MIN_WIDTH_PX = 320;
+/** Every desktop chat pane owns a composer, so the pane and composer floors
+ *  stay aligned instead of letting one surface become narrower than the
+ *  other. */
+export const SESSION_CELL_MIN_WIDTH_PX = COMPOSER_MIN_WIDTH_PX;
+export const CHAT_PANE_MIN_WIDTH_PX = COMPOSER_MIN_WIDTH_PX;

@@ -61,6 +61,55 @@ describe("useSidebarResize", () => {
     });
 
     expect(result.current.sidebarWidth).toBe(220);
+    expect(window.localStorage.getItem("argmax.sidebar.width")).toBe("500");
+  });
+
+  it("folds at the workspace plus sidebar floor and reopens after hysteresis", () => {
+    setViewportWidth(700);
+    window.localStorage.setItem("argmax.sidebar.width", "272");
+    const { result } = renderHook(() => useSidebarResize(400));
+
+    expect(result.current.responsiveCollapsed).toBe(false);
+    expect(result.current.sidebarWidth).toBe(272);
+
+    act(() => {
+      setViewportWidth(620);
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(result.current.responsiveCollapsed).toBe(true);
+    expect(result.current.sidebarWidth).toBe(220);
+
+    act(() => {
+      setViewportWidth(640);
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(result.current.responsiveCollapsed).toBe(true);
+
+    act(() => {
+      setViewportWidth(645);
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(result.current.responsiveCollapsed).toBe(false);
+  });
+
+  it("restores the saved width after a responsive squeeze", () => {
+    setViewportWidth(1200);
+    window.localStorage.setItem("argmax.sidebar.width", "360");
+    const { result } = renderHook(() => useSidebarResize(400));
+    expect(result.current.sidebarWidth).toBe(360);
+
+    act(() => {
+      setViewportWidth(650);
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(result.current.sidebarWidth).toBe(250);
+    expect(window.localStorage.getItem("argmax.sidebar.width")).toBe("360");
+
+    act(() => {
+      setViewportWidth(1200);
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(result.current.sidebarWidth).toBe(360);
   });
 
   it("clamps the sidebar against a dynamic workspace minimum", () => {

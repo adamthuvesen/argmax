@@ -16,7 +16,7 @@
         "title": "Argmax",
         "width": 1400,
         "height": 900,
-        "minWidth": 1024,
+        "minWidth": 600,
         "minHeight": 640,
         "transparent": true,
         "windowEffects": { "effects": ["sidebar"], "state": "followsWindowActiveState" },

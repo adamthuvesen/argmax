@@ -2,7 +2,11 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_BACKGROUND_INTENSITY } from "../lib/backgroundIntensity.js";
-import { CHAT_PANE_MIN_WIDTH_PX, SESSION_CELL_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
+import {
+  CHAT_PANE_MIN_WIDTH_PX,
+  COMPOSER_MIN_WIDTH_PX,
+  SESSION_CELL_MIN_WIDTH_PX
+} from "../lib/layoutConstants.js";
 import { DEFAULT_INK_STRENGTH } from "../lib/inkStrength.js";
 
 function readSource(path: string): string {
@@ -243,8 +247,9 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
   it("keeps the pane minimum width aligned with the compact composer breakpoint", () => {
     const chatComposer = readSource("src/renderer/styles/chat-composer-chips.css");
 
-    expect(SESSION_CELL_MIN_WIDTH_PX).toBeLessThan(720);
-    expect(CHAT_PANE_MIN_WIDTH_PX).toBeLessThan(SESSION_CELL_MIN_WIDTH_PX);
+    expect(COMPOSER_MIN_WIDTH_PX).toBe(400);
+    expect(SESSION_CELL_MIN_WIDTH_PX).toBe(COMPOSER_MIN_WIDTH_PX);
+    expect(CHAT_PANE_MIN_WIDTH_PX).toBe(COMPOSER_MIN_WIDTH_PX);
     expect(chatComposer).toContain("@container (max-width: 600px)");
     expect(chatComposer).toContain("@container (max-width: 720px)");
   });

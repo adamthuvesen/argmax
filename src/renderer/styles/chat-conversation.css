@@ -333,6 +333,15 @@
   --session-measure: var(--chat-content-width-tight, 680px);
 }
 
+/* With the sidebar hidden, the pane owns the whole window. Keep the centered
+   chat measure for the expanded shell, but let the collapsed shell use the
+   available width immediately instead of waiting for content to change the
+   pane's layout. */
+.app-shell[data-sidebar-collapsed="true"] .session-main-column,
+.app-shell[data-sidebar-collapsed="true"] .agent-activity {
+  --session-inline-padding: var(--session-inline-padding-min, 28px);
+}
+
 .conversation-surface {
   container-type: inline-size;
   /* The gutter's other half. Every box the column stacks — the transcript

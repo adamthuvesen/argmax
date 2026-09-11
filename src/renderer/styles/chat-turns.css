@@ -359,10 +359,9 @@
   font-size: var(--text-base);
 }
 
-/* Inline thoughts are persistent prose, so use the stronger secondary ink
-   that stays readable on both paper and dark backgrounds. */
+/* Balanced and Detailed show reasoning as normal transcript prose. */
 .thought-block[data-display="inline"] .thought-block-body {
-  color: var(--muted-strong);
+  color: var(--prose-ink);
 }
 
 /* The reasoning renders through `.markdown`, which sets its own near-black

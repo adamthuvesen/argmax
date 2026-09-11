@@ -65,7 +65,7 @@ export function ThoughtBlock({
   if (display === "inline") {
     return (
       <div className="thought-block" data-live={live ? "true" : undefined} data-display="inline">
-        <span className="thought-block-eyebrow-label">{label}</span>
+        {live ? <span className="thought-block-eyebrow-label">{label}</span> : null}
         <div className="thought-block-body">{children}</div>
       </div>
     );

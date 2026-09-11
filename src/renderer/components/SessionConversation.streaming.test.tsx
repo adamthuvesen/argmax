@@ -442,7 +442,7 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByRole("button", { name: "Thought 5s" })).toBeInTheDocument();
   });
 
-  it("renders restored thoughts inline without a disclosure in Balanced", () => {
+  it("renders restored thoughts inline without a heading or disclosure in Balanced", () => {
     const thinking = "I should inspect the settings plumbing before touching the UI.";
     const answer = "Settings are wired.";
 
@@ -457,7 +457,7 @@ describe("SessionConversation — streaming & composer", () => {
     );
 
     expect(screen.queryByRole("button", { name: "Thought" })).not.toBeInTheDocument();
-    expect(screen.getByText("Thought")).toBeInTheDocument();
+    expect(screen.queryByText(/^Thought(?: \d.*)?$/)).not.toBeInTheDocument();
     expect(screen.getByText(thinking)).toBeTruthy();
     expect(screen.getByText(answer)).toBeTruthy();
   });

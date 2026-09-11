@@ -172,3 +172,11 @@ Every `apns` field is optional and the block is omitted entirely until it is use
 - Authentication uses a generated bearer token passed via URL fragment and authenticated in WebSocket headers and HTTP asset endpoints (`Authorization: Bearer` or `?token=`).
 - Push has two very different trust models. ntfy routes every notification title and answer excerpt through a public relay, addressed only by a topic name anyone who learns it can subscribe to. APNs routes them from this Mac to Apple and nowhere else. The APNs auth key never leaves the machine — `remote.json` stores the path to the `.p8`, not its contents — but that key can send pushes to every install of the app under the team, so treat the file as a credential and keep it `0600`.
 - `remote.json` itself holds the bridge's bearer token and every paired device token. It inherits the app data directory's permissions; nothing here narrows them further.
+
+## Native iPhone recovery
+
+The native client retains submitted mutation identities through reconnect and
+uses the host's existing durable replay protocol. Saved dashboard and
+transcript content can open while the Mac is unavailable. Usage and Activity
+remain preloaded. See [iOS performance and recovery](ios-performance.md) for
+cache limits, pending-action handling, and the device verification matrix.

@@ -15,6 +15,8 @@ struct SettingsScreen: View {
     let onPairAgain: () -> Void
     let onBack: () -> Void
 
+    @EnvironmentObject private var dashboard: DashboardStore
+    @State private var showingRecovery = false
     @EnvironmentObject private var appearance: Appearance
     @EnvironmentObject private var push: PushRegistration
     @State private var confirmingRepair = false
@@ -87,6 +89,9 @@ struct SettingsScreen: View {
                 SettingGroup("Your Mac") {
                     SettingRow(label: "Paired with", detail: host, mono: true)
                     HairlineDivider(inset: Spacing.row)
+                    SettingRow(label: "Unconfirmed actions", detail: "Review actions interrupted by a connection loss.",
+                        action: { showingRecovery = true })
+                    HairlineDivider(inset: Spacing.row)
                     SettingRow(
                         label: "Re-pair",
                         detail: "Point this phone at another Mac, or at a new link.",
@@ -104,6 +109,7 @@ struct SettingsScreen: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .interactivePop()
+        .sheet(isPresented: $showingRecovery) { RemoteRecoveryScreen(client: dashboard.client) }
         .confirmationDialog(
             "Pair with another Mac?",
             isPresented: $confirmingRepair,

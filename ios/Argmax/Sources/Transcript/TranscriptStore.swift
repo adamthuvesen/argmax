@@ -14,6 +14,7 @@ final class TranscriptStore: ObservableObject {
     @Published private(set) var composer: NativeComposerState?
     @Published private(set) var phase: TranscriptLoadPhase = .idle
     @Published private(set) var connection: BridgeConnection = .connecting
+    @Published private(set) var showingCachedContent = false
     @Published private(set) var thinkingStart: TranscriptThinking?
     private var thinkingBaseline: Set<String> = []
 
@@ -37,6 +38,7 @@ final class TranscriptStore: ObservableObject {
     var sessionID: String? { openSessionID }
 
     let client: BridgeClient
+    private let cache: DeviceCache
 
     private var ownerID: UUID?
     private var openSessionID: String?
@@ -49,6 +51,25 @@ final class TranscriptStore: ObservableObject {
     private var rawOutputCursor: Int64?
     private var changeCursor: Int64?
     private var generation = 0
+    private var contentVersion = 0
+    private var projectionVersion = 0
+    private var projectionTask: Task<Void, Never>?
+    private var cacheTask: Task<Void, Never>?
+    private var recent: [String: RecentTranscript] = [:]
+    private var recentOrder: [String] = []
+
+    private struct RecentTranscript {
+        let stored: StoredTranscript
+        let items: [TranscriptItem]
+        let byteCost: Int
+    }
+
+    private struct StoredTranscript: Codable, Sendable {
+        let page: TranscriptPage
+        let metadata: TranscriptSessionMetadata?
+        let title: String?
+        let workspacePath: String?
+    }
 
     private var readTask: Task<Void, Never>?
     private var metadataTask: Task<Void, Never>?
@@ -56,13 +77,16 @@ final class TranscriptStore: ObservableObject {
     private var authoritativeReadRequested = false
     private var metadataDirty = false
 
-    init(client: BridgeClient) {
+    init(client: BridgeClient, cache: DeviceCache = .shared) {
+        self.cache = cache
         self.client = client
     }
 
     deinit {
         readTask?.cancel()
         metadataTask?.cancel()
+        projectionTask?.cancel()
+        cacheTask?.cancel()
     }
 
     /// Give a screen ownership of the shared store and open its chat. A stale
@@ -88,6 +112,9 @@ final class TranscriptStore: ObservableObject {
             return
         }
         generation += 1
+        projectionVersion += 1
+        projectionTask?.cancel()
+        projectionTask = nil
         readTask?.cancel()
         metadataTask?.cancel()
         readTask = nil
@@ -95,6 +122,8 @@ final class TranscriptStore: ObservableObject {
         thinkingStart = nil
         thinkingBaseline = []
         openSessionID = id
+        showingCachedContent = false
+        contentVersion = 0
         metadata = nil
         workspacePath = nil
         eventsByID = [:]
@@ -107,6 +136,23 @@ final class TranscriptStore: ObservableObject {
         session = nil
         composer = nil
         phase = .loading
+        if let cached = recent[id] {
+            restore(cached.stored)
+            items = cached.items
+            phase = .ready
+            recentOrder.removeAll { $0 == id }
+            recentOrder.append(id)
+        } else {
+            let startedGeneration = generation
+            Task { [weak self, client, cache] in
+                let cached = await cache.read(StoredTranscript.self,
+                    scope: client.cacheNamespace, key: "transcript-\(id)")
+                guard let self, self.generation == startedGeneration,
+                      self.contentVersion == 0, let cached else { return }
+                self.restore(cached)
+                self.updateProjection()
+            }
+        }
         authoritativeReadRequested = true
         metadataDirty = true
         scheduleReads()
@@ -116,6 +162,9 @@ final class TranscriptStore: ObservableObject {
         thinkingStart = nil
         thinkingBaseline = []
         generation += 1
+        projectionVersion += 1
+        projectionTask?.cancel()
+        projectionTask = nil
         readTask?.cancel()
         metadataTask?.cancel()
         readTask = nil
@@ -133,6 +182,7 @@ final class TranscriptStore: ObservableObject {
         session = nil
         composer = nil
         phase = .idle
+        showingCachedContent = false
         transcriptDirty = false
         authoritativeReadRequested = false
         metadataDirty = false
@@ -147,6 +197,7 @@ final class TranscriptStore: ObservableObject {
         scheduleReads()
         await readTask?.value
         await metadataTask?.value
+        await waitForProjection()
     }
 
     /// Fan-in from `DashboardStore`'s sole bridge event loop.
@@ -190,10 +241,22 @@ final class TranscriptStore: ObservableObject {
 
     /// Fast metadata updates from the dashboard snapshot. The store also reads
     /// the richer dashboard shape for pending messages and reasoning effort.
-    func receive(snapshot: DashboardSnapshot) {
+    func receive(snapshot: DashboardSnapshot, authoritative: Bool = true) {
         guard let id = openSessionID,
               let row = snapshot.sessions.first(where: { $0.id == id })
-        else { return }
+        else {
+            // An authoritative dashboard removal must not be resurrected by disk.
+            if let id = openSessionID, authoritative, connection == .live {
+                contentVersion += 1
+                recent.removeValue(forKey: id)
+                let scope = client.cacheNamespace
+                Task { [cache] in await cache.remove(scope: scope, key: "transcript-\(id)") }
+                cacheTask?.cancel()
+                closeSession()
+                phase = .failed("This chat is no longer available on the Mac.")
+            }
+            return
+        }
         let workspace = snapshot.workspaces.first { $0.id == row.workspaceId }
         workspacePath = workspace?.path
         let current = metadata
@@ -225,6 +288,9 @@ final class TranscriptStore: ObservableObject {
         workspacePath: String? = nil
     ) {
         generation += 1
+        projectionVersion += 1
+        projectionTask?.cancel()
+        projectionTask = nil
         readTask?.cancel()
         metadataTask?.cancel()
         readTask = nil
@@ -239,6 +305,10 @@ final class TranscriptStore: ObservableObject {
         changeCursor = nil
         ingest(metadata: row, title: title, pendingMessages: [])
         apply(page, authoritative: true)
+        projectionTask?.cancel()
+        projectionTask = nil
+        publishProjection(TranscriptProjection.project(events: Array(eventsByID.values),
+            session: metadata, pendingApprovals: pendingApprovals, workspacePath: workspacePath))
         phase = .ready
     }
 
@@ -338,6 +408,8 @@ final class TranscriptStore: ObservableObject {
 
     private func apply(_ page: TranscriptPage, authoritative: Bool) {
         guard let id = openSessionID else { return }
+        contentVersion += 1
+        showingCachedContent = false
         if authoritative || page.resetRequired {
             eventsByID = [:]
             rawOutputsByID = [:]
@@ -415,18 +487,60 @@ final class TranscriptStore: ObservableObject {
         updateProjection()
     }
 
-    private func updateProjection() {
-        let projected = TranscriptProjection.project(
-            events: Array(eventsByID.values),
-            session: metadata,
-            pendingApprovals: pendingApprovals,
-            workspacePath: workspacePath
-        )
-        if projected.isEmpty {
-            items = rawFallbackItems()
-        } else {
-            items = projected
+    private func restore(_ cached: StoredTranscript) {
+        eventsByID = Dictionary(cached.page.events.map { ($0.id, $0) }, uniquingKeysWith: { _, newer in newer })
+        rawOutputsByID = Dictionary(cached.page.rawOutputs.map { ($0.id, $0) }, uniquingKeysWith: { _, newer in newer })
+        workspacePath = cached.workspacePath
+        // Cached cursors are never a substitute for authoritative recovery.
+        if metadata == nil, let row = cached.metadata {
+            ingest(metadata: row, title: cached.title, pendingMessages: [])
         }
+        showingCachedContent = true
+    }
+
+    func waitForProjection() async {
+        while let task = projectionTask { await task.value }
+    }
+
+    func flushCache() async { await cacheTask?.value }
+
+    private func updateProjection() {
+        projectionVersion += 1
+        guard projectionTask == nil else { return }
+        let startedGeneration = generation
+        projectionTask = Task { [weak self] in
+            // Fold metadata and event bursts into a single projection without delaying first paint.
+            await Task.yield()
+            guard let self else { return }
+            while !Task.isCancelled, self.generation == startedGeneration {
+                let version = self.projectionVersion
+                let events = Array(self.eventsByID.values)
+                let metadata = self.metadata
+                let approvals = self.pendingApprovals
+                let workspacePath = self.workspacePath
+                let fallback = self.rawFallbackItems()
+                let job = Task.detached(priority: .userInitiated) {
+                    NativePerformance.measure("Transcript projection") {
+                        TranscriptProjection.project(events: events, session: metadata,
+                            pendingApprovals: approvals, workspacePath: workspacePath)
+                    }
+                }
+                let projected = await withTaskCancellationHandler {
+                    await job.value
+                } onCancel: { job.cancel() }
+                guard !Task.isCancelled, self.generation == startedGeneration else { return }
+                if version != self.projectionVersion { continue }
+                self.publishProjection(projected.isEmpty ? fallback : projected)
+                self.projectionTask = nil
+                if self.phase == .loading, !self.items.isEmpty { self.phase = .ready }
+                self.cacheCurrentTranscript()
+                return
+            }
+        }
+    }
+
+    private func publishProjection(_ projected: [TranscriptItem]) {
+        if items != projected { items = projected }
         if thinkingStart != nil, items.contains(where: { item in
             guard !thinkingBaseline.contains(item.id) else { return false }
             switch item {
@@ -435,6 +549,40 @@ final class TranscriptStore: ObservableObject {
             }
         }) {
             thinkingStart = nil
+        }
+    }
+
+    private func cacheCurrentTranscript() {
+        guard let id = openSessionID, !showingCachedContent else { return }
+        let stored = StoredTranscript(page: TranscriptPage(events: Array(eventsByID.values),
+            rawOutputs: Array(rawOutputsByID.values), eventCursor: eventCursor ?? 0,
+            rawOutputCursor: rawOutputCursor ?? 0, changeCursor: changeCursor,
+            deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false),
+            metadata: metadata, title: session?.title, workspacePath: workspacePath)
+        let projected = items
+        let scope = client.cacheNamespace
+        let version = projectionVersion
+        let capturedContentVersion = contentVersion
+        cacheTask?.cancel()
+        cacheTask = Task { [weak self] in
+            let byteCost = await Task.detached(priority: .utility) {
+                (try? JSONEncoder().encode(stored).count) ?? Int.max / 4
+            }.value
+            guard !Task.isCancelled, let self, self.openSessionID == id,
+                  self.projectionVersion == version, self.contentVersion == capturedContentVersion else { return }
+            // Leave room for decoded models and projected text as well as wire bytes.
+            if byteCost < 4 * 1_024 * 1_024 {
+                self.recent[id] = RecentTranscript(stored: stored, items: projected, byteCost: byteCost * 2)
+                self.recentOrder.removeAll { $0 == id }
+                self.recentOrder.append(id)
+                while self.recentOrder.count > 8 || self.recent.values.reduce(0, { $0 + $1.byteCost }) > 16 * 1_024 * 1_024 {
+                    self.recent.removeValue(forKey: self.recentOrder.removeFirst())
+                }
+            }
+            do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
+            guard !Task.isCancelled, self.openSessionID == id,
+                  self.contentVersion == capturedContentVersion else { return }
+            await self.cache.write(stored, scope: scope, key: "transcript-\(id)")
         }
     }
 

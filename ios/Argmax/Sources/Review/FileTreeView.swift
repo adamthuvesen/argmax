@@ -22,6 +22,7 @@ struct FileTreeView: View {
     /// Consumed once: re-running the reveal on every redraw would fight the
     /// reader's own collapsing.
     @State private var revealed = false
+    @State private var treeGeneration = 0
     /// Built when the entries change, not on every redraw. A checkout with
     /// `node_modules` in it is tens of thousands of paths, and rebuilding the
     /// tree to answer "which rows are visible" would do that work on each
@@ -42,15 +43,25 @@ struct FileTreeView: View {
                 .padding(.bottom, Spacing.section)
             }
             .refreshable { await onRefresh?() }
-            .onChange(of: entries) { root = FileTree.build(entries) }
-            .task { root = FileTree.build(entries) }
-            .task(id: reveal) {
+            .task(id: entries) {
+                let input = entries
+                let job = Task.detached(priority: .userInitiated) {
+                    NativePerformance.measure("File tree preparation") { FileTree.build(input) }
+                }
+                let built = await withTaskCancellationHandler { await job.value } onCancel: { job.cancel() }
+                guard !Task.isCancelled else { return }
+                root = built
+                revealed = false
+                treeGeneration += 1
+            }
+            .task(id: "\(reveal ?? "")|\(treeGeneration)") {
                 guard let reveal, !revealed else { return }
                 revealed = true
                 expanded.formUnion(FileTree.ancestors(of: reveal))
                 // One runloop turn so the rows the expansion created exist
                 // before the scroll asks for one of them.
                 await Task.yield()
+                guard !Task.isCancelled else { return }
                 withAnimation(.easeOut(duration: 0.2)) {
                     proxy.scrollTo(reveal, anchor: .center)
                 }

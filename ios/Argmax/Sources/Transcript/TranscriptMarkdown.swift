@@ -6,6 +6,7 @@ import SwiftUI
 /// The small preparation pass only lifts content Foundation cannot represent:
 /// GFM tables, images, and math.
 struct TranscriptMarkdown: View {
+    @State private var prepared: (key: TranscriptMarkdownKey, document: TranscriptMarkdownDocument)?
     let text: String
     let isThinking: Bool
     @Environment(\.transcriptWorkspacePath) private var workspacePath
@@ -25,11 +26,23 @@ struct TranscriptMarkdown: View {
     }
 
     var body: some View {
-        let document = TranscriptMarkdownDocument(markdown: text, workspacePath: workspacePath, isThinking: isThinking)
+        let key = TranscriptMarkdownKey(text: text, workspacePath: workspacePath, isThinking: isThinking)
+        let document = TranscriptMarkdownCache.shared.cached(key)
+            ?? (prepared?.key == key ? prepared?.document : nil)
         VStack(alignment: .leading, spacing: 12) {
-            ForEach(Array(document.blocks.enumerated()), id: \.offset) { _, block in
-                blockView(block, math: document.math)
+            if let document {
+                ForEach(Array(document.blocks.enumerated()), id: \.offset) { _, block in
+                    blockView(block, math: document.math)
+                }
+            } else {
+                Text(text).typeStyle(isThinking ? .footnote : .body)
+                    .foregroundStyle(isThinking ? Theme.muted : Theme.ink)
             }
+        }
+        .task(id: key) {
+            guard let document = try? await TranscriptMarkdownCache.shared.document(key),
+                  !Task.isCancelled else { return }
+            prepared = (key, document)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .environment(\.openURL, OpenURLAction { url in

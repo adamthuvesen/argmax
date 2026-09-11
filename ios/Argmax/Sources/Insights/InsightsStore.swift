@@ -74,24 +74,26 @@ final class InsightsStore: ObservableObject {
 
     init(client: BridgeClient) {
         self.client = client
-        // Paint from disk before the socket even exists: the last answer per
-        // default window persists across launches, so the page opens on
-        // numbers — however old — while the host re-sweeps behind them. A
-        // cold ledger's first sweep is seconds the user should never stare
-        // at. Only the visible windows load here; switching windows fetches.
-        if let cached: UsageSummary = Self.readCache(kind: "usage", window: usageWindow) {
-            usage = cached
-            usageReadAt = Self.cacheDate(kind: "usage", window: usageWindow)
-            loadedUsageWindow = usageWindow
+        Task { [weak self, client] in
+            async let usage = DeviceCache.shared.read(CachedUsage.self,
+                scope: client.cacheNamespace, key: "insights-usage-30d")
+            async let activity = DeviceCache.shared.read(CachedActivity.self,
+                scope: client.cacheNamespace, key: "insights-activity-30d")
+            let cached = await (usage, activity)
+            guard let self else { return }
+            if self.usage == nil, self.usageWindow == "30d", self.providerFilter == nil,
+               let value = cached.0, value.timeZone == self.timeZone {
+                self.usage = value.summary
+                self.usageReadAt = value.readAt
+                self.loadedUsageWindow = "30d"
+            }
+            if self.activity == nil, self.activityWindow == "30d",
+               let value = cached.1, value.timeZone == self.timeZone {
+                self.activity = value.summary
+                self.activityReadAt = value.readAt
+                self.loadedActivityWindow = "30d"
+            }
         }
-        if let cached: ActivitySummary = Self.readCache(kind: "activity", window: activityWindow) {
-            activity = cached
-            activityReadAt = Self.cacheDate(kind: "activity", window: activityWindow)
-            loadedActivityWindow = activityWindow
-        }
-        let usageHit = usage != nil
-        let activityHit = activity != nil
-        Self.log.debug("cache init usage=\(usageHit ? "hit" : "miss") activity=\(activityHit ? "hit" : "miss")")
     }
 
     var timeZone: String { TimeZone.current.identifier }
@@ -196,8 +198,10 @@ final class InsightsStore: ObservableObject {
                     // "All providers", so a narrowed one would paint the
                     // wrong numbers under that label.
                     if provider == nil {
-                        Task.detached(priority: .utility) {
-                            Self.writeCache(summary, kind: "usage", window: window)
+                        let scope = client.cacheNamespace
+                        Task {
+                            await DeviceCache.shared.write(CachedUsage(summary: summary, readAt: Date(), timeZone: zone),
+                                scope: scope, key: "insights-usage-\(window)")
                         }
                     }
                     if failure != nil, activity != nil { failure = nil }
@@ -222,8 +226,10 @@ final class InsightsStore: ObservableObject {
                     loadedActivityWindow = window
                     // Encoding the whole payload is main-thread work the
                     // page would feel as a hitch, so it runs off the actor.
-                    Task.detached(priority: .utility) {
-                        Self.writeCache(summary, kind: "activity", window: window)
+                    let scope = client.cacheNamespace
+                    Task {
+                        await DeviceCache.shared.write(CachedActivity(summary: summary, readAt: Date(), timeZone: zone),
+                            scope: scope, key: "insights-activity-\(window)")
                     }
                     if failure != nil, usage != nil { failure = nil }
                 } else {
@@ -271,33 +277,16 @@ final class InsightsStore: ObservableObject {
 
     // MARK: - Disk cache
 
-    /// One file per kind + window in Caches: small enough (<200KB) to read
-    /// synchronously at init, never backed up, and simply absent on first
-    /// launch. The mtime is the freshness clock.
-    nonisolated private static func cacheURL(kind: String, window: String) -> URL? {
-        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("insights-\(kind)-\(window).json")
+    private struct CachedUsage: Codable, Sendable {
+        let summary: UsageSummary
+        let readAt: Date
+        let timeZone: String
     }
 
-    nonisolated private static func readCache<T: Decodable>(kind: String, window: String) -> T? {
-        guard let url = cacheURL(kind: kind, window: window),
-            let data = try? Data(contentsOf: url)
-        else { return nil }
-        return try? JSONDecoder().decode(T.self, from: data)
-    }
-
-    nonisolated private static func cacheDate(kind: String, window: String) -> Date? {
-        guard let url = cacheURL(kind: kind, window: window),
-            let values = try? url.resourceValues(forKeys: [.contentModificationDateKey])
-        else { return nil }
-        return values.contentModificationDate
-    }
-
-    nonisolated private static func writeCache<T: Encodable>(_ value: T, kind: String, window: String) {
-        guard let url = cacheURL(kind: kind, window: window),
-            let data = try? JSONEncoder().encode(value)
-        else { return }
-        try? data.write(to: url, options: .atomic)
+    private struct CachedActivity: Codable, Sendable {
+        let summary: ActivitySummary
+        let readAt: Date
+        let timeZone: String
     }
 
     // MARK: - Client-side narrowing

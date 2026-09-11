@@ -10,27 +10,19 @@ import Foundation
 
 /// One node of the inferred tree. A directory exists because something under
 /// it does; there is no empty folder on the wire.
-final class FileTreeNode {
+struct FileTreeNode: Sendable {
     let name: String
     let path: String
     let isDirectory: Bool
-    private(set) var children: [FileTreeNode] = []
+    let children: [FileTreeNode]
 
-    init(name: String, path: String, isDirectory: Bool) {
+    init(name: String, path: String, isDirectory: Bool, children: [FileTreeNode] = []) {
         self.name = name
         self.path = path
         self.isDirectory = isDirectory
+        self.children = children
     }
 
-    fileprivate func append(_ child: FileTreeNode) { children.append(child) }
-
-    fileprivate func sortRecursively() {
-        children.sort { left, right in
-            if left.isDirectory != right.isDirectory { return left.isDirectory }
-            return left.name.localizedStandardCompare(right.name) == .orderedAscending
-        }
-        for child in children where child.isDirectory { child.sortRecursively() }
-    }
 }
 
 /// A node at the depth it is drawn. The tree is rendered as a flat list of
@@ -47,14 +39,31 @@ struct FileTreeRow: Identifiable, Hashable {
 }
 
 enum FileTree {
+    private final class BuildingNode {
+        let name: String
+        let path: String
+        let isDirectory: Bool
+        var children: [BuildingNode] = []
+        init(name: String, path: String, isDirectory: Bool) {
+            self.name = name; self.path = path; self.isDirectory = isDirectory
+        }
+        func freeze() -> FileTreeNode {
+            let sorted = children.sorted {
+                if $0.isDirectory != $1.isDirectory { return $0.isDirectory }
+                return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+            }
+            return FileTreeNode(name: name, path: path, isDirectory: isDirectory,
+                children: sorted.map { $0.freeze() })
+        }
+    }
     /// Build the directory tree from the flat entries.
     ///
     /// A dictionary per cursor keeps the inner lookup O(1); scanning
     /// `children` instead is O(n²) on a wide directory, which `node_modules`
     /// makes a real number rather than a theoretical one.
     static func build(_ entries: [WorkspaceFileEntry]) -> FileTreeNode {
-        let root = FileTreeNode(name: "", path: "", isDirectory: true)
-        var indexes: [ObjectIdentifier: [String: FileTreeNode]] = [:]
+        let root = BuildingNode(name: "", path: "", isDirectory: true)
+        var indexes: [ObjectIdentifier: [String: BuildingNode]] = [:]
         indexes[ObjectIdentifier(root)] = [:]
         for entry in entries {
             let segments = entry.path.split(separator: "/").filter { !$0.isEmpty }
@@ -68,15 +77,14 @@ enum FileTree {
                     cursor = existing
                     continue
                 }
-                let next = FileTreeNode(name: name, path: childPath, isDirectory: !isLast)
-                cursor.append(next)
+                let next = BuildingNode(name: name, path: childPath, isDirectory: !isLast)
+                cursor.children.append(next)
                 indexes[cursorKey, default: [:]][name] = next
                 indexes[ObjectIdentifier(next)] = [:]
                 cursor = next
             }
         }
-        root.sortRecursively()
-        return root
+        return root.freeze()
     }
 
     /// The rows a given expansion set makes visible, in draw order.

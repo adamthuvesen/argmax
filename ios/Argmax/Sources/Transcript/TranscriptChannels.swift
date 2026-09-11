@@ -26,7 +26,7 @@ struct TranscriptPendingMessage: Decodable, Hashable, Sendable, Identifiable {
     var queuedAt: String
 }
 
-struct TranscriptSessionMetadata: Decodable, Hashable, Sendable, Identifiable {
+struct TranscriptSessionMetadata: Codable, Hashable, Sendable, Identifiable {
     var id: String
     var workspaceId: String
     var provider: String

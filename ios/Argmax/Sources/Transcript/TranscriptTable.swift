@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-struct TranscriptTable {
+struct TranscriptTable: Sendable {
     let headers: [String]
     let rows: [[String]]
 

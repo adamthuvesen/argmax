@@ -5,7 +5,7 @@ final class TranscriptThinkingTests: XCTestCase {
     private let session = NativeSession(sessionId: "session", title: "Chat", state: .running, attention: .normal)
 
     @MainActor
-    func testLocalSendCueSurvivesUserEchoAndEndsAtAssistantContent() {
+    func testLocalSendCueSurvivesUserEchoAndEndsAtAssistantContent() async {
         let store = TranscriptStore(client: previewClient())
         let metadata = TranscriptSessionMetadata(id: "session", workspaceId: "workspace", provider: "claude", modelLabel: "Opus", modelId: "opus", prompt: "", state: .complete, attention: .normal, reasoningEffort: nil, agentMode: "auto")
         store.preview(page: page([]), metadata: metadata)
@@ -14,12 +14,15 @@ final class TranscriptThinkingTests: XCTestCase {
         store.ingest(page: page([event("user", type: "user.message")]), for: "session")
         XCTAssertEqual(store.thinkingStart, start)
         store.ingest(page: page([event("answer", type: "message.delta")]), for: "session")
+        await store.waitForProjection()
         XCTAssertNil(store.thinkingStart)
         let failed = store.beginThinking()
         store.cancelThinking(failed)
+        await store.waitForProjection()
         XCTAssertNil(store.thinkingStart)
         _ = store.beginThinking()
         store.closeSession()
+        await store.waitForProjection()
         XCTAssertNil(store.thinkingStart)
     }
 

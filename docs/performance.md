@@ -239,3 +239,11 @@ source trees and re-fetches an older project or workspace after eviction.
 To prevent IPC bottlenecks:
 - General timeline push hints trigger `session:events-since`. There is no renderer polling interval.
 - `session:agent-events` is only invoked when a subagent tab is open in a review panel's Agents view, bounded by `SESSION_AGENT_EVENT_SCAN_LIMIT` (2,000 rows).
+
+## Native iOS
+
+[iOS performance and recovery](ios-performance.md) describes native caches,
+preloading, background preparation, mutation recovery, and the
+`ArgmaxPerformance` benchmark scheme. Use its physical-device checks for phone
+latency and scrolling claims. The web viewport probe does not measure the
+native transcript.

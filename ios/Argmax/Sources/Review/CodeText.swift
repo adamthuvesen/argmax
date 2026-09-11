@@ -157,17 +157,32 @@ struct CodeTextView: UIViewRepresentable {
         let key = "\(document.key)|\(font.pointSize)"
         guard context.coordinator.renderKey != key else { return }
         context.coordinator.renderKey = key
-        let built = document.build(font: font)
-        textView.gutterWidth = built.gutterWidth
-        textView.attributedText = built.string
-        textView.setNeedsDisplay()
-        // A rebuild is a new document, never a scroll position worth keeping.
-        textView.setContentOffset(.zero, animated: false)
+        context.coordinator.task?.cancel()
+        let coordinator = context.coordinator
+        let document = document
+        // View installation stays on main. Building an unattached immutable string does not.
+        coordinator.task = Task { @MainActor [weak textView, weak coordinator] in
+            let built = await Task.detached(priority: .userInitiated) {
+                NativePerformance.measure("Review document preparation") { document.build(font: font) }
+            }.value
+            guard !Task.isCancelled, let textView, coordinator?.renderKey == key else { return }
+            textView.gutterWidth = built.gutterWidth
+            textView.attributedText = built.string
+            textView.setNeedsDisplay()
+            textView.setContentOffset(.zero, animated: false)
+        }
+    }
+
+    static func dismantleUIView(_ uiView: WashTextView, coordinator: Coordinator) {
+        coordinator.task?.cancel()
     }
 
     final class Coordinator {
         var renderKey: String?
+        var task: Task<Void, Never>?
+        deinit { task?.cancel() }
     }
+
 }
 
 private extension EnvironmentValues {

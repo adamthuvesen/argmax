@@ -92,7 +92,7 @@ struct ReviewScreen: View {
             await store.loadChangedFiles()
             if mode == .files { await store.loadFileList() }
         }
-        .onChange(of: dashboard.transcriptRevision) {
+        .onChange(of: dashboard.reviewWorkspaceRevision(for: workspace.id)) {
             guard !canvas, refreshTask == nil else { return }
             // Coalesce streaming events without postponing reads until the
             // entire turn ends. File counts alone miss repeated file edits.

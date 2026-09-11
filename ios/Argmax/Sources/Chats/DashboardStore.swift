@@ -25,6 +25,18 @@ final class DashboardStore: ObservableObject {
     /// Detail sheets use invalidations too, including child sessions whose
     /// events do not change the parent's projected rows.
     @Published private(set) var transcriptRevision = 0
+    @Published private(set) var isCachedSnapshot = false
+    @Published private(set) var reviewWorkspaceRevisions: [String: Int] = [:]
+    private var snapshotVersion = 0
+    private var cacheWrite: Task<Void, Never>?
+
+    func reviewWorkspaceRevision(for workspaceID: String) -> Int {
+        reviewWorkspaceRevisions[workspaceID, default: 0]
+    }
+
+    private func invalidateReviews(_ ids: Set<String>) {
+        for id in ids { reviewWorkspaceRevisions[id, default: 0] &+= 1 }
+    }
 
     /// Read acknowledgements arrive in the same dashboard rows on every device.
     var unreadWorkspaceIDs: Set<String> {
@@ -58,6 +70,7 @@ final class DashboardStore: ObservableObject {
     var now: Date { didSet { regroup() } }
 
     let client: BridgeClient
+    private let cache: DeviceCache
     // The bridge streams have one consumer. Forward transcript invalidations
     // here so opening a chat cannot steal dashboard frames from the list.
     var onTranscriptEvent: ((BridgeEvent) -> Void)?
@@ -66,14 +79,25 @@ final class DashboardStore: ObservableObject {
     private var eventLoop: Task<Void, Never>?
     private var connectionLoop: Task<Void, Never>?
 
-    init(client: BridgeClient, now: Date = Date()) {
+    init(client: BridgeClient, now: Date = Date(), cache: DeviceCache = .shared) {
+        self.cache = cache
         self.client = client
         self.now = now
+        Task { [weak self, client, cache] in
+            let cached = await cache.read(DashboardSnapshot.self,
+                scope: client.cacheNamespace, key: "dashboard")
+            guard let self, self.snapshotVersion == 0, let cached else { return }
+            self.snapshot = cached
+            self.loadedOnce = true
+            self.isCachedSnapshot = true
+            self.regroup()
+        }
     }
 
     deinit {
         eventLoop?.cancel()
         connectionLoop?.cancel()
+        cacheWrite?.cancel()
     }
 
     /// Connect, start listening, and load the first snapshot.
@@ -89,6 +113,7 @@ final class DashboardStore: ObservableObject {
                 case .push(let channel, let payload):
                     if channel == "dashboard:delta" { self.apply(payload) }
                 case .resync:
+                    self.invalidateReviews(Set(self.snapshot.workspaces.map(\.id)))
                     await self.reload()
                 }
             }
@@ -99,7 +124,10 @@ final class DashboardStore: ObservableObject {
                 guard let self else { return }
                 self.connection = state
                 self.onTranscriptConnection?(state)
-                if state == .live { self.transcriptRevision += 1 }
+                if state == .live {
+                    self.transcriptRevision += 1
+                    self.invalidateReviews(Set(self.snapshot.workspaces.map(\.id)))
+                }
                 // A reconnect misses whatever changed while the socket was
                 // down, and the host replays nothing, so the snapshot is
                 // reloaded rather than resumed.
@@ -120,7 +148,7 @@ final class DashboardStore: ObservableObject {
     /// Foregrounding: the radio dropped the socket without closing it, so
     /// stop waiting out the backoff.
     func resume() {
-        Task { [client] in await client.reconnectNow() }
+        Task { [client] in await client.reconnectNow(force: true) }
     }
 
     /// Pull to refresh, and every path that needs the whole list again.
@@ -129,6 +157,7 @@ final class DashboardStore: ObservableObject {
             let loaded = try await client.request("dashboard:list", as: DashboardSnapshot.self)
             loadFailure = nil
             loadedOnce = true
+            isCachedSnapshot = false
             ingest(snapshot: loaded)
         } catch let error as BridgeError {
             loadFailure = error
@@ -149,6 +178,11 @@ final class DashboardStore: ObservableObject {
     // needs a snapshot and a delta rather than a host.
 
     func ingest(snapshot loaded: DashboardSnapshot) {
+        snapshotVersion += 1
+        let before = Dictionary(uniqueKeysWithValues: snapshot.workspaces.map { ($0.id, $0) })
+        let after = Dictionary(uniqueKeysWithValues: loaded.workspaces.map { ($0.id, $0) })
+        invalidateReviews(Set(before.keys).union(after.keys).filter { before[$0] != after[$0] })
+        saveCache(loaded)
         onTranscriptSnapshot?(loaded)
         guard loaded != snapshot else { return }
         snapshot = loaded
@@ -156,10 +190,20 @@ final class DashboardStore: ObservableObject {
     }
 
     func ingest(delta: DashboardDelta) {
+        snapshotVersion += 1
+        var sessionWorkspaces = Dictionary(uniqueKeysWithValues: snapshot.sessions.map { ($0.id, $0.workspaceId) })
+        var affected = Set(delta.workspaces?.map(\.id) ?? [])
+        for row in delta.sessions ?? [] {
+            if let previous = sessionWorkspaces[row.id] { affected.insert(previous) }
+            sessionWorkspaces[row.id] = row.workspaceId
+        }
+        affected.formUnion((delta.changedSessionIds ?? []).compactMap { sessionWorkspaces[$0] })
+        invalidateReviews(affected)
         let merged = mergeDashboardDelta(snapshot, delta)
         onTranscriptSnapshot?(merged)
         guard merged != snapshot else { return }
         snapshot = merged
+        saveCache(merged)
         regroup()
     }
 
@@ -216,6 +260,15 @@ final class DashboardStore: ObservableObject {
                 self.metadataDirty = false
                 await self.reload()
             } while self?.metadataDirty == true
+        }
+    }
+
+    private func saveCache(_ value: DashboardSnapshot) {
+        cacheWrite?.cancel()
+        let scope = client.cacheNamespace
+        cacheWrite = Task {
+            do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
+            await cache.write(value, scope: scope, key: "dashboard")
         }
     }
 

@@ -1,6 +1,6 @@
 import Foundation
 
-enum TranscriptMarkdownBlock {
+enum TranscriptMarkdownBlock: Sendable {
     case paragraph(AttributedString)
     case heading(level: Int, AttributedString)
     case listItem(ordinal: Int?, depth: Int, AttributedString)
@@ -12,17 +12,17 @@ enum TranscriptMarkdownBlock {
     case thematicBreak
 }
 
-enum TranscriptInlinePiece {
+enum TranscriptInlinePiece: Sendable {
     case text(AttributedString)
     case math(TranscriptMath)
 }
 
-struct TranscriptMath {
+struct TranscriptMath: Sendable {
     let source: String
     let display: Bool
 }
 
-struct TranscriptMarkdownDocument {
+struct TranscriptMarkdownDocument: Sendable {
     let blocks: [TranscriptMarkdownBlock]
     let math: [String: TranscriptMath]
 

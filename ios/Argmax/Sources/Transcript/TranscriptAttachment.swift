@@ -75,7 +75,7 @@ struct TranscriptAttachmentStrip: View {
     }
 }
 
-struct TranscriptMarkdownImageSource {
+struct TranscriptMarkdownImageSource: Sendable {
     let alt: String
     let target: String
 
@@ -137,6 +137,8 @@ private struct TranscriptImageTile: View {
     let attachment: Bool
     let compact: Bool
     let onOpenFile: (String) -> Void
+    @State private var request: URLRequest?
+    @Environment(\.displayScale) private var displayScale
     @State private var image: UIImage?
     @State private var failed = false
     @State private var expanded = false
@@ -165,7 +167,7 @@ private struct TranscriptImageTile: View {
         .clipShape(RoundedRectangle(cornerRadius: compact ? 10 : 12, style: .continuous))
         .task(id: source.target) { await load() }
         .fullScreenCover(isPresented: $expanded) {
-            TranscriptFullScreenImage(image: image, title: source.alt, isPresented: $expanded)
+            TranscriptFullScreenImage(image: image, request: request, title: source.alt, isPresented: $expanded)
         }
     }
 
@@ -185,13 +187,19 @@ private struct TranscriptImageTile: View {
     }
 
     private func load(_ request: URLRequest) async {
+        self.request = request
+        failed = false
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-                  let decoded = UIImage(data: data) else { failed = true; return }
+            let decoded = try await NativeImageCache.shared.image(for: request,
+                pixels: Int((compact ? 168 : 420) * displayScale))
+            guard !Task.isCancelled else { return }
             image = decoded
-        } catch { failed = true }
+        } catch {
+            guard !Task.isCancelled else { return }
+            failed = true
+        }
     }
+
 }
 
 private struct TranscriptFileFallback: View {
@@ -212,17 +220,25 @@ private struct TranscriptFileFallback: View {
 
 private struct TranscriptFullScreenImage: View {
     let image: UIImage?
+    let request: URLRequest?
+    @State private var expandedImage: UIImage?
     let title: String
     @Binding var isPresented: Bool
 
     var body: some View {
         NavigationStack {
             ScrollView([.horizontal, .vertical]) {
-                if let image {
+                if let image = expandedImage ?? image {
                     Image(uiImage: image).resizable().aspectRatio(contentMode: .fit).padding(16)
                 }
             }
             .background(Theme.ground)
+            .task {
+                guard let request,
+                      let full = try? await NativeImageCache.shared.image(for: request, pixels: 4096),
+                      !Task.isCancelled else { return }
+                expandedImage = full
+            }
             .navigationTitle(title.isEmpty ? "Image" : title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Done") { isPresented = false } } }

@@ -310,11 +310,16 @@ longer change its UI. The phone still requires compatible bridge channels and
 normalised event payloads, so unknown event kinds remain visible as notices
 where possible and fixture tests pin the supported contracts.
 
-The phone does not replay mutations. The renderer persists an unresolved
-operation's identity in session storage and reuses it after a reload, so the
-host can recognise the retry (see "Recovering remote actions" in
-[docs/remote.md](../../docs/remote.md)); this client mints a fresh
-`operationId` per attempt and retries nothing on its own. So a launch or an
-archive whose reply is lost to a dropped socket has an unknown outcome: the
-chat list is the place to look, and the sheet says "Can't reach your Mac"
-rather than trying again.
+The native phone client journals mutation identities and retries a dropped
+response with the same identity. Repeating an unresolved action after relaunch
+also retains its identity. Host-interrupted outcomes require inspection before
+acknowledgement in Settings → Unconfirmed actions. The host must advertise
+operation replay support. See [recovery details](../../docs/ios-performance.md).
+
+## Performance and recovery
+
+Use [iOS performance and recovery](../../docs/ios-performance.md) for the
+`ArgmaxPerformance` optimized test scheme, Instruments intervals, local cache
+behavior, and dropped-connection verification. Usage and Activity still preload
+from the root screen. Native performance tests live in `Tests/NativePerformanceTests.swift`
+and `UITests/NativePerformanceUITests.swift`.

@@ -8,6 +8,17 @@ options:
     iOS: "18.0"
   createIntermediateGroups: true
 
+configs:
+  Debug: debug
+  Release: release
+  Performance: release
+settings:
+  configs:
+    Performance:
+      # Optimized code with deterministic fixture entry points and testable symbols.
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG ARGMAX_PERFORMANCE_TESTS"
+      ENABLE_TESTABILITY: YES
+
 packages:
   SwaTex:
     url: https://github.com/PhraseHQ/SwaTex.git
@@ -137,3 +148,26 @@ schemes:
     test:
       config: Debug
       targets: [ArgmaxTests, ArgmaxUITests]
+
+  ArgmaxPerformance:
+    build:
+      targets:
+        Argmax: all
+        ArgmaxTests: [test]
+        ArgmaxUITests: [test]
+    run:
+      config: Performance
+    test:
+      config: Performance
+      targets: [ArgmaxTests, ArgmaxUITests]
+    profile:
+      config: Release
+
+  ArgmaxDeviceBenchmarks:
+    build:
+      targets:
+        Argmax: all
+        ArgmaxTests: [test]
+    test:
+      config: Performance
+      targets: [ArgmaxTests]

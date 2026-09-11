@@ -13,6 +13,10 @@ struct TranscriptScreen: View {
     @State private var forking = false
     @State private var screenID = UUID()
     @State private var draft = ""
+    @State private var draftEdited = false
+    @State private var draftFailure: String?
+    @State private var draftWrite: Task<Void, Never>?
+    @Environment(\.scenePhase) private var scenePhase
     @State private var focusRequest = 0
 
     var body: some View {
@@ -38,10 +42,25 @@ struct TranscriptScreen: View {
         .interactivePop()
         .onAppear {
             transcript.claim(screenID, sessionID: row.session.id)
-            transcript.receive(snapshot: store.snapshot)
+            transcript.receive(snapshot: store.snapshot, authoritative: !store.isCachedSnapshot)
             push.openSessionID = row.session.id
         }
+        .task(id: row.session.id) {
+            do {
+                let saved = try await ComposerDrafts.shared.read(scope: store.client.cacheNamespace, sessionID: row.session.id)
+                guard !Task.isCancelled, !draftEdited else { return }
+                draft = saved
+            } catch { draftFailure = "The saved draft could not be restored." }
+        }
+        .onChange(of: draft) {
+            draftEdited = true
+            saveDraft(debounce: true)
+        }
+        .onChange(of: scenePhase) {
+            if scenePhase != .active { saveDraft(debounce: false) }
+        }
         .onDisappear {
+            saveDraft(debounce: false)
             guard transcript.relinquish(screenID) else { return }
             if push.openSessionID == row.session.id { push.openSessionID = nil }
         }
@@ -49,6 +68,23 @@ struct TranscriptScreen: View {
             guard transcript.phase == .ready, store.connection == .live,
                   let workspace = store.snapshot.workspaces.first(where: { $0.id == row.workspace.id }) else { return }
             await store.markViewed(workspace)
+        }
+    }
+
+    private func saveDraft(debounce: Bool) {
+        guard draftEdited else { return }
+        draftWrite?.cancel()
+        let text = draft
+        let id = row.session.id
+        let scope = store.client.cacheNamespace
+        draftWrite = Task {
+            if debounce {
+                do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+            }
+            do {
+                try await ComposerDrafts.shared.write(text, scope: scope, sessionID: id)
+                draftFailure = nil
+            } catch { draftFailure = "This draft could not be saved on the iPhone." }
         }
     }
 
@@ -68,6 +104,10 @@ struct TranscriptScreen: View {
                 }
             }
             if transcript.phase == .loading { IndeterminateLine() }
+            if let draftFailure { Text(draftFailure).typeMeta().foregroundStyle(Theme.rose) }
+            if transcript.showingCachedContent {
+                Text("Saved on this iPhone. Updating when your Mac is available.").typeMeta()
+            }
             if case .reconnecting = store.connection {
                 Label("Reconnecting to your Mac…", systemImage: "wifi.slash")
                     .font(.caption)

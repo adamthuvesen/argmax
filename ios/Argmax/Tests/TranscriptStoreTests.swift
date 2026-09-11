@@ -3,7 +3,7 @@ import XCTest
 
 @MainActor
 final class TranscriptStoreTests: XCTestCase {
-    func testClearHidesOpeningPromptAndEarlierRawOutput() throws {
+    func testClearHidesOpeningPromptAndEarlierRawOutput() async throws {
         let store = try makeStore()
         var snapshot = page(events: [event("clear", "session.cleared", "Cleared", 2)])
         snapshot.rawOutputs = [TranscriptRawOutput(
@@ -19,6 +19,7 @@ final class TranscriptStoreTests: XCTestCase {
             content: "New human-readable error", createdAt: "2026-01-01T00:00:03.000Z", rowCursor: 3
         )]
         store.ingest(page: next, for: "session-1")
+        await store.waitForProjection()
         XCTAssertEqual(store.items.count, 1)
         guard case .error(let output) = store.items[0] else { return XCTFail("expected raw error") }
         XCTAssertEqual(output.message, "New human-readable error")
@@ -39,7 +40,7 @@ final class TranscriptStoreTests: XCTestCase {
         XCTAssertEqual(store.phase, .idle)
     }
 
-    func testPageMergeAppliesEditsDeletionsAndAuthoritativeReset() throws {
+    func testPageMergeAppliesEditsDeletionsAndAuthoritativeReset() async throws {
         let store = try makeStore()
         let metadata = sessionMetadata(id: "session-1")
         store.preview(
@@ -58,6 +59,7 @@ final class TranscriptStoreTests: XCTestCase {
             ),
             for: "session-1"
         )
+        await store.waitForProjection()
         XCTAssertEqual(assistantTexts(store.items), ["New"])
 
         store.ingest(
@@ -65,12 +67,13 @@ final class TranscriptStoreTests: XCTestCase {
             for: "session-1",
             authoritative: true
         )
+        await store.waitForProjection()
         XCTAssertEqual(store.items.count, 1)
         guard case .user(let message) = store.items[0] else { return XCTFail("expected reset user") }
         XCTAssertEqual(message.text, "Fresh chat")
     }
 
-    func testTraceSupersessionActsAsATombstone() throws {
+    func testTraceSupersessionActsAsATombstone() async throws {
         let store = try makeStore()
         store.preview(
             page: page(events: [event("synthetic", "message.completed", "Synthetic", 1)]),
@@ -88,7 +91,9 @@ final class TranscriptStoreTests: XCTestCase {
             )], cursor: 1, changeCursor: 2, reset: false),
             for: "session-1"
         )
+        await store.waitForProjection()
         XCTAssertTrue(assistantTexts(store.items).isEmpty)
+        await store.waitForProjection()
         XCTAssertEqual(store.items.count, 1)
         guard case .user(let prompt) = store.items[0] else { return XCTFail("expected opening prompt") }
         XCTAssertEqual(prompt.text, "Go")
@@ -113,7 +118,7 @@ final class TranscriptStoreTests: XCTestCase {
         XCTAssertEqual(snapshot.pendingMessages["s"]?.first?.content, "Then test")
     }
 
-    func testDashboardWorkspacePathPropagatesIntoToolProjection() throws {
+    func testDashboardWorkspacePathPropagatesIntoToolProjection() async throws {
         let store = try makeStore()
         let path = "/Users/dev/argmax/src/App.swift"
         store.preview(
@@ -132,14 +137,56 @@ final class TranscriptStoreTests: XCTestCase {
         session.workspaceId = workspace.id
         store.receive(snapshot: DashboardSnapshot(workspaces: [workspace], sessions: [session]))
 
+        await store.waitForProjection()
         let tool = try XCTUnwrap(store.items.compactMap { item -> TranscriptTool? in
             guard case .tools(let group) = item else { return nil }
             return group.tools.first
         }.first)
 
-        XCTAssertEqual(tool.summary, "Edit · src/App.swift")
+        XCTAssertEqual(tool.summary, "File change (unconfirmed)")
         XCTAssertEqual(tool.fileLabel, "src/App.swift")
         XCTAssertEqual(tool.filePath, path)
+    }
+
+    func testRecentChatPaintsImmediatelyAndRemovalCancelsCachedWrite() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = DeviceCache(directory: directory)
+        let client = try BridgeClient(pairingURL: XCTUnwrap(URL(string: "https://mac.example/mobile.html#token=cache-test")), monitorNetwork: false)
+        let store = TranscriptStore(client: client, cache: cache)
+        store.preview(page: page(events: [event("a", "message.completed", "Saved answer", 1)]), metadata: sessionMetadata(id: "session-1"))
+        store.ingest(page: page(events: [event("a", "message.completed", "Saved answer", 1)]), for: "session-1")
+        await store.waitForProjection()
+        await store.flushCache()
+        store.closeSession()
+        store.openSession("session-1")
+        XCTAssertEqual(assistantTexts(store.items), ["Saved answer"])
+        XCTAssertTrue(store.showingCachedContent)
+        store.receive(connection: .live)
+        store.ingest(page: page(events: [event("a", "message.completed", "Changed answer", 2)]), for: "session-1")
+        await store.waitForProjection()
+        store.receive(snapshot: DashboardSnapshot())
+        await store.flushCache()
+        XCTAssertNil(store.sessionID)
+        XCTAssertNil(store.composer)
+        XCTAssertTrue(store.items.isEmpty)
+        XCTAssertNotNil(store.failure)
+        await client.disconnect()
+    }
+
+    func testNewerProjectionWinsAndClosingDiscardsQueuedWork() async throws {
+        let store = try makeStore()
+        store.preview(page: page(events: []), metadata: sessionMetadata(id: "session-1"))
+        for index in 1...20 {
+            store.ingest(page: page(events: [event("answer", "message.completed", "Answer \(index)", Int64(index))]), for: "session-1")
+        }
+        await store.waitForProjection()
+        XCTAssertEqual(assistantTexts(store.items), ["Answer 20"])
+        store.ingest(page: page(events: [event("late", "message.completed", "Late", 30)]), for: "session-1")
+        store.closeSession()
+        await store.waitForProjection()
+        XCTAssertTrue(store.items.isEmpty)
+        XCTAssertEqual(store.phase, .idle)
     }
 
     private func makeStore() throws -> TranscriptStore {

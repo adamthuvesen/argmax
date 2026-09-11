@@ -9,8 +9,8 @@ import UIKit
 
 /// What a code surface is showing, and the identity that decides when the
 /// string behind it has to be built again.
-struct CodeDocument {
-    enum Content {
+struct CodeDocument: Sendable {
+    enum Content: Sendable {
         /// A parsed unified diff, blocks in draw order.
         case diff([ParsedDiffBlock])
         /// A whole file, numbered from one.
@@ -23,7 +23,8 @@ struct CodeDocument {
     /// rung for a diff).
     let key: String
 
-    struct Built {
+    struct Built: @unchecked Sendable {
+        // Builders return an immutable copy with immutable attributes. No view/layout crosses executors.
         let string: NSAttributedString
         let gutterWidth: CGFloat
     }
@@ -84,7 +85,7 @@ struct CodeDocument {
                 ))
             }
         }
-        return Built(string: output, gutterWidth: gutterWidth)
+        return Built(string: NSAttributedString(attributedString: output), gutterWidth: gutterWidth)
     }
 
     private static func diffLine(
@@ -166,7 +167,7 @@ struct CodeDocument {
                 attributes: attributes.merging([.foregroundColor: Theme.inkColor]) { _, new in new }
             ))
         }
-        return Built(string: output, gutterWidth: gutterWidth)
+        return Built(string: NSAttributedString(attributedString: output), gutterWidth: gutterWidth)
     }
 
     // MARK: - Shared

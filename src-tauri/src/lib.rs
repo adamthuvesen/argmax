@@ -748,6 +748,7 @@ pub fn run() {
                                 }
                             });
                             let notifications_for_delta = Arc::clone(&notifications);
+                            let push_database = Arc::clone(&database);
                             let ntfy_app = app.handle().clone();
                             let provider_delta_tx = delta_tx.clone();
                             let publish_delta = move |delta: providers::flush_queue::DashboardDelta| {
@@ -772,11 +773,34 @@ pub fn run() {
                                             "failed to fire terminal-state notification"
                                         );
                                     }
+                                    // The push body leads with what the agent
+                                    // last said, so read it once for both sinks
+                                    // — and only for a row that will actually
+                                    // push, since a streaming turn walks
+                                    // through here on every chunk.
+                                    let pushes = (ntfy.is_some() || apns.is_some())
+                                        && remote::signal::signals(session);
+                                    let latest_answer = pushes
+                                        .then(|| {
+                                            persistence::events::latest_agent_message(
+                                                &push_database.read_connection(),
+                                                &session.id,
+                                            )
+                                            .unwrap_or_else(|error| {
+                                                tracing::warn!(
+                                                    ?error,
+                                                    session_id = %session.id,
+                                                    "failed to read the latest agent message for a push"
+                                                );
+                                                None
+                                            })
+                                        })
+                                        .flatten();
                                     if let Some(ntfy) = ntfy.as_ref() {
-                                        ntfy.observe(session);
+                                        ntfy.observe(session, latest_answer.as_deref());
                                     }
                                     if let Some(apns) = apns.as_ref() {
-                                        apns.observe(session);
+                                        apns.observe(session, latest_answer.as_deref());
                                     }
                                     keep_awake.observe(&session.id, session.state.is_active());
                                 }

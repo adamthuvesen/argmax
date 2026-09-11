@@ -72,10 +72,36 @@ pub struct PushSignal {
     pub tags: &'static str,
 }
 
+/// True when this session row is one the phone hears. Callers use it to skip
+/// the transcript read that fills the body of a push that would never fire.
+pub fn signals(session: &SessionSummary) -> bool {
+    trigger(session).is_some()
+}
+
 /// The transitions a phone cares about: stalled on the user, failed, or
 /// finished. Everything else is silent.
-pub fn signal_for(session: &SessionSummary) -> Option<PushSignal> {
-    let (title, priority, tags) = match (session.attention, session.state) {
+///
+/// `latest_answer` is the agent's most recent visible message, which is what
+/// the body says: on the phone the push is the only place that text shows up
+/// before you open the chat, and the initial prompt is something you already
+/// know. Falls back to the prompt when the agent has not said anything yet.
+pub fn signal_for(session: &SessionSummary, latest_answer: Option<&str>) -> Option<PushSignal> {
+    let (title, priority, tags) = trigger(session)?;
+    let body = latest_answer
+        .map(str::trim)
+        .filter(|answer| !answer.is_empty())
+        .unwrap_or(&session.prompt);
+    Some(PushSignal {
+        title: format!("Argmax: {title}"),
+        body: preview(body),
+        priority,
+        session_id: session.id.clone(),
+        tags,
+    })
+}
+
+fn trigger(session: &SessionSummary) -> Option<(&'static str, SignalPriority, &'static str)> {
+    let trigger = match (session.attention, session.state) {
         (AttentionState::ApprovalNeeded, _) => {
             ("Needs approval", SignalPriority::Urgent, "raised_hand")
         }
@@ -91,13 +117,7 @@ pub fn signal_for(session: &SessionSummary) -> Option<PushSignal> {
         (_, SessionState::Complete) => ("Chat complete", SignalPriority::Normal, ""),
         _ => return None,
     };
-    Some(PushSignal {
-        title: format!("Argmax: {title}"),
-        body: truncated_prompt(&session.prompt),
-        priority,
-        session_id: session.id.clone(),
-        tags,
-    })
+    Some(trigger)
 }
 
 /// Per-session latch on the (state, attention) pair. A busy turn emits a
@@ -133,13 +153,25 @@ impl SignalDedupe {
     }
 }
 
-fn truncated_prompt(prompt: &str) -> String {
+/// The opening of a message, on one line. Newlines are collapsed because both
+/// sinks render the body as a single wrapped paragraph, so a Markdown answer's
+/// blank lines would otherwise spend the visible space on nothing.
+fn preview(text: &str) -> String {
     const MAX: usize = 140;
-    let trimmed = prompt.trim();
-    if trimmed.chars().count() <= MAX {
-        return trimmed.to_string();
+    let mut flattened = String::new();
+    for word in text.split_whitespace() {
+        if !flattened.is_empty() {
+            flattened.push(' ');
+        }
+        flattened.push_str(word);
+        if flattened.chars().count() > MAX {
+            break;
+        }
     }
-    let mut cut: String = trimmed.chars().take(MAX).collect();
+    if flattened.chars().count() <= MAX {
+        return flattened;
+    }
+    let mut cut: String = flattened.chars().take(MAX).collect();
     cut.push('…');
     cut
 }
@@ -227,7 +259,7 @@ mod tests {
             ),
         ];
         for (state, attention, title, priority, tags) in cases {
-            let signal = signal_for(&session(state, attention)).expect("signal");
+            let signal = signal_for(&session(state, attention), None).expect("signal");
             assert_eq!(signal.title, title);
             assert_eq!(signal.priority, priority);
             assert_eq!(signal.tags, tags);
@@ -237,7 +269,11 @@ mod tests {
 
     #[test]
     fn normal_running_sessions_are_silent() {
-        assert!(signal_for(&session(SessionState::Running, AttentionState::Normal)).is_none());
+        assert!(signal_for(
+            &session(SessionState::Running, AttentionState::Normal),
+            None
+        )
+        .is_none());
     }
 
     /// The title travels as an ntfy HTTP header, so every branch of the table
@@ -251,18 +287,37 @@ mod tests {
             (SessionState::Failed, AttentionState::Normal),
             (SessionState::Complete, AttentionState::Normal),
         ] {
-            let signal = signal_for(&session(state, attention)).expect("signal");
+            let signal = signal_for(&session(state, attention), None).expect("signal");
             assert!(signal.title.is_ascii(), "non-ASCII title: {}", signal.title);
         }
     }
 
     #[test]
-    fn long_prompts_truncate() {
+    fn long_bodies_truncate() {
         let mut summary = session(SessionState::Failed, AttentionState::Normal);
         summary.prompt = "x".repeat(400);
-        let signal = signal_for(&summary).expect("failed signal");
+        let signal = signal_for(&summary, None).expect("failed signal");
         assert!(signal.body.chars().count() <= 141);
         assert!(signal.body.ends_with('…'));
+    }
+
+    #[test]
+    fn the_body_leads_with_the_agents_answer_not_the_prompt() {
+        let summary = session(SessionState::Complete, AttentionState::Normal);
+        let signal = signal_for(&summary, Some("  Shipped the dashboard.\n\nTests pass.  "))
+            .expect("completion signal");
+        assert_eq!(signal.body, "Shipped the dashboard. Tests pass.");
+    }
+
+    /// A chat can stall or fail before the agent says anything; the prompt is
+    /// the only text there is then.
+    #[test]
+    fn a_blank_answer_falls_back_to_the_prompt() {
+        let summary = session(SessionState::Complete, AttentionState::Normal);
+        assert_eq!(
+            signal_for(&summary, Some("   \n ")).expect("signal").body,
+            "Build the dashboard"
+        );
     }
 
     #[test]

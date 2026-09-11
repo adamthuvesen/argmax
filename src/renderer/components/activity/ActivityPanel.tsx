@@ -4,7 +4,7 @@ import {
   getActivityUiState,
   getCachedActivitySummary,
   patchActivityUiState,
-  setCachedActivitySummary
+  requestActivitySummary
 } from "../../lib/ledgerPageState.js";
 import { SegmentedControl, SettingsListPicker } from "../settings/settingsPrimitives.js";
 import type { ActivitySummary, ActivityWindow } from "./activityContract.js";
@@ -89,9 +89,10 @@ export function ActivityPanel({ visible = true }: { visible?: boolean } = {}): J
       const request = requestRef.current + 1;
       requestRef.current = request;
       try {
-        const next = await fetchSummary(target, scope, timeZoneRef.current);
+        const next = await requestActivitySummary(target, scope, timeZoneRef.current, () =>
+          fetchSummary(target, scope, timeZoneRef.current)
+        );
         if (requestRef.current !== request) return;
-        setCachedActivitySummary(target, scope, timeZoneRef.current, next);
         setSummary(next);
         setError(null);
       } catch (cause) {

@@ -251,6 +251,8 @@ export function useReviewState(
      *  and with it the external-change polling that only matters for a live
      *  editor buffer. Defaults to editable. */
     editable?: boolean;
+    /** Warm the focused pane while closed. Background panes load when opened. */
+    preloadChanges?: boolean;
     /** Full-screen surfaces where the panel IS the screen start open, so the
      *  data hooks load on the first render instead of after a mount effect —
      *  an effect-driven open races useReviewDiff's auto-select of the first
@@ -523,6 +525,8 @@ export function useReviewState(
     changedFilesKey,
     comparison,
     dispatch,
+    enabled: isPanelOpen || (options?.preloadChanges ?? true),
+    preloadFirstFile: options?.preloadChanges === true,
     autoSelectFirstFile: isPanelOpen && layout.modes.includes("changes"),
     onOpenChanges: openChangesMode
   });

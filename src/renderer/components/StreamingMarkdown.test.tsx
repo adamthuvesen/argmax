@@ -195,6 +195,32 @@ describe("<StreamingMarkdown />", () => {
     expect(screen.getByText(text)).toBeInTheDocument();
   });
 
+  it("keeps Unicode prefixes intact through stream growth and completion", () => {
+    vi.useFakeTimers();
+    const first = "😀".repeat(120);
+    const grown = `${first}${"🧠".repeat(80)}`;
+
+    const { container, rerender } = render(<StreamingMarkdown text={first} streaming />);
+    const markdown = container.querySelector(".markdown");
+    act(() => {
+      vi.advanceTimersByTime(32 * 2);
+    });
+    expect(markdown?.textContent).toBe("😀".repeat(10));
+
+    rerender(<StreamingMarkdown text={grown} streaming />);
+    act(() => {
+      vi.advanceTimersByTime(32);
+    });
+    expect(markdown?.textContent).toBe("😀".repeat(15));
+
+    rerender(<StreamingMarkdown text={grown} streaming={false} />);
+    expect(markdown?.textContent).toBe("😀".repeat(15));
+    act(() => {
+      vi.advanceTimersByTime(32 * 40);
+    });
+    expect(markdown?.textContent).toBe(grown);
+  });
+
   it("spreads a large arriving block over a bounded window instead of crawling", () => {
     // Codex and OpenCode land the whole answer as one completed message. At
     // the floor cadence a 2000-character answer took thirteen seconds, and the

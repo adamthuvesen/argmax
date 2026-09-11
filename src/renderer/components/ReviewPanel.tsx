@@ -895,6 +895,7 @@ function ReviewPanelPane({
           {isChanges ? (
             <>
               {reviewActionError && <p className="review-empty review-error" role="alert">{reviewActionError}</p>}
+              {review.filesState === "error" && <p className="review-empty review-error" role="alert">{review.filesError ?? "Couldn't load changed files."}</p>}
               {review.filesState === "ready" && review.files.length === 0 ? (
                 <p className="review-empty">
                   <span className="review-empty-mark" aria-hidden="true">∅</span>

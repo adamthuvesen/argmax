@@ -13,7 +13,8 @@ Tracked by [src-tauri/src/util/startup_timer.rs](../src-tauri/src/util/startup_t
 
 `npm run check:bundle` (scripts/check-bundle.mjs) caps the cold-start module
 graph — the entry chunk plus every `<link rel="modulepreload">` Vite emits —
-at 1.75 MiB desktop / 1.60 MiB mobile. Measured 2026-09-09 from the existing
+at 1.76 MiB desktop / 1.60 MiB mobile. The desktop allowance includes a small
+startup tradeoff for navigation readiness. Measured 2026-09-09 from the existing
 build: 1.70 MiB desktop and 1.57 MiB mobile. Desktop rose 0.05 MiB to cover
 todo cards, goals, and the rest of this stack.
 
@@ -223,9 +224,28 @@ request. Session sizes are heavily skewed — p50 is ~53 events, p95 is ~743, an
 the largest holds 3,040 events and 3.3 MB of text — so without a window a long
 session re-reconciled thousands of live subtrees on every streaming delta.
 
-Only paced, actively streaming markdown blocks allocate character arrays for
-the reveal. Completed, unpaced, and reduced-motion blocks render the source
-text directly.
+Paced markdown reveals use a numeric Unicode cursor and slice the source
+string without retaining a character array or joining each visible prefix.
+Reveal timing, Markdown rendering, and tool-call presentation are unchanged.
+Completed, unpaced, and reduced-motion blocks render the source text directly.
+An isolated local benchmark of 1,000 prefixes over 100,800 code points took
+about 400 ms with the previous array slicing and joining, and under 2 ms with
+the cursor. This measures prefix preparation, not end-to-end rendering.
+
+Usage and Activity prefetches share in-flight requests with visible panels.
+Each summary cache retains at most eight filter combinations, preserving the
+default view while evicting older alternatives. Failed requests can retry.
+
+The focused desktop pane warms its changed-file list and first diff. Closed
+background panes defer Git reads until focused or opened. Successful preloads
+are reused on opening, while failed preloads retry. Hosts with their own review
+screen, including mobile, do not warm the desktop diff. Diff previews retain
+at most 12 entries and 8 MiB of estimated UTF-16 text per pane, excluding the
+currently displayed diff. Oversized diffs remain viewable without being cached.
+
+Workspace file inventories sort and deduplicate borrowed paths before creating
+owned entries, avoiding tree-node and duplicate string allocations while
+preserving sorted results.
 
 File browsing caches are bounded for panes that stay mounted for a long time.
 The Files view retains at most 12 closed previews per pane. Each file read is

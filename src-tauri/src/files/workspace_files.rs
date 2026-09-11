@@ -7,7 +7,7 @@
 // doesn't ship megabytes of garbage to the renderer.
 
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::HashMap,
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     sync::{Arc, LazyLock, Mutex},
@@ -197,16 +197,16 @@ async fn list_files_at_path(repo_path: &str) -> ArgmaxResult<Vec<WorkspaceFileEn
         GIT_TIMEOUT,
     )
     .await?;
-    let mut seen: BTreeSet<String> = BTreeSet::new();
-    for entry in stdout.split('\0') {
-        if entry.is_empty() {
-            continue;
-        }
-        seen.insert(entry.to_string());
-    }
-    Ok(seen
+    // Sort borrowed paths before allocating the response strings, avoiding
+    // tree nodes and duplicate String allocations for large inventories.
+    let mut paths: Vec<&str> = stdout.split('\0').filter(|entry| !entry.is_empty()).collect();
+    paths.sort_unstable();
+    paths.dedup();
+    Ok(paths
         .into_iter()
-        .map(|path| WorkspaceFileEntry { path })
+        .map(|path| WorkspaceFileEntry {
+            path: path.to_owned(),
+        })
         .collect())
 }
 
@@ -552,6 +552,7 @@ mod tests {
         assert!(paths.contains(&"README.md"));
         assert!(paths.contains(&"src/lib.rs"));
         assert!(!paths.contains(&"ignored.txt"));
+        assert!(paths.windows(2).all(|pair| pair[0] < pair[1]));
     }
 
     #[tokio::test]

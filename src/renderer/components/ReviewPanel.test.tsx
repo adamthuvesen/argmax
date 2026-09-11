@@ -54,6 +54,15 @@ function setReviewMode(review: ReviewState, mode: ReviewState["mode"]): void {
 }
 
 describe("ReviewPanel changes layout", () => {
+  it("shows changed-file loading failures instead of an empty panel", () => {
+    const review = reviewStub();
+    review.files = [];
+    review.filesState = "error";
+    review.filesError = "Git is temporarily unavailable.";
+    render(<ReviewPanel review={review} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Git is temporarily unavailable.");
+  });
+
   beforeEach(() => {
     window.localStorage.clear();
   });

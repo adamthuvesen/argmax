@@ -8,7 +8,7 @@ import {
   DEFAULT_USER_BUBBLE_TINT,
   USER_BUBBLE_TINT_STORAGE_KEY
 } from "../lib/userBubbleTint.js";
-import { mockDashboardSnapshot, setupAppTestMocks, snapshot } from "../../test/appTestHarness.js";
+import { listChangedFiles, loadDiff, mockDashboardSnapshot, setupAppTestMocks, snapshot } from "../../test/appTestHarness.js";
 import { startedAgentName } from "../../test/agentRowName.js";
 import { MobileApp } from "./MobileApp.js";
 import type { NativeMessage } from "./nativeHost.js";
@@ -90,6 +90,17 @@ describe("MobileApp embed mode", () => {
     expect(screen.queryByRole("button", { name: "New chat" })).not.toBeInTheDocument();
     // Parked until native says which chat to show.
     expect(screen.queryByRole("region", { name: "Conversation" })).not.toBeInTheDocument();
+  });
+
+  it("does not preload a desktop diff when native owns review navigation", async () => {
+    listChangedFiles.mockResolvedValue([
+      { path: "src/a.ts", status: "modified", additions: 1, deletions: 1, staged: false }
+    ]);
+    await renderEmbedded();
+    act(() => window.argmaxNative?.openSession("session-1"));
+    await screen.findByRole("region", { name: "Conversation" });
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalled());
+    expect(loadDiff).not.toHaveBeenCalled();
   });
 
   it("posts ready once the bridge authenticates, and only once", async () => {

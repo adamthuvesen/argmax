@@ -4,9 +4,10 @@ import {
   getCachedActivitySummary,
   getCachedUsageSummary,
   getUsageUiState,
-  setCachedActivitySummary,
+  requestActivitySummary,
+  requestUsageRemaining,
+  requestUsageSummary,
   setCachedUsageRemaining,
-  setCachedUsageSummary,
   usageRemainingHasSettled
 } from "./ledgerPageState.js";
 
@@ -38,30 +39,25 @@ export async function prefetchLedgerPages(api: ArgmaxApi): Promise<void> {
 
   if (!getCachedUsageSummary(usageUi.usageWindow, usageUi.provider, timeZone)) {
     tasks.push(
-      api.usage
-        .summary({ window: usageUi.usageWindow, provider: usageUi.provider, timeZone })
-        .then((summary) => {
-          setCachedUsageSummary(usageUi.usageWindow, usageUi.provider, timeZone, summary);
-        })
+      requestUsageSummary(usageUi.usageWindow, usageUi.provider, timeZone, () =>
+        api.usage.summary({ window: usageUi.usageWindow, provider: usageUi.provider, timeZone })
+      ).then(() => undefined)
     );
   }
 
   if (!getCachedActivitySummary(activityUi.activityWindow, activityUi.projectId, timeZone)) {
     tasks.push(
-      api.activity
-        .summary({
-          window: activityUi.activityWindow,
-          projectId: activityUi.projectId,
-          timeZone
-        })
-        .then((summary) => {
-          setCachedActivitySummary(
-            activityUi.activityWindow,
-            activityUi.projectId,
-            timeZone,
-            summary
-          );
-        })
+      requestActivitySummary(
+        activityUi.activityWindow,
+        activityUi.projectId,
+        timeZone,
+        () =>
+          api.activity.summary({
+            window: activityUi.activityWindow,
+            projectId: activityUi.projectId,
+            timeZone
+          })
+      ).then(() => undefined)
     );
   }
 
@@ -69,11 +65,8 @@ export async function prefetchLedgerPages(api: ArgmaxApi): Promise<void> {
   // parallel with the local ledgers so a warm summary is not waiting on OAuth.
   if (!usageRemainingHasSettled() && api.usage.remaining) {
     tasks.push(
-      api.usage
-        .remaining()
-        .then((remaining) => {
-          setCachedUsageRemaining(remaining, null);
-        })
+      requestUsageRemaining(() => api.usage.remaining())
+        .then(() => undefined)
         .catch((cause) => {
           const message =
             cause instanceof Error ? cause.message : "Could not read remaining usage.";

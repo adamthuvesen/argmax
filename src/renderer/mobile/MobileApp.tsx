@@ -1374,6 +1374,9 @@ export function MobileApp(): JSX.Element {
                 agentsPresentation="overlay"
                 onAgentsOverlayChange={(dismiss) => setDismissAgentsOverlay(() => dismiss)}
                 workspaceCardVisible={false}
+                // Restoring a checkout to a before-turn checkpoint is a desktop
+                // move: it rewrites files you cannot see or check from a phone.
+                revertEnabled={false}
               />
             </div>
         </div>

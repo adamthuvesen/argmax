@@ -444,6 +444,7 @@ export function App(): JSX.Element {
     loadAgentEvents,
     openProjectLauncher,
     resolveApproval,
+    registerLaunchedSession,
     pendingSelectionRef
   } = useDashboardSession(loadDashboardSnapshot, {
     onErrorToast: showErrorToast,
@@ -1391,18 +1392,7 @@ export function App(): JSX.Element {
         throw error;
       }
 
-      pendingSelectionRef.current = {
-        sessionId: launchedSession.id,
-        workspaceId: workspace.id
-      };
-      // Seed the snapshot immediately so the grid-reconcile effect doesn't
-      // drop the just-opened pane while refresh/status is still in flight.
-      setSnapshot((current) =>
-        mergeDashboardDelta(current, {
-          workspaces: [workspace],
-          sessions: [launchedSession]
-        })
-      );
+      registerLaunchedSession(workspace, launchedSession);
       // Full-launcher mode is a hard context switch: the old grid was hidden
       // while composing, so stale split panes (especially agent activity panes)
       // should not reappear beside the fresh session after launch.
@@ -1428,12 +1418,11 @@ export function App(): JSX.Element {
       isFullLauncherOpen,
       snapshot.projects,
       maxGridColumnsPerRow,
-      pendingSelectionRef,
+      registerLaunchedSession,
       permissionModes,
       fastModeEnabled,
       randomSessionIconEnabled,
-      goalMaxTurns,
-      setSnapshot
+      goalMaxTurns
     ]
   );
 
@@ -1491,16 +1480,7 @@ export function App(): JSX.Element {
           .catch(() => undefined);
         throw error;
       }
-      pendingSelectionRef.current = {
-        sessionId: launchedSession.id,
-        workspaceId: workspace.id
-      };
-      setSnapshot((current) =>
-        mergeDashboardDelta(current, {
-          workspaces: [workspace],
-          sessions: [launchedSession]
-        })
-      );
+      registerLaunchedSession(workspace, launchedSession);
       // Same hard context switch as launchTask: a full-launcher launch
       // replaces the hidden grid instead of splitting into it.
       const launchedFromFullLauncher = isFullLauncherOpen;
@@ -1528,11 +1508,10 @@ export function App(): JSX.Element {
       isFullLauncherOpen,
       launchModel,
       maxGridColumnsPerRow,
-      pendingSelectionRef,
+      registerLaunchedSession,
       permissionModes,
       randomSessionIconEnabled,
-      goalMaxTurns,
-      setSnapshot
+      goalMaxTurns
     ]
   );
 

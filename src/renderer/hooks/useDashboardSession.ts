@@ -96,6 +96,7 @@ export interface UseDashboardSessionResult {
   openWorkspaceChat: (workspaceId: string) => void;
   openProjectLauncher: (projectId: string) => void;
   resolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
+  registerLaunchedSession: (workspace: WorkspaceSummary, session: SessionSummary) => void;
   pendingSelectionRef: MutableRefObject<{ sessionId: string; workspaceId: string } | null>;
 }
 
@@ -174,6 +175,17 @@ export function useDashboardSession(
   const resolveApprovalTokens = useRef(new Map<string, number>());
   const pendingSelectionRef = useRef<{ sessionId: string; workspaceId: string } | null>(null);
 
+  const registerLaunchedSession = useCallback((workspace: WorkspaceSummary, session: SessionSummary): void => {
+    pendingSelectionRef.current = { sessionId: session.id, workspaceId: workspace.id };
+    const delta = { workspaces: [workspace], sessions: [session] };
+    // A dashboard read started before launch can finish after this response.
+    // Replay these confirmed rows with concurrent pushes so that older list
+    // cannot erase the new chat and cause grid reconciliation to close it.
+    const collecting = removedDuringLoad.current;
+    if (collecting) collecting.metadata = mergeDashboardDelta(collecting.metadata, delta);
+    setSnapshot((current) => mergeDashboardDelta(current, delta));
+  }, []);
+
   const loadSessionEvents = useCallback(async (sessionId: string): Promise<void> => {
     if (!window.argmax) {
       return;
@@ -220,7 +232,6 @@ export function useDashboardSession(
     // A newer authoritative read supersedes an earlier status refresh.
     dashboardRefreshToken.current += 1;
     const token = ++dashboardLoadToken.current;
-    const deltaRevision = dashboardDeltaRevision.current;
     const pruned = { sessions: new Set<string>(), workspaces: new Set<string>(), metadata: emptySnapshot };
     removedDuringLoad.current = pruned;
     // A row the sweep deleted mid-load is hard-deleted in SQLite, and nothing
@@ -255,11 +266,8 @@ export function useDashboardSession(
       );
       const metadata = { ...data, events: emptySnapshot.events, rawOutputs: emptySnapshot.rawOutputs };
       setSnapshot(() => {
-        if (deltaRevision === dashboardDeltaRevision.current) {
-          return withoutPruned(metadata);
-        }
-        // `dashboard:delta` pushes while loadSnapshot() was in flight. Server
-        // lists are authoritative; upsert concurrent entity rows without
+        // Pushes and successful launches while loadSnapshot() was in flight
+        // are newer than this list. Upsert their confirmed entity rows without
         // resurrecting pruned event tails from the pre-load `current` snapshot.
         const merged = mergeDashboardDelta(metadata, {
           sessions: pruned.metadata.sessions,
@@ -814,6 +822,7 @@ export function useDashboardSession(
     openWorkspaceChat,
     openProjectLauncher,
     resolveApproval,
+    registerLaunchedSession,
     pendingSelectionRef
   };
 }

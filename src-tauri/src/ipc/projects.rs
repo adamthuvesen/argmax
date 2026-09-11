@@ -138,10 +138,21 @@ pub(crate) async fn projects_list_branches_impl(
         let project = require_project(&connection, input.project_id.as_str())?;
         (project.repo_path, project.default_branch)
     };
-    let raw = run_git_text(&repo_path, ["branch"], GIT_DEFAULT_TIMEOUT).await?;
+    // Display output adds `+` for linked worktrees and can contain colors or
+    // columns from user config. Request only ref names for the picker.
+    let raw = run_git_text(
+        &repo_path,
+        [
+            "for-each-ref",
+            "--format=%(refname:lstrip=2)",
+            "refs/heads/",
+        ],
+        GIT_DEFAULT_TIMEOUT,
+    )
+    .await?;
     let branches = raw
         .lines()
-        .map(|line| line.trim_start_matches('*').trim().to_owned())
+        .map(str::to_owned)
         .filter(|name| !name.is_empty());
     Ok(order_branches_default_first(
         branches,
@@ -495,6 +506,73 @@ fn project_git_error(error: ArgmaxError) -> ArgmaxError {
 #[cfg(test)]
 mod tests {
     use super::order_branches_default_first;
+
+    #[tokio::test]
+    async fn branch_picker_returns_refs_without_worktree_or_display_markers() {
+        use super::*;
+        use std::sync::Arc;
+
+        let root = tempfile::tempdir().expect("repo directory");
+        let repo = root.path().join("repo");
+        std::fs::create_dir(&repo).expect("create repo");
+        let worktree = root.path().join("worktree");
+        let setup: &[&[&str]] = &[
+            &["init", "-q", "-b", "main"],
+            &["config", "user.email", "test@example.com"],
+            &["config", "user.name", "Test"],
+            &["config", "commit.gpgsign", "false"],
+            &["config", "core.hooksPath", "/dev/null"],
+            &["config", "branch.sort", "refname"],
+            &["commit", "--allow-empty", "-qm", "initial"],
+            &["branch", "zeta"],
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "adam/topic",
+                worktree.to_str().unwrap(),
+            ],
+        ];
+        for args in setup {
+            run_git_text(&repo, *args, GIT_DEFAULT_TIMEOUT)
+                .await
+                .unwrap();
+        }
+
+        let state = AppState::new();
+        let database = Arc::new(Database::open_in_memory().expect("database"));
+        let project = register_repo_path(&database, repo.clone()).await.unwrap();
+        assert!(state.db.set(database).is_ok());
+
+        let phases: &[&[&[&str]]] = &[
+            &[],
+            &[
+                &["config", "color.branch", "always"],
+                &["config", "column.branch", "always"],
+            ],
+            &[&["checkout", "--detach", "HEAD"]],
+        ];
+        for commands in phases {
+            for args in *commands {
+                run_git_text(&repo, *args, GIT_DEFAULT_TIMEOUT)
+                    .await
+                    .unwrap();
+            }
+            let input = serde_json::from_value(serde_json::json!({
+                "projectId": project.id,
+            }))
+            .unwrap();
+            let branches = projects_list_branches_impl(&state, input).await.unwrap();
+            assert_eq!(branches, owned(&["main", "adam/topic", "zeta"]));
+            for branch in branches {
+                serde_json::from_value::<ProjectsSwitchBranchInput>(serde_json::json!({
+                    "projectId": project.id,
+                    "branch": branch,
+                }))
+                .expect("listed branch passes switch validation");
+            }
+        }
+    }
 
     fn owned(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| (*value).to_owned()).collect()

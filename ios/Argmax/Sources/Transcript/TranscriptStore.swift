@@ -52,6 +52,7 @@ final class TranscriptStore: ObservableObject {
     private var changeCursor: Int64?
     private var generation = 0
     private var contentVersion = 0
+    private var hasMoreHistory = false
     private var projectionVersion = 0
     private var projectionTask: Task<Void, Never>?
     private var cacheTask: Task<Void, Never>?
@@ -124,6 +125,7 @@ final class TranscriptStore: ObservableObject {
         openSessionID = id
         showingCachedContent = false
         contentVersion = 0
+        hasMoreHistory = false
         metadata = nil
         workspacePath = nil
         eventsByID = [:]
@@ -431,6 +433,7 @@ final class TranscriptStore: ObservableObject {
     private func apply(_ page: TranscriptPage, authoritative: Bool) {
         guard let id = openSessionID else { return }
         contentVersion += 1
+        hasMoreHistory = page.hasMore
         showingCachedContent = false
         if authoritative || page.resetRequired {
             eventsByID = [:]
@@ -533,6 +536,11 @@ final class TranscriptStore: ObservableObject {
         // the flicker on every cold open. Wait for content: a page from the
         // host or a cached copy from disk.
         guard contentVersion > 0 || showingCachedContent else { return }
+        // The remote byte budget can split the opening history into forward
+        // pages. Their intermediate tails are old messages, so publishing
+        // each one makes the list chase history before reaching live output.
+        // Metadata updates must wait for the final page too.
+        guard !hasMoreHistory else { return }
         projectionVersion += 1
         guard projectionTask == nil else { return }
         let startedGeneration = generation
@@ -541,6 +549,10 @@ final class TranscriptStore: ObservableObject {
             await Task.yield()
             guard let self else { return }
             while !Task.isCancelled, self.generation == startedGeneration {
+                guard !self.hasMoreHistory else {
+                    self.projectionTask = nil
+                    return
+                }
                 let version = self.projectionVersion
                 let events = Array(self.eventsByID.values)
                 let metadata = self.metadata

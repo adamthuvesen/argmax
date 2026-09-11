@@ -3,6 +3,23 @@ import XCTest
 
 @MainActor
 final class TranscriptStoreTests: XCTestCase {
+    func testOpeningWaitsForTheLatestHistoryPageBeforePublishing() async throws {
+        let store = try makeStore()
+        store.openSession("session-1")
+        defer { store.closeSession() }
+        var first = page(events: [event("old", "message.completed", "Older answer", 1)], cursor: 1)
+        first.hasMore = true
+        store.ingest(page: first, for: "session-1", authoritative: true)
+        await store.waitForProjection()
+
+        XCTAssertTrue(store.items.isEmpty, "Opening must not show an intermediate history tail")
+
+        store.ingest(page: page(events: [event("latest", "message.completed", "Latest answer", 2)],
+                                cursor: 2, reset: false), for: "session-1")
+        await store.waitForProjection()
+        XCTAssertEqual(assistantTexts(store.items), ["Older answerLatest answer"])
+    }
+
     func testClearHidesOpeningPromptAndEarlierRawOutput() async throws {
         let store = try makeStore()
         var snapshot = page(events: [event("clear", "session.cleared", "Cleared", 2)])

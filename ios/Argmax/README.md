@@ -27,10 +27,15 @@ for the boundary and maintenance tradeoff.
   the shared connection.
 - `Sources/Transcript/TranscriptProjection.swift` turns normalized events
   into messages, tool groups, plans, questions, approvals, and delegated work.
-- `Sources/Transcript/NativeTranscriptList.swift` owns lazy SwiftUI rows and
+- `Sources/Transcript/NativeTranscriptList.swift` owns eager SwiftUI rows and
   reading position. `TranscriptMarkdown.swift` renders native prose and code.
 - `Sources/Transcript/TranscriptScreen.swift` connects the transcript to the
   existing composer, review routes, and chat actions.
+
+The transcript opens at the bottom. When the remote response budget splits
+history into pages, the store accumulates them before publishing the rows so
+the screen opens on the latest messages. Live output follows the bottom until
+the reader scrolls away.
 
 Tool action labels and file links display paths relative to the chat's
 workspace. Labels shorten the path before truncating it so the filename stays

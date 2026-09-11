@@ -18,6 +18,8 @@ use crate::sessions::attention::AttentionState;
 use crate::sessions::state::SessionState;
 use crate::util::sync::LockOrRecover;
 
+use pulldown_cmark::{Event, Options, Parser, TagEnd};
+
 const DEDUP_CAPACITY: usize = 2_000;
 
 /// How loudly a signal should land. `Urgent` is a chat stalled on the user and
@@ -90,10 +92,12 @@ pub fn signal_for(session: &SessionSummary, latest_answer: Option<&str>) -> Opti
     let body = latest_answer
         .map(str::trim)
         .filter(|answer| !answer.is_empty())
-        .unwrap_or(&session.prompt);
+        .map(preview)
+        .filter(|body| !body.is_empty())
+        .unwrap_or_else(|| preview(&session.prompt));
     Some(PushSignal {
         title: format!("Argmax: {title}"),
-        body: preview(body),
+        body,
         priority,
         session_id: session.id.clone(),
         tags,
@@ -153,13 +157,15 @@ impl SignalDedupe {
     }
 }
 
-/// The opening of a message, on one line. Newlines are collapsed because both
-/// sinks render the body as a single wrapped paragraph, so a Markdown answer's
-/// blank lines would otherwise spend the visible space on nothing.
+/// The opening of a message as notification-safe plain text, on one line.
+/// Newlines are collapsed because both sinks render the body as a single
+/// wrapped paragraph, so a Markdown answer's blank lines would otherwise
+/// spend the visible space on nothing.
 fn preview(text: &str) -> String {
     const MAX: usize = 140;
+    let plain_text = strip_markdown(text);
     let mut flattened = String::new();
-    for word in text.split_whitespace() {
+    for word in plain_text.split_whitespace() {
         if !flattened.is_empty() {
             flattened.push(' ');
         }
@@ -176,6 +182,75 @@ fn preview(text: &str) -> String {
     cut
 }
 
+/// Project Markdown events onto the text native notification surfaces can show.
+/// Links keep their labels, code keeps its contents, and block boundaries turn
+/// into whitespace for preview() to collapse.
+fn strip_markdown(text: &str) -> String {
+    let options = Options::ENABLE_TABLES
+        | Options::ENABLE_STRIKETHROUGH
+        | Options::ENABLE_TASKLISTS
+        | Options::ENABLE_FOOTNOTES
+        | Options::ENABLE_MATH;
+    let mut plain_text = String::with_capacity(text.len());
+
+    for event in Parser::new_ext(text, options) {
+        match event {
+            Event::Text(value)
+            | Event::Code(value)
+            | Event::InlineMath(value)
+            | Event::DisplayMath(value) => plain_text.push_str(value.as_ref()),
+            Event::Html(value) | Event::InlineHtml(value) => {
+                append_html_text(&mut plain_text, value.as_ref());
+            }
+            Event::SoftBreak | Event::HardBreak => plain_text.push('\n'),
+            Event::End(tag) if is_block_end(tag) => append_block_separator(&mut plain_text),
+            Event::TaskListMarker(_) | Event::FootnoteReference(_) | Event::Rule => {}
+            Event::Start(_) | Event::End(_) => {}
+        }
+    }
+
+    plain_text
+}
+
+fn append_block_separator(text: &mut String) {
+    if !text.ends_with('\n') {
+        text.push('\n');
+    }
+}
+
+fn is_block_end(tag: TagEnd) -> bool {
+    matches!(
+        tag,
+        TagEnd::Paragraph
+            | TagEnd::Heading(_)
+            | TagEnd::BlockQuote(_)
+            | TagEnd::CodeBlock
+            | TagEnd::HtmlBlock
+            | TagEnd::List(_)
+            | TagEnd::Item
+            | TagEnd::FootnoteDefinition
+            | TagEnd::DefinitionList
+            | TagEnd::DefinitionListTitle
+            | TagEnd::DefinitionListDefinition
+            | TagEnd::Table
+            | TagEnd::TableHead
+            | TagEnd::TableRow
+            | TagEnd::TableCell
+            | TagEnd::MetadataBlock(_)
+    )
+}
+
+fn append_html_text(text: &mut String, html: &str) {
+    let mut in_tag = false;
+    for character in html.chars() {
+        match (in_tag, character) {
+            (false, '<') => in_tag = true,
+            (true, '>') => in_tag = false,
+            (false, character) => text.push(character),
+            (true, _) => {}
+        }
+    }
+}
 #[cfg(test)]
 pub(crate) mod fixtures {
     use super::*;
@@ -309,6 +384,49 @@ mod tests {
         assert_eq!(signal.body, "Shipped the dashboard. Tests pass.");
     }
 
+    #[test]
+    fn notification_body_strips_markdown_syntax() {
+        let summary = session(SessionState::Complete, AttentionState::Normal);
+        let signal = signal_for(
+            &summary,
+            Some(
+                "# Summary\n\n**Done** with _care_ and ~~legacy~~. See [the docs](https://example.com).\n\n- `code` and <https://example.com>.",
+            ),
+        )
+        .expect("completion signal");
+        assert_eq!(
+            signal.body,
+            "Summary Done with care and legacy. See the docs. code and https://example.com."
+        );
+    }
+
+    #[test]
+    fn notification_body_preserves_code_and_autolink_text() {
+        let summary = session(SessionState::Complete, AttentionState::Normal);
+        let signal = signal_for(
+            &summary,
+            Some(
+                "`[label](https://example.com)` Contact <dev@example.com> and <urn:isbn:123>.\n\n```swift\nprint(\"**done**\")\n```",
+            ),
+        )
+        .expect("completion signal");
+        assert_eq!(
+            signal.body,
+            "[label](https://example.com) Contact dev@example.com and urn:isbn:123. print(\"**done**\")"
+        );
+    }
+
+    #[test]
+    fn notification_body_handles_balanced_link_destinations() {
+        let summary = session(SessionState::Complete, AttentionState::Normal);
+        let signal = signal_for(
+            &summary,
+            Some("Read [the docs](https://example.com/a_(b)) for details."),
+        )
+        .expect("completion signal");
+        assert_eq!(signal.body, "Read the docs for details.");
+    }
+
     /// A chat can stall or fail before the agent says anything; the prompt is
     /// the only text there is then.
     #[test]
@@ -316,6 +434,15 @@ mod tests {
         let summary = session(SessionState::Complete, AttentionState::Normal);
         assert_eq!(
             signal_for(&summary, Some("   \n ")).expect("signal").body,
+            "Build the dashboard"
+        );
+    }
+
+    #[test]
+    fn a_markdown_only_answer_falls_back_to_the_prompt() {
+        let summary = session(SessionState::Complete, AttentionState::Normal);
+        assert_eq!(
+            signal_for(&summary, Some("---")).expect("signal").body,
             "Build the dashboard"
         );
     }

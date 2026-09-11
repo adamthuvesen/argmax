@@ -588,7 +588,12 @@
   display: grid;
   container-type: inline-size;
   place-items: center;
-  padding: 48px 36px;
+  /* The gutter gives way before the shell does: 36px while the pane has more
+     than the shell's 760px plus both gutters, shrinking to 16px by the time
+     the pane is 792px, so the shell's width is continuous as the window
+     narrows. A viewport-keyed padding step here made the shell jump wider
+     when the sidebar was still open beside it. */
+  padding: 48px clamp(16px, calc((100% - 760px) / 2), 36px);
 }
 
 .launcher-scroll:has(.launcher-shell[data-review-open="true"]) {
@@ -599,6 +604,14 @@
 
 .launcher-shell {
   width: min(100%, 760px);
+}
+
+/* Same breakpoint as the composer chip fold (chat-composer-chips.css), keyed
+   on the launcher's own width rather than the window's. */
+@container (max-width: 720px) {
+  .launcher-surface h1 {
+    font-size: var(--text-2xl);
+  }
 }
 
 .launcher-surface {

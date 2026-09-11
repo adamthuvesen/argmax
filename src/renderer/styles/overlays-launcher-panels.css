@@ -474,14 +474,6 @@
    data-sidebar-collapsed; a stylesheet rule that hides the sidebar or
    re-templates the grid here fights that and leaves an empty column. */
 @media (max-width: 760px) {
-  .launcher-scroll {
-    padding: 40px 16px;
-  }
-
-  .launcher-surface h1 {
-    font-size: var(--text-2xl);
-  }
-
   .conversation-surface {
     padding-top: var(--space-5);
   }

@@ -16,6 +16,8 @@
 //   assets/icon.png, assets/icon-dark.png     1024px renders (README, docs)
 //   assets/Argmax.icon/                       Icon Composer source package
 //   public/argmax-icon.png                    PWA manifest icon (unhashed)
+//   ios/Argmax/…/AppIcon.appiconset           iPhone app icon, light and dark
+//   ios/Argmax/…/FoxMark.imageset             the bare fox, for pairing and empty states
 //   src-tauri/icons/icon.icns                 legacy icon, macOS < 26
 //   src-tauri/icons/Assets.car                appearance-aware icon, macOS 26+
 //
@@ -45,6 +47,8 @@ const ASSETS = path.join(ROOT, "assets");
 const TAURI_ICONS = path.join(ROOT, "src-tauri", "icons");
 const PUBLIC = path.join(ROOT, "public");
 const ICON_PACKAGE = path.join(ASSETS, "Argmax.icon");
+const IOS_APPICON = path.join(ROOT, "ios", "Argmax", "Sources", "Assets.xcassets", "AppIcon.appiconset");
+const IOS_FOXMARK = path.join(ROOT, "ios", "Argmax", "Sources", "Assets.xcassets", "FoxMark.imageset");
 
 const APPEARANCES = {
   light: { field: "#fefefe" },
@@ -239,21 +243,27 @@ function markSample(x, y, cell, originX, originY) {
 
 /**
  * Draws the icon at CANVAS×CANVAS. Without a field the mark is rendered alone
- * on transparency, which is the layer the .icon package composites.
+ * on transparency, which is the layer the .icon package composites. With
+ * `bleed` the field fills the whole square rather than the squircle: iOS masks
+ * the corners itself, and an icon that arrives already rounded loses the ones
+ * it draws to transparent pixels.
  */
-function render({ field }) {
+function render({ field, bleed = false }) {
   const pixels = Buffer.alloc(CANVAS * CANVAS * 4);
   const inset = field !== undefined;
-  const scale = inset ? SQUIRCLE_SIZE / CANVAS : 1;
+  // Only the squircle shrinks the mark. On the full canvas — the .icon layer
+  // and the iOS render — it keeps the same share of the field it has there.
+  const framed = inset && !bleed;
+  const scale = framed ? SQUIRCLE_SIZE / CANVAS : 1;
   const cell = CELL * scale;
-  const originX = inset ? SQUIRCLE_INSET + MARK_X * scale : MARK_X;
-  const originY = inset ? SQUIRCLE_INSET + MARK_Y * scale : MARK_Y;
+  const originX = framed ? SQUIRCLE_INSET + MARK_X * scale : MARK_X;
+  const originY = framed ? SQUIRCLE_INSET + MARK_Y * scale : MARK_Y;
   const fieldRgb = inset ? rgb(field) : null;
 
   for (let y = 0; y < CANVAS; y += 1) {
     for (let x = 0; x < CANVAS; x += 1) {
       const { coverage, colour } = markSample(x, y, cell, originX, originY);
-      const alpha = inset ? fieldCoverage(x, y) : coverage;
+      const alpha = bleed ? 1 : inset ? fieldCoverage(x, y) : coverage;
       const at = (y * CANVAS + x) * 4;
       for (let channel = 0; channel < 3; channel += 1) {
         const base = fieldRgb ? fieldRgb[channel] : colour[channel];
@@ -282,19 +292,29 @@ function chunk(type, body) {
   return Buffer.concat([length, framed, checksum]);
 }
 
-function writePng(pixels, outPath) {
+function writePng(pixels, outPath, { opaque = false, width = CANVAS, height = CANVAS } = {}) {
+  // iOS rejects an app icon that carries an alpha channel at all, even one
+  // that is opaque everywhere, so those are written as three channels.
+  const channels = opaque ? 3 : 4;
   const header = Buffer.alloc(13);
-  header.writeUInt32BE(CANVAS, 0);
-  header.writeUInt32BE(CANVAS, 4);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
   header[8] = 8; // bit depth
-  header[9] = 6; // truecolour with alpha
+  header[9] = opaque ? 2 : 6; // truecolour, with alpha unless it is dropped
 
   // One filter byte per scanline. The artwork is flat colour, so "none" (0)
   // compresses fine and keeps the encoder trivial.
-  const stride = CANVAS * 4;
-  const scanlines = Buffer.alloc(CANVAS * (stride + 1));
-  for (let y = 0; y < CANVAS; y += 1) {
-    pixels.copy(scanlines, y * (stride + 1) + 1, y * stride, (y + 1) * stride);
+  const stride = width * channels;
+  const scanlines = Buffer.alloc(height * (stride + 1));
+  for (let y = 0; y < height; y += 1) {
+    const row = y * (stride + 1) + 1;
+    if (opaque) {
+      for (let x = 0; x < width; x += 1) {
+        pixels.copy(scanlines, row + x * 3, (y * width + x) * 4, (y * width + x) * 4 + 3);
+      }
+    } else {
+      pixels.copy(scanlines, row, y * width * 4, (y + 1) * width * 4);
+    }
   }
 
   writeFileSync(
@@ -440,6 +460,84 @@ function buildAssetsCar(scratch) {
   }
 }
 
+/**
+ * The iPhone shell's icon (ios/Argmax). iOS takes one 1024px square per
+ * appearance and applies its own mask, so these are the full-bleed renders
+ * rather than the squircles macOS wants.
+ */
+function buildIosAppIcon() {
+  mkdirSync(IOS_APPICON, { recursive: true });
+  for (const [appearance, palette] of Object.entries(APPEARANCES)) {
+    const stem = appearance === "light" ? "icon" : `icon-${appearance}`;
+    writePng(render({ ...palette, bleed: true }), path.join(IOS_APPICON, `${stem}.png`), { opaque: true });
+  }
+  const contents = {
+    images: [
+      { filename: "icon.png", idiom: "universal", platform: "ios", size: "1024x1024" },
+      {
+        appearances: [{ appearance: "luminosity", value: "dark" }],
+        filename: "icon-dark.png",
+        idiom: "universal",
+        platform: "ios",
+        size: "1024x1024"
+      }
+    ],
+    info: { author: "argmax", version: 1 }
+  };
+  writeFileSync(path.join(IOS_APPICON, "Contents.json"), `${JSON.stringify(contents, null, 2)}\n`);
+}
+
+/**
+ * The bare sprite at an exact number of pixels per cell, cropped to its own
+ * 56×40 box.
+ *
+ * `render({})` also draws the mark on transparency — it is what the .icon
+ * package composites — but on the 1024 canvas, where a cell is 16px and the
+ * fox sits band-centred in a square of margin. Neither suits an imageset: 16
+ * does not divide by three, so the @3x rendition could not be a whole number
+ * of pixels per cell, and pixel art resampled at 2.67:1 is a smudge. This
+ * walks the same GRID and the same INK, so an edit to the sprite still moves
+ * the phone's fox along with the icon and the mascot.
+ */
+function renderMark(cellPixels) {
+  const width = GRID_W * cellPixels;
+  const height = GRID_H * cellPixels;
+  const pixels = Buffer.alloc(width * height * 4);
+  for (let y = 0; y < height; y += 1) {
+    const row = GRID[Math.floor(y / cellPixels)];
+    for (let x = 0; x < width; x += 1) {
+      const hex = INK.get(row.charAt(Math.floor(x / cellPixels)));
+      if (!hex) continue; // '.' — transparent, and the buffer is already zeroed
+      const [r, g, b] = rgb(hex);
+      const at = (y * width + x) * 4;
+      pixels[at] = r;
+      pixels[at + 1] = g;
+      pixels[at + 2] = b;
+      pixels[at + 3] = 255;
+    }
+  }
+  return { pixels, width, height };
+}
+
+/**
+ * The fox the phone draws on the pairing screen and the empty chat list
+ * (ios/Argmax Sources/Design/FoxMark.swift). Three renditions at 3, 6 and 9
+ * pixels per sprite cell, which makes the @1x image 168×120 — the point size
+ * the pairing screen uses it at, and an exact 3× of the sprite so the
+ * nearest-neighbour draw lands on whole pixels.
+ */
+function buildIosFoxMark() {
+  mkdirSync(IOS_FOXMARK, { recursive: true });
+  const images = [1, 2, 3].map((scale) => {
+    const { pixels, width, height } = renderMark(3 * scale);
+    const filename = scale === 1 ? "fox-mark.png" : `fox-mark@${scale}x.png`;
+    writePng(pixels, path.join(IOS_FOXMARK, filename), { width, height });
+    return { filename, idiom: "universal", scale: `${scale}x` };
+  });
+  const contents = { images, info: { author: "argmax", version: 1 } };
+  writeFileSync(path.join(IOS_FOXMARK, "Contents.json"), `${JSON.stringify(contents, null, 2)}\n`);
+}
+
 const scratch = mkdtempSync(path.join(tmpdir(), "argmax-icons-"));
 try {
   mkdirSync(TAURI_ICONS, { recursive: true });
@@ -463,11 +561,15 @@ try {
   mkdirSync(PUBLIC, { recursive: true });
   cpSync(path.join(ASSETS, "icon.png"), path.join(PUBLIC, "argmax-icon.png"));
 
+  buildIosAppIcon();
+  buildIosFoxMark();
+
   buildIcns(path.join(ASSETS, "icon.png"), scratch);
   buildAssetsCar(scratch);
 
   console.log(
-    "icons rebuilt: assets/icon{,-dark}.{svg,png}, assets/Argmax.icon, public/argmax-icon.png, src-tauri/icons/{icon.icns,Assets.car}"
+    "icons rebuilt: assets/icon{,-dark}.{svg,png}, assets/Argmax.icon, public/argmax-icon.png, " +
+      "ios/Argmax/Sources/Assets.xcassets, src-tauri/icons/{icon.icns,Assets.car}"
   );
 } finally {
   rmSync(scratch, { recursive: true, force: true });

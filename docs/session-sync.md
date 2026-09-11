@@ -8,6 +8,7 @@ Session sync imports sessions started in external provider CLIs (such as running
 - **Resuming:** Continuing an imported session resumes the underlying provider conversation ID.
 - **Adoption:** When a user sends a message into an imported session, `synced_sessions.adopted` is set to `true` ([session_service.rs](../src-tauri/src/providers/session_service.rs)). Adopted sessions become regular Argmax sessions and are never pruned.
 - **Pruning:** Un-adopted sessions outside the active sync window (24 hours or 7 days) or deleted from disk are removed on sweep.
+- **Deleted-chat exclusion:** When Settings permanently deletes a chat, its provider conversation id is retained as a tombstone. Later sweeps skip it even though the provider transcript remains on disk.
 - **Scope:** Only sessions located inside registered Argmax projects are imported. Sessions created by Argmax itself are skipped.
 
 ## Sweep Loop
@@ -35,5 +36,6 @@ Transcript open, metadata, seek, and read errors fail the sweep without advancin
 
 - `sync.json`: Sync preferences stored in the app data folder.
 - `synced_sessions`: Tracking table with provider, external ID, source path, byte and line cursors, mtime, and adoption state (migrations v18 and v40).
+- `synced_session_tombstones`: Provider conversation IDs deleted through chat-history cleanup (migration v45).
 - `sessions.imported`: Display flag for sidebar indicators.
 - `DashboardDelta`: Includes `removedSessionIds` and `removedWorkspaceIds` so the UI prunes deleted imports without full page reloads.

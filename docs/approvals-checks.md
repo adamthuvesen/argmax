@@ -21,16 +21,22 @@ Changing Settings does not update existing chats. A chat launched through
 existing chat to launch another chat does not pick up a changed setting.
 Start a chat from the launcher to use the current provider setting.
 
-For Codex, Full access sets `approvalPolicy: never` and disables sandbox
-restrictions, but native execution rules still apply. A local `prompt` rule,
-such as one for `git push`, can therefore fail with
+For Codex, Full access disables sandbox restrictions and sets
+`approvalPolicy: on-request` with `approvalsReviewer: auto_review`. Codex
+automatically reviews eligible command and MCP approval requests, so an
+approved request can execute without a user click. Automatic review can
+still reject an action. Ask for approval selects the user as reviewer.
+
+Provider defaults leaves approval configuration to Codex, including repo
+overrides in `.codex/config.toml`. A repo's `approval_policy = "never"`
+overrides a user's `on-request` setting and can fail with
+`MCP tool call requires approval, but approval policy is never` or
 `approval required by policy, but AskForApproval is set to Never` before the
-command runs. This is not an automatic reviewer rejecting the action.
-Provider defaults leaves approval configuration to Codex. With
-`approval_policy = "on-request"` and `approvals_reviewer = "auto_review"`,
-eligible requests can reach automatic review. When diagnosing a mismatch,
-compare the chat's stored `permission_mode` with the Codex rollout's
-`turn_context.approval_policy`, rather than reading Settings alone.
+action reaches review. To allow automatic review, use
+`approval_policy = "on-request"` and `approvals_reviewer = "auto_review"`.
+When diagnosing a mismatch, compare the chat's stored `permission_mode`
+with the Codex rollout's `turn_context.approval_policy`, rather than reading
+Settings alone.
 
 A native request is persisted with its live invocation and request identifiers before the provider receives a response. The chat shows the action, working directory and provider, with **Approve** and **Reject**. A decision is delivered only to that waiting request. Codex permission-profile requests state their scope in the action and grant access only for the current turn, never the whole session. Duplicate decisions fail, and cancelled or disconnected requests cannot resume an old process. Rejection returns control to the provider so it can explain or choose another action. Each provider’s setting applies to its new chats, including scheduled runs, automatic PR-fix chats and More details popups. Mobile launches inherit the host setting. Saves are atomic and serialized, and Settings shows save failures with a retry action. Existing chats retain their stored choice. Cursor retains native pre-allowed rules even in Ask for approval, because its ACP CLI has no force-prompt override.
 

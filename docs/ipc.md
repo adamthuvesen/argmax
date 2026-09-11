@@ -29,9 +29,15 @@ client to continue paging. Legacy event/raw row cursors remain supported.
 
 `session:multitask` dispatches a sibling chat from a session that may still be mid-turn, and returns the new session and workspace ids so the composer can draw the card without waiting for the dashboard delta. See [multitask.md](multitask.md).
 
+`settings:preview-chat-cleanup` returns a fixed seven-day cutoff, a confirmation id, and the number of eligible chats. `settings:delete-old-chats` accepts that id and applies only the previewed candidate set. The deletion transaction rechecks activity and active work, and reports chats skipped because they changed after the preview.
+
+`connections:list` takes a provider and optional workspace id. It returns the MCP servers, plugins, and provider connectors available at that scope, plus the strongest authentication result the provider exposes. The handler runs provider health checks with a timeout and returns **Unknown** when a CLI does not report token validity.
+
 `usage:summary` takes `{ window: "24h" | "7d" | "30d", timeZone, provider? }` and returns the Usage page in one shape: totals, per-provider rows, the chart series, and the model and day breakdowns, plus the scan's progress. A `provider` narrows everything but the per-provider rows to that provider; Cursor keeps no local usage log and is rejected. A ledger that has completed before is swept inline so the answer is current; the first cold sweep runs in the background and the page polls. See [usage.md](usage.md).
 
 `usage:remaining` takes no fields and returns live remaining usage per provider login: plan kind (`subscription` / `enterprise` / `api_key` / `unavailable` / `error`), optional plan label, remaining-percent windows with reset times, and a per-row message. One provider failing does not fail the channel. See [usage.md](usage.md).
+
+`activity:summary` takes `{ window: "24h" | "7d" | "30d" | "12m" | "year", projectId?, timeZone }` and returns the Activity page in one shape: totals, the previous-window comparison, per-repository rows, the chart series, a year-long heatmap, streaks, cadence, and the pull requests and reviews from `gh`. A `projectId` narrows everything but the repository rows and the heatmap. `timeZone` must be an IANA name — every bucket is cut on it, so an unresolvable name is rejected rather than silently read as UTC. The commit ledger is swept inline once it has completed before; the GitHub half is a cache the call refreshes in the background when stale and never waits on. Dispatched over the remote bridge like `usage:summary`. See [activity.md](activity.md).
 
 Scheduled tasks ("routines") expose `routines:list`, `routines:upsert`, `routines:delete`, `routines:set-enabled`, and `routines:run-now`.
 

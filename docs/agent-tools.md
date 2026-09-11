@@ -15,10 +15,10 @@ Namespace `argmax`; Claude, Codex, and Cursor show them as
 
 | Tool | Arguments | Returns |
 |---|---|---|
-| `session_list` | `project?`, `all?` | `{sessions: [{sessionId, projectId, projectName, taskLabel, provider, state, lastActivityAt, launchedBySessionId?}], truncated}` — newest activity first, the caller excluded, capped at 40 rows |
-| `session_launch` | `prompt`, `project?`, `provider?`, `model?`, `worktree?`, `taskLabel?` | `{sessionId, workspaceId, projectId, projectName}` |
+| `session_list` | `project?`, `all?` | `{sessions: [{sessionId, projectId, projectName, taskLabel, provider, state, attention, lastActivityAt, launchedBySessionId?}], truncated}` — newest activity first, the caller excluded, capped at 40 rows |
+| `session_launch` | `prompt`, `project?`, `path?`, `branch?`, `provider?`, `model?`, `worktree?`, `taskLabel?`, `reasoning?`, `permissionMode?` | `{sessionId, workspaceId, projectId, projectName, path, branch}` |
 | `session_message` | `session`, `message` | `{sessionId, queued}` — `queued` is true when the target was mid-turn |
-| `session_status` | `session` | `{sessionId, taskLabel, provider, modelId, state, turnAgeSeconds?, lastActivityAt, lastAssistantText?, unreadInbox, launchedBySessionId?, launchDepth}` |
+| `session_status` | `session` | `{sessionId, taskLabel, provider, modelId, state, attention, turnAgeSeconds?, lastActivityAt, lastAssistantText?, unreadInbox, launchedBySessionId?, launchDepth}` |
 | `session_read` | `session`, `cursor?`, `maxChars?` | `{sessionId, entries: [{at, kind, text}], nextCursor, truncated}` |
 | `session_stop` | `session` | `{sessionId, state}` |
 | `session_rename` | `taskLabel` | `{sessionId, workspaceId, taskLabel, previousTaskLabel}` — renames this session's sidebar row only |
@@ -26,12 +26,115 @@ Namespace `argmax`; Claude, Codex, and Cursor show them as
 | `session_wait` | `sessions?`, `timeoutS?` | `{timedOut, sessions: [{sessionId, taskLabel, state}], messages: […]}` |
 | `session_move` | `project?` \| `path?`, `prompt`, `worktree?`, `keepSource?` | `{scheduled, sourceSessionId, projectId, projectName, path?}` |
 | `workspace_archive` | — | `{scheduled, sessionId, workspaceId}` |
-| `goal_set` | `condition`, `maxTurns?` | `{goalId, condition, maxTurns}` — sets this session's goal and starts its first turn |
+| `goal_set` | `condition`, `maxTurns?` | `{goalId, condition, maxTurns}` — sets this session's goal; the turn that set it counts as the goal's first turn |
 | `goal_clear` | — | `{cleared}` |
+| `checks_run` | `session?`, `command?`, `timeoutMs?` | `{sessionId, workspaceId, passed, checks: [{command, status, exitCode?, summary}]}` |
+| `workspace_status` | `session?` | Checkout, branch, PR, dirty-state, shared-checkout, and archive metadata |
+| `workspace_diff` | `session?`, `filePath?`, `comparison?`, `maxChars?` | Bounded changed-file list and diff text with `truncated` |
+| `learnings_add` | `kind`, `summary`, `project?` | The stored project learning |
+| `learnings_search` | `query?`, `project?`, `limit?` | Ranked project learnings with `truncated` |
+| `terminal_spawn` | `session?`, `command?` | `{terminalId, sessionId, workspaceId, path, command?}` |
+| `terminal_read` | `terminalId?`, `session?`, `maxChars?` | A terminal tail, or the terminals known for a workspace |
+| `project_list` | — | Every registered project, including projects with no open session |
+| `schedule_followup` | `prompt`, `inSeconds?` or `at?`, `name?` | A one-shot scheduled wake for this session |
+| `schedule_list` | `project?` | `{projectId, schedules: [{scheduleId, name, prompt, enabled, cronExpr?, runOnceAt?, runTarget, sessionId?, nextRunAt?, lastRunAt?, lastError?}], truncated}` |
+| `schedule_cancel` | `scheduleId`, `disable?` | `{scheduleId, name, deleted}` |
+| `schedule_resume` | `scheduleId` | `{scheduleId, name, nextRunAt?}` |
 
 A goal makes this session keep working until a separate evaluator judges the
 condition met. Set one when the user describes work with a verifiable end
 state rather than a single edit. See [goals.md](goals.md).
+
+`attention` is the persisted answer to whether a person should look at a
+session. Its values are `normal`, `blocked`, `failed`, `review-ready`,
+`question-asked`, and `approval-needed`. It is included in both session reads
+so a launcher can check one child without listing every session.
+
+`session_launch.reasoning` accepts `low`, `medium`, `high`, `xhigh`, `max`, or
+`ultra`. `permissionMode` accepts `auto-approve`, `ask-each-time`, or
+`provider-defaults`. Omitted values inherit from the caller.
+
+`session_launch` can target a checkout as well as a project. `path` is an
+existing working tree of the target project, any directory `git worktree list`
+reports, including the main one. The new session shares that checkout. `worktree`
+creates a new isolated worktree instead. The two are mutually exclusive.
+`branch` is the git ref to work from: with `worktree`, the isolated worktree
+forks from that ref instead of the project's current branch; with `path`, the
+named checkout must already be on that branch. Launch never switches another
+checkout's branch. The result includes the path and branch the session landed
+on.
+
+### Workspaces and checks
+
+`checks_run` runs one named command or the target project's configured check
+commands. Configured commands run in order and stop at the first failure. The
+optional `session` addresses a peer's workspace. The checks service applies
+the same destructive-command guard as the Checks panel. One wall-clock timeout
+covers the whole sequence. It defaults to five minutes and is capped at 30
+minutes; the control socket remains open for that budget plus cleanup slack.
+
+`workspace_status` reports information held by Argmax rather than Git:
+whether the checkout is shared, its base ref, tracked pull request and check
+state, and whether the workspace can be archived. `workspace_diff` uses the
+same review service as the Changes panel. It defaults to the working tree,
+accepts `branch` and `committed` comparisons, and can narrow the result to one
+relative path. Diff text defaults to 16,000 characters and is capped at
+40,000. The changed-file list is capped at 100. `truncated: true` means the
+caller should request one file.
+
+### Project learnings
+
+`learnings_add` writes a project-scoped `pitfall`, `convention`, or `command`
+with the calling session as evidence. `learnings_search` uses the learnings
+full-text index and records hits on returned rows. An empty query returns the
+project's most-used entries. Search results default to 10 rows and are capped
+at 40.
+
+### Persistent terminals
+
+`terminal_spawn` starts a PTY owned by Argmax, optionally typing a command into
+its shell. The process therefore survives the provider turn that created it
+and remains visible in the Terminal panel. `terminal_read` without a terminal
+id lists known terminals for a workspace. With an id, it returns the newest
+captured output in chronological order plus running and exit information.
+Argmax keeps 128 KiB of scrollback per terminal. It trims finished records
+oldest first toward a 64-record cap, but never evicts a live terminal. One read
+defaults to 8,000 characters and is capped at 40,000.
+
+### Projects and scheduled follow-ups
+
+`project_list` includes registered projects with no open sessions. Each row
+includes its repo path, current and default branches, configured checks, active
+session count, and latest activity.
+
+`schedule_followup` creates an enabled, one-shot scheduled task whose target is
+the calling session. Give either a delay in seconds or an RFC 3339 timestamp.
+The scheduler runs every 30 seconds, so earlier times are raised to that floor.
+Follow-ups can be scheduled at most seven days ahead and appear in Scheduled
+Tasks, where the user can disable or delete them.
+
+`schedule_list` returns one project's scheduled tasks — the wakes chats set and
+the recurring routines the user wrote — capped at 50 rows with `truncated`, and
+each prompt capped at 500 characters. `sessionId` is the chat a same-chat task
+fires into: equal to the caller's own id, the row is a wake it set for itself.
+
+`schedule_cancel` stops one from firing. It deletes by default and pauses with
+`disable`, which leaves the row in Scheduled Tasks with its prompt and schedule
+intact. `schedule_resume` switches a paused one back on and recomputes its next
+run from now, so a recurring task picks up at its next occurrence rather than
+firing once for every run it slept through. Both are limited to tasks in the
+caller's own project; anything else is refused with `SCHEDULE_OTHER_PROJECT`.
+
+Together with `schedule_followup` that is the whole surface: an agent can
+create a wake for itself, read a project's tasks, and switch any of them off,
+on, or away. It cannot write a recurring routine or edit one's prompt,
+schedule, or target — that stays in the Scheduled Tasks panel.
+
+A wake arrives as a turn of its own. Because the floor is 30 seconds and the
+tool is called mid-turn, its time usually passes while the calling turn is
+still running; the scheduler then leaves the task due and wakes the chat on the
+first tick after it settles, rather than queueing the prompt behind what the
+user has typed. See [scheduled-tasks.md](scheduled-tasks.md).
 
 ### Browser
 
@@ -66,6 +169,8 @@ may accept any cookie prompt without asking the user.
 | `browser_wait_for` | `text?`, `ref?`, `url_includes?`, `timeout_s?`, `tab?` | `{tabId, url, detail}` |
 | `browser_screenshot` | `tab?`, `ref?` | an image content block, plus `{width, height, bytes}` |
 | `browser_evaluate` | `expression`, `tab?` | `{tabId, result}` |
+| `browser_console` | `tab?`, `limit?`, `clear?` | Captured console calls, uncaught errors, and unhandled rejections |
+| `browser_network` | `tab?`, `limit?`, `clear?` | Captured fetch, XHR, and resource timing records |
 | `browser_handle_dialog` | `accept`, `prompt_text?`, `tab?` | `{tabId, armed, answered}` |
 
 **Ownership.** A session may only drive tabs it opened. A `tab` naming the
@@ -139,8 +244,20 @@ line, arm the answer, repeat the action. Tabs the user opened are untouched and
 keep the engine's native dialogs — silently answering a person's confirm box
 would misreport what they clicked.
 
+**Console and network capture.** Agent-owned tabs install capture before page
+scripts run. `browser_console` returns console calls, uncaught errors, and
+unhandled promise rejections. `browser_network` returns fetch and XHR method,
+status, duration, and error fields, plus resource timing rows. Each tab keeps
+the newest 200 rows of each kind, and one call returns 50 by default. Set
+`clear` before an interaction to isolate what that interaction caused.
+
+This is page-level capture in WKWebView, not a debugger protocol attachment.
+Response bodies and request headers are unavailable. Resource timing rows may
+not include a status. Tabs the user opened are not instrumented.
+
 `project` takes a registered project's name or its absolute repo path, and
-defaults to the caller's own project. `provider` and `model` default to the
+defaults to the caller's own project. `path` and `branch` pick a checkout of
+that project as described above. `provider` and `model` default to the
 caller's own: an agent that names neither launches a peer of itself. A named
 model is passed to the CLI as-is and stands in as its own sidebar label — Rust
 has no model-label catalog, that lives in
@@ -608,9 +725,12 @@ calling session. For the observation tools, prompt a parent to launch a child,
 terminal state, the read must contain the child's answer, and
 `session:events-since` for the parent must then show an origin-tagged
 `user.message` — the completion notice — followed by a fresh assistant reply.
-The caps, the socket actions, the inbox, and the completion notice all have
-tests in
-[src-tauri/tests/session_control.rs](../src-tauri/tests/session_control.rs).
+The caps, socket actions, inbox, completion notice, project tools, workspace
+tools, and attention fields have tests in
+[src-tauri/tests/integration/session_control.rs](../src-tauri/tests/integration/session_control.rs).
+The shared MCP router test holds the common tool surface still. Terminal
+scrollback and persistent reads are covered in
+[src-tauri/src/terminal/service.rs](../src-tauri/src/terminal/service.rs).
 
 `pgrep -f "argmax mcp"` must come back empty once the app is gone. The ACP pool
 runs its server in its own process group and signals the group on teardown,

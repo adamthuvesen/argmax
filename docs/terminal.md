@@ -10,6 +10,7 @@ Integrated terminal instances run independently from provider PTYs under [src-ta
 - `terminal:terminate`
 - `terminal:data` (push)
 - `terminal:exit` (push)
+- `terminal:agent-open` (push)
 
 The backend uses `portable-pty` for process execution and event chunk emission. Subscriptions require `core:event:default` in `src-tauri/capabilities/default.json`.
 
@@ -20,9 +21,21 @@ every process group still in the shell's PTY session, then escalates from
 up ordinary background jobs from that session too. Processes that deliberately
 create a new session keep their independent lifecycle.
 
+The `terminal_spawn` agent tool uses the same service and can type a command
+into the new shell. The PTY belongs to Argmax, so it survives the provider turn
+that created it. `terminal:agent-open` adds it to the workspace's terminal tabs
+and opens that panel, where the renderer adopts the existing PTY instead of
+starting another shell. The event is emitted before Argmax types the command;
+the renderer buffers output until xterm mounts, so a short-lived command still
+appears in the tab. `terminal_read` lists the
+terminals known for a workspace or returns one terminal's captured output,
+running state, and exit code. The service keeps the newest 128 KiB of output
+per terminal in memory. It trims finished records oldest first toward a
+64-record cap. Live records are never evicted.
+
 ## Where It Lives
 
-The terminal is a mode of the review panel — the fifth, beside Changes, Files, Agents, and [Browser](browser.md) — so shells sit in the same dock as the diff and the files they act on. The tab is shown only where a workspace backs the panel: the launcher's project-backed panel has no worktree to run in, and the mobile remote has no terminal at all.
+The terminal is a mode of the review panel — the fifth, beside Changes, Files, Agents, and [Browser](browser.md) — so shells sit in the same dock as the diff and the files they act on. The tab is shown wherever a workspace backs the panel: session panes use that session's workspace; the launcher's project-backed panel uses the project's shared checkout workspace (created on demand if none exists yet). The mobile remote has no terminal at all.
 
 `Cmd/Ctrl+J` shows the terminal for the active workspace. If Terminal is already visible in a split panel, the shortcut closes that half and expands the other view. If Terminal fills the panel, it hides the panel. The workspace card's Terminal row does the same. Switching views leaves the PTYs running.
 

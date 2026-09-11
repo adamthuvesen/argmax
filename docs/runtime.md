@@ -21,6 +21,15 @@ For UI-only work, `npx vite --host 127.0.0.1` runs browser preview with mock dat
 - [src-tauri/src/providers](../src-tauri/src/providers): Provider processes, PTYs, event normalization, and flush queues.
 - Subsystems: `workspaces`, `review`, `files`, `git`, `gh`, `terminal`, `approvals`, `checks`, and `skills`.
 
+## Open-file Limit
+
+Before starting services, Argmax raises its open-file soft limit to 8,192,
+capped by the existing hard limit, and preserves an already higher soft limit.
+Providers and their tools inherit this allowance. This avoids passing the
+macOS GUI default of 256 descriptors into Codex, where concurrent skill reads
+can exhaust it. A failure to raise the limit is reported to stderr. The change
+takes effect after rebuilding and restarting Argmax.
+
 ## Single Instance Lock
 
 On boot, Argmax acquires an advisory `flock` on `local-state/argmax.lock` ([util/instance_lock.rs](../src-tauri/src/util/instance_lock.rs)) before touching SQLite. If another instance is running, the new process shows an alert and exits immediately, preventing duplicate startup recovery from marking live sessions as orphaned. The lock releases automatically on exit.

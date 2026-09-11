@@ -48,6 +48,10 @@ final class Appearance: ObservableObject {
     /// glyph column to turn off, so the key is namespaced to this app rather
     /// than borrowed from the web client's vocabulary.
     static let providerMarksKey = "argmax.phone.providerMarks"
+    /// The web client's own key (`argmax.mascot.visible`), the way theme and
+    /// accent borrow theirs: the fox is one setting across both halves of
+    /// Argmax even though each device holds its own answer.
+    static let mascotKey = "argmax.mascot.visible"
     /// The web client's own key (`argmax.chat.bubbleTint`), for the same
     /// reason theme and accent borrow theirs: one vocabulary across the two
     /// halves of the phone. The value is the page's too — "accent" or
@@ -68,6 +72,15 @@ final class Appearance: ObservableObject {
     /// it. Off, the column stays: a running chat still shows its nest.
     @Published var providerMarks: Bool {
         didSet { store.set(providerMarks, forKey: Self.providerMarksKey) }
+    }
+
+    /// Whether the fox is drawn — the mark in the Chats header, the new-chat
+    /// hero, and the fox an empty screen shows. On by default: it is the
+    /// app's mark, so it is opted out of rather than into. The pairing screen
+    /// keeps its fox either way; that screen runs before Settings can be
+    /// reached.
+    @Published var mascot: Bool {
+        didSet { store.set(mascot, forKey: Self.mascotKey) }
     }
 
     /// Whether the transcript's own messages fill with the accent or stay a
@@ -93,6 +106,7 @@ final class Appearance: ObservableObject {
         // `bool(forKey:)` is false for a key that was never written, which
         // is the wrong default here — so the absence is read first.
         providerMarks = store.object(forKey: Self.providerMarksKey) as? Bool ?? true
+        mascot = store.object(forKey: Self.mascotKey) as? Bool ?? true
         // Accent is the page's own default, so anything unreadable — and the
         // absence of the key — lands there rather than on gray.
         accentBubbles = store.string(forKey: Self.bubbleTintKey) != "neutral"
@@ -107,6 +121,7 @@ extension View {
     func appearance(_ appearance: Appearance) -> some View {
         environment(\.accentTint, appearance.tint)
             .environment(\.providerMarks, appearance.providerMarks)
+            .environment(\.mascotVisible, appearance.mascot)
             .tint(appearance.tint.color)
             .preferredColorScheme(appearance.theme.colorScheme)
     }
@@ -118,9 +133,21 @@ private struct ProviderMarksKey: EnvironmentKey {
     static let defaultValue = true
 }
 
+/// Same reason as the provider marks: the fox is drawn from the header, the
+/// new-chat sheet and the empty state, and none of them should need an
+/// `@EnvironmentObject` a `#Preview` would have to supply.
+private struct MascotVisibleKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
 extension EnvironmentValues {
     var providerMarks: Bool {
         get { self[ProviderMarksKey.self] }
         set { self[ProviderMarksKey.self] = newValue }
+    }
+
+    var mascotVisible: Bool {
+        get { self[MascotVisibleKey.self] }
+        set { self[MascotVisibleKey.self] = newValue }
     }
 }

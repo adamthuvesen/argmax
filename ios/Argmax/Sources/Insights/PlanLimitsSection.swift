@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// What is left on each provider plan: the desktop Usage page's "Remaining
-/// on your plans", as one settings card.
+/// on your plans", as the body of one Usage card.
 ///
 /// One block per login, in the order the Mac sends them, each a heading line
 /// and its windows. A meter is a label, a percentage, when it comes back,
@@ -15,11 +15,11 @@ struct PlanLimitsSection: View {
         VStack(alignment: .leading, spacing: 0) {
             if let limits = store.limits {
                 ForEach(Array(limits.providers.enumerated()), id: \.element.id) { index, row in
-                    if index > 0 { HairlineDivider(inset: Spacing.row) }
+                    if index > 0 { HairlineDivider() }
                     ProviderLimitsRow(row: row)
                 }
                 if let failure = store.failure {
-                    HairlineDivider(inset: Spacing.row)
+                    HairlineDivider()
                     RetryRow(message: failure, store: store)
                 }
             } else if let failure = store.failure {
@@ -30,7 +30,6 @@ struct PlanLimitsSection: View {
                 Text("Reading what each provider says is left.")
                     .typeMeta()
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(Spacing.row)
             }
         }
         // Warm from the pairing's store, so this is usually a silent
@@ -68,7 +67,7 @@ private struct ProviderLimitsRow: View {
                 )
             }
         }
-        .padding(Spacing.row)
+        .padding(.vertical, Spacing.snug)
     }
 }
 
@@ -148,16 +147,16 @@ private struct RetryRow: View {
 }
 
 #if DEBUG
-#Preview("Plan limits") {
+#Preview("Remaining on your plans") {
     ScrollView {
         VStack(alignment: .leading, spacing: Spacing.section) {
-            SettingGroup("Plan limits") {
+            InsightsCard(title: "Remaining on your plans", trailing: nil) {
                 PlanLimitsSection(store: .preview(previewPlanLimits))
             }
-            SettingGroup("Reading") {
+            InsightsCard(title: "Reading", trailing: nil) {
                 PlanLimitsSection(store: .preview(nil, loading: true))
             }
-            SettingGroup("Unreachable") {
+            InsightsCard(title: "Unreachable", trailing: nil) {
                 PlanLimitsSection(store: .preview(nil, failure: "Can't reach your Mac."))
             }
         }

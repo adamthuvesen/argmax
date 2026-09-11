@@ -101,6 +101,9 @@ struct ChatListView: View {
                     onBack: { path.removeLast() }
                 )
             }
+            .navigationDestination(for: InsightsRoute.self) { _ in
+                InsightsScreen(onBack: { path.removeLast() })
+            }
         }
         .environmentObject(navigator)
         .onReceive(clock) { _ in store.refreshClock() }
@@ -149,8 +152,14 @@ struct ChatListView: View {
     private var header: some View {
         VStack(spacing: 0) {
             ScreenHeader(title: "", showsMark: true, trailing: {
-                HeaderGlyphButton(systemName: "ellipsis", label: "Settings", tint: Theme.ink, weight: .semibold, filled: true) {
-                    path.append(SettingsRoute.root)
+                HStack(spacing: Spacing.tight) {
+                    HeaderGlyphButton(systemName: "chart.bar", label: "Insights", tint: Theme.ink, weight: .semibold, filled: true) {
+                        Haptics.light()
+                        path.append(InsightsRoute.root)
+                    }
+                    HeaderGlyphButton(systemName: "ellipsis", label: "Settings", tint: Theme.ink, weight: .semibold, filled: true) {
+                        path.append(SettingsRoute.root)
+                    }
                 }
             }, center: {
                 // The Mac this phone is a remote for, as the web header put it:
@@ -364,6 +373,12 @@ struct NewChatRequest: Identifiable, Hashable {
 /// Settings is a screen on the same stack as a chat, not a sheet: it has a
 /// back chevron and its own header like everything else here.
 enum SettingsRoute: Hashable {
+    case root
+}
+
+/// Insights (Usage + Activity) rides the same stack for the same reason:
+/// a pushed page with a back chevron, warmed by `RootView` like plan limits.
+enum InsightsRoute: Hashable {
     case root
 }
 

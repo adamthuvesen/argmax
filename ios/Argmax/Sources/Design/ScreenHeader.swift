@@ -18,11 +18,14 @@ struct ScreenHeader<Trailing: View, Center: View>: View {
     var onBack: (() -> Void)?
     /// The fox beside the title. Only the root screen wears it — the app's
     /// name and its mark belong together once, not on every pushed screen.
+    /// Settings → Appearance → Fox mascot can turn it off there too.
     var showsMark = false
     @ViewBuilder var trailing: () -> Trailing
     /// Centred over the header, independent of what the sides take: the root
     /// screen puts the Mac it is talking to here.
     @ViewBuilder var center: () -> Center
+
+    @Environment(\.mascotVisible) private var mascotVisible
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: Spacing.row) {
@@ -41,7 +44,7 @@ struct ScreenHeader<Trailing: View, Center: View>: View {
                 .accessibilityLabel("Back")
                 .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 6 }
             }
-            if showsMark {
+            if showsMark, mascotVisible {
                 FoxMark(size: 34)
                     .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 8 }
             }

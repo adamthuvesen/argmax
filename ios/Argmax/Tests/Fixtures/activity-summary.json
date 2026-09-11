@@ -1,0 +1,171 @@
+{
+  "window": "30d",
+  "projectId": null,
+  "timeZone": "Europe/Stockholm",
+  "rangeStart": "2026-08-13T00:00:00+02:00",
+  "rangeEnd": "2026-09-11T00:00:00+02:00",
+  "resolution": "day",
+  "authorEmails": ["a.thuvesen@gmail.com"],
+  "scan": {"phase": "complete", "reposTotal": 32, "reposDone": 32, "lastCompletedAt": "2026-09-11T10:41:00+00:00"},
+  "github": {
+    "available": true,
+    "login": "adam",
+    "error": null,
+    "lastFetchedAt": "2026-09-11T10:35:00+00:00"
+  },
+  "totals": {
+    "commits": 1557,
+    "linesAdded": 275873,
+    "linesRemoved": 61976,
+    "filesChanged": 13842,
+    "activeDays": 29,
+    "prsOpened": 231,
+    "prsMerged": 226,
+    "prsClosed": 3,
+    "reviewsGiven": 40,
+    "reviewApprovals": 18,
+    "reviewChangesRequested": 0,
+    "reviewComments": 22
+  },
+  "previous": {
+    "commits": 1187,
+    "linesAdded": 200000,
+    "linesRemoved": 50000,
+    "filesChanged": 9000,
+    "activeDays": 27,
+    "prsOpened": 180,
+    "prsMerged": 175,
+    "prsClosed": 2,
+    "reviewsGiven": 30,
+    "reviewApprovals": 12,
+    "reviewChangesRequested": 1,
+    "reviewComments": 17
+  },
+  "repositories": [
+    {
+      "projectId": "argmax",
+      "name": "argmax",
+      "path": "/Users/adam/dev/argmax",
+      "githubRepo": "anomalyco/argmax",
+      "commits": 666,
+      "linesAdded": 275873,
+      "linesRemoved": 61976,
+      "prsMerged": 90,
+      "lastCommitAt": "2026-09-11T10:27:00+02:00",
+      "share": 0.428
+    },
+    {
+      "projectId": "revops",
+      "name": "revops-backoffice",
+      "path": "/Users/adam/dev/revops-backoffice",
+      "githubRepo": "menti/revops-backoffice",
+      "commits": 200,
+      "linesAdded": 161943,
+      "linesRemoved": 26481,
+      "prsMerged": 60,
+      "lastCommitAt": "2026-09-11T09:41:00+02:00",
+      "share": 0.128
+    }
+  ],
+  "series": [
+    {
+      "bucketStart": "2026-09-09T00:00:00+02:00",
+      "byRepository": [
+        {"projectId": "argmax", "commits": 80, "linesAdded": 9000, "linesRemoved": 2000},
+        {"projectId": "revops", "commits": 20, "linesAdded": 3000, "linesRemoved": 500}
+      ]
+    },
+    {
+      "bucketStart": "2026-09-10T00:00:00+02:00",
+      "byRepository": [
+        {"projectId": "argmax", "commits": 136, "linesAdded": 12000, "linesRemoved": 2500},
+        {"projectId": "revops", "commits": 15, "linesAdded": 2000, "linesRemoved": 300}
+      ]
+    }
+  ],
+  "heatmap": [
+    {"date": "2026-08-24", "commits": 5},
+    {"date": "2026-08-25", "commits": 0},
+    {"date": "2026-08-26", "commits": 12},
+    {"date": "2026-08-27", "commits": 3},
+    {"date": "2026-08-28", "commits": 8},
+    {"date": "2026-08-29", "commits": 2},
+    {"date": "2026-08-30", "commits": 9},
+    {"date": "2026-08-31", "commits": 15},
+    {"date": "2026-09-01", "commits": 136},
+    {"date": "2026-09-02", "commits": 40},
+    {"date": "2026-09-03", "commits": 22},
+    {"date": "2026-09-04", "commits": 31},
+    {"date": "2026-09-05", "commits": 6},
+    {"date": "2026-09-06", "commits": 18},
+    {"date": "2026-09-07", "commits": 44},
+    {"date": "2026-09-08", "commits": 52},
+    {"date": "2026-09-09", "commits": 100},
+    {"date": "2026-09-10", "commits": 151},
+    {"date": "2026-09-11", "commits": 25}
+  ],
+  "streaks": {
+    "currentDays": 23,
+    "currentStart": "2026-08-20",
+    "longestDays": 46,
+    "longestStart": "2026-06-01",
+    "longestEnd": "2026-07-16",
+    "busiestDay": {"date": "2026-09-01", "commits": 136}
+  },
+  "cadence": {
+    "byWeekday": [260, 226, 118, 248, 196, 125, 384],
+    "byHour": [5, 8, 4, 1, 0, 0, 12, 3, 18, 90, 180, 95, 70, 60, 85, 80, 45, 100, 65, 80, 75, 78, 40, 25]
+  },
+  "pullRequests": [
+    {
+      "number": 708,
+      "title": "feat(scenario-model): second brain import",
+      "repository": "revops-backoffice",
+      "projectId": "revops",
+      "url": "https://github.com/menti/revops-backoffice/pull/708",
+      "state": "merged",
+      "isDraft": false,
+      "createdAt": "2026-09-11T08:12:00+02:00",
+      "mergedAt": "2026-09-11T08:30:00+02:00",
+      "closedAt": "2026-09-11T08:30:00+02:00",
+      "additions": 1641,
+      "deletions": 388,
+      "cycleSeconds": 1080
+    },
+    {
+      "number": 4197,
+      "title": "Refine Pulse int models",
+      "repository": "dbt-transform",
+      "projectId": null,
+      "url": "https://github.com/menti/dbt-transform/pull/4197",
+      "state": "open",
+      "isDraft": false,
+      "createdAt": "2026-09-10T15:00:00+02:00",
+      "mergedAt": null,
+      "closedAt": null,
+      "additions": 954,
+      "deletions": 166,
+      "cycleSeconds": null
+    }
+  ],
+  "reviews": [
+    {
+      "number": 708,
+      "title": "feat(backoffice): add the thing",
+      "repository": "revops-backoffice",
+      "url": "https://github.com/menti/revops-backoffice/pull/708#review-1",
+      "state": "approved",
+      "submittedAt": "2026-09-11T09:00:00+02:00"
+    },
+    {
+      "number": 682,
+      "title": "feat(backoffice): launch flags",
+      "repository": "revops-backoffice",
+      "url": "https://github.com/menti/revops-backoffice/pull/682#review-2",
+      "state": "commented",
+      "submittedAt": "2026-09-10T16:00:00+02:00"
+    }
+  ],
+  "medianCycleSeconds": 540,
+  "futureColumnTheHostMightAdd": [1, 2, 3]
+}

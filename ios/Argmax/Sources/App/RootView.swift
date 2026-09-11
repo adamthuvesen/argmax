@@ -22,6 +22,10 @@ struct RootView: View {
     /// close to a second to ask five providers what is left, and that
     /// second lands on the card if nobody has asked ahead.
     @StateObject private var planLimits: PlanLimitsStore
+    /// The Usage + Activity ledgers behind the Insights page. Owned here like
+    /// plan limits so the numbers are warm before the page opens and survive
+    /// every push and pop.
+    @StateObject private var insights: InsightsStore
     @EnvironmentObject private var appearance: Appearance
     @State private var confirmingRepair = false
     @Environment(\.scenePhase) private var scenePhase
@@ -40,6 +44,7 @@ struct RootView: View {
             wrappedValue: PushRegistration(client: paired.client, delegate: push)
         )
         _planLimits = StateObject(wrappedValue: PlanLimitsStore(client: paired.client))
+        _insights = StateObject(wrappedValue: InsightsStore(client: paired.client))
     }
 
     var body: some View {
@@ -51,10 +56,16 @@ struct RootView: View {
             .environmentObject(transcript)
             .environmentObject(registration)
             .environmentObject(planLimits)
+            .environmentObject(insights)
             .environmentObject(push)
             .background(ShakeToRepair { confirmingRepair = true })
             .task {
                 store.start()
+                // First, before anything awaited below: the Insights ledgers
+                // take seconds on the host, so their preload starts while the
+                // socket is still connecting — the requests simply wait for
+                // auth, then run. Fire-and-forget; nothing awaits them.
+                insights.prefetch()
                 // Warmed while the list is still fetching its first
                 // snapshot, so the first push lands on a page that has
                 // already authenticated rather than on a spinner.
@@ -92,6 +103,7 @@ struct RootView: View {
                     // A phone that has been in a pocket for an hour is the
                     // case this exists for.
                     Task { await planLimits.refreshIfStale() }
+                    insights.prefetch()
                 }
             }
             .confirmationDialog(

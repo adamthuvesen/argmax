@@ -1,0 +1,166 @@
+{
+  "window": "30d",
+  "provider": null,
+  "timeZone": "Europe/Stockholm",
+  "rangeStart": "2026-08-13T00:00:00+02:00",
+  "rangeEnd": "2026-09-11T00:00:00+02:00",
+  "resolution": "day",
+  "scan": {
+    "phase": "idle",
+    "filesTotal": 12,
+    "filesDone": 12,
+    "lastCompletedAt": "2026-09-11T10:41:00+00:00",
+    "pricingAsOf": "2026-09-04"
+  },
+  "sessions": 3106,
+  "tokens": {
+    "inputUncached": 276000000,
+    "cacheRead": 21800000000,
+    "cacheWrite": 328000000,
+    "output": 74000000,
+    "reasoning": 29900000
+  },
+  "costUsd": 18196.95,
+  "cacheSavingsUsd": 115756.82,
+  "costSource": "mixed",
+  "previous": {
+    "costUsd": 15827.78,
+    "tokens": {
+      "inputUncached": 250000000,
+      "cacheRead": 19000000000,
+      "cacheWrite": 300000000,
+      "output": 70000000,
+      "reasoning": 28000000
+    },
+    "sessions": 2890
+  },
+  "providers": [
+    {
+      "provider": "claude",
+      "available": true,
+      "sessions": 1013,
+      "tokens": {
+        "inputUncached": 200000000,
+        "cacheRead": 16000000000,
+        "cacheWrite": 200000000,
+        "output": 50000000,
+        "reasoning": 20000000
+      },
+      "costUsd": 13909.35,
+      "cacheSavingsUsd": 90000.0,
+      "costSource": "list_price"
+    },
+    {
+      "provider": "codex",
+      "available": true,
+      "sessions": 1439,
+      "tokens": {
+        "inputUncached": 70000000,
+        "cacheRead": 5000000000,
+        "cacheWrite": 120000000,
+        "output": 20000000,
+        "reasoning": 9000000
+      },
+      "costUsd": 4219.13,
+      "cacheSavingsUsd": 25000.0,
+      "costSource": "provider_reported"
+    },
+    {
+      "provider": "cursor",
+      "available": false,
+      "sessions": 0,
+      "tokens": {
+        "inputUncached": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "output": 0,
+        "reasoning": 0
+      },
+      "costUsd": 0,
+      "cacheSavingsUsd": 0,
+      "costSource": "unpriced"
+    }
+  ],
+  "series": [
+    {
+      "bucketStart": "2026-09-09T00:00:00+02:00",
+      "values": [
+        {"provider": "claude", "costUsd": 610.12, "tokens": 700000000},
+        {"provider": "codex", "costUsd": 320.44, "tokens": 180000000}
+      ]
+    },
+    {
+      "bucketStart": "2026-09-10T00:00:00+02:00",
+      "values": [
+        {"provider": "claude", "costUsd": 1278.24, "tokens": 1200000000},
+        {"provider": "codex", "costUsd": 410.9, "tokens": 220000000}
+      ]
+    },
+    {
+      "bucketStart": "2026-09-11T00:00:00+02:00",
+      "values": [
+        {"provider": "claude", "costUsd": 310.5, "tokens": 300000000},
+        {"provider": "codex", "costUsd": 165.2, "tokens": 90000000}
+      ]
+    }
+  ],
+  "models": [
+    {
+      "provider": "claude",
+      "modelId": "claude-opus-5",
+      "sessions": 703,
+      "tokens": {
+        "inputUncached": 120000000,
+        "cacheRead": 11000000000,
+        "cacheWrite": 150000000,
+        "output": 30000000,
+        "reasoning": 12000000
+      },
+      "costUsd": 8348.49,
+      "costSource": "list_price"
+    },
+    {
+      "provider": "codex",
+      "modelId": "gpt-5.6-sol",
+      "sessions": 680,
+      "tokens": {
+        "inputUncached": 40000000,
+        "cacheRead": 3000000000,
+        "cacheWrite": 80000000,
+        "output": 12000000,
+        "reasoning": 5000000
+      },
+      "costUsd": 2576.92,
+      "costSource": "provider_reported"
+    }
+  ],
+  "days": [
+    {
+      "bucketStart": "2026-09-09T00:00:00+02:00",
+      "sessions": 120,
+      "tokens": {
+        "inputUncached": 9000000,
+        "cacheRead": 800000000,
+        "cacheWrite": 11000000,
+        "output": 2500000,
+        "reasoning": 1000000
+      },
+      "costUsd": 930.56,
+      "costSource": "mixed"
+    },
+    {
+      "bucketStart": "2026-09-10T00:00:00+02:00",
+      "sessions": 145,
+      "tokens": {
+        "inputUncached": 12000000,
+        "cacheRead": 1300000000,
+        "cacheWrite": 15000000,
+        "output": 3200000,
+        "reasoning": 1400000
+      },
+      "costUsd": 1689.14,
+      "costSource": "mixed"
+    }
+  ],
+  "futureColumnTheHostMightAdd": {"nested": [1, 2, 3]}
+}

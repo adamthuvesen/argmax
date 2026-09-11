@@ -1,14 +1,14 @@
 import SwiftUI
 import UIKit
 
-/// Settings: what is left on the plans, whether the Mac can reach you, what
-/// the app looks like, and which Mac it is. Groups of one row shape
-/// repeated, exactly as the desktop's settings page is built.
+/// Settings: whether the Mac can reach you, what the app looks like, and
+/// which Mac it is. Groups of one row shape repeated, exactly as the
+/// desktop's settings page is built.
 ///
-/// In that order, which is how often a person comes here for each: plan
-/// limits are read on a whim, and the pairing is read once and changed
-/// almost never — so it sits at the bottom, beside the destructive thing it
-/// carries.
+/// In that order, which is how often a person comes here for each: the
+/// pairing is read once and changed almost never — so it sits at the
+/// bottom, beside the destructive thing it carries. What is left on the
+/// plans lives on the Usage page, beside the spend it belongs to.
 struct SettingsScreen: View {
     /// The paired host, as the pairing link names it.
     let host: String
@@ -17,18 +17,11 @@ struct SettingsScreen: View {
 
     @EnvironmentObject private var appearance: Appearance
     @EnvironmentObject private var push: PushRegistration
-    /// Warmed by `RootView` before this screen exists, so the card opens
-    /// with numbers on it.
-    @EnvironmentObject private var limits: PlanLimitsStore
     @State private var confirmingRepair = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.section) {
-                SettingGroup("Plan limits") {
-                    PlanLimitsSection(store: limits)
-                }
-
                 SettingGroup("Notifications") {
                     NotificationsSetting(push: push)
                 }
@@ -60,6 +53,12 @@ struct SettingsScreen: View {
                         label: "Provider marks",
                         detail: "The CLI's mark on chats with no icon of their own.",
                         isOn: $appearance.providerMarks
+                    )
+                    HairlineDivider(inset: Spacing.row)
+                    SettingToggle(
+                        label: "Fox mascot",
+                        detail: "The fox in the Chats header, on a new chat, and on an empty screen.",
+                        isOn: $appearance.mascot
                     )
                 }
 
@@ -389,7 +388,6 @@ struct NotificationsSetting: View {
         SettingsScreen(host: "spark.tail1234.ts.net", onPairAgain: {}, onBack: {})
             .environmentObject(Appearance())
             .environmentObject(PushRegistration.preview(.enabled(deviceName: "Adam\u{2019}s iPhone")))
-            .environmentObject(PlanLimitsStore.preview(nil, loading: true))
     }
 }
 

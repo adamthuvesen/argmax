@@ -49,7 +49,7 @@ export const ACCENT_OPTIONS: AccentOption[] = [
     id: "orange",
     label: "Orange",
     hint: "A warm orange accent for chrome without changing warnings or diffs.",
-    swatch: { color: "#a25408", soft: "#f8eae1" }
+    swatch: { color: "#af5b00", soft: "#faece0" }
   },
   {
     id: "blue",

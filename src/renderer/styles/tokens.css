@@ -690,9 +690,9 @@
 }
 
 :root[data-accent="orange"] {
-  --accent: #a25408;
-  --accent-soft: #f8eae1;
-  --accent-deep: #7d3a00;
+  --accent: #af5b00;
+  --accent-soft: #faece0;
+  --accent-deep: #8b4500;
 }
 
 :root[data-accent="blue"] {
@@ -735,17 +735,17 @@
   --code-ink: var(--accent);
   --path-ink: #9b9890;
   /* The bubble keeps its own mid-deep warm gray rather than following the
-     accent: every other dark bubble sits at L 0.44-0.49, and a neutral one
+     accent: every other dark bubble sits at L 0.44-0.53, and a neutral one
      lifted to the accent would be the only bright slab on the charcoal. */
   --user-message-bg: #4f4d47;
   --user-message-fg: #ffffff;
 }
 
 :root[data-theme="dark"][data-accent="orange"] {
-  --accent: #db9152;
-  --accent-soft: rgba(219, 145, 82, 0.14);
-  --accent-deep: #e5a978;
-  --user-message-bg: #924a15;
+  --accent: #e79647;
+  --accent-soft: rgba(231, 150, 71, 0.14);
+  --accent-deep: #fab36d;
+  --user-message-bg: #a65100;
   --user-message-fg: #ffffff;
 }
 

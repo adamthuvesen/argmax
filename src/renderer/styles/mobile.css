@@ -1062,7 +1062,7 @@ html:has(.mobile-shell[data-embed]) body,
 }
 
 .mobile-accent-chip[data-accent-id="orange"] {
-  --accent-swatch-color: #a25408;
+  --accent-swatch-color: #af5b00;
 }
 
 .mobile-accent-chip[data-accent-id="blue"] {
@@ -1078,7 +1078,7 @@ html:has(.mobile-shell[data-embed]) body,
 }
 
 :root[data-theme="dark"] .mobile-accent-chip[data-accent-id="orange"] {
-  --accent-swatch-color: #db9152;
+  --accent-swatch-color: #e79647;
 }
 
 :root[data-theme="dark"] .mobile-accent-chip[data-accent-id="blue"] {

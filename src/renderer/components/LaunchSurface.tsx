@@ -1,6 +1,5 @@
 import {
   Bot,
-  ChevronDown,
   Folder,
   FolderGit2,
   GitBranch,
@@ -1024,7 +1023,6 @@ export function LaunchSurface({
             >
               <Folder size={14} aria-hidden="true" />
               <span className="composer-context-chip-label">{contextChipLabel}</span>
-              <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />
             </button>
             {projectPickerOpen && (
               <ul
@@ -1109,7 +1107,6 @@ export function LaunchSurface({
             >
               <GitBranch size={14} aria-hidden="true" />
               <span className="composer-context-chip-label">{project.currentBranch}</span>
-              <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />
             </button>
             {branchPickerOpen && (
               <ul

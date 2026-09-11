@@ -351,7 +351,7 @@
 .composer-context {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-1_5);
   min-height: 34px;
   /* Right padding clears the absolute-positioned send button; the left no
      longer reserves space for the attach (+), which now sits inline. */
@@ -385,7 +385,7 @@
 .composer-context-group {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-1_5);
 }
 
 /* Project and branch names give up width before the fixed launch controls do.
@@ -687,12 +687,12 @@
   min-width: 0;
   max-width: 100%;
   border-radius: 999px;
-  background: color-mix(in oklab, var(--text) 5%, var(--composer-surface));
+  background: var(--composer-chip);
   transition: background var(--duration-fast) var(--ease);
 }
 
 .model-picker-cluster--chip:hover {
-  background: color-mix(in oklab, var(--text) 9%, var(--composer-surface));
+  background: var(--composer-chip-hover);
 }
 
 .effort-slider-anchor {

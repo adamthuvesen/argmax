@@ -642,6 +642,12 @@ html:has(.mobile-shell[data-embed]) body,
   font-size: var(--text-base-plus);
 }
 
+/* The chip floor at phone scale: the labels run a step larger here, and the
+   controls are thumb targets, so the row's one height grows with them. */
+.mobile-shell .session-input-toolbar {
+  --composer-chip-height: 36px;
+}
+
 /* The effort dial.
    ---------------
    The desktop's effort control is a chip that opens a 292px popover with a

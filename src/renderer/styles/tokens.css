@@ -68,6 +68,14 @@
      — see the dark block. */
   --composer-edge: var(--line);
 
+  /* The fill every control on a composer's chip floor wears — the model pill,
+     the project and branch chips, the glyph buttons, the behavior toggles at
+     rest. One mix off --composer-surface, so it lifts on paper and in dark
+     without a second declaration, and one step further on hover. This is what
+     replaced the carets: the fill is what says a control is a control. */
+  --composer-chip: color-mix(in oklab, var(--text) 5%, var(--composer-surface));
+  --composer-chip-hover: color-mix(in oklab, var(--text) 9%, var(--composer-surface));
+
   /* Ink-strength ladder. Level 7 is what Argmax ships: --ink-pull is 0% and
      each token resolves to the hex beside it. Below 7 the endpoint is the
      page; above 7 it is the theme extreme (black on paper, white on charcoal).

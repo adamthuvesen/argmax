@@ -987,6 +987,96 @@ done
         assert_eq!(events.last().and_then(|event| event.exit_code), Some(0));
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn claude_delegation_returns_findings_before_the_parent_finishes() {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+        use std::sync::Mutex;
+
+        let temp = tempfile::tempdir().unwrap();
+        let server = temp.path().join("fake-claude");
+        // Replay the installed CLI's foreground path when the launch setting
+        // is present, and the reported premature-completion race without it.
+        fs::write(
+            &server,
+            r#"#!/bin/sh
+for arg in "$@"; do
+  case "$arg" in
+    *'"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1"'*) CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 ;;
+  esac
+done
+while IFS= read -r line; do
+  case "$line" in
+    *'"subtype":"initialize"'*)
+      printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"argmax-initialize","response":{}}}'
+      ;;
+    *'"type":"user"'*)
+      printf '%s\n' "$line"
+      if [ "$CLAUDE_CODE_DISABLE_BACKGROUND_TASKS" != 1 ]; then
+        printf '%s\n' '{"type":"system","subtype":"task_started","task_id":"agent-1","tool_use_id":"toolu_agent","task_type":"local_agent","is_backgrounded":true}'
+        printf '%s\n' '{"type":"system","subtype":"task_notification","task_id":"agent-1","status":"completed"}'
+        printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"dispatched, waiting","queued_turn_count":0}'
+        sleep 0.3
+      else
+        printf '%s\n' '{"type":"system","subtype":"task_started","task_id":"agent-1","tool_use_id":"toolu_agent","task_type":"local_agent","is_backgrounded":false}'
+        printf '%s\n' '{"type":"system","subtype":"task_notification","task_id":"agent-1","status":"completed"}'
+      fi
+      printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_agent","content":"research findings"}]}}'
+      printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"integrated the agent work"}]}}'
+      printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"integrated the agent work"}'
+      ;;
+  esac
+done
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&server, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let database = Arc::new(Database::open_in_memory().unwrap());
+        let approvals = ApprovalService::new(database);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let captured = Arc::clone(&events);
+        let callback: EventCallback = Arc::new(move |event| {
+            captured.lock().unwrap().push(event);
+        });
+        let mut input = launch_input(
+            PermissionMode::ProviderDefaults,
+            super::super::AgentMode::Auto,
+        );
+        input.workspace_path = temp.path().to_path_buf();
+        input.prompt = "implement with a background agent".into();
+
+        let handle = launch_turn(server.to_str().unwrap(), &input, None, approvals, callback)
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !handle.disposed() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the turn ends once the agent has reported and the model answered again");
+
+        let events = events.lock().unwrap();
+        let position = |needle: &str| {
+            events
+                .iter()
+                .position(|event| event.message.contains(needle))
+                .unwrap_or_else(|| panic!("no event containing {needle:?}"))
+        };
+        let exit = events
+            .iter()
+            .position(|event| event.r#type == ProviderRuntimeEventType::Exit)
+            .expect("one exit event");
+        assert!(position("research findings") < position("integrated the agent work"));
+        assert!(!events
+            .iter()
+            .any(|event| event.message.contains("dispatched, waiting")));
+        assert!(position("integrated the agent work") < exit);
+        assert_eq!(events.last().and_then(|event| event.exit_code), Some(0));
+    }
+
     #[ignore = "uses the installed Claude CLI and the developer account"]
     #[tokio::test]
     async fn live_claude_turn_consumes_steering_without_cancellation() {

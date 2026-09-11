@@ -17,24 +17,29 @@ import {
 // to `level` (0..1) and streams left→right; `heat` (0..1, the effort on the
 // canonical low→ultra scale) sets the current's rate and how far the field is
 // pushed past its comfort zone. Brighter toward the fill edge so the mosaic
-// reads as intensity. The upper stops escalate in tiers:
-//   xhigh (0.6) — the leading edge runs white-hot and throws sparks
-//   max   (0.8) — brightness surges roll through the fill, sparks fly further
-//   ultra (1.0) — the field tears: rows shear, cells blow out or drop, bolts
-//                 of lightning jump off the edge, sparks erupt from everywhere
+// reads as intensity. Every stop adds a layer, so each step up is a visible
+// step, and the layers ramp continuously in between:
+//   low    (0.0) — a dim, slow current
+//   medium (0.2) — faster and brighter; hot runners race through the current
+//   high   (0.4) — the leading edge glows and throws its first sparks
+//   xhigh  (0.6) — the edge runs white-hot; brightness surges roll through
+//   max    (0.8) — rows start to shear; sparks pour off the edge
+//   ultra  (1.0) — the field tears apart: cells blow out or drop, bolts of
+//                  lightning jump off the edge, sparks erupt from everywhere
 // Purely decorative — the slider on top owns interaction.
 
 // Scroll rate (phase units per ms) = BASE + RANGE * heat^CURVE. `heat` is the
 // continuous thumb position, so during a drag the rate rises smoothly the whole
-// way from one stop to the next. The mild curve keeps the stops clearly
-// separated (medium well below high, high below xhigh) without flattening the
-// mid-range into a dead zone — so the acceleration is visible as you move.
-const BASE_SPEED = 0.0026; // barely-crawling drift at the lowest effort
-const SPEED_RANGE = 0.036; // extra rate at the highest effort
-const SPEED_CURVE = 1.6; // >1 keeps the slow end slower; gentle enough to ramp smoothly
-// Overall accent brightness scales with effort: dimmer at low, vivid toward
-// xhigh. BRIGHT_FLOOR is the alpha multiplier at the slowest speed.
-const BRIGHT_FLOOR = 0.5;
+// way from one stop to the next. The curve roughly doubles the rate per stop
+// (low 0.002 → medium 0.005 → high 0.012 → xhigh 0.022 → max 0.035 → ultra
+// 0.05, then chaos kicks ultra to 0.08), so every step reads as a step.
+const BASE_SPEED = 0.002; // barely-crawling drift at the lowest effort
+const SPEED_RANGE = 0.05; // extra rate at the highest effort
+const SPEED_CURVE = 1.8; // >1 keeps the slow end slower
+const CHAOS_SPEED_KICK = 0.6; // extra rate multiplier at full chaos
+// Overall accent brightness scales with effort: muted at low, vivid at the
+// top. BRIGHT_FLOOR is the alpha multiplier at the lowest effort.
+const BRIGHT_FLOOR = 0.35;
 
 // The canvas overscans the rail so sparks thrown off the beam aren't clipped;
 // the fill is still drawn only inside the rail band (offset by OVERSCAN_TOP).
@@ -42,12 +47,24 @@ const OVERSCAN_TOP = 15; // px above the rail
 const OVERSCAN_BOTTOM = 15; // px below the rail
 const OVERSCAN_RIGHT = 14; // px past the rail's right edge (ahead of the beam)
 
-// Tier thresholds on the canonical scale (index / 5): xhigh 0.6, max 0.8,
-// ultra 1.0. Each tier's drive is 0 at its threshold and 1 at ultra, so a
-// drag ramps every effect in rather than switching it on.
-const HOT_ON = 0.5; // white-hot edge + sparks (0.2 at xhigh, 0.6 at max)
-const SURGE_ON = 0.7; // brightness waves (0.33 at max)
-const CHAOS_ON = 0.9; // tears, blowouts, lightning (ultra only)
+// Layer thresholds on the canonical scale (index / 5: medium 0.2, high 0.4,
+// xhigh 0.6, max 0.8, ultra 1.0). Each layer's drive is 0 at its threshold
+// and 1 at ultra, so a drag ramps every effect in rather than switching it on,
+// and each sits just under the stop that should first show it.
+const RUNNER_ON = 0.1; // hot runners through the current (from medium)
+const HOT_ON = 0.3; // glowing edge + sparks (from high)
+const SURGE_ON = 0.5; // brightness waves (from xhigh)
+const TEAR_ON = 0.7; // row shear (from max)
+const CHAOS_ON = 0.9; // blowouts, dropouts, lightning, in-fill sparks (ultra)
+
+// Runners: single hot cells that race left→right along a row, well ahead of
+// the current, trailing a short fading tail. One that reaches the edge is
+// thrown off it as a spark once the edge is hot.
+const RUNNER_RATE = 0.9; // runners spawned per ~16ms frame at ultra
+const RUNNER_SPEED = 0.16; // px/ms at the lowest drive
+const RUNNER_SPEED_RANGE = 0.34; // extra px/ms at full drive
+const RUNNER_TAIL = 3; // cells
+const RUNNER_MAX = 40;
 
 // White-hot edge: the last EDGE_CELLS columns of the fill bleach toward white,
 // flickering, in proportion to the hot drive.
@@ -65,13 +82,13 @@ const SPARK_RATE = 7; // sparks spawned per ~16ms frame at ultra
 const SPARK_SPEED = 0.055; // base ejection velocity (px/ms)
 const SPARK_LIFE = 620; // ms before a spark fully fades
 const SPARK_GRAVITY = 0.00016; // px/ms² downward pull, so arcs curve back down
-const SPARK_MAX = 360; // hard cap on live sparks
+const SPARK_MAX = 400; // hard cap on live sparks
 const SPARK_SPREAD = Math.PI * 0.82; // half-fan (±) around the +x axis: right, up, down, diagonals
 
 // Chaos: per-row shear (tears) held for TEAR_HOLD, random cells flashing
 // white (blowouts) or vanishing (dropouts), and lightning bolts — short jagged
 // runs of white cells jumping off the edge — that linger a couple of paints.
-const TEAR_CHANCE = 0.09; // per row per paint at full chaos
+const TEAR_CHANCE = 0.09; // per row per paint at full tear drive
 const TEAR_MAX_CELLS = 3;
 const TEAR_HOLD = 140; // ms a shear holds before the row snaps back
 const BLOWOUT_CHANCE = 0.025; // per cell per paint at full chaos
@@ -82,6 +99,7 @@ const BOLT_MIN_CELLS = 5;
 const BOLT_MAX_CELLS = 11;
 
 type Spark = { x: number; y: number; vx: number; vy: number; life: number; size: number };
+type Runner = { x: number; row: number; speed: number };
 type Bolt = { cells: number[]; life: number }; // flat [x, y, x, y, …] in canvas px
 
 function clamp01(value: number): number {
@@ -136,6 +154,7 @@ export function EffortPixelField({ level, heat }: { level: number; heat: number 
     let lastPaint = 0;
     let pendingDt = 0; // wall-clock accumulated across skipped (throttled) frames
     const sparks: Spark[] = [];
+    const runners: Runner[] = [];
     const bolts: Bolt[] = [];
     let tearShift: number[] = []; // per row, in cells
     let tearTtl: number[] = []; // per row, ms left on the shear
@@ -163,13 +182,14 @@ export function EffortPixelField({ level, heat }: { level: number; heat: number 
       ctx.fillStyle = `rgba(${r},${g},${b},${alpha.toFixed(3)})`;
     };
 
-    const advanceTears = (dt: number, chaos: number): void => {
+    const advanceTears = (dt: number, tear: number): void => {
       for (let r = 0; r < tearShift.length; r += 1) {
         if ((tearTtl[r] ?? 0) > 0) {
           tearTtl[r] = (tearTtl[r] ?? 0) - dt;
           if ((tearTtl[r] ?? 0) <= 0) tearShift[r] = 0;
-        } else if (chaos > 0 && Math.random() < chaos * TEAR_CHANCE) {
-          const magnitude = 1 + Math.floor(Math.random() * TEAR_MAX_CELLS);
+        } else if (tear > 0 && Math.random() < tear * TEAR_CHANCE) {
+          // Gentle single-cell nudges first; the full shear waits for ultra.
+          const magnitude = 1 + Math.floor(Math.random() * TEAR_MAX_CELLS * tear);
           tearShift[r] = Math.random() < 0.5 ? -magnitude : magnitude;
           tearTtl[r] = TEAR_HOLD * (0.5 + Math.random());
         }
@@ -225,17 +245,18 @@ export function EffortPixelField({ level, heat }: { level: number; heat: number 
       }
     };
 
-    const spawnSpark = (hot: number, chaos: number): void => {
+    const spawnSpark = (hot: number, chaos: number, y?: number): void => {
+      if (sparks.length >= SPARK_MAX) return;
       const edgeX = railW * shownLevel;
       // At ultra a share of sparks erupt from inside the fill, in every
       // direction; otherwise they fan off the edge, centred on +x.
-      const fromWithin = chaos > 0 && Math.random() < chaos * 0.25;
+      const fromWithin = y === undefined && chaos > 0 && Math.random() < chaos * 0.25;
       const spread = fromWithin ? Math.PI : SPARK_SPREAD;
       const angle = (Math.random() * 2 - 1) * spread;
-      const vel = SPARK_SPEED * (0.5 + Math.random()) * (1 + chaos * 0.7);
+      const vel = SPARK_SPEED * (0.5 + Math.random()) * (1 + hot * 0.5 + chaos * 0.7);
       sparks.push({
         x: fromWithin ? Math.random() * edgeX : edgeX + (Math.random() * 2 - 1) * 2,
-        y: OVERSCAN_TOP + Math.random() * railH,
+        y: y ?? OVERSCAN_TOP + Math.random() * railH,
         vx: Math.cos(angle) * vel,
         vy: Math.sin(angle) * vel,
         life: SPARK_LIFE * (0.6 + 0.5 * Math.random()) * (1 + chaos * 0.4),
@@ -243,12 +264,52 @@ export function EffortPixelField({ level, heat }: { level: number; heat: number 
       });
     };
 
-    const updateSparks = (dt: number, hot: number, chaos: number): void => {
-      let load = Math.pow(hot, 1.5) * SPARK_RATE * (dt / 16);
-      while (load > 0 && sparks.length < SPARK_MAX) {
-        if (load >= 1 || Math.random() < load) spawnSpark(hot, chaos);
+    // Spawn `perFrame` items (fractional: the remainder is a probability).
+    const spawnLoad = (perFrame: number, dt: number, spawn: () => void): void => {
+      let load = perFrame * (dt / 16);
+      while (load > 0) {
+        if (load >= 1 || Math.random() < load) spawn();
         load -= 1;
       }
+    };
+
+    const updateRunners = (dt: number, runner: number, hot: number, chaos: number): void => {
+      const fillWidth = railW * shownLevel;
+      const rows = Math.ceil(railH / CELL);
+      if (runner > 0 && runners.length < RUNNER_MAX) {
+        spawnLoad(runner * RUNNER_RATE, dt, () => {
+          if (runners.length >= RUNNER_MAX) return;
+          runners.push({
+            x: -CELL * RUNNER_TAIL,
+            row: Math.floor(Math.random() * rows),
+            speed: (RUNNER_SPEED + RUNNER_SPEED_RANGE * runner) * (0.7 + 0.6 * Math.random())
+          });
+        });
+      }
+      for (let i = runners.length - 1; i >= 0; i -= 1) {
+        const run = runners[i];
+        if (!run) continue;
+        run.x += run.speed * dt;
+        if (run.x >= fillWidth) {
+          runners.splice(i, 1);
+          if (hot > 0) spawnSpark(hot, chaos, OVERSCAN_TOP + run.row * CELL);
+          continue;
+        }
+        const y = OVERSCAN_TOP + run.row * CELL;
+        const shift = (tearShift[run.row] ?? 0) * CELL;
+        const headCol = Math.floor(run.x / CELL);
+        for (let t = 0; t < RUNNER_TAIL; t += 1) {
+          const x = (headCol - t) * CELL;
+          if (x < 0 || x >= fillWidth) continue;
+          const fade = 1 - t / RUNNER_TAIL;
+          fill(crest, (0.45 + 0.4 * runner) * fade, 0.95 * fade);
+          ctx.fillRect(x + shift, y, CELL - 1, CELL - 1);
+        }
+      }
+    };
+
+    const updateSparks = (dt: number, hot: number, chaos: number): void => {
+      spawnLoad(Math.pow(hot, 1.5) * SPARK_RATE, dt, () => spawnSpark(hot, chaos));
       for (let i = sparks.length - 1; i >= 0; i -= 1) {
         const s = sparks[i];
         if (!s) continue;
@@ -304,13 +365,16 @@ export function EffortPixelField({ level, heat }: { level: number; heat: number 
     };
 
     const paint = (step: number): void => {
+      const runner = drive(shownHeat, RUNNER_ON);
       const hot = drive(shownHeat, HOT_ON);
       const surge = drive(shownHeat, SURGE_ON);
+      const tear = drive(shownHeat, TEAR_ON);
       const chaos = drive(shownHeat, CHAOS_ON);
       frame += 1;
       ctx.clearRect(0, 0, width, height);
-      advanceTears(step, chaos);
+      advanceTears(step, tear);
       drawFill(hot, surge, chaos);
+      updateRunners(step, runner, hot, chaos);
       updateBolts(step, chaos);
       updateSparks(step, hot, chaos);
     };
@@ -321,6 +385,7 @@ export function EffortPixelField({ level, heat }: { level: number; heat: number 
       shownLevel = levelRef.current;
       shownHeat = heatRef.current;
       sparks.length = 0;
+      runners.length = 0;
       bolts.length = 0;
       tearShift.fill(0);
       tearTtl.fill(0);
@@ -352,7 +417,7 @@ export function EffortPixelField({ level, heat }: { level: number; heat: number 
         const step = pendingDt;
         pendingDt = 0;
         const chaos = drive(shownHeat, CHAOS_ON);
-        const rate = (BASE_SPEED + SPEED_RANGE * Math.pow(shownHeat, SPEED_CURVE)) * (1 + chaos * 0.5);
+        const rate = (BASE_SPEED + SPEED_RANGE * Math.pow(shownHeat, SPEED_CURVE)) * (1 + chaos * CHAOS_SPEED_KICK);
         scroll += step * rate;
         surgePhase += step * SURGE_SPEED;
         paint(step);

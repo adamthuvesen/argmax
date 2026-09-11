@@ -280,7 +280,8 @@ type EffortPosStyle = CSSProperties & { "--effort-pos"?: string };
 // Heat tiers the popover exposes to CSS (cursor glow, surge pulse, the ultra
 // shake and label glitch). The canvas ramps continuously; these are the
 // discrete cues around it.
-const EFFORT_HEAT_TIER: Partial<Record<ReasoningEffort, "xhigh" | "max" | "ultra">> = {
+const EFFORT_HEAT_TIER: Partial<Record<ReasoningEffort, "high" | "xhigh" | "max" | "ultra">> = {
+  high: "high",
   xhigh: "xhigh",
   max: "max",
   ultra: "ultra"

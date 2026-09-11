@@ -241,6 +241,15 @@ pub struct NormalizerSessionContext {
     /// here for the result line a few milliseconds later. Per invocation is
     /// enough: a create and its result never straddle a relaunch.
     pub claude_pending_task_creates: HashMap<String, String>,
+    /// OpenCode call ids that already emitted a `command.started` for this
+    /// invocation. The server transport forwards a native task's running
+    /// state (the launch) and then its terminal state; only the first
+    /// in-flight envelope may open the row, and the terminal one must close
+    /// the row it opened rather than open a second.
+    pub opencode_started_tool_calls: HashSet<String>,
+    /// Same bookkeeping for `agent.started` lifecycle rows, kept separate so
+    /// the command row and the agent row dedupe independently of call order.
+    pub opencode_started_agent_runs: HashSet<String>,
 }
 
 impl NormalizerSessionContext {
@@ -528,11 +537,13 @@ fn normalize_json_payload(
     };
 
     if provider == ProviderId::Opencode {
-        let mut events = normalize_opencode_event(event, &payload, provider_type.as_deref());
+        let mut events =
+            normalize_opencode_event(event, &payload, provider_type.as_deref(), context);
         events.extend(normalize_opencode_native_agent_lifecycle_events(
             event,
             &payload,
             provider_type.as_deref(),
+            &mut context.opencode_started_agent_runs,
         ));
         return NormalizedProviderResult {
             events,

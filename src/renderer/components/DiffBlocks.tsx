@@ -4,40 +4,19 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
 import { ChevronsUpDown, Plus } from "lucide-react";
 import { type ParsedDiffBlock } from "../lib/diff.js";
-import { highlightLine, langFromPath, useHighlighterReady } from "../lib/highlighter.js";
-import { themeAppearance } from "../lib/theme.js";
+import {
+  highlightLine,
+  langFromPath,
+  useHighlighterReady,
+  useHighlightThemeAppearance,
+  type HighlightAppearance
+} from "../lib/highlighter.js";
 import type { DiffNoteAnchor } from "../lib/composerAnnotations.js";
-
-function subscribeToThemeAttribute(onChange: () => void): () => void {
-  if (typeof document === "undefined") return () => {};
-  const observer = new MutationObserver(onChange);
-  observer.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ["data-theme"]
-  });
-  return () => observer.disconnect();
-}
-
-function readThemeAppearance(): "light" | "dark" {
-  if (typeof document === "undefined") return "light";
-  return themeAppearance(document.documentElement.getAttribute("data-theme"));
-}
-
-/**
- * `highlightLine` resolves the shiki theme from the live `data-theme`
- * attribute, not from props, so the memo below would otherwise freeze token
- * colors across a theme switch. Subscribing makes the appearance part of this
- * component's render identity: a flip re-renders past the memo and re-tokenizes.
- */
-function useHighlightThemeAppearance(): "light" | "dark" {
-  return useSyncExternalStore(subscribeToThemeAttribute, readThemeAppearance, () => "light");
-}
 
 type DiffHunk = Extract<ParsedDiffBlock, { kind: "hunk" }>;
 
@@ -384,16 +363,16 @@ function DiffCommentForm({
 }
 
 // Selection changes must not tokenize unchanged code again. Appearance stays
-// in the memo's props because the highlighter reads the theme from the DOM.
-const DiffLineContent = memo(function DiffLineContent({ content, lang }: {
+// in the memo's props because it selects the Shiki theme for each line.
+const DiffLineContent = memo(function DiffLineContent({ content, lang, appearance }: {
   content: string;
   lang: string | null;
-  appearance: "light" | "dark";
+  appearance: HighlightAppearance;
 }): JSX.Element {
   if (!lang) {
     return <>{content}</>;
   }
-  const tokens = highlightLine(content, lang);
+  const tokens = highlightLine(content, lang, appearance);
   if (tokens.length === 1 && tokens[0] && !tokens[0].color) {
     // Shiki returned a single uncolored token — equivalent to the plain
     // fallback. Skip the span wrapper noise.

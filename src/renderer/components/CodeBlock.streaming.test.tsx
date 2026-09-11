@@ -9,12 +9,14 @@ const highlightCodeMock = vi.hoisted(() =>
 const plainCodeLinesMock = vi.hoisted(() =>
   vi.fn((code: string) => code.split("\n").map((line) => [{ content: line }]))
 );
+const useHighlightThemeAppearanceMock = vi.hoisted(() => vi.fn<() => "light" | "dark">(() => "light"));
 
 vi.mock("../lib/highlighter.js", () => ({
   highlightCode: highlightCodeMock,
   plainCodeLines: plainCodeLinesMock,
   resolveFenceLang: (tag: string | null | undefined) => (tag ? "typescript" : null),
-  useHighlighterReady: () => true
+  useHighlighterReady: () => true,
+  useHighlightThemeAppearance: useHighlightThemeAppearanceMock
 }));
 
 import { CodeBlock } from "./CodeBlock.js";
@@ -28,6 +30,7 @@ describe("CodeBlock streaming highlight", () => {
     vi.useRealTimers();
     cleanup();
     vi.clearAllMocks();
+    useHighlightThemeAppearanceMock.mockReturnValue("light");
   });
 
   it("highlights synchronously when not streaming", () => {
@@ -51,6 +54,17 @@ describe("CodeBlock streaming highlight", () => {
       vi.advanceTimersByTime(150);
     });
     expect(screen.getByText("HL:const x = 1;")).toBeInTheDocument();
+    expect(highlightCodeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-highlights completed code when the appearance changes", () => {
+    const { rerender } = render(<CodeBlock className="language-ts">const x = 1;</CodeBlock>);
+    expect(highlightCodeMock).toHaveBeenCalledTimes(1);
+
+    highlightCodeMock.mockClear();
+    useHighlightThemeAppearanceMock.mockReturnValue("dark");
+    rerender(<CodeBlock className="language-ts">const x = 1;</CodeBlock>);
+
     expect(highlightCodeMock).toHaveBeenCalledTimes(1);
   });
 });

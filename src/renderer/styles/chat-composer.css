@@ -297,16 +297,16 @@
   text-overflow: ellipsis;
 }
 
-/* Fenced code block. A language header is only in flow when the fence names a
-   language. Untagged and ```text fences overlay the copy button so a one-line
-   block is not sitting under a blank 30px strip. */
+/* Fenced code block. The toolbar stays in flow for every fence so the actions
+   never cover the first line of a short untagged or plaintext block. */
 .code-block {
   position: relative;
+  min-width: 0;
+  max-width: 100%;
   margin: 14px 0;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius-md);
-  background: var(--panel-soft);
-  box-shadow: var(--shadow-1);
+  border: 1px solid color-mix(in oklab, var(--line-soft) 86%, transparent);
+  border-radius: var(--radius-xl);
+  background: var(--tool-block-surface);
   overflow: hidden;
 }
 
@@ -314,81 +314,101 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 30px;
-  padding: 0 8px 0 14px;
-  background: linear-gradient(180deg, color-mix(in oklab, var(--panel) 85%, transparent), transparent);
-  border-bottom: 1px solid var(--line-soft);
+  min-height: 38px;
+  padding: 0 10px 0 14px;
+  background: transparent;
+  border-bottom: 1px solid color-mix(in oklab, var(--line-soft) 72%, transparent);
 }
 
-.code-block:not([data-label]) .code-block-header {
-  position: absolute;
-  top: 0;
-  right: 0;
-  height: auto;
-  padding: var(--space-1_5);
-  background: none;
-  border: 0;
-  z-index: 1;
+.code-block-heading,
+.code-block-actions {
+  display: flex;
+  align-items: center;
+}
+
+.code-block-heading {
+  min-width: 0;
+  gap: var(--space-2);
+  color: var(--muted-strong);
+}
+
+.code-block-icon {
+  flex: 0 0 auto;
+  color: var(--muted);
 }
 
 .code-block-lang {
   display: inline-flex;
   align-items: center;
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs-plus);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
   font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted-strong);
+  letter-spacing: -0.01em;
+  color: var(--text-soft);
 }
 
-.code-block-copy {
+.code-block-actions {
+  flex: 0 0 auto;
+  gap: 2px;
+}
+
+.code-block-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   background: transparent;
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   color: var(--muted);
   cursor: pointer;
-  opacity: 0.55;
+  opacity: 0.82;
   transition: background var(--duration-fast) var(--ease),
               color var(--duration-fast) var(--ease),
               opacity var(--duration-fast) var(--ease);
 }
 
-.code-block:not([data-label]) .code-block-copy {
-  background: var(--panel-soft);
-}
-
-.code-block:hover .code-block-copy,
-.code-block:focus-within .code-block-copy {
+.code-block:hover .code-block-action,
+.code-block:focus-within .code-block-action {
   opacity: 1;
 }
 
-.code-block-copy:hover {
+.code-block-action:hover,
+.code-block-action[aria-pressed="true"] {
   background: var(--panel-sunken);
   color: var(--text);
 }
 
+.code-block-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .code-block pre {
   margin: 0;
-  padding: 14px 16px;
+  min-width: 0;
+  padding: 16px 18px 18px;
   background: transparent;
   border: 0;
   border-radius: 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-code);
   font-size: var(--text-sm-plus);
-  line-height: 1.6;
+  line-height: 1.58;
   color: var(--text);
   overflow-x: auto;
+  white-space: pre;
   font-feature-settings: var(--code-font-features);
 }
 
-.code-block:not([data-label]) pre {
-  padding-right: 40px;
+.code-block[data-wrap="true"] pre {
+  overflow-x: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .code-block pre code {
@@ -398,6 +418,7 @@
   border: 0;
   font-size: inherit;
   color: inherit;
+  white-space: inherit;
 }
 
 .code-block-line {
@@ -406,6 +427,24 @@
 
 .code-block .hl-token {
   animation: hl-token-in 220ms var(--ease) both;
+}
+
+.code-block-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .code-block .hl-token {
+    animation: none;
+  }
 }
 
 @keyframes hl-token-in {

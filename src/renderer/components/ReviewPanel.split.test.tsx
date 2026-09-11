@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../lib/highlighter.js", () => ({
   highlightLine: vi.fn((content: string) => [{ content }]),
   useHighlighterReady: vi.fn(() => true),
+  useHighlightThemeAppearance: vi.fn(() => "light"),
   langFromPath: vi.fn(() => null)
 }));
 

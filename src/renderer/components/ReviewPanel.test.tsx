@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 vi.mock("../lib/highlighter.js", () => ({
   highlightLine: vi.fn((content: string) => [{ content }]),
   useHighlighterReady: vi.fn(() => true),
+  useHighlightThemeAppearance: vi.fn(() => "light"),
   langFromPath: vi.fn(() => null)
 }));
 

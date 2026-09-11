@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   createHighlighterCore,
   type HighlighterCore,
@@ -18,11 +18,38 @@ export interface HighlightToken {
 const LIGHT_THEME = "vitesse-light";
 const DARK_THEME = "vitesse-dark";
 
-function activeThemeName(): string {
+export type HighlightAppearance = "light" | "dark";
+
+function activeThemeName(appearance?: HighlightAppearance): string {
+  if (appearance) return appearance === "dark" ? DARK_THEME : LIGHT_THEME;
   if (typeof document === "undefined") return LIGHT_THEME;
   return themeAppearance(document.documentElement.getAttribute("data-theme")) === "dark"
     ? DARK_THEME
     : LIGHT_THEME;
+}
+
+function subscribeToThemeAttribute(onChange: () => void): () => void {
+  if (typeof document === "undefined") return () => {};
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-theme"]
+  });
+  return () => observer.disconnect();
+}
+
+function readThemeAppearance(): "light" | "dark" {
+  if (typeof document === "undefined") return "light";
+  return themeAppearance(document.documentElement.getAttribute("data-theme"));
+}
+
+/**
+ * Shiki resolves its palette from the live document theme. Components that
+ * memoize token output must subscribe to the same attribute or a theme switch
+ * would repaint the surface while leaving the old token colors in place.
+ */
+export function useHighlightThemeAppearance(): "light" | "dark" {
+  return useSyncExternalStore(subscribeToThemeAttribute, readThemeAppearance, () => "light");
 }
 
 // Each curated grammar is a thunk, not a static import: `createHighlighterCore`
@@ -111,12 +138,16 @@ export function useHighlighterReady(): boolean {
   return ready;
 }
 
-export function highlightLine(content: string, lang: string | null): HighlightToken[] {
+export function highlightLine(
+  content: string,
+  lang: string | null,
+  appearance?: HighlightAppearance
+): HighlightToken[] {
   if (!lang) return [{ content }];
   const instance = ensureHighlighter();
   if (!instance) return [{ content }];
   try {
-    const result = instance.codeToTokens(content, { theme: activeThemeName(), lang });
+    const result = instance.codeToTokens(content, { theme: activeThemeName(appearance), lang });
     const firstLine = result.tokens[0];
     if (!firstLine) return [{ content }];
     return firstLine.map((token) => ({ content: token.content, color: token.color }));
@@ -135,12 +166,16 @@ export function plainCodeLines(code: string): HighlightToken[][] {
   return code.split("\n").map((line) => [{ content: line }]);
 }
 
-export function highlightCode(code: string, lang: string | null): HighlightToken[][] {
+export function highlightCode(
+  code: string,
+  lang: string | null,
+  appearance?: HighlightAppearance
+): HighlightToken[][] {
   if (!lang) return plainCodeLines(code);
   const instance = ensureHighlighter();
   if (!instance) return plainCodeLines(code);
   try {
-    const result = instance.codeToTokens(code, { theme: activeThemeName(), lang });
+    const result = instance.codeToTokens(code, { theme: activeThemeName(appearance), lang });
     return result.tokens.map((line) =>
       line.map((token) => ({ content: token.content, color: token.color }))
     );

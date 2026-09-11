@@ -13,11 +13,25 @@ describe("CodeBlock", () => {
 
   it("renders the language label when className declares one", () => {
     render(<CodeBlock className="language-ts">const x = 1;</CodeBlock>);
-    expect(screen.getByText("ts")).toBeInTheDocument();
+    expect(screen.getByText("TypeScript")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Copy code" }).closest("[data-label]")).toHaveAttribute(
       "data-label",
-      "ts"
+      "TypeScript"
     );
+  });
+
+  it("provides an in-flow wrap control for long lines", () => {
+    render(<CodeBlock className="language-ts">const x = 1;</CodeBlock>);
+    const wrapButton = screen.getByRole("button", { name: "Wrap lines" });
+
+    expect(wrapButton).toHaveAttribute("aria-pressed", "false");
+    expect(wrapButton.closest(".code-block-header")?.nextElementSibling?.tagName).toBe("PRE");
+
+    fireEvent.click(wrapButton);
+
+    expect(wrapButton).toHaveAttribute("aria-pressed", "true");
+    expect(wrapButton).toHaveAttribute("title", "Unwrap lines");
+    expect(wrapButton.closest(".code-block")).toHaveAttribute("data-wrap", "true");
   });
 
   it("hides the label for plain-text fences — TEXT over plain output is noise", () => {
@@ -41,6 +55,7 @@ describe("CodeBlock", () => {
       await Promise.resolve();
     });
     expect(button).toHaveAttribute("title", "Copied!");
+    expect(screen.getByRole("status")).toHaveTextContent("Code copied.");
     act(() => {
       vi.advanceTimersByTime(1500);
     });

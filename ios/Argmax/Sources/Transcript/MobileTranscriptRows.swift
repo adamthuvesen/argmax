@@ -106,20 +106,16 @@ struct MobileTranscriptRowView<Content: View>: View {
                 .padding(.top, Spacing.snug)
                 .padding(.bottom, Spacing.tight)
             } label: {
-                HStack(spacing: Spacing.snug) {
-                    if tools(in: items).contains(where: { $0.status == .running }) {
-                        WorkingNest(size: 16)
-                    }
-                    ForEach(iconTools(in: items)) { tool in
-                        TranscriptToolIcon(name: tool.name, activity: tool.activity)
-                    }
-                    Text(summary(items)).lineLimit(1)
-                    Spacer(minLength: 0)
-                }
-                .typeStyle(.footnote)
-                .foregroundStyle(Theme.muted)
-                .frame(minHeight: 44)
-                .contentShape(.rect)
+                let tools = tools(in: items)
+                TranscriptFoldLabel(
+                    tools: tools,
+                    summary: tools.isEmpty
+                        ? "Thought process and activity"
+                        : TranscriptToolActivity.summary(for: tools).headline,
+                    running: tools.contains { $0.status == .running },
+                    maxIcons: detail == .minimal ? 1 : 3,
+                    lineLimit: 1
+                )
             }
             .tint(Theme.muted)
             .onChange(of: detail) { expanded = false }
@@ -133,20 +129,6 @@ struct MobileTranscriptRowView<Content: View>: View {
         }
     }
 
-    private func iconTools(in items: [TranscriptItem]) -> [TranscriptTool] {
-        var seen = Set<String>()
-        return Array(tools(in: items).filter { tool in
-            let identity = TranscriptToolIcon.assetName(for: tool.name, activity: tool.activity)
-                ?? "activity:\(tool.activity.kind.rawValue)"
-            return seen.insert(identity).inserted
-        }.prefix(detail == .minimal ? 1 : 3))
-    }
-
-    private func summary(_ items: [TranscriptItem]) -> String {
-        let tools = tools(in: items)
-        if tools.isEmpty { return "Thought process and activity" }
-        return TranscriptToolActivity.summary(for: tools).headline
-    }
 }
 
 private struct ActivityToolsAreRevealedKey: EnvironmentKey {

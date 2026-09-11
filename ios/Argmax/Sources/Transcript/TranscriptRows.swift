@@ -180,39 +180,75 @@ struct TranscriptToolsRow: View {
                 }
             }
         } label: {
-            HStack(spacing: Spacing.snug) {
-                if running { WorkingNest(size: 16) }
-                ForEach(iconTools) { tool in
-                    TranscriptToolIcon(name: tool.name, activity: tool.activity)
-                }
-                Text(summary)
-                    .typeStyle(.footnote)
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .foregroundStyle(Theme.muted)
-            .frame(minHeight: 44)
-            .contentShape(.rect)
+            // A failed call is not news on its own: the agent reads the error
+            // and tries again in the next call, so counting failures here
+            // marked a recovered turn as a broken one. The failure lives in
+            // the row's expanded body, where the reader has asked for it.
+            TranscriptFoldLabel(tools: group.tools, summary: group.activitySummary,
+                                running: running, maxIcons: 3, lineLimit: 2)
         }
         .tint(Theme.muted)
         }
     }
+}
 
-    /// A failed call is not news on its own: the agent reads the error and tries
-    /// again in the next call, so counting failures here marked a recovered turn
-    /// as a broken one. The failure lives in the row's expanded body, where the
-    /// reader has asked for it.
-    private var summary: String {
-        group.activitySummary
+/// The collapsed line of a fold: the running mark, up to a few tool icons,
+/// and the headline. Each piece changes on its own clock while a turn
+/// works, so the label owns the pacing: the headline dwells long enough
+/// that a boundary's intermediate wording never paints, the mark keys on
+/// the live tail rather than the in-flight call, and what does change
+/// fades rather than snapping.
+struct TranscriptFoldLabel: View {
+    let tools: [TranscriptTool]
+    let summary: String
+    /// A call in flight in this fold. Kept alongside the tail signal so a
+    /// long call above the tail (an agent) still shows as running.
+    let running: Bool
+    let maxIcons: Int
+    let lineLimit: Int
+    @Environment(\.transcriptTailIsLive) private var tailIsLive
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var live: Bool { running || tailIsLive }
+    private var motion: Animation? { reduceMotion ? nil : .easeOut(duration: 0.18) }
+
+    var body: some View {
+        TranscriptDwelledValue(value: Shown(summary: summary, live: live, icons: iconTools)) { shown in
+            HStack(spacing: Spacing.snug) {
+                if shown.live {
+                    WorkingNest(size: 16).transition(.opacity)
+                }
+                ForEach(shown.icons) { tool in
+                    TranscriptToolIcon(name: tool.name, activity: tool.activity)
+                        .transition(.opacity)
+                }
+                Text(shown.summary)
+                    .lineLimit(lineLimit)
+                    .contentTransition(.opacity)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .geometryGroup()
+            .animation(motion, value: shown)
+        }
+        .typeStyle(.footnote)
+        .foregroundStyle(Theme.muted)
+        .frame(minHeight: 44)
+        .contentShape(.rect)
+    }
+
+    private struct Shown: Equatable {
+        var summary: String
+        var live: Bool
+        var icons: [TranscriptTool]
     }
 
     private var iconTools: [TranscriptTool] {
         var seen = Set<String>()
-        return Array(group.tools.filter { tool in
+        return Array(tools.filter { tool in
             let identity = TranscriptToolIcon.assetName(for: tool.name, activity: tool.activity)
                 ?? "activity:\(tool.activity.kind.rawValue)"
             return seen.insert(identity).inserted
-        }.prefix(3))
+        }.prefix(maxIcons))
     }
 }
 

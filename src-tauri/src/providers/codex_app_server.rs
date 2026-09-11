@@ -1022,6 +1022,16 @@ impl TurnScope {
                         continue;
                     }
                     self.children.insert(id.to_string());
+                    // closeAgent reports the child's last known state, which
+                    // can still be running after the close has succeeded.
+                    if method == "item/completed"
+                        && item.get("tool").and_then(Value::as_str) == Some("closeAgent")
+                        && item.get("status").and_then(Value::as_str) == Some("completed")
+                    {
+                        self.early_terminal_children.remove(id);
+                        self.running_children.remove(id);
+                        continue;
+                    }
                     if self.early_terminal_children.remove(id) {
                         self.running_children.remove(id);
                         continue;
@@ -1577,14 +1587,23 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn fake_app_server_process_completes_a_translated_turn() {
+        assert_fake_app_server_completes_turn(false).await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn fake_app_server_completes_after_close_agent_reports_stale_running_state() {
+        assert_fake_app_server_completes_turn(true).await;
+    }
+
+    #[cfg(unix)]
+    async fn assert_fake_app_server_completes_turn(close_child: bool) {
         use std::fs;
         use std::os::unix::fs::PermissionsExt;
 
         let temp = tempfile::tempdir().unwrap();
         let server = temp.path().join("fake-codex-app-server");
-        fs::write(
-            &server,
-            r#"#!/bin/sh
+        let script = r#"#!/bin/sh
 while IFS= read -r line; do
   case "$line" in
     *'"method":"initialize"'*)
@@ -1599,15 +1618,27 @@ while IFS= read -r line; do
       printf '%s\n' '{"jsonrpc":"2.0","method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","completedAtMs":1,"item":{"id":"message-1","type":"agentMessage","text":"Finished from fake server"}}}'
       printf '%s\n' '{"jsonrpc":"2.0","method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","completedAtMs":2,"item":{"id":"spawn-1","type":"collabAgentToolCall","tool":"spawnAgent","status":"completed","senderThreadId":"thread-1","receiverThreadIds":["child-1"],"agentsStates":{"child-1":{"status":"running","message":null}}}}}'
       printf '%s\n' '{"jsonrpc":"2.0","method":"item/completed","params":{"threadId":"child-1","turnId":"child-turn-1","completedAtMs":3,"item":{"id":"child-message","type":"agentMessage","text":"CHILD TEXT MUST NOT LEAK"}}}'
+__BEFORE_ROOT_COMPLETION__
       printf '%s\n' '{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed","items":[]}}}'
-      sleep 0.1
-      printf '%s\n' '{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"child-1","turn":{"id":"child-turn-1","status":"completed","items":[]}}}'
+__AFTER_ROOT_COMPLETION__
       ;;
   esac
 done
-"#,
-        )
-        .unwrap();
+"#;
+        let close_events = r#"      printf '%s\n' '{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"child-1","turn":{"id":"child-turn-1","status":"interrupted","items":[]}}}'
+      printf '%s\n' '{"jsonrpc":"2.0","method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","item":{"id":"close-1","type":"collabAgentToolCall","tool":"closeAgent","status":"completed","senderThreadId":"thread-1","receiverThreadIds":["child-1"],"agentsStates":{"child-1":{"status":"running"}}}}}'"#;
+        let child_completion = r#"      sleep 0.1
+      printf '%s\n' '{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"child-1","turn":{"id":"child-turn-1","status":"completed","items":[]}}}'"#;
+        let script = script
+            .replace(
+                "__BEFORE_ROOT_COMPLETION__",
+                if close_child { close_events } else { "" },
+            )
+            .replace(
+                "__AFTER_ROOT_COMPLETION__",
+                if close_child { "" } else { child_completion },
+            );
+        fs::write(&server, script).unwrap();
         fs::set_permissions(&server, fs::Permissions::from_mode(0o755)).unwrap();
 
         let database = Arc::new(Database::open(temp.path().join("argmax.sqlite")).unwrap());

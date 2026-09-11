@@ -226,7 +226,7 @@ pub(super) fn codex_child_events(
         let native_run = current_turn_id
             .and_then(|turn_id| runs_by_turn.get(turn_id).copied())
             .or(fallback_run);
-        if is_codex_task_complete(object) {
+        if let Some(status) = codex_trace_terminal_status(object) {
             if let Some(run) = native_run.filter(|run| !run.completed) {
                 events.push(codex_trace_completion_event(
                     context,
@@ -234,6 +234,7 @@ pub(super) fn codex_child_events(
                     &source,
                     run,
                     object,
+                    status,
                     line.timestamp.clone(),
                 ));
             }
@@ -290,14 +291,20 @@ fn codex_trace_turn_id(object: &Map<String, Value>) -> Option<&str> {
     })
 }
 
-fn is_codex_task_complete(object: &Map<String, Value>) -> bool {
-    object.get("type").and_then(Value::as_str) == Some("event_msg")
-        && object
-            .get("payload")
-            .and_then(Value::as_object)
-            .and_then(|payload| payload.get("type"))
-            .and_then(Value::as_str)
-            == Some("task_complete")
+fn codex_trace_terminal_status(object: &Map<String, Value>) -> Option<&'static str> {
+    if object.get("type").and_then(Value::as_str) != Some("event_msg") {
+        return None;
+    }
+    match object
+        .get("payload")
+        .and_then(Value::as_object)
+        .and_then(|payload| payload.get("type"))
+        .and_then(Value::as_str)
+    {
+        Some("task_complete") => Some("completed"),
+        Some("turn_aborted") => Some("cancelled"),
+        _ => None,
+    }
 }
 
 fn stamp_codex_native_run(payload: &mut Map<String, Value>, run: &CodexNativeRun) {
@@ -329,19 +336,24 @@ fn codex_trace_completion_event(
     source: &str,
     run: &CodexNativeRun,
     object: &Map<String, Value>,
+    status: &'static str,
     created_at: Option<String>,
 ) -> PersistTimelineEventInput {
     let payload = object.get("payload").and_then(Value::as_object);
-    let message = payload
-        .and_then(|payload| payload.get("last_agent_message"))
-        .and_then(Value::as_str)
-        .filter(|message| !message.trim().is_empty())
-        .unwrap_or("Agent completed")
-        .to_string();
+    let message = if status == "cancelled" {
+        "Agent stopped".to_string()
+    } else {
+        payload
+            .and_then(|payload| payload.get("last_agent_message"))
+            .and_then(Value::as_str)
+            .filter(|message| !message.trim().is_empty())
+            .unwrap_or("Agent completed")
+            .to_string()
+    };
     let mut stamped = Map::new();
     stamp_trace_payload(&mut stamped, context, child_id, source, usize::MAX);
     stamp_codex_native_run(&mut stamped, run);
-    stamped.insert("status".to_string(), Value::String("completed".to_string()));
+    stamped.insert("status".to_string(), Value::String(status.to_string()));
     PersistTimelineEventInput {
         id: format!(
             "trace-codex-agent-completed-{}-{}-{}-{}",
@@ -988,9 +1000,7 @@ mod tests {
             line(
                 json!({"type":"event_msg","payload":{"type":"agent_message","turn_id":"turn-1","message":"First answer"}}),
             ),
-            line(
-                json!({"type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1","last_agent_message":"First answer"}}),
-            ),
+            line(json!({"type":"event_msg","payload":{"type":"turn_aborted","turn_id":"turn-1"}})),
             line(json!({"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-2"}})),
             line(
                 json!({"type":"event_msg","payload":{"type":"agent_message","turn_id":"turn-2","message":"Second answer"}}),
@@ -1018,13 +1028,25 @@ mod tests {
         assert_eq!(first.payload["providerInvocationId"], "invoke-1");
         assert_eq!(second.payload["agentRunId"], "item_3");
         assert_eq!(second.payload["providerInvocationId"], "invoke-2");
-        assert_eq!(
-            events
-                .iter()
-                .filter(|event| event.r#type == "agent.completed")
-                .count(),
-            2
-        );
+        let completions = events
+            .iter()
+            .filter(|event| event.r#type == "agent.completed")
+            .collect::<Vec<_>>();
+        assert_eq!(completions.len(), 2);
+        let aborted = completions
+            .iter()
+            .find(|event| event.payload["agentRunId"] == "item_5")
+            .expect("aborted turn");
+        assert_eq!(aborted.payload["providerInvocationId"], "invoke-1");
+        assert_eq!(aborted.payload["status"], "cancelled");
+        assert_eq!(aborted.message, "Agent stopped");
+        let resumed = completions
+            .iter()
+            .find(|event| event.payload["agentRunId"] == "item_3")
+            .expect("resumed turn");
+        assert_eq!(resumed.payload["providerInvocationId"], "invoke-2");
+        assert_eq!(resumed.payload["status"], "completed");
+        assert_eq!(resumed.message, "Second answer");
     }
 
     #[test]

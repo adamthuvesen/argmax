@@ -208,7 +208,8 @@ fn async_question_input(item: &Map<String, Value>) -> Option<Value> {
 /// Codex reports native child work through collab tool rows. `spawn_agent` and
 /// an idle child's `send_input` open a logical run; input delivered while the
 /// child is still active stays inside that run. Transport completions only
-/// close the tracked run when `agents_states` reports a terminal child state.
+/// close the tracked run when `agents_states` reports a terminal child state
+/// or a close succeeds, even if its last-known child state is still running.
 pub fn normalize_native_agent_lifecycle_events(
     event: &ProviderOutputEvent,
     provider_type: Option<&str>,
@@ -269,6 +270,12 @@ pub fn normalize_native_agent_lifecycle_events(
                 status,
             ));
         }
+        let closed = tool_name == "close_agent" && delivery_succeeded;
+        let status = if closed && !status.is_some_and(is_terminal_agent_status) {
+            Some("cancelled")
+        } else {
+            status
+        };
         if !status.is_some_and(is_terminal_agent_status) {
             continue;
         }
@@ -279,7 +286,11 @@ pub fn normalize_native_agent_lifecycle_events(
         let message = state
             .and_then(|state| string_value(state.get("message")))
             .filter(|message| !message.trim().is_empty())
-            .unwrap_or("Agent completed");
+            .unwrap_or(if closed {
+                "Agent stopped"
+            } else {
+                "Agent completed"
+            });
         events.push(codex_agent_lifecycle_event(
             event,
             item,
@@ -1027,6 +1038,70 @@ mod tests {
             lifecycle.payload["providerChildSessionId"],
             "019f2214-c736-7f60-bb78-75b6ecff57a3"
         );
+    }
+
+    #[test]
+    fn codex_collab_close_agent_settles_only_after_success() {
+        let mut context = NormalizerSessionContext::default();
+        let completed = |id: &str, tool: &str, item_status: &str| {
+            output_event(
+                &json!({
+                    "type": "item.completed",
+                    "item": {
+                        "id": id, "type": "collab_tool_call", "tool": tool,
+                        "sender_thread_id": "parent", "receiver_thread_ids": ["child"],
+                        "agents_states": { "child": { "status": "running", "message": null } },
+                        "status": item_status
+                    }
+                })
+                .to_string(),
+            )
+        };
+        normalize_provider_event(
+            ProviderId::Codex,
+            &completed("spawn", "spawn_agent", "completed"),
+            &mut context,
+        );
+        for status in ["in_progress", "failed", "interrupted"] {
+            let result = normalize_provider_event(
+                ProviderId::Codex,
+                &completed("close", "close_agent", status),
+                &mut context,
+            );
+            assert!(!result
+                .events
+                .iter()
+                .any(|event| event.r#type == "agent.completed"));
+            assert_eq!(
+                context
+                    .codex_active_agent_runs
+                    .get("child")
+                    .map(String::as_str),
+                Some("spawn")
+            );
+        }
+        let closed = normalize_provider_event(
+            ProviderId::Codex,
+            &completed("close", "close_agent", "completed"),
+            &mut context,
+        );
+        let terminal = closed
+            .events
+            .iter()
+            .find(|event| event.r#type == "agent.completed")
+            .unwrap();
+        assert_eq!(terminal.payload["agentRunId"], "spawn");
+        assert_eq!(terminal.payload["status"], "cancelled");
+        assert_eq!(terminal.message, "Agent stopped");
+        let repeated = normalize_provider_event(
+            ProviderId::Codex,
+            &completed("close-again", "close_agent", "completed"),
+            &mut context,
+        );
+        assert!(!repeated
+            .events
+            .iter()
+            .any(|event| event.r#type == "agent.completed"));
     }
 
     #[test]

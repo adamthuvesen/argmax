@@ -165,7 +165,7 @@ export function AgentsView({
     const childrenByTabId = new Map(
       (multitasks ?? []).map((child) => [multitaskTabId(child.session.id), child])
     );
-    return tabIds.map((id) => {
+    const openOrder = tabIds.map((id): DockTab => {
       const tab = readAgentTab(id);
       if (tab.kind === "multitask") {
         const child = childrenByTabId.get(id) ?? null;
@@ -226,7 +226,18 @@ export function AgentsView({
         rootToolUseId: tab.toolUseId
       };
     });
+    // Newest launch leftmost, with everything still running ahead of the rest,
+    // so what is active is visible without scrolling the strip once it fills.
+    // `tabIds` is discovery order, oldest first; sorting is stable so ties keep it.
+    const launchIndex = new Map(openOrder.map((tab, index) => [tab.id, index]));
+    return [...openOrder].sort((a, b) => {
+      const activeFirst = Number(b.status === "running") - Number(a.status === "running");
+      if (activeFirst !== 0) return activeFirst;
+      return (launchIndex.get(b.id) ?? 0) - (launchIndex.get(a.id) ?? 0);
+    });
   }, [events, multitasks, parentSession?.provider, parentSession?.state, tabIds]);
+  // Keyboard navigation walks the strip as drawn, not the discovery order.
+  const orderedTabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs]);
 
   // Drop a tab whose launch row left the timeline: Codex supersedes a synthetic
   // spawn with the real one, and the tab that pointed at the old id would sit
@@ -274,7 +285,7 @@ export function AgentsView({
   const handleTabKeyDown = useCallback(
     (tabId: string) =>
       (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
-        const currentIndex = tabIds.indexOf(tabId);
+        const currentIndex = orderedTabIds.indexOf(tabId);
         if (currentIndex === -1) return;
         const focusTab = (next: string | undefined): void => {
           if (!next) return;
@@ -284,15 +295,15 @@ export function AgentsView({
         };
         if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
           const delta = event.key === "ArrowLeft" ? -1 : 1;
-          focusTab(tabIds[(currentIndex + delta + tabIds.length) % tabIds.length]);
+          focusTab(orderedTabIds[(currentIndex + delta + orderedTabIds.length) % orderedTabIds.length]);
           return;
         }
         if (event.key === "Home") {
-          focusTab(tabIds[0]);
+          focusTab(orderedTabIds[0]);
           return;
         }
         if (event.key === "End") {
-          focusTab(tabIds[tabIds.length - 1]);
+          focusTab(orderedTabIds[orderedTabIds.length - 1]);
           return;
         }
         if (event.key === "Delete" || event.key === "Backspace") {
@@ -300,7 +311,7 @@ export function AgentsView({
           agentTabs.closeTab(tabId);
         }
       },
-    [agentTabs, tabIds]
+    [agentTabs, orderedTabIds]
   );
 
   if (tabIds.length === 0) {

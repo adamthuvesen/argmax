@@ -235,11 +235,31 @@ describe("AgentsView", () => {
 
     const tabs = screen.getAllByRole("tab");
     expect(tabs).toHaveLength(2);
-    expect(tabs[0]).toHaveAttribute("aria-selected", "false");
-    expect(tabs[1]).toHaveAttribute("aria-selected", "true");
+    // The newer launch sits leftmost.
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+    expect(tabs[1]).toHaveAttribute("aria-selected", "false");
     // Both stay mounted so each keeps polling; only the active one is shown.
     expect(document.getElementById("review-agent-task-1")).toHaveAttribute("aria-hidden", "true");
     expect(document.getElementById("review-agent-task-2")).not.toHaveAttribute("aria-hidden");
+  });
+
+  it("puts running subagents first and the newest launch leftmost", () => {
+    const finished = (id: string) => event(`done-${id}`, "command.completed", "2026-05-12T15:00:05.000Z", "Task", {
+      id, name: "Task", status: "completed"
+    });
+    renderView(
+      agentTabs({ tabIds: ["task-1", "task-2", "task-3", "task-4"], activeTabId: "task-1" }),
+      [
+        launch("task-1", "Explore repo"), finished("task-1"),
+        launch("task-2", "Write tests"),
+        launch("task-3", "Review diff"), finished("task-3"),
+        launch("task-4", "Fix lint")
+      ]
+    );
+
+    // task-4 and task-2 still run; task-3 and task-1 are done. Newest first within each.
+    expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("title")))
+      .toEqual(["Fix lint", "Write tests", "Review diff", "Explore repo"]);
   });
 
   it("names the active subagent, its role, and its model in the pane header", () => {

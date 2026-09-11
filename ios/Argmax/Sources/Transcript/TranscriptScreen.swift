@@ -138,27 +138,32 @@ struct TranscriptScreen: View {
     @ViewBuilder
     private var menu: some View {
         // A `Menu` rather than a sheet of our own: the long-press lift, the
-        // dismissal and the placement are the platform's, and the rows take
-        // our tint.
+        // dismissal and the placement are the platform's, and so are its
+        // materials and label colours — so the icons read as label colour
+        // like every other iOS menu rather than carrying the app tint
+        // through, the same as the chat row's context menu.
         Menu {
-            // A side chat runs in an app-owned scratch directory with one
-            // empty commit, so this would open a permanently empty diff.
-            if row.workspace.kind == .git {
-                Button("Changes", systemImage: "arrow.triangle.branch") {
-                    transcript.openReview()
+            Group {
+                // A side chat runs in an app-owned scratch directory with one
+                // empty commit, so this would open a permanently empty diff.
+                if row.workspace.kind == .git {
+                    Button("Changes", systemImage: "arrow.triangle.branch") {
+                        transcript.openReview()
+                    }
                 }
+                Button("Fork chat", systemImage: "arrow.triangle.pull") { fork() }
+                    .disabled(!isForkable || forking)
+                Button("New chat here", systemImage: "plus.bubble") {
+                    navigator.newChat = NewChatRequest(workspaceID: row.workspace.id)
+                }
+                Divider()
+                // Phase 5 hands this to the Mac over the bridge; until then it
+                // is visible so the menu's shape is honest, and off so it cannot
+                // lie.
+                Button("Open on Mac", systemImage: "laptopcomputer") {}
+                    .disabled(true)
             }
-            Button("Fork chat", systemImage: "arrow.triangle.pull") { fork() }
-                .disabled(!isForkable || forking)
-            Button("New chat here", systemImage: "plus.bubble") {
-                navigator.newChat = NewChatRequest(workspaceID: row.workspace.id)
-            }
-            Divider()
-            // Phase 5 hands this to the Mac over the bridge; until then it
-            // is visible so the menu's shape is honest, and off so it cannot
-            // lie.
-            Button("Open on Mac", systemImage: "laptopcomputer") {}
-                .disabled(true)
+            .tint(Color.primary)
         } label: {
             Image(systemName: "ellipsis")
                 .font(.body.weight(.semibold))

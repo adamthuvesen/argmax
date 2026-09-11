@@ -2263,6 +2263,7 @@ mod tests {
                     44,
                     compute_migration_checksum(crate::persistence::activity::MIGRATION_SQL)
                 ),
+                (45, compute_migration_checksum(SYNCED_SESSION_TOMBSTONES)),
             ]
         );
 

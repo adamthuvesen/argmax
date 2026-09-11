@@ -46,7 +46,7 @@ function fontWeight(rule: string): number {
 }
 
 describe("CSS contracts that cannot be exercised in jsdom", () => {
-  it.each(["purple", "orange", "blue", "coral"])("keeps %s highlights and bubbles readable in both themes", (accent) => {
+  it.each(["teal", "purple", "orange", "blue", "coral"])("keeps %s highlights and bubbles readable in both themes", (accent) => {
     const tokens = readSource("src/renderer/styles/tokens.css");
     for (const theme of ["light", "dark"]) {
       const base = cssRuleBody(tokens, theme === "dark" ? ':root[data-theme="dark"]' : ":root");

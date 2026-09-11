@@ -28,7 +28,7 @@
       .frames iframe { border: 0; width: 100%; height: 100%; display: block; }
 
       /* One theme row: seven accent columns. */
-      .row { display: grid; grid-template-columns: repeat(7, 1fr); min-height: 100dvh; }
+      .row { display: grid; grid-template-columns: repeat(8, 1fr); min-height: 100dvh; }
       .cell {
         padding: 22px 20px;
         border-right: 1px solid var(--line);
@@ -105,7 +105,7 @@
       const params = new URLSearchParams(location.search);
       const theme = params.get("theme");
       const set = params.get("set") ?? "";
-      const accents = ["green", "purple", "neutral", "black", "orange", "blue", "coral"];
+      const accents = ["green", "teal", "purple", "neutral", "black", "orange", "blue", "coral"];
 
       if (!theme) {
         // Outer page: light row above dark row, same set in both.

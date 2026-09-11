@@ -256,6 +256,11 @@
   --accent-swatch-soft: #faece0;
 }
 
+.accent-picker-chip[data-accent-id="teal"] {
+  --accent-swatch-color: #207070;
+  --accent-swatch-soft: #e3f0f0;
+}
+
 .accent-picker-chip[data-accent-id="blue"] {
   --accent-swatch-color: #396696;
   --accent-swatch-soft: #e8eef5;
@@ -272,6 +277,10 @@
 
 :root[data-theme="dark"] .accent-picker-chip[data-accent-id="orange"] {
   --accent-swatch-color: #e79647;
+}
+
+:root[data-theme="dark"] .accent-picker-chip[data-accent-id="teal"] {
+  --accent-swatch-color: #65b0b0;
 }
 
 :root[data-theme="dark"] .accent-picker-chip[data-accent-id="blue"] {

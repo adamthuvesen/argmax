@@ -51,6 +51,7 @@ final class ThemeTests: XCTestCase {
     func testEveryAccentTintResolvesInBothAppearances() {
         let expected: [AccentTint: (String, String)] = [
             .green: ("#446C56", "#6DAB86"),
+            .teal: ("#1F7474", "#5CB4B3"),
             .purple: ("#613E9A", "#714FB0"),
             .neutral: ("#6C6960", "#A8A49B"),
             .black: ("#1C1B18", "#F4F2EC"),

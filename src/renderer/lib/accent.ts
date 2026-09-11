@@ -1,5 +1,6 @@
 export type AccentId =
   | "green"
+  | "teal"
   | "purple"
   | "neutral"
   | "black"
@@ -26,6 +27,12 @@ export const ACCENT_OPTIONS: AccentOption[] = [
     label: "Green",
     hint: "The original Argmax tint. Code additions and status greens stay semantic either way.",
     swatch: { color: "#446c56", soft: "#e7efe7" }
+  },
+  {
+    id: "teal",
+    label: "Teal",
+    hint: "Deep water between the sage and the blue. Cool, quiet, and never a status colour.",
+    swatch: { color: "#207070", soft: "#e3f0f0" }
   },
   {
     id: "purple",

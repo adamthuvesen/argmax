@@ -18,7 +18,7 @@ the soft / accent / deep steps as bare swatches.
 
 `?set=previous` overlays the values shipped before 2026-09-12 so the two can
 be flicked between. `previous.png` and `shipped.png` are those two captures
-(`scripts/ui-screenshot.mjs --url … --width 1920 --height 880`).
+(`scripts/ui-screenshot.mjs --url … --width 1920 --height 960`).
 
 ## Decision (2026-09-12)
 
@@ -64,6 +64,7 @@ What that fixed:
 | accent | light `--accent` | light `--accent-deep` | dark `--accent` | dark `--accent-deep` | dark bubble |
 | --- | --- | --- | --- | --- | --- |
 | green | `#446c56` L.50 C.058 H159 | `#2e503e` | `#6dab86` L.69 | `#8cc3a1` L.77 | `#3a664c` L.47 |
+| teal | `#207070` L.50 C.075 H195 | `#005656` | `#65b0b0` L.71 | `#85c5c4` L.78 | `#206262` L.46 |
 | purple | `#70558f` L.50 C.094 H305 | `#553b73` | `#ad94d0` L.71 | `#c1ace1` L.78 | `#5c4778` L.44 |
 | neutral | `#6c6960` L.52 C.014 H92 | `#4a473e` | `#a8a49b` L.72 | `#c2beb4` L.80 | `#4f4d47` L.42 |
 | orange | `#af5b00` L.56 C.137 H56 | `#8b4500` | `#e79647` L.74 | `#fab36d` L.82 | `#a65100` L.53 |

@@ -255,7 +255,7 @@ struct Segmented<Option: Hashable & Identifiable>: View {
     }
 }
 
-/// The desktop's seven tints as swatches. A colour is the only honest label
+/// The desktop's eight tints as swatches. A colour is the only honest label
 /// for a colour, so the chips carry no text — the name goes to VoiceOver.
 struct AccentChips: View {
     @Binding var selection: AccentTint

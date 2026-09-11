@@ -140,7 +140,7 @@ extension UIColor {
 
 // MARK: - Accent
 
-/// The desktop's seven tints, in the order Settings → Appearance lists them
+/// The desktop's eight tints, in the order Settings → Appearance lists them
 /// (`src/renderer/lib/accent.ts`). One accent is live at a time and it marks
 /// exactly two things: the running work, and the primary action.
 ///
@@ -148,6 +148,7 @@ extension UIColor {
 /// orange, and it is the phone's whole identity on the pairing screen.
 enum AccentTint: String, CaseIterable, Identifiable, Sendable {
     case green
+    case teal
     case purple
     case neutral
     case black
@@ -162,6 +163,7 @@ enum AccentTint: String, CaseIterable, Identifiable, Sendable {
     var label: String {
         switch self {
         case .green: return "Green"
+        case .teal: return "Teal"
         case .purple: return "Purple"
         case .neutral: return "Neutral"
         case .black: return "Black"
@@ -176,6 +178,7 @@ enum AccentTint: String, CaseIterable, Identifiable, Sendable {
     var crestColor: UIColor {
         switch self {
         case .green: return Theme.dynamic(light: 0x2E_50_3E, dark: 0x55_88_6C)
+        case .teal: return Theme.dynamic(light: 0x0B_56_56, dark: 0x82_CC_CA)
         case .purple: return Theme.dynamic(light: 0x46_28_7B, dark: 0x83_66_B3)
         case .neutral: return Theme.dynamic(light: 0x4A_47_3E, dark: 0xC2_BE_B4)
         case .black: return Theme.dynamic(light: 0x0F_0E_0C, dark: 0xFB_F9_F5)
@@ -188,6 +191,7 @@ enum AccentTint: String, CaseIterable, Identifiable, Sendable {
     var uiColor: UIColor {
         switch self {
         case .green: return Theme.dynamic(light: 0x44_6C_56, dark: 0x6D_AB_86)
+        case .teal: return Theme.dynamic(light: 0x1F_74_74, dark: 0x5C_B4_B3)
         case .purple: return Theme.dynamic(light: 0x61_3E_9A, dark: 0x71_4F_B0)
         case .neutral: return Theme.dynamic(light: 0x6C_69_60, dark: 0xA8_A4_9B)
         case .black: return Theme.dynamic(light: 0x1C_1B_18, dark: 0xF4_F2_EC)

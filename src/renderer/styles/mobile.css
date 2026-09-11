@@ -1065,6 +1065,10 @@ html:has(.mobile-shell[data-embed]) body,
   --accent-swatch-color: #af5b00;
 }
 
+.mobile-accent-chip[data-accent-id="teal"] {
+  --accent-swatch-color: #207070;
+}
+
 .mobile-accent-chip[data-accent-id="blue"] {
   --accent-swatch-color: #396696;
 }
@@ -1079,6 +1083,10 @@ html:has(.mobile-shell[data-embed]) body,
 
 :root[data-theme="dark"] .mobile-accent-chip[data-accent-id="orange"] {
   --accent-swatch-color: #e79647;
+}
+
+:root[data-theme="dark"] .mobile-accent-chip[data-accent-id="teal"] {
+  --accent-swatch-color: #65b0b0;
 }
 
 :root[data-theme="dark"] .mobile-accent-chip[data-accent-id="blue"] {

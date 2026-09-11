@@ -5,7 +5,7 @@
  * - `current`: run in the project's existing checkout (a shared workspace). The
  *   agent works on whatever branch is live; nothing new is created. This is the
  *   historical Argmax default and the least surprising option for a single agent.
- * - `worktree`: fork a fresh `argmax/<slug>` branch into its own `git worktree`
+ * - `worktree`: fork a fresh `argmax/<word>-<id>` branch into its own `git worktree`
  *   under the project's configured worktree location, based on the live branch.
  *   Keeps the agent's changes off your checkout and lets several agents run in
  *   parallel without colliding.

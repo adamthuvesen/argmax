@@ -137,8 +137,12 @@ pub(super) const WATCH_MAX_DEBOUNCE_MS: u64 = 1_000;
 /// short enough that a hung shell-out doesn't strand the UI".
 const GIT_TIMEOUT_MS: u64 = 60_000;
 
-const BRANCH_SLUG_LEN: usize = 16;
-const SLUG_MAX_LEN: usize = 42;
+const WORKTREE_NAMES: &[&str] = &[
+    "alder", "aspen", "birch", "cedar", "clover", "cypress", "elm", "fern", "fir", "grove",
+    "hazel", "heather", "holly", "iris", "ivy", "juniper", "laurel", "linden", "maple", "meadow",
+    "moss", "oak", "olive", "pine", "reed", "rowan", "sage", "spruce", "thyme", "violet", "willow",
+    "yew",
+];
 
 /// `core.hooksPath` pointed where no hook can live, so `git worktree add` runs
 /// only the checkout. `post_checkout_replay_command` runs the skipped hook.
@@ -516,10 +520,10 @@ impl WorkspaceService {
         assert_valid_ref(&project.repo_path, &base_ref).await?;
 
         let task_label = input.task_label.as_str();
-        let slug = slugify(task_label);
-        let suffix = Uuid::new_v4().simple().to_string();
-        let suffix = &suffix[..BRANCH_SLUG_LEN];
-        let branch = format!("argmax/{slug}-{suffix}");
+        // Naming stays local so chat startup never waits for title generation.
+        let name_id = Uuid::new_v4();
+        let name = WORKTREE_NAMES[usize::from(name_id.as_bytes()[15]) % WORKTREE_NAMES.len()];
+        let branch = format!("argmax/{name}-{}", &name_id.simple().to_string()[..8]);
 
         let worktree_location = project.settings.worktree_location.clone();
         let worktree_path = PathBuf::from(&worktree_location).join(branch.replace('/', "-"));
@@ -3190,29 +3194,6 @@ fn assert_worktree_location_contained(
     }
 }
 
-fn slugify(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    let mut prev_dash = false;
-    for ch in value.chars() {
-        let lowered = ch.to_ascii_lowercase();
-        let allowed = lowered.is_ascii_alphanumeric();
-        if allowed {
-            out.push(lowered);
-            prev_dash = false;
-        } else if !prev_dash {
-            out.push('-');
-            prev_dash = true;
-        }
-    }
-    let trimmed = out.trim_matches('-');
-    let sliced: String = trimmed.chars().take(SLUG_MAX_LEN).collect();
-    if sliced.is_empty() {
-        "task".to_string()
-    } else {
-        sliced
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3310,20 +3291,6 @@ mod tests {
         let status = parse_checkout_status("## main\n?? ## odd name.txt\n");
         assert_eq!(status.branch, Some("main".to_owned()));
         assert_eq!(status.changed_files, 1);
-    }
-
-    #[test]
-    fn slugify_collapses_runs_and_lowercases() {
-        assert_eq!(slugify("Hello World!!"), "hello-world");
-        assert_eq!(slugify("   "), "task");
-        assert_eq!(slugify("__leading-trailing__"), "leading-trailing");
-    }
-
-    #[test]
-    fn slugify_caps_at_42_chars() {
-        let long = "a".repeat(100);
-        let slug = slugify(&long);
-        assert_eq!(slug.len(), SLUG_MAX_LEN);
     }
 
     #[test]

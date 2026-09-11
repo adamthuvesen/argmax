@@ -191,7 +191,24 @@ async fn create_isolated_adds_worktree_and_persists_row() {
         .expect("create isolated");
 
     assert_eq!(summary.project_id, PROJECT_ID);
-    assert!(summary.branch.starts_with("argmax/hello-world-"));
+    let (name, suffix) = summary
+        .branch
+        .strip_prefix("argmax/")
+        .unwrap()
+        .split_once('-')
+        .unwrap();
+    assert!(name.bytes().all(|byte| byte.is_ascii_lowercase()));
+    assert_eq!(suffix.len(), 8);
+    assert!(suffix.bytes().all(|byte| byte.is_ascii_hexdigit()));
+    assert_eq!(summary.task_label, "Hello World!");
+    assert_eq!(
+        std::path::Path::new(&summary.path)
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap(),
+        summary.branch.replace('/', "-")
+    );
     assert!(!summary.shared_workspace);
     assert!(std::path::Path::new(&summary.path).exists());
     // First delta included this workspace.

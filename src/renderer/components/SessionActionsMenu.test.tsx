@@ -130,10 +130,9 @@ describe("SessionActionsMenu", () => {
 
   it("opens the browser pane from the menu", async () => {
     const { getBrowserRequest, subscribeBrowserRequest } = await import("../lib/browserPanel.js");
-    const opened: string[] = [];
+    let requestCount = 0;
     const unsubscribe = subscribeBrowserRequest(() => {
-      const request = getBrowserRequest();
-      if (request) opened.push(request.url);
+      requestCount += 1;
     });
 
     render(
@@ -149,8 +148,10 @@ describe("SessionActionsMenu", () => {
     await openMenu();
     fireEvent.click(screen.getByRole("menuitem", { name: "Open browser" }));
 
-    expect(opened).toHaveLength(1);
-    expect(opened[0]).toMatch(/^https:\/\//);
+    // No target URL: the claiming pane restores its own tab strip rather than
+    // navigating to a hardcoded page.
+    expect(requestCount).toBe(1);
+    expect(getBrowserRequest()?.url).toBe("");
     unsubscribe();
   });
 

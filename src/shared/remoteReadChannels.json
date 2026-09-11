@@ -28,5 +28,6 @@
   "system:debug-snapshot",
   "system:list-detected-ides",
   "learnings:list",
+  "sources:list",
   "prs:list-for-session"
 ]

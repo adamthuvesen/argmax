@@ -49,6 +49,7 @@ import type {
   GitViewOrCreatePrInput,
   GitViewOrCreatePrResult,
   Learning,
+  ProjectSource,
   LaunchProviderSessionInput,
   MenuCommand,
   OpenInIdeInput,
@@ -479,6 +480,12 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
     },
     menu: {
       onCommand: (listener) => subscribe<MenuCommand>("menu:command", listener)
+    },
+    sources: {
+      list: (input) => invokeCommand<ProjectSource[]>("sources:list", input),
+      add: (input) => invokeCommand<ProjectSource>("sources:add", input),
+      update: (input) => invokeCommand<ProjectSource>("sources:update", input),
+      delete: (input) => invokeCommand<void>("sources:delete", input)
     },
     learnings: {
       list: (input) => invokeCommand<Learning[]>("learnings:list", input),

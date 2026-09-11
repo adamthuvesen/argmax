@@ -26,9 +26,11 @@ pub use protocol::{
     ScheduleResumed, ScheduledArchive, ScheduledFollowup, ScheduledMove, SessionControlAction,
     SessionControlError, SessionControlRequest, SessionControlResponse, SessionControlResult,
     SessionList, SessionListEntry, SessionRead, SessionRenamed, SessionStatus, SessionStopped,
-    StatusAction, StopAction, TerminalOutput, TerminalReadAction, TerminalSpawnAction,
-    TerminalStarted, TerminalSummary, WaitAction, WaitOutcome, WaitedSession, WorkspaceDiffAction,
-    WorkspaceDiffOutcome, WorkspaceStatusAction, WorkspaceStatusOutcome,
+    SourceAddedOutcome, SourceReadOutcome, SourceRecord, SourcesAddAction, SourcesListAction,
+    SourcesListOutcome, SourcesReadAction, StatusAction, StopAction, TerminalOutput,
+    TerminalReadAction, TerminalSpawnAction, TerminalStarted, TerminalSummary, WaitAction,
+    WaitOutcome, WaitedSession, WorkspaceDiffAction, WorkspaceDiffOutcome, WorkspaceStatusAction,
+    WorkspaceStatusOutcome,
 };
 pub use registry::{AfterTurn, SessionLaunchProcessConfig, SessionLaunchRegistry};
 pub use server::{SessionLaunchError, SessionLaunchServer};
@@ -53,9 +55,8 @@ const MAX_BROWSER_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
 /// becomes a six-byte unicode escape), which is 384 KiB, and the per-message
 /// envelope is a few hundred bytes across at most `INBOX_READ_LIMIT` rows.
 const MAX_INBOX_RESPONSE_BYTES: usize = 512 * 1024;
-/// The same reasoning for the two replies that carry captured text: a
-/// `workspace_diff` and a `terminal_read` are capped at
-/// `WORKSPACE_DIFF_MAX_CHARS` / `TERMINAL_READ_MAX_CHARS` characters, and a
+/// The same reasoning for replies that carry captured text: `workspace_diff`,
+/// `terminal_read`, and `sources_read` cap their text before encoding, and a
 /// worst-case character costs six bytes once JSON has escaped it.
 const MAX_TEXT_RESPONSE_BYTES: usize = 512 * 1024;
 const SERVER_IO_TIMEOUT: Duration = Duration::from_secs(5);
@@ -122,6 +123,11 @@ const TERMINAL_READ_DEFAULT_CHARS: usize = 8 * 1024;
 const TERMINAL_READ_MAX_CHARS: usize = 40 * 1024;
 const LEARNINGS_SEARCH_DEFAULT_LIMIT: usize = 10;
 const LEARNINGS_SEARCH_MAX_LIMIT: usize = 40;
+const SOURCES_LIST_DEFAULT_LIMIT: usize = 20;
+const SOURCES_LIST_MAX_LIMIT: usize = 100;
+const SOURCES_LIST_BYTE_BUDGET: usize = 48 * 1024;
+const SOURCE_READ_DEFAULT_CHARS: usize = 24 * 1024;
+const SOURCE_READ_MAX_CHARS: usize = 40 * 1024;
 /// How far ahead `schedule_followup` may aim. A week is well past the point
 /// where a waiting chat is the right tool, and the app has to still be running.
 const FOLLOWUP_MAX_SECONDS: u64 = 7 * 24 * 60 * 60;

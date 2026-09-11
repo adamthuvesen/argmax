@@ -653,6 +653,12 @@ export interface ArgmaxApi {
     update: (input: { id: string; summary?: string; verified?: boolean }) => Promise<Learning>;
     delete: (id: string) => Promise<{ ok: true }>;
   };
+  sources: {
+    list: (input: Bindings.SourcesListInput) => Promise<ProjectSource[]>;
+    add: (input: Bindings.SourcesAddInput) => Promise<ProjectSource>;
+    update: (input: Bindings.SourcesUpdateInput) => Promise<ProjectSource>;
+    delete: (input: Bindings.SourcesDeleteInput) => Promise<void>;
+  };
   prs: {
     listForSession: (input: { sessionId: string }) => Promise<GhPrRecord[]>;
     refresh: (input: { sessionId: string }) => Promise<GhPrRecord[]>;
@@ -878,6 +884,8 @@ export type GhCheckState =
   | "skipped";
 
 export type LearningKind = "pitfall" | "convention" | "command";
+export type ProjectSource = Bindings.ProjectSource;
+export type SourceInput = Bindings.SourceInput;
 
 export type Learning = Retype<Bindings.Learning, { kind: LearningKind }>;
 

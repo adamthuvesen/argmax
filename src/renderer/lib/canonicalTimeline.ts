@@ -1,4 +1,5 @@
 import { PROVIDER_DISPLAY_NAMES } from "../../shared/providerModels.js";
+import { decodeToolActivity, type ToolActivity } from "./toolActivity.js";
 import type {
   ProviderId,
   RawTimelineEvent,
@@ -59,6 +60,7 @@ export type CanonicalToolEvent = CanonicalCommon & {
   name: string;
   providerName: string | null;
   invocationId: string | null;
+  activity: ToolActivity | null;
   /** The chat surface that owns this row — `"todo"` for the rows behind the
    *  todo card. Stamped by the normalizer so the renderer never has to know
    *  which of the providers' shifting tool names means "plan". */
@@ -125,6 +127,18 @@ type ArchiveRequestedLifecycleEvent = CanonicalCommon & {
   workspaceId: string | null;
 };
 
+export type ProjectSourceActivity = {
+  sourceId: string;
+  title: string;
+  kind: "file" | "url";
+  location: string;
+  guidance: string;
+  action: "read" | "added";
+  at: string;
+  readLocation: string | null;
+  truncated: boolean;
+};
+
 /**
  * A plain line Argmax wrote into the chat about something it did to the
  * session itself — resuming a scheduled move or archive, or dropping one the
@@ -135,6 +149,7 @@ type NoteLifecycleEvent = CanonicalCommon & {
   kind: "lifecycle";
   name: "note";
   operation: string | null;
+  sourceActivity: ProjectSourceActivity | null;
 };
 
 type MovedLifecycleEvent = CanonicalCommon & {
@@ -208,6 +223,28 @@ function nonBlankString(value: unknown): string | null {
 
 function positiveNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function decodeSourceActivity(payload: Record<string, unknown>, at: string): ProjectSourceActivity | null {
+  if (payload.operation !== "project-source") return null;
+  const source = objectValue(payload.source);
+  const sourceId = nonBlankString(source?.id);
+  const title = nonBlankString(source?.title);
+  const location = nonBlankString(source?.location);
+  const kind = source?.kind;
+  const action = payload.action;
+  if (!sourceId || !title || !location || (kind !== "file" && kind !== "url") || (action !== "read" && action !== "added")) return null;
+  return {
+    sourceId,
+    title,
+    kind,
+    location,
+    guidance: stringValue(source?.guidance) ?? "",
+    action,
+    at: nonBlankString(payload.readAt) ?? nonBlankString(payload.at) ?? at,
+    readLocation: nonBlankString(payload.location),
+    truncated: payload.truncated === true
+  };
 }
 
 function providerDisplayName(value: unknown): string | null {
@@ -291,6 +328,7 @@ function decodeTool(raw: TimelineEvent, payload: Record<string, unknown>): Canon
     name: extractToolName(payload),
     providerName: stringValue(payload.name),
     invocationId: extractProviderInvocationId(payload),
+    activity: decodeToolActivity(payload.activity),
     surface: stringValue(payload.surface),
     outcome: phase === "completed" ? (detectToolError(payload) ? "failed" : "succeeded") : null,
     running: phase !== "completed" || status === "running" || status === "started" || status === "in_progress",
@@ -368,7 +406,8 @@ function decodeLifecycle(raw: TimelineEvent, payload: Record<string, unknown>): 
       ...shared,
       kind: "lifecycle",
       name,
-      operation: stringValue(payload.operation)
+      operation: stringValue(payload.operation),
+      sourceActivity: decodeSourceActivity(payload, raw.createdAt)
     };
   }
   if (name === "moved") {

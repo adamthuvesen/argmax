@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState, type JSX } from "react";
 import type { ProjectSummary } from "../../../shared/types.js";
+import { ProjectSourcesPanel } from "./ProjectSourcesPanel.js";
 import { SettingGroup, SettingRow, SettingsListPicker, Toggle } from "./settingsPrimitives.js";
 
 /**
@@ -46,6 +47,7 @@ export function ProjectsSettings({
             </div>
           ) : null}
           <ProjectSettingsForm key={selected.id} project={selected} onProjectUpdated={onProjectUpdated} />
+          <ProjectSourcesPanel key={`sources-${selected.id}`} projectId={selected.id} />
         </>
       )}
     </SettingGroup>

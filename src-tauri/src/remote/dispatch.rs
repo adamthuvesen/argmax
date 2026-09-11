@@ -18,7 +18,7 @@ use crate::ipc::inputs::*;
 use crate::ipc::{
     activity, approvals, attachments, checkpoints, checks, connections, dashboard, git_ops, goals,
     health, learnings, projects, providers, prs, questions, remote, review, session, skills,
-    system, terminal, usage, workspace_files, workspaces,
+    sources, system, terminal, usage, workspace_files, workspaces,
 };
 use crate::state::AppState;
 
@@ -432,6 +432,22 @@ async fn dispatch_standard(
             encode(remote::remote_push_capability_impl(state)?)
         }
 
+        "sources:list" => {
+            let input = parse(channel, input)?;
+            encode(sources::sources_list_impl(state, input).await?)
+        }
+        "sources:add" => {
+            let input = parse(channel, input)?;
+            encode(sources::sources_add_impl(state, input).await?)
+        }
+        "sources:update" => {
+            let input = parse(channel, input)?;
+            encode(sources::sources_update_impl(state, input).await?)
+        }
+        "sources:delete" => {
+            let input = parse(channel, input)?;
+            encode(sources::sources_delete_impl(state, input).await?)
+        }
         "learnings:list" => {
             let input: LearningsListInput = parse(channel, input)?;
             encode(learnings::learnings_list_impl(state, input).await?)

@@ -2,6 +2,7 @@ mod label;
 mod launch;
 mod messaging;
 mod move_archive;
+mod project_sources;
 mod project_tools;
 mod resume;
 mod wait;
@@ -21,6 +22,7 @@ use self::{
         stop_session,
     },
     move_archive::{schedule_session_move, schedule_workspace_archive},
+    project_sources::{add_project_source, list_project_sources, read_project_source},
     project_tools::{
         add_learning, cancel_schedule, list_projects_action, list_schedules, resume_schedule,
         schedule_followup, search_learnings_action,
@@ -114,6 +116,13 @@ pub(super) async fn handle_session_control(
         SessionControlAction::LearningsAdd(action) => add_learning(action, parent, database),
         SessionControlAction::LearningsSearch(action) => {
             search_learnings_action(action, parent, database)
+        }
+        SessionControlAction::SourcesList(action) => list_project_sources(action, parent, database),
+        SessionControlAction::SourcesRead(action) => {
+            read_project_source(action, parent, database, workspaces, app.as_ref()).await
+        }
+        SessionControlAction::SourcesAdd(action) => {
+            add_project_source(action, parent, database, workspaces)
         }
         SessionControlAction::TerminalSpawn(action) => {
             // Spawning opens a PTY and forks a shell. Keep that work off the

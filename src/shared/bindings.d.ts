@@ -520,6 +520,38 @@ async skillsList(input: SkillsListInput) : Promise<Result<SkillSummary[], Argmax
     else return { status: "error", error: e  as any };
 }
 },
+async sourcesList(input: SourcesListInput) : Promise<Result<ProjectSource[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("sources_list", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async sourcesAdd(input: SourcesAddInput) : Promise<Result<ProjectSource, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("sources_add", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async sourcesUpdate(input: SourcesUpdateInput) : Promise<Result<ProjectSource, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("sources_update", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async sourcesDelete(input: SourcesDeleteInput) : Promise<Result<null, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("sources_delete", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async connectionsList(input: ConnectionsListInput) : Promise<Result<ConnectionSummary[], ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("connections_list", { input }) };
@@ -1619,6 +1651,9 @@ export type ProjectSettingsInput = { worktreeLocation: NonEmptyString; setupComm
  * setting off on every other save.
  */
 archiveOnMerge: boolean }
+export type ProjectSource = { id: string; projectId: string; title: string; kind: ProjectSourceKind; location: string; guidance: string; addedBy: ProjectSourceAddedBy; addedBySessionId: string | null; createdAt: string; updatedAt: string }
+export type ProjectSourceAddedBy = "user" | "agent"
+export type ProjectSourceKind = "file" | "url"
 export type ProjectSummary = { id: string; name: string; repoPath: string; currentBranch: string; defaultBranch: string | null; settings: ProjectSettings; counts: ProjectCounts; latestActivityAt: string | null }
 export type ProjectsListBranchesInput = { projectId: ProjectId }
 export type ProjectsListInput = Record<string, never>
@@ -1915,6 +1950,11 @@ export type SkillSource = "user" | "workspace" | "codex-prompt" | "plugin" | "sy
 export type SkillSummary = { name: string; description: string; source: SkillSource }
 export type SkillsListInput = { provider: ProviderId; workspaceId: WorkspaceId | null }
 export type SkippedReason = "not-a-file" | "too-large" | "binary"
+export type SourceInput = { title: string; location: string; guidance: string }
+export type SourcesAddInput = { projectId: ProjectId; source: SourceInput }
+export type SourcesDeleteInput = { projectId: ProjectId; id: NonEmptyString }
+export type SourcesListInput = { projectId: ProjectId }
+export type SourcesUpdateInput = { projectId: ProjectId; id: NonEmptyString; source: SourceInput }
 export type SqlitePragmas = { journalMode: string; foreignKeys: number; synchronous: number; busyTimeout: number; walAutocheckpoint: number }
 export type StartupPhaseRecord = { phase: string; elapsedMs: number; deltaMs: number }
 export type StreamChunk = string

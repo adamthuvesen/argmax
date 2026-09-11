@@ -100,3 +100,10 @@ and the task call id. A continuation supplies the same child as
 while the renderer keeps one dock tab. OpenCode has no separate child trace
 reader, and its parent stream carries the child result rather than child body
 events.
+
+`project_sources` (v48) stores project-owned source metadata, with a unique
+location per project, title, consultation guidance, creator type and optional
+creator session, and creation/edit timestamps. Removing a project cascades its
+references. Removing a session clears the creator session link while preserving
+whether an agent added the reference. Source bodies are not cached. Retrieval
+metadata is recorded in `session.note` events. See [memory.md](memory.md).

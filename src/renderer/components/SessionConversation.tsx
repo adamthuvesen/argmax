@@ -683,6 +683,12 @@ export function SessionConversation({
       ),
     [renderItems]
   );
+  const latestConversationIndex = useMemo(() => {
+    for (let index = transcriptRenderItems.length - 1; index >= 0; index -= 1) {
+      if (transcriptRenderItems[index]?.kind !== "session-note") return index;
+    }
+    return -1;
+  }, [transcriptRenderItems]);
   // The plan is folded once for the session and sliced by turn, so scrolling
   // back shows the plan as it stood then rather than as it stands now.
   const todoByTurn = useMemo(() => {
@@ -1246,12 +1252,12 @@ export function SessionConversation({
   // turn — answering it sends a user message, which starts a new one — so the
   // panel takes the composer's slot and that turn stops drawing its own card.
   const liveQuestion = useMemo(() => {
-    const last = transcriptRenderItems[transcriptRenderItems.length - 1];
+    const last = transcriptRenderItems[latestConversationIndex];
     if (!last || last.kind !== "turn") return null;
     const { tool } = collectAskUserQuestionState(last.toolItems);
     if (!tool) return null;
-    return { tool, priorItem: transcriptRenderItems[transcriptRenderItems.length - 2] ?? null };
-  }, [transcriptRenderItems]);
+    return { tool, priorItem: transcriptRenderItems[latestConversationIndex - 1] ?? null };
+  }, [transcriptRenderItems, latestConversationIndex]);
   // Closing the panel is not declining the question: the composer comes back so
   // the reader can answer in their own words. The question leaves the screen
   // with the panel — the agent's own prose above it is the record of the ask.
@@ -1521,14 +1527,14 @@ export function SessionConversation({
                   return <ProviderSwitchNotice key={item.id} notice={item.notice} />;
                 }
                 if (item.kind === "session-note") {
-                  return <SessionNote key={item.id} message={item.message} />;
+                  return <SessionNote key={item.id} message={item.message} sourceActivity={item.sourceActivity} />;
                 }
                 return (
                   <SessionConversationTurn
                     key={item.id}
                     item={item}
                     priorItem={index > 0 ? transcriptRenderItems[index - 1] ?? null : null}
-                    isLatestTurn={index === transcriptRenderItems.length - 1}
+                    isLatestTurn={index === latestConversationIndex}
                     openRunAt={openRunAt}
                     session={session}
                     selectedModel={selectedModel}

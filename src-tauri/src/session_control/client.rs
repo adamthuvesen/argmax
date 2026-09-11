@@ -85,9 +85,9 @@ pub fn send_session_control(
         // A diff and a terminal's scrollback are capped in characters, and JSON
         // escaping spends up to six bytes on one — so the frame that always
         // fits is the character ceiling times that, not the ordinary envelope.
-        SessionControlAction::WorkspaceDiff(_) | SessionControlAction::TerminalRead(_) => {
-            MAX_TEXT_RESPONSE_BYTES
-        }
+        SessionControlAction::WorkspaceDiff(_)
+        | SessionControlAction::TerminalRead(_)
+        | SessionControlAction::SourcesRead(_) => MAX_TEXT_RESPONSE_BYTES,
         _ => MAX_RESPONSE_BYTES,
     };
     let response =
@@ -126,6 +126,9 @@ pub fn send_session_control(
         (SessionControlAction::WorkspaceDiff(_), SessionControlResult::WorkspaceDiff(_)) => true,
         (SessionControlAction::LearningsAdd(_), SessionControlResult::Learned(_)) => true,
         (SessionControlAction::LearningsSearch(_), SessionControlResult::LearningsFound(_)) => true,
+        (SessionControlAction::SourcesList(_), SessionControlResult::SourcesListed(_)) => true,
+        (SessionControlAction::SourcesRead(_), SessionControlResult::SourceRead(_)) => true,
+        (SessionControlAction::SourcesAdd(_), SessionControlResult::SourceAdded(_)) => true,
         (SessionControlAction::TerminalSpawn(_), SessionControlResult::TerminalStarted(_)) => true,
         (SessionControlAction::TerminalRead(_), SessionControlResult::TerminalOutput(_)) => true,
         (SessionControlAction::Projects(_), SessionControlResult::Projects(_)) => true,

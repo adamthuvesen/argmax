@@ -666,6 +666,12 @@ export function setupAppTestMocks(): void {
         };
       }
     },
+    sources: {
+      list: () => Promise.resolve([]),
+      add: () => Promise.reject(new Error("source writes not configured in this test")),
+      update: () => Promise.reject(new Error("source writes not configured in this test")),
+      delete: () => Promise.resolve()
+    },
     learnings: {
       list: () => Promise.resolve([]),
       update: (input) =>

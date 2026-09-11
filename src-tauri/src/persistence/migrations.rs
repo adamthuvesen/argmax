@@ -213,6 +213,13 @@ pub static WORKSPACE_LAST_VIEWED_COLUMNS: phf::Map<&'static str, &'static [&'sta
     ] as &'static [&'static str],
 };
 
+pub static PROJECT_SOURCE_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "project_sources" => &[
+        "added_by", "added_by_session_id", "created_at", "guidance", "id", "kind",
+        "location", "project_id", "title", "updated_at",
+    ] as &'static [&'static str],
+};
+
 // Post-v16 `sessions` shape: adds the `resume_fork` flag consumed (and
 // cleared) by the next resumed launch of a forked session.
 pub static SESSION_RESUME_FORK_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
@@ -879,6 +886,14 @@ pub static MIGRATIONS: &[Migration] = &[
         up: WORKSPACE_LAST_VIEWED_AT,
         affected_tables: &["workspaces"],
         expected_columns: &WORKSPACE_LAST_VIEWED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 48,
+        name: "project_sources",
+        up: crate::persistence::project_sources::MIGRATION_SQL,
+        affected_tables: &["project_sources"],
+        expected_columns: &PROJECT_SOURCE_COLUMNS,
         requires_foreign_keys_off: false,
     },
 ];
@@ -2310,6 +2325,10 @@ mod tests {
                 (45, compute_migration_checksum(SYNCED_SESSION_TOMBSTONES)),
                 (46, compute_migration_checksum(DATA_MIGRATIONS)),
                 (47, compute_migration_checksum(WORKSPACE_LAST_VIEWED_AT)),
+                (
+                    48,
+                    compute_migration_checksum(crate::persistence::project_sources::MIGRATION_SQL)
+                ),
             ]
         );
 

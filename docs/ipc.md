@@ -92,3 +92,12 @@ A synchronous handler resolves on the macOS main thread. Make the handler
 `async` (or `spawn_blocking` for genuinely blocking work) unless it does no IO,
 in which case add it to the allowlist in `scripts/check-main-thread-handlers.mjs`
 with the reason.
+
+## Project sources
+
+`sources:list`, `sources:add`, `sources:update`, and `sources:delete` manage
+project-scoped source references through `ipc/sources.rs`. They use the live
+database off the main thread. Reads are available to the remote bridge's read
+access mode, while mutations require control access. Agent source content reads
+use session-control tools and record source activity in the session timeline.
+See [memory.md](memory.md).

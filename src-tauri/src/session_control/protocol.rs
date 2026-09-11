@@ -45,6 +45,9 @@ pub enum SessionControlAction {
     WorkspaceDiff(WorkspaceDiffAction),
     LearningsAdd(LearningsAddAction),
     LearningsSearch(LearningsSearchAction),
+    SourcesList(SourcesListAction),
+    SourcesRead(SourcesReadAction),
+    SourcesAdd(SourcesAddAction),
     TerminalSpawn(TerminalSpawnAction),
     TerminalRead(TerminalReadAction),
     Projects(ProjectsAction),
@@ -115,6 +118,34 @@ pub struct LearningsSearchAction {
     pub project: Option<String>,
     #[serde(default)]
     pub limit: Option<u32>,
+}
+
+/// List the source references registered for the caller's own project.
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SourcesListAction {
+    #[serde(default)]
+    pub offset: Option<u32>,
+    #[serde(default)]
+    pub limit: Option<u32>,
+}
+
+/// Read one registered source from the caller's current checkout or the web.
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SourcesReadAction {
+    pub id: String,
+    #[serde(default)]
+    pub max_chars: Option<u32>,
+}
+
+/// Register a source reference for the caller's own project.
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SourcesAddAction {
+    pub title: String,
+    pub location: String,
+    pub guidance: String,
 }
 
 /// Start a PTY in a workspace that outlives this turn. `command` is typed into
@@ -359,6 +390,9 @@ pub enum SessionControlResult {
     WorkspaceDiff(WorkspaceDiffOutcome),
     Learned(LearningRecord),
     LearningsFound(LearningsSearchOutcome),
+    SourcesListed(SourcesListOutcome),
+    SourceRead(SourceReadOutcome),
+    SourceAdded(SourceAddedOutcome),
     TerminalStarted(TerminalStarted),
     TerminalOutput(TerminalOutput),
     Projects(ProjectListOutcome),
@@ -462,6 +496,56 @@ pub struct LearningsSearchOutcome {
     pub project_id: String,
     pub learnings: Vec<LearningRecord>,
     pub truncated: bool,
+}
+
+/// A durable pointer to project context. The source contents are always read
+/// live and are never copied into this record.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SourceRecord {
+    pub id: String,
+    pub project_id: String,
+    pub title: String,
+    pub kind: String,
+    pub location: String,
+    pub guidance: String,
+    pub added_by: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub added_by_session_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SourcesListOutcome {
+    pub project_id: String,
+    pub sources: Vec<SourceRecord>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_offset: Option<u32>,
+    pub truncated: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SourceReadOutcome {
+    pub source: SourceRecord,
+    pub content: String,
+    pub read_at: String,
+    /// Title reported by the live page, or the registered title for a file.
+    pub title: String,
+    /// The concrete checkout path or final URL read for this response.
+    pub location: String,
+    pub truncated: bool,
+    pub warning: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SourceAddedOutcome {
+    pub source: SourceRecord,
+    /// False when the same location was already registered in this project.
+    pub added: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -943,6 +1027,19 @@ mod tests {
                 query: Some("bridge".to_string()),
                 project: None,
                 limit: Some(5),
+            }),
+            SessionControlAction::SourcesList(SourcesListAction {
+                offset: Some(10),
+                limit: Some(20),
+            }),
+            SessionControlAction::SourcesRead(SourcesReadAction {
+                id: "source-1".to_string(),
+                max_chars: Some(8_000),
+            }),
+            SessionControlAction::SourcesAdd(SourcesAddAction {
+                title: "Runtime guide".to_string(),
+                location: "docs/runtime.md".to_string(),
+                guidance: "Read before changing session lifecycle behavior.".to_string(),
             }),
             SessionControlAction::TerminalSpawn(TerminalSpawnAction {
                 session: None,

@@ -32,6 +32,7 @@ pub mod routines;
 pub mod session;
 pub mod settings;
 pub mod skills;
+pub mod sources;
 pub mod sync;
 pub mod system;
 pub mod terminal;
@@ -105,6 +106,10 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "workspace:grep-content",
     "checks:run",
     "skills:list",
+    "sources:list",
+    "sources:add",
+    "sources:update",
+    "sources:delete",
     "connections:list",
     "system:open-path",
     "system:list-detected-ides",
@@ -294,6 +299,10 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         workspace_files::workspace_grep_content,
         checks::checks_run,
         skills::skills_list,
+        sources::sources_list,
+        sources::sources_add,
+        sources::sources_update,
+        sources::sources_delete,
         connections::connections_list,
         system::system_open_path,
         system::system_list_detected_ides,

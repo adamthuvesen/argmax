@@ -33,6 +33,9 @@ Namespace `argmax`; Claude, Codex, and Cursor show them as
 | `workspace_diff` | `session?`, `filePath?`, `comparison?`, `maxChars?` | Bounded changed-file list and diff text with `truncated` |
 | `learnings_add` | `kind`, `summary`, `project?` | The stored project learning |
 | `learnings_search` | `query?`, `project?`, `limit?` | Ranked project learnings with `truncated` |
+| `sources_list` | `offset?`, `limit?` | Registered source metadata with `nextOffset` and `truncated` |
+| `sources_read` | `id`, `maxChars?` | Live file or URL text, actual read location and title, read time, warning, and `truncated` |
+| `sources_add` | `title`, `location`, `guidance` | The registered source and whether it was newly added |
 | `terminal_spawn` | `session?`, `command?` | `{terminalId, sessionId, workspaceId, path, command?}` |
 | `terminal_read` | `terminalId?`, `session?`, `maxChars?` | A terminal tail, or the terminals known for a workspace |
 | `project_list` | — | Every registered project, including projects with no open session |
@@ -102,6 +105,37 @@ with the calling session as evidence. `learnings_search` uses the learnings
 full-text index and records hits on returned rows. An empty query returns the
 project's most-used entries. Search results default to 10 rows and are capped
 at 40.
+
+### Project sources
+
+Project sources are durable references to repository-relative text files or
+HTTP(S) URLs. Their stored metadata includes a title and guidance about when an
+agent should consult them. Argmax stores no copy of the source contents.
+
+`sources_list` reads only the caller's project and reports availability, not
+use. It returns pages in newest-first order. Pages default to 20 entries, accept
+an offset and limit, and can stop earlier to remain inside the control
+protocol's byte budget. A truncated response includes `nextOffset`.
+
+`sources_read` accepts an id from that project. File sources are resolved
+through the workspace file service against the caller's current checkout, so
+an isolated workspace reads its own version of the file. URL sources open in
+the session's Argmax browser, wait for the page, and return rendered text with
+the final URL and page title. Text defaults to 24,576 characters and is capped
+at 40,960. Empty, binary, oversized, missing, and failed reads return errors
+and are not recorded as successful reads.
+
+Every successful read adds a durable `session.note` timeline event naming the
+source, time, actual operation, and whether the returned text was truncated.
+`sources_add` records the same kind of note only when it creates a new entry.
+Adding the same location again returns the existing entry with `added: false`.
+Listing sources does not write a read note.
+
+Source contents are untrusted context. A successful read note records the
+source, location, and retrieval time. It does not retain the returned contents
+or establish their version, correctness, or freshness. Current
+code and direct evidence take precedence. Registering a source does not make it
+authoritative and does not create project memory automatically.
 
 ### Persistent terminals
 

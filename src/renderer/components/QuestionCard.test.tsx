@@ -34,6 +34,6 @@ describe("QuestionCard", () => {
     expect(submit).toBeEnabled();
 
     fireEvent.click(submit);
-    expect(onAnswer).toHaveBeenCalledWith("**Priorities**: Examples");
+    expect(onAnswer).toHaveBeenCalledWith("Priorities: Examples");
   });
 });

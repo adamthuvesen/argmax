@@ -91,7 +91,7 @@ describe("SessionComposer focus during background updates", () => {
     fireEvent.click(screen.getByRole("option", { name: /Fix findings/ }));
     fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
     await waitFor(() => {
-      expect(onSendSessionInput).toHaveBeenCalledWith(session.id, "**Direction**: Fix findings", expect.anything(), "auto", undefined);
+      expect(onSendSessionInput).toHaveBeenCalledWith(session.id, "Direction: Fix findings", expect.anything(), "auto", undefined);
     });
     expect(prompt).toHaveValue("A follow-up in progress");
   });

@@ -261,7 +261,7 @@ user message and the card leaves with it.
 
 When submitting a PlanCard, a QuestionCard or the QuestionDock, `sendAfterTerminate` in [sessionConversationHelpers.ts](../src/renderer/components/sessionConversationHelpers.ts) terminates the running probe before sending the answer to prevent queuing behind trailing provider output.
 
-Question responses format as `**<header>**: <chosen label>` per question, joined with newlines. `formatAnswer` in [questions.ts](../src/renderer/lib/questions.ts) is the single source of that shape, so an answer reads the same whether it came from the dock or a card.
+Question responses format as `<header>: <chosen label>` per question, one per line. Plain text, not markdown: the answer lands in the transcript as a user message, and those are drawn verbatim, so `**` would show as asterisks. `formatAnswer` in [questions.ts](../src/renderer/lib/questions.ts) is the single source of that shape, so an answer reads the same whether it came from the dock or a card.
 
 ## Activity Rows
 

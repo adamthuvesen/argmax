@@ -244,7 +244,7 @@ describe("SessionConversation — cards", () => {
           ]
         }
       }),
-      event("u2", "user.message", "**Direction**: Fix audit findings", "2026-05-12T15:00:05.000Z", {})
+      event("u2", "user.message", "Direction: Fix audit findings", "2026-05-12T15:00:05.000Z", {})
     ]);
 
     expect(screen.queryByLabelText("Question from agent")).not.toBeInTheDocument();
@@ -349,7 +349,7 @@ describe("SessionConversation — cards", () => {
     fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
 
     const call = onSend.mock.calls[0] as [string, string, unknown, string] | undefined;
-    expect(call?.[1]).toBe("**Direction**: Fix audit findings\n\n**Depth**: Just the blockers");
+    expect(call?.[1]).toBe("Direction: Fix audit findings\nDepth: Just the blockers");
   });
 
   it("renders a failed AskUserQuestion tool call as a QuestionCard and submits the chosen answer", () => {
@@ -409,7 +409,7 @@ describe("SessionConversation — cards", () => {
 
     expect(onSend).toHaveBeenCalledTimes(1);
     const call = onSend.mock.calls[0] as [string, string, unknown, string] | undefined;
-    expect(call?.[1]).toContain("**Direction**: Fix audit findings");
+    expect(call?.[1]).toContain("Direction: Fix audit findings");
     expect(call?.[3]).toBe("plan");
   });
 
@@ -504,7 +504,7 @@ describe("SessionConversation — cards", () => {
 
     expect(onSend).toHaveBeenCalledTimes(1);
     const call = onSend.mock.calls[0] as [string, string, unknown, string] | undefined;
-    expect(call?.[1]).toContain("**Path**: Fast fix");
+    expect(call?.[1]).toContain("Path: Fast fix");
     expect(call?.[3]).toBe("plan");
   });
 

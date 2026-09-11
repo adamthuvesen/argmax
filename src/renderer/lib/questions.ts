@@ -19,18 +19,20 @@ export function pickedLabels(question: Question, picks: number[]): string[] {
     .filter((label): label is string => typeof label === "string" && label.length > 0);
 }
 
-/// The answer as it is sent back to the agent: one `**Header**: choices` line
-/// per question. Both the docked panel and the transcript card send this exact
-/// shape, so an answer reads the same however it was given.
+/// The answer as it is sent back to the agent: one `Header: choices` line per
+/// question. Both the docked panel and the transcript card send this exact
+/// shape, so an answer reads the same however it was given. No markdown: this
+/// lands in the transcript as a user message, which is drawn verbatim, so bold
+/// markers would read as literal asterisks there.
 export function formatAnswer(questions: Question[], selected: number[][]): string {
   return questions
     .map((question, index) => {
       const labels = pickedLabels(question, selected[index] ?? []);
       const header = question.header || question.question;
       const value = labels.length > 0 ? labels.join(", ") : "(no selection)";
-      return `**${header}**: ${value}`;
+      return `${header}: ${value}`;
     })
-    .join("\n\n");
+    .join("\n");
 }
 
 export function parseQuestionsFromToolInput(tool: ToolCall): Question[] | null {

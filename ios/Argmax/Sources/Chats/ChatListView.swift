@@ -562,32 +562,39 @@ struct ChatListRow: View {
     var stagger = 0
     let open: () -> Void
 
-    /// Settings → Appearance. With icons off the leading column draws only a
-    /// running chat's nest; with marks off it drops the bare CLI badge. The
-    /// column itself stays either way, so the titles keep their column
-    /// whether a turn is in flight or not.
+    /// Settings → Appearance. With icons off the meta line leads with only a
+    /// running chat's nest; with marks off it drops the bare CLI badge.
     @Environment(\.chatIcons) private var chatIcons
     @Environment(\.providerMarks) private var providerMarks
+    /// The branch is drawn inside a concatenated `Text`, which takes a `Font`
+    /// rather than a view modifier — so this row resolves the face itself.
+    @Environment(\.typeScale) private var typeScale
 
     var body: some View {
         Button(action: open) {
             HStack(alignment: .top, spacing: 0) {
-                ChatRowGlyphView(glyph: ChatRowGlyph(row: row, chatIcons: chatIcons, providerMarks: providerMarks))
-                    // Optically on the title's line rather than on the row's
-                    // top edge.
-                    .padding(.top, 2)
-                    .frame(width: Spacing.glyphColumn, alignment: .leading)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(row.workspace.taskLabel)
                         .typeRowTitle()
                         .lineLimit(1)
                         .truncationMode(.tail)
-                    subtitle
+                    // The glyph leads the second line rather than owning a
+                    // column of its own: a chat with nothing to show is then
+                    // missing a word, not indented past a hole, and the
+                    // title sits on the gutter whether or not a turn is in
+                    // flight. See docs/design/chat-list-glyphs.
+                    HStack(spacing: Spacing.snug - Spacing.hair) {
+                        let glyph = ChatRowGlyph(row: row, chatIcons: chatIcons, providerMarks: providerMarks)
+                        if glyph != .empty {
+                            ChatRowGlyphView(glyph: glyph)
+                        }
+                        subtitle
+                    }
                 }
                 Spacer(minLength: Spacing.row)
                 VStack(alignment: .trailing, spacing: Spacing.tight) {
                     Text(compactElapsed(since: lastActivity, now: now))
-                        .font(.caption2)
+                        .typeStyle(.caption2)
                         .foregroundStyle(Theme.muted)
                         .monospacedDigit()
                         // "2h" is a glance, not a sentence; VoiceOver gets
@@ -607,7 +614,7 @@ struct ChatListRow: View {
         .buttonStyle(RowPress())
         .overlay(alignment: .bottomLeading) {
             if separated {
-                HairlineDivider(inset: Spacing.gutter + Spacing.glyphColumn)
+                HairlineDivider(inset: Spacing.gutter)
                     .padding(.trailing, Spacing.gutter)
             }
         }
@@ -629,7 +636,7 @@ struct ChatListRow: View {
         var text = Text(row.projectName ?? "")
         if showsBranch {
             let separator = row.projectName == nil ? "" : " · "
-            text = text + Text(separator) + Text(row.workspace.branch).font(.argmaxMono(.caption))
+            text = text + Text(separator) + Text(row.workspace.branch).font(typeScale.font(.caption, mono: true))
         }
         return text
             .typeMeta()

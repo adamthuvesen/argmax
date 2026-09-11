@@ -64,7 +64,7 @@ struct SettingsScreen: View {
                     HairlineDivider(inset: Spacing.row)
                     SettingToggle(
                         label: "Chat icons",
-                        detail: "The icon, pull request, or CLI mark at the left of a chat. Off, only a running chat is marked.",
+                        detail: "The icon, pull request, or CLI mark under a chat's title. Off, only a running chat is marked.",
                         isOn: $appearance.chatIcons
                     )
                     HairlineDivider(inset: Spacing.row)

@@ -91,14 +91,16 @@ The Usage page carries the desktop's remaining read:
   above it on the desktop, spend per provider, is not here: it is a page, and
   it reads no better for being squeezed into a group.
 
-The list row's leading column is its own pair of files, because what goes in
-it is a rule rather than a glyph:
+The glyph that leads a list row's second line is its own pair of files,
+because what goes in it is a rule rather than a glyph:
 
 - `Sources/Chats/ChatRowGlyph.swift` — the order it resolves in. A running
   chat shows the working nest, in its own icon colour when it has one; a
   quiet one shows the icon the desktop's picker gave it; failing both, the
   provider's mark, which is the only thing Settings → Appearance's "Provider
-  marks" switch hides. The column itself always stands.
+  marks" switch hides. A row with nothing to show leaves the slot out; the
+  glyph gave up its leading column so an empty one could not indent the
+  title (`docs/design/chat-list-glyphs`).
 - `Sources/Design/SessionIcon.swift` — the wire vocabulary that rule reads:
   the desktop's curated Lucide names mapped to SF Symbols, and its nine
   palette *tokens* ("violet", not a hex value) resolved per appearance from

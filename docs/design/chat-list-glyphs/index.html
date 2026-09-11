@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-font-size="5" data-accent="green">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Argmax — phone chat list, where the glyph goes</title>
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-400.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-500.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-700.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource-variable/geist-mono/wght.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/tokens.css" />
+    <style>
+      html { background: var(--bg); }
+      body {
+        margin: 0; background: var(--bg); color: var(--text);
+        font-family: var(--font-ui); -webkit-font-smoothing: antialiased;
+      }
+      .page-head {
+        display: flex; gap: 16px; align-items: baseline; padding: 14px 28px;
+        border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted);
+      }
+      .page-head h1 { font-size: 13px; font-weight: 500; margin: 0; color: var(--text); }
+      .frames { display: flex; gap: 28px; padding: 28px; align-items: flex-start; }
+      .frame { width: 393px; flex: 0 0 auto; }
+      .frame h2 { font-size: 12px; font-weight: 500; margin: 0 0 4px 20px; color: var(--text); }
+      .frame p { font-size: 11px; line-height: 1.4; margin: 0 0 12px 20px; color: var(--muted); min-height: 46px; }
+      .phone {
+        border: 1px solid var(--line); border-radius: 28px; overflow: hidden;
+        background: var(--bg); padding: 12px 0 20px;
+      }
+
+      /* ---- the list, mirroring ChatListView / Metrics.swift on a 1x grid ---- */
+      .section { padding: 0 20px; font-size: 11px; font-weight: 600; color: var(--muted); margin: 20px 0 4px; }
+      .section:first-child { margin-top: 8px; }
+      .row { display: flex; align-items: flex-start; padding: 12px 20px; position: relative; }
+      .row + .row::before {
+        content: ""; position: absolute; top: 0; right: 20px; left: var(--divider-inset, 20px);
+        height: 1px; background: var(--line);
+      }
+      .text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+      .title { font-size: 18px; line-height: 22px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .meta { font-size: 13px; line-height: 16px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
+      .meta .branch { font-family: var(--font-mono); font-size: 12px; }
+      .trail { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; margin-left: 12px; padding-top: 2px; }
+      .time { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+      .capsule {
+        font-size: 11px; font-weight: 500; padding: 2px 7px; border-radius: 999px;
+        color: var(--amber, #d9a566); background: color-mix(in oklab, var(--amber, #d9a566) 16%, transparent);
+      }
+
+      /* ---- glyphs ---- */
+      .g { display: inline-block; width: 16px; height: 16px; flex: 0 0 auto; }
+      .g.s { width: 12px; height: 12px; }
+      .g.l { width: 18px; height: 18px; }
+      .mark { mask: var(--mark) center / contain no-repeat; -webkit-mask: var(--mark) center / contain no-repeat; background: var(--tint, var(--text)); }
+      .icon { color: var(--tint, var(--text)); }
+      .icon svg { width: 100%; height: 100%; }
+      .pr { color: var(--pr-open); }
+      .pr.merged { color: var(--pr-merged); }
+      .pr svg { width: 100%; height: 100%; }
+      .nest { position: relative; }
+      .nest i {
+        position: absolute; width: 31%; height: 31%; border-radius: 50%; background: var(--tint, var(--accent));
+        animation: relay 0.9s infinite;
+      }
+      .nest i:nth-child(1) { left: 14%; top: 14%; }
+      .nest i:nth-child(2) { left: 54%; top: 14%; animation-delay: -0.225s; }
+      .nest i:nth-child(3) { left: 54%; top: 54%; animation-delay: -0.45s; }
+      .nest i:nth-child(4) { left: 14%; top: 54%; animation-delay: -0.675s; }
+      @keyframes relay { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.72); opacity: 0.55; } }
+
+      /* ---- variant: shipped (36pt leading column, glyph or nothing) ---- */
+      .v-shipped .row { --divider-inset: 56px; }
+      .v-shipped .lead { width: 36px; flex: 0 0 auto; padding-top: 2px; }
+
+      /* ---- variant A: meta-inline ---- */
+      .v-meta .meta .g { margin-right: 1px; }
+
+      /* ---- variant B: trailing ---- */
+      .v-trail .trail { flex-direction: column; }
+      .v-trail .trail .top { display: flex; align-items: center; gap: 8px; }
+
+      /* ---- variant C: tile ---- */
+      .v-tile .row { --divider-inset: 64px; }
+      .v-tile .tile {
+        width: 32px; height: 32px; border-radius: 9px; flex: 0 0 auto; margin-right: 12px;
+        display: grid; place-items: center;
+        background: color-mix(in oklab, var(--text) 6%, transparent);
+      }
+      .v-tile .tile .mono { font-size: 14px; font-weight: 500; color: var(--muted); }
+      .v-tile .tile[data-tinted] { background: color-mix(in oklab, var(--tint) 16%, transparent); }
+      .v-tile .text { padding-top: 0; }
+      .v-tile .row { align-items: center; }
+
+      /* ---- variant D: title-leading ---- */
+      .v-title .title { display: flex; align-items: center; gap: 8px; }
+      .v-title .title span { overflow: hidden; text-overflow: ellipsis; }
+
+      /* ---- no-time sheet ---- */
+      .v-tglyph .row { align-items: center; }
+      .v-tglyph .trail { padding-top: 0; flex-direction: row; align-items: center; gap: 10px; }
+      .v-tglyph .g { width: 18px; height: 18px; }
+      .v-metaend .meta { display: flex; }
+      .v-metaend .meta .g { margin-left: auto; }
+      .v-metaend .trail { display: none; }
+      .v-live .row { align-items: center; }
+      .v-live .trail { padding-top: 0; }
+
+      /* ---- variant E: margin rail + meta identity ---- */
+      .v-rail .row { padding-left: 20px; }
+      .v-rail .dot {
+        position: absolute; left: 7px; top: 20px; width: 6px; height: 6px; border-radius: 50%;
+        background: var(--tint, var(--accent));
+      }
+      .v-rail .dot.live { animation: pulse 1.2s infinite; }
+      @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1);} 50% { opacity: 0.45; transform: scale(0.8);} }
+    </style>
+  </head>
+  <body>
+    <div class="page-head">
+      <h1>Phone chat list — where a row's glyph lives</h1>
+      <span>Same nine rows in every frame. Mixed: two picked icons, two open PRs, one running, provider marks on the rest.</span>
+    </div>
+    <div class="frames" id="frames"></div>
+
+    <script>
+      const marks = {
+        claude: ["/ios/Argmax/Sources/Assets.xcassets/Providers/claude.imageset/claude.svg", "#d97757"],
+        codex: ["/ios/Argmax/Sources/Assets.xcassets/Providers/codex.imageset/codex.svg", null],
+        cursor: ["/ios/Argmax/Sources/Assets.xcassets/Providers/cursor.imageset/cursor.svg", null],
+        grok: ["/ios/Argmax/Sources/Assets.xcassets/Providers/grok.imageset/grok.svg", null],
+        opencode: ["/ios/Argmax/Sources/Assets.xcassets/Providers/opencode.imageset/opencode.svg", null],
+      };
+      const lucide = {
+        zap: '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>',
+        brain: '<path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M17.599 6.5a3 3 0 0 0 .399-1.375"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M19.938 10.5a4 4 0 0 1 .585.396"/><path d="M6 18a4 4 0 0 1-1.967-.516"/><path d="M19.967 17.484A4 4 0 0 1 18 18"/>',
+        pr: '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" x2="6" y1="9" y2="21"/>',
+      };
+      const svg = (body) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+
+      const sections = [
+        ["Pinned · 2", [
+          { title: "Chief of Staff", project: "hq", provider: "claude", icon: "zap", tint: "var(--session-icon-violet)", time: "now" },
+          { title: "Chief of Brain", project: "brain", provider: "claude", icon: "brain", tint: "var(--session-icon-pink)", time: "1m" },
+        ]],
+        ["Priority · 2", [
+          { title: "revops: Remove legacy Alfred n8n code", project: "revops", branch: "adam/chore-remove-legacy-alfred-n8n", provider: "claude", pr: "open", time: "23h" },
+          { title: "deployment: Datadog access", project: "deployment", provider: "claude", pr: "open", time: "1d" },
+        ]],
+        ["Today · 31", [
+          { title: "Recall Argmax Project Memories", project: "brain", provider: "claude", working: true, time: "1h" },
+          { title: "Casual Greeting", project: "argmax", provider: "codex", time: "2h" },
+          { title: "Add Mobile File Edit Tabs", project: "argmax", provider: "claude", time: "3h" },
+          { title: "Improve Subagent View Spacing on iOS", project: "argmax", provider: "cursor", attention: "Needs you", time: "3h" },
+          { title: "iOS Build and Install Command", project: "argmax", provider: "grok", time: "3h" },
+          { title: "Simplify Subagent Screenshot Attachments", project: "argmax", provider: "opencode", time: "3h" },
+        ]],
+      ];
+
+      // The glyph a row would carry, in the shipped order: nest › icon › PR › provider mark.
+      function glyph(r, { size = "", marksOn = true, iconsOn = true } = {}) {
+        if (r.working) return `<span class="g nest ${size}" style="--tint:${r.tint || "var(--accent)"}"><i></i><i></i><i></i><i></i></span>`;
+        if (!iconsOn) return "";
+        if (r.icon) return `<span class="g icon ${size}" style="--tint:${r.tint}">${svg(lucide[r.icon])}</span>`;
+        if (r.pr) return `<span class="g pr ${r.pr} ${size}">${svg(lucide.pr)}</span>`;
+        if (marksOn && marks[r.provider]) {
+          const [url, tint] = marks[r.provider];
+          return `<span class="g mark ${size}" style="--mark:url(${url});${tint ? `--tint:${tint}` : ""}"></span>`;
+        }
+        return "";
+      }
+      const meta = (r, lead = "") => `<div class="meta">${lead}<span>${r.project}${r.branch ? ` · <span class="branch">${r.branch}</span>` : ""}</span></div>`;
+      const trail = (r, extra = "") => `<div class="trail">${extra || `<span class="time">${r.time}</span>`}${r.attention ? `<span class="capsule">${r.attention}</span>` : ""}</div>`;
+
+      const variants = [
+        { cls: "v-shipped", name: "Shipped · marks off", note: "Today's build with Provider marks off, as in the screenshot. The 36pt column stays so titles never move, so most rows carry a hole.",
+          row: (r) => `<div class="lead">${glyph(r, { marksOn: false })}</div><div class="text"><div class="title">${r.title}</div>${meta(r)}</div>${trail(r)}` },
+        { cls: "v-shipped", name: "Shipped · marks on", note: "Same build with marks on. The column earns its keep only when every row fills it, which is the assumption the layout was built on.",
+          row: (r) => `<div class="lead">${glyph(r)}</div><div class="text"><div class="title">${r.title}</div>${meta(r)}</div>${trail(r)}` },
+        { cls: "v-meta", name: "A · In the meta line", note: "Titles sit on the gutter. The glyph leads the second line at 12pt, before the project. A missing glyph is a missing word, not a missing column.",
+          row: (r) => `<div class="text"><div class="title">${r.title}</div>${meta(r, glyph(r, { size: "s" }))}</div>${trail(r)}` },
+        { cls: "v-trail", name: "B · Trailing, by the time", note: "Titles on the gutter. The glyph sits at 16pt beside the elapsed time, where the eye already goes for state. Empty rows just show the time.",
+          row: (r) => `<div class="text"><div class="title">${r.title}</div>${meta(r)}</div>${trail(r, `<span class="top">${glyph(r)}<span class="time">${r.time}</span></span>`)}` },
+        { cls: "v-tile", name: "C · A tile on every row", note: "A 32pt tile is never empty: picked icon on its tint, else the provider mark, else the project's initial. Marks off still leaves a monogram.",
+          row: (r) => {
+            const g = glyph(r, { size: "l" });
+            const tinted = r.icon ? ` data-tinted style="--tint:${r.tint}"` : "";
+            return `<div class="tile"${tinted}>${g || `<span class="mono">${r.project[0].toUpperCase()}</span>`}</div><div class="text"><div class="title">${r.title}</div>${meta(r)}</div>${trail(r)}`;
+          } },
+        { cls: "v-title", name: "D · Leading the title", note: "The glyph is the first word of the title, 16pt, the way an issue list badges a row. Rows without one start at the gutter, so titles are not on one column.",
+          row: (r) => `<div class="text"><div class="title">${glyph(r)}<span>${r.title}</span></div>${meta(r)}</div>${trail(r)}` },
+        { cls: "v-rail", name: "E · State in the margin, identity in the meta", note: "The 20pt gutter carries state as a 6pt dot: accent for running, sage for an open PR, violet merged. Identity (icon or mark) leads the meta line.",
+          row: (r) => {
+            const dot = r.working ? `<span class="dot live" style="--tint:${r.tint || "var(--accent)"}"></span>` : r.pr ? `<span class="dot" style="--tint:var(--pr-${r.pr})"></span>` : "";
+            const id = r.icon ? glyph({ ...r, working: false, pr: null }, { size: "s" }) : glyph({ ...r, working: false, pr: null }, { size: "s" });
+            return `${dot}<div class="text"><div class="title">${r.title}</div>${meta(r, id)}</div>${trail(r)}`;
+          } },
+      ];
+
+      const noTime = [
+        { cls: "v-meta", name: "F · Text only", note: "No time, no trailing column. The glyph leads the meta line; the row is a title and a place. Only the attention capsule ever appears on the right.",
+          row: (r) => `<div class="text"><div class="title">${r.title}</div>${meta(r, glyph(r, { size: "s" }))}</div>${r.attention ? trail(r, " ") : ""}` },
+        { cls: "v-tglyph", name: "G · Trailing glyph, centred", note: "The glyph takes the trailing edge alone at 18pt, centred on the row like a settings chevron. Rows without one end at the text. Attention sits before it.",
+          row: (r) => `<div class="text"><div class="title">${r.title}</div>${meta(r)}</div><div class="trail">${r.attention ? `<span class="capsule">${r.attention}</span>` : ""}${glyph(r)}</div>` },
+        { cls: "v-metaend", name: "H · Glyph closes the meta line", note: "Identity as a footnote: the glyph right-aligns on the second line, opposite the project. Title spans the full width; nothing on the title's line but the title.",
+          row: (r) => `<div class="text"><div class="title">${r.title}</div><div class="meta"><span>${r.project}${r.branch ? ` · <span class="branch">${r.branch}</span>` : ""}</span>${r.attention ? `<span class="capsule">${r.attention}</span>` : ""}${glyph(r, { size: "s" })}</div></div>` },
+        { cls: "v-live", name: "I · Trailing is for live state only", note: "The right edge shows only what is happening now: the nest while running, the capsule when it needs you, otherwise nothing. Identity (icon, PR, mark) leads the meta line.",
+          row: (r) => {
+            const id = glyph({ ...r, working: false }, { size: "s" });
+            const live = r.working ? glyph(r) : "";
+            return `<div class="text"><div class="title">${r.title}</div>${meta(r, id)}</div>${live || r.attention ? `<div class="trail">${live}${r.attention ? `<span class="capsule">${r.attention}</span>` : ""}</div>` : ""}`;
+          } },
+      ];
+
+      const params = new URLSearchParams(location.search);
+      if (params.get("theme")) document.documentElement.dataset.theme = params.get("theme");
+      const only = params.get("only");
+      const host = document.getElementById("frames");
+      const set = params.get("sheet") === "notime" ? noTime : variants;
+      if (set === noTime) document.querySelector(".page-head span").textContent = "Same nine rows, elapsed time removed. The right edge is free.";
+      for (const v of set) {
+        if (only && !v.name.startsWith(only)) continue;
+        const el = document.createElement("div");
+        el.className = "frame";
+        el.innerHTML = `<h2>${v.name}</h2><p>${v.note}</p><div class="phone ${v.cls}">${
+          sections.map(([h, rows]) => `<div class="section">${h}</div>${rows.map((r) => `<div class="row">${v.row(r)}</div>`).join("")}`).join("")
+        }</div>`;
+        host.appendChild(el);
+      }
+    </script>
+  </body>
+</html>

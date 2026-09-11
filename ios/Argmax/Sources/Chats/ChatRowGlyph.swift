@@ -1,6 +1,7 @@
 import SwiftUI
 
-// The leading column of a chat row: one glyph, chosen in one order.
+// The glyph that leads a chat row's second line: one glyph, chosen in one
+// order.
 //
 //   1. Running wins over everything. A turn in flight is the most perishable
 //      thing a list of a hundred chats has to say, and the nest is how every
@@ -17,11 +18,16 @@ import SwiftUI
 //
 // Settings → Appearance holds two switches over this order. "Chat icons"
 // reaches steps 2 through 4: off, a row draws nothing but the nest, because a
-// turn in flight is the one thing the column says that a title cannot.
+// turn in flight is the one thing the glyph says that a title cannot.
 // "Provider marks", under it, reaches step 4 alone — the bare CLI badge on
-// chats that picked nothing. Neither closes the column: an earlier pass
-// dropped the whole 36pt column, which moved every title on the screen the
-// moment a chat started or stopped working.
+// chats that picked nothing.
+//
+// The glyph sits in the meta line, before the project, at the meta size. It
+// used to own a 36pt leading column, which had to stand whether or not a row
+// had anything to put in it so the titles would not move when a turn
+// started; with marks off, that left most of the list indented past a hole.
+// A word-sized glyph in the second line costs nothing when it is missing
+// (docs/design/chat-list-glyphs, variant A).
 //
 // The choice is a value rather than a `ViewBuilder` so the order can be
 // tested without a renderer; `ChatRowGlyphView` is the only thing that turns
@@ -39,8 +45,7 @@ enum ChatRowGlyph: Equatable {
     case prOpen(number: Int?)
     case providerMark(provider: String)
     /// Nothing to show: the icons are switched off, or there was never
-    /// anything to draw. The column stands empty rather than closing, so the
-    /// titles stay on their column.
+    /// anything to draw. The row leaves the slot out.
     case empty
 
     init(row: ChatRow, chatIcons: Bool, providerMarks: Bool) {
@@ -64,7 +69,7 @@ enum ChatRowGlyph: Equatable {
 
 struct ChatRowGlyphView: View {
     let glyph: ChatRowGlyph
-    var size: CGFloat = 18
+    var size: CGFloat = 12
 
     var body: some View {
         Group {
@@ -73,7 +78,7 @@ struct ChatRowGlyphView: View {
                 WorkingNest(size: size, tint: SessionIcon.color(for: tint))
             case .icon(let name, let tint):
                 Image(systemName: SessionIcon.symbol(for: name) ?? "circle")
-                    .font(.system(size: size - 2, weight: .medium))
+                    .typeSymbol(size: size, weight: .medium)
                     .symbolRenderingMode(.hierarchical)
                     // An icon with no colour is still a deliberate pick, so
                     // it draws in the ink rather than falling all the way
@@ -81,13 +86,13 @@ struct ChatRowGlyphView: View {
                     .foregroundStyle(SessionIcon.color(for: tint) ?? Theme.ink)
                     .accessibilityLabel(sessionIconLabel(name))
             case .prMerged(let number):
-                GitPullRequestStatusMark(kind: .merged, size: size - 2)
+                GitPullRequestStatusMark(kind: .merged, size: size)
                     .accessibilityLabel(number.map { "Pull request #\($0) merged" } ?? "Pull request merged")
             case .prOpen(let number):
-                GitPullRequestStatusMark(kind: .open, size: size - 2)
+                GitPullRequestStatusMark(kind: .open, size: size)
                     .accessibilityLabel(number.map { "Pull request #\($0) open" } ?? "Pull request open")
             case .providerMark(let provider):
-                ProviderMark(provider: provider, size: size - 2)
+                ProviderMark(provider: provider, size: size)
             case .empty:
                 Color.clear
             }

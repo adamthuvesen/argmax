@@ -387,7 +387,7 @@ fn delete_sessions(
         }
     }
     // The workspace was created solely to host the import, so it goes too.
-    workspaces.remove_imported(&removed_workspaces, session_ids);
+    workspaces.remove_sessions(&removed_workspaces, session_ids);
     Ok(session_ids.len() as u32)
 }
 

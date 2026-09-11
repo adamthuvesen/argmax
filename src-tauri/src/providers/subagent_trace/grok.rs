@@ -628,8 +628,10 @@ mod tests {
             parent_tool_use_id: "call-spawn".to_string(),
             parent_created_at: "2026-09-06T06:50:53.000Z".to_string(),
             provider_conversation_id: Some("parent-session".to_string()),
+            provider_invocation_id: None,
             workspace_path: Some("/tmp/repo".to_string()),
             cursor_prompt: None,
+            cursor_background_launch: false,
             child_ids: Vec::new(),
             codex_runs: Vec::new(),
         };

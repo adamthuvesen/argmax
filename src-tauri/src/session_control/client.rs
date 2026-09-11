@@ -12,9 +12,10 @@ use super::{
     },
     protocol_error,
     server::{read_json_line, Frame},
+    CHECKS_RUN_DEFAULT_TIMEOUT_MS, CHECKS_RUN_MAX_TIMEOUT_MS, CHECKS_RUN_RESPONSE_SLACK,
     CLIENT_IO_TIMEOUT, MAX_BROWSER_RESPONSE_BYTES, MAX_INBOX_RESPONSE_BYTES, MAX_REQUEST_BYTES,
-    MAX_RESPONSE_BYTES, PROTOCOL_VERSION, SESSION_LAUNCH_SOCKET_ENV, SESSION_LAUNCH_TOKEN_ENV,
-    WAIT_DEFAULT_SECONDS, WAIT_MAX_SECONDS, WAIT_RESPONSE_SLACK,
+    MAX_RESPONSE_BYTES, MAX_TEXT_RESPONSE_BYTES, PROTOCOL_VERSION, SESSION_LAUNCH_SOCKET_ENV,
+    SESSION_LAUNCH_TOKEN_ENV, WAIT_DEFAULT_SECONDS, WAIT_MAX_SECONDS, WAIT_RESPONSE_SLACK,
 };
 
 /// One round trip on the session-control socket. Every caller — the CLI, the
@@ -81,6 +82,12 @@ pub fn send_session_control(
     let response_cap = match request.action {
         SessionControlAction::Browser(_) => MAX_BROWSER_RESPONSE_BYTES,
         SessionControlAction::Inbox(_) | SessionControlAction::Wait(_) => MAX_INBOX_RESPONSE_BYTES,
+        // A diff and a terminal's scrollback are capped in characters, and JSON
+        // escaping spends up to six bytes on one — so the frame that always
+        // fits is the character ceiling times that, not the ordinary envelope.
+        SessionControlAction::WorkspaceDiff(_) | SessionControlAction::TerminalRead(_) => {
+            MAX_TEXT_RESPONSE_BYTES
+        }
         _ => MAX_RESPONSE_BYTES,
     };
     let response =
@@ -110,6 +117,24 @@ pub fn send_session_control(
         (SessionControlAction::Wait(_), SessionControlResult::Waited(_)) => true,
         (SessionControlAction::GoalSet(_), SessionControlResult::Goal(_)) => true,
         (SessionControlAction::GoalClear, SessionControlResult::Goal(_)) => true,
+        (SessionControlAction::Rename(_), SessionControlResult::Renamed(_)) => true,
+        (SessionControlAction::Archive(_), SessionControlResult::Archiving(_)) => true,
+        (SessionControlAction::ChecksRun(_), SessionControlResult::Checked(_)) => true,
+        (SessionControlAction::WorkspaceStatus(_), SessionControlResult::WorkspaceStatus(_)) => {
+            true
+        }
+        (SessionControlAction::WorkspaceDiff(_), SessionControlResult::WorkspaceDiff(_)) => true,
+        (SessionControlAction::LearningsAdd(_), SessionControlResult::Learned(_)) => true,
+        (SessionControlAction::LearningsSearch(_), SessionControlResult::LearningsFound(_)) => true,
+        (SessionControlAction::TerminalSpawn(_), SessionControlResult::TerminalStarted(_)) => true,
+        (SessionControlAction::TerminalRead(_), SessionControlResult::TerminalOutput(_)) => true,
+        (SessionControlAction::Projects(_), SessionControlResult::Projects(_)) => true,
+        (SessionControlAction::ScheduleFollowup(_), SessionControlResult::Followup(_)) => true,
+        (SessionControlAction::ScheduleList(_), SessionControlResult::Schedules(_)) => true,
+        (SessionControlAction::ScheduleCancel(_), SessionControlResult::ScheduleCancelled(_)) => {
+            true
+        }
+        (SessionControlAction::ScheduleResume(_), SessionControlResult::ScheduleResumed(_)) => true,
         _ => false,
     };
     if !matches_action {
@@ -128,9 +153,9 @@ pub fn send_session_control(
     }
 }
 
-/// How long the client waits for an answer. Every action but `wait` settles
-/// within the ordinary timeout; a wait is a deliberate block, so the socket
-/// stays open for its own timeout plus enough slack to carry the reply.
+/// How long the client waits for an answer. Waits and checks are deliberate
+/// blocks, so their sockets stay open for the requested wall-clock budget plus
+/// enough slack to clean up and carry the reply.
 fn client_read_timeout(action: &SessionControlAction) -> Duration {
     match action {
         SessionControlAction::Wait(action) => {
@@ -140,6 +165,14 @@ fn client_read_timeout(action: &SessionControlAction) -> Duration {
                     .unwrap_or(WAIT_DEFAULT_SECONDS)
                     .clamp(1, WAIT_MAX_SECONDS),
             ) + WAIT_RESPONSE_SLACK
+        }
+        SessionControlAction::ChecksRun(action) => {
+            Duration::from_millis(
+                action
+                    .timeout_ms
+                    .unwrap_or(CHECKS_RUN_DEFAULT_TIMEOUT_MS)
+                    .clamp(1, CHECKS_RUN_MAX_TIMEOUT_MS),
+            ) + CHECKS_RUN_RESPONSE_SLACK
         }
         _ => CLIENT_IO_TIMEOUT,
     }
@@ -164,4 +197,29 @@ pub(super) fn read_bounded_stdin() -> Result<String, SessionControlError> {
     }
     String::from_utf8(bytes)
         .map_err(|_| protocol_error("PROMPT_INVALID", "Prompt stdin must be valid UTF-8."))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::session_control::ChecksRunAction;
+
+    #[test]
+    fn a_check_socket_outlives_its_requested_budget() {
+        let action = SessionControlAction::ChecksRun(ChecksRunAction {
+            timeout_ms: Some(120_000),
+            ..ChecksRunAction::default()
+        });
+        assert_eq!(
+            client_read_timeout(&action),
+            Duration::from_secs(150),
+            "the check gets its two minutes plus reply and cleanup slack"
+        );
+
+        let default = SessionControlAction::ChecksRun(ChecksRunAction::default());
+        assert_eq!(
+            client_read_timeout(&default),
+            Duration::from_millis(CHECKS_RUN_DEFAULT_TIMEOUT_MS) + CHECKS_RUN_RESPONSE_SLACK
+        );
+    }
 }

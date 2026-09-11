@@ -1,20 +1,12 @@
 // Push notifications to a phone via ntfy (https://ntfy.sh or self-hosted).
 //
-// The desktop notification path (`notifications.rs`) is deliberately gated on
-// the window being unfocused — a toast is redundant while you are looking at
-// the app. Phone push is the opposite: it exists for when you are away from
-// the machine, so it fires on every qualifying transition regardless of
-// focus, deduplicated per session on the (state, attention) pair.
+// What fires, and when, lives in `signal.rs` — this module is only the ntfy
+// delivery of it: HTTP headers on a POST to a topic URL, with a Click header
+// deep-linking the mobile page. The APNs sink next door reads the same table.
 
-use std::sync::Mutex;
-
-use crate::notifications::BoundedMap;
 use crate::persistence::sessions::SessionSummary;
-use crate::sessions::attention::AttentionState;
-use crate::sessions::state::SessionState;
-use crate::util::sync::LockOrRecover;
+use crate::remote::signal::{signal_for, PushSignal, SignalDedupe};
 
-const DEDUP_CAPACITY: usize = 2_000;
 const REQUEST_TIMEOUT_SECS: u64 = 5;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,7 +32,7 @@ pub struct NtfyPublisher {
     /// `http://mac.tail1234.ts.net:8790/mobile.html`. `None` while no remote
     /// URL is known, which sends pushes without a Click header.
     mobile_url: Option<String>,
-    last_signaled: Mutex<BoundedMap<String, String>>,
+    dedupe: SignalDedupe,
 }
 
 impl NtfyPublisher {
@@ -79,29 +71,34 @@ impl NtfyPublisher {
         Self {
             sink,
             mobile_url,
-            last_signaled: Mutex::new(BoundedMap::new(DEDUP_CAPACITY)),
+            dedupe: SignalDedupe::new("ntfy last signaled"),
         }
     }
 
     /// Called for every session row in a dashboard delta. Fires at most once
-    /// per (state, attention) value per session, and only for transitions a
-    /// phone cares about: stalled on the user, failed, or finished.
+    /// per (state, attention) value per session, and only for the transitions
+    /// `signal_for` admits.
     pub fn observe(&self, session: &SessionSummary) {
-        let Some(message) = signal_for(session, self.mobile_url.as_deref()) else {
+        let Some(signal) = signal_for(session) else {
             return;
         };
-        let signature = format!("{}|{}", session.state.as_str(), session.attention.as_str());
-        {
-            let mut last = self.last_signaled.lock_or_recover("ntfy last signaled");
-            if last
-                .get(&session.id)
-                .is_some_and(|prior| prior == &signature)
-            {
-                return;
-            }
-            last.insert(session.id.clone(), signature);
+        if !self.dedupe.admit(session) {
+            return;
         }
-        (self.sink)(message);
+        (self.sink)(self.message(&signal));
+    }
+
+    fn message(&self, signal: &PushSignal) -> NtfyMessage {
+        NtfyMessage {
+            title: signal.title.clone(),
+            body: signal.body.clone(),
+            priority: signal.priority.ntfy_header(),
+            tags: signal.tags,
+            click: self
+                .mobile_url
+                .as_deref()
+                .map(|base| deep_link(base, &signal.session_id)),
+        }
     }
 }
 
@@ -122,27 +119,6 @@ pub fn post_test(topic_url: &str) -> Result<(), String> {
         .map_err(|error| error.to_string())
 }
 
-fn signal_for(session: &SessionSummary, mobile_url: Option<&str>) -> Option<NtfyMessage> {
-    let prompt = truncated_prompt(&session.prompt);
-    let (title, priority, tags) = match (session.attention, session.state) {
-        (AttentionState::ApprovalNeeded, _) => ("Needs approval", "high", "raised_hand"),
-        (AttentionState::QuestionAsked, _) => ("Asked you a question", "high", "speech_balloon"),
-        (AttentionState::Blocked, _) => ("Waiting on you", "high", "speech_balloon"),
-        (_, SessionState::Failed) => ("Chat failed", "default", "x"),
-        (_, SessionState::Complete) => ("Chat complete", "default", ""),
-        _ => return None,
-    };
-    Some(NtfyMessage {
-        // ASCII only: the title travels as an HTTP header, and ureq rejects
-        // non-ASCII header values (an em dash here broke every live push).
-        title: format!("Argmax: {title}"),
-        body: prompt,
-        priority,
-        tags,
-        click: mobile_url.map(|base| deep_link(base, &session.id)),
-    })
-}
-
 /// `<mobile page>?session=<id>`, read once by the phone on load
 /// (`src/renderer/mobile/deepLink.ts`). Session ids are hex/dash ids from
 /// SQLite, so they need no escaping; anything else is dropped rather than
@@ -158,56 +134,15 @@ fn deep_link(mobile_url: &str, session_id: &str) -> String {
     format!("{mobile_url}{separator}session={session_id}")
 }
 
-fn truncated_prompt(prompt: &str) -> String {
-    const MAX: usize = 140;
-    let trimmed = prompt.trim();
-    if trimmed.chars().count() <= MAX {
-        return trimmed.to_string();
-    }
-    let mut cut: String = trimmed.chars().take(MAX).collect();
-    cut.push('…');
-    cut
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::remote::signal::fixtures::session;
+    use crate::sessions::attention::AttentionState;
+    use crate::sessions::state::SessionState;
     use std::sync::mpsc;
 
     const MOBILE_URL: &str = "http://mac.tail1234.ts.net:8790/mobile.html";
-
-    fn session(state: SessionState, attention: AttentionState) -> SessionSummary {
-        SessionSummary {
-            id: "s1".to_string(),
-            workspace_id: "w1".to_string(),
-            provider: "codex".to_string(),
-            model_label: "GPT".to_string(),
-            model_id: "gpt".to_string(),
-            reasoning_effort: None,
-            permission_mode: "auto-approve".to_string(),
-            agent_mode: None,
-            provider_conversation_id: None,
-            prompt: "Build the dashboard".to_string(),
-            state,
-            attention,
-            attention_changed_at: None,
-            imported: false,
-            started_at: "2026-01-01T00:00:00Z".to_string(),
-            completed_at: None,
-            last_activity_at: "2026-01-01T00:00:00Z".to_string(),
-            cost_usd: 0.0,
-            tokens: crate::persistence::sessions::UsageCounts {
-                input: 0,
-                output: 0,
-                cache_read: 0,
-                cache_write: 0,
-            },
-            context_tokens: 0,
-            context_window: None,
-            launched_by_session_id: None,
-            launch_kind: crate::persistence::sessions::LAUNCH_KIND_AGENT.to_string(),
-        }
-    }
 
     fn capture_publisher() -> (NtfyPublisher, mpsc::Receiver<NtfyMessage>) {
         capture_publisher_linking(Some(MOBILE_URL.to_string()))
@@ -248,23 +183,6 @@ mod tests {
     }
 
     #[test]
-    fn titles_are_ascii_header_safe() {
-        for (state, attention) in [
-            (SessionState::Running, AttentionState::ApprovalNeeded),
-            (SessionState::Running, AttentionState::Blocked),
-            (SessionState::Failed, AttentionState::Normal),
-            (SessionState::Complete, AttentionState::Normal),
-        ] {
-            let message = signal_for(&session(state, attention), Some(MOBILE_URL)).expect("signal");
-            assert!(
-                message.title.is_ascii(),
-                "non-ASCII title: {}",
-                message.title
-            );
-        }
-    }
-
-    #[test]
     fn normal_running_sessions_are_silent() {
         let (publisher, rx) = capture_publisher();
         publisher.observe(&session(SessionState::Running, AttentionState::Normal));
@@ -300,19 +218,13 @@ mod tests {
 
     #[test]
     fn an_exotic_session_id_falls_back_to_the_bare_page() {
+        let (publisher, rx) = capture_publisher();
         let mut summary = session(SessionState::Running, AttentionState::Blocked);
         summary.id = "s 1?&".to_string();
-        let message = signal_for(&summary, Some(MOBILE_URL)).expect("signal");
-        assert_eq!(message.click.as_deref(), Some(MOBILE_URL));
-    }
-
-    #[test]
-    fn long_prompts_truncate() {
-        let long = "x".repeat(400);
-        let mut summary = session(SessionState::Failed, AttentionState::Normal);
-        summary.prompt = long;
-        let message = signal_for(&summary, Some(MOBILE_URL)).expect("failed signal");
-        assert!(message.body.chars().count() <= 141);
-        assert!(message.body.ends_with('…'));
+        publisher.observe(&summary);
+        assert_eq!(
+            rx.try_recv().expect("signal").click.as_deref(),
+            Some(MOBILE_URL)
+        );
     }
 }

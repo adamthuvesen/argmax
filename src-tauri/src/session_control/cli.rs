@@ -19,6 +19,8 @@ pub enum SessionControlCliInput {
         project: Option<String>,
         prompt: CliPrompt,
         worktree: bool,
+        path: Option<String>,
+        branch: Option<String>,
     },
     Move {
         project: Option<String>,
@@ -46,10 +48,14 @@ impl SessionControlCliInput {
                 project,
                 prompt,
                 worktree,
+                path,
+                branch,
             } => SessionControlAction::Launch(LaunchAction {
                 prompt: prompt.read()?,
                 project,
                 worktree,
+                path,
+                branch,
                 ..LaunchAction::default()
             }),
             SessionControlCliInput::Move {
@@ -120,6 +126,8 @@ fn parse_session_launch_cli(args: &[OsString]) -> Result<SessionControlCliInput,
     let mut project = None;
     let mut prompt = None;
     let mut worktree = false;
+    let mut path = None;
+    let mut branch = None;
     let mut index = 3;
     while index < args.len() {
         let flag = args[index]
@@ -146,6 +154,34 @@ fn parse_session_launch_cli(args: &[OsString]) -> Result<SessionControlCliInput,
                 }
                 worktree = true;
             }
+            "--path" => {
+                if path.is_some() {
+                    return Err("--path may be provided only once".to_string());
+                }
+                index += 1;
+                let value = args
+                    .get(index)
+                    .and_then(|value| value.to_str())
+                    .ok_or_else(|| "--path requires a value".to_string())?;
+                if value.is_empty() {
+                    return Err("--path must not be empty".to_string());
+                }
+                path = Some(value.to_string());
+            }
+            "--branch" => {
+                if branch.is_some() {
+                    return Err("--branch may be provided only once".to_string());
+                }
+                index += 1;
+                let value = args
+                    .get(index)
+                    .and_then(|value| value.to_str())
+                    .ok_or_else(|| "--branch requires a value".to_string())?;
+                if value.is_empty() {
+                    return Err("--branch must not be empty".to_string());
+                }
+                branch = Some(value.to_string());
+            }
             "--prompt" => {
                 if prompt.is_some() {
                     return Err("provide exactly one of --prompt or --prompt-stdin".to_string());
@@ -168,10 +204,18 @@ fn parse_session_launch_cli(args: &[OsString]) -> Result<SessionControlCliInput,
         index += 1;
     }
     let prompt = prompt.ok_or_else(session_launch_usage)?;
+    if worktree && path.is_some() {
+        return Err(
+            "worktree creates a new worktree; path launches into one that exists. Pass only one."
+                .to_string(),
+        );
+    }
     Ok(SessionControlCliInput::Launch {
         project,
         prompt,
         worktree,
+        path,
+        branch,
     })
 }
 
@@ -350,7 +394,7 @@ fn parse_session_message_cli(args: &[OsString]) -> Result<SessionControlCliInput
 }
 
 fn session_launch_usage() -> String {
-    "usage: argmax session launch [--project VALUE] [--worktree] (--prompt VALUE | --prompt-stdin)"
+    "usage: argmax session launch [--project VALUE] [--worktree] [--path VALUE] [--branch VALUE] (--prompt VALUE | --prompt-stdin)"
         .to_string()
 }
 
@@ -416,6 +460,8 @@ mod tests {
                 project: Some("Argmax".to_string()),
                 prompt: CliPrompt::Value("Review this".to_string()),
                 worktree: true,
+                path: None,
+                branch: None,
             }
         );
 
@@ -426,8 +472,49 @@ mod tests {
                 project: None,
                 prompt: CliPrompt::Stdin,
                 worktree: false,
+                path: None,
+                branch: None,
             }
         );
+    }
+
+    #[test]
+    fn cli_parser_takes_a_launch_checkout_path_and_branch() {
+        let args = [
+            "argmax",
+            "session",
+            "launch",
+            "--path",
+            "/repo/worktrees/feature",
+            "--branch",
+            "feature",
+            "--prompt",
+            "Review this",
+        ]
+        .map(OsString::from);
+        assert_eq!(
+            parse_session_launch_cli(&args).unwrap(),
+            SessionControlCliInput::Launch {
+                project: None,
+                prompt: CliPrompt::Value("Review this".to_string()),
+                worktree: false,
+                path: Some("/repo/worktrees/feature".to_string()),
+                branch: Some("feature".to_string()),
+            }
+        );
+
+        let both = [
+            "argmax",
+            "session",
+            "launch",
+            "--worktree",
+            "--path",
+            "/repo/worktrees/feature",
+            "--prompt",
+            "Review this",
+        ]
+        .map(OsString::from);
+        assert!(parse_session_launch_cli(&both).is_err());
     }
 
     #[test]
@@ -541,6 +628,8 @@ mod tests {
             project: Some("Argmax".to_string()),
             prompt: CliPrompt::Value("Ship it".to_string()),
             worktree: true,
+            path: None,
+            branch: None,
         }
         .into_action()
         .expect("action");
@@ -550,9 +639,13 @@ mod tests {
                 prompt: "Ship it".to_string(),
                 project: Some("Argmax".to_string()),
                 worktree: true,
+                path: None,
+                branch: None,
                 provider: None,
                 model: None,
                 task_label: None,
+                reasoning: None,
+                permission_mode: None,
             })
         );
 

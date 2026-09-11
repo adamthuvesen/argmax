@@ -17,12 +17,18 @@ pub use cli::{try_run_session_control_cli, CliPrompt, SessionControlCliInput};
 #[cfg(unix)]
 pub use client::send_session_control;
 pub use protocol::{
-    ArchiveAction, GoalOutcome, GoalSetAction, InboxAction, InboxDelivery, InboxMessage,
-    LaunchAction, LaunchedSession, ListAction, MessageAction, MessageDelivery, MoveAction,
-    ReadAction, ReadEntry, RenameAction, ScheduledArchive, ScheduledMove, SessionControlAction,
+    ArchiveAction, ChangedFile, CheckOutcome, ChecksOutcome, ChecksRunAction, GoalOutcome,
+    GoalSetAction, InboxAction, InboxDelivery, InboxMessage, LaunchAction, LaunchedSession,
+    LearningRecord, LearningsAddAction, LearningsSearchAction, LearningsSearchOutcome, ListAction,
+    MessageAction, MessageDelivery, MoveAction, ProjectEntry, ProjectListOutcome, ProjectsAction,
+    ReadAction, ReadEntry, RenameAction, ScheduleCancelAction, ScheduleCancelled, ScheduleEntry,
+    ScheduleFollowupAction, ScheduleListAction, ScheduleListOutcome, ScheduleResumeAction,
+    ScheduleResumed, ScheduledArchive, ScheduledFollowup, ScheduledMove, SessionControlAction,
     SessionControlError, SessionControlRequest, SessionControlResponse, SessionControlResult,
     SessionList, SessionListEntry, SessionRead, SessionRenamed, SessionStatus, SessionStopped,
-    StatusAction, StopAction, WaitAction, WaitOutcome, WaitedSession,
+    StatusAction, StopAction, TerminalOutput, TerminalReadAction, TerminalSpawnAction,
+    TerminalStarted, TerminalSummary, WaitAction, WaitOutcome, WaitedSession, WorkspaceDiffAction,
+    WorkspaceDiffOutcome, WorkspaceStatusAction, WorkspaceStatusOutcome,
 };
 pub use registry::{AfterTurn, SessionLaunchProcessConfig, SessionLaunchRegistry};
 pub use server::{SessionLaunchError, SessionLaunchServer};
@@ -47,6 +53,11 @@ const MAX_BROWSER_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
 /// becomes a six-byte unicode escape), which is 384 KiB, and the per-message
 /// envelope is a few hundred bytes across at most `INBOX_READ_LIMIT` rows.
 const MAX_INBOX_RESPONSE_BYTES: usize = 512 * 1024;
+/// The same reasoning for the two replies that carry captured text: a
+/// `workspace_diff` and a `terminal_read` are capped at
+/// `WORKSPACE_DIFF_MAX_CHARS` / `TERMINAL_READ_MAX_CHARS` characters, and a
+/// worst-case character costs six bytes once JSON has escaped it.
+const MAX_TEXT_RESPONSE_BYTES: usize = 512 * 1024;
 const SERVER_IO_TIMEOUT: Duration = Duration::from_secs(5);
 const CLIENT_IO_TIMEOUT: Duration = Duration::from_secs(75);
 const ACCEPT_POLL_INTERVAL: Duration = Duration::from_millis(25);
@@ -89,11 +100,37 @@ const WAIT_POLL_INTERVAL: Duration = Duration::from_secs(1);
 /// How much longer than its own timeout a waiting client keeps the socket
 /// open, so the answer to a wait that ran the full duration still arrives.
 const WAIT_RESPONSE_SLACK: Duration = Duration::from_secs(30);
+/// `checks_run` owns one wall-clock budget across its configured command
+/// sequence. The socket waits for the same budget plus reply/cleanup slack.
+const CHECKS_RUN_DEFAULT_TIMEOUT_MS: u64 = crate::checks::service::DEFAULT_TIMEOUT_MS;
+const CHECKS_RUN_MAX_TIMEOUT_MS: u64 = 30 * 60 * 1000;
+const CHECKS_RUN_RESPONSE_SLACK: Duration = Duration::from_secs(30);
 const INBOX_BROADCAST_CAPACITY: usize = 256;
 /// Per-row caps inside a `session_read` page, so one enormous tool result
 /// cannot spend the whole byte budget.
 const READ_ENTRY_MAX_CHARS: usize = 2000;
 const TOOL_ARGUMENT_MAX_CHARS: usize = 160;
+/// `workspace_diff`'s byte budget, the same shape as `session_read`'s: the
+/// default when an agent names none, and the ceiling it may ask for.
+const WORKSPACE_DIFF_DEFAULT_CHARS: usize = 16 * 1024;
+const WORKSPACE_DIFF_MAX_CHARS: usize = 40 * 1024;
+/// How many changed files one `workspace_diff` reply lists.
+const WORKSPACE_DIFF_FILE_LIMIT: usize = 100;
+/// `terminal_read`'s budget over the same ceiling, and how many terminals one
+/// workspace reply lists.
+const TERMINAL_READ_DEFAULT_CHARS: usize = 8 * 1024;
+const TERMINAL_READ_MAX_CHARS: usize = 40 * 1024;
+const LEARNINGS_SEARCH_DEFAULT_LIMIT: usize = 10;
+const LEARNINGS_SEARCH_MAX_LIMIT: usize = 40;
+/// How far ahead `schedule_followup` may aim. A week is well past the point
+/// where a waiting chat is the right tool, and the app has to still be running.
+const FOLLOWUP_MAX_SECONDS: u64 = 7 * 24 * 60 * 60;
+/// The scheduler's own tick, which is the granularity a wake can promise.
+const FOLLOWUP_MIN_SECONDS: u64 = 30;
+/// How many scheduled tasks one `schedule_list` reply carries, and how much
+/// of each prompt it shows — enough to recognise a task, not to re-read it.
+const SCHEDULE_LIST_LIMIT: usize = 50;
+const SCHEDULE_PROMPT_CHARS: usize = 500;
 const DEFAULT_TASK_LABEL: &str = "Local agent task";
 const MAX_TASK_LABEL_CHARS: usize = 64;
 const MAX_TASK_LABEL_BYTES: usize = 200;

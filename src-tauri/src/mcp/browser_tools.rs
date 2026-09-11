@@ -252,6 +252,18 @@ pub struct EvaluateParams {
     pub tab: Option<String>,
 }
 
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct CaptureParams {
+    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
+    /// session used last.
+    pub tab: Option<String>,
+    /// How many of the newest records to return. Defaults to 50, capped at 200.
+    pub limit: Option<u32>,
+    /// Empty the buffer after reading, so the next call only shows what
+    /// happened since. Use it before an action you want to read the effect of.
+    pub clear: Option<bool>,
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct HandleDialogParams {
     /// True accepts the dialog (confirm returns true, prompt returns text);
@@ -672,6 +684,48 @@ Drive the UI with the click and type tools instead, so the user can follow along
         call(BrowserRequest::Evaluate {
             tab: params.tab,
             expression: params.expression,
+        })
+        .await
+    }
+
+    #[tool(
+        name = "browser_console",
+        description = "Read what the page logged: its console calls, its uncaught errors, and its \
+unhandled promise rejections, newest last. This is the tool for checking a web change you just \
+made — a page that renders can still be throwing on every click. Recording starts before the \
+page's first statement runs, so an error during load is caught too. Pass clear to empty the \
+buffer, then act, then read again to see only what your action caused. Capture is per tab and \
+only on tabs you opened."
+    )]
+    async fn browser_console(
+        &self,
+        Parameters(params): Parameters<CaptureParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(BrowserRequest::Console {
+            tab: params.tab,
+            limit: params.limit,
+            clear: params.clear.unwrap_or(false),
+        })
+        .await
+    }
+
+    #[tool(
+        name = "browser_network",
+        description = "Read the page's requests: what its scripts fetched with fetch or XHR, with \
+method, status, and duration, plus the resources the page loaded, newest last. Use it to see \
+whether the API call behind a broken screen 404'd, hung, or was never made. What the page can \
+see is what you get: this is capture from inside the page, not a debugger, so response bodies and \
+request headers are not available and a request made before the page's scripts ran shows only as \
+a resource timing. Pass clear to read one interaction at a time."
+    )]
+    async fn browser_network(
+        &self,
+        Parameters(params): Parameters<CaptureParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(BrowserRequest::Network {
+            tab: params.tab,
+            limit: params.limit,
+            clear: params.clear.unwrap_or(false),
         })
         .await
     }

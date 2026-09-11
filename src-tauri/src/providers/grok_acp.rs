@@ -866,6 +866,33 @@ mod tests {
         );
     }
 
+    // Captured from Grok 1.0.24. The initial call already carries the
+    // replacement pair, which is enough for the shared renderer to build the
+    // diff even though the later ACP update also carries a `content` diff.
+    #[test]
+    fn grok_search_replace_keeps_the_file_and_replacement_pair() {
+        let mut translation = GrokTurnTranslation::default();
+        let started = translation.translate(
+            &json!({"update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "call-edit",
+                "title": "search_replace",
+                "rawInput": {
+                    "file_path": "/repo/greet.ts",
+                    "old_string": "return \"hello\";",
+                    "new_string": "return \"hi there\";"
+                }
+            }}),
+            "g1",
+        );
+
+        let tool = &started[0]["event"]["content_block"];
+        assert_eq!(tool["name"], "search_replace");
+        assert_eq!(tool["input"]["file_path"], "/repo/greet.ts");
+        assert_eq!(tool["input"]["old_string"], "return \"hello\";");
+        assert_eq!(tool["input"]["new_string"], "return \"hi there\";");
+    }
+
     #[test]
     fn grok_success_result_finalizes_the_accumulated_answer() {
         use crate::providers::normalizer::{

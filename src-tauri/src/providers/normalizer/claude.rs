@@ -539,16 +539,25 @@ pub(crate) const HIDDEN_SYNTHETIC_PREFIXES: [&str; 3] = [
     "[Image:",
 ];
 
-/// True when this payload is one of the model-facing synthetic `user` rows
-/// listed in `HIDDEN_SYNTHETIC_PREFIXES`. Those never render as chat.
+/// True when this payload is a model-facing synthetic `user` row: one flagged
+/// `isSynthetic` that carries prose, or one opening with a
+/// `HIDDEN_SYNTHETIC_PREFIXES` line. Those never render as chat.
 ///
-/// The gate is the row's own shape, not the `isSynthetic` flag: the flag rides
-/// the stdout stream only, and Claude's transcript store never writes it, so a
-/// synced session matched on the flag alone would show whole `SKILL.md` bodies
-/// as prose. A flagged row still counts whatever its `type`.
+/// Prefixes alone are not enough, because the CLI's own skills (`/schedule`,
+/// `/loop`) inject their `SKILL.md` with no marker line — just the body, under
+/// its own heading. So a flagged `user` row carrying text is hidden whatever it
+/// says: the human's prompt reaches Claude through argv and never comes back
+/// out of the stream, which leaves the CLI as the only author of user prose.
+/// Tool results ride `user` rows too, and those still have to normalize.
+///
+/// The prefix gate stays for rows with no flag at all: it rides the stdout
+/// stream only, and Claude's transcript store never writes it, so a synced
+/// session matched on the flag alone would show whole `SKILL.md` bodies as
+/// prose. A flagged row still counts whatever its `type`.
 pub fn is_hidden_synthetic_body(payload: &Map<String, Value>) -> bool {
     let flagged = payload.get("isSynthetic") == Some(&Value::Bool(true));
-    if !flagged && string_value(payload.get("type")) != Some("user") {
+    let user_row = string_value(payload.get("type")) == Some("user");
+    if !flagged && !user_row {
         return false;
     }
     let Some(content) =
@@ -556,6 +565,9 @@ pub fn is_hidden_synthetic_body(payload: &Map<String, Value>) -> bool {
     else {
         return false;
     };
+    if flagged && user_row && !has_tool_result(payload) && carries_text(content) {
+        return true;
+    }
     match content {
         // A transcript writes a one-shot body as a bare string; the stdout
         // stream always wraps it in content blocks.
@@ -563,6 +575,18 @@ pub fn is_hidden_synthetic_body(payload: &Map<String, Value>) -> bool {
         Value::Array(blocks) => blocks
             .iter()
             .any(|block| string_value(block.get("text")).is_some_and(has_hidden_synthetic_prefix)),
+        _ => false,
+    }
+}
+
+/// Whether a message body says anything at all. A row whose only blocks are
+/// images or tool plumbing carries no prose to hide.
+fn carries_text(content: &Value) -> bool {
+    match content {
+        Value::String(text) => !text.trim().is_empty(),
+        Value::Array(blocks) => blocks.iter().any(|block| {
+            string_value(block.get("text")).is_some_and(|text| !text.trim().is_empty())
+        }),
         _ => false,
     }
 }
@@ -794,6 +818,75 @@ mod tests {
         assert!(
             result.events.is_empty(),
             "synthetic skill body should not surface as a chat message"
+        );
+    }
+
+    #[test]
+    fn a_skill_body_without_a_marker_line_is_dropped() {
+        // The CLI's own skills (`/schedule`, `/loop`) inject the `SKILL.md`
+        // bare — no "Base directory" line, just the body. Eleven KB of it used
+        // to land in the chat as an answer.
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(
+                &json!({
+                    "type": "user",
+                    "isSynthetic": true,
+                    "message": {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "# Schedule Cloud Agents\n\nYou are helping the user schedule…"
+                            }
+                        ]
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert!(
+            result.events.is_empty(),
+            "a marker-less skill body should not surface as a chat message: {:#?}",
+            result.events
+        );
+    }
+
+    #[test]
+    fn a_flagged_tool_result_row_still_normalizes() {
+        // Tool results ride `user` rows; hiding flagged user prose must not
+        // take the Skill card itself with it.
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(
+                &json!({
+                    "type": "user",
+                    "isSynthetic": true,
+                    "message": {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "toolu_01",
+                                "content": "Launching skill: schedule"
+                            }
+                        ]
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert!(
+            result
+                .events
+                .iter()
+                .any(|event| event.r#type == "command.completed"),
+            "a tool result should still normalize: {:#?}",
+            result.events
         );
     }
 

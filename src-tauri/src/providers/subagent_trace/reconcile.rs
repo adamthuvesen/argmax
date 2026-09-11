@@ -19,8 +19,8 @@ use crate::{
     error::ArgmaxResult,
     persistence::{
         events::{
-            completion_id_for_payload, delete_event_row, list_imported_trace_events,
-            list_session_native_agent_events, list_session_tool_events,
+            completion_id_for_payload, delete_event_row, delete_synthetic_launch_events,
+            list_imported_trace_events, list_session_native_agent_events, list_session_tool_events,
             persist_timeline_event_if_absent, rewrite_trace_event,
             supersede_synthetic_launch_events, tool_use_id_for_payload, PersistTimelineEventInput,
         },
@@ -61,6 +61,9 @@ struct SyntheticLaunchTakeover {
 pub(super) struct ReconciliationWork {
     launches: Vec<PersistTimelineEventInput>,
     takeovers: Vec<SyntheticLaunchTakeover>,
+    /// Placeholder launch ids an earlier sweep invented for a rollout we now
+    /// recognize as one of Codex's own review threads.
+    prunes: Vec<String>,
     import: TraceImport,
 }
 
@@ -242,6 +245,7 @@ pub(super) fn reconciliation_work(home: &Path, plan: &ReconciliationPlan) -> Rec
     let mut work = ReconciliationWork {
         launches: Vec::new(),
         takeovers: Vec::new(),
+        prunes: Vec::new(),
         import: TraceImport {
             events: Vec::new(),
             stamps: Vec::new(),
@@ -249,6 +253,14 @@ pub(super) fn reconciliation_work(home: &Path, plan: &ReconciliationPlan) -> Rec
     };
     for child in find_codex_child_traces(home, plan) {
         let child_id = child.meta.thread_id.as_str();
+        if child.meta.review_thread {
+            // Sweeps before this rollout was recognized may already have put a
+            // placeholder launch on the timeline. Take it back down.
+            if let Some(synthetic) = plan.synthetic_launch_by_child.get(child_id) {
+                work.prunes.push(synthetic.clone());
+            }
+            continue;
+        }
         let real = plan.real_launch_by_child.get(child_id);
         let synthetic = plan.synthetic_launch_by_child.get(child_id);
         if let (Some(real), Some(synthetic)) = (real, synthetic) {
@@ -273,8 +285,10 @@ pub(super) fn reconciliation_work(home: &Path, plan: &ReconciliationPlan) -> Rec
             parent_tool_use_id,
             parent_created_at: launched_at.clone(),
             provider_conversation_id: Some(plan.parent_thread_id.clone()),
+            provider_invocation_id: None,
             workspace_path: plan.workspace_path.clone(),
             cursor_prompt: None,
+            cursor_background_launch: false,
             child_ids: vec![child_id.to_string()],
             codex_runs: plan
                 .native_runs_by_child
@@ -311,6 +325,9 @@ pub(super) fn apply_reconciliation(
     session_id: &str,
     work: ReconciliationWork,
 ) -> ArgmaxResult<usize> {
+    for synthetic_tool_use_id in work.prunes {
+        delete_synthetic_launch(connection, session_id, &synthetic_tool_use_id)?;
+    }
     // Takeovers run first so the rows they free up cannot collide with the
     // import about to be written under the real launch row.
     for takeover in work.takeovers {
@@ -372,6 +389,23 @@ fn take_over_synthetic_launch(
         &takeover.synthetic_tool_use_id,
         &takeover.real_tool_use_id,
     )?;
+    Ok(())
+}
+
+/// Removes a placeholder launch and everything imported under it, for a child
+/// rollout that turned out to be one of Codex's own review threads. Only rows
+/// Argmax invented are dropped — a launch the provider wrote is its truth.
+fn delete_synthetic_launch(
+    connection: &Connection,
+    session_id: &str,
+    synthetic_tool_use_id: &str,
+) -> ArgmaxResult<()> {
+    for row in list_imported_trace_events(connection, session_id, synthetic_tool_use_id)? {
+        if let Some(row_cursor) = row.row_cursor {
+            delete_event_row(connection, row_cursor)?;
+        }
+    }
+    delete_synthetic_launch_events(connection, session_id, synthetic_tool_use_id)?;
     Ok(())
 }
 
@@ -806,6 +840,50 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn codex_review_threads_never_reach_the_agents_list() {
+        let database = Database::open_in_memory().expect("db");
+        let connection = database.connection();
+        seed_session(&connection, "codex", "s1");
+        update_session_provider_conversation_id(&connection, "s1", "parent-thread")
+            .expect("provider id");
+        let home = TempDir::new().expect("home");
+        write_codex_child_trace(home.path(), "child-thread", &guardian_review_trace());
+
+        let reconciled =
+            reconcile_session_subagent_traces_from_home(&connection, "s1", home.path())
+                .expect("reconcile");
+
+        assert_eq!(reconciled, 0);
+        assert!(session_events(&connection).is_empty());
+    }
+
+    #[test]
+    fn a_rollout_recognized_as_a_review_thread_loses_its_placeholder_launch() {
+        let database = Database::open_in_memory().expect("db");
+        let connection = database.connection();
+        seed_session(&connection, "codex", "s1");
+        update_session_provider_conversation_id(&connection, "s1", "parent-thread")
+            .expect("provider id");
+        let home = TempDir::new().expect("home");
+        // An earlier sweep, before guardian rollouts were recognized, put a
+        // placeholder launch and the child's rows on the timeline.
+        write_codex_child_trace(home.path(), "child-thread", &child_trace(true));
+        reconcile_session_subagent_traces_from_home(&connection, "s1", home.path())
+            .expect("stale reconcile");
+        assert!(imported_trace_row_count(&connection, "trace-spawn-child-thread") > 0);
+
+        write_codex_child_trace(home.path(), "child-thread", &guardian_review_trace());
+        reconcile_session_subagent_traces_from_home(&connection, "s1", home.path())
+            .expect("reconcile review thread");
+
+        assert_eq!(
+            imported_trace_row_count(&connection, "trace-spawn-child-thread"),
+            0
+        );
+        assert!(session_events(&connection).is_empty());
     }
 
     #[test]

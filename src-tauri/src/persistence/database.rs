@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use rusqlite::{Connection, OpenFlags};
-use tokio::task::JoinSet;
+use tauri::async_runtime::JoinHandle;
 
 use crate::error::{ArgmaxError, ArgmaxResult};
 
@@ -12,6 +12,12 @@ use super::migrations::run_migrations;
 use crate::util::sync::LockOrRecover;
 
 const PRUNE_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+/// How long the first prune waits after the database opens. Pruning a day of
+/// expired rows is a write against a table that is mostly blobs, so it costs
+/// hundreds of milliseconds to seconds on a large database — time the boot path
+/// used to pay inline, before the window existed. Nothing reads the result, so
+/// it waits until startup's own writes (session and archive recovery) are done.
+const PRUNE_STARTUP_DELAY: Duration = Duration::from_secs(30);
 const RAW_OUTPUT_RETENTION_DAYS: i64 = 7;
 
 /// Idle reader connections kept alive between reads. Reads are short and the
@@ -86,7 +92,7 @@ pub struct Database {
     connection: Arc<Mutex<Connection>>,
     /// `None` for in-memory databases, which cannot be reopened by path.
     readers: Option<ReaderPool>,
-    prune_tasks: Mutex<JoinSet<()>>,
+    prune_tasks: Mutex<Vec<JoinHandle<()>>>,
 }
 
 impl Database {
@@ -104,27 +110,29 @@ impl Database {
     fn from_connection(mut connection: Connection, path: Option<PathBuf>) -> ArgmaxResult<Self> {
         configure_connection(&connection)?;
         run_migrations(&mut connection)?;
-        prune_old_raw_outputs(&connection)?;
 
         let connection = Arc::new(Mutex::new(connection));
-        let mut prune_tasks = JoinSet::new();
-        if tokio::runtime::Handle::try_current().is_ok() {
-            let prune_connection = Arc::clone(&connection);
-            prune_tasks.spawn(async move {
-                let mut interval = tokio::time::interval(PRUNE_INTERVAL);
-                loop {
-                    interval.tick().await;
-                    // Recover from a poisoned lock the same way `connection()`
-                    // does instead of breaking the loop — otherwise a single
-                    // panic elsewhere would permanently stop pruning and let
-                    // raw_outputs grow without bound.
-                    let connection = prune_connection.lock_or_recover("raw output prune");
-                    if let Err(error) = prune_old_raw_outputs(&connection) {
-                        tracing::warn!(error = ?error, "raw output prune failed");
-                    }
+        // `tauri::async_runtime::spawn` rather than `tokio::spawn`: the setup
+        // hook that opens the database runs on the main thread with no current
+        // runtime handle, so a `tokio` spawn there would never have started.
+        let prune_connection = Arc::clone(&connection);
+        let prune_tasks = vec![tauri::async_runtime::spawn(async move {
+            let mut interval = tokio::time::interval_at(
+                tokio::time::Instant::now() + PRUNE_STARTUP_DELAY,
+                PRUNE_INTERVAL,
+            );
+            loop {
+                interval.tick().await;
+                // Recover from a poisoned lock the same way `connection()`
+                // does instead of breaking the loop — otherwise a single
+                // panic elsewhere would permanently stop pruning and let
+                // raw_outputs grow without bound.
+                let connection = prune_connection.lock_or_recover("raw output prune");
+                if let Err(error) = prune_old_raw_outputs(&connection) {
+                    tracing::warn!(error = ?error, "raw output prune failed");
                 }
-            });
-        }
+            }
+        })];
 
         // Migrations have run by now, so a reader opened here sees the head
         // schema. Readers are opened lazily; this only records where from.
@@ -193,8 +201,9 @@ impl Database {
 
     pub fn dispose(&self) {
         let mut tasks = self.prune_tasks.lock_or_recover("prune tasks");
-        tasks.abort_all();
-        tasks.detach_all();
+        for task in tasks.drain(..) {
+            task.abort();
+        }
     }
 
     pub fn prune_task_count(&self) -> usize {
@@ -204,9 +213,7 @@ impl Database {
 
 impl Drop for Database {
     fn drop(&mut self) {
-        let mut tasks = self.prune_tasks.lock_or_recover("prune tasks");
-        tasks.abort_all();
-        tasks.detach_all();
+        self.dispose();
     }
 }
 

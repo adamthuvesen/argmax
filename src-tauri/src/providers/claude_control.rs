@@ -91,9 +91,56 @@ fn user_message(session_id: &str, prompt: &str) -> Value {
 }
 
 fn replayed_user_prompt(message: &Value) -> Option<&str> {
-    (message.get("type").and_then(Value::as_str) == Some("user"))
-        .then(|| message.pointer("/message/content").and_then(Value::as_str))
-        .flatten()
+    (message.get("type").and_then(Value::as_str) == Some("user")
+        && message.get("parent_tool_use_id").is_none_or(Value::is_null))
+    .then(|| message.pointer("/message/content").and_then(Value::as_str))
+    .flatten()
+}
+
+fn user_echo_matches(message: &Value, echoed: &str, prompt: &str) -> bool {
+    if echoed == prompt {
+        return true;
+    }
+    // Claude expands slash commands before replaying them. Match the complete
+    // envelope so the pending FIFO cannot be consumed by unrelated user rows.
+    if message.get("isReplay").and_then(Value::as_bool) != Some(true) {
+        return false;
+    }
+    let Some(command) = prompt.strip_prefix('/') else {
+        return false;
+    };
+    let (name, args) = command
+        .split_once(char::is_whitespace)
+        .unwrap_or((command, ""));
+    let envelope =
+        format!("<command-message>{name}</command-message>\n<command-name>/{name}</command-name>");
+    if args.is_empty() && echoed == envelope {
+        return true;
+    }
+    echoed == format!("{envelope}\n<command-args>{args}</command-args>")
+}
+
+fn task_lifecycle<'a>(message: &'a Value, subtype: &str) -> Option<&'a str> {
+    (message.get("type").and_then(Value::as_str) == Some("system")
+        && message.get("subtype").and_then(Value::as_str) == Some(subtype))
+    .then(|| message.get("task_id").and_then(Value::as_str))
+    .flatten()
+}
+
+/// An agent the model dispatched with `run_in_background`. Its `Agent` call
+/// returns at once, so the model can answer while the agent is still working;
+/// the agent's completion comes back later as a `task_notification` that
+/// starts another model turn. A foreground agent blocks its call instead and
+/// is finished before any answer.
+fn backgrounded_agent_task_id(message: &Value) -> Option<&str> {
+    let task_id = task_lifecycle(message, "task_started")?;
+    (message.get("task_type").and_then(Value::as_str) == Some("local_agent")
+        && message.get("is_backgrounded").and_then(Value::as_bool) == Some(true))
+    .then_some(task_id)
+}
+
+fn finished_task_id(message: &Value) -> Option<&str> {
+    task_lifecycle(message, "task_notification")
 }
 
 pub async fn launch_turn(
@@ -212,6 +259,7 @@ pub async fn launch_turn(
         tokio::pin!(deadline);
         let mut requests = JoinSet::new();
         let mut request_tasks = std::collections::HashMap::new();
+        let mut background_agents = std::collections::HashSet::new();
         let mut code = 0;
         loop {
             tokio::select! {
@@ -270,7 +318,7 @@ pub async fn launch_turn(
                                 let acknowledgement = if let Some(prompt) = replayed_user_prompt(&message) {
                                     let acknowledgement = {
                                         let mut pending = pending_user_echoes.lock().await;
-                                        if pending.front().is_some_and(|pending| pending.prompt == prompt) {
+                                        if pending.front().is_some_and(|pending| user_echo_matches(&message, prompt, &pending.prompt)) {
                                             pending.pop_front().map(|pending| pending.acknowledgement)
                                         } else {
                                             None
@@ -291,13 +339,28 @@ pub async fn launch_turn(
                                     None => {}
                                 }
                             }
+                            if let Some(task_id) = backgrounded_agent_task_id(&message) {
+                                background_agents.insert(task_id.to_string());
+                            } else if let Some(task_id) = finished_task_id(&message) {
+                                background_agents.remove(task_id);
+                            }
                             if message.get("type").and_then(Value::as_str) == Some("result") {
                                 if !pending_user_echoes.lock().await.is_empty() {
                                     continue;
                                 }
                                 if message.get("is_error").and_then(Value::as_bool) == Some(true) { code=1; }
                                 emit_event(&emit,&input,ProviderRuntimeEventType::Output,format!("{line}\n"),None);
-                                break;
+                                // The answer is a checkpoint, not the end, while
+                                // background agents are still working: killing
+                                // the CLI here takes them down mid-edit. Stdin
+                                // stays open so the CLI never winds down on its
+                                // own; it delivers each completion to the model
+                                // and answers again, and the last of those
+                                // answers ends the turn.
+                                if background_agents.is_empty() {
+                                    break;
+                                }
+                                continue;
                             }
                             emit_event(&emit,&input,ProviderRuntimeEventType::Output,format!("{line}\n"),None);
                         }
@@ -556,6 +619,95 @@ mod tests {
         assert_eq!(replayed_user_prompt(&message), Some("steer-token"));
     }
 
+    #[test]
+    fn slash_command_echo_requires_matching_arguments_and_top_level_replay() {
+        let mut message = user_message("provider-session", "<command-message>review</command-message>\n<command-name>/review</command-name>\n<command-args>PR 1\n\nCheck data</command-args>");
+        message["isReplay"] = json!(true);
+        let echoed = replayed_user_prompt(&message).unwrap();
+        assert!(user_echo_matches(
+            &message,
+            echoed,
+            "/review PR 1\n\nCheck data"
+        ));
+        for mismatch in [
+            "/review PR 2\n\nCheck data",
+            "/snow PR 1\n\nCheck data",
+            "/review PR 1\n\nCheck data ",
+        ] {
+            assert!(!user_echo_matches(&message, echoed, mismatch));
+        }
+        message["isReplay"] = json!(false);
+        assert!(!user_echo_matches(
+            &message,
+            replayed_user_prompt(&message).unwrap(),
+            "/review PR 1\n\nCheck data"
+        ));
+        message["parent_tool_use_id"] = json!("child-tool");
+        assert!(replayed_user_prompt(&message).is_none());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn slash_command_replay_completes_the_turn() {
+        use std::{fs, os::unix::fs::PermissionsExt, sync::Mutex};
+
+        let temp = tempfile::tempdir().unwrap();
+        let server = temp.path().join("fake-claude");
+        fs::write(&server, r#"#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"subtype":"initialize"'*)
+      printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"argmax-initialize","response":{}}}'
+      ;;
+    *'"type":"user"'*)
+      printf '%s\n' '{"type":"user","isReplay":true,"parent_tool_use_id":null,"message":{"role":"user","content":"<command-message>review</command-message>\n<command-name>/review</command-name>\n<command-args>https://example.test/pr/1\n\nUse /snow to verify things</command-args>"}}'
+      printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"review complete"}]}}'
+      printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"review complete"}'
+      ;;
+  esac
+done
+"#).unwrap();
+        fs::set_permissions(&server, fs::Permissions::from_mode(0o755)).unwrap();
+        let approvals = ApprovalService::new(Arc::new(Database::open_in_memory().unwrap()));
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let captured = Arc::clone(&events);
+        let callback: EventCallback = Arc::new(move |event| captured.lock().unwrap().push(event));
+        let mut input = launch_input(
+            PermissionMode::ProviderDefaults,
+            super::super::AgentMode::Auto,
+        );
+        input.workspace_path = temp.path().to_path_buf();
+        input.prompt = "/review https://example.test/pr/1\n\nUse /snow to verify things".into();
+        let handle = launch_turn(server.to_str().unwrap(), &input, None, approvals, callback)
+            .await
+            .unwrap();
+        let completed = tokio::time::timeout(Duration::from_secs(2), async {
+            while !handle.disposed() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await;
+        if completed.is_err() {
+            handle.terminate().await.unwrap();
+            panic!("slash command turn did not complete");
+        }
+        let events = events.lock().unwrap();
+        assert!(events
+            .iter()
+            .any(|event| event.message.contains("\"type\":\"result\"")));
+        assert!(!events
+            .iter()
+            .any(|event| event.message.contains("command-name")));
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.r#type == ProviderRuntimeEventType::Exit)
+                .count(),
+            1
+        );
+        assert_eq!(events.last().and_then(|event| event.exit_code), Some(0));
+    }
+
     // Claude replays a steered message only when it picks it up, and a turn
     // deep in a long tool call holds that for minutes. Delivery is decided by
     // the write, so a silent reader must not turn a delivered follow-up into
@@ -699,6 +851,83 @@ done
                 .count(),
             1
         );
+        assert_eq!(events.last().and_then(|event| event.exit_code), Some(0));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn answer_with_background_agent_running_holds_the_turn_until_it_reports() {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+        use std::sync::Mutex;
+
+        let temp = tempfile::tempdir().unwrap();
+        let server = temp.path().join("fake-claude");
+        // Never exits on its own: the turn ends only when Argmax decides the
+        // last answer was final and terminates the process group.
+        fs::write(
+            &server,
+            r#"#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"subtype":"initialize"'*)
+      printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"argmax-initialize","response":{}}}'
+      ;;
+    *'"type":"user"'*)
+      printf '%s\n' "$line"
+      printf '%s\n' '{"type":"system","subtype":"task_started","task_id":"agent-1","tool_use_id":"toolu_agent","task_type":"local_agent","is_backgrounded":true,"description":"implement"}'
+      printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"dispatched, waiting"}]}}'
+      printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"dispatched, waiting"}'
+      sleep 0.3
+      printf '%s\n' '{"type":"system","subtype":"task_notification","task_id":"agent-1","tool_use_id":"toolu_agent","status":"completed","summary":"implement"}'
+      printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"integrated the agent work"}]}}'
+      printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"integrated the agent work"}'
+      ;;
+  esac
+done
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&server, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let database = Arc::new(Database::open_in_memory().unwrap());
+        let approvals = ApprovalService::new(database);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let captured = Arc::clone(&events);
+        let callback: EventCallback = Arc::new(move |event| {
+            captured.lock().unwrap().push(event);
+        });
+        let mut input = launch_input(
+            PermissionMode::ProviderDefaults,
+            super::super::AgentMode::Auto,
+        );
+        input.workspace_path = temp.path().to_path_buf();
+        input.prompt = "implement with a background agent".into();
+
+        let handle = launch_turn(server.to_str().unwrap(), &input, None, approvals, callback)
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !handle.disposed() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the turn ends once the agent has reported and the model answered again");
+
+        let events = events.lock().unwrap();
+        let position = |needle: &str| {
+            events
+                .iter()
+                .position(|event| event.message.contains(needle))
+                .unwrap_or_else(|| panic!("no event containing {needle:?}"))
+        };
+        let exit = events
+            .iter()
+            .position(|event| event.r#type == ProviderRuntimeEventType::Exit)
+            .expect("one exit event");
+        assert!(position("dispatched, waiting") < position("\"subtype\":\"task_notification\""));
+        assert!(position("integrated the agent work") < exit);
         assert_eq!(events.last().and_then(|event| event.exit_code), Some(0));
     }
 

@@ -97,22 +97,6 @@ impl CheckpointService {
         let workspace_path = self.workspace_path(&input.workspace_id)?;
         let lock = checkout_write_lock(&workspace_path).await?;
         let _guard = lock.lock().await;
-        crate::git::ops::ensure_checkout_idle(&self.database, &workspace_path, None)?;
-        self.capture_locked(input, &workspace_path).await
-    }
-
-    pub(crate) async fn create_before_turn_checkpoint(
-        &self,
-        input: CreateCheckpointInput,
-    ) -> ArgmaxResult<Checkpoint> {
-        let workspace_path = self.workspace_path(&input.workspace_id)?;
-        let lock = checkout_write_lock(&workspace_path).await?;
-        let _guard = lock.lock().await;
-        crate::git::ops::ensure_checkout_idle(
-            &self.database,
-            &workspace_path,
-            input.session_id.as_deref(),
-        )?;
         self.capture_locked(input, &workspace_path).await
     }
 
@@ -183,7 +167,6 @@ impl CheckpointService {
         let lock = checkout_write_lock(&workspace_path).await?;
         let _guard = lock.lock().await;
         self.ensure_no_active_writers(&workspace_path)?;
-        crate::git::ops::ensure_checkout_idle(&self.database, &workspace_path, None)?;
         self.ensure_checkout_supported(&workspace_path).await?;
 
         let current = checkout_fingerprint(&workspace_path).await?;
@@ -365,6 +348,10 @@ impl CheckpointService {
         Ok(())
     }
 
+    /// Refuse a rewind while any session is mid-turn in this checkout. A rewind
+    /// overwrites the working tree from a snapshot, so it would destroy edits an
+    /// agent is making right now. Capturing a checkpoint takes no such risk, and
+    /// sharing a checkout between running sessions is the normal case.
     fn ensure_no_active_writers(&self, workspace_path: &Path) -> ArgmaxResult<()> {
         let canonical = std::fs::canonicalize(workspace_path).map_err(|error| {
             ArgmaxError::service(
@@ -1176,6 +1163,43 @@ mod tests {
             .await
             .expect_err("active writer");
         assert!(error.to_string().contains("Pause every active session"));
+    }
+
+    #[tokio::test]
+    async fn capture_succeeds_while_another_session_works_in_the_checkout() {
+        let (_repo, service) = service_with_workspace().await;
+        {
+            let connection = service.database.connection();
+            for id in ["mine", "peer"] {
+                persist_session(
+                    &connection,
+                    &PersistSessionInput {
+                        id: id.into(),
+                        workspace_id: "workspace".into(),
+                        provider: "codex".into(),
+                        model_label: "test".into(),
+                        model_id: "test".into(),
+                        reasoning_effort: None,
+                        permission_mode: None,
+                        agent_mode: None,
+                        prompt: String::new(),
+                        state: SessionState::Running,
+                    },
+                )
+                .expect("session");
+            }
+        }
+        service
+            .create_checkpoint(CreateCheckpointInput {
+                workspace_id: "workspace".into(),
+                session_id: Some("mine".into()),
+                label: "Before turn".into(),
+                turn_boundary: None,
+                provider_conversation_id: None,
+                recovery_of: None,
+            })
+            .await
+            .expect("a peer mid-turn in the same checkout does not block a checkpoint");
     }
 
     #[test]

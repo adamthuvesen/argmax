@@ -62,8 +62,10 @@ struct AgentTraceContext {
     parent_tool_use_id: String,
     parent_created_at: String,
     provider_conversation_id: Option<String>,
+    provider_invocation_id: Option<String>,
     workspace_path: Option<String>,
     cursor_prompt: Option<String>,
+    cursor_background_launch: bool,
     child_ids: Vec<String>,
     codex_runs: Vec<CodexNativeRun>,
 }
@@ -308,9 +310,23 @@ fn agent_trace_context(
     };
     let tail = list_session_agent_events(connection, session_id, parent_tool_use_id)?;
     let mut parent_created_at = None;
+    let mut provider_invocation_id = None;
     let mut cursor_prompt = None;
+    let mut cursor_background_launch = false;
     let mut child_ids = Vec::new();
     for row in &tail.events {
+        if provider == TraceProvider::Cursor
+            && row.payload.get("traceImported") == Some(&Value::Bool(true))
+        {
+            if let Some(child_id) = row
+                .payload
+                .get("providerChildSessionId")
+                .and_then(Value::as_str)
+                .filter(|id| !id.is_empty())
+            {
+                push_unique(&mut child_ids, child_id.to_string());
+            }
+        }
         let is_parent_start = row.r#type == "command.started"
             && tool_use_id_for_payload(&row.payload) == Some(parent_tool_use_id);
         let is_parent_completion = row.r#type == "command.completed"
@@ -320,6 +336,14 @@ fn agent_trace_context(
         }
         if parent_created_at.is_none() {
             parent_created_at = Some(row.created_at.clone());
+        }
+        if provider_invocation_id.is_none() {
+            provider_invocation_id = row
+                .payload
+                .get("providerInvocationId")
+                .and_then(Value::as_str)
+                .filter(|id| !id.is_empty())
+                .map(str::to_string);
         }
         match provider {
             TraceProvider::Codex => {
@@ -331,6 +355,13 @@ fn agent_trace_context(
                 if cursor_prompt.is_none() {
                     cursor_prompt = cursor_task_prompt(&row.payload);
                 }
+                cursor_background_launch |= row
+                    .payload
+                    .get("result")
+                    .and_then(Value::as_object)
+                    .and_then(|result| result.get("isBackground"))
+                    .and_then(Value::as_bool)
+                    == Some(true);
                 for child_id in cursor_child_agent_ids(&row.payload) {
                     push_unique(&mut child_ids, child_id);
                 }
@@ -376,8 +407,10 @@ fn agent_trace_context(
         parent_tool_use_id: parent_tool_use_id.to_string(),
         parent_created_at,
         provider_conversation_id: session.provider_conversation_id,
+        provider_invocation_id,
         workspace_path,
         cursor_prompt,
+        cursor_background_launch,
         child_ids,
         codex_runs,
     }))

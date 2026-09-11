@@ -26,8 +26,9 @@ use super::projects::{
 use super::sessions::{
     list_session_ids_for_workspace, persist_session, session_resume_fork, set_session_resume_fork,
     update_session_agent_mode, update_session_last_activity, update_session_model,
-    update_session_provider_conversation_id, update_session_state, PersistSessionInput,
-    SessionAgentModeInput, SessionModelInput, SessionStateInput, UsageCounts,
+    update_session_provider, update_session_provider_conversation_id, update_session_state,
+    PersistSessionInput, SessionAgentModeInput, SessionModelInput, SessionProviderInput,
+    SessionStateInput, UsageCounts,
 };
 use super::usage::{get_session_cost_summary, insert_usage_event, InsertUsageEventInput};
 use super::workspaces::{
@@ -196,6 +197,72 @@ fn project_workspace_and_session_repositories_round_trip() {
     delete_project(&connection, "p1").expect("delete project");
     let deleted = require_project(&connection, "p1").expect_err("project deleted");
     assert!(matches!(deleted, ArgmaxError::RecordNotFound { .. }));
+}
+
+#[test]
+fn switching_provider_or_model_clears_the_reported_context_window() {
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+    persist_session(&connection, &session_input()).expect("persist session");
+    connection
+        .execute(
+            "UPDATE sessions SET context_tokens = 320000, context_window = 258400 WHERE id = 's1'",
+            [],
+        )
+        .expect("seed codex window");
+
+    let same_model = update_session_model(
+        &connection,
+        "s1",
+        &SessionModelInput {
+            model_label: "GPT-5.5".to_owned(),
+            model_id: "gpt-5.5".to_owned(),
+            reasoning_effort: Some("medium".to_owned()),
+        },
+    )
+    .expect("same-model write");
+    assert_eq!(same_model.context_window, Some(258_400));
+    assert_eq!(same_model.context_tokens, 320_000);
+
+    let switched = update_session_provider(
+        &connection,
+        "s1",
+        &SessionProviderInput {
+            provider: "claude".to_owned(),
+            model_label: "Fable 5.1".to_owned(),
+            model_id: "claude-fable-5-1".to_owned(),
+            reasoning_effort: Some("medium".to_owned()),
+        },
+    )
+    .expect("switch provider");
+    assert_eq!(switched.provider, "claude");
+    assert_eq!(switched.model_id, "claude-fable-5-1");
+    assert_eq!(switched.context_window, None);
+    assert_eq!(
+        switched.context_tokens, 320_000,
+        "occupancy stays until the new provider reports"
+    );
+
+    connection
+        .execute(
+            "UPDATE sessions SET context_window = 200000 WHERE id = 's1'",
+            [],
+        )
+        .expect("seed leftover window");
+    let remodeled = update_session_model(
+        &connection,
+        "s1",
+        &SessionModelInput {
+            model_label: "Opus 5".to_owned(),
+            model_id: "claude-opus-5".to_owned(),
+            reasoning_effort: Some("medium".to_owned()),
+        },
+    )
+    .expect("switch model");
+    assert_eq!(remodeled.model_id, "claude-opus-5");
+    assert_eq!(remodeled.context_window, None);
 }
 
 #[test]

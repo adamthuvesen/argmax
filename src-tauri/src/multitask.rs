@@ -139,6 +139,8 @@ pub async fn dispatch(
                 branch: parent_workspace.branch.clone(),
                 base_ref: parent_workspace.base_ref.clone(),
             }),
+            path: None,
+            branch: None,
             prompt: prompt_with_preamble(
                 &request,
                 &parent_workspace.task_label,

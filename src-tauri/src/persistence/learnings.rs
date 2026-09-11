@@ -157,6 +157,58 @@ pub fn delete_learning(connection: &Connection, id: &str) -> ArgmaxResult<()> {
     Ok(())
 }
 
+/// Full-text search over one project's learnings, newest and most-used first
+/// within relevance. An empty query is not a match-nothing: it is "show me
+/// what this project has", which is [`list_learnings`].
+pub fn search_learnings(
+    connection: &Connection,
+    project_id: &str,
+    query: &str,
+    limit: usize,
+) -> ArgmaxResult<Vec<Learning>> {
+    let match_query = build_fts_prefix_query(query);
+    if match_query.is_empty() {
+        return list_learnings(connection, project_id, limit);
+    }
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+        SELECT learnings.* FROM learnings_fts
+        JOIN learnings ON learnings.rowid = learnings_fts.rowid
+        WHERE learnings_fts MATCH ? AND learnings.project_id = ?
+        ORDER BY learnings_fts.rank, learnings.verified DESC, learnings.hits DESC
+        LIMIT ?
+        "#,
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map(
+            (match_query.as_str(), project_id, limit as i64),
+            row_to_learning,
+        )
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(rows)
+}
+
+/// Count a learning as used. `learnings_search` is the only reader that can
+/// say a learning earned its place, so the hit is recorded where it is served.
+pub fn record_learning_hits(connection: &Connection, ids: &[String]) -> ArgmaxResult<()> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    let json = serde_json::to_string(ids).map_err(super::json_error)?;
+    let mut statement = connection
+        .prepare_cached(
+            "UPDATE learnings SET hits = hits + 1, last_seen_at = ? \
+             WHERE id IN (SELECT value FROM json_each(?))",
+        )
+        .map_err(sqlite_error)?;
+    statement.execute((now_iso(), json)).map_err(sqlite_error)?;
+    Ok(())
+}
+
 pub fn search_events(
     connection: &Connection,
     query: &str,

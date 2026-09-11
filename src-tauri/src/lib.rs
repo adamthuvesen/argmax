@@ -8,11 +8,13 @@ use std::sync::{
 
 use tauri::{Emitter, Manager};
 
+pub mod activity;
 pub mod approvals;
 pub mod attachments;
 pub mod browser;
 pub mod checkpoints;
 pub mod checks;
+pub mod connections;
 pub mod default_agent;
 pub mod dock;
 pub mod error;
@@ -341,6 +343,17 @@ fn coalesce_terminal_pushes(batch: Vec<TerminalPush>) -> Vec<TerminalPush> {
 
 /// Construct and run the Tauri app.
 pub fn run() {
+    if let Err(error) = util::file_limits::raise_open_file_limit() {
+        eprintln!("argmax: failed to raise open-file limit: {error}");
+    }
+
+    // rustls 0.23 needs a crypto provider picked explicitly once ring and
+    // aws-lc-rs are both reachable in the dependency tree; reqwest's client
+    // builder panics instead of erroring when none is installed yet. Nothing
+    // else in the tree installs one, so the first `reqwest::Client` built at
+    // runtime (APNs, today) is where that panic actually surfaced.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     if let Err(error) = providers::verification::validate_configuration() {
         eprintln!("argmax: verification configuration invalid: {error}");
         std::process::exit(2);
@@ -473,6 +486,16 @@ pub fn run() {
                 eprintln!("argmax: tracing init failed: {e}");
             }
             timer.mark("tracing.init");
+            // Resolve the profile once, here, where `app.path()` is finally
+            // valid. Handlers the remote bridge dispatches have no AppHandle
+            // to resolve it from, so `remote.json` and everything else keyed
+            // to the profile is read through AppState from now on.
+            if let Some(app_data_dir) = util::data_dir::ensure_app_data_dir(app) {
+                let state = tauri::Manager::state::<state::AppState>(app);
+                if state.app_data_dir.set(app_data_dir).is_err() {
+                    tracing::warn!("app data dir was already installed");
+                }
+            }
             // Keep macOS App Nap from suspending the webview while the window is
             // backgrounded — otherwise emitted `dashboard:delta` events don't
             // reach the renderer until the user refocuses, so finished turns
@@ -571,6 +594,20 @@ pub fn run() {
                             }
                             if state.usage_scanner.set(usage_scanner).is_err() {
                                 tracing::warn!("usage scanner was already initialized");
+                            }
+                            let activity_scanner = Arc::new(
+                                activity::scanner::ActivityScanner::new(Arc::clone(&database)),
+                            );
+                            // Same split as the usage ledger: one that has
+                            // completed before is refreshed in the background so
+                            // the page opens fresh, while the first cold sweep
+                            // walks every repository's history and waits to be
+                            // asked for.
+                            if activity_scanner.has_completed_once() {
+                                activity::scanner::spawn_sweep(&activity_scanner);
+                            }
+                            if state.activity_scanner.set(activity_scanner).is_err() {
+                                tracing::warn!("activity scanner was already initialized");
                             }
                             let dock_badge = Arc::new(dock::DockBadgeService::new(
                                 dock::TauriDockBadgeSink::new(app.handle().clone()),
@@ -721,6 +758,11 @@ pub fn run() {
                                     .read()
                                     .ok()
                                     .and_then(|publisher| publisher.clone());
+                                let apns = app_state
+                                    .apns
+                                    .read()
+                                    .ok()
+                                    .and_then(|publisher| publisher.clone());
                                 let keep_awake = Arc::clone(&app_state.keep_awake);
                                 for session in &delta.sessions {
                                     if let Err(error) = notifications_for_delta.notify(session) {
@@ -732,6 +774,9 @@ pub fn run() {
                                     }
                                     if let Some(ntfy) = ntfy.as_ref() {
                                         ntfy.observe(session);
+                                    }
+                                    if let Some(apns) = apns.as_ref() {
+                                        apns.observe(session);
                                     }
                                     keep_awake.observe(&session.id, session.state.is_active());
                                 }

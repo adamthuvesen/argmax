@@ -818,9 +818,9 @@ impl WorkspaceService {
         });
     }
 
-    /// Tell the renderer to drop pruned imports. Deletion already happened in
+    /// Tell the renderer to drop deleted chats. Deletion already happened in
     /// SQLite; this is the only signal the delta protocol has for "gone".
-    pub fn remove_imported(&self, workspace_ids: &[String], session_ids: &[String]) {
+    pub fn remove_sessions(&self, workspace_ids: &[String], session_ids: &[String]) {
         if workspace_ids.is_empty() && session_ids.is_empty() {
             return;
         }
@@ -832,6 +832,33 @@ impl WorkspaceService {
             removed_workspace_ids: workspace_ids.to_vec(),
             ..DashboardDelta::default()
         });
+    }
+
+    pub fn begin_chat_cleanup(
+        &self,
+        workspace_id: &str,
+    ) -> ArgmaxResult<Option<WorkspaceArchiveLease>> {
+        self.lifecycle.begin_cleanup(workspace_id)
+    }
+
+    pub async fn wait_for_chat_cleanup_admissions(
+        &self,
+        workspace_id: &str,
+        bound: Duration,
+    ) -> bool {
+        self.lifecycle
+            .wait_for_admissions(workspace_id, bound)
+            .await
+    }
+
+    pub fn chat_cleanup_has_live_process(&self, workspace_id: &str) -> bool {
+        self.terminals
+            .as_ref()
+            .is_some_and(|service| service.has_live_workspace_terminal(workspace_id))
+            || self
+                .checks
+                .as_ref()
+                .is_some_and(|service| service.has_running_workspace_check(workspace_id))
     }
 
     /// Fork a finished session: a new sidebar workspace at the same checkout
@@ -2746,16 +2773,15 @@ fn invalid_workspace(
     .into()
 }
 
-/// Resolve the checkout a session asked to move into, or say why it cannot.
+/// Resolve a checkout an agent named, or say why it cannot be used.
 ///
 /// Returns the canonical path and the branch checked out there. The path has to
 /// be a working tree `git worktree list` reports for the project's repository:
 /// that is what turns "a checkout of this project" into a claim Argmax can
 /// check, rather than trusting any directory an agent happens to name. The
-/// project's main checkout is listed too, so moving back to it is allowed.
-async fn attached_checkout(
+/// project's main checkout is listed too.
+pub(crate) async fn resolve_registered_checkout(
     repo_path: &str,
-    source_workspace: &WorkspaceSummary,
     requested: &str,
 ) -> ArgmaxResult<(String, String)> {
     let requested = requested.trim();
@@ -2778,18 +2804,10 @@ async fn attached_checkout(
             "Pass the root directory of a worktree.",
         ));
     }
-    if comparable_worktree_path(&path)
-        == comparable_worktree_path(Path::new(&source_workspace.path))
-    {
-        return Err(invalid_workspace(
-            "This chat is already working in that checkout.",
-            "Name a different worktree, or skip the move.",
-        ));
-    }
     if !worktree_is_registered(repo_path.to_string(), path.clone()).await? {
         return Err(invalid_workspace(
             format!("{} is not a worktree of this project.", path.display()),
-            "Run `git worktree list` in the project to see the checkouts a chat can move into.",
+            "Run `git worktree list` in the project to see the checkouts a chat can use.",
         ));
     }
     let branch = run_git_text(
@@ -2814,6 +2832,24 @@ async fn attached_checkout(
         ));
     }
     Ok((path.to_string_lossy().into_owned(), branch.to_string()))
+}
+
+/// Resolve the checkout a session asked to move into, or say why it cannot.
+async fn attached_checkout(
+    repo_path: &str,
+    source_workspace: &WorkspaceSummary,
+    requested: &str,
+) -> ArgmaxResult<(String, String)> {
+    let (path, branch) = resolve_registered_checkout(repo_path, requested).await?;
+    if comparable_worktree_path(Path::new(&path))
+        == comparable_worktree_path(Path::new(&source_workspace.path))
+    {
+        return Err(invalid_workspace(
+            "This chat is already working in that checkout.",
+            "Name a different worktree, or skip the move.",
+        ));
+    }
+    Ok((path, branch))
 }
 
 /// Re-register a retained worktree with its repository before an archive is

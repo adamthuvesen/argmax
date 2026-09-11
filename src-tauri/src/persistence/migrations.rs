@@ -75,6 +75,33 @@ pub static GOAL_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_m
     "goal_attempts" => &[] as &'static [&'static str],
 };
 
+// The Activity page's own ledger: commits the user authored across every
+// registered project, plus the cached `gh` half. `activity_commits.project_id`
+// carries no foreign key on purpose — the sweep reconciles it against the
+// `projects` table, so a project removed while the app was closed is forgotten
+// by the next sweep rather than by a cascade nobody ran.
+pub static ACTIVITY_LEDGER_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "activity_commits" => &[
+        "author_at", "author_email", "committed_at", "files_changed", "lines_added",
+        "lines_removed", "project_id", "sha",
+    ] as &'static [&'static str],
+    "activity_scan_meta" => &["key", "value"] as &'static [&'static str],
+    "activity_github_prs" => &[
+        "additions", "author_login", "closed_at", "created_at", "deletions", "is_draft",
+        "merged_at", "number", "repository", "state", "title", "url",
+    ] as &'static [&'static str],
+    "activity_github_reviews" => &[
+        "number", "repository", "state", "submitted_at", "title", "url",
+    ] as &'static [&'static str],
+    "activity_github_meta" => &["key", "value"] as &'static [&'static str],
+};
+
+pub static SYNC_TOMBSTONE_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "synced_session_tombstones" => &[
+        "deleted_at", "external_id", "provider",
+    ] as &'static [&'static str],
+};
+
 pub static DURABLE_CHECKPOINT_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "checkpoints" => &[
         "branch", "created_at", "git_ref", "head_sha", "id", "index_tree", "label",
@@ -802,7 +829,41 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &GOAL_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 44,
+        name: "activity_ledger",
+        up: crate::persistence::activity::MIGRATION_SQL,
+        affected_tables: &[
+            "activity_commits",
+            "activity_scan_meta",
+            "activity_github_prs",
+            "activity_github_reviews",
+            "activity_github_meta",
+        ],
+        expected_columns: &ACTIVITY_LEDGER_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 45,
+        name: "synced_session_tombstones",
+        up: SYNCED_SESSION_TOMBSTONES,
+        affected_tables: &["synced_session_tombstones"],
+        expected_columns: &SYNC_TOMBSTONE_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+// A provider transcript remains on disk when Settings deletes the projected
+// Argmax chat. Keep the provider conversation id independently of `sessions`
+// so a later session-sync sweep cannot recreate that chat.
+const SYNCED_SESSION_TOMBSTONES: &str = r#"
+CREATE TABLE synced_session_tombstones (
+  provider TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  deleted_at TEXT NOT NULL,
+  PRIMARY KEY (provider, external_id)
+);
+"#;
 
 // The first Goal shape: an ordered work plan, a shell-check phase, an
 // out-of-process reviewer bound to a JSON report, and an attempt ledger. v43
@@ -2197,6 +2258,10 @@ mod tests {
                 (
                     43,
                     compute_migration_checksum(crate::persistence::goals::MIGRATION_SQL)
+                ),
+                (
+                    44,
+                    compute_migration_checksum(crate::persistence::activity::MIGRATION_SQL)
                 ),
             ]
         );

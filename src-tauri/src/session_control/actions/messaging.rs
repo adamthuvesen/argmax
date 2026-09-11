@@ -108,6 +108,7 @@ pub(super) async fn list_sessions_action(
                 task_label: workspace.task_label.clone(),
                 provider: session.provider,
                 state: session.state,
+                attention: session.attention,
                 last_activity_at: session.last_activity_at,
                 launched_by_session_id: session.launched_by_session_id,
             })
@@ -245,6 +246,7 @@ pub(super) fn session_status(
             provider: session.provider,
             model_id: session.model_id,
             state: session.state,
+            attention: session.attention,
             turn_age_seconds,
             last_activity_at: session.last_activity_at,
             last_assistant_text,
@@ -383,7 +385,7 @@ fn seconds_since(at: &str) -> Option<i64> {
     Some((chrono::Utc::now() - then.with_timezone(&chrono::Utc)).num_seconds())
 }
 
-fn cap_chars(text: &str, max_chars: usize) -> String {
+pub(super) fn cap_chars(text: &str, max_chars: usize) -> String {
     if text.chars().count() <= max_chars {
         return text.to_string();
     }

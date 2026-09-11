@@ -350,7 +350,8 @@ fn apply_permission_policy(
     match input.permission_mode {
         PermissionMode::ProviderDefaults => {}
         PermissionMode::AutoApprove if input.agent_mode == AgentMode::Auto => {
-            params.insert("approvalPolicy".to_string(), json!("never"));
+            params.insert("approvalPolicy".to_string(), json!("on-request"));
+            params.insert("approvalsReviewer".to_string(), json!("auto_review"));
             if is_turn {
                 params.insert(
                     "sandboxPolicy".to_string(),
@@ -1216,19 +1217,36 @@ mod tests {
 
     #[test]
     fn permission_modes_use_the_documented_app_server_policies() {
-        let defaults = thread_params(&input(PermissionMode::ProviderDefaults), None);
-        assert!(defaults.get("approvalPolicy").is_none());
-        assert!(defaults.get("sandbox").is_none());
-        assert!(defaults.get("approvalsReviewer").is_none());
+        let defaults_input = input(PermissionMode::ProviderDefaults);
+        for defaults in [
+            thread_params(&defaults_input, None),
+            turn_params(&defaults_input, "thread-1", "Do the work".into()),
+        ] {
+            assert!(defaults.get("approvalPolicy").is_none());
+            assert!(defaults.get("approvalsReviewer").is_none());
+            assert!(defaults.get("sandbox").is_none());
+            assert!(defaults.get("sandboxPolicy").is_none());
+        }
 
-        let ask = thread_params(&input(PermissionMode::AskEachTime), None);
-        assert_eq!(ask["approvalPolicy"], "on-request");
-        assert_eq!(ask["sandbox"], "workspace-write");
-        assert_eq!(ask["approvalsReviewer"], "user");
+        let ask_input = input(PermissionMode::AskEachTime);
+        let ask_thread = thread_params(&ask_input, None);
+        assert_eq!(ask_thread["approvalPolicy"], "on-request");
+        assert_eq!(ask_thread["approvalsReviewer"], "user");
+        assert_eq!(ask_thread["sandbox"], "workspace-write");
+        let ask_turn = turn_params(&ask_input, "thread-1", "Do the work".into());
+        assert_eq!(ask_turn["approvalPolicy"], "on-request");
+        assert_eq!(ask_turn["approvalsReviewer"], "user");
+        assert_eq!(ask_turn["sandboxPolicy"]["type"], "workspaceWrite");
 
-        let full = thread_params(&input(PermissionMode::AutoApprove), None);
-        assert_eq!(full["approvalPolicy"], "never");
-        assert_eq!(full["sandbox"], "danger-full-access");
+        let full_input = input(PermissionMode::AutoApprove);
+        let full_thread = thread_params(&full_input, None);
+        assert_eq!(full_thread["approvalPolicy"], "on-request");
+        assert_eq!(full_thread["approvalsReviewer"], "auto_review");
+        assert_eq!(full_thread["sandbox"], "danger-full-access");
+        let full_turn = turn_params(&full_input, "thread-1", "Do the work".into());
+        assert_eq!(full_turn["approvalPolicy"], "on-request");
+        assert_eq!(full_turn["approvalsReviewer"], "auto_review");
+        assert_eq!(full_turn["sandboxPolicy"]["type"], "dangerFullAccess");
     }
 
     #[test]

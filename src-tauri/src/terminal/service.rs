@@ -78,6 +78,74 @@ pub struct TerminalSpawnResult {
     pub terminal_id: String,
 }
 
+/// One terminal as an agent reads it back: what it was started for, whether
+/// its shell is still up, and how it ended if it is not.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TerminalRecordSummary {
+    pub terminal_id: String,
+    pub workspace_id: String,
+    pub started_at: String,
+    pub command: Option<String>,
+    pub running: bool,
+    pub exit_code: Option<i32>,
+}
+
+/// A terminal's output kept in memory so it can be read after the fact. The
+/// renderer streams every chunk to xterm.js as it arrives and never asks for
+/// it again; an agent is not attached while its dev server logs, so the tail
+/// has to be here for `terminal_read` to answer at all.
+const SCROLLBACK_BYTES: usize = 128 * 1024;
+/// Terminals one service remembers. Live ones are never evicted — only
+/// finished records are, oldest first — so a workspace full of dead shells
+/// cannot hide a running one.
+const MAX_TERMINAL_RECORDS: usize = 64;
+
+/// A bounded tail of one terminal's output. Oldest bytes go first, on a UTF-8
+/// character boundary, so the text stays valid to read.
+#[derive(Default)]
+struct Scrollback {
+    text: String,
+    /// True once dropping made the tail shorter than what the shell wrote.
+    dropped: bool,
+}
+
+impl Scrollback {
+    fn push(&mut self, chunk: &str) {
+        self.text.push_str(chunk);
+        if self.text.len() <= SCROLLBACK_BYTES {
+            return;
+        }
+        self.dropped = true;
+        let excess = self.text.len() - SCROLLBACK_BYTES;
+        let cut = (excess..=self.text.len())
+            .find(|index| self.text.is_char_boundary(*index))
+            .unwrap_or(self.text.len());
+        self.text.drain(..cut);
+    }
+
+    /// The last `max_chars` characters, and whether anything was left out.
+    fn tail(&self, max_chars: usize) -> (String, bool) {
+        let count = self.text.chars().count();
+        if count <= max_chars {
+            return (self.text.clone(), self.dropped);
+        }
+        let skip = count - max_chars;
+        (self.text.chars().skip(skip).collect(), true)
+    }
+}
+
+/// What is known about a terminal whether or not its shell is still running.
+/// The live [`TerminalEntry`] is removed the moment the shell exits — the
+/// renderer's own state machine depends on that — so the readable history
+/// lives in its own map.
+struct TerminalRecord {
+    workspace_id: String,
+    started_at: String,
+    command: Option<String>,
+    scrollback: Arc<Mutex<Scrollback>>,
+    exit: Option<TerminalExitInfo>,
+}
+
 #[cfg(unix)]
 struct PollingTerminalReader {
     reader: std::fs::File,
@@ -208,6 +276,9 @@ pub struct TerminalService {
     on_data: OutputSink,
     on_exit: ExitSink,
     terminals: Mutex<HashMap<String, TerminalEntry>>,
+    /// Every terminal this run has spawned, live or finished — what
+    /// `terminal_read` answers from.
+    records: Mutex<HashMap<String, TerminalRecord>>,
     shell_factory: ShellFactory,
     lifecycle: Arc<WorkspaceLifecycle>,
 }
@@ -265,6 +336,7 @@ impl TerminalService {
             on_data,
             on_exit,
             terminals: Mutex::new(HashMap::new()),
+            records: Mutex::new(HashMap::new()),
             shell_factory,
             lifecycle,
         })
@@ -334,10 +406,15 @@ impl TerminalService {
                 },
             );
         }
+        let scrollback = self.open_record(&terminal_id, &workspace.id);
         drop(admission);
 
-        let reader_thread =
-            spawn_reader_thread(terminal_id.clone(), reader, Arc::clone(&self.on_data));
+        let reader_thread = spawn_reader_thread(
+            terminal_id.clone(),
+            reader,
+            Arc::clone(&self.on_data),
+            scrollback,
+        );
         spawn_exit_watcher(
             terminal_id.clone(),
             child,
@@ -349,6 +426,97 @@ impl TerminalService {
         );
 
         Ok(TerminalSpawnResult { terminal_id })
+    }
+
+    /// Spawn a terminal and type `command` into its shell. This is how an
+    /// agent starts something that has to outlive its turn: the PTY belongs to
+    /// Argmax rather than to the provider process, so the dev server it starts
+    /// is still running (and still on screen) at the next turn.
+    pub fn spawn_command(
+        self: &Arc<Self>,
+        input: TerminalSpawnInput,
+        command: Option<&str>,
+    ) -> ArgmaxResult<TerminalSpawnResult> {
+        let spawned = self.spawn(input)?;
+        let Some(command) = command.map(str::trim).filter(|value| !value.is_empty()) else {
+            return Ok(spawned);
+        };
+        self.record_command(&spawned.terminal_id, command);
+        self.write(&spawned.terminal_id, format!("{command}\n").as_bytes())?;
+        Ok(spawned)
+    }
+
+    /// Label a terminal before a caller types the command. The agent tool
+    /// announces the PTY to the renderer between these two steps, so the
+    /// renderer can start buffering output before a short command finishes.
+    pub(crate) fn record_command(&self, terminal_id: &str, command: &str) {
+        let mut records = self.records.lock_or_recover("terminal records");
+        if let Some(record) = records.get_mut(terminal_id) {
+            record.command = Some(command.to_string());
+        }
+    }
+
+    /// Every terminal known for one workspace, newest first.
+    pub fn workspace_terminals(&self, workspace_id: &str) -> Vec<TerminalRecordSummary> {
+        let records = self.records.lock_or_recover("terminal records");
+        let mut summaries = records
+            .iter()
+            .filter(|(_, record)| record.workspace_id == workspace_id)
+            .map(|(terminal_id, record)| record.summarize(terminal_id))
+            .collect::<Vec<_>>();
+        summaries.sort_by(|left, right| right.started_at.cmp(&left.started_at));
+        summaries
+    }
+
+    pub fn has_live_workspace_terminal(&self, workspace_id: &str) -> bool {
+        self.terminals
+            .lock_or_recover("terminals")
+            .values()
+            .any(|entry| entry.workspace_id == workspace_id)
+    }
+
+    /// One terminal's captured tail, with whether older output was dropped.
+    /// `None` for an id this service has never spawned.
+    pub fn read_terminal(
+        &self,
+        terminal_id: &str,
+        max_chars: usize,
+    ) -> Option<(TerminalRecordSummary, String, bool)> {
+        let records = self.records.lock_or_recover("terminal records");
+        let record = records.get(terminal_id)?;
+        let (output, truncated) = record
+            .scrollback
+            .lock_or_recover("terminal scrollback")
+            .tail(max_chars);
+        Some((record.summarize(terminal_id), output, truncated))
+    }
+
+    /// Start a terminal's readable history and hand back the buffer the reader
+    /// thread appends to.
+    fn open_record(&self, terminal_id: &str, workspace_id: &str) -> Arc<Mutex<Scrollback>> {
+        let scrollback = Arc::new(Mutex::new(Scrollback::default()));
+        let mut records = self.records.lock_or_recover("terminal records");
+        records.insert(
+            terminal_id.to_string(),
+            TerminalRecord {
+                workspace_id: workspace_id.to_string(),
+                started_at: crate::persistence::time::now_iso(),
+                command: None,
+                scrollback: Arc::clone(&scrollback),
+                exit: None,
+            },
+        );
+        evict_finished_records(&mut records);
+        scrollback
+    }
+
+    /// Mark a terminal finished, keeping its output readable. Called from the
+    /// exit watcher, which also drops the live entry.
+    fn close_record(&self, terminal_id: &str, exit: TerminalExitInfo) {
+        let mut records = self.records.lock_or_recover("terminal records");
+        if let Some(record) = records.get_mut(terminal_id) {
+            record.exit = Some(exit);
+        }
     }
 
     /// Forward `data` to the PTY. A failed write or flush is an error — a
@@ -483,6 +651,39 @@ impl Drop for TerminalService {
     }
 }
 
+impl TerminalRecord {
+    fn summarize(&self, terminal_id: &str) -> TerminalRecordSummary {
+        TerminalRecordSummary {
+            terminal_id: terminal_id.to_string(),
+            workspace_id: self.workspace_id.clone(),
+            started_at: self.started_at.clone(),
+            command: self.command.clone(),
+            running: self.exit.is_none(),
+            exit_code: self.exit.as_ref().map(|exit| exit.exit_code),
+        }
+    }
+}
+
+/// Keep the map bounded by dropping finished terminals, oldest first. A live
+/// terminal is never evicted: its record is the only place its output goes.
+fn evict_finished_records(records: &mut HashMap<String, TerminalRecord>) {
+    if records.len() <= MAX_TERMINAL_RECORDS {
+        return;
+    }
+    let mut finished = records
+        .iter()
+        .filter(|(_, record)| record.exit.is_some())
+        .map(|(id, record)| (record.started_at.clone(), id.clone()))
+        .collect::<Vec<_>>();
+    finished.sort();
+    for (_, id) in finished {
+        if records.len() <= MAX_TERMINAL_RECORDS {
+            return;
+        }
+        records.remove(&id);
+    }
+}
+
 fn terminal_process_scope(entry: &TerminalEntry) -> Option<TerminalProcessScope> {
     if entry.reaped.load(Ordering::Acquire) {
         return None;
@@ -508,6 +709,7 @@ fn spawn_reader_thread(
     terminal_id: String,
     reader: Box<dyn Read + Send>,
     on_data: OutputSink,
+    scrollback: Arc<Mutex<Scrollback>>,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         let error_terminal_id = terminal_id.clone();
@@ -515,6 +717,9 @@ fn spawn_reader_thread(
             reader,
             |_n| true,
             |data| {
+                scrollback
+                    .lock_or_recover("terminal scrollback")
+                    .push(&data);
                 on_data(TerminalChunk {
                     terminal_id: terminal_id.clone(),
                     data,
@@ -571,14 +776,18 @@ fn spawn_exit_watcher(
         // portable_pty's ExitStatus doesn't expose POSIX signal numbers
         // cross-platform; emit `None` when unavailable to match the TS shape.
         let signal: Option<i32> = None;
-        if let Some(service) = service.upgrade() {
-            let _ = service.remove_terminal(&terminal_id);
-        }
-        on_exit(TerminalExitInfo {
-            terminal_id,
+        let info = TerminalExitInfo {
+            terminal_id: terminal_id.clone(),
             exit_code,
             signal,
-        });
+        };
+        if let Some(service) = service.upgrade() {
+            let _ = service.remove_terminal(&terminal_id);
+            // The live entry is gone but the output stays readable: an agent
+            // asking why its dev server stopped needs the tail that says so.
+            service.close_record(&terminal_id, info.clone());
+        }
+        on_exit(info);
     });
 }
 
@@ -1378,5 +1587,138 @@ mod tests {
             combined.contains("got:bye"),
             "expected echo of bye, got: {combined:?}"
         );
+    }
+
+    #[test]
+    fn scrollback_keeps_the_tail_on_a_character_boundary() {
+        let mut scrollback = Scrollback::default();
+        // Multi-byte all the way, so a naive byte cut would split a character
+        // and the buffer would stop being a `String` at all.
+        scrollback.push(&"åäö".repeat(SCROLLBACK_BYTES));
+        assert!(scrollback.dropped);
+        assert!(scrollback.text.len() <= SCROLLBACK_BYTES);
+        assert!(scrollback.text.chars().all(|c| "åäö".contains(c)));
+
+        let (tail, truncated) = scrollback.tail(10);
+        assert_eq!(tail.chars().count(), 10);
+        assert!(truncated);
+
+        let mut short = Scrollback::default();
+        short.push("done\n");
+        assert_eq!(short.tail(100), ("done\n".to_string(), false));
+    }
+
+    /// What `terminal_spawn` then `terminal_read` does across a turn: a
+    /// command is typed into a PTY that Argmax owns, and its output is still
+    /// readable afterwards — including after the shell has exited.
+    #[tokio::test]
+    async fn an_agent_reads_back_a_command_it_started() {
+        let (database, workspace_id, _db, _cwd) = setup();
+        let (exit_tx, exit_rx) = oneshot::channel::<TerminalExitInfo>();
+        let exit_tx = StdMutex::new(Some(exit_tx));
+        let on_exit: ExitSink = Arc::new(move |info| {
+            if let Some(tx) = exit_tx.lock().unwrap().take() {
+                let _ = tx.send(info);
+            }
+        });
+        let svc = TerminalService::with_shell_factory(
+            database,
+            Arc::new(|_| {}),
+            on_exit,
+            script_factory("while IFS= read -r line; do eval \"$line\"; done"),
+        );
+
+        let spawned = svc
+            .spawn_command(
+                TerminalSpawnInput {
+                    workspace_id: workspace_id.clone(),
+                    cols: 80,
+                    rows: 24,
+                },
+                Some("echo argmax-was-here"),
+            )
+            .expect("spawn with a command");
+
+        let listed = svc.workspace_terminals(&workspace_id);
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].terminal_id, spawned.terminal_id);
+        assert_eq!(listed[0].command.as_deref(), Some("echo argmax-was-here"));
+        assert!(
+            listed[0].running,
+            "the shell outlives the call that made it"
+        );
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let output = loop {
+            let (_, output, _) = svc
+                .read_terminal(&spawned.terminal_id, 4_000)
+                .expect("the terminal is readable");
+            if output.contains("argmax-was-here") || Instant::now() > deadline {
+                break output;
+            }
+            sleep(Duration::from_millis(50)).await;
+        };
+        assert!(
+            output.contains("argmax-was-here"),
+            "the command's own output is what a read is for, got: {output:?}"
+        );
+
+        assert!(
+            svc.read_terminal("terminal-that-never-ran", 100).is_none(),
+            "an id this service never spawned has no history to invent"
+        );
+
+        svc.write(&spawned.terminal_id, b"exit 3\n").expect("exit");
+        let info = timeout(Duration::from_secs(5), exit_rx)
+            .await
+            .expect("the shell exited")
+            .expect("exit channel");
+        assert_eq!(info.exit_code, 3);
+        // The live entry is gone the moment the shell exits, but the read has
+        // to keep answering: "did the thing I started finish, and how?" is the
+        // question a later turn actually asks.
+        let (summary, output, _) = svc
+            .read_terminal(&spawned.terminal_id, 4_000)
+            .expect("a finished terminal is still readable");
+        assert!(!summary.running);
+        assert_eq!(summary.exit_code, Some(3));
+        assert!(output.contains("argmax-was-here"));
+    }
+
+    #[test]
+    fn eviction_drops_finished_records_and_never_a_live_one() {
+        let mut records = HashMap::new();
+        for index in 0..MAX_TERMINAL_RECORDS + 10 {
+            records.insert(
+                format!("terminal-{index}"),
+                TerminalRecord {
+                    workspace_id: "w1".to_string(),
+                    started_at: format!("2026-01-01T00:00:{index:02}.000Z"),
+                    command: None,
+                    scrollback: Arc::new(Mutex::new(Scrollback::default())),
+                    // Every third one is still running.
+                    exit: (index % 3 != 0).then_some(TerminalExitInfo {
+                        terminal_id: format!("terminal-{index}"),
+                        exit_code: 0,
+                        signal: None,
+                    }),
+                },
+            );
+        }
+        let live = records
+            .iter()
+            .filter(|(_, record)| record.exit.is_none())
+            .map(|(id, _)| id.clone())
+            .collect::<Vec<_>>();
+
+        evict_finished_records(&mut records);
+
+        assert!(records.len() <= MAX_TERMINAL_RECORDS);
+        for terminal_id in live {
+            assert!(
+                records.contains_key(&terminal_id),
+                "{terminal_id} is still running and must stay readable"
+            );
+        }
     }
 }

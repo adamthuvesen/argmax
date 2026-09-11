@@ -158,12 +158,17 @@ const BROWSER_INIT_SCRIPT: &str = r#"
 /// answering the user's own `confirm()` would misreport what they clicked.
 const BROWSER_DIALOG_SCRIPT: &str = include_str!("../browser/dialog.js");
 
-/// The initialization script one tab gets. Two documents' worth, because the
-/// agent-only half must be in place before the page's first statement runs
+/// Console and network capture, agent tabs only for the same reason: it
+/// wraps `console` and `fetch`, which is not something to do to a page a
+/// person is debugging in their own inspector.
+const BROWSER_CAPTURE_SCRIPT: &str = include_str!("../browser/capture.js");
+
+/// The initialization script one tab gets. Three documents' worth, because the
+/// agent-only halves must be in place before the page's first statement runs
 /// and an initialization script is fixed when the webview is created.
 fn init_script(owned_by_session: bool) -> String {
     if owned_by_session {
-        format!("{BROWSER_INIT_SCRIPT}\n{BROWSER_DIALOG_SCRIPT}")
+        format!("{BROWSER_INIT_SCRIPT}\n{BROWSER_DIALOG_SCRIPT}\n{BROWSER_CAPTURE_SCRIPT}")
     } else {
         BROWSER_INIT_SCRIPT.to_string()
     }
@@ -397,6 +402,15 @@ pub(crate) fn open_tab(
                         "browser dialog captured on an agent tab"
                     );
                 } else if let Some(command) = page_command(url) {
+                    if command == "focus-address" {
+                        // DOM focus in the renderer does not move the native
+                        // first responder out of the child WKWebView.
+                        if let Some(main) = nav_app.get_webview("main") {
+                            if let Err(error) = main.set_focus() {
+                                tracing::warn!(%error, "could not focus browser address bar");
+                            }
+                        }
+                    }
                     let _ = nav_app.emit_to(
                         "main",
                         "browser:page-command",
@@ -987,6 +1001,23 @@ pub async fn browser_fill_credentials(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn agent_tabs_get_capture_and_user_tabs_do_not() {
+        let agent = init_script(true);
+        assert!(agent.contains("__argmaxCapture"));
+        assert!(agent.contains("readConsole"));
+        assert!(agent.contains("readNetwork"));
+        assert!(agent.contains("__argmaxDialog"));
+
+        let user = init_script(false);
+        assert!(!user.contains("__argmaxCapture"));
+        assert!(!user.contains("__argmaxDialog"));
+        assert!(
+            user.contains("argmax-newtab"),
+            "ordinary browser behavior is still installed"
+        );
+    }
 
     #[test]
     fn validated_browser_url_accepts_http_and_https_only() {

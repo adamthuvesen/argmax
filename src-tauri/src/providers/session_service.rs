@@ -139,6 +139,31 @@ fn cap_notice_answer(answer: &str) -> String {
     capped
 }
 
+/// Whether a send may fall into the chat's follow-up queue.
+///
+/// The person's composer may: a message typed during a turn is meant to wait.
+/// An automatic turn may not. A goal continuation or a scheduled wake sitting
+/// in the queue reads as something the user typed, holds up move and archive,
+/// and — because its driver judges the turn that overtook it and then sends
+/// again — puts a second copy behind the first. Refused sends fail with
+/// [`TURN_IN_FLIGHT`] instead, and their driver retries once the chat settles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Queueing {
+    Allowed,
+    Refused,
+}
+
+/// A send was refused because the chat is mid-turn. Not a failure: the caller
+/// is a driver that will come back when the turn settles.
+pub const TURN_IN_FLIGHT: &str = "SESSION_TURN_IN_FLIGHT";
+
+fn turn_in_flight_error() -> ArgmaxError {
+    ArgmaxError::service(
+        TURN_IN_FLIGHT,
+        "A turn is already running in this chat; this one was not queued behind it.",
+    )
+}
+
 /// A goal turn is only allowed while its goal is still active on that chat.
 /// The driver checks the same thing before it sends, but it can lose the race
 /// with a user clearing the goal; this closes that window in the database,
@@ -398,25 +423,24 @@ impl ProviderSessionService {
         let Some(checkpoints) = self.checkpoints.get() else {
             return Ok(());
         };
-        let (workspace_id, required, turn_boundary) = {
+        let (workspace_id, turn_boundary) = {
             let connection = self.database.read_connection();
             let session = find_session_by_id(&connection, session_id)?;
             let workspace = find_workspace_by_id(&connection, &session.workspace_id)?;
             if workspace.kind != "git" {
                 return Ok(());
             }
-            let required =
-                crate::persistence::goals::find_active_goal_for_session(&connection, session_id)?
-                    .is_some();
             // The user message this turn answers. It is already persisted by
             // the time a launch reaches here, and it is what lets the turn in
             // the transcript find its own checkpoint to revert to.
             let turn_boundary =
                 crate::persistence::events::latest_user_message_id(&connection, session_id)?;
-            (workspace.id, required, turn_boundary)
+            (workspace.id, turn_boundary)
         };
+        // A checkpoint is a safety net, never a gate: a turn that cannot be
+        // captured still runs, and says so on the turn instead of refusing it.
         if let Err(error) = checkpoints
-            .create_before_turn_checkpoint(CreateCheckpointInput {
+            .create_checkpoint(CreateCheckpointInput {
                 workspace_id,
                 session_id: Some(session_id.to_string()),
                 label: "Before turn".to_string(),
@@ -429,9 +453,6 @@ impl ProviderSessionService {
             })
             .await
         {
-            if required {
-                return Err(error);
-            }
             if let Some(turn_boundary) = turn_boundary {
                 if let Some(event) = Self::mark_turn_checkpoint_unavailable(
                     &self.database,
@@ -878,7 +899,8 @@ impl ProviderSessionService {
         self: &Arc<Self>,
         input: ProvidersSendInput,
     ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(input, None, None).await
+        self.send_input_scoped(input, None, None, Queueing::Allowed)
+            .await
     }
 
     /// The same turn, tagged with the session that wrote it. Everything the
@@ -892,7 +914,8 @@ impl ProviderSessionService {
         input: ProvidersSendInput,
         origin: Option<MessageOrigin>,
     ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(input, origin, None).await
+        self.send_input_scoped(input, origin, None, Queueing::Allowed)
+            .await
     }
 
     pub async fn send_goal_input(
@@ -900,7 +923,19 @@ impl ProviderSessionService {
         input: ProvidersSendInput,
         identity: GoalTurnIdentity,
     ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(input, None, Some(identity)).await
+        self.send_input_scoped(input, None, Some(identity), Queueing::Refused)
+            .await
+    }
+
+    /// A scheduled task's turn in a chat it shares. Like a goal turn it is
+    /// refused rather than queued while the chat is mid-turn; the scheduler
+    /// leaves the row due and takes the next tick.
+    pub async fn send_scheduled_input(
+        self: &Arc<Self>,
+        input: ProvidersSendInput,
+    ) -> ArgmaxResult<SendInputResult> {
+        self.send_input_scoped(input, None, None, Queueing::Refused)
+            .await
     }
 
     #[allow(clippy::unused_async)] // Callers await; the provider spawn is backgrounded.
@@ -909,6 +944,7 @@ impl ProviderSessionService {
         input: ProvidersSendInput,
         origin: Option<MessageOrigin>,
         goal_turn: Option<GoalTurnIdentity>,
+        queueing: Queueing,
     ) -> ArgmaxResult<SendInputResult> {
         let session_id = input.session_id.as_str().to_string();
         let message = input.input.as_str().trim().to_string();
@@ -1015,6 +1051,9 @@ impl ProviderSessionService {
         let send_generation_guard = self.lock_send_generation(&session_id, send_generation)?;
         if let Some(handle) = self.live_handle(&session_id) {
             if !handle.accepts_input() {
+                if queueing == Queueing::Refused {
+                    return Err(turn_in_flight_error());
+                }
                 self.enqueue_pending_message(
                     &session_id,
                     &message,

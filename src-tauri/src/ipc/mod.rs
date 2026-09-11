@@ -9,11 +9,13 @@ use crate::state::AppState;
 pub mod inputs;
 pub mod validation;
 
+pub mod activity;
 pub mod approvals;
 pub mod attachments;
 pub mod browser;
 pub mod checkpoints;
 pub mod checks;
+pub mod connections;
 pub mod dashboard;
 pub mod git_ops;
 pub mod goals;
@@ -26,6 +28,7 @@ pub mod remote;
 pub mod review;
 pub mod routines;
 pub mod session;
+pub mod settings;
 pub mod skills;
 pub mod sync;
 pub mod system;
@@ -74,6 +77,8 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "session:multitask",
     "session:clear",
     "session:suggest-follow-up",
+    "settings:preview-chat-cleanup",
+    "settings:delete-old-chats",
     "review:list-changed-files",
     "review:load-diff",
     "review:stage-file",
@@ -97,6 +102,7 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "workspace:grep-content",
     "checks:run",
     "skills:list",
+    "connections:list",
     "system:open-path",
     "system:list-detected-ides",
     "system:diagnostics",
@@ -126,6 +132,11 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "remote:get-status",
     "remote:set-config",
     "remote:test-notification",
+    "remote:set-apns-config",
+    "remote:register-push-device",
+    "remote:unregister-push-device",
+    "remote:push-test",
+    "remote:push-capability",
     "sync:get-status",
     "sync:set-config",
     "sync:run-now",
@@ -155,6 +166,7 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "routines:reset-session",
     "usage:summary",
     "usage:remaining",
+    "activity:summary",
 ];
 
 /// Resolve the live `Database` Arc from `AppState`. Shared across IPC
@@ -250,6 +262,8 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         session::session_multitask,
         session::session_clear,
         session::session_suggest_follow_up,
+        settings::settings_preview_chat_cleanup,
+        settings::settings_delete_old_chats,
         review::review_list_changed_files,
         review::review_load_diff,
         review::review_stage_file,
@@ -273,6 +287,7 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         workspace_files::workspace_grep_content,
         checks::checks_run,
         skills::skills_list,
+        connections::connections_list,
         system::system_open_path,
         system::system_list_detected_ides,
         system::system_diagnostics,
@@ -302,6 +317,11 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         remote::remote_get_status,
         remote::remote_set_config,
         remote::remote_test_notification,
+        remote::remote_set_apns_config,
+        remote::remote_register_push_device,
+        remote::remote_unregister_push_device,
+        remote::remote_push_test,
+        remote::remote_push_capability,
         sync::sync_get_status,
         sync::sync_set_config,
         sync::sync_run_now,
@@ -330,6 +350,7 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         routines::routines_run_now,
         routines::routines_reset_session,
         usage::usage_summary,
-        usage::usage_remaining
+        usage::usage_remaining,
+        activity::activity_summary
     ])
 }

@@ -13,6 +13,7 @@ use chrono::{DateTime, Local, NaiveDateTime, SecondsFormat, TimeZone, Utc};
 use cron::Schedule;
 
 use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
+use crate::persistence::routines::Routine;
 
 /// How long a failed recurring routine waits before its next attempt. A
 /// one-shot never retries: it is marked disabled with the error surfaced.
@@ -58,6 +59,17 @@ pub fn next_occurrence(
             "SCHEDULE_MISSING",
             "routine has no schedule",
         )),
+    }
+}
+
+/// The stored `next_run_at` a routine gets when it is switched back on,
+/// recomputed from now. A one-shot keeps its own time (a past time stays due,
+/// so the scheduler fires it late-once); a recurring schedule gets its next
+/// future occurrence.
+pub fn next_run_from_now(routine: &Routine, now: DateTime<Utc>) -> ArgmaxResult<Option<String>> {
+    match &routine.run_once_at {
+        Some(time) => Ok(Some(time.clone())),
+        None => Ok(next_occurrence(routine.cron_expr.as_deref(), None, now)?.map(format_rfc3339)),
     }
 }
 

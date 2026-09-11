@@ -40,6 +40,7 @@ use super::normalizer::ProviderOutputStream;
 use super::runtime::{
     BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType, ProviderRuntimeHandle,
 };
+use super::unified_diff::{unified_diff, DEFAULT_CONTEXT};
 use super::{mcp_injection, AgentMode, PermissionMode, ProviderId, ProviderLaunchInput};
 use crate::approvals::service::ApprovalService;
 use crate::error::{ArgmaxError, ArgmaxResult};
@@ -50,6 +51,11 @@ use crate::util::sync::LockOrRecover;
 /// How long `terminate` waits for a cancelled prompt to resolve before giving
 /// up. The warm process is never killed on turn termination.
 const CANCEL_WAIT: Duration = Duration::from_secs(5);
+
+/// One write's diff ceiling, the same one measured diffs use. A diff larger
+/// than this is a file rewrite, where the payload cost is real and the row is
+/// better off reporting the path alone than a number nobody reads.
+const MAX_DIFF_BYTES: usize = 128 * 1024;
 
 /// Cursor's ACP mode ids, as listed in `session/new`'s
 /// `modes.availableModes`: `agent` (the `currentModeId` a new session starts
@@ -724,7 +730,7 @@ impl TurnTranslation {
                     return Vec::new();
                 };
                 let named = mcp_identity(update).is_some() || !is_placeholder(update);
-                let (key, args) = match mcp_identity(update) {
+                let (key, mut args) = match mcp_identity(update) {
                     Some(identity) => identity,
                     None => (
                         tool_key(update),
@@ -734,6 +740,7 @@ impl TurnTranslation {
                             .unwrap_or_else(|| title_args(update)),
                     ),
                 };
+                adopt_location_path(&mut args, update);
                 self.tools.insert(
                     call_id.to_string(),
                     ToolInfo {
@@ -757,26 +764,62 @@ impl TurnTranslation {
                 let Some(call_id) = update.get("toolCallId").and_then(Value::as_str) else {
                     return Vec::new();
                 };
-                // The identity of an MCP call arrives here, not on the
-                // `tool_call` that opened it: Cursor sends a nameless
-                // "MCP: tool" placeholder first, then an update carrying
-                // `{providerIdentifier, toolName, args}`.
-                if let Some((key, args)) = mcp_identity(update) {
-                    if let Some(info) = self.tools.get_mut(call_id) {
-                        if !info.started {
-                            info.key = key;
-                            info.args = args;
-                        }
-                    }
-                }
-                let mut lines = self.started_line(call_id);
-                if is_terminal_status(update) {
+                let named = self.adopt_identity(call_id, update);
+                let terminal = is_terminal_status(update);
+                // A bare `status: in_progress` says nothing about what the
+                // tool is. Drawing the row from it would freeze the empty
+                // arguments the call opened with onto the transcript, so the
+                // row waits for the update that names it — or for the
+                // completion, after which nothing more is coming.
+                let mut lines = if named || terminal {
+                    self.started_line(call_id)
+                } else {
+                    Vec::new()
+                };
+                if terminal {
                     lines.extend(self.completion_line(call_id, update));
                 }
                 lines
             }
             _ => Vec::new(),
         }
+    }
+
+    /// Take whatever a `tool_call_update` says about what the tool is, and
+    /// report whether it said anything at all.
+    ///
+    /// Cursor opens every tool nameless — `{"title":"Edit File","kind":"edit",
+    /// "rawInput":{}}` — and fills it in one update later: an MCP call as
+    /// `{providerIdentifier, toolName, args}`, everything else as the tool's
+    /// own `rawInput` plus the `locations` it touches. The row is drawn from
+    /// this, not from the opening line, which is what gets a file path onto an
+    /// edit row instead of a bare "Edited file".
+    fn adopt_identity(&mut self, call_id: &str, update: &Value) -> bool {
+        let Some(info) = self.tools.get_mut(call_id) else {
+            return false;
+        };
+        if info.started {
+            return false;
+        }
+        if let Some((key, args)) = mcp_identity(update) {
+            info.key = key;
+            info.args = args;
+            return true;
+        }
+        let mut named = false;
+        if let Some(raw_input) = non_empty_object(update.get("rawInput")) {
+            info.args = Value::Object(raw_input.clone());
+            named = true;
+        }
+        if let Some(name) = update
+            .pointer("/rawInput/_toolName")
+            .and_then(Value::as_str)
+            .filter(|name| !name.is_empty())
+        {
+            info.key = name.to_string();
+        }
+        named |= adopt_location_path(&mut info.args, update);
+        named
     }
 
     /// The `started` line, once. Called again for the same tool it yields
@@ -802,8 +845,10 @@ impl TurnTranslation {
         let Some(info) = self.tools.remove(call_id) else {
             return Vec::new();
         };
+        let mut args = info.args;
+        merge_written_diff(&mut args, update);
         let mut body = Map::new();
-        body.insert("args".to_string(), info.args);
+        body.insert("args".to_string(), args);
         if let Some(output) = update.get("rawOutput") {
             body.insert("result".to_string(), output.clone());
         }
@@ -860,16 +905,111 @@ fn mcp_identity(update: &Value) -> Option<(String, Value)> {
     Some((format!("mcp__{server}__{tool}"), args))
 }
 
-/// A `tool_call` that names nothing: the bucket kind with no arguments, which
-/// is how an MCP call opens before Cursor identifies it.
+/// A `tool_call` that names nothing yet: no arguments and no location. Cursor
+/// opens every tool this way, whatever its kind, and names it in the following
+/// `tool_call_update`.
 fn is_placeholder(update: &Value) -> bool {
-    let bucket_kind = matches!(update.get("kind").and_then(Value::as_str), Some("other"));
-    let empty_input = match update.get("rawInput") {
-        None => true,
-        Some(Value::Object(fields)) => fields.is_empty(),
-        Some(_) => false,
+    non_empty_object(update.get("rawInput")).is_none() && first_location_path(update).is_none()
+}
+
+fn non_empty_object(value: Option<&Value>) -> Option<&Map<String, Value>> {
+    value
+        .and_then(Value::as_object)
+        .filter(|fields| !fields.is_empty())
+}
+
+/// Give a tool's arguments the file it says it is about to touch, unless they
+/// already name one. Returns whether anything was added.
+fn adopt_location_path(args: &mut Value, update: &Value) -> bool {
+    let Some(path) = first_location_path(update) else {
+        return false;
     };
-    bucket_kind && empty_input
+    let Some(args) = args.as_object_mut() else {
+        return false;
+    };
+    args.entry("path").or_insert(Value::String(path));
+    true
+}
+
+/// The first path in ACP's `locations`, the list of files a tool is about to
+/// touch. It is how Cursor names the target of a read or an edit whose
+/// `rawInput` has not arrived.
+fn first_location_path(update: &Value) -> Option<String> {
+    update
+        .get("locations")?
+        .as_array()?
+        .iter()
+        .find_map(|location| location.get("path").and_then(Value::as_str))
+        .filter(|path| !path.is_empty())
+        .map(str::to_string)
+}
+
+/// Fold the diff a completed write reports into the tool's arguments, where
+/// the chat's file-change card reads it.
+///
+/// ACP carries it as `content: [{type:"diff", path, oldText, newText}]`, and
+/// Cursor sends the file's *whole* text on both sides, so the pair becomes a
+/// unified diff rather than a before/after the chat would render as a file
+/// where every line changed.
+fn merge_written_diff(args: &mut Value, update: &Value) {
+    let Some(args) = args.as_object_mut() else {
+        return;
+    };
+    let Some(entry) = update
+        .get("content")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .find(|item| item.get("type").and_then(Value::as_str) == Some("diff"))
+    else {
+        return;
+    };
+    let path = entry
+        .get("path")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let old_text = entry.get("oldText").and_then(Value::as_str).unwrap_or("");
+    let new_text = entry.get("newText").and_then(Value::as_str).unwrap_or("");
+    if !path.is_empty() {
+        args.entry("path")
+            .or_insert_with(|| Value::String(path.to_string()));
+    }
+    // A delete reports the removed path as its own "old text" and nothing as
+    // its new one. There is no content behind that, so it gets no diff. Stamp
+    // the operation because Cursor can still name the enclosing tool `edit`.
+    if new_text.is_empty() && old_text == path {
+        args.insert("operation".to_string(), Value::String("delete".to_string()));
+        return;
+    }
+    let (before, after) = match created_file_text(old_text, new_text) {
+        Some(created) => {
+            args.insert("operation".to_string(), Value::String("create".to_string()));
+            ("", created)
+        }
+        None => (old_text, new_text),
+    };
+    if let Some(diff) = unified_diff(before, after, DEFAULT_CONTEXT, MAX_DIFF_BYTES) {
+        args.insert("unified_diff".to_string(), Value::String(diff));
+    }
+}
+
+/// The content of a newly created file, when that is what the diff describes.
+///
+/// Cursor writes a create as unified-diff header lines with one marker
+/// character eaten: `oldText` is the literal `-- /dev/null` and `newText`
+/// opens with `++ b/<path>` before the file's actual lines. Passed through as
+/// text, those two lines would render as a deleted `- /dev/null` and an added
+/// `+ b/<path>` at the top of a brand new file.
+fn created_file_text<'a>(old_text: &str, new_text: &'a str) -> Option<&'a str> {
+    if !matches!(old_text.trim_end(), "-- /dev/null" | "--- /dev/null") {
+        return None;
+    }
+    let is_header = |line: &str| line.starts_with("++ b/") || line.starts_with("+++ b/");
+    Some(match new_text.split_once('\n') {
+        Some((header, body)) if is_header(header) => body,
+        None if is_header(new_text) => "",
+        _ => new_text,
+    })
 }
 
 fn title_args(update: &Value) -> Value {
@@ -1189,6 +1329,167 @@ mod tests {
         assert_eq!(lifecycle[0].payload["agentRunId"], "call-acp");
         assert_eq!(lifecycle[1].r#type, "agent.completed");
         assert_eq!(lifecycle[1].message, "Adapter reviewed");
+    }
+
+    // Captured from `cursor-agent acp` 2026.09.08: an edit opens nameless,
+    // is named one update later, and reports the file's whole text before and
+    // after on completion. Every one of those three was being dropped, which
+    // is what left the chat showing "Edited file" with no path and no diff.
+    #[test]
+    fn an_edit_reports_its_path_and_the_lines_it_changed() {
+        let mut translation = TurnTranslation::default();
+        assert!(
+            translation
+                .translate(&update(json!({
+                    "sessionUpdate": "tool_call",
+                    "toolCallId": "tool-1",
+                    "title": "Edit File",
+                    "kind": "edit",
+                    "status": "pending",
+                    "rawInput": {},
+                })))
+                .is_empty(),
+            "the opening line names no file, so it draws no row"
+        );
+
+        let started = translation.translate(&update(json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "tool-1",
+            "title": "Edit `/repo/greet.ts`",
+            "rawInput": { "path": "/repo/greet.ts" },
+            "locations": [{ "path": "/repo/greet.ts" }],
+        })));
+        assert_eq!(started.len(), 1);
+        assert_eq!(started[0]["subtype"], "started");
+        assert_eq!(
+            started[0]["tool_call"]["edit"]["args"]["path"],
+            "/repo/greet.ts"
+        );
+
+        let completed = translation.translate(&update(json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "tool-1",
+            "status": "completed",
+            "content": [{
+                "type": "diff",
+                "path": "/repo/greet.ts",
+                "oldText": "export function greet() {\n  return \"hello\";\n}\n",
+                "newText": "export function greet() {\n  return \"hi there\";\n}\n",
+            }],
+        })));
+        assert_eq!(completed.len(), 1);
+        let args = &completed[0]["tool_call"]["edit"]["args"];
+        assert_eq!(args["path"], "/repo/greet.ts");
+        assert_eq!(
+            args["unified_diff"],
+            json!(
+                "@@ -1,3 +1,3 @@\n export function greet() {\n-  return \"hello\";\n+  return \"hi there\";\n }"
+            )
+        );
+    }
+
+    // Cursor writes a create as unified-diff header lines with one marker
+    // character eaten, so the body has to be recovered from behind them.
+    #[test]
+    fn a_created_file_is_an_addition_not_a_diff_of_its_own_header_lines() {
+        let mut translation = TurnTranslation::default();
+        translation.translate(&update(json!({
+            "sessionUpdate": "tool_call",
+            "toolCallId": "tool-1",
+            "kind": "edit",
+            "rawInput": { "path": "/repo/note.txt" },
+        })));
+        let completed = translation.translate(&update(json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "tool-1",
+            "status": "completed",
+            "content": [{
+                "type": "diff",
+                "path": "/repo/note.txt",
+                "oldText": "-- /dev/null",
+                "newText": "++ b//repo/note.txt\nalpha\nbeta",
+            }],
+        })));
+        assert_eq!(
+            completed[0]["tool_call"]["edit"]["args"]["unified_diff"],
+            json!("@@ -0,0 +1,2 @@\n+alpha\n+beta")
+        );
+    }
+
+    // A delete reports the removed path as its own "old text". There is no
+    // content behind that, and inventing a one-line diff out of it would put
+    // the file's own name on screen as a deleted line.
+    #[test]
+    fn a_deleted_file_carries_no_diff() {
+        let mut translation = TurnTranslation::default();
+        translation.translate(&update(json!({
+            "sessionUpdate": "tool_call",
+            "toolCallId": "tool-1",
+            "kind": "delete",
+            "rawInput": { "path": "/repo/keep.txt" },
+        })));
+        let completed = translation.translate(&update(json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "tool-1",
+            "status": "completed",
+            "content": [{
+                "type": "diff",
+                "path": "/repo/keep.txt",
+                "oldText": "/repo/keep.txt",
+                "newText": "",
+            }],
+        })));
+        let args = &completed[0]["tool_call"]["delete"]["args"];
+        assert_eq!(args["path"], "/repo/keep.txt");
+        assert_eq!(args["operation"], "delete");
+        assert!(args.get("unified_diff").is_none());
+    }
+
+    #[test]
+    fn an_empty_created_file_still_carries_its_operation() {
+        let mut translation = TurnTranslation::default();
+        translation.translate(&update(json!({
+            "sessionUpdate": "tool_call",
+            "toolCallId": "tool-1",
+            "kind": "edit",
+            "rawInput": { "path": "/repo/empty.txt" },
+        })));
+        let completed = translation.translate(&update(json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "tool-1",
+            "status": "completed",
+            "content": [{
+                "type": "diff",
+                "path": "/repo/empty.txt",
+                "oldText": "-- /dev/null",
+                "newText": "++ b//repo/empty.txt",
+            }],
+        })));
+        let args = &completed[0]["tool_call"]["edit"]["args"];
+        assert_eq!(args["path"], "/repo/empty.txt");
+        assert_eq!(args["operation"], "create");
+        assert!(args.get("unified_diff").is_none());
+    }
+
+    #[test]
+    fn a_read_is_named_by_the_location_it_touches() {
+        let mut translation = TurnTranslation::default();
+        translation.translate(&update(json!({
+            "sessionUpdate": "tool_call",
+            "toolCallId": "tool-1",
+            "title": "Read File",
+            "kind": "read",
+            "rawInput": {},
+        })));
+        let started = translation.translate(&update(json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "tool-1",
+            "locations": [{ "path": "/repo/greet.ts" }],
+        })));
+        assert_eq!(
+            started[0]["tool_call"]["read"]["args"]["path"],
+            "/repo/greet.ts"
+        );
     }
 
     #[test]

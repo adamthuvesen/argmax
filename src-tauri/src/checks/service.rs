@@ -147,6 +147,10 @@ impl CheckService {
             .pending_count(workspace_id)
     }
 
+    pub fn has_running_workspace_check(&self, workspace_id: &str) -> bool {
+        self.pending_cancel_count(workspace_id) > 0
+    }
+
     pub async fn run_workspace_check(
         self: &Arc<Self>,
         input: RunWorkspaceCheckInput,

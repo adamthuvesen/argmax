@@ -105,7 +105,10 @@ pub fn known_conversation_ids(
     let mut statement = connection
         .prepare_cached(
             "SELECT provider_conversation_id FROM sessions
-             WHERE provider = ? AND provider_conversation_id IS NOT NULL",
+             WHERE provider = ?1 AND provider_conversation_id IS NOT NULL
+             UNION
+             SELECT external_id FROM synced_session_tombstones
+             WHERE provider = ?1",
         )
         .map_err(sqlite_error)?;
     let rows = statement

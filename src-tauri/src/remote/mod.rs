@@ -10,10 +10,12 @@
 // fresh token on first run so enabling it is a one-word edit, never a token
 // hunt.
 
+pub mod apns;
 pub mod dispatch;
 pub mod ntfy;
 pub mod operations;
 pub mod server;
+pub mod signal;
 pub mod ws;
 
 use std::path::Path;
@@ -58,20 +60,80 @@ pub struct RemoteConfig {
     /// publisher runs far from the async probe and needs it at boot too.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mobile_url: Option<String>,
+    /// Direct-to-Apple push for the native remote app. Absent means disabled,
+    /// which is also what a partially filled block means — see
+    /// [`ApnsConfig::credentials`].
+    #[serde(default, skip_serializing_if = "ApnsConfig::is_absent")]
+    pub apns: ApnsConfig,
 }
 
 impl RemoteConfig {
     /// A freshly seeded, disabled config. Also the fallback whenever the file
     /// on disk cannot be read or parsed.
-    fn disabled() -> Self {
+    pub(crate) fn disabled() -> Self {
         Self {
             enabled: false,
             port: DEFAULT_PORT,
             token: generate_token(),
             ntfy_topic: None,
             mobile_url: None,
+            apns: ApnsConfig::default(),
         }
     }
+}
+
+/// The APNs auth key and the phones paired against it. Every field is
+/// optional so an untouched `remote.json` carries no `apns` block at all.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ApnsConfig {
+    /// Absolute path to the `.p8` auth key downloaded from Apple Developer →
+    /// Keys. The key stays where the user put it; Argmax only reads it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_path: Option<String>,
+    /// The 10-character Key ID Apple shows next to that key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_id: Option<String>,
+    /// The 10-character Team ID from the developer account.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team_id: Option<String>,
+    /// Send to Apple's development host instead. A token minted by a debug
+    /// build of the app only works there, and vice versa.
+    #[serde(default)]
+    pub sandbox: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub devices: Vec<PushDevice>,
+}
+
+impl ApnsConfig {
+    /// The three values a push needs, or `None` while any of them is missing.
+    /// Blank strings count as missing: an emptied Settings field must turn
+    /// push off, not send a request Apple answers with 403.
+    pub fn credentials(&self) -> Option<(&str, &str, &str)> {
+        let key_path = non_empty(self.key_path.as_deref())?;
+        let key_id = non_empty(self.key_id.as_deref())?;
+        let team_id = non_empty(self.team_id.as_deref())?;
+        Some((key_path, key_id, team_id))
+    }
+
+    fn is_absent(&self) -> bool {
+        self == &Self::default()
+    }
+}
+
+/// One paired phone. The token is APNs' own device token, re-registered by
+/// the app on every launch because Apple may rotate it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PushDevice {
+    pub token: String,
+    /// What the user sees in Settings, e.g. the device name the app reports.
+    pub name: String,
+    /// RFC 3339, for the Settings list.
+    pub registered_at: String,
+}
+
+fn non_empty(value: Option<&str>) -> Option<&str> {
+    let value = value?.trim();
+    (!value.is_empty()).then_some(value)
 }
 
 fn default_port() -> u16 {
@@ -170,25 +232,21 @@ fn generate_token() -> String {
 /// Resolve the config and bring the bridge in line with it. Spawned after the
 /// rest of setup so a bridge failure cannot touch boot.
 pub async fn start(app: tauri::AppHandle) {
-    let Some(app_data_dir) = ensure_app_data_dir(&app) else {
+    let state = tauri::Manager::state::<crate::state::AppState>(&app);
+    let Some(app_data_dir) = state.app_data_dir.get() else {
+        tracing::warn!("remote bridge: setup resolved no app data dir; staying disabled");
         return;
     };
-    let config = load_or_create_config(&app_data_dir);
+    let config = load_or_create_config(app_data_dir);
     apply(&app, config);
 }
 
-/// Bring the bridge and the ntfy publisher in line with `config`: swap the
-/// publisher, stop any running server, and start a new one when enabled.
+/// Bring the bridge and both push publishers in line with `config`: swap the
+/// publishers, stop any running server, and start a new one when enabled.
 /// Called at boot and whenever the Settings panel saves a change.
 pub fn apply(app: &tauri::AppHandle, config: RemoteConfig) {
     let state = tauri::Manager::state::<crate::state::AppState>(app);
-
-    let publisher = config.ntfy_topic.clone().map(|topic| {
-        std::sync::Arc::new(ntfy::NtfyPublisher::new(topic, config.mobile_url.clone()))
-    });
-    if let Ok(mut ntfy) = state.ntfy.write() {
-        *ntfy = publisher;
-    }
+    apply_push(&state, &config);
 
     let mut server = state
         .remote_server
@@ -223,6 +281,58 @@ pub fn apply(app: &tauri::AppHandle, config: RemoteConfig) {
     }
 }
 
+/// Swap the ntfy and APNs publishers for the ones `config` describes, leaving
+/// the bridge server alone. Pairing a phone goes through here rather than
+/// [`apply`]: rebinding the port would drop every connected client, including
+/// the phone that just registered. Takes `&AppState`, not the `AppHandle`,
+/// because the phone pairs itself over the bridge, where there is none.
+pub fn apply_push(state: &crate::state::AppState, config: &RemoteConfig) {
+    let ntfy_publisher = config.ntfy_topic.clone().map(|topic| {
+        std::sync::Arc::new(ntfy::NtfyPublisher::new(topic, config.mobile_url.clone()))
+    });
+    let apns_publisher = build_apns_publisher(state, config);
+    if let Ok(mut ntfy) = state.ntfy.write() {
+        *ntfy = ntfy_publisher;
+    }
+    let apns_installed = match state.apns.write() {
+        Ok(mut apns) => {
+            *apns = apns_publisher;
+            apns.is_some()
+        }
+        Err(_) => false,
+    };
+    tracing::debug!(
+        ntfy = config.ntfy_topic.is_some(),
+        apns = apns_installed,
+        devices = config.apns.devices.len(),
+        "push publishers installed"
+    );
+}
+
+/// The APNs publisher for `config`, or `None` when push is off. A key that
+/// will not load is a warning and a disabled sink, not a boot failure: the
+/// Settings panel reports the same problem when the user next opens it.
+fn build_apns_publisher(
+    state: &crate::state::AppState,
+    config: &RemoteConfig,
+) -> Option<std::sync::Arc<apns::ApnsPublisher>> {
+    if config.apns.devices.is_empty() {
+        return None;
+    }
+    let app_data_dir = state.app_data_dir.get()?.clone();
+    match apns::ApnsClient::open(&config.apns)? {
+        Ok(client) => Some(std::sync::Arc::new(apns::ApnsPublisher::new(
+            std::sync::Arc::new(client),
+            config.apns.devices.clone(),
+            app_data_dir,
+        ))),
+        Err(error) => {
+            tracing::warn!(%error, "APNs push is configured but the key could not be loaded");
+            None
+        }
+    }
+}
+
 /// A server task that was aborted while the bridge is disabled. It is kept out
 /// of `AppState::remote_server` because that slot answers `is_serving`, and an
 /// abort that has not completed yet would read as a live server.
@@ -238,21 +348,6 @@ pub fn is_serving(state: &crate::state::AppState) -> bool {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .as_ref()
         .is_some_and(|handle| !handle.inner().is_finished())
-}
-
-pub fn ensure_app_data_dir(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
-    let app_data_dir = match crate::util::data_dir::app_data_dir(app) {
-        Ok(dir) => dir,
-        Err(error) => {
-            tracing::warn!(?error, "remote bridge: app_data_dir unavailable");
-            return None;
-        }
-    };
-    if let Err(error) = std::fs::create_dir_all(&app_data_dir) {
-        tracing::warn!(?error, path = %app_data_dir.display(), "remote bridge: failed to create app data dir");
-        return None;
-    }
-    Some(app_data_dir)
 }
 
 #[cfg(test)]
@@ -283,6 +378,52 @@ mod tests {
         std::fs::write(dir.path().join(CONFIG_FILE_NAME), "{ not json").expect("write");
 
         assert!(!load_or_create_config(dir.path()).enabled);
+    }
+
+    /// An untouched config carries no `apns` block, and a config that has one
+    /// survives a save/load round trip with its devices intact.
+    #[test]
+    fn the_apns_block_is_absent_until_it_is_used() {
+        let dir = tempdir().expect("tempdir");
+        load_or_create_config(dir.path());
+
+        let seeded = std::fs::read_to_string(dir.path().join(CONFIG_FILE_NAME)).expect("seeded");
+        assert!(!seeded.contains("apns"), "seeded config: {seeded}");
+
+        let mut config = load_or_create_config(dir.path());
+        config.apns.key_path = Some("/keys/AuthKey_ABC1234567.p8".to_string());
+        config.apns.key_id = Some("ABC1234567".to_string());
+        config.apns.team_id = Some("TEAM123456".to_string());
+        config.apns.sandbox = true;
+        config.apns.devices.push(PushDevice {
+            token: "a1b2".to_string(),
+            name: "iPhone".to_string(),
+            registered_at: "2026-01-01T00:00:00Z".to_string(),
+        });
+        save_config(dir.path(), &config).expect("save");
+
+        let reread = load_or_create_config(dir.path());
+        assert_eq!(reread.apns, config.apns);
+        assert_eq!(
+            reread.apns.credentials(),
+            Some(("/keys/AuthKey_ABC1234567.p8", "ABC1234567", "TEAM123456"))
+        );
+    }
+
+    /// A half-filled block is the disabled state, not a request to send with
+    /// whatever is there.
+    #[test]
+    fn incomplete_apns_credentials_read_as_unconfigured() {
+        let mut apns = ApnsConfig {
+            key_path: Some("/keys/AuthKey.p8".to_string()),
+            key_id: Some("ABC1234567".to_string()),
+            team_id: None,
+            sandbox: false,
+            devices: Vec::new(),
+        };
+        assert_eq!(apns.credentials(), None);
+        apns.team_id = Some("   ".to_string());
+        assert_eq!(apns.credentials(), None, "blank is missing");
     }
 
     #[test]

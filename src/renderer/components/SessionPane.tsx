@@ -217,11 +217,12 @@ export function SessionPane({
    *  review panel; "overlay" raises a sheet over the transcript, which is what
    *  the phone has room for. */
   agentsPresentation?: "dock" | "overlay";
-  /** Phone back-stack: called with a dismisser while the overlay is up, and
-   *  with null the moment it starts to close, so a hardware back can pop the
-   *  peek first and the host can take its floor back without waiting out the
-   *  animation. The dismisser is the sheet's own, so back rides out the same
-   *  way a tap on the scrim does. */
+  /** Phone back-stack: called with a dismisser while the overlay is on
+   *  screen — rising, up, or riding out — and with null once it has gone, so
+   *  a hardware back can pop the peek first and the native host knows when
+   *  its floor is clear to take back. The dismisser is the sheet's own, so
+   *  back rides out the same way a tap on the scrim does; during the ride
+   *  out it is a no-op. */
   onAgentsOverlayChange?: (dismiss: (() => void) | null) => void;
   /** Whether the host draws the composer natively below the web view. Raising
    *  the peek hands that floor back, which resizes the page: the sheet waits
@@ -381,11 +382,15 @@ export function SessionPane({
   const overlayCloseAll = overlayTabs.closeAllTabs;
   const overlayOpenTab = overlayTabs.openTab;
   // Whether the peek should be up, and whether it is still on screen. Two
-  // states, not one: the intent turns the phone's composer floor back over at
-  // the *start* of the ride out — the native card rises behind a sheet that is
-  // still there — while presence keeps the sheet mounted until it has gone.
+  // states, not one: the intent drives the ride, and presence keeps the sheet
+  // mounted until it has gone. Presence is also what the phone's composer
+  // floor follows. The floor used to turn back over at the start of the ride
+  // out so the native card could rise behind the departing sheet, but that
+  // card's return shrinks the web view, and the sheet's ride is measured
+  // against the web view's height — it hopped back up a composer's height
+  // mid-ride and dropped again, a dark flicker right above the card.
   // Tab count used to stand in for both, so closing wiped the tabs before the
-  // sheet could animate and the floor stayed empty for the whole trip.
+  // sheet could animate.
   const [peekOpen, setPeekOpen] = useState(false);
   const [peekPresent, setPeekPresent] = useState(false);
   const closePeek = useCallback((): void => setPeekOpen(false), []);
@@ -408,9 +413,9 @@ export function SessionPane({
   }, [agentsInOverlay, peekOpen, peekTabCount]);
   useEffect(() => {
     if (!agentsInOverlay) return;
-    onAgentsOverlayChange?.(peekOpen ? closePeek : null);
+    onAgentsOverlayChange?.(peekPresent ? closePeek : null);
     return () => onAgentsOverlayChange?.(null);
-  }, [agentsInOverlay, closePeek, onAgentsOverlayChange, peekOpen]);
+  }, [agentsInOverlay, closePeek, onAgentsOverlayChange, peekPresent]);
   // Warm the peek's chunks on idle, the way the terminal's are warmed below:
   // on the phone a launch row is a tap away from the moment the chat opens.
   useEffect(() => {

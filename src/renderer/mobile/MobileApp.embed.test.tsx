@@ -269,19 +269,19 @@ describe("MobileApp embed mode", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Close Delegated work" }));
 
-    // The moment the sheet starts to leave, not once it has gone: the card
-    // rises behind a peek that is still on screen. Waiting for the unmount
-    // left the floor empty for the animation plus a bridge round trip, which
-    // read as the composer being taken away a second time.
-    expect(posted("agents")).toEqual([
-      { type: "agents", open: true },
-      { type: "agents", open: false }
-    ]);
+    // Once the sheet has gone, not the moment it starts to leave: the card's
+    // return resizes the web view, and a sheet riding out over that resize
+    // hopped back up mid-ride. So the floor stays clear for the whole trip.
     expect(screen.getByRole("dialog", { name: "Delegated work" })).toBeInTheDocument();
+    expect(posted("agents")).toEqual([{ type: "agents", open: true }]);
 
     await waitFor(() =>
       expect(screen.queryByRole("dialog", { name: "Delegated work" })).not.toBeInTheDocument()
     );
+    expect(posted("agents")).toEqual([
+      { type: "agents", open: true },
+      { type: "agents", open: false }
+    ]);
   });
 
   // The native card has the page's composer stack hidden, and the live

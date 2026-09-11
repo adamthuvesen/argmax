@@ -271,11 +271,13 @@ final class TranscriptHost: NSObject, ObservableObject {
             reviewOpen = open
         case .agents(let open):
             // Asymmetric on purpose. Going up, the card leaves instantly: the
-            // sheet is about to cover that floor, so nobody sees it go, and a
-            // card animating out would resize the web view under a sheet that
-            // is mid-rise. Coming back it is the first thing on the screen —
-            // the page reports the close as the sheet starts to leave — so it
-            // rises behind the departing sheet instead of popping in after it.
+            // sheet waits for the floor to clear before it rises, and a card
+            // animating out would resize the web view under a sheet that is
+            // mid-rise. Coming back it is the only thing moving — the page
+            // reports the close once the sheet has left the screen, because
+            // either change of the web view's height under a sheet mid-ride
+            // re-lays the sheet out and it visibly hops — so it rises from
+            // the edge the sheet just left.
             if open {
                 agentsOpen = true
             } else {

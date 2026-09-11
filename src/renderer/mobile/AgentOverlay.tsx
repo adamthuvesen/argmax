@@ -45,10 +45,10 @@ function viewportHeight(): number {
  * navigated to.
  *
  * Presentation is controlled: `open` is the reader's intent and the parent
- * keeps this mounted until `onExited`. That split is what lets the phone's
- * native composer come back at the *start* of the ride out — it rises behind
- * a sheet that is still on screen, instead of the floor being empty for the
- * length of the animation plus a bridge round trip.
+ * keeps this mounted until `onExited`, which is also when the phone's native
+ * composer is told it can come back. Not sooner: that card's return shrinks
+ * the web view, and this sheet's height and ride are percentages of it, so a
+ * card rising behind a departing sheet threw the sheet back up mid-ride.
  */
 export function AgentOverlay({
   label,

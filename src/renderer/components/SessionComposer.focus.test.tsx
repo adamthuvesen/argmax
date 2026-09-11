@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { baseSession, event, renderConversation, rerenderConversation } from "../../test/sessionConversationTestHarness.js";
 
@@ -64,35 +64,28 @@ describe("SessionComposer focus during background updates", () => {
     expect(neighbor.selectionEnd).toBe(4);
   });
 
-  it("keeps the focused draft when an agent question arrives and can answer inline", async () => {
+  it("keeps the focused draft when an agent question arrives", () => {
     const session = baseSession({ provider: "claude", state: "running" });
-    const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
-    const options = { onSendSessionInput };
+    const options = { onSendSessionInput: vi.fn().mockResolvedValue(undefined) };
     const { rerender } = renderConversation(session, [], options);
     const prompt = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Chat prompt" });
     prompt.focus();
     fireEvent.change(prompt, { target: { value: "A follow-up in progress" } });
     prompt.setSelectionRange(5, 9);
     rerenderConversation(rerender, session, questionEvents, options);
-    expect(screen.getByText("Pick a direction")).toBeInTheDocument();
-    expect(prompt).toBeInTheDocument();
+    // The dock would cover the draft, so it stands down: the composer stays
+    // mounted with its text, caret and focus, and the question is not drawn
+    // anywhere else — the agent's prose is the record of the ask.
+    expect(screen.queryByLabelText("Question from agent")).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Chat prompt" })).toBe(prompt);
     expect(prompt).toHaveFocus();
     expect(prompt).toBeEnabled();
     expect(prompt).toHaveValue("A follow-up in progress");
     expect(prompt.selectionStart).toBe(5);
     expect(prompt.selectionEnd).toBe(9);
-    const questionOptions = screen.getByRole("listbox", { name: "Direction" });
-    act(() => questionOptions.focus());
     rerenderConversation(rerender, baseSession({ ...session, state: "complete" }), questionEvents, options);
     expect(screen.getByRole("textbox", { name: "Chat prompt" })).toBe(prompt);
-    expect(questionOptions).toHaveFocus();
-    expect(screen.queryByRole("button", { name: "Answer in your own words" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("option", { name: /Fix findings/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
-    await waitFor(() => {
-      expect(onSendSessionInput).toHaveBeenCalledWith(session.id, "Direction: Fix findings", expect.anything(), "auto", undefined);
-    });
+    expect(screen.queryByLabelText("Question from agent")).not.toBeInTheDocument();
     expect(prompt).toHaveValue("A follow-up in progress");
   });
 

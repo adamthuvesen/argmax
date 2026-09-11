@@ -12,22 +12,33 @@ export type Question = {
   multiSelect: boolean;
 };
 
-/// The labels the reader picked, in the order the question listed them.
-export function pickedLabels(question: Question, picks: number[]): string[] {
-  return picks
+/// Every question also takes an answer in the reader's own words. It is picked
+/// like any option, at the index one past the last listed one, and carries the
+/// typed text alongside the picks.
+export function otherOptionIndex(question: Question): number {
+  return question.options.length;
+}
+
+/// The labels the reader picked, in the order the question listed them, with
+/// the typed answer last when "Other" is among the picks.
+export function pickedLabels(question: Question, picks: number[], otherText = ""): string[] {
+  const labels = picks
     .map((index) => question.options[index]?.label)
     .filter((label): label is string => typeof label === "string" && label.length > 0);
+  const typed = otherText.trim();
+  if (picks.includes(otherOptionIndex(question)) && typed) labels.push(typed);
+  return labels;
 }
 
 /// The answer as it is sent back to the agent: one `Header: choices` line per
-/// question. Both the docked panel and the transcript card send this exact
-/// shape, so an answer reads the same however it was given. No markdown: this
-/// lands in the transcript as a user message, which is drawn verbatim, so bold
-/// markers would read as literal asterisks there.
-export function formatAnswer(questions: Question[], selected: number[][]): string {
+/// question. A typed answer goes in as plain text on that line, the same as a
+/// listed one, so the agent reads it without knowing which it was. No markdown:
+/// this lands in the transcript as a user message, which is drawn verbatim, so
+/// bold markers would read as literal asterisks there.
+export function formatAnswer(questions: Question[], selected: number[][], otherText: string[] = []): string {
   return questions
     .map((question, index) => {
-      const labels = pickedLabels(question, selected[index] ?? []);
+      const labels = pickedLabels(question, selected[index] ?? [], otherText[index] ?? "");
       const header = question.header || question.question;
       const value = labels.length > 0 ? labels.join(", ") : "(no selection)";
       return `${header}: ${value}`;

@@ -296,6 +296,77 @@ describe("SessionConversation — cards", () => {
     expect(screen.getByLabelText("Chat prompt")).toBeInTheDocument();
   });
 
+  it("takes an answer in the reader's own words through the Other row", () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(
+      <SessionConversation
+        events={[
+          event("u1", "user.message", "what should we do", "2026-05-12T15:00:00.000Z", {}),
+          event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
+            type: "tool_use",
+            id: "tu_q_other",
+            name: "AskUserQuestion",
+            input: {
+              questions: [
+                {
+                  question: "Pick a direction",
+                  header: "Direction",
+                  multiSelect: false,
+                  options: [{ label: "Fix audit findings" }, { label: "General maintenance" }]
+                },
+                {
+                  question: "Which files?",
+                  header: "Files",
+                  multiSelect: true,
+                  options: [{ label: "Renderer" }, { label: "Rust" }]
+                }
+              ]
+            }
+          })
+        ]}
+        isLogOpen={false}
+        onSendSessionInput={onSend}
+        onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onClearSession={vi.fn().mockResolvedValue(undefined)}
+        onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
+        pendingMessages={[]}
+        onToggleLog={vi.fn()}
+        project={project}
+        rawOutputs={[]}
+        review={reviewStub()}
+        session={baseSession({ provider: "claude", state: "complete" })}
+        workspace={workspace}
+      />
+    );
+
+    // Every question ends in an Other row, numbered after the listed options.
+    fireEvent.click(screen.getByRole("option", { name: "Other" }));
+    // Picking it does not advance: the pick is a promise to type, and the
+    // question is settled by the text, not the row.
+    expect(screen.getByText("Pick a direction")).toBeInTheDocument();
+    const line = screen.getByRole("textbox", { name: "Your own answer" });
+    expect(line).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Submit answer" })).toBeDisabled();
+
+    // Enter on an empty line goes nowhere; with text it settles the question.
+    fireEvent.keyDown(line, { key: "Enter" });
+    expect(screen.getByText("Pick a direction")).toBeInTheDocument();
+    fireEvent.change(line, { target: { value: "Ship the iOS review first" } });
+    fireEvent.keyDown(line, { key: "Enter" });
+    expect(screen.getByText("Which files?")).toBeInTheDocument();
+
+    // On a multi-select the typed answer joins the listed picks.
+    fireEvent.click(screen.getByRole("option", { name: /Renderer/ }));
+    fireEvent.click(screen.getByRole("option", { name: "Other" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Your own answer" }), {
+      target: { value: "the Swift bridge" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
+
+    const call = onSend.mock.calls[0] as [string, string, unknown, string] | undefined;
+    expect(call?.[1]).toBe("Direction: Ship the iOS review first\nFiles: Renderer, the Swift bridge");
+  });
+
   it("pages through several questions instead of stacking them, and sends every answer at once", () => {
     const onSend = vi.fn().mockResolvedValue(undefined);
     render(

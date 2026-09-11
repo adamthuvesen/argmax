@@ -229,6 +229,16 @@ settled, under a live Send button that could send it again.
   the screen with the panel; it is not redrawn in the scrollback. The agent's
   own prose above it is the record of the ask, and reopening the chat docks it
   again.
+- **Every question ends in an "Other" row.** Numbered after the listed
+  options, it is picked like any of them; picked, its label becomes a line to
+  type on, in the row's own type and on the row's own fill, so a typed answer is
+  the same kind of thing as a listed one. It settles by what gets typed, not by
+  the pick — a single-select advances on Enter with text, never on the pick —
+  and Send stays disabled while it is picked and empty. The answer line carries
+  the text as plain words (`Direction: Ship the review first`), joined to the
+  listed picks on a multi-select, so the agent reads it without knowing which it
+  was. Escape on the line returns the caret to the list; it does not close the
+  dock over a half-typed answer.
 - **Send is explicit.** It enables once every question is answered. Clicking an
   option never submits on its own — a card answer terminates the running probe
   (see Submission Flow), so a misclick would cut the turn short.

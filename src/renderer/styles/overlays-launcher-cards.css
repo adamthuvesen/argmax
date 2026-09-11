@@ -695,6 +695,49 @@
   color: var(--muted);
 }
 
+/* "Other", picked, is the row's label turned into a line to type on. It sets
+   the label's own type, sits in the label's own column and draws no box of its
+   own: the row's active fill is the field, so the panel does not grow a form
+   input under a list of prose. The caret is the only thing that says it is
+   editable, plus the placeholder until the first keystroke.
+
+   Scoped under `.question-dock` to outrank `.session-input input`, the
+   composer's own 52px field, which the panel would otherwise inherit and
+   grow the row by two lines. */
+.question-dock .question-dock-other-input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm-plus);
+  font-weight: 550;
+  line-height: 1.45;
+  color: var(--text);
+  background: none;
+  border: 0;
+  outline: none;
+  box-shadow: none;
+  caret-color: var(--accent);
+  border-radius: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.question-dock .question-dock-other-input::placeholder {
+  color: var(--muted);
+  font-weight: 450;
+}
+
+.question-dock .question-dock-other-input:disabled {
+  color: var(--muted);
+}
+
 /* Only drawn on rows whose pick moves to the next question, and only once the
    row is under the cursor or the caret — an arrow on every row would promise
    the same thing four times. */

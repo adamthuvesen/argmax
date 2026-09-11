@@ -269,7 +269,7 @@ final class TranscriptStore: ObservableObject {
             prompt: row.prompt,
             state: row.state,
             attention: row.attention,
-            reasoningEffort: current?.reasoningEffort,
+            reasoningEffort: row.reasoningEffort ?? current?.reasoningEffort,
             agentMode: row.agentMode
         ), title: workspace?.taskLabel, pendingMessages: nil)
     }
@@ -365,7 +365,9 @@ final class TranscriptStore: ObservableObject {
                     guard generation == startedGeneration, openSessionID == id else { return }
                     apply(page, authoritative: false)
                 }
-                phase = .ready
+                // `.ready` comes from the projection that paints the page:
+                // flipping it here shows the empty-chat placeholder for the
+                // frame between the page landing and its rows existing.
             } catch {
                 guard generation == startedGeneration else { return }
                 phase = .failed(hostFailureMessage(error))
@@ -505,6 +507,12 @@ final class TranscriptStore: ObservableObject {
     func flushCache() async { await cacheTask?.value }
 
     private func updateProjection() {
+        // Metadata lands before the first page (the dashboard snapshot is
+        // handed over on appear), and a projection over zero events is the
+        // prompt bubble alone. Painting that first, then the transcript, is
+        // the flicker on every cold open. Wait for content: a page from the
+        // host or a cached copy from disk.
+        guard contentVersion > 0 || showingCachedContent else { return }
         projectionVersion += 1
         guard projectionTask == nil else { return }
         let startedGeneration = generation
@@ -530,13 +538,46 @@ final class TranscriptStore: ObservableObject {
                 } onCancel: { job.cancel() }
                 guard !Task.isCancelled, self.generation == startedGeneration else { return }
                 if version != self.projectionVersion { continue }
+                if self.items.isEmpty {
+                    // The list opens at the tail, and a row paints plain text
+                    // until its Markdown is prepared. On the first paint of an
+                    // open, prepare the tail first so that frame is the
+                    // finished one; later projections keep preparing lazily.
+                    let keys = Self.tailProseKeys(projected, workspacePath: workspacePath)
+                        .filter { TranscriptMarkdownCache.shared.cached($0) == nil }
+                    if !keys.isEmpty {
+                        let prepared = await Task.detached(priority: .userInitiated) {
+                            TranscriptMarkdownCache.prepare(keys)
+                        }.value
+                        guard !Task.isCancelled, self.generation == startedGeneration else { return }
+                        if version != self.projectionVersion { continue }
+                        TranscriptMarkdownCache.shared.store(prepared)
+                    }
+                }
                 self.publishProjection(projected.isEmpty ? fallback : projected)
                 self.projectionTask = nil
-                if self.phase == .loading, !self.items.isEmpty { self.phase = .ready }
+                // Content has arrived by now (the guard above), so an empty
+                // projection is a genuinely empty chat.
+                if self.phase == .loading { self.phase = .ready }
                 self.cacheCurrentTranscript()
                 return
             }
         }
+    }
+
+    /// The prose the tail of the list paints first: the newest few bubbles.
+    /// Rows above them prepare lazily as they scroll in, as before.
+    nonisolated static func tailProseKeys(_ items: [TranscriptItem], workspacePath: String?, limit: Int = 8) -> [TranscriptMarkdownKey] {
+        var keys: [TranscriptMarkdownKey] = []
+        for item in items.reversed() where keys.count < limit {
+            switch item {
+            case .user(let message), .assistant(let message):
+                keys.append(TranscriptMarkdownKey(text: message.text, workspacePath: workspacePath, isThinking: false))
+            default:
+                continue
+            }
+        }
+        return keys
     }
 
     private func publishProjection(_ projected: [TranscriptItem]) {

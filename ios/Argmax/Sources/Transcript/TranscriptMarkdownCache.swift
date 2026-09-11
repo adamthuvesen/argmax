@@ -31,6 +31,23 @@ final class TranscriptMarkdownCache {
         documents.object(forKey: cacheKey(key))?.document
     }
 
+    /// Prepare away from the main actor, for rows about to paint; hand the
+    /// result to `store` before they do.
+    nonisolated static func prepare(_ keys: [TranscriptMarkdownKey]) -> [(TranscriptMarkdownKey, TranscriptMarkdownDocument)] {
+        keys.map { key in
+            (key, NativePerformance.measure("Markdown preparation") {
+                TranscriptMarkdownDocument(markdown: key.text,
+                    workspacePath: key.workspacePath, isThinking: key.isThinking)
+            })
+        }
+    }
+
+    func store(_ prepared: [(TranscriptMarkdownKey, TranscriptMarkdownDocument)]) {
+        for (key, value) in prepared where cached(key) == nil {
+            documents.setObject(Entry(value), forKey: cacheKey(key), cost: key.text.utf8.count * 4 + 512)
+        }
+    }
+
     func document(_ key: TranscriptMarkdownKey) async throws -> TranscriptMarkdownDocument {
         while pending.count >= 2, pending[key] == nil {
             try await Task.sleep(for: .milliseconds(5))

@@ -30,6 +30,11 @@ where Item.ID == String {
             .padding(.top, 16)
             .padding(.bottom, 20)
         }
+        // The bottom initial-offset anchor is spent on the first layout, empty
+        // or not. Content that lands after an empty first layout would start
+        // at the top and be walked to the tail over several frames; a fresh
+        // scroll view when the first rows arrive paints once, at the tail.
+        .id(items.isEmpty)
         .background(.clear)
         .scrollDismissesKeyboard(.interactively)
         .defaultScrollAnchor(.bottom, for: .initialOffset)

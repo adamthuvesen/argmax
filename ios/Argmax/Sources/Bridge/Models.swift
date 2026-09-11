@@ -271,6 +271,9 @@ struct SessionSummary: Codable, Hashable, Sendable, Identifiable {
     /// New chat's picker grid does — so a row from before the column existed
     /// falls back to "auto" the same way the renderer's `?? "auto"` does.
     var agentMode: String?
+    /// Read on open so the composer's effort chip starts right instead of
+    /// showing the first option until the metadata read lands.
+    var reasoningEffort: String?
 }
 
 /// The three slices of `DashboardSnapshot` the phone keeps.

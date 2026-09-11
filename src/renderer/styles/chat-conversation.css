@@ -959,8 +959,7 @@
     .tool-call-row,
     .tool-call-detail,
     .file-change-card,
-    .plan-card,
-    .question-ask
+    .plan-card
   ) {
   animation-duration: 0s;
 }
@@ -1621,14 +1620,12 @@
   background: transparent;
 }
 
-/* The answered QuestionCard's rule (`.question-ask.is-answered`, 2px
-   `--line-strong`), so a quote and a settled question read as two beats of the
-   same conversation. Drawn as a pseudo inset 0.3em top and bottom: the rule
-   then spans the text rather than the padding box. No fill — a quote is prose,
+/* A 2px `--line-strong` rule, drawn as a pseudo inset 0.3em top and bottom so
+   it spans the text rather than the padding box. No fill — a quote is prose,
    and the one filled prose-adjacent block is `pre`, which is not prose; the
-   accent is reserved for the *live* question, which means "waiting on you".
-   The text stays on `--prose-ink` because the quoted sentence is the payload,
-   not an aside. See docs/design/blockquote. */
+   accent is reserved for the *live* question dock, which means "waiting on
+   you". The text stays on `--prose-ink` because the quoted sentence is the
+   payload, not an aside. See docs/design/blockquote. */
 .markdown blockquote {
   position: relative;
   margin: 18px 0;

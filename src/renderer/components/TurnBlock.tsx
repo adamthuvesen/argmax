@@ -88,7 +88,7 @@ export function TurnBlock({
   // including the thinking phase before any tools fire.
   turnStartedAtMs?: number;
   // Authoritative "agent is still working" signal from the parent. The parent
-  // knows about session state and user-input pauses (PlanCard, QuestionCard),
+  // knows about session state and user-input pauses (PlanCard, QuestionDock),
   // including thinking-only phases without active tools.
   isTurnActive?: boolean;
   // Whether this turn's tool groups are expanded. Owned by the parent (which
@@ -119,7 +119,7 @@ export function TurnBlock({
   const toolRunning = useMemo(() => toolItems.some(isToolRunning), [toolItems]);
   // `running` controls the chip's "Working" label and live ticker —
   // the parent's isTurnActive flag is authoritative because it also knows
-  // about thinking phases and user-input pauses (PlanCard / QuestionCard).
+  // about thinking phases and user-input pauses (PlanCard / QuestionDock).
   // Fall back to tool status for isolated component tests and narrow callers.
   const running = isTurnActive ?? toolRunning;
   const wasRunning = useRef(running);

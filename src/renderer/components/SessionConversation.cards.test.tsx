@@ -219,9 +219,11 @@ describe("SessionConversation — cards", () => {
     expect(screen.queryByLabelText("Chat prompt")).not.toBeInTheDocument();
 
     // Closing is not declining: the composer returns so the reader can answer
-    // in their own words.
+    // in their own words, and the question goes with the panel rather than
+    // landing in the scrollback as a second copy.
     fireEvent.click(screen.getByRole("button", { name: "Answer in your own words" }));
     expect(screen.getByLabelText("Chat prompt")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Question from agent")).not.toBeInTheDocument();
   });
 
   it("drops the question from the transcript once it is answered", () => {
@@ -253,7 +255,7 @@ describe("SessionConversation — cards", () => {
     expect(screen.getByLabelText("Chat prompt")).toBeInTheDocument();
   });
 
-  it("docks a question that arrives while the composer still holds focus from the last send, and stays inline for a typed draft", () => {
+  it("docks a question that arrives while the composer still holds focus from the last send, and stands down for a typed draft", () => {
     const questionEvents = [
       event("u1", "user.message", "what should we do", "2026-05-12T15:00:00.000Z", {}),
       event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
@@ -284,12 +286,13 @@ describe("SessionConversation — cards", () => {
 
     cleanup();
 
-    // A draft is the one thing the dock would cover, so that question stays
-    // in the transcript and the composer keeps the slot.
+    // A draft is the one thing the dock would cover, so the composer keeps
+    // the slot and the question is not drawn anywhere else.
     const typed = renderConversation(session, [questionEvents[0]]);
     fireEvent.change(screen.getByLabelText("Chat prompt"), { target: { value: "half a thought" } });
     rerenderConversation(typed.rerender, session, questionEvents);
-    expect(screen.getByLabelText("Question from agent")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Question from agent")).not.toBeInTheDocument();
+    expect(screen.queryByText("Pick a direction")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Chat prompt")).toBeInTheDocument();
   });
 
@@ -352,7 +355,7 @@ describe("SessionConversation — cards", () => {
     expect(call?.[1]).toBe("Direction: Fix audit findings\nDepth: Just the blockers");
   });
 
-  it("renders a failed AskUserQuestion tool call as a QuestionCard and submits the chosen answer", () => {
+  it("renders a failed AskUserQuestion tool call in the question dock and submits the chosen answer", () => {
     const onSend = vi.fn().mockResolvedValue(undefined);
     render(
       <SessionConversation
@@ -470,7 +473,7 @@ describe("SessionConversation — cards", () => {
         })
       }
     }
-  ])("renders AskUserQuestion as a QuestionCard for $provider payloads", ({ provider, toolMessage, payload }) => {
+  ])("renders AskUserQuestion in the question dock for $provider payloads", ({ provider, toolMessage, payload }) => {
     const onSend = vi.fn().mockResolvedValue(undefined);
     render(
       <SessionConversation
@@ -508,7 +511,7 @@ describe("SessionConversation — cards", () => {
     expect(call?.[3]).toBe("plan");
   });
 
-  it("terminates the in-flight probe before sending the QuestionCard answer (no queue wait)", async () => {
+  it("terminates the in-flight probe before sending the question dock answer (no queue wait)", async () => {
     // While Haiku is still emitting fallback narration after a denied
     // AskUserQuestion, session.state === "running". A naive send would queue
     // the answer behind that narration. Instead we terminate first, then
@@ -919,7 +922,7 @@ describe("SessionConversation — cards", () => {
     expect(screen.getByRole("button", { name: "Ran echo ok" })).toBeInTheDocument();
   });
 
-  it("still renders the QuestionCard when AskUserQuestion retries are adjacent", () => {
+  it("still docks the question when AskUserQuestion retries are adjacent", () => {
     render(
       <SessionConversation
         events={[

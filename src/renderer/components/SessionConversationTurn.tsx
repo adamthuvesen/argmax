@@ -31,7 +31,6 @@ import { ChatBubble } from "./ChatBubble.js";
 import { LogBlock } from "./LogBlock.js";
 import { PlanCard } from "./PlanCard.js";
 import { TodoCard } from "./TodoCard.js";
-import { QuestionCard } from "./QuestionCard.js";
 import { ThoughtBlock } from "./ThoughtBlock.js";
 import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
 import { ToolCallRow } from "./ToolCallRow.js";
@@ -80,7 +79,6 @@ function SessionConversationTurnInner({
   thinkingDisplay,
   defaultTurnChangesExpanded,
   restoringTranscript = false,
-  questionIsInline = false,
   todo = null
 }: {
   item: TurnRenderItem;
@@ -115,9 +113,6 @@ function SessionConversationTurnInner({
   thinkingDisplay?: ThinkingDisplay;
   defaultTurnChangesExpanded?: boolean;
   restoringTranscript?: boolean;
-  /** Draw the question here: it is still live and the reader closed the dock.
-   *  Otherwise the dock owns it, or it is answered and belongs to the past. */
-  questionIsInline?: boolean;
   /** The agent's plan as it stood when this turn ended, or null if it never
    *  touched one. */
   todo?: TodoList | null;
@@ -165,7 +160,6 @@ function SessionConversationTurnInner({
     visibleAssistantGroups,
     turnAgentMode,
     exitPlanTool,
-    askUserQuestionTool,
     hiddenToolIds,
     turnStartedAtMs,
     isPausedOnUserInput
@@ -235,28 +229,6 @@ function SessionConversationTurnInner({
   const handlePlanReject = (): void => {
     inputRef.current?.focus();
   };
-  const handleQuestionAnswer = (answerMarkdown: string): Promise<boolean> => {
-    if (!session) return Promise.resolve(false);
-    shouldRefocusInput.current = true;
-    const sessionId = session.id;
-    const nextAgentMode = turnAgentMode === "plan" ? "plan" : "auto";
-    return sendAfterTerminate(
-      sessionId,
-      session.state === "running",
-      onTerminateSession,
-      () => onSendSessionInput(sessionId, answerMarkdown, selectedModel, nextAgentMode),
-      reportSendError
-    );
-  };
-  const questionCard: JSX.Element | null = askUserQuestionTool && questionIsInline
-    ? (
-        <QuestionCard
-          key={`question-${askUserQuestionTool.id}`}
-          questions={askUserQuestionTool.questions}
-          onAnswer={handleQuestionAnswer}
-        />
-      )
-    : null;
   const exitPlanCard: JSX.Element | null = exitPlanTool
     ? (() => {
         const plan = parsePlan(exitPlanTool.markdown);
@@ -398,15 +370,6 @@ function SessionConversationTurnInner({
       node: exitPlanCard,
       createdAt: exitPlanTool.createdAt,
       sortAt: exitPlanTool.createdAt
-    });
-  }
-  if (questionCard && askUserQuestionTool) {
-    assistantChildren.push({
-      kind: "assistant",
-      id: `question-${askUserQuestionTool.id}`,
-      node: questionCard,
-      createdAt: askUserQuestionTool.createdAt,
-      sortAt: askUserQuestionTool.createdAt
     });
   }
   if (todo) {

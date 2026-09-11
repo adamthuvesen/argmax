@@ -1246,22 +1246,17 @@ export function SessionConversation({
     return { tool, priorItem: transcriptRenderItems[transcriptRenderItems.length - 2] ?? null };
   }, [transcriptRenderItems]);
   // Closing the panel is not declining the question: the composer comes back so
-  // the reader can answer in their own words, and the question stays in the
-  // transcript as the card it was before.
+  // the reader can answer in their own words. The question leaves the screen
+  // with the panel — the agent's own prose above it is the record of the ask.
   const [dismissedQuestionId, setDismissedQuestionId] = useState<string | null>(null);
   const [composerDraftPresent, setComposerDraftPresent] = useState(false);
   const questionDocked =
     liveQuestion !== null && liveQuestion.tool.id !== dismissedQuestionId && !composerDraftPresent;
-  // The scrollback draws the question only as a stand-in for the dock: still
-  // live, but closed in favour of the composer. An answered question is history
-  // — the answer that follows it is the record — so it leaves the transcript
-  // rather than sitting there re-askable.
-  const questionIsInline = liveQuestion !== null && !questionDocked;
   // A draft the reader typed outranks the dock, which would cover it. Composer
   // *focus* must not: sending refocuses the input and it keeps that focus for
-  // the whole turn, so gating on focus left almost every question inline until
-  // the chat was reopened. Sticky by id, so clearing the draft cannot pull a
-  // Send button out from under a click.
+  // the whole turn, so gating on focus hid almost every question until the
+  // chat was reopened. Sticky by id, so clearing the draft cannot drop the
+  // panel onto a composer the reader is mid-click in.
   useLayoutEffect(() => {
     if (composerDraftPresent && liveQuestion) setDismissedQuestionId(liveQuestion.tool.id);
   }, [composerDraftPresent, liveQuestion]);
@@ -1485,7 +1480,6 @@ export function SessionConversation({
                     thinkingDisplay={thinkingDisplay}
                     defaultTurnChangesExpanded={defaultTurnChangesExpanded}
                     restoringTranscript={restoringTranscript}
-                    questionIsInline={questionIsInline && index === transcriptRenderItems.length - 1}
                     todo={todoByTurn.get(item.id) ?? null}
                     onOpenDiff={onOpenDiff ?? review.openFile}
                     onOpenReview={onOpenChanges ?? review.openChangesPanel}

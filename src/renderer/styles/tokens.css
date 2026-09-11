@@ -927,7 +927,11 @@
 
 body {
   margin: 0;
-  min-width: 900px;
+  /* No width floor here: the window's minimum size is set natively from the
+     folded layout (App.tsx requiredWindowMinWidth), and the sidebar squeezes
+     and folds by viewport width in useSidebarResize. A CSS floor wider than
+     that window clips the shell instead of letting it reflow. */
+  min-width: 0;
   min-height: 0;
   background-color: var(--bg);
   background-image: var(--grain-image);

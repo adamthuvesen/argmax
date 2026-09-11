@@ -469,26 +469,11 @@
   cursor: pointer;
 }
 
-@media (max-width: 1040px) {
-  .app-shell {
-    grid-template-columns: 232px minmax(0, 1fr);
-  }
-}
-
+/* Compact spacing only. The sidebar's squeeze and fold are owned by
+   useSidebarResize, which sets the shell's grid columns inline and marks
+   data-sidebar-collapsed; a stylesheet rule that hides the sidebar or
+   re-templates the grid here fights that and leaves an empty column. */
 @media (max-width: 760px) {
-  body {
-    min-width: 0;
-    overflow: auto;
-  }
-
-  .app-shell {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .sidebar {
-    display: none;
-  }
-
   .launcher-scroll {
     padding: 40px 16px;
   }

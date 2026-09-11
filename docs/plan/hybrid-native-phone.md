@@ -15,8 +15,10 @@ chrome, embedded transcript. See [ADR 0007](../adr/0007-native-chrome-embedded-t
 
 - SwiftUI app in `ios/Argmax`: pairing, chat list (live), navigation, new chat,
   chat actions, settings, push notifications.
-- One warm `WKWebView` hosting `mobile.html?embed=1` for transcript + composer
-  (+ review screen and agent overlay, which stay web for now).
+- One warm `WKWebView` hosting `mobile.html?embed=1` for the transcript (+ the
+  agent overlay, which stays web). The composer and the review surface have
+  since been taken native — `Sources/Transcript/TranscriptComposer.swift` and
+  `Sources/Review` — for the reasons recorded under Review notes below.
 - APNs sent by the Rust host directly (token auth, `.p8` on disk). ntfy remains
   an alternate sink.
 - Out of scope: widgets, Live Activities, native transcript, Android, changing
@@ -61,7 +63,7 @@ phone that feels finished:
 Follow-ups once the five phases ship (not in this goal, kept so they are not
 lost): a Usage page (`usage:summary`), an approvals inbox across chats
 (`approvals:pending`), project settings (defaults, check commands), search
-across chats (`session:search`), a native review screen.
+across chats (`session:search`).
 
 Success for the whole thing: a week of daily use on the phone without opening
 Safari's `mobile.html`; every phase's own check below passes on the device.
@@ -77,7 +79,9 @@ https://<host>/mobile.html?embed=1[&session=<id>]#token=<token>
 `embed=1` means: no list screen, no web header, no `history.pushState`
 mirroring (native owns the stack), body background transparent so the native
 container's colour shows through during load. The composer, transcript, agent
-overlay, and review screen render as today.
+overlay, and question panel render as today. The review surface does not:
+it is native (`Sources/Review`), and the page never mounts its own under the
+shell.
 
 Web → native, `window.webkit.messageHandlers.argmax.postMessage(msg)`; every
 message is an object with a `type` string:
@@ -88,7 +92,7 @@ message is an object with a `type` string:
 | `session` | `sessionId`, `title`, `state`, `attention` | on open and whenever any of these change for the open session |
 | `composer` | `sessionId`, `provider`, `modelId`, `modelLabel`, `effort`, `efforts`, `queued: {id, text}[]`, `running` | on open and whenever any of these change, so the native composer card can draw itself without re-deriving the composer's own rules |
 | `back` | — | web asked to leave the session (its own back affordance, or Escape) |
-| `review` | `open: boolean` | review screen opened/closed, so native can hide its own bar |
+| `openReview` | `sessionId`, `filePath: string \| null` | open the native review surface — the transcript's Changes button, or a file reference tapped in a message, which names the file. Carries the chat it is about for the same reason `session` does: a request that crosses a session switch would open the diff of the chat just left |
 | `agents` | `open: boolean` | the peek at delegated work opened/closed; it is drawn to cover the parent's composer, so the native card stands down while it is up |
 | `question` | `open: boolean` | the live question took the composer's slot or gave it back; the page draws the panel, so the native card stands down while it is up |
 | `haptic` | `kind: "light" \| "success" \| "warning"` | send, approve, error |
@@ -104,7 +108,6 @@ calls them through `evaluateJavaScript` and must tolerate their absence before
 | `closeSession()` | park the pane (used when the native stack pops) |
 | `setTheme("light" \| "dark")` | follow the system, overriding `argmax.theme.mode` |
 | `setAccent(tint)` | one of the desktop tints; default `"orange"` |
-| `openReview()` | open the web review screen for the open session (the native trailing menu's "Changes") |
 | `setComposer(hidden: boolean)` | hide (or restore) the page's own composer stack — field, queued lane, model/effort chips — because the native card under the web view is drawing it instead |
 
 Types live in `src/renderer/mobile/nativeHost.ts` and are mirrored in
@@ -181,7 +184,9 @@ system's; the pixels are ours).
   `.caption2` line under it: project · state), trailing menu glyph. Below it
   the web view to the bottom safe area, on our ground so the page's
   transparent body shows the same colour. Until ready: a single thin progress
-  line under the header, not a spinner in space.
+  line under the header, not a spinner in space. An attributed open or merged
+  PR appears as a compact status pill above the native composer. It updates
+  from dashboard deltas and opens the existing PR on GitHub.
 - **New chat.** A `.large` sheet on our ground: title "New chat", the prompt
   editor first and biggest (it is the point), then a compact row of pickers
   as chips that open our own pickers (project · mode · provider/model ·
@@ -260,6 +265,40 @@ Adam's calls after using the design-pass build on his phone, binding:
   follow-ups) read as native chrome everywhere else in the app. The `composer`
   message above is what lets the card draw itself without re-deriving the web
   composer's rules.
+
+- Revisited (2026-09-11): the review surface is native — `Sources/Review`.
+  The same reasoning as the composer: the two ways of reading a diff started
+  to grate, and a review screen reached from native chrome that then drew its
+  own bar was the one place the seam showed. Four decisions inside it, each
+  a deliberate departure from the page:
+  - **Drill-down, not an accordion.** The page expands a changed file's diff
+    under its row. Here a file's diff is its own screen, which matches what
+    Files already did and gives the diff the width it needs — and makes each
+    screen exactly one file, which is what lets it be one text view.
+  - **One `UITextView` on TextKit 2 per file, never a row per line.** A few
+    thousand SwiftUI rows each resolving a font and measuring itself is where
+    the scroll dies; one layout engine doing viewport-only line layout is not.
+    The gutter is a fixed-width monospace prefix inside the string. The
+    full-bleed washes are painted in the view's own background pass, because
+    an `NSTextLayoutFragment` clips its drawing to the glyphs' extent — a
+    short line came out with a short stripe, which is the one thing a wash is
+    for.
+  - **No syntax colouring.** At this size the information is *what changed*
+    and the wash carries it; a hand-written tokenizer for a dozen languages is
+    a bug for every line it gets wrong, and token colours over a 16% wash on
+    the light ground land back in the contrast hole `--muted` did. Revisit
+    after a week of daily use, and then as a two-class dimmer (comments and
+    strings), not a grammar library.
+  - **Three scopes and read-only.** "Last turn" reads the session's timeline
+    rather than git — porting that is a second transcript implementation,
+    which ADR 0007 refuses — and the page's own review screen never offered it
+    here either. Staging, committing and reverting stay on the Mac: a phone
+    has no room for a save affordance and a stray tap should not be able to
+    rewrite a checkout.
+
+  Lines wrap with a hanging indent rather than scrolling sideways: a second
+  scroll axis on a phone steals the vertical pan more often than it serves a
+  long line.
 
 ### Non-negotiables
 

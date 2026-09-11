@@ -38,6 +38,17 @@ Phase 3 — new chat and chat actions — adds:
 - `Sources/Chats/ProviderCatalog.swift` — the model catalogue, decoded from
   `Resources/providerModels.json`.
 
+`Sources/Review` is the review surface — Changes, the checkout's tree, one
+file's diff, one file's text — over the four reads the desktop panel makes
+(`review:list-changed-files`, `review:load-diff`, `workspace:list-files`,
+`workspace:read-file`), all of them already on the bridge. A drill-down rather
+than a panel: a changed file opens its diff on its own screen, a tree file
+opens its text on its own, which is also what keeps it fast — one screen is one
+file is one `UITextView` on TextKit 2, so layout costs what is on screen and
+not what is in the file. `CodeText.swift` has the why. Read-only, three scopes,
+no syntax colouring; the reasoning for each is in
+[the plan](../../docs/plan/hybrid-native-phone.md#review-notes-from-the-first-device-build-2026-09-10).
+
 The Usage page carries the desktop's remaining read:
 
 - `Sources/Insights/PlanLimits.swift`, `Sources/Insights/PlanLimitsSection.swift`
@@ -87,6 +98,25 @@ Swift side cannot read, which is the reminder that works.
 
 For measuring viewport behaviour, use [../probe](../probe) instead; it prints
 the numbers. This is the app you actually carry.
+
+## Driving it on a simulator
+
+A simulator cannot be tapped from a script, and `argmax://pair` raises an
+"Open in Argmax?" alert that only a hand can answer — so a run started from a
+terminal could never get past the pairing screen. Three debug-only launch
+arguments exist for that, and for taking the screenshots the design brief asks
+for:
+
+```bash
+xcrun simctl launch <device> com.argmax.remote \
+  -argmax-pair 'https://your-mac.tailnet.ts.net/mobile.html#token=…' \
+  -argmax-open-review <workspace id> \
+  -argmax-open-diff docs/remote.md      # or -argmax-open-file <path>
+```
+
+`-argmax-unpaired` is the fourth: it starts on the pairing screen without
+touching the keychain, so first run can be reviewed on a phone that is paired.
+All four are `#if DEBUG` and none of them ships.
 
 ## Build and install
 

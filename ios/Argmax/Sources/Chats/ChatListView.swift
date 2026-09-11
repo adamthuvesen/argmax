@@ -297,6 +297,11 @@ struct ChatListView: View {
         guard let wanted = navigator.awaitingSessionID else { return }
         guard let row = store.row(forSessionID: wanted) else { return }
         navigator.awaitingSessionID = nil
+        // Already reading it — the deferred push below is slow enough that
+        // the row can be tapped by hand while it sleeps, and a second copy
+        // of the screen you are looking at is not what either intent asked
+        // for. Same rule as `openTappedNotification`.
+        guard push.openSessionID != wanted else { return }
         Task {
             // The New chat page is still popping; a push that starts during
             // that transition is dropped, so the row's push waits it out.

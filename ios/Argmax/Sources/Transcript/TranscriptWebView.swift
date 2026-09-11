@@ -74,6 +74,8 @@ final class TranscriptHost: NSObject, ObservableObject {
     /// the default matches `AccentTint.fallback`.
     private var wantedAccent = AccentTint.fallback.rawValue
     private var wantedUserBubble = "accent"
+    /// The `TranscriptScreen` the page currently belongs to.
+    private var owner: UUID?
 
     private var pending: [NativeCommand] = []
     private var didStartLoading = false
@@ -163,13 +165,39 @@ final class TranscriptHost: NSObject, ObservableObject {
 
     // MARK: - Native → web
 
+    /// Hand the page to the screen that is taking over.
+    ///
+    /// Two `TranscriptScreen`s for the *same* chat can sit on the stack at
+    /// once — a row tapped while `openWhenReady`'s deferred push for it is
+    /// still sleeping — and `onDisappear` is not ordered against the next
+    /// screen's `onAppear`. Whoever claimed the page last is the only screen
+    /// allowed to park it; see `relinquish`.
+    func claim(_ screen: UUID) {
+        owner = screen
+    }
+
+    /// Whether `screen` still owns the page, giving the claim up if it does.
+    /// A screen that has already handed it on tears nothing down.
+    func relinquish(_ screen: UUID) -> Bool {
+        guard owner == screen else { return false }
+        owner = nil
+        return true
+    }
+
     func openSession(_ sessionID: String) {
-        wantedSession = sessionID
         // Whatever the page last reported was about the chat before this one.
         // Held on to, it is the previous chat's title and state drawn over the
         // one being opened — a header that names the wrong chat while the
         // transcript under it is still empty.
-        forgetReportedSession()
+        //
+        // Opening the chat the page already has open is the exception: the
+        // page reports on change, and nothing changed, so it will never
+        // report again. Clearing here left a header stuck on its fallback
+        // title and no composer at all until another chat was opened.
+        if wantedSession != sessionID {
+            forgetReportedSession()
+        }
+        wantedSession = sessionID
         send(.openSession(sessionID))
     }
 

@@ -22,6 +22,11 @@ struct TranscriptScreen: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @State private var forking = false
+    /// This screen's claim on the one shared web view. Stable for as long as
+    /// the screen is on the stack, which is what lets a duplicate screen for
+    /// the same chat leave without parking the page under the one that
+    /// stayed (`TranscriptHost.claim`).
+    @State private var screenID = UUID()
     @Environment(\.accentTint) private var accent
 
     var body: some View {
@@ -55,11 +60,17 @@ struct TranscriptScreen: View {
             transcript.onOpenReview = { openReview(filePath: $0) }
             transcript.setTheme(colorScheme == .dark ? .dark : .light)
             transcript.loadIfNeeded()
+            transcript.claim(screenID)
             transcript.openSession(row.session.id)
             transcript.setComposerHidden(true)
             push.openSessionID = row.session.id
         }
         .onDisappear {
+            // Only the screen that still owns the page tears it down. A
+            // second screen for this same chat can leave while the one under
+            // it is still being read, and `onDisappear` is not ordered
+            // against the next screen's `onAppear`.
+            guard transcript.relinquish(screenID) else { return }
             transcript.onBack = nil
             transcript.onHaptic = nil
             transcript.onOpenReview = nil

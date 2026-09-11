@@ -114,6 +114,22 @@ Types live in `src/renderer/mobile/nativeHost.ts` and are mirrored in
 `ios/Argmax/Sources/Transcript/NativeMessages.swift`; a change to one is a
 change to both.
 
+Web → native is reported **on change**, so native can never ask for a report
+it has thrown away. Two rules in `TranscriptHost` follow from that, and both
+exist because the stack can hold two `TranscriptScreen`s for the same chat at
+once — a row tapped by hand while `openWhenReady`'s deferred push for it is
+still sleeping:
+
+- `openSession(id)` forgets the last `session` and `composer` only when the
+  chat actually changes. Re-opening the chat the page already has open is not
+  a change the page can see, so nothing would ever refill them: the header
+  would sit on its fallback title under an indeterminate line, with no
+  composer at all, until another chat was opened.
+- Only the screen that currently owns the page (`claim` / `relinquish`) may
+  park it. `onDisappear` is not ordered against the next screen's `onAppear`,
+  so the screen that is leaving must not `closeSession()` under the one that
+  stayed.
+
 ## Design brief (Phase 2, 3, 5)
 
 The bar is "the best-built indie iOS app you've used". Not stock iOS: a

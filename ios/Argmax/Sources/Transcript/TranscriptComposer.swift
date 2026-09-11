@@ -18,14 +18,18 @@ import SwiftUI
 /// own effort ladder from the bundled catalogue instead, the same source
 /// `NewChatSheet` uses.
 struct TranscriptComposer: View {
+    let workspaceID: String
+
     @EnvironmentObject private var transcript: TranscriptHost
     @EnvironmentObject private var store: DashboardStore
     @Environment(\.accentTint) private var accent
+    @Environment(\.openURL) private var openURL
 
     @State private var input = ""
     @FocusState private var focused: Bool
     @State private var sending = false
     @State private var stopping = false
+    @State private var openingPullRequest = false
     @State private var sendingQueuedID: String?
     @State private var failure: String?
     @State private var picking: Picking?
@@ -65,6 +69,9 @@ struct TranscriptComposer: View {
                 if !composer.queued.isEmpty {
                     queue(composer)
                 }
+                if let pullRequest {
+                    pullRequestPill(pullRequest, sessionID: composer.sessionId)
+                }
                 card(composer)
             }
             .screenGutter()
@@ -86,6 +93,38 @@ struct TranscriptComposer: View {
     }
 
     // MARK: - The card
+
+    /// The live workspace, so an OPEN → MERGED dashboard delta repaints the
+    /// pill while this chat stays on screen.
+    private var pullRequest: ChatPullRequest? {
+        guard let workspace = store.snapshot.workspaces.first(where: { $0.id == workspaceID }) else {
+            return nil
+        }
+        return ChatPullRequest(workspace: workspace)
+    }
+
+    private func pullRequestPill(_ pullRequest: ChatPullRequest, sessionID: String) -> some View {
+        Button {
+            openPullRequest(sessionID: sessionID)
+        } label: {
+            HStack(spacing: Spacing.tight) {
+                GitPullRequestStatusMark(kind: pullRequest.kind, size: 14)
+                Text("PR #\(pullRequest.number)")
+                    .font(.caption2.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(pullRequest.tint)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(pullRequest.tint.opacity(0.14), in: .capsule)
+            .frame(minHeight: 44, alignment: .leading)
+            .contentShape(.rect)
+        }
+        .buttonStyle(PressDim())
+        .disabled(openingPullRequest)
+        .opacity(openingPullRequest ? 0.65 : 1)
+        .accessibilityLabel(pullRequest.accessibilityLabel)
+    }
 
     private func card(_ composer: NativeComposerState) -> some View {
         let model = activeModel(for: composer)
@@ -159,6 +198,26 @@ struct TranscriptComposer: View {
             if let reported { failure = reported }
         }
         .onDisappear { dictation.stop() }
+    }
+
+    private func openPullRequest(sessionID: String) {
+        guard !openingPullRequest else { return }
+        openingPullRequest = true
+        failure = nil
+        Task {
+            do {
+                let result = try await store.client.viewPullRequest(sessionID: sessionID)
+                guard let url = URL(string: result.url) else {
+                    failure = "Your Mac sent an invalid pull request link."
+                    openingPullRequest = false
+                    return
+                }
+                openURL(url)
+            } catch {
+                failure = hostFailureMessage(error)
+            }
+            openingPullRequest = false
+        }
     }
 
     /// Model and effort inside one chip: two decisions, two tap targets, one

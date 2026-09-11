@@ -82,6 +82,25 @@ final class ChatRowGlyphTests: XCTestCase {
         XCTAssertEqual(ChatRowGlyph(row: row, chatIcons: true, providerMarks: true), .prOpen(number: 7))
     }
 
+    func testTheComposerPillShowsOnlyAnOpenOrMergedNumberedPR() {
+        var open = makeWorkspace(id: "open", prState: "OPEN")
+        open.prNumber = 7
+        var merged = makeWorkspace(id: "merged", prState: "MERGED")
+        merged.prNumber = 42
+        XCTAssertEqual(
+            ChatPullRequest(workspace: open),
+            .open(number: 7)
+        )
+        XCTAssertEqual(
+            ChatPullRequest(workspace: merged),
+            .merged(number: 42)
+        )
+        XCTAssertNil(ChatPullRequest(workspace: makeWorkspace(id: "closed", prState: "CLOSED")))
+        var unresolved = makeWorkspace(id: "unresolved", prState: "OPEN")
+        unresolved.prNumber = nil
+        XCTAssertNil(ChatPullRequest(workspace: unresolved))
+    }
+
 
     /// A closed-and-not-merged PR (or a workspace with none at all) is not a
     /// live signal — the row falls all the way through to the mark.

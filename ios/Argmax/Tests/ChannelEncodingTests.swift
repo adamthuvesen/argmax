@@ -65,6 +65,7 @@ final class ChannelEncodingTests: XCTestCase {
             "workspaces:set-label",
             "workspaces:archive",
             "session:fork",
+            "git:view-or-create-pr",
             "remote:register-push-device",
             "remote:unregister-push-device",
             "remote:push-test",
@@ -307,6 +308,17 @@ final class ChannelEncodingTests: XCTestCase {
     func testTerminateSession() throws {
         let body = try input("providers:terminate", TerminateSessionInput(sessionId: "s-1"))
         XCTAssertEqual(Set(body.keys), ["sessionId"])
+    }
+
+    func testViewPullRequest() throws {
+        let sent = try frame(
+            "git:view-or-create-pr",
+            ViewPullRequestInput(sessionId: "s-1")
+        )
+        XCTAssertNotNil(operation(sent))
+        let body = try XCTUnwrap(sent["input"] as? [String: Any])
+        XCTAssertEqual(Set(body.keys), ["sessionId"])
+        XCTAssertEqual(body["sessionId"] as? String, "s-1")
     }
 
     func testCancelQueuedMessage() throws {

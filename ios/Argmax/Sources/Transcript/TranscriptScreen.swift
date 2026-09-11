@@ -85,7 +85,7 @@ struct TranscriptScreen: View {
             // Only plays when the change carries an animation, which is the
             // peek closing: the card rides up from the edge the sheet just
             // left rather than popping into place.
-            TranscriptComposer()
+            TranscriptComposer(workspaceID: row.workspace.id)
                 .transition(.move(edge: .bottom))
         }
     }

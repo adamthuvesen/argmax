@@ -10,6 +10,7 @@
     "devUrl": "http://localhost:5173"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "title": "Argmax",
@@ -17,7 +18,8 @@
         "height": 900,
         "minWidth": 1024,
         "minHeight": 640,
-        "backgroundColor": "#141414",
+        "transparent": true,
+        "windowEffects": { "effects": ["sidebar"], "state": "followsWindowActiveState" },
         "backgroundThrottling": "disabled",
         "dragDropEnabled": false,
         "titleBarStyle": "Overlay",

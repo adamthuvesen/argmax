@@ -2,6 +2,11 @@ import { createContext, useCallback, useState } from "react";
 
 export const SIDEBAR_PRIORITY_KEY = "argmax.sidebar.priority.visible";
 export const SIDEBAR_COLLAPSED_KEY = "argmax.sidebar.collapsed";
+export const SIDEBAR_TRANSLUCENT_KEY = "argmax.sidebar.translucent";
+export const SIDEBAR_TRANSLUCENCY_KEY = "argmax.sidebar.translucency";
+export const SIDEBAR_TRANSLUCENCY_MIN = 10;
+export const SIDEBAR_TRANSLUCENCY_MAX = 60;
+export const SIDEBAR_TRANSLUCENCY_DEFAULT = 30;
 export const WORKSPACE_CARD_KEY = "argmax.workspaceCard.visible";
 export const CHAT_VERBOSITY_KEY = "argmax.chat.verbosity";
 export const THINKING_EXPANDED_KEY = "argmax.thinking.expanded";

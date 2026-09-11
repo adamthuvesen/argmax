@@ -149,6 +149,11 @@ import {
   TURN_CHANGES_EXPANDED_KEY,
   RANDOM_SESSION_ICON_KEY,
   SIDEBAR_PRIORITY_KEY,
+  SIDEBAR_TRANSLUCENT_KEY,
+  SIDEBAR_TRANSLUCENCY_DEFAULT,
+  SIDEBAR_TRANSLUCENCY_KEY,
+  SIDEBAR_TRANSLUCENCY_MAX,
+  SIDEBAR_TRANSLUCENCY_MIN,
   WORKSPACE_CARD_KEY,
   PrMilestoneCelebrationContext,
   resolveChatVerbosity,
@@ -213,6 +218,15 @@ export function App(): JSX.Element {
     [chatVerbosity]
   );
   const [sidebarPriorityVisible, setSidebarPriorityVisible] = useBooleanUiPreference(SIDEBAR_PRIORITY_KEY, true);
+  const [sidebarTranslucent, setSidebarTranslucent] = useBooleanUiPreference(SIDEBAR_TRANSLUCENT_KEY, false);
+  const [sidebarTranslucency, setSidebarTranslucency] = useBoundedNumberPreference(
+    SIDEBAR_TRANSLUCENCY_KEY,
+    {
+      min: SIDEBAR_TRANSLUCENCY_MIN,
+      max: SIDEBAR_TRANSLUCENCY_MAX,
+      fallback: SIDEBAR_TRANSLUCENCY_DEFAULT
+    }
+  );
   const { collapsed: sidebarCollapsed, peeking: sidebarPeek } = useSidebarChrome();
   const [isBrowserPageOpen, setIsBrowserPageOpen] = useBooleanUiPreference(BROWSER_PAGE_OPEN_KEY, false);
   const [workspaceCardVisible, setWorkspaceCardVisible] = useBooleanUiPreference(WORKSPACE_CARD_KEY, true);
@@ -1956,7 +1970,8 @@ export function App(): JSX.Element {
             : effectiveSidebarCollapsed
               ? "minmax(0, 1fr)"
               : `${sidebarWidth}px minmax(0, 1fr)`,
-        ["--sidebar-width" as string]: `${sidebarWidth}px`
+        ["--sidebar-width" as string]: `${sidebarWidth}px`,
+        ["--sidebar-translucency" as string]: sidebarTranslucent ? `${sidebarTranslucency}%` : "0%"
       }}
       data-resizing={isResizing ? "true" : undefined}
       data-chat-width={String(chatWidth)}
@@ -1968,6 +1983,7 @@ export function App(): JSX.Element {
       data-browser-page-open={isBrowserPageOpen && !standalonePageOpen ? "true" : undefined}
       data-sidebar-collapsed={effectiveSidebarCollapsed ? "true" : undefined}
       data-sidebar-peek={effectiveSidebarCollapsed && sidebarPeek ? "true" : undefined}
+      data-sidebar-translucent={sidebarTranslucent ? "true" : undefined}
     >
       {standalonePageOpen ? null : (
         <button
@@ -2131,6 +2147,10 @@ export function App(): JSX.Element {
                 onChatVerbosityChange={setChatVerbosity}
                 sidebarPriorityVisible={sidebarPriorityVisible}
                 onSidebarPriorityVisibleChange={setSidebarPriorityVisible}
+                sidebarTranslucent={sidebarTranslucent}
+                onSidebarTranslucentChange={setSidebarTranslucent}
+                sidebarTranslucency={sidebarTranslucency}
+                onSidebarTranslucencyChange={setSidebarTranslucency}
                 workspaceCardVisible={workspaceCardVisible}
                 onWorkspaceCardVisibleChange={setWorkspaceCardVisible}
                 pixelFieldEnabled={pixelFieldEnabled}

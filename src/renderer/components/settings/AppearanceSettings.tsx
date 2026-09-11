@@ -43,6 +43,10 @@ import type { ReviewPanelSide } from "../../lib/reviewPanelSide.js";
 import { THEME_OPTIONS, type ThemeMode } from "../../lib/theme.js";
 import { isUserBubbleTint, type UserBubbleTint } from "../../lib/userBubbleTint.js";
 import {
+  SIDEBAR_TRANSLUCENCY_MAX,
+  SIDEBAR_TRANSLUCENCY_MIN
+} from "../../lib/uiPreferences.js";
+import {
   AccentPicker,
   ActivityMarkPicker,
   FontFamilyPicker,
@@ -66,6 +70,10 @@ export function AppearanceSettings({
   onUserBubbleTintChange,
   sidebarPriorityVisible,
   onSidebarPriorityVisibleChange,
+  sidebarTranslucent,
+  onSidebarTranslucentChange,
+  sidebarTranslucency,
+  onSidebarTranslucencyChange,
   workspaceCardVisible,
   onWorkspaceCardVisibleChange,
   pixelFieldEnabled,
@@ -103,6 +111,10 @@ export function AppearanceSettings({
   onUserBubbleTintChange: (tint: UserBubbleTint) => void;
   sidebarPriorityVisible: boolean;
   onSidebarPriorityVisibleChange: (v: boolean) => void;
+  sidebarTranslucent: boolean;
+  onSidebarTranslucentChange: (v: boolean) => void;
+  sidebarTranslucency: number;
+  onSidebarTranslucencyChange: (v: number) => void;
   workspaceCardVisible: boolean;
   onWorkspaceCardVisibleChange: (v: boolean) => void;
   pixelFieldEnabled: boolean;
@@ -322,6 +334,32 @@ export function AppearanceSettings({
               ariaLabel="Priority section in sidebar"
               checked={sidebarPriorityVisible}
               onChange={onSidebarPriorityVisibleChange}
+            />
+          }
+        />
+        <SettingRow
+          label="Translucent sidebar"
+          description="Let the desktop show through the left sidebar, the way Finder's does."
+          control={
+            <Toggle
+              ariaLabel="Translucent sidebar"
+              checked={sidebarTranslucent}
+              onChange={onSidebarTranslucentChange}
+            />
+          }
+        />
+        <SettingRow
+          label="Sidebar translucency"
+          description="How much of the desktop shows through when the translucent sidebar is on."
+          control={
+            <Slider
+              ariaLabel="Sidebar translucency"
+              min={SIDEBAR_TRANSLUCENCY_MIN}
+              max={SIDEBAR_TRANSLUCENCY_MAX}
+              value={sidebarTranslucency}
+              valueLabel={`${sidebarTranslucency}%`}
+              disabled={!sidebarTranslucent}
+              onChange={onSidebarTranslucencyChange}
             />
           }
         />

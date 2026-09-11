@@ -47,6 +47,10 @@ export function SettingsPanel({
   onChatVerbosityChange,
   sidebarPriorityVisible,
   onSidebarPriorityVisibleChange,
+  sidebarTranslucent,
+  onSidebarTranslucentChange,
+  sidebarTranslucency,
+  onSidebarTranslucencyChange,
   workspaceCardVisible,
   onWorkspaceCardVisibleChange,
   pixelFieldEnabled,
@@ -114,6 +118,10 @@ export function SettingsPanel({
   onChatVerbosityChange: (verbosity: ChatVerbosity) => void;
   sidebarPriorityVisible: boolean;
   onSidebarPriorityVisibleChange: (v: boolean) => void;
+  sidebarTranslucent: boolean;
+  onSidebarTranslucentChange: (v: boolean) => void;
+  sidebarTranslucency: number;
+  onSidebarTranslucencyChange: (v: number) => void;
   workspaceCardVisible: boolean;
   onWorkspaceCardVisibleChange: (v: boolean) => void;
   pixelFieldEnabled: boolean;
@@ -342,6 +350,10 @@ export function SettingsPanel({
             onUserBubbleTintChange={onUserBubbleTintChange}
             sidebarPriorityVisible={sidebarPriorityVisible}
             onSidebarPriorityVisibleChange={onSidebarPriorityVisibleChange}
+            sidebarTranslucent={sidebarTranslucent}
+            onSidebarTranslucentChange={onSidebarTranslucentChange}
+            sidebarTranslucency={sidebarTranslucency}
+            onSidebarTranslucencyChange={onSidebarTranslucencyChange}
             workspaceCardVisible={workspaceCardVisible}
             onWorkspaceCardVisibleChange={onWorkspaceCardVisibleChange}
             pixelFieldEnabled={pixelFieldEnabled}

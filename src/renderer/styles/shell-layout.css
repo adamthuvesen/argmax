@@ -25,6 +25,7 @@
 .sidebar {
   position: relative;
   display: flex;
+  box-sizing: border-box;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
@@ -32,7 +33,37 @@
   padding: 12px 14px 12px 8px;
   border-right: 1px solid var(--line);
   background: var(--sidebar);
-  transition: opacity var(--duration-base) var(--ease);
+  transition: opacity var(--duration-base) var(--ease),
+    background var(--duration-base) var(--ease);
+}
+
+/* Translucent sidebar. The window is transparent and macOS draws its sidebar
+   vibrancy behind the webview (tauri.conf.json `windowEffects`), so wherever
+   the page paints nothing the desktop shows through, blurred by the system.
+   Only the sidebar column gives up its paint: body and the shell go clear
+   under it while `.workspace` keeps its opaque ground, so the effect never
+   reaches the chat. The blur here is for the collapsed sidebar's peek
+   overlay, which floats over the workspace rather than over the desktop. The
+   opt-in keeps the default shell on the same opaque paint path as before. */
+/* The canvas takes the root element's background (tokens.css paints `--bg` on
+   :root), so the root has to go clear too or nothing below it matters. */
+:root:has(.app-shell[data-sidebar-translucent="true"]),
+body:has(.app-shell[data-sidebar-translucent="true"]) {
+  background: transparent;
+}
+
+.app-shell[data-sidebar-translucent="true"] {
+  background: transparent;
+}
+
+.app-shell[data-sidebar-translucent="true"] .sidebar {
+  background: color-mix(
+    in srgb,
+    var(--sidebar) calc(100% - var(--sidebar-translucency, 0%)),
+    transparent
+  );
+  -webkit-backdrop-filter: blur(18px) saturate(1.08);
+  backdrop-filter: blur(18px) saturate(1.08);
 }
 
 .sidebar[data-loading="true"] {
@@ -298,6 +329,33 @@
   min-width: 0;
   min-height: 0;
   margin-right: -12px;
+}
+
+/* Over the translucent sidebar a painted scrim is a dark band, since it
+   stacks the surface's fill on top of itself at each edge. Dissolve the list
+   through a mask instead, which takes nothing but the rows' own pixels. The
+   sticky rail headings sit inside the mask and fade with the rows at the very
+   edge, which is the smaller cost. */
+.app-shell[data-sidebar-translucent="true"] .project-list-scroll::before,
+.app-shell[data-sidebar-translucent="true"] .project-list-scroll::after {
+  display: none;
+}
+
+.app-shell[data-sidebar-translucent="true"] .project-list-scroll {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black var(--scroll-edge-fade),
+    black calc(100% - var(--scroll-edge-fade)),
+    transparent
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black var(--scroll-edge-fade),
+    black calc(100% - var(--scroll-edge-fade)),
+    transparent
+  );
 }
 
 .project-list {

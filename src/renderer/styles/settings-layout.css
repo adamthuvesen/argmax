@@ -505,6 +505,10 @@
   gap: 11px;
 }
 
+.settings-slider[data-disabled="true"] {
+  opacity: 0.5;
+}
+
 .settings-slider input[type="range"] {
   width: 130px;
   accent-color: var(--accent);

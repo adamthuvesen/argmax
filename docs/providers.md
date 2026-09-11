@@ -314,7 +314,13 @@ Tool events carry optional versioned `payload.activity` metadata from
 timeline reads without rewriting SQLite. Desktop and iPhone consume its kind,
 targets, evidence source, and optional file operation or discovered-tool count.
 Native fields and exact known tool identities take precedence over narrowly
-recognized commands. Safe sequences of reads, searches, and listings also
+recognized commands. Codex `command_actions` (or `commandActions`) supplies
+read, search, and file-listing identity when every action is recognized.
+Targets come from each action's command operands when available, since native
+search paths can be shortened display names. Unknown actions fall back to
+command parsing. Literal `sh`, `bash`, and `zsh` wrappers with `-c` or `-lc`
+are parsed as their command body, including argv-form commands.
+Safe sequences of reads, searches, and listings also
 qualify, including `cat file | head` and `sed -n 1,40p file; grep pattern file`.
 The first read or search determines a mixed read-only row's identity. Recognized
 in-place substitutions with `sed -i` or `perl -pi -e` use edit activity, even
@@ -331,6 +337,9 @@ and workspace diffs do not attribute opaque commands in a shared checkout.
 `git <subcommand>` sequences use git activity with the subcommands as targets
 (`Ran git diff`), ranked with reads and searches, so an in-place edit in the
 same sequence still wins.
+An exit code of 1 from a single recognized search means no matches, including
+wrapped searches. Compound commands and explicit failures retain their failure
+outcome because later steps may not have run.
 
 Beyond files and shell, five identities cover what used to be the generic
 "Used a tool" row: subagent coordination (`agent-message`, `agent-wait`,

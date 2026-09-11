@@ -183,27 +183,40 @@ fn enrich_command_outcome(event_type: &str, payload: &mut Map<String, Value>) {
         .and_then(|activity| activity.get("kind"))
         .and_then(Value::as_str);
     let recognized_search_command = activity_kind == Some("search")
-        && payload
-            .get("activity")
-            .and_then(|activity| activity.get("evidence"))
-            .and_then(Value::as_str)
-            == Some("command")
         && command_value(tool_input(payload)).is_some_and(is_single_search_command);
-    let explicit_failure = payload
+    // Codex derives `failed` from any nonzero exit. Use its raw error signals
+    // so historical Argmax-derived is_error flags do not turn no matches into
+    // an explicit provider error on the next timeline read.
+    let codex_item = tool_name(payload)
+        .filter(|name| folded_name(name) == "commandexecution")
+        .and_then(|_| payload.get("raw")?.get("item")?.as_object())
+        .filter(|item| {
+            matches!(
+                item.get("type").and_then(Value::as_str),
+                Some("command_execution" | "commandExecution")
+            )
+        });
+    let failure_payload = codex_item.unwrap_or(payload);
+    let explicit_failure = failure_payload
         .get("is_error")
         .and_then(Value::as_bool)
         .unwrap_or(false)
-        || payload.get("isError").and_then(Value::as_bool) == Some(true)
-        || payload.get("error").is_some_and(|error| {
-            error.is_object() || error.as_str().is_some_and(|message| !message.is_empty())
-        })
-        || matches!(
-            payload.get("status").and_then(Value::as_str),
-            Some("failed" | "error" | "errored" | "cancelled" | "canceled" | "interrupted")
-        );
+        || [payload, failure_payload].into_iter().any(|fields| {
+            fields.get("isError").and_then(Value::as_bool) == Some(true)
+                || fields.get("error").is_some_and(|error| {
+                    error.is_object() || error.as_str().is_some_and(|message| !message.is_empty())
+                })
+                || matches!(
+                    fields.get("status").and_then(Value::as_str),
+                    Some("error" | "errored" | "cancelled" | "canceled" | "interrupted")
+                )
+                || (codex_item.is_none()
+                    && fields.get("status").and_then(Value::as_str) == Some("failed"))
+        });
     if exit_code == 1 && recognized_search_command && !explicit_failure {
         payload.insert("status".to_string(), Value::String("completed".to_string()));
         payload.insert("noMatches".to_string(), Value::Bool(true));
+        payload.remove("is_error");
         return;
     }
 
@@ -394,6 +407,9 @@ fn classify(payload: &Map<String, Value>) -> Option<Activity> {
             (ActivityKind::Agent, Evidence::Tool, None)
         }
         "bash" | "shell" | "commandexecution" | "runterminalcommand" | "execcommand" => {
+            let native = (folded == "commandexecution")
+                .then(|| codex_command_activity(payload))
+                .flatten();
             if let Some(command) = command_value(input) {
                 let explicit_write = match &command {
                     CommandValue::Text(text) => super::heredoc_activity::file_write_targets(text)
@@ -403,6 +419,16 @@ fn classify(payload: &Map<String, Value>) -> Option<Activity> {
                 if let Some((kind, targets)) =
                     explicit_write.or_else(|| classify_simple_command(command))
                 {
+                    if kind != ActivityKind::Edit {
+                        if let Some(mut native) = native {
+                            // The full command retains a leading `cd` that
+                            // individual native actions can omit.
+                            if native.kind == kind {
+                                native.targets = targets;
+                            }
+                            return Some(native);
+                        }
+                    }
                     return Some(Activity {
                         kind,
                         evidence: Evidence::Command,
@@ -411,6 +437,9 @@ fn classify(payload: &Map<String, Value>) -> Option<Activity> {
                         tool_count: None,
                     });
                 }
+            }
+            if native.is_some() {
+                return native;
             }
             (ActivityKind::Command, Evidence::Tool, None)
         }
@@ -772,6 +801,49 @@ enum CommandValue<'a> {
     Argv(&'a [Value]),
 }
 
+fn codex_command_activity(payload: &Map<String, Value>) -> Option<Activity> {
+    let actions = payload
+        .get("command_actions")
+        .or_else(|| payload.get("commandActions"))?
+        .as_array()?;
+    let mut activities = Vec::new();
+    for action in actions {
+        let kind = match action.get("type")?.as_str()? {
+            "read" => ActivityKind::Read,
+            "search" => ActivityKind::Search,
+            "listFiles" | "list_files" => ActivityKind::List,
+            // An unknown action may run arbitrary code alongside a read.
+            _ => return None,
+        };
+        // Search/list paths from Codex can be display basenames or omit extra
+        // operands. Prefer the actual operands when we understand the command.
+        let targets = action
+            .get("command")
+            .and_then(Value::as_str)
+            .and_then(|command| classify_simple_command(CommandValue::Text(command)))
+            .filter(|(parsed_kind, _)| *parsed_kind == kind)
+            .map(|(_, targets)| targets)
+            .unwrap_or_else(|| {
+                action
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .filter(|path| !path.is_empty())
+                    .map(str::to_owned)
+                    .into_iter()
+                    .collect()
+            });
+        activities.push(CommandStageActivity { kind, targets });
+    }
+    let (kind, targets) = select_command_activity(activities)?;
+    Some(Activity {
+        kind,
+        evidence: Evidence::Native,
+        targets,
+        operation: None,
+        tool_count: None,
+    })
+}
+
 fn command_value(input: Option<&Value>) -> Option<CommandValue<'_>> {
     let input = input?;
     if let Some(command) = input.as_str() {
@@ -814,6 +886,12 @@ fn classify_simple_command(command: CommandValue<'_>) -> Option<(ActivityKind, V
         }
     }
 
+    select_command_activity(activities)
+}
+
+fn select_command_activity(
+    activities: Vec<CommandStageActivity>,
+) -> Option<(ActivityKind, Vec<String>)> {
     if let Some(edit) = activities
         .iter()
         .find(|activity| activity.kind == ActivityKind::Edit)
@@ -1012,7 +1090,7 @@ struct ParsedShellCommand {
 }
 
 fn command_stages(command: CommandValue<'_>) -> Option<ParsedShellCommand> {
-    match command {
+    let parsed = match command {
         CommandValue::Text(command) => stages_from_tokens(simple_shell_words(command)?),
         CommandValue::Argv(values) => {
             let words = values
@@ -1027,7 +1105,23 @@ fn command_stages(command: CommandValue<'_>) -> Option<ParsedShellCommand> {
                 separators: Vec::new(),
             })
         }
+    }?;
+    if parsed.pipelines.len() == 1 && parsed.pipelines[0].len() == 1 {
+        let words = &parsed.pipelines[0][0];
+        if words.len() == 3
+            && matches!(
+                words[0]
+                    .strip_prefix("/bin/")
+                    .or_else(|| words[0].strip_prefix("/usr/bin/"))
+                    .unwrap_or(&words[0]),
+                "sh" | "bash" | "zsh"
+            )
+            && matches!(words[1].as_str(), "-c" | "-lc" | "-cl")
+        {
+            return stages_from_tokens(simple_shell_words(&words[2])?);
+        }
     }
+    Some(parsed)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1625,6 +1719,106 @@ mod tests {
     }
 
     #[test]
+    fn codex_command_actions_refresh_wrapped_reads_and_keep_complete_targets() {
+        let payload = json!({
+            "name":"command_execution",
+            "input":{"command":"/bin/zsh -lc \"sed -n '580,750p' src/SessionComposer.tsx && sed -n '1180,1420p' src/SessionComposer.tsx\""},
+            "command_actions":[
+                {"type":"read","command":"sed -n '580,750p' src/SessionComposer.tsx","path":"/project/src/SessionComposer.tsx"},
+                {"type":"read","command":"sed -n '1180,1420p' src/SessionComposer.tsx","path":"/project/src/SessionComposer.tsx"}
+            ],
+            "activity":{"version":1,"kind":"command","evidence":"tool","targets":[]}
+        });
+        let read = activity(payload.clone());
+        assert_eq!(read["kind"], "read");
+        assert_eq!(read["evidence"], "native");
+        assert_eq!(read["targets"], json!(["src/SessionComposer.tsx"]));
+        assert_eq!(completed(payload)["activity"], read);
+
+        let search = activity(json!({
+            "name":"commandExecution",
+            "commandActions":[
+                {"type":"listFiles","command":"rg --files src","path":"src"},
+                {"type":"search","command":"rg -n needle src/App.tsx src/Panel.tsx","path":"App.tsx"},
+                {"type":"read","command":"sed -n 1,90p other.rs","path":"other.rs"}
+            ]
+        }));
+        assert_eq!(search["kind"], "search");
+        assert_eq!(search["targets"], json!(["src/App.tsx", "src/Panel.tsx"]));
+        let native_only = activity(json!({
+            "name":"command_execution",
+            "command_actions":[{"type":"read","command":"unsupported-read-syntax","path":"/project/a.rs"}]
+        }));
+        assert_eq!(native_only["targets"], json!(["/project/a.rs"]));
+
+        let listing = activity(json!({
+            "name":"command_execution",
+            "input":{"command":"/bin/zsh -lc 'cd src && rg --files components'"},
+            "command_actions":[{"type":"listFiles","command":"rg --files components","path":"components"}]
+        }));
+        assert_eq!(listing["kind"], "list");
+        assert_eq!(listing["targets"], json!(["src/components"]));
+    }
+
+    #[test]
+    fn incomplete_native_actions_do_not_hide_unknown_commands_or_edits() {
+        for actions in [
+            json!([]),
+            json!([{"type":"read","path":"a.rs"},{"type":"unknown"}]),
+            json!([{"path":"a.rs"}]),
+        ] {
+            assert_eq!(
+                activity(json!({
+                    "name":"command_execution", "input":{"command":"python script.py"},
+                    "command_actions":actions
+                }))["kind"],
+                "command"
+            );
+        }
+        let edit = activity(json!({
+            "name":"command_execution",
+            "input":{"command":"/bin/zsh -lc \"sed -i '' 's/a/b/' a.rs\""},
+            "command_actions":[{"type":"read","path":"a.rs"}]
+        }));
+        assert_eq!(edit["kind"], "edit");
+        assert_eq!(
+            activity(json!({
+                "name":"command_execution",
+                "input":{"command":"/bin/zsh -lc 'git status --short && rg needle src'"},
+                "command_actions":[{"type":"unknown"}]
+            }))["kind"],
+            "git"
+        );
+    }
+
+    #[test]
+    fn shell_wrappers_classify_only_literal_command_bodies() {
+        for command in [
+            json!("/bin/zsh -lc \"sed -n '140,172p' src/App.tsx\""),
+            json!(["/bin/bash", "-lc", "cat src/App.tsx"]),
+            json!("sh -c 'cat src/App.tsx | head'"),
+        ] {
+            let read = activity(json!({"name":"shell","input":{"command":command}}));
+            assert_eq!(read["kind"], "read");
+            assert_eq!(read["targets"], json!(["src/App.tsx"]));
+        }
+        for command in [
+            "/tmp/zsh -lc 'cat a.rs'",
+            "zsh -lc 'cat a.rs' ignored extra",
+            "bash -c 'cat $TARGET'",
+            "sh -c 'cat a.rs > b.rs'",
+            "sh -c 'cat a.rs'; python script.py",
+            "sh -c 'cat a.rs' | python script.py",
+        ] {
+            assert_eq!(
+                activity(json!({"name":"shell","input":{"command":command}}))["kind"],
+                "command",
+                "{command}"
+            );
+        }
+    }
+
+    #[test]
     fn exact_provider_tools_cover_all_five_providers() {
         let cases = [
             (
@@ -2051,6 +2245,50 @@ mod tests {
 
     #[test]
     fn shell_exit_codes_distinguish_errors_from_empty_searches() {
+        let wrapped = json!({
+            "name":"command_execution",
+            "input":{"command":"/bin/zsh -lc 'rg needle src'"},
+            "command_actions":[{"type":"search","command":"rg needle src","path":"src"}],
+            "exit_code":1,
+            "status":"failed",
+            "raw":{"item":{"type":"command_execution","status":"failed","exit_code":1}}
+        });
+        let empty_search = completed(wrapped.clone());
+        assert_eq!(empty_search["activity"]["evidence"], "native");
+        assert_eq!(empty_search["noMatches"], true);
+        assert_eq!(empty_search["status"], "completed");
+        assert!(empty_search.get("is_error").is_none());
+
+        let mut historical = wrapped.clone();
+        historical["is_error"] = json!(true);
+        historical["activity"] =
+            json!({"version":1,"kind":"command","evidence":"tool","targets":[]});
+        let repaired = completed(historical);
+        assert_eq!(repaired["noMatches"], true);
+        assert!(repaired.get("is_error").is_none());
+        assert_eq!(completed(repaired.clone()), repaired);
+
+        let mut explicit_error = wrapped.clone();
+        explicit_error["raw"]["item"]["is_error"] = json!(true);
+        assert_eq!(completed(explicit_error)["status"], "failed");
+
+        let mut interrupted = wrapped.clone();
+        interrupted["status"] = json!("interrupted");
+        assert_eq!(completed(interrupted)["status"], "interrupted");
+
+        let mut chain = wrapped;
+        chain["input"]["command"] = json!("/bin/zsh -lc 'rg needle src && sed -n 1p src/App.tsx'");
+        chain["command_actions"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({
+                "type":"read","command":"sed -n 1p src/App.tsx","path":"src/App.tsx"
+            }));
+        let failed_chain = completed(chain);
+        assert_eq!(failed_chain["activity"]["kind"], "search");
+        assert_eq!(failed_chain["status"], "failed");
+        assert!(failed_chain.get("noMatches").is_none());
+
         let missing = completed(json!({
             "name":"Bash",
             "input":{"command":"cat missing.txt"},

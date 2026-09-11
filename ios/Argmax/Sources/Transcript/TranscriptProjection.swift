@@ -813,11 +813,12 @@ enum TranscriptProjection {
         }
         if status == "failed" || status == "error" { return true }
         if payload["is_error"]?.bool == true || payload["isError"]?.bool == true { return true }
-        if let exitCode = payload["exit_code"]?.number, exitCode != 0 { return true }
         if let error = payload["error"] {
             if error.bool == true { return true }
             if let text = error.string, !text.isEmpty { return true }
         }
+        if payload["noMatches"]?.bool == true { return false }
+        if let exitCode = payload["exit_code"]?.number, exitCode != 0 { return true }
         return false
     }
 

@@ -536,6 +536,46 @@ final class TranscriptProjectionTests: XCTestCase {
         XCTAssertEqual(tool.summary, "File read failed")
     }
 
+    func testNormalizedNoMatchesDoesNotTurnSearchExitOneIntoFailure() throws {
+        let searchActivity: TranscriptJSONValue = .object([
+            "version": .number(1), "kind": .string("search"),
+            "evidence": .string("command"), "targets": .array([])
+        ])
+        let tool = try XCTUnwrap(firstTool(TranscriptProjection.project(events: [
+            event("search", "command.started", "Search", 1, [
+                "id": .string("search-1"), "name": .string("Search"), "activity": searchActivity
+            ]),
+            event("search-end", "command.completed", "", 2, [
+                "tool_use_id": .string("search-1"),
+                "status": .string("completed"),
+                "exit_code": .number(1),
+                "noMatches": .bool(true)
+            ])
+        ])))
+
+        XCTAssertEqual(tool.status, .done)
+        XCTAssertNil(tool.error)
+        XCTAssertEqual(tool.activitySummary, "Searched files")
+    }
+
+    func testNoMatchesDoesNotHideAnExplicitToolError() throws {
+        let tool = try XCTUnwrap(firstTool(TranscriptProjection.project(events: [
+            event("search", "command.started", "Search", 1, [
+                "id": .string("search-1"), "name": .string("Search")
+            ]),
+            event("search-end", "command.completed", "permission denied", 2, [
+                "tool_use_id": .string("search-1"),
+                "status": .string("completed"),
+                "exit_code": .number(1),
+                "noMatches": .bool(true),
+                "error": .string("permission denied")
+            ])
+        ])))
+
+        XCTAssertEqual(tool.status, .failed)
+        XCTAssertEqual(tool.error, "permission denied")
+    }
+
     func testCompletionActivityAddsDiscoveryCountWithoutGenericActivityErasingStart() throws {
         let discovery: TranscriptJSONValue = .object([
             "version": .number(1), "kind": .string("discovery"),

@@ -438,6 +438,13 @@ fn is_tool_like_item(
     if matches!(item_type, "reasoning" | "todo_list" | "error") {
         return false;
     }
+    // Codex opens a built-in web search as `{"type":"web_search","query":"",
+    // "action":null}` and only fills the query on `item.completed`. Without
+    // this the start is dropped, the completion has no start to join, and
+    // a 40 s search phase renders nothing on either surface.
+    if item_type == "web_search" {
+        return true;
+    }
     if string_value(item.get("name")).is_some()
         || string_value(item.get("tool")).is_some()
         || action.is_some()
@@ -901,6 +908,35 @@ mod tests {
         );
         assert_eq!(result.events[0].r#type, "command.started");
         assert_eq!(result.events[0].payload["input"]["command"], "npm test");
+    }
+
+    // A built-in web search starts with an empty query and a null action; the
+    // query only lands on `item.completed`. The start must still open a card
+    // or the completion has nothing to join and the search phase is invisible.
+    #[test]
+    fn codex_web_search_start_with_empty_query_opens_a_tool() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                &json!({
+                    "type": "item.started",
+                    "item": {
+                        "id": "exec-1",
+                        "type": "web_search",
+                        "query": "",
+                        "action": null,
+                        "results": null
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(result.events[0].r#type, "command.started");
+        assert_eq!(result.events[0].message, "web_search");
+        assert_eq!(result.events[0].payload["id"], "exec-1");
     }
 
     // `arguments` arrives as a JSON string, and `paths` is not one of the keys

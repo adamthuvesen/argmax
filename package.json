@@ -12,6 +12,8 @@
     "build:icons": "node scripts/build-icons.mjs",
     "export:provider-models": "node scripts/export-provider-models.mjs",
     "export:ios-tool-icons": "node scripts/export-ios-tool-icons.mjs",
+    "build:ios-fonts": "uv run scripts/build-ios-fonts.py",
+    "install:ios": "node scripts/install-ios.mjs",
     "lint": "eslint .",
     "test": "npm run test:unit && npm run test:perf && npm run test:rust",
     "test:unit": "vitest run",
@@ -29,6 +31,7 @@
     "check:tauri-bridge": "node scripts/check-tauri-bridge.mjs",
     "check:main-thread": "node scripts/check-main-thread-handlers.mjs",
     "check:bundle": "node scripts/check-bundle.mjs",
+    "check:ios-fonts": "node scripts/check-ios-fonts.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

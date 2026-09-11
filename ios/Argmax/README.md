@@ -173,7 +173,26 @@ rebuild from Xcode. The paid Developer Program ($99/yr) removes that expiry; it
 buys nothing else you need here, since this never sees the App Store and
 notifications already arrive through ntfy.
 
-From the command line instead:
+From the command line instead, `npm run install:ios` does the whole round —
+`xcodegen`, build, install, launch — against the one connected iPhone:
+
+```bash
+npm run install:ios
+npm run install:ios -- --list                  # connected devices
+npm run install:ios -- --device <udid>         # when more than one is attached
+npm run install:ios -- --pair '<pairing link>' # launch straight into pairing
+npm run install:ios -- --no-launch
+```
+
+It takes the team from `--team`, `$ARGMAX_IOS_TEAM`, or an installed
+`com.argmax.remote` provisioning profile, and reports whether the app is
+actually running plus the bridge's client count, since a physical device
+cannot be screenshotted. The build deliberately targets
+`generic/platform=iOS` rather than `id=<udid>`: Xcode's destination list and
+devicectl's device list disagree often enough that a phone devicectl shows as
+connected is rejected as "unable to find a destination matching".
+
+The bare build, if you want it:
 
 ```bash
 xcodebuild -project Argmax.xcodeproj -scheme Argmax \

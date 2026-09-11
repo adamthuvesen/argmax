@@ -68,8 +68,9 @@ use crate::{
         },
         pending_messages::{
             clear_session_queue, delete_message as delete_pending_message,
-            list_session_pending_messages, mark_message_launching, recover_pending_messages,
-            replace_session_queue, restore_launching_message,
+            delete_messages_for_collected_origins, list_session_pending_messages,
+            mark_message_launching, recover_pending_messages, replace_session_queue,
+            restore_launching_message,
         },
         projects::list_projects,
         session_messages::{
@@ -3017,6 +3018,39 @@ impl ProviderSessionService {
             .iter()
             .map(|(session_id, queue)| (session_id.clone(), queue.iter().cloned().collect()))
             .collect()
+    }
+
+    /// Remove the queue copies of inbox messages the agent just collected.
+    ///
+    /// The persistence helper skips `launching` rows because their sender owns
+    /// the in-flight hand-off. Holding the writer until the in-memory queue is
+    /// updated keeps a concurrent drain from claiming a row between the two.
+    pub fn reconcile_collected_messages(
+        &self,
+        session_id: &str,
+        collected_message_ids: &[String],
+    ) -> ArgmaxResult<()> {
+        let mut connection = self.database.connection();
+        let removed = delete_messages_for_collected_origins(
+            &mut connection,
+            session_id,
+            collected_message_ids,
+        )?;
+        if removed.is_empty() {
+            return Ok(());
+        }
+        let removed: HashSet<&str> = removed.iter().map(String::as_str).collect();
+        let mut queues = self.queues.lock_or_recover("queues");
+        if let Some(queue) = queues.get_mut(session_id) {
+            queue.retain(|message| !removed.contains(message.id.as_str()));
+            if queue.is_empty() {
+                queues.remove(session_id);
+            }
+        }
+        drop(queues);
+        drop(connection);
+        self.publish_pending_messages(session_id);
+        Ok(())
     }
 
     fn publish_pending_messages(&self, session_id: &str) {

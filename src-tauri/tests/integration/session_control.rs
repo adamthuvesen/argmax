@@ -912,6 +912,25 @@ async fn observing_stopping_and_waiting_on_a_launched_session() {
     assert_eq!(messages[0]["kind"], "message");
     assert_eq!(messages[0]["fromSessionId"], "session-parent");
     assert_eq!(messages[0]["fromLabel"], "Parent");
+    assert!(
+        providers
+            .pending_messages_snapshot()
+            .get("session-child")
+            .is_none(),
+        "collecting the inbox must remove its in-memory follow-up copy"
+    );
+    let durable_pending: i64 = database
+        .connection()
+        .query_row(
+            "SELECT COUNT(*) FROM pending_messages WHERE session_id = 'session-child'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("durable pending count");
+    assert_eq!(
+        durable_pending, 0,
+        "collecting the inbox must remove its durable follow-up copy"
+    );
     // Collected once: a second read comes back empty.
     let drained = as_child(json!({ "inbox": {} })).await;
     assert!(drained["inbox"]["messages"]
@@ -1549,10 +1568,11 @@ async fn a_completion_notice_queued_behind_a_running_turn_stays_collectable() {
         "a queued notice has not been delivered: {delivered_at:?}"
     );
 
-    let inbox: serde_json::Value =
-        serde_json::from_str(&ask_raw(socket, parent_token, json!({ "inbox": {} })).await)
-            .expect("response json");
-    let notice = inbox["inbox"]["messages"]
+    let waited: serde_json::Value = serde_json::from_str(
+        &ask_raw(socket, parent_token, json!({ "wait": { "timeoutS": 1 } })).await,
+    )
+    .expect("response json");
+    let notice = waited["waited"]["messages"]
         .as_array()
         .expect("messages")
         .iter()
@@ -1562,6 +1582,34 @@ async fn a_completion_notice_queued_behind_a_running_turn_stays_collectable() {
         .as_str()
         .expect("body")
         .contains("finished with state cancelled"));
+    assert!(
+        providers
+            .pending_messages_snapshot()
+            .get("session-parent")
+            .is_none(),
+        "waiting must remove the in-memory copies of every collected message"
+    );
+    let durable_pending: i64 = database
+        .connection()
+        .query_row(
+            "SELECT COUNT(*) FROM pending_messages WHERE session_id = 'session-parent'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("durable pending count");
+    assert_eq!(durable_pending, 0, "waiting must clean the durable queue");
+    assert!(
+        deltas
+            .lock()
+            .expect("deltas poisoned")
+            .iter()
+            .rev()
+            .filter_map(|delta| delta.pending_messages.as_ref())
+            .filter_map(|pending| pending.get("session-parent"))
+            .next()
+            .is_some_and(Vec::is_empty),
+        "waiting must publish the empty pending queue"
+    );
 }
 
 /// A parent that launched two children and collected the first one must not be

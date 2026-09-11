@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { errorMessage } from "../../shared/error.js";
 import { PROVIDER_TITLE_MODEL } from "../../shared/providerModels.js";
 import type {
   AgentMode,
@@ -115,8 +116,14 @@ export function useSessionCommands({
       if (!window.argmax) {
         throw new Error("Open the Tauri app window to send a queued follow-up.");
       }
-      await window.argmax.providers.sendQueuedMessageNow({ sessionId, messageId, delivery });
-      await Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
+      try {
+        await window.argmax.providers.sendQueuedMessageNow({ sessionId, messageId, delivery });
+      } catch (error) {
+        throw new Error(errorMessage(error));
+      } finally {
+        // An already-collected inbox message is removed even when sending rejects.
+        await Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
+      }
     },
     [refreshDashboardStatus, loadSessionEvents]
   );

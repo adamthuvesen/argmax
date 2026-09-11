@@ -118,6 +118,43 @@ final class TranscriptStoreTests: XCTestCase {
         XCTAssertEqual(snapshot.pendingMessages["s"]?.first?.content, "Then test")
     }
 
+    func testAuthoritativeDashboardRemovesAQueuedMessageMissingFromHostSnapshot() throws {
+        let store = try makeStore()
+        let pending = TranscriptPendingMessage(
+            id: "queued-1",
+            sessionId: "session-1",
+            content: "Then test",
+            agentMode: "auto",
+            modelLabel: nil,
+            modelId: nil,
+            reasoningEffort: nil,
+            recoveryStatus: nil,
+            queuedAt: "2026-01-01T00:00:00.000Z"
+        )
+        store.preview(
+            page: page(events: []),
+            metadata: sessionMetadata(id: "session-1"),
+            pendingMessages: [pending]
+        )
+        XCTAssertEqual(store.composer?.queued.map(\.id), ["queued-1"])
+
+        let authoritative = try JSONDecoder().decode(
+            TranscriptDashboardSnapshot.self,
+            from: Data(
+                """
+                {"sessions":[{"id":"session-1","workspaceId":"workspace-1","provider":"claude",
+                  "modelLabel":"Opus","modelId":"claude-opus","prompt":"Go","state":"complete",
+                  "attention":"normal","reasoningEffort":"high","agentMode":"auto"}],
+                 "workspaces":[{"id":"workspace-1","taskLabel":"Native transcript","path":"/Users/dev/argmax"}],
+                 "pendingMessages":{}}
+                """.utf8
+            )
+        )
+        store.receive(snapshot: authoritative)
+
+        XCTAssertTrue(store.composer?.queued.isEmpty == true)
+    }
+
     func testDashboardWorkspacePathPropagatesIntoToolProjection() async throws {
         let store = try makeStore()
         let path = "/Users/dev/argmax/src/App.swift"

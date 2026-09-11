@@ -473,6 +473,11 @@ that carries a message carries its row id with it (`MessageOrigin.message_id`),
 and the row is closed the moment that turn actually starts: immediately for an
 idle recipient, at the drain for one that was mid-turn.
 
+Inbox reads and waits remove collected messages from the pending queue and
+publish the updated queue immediately. Startup recovery also discards queued
+copies whose inbox records already confirm delivery. Reading a result mid-turn
+therefore removes its composer row without waiting for the turn to finish.
+
 That id is what makes both directions safe. The queue checks the row before it
 sends, so a message the recipient already collected through `inbox_read` is
 dropped instead of delivered a second time — and the drain goes on to the

@@ -200,6 +200,16 @@ final class TranscriptStore: ObservableObject {
         await waitForProjection()
     }
 
+    /// Reconcile composer metadata after a queue action. The action may fail
+    /// because another client already consumed the row, in which case its
+    /// removal event can predate this phone's request.
+    func refreshMetadata() async {
+        guard openSessionID != nil else { return }
+        metadataDirty = true
+        scheduleReads()
+        while let task = metadataTask { await task.value }
+    }
+
     /// Fan-in from `DashboardStore`'s sole bridge event loop.
     func receive(event: BridgeEvent) {
         switch event {
@@ -274,6 +284,25 @@ final class TranscriptStore: ObservableObject {
         ), title: workspace?.taskLabel, pendingMessages: nil)
     }
 
+    /// Apply the richer, authoritative dashboard read used by the native
+    /// transcript. Unlike `DashboardSnapshot`, this includes the queue, so an
+    /// absent session key means the host has no queued rows for this chat.
+    func receive(snapshot: TranscriptDashboardSnapshot) {
+        guard let id = openSessionID,
+              let row = snapshot.sessions.first(where: { $0.id == id })
+        else {
+            updateProjection()
+            return
+        }
+        let workspace = snapshot.workspaces.first(where: { $0.id == row.workspaceId })
+        workspacePath = workspace?.path
+        ingest(
+            metadata: row,
+            title: workspace?.taskLabel,
+            pendingMessages: snapshot.pendingMessages[id] ?? []
+        )
+    }
+
     /// Test and preview seam: apply exactly the page a host would answer.
     func ingest(page: TranscriptPage, for sessionID: String, authoritative: Bool = false) {
         guard openSessionID == sessionID else { return }
@@ -285,7 +314,8 @@ final class TranscriptStore: ObservableObject {
         page: TranscriptPage,
         metadata row: TranscriptSessionMetadata,
         title: String = "Preview",
-        workspacePath: String? = nil
+        workspacePath: String? = nil,
+        pendingMessages: [TranscriptPendingMessage] = []
     ) {
         generation += 1
         projectionVersion += 1
@@ -303,7 +333,7 @@ final class TranscriptStore: ObservableObject {
         eventCursor = nil
         rawOutputCursor = nil
         changeCursor = nil
-        ingest(metadata: row, title: title, pendingMessages: [])
+        ingest(metadata: row, title: title, pendingMessages: pendingMessages)
         apply(page, authoritative: true)
         projectionTask?.cancel()
         projectionTask = nil
@@ -390,17 +420,7 @@ final class TranscriptStore: ObservableObject {
                 let (dashboard, approvals) = try await (dashboardRead, approvalsRead)
                 guard generation == startedGeneration, openSessionID == id else { return }
                 pendingApprovals = approvals
-                if let row = dashboard.sessions.first(where: { $0.id == id }) {
-                    let workspace = dashboard.workspaces.first(where: { $0.id == row.workspaceId })
-                    workspacePath = workspace?.path
-                    ingest(
-                        metadata: row,
-                        title: workspace?.taskLabel,
-                        pendingMessages: dashboard.pendingMessages[id] ?? []
-                    )
-                } else {
-                    updateProjection()
-                }
+                receive(snapshot: dashboard)
             } catch {
                 Self.log.error("transcript metadata read failed: \(String(describing: error), privacy: .public)")
             }

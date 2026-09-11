@@ -583,6 +583,9 @@ struct TranscriptComposer: View {
             } catch {
                 failure = hostFailureMessage(error)
             }
+            // A rejection can mean another client already consumed this
+            // inbox row. Re-read the authoritative queue even when it fails.
+            await transcript.refreshMetadata()
             sendingQueuedID = nil
         }
     }

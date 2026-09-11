@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use rusqlite::{Connection, Row, Transaction};
 use serde::de::DeserializeOwned;
@@ -6,6 +6,7 @@ use serde::de::DeserializeOwned;
 use super::{bool_to_i64, json_error, sqlite_error, time::now_iso};
 use crate::{
     error::{ArgmaxError, ArgmaxResult},
+    persistence::session_messages::is_message_delivered,
     providers::flush_queue::PendingMessage,
 };
 
@@ -29,6 +30,25 @@ pub fn recover_pending_messages(
     connection: &mut Connection,
 ) -> ArgmaxResult<HashMap<String, VecDeque<PendingMessage>>> {
     let transaction = connection.transaction().map_err(sqlite_error)?;
+    let messages = list_pending_messages_from(&transaction)?;
+    for message in messages {
+        // Steering claims its inbox row before the provider accepts it. If the
+        // process stopped during that hand-off, `delivered_at` is ambiguous
+        // rather than confirmation and the recovered warning must survive.
+        if message.recovery_status.as_deref() == Some(RECOVERED_DELIVERY_UNKNOWN) {
+            continue;
+        }
+        let Some(message_id) = message
+            .origin
+            .as_ref()
+            .and_then(|origin| origin.message_id.as_deref())
+        else {
+            continue;
+        };
+        if is_message_delivered(&transaction, message_id)? {
+            delete_message(&transaction, &message.session_id, &message.id)?;
+        }
+    }
     transaction
         .execute(
             r#"
@@ -46,6 +66,39 @@ pub fn recover_pending_messages(
     let messages = list_pending_messages_from(&transaction)?;
     transaction.commit().map_err(sqlite_error)?;
     Ok(group_by_session(messages))
+}
+
+/// Delete visible follow-ups whose inbox rows were just handed to the agent.
+///
+/// A `launching` row is deliberately left alone: it has already left the
+/// in-memory queue, and the sender's final delivery check owns its cleanup.
+pub fn delete_messages_for_collected_origins(
+    connection: &mut Connection,
+    session_id: &str,
+    collected_message_ids: &[String],
+) -> ArgmaxResult<Vec<String>> {
+    if collected_message_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let collected: HashSet<&str> = collected_message_ids.iter().map(String::as_str).collect();
+    let transaction = connection.transaction().map_err(sqlite_error)?;
+    let pending = list_session_pending_messages(&transaction, session_id)?;
+    let removed = pending
+        .iter()
+        .filter(|message| {
+            message
+                .origin
+                .as_ref()
+                .and_then(|origin| origin.message_id.as_deref())
+                .is_some_and(|message_id| collected.contains(message_id))
+        })
+        .map(|message| message.id.clone())
+        .collect::<Vec<_>>();
+    for message_id in &removed {
+        delete_message(&transaction, session_id, message_id)?;
+    }
+    transaction.commit().map_err(sqlite_error)?;
+    Ok(removed)
 }
 
 pub fn list_pending_messages(connection: &Connection) -> ArgmaxResult<Vec<PendingMessage>> {
@@ -327,6 +380,9 @@ mod tests {
         persistence::{
             database::Database,
             projects::{persist_project, PersistProjectInput, ProjectSettings},
+            session_messages::{
+                insert_session_message, mark_message_delivered, NewSessionMessage, MESSAGE_KIND,
+            },
             sessions::{persist_session, PersistSessionInput},
             workspaces::{persist_workspace, PersistWorkspaceInput},
         },
@@ -459,6 +515,76 @@ mod tests {
         assert_eq!(queue[0].agent_references, expected[0].agent_references);
         assert_eq!(queue[0].origin, expected[0].origin);
         assert!(queue[0].fast_mode);
+    }
+
+    #[test]
+    fn restart_discards_confirmed_deliveries_but_preserves_ambiguous_and_unknown_origins() {
+        let database = database_with_session();
+        let mut delivered = pending("pending-delivered", "already collected");
+        delivered.origin.as_mut().unwrap().message_id = Some("inbox-delivered".to_string());
+        let mut undelivered = pending("pending-undelivered", "still waiting");
+        undelivered.origin.as_mut().unwrap().message_id = Some("inbox-undelivered".to_string());
+        let mut missing = pending("pending-missing", "unknown inbox row");
+        missing.origin.as_mut().unwrap().message_id = Some("inbox-missing".to_string());
+        let mut ambiguous = pending("pending-ambiguous", "steering interrupted");
+        ambiguous.origin.as_mut().unwrap().message_id = Some("inbox-ambiguous".to_string());
+        let mut user = pending("pending-user", "typed by the user");
+        user.origin = None;
+        {
+            let mut connection = database.connection();
+            for (id, body) in [
+                ("inbox-delivered", "already collected"),
+                ("inbox-undelivered", "still waiting"),
+                ("inbox-ambiguous", "steering interrupted"),
+            ] {
+                insert_session_message(
+                    &connection,
+                    &NewSessionMessage {
+                        id: id.to_string(),
+                        from_session_id: None,
+                        to_session_id: "session-1".to_string(),
+                        body: body.to_string(),
+                        kind: MESSAGE_KIND.to_string(),
+                    },
+                )
+                .expect("inbox row");
+            }
+            mark_message_delivered(&connection, "inbox-delivered").expect("deliver inbox row");
+            mark_message_delivered(&connection, "inbox-ambiguous").expect("claim inbox row");
+            replace_session_queue(
+                &mut connection,
+                "session-1",
+                &VecDeque::from([delivered, undelivered, missing, ambiguous, user]),
+            )
+            .expect("persist queue");
+            mark_message_launching(&connection, "session-1", "pending-ambiguous")
+                .expect("claim ambiguous delivery");
+        }
+
+        let recovered =
+            recover_pending_messages(&mut database.connection()).expect("recover queue");
+        let queue = &recovered["session-1"];
+        assert_eq!(
+            queue
+                .iter()
+                .map(|message| message.id.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "pending-undelivered",
+                "pending-missing",
+                "pending-ambiguous",
+                "pending-user"
+            ]
+        );
+        assert_eq!(
+            queue[2].recovery_status.as_deref(),
+            Some(RECOVERED_DELIVERY_UNKNOWN)
+        );
+        assert!(queue
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| *index != 2)
+            .all(|(_, message)| message.recovery_status.as_deref() == Some(RECOVERED_UNSENT)));
     }
 
     #[test]

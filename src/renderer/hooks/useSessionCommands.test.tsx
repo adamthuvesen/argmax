@@ -210,6 +210,24 @@ describe("useSessionCommands", () => {
     });
   });
 
+  it("shows structured queue errors and refreshes after a rejected send", async () => {
+    refreshDashboardStatus.mockResolvedValue(undefined);
+    loadSessionEvents.mockResolvedValue(undefined);
+    sendQueuedMessageNowMock.mockRejectedValueOnce({
+      code: "SERVICE_ERROR",
+      sub_code: "QUEUED_MESSAGE_ALREADY_DELIVERED",
+      message: "This follow-up was already collected from the chat inbox."
+    });
+    const { result } = renderHook(() =>
+      useSessionCommands({ refreshDashboardStatus, loadSessionEvents, setToast, fastMode: false })
+    );
+
+    await expect(result.current.sendQueuedMessageNow("session-1", "message-1"))
+      .rejects.toThrow("This follow-up was already collected from the chat inbox.");
+    expect(refreshDashboardStatus).toHaveBeenCalled();
+    expect(loadSessionEvents).toHaveBeenCalledWith("session-1");
+  });
+
   it("does not wait on dashboard catch-up for a queued follow-up", async () => {
     sendInputMock.mockResolvedValue({ ok: true, queued: true });
     refreshDashboardStatus.mockImplementation(() => new Promise<void>(() => {}));

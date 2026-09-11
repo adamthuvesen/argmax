@@ -95,7 +95,7 @@ pub(super) async fn handle_session_control(
         SessionControlAction::Stop(action) => {
             stop_session(action, parent, database, providers).await
         }
-        SessionControlAction::Inbox(_) => inbox_read(parent, database),
+        SessionControlAction::Inbox(_) => inbox_read(parent, database, providers),
         SessionControlAction::Wait(action) => {
             wait_for_sessions(action, parent, database, providers, registry).await
         }

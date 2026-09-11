@@ -161,17 +161,27 @@ struct TranscriptComposerFloor: View {
         VStack(spacing: 0) {
             if let question {
                 ScrollView {
-                    TranscriptQuestionDock(card: question, onAnswer: { answer in
+                    TranscriptQuestionDock(card: question, onAnswer: { response in
                         guard let context = sendContext else { return false }
-                        let sent = await interactions.answerQuestion(answer, context: context)
+                        let sent = await interactions.answerQuestion(
+                            response,
+                            card: question,
+                            context: context
+                        )
                         if sent {
                             dismissed.insert(question.id)
                             await transcript.reload()
                         }
                         return sent
                     }, onDismiss: {
-                        dismissed.insert(question.id)
-                        focusRequest += 1
+                        guard let context = sendContext else { return false }
+                        let resolved = await interactions.dismissQuestion(card: question, context: context)
+                        if resolved {
+                            dismissed.insert(question.id)
+                            await transcript.reload()
+                            focusRequest += 1
+                        }
+                        return resolved
                     })
                     .id(question.id)
                 }

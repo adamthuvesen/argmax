@@ -70,6 +70,7 @@ final class ChannelEncodingTests: XCTestCase {
             "remote:unregister-push-device",
             "remote:push-test",
             "providers:send-input",
+            "questions:resolve",
             "providers:terminate",
             "providers:cancel-queued-message",
             "providers:send-queued-message-now"
@@ -303,6 +304,42 @@ final class ChannelEncodingTests: XCTestCase {
             )
         )
         XCTAssertTrue(body["reasoningEffort"] is NSNull)
+    }
+
+    func testResolveQuestionKeepsProviderQuestionIDs() throws {
+        let body = try input(
+            "questions:resolve",
+            ResolveTranscriptQuestionInput(
+                sessionId: "s-1",
+                requestId: "request-1",
+                answers: [
+                    "scope": ["Current checkout"],
+                    "context": ["user_note: Keep the draft"]
+                ],
+                dismissed: nil
+            )
+        )
+        XCTAssertEqual(Set(body.keys), ["sessionId", "requestId", "answers"])
+        XCTAssertEqual(body["sessionId"] as? String, "s-1")
+        XCTAssertEqual(body["requestId"] as? String, "request-1")
+        let answers = try XCTUnwrap(body["answers"] as? [String: [String]])
+        XCTAssertEqual(answers["scope"], ["Current checkout"])
+        XCTAssertEqual(answers["context"], ["user_note: Keep the draft"])
+    }
+
+    func testDismissQuestionSendsAnExplicitEmptyResolution() throws {
+        let body = try input(
+            "questions:resolve",
+            ResolveTranscriptQuestionInput(
+                sessionId: "s-1",
+                requestId: "request-1",
+                answers: [:],
+                dismissed: true
+            )
+        )
+        XCTAssertEqual(Set(body.keys), ["sessionId", "requestId", "answers", "dismissed"])
+        XCTAssertEqual(body["dismissed"] as? Bool, true)
+        XCTAssertEqual((body["answers"] as? [String: [String]])?.count, 0)
     }
 
     func testTerminateSession() throws {

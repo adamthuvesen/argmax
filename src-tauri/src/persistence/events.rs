@@ -1576,6 +1576,18 @@ pub fn has_outstanding_card_ask(connection: &Connection, session_id: &str) -> Ar
                   AND cleared.type = 'session.cleared'
               ), 0)
               AND created_at > ?2
+              AND NOT (
+                json_extract(payload_json, '$.input.delivery') = 'blocking'
+                AND EXISTS (
+                  SELECT 1
+                  FROM events completed
+                  WHERE completed.session_id = events.session_id
+                    AND completed.type = 'command.completed'
+                    AND json_extract(completed.payload_json, '$.id') = json_extract(events.payload_json, '$.id')
+                    AND json_extract(completed.payload_json, '$.providerInvocationId') = json_extract(events.payload_json, '$.providerInvocationId')
+                    AND json_extract(completed.payload_json, '$.providerRequestId') = json_extract(events.payload_json, '$.providerRequestId')
+                )
+              )
               AND (
                 payload_json LIKE '%skUserQuestion%'
                 OR payload_json LIKE '%skQuestionToolCall%'

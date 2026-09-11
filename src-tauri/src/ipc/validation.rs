@@ -115,6 +115,7 @@ string_newtype!(ProjectId);
 string_newtype!(WorkspaceId);
 string_newtype!(SessionId);
 string_newtype!(ApprovalId);
+string_newtype!(QuestionRequestId);
 string_newtype!(TerminalId);
 string_newtype!(Prompt);
 string_newtype!(BaseRef);
@@ -149,6 +150,7 @@ try_from_string!(ProjectId, |value| bounded_id("projectId", value));
 try_from_string!(WorkspaceId, |value| bounded_id("workspaceId", value));
 try_from_string!(SessionId, |value| bounded_id("sessionId", value));
 try_from_string!(ApprovalId, |value| bounded_id("approvalId", value));
+try_from_string!(QuestionRequestId, |value| bounded_id("requestId", value));
 try_from_string!(TerminalId, |value| non_empty("terminalId", value));
 try_from_string!(Prompt, validate_prompt);
 try_from_string!(BaseRef, |value| validate_git_ref("baseRef", value));
@@ -294,6 +296,15 @@ impl<'de> Deserialize<'de> for ApprovalId {
         D: serde::Deserializer<'de>,
     {
         ApprovalId::try_from(String::deserialize(deserializer)?).map_err(de_error)
+    }
+}
+
+impl<'de> Deserialize<'de> for QuestionRequestId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        QuestionRequestId::try_from(String::deserialize(deserializer)?).map_err(de_error)
     }
 }
 

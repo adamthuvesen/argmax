@@ -58,6 +58,8 @@ import type {
   ProviderSessionResizeInput,
   ProvidersCancelQueuedMessageInput,
   ProvidersSendQueuedMessageNowInput,
+  QuestionResolveResult,
+  QuestionsResolveInput,
   RegisterProjectInput,
   RemotePushCapability,
   RemotePushDevice,
@@ -333,6 +335,10 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       pending: () => invokeCommand<DashboardSnapshot["approvals"]>("approvals:pending"),
       resolve: (input: ResolveApprovalInput) =>
         invokeCommand<DashboardSnapshot["approvals"][number]>("approvals:resolve", input)
+    },
+    questions: {
+      resolve: (input: QuestionsResolveInput) =>
+        invokeCommand<QuestionResolveResult>("questions:resolve", input)
     },
     session: {
       eventsSince: (input: SessionEventsSinceInput) =>

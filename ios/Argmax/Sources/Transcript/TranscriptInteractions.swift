@@ -19,6 +19,9 @@ struct TranscriptSendContext: Equatable, Sendable {
 protocol TranscriptInteractionClient: Sendable {
     func sendInput(_ input: SendInputInput) async throws -> SendInputResult
     func terminateSession(sessionID: String) async throws -> HostOk
+    func resolveTranscriptQuestion(
+        _ input: ResolveTranscriptQuestionInput
+    ) async throws -> TranscriptQuestionResolution
     func resolveTranscriptApproval(
         approvalID: String,
         resolution: TranscriptApprovalResolution
@@ -29,10 +32,10 @@ extension BridgeClient: TranscriptInteractionClient {}
 
 /// Executes the write side of native transcript cards.
 ///
-/// Question and plan tools deliberately end their provider-side control call
-/// with a denial. Their answer arrives as the next user message, so an active
-/// probe must be stopped before sending or the bridge would queue the answer
-/// behind output that belongs after the question.
+/// Legacy question and plan tools end their provider-side control call with a
+/// denial, so their reply is a new user message. Codex's blocking question
+/// keeps the provider request alive and resolves it through the question
+/// broker instead, without stopping or starting a turn.
 @MainActor
 final class TranscriptInteractionCoordinator: ObservableObject {
     @Published private(set) var failure: String?
@@ -43,8 +46,37 @@ final class TranscriptInteractionCoordinator: ObservableObject {
         self.client = client
     }
 
-    func answerQuestion(_ answer: String, context: TranscriptSendContext) async -> Bool {
-        await sendAfterStopping(answer, context: context, agentMode: context.agentMode)
+    func answerQuestion(
+        _ response: TranscriptQuestionResponse,
+        card: TranscriptQuestionCard,
+        context: TranscriptSendContext
+    ) async -> Bool {
+        guard let requestID = card.requestID else {
+            return await sendAfterStopping(
+                response.displayText,
+                context: context,
+                agentMode: context.agentMode
+            )
+        }
+        return await resolveQuestion(
+            sessionID: card.sessionID ?? context.sessionID,
+            requestID: requestID,
+            answers: response.answers,
+            dismissed: nil
+        )
+    }
+
+    func dismissQuestion(
+        card: TranscriptQuestionCard,
+        context: TranscriptSendContext
+    ) async -> Bool {
+        guard let requestID = card.requestID else { return true }
+        return await resolveQuestion(
+            sessionID: card.sessionID ?? context.sessionID,
+            requestID: requestID,
+            answers: [:],
+            dismissed: true
+        )
     }
 
     func sendMessage(_ message: String, context: TranscriptSendContext) async -> Bool {
@@ -82,6 +114,27 @@ final class TranscriptInteractionCoordinator: ObservableObject {
 
     func clearFailure() {
         failure = nil
+    }
+
+    private func resolveQuestion(
+        sessionID: String,
+        requestID: String,
+        answers: [String: [String]],
+        dismissed: Bool?
+    ) async -> Bool {
+        failure = nil
+        do {
+            _ = try await client.resolveTranscriptQuestion(ResolveTranscriptQuestionInput(
+                sessionId: sessionID,
+                requestId: requestID,
+                answers: answers,
+                dismissed: dismissed
+            ))
+            return true
+        } catch {
+            failure = hostFailureMessage(error)
+            return false
+        }
     }
 
     private func sendAfterStopping(

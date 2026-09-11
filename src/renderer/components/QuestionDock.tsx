@@ -10,13 +10,21 @@ import {
   type JSX,
   type KeyboardEvent
 } from "react";
-import { formatAnswer, otherOptionIndex, type Question } from "../lib/questions.js";
+import {
+  formatAnswer,
+  hasOtherOption,
+  otherOptionIndex,
+  structuredAnswers,
+  type Question,
+  type QuestionAnswers
+} from "../lib/questions.js";
 
 export type QuestionDockProps = {
   questions: Question[];
-  onAnswer: (answerMarkdown: string) => void | Promise<boolean>;
-  /** Put the composer back so the reader can answer in their own words instead. */
-  onDismiss: () => void;
+  onAnswer: (answerText: string, answers: QuestionAnswers) => void | Promise<boolean>;
+  /** Close the legacy dock or dismiss a provider-native blocking request. */
+  onDismiss: () => void | Promise<boolean>;
+  dismissLabel?: string;
 };
 
 /**
@@ -30,12 +38,17 @@ export type QuestionDockProps = {
  * Several questions page rather than stack, so the panel is the same height
  * whether the agent asked one thing or four.
  *
- * Every question ends in an "Other" row. Picked, its label becomes a line to
- * type on, in the row's own type and on the row's own fill, so an answer in
- * the reader's words is the same kind of thing as a listed one — not a form
- * field bolted under the list.
+ * Questions that accept a free-form answer end in an "Other" row. Picked, its
+ * label becomes a line to type on, in the row's own type and on the row's own
+ * fill, so an answer in the reader's words is the same kind of thing as a
+ * listed one — not a form field bolted under the list.
  */
-function QuestionDockInner({ questions, onAnswer, onDismiss }: QuestionDockProps): JSX.Element | null {
+function QuestionDockInner({
+  questions,
+  onAnswer,
+  onDismiss,
+  dismissLabel = "Answer in your own words"
+}: QuestionDockProps): JSX.Element | null {
   const [selected, setSelected] = useState<number[][]>(() => questions.map(() => []));
   const [otherText, setOtherText] = useState<string[]>(() => questions.map(() => ""));
   const [page, setPage] = useState(0);
@@ -47,7 +60,7 @@ function QuestionDockInner({ questions, onAnswer, onDismiss }: QuestionDockProps
   const lastPage = questions.length - 1;
   const question = questions[page];
   const otherIndex = question ? otherOptionIndex(question) : 0;
-  const optionCount = otherIndex + 1;
+  const optionCount = question ? question.options.length + (hasOtherOption(question) ? 1 : 0) : 0;
   const picks = selected[page] ?? [];
   const otherPicked = picks.includes(otherIndex);
 
@@ -72,7 +85,10 @@ function QuestionDockInner({ questions, onAnswer, onDismiss }: QuestionDockProps
       const q = questions[index];
       if (!q) return false;
       const row = selected[index] ?? [];
-      const typedOk = !row.includes(otherOptionIndex(q)) || (otherText[index] ?? "").trim().length > 0;
+      const typedOk =
+        !hasOtherOption(q) ||
+        !row.includes(otherOptionIndex(q)) ||
+        (otherText[index] ?? "").trim().length > 0;
       return typedOk && (q.multiSelect ? row.length > 0 : row.length === 1);
     },
     [otherText, questions, selected]
@@ -93,10 +109,23 @@ function QuestionDockInner({ questions, onAnswer, onDismiss }: QuestionDockProps
     setSending(true);
     // Optimistic: the panel disappears with the turn it answers, so a failed
     // send has to hand the question back rather than leave a dead slab.
-    void Promise.resolve(onAnswer(formatAnswer(questions, selected, otherText))).then((ok) => {
+    void Promise.resolve(
+      onAnswer(
+        formatAnswer(questions, selected, otherText),
+        structuredAnswers(questions, selected, otherText)
+      )
+    ).then((ok) => {
       if (ok === false) setSending(false);
     });
   }, [answered, onAnswer, otherText, questions, selected, sending]);
+
+  const dismiss = useCallback((): void => {
+    if (sending) return;
+    setSending(true);
+    void Promise.resolve(onDismiss()).then((ok) => {
+      if (ok === false) setSending(false);
+    });
+  }, [onDismiss, sending]);
 
   const pick = useCallback(
     (optionIndex: number): void => {
@@ -139,7 +168,7 @@ function QuestionDockInner({ questions, onAnswer, onDismiss }: QuestionDockProps
       const { key } = event;
       if (key === "Escape") {
         event.preventDefault();
-        onDismiss();
+        dismiss();
         return;
       }
       if (key === "ArrowDown" || key === "ArrowUp") {
@@ -177,7 +206,7 @@ function QuestionDockInner({ questions, onAnswer, onDismiss }: QuestionDockProps
         else pick(focusedOption);
       }
     },
-    [answered, focusedOption, goToPage, lastPage, onDismiss, optionCount, page, pick, question, sending, submit]
+    [answered, dismiss, focusedOption, goToPage, lastPage, optionCount, page, pick, question, sending, submit]
   );
 
   const handleOtherChange = useCallback(
@@ -216,7 +245,7 @@ function QuestionDockInner({ questions, onAnswer, onDismiss }: QuestionDockProps
   // The arrow is a promise, not decoration: it appears only on the row whose
   // pick moves the panel to the next question.
   const picksAdvance = !question.multiSelect && page < lastPage;
-  const rows = [...question.options, null];
+  const rows = hasOtherOption(question) ? [...question.options, null] : [...question.options];
 
   return (
     <div className="session-input question-dock" data-type-scale="composer" aria-label="Question from agent">
@@ -251,9 +280,10 @@ function QuestionDockInner({ questions, onAnswer, onDismiss }: QuestionDockProps
           <button
             type="button"
             className="question-dock-close"
-            aria-label="Answer in your own words"
-            title="Answer in your own words"
-            onClick={onDismiss}
+            aria-label={dismissLabel}
+            title={dismissLabel}
+            disabled={sending}
+            onClick={dismiss}
           >
             <X size={15} aria-hidden="true" />
           </button>
@@ -292,7 +322,7 @@ function QuestionDockInner({ questions, onAnswer, onDismiss }: QuestionDockProps
                     <input
                       ref={otherInputRef}
                       className="question-dock-other-input"
-                      type="text"
+                      type={question.isSecret ? "password" : "text"}
                       value={otherText[page] ?? ""}
                       placeholder="Type your own answer"
                       aria-label="Your own answer"

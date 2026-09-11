@@ -145,6 +145,8 @@ export type ComposerAttachment = Bindings.ComposerAttachmentInput;
 export type AttachmentSaveImageInput = Bindings.AttachmentsSaveImageInput;
 export type AttachmentSaveImageResult = Bindings.SaveImageResult;
 export type ResolveApprovalInput = Bindings.ApprovalsResolveInput;
+export type QuestionsResolveInput = Bindings.QuestionsResolveInput;
+export type QuestionResolveResult = Bindings.QuestionResolveResult;
 export type SessionEventsSinceInput = OptionalNullable<
   Bindings.SessionEventsSinceInput,
   "eventCursor" | "rawOutputCursor" | "changeCursor"
@@ -497,6 +499,9 @@ export interface ArgmaxApi {
   approvals: {
     pending: () => Promise<ApprovalRequest[]>;
     resolve: (input: ResolveApprovalInput) => Promise<ApprovalRequest>;
+  };
+  questions: {
+    resolve: (input: QuestionsResolveInput) => Promise<QuestionResolveResult>;
   };
   session: {
     eventsSince: (input: SessionEventsSinceInput) => Promise<SessionEventsSinceResult>;

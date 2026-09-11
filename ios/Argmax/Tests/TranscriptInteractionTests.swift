@@ -34,6 +34,60 @@ final class TranscriptInteractionTests: XCTestCase {
         )
     }
 
+    func testCodexQuestionResponseKeepsQuestionIDsAndWireAnswerShapes() {
+        let questions = [
+            TranscriptQuestion(
+                question: "Where should it run?",
+                header: "Location",
+                options: [TranscriptQuestionOption(label: "Current checkout", detail: nil)],
+                allowsMultiple: false,
+                responseID: "location",
+                allowsOther: false
+            ),
+            TranscriptQuestion(
+                question: "Add context",
+                header: "Context",
+                options: [],
+                allowsMultiple: false,
+                responseID: "context",
+                allowsOther: true
+            )
+        ]
+
+        let response = transcriptQuestionResponse(
+            questions: questions,
+            selections: [[0], [0]],
+            otherText: ["", "Keep my draft"]
+        )
+
+        XCTAssertEqual(response.answers, [
+            "location": ["Current checkout"],
+            "context": ["user_note: Keep my draft"]
+        ])
+    }
+
+    func testSecretQuestionResponseRedactsItsDisplayText() {
+        let question = TranscriptQuestion(
+            question: "Enter the token",
+            header: "Token",
+            options: [],
+            allowsMultiple: false,
+            responseID: "token",
+            allowsOther: true,
+            isSecret: true
+        )
+
+        let response = transcriptQuestionResponse(
+            questions: [question],
+            selections: [[0]],
+            otherText: ["super-secret"]
+        )
+
+        XCTAssertEqual(response.answers, ["token": ["user_note: super-secret"]])
+        XCTAssertEqual(response.displayText, "Token: (hidden)")
+        XCTAssertFalse(response.displayText.contains("super-secret"))
+    }
+
     func testOtherRequiresTextAndMultipleChoiceRequiresAPick() {
         let question = TranscriptQuestion(
             question: "Choose checks",
@@ -111,7 +165,7 @@ final class TranscriptInteractionTests: XCTestCase {
     }
 
     @MainActor
-    func testQuestionResponseStopsBeforeSendingAndPreservesMode() async {
+    func testLegacyQuestionResponseStopsBeforeSendingAndPreservesMode() async {
         let client = InteractionClientSpy()
         let coordinator = TranscriptInteractionCoordinator(client: client)
         let context = TranscriptSendContext(
@@ -124,10 +178,88 @@ final class TranscriptInteractionTests: XCTestCase {
             isRunning: true
         )
 
-        let sent = await coordinator.answerQuestion("Scope: iPhone", context: context)
+        let card = TranscriptQuestionCard(
+            id: "question-1",
+            toolUseId: "ask-1",
+            createdAt: "2026-09-12T08:00:00Z",
+            questions: [],
+            isOutstanding: true
+        )
+        let sent = await coordinator.answerQuestion(
+            TranscriptQuestionResponse(displayText: "Scope: iPhone", answers: [:]),
+            card: card,
+            context: context
+        )
         let calls = await client.calls
         XCTAssertTrue(sent)
         XCTAssertEqual(calls, ["stop:session-1", "send:Scope: iPhone:plan"])
+    }
+
+    @MainActor
+    func testCodexQuestionResponseResolvesTheLiveRequestWithoutStoppingTheTurn() async {
+        let client = InteractionClientSpy()
+        let coordinator = TranscriptInteractionCoordinator(client: client)
+        let context = TranscriptSendContext(
+            sessionID: "session-context",
+            provider: "codex",
+            modelLabel: "GPT",
+            modelID: "gpt-5",
+            reasoningEffort: nil,
+            agentMode: "auto",
+            isRunning: false
+        )
+        let card = TranscriptQuestionCard(
+            id: "question-1",
+            toolUseId: "ask-1",
+            createdAt: "2026-09-12T08:00:00Z",
+            questions: [],
+            isOutstanding: true,
+            sessionID: "session-request",
+            requestID: "request-1"
+        )
+
+        let sent = await coordinator.answerQuestion(
+            TranscriptQuestionResponse(
+                displayText: "Location: Current checkout",
+                answers: ["location": ["Current checkout"]]
+            ),
+            card: card,
+            context: context
+        )
+        let calls = await client.calls
+
+        XCTAssertTrue(sent)
+        XCTAssertEqual(calls, ["question:session-request:request-1:location=Current checkout:answered"])
+    }
+
+    @MainActor
+    func testDismissingCodexQuestionResolvesWithNoAnswers() async {
+        let client = InteractionClientSpy()
+        let coordinator = TranscriptInteractionCoordinator(client: client)
+        let context = TranscriptSendContext(
+            sessionID: "session-1",
+            provider: "codex",
+            modelLabel: "GPT",
+            modelID: "gpt-5",
+            reasoningEffort: nil,
+            agentMode: "auto",
+            isRunning: false
+        )
+        let card = TranscriptQuestionCard(
+            id: "question-1",
+            toolUseId: "ask-1",
+            createdAt: "2026-09-12T08:00:00Z",
+            questions: [],
+            isOutstanding: true,
+            sessionID: "session-1",
+            requestID: "request-1"
+        )
+
+        let dismissed = await coordinator.dismissQuestion(card: card, context: context)
+        let calls = await client.calls
+
+        XCTAssertTrue(dismissed)
+        XCTAssertEqual(calls, ["question:session-1:request-1::dismissed"])
     }
 
     @MainActor
@@ -174,6 +306,21 @@ private actor InteractionClientSpy: TranscriptInteractionClient {
     func terminateSession(sessionID: String) async throws -> HostOk {
         calls.append("stop:\(sessionID)")
         return HostOk(ok: true)
+    }
+
+    func resolveTranscriptQuestion(
+        _ input: ResolveTranscriptQuestionInput
+    ) async throws -> TranscriptQuestionResolution {
+        let answers = input.answers.keys.sorted().map { key in
+            "\(key)=\(input.answers[key, default: []].joined(separator: ","))"
+        }.joined(separator: ";")
+        let status = input.dismissed == true ? "dismissed" : "answered"
+        calls.append("question:\(input.sessionId):\(input.requestId):\(answers):\(status)")
+        return TranscriptQuestionResolution(
+            sessionId: input.sessionId,
+            requestId: input.requestId,
+            status: status
+        )
     }
 
     func resolveTranscriptApproval(

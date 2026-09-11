@@ -85,6 +85,7 @@ export type AppTestMocks = {
   launchProvider: AppTestMockFn<ArgmaxApi["providers"]["launch"]>;
   approvalsPending: AppTestMockFn<ArgmaxApi["approvals"]["pending"]>;
   approvalsResolve: AppTestMockFn<ArgmaxApi["approvals"]["resolve"]>;
+  questionsResolve: AppTestMockFn<ArgmaxApi["questions"]["resolve"]>;
   pickProjectFolder: AppTestMockFn<ArgmaxApi["projects"]["pickFolder"]>;
   listBranches: AppTestMockFn<ArgmaxApi["projects"]["listBranches"]>;
   listChangedFiles: AppTestMockFn<ArgmaxApi["review"]["listChangedFiles"]>;
@@ -129,6 +130,7 @@ export let dashboardDeltaUnsubscribe: AppTestMocks["dashboardDeltaUnsubscribe"];
 export let launchProvider: AppTestMocks["launchProvider"];
 let approvalsPending: AppTestMocks["approvalsPending"];
 let approvalsResolve: AppTestMocks["approvalsResolve"];
+export let questionsResolve: AppTestMocks["questionsResolve"];
 export let pickProjectFolder: AppTestMocks["pickProjectFolder"];
 export let listBranches: AppTestMocks["listBranches"];
 export let listChangedFiles: AppTestMocks["listChangedFiles"];
@@ -227,6 +229,9 @@ export function setupAppTestMocks(): void {
       createdAt: "2026-05-14T10:00:00.000Z",
       resolvedAt: new Date().toISOString()
     })
+  );
+  questionsResolve = vi.fn<ArgmaxApi["questions"]["resolve"]>().mockImplementation(({ sessionId, requestId, dismissed }) =>
+    Promise.resolve({ sessionId, requestId, status: dismissed ? "dismissed" : "answered" })
   );
   pickProjectFolder = vi.fn<ArgmaxApi["projects"]["pickFolder"]>().mockResolvedValue({
     cancelled: false,
@@ -569,6 +574,9 @@ export function setupAppTestMocks(): void {
     approvals: {
       pending: approvalsPending,
       resolve: approvalsResolve
+    },
+    questions: {
+      resolve: questionsResolve
     },
     session: {
       eventsSince: sessionEventsSince,

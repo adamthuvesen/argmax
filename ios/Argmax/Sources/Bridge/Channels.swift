@@ -269,6 +269,23 @@ struct SendInputResult: Decodable, Sendable {
     var queued: Bool
 }
 
+/// `QuestionsResolveInput`. A live Codex request stays inside its original
+/// turn, so the phone returns the provider's question ids and selected labels
+/// instead of sending a new prose message.
+struct ResolveTranscriptQuestionInput: Encodable, Sendable {
+    var sessionId: String
+    var requestId: String
+    var answers: [String: [String]]
+    var dismissed: Bool?
+}
+
+/// The broker's terminal state for one live question request.
+struct TranscriptQuestionResolution: Decodable, Sendable {
+    var sessionId: String
+    var requestId: String
+    var status: String
+}
+
 /// `ProvidersTerminateInput`.
 struct TerminateSessionInput: Encodable, Sendable {
     var sessionId: String
@@ -597,6 +614,12 @@ extension BridgeClient {
     @discardableResult
     func sendInput(_ input: SendInputInput) async throws -> SendInputResult {
         try await request("providers:send-input", input: input, as: SendInputResult.self)
+    }
+
+    func resolveTranscriptQuestion(
+        _ input: ResolveTranscriptQuestionInput
+    ) async throws -> TranscriptQuestionResolution {
+        try await request("questions:resolve", input: input, as: TranscriptQuestionResolution.self)
     }
 
     /// Store one picked image on the Mac, answering with the path the send

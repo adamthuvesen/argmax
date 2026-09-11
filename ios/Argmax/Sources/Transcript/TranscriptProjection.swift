@@ -21,7 +21,7 @@ enum TranscriptProjection {
         var activeTurnID = session.map { "opening-\($0.id)" } ?? "opening"
         var answerSegment = 0
         var answerOpen = false
-        var pickedQuestionInTurn = false
+        var pickedLegacyQuestionInTurn = false
         var pickedPlanInTurn = false
 
         if !events.contains(where: { $0.type == "user.message" }),
@@ -57,7 +57,7 @@ enum TranscriptProjection {
                     activeTurnID = event.id
                     answerSegment = 0
                     answerOpen = false
-                    pickedQuestionInTurn = false
+                    pickedLegacyQuestionInTurn = false
                     pickedPlanInTurn = false
                 }
                 items.append(.user(TranscriptMessage(
@@ -105,14 +105,24 @@ enum TranscriptProjection {
             if event.type == "command.started", let tool = toolStarts[event.id] {
                 let normalized = normalizedToolName(tool.name)
                 if isQuestionTool(normalized) {
-                    if !pickedQuestionInTurn, let questions = questions(from: tool.inputObject) {
-                        pickedQuestionInTurn = true
+                    let requestID = tool.inputObject["requestId"]?.string
+                        ?? payload["requestId"]?.string
+                    if (requestID != nil || !pickedLegacyQuestionInTurn),
+                       let questions = questions(from: tool.inputObject) {
+                        let sessionIsActive = session.map {
+                            $0.state == .running || $0.state == .waiting
+                        } ?? true
+                        if requestID == nil { pickedLegacyQuestionInTurn = true }
                         items.append(.question(TranscriptQuestionCard(
                             id: "question-\(tool.id)",
                             toolUseId: tool.toolUseId,
                             createdAt: tool.createdAt,
                             questions: questions,
-                            isOutstanding: tool.createdAt > lastUserAt
+                            isOutstanding: requestID == nil
+                                ? tool.createdAt > lastUserAt
+                                : tool.completedAt == nil && sessionIsActive,
+                            sessionID: event.sessionId,
+                            requestID: requestID
                         )))
                     }
                     continue
@@ -258,20 +268,32 @@ enum TranscriptProjection {
     private static func suppressAssistantAfterCards(_ events: [TranscriptEvent]) -> [TranscriptEvent] {
         let tools = correlatedTools(events: events, sessionRunning: false)
         var cardStarted = false
-        var pickedQuestion = false
+        var pickedLegacyQuestion = false
         var pickedPlan = false
+        var activeBlockingQuestions = Set<String>()
         return events.filter { event in
             if event.type == "user.message", event.payloadObject["delivery"]?.string != "steer" {
                 cardStarted = false
-                pickedQuestion = false
+                pickedLegacyQuestion = false
                 pickedPlan = false
+                activeBlockingQuestions.removeAll()
                 return true
             }
             if event.type == "command.started", let tool = tools[event.id] {
                 let name = normalizedToolName(tool.name)
-                if isQuestionTool(name), !pickedQuestion, questions(from: tool.inputObject) != nil {
-                    pickedQuestion = true
-                    if event.payloadObject["delivery"]?.string != "async" { cardStarted = true }
+                if isQuestionTool(name), questions(from: tool.inputObject) != nil {
+                    let requestID = tool.inputObject["requestId"]?.string
+                        ?? event.payloadObject["requestId"]?.string
+                    let delivery = tool.inputObject["delivery"]?.string
+                        ?? event.payloadObject["delivery"]?.string
+                    if requestID != nil {
+                        if delivery == "blocking" {
+                            activeBlockingQuestions.insert(tool.toolUseId)
+                        }
+                    } else if !pickedLegacyQuestion {
+                        pickedLegacyQuestion = true
+                        if delivery != "async" { cardStarted = true }
+                    }
                 }
                 if isPlanTool(name), !pickedPlan, tool.status != .running,
                    let plan = tool.inputObject["plan"]?.string,
@@ -281,7 +303,14 @@ enum TranscriptProjection {
                 }
                 return true
             }
-            if cardStarted,
+            if event.type == "command.completed" {
+                let payload = event.payloadObject
+                if let toolUseID = string(payload, keys: ["tool_use_id", "id", "call_id"]) {
+                    activeBlockingQuestions.remove(toolUseID)
+                }
+                return true
+            }
+            if (cardStarted || !activeBlockingQuestions.isEmpty),
                (event.type == "message.completed" || event.type == "message.delta"),
                event.payloadObject["thinking"]?.bool != true {
                 return false
@@ -608,7 +637,9 @@ enum TranscriptProjection {
 
     private static func isFailed(_ payload: [String: TranscriptJSONValue]) -> Bool {
         let status = payload["status"]?.string?.lowercased()
-        if status == "failed" || status == "error" || status == "cancelled" { return true }
+        // A cancelled call is an interruption, not a failure — the desktop's
+        // `detectToolError` does not count one either.
+        if status == "failed" || status == "error" { return true }
         if let exitCode = payload["exit_code"]?.number, exitCode != 0 { return true }
         if let error = payload["error"] {
             if error.bool == true { return true }
@@ -649,10 +680,11 @@ enum TranscriptProjection {
         let parsed = raw.compactMap { value -> TranscriptQuestion? in
             guard let object = value.object,
                   let question = object["question"]?.string,
-                  !question.isEmpty,
-                  let rawOptions = object["options"]?.array,
-                  rawOptions.count <= 4
+                  !question.isEmpty
             else { return nil }
+            let responseID = object["id"]?.string
+            let rawOptions = object["options"]?.array ?? []
+            guard rawOptions.count <= 4 else { return nil }
             let options = rawOptions.compactMap { option -> TranscriptQuestionOption? in
                 guard let object = option.object,
                       let label = object["label"]?.string,
@@ -660,13 +692,24 @@ enum TranscriptProjection {
                 else { return nil }
                 return TranscriptQuestionOption(label: label, detail: object["description"]?.string)
             }
-            guard !options.isEmpty else { return nil }
+            if responseID != nil, options.count != rawOptions.count { return nil }
+            let freeformOnly = responseID != nil && rawOptions.isEmpty
+            guard !options.isEmpty || freeformOnly else { return nil }
             return TranscriptQuestion(
                 question: question,
                 header: object["header"]?.string ?? "",
                 options: options,
-                allowsMultiple: object["multiSelect"]?.bool == true
+                allowsMultiple: responseID == nil && object["multiSelect"]?.bool == true,
+                responseID: responseID,
+                allowsOther: responseID == nil || object["isOther"]?.bool == true || freeformOnly,
+                isSecret: responseID != nil && object["isSecret"]?.bool == true
             )
+        }
+        let responseIDs = parsed.compactMap(\.responseID)
+        if !responseIDs.isEmpty,
+           (parsed.count != raw.count || responseIDs.count != raw.count
+                || Set(responseIDs).count != responseIDs.count) {
+            return nil
         }
         return parsed.isEmpty ? nil : parsed
     }

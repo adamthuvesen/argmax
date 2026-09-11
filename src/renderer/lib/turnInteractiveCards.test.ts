@@ -53,6 +53,31 @@ describe("turnInteractiveCards", () => {
     expect(hiddenToolIds).toEqual(new Set(["q1", "q2"]));
   });
 
+  it("keeps a blocking Codex question live only while its request is running", () => {
+    const blocking = (status: ToolCall["status"]): TurnToolItem[] => [
+      {
+        kind: "tool",
+        tool: tool({
+          id: "blocking-q",
+          status,
+          inputFull: {
+            delivery: "blocking",
+            requestId: "request-1",
+            questions: [{ id: "scope", question: "Pick one?", header: "Scope", options: [{ label: "A" }] }]
+          }
+        })
+      }
+    ];
+
+    expect(collectAskUserQuestionState(blocking("running")).tool).toMatchObject({
+      id: "blocking-q",
+      delivery: "blocking",
+      requestId: "request-1"
+    });
+    expect(collectAskUserQuestionState(blocking("done")).tool).toBeNull();
+    expect(collectAskUserQuestionState(blocking("done")).hiddenToolIds).toEqual(new Set(["blocking-q"]));
+  });
+
   it("hides malformed AskUserQuestion attempts even when no card can render", () => {
     const items: TurnToolItem[] = [
       {

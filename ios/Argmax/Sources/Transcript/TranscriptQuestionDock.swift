@@ -1,26 +1,62 @@
 import SwiftUI
 
+struct TranscriptQuestionResponse: Equatable, Sendable {
+    var displayText: String
+    var answers: [String: [String]]
+}
+
+private func transcriptQuestionLabels(
+    question: TranscriptQuestion,
+    selections: [Int],
+    otherText: String
+) -> [String] {
+    selections.compactMap { optionIndex -> String? in
+        if question.options.indices.contains(optionIndex) {
+            return question.options[optionIndex].label
+        }
+        if question.allowsOther, optionIndex == question.options.count {
+            let typed = otherText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !typed.isEmpty else { return nil }
+            return question.responseID == nil ? typed : "user_note: \(typed)"
+        }
+        return nil
+    }
+}
+
+func transcriptQuestionResponse(
+    questions: [TranscriptQuestion],
+    selections: [[Int]],
+    otherText: [String]
+) -> TranscriptQuestionResponse {
+    var answers: [String: [String]] = [:]
+    let lines = questions.enumerated().map { questionIndex, question in
+        let picks = selections.indices.contains(questionIndex) ? selections[questionIndex] : []
+        let typed = otherText.indices.contains(questionIndex) ? otherText[questionIndex] : ""
+        let labels = transcriptQuestionLabels(
+            question: question,
+            selections: picks,
+            otherText: typed
+        )
+        if let responseID = question.responseID {
+            answers[responseID] = labels
+        }
+        let header = question.header.isEmpty ? question.question : question.header
+        let displayed = question.isSecret && !labels.isEmpty ? "(hidden)" : labels.joined(separator: ", ")
+        return "\(header): \(displayed.isEmpty ? "(no selection)" : displayed)"
+    }
+    return TranscriptQuestionResponse(displayText: lines.joined(separator: "\n"), answers: answers)
+}
+
 func transcriptQuestionAnswer(
     questions: [TranscriptQuestion],
     selections: [[Int]],
     otherText: [String]
 ) -> String {
-    questions.enumerated().map { questionIndex, question in
-        let picks = selections.indices.contains(questionIndex) ? selections[questionIndex] : []
-        let labels = picks.compactMap { optionIndex -> String? in
-            if question.options.indices.contains(optionIndex) {
-                return question.options[optionIndex].label
-            }
-            if optionIndex == question.options.count,
-               otherText.indices.contains(questionIndex) {
-                let typed = otherText[questionIndex].trimmingCharacters(in: .whitespacesAndNewlines)
-                return typed.isEmpty ? nil : typed
-            }
-            return nil
-        }
-        let header = question.header.isEmpty ? question.question : question.header
-        return "\(header): \(labels.isEmpty ? "(no selection)" : labels.joined(separator: ", "))"
-    }.joined(separator: "\n")
+    transcriptQuestionResponse(
+        questions: questions,
+        selections: selections,
+        otherText: otherText
+    ).displayText
 }
 
 func transcriptQuestionIsAnswered(
@@ -30,19 +66,20 @@ func transcriptQuestionIsAnswered(
 ) -> Bool {
     let hasRequiredCount = question.allowsMultiple ? !selections.isEmpty : selections.count == 1
     guard hasRequiredCount else { return false }
-    if selections.contains(question.options.count) {
+    if question.allowsOther, selections.contains(question.options.count) {
         return !otherText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
     return true
 }
 
 /// A live provider question replaces the ordinary composer in the same slot.
-/// Dismiss means “answer in my own words”: the card closes without sending so
-/// the composer comes back with any draft the person already had.
+/// Legacy dismiss means “answer in my own words”. A blocking Codex dismiss
+/// resolves the live request with no answers. Both paths restore the same
+/// mounted composer, including any draft the person already had.
 struct TranscriptQuestionDock: View {
     let card: TranscriptQuestionCard
-    let onAnswer: (String) async -> Bool
-    let onDismiss: () -> Void
+    let onAnswer: (TranscriptQuestionResponse) async -> Bool
+    let onDismiss: () async -> Bool
 
     @State private var page = 0
     @State private var selections: [[Int]]
@@ -53,8 +90,8 @@ struct TranscriptQuestionDock: View {
 
     init(
         card: TranscriptQuestionCard,
-        onAnswer: @escaping (String) async -> Bool,
-        onDismiss: @escaping () -> Void
+        onAnswer: @escaping (TranscriptQuestionResponse) async -> Bool,
+        onDismiss: @escaping () async -> Bool
     ) {
         self.card = card
         self.onAnswer = onAnswer
@@ -76,21 +113,30 @@ struct TranscriptQuestionDock: View {
                     ForEach(Array(question.options.enumerated()), id: \.offset) { index, option in
                         optionRow(index: index, label: option.label, detail: option.detail)
                     }
-                    optionRow(index: question.options.count, label: "Other", detail: nil)
+                    if question.allowsOther {
+                        optionRow(index: question.options.count, label: "Other", detail: nil)
+                    }
                 }
 
-                if selectedOnPage.contains(question.options.count) {
-                    TextField("Type your own answer", text: otherBinding)
-                        .textFieldStyle(.plain)
-                        .font(.body)
-                        .foregroundStyle(Theme.ink)
-                        .padding(.horizontal, Spacing.row)
-                        .frame(minHeight: 48)
-                        .background(Theme.ground, in: .rect(cornerRadius: Radius.control, style: .continuous))
-                        .focused($focusedOtherPage, equals: page)
-                        .submitLabel(page == card.questions.count - 1 ? .send : .next)
-                        .onSubmit { advanceOrSubmit() }
-                        .accessibilityLabel("Your own answer")
+                if question.allowsOther, selectedOnPage.contains(question.options.count) {
+                    Group {
+                        if question.isSecret {
+                            SecureField("Type your own answer", text: otherBinding)
+                        } else {
+                            TextField("Type your own answer", text: otherBinding)
+                        }
+                    }
+                    .textFieldStyle(.plain)
+                    .font(.body)
+                    .foregroundStyle(Theme.ink)
+                    .padding(.horizontal, Spacing.row)
+                    .frame(minHeight: 48)
+                    .background(Theme.ground, in: .rect(cornerRadius: Radius.control, style: .continuous))
+                    .focused($focusedOtherPage, equals: page)
+                    .submitLabel(page == card.questions.count - 1 ? .send : .next)
+                    .onSubmit { advanceOrSubmit() }
+                    .autocorrectionDisabled(question.isSecret)
+                    .accessibilityLabel(question.isSecret ? "Secret answer" : "Your own answer")
                 }
 
                 if question.allowsMultiple {
@@ -173,13 +219,13 @@ struct TranscriptQuestionDock: View {
             }
             Button {
                 Haptics.light()
-                onDismiss()
+                dismiss()
             } label: {
                 Image(systemName: "xmark").frame(width: 34, height: 34)
             }
             .buttonStyle(PressDim())
             .disabled(sending)
-            .accessibilityLabel("Answer in your own words")
+            .accessibilityLabel(card.requestID == nil ? "Answer in your own words" : "Dismiss question")
         }
         .foregroundStyle(Theme.muted)
     }
@@ -274,17 +320,33 @@ struct TranscriptQuestionDock: View {
         sending = true
         focusedOtherPage = nil
         failure = nil
-        let answer = transcriptQuestionAnswer(
+        let response = transcriptQuestionResponse(
             questions: card.questions,
             selections: selections,
             otherText: otherText
         )
         Task {
-            if await onAnswer(answer) {
+            if await onAnswer(response) {
                 Haptics.success()
             } else {
                 sending = false
                 failure = "Your answer was not sent. Try again."
+                Haptics.warning()
+            }
+        }
+    }
+
+    private func dismiss() {
+        guard !sending else { return }
+        sending = true
+        focusedOtherPage = nil
+        failure = nil
+        Task {
+            if await onDismiss() {
+                Haptics.light()
+            } else {
+                sending = false
+                failure = "The question could not be dismissed. Try again."
                 Haptics.warning()
             }
         }

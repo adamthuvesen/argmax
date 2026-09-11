@@ -12,6 +12,7 @@ npm run doctor
 npm run verify -- --scenario chat-resume
 npm run verify -- --scenario persistent-subagent --native off
 npm run verify -- --scenario persistent-codex-subagent --native off
+npm run verify -- --scenario codex-user-input
 npm run verify -- --scenario persistent-opencode-subagent --native off
 npm run verify -- --scenario persistent-cursor-subagent --native off
 npm run verify -- --scenario cancellation
@@ -23,6 +24,11 @@ checkout, creates a temporary project and app profile, and drives the real
 backend with a scripted provider. Native UI verification is required by
 default. The fixture exercises the production launcher and normalizer without
 calling a paid provider. Other providers remain unavailable in this profile.
+
+`codex-user-input` checks a synchronous Codex question through the production
+app-server adapter, its visible question dock, and `questions:resolve`. The
+fixture completes only after receiving the expected structured answer on the
+original JSON-RPC request.
 
 `chat-resume` checks streaming and a follow-up turn. `cancellation` checks that
 a running provider can be stopped. `provider-error` checks that a provider

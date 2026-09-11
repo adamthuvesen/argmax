@@ -31,6 +31,7 @@ use super::{mcp_injection, AgentMode, PermissionMode, ProviderId, ProviderLaunch
 use crate::approvals::service::ApprovalService;
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::time::now_iso;
+use crate::questions::service::QuestionService;
 use crate::session_control::{
     SessionLaunchProcessConfig, SESSION_LAUNCH_SOCKET_ENV, SESSION_LAUNCH_TOKEN_ENV,
 };
@@ -50,6 +51,7 @@ pub async fn launch_turn(
     input: &ProviderLaunchInput,
     session_launch: Option<&SessionLaunchProcessConfig>,
     approvals: Arc<ApprovalService>,
+    questions: Arc<QuestionService>,
     on_event: EventCallback,
 ) -> ArgmaxResult<Arc<dyn ProviderRuntimeHandle>> {
     let mut environment_overrides = vec![("NO_COLOR".to_string(), "1".to_string())];
@@ -66,6 +68,8 @@ pub async fn launch_turn(
             "--stdio",
             "-c",
             "tools.update_plan.enabled=true",
+            "-c",
+            "tools.experimental_request_user_input.enabled=true",
         ])
         .current_dir(&input.workspace_path)
         .env_clear()
@@ -112,7 +116,7 @@ pub async fn launch_turn(
                     "title": "Argmax",
                     "version": env!("CARGO_PKG_VERSION"),
                 },
-                "capabilities": {},
+                "capabilities": { "experimentalApi": true },
             }),
         )
         .await?;
@@ -205,6 +209,7 @@ pub async fn launch_turn(
     let session_id = input.session_id.clone();
     let invocation_id = Uuid::new_v4().to_string();
     let approvals: Arc<dyn NativeApprovalBroker> = approvals;
+    let questions: Arc<dyn NativeQuestionBroker> = questions;
     tokio::spawn(async move {
         let mut translation = EventTranslation::default();
         let mut scope = TurnScope::new(&thread_id, &turn_id);
@@ -224,10 +229,10 @@ pub async fn launch_turn(
                             message,
                             Arc::clone(&rpc),
                             Arc::clone(&approvals),
+                            Arc::clone(&questions),
                             session_id.clone(),
                             invocation_id.clone(),
-                            thread_id.clone(),
-                            turn_id.clone(),
+                            (thread_id.clone(), turn_id.clone()),
                         );
                         continue;
                     }
@@ -602,6 +607,28 @@ trait NativeApprovalBroker: Send + Sync {
     ) -> BoxFuture<'a, ArgmaxResult<bool>>;
 }
 
+trait NativeQuestionBroker: Send + Sync {
+    fn request<'a>(
+        &'a self,
+        session_id: &'a str,
+        invocation_id: &'a str,
+        request_id: &'a str,
+        params: &'a Value,
+    ) -> BoxFuture<'a, ArgmaxResult<Value>>;
+}
+
+impl NativeQuestionBroker for QuestionService {
+    fn request<'a>(
+        &'a self,
+        session_id: &'a str,
+        invocation_id: &'a str,
+        request_id: &'a str,
+        params: &'a Value,
+    ) -> BoxFuture<'a, ArgmaxResult<Value>> {
+        Box::pin(self.request_native(session_id, invocation_id, request_id, params))
+    }
+}
+
 impl NativeApprovalBroker for ApprovalService {
     fn request<'a>(
         &'a self,
@@ -626,15 +653,17 @@ fn spawn_server_request(
     request: Value,
     rpc: Arc<RpcPeer>,
     approvals: Arc<dyn NativeApprovalBroker>,
+    questions: Arc<dyn NativeQuestionBroker>,
     session_id: String,
     invocation_id: String,
-    root_thread_id: String,
-    root_turn_id: String,
+    root_turn: (String, String),
 ) {
     tokio::spawn(async move {
+        let (root_thread_id, root_turn_id) = root_turn;
         let response = server_request_response(
             &request,
             approvals.as_ref(),
+            questions.as_ref(),
             &session_id,
             &invocation_id,
             &root_thread_id,
@@ -650,6 +679,7 @@ fn spawn_server_request(
 async fn server_request_response(
     request: &Value,
     approvals: &dyn NativeApprovalBroker,
+    questions: &dyn NativeQuestionBroker,
     session_id: &str,
     invocation_id: &str,
     root_thread_id: &str,
@@ -663,17 +693,13 @@ async fn server_request_response(
         "item/commandExecution/requestApproval"
             | "item/fileChange/requestApproval"
             | "item/permissions/requestApproval"
+            | "item/tool/requestUserInput"
     ) {
-        // The text is what the model reads back, so the question tool's says
-        // how to ask instead: in prose, then end the turn for the reply.
-        let message = if method == "item/tool/requestUserInput" {
-            "Argmax does not show Codex's request_user_input. Ask the question in your reply \
-             and end the turn; the user's answer arrives as the next message."
-                .to_string()
-        } else {
-            format!("Argmax does not support Codex app-server request {method}")
-        };
-        return rpc_error(id, -32601, message);
+        return rpc_error(
+            id,
+            -32601,
+            format!("Argmax does not support Codex app-server request {method}"),
+        );
     }
     let Some(request_thread_id) = params.get("threadId").and_then(Value::as_str) else {
         return rpc_error(id, -32602, "Approval request has no threadId");
@@ -689,6 +715,15 @@ async fn server_request_response(
     let Some(request_id) = request.get("id").and_then(request_id) else {
         return rpc_error(id, -32602, "Approval request has no usable id");
     };
+    if method == "item/tool/requestUserInput" {
+        return match questions
+            .request(session_id, invocation_id, &request_id, params)
+            .await
+        {
+            Ok(result) => json!({"jsonrpc":"2.0", "id":id, "result":result}),
+            Err(error) => rpc_error(id, -32001, error.to_string()),
+        };
+    }
     let mut command = if method == "item/permissions/requestApproval" {
         let Some(permissions) = params.get("permissions").filter(|value| value.is_object()) else {
             return rpc_error(id, -32602, "Permission request has no permission profile");
@@ -749,7 +784,11 @@ fn command_text(value: Option<&Value>) -> Option<String> {
 }
 
 fn request_id(value: &Value) -> Option<String> {
-    (value.is_string() || value.is_i64() || value.is_u64()).then(|| value.to_string())
+    match value {
+        Value::String(id) => Some(id.clone()),
+        Value::Number(id) => Some(id.to_string()),
+        _ => None,
+    }
 }
 
 fn rpc_error(id: Value, code: i64, message: impl Into<String>) -> Value {
@@ -1446,12 +1485,35 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct FakeQuestion {
+        calls: Mutex<Vec<(String, String)>>,
+        response: Value,
+    }
+
+    impl NativeQuestionBroker for FakeQuestion {
+        fn request<'a>(
+            &'a self,
+            _session_id: &'a str,
+            _invocation_id: &'a str,
+            request_id: &'a str,
+            params: &'a Value,
+        ) -> BoxFuture<'a, ArgmaxResult<Value>> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push((request_id.to_string(), params["itemId"].to_string()));
+            Box::pin(async move { Ok(self.response.clone()) })
+        }
+    }
+
     #[tokio::test]
     async fn command_approval_roundtrip_returns_the_users_decision() {
         let approvals = FakeApproval {
             allow: true,
             ..FakeApproval::default()
         };
+        let questions = FakeQuestion::default();
         let response = server_request_response(
             &json!({
                 "jsonrpc": "2.0",
@@ -1466,6 +1528,7 @@ mod tests {
                 }
             }),
             &approvals,
+            &questions,
             "session-1",
             "invocation-1",
             "thread-1",
@@ -1490,6 +1553,7 @@ mod tests {
             allow: true,
             ..FakeApproval::default()
         };
+        let questions = FakeQuestion::default();
         let child_response = server_request_response(
             &json!({
                 "id": "child-request",
@@ -1502,6 +1566,7 @@ mod tests {
                 }
             }),
             &approvals,
+            &questions,
             "session-1",
             "invocation-1",
             "thread-1",
@@ -1522,6 +1587,7 @@ mod tests {
                 }
             }),
             &approvals,
+            &questions,
             "session-1",
             "invocation-1",
             "thread-1",
@@ -1541,7 +1607,8 @@ mod tests {
                 allow,
                 ..FakeApproval::default()
             };
-            let response = server_request_response(&json!({"id":"permission-1","method":"item/permissions/requestApproval","params":{"threadId":"thread-1","turnId":"turn-1","permissions":permissions,"cwd":"/tmp/project"}}), &approvals, "session-1", "invocation-1", "thread-1", "turn-1").await;
+            let questions = FakeQuestion::default();
+            let response = server_request_response(&json!({"id":"permission-1","method":"item/permissions/requestApproval","params":{"threadId":"thread-1","turnId":"turn-1","permissions":permissions,"cwd":"/tmp/project"}}), &approvals, &questions, "session-1", "invocation-1", "thread-1", "turn-1").await;
             assert_eq!(response["id"], "permission-1");
             assert_eq!(response["result"]["scope"], "turn");
             assert_eq!(
@@ -1559,16 +1626,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unsupported_server_request_gets_an_immediate_rpc_error() {
+    async fn user_input_request_returns_the_question_brokers_answer() {
         let approvals = FakeApproval::default();
+        let questions = FakeQuestion {
+            response: json!({"answers":{"target":{"answers":["Desktop"]}}}),
+            ..FakeQuestion::default()
+        };
         let response = server_request_response(
             &json!({
                 "jsonrpc": "2.0",
                 "id": "question-1",
                 "method": "item/tool/requestUserInput",
-                "params": { "threadId": "thread-1" },
+                "params": {
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "itemId": "ask-1",
+                    "isBlocking": true,
+                    "questions": [{"id":"target","header":"Target","question":"Where?","options":[]}]
+                },
             }),
             &approvals,
+            &questions,
             "session-1",
             "invocation-1",
             "thread-1",
@@ -1576,12 +1654,15 @@ mod tests {
         )
         .await;
         assert_eq!(response["id"], "question-1");
-        assert_eq!(response["error"]["code"], -32601);
-        assert!(response["error"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("Ask the question in your reply"));
+        assert_eq!(
+            response["result"]["answers"]["target"]["answers"],
+            json!(["Desktop"])
+        );
         assert!(approvals.calls.lock().unwrap().is_empty());
+        assert_eq!(
+            questions.calls.lock().unwrap().as_slice(),
+            &[("question-1".to_string(), "\"ask-1\"".to_string())]
+        );
     }
 
     #[cfg(unix)]
@@ -1642,7 +1723,8 @@ done
         fs::set_permissions(&server, fs::Permissions::from_mode(0o755)).unwrap();
 
         let database = Arc::new(Database::open(temp.path().join("argmax.sqlite")).unwrap());
-        let approvals = ApprovalService::new(database);
+        let approvals = ApprovalService::new(Arc::clone(&database));
+        let questions = QuestionService::new(database);
         let events = Arc::new(Mutex::new(Vec::new()));
         let captured = Arc::clone(&events);
         let callback: EventCallback = Arc::new(move |event| {
@@ -1655,6 +1737,7 @@ done
             &launch_input,
             None,
             approvals,
+            questions,
             callback,
         )
         .await
@@ -1734,7 +1817,8 @@ done
         fs::set_permissions(&server, fs::Permissions::from_mode(0o755)).unwrap();
 
         let database = Arc::new(Database::open(temp.path().join("argmax.sqlite")).unwrap());
-        let approvals = ApprovalService::new(database);
+        let approvals = ApprovalService::new(Arc::clone(&database));
+        let questions = QuestionService::new(database);
         let events = Arc::new(Mutex::new(Vec::new()));
         let captured = Arc::clone(&events);
         let callback: EventCallback = Arc::new(move |event| {
@@ -1748,6 +1832,7 @@ done
             &launch_input,
             None,
             approvals,
+            questions,
             callback,
         )
         .await
@@ -1808,7 +1893,8 @@ done
         let original_token = format!("ORIGINAL-{}", Uuid::new_v4());
         let steer_token = format!("STEER-{}", Uuid::new_v4());
         let database = Arc::new(Database::open(temp.path().join("argmax.sqlite")).unwrap());
-        let approvals = ApprovalService::new(database);
+        let approvals = ApprovalService::new(Arc::clone(&database));
+        let questions = QuestionService::new(database);
         let events = Arc::new(Mutex::new(Vec::new()));
         let captured = Arc::clone(&events);
         let callback: EventCallback = Arc::new(move |event| {
@@ -1823,7 +1909,7 @@ done
         launch_input.prompt = format!(
             "Use the shell to run sleep 5, then finish the original task by including this exact token in your final response: {original_token}"
         );
-        let handle = launch_turn(&binary, &launch_input, None, approvals, callback)
+        let handle = launch_turn(&binary, &launch_input, None, approvals, questions, callback)
             .await
             .unwrap();
         handle

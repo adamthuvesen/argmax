@@ -151,26 +151,20 @@ the immediate tool acknowledgement leaves one answerable card. The answer uses
 the existing next-user-message flow. Question shapes outside the card's one to
 four options remain visible as prose.
 
-**The separate synchronous `request_user_input` is not enabled.** The
-tool is off unless the launch passes
-`-c tools.experimental_request_user_input.enabled=true`, so today the model is
-told it does not exist and writes the question as prose instead. Turning it on
-is not enough on its own: the question arrives as an app-server *server
-request*, `item/tool/requestUserInput`, not as a tool call, and
-`server_request_response` in
-[codex_app_server.rs](../src-tauri/src/providers/codex_app_server.rs)
-allow-lists only the three approval methods and answers anything else with
-`-32601`. Codex then follows its own instruction to continue with best
-judgment. Unlike Claude's card — which is answered by terminating the turn and
-sending a new message — Codex parks the turn on `waitingOnUserInput` and waits
-for the answer to be written back onto the open request, so the same turn
-resumes; a probe that held the response for 45 seconds got a turn that waited
-and then used the late answer. Wiring it up therefore needs a broker like
-`ApprovalService`, not the `sendAfterTerminate` path. Left unbuilt on purpose:
-the flag is marked experimental, as are the protocol types. An unrecognised
-`tools.*` key is ignored silently, so a future rename degrades back to prose
-rather than failing the turn; a *type* change on a known key does fail config
-parse outright.
+**Synchronous `request_user_input` resumes the waiting turn.** The app-server
+launch enables `tools.experimental_request_user_input.enabled=true`.
+`item/tool/requestUserInput` is a server request, so Argmax keeps its JSON-RPC
+response open and publishes a question card with the request and question IDs.
+Desktop and iPhone submit structured answers through `questions:resolve`.
+Codex receives those answers on the original request and continues the same
+turn. Dismissing sends an empty answer map. Neither action terminates the
+provider or starts a follow-up turn.
+
+Pending cards are stored in the timeline and return after a UI reconnect.
+Answered, dismissed, and cancelled requests settle the card, and duplicate or
+stale answers fail. Answer values are not persisted in the question events,
+including answers to secret questions. The launch flag and protocol remain
+experimental, so verify their schema when upgrading Codex.
 
 **Grok's `ask_user_question` is not exposed over ACP.** The binary carries the
 tool and documents it, and `features.ask_user_question` defaults to true, but

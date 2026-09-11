@@ -74,8 +74,8 @@ it("initializes the Claude fixture and reads its prompt without waiting for stdi
   }
 }, 3000);
 
-it("serves Codex app-server events while stdin remains open", async () => {
-  const child = spawn(process.execPath, [fixture, "app-server", "--stdio"], {
+it.each(["persistent-codex-subagent:first", "codex-user-input"])("serves Codex %s while stdin remains open", async (scenario) => {
+  const child = spawn(process.execPath, [fixture, "app-server", "--stdio", "-c", "tools.experimental_request_user_input.enabled=true"], {
     stdio: ["pipe", "pipe", "pipe"],
     env: fixtureEnvironment,
   });
@@ -95,22 +95,34 @@ it("serves Codex app-server events while stdin remains open", async () => {
       method: "turn/start",
       params: {
         threadId: "argmax-verification-conversation",
-        input: [{ type: "text", text: "[argmax-verification:persistent-codex-subagent:first]" }],
+        input: [{ type: "text", text: `[argmax-verification:${scenario}]` }],
       },
     })}\n`);
     for await (const line of lines) {
       const message = JSON.parse(line) as Record<string, unknown>;
       messages.push(message);
+      if (message.method === "item/tool/requestUserInput") {
+        expect(messages.some((entry) => entry.method === "turn/completed")).toBe(false);
+        child.stdin.write(`${JSON.stringify({
+          jsonrpc: "2.0", id: message.id,
+          result: { answers: { "verification-route": { answers: ["API route"] } } },
+        })}\n`);
+      }
       if (message.method === "turn/completed") break;
     }
     expect(child.exitCode).toBeNull();
     const payload = JSON.stringify(messages);
     expect(payload).toContain('"id":1,"result"');
-    expect(payload).toContain('"tool":"spawnAgent"');
-    expect(payload).toContain('"tool":"wait"');
-    expect(payload).toContain('"status":"pendingInit"');
-    expect(payload).toContain('"019f2214-c736-7f60-bb78-75b6ecff57a3":{"status":"completed"');
-    expect(payload).toContain("Verification persistent Codex child first response.");
+    if (scenario === "codex-user-input") {
+      expect(payload).toContain('"method":"item/tool/requestUserInput"');
+      expect(payload).toContain("Verification Codex received API route in the same turn.");
+    } else {
+      expect(payload).toContain('"tool":"spawnAgent"');
+      expect(payload).toContain('"tool":"wait"');
+      expect(payload).toContain('"status":"pendingInit"');
+      expect(payload).toContain('"019f2214-c736-7f60-bb78-75b6ecff57a3":{"status":"completed"');
+      expect(payload).toContain("Verification persistent Codex child first response.");
+    }
   } finally {
     clearTimeout(timeout);
     lines.close();

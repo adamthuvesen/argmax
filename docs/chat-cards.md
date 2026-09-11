@@ -212,9 +212,9 @@ turn that keeps working would scroll it away. It wears `.session-input` — the
 composer's own surface, radius and lift — because it *is* the thing you act in
 right now; see [styling.md](styling.md).
 
-The live question can only be in the last turn (answering it sends a user
-message, which starts a new one), so `SessionConversation` reads it off the last
-render item and the turn stops drawing its card.
+`SessionConversation` reads the live question from the latest turn and the
+turn stops drawing its card. Synchronous Codex questions can be answered and
+followed by another question within that same turn.
 
 Codex's async questions use the same dock while the agent continues working.
 Their normalized input carries `delivery: "async"`, which keeps later assistant
@@ -222,20 +222,28 @@ messages visible. Claude's blocking question cards still suppress fallback
 prose emitted after the ask. Submitting either kind uses the existing
 stop-before-answer flow.
 
-An **answered** question leaves the transcript entirely. The answer that follows
-it is the record; the card behind it would restate the question the reader just
-settled, under a live Send button that could send it again.
+Synchronous Codex questions carry `delivery: "blocking"` and `requestId`.
+Their answers go to `questions:resolve`, which resumes the waiting request
+within the same turn. A settled request no longer suppresses later assistant
+messages. These questions remain answerable when the composer has a draft,
+and the draft returns after the question is settled.
+
+An **answered** question leaves the dock. Legacy card answers appear as user
+messages. Synchronous Codex answers settle the tool within the same turn and
+do not add a user message.
 
 - **Several questions page, they do not stack.** `‹ 1 of 3 ›` in the header, so
   the slot is the same height whether the agent asked one thing or four. A
   single-select pick settles its question and moves to the next by itself; the
   `→` is drawn only on rows whose pick advances.
-- **Closing is not declining.** The `✕` ("Answer in your own words") puts the
+- **Closing a legacy card restores the composer.** The `✕` ("Answer in your own words") puts the
   composer back so the reader can reply in prose instead. The question leaves
   the screen with the panel; it is not redrawn in the scrollback. The agent's
   own prose above it is the record of the ask, and reopening the chat docks it
   again.
-- **Every question ends in an "Other" row.** Numbered after the listed
+  For a synchronous Codex question, closing explicitly dismisses the request
+  and lets the waiting turn continue.
+- **Free-form answers use an "Other" row.** Numbered after the listed
   options, it is picked like any of them; picked, its label becomes a line to
   type on, in the row's own type and on the row's own fill, so a typed answer is
   the same kind of thing as a listed one. It settles by what gets typed, not by
@@ -245,9 +253,11 @@ settled, under a live Send button that could send it again.
   listed picks on a multi-select, so the agent reads it without knowing which it
   was. Escape on the line returns the caret to the list; it does not close the
   dock over a half-typed answer.
+  Synchronous Codex questions respect the provider's `isOther` flag and mask
+  secret answer fields.
 - **Send is explicit.** It enables once every question is answered. Clicking an
-  option never submits on its own — a card answer terminates the running probe
-  (see Submission Flow), so a misclick would cut the turn short.
+  option never submits on its own. The reader can review the selections before
+  the agent receives them.
 
 ### Keyboard Navigation
 
@@ -262,7 +272,7 @@ Component tests in [PlanCard.test.tsx](../src/renderer/components/PlanCard.test.
 | `Enter` | Submit once answered, otherwise pick the focused option |
 | `Escape` | Close the dock and bring the composer back |
 
-A live question that arrives while the composer holds a draft does not dock.
+A legacy question that arrives while the composer holds a draft does not dock.
 The composer remains mounted, preserving the text, attachments and caret, and
 the reader answers from the agent's prose. That question stays undocked after
 the draft is cleared, so clicking Send cannot have the panel land under the
@@ -273,9 +283,14 @@ question missed the dock until the chat was reopened.)
 
 ### Submission Flow
 
-When submitting a PlanCard or the QuestionDock, `sendAfterTerminate` in [sessionConversationHelpers.ts](../src/renderer/components/sessionConversationHelpers.ts) terminates the running probe before sending the answer to prevent queuing behind trailing provider output.
+When submitting a PlanCard or a legacy question, `sendAfterTerminate` in [sessionConversationHelpers.ts](../src/renderer/components/sessionConversationHelpers.ts) terminates the running probe before sending the answer to prevent queuing behind trailing provider output.
 
-Question responses format as `<header>: <chosen label>` per question, one per line. Plain text, not markdown: the answer lands in the transcript as a user message, and those are drawn verbatim, so `**` would show as asterisks. `formatAnswer` in [questions.ts](../src/renderer/lib/questions.ts) is the single source of that shape, so an answer reads the same whether it came from the dock or a card.
+Synchronous Codex questions use `questions:resolve` instead. Each question's
+stable ID maps to its selected labels or free-form answer strings. The
+provider response resumes the original turn, and a correlated completion
+event settles the card. Answer values are omitted from these timeline events.
+
+Legacy question responses format as `<header>: <chosen label>` per question, one per line. The answer lands in the transcript as a user message, drawn verbatim, so `**` would show as asterisks. `formatAnswer` in [questions.ts](../src/renderer/lib/questions.ts) is the single source of that shape.
 
 ## Activity Rows
 

@@ -20,6 +20,7 @@ use crate::persistence::Database;
 use crate::providers::cursor_acp::CursorAcpSessions;
 use crate::providers::discovery::ProviderDiscovery;
 use crate::providers::session_service::ProviderSessionService;
+use crate::questions::service::QuestionService;
 use crate::remote::{RemoteEvent, REMOTE_EVENT_CAPACITY, REMOTE_TERMINAL_EVENT_CAPACITY};
 use crate::session_control::SessionLaunchServer;
 use crate::skills::registry::SkillRegistry;
@@ -44,6 +45,7 @@ pub struct AppState {
     /// renderer — otherwise the only actionable text is buried in the logs.
     pub db_open_error: OnceLock<String>,
     pub approvals: OnceLock<Arc<ApprovalService>>,
+    pub questions: OnceLock<Arc<QuestionService>>,
     pub providers: OnceLock<Arc<ProviderSessionService>>,
     pub session_launch_server: OnceLock<SessionLaunchServer>,
     pub provider_discovery: Arc<ProviderDiscovery>,
@@ -128,6 +130,7 @@ impl Default for AppState {
             db: OnceLock::new(),
             db_open_error: OnceLock::new(),
             approvals: OnceLock::new(),
+            questions: OnceLock::new(),
             providers: OnceLock::new(),
             session_launch_server: OnceLock::new(),
             provider_discovery: Arc::default(),

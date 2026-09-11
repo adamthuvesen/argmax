@@ -264,6 +264,14 @@ async approvalsPending(input: ApprovalsPendingInput) : Promise<Result<ApprovalRe
     else return { status: "error", error: e  as any };
 }
 },
+async questionsResolve(input: QuestionsResolveInput) : Promise<Result<QuestionResolveResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("questions_resolve", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async sessionEventsSince(input: SessionEventsSinceInput) : Promise<Result<SessionEventsSinceResult, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("session_events_since", { input }) };
@@ -1681,6 +1689,10 @@ export type ProvidersSendQueuedMessageNowInput = { sessionId: SessionId; message
 export type ProvidersTerminateInput = { sessionId: SessionId }
 export type PrsListForSessionInput = { sessionId: SessionId }
 export type PrsRefreshInput = { sessionId: SessionId }
+export type QuestionRequestId = string
+export type QuestionResolveResult = { sessionId: string; requestId: string; status: QuestionResolveStatus }
+export type QuestionResolveStatus = "answered" | "dismissed"
+export type QuestionsResolveInput = { sessionId: SessionId; requestId: QuestionRequestId; answers: Partial<{ [key in string]: string[] }>; dismissed?: boolean }
 export type QueuedMessageDelivery = "interrupt" | "steer"
 export type RawProviderOutput = { id: string; sessionId: string; stream: string; content: string; createdAt: string; rowCursor: number | null }
 export type ReasoningEffort = "low" | "medium" | "high" | "xhigh" | "max" | "ultra"

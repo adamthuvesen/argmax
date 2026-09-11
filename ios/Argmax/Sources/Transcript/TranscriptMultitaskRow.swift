@@ -345,8 +345,12 @@ private struct TranscriptMultitaskDetail: View {
             && !dismissedQuestions.contains(question.id):
             TranscriptQuestionDock(
                 card: question,
-                onAnswer: { answer in
-                    let sent = await actions.answerQuestion(answer, context: context)
+                onAnswer: { response in
+                    let sent = await actions.answerQuestion(
+                        response,
+                        card: question,
+                        context: context
+                    )
                     if sent {
                         dismissedQuestions.insert(question.id)
                         await requestReload()
@@ -354,8 +358,13 @@ private struct TranscriptMultitaskDetail: View {
                     return sent
                 },
                 onDismiss: {
-                    dismissedQuestions.insert(question.id)
-                    composerFocused = true
+                    let resolved = await actions.dismissQuestion(card: question, context: context)
+                    if resolved {
+                        dismissedQuestions.insert(question.id)
+                        await requestReload()
+                        composerFocused = true
+                    }
+                    return resolved
                 }
             )
         case .plan(let plan):

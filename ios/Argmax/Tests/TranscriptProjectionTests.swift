@@ -416,6 +416,202 @@ final class TranscriptProjectionTests: XCTestCase {
         })
     }
 
+    func testCodexBlockingQuestionKeepsRequestMetadataAcrossReconnect() throws {
+        let payload: [String: TranscriptJSONValue] = [
+            "id": .string("item-1"),
+            "name": .string("AskUserQuestion"),
+            "providerRequestId": .string("request-1"),
+            "providerInvocationId": .string("invocation-1"),
+            "input": .object([
+                "delivery": .string("blocking"),
+                "requestId": .string("request-1"),
+                "questions": .array([
+                    .object([
+                        "id": .string("scope"),
+                        "header": .string("Scope"),
+                        "question": .string("Where should it run?"),
+                        "isOther": .bool(false),
+                        "isSecret": .bool(false),
+                        "options": .array([
+                            .object([
+                                "label": .string("Current checkout"),
+                                "description": .string("Use this workspace")
+                            ])
+                        ])
+                    ]),
+                    .object([
+                        "id": .string("token"),
+                        "header": .string("Token"),
+                        "question": .string("Enter the token"),
+                        "isOther": .bool(false),
+                        "isSecret": .bool(true),
+                        "options": .array([])
+                    ])
+                ])
+            ])
+        ]
+        let session = TranscriptSessionMetadata(
+            id: "session-1",
+            workspaceId: "workspace-1",
+            provider: "codex",
+            modelLabel: "GPT",
+            modelId: "gpt-5",
+            prompt: "Start",
+            state: .waiting,
+            attention: .questionAsked,
+            reasoningEffort: nil,
+            agentMode: "auto"
+        )
+
+        let items = TranscriptProjection.project(
+            events: [event("ask-start", "command.started", "AskUserQuestion", 2, payload)],
+            session: session
+        )
+        let card = try XCTUnwrap(items.compactMap { item -> TranscriptQuestionCard? in
+            guard case .question(let card) = item else { return nil }
+            return card
+        }.first)
+
+        XCTAssertTrue(card.isOutstanding)
+        XCTAssertEqual(card.sessionID, "session-1")
+        XCTAssertEqual(card.requestID, "request-1")
+        XCTAssertEqual(card.questions.map(\.responseID), ["scope", "token"])
+        XCTAssertFalse(card.questions[0].allowsOther)
+        XCTAssertTrue(card.questions[1].allowsOther)
+        XCTAssertTrue(card.questions[1].isSecret)
+    }
+
+    func testCodexQuestionCompletionMakesReloadedCardInactive() throws {
+        let started: [String: TranscriptJSONValue] = [
+            "id": .string("item-1"),
+            "name": .string("AskUserQuestion"),
+            "providerRequestId": .string("request-1"),
+            "providerInvocationId": .string("invocation-1"),
+            "input": .object([
+                "requestId": .string("request-1"),
+                "questions": .array([
+                    .object([
+                        "id": .string("scope"),
+                        "header": .string("Scope"),
+                        "question": .string("Where should it run?"),
+                        "isOther": .bool(false),
+                        "isSecret": .bool(false),
+                        "options": .array([.object(["label": .string("Here")])])
+                    ])
+                ])
+            ])
+        ]
+        let completed: [String: TranscriptJSONValue] = [
+            "id": .string("item-1"),
+            "providerInvocationId": .string("invocation-1"),
+            "status": .string("cancelled")
+        ]
+
+        let items = TranscriptProjection.project(events: [
+            event("ask-start", "command.started", "AskUserQuestion", 2, started),
+            event("ask-end", "command.completed", "Question cancelled", 3, completed)
+        ])
+        let card = try XCTUnwrap(items.compactMap { item -> TranscriptQuestionCard? in
+            guard case .question(let card) = item else { return nil }
+            return card
+        }.first)
+
+        XCTAssertFalse(card.isOutstanding)
+    }
+
+    func testSuccessiveCodexQuestionsInOneTurnKeepTheLatestAnswerable() throws {
+        func questionStart(itemID: String, requestID: String, questionID: String) -> TranscriptEvent {
+            event("\(itemID)-start", "command.started", "AskUserQuestion", itemID == "item-1" ? 2 : 5, [
+                "id": .string(itemID),
+                "name": .string("AskUserQuestion"),
+                "requestId": .string(requestID),
+                "providerInvocationId": .string("invocation-1"),
+                "input": .object([
+                    "delivery": .string("blocking"),
+                    "requestId": .string(requestID),
+                    "questions": .array([
+                        .object([
+                            "id": .string(questionID),
+                            "header": .string("Scope"),
+                            "question": .string("Where should it run?"),
+                            "isOther": .bool(false),
+                            "isSecret": .bool(false),
+                            "options": .array([
+                                .object([
+                                    "label": .string("Here"),
+                                    "description": .string("Use this checkout")
+                                ])
+                            ])
+                        ])
+                    ])
+                ])
+            ])
+        }
+        func questionCompletion(itemID: String, cursor: Int64) -> TranscriptEvent {
+            event("\(itemID)-end", "command.completed", "AskUserQuestion", cursor, [
+                "id": .string(itemID),
+                "providerInvocationId": .string("invocation-1"),
+                "status": .string("completed")
+            ])
+        }
+        func session(_ state: SessionState) -> TranscriptSessionMetadata {
+            TranscriptSessionMetadata(
+                id: "session-1",
+                workspaceId: "workspace-1",
+                provider: "codex",
+                modelLabel: "GPT",
+                modelId: "gpt-5",
+                prompt: "Start",
+                state: state,
+                attention: state == .waiting ? .questionAsked : .normal,
+                reasoningEffort: nil,
+                agentMode: "auto"
+            )
+        }
+
+        let waitingEvents = [
+            event("user", "user.message", "Start", 1),
+            questionStart(itemID: "item-1", requestID: "request-1", questionID: "first"),
+            questionCompletion(itemID: "item-1", cursor: 3),
+            event("between", "message.completed", "First answer accepted.", 4),
+            questionStart(itemID: "item-2", requestID: "request-2", questionID: "second")
+        ]
+        let waitingItems = TranscriptProjection.project(events: waitingEvents, session: session(.waiting))
+        let waitingCards = waitingItems.compactMap { item -> TranscriptQuestionCard? in
+            guard case .question(let card) = item else { return nil }
+            return card
+        }
+
+        XCTAssertEqual(waitingCards.map(\.requestID), ["request-1", "request-2"])
+        XCTAssertEqual(waitingCards.map(\.isOutstanding), [false, true])
+        XCTAssertTrue(waitingItems.contains { item in
+            guard case .assistant(let message) = item else { return false }
+            return message.text == "First answer accepted."
+        })
+
+        let completedItems = TranscriptProjection.project(
+            events: waitingEvents + [
+                questionCompletion(itemID: "item-2", cursor: 6),
+                event("after", "message.completed", "Continuing after the second answer.", 7)
+            ],
+            session: session(.running)
+        )
+        let completedCards = completedItems.compactMap { item -> TranscriptQuestionCard? in
+            guard case .question(let card) = item else { return nil }
+            return card
+        }
+        let assistantMessages = completedItems.compactMap { item -> String? in
+            guard case .assistant(let message) = item else { return nil }
+            return message.text
+        }
+
+        XCTAssertEqual(completedCards.map(\.isOutstanding), [false, false])
+        XCTAssertEqual(assistantMessages, [
+            "First answer accepted.",
+            "Continuing after the second answer."
+        ])
+    }
+
     func testDecodesPageWireAndMessageAttachments() throws {
         let data = Data(
             """
@@ -432,6 +628,29 @@ final class TranscriptProjectionTests: XCTestCase {
         XCTAssertEqual(message.attachments.first?.filePath, "/tmp/image.png")
         XCTAssertEqual(message.text, "See image")
         XCTAssertEqual(page.changeCursor, 2)
+    }
+
+    /// A cancelled call is an interruption — the user stopped the turn, or the
+    /// provider dropped an in-flight call — not something that failed.
+    func testCancelledToolCallsAreNotFailures() throws {
+        let items = TranscriptProjection.project(events: [
+            event("read", "command.started", "Read", 1, ["id": .string("tool-1"), "name": .string("Read")]),
+            event("read-end", "command.completed", "stopped", 2, [
+                "tool_use_id": .string("tool-1"),
+                "status": .string("cancelled")
+            ]),
+            event("bash", "command.started", "Bash", 3, ["id": .string("tool-2"), "name": .string("Bash")]),
+            event("bash-end", "command.completed", "boom", 4, [
+                "tool_use_id": .string("tool-2"),
+                "status": .string("failed")
+            ])
+        ])
+        let tools = items.compactMap { item -> TranscriptToolGroup? in
+            guard case .tools(let group) = item else { return nil }
+            return group
+        }.flatMap(\.tools)
+        XCTAssertEqual(tools.map(\.status), [.done, .failed])
+        XCTAssertNil(tools.first?.error)
     }
 
     private func event(

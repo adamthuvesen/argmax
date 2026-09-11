@@ -15,6 +15,7 @@ import { startedAgentName } from "../../test/agentRowName.js";
 describe("SessionConversation — cards", () => {
   afterEach(() => {
     vi.useRealTimers();
+    delete (window as { argmax?: unknown }).argmax;
     cleanup();
   });
   it("hides assistant text emitted AFTER an ExitPlanMode card so the plan isn't duplicated as a chat bubble", () => {
@@ -294,6 +295,168 @@ describe("SessionConversation — cards", () => {
     expect(screen.queryByLabelText("Question from agent")).not.toBeInTheDocument();
     expect(screen.queryByText("Pick a direction")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Chat prompt")).toBeInTheDocument();
+  });
+
+  it("answers a blocking Codex question in the same turn and restores a saved draft", async () => {
+    const resolveQuestion = vi.fn().mockResolvedValue({
+      sessionId: "session-a",
+      requestId: "request-1",
+      status: "answered"
+    });
+    window.argmax = { questions: { resolve: resolveQuestion } } as unknown as NonNullable<typeof window.argmax>;
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    const onTerminate = vi.fn().mockResolvedValue(undefined);
+    const session = baseSession({ provider: "codex", state: "waiting" });
+    const questionEvents = [
+      event("u1", "user.message", "ask me", "2026-05-12T15:00:00.000Z"),
+      event("question-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
+        id: "question-item-1",
+        type: "AskUserQuestion",
+        name: "AskUserQuestion",
+        status: "running",
+        input: {
+          delivery: "blocking",
+          requestId: "request-1",
+          questions: [{
+            id: "scope",
+            question: "Which scope?",
+            header: "Scope",
+            options: [{ label: "Focused", description: "Only this flow" }],
+            multiSelect: false,
+            isOther: true,
+            isSecret: false
+          }]
+        }
+      })
+    ];
+    const rendered = renderConversation(session, [questionEvents[0]], {
+      onSendSessionInput: onSend,
+      onTerminateSession: onTerminate
+    });
+    fireEvent.change(screen.getByLabelText("Chat prompt"), { target: { value: "keep this draft" } });
+
+    rerenderConversation(rendered.rerender, session, questionEvents, {
+      onSendSessionInput: onSend,
+      onTerminateSession: onTerminate
+    });
+    expect(screen.getByLabelText("Question from agent")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Chat prompt")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("option", { name: /Focused/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
+
+    await waitFor(() => expect(resolveQuestion).toHaveBeenCalledTimes(1));
+    expect(resolveQuestion).toHaveBeenCalledWith({
+      sessionId: "session-a",
+      requestId: "request-1",
+      answers: { scope: ["Focused"] }
+    });
+    expect(onTerminate).not.toHaveBeenCalled();
+    expect(onSend).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByLabelText("Chat prompt")).toHaveValue("keep this draft"));
+  });
+
+  it("masks a blocking Codex secret and returns it only in the native response", async () => {
+    const resolveQuestion = vi.fn().mockResolvedValue({
+      sessionId: "session-a",
+      requestId: "request-secret",
+      status: "answered"
+    });
+    window.argmax = { questions: { resolve: resolveQuestion } } as unknown as NonNullable<typeof window.argmax>;
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    renderConversation(
+      baseSession({ provider: "codex", state: "running" }),
+      [
+        event("u1", "user.message", "connect", "2026-05-12T15:00:00.000Z"),
+        event("question-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
+          id: "question-secret",
+          name: "AskUserQuestion",
+          status: "running",
+          input: {
+            delivery: "blocking",
+            requestId: "request-secret",
+            questions: [{
+              id: "token",
+              question: "Paste the token",
+              header: "Token",
+              options: [],
+              multiSelect: false,
+              isOther: false,
+              isSecret: true
+            }]
+          }
+        })
+      ],
+      { onSendSessionInput: onSend }
+    );
+
+    fireEvent.click(screen.getByRole("option", { name: "Other" }));
+    const secret = screen.getByLabelText("Your own answer");
+    expect(secret).toHaveAttribute("type", "password");
+    fireEvent.change(secret, { target: { value: "sk-secret" } });
+    fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
+
+    await waitFor(() => expect(resolveQuestion).toHaveBeenCalledWith({
+      sessionId: "session-a",
+      requestId: "request-secret",
+      answers: { token: ["user_note: sk-secret"] }
+    }));
+    expect(onSend).not.toHaveBeenCalled();
+    const storedValues = Array.from({ length: window.localStorage.length }, (_, index) =>
+      window.localStorage.getItem(window.localStorage.key(index) ?? "") ?? ""
+    ).join("\n");
+    expect(storedValues).not.toContain("sk-secret");
+  });
+
+  it("dismisses a blocking Codex question through its open request", async () => {
+    const resolveQuestion = vi.fn().mockResolvedValue({
+      sessionId: "session-a",
+      requestId: "request-dismiss",
+      status: "dismissed"
+    });
+    window.argmax = { questions: { resolve: resolveQuestion } } as unknown as NonNullable<typeof window.argmax>;
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    const onTerminate = vi.fn().mockResolvedValue(undefined);
+    renderConversation(
+      baseSession({ provider: "codex", state: "running" }),
+      [
+        event("u1", "user.message", "ask", "2026-05-12T15:00:00.000Z"),
+        event("question-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
+          id: "question-dismiss",
+          name: "AskUserQuestion",
+          status: "running",
+          input: {
+            delivery: "blocking",
+            requestId: "request-dismiss",
+            questions: [{
+              id: "scope",
+              question: "Which scope?",
+              header: "Scope",
+              options: [{ label: "Focused" }],
+              multiSelect: false,
+              isOther: false,
+              isSecret: false
+            }]
+          }
+        })
+      ],
+      {
+        onSendSessionInput: onSend,
+        onTerminateSession: onTerminate
+      }
+    );
+
+    expect(screen.queryByRole("option", { name: "Other" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss question" }));
+
+    await waitFor(() => expect(resolveQuestion).toHaveBeenCalledWith({
+      sessionId: "session-a",
+      requestId: "request-dismiss",
+      answers: {},
+      dismissed: true
+    }));
+    expect(onTerminate).not.toHaveBeenCalled();
+    expect(onSend).not.toHaveBeenCalled();
   });
 
   it("takes an answer in the reader's own words through the Other row", () => {

@@ -92,6 +92,7 @@ import {
 import { buildDetailsSeed, buildSideChatSeed } from "../lib/sideChat.js";
 import { SelectionToolbar, type ChatSelection } from "./SelectionToolbar.js";
 import { QuestionDock } from "./QuestionDock.js";
+import type { QuestionAnswers } from "../lib/questions.js";
 import { postToNative } from "../mobile/nativeHost.js";
 import { SessionComposer, type ComposerStatus, type NewSessionSeed } from "./SessionComposer.js";
 import { importChunk } from "../lib/importChunk.js";
@@ -543,18 +544,19 @@ export function SessionConversation({
     [liveRawOutputs, session?.id, hasRenderableContent]
   );
 
-  // Only a running session can hold a genuinely in-flight tool. Passing this
-  // lets buildSessionToolCalls retire a tool whose `command.completed` was
-  // dropped (e.g. an oversized image tool_result) once the session stops,
-  // instead of leaving a tool row spinning forever.
+  // A running session or one waiting on user input can hold a genuinely
+  // in-flight tool. Passing this lets buildSessionToolCalls retire a tool whose
+  // `command.completed` was dropped (e.g. an oversized image tool_result) once
+  // the provider stops, instead of leaving a tool row spinning forever.
   const sessionRunning = session?.state === "running";
+  const sessionProviderActive = sessionRunning || session?.state === "waiting";
   const toolCalls = useMemo(
     () => buildSessionToolCalls(
       liveEvents,
-      sessionRunning,
+      sessionProviderActive,
       session?.state === "failed" || session?.state === "cancelled"
     ),
-    [liveEvents, session?.state, sessionRunning]
+    [liveEvents, session?.state, sessionProviderActive]
   );
   const agentCodenames = useMemo(() => assignAgentCodenames(toolCalls), [toolCalls]);
   // The workspace card's Subagents section reads the same tool list the agent
@@ -1255,16 +1257,26 @@ export function SessionConversation({
   // with the panel — the agent's own prose above it is the record of the ask.
   const [dismissedQuestionId, setDismissedQuestionId] = useState<string | null>(null);
   const [composerDraftPresent, setComposerDraftPresent] = useState(false);
+  const blockingQuestionRequest =
+    session?.provider === "codex" &&
+    liveQuestion?.tool.delivery === "blocking" &&
+    liveQuestion.tool.requestId
+      ? liveQuestion.tool.requestId
+      : null;
   const questionDocked =
-    liveQuestion !== null && liveQuestion.tool.id !== dismissedQuestionId && !composerDraftPresent;
+    liveQuestion !== null &&
+    liveQuestion.tool.id !== dismissedQuestionId &&
+    (blockingQuestionRequest !== null || !composerDraftPresent);
   // A draft the reader typed outranks the dock, which would cover it. Composer
   // *focus* must not: sending refocuses the input and it keeps that focus for
   // the whole turn, so gating on focus hid almost every question until the
   // chat was reopened. Sticky by id, so clearing the draft cannot drop the
   // panel onto a composer the reader is mid-click in.
   useLayoutEffect(() => {
-    if (composerDraftPresent && liveQuestion) setDismissedQuestionId(liveQuestion.tool.id);
-  }, [composerDraftPresent, liveQuestion]);
+    if (composerDraftPresent && liveQuestion && !blockingQuestionRequest) {
+      setDismissedQuestionId(liveQuestion.tool.id);
+    }
+  }, [blockingQuestionRequest, composerDraftPresent, liveQuestion]);
   // The native iPhone shell draws its own composer card under this page and
   // has the page's stack hidden, so the docked panel would be hidden with it.
   // Tell the shell the slot is taken — the panel stays this page's, the card
@@ -1284,20 +1296,70 @@ export function SessionConversation({
     []
   );
   const answerLiveQuestion = useCallback(
-    (answerMarkdown: string): Promise<boolean> => {
+    async (answerText: string, answers: QuestionAnswers): Promise<boolean> => {
       if (!session || !liveQuestion) return Promise.resolve(false);
       shouldRefocusInput.current = true;
+      if (blockingQuestionRequest) {
+        const resolveQuestion = window.argmax?.questions.resolve;
+        if (!resolveQuestion) {
+          setStatus({ kind: "error", message: "Could not answer the question because Argmax is unavailable." });
+          return false;
+        }
+        try {
+          await resolveQuestion({
+            sessionId: session.id,
+            requestId: blockingQuestionRequest,
+            answers
+          });
+          setDismissedQuestionId(liveQuestion.tool.id);
+          return true;
+        } catch (error) {
+          setStatus({
+            kind: "error",
+            message: error instanceof Error ? error.message : "Could not answer the question."
+          });
+          return false;
+        }
+      }
       const mode: AgentMode = turnAgentModeFromPrior(liveQuestion.priorItem) === "plan" ? "plan" : "auto";
       return sendAfterTerminate(
         session.id,
         session.state === "running",
         onTerminateSession,
-        () => sendSessionInput(session.id, answerMarkdown, selectedModel, mode),
+        () => sendSessionInput(session.id, answerText, selectedModel, mode),
         (message) => setStatus({ kind: "error", message })
       );
     },
-    [liveQuestion, onTerminateSession, selectedModel, sendSessionInput, session, setStatus]
+    [blockingQuestionRequest, liveQuestion, onTerminateSession, selectedModel, sendSessionInput, session, setStatus]
   );
+  const dismissLiveQuestion = useCallback(async (): Promise<boolean> => {
+    if (!liveQuestion) return false;
+    if (!blockingQuestionRequest || !session) {
+      setDismissedQuestionId(liveQuestion.tool.id);
+      return true;
+    }
+    const resolveQuestion = window.argmax?.questions.resolve;
+    if (!resolveQuestion) {
+      setStatus({ kind: "error", message: "Could not dismiss the question because Argmax is unavailable." });
+      return false;
+    }
+    try {
+      await resolveQuestion({
+        sessionId: session.id,
+        requestId: blockingQuestionRequest,
+        answers: {},
+        dismissed: true
+      });
+      setDismissedQuestionId(liveQuestion.tool.id);
+      return true;
+    } catch (error) {
+      setStatus({
+        kind: "error",
+        message: error instanceof Error ? error.message : "Could not dismiss the question."
+      });
+      return false;
+    }
+  }, [blockingQuestionRequest, liveQuestion, session, setStatus]);
 
   const goalStatus = !floating && session && workspace && goalEnabled ? (
     <Suspense fallback={null}>
@@ -1587,7 +1649,8 @@ export function SessionConversation({
             key={liveQuestion.tool.id}
             questions={liveQuestion.tool.questions}
             onAnswer={answerLiveQuestion}
-            onDismiss={() => setDismissedQuestionId(liveQuestion.tool.id)}
+            onDismiss={dismissLiveQuestion}
+            {...(blockingQuestionRequest ? { dismissLabel: "Dismiss question" } : {})}
           />
         </div>
       ) : (

@@ -208,6 +208,7 @@ impl ApprovalService {
         let updated_session = if !cancelled.is_empty()
             && session.state == SessionState::Waiting
             && list_approvals_for_session(&tx, session_id, "pending")?.is_empty()
+            && !crate::questions::service::has_durable_pending(&tx, session_id)?
         {
             Some(update_session_state(
                 &tx,
@@ -266,8 +267,11 @@ impl ApprovalService {
         // update the audit trail but must not revive a completed /
         // failed / cancelled session.
         let updated_session = if session.state == SessionState::Waiting {
-            let still_pending =
+            let still_has_approval =
                 !list_approvals_for_session(&tx, &approval.session_id, "pending")?.is_empty();
+            let still_has_question =
+                crate::questions::service::has_durable_pending(&tx, &approval.session_id)?;
+            let still_pending = still_has_approval || still_has_question;
             let next_state = if still_pending {
                 SessionState::Waiting
             } else if is_native {
@@ -282,8 +286,10 @@ impl ApprovalService {
             Some(update_session_state(
                 &tx,
                 &approval.session_id,
-                &if next_state == SessionState::Waiting {
+                &if next_state == SessionState::Waiting && still_has_approval {
                     SessionStateInput::transition(next_state).with_pending_approval()
+                } else if next_state == SessionState::Waiting {
+                    SessionStateInput::transition(next_state).with_blocking_question()
                 } else {
                     SessionStateInput::transition(next_state)
                 },

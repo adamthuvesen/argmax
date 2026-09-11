@@ -25,6 +25,7 @@ pub mod learnings;
 pub mod projects;
 pub mod providers;
 pub mod prs;
+pub mod questions;
 pub mod remote;
 pub mod review;
 pub mod routines;
@@ -72,6 +73,7 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "terminal:terminate",
     "approvals:resolve",
     "approvals:pending",
+    "questions:resolve",
     "session:events-since",
     "session:agent-events",
     "session:fork",
@@ -260,6 +262,7 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         terminal::terminal_terminate,
         approvals::approvals_resolve,
         approvals::approvals_pending,
+        questions::questions_resolve,
         session::session_events_since,
         session::session_agent_events,
         session::session_fork,

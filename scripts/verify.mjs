@@ -33,6 +33,7 @@ const scenarioDefinitionKeys = Object.freeze({
   "chat-resume": "chatResumeFirst",
   "persistent-subagent": "persistentSubagentFirst",
   "persistent-codex-subagent": "persistentCodexSubagentFirst",
+  "codex-user-input": "codexUserInput",
   "persistent-opencode-subagent": "persistentOpencodeSubagentFirst",
   "persistent-cursor-subagent": "persistentCursorSubagentFirst",
   cancellation: "cancellation",
@@ -40,7 +41,7 @@ const scenarioDefinitionKeys = Object.freeze({
 });
 
 function providerForScenario(scenario) {
-  if (scenario === "persistent-codex-subagent") return VERIFICATION_CODEX_PROVIDER;
+  if (scenario === "persistent-codex-subagent" || scenario === "codex-user-input") return VERIFICATION_CODEX_PROVIDER;
   if (scenario === "persistent-opencode-subagent") return VERIFICATION_OPENCODE_PROVIDER;
   if (scenario === "persistent-cursor-subagent") return VERIFICATION_CURSOR_PROVIDER;
   return VERIFICATION_PROVIDER;
@@ -75,7 +76,7 @@ export function parseVerifyArgs(argv) {
     else throw new Error(`unknown argument: ${arg}`);
   }
   if (!Object.hasOwn(scenarioDefinitionKeys, options.scenario)) {
-    throw new Error("--scenario must be chat-resume, persistent-subagent, persistent-codex-subagent, persistent-opencode-subagent, persistent-cursor-subagent, cancellation, or provider-error");
+    throw new Error(`--scenario must be one of: ${Object.keys(scenarioDefinitionKeys).join(", ")}`);
   }
   if (!['required', 'auto', 'off'].includes(options.native)) {
     throw new Error("--native must be required, auto, or off");
@@ -260,6 +261,39 @@ async function runScenario({ bridge, scenario, provider, repoPath, controlDir, v
   const { workspace } = await resolveProjectAndWorkspace(bridge, repoPath, definition.prompt);
   const launched = await launchFixture(bridge, workspace.id, definition.prompt, provider);
   timeline.push({ at: new Date().toISOString(), type: "session-launched", sessionId: launched.id, workspaceId: workspace.id });
+
+  if (scenario === "codex-user-input") {
+    const deadline = Date.now() + timeoutMs;
+    let requestId = null;
+    while (Date.now() < deadline) {
+      const batch = await bridge.call("session:events-since", { sessionId: launched.id });
+      const question = batch.events.find((event) => event.type === "command.started"
+        && event.payload?.input?.questions?.some((entry) => entry.id === definition.questionId));
+      if (question) {
+        requestId = question.payload.input.requestId;
+        if (!requestId) throw new Error("Codex question omitted its response request ID");
+        timeline.push({ at: new Date().toISOString(), type: "pending-question", event: question });
+        break;
+      }
+      await delay(100);
+    }
+    if (!requestId) throw new Error("Codex did not publish its pending question");
+    const dashboard = await bridge.call("dashboard:list", {});
+    const waiting = dashboard.sessions.find((session) => session.id === launched.id);
+    if (waiting?.state !== "waiting" || waiting.attention !== "question-asked") {
+      throw new Error(`Pending question has incorrect session state: ${waiting?.state}/${waiting?.attention}`);
+    }
+    const waitingUi = await verifyUi({ name: "question-waiting", expectedTexts: [definition.questionText], expectIdle: false });
+    await bridge.call("questions:resolve", {
+      sessionId: launched.id, requestId,
+      answers: { [definition.questionId]: [definition.expectedAnswer] },
+    });
+    const result = await collectUntilTerminal(bridge, launched.id, timeoutMs);
+    if (result.session.state !== "complete") throw new Error(`question turn ended in ${result.session.state}`);
+    assertIncludes(result.records, definition.visibleText, "same-turn answer");
+    const ui = await verifyUi({ name: "question-answered", expectedTexts: [definition.visibleText], expectIdle: true });
+    return { session: result.session, workspace, records: result.records, browser: [waitingUi, ui] };
+  }
 
   if (scenario === "chat-resume") {
     await waitForFile(path.join(controlDir, `${VERIFICATION_BARRIERS.chatResumeStream}.ready`), timeoutMs);
@@ -459,6 +493,7 @@ async function sqliteSnapshot(databasePath, sessionId) {
 }
 
 function expectedPersistenceTexts(scenario) {
+  if (scenario === "codex-user-input") return [VERIFICATION_SCENARIOS.codexUserInput.visibleText];
   if (scenario === "chat-resume") {
     return [VERIFICATION_SCENARIOS.chatResumeFirst.visibleText, VERIFICATION_SCENARIOS.chatResumeSecond.visibleText];
   }

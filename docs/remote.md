@@ -78,6 +78,11 @@ Integrations → Remote access if the new installation needs pairing.
 
 ## Recovering remote actions
 
+Synchronous Codex question cards submit `questions:resolve` from both the
+browser and native iPhone app. The opaque request ID comes from the timeline.
+Answering resumes the waiting turn, and dismissing sends an empty answer map.
+Reconnecting reloads pending or settled cards from the same timeline.
+
 Browser launch preferences stay local. Only the desktop client saves the host's default agent for scheduled and automatic chats, because `system:set-default-agent` is unavailable over the remote bridge.
 
 Before sending a mutation, the browser saves its identity and request in the

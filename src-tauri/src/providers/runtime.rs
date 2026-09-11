@@ -136,6 +136,7 @@ pub struct RealProviderProcessLauncher {
     session_launch_registry: Option<Arc<SessionLaunchRegistry>>,
     cursor_acp: Arc<super::cursor_acp::CursorAcpSessions>,
     approvals: Option<Arc<crate::approvals::service::ApprovalService>>,
+    questions: Option<Arc<crate::questions::service::QuestionService>>,
     grok_acp: Arc<super::grok_acp::GrokAcpSessions>,
 }
 
@@ -146,6 +147,7 @@ impl RealProviderProcessLauncher {
             session_launch_registry: None,
             cursor_acp: Arc::new(super::cursor_acp::CursorAcpSessions::new()),
             approvals: None,
+            questions: None,
             grok_acp: Arc::new(super::grok_acp::GrokAcpSessions::new()),
         }
     }
@@ -160,6 +162,14 @@ impl RealProviderProcessLauncher {
         approvals: Arc<crate::approvals::service::ApprovalService>,
     ) -> Self {
         self.approvals = Some(approvals);
+        self
+    }
+
+    pub fn with_questions(
+        mut self,
+        questions: Arc<crate::questions::service::QuestionService>,
+    ) -> Self {
+        self.questions = Some(questions);
         self
     }
 
@@ -178,6 +188,7 @@ impl RealProviderProcessLauncher {
             session_launch_registry,
             cursor_acp,
             approvals: None,
+            questions: None,
             grok_acp: Arc::new(super::grok_acp::GrokAcpSessions::new()),
         }
     }
@@ -276,11 +287,18 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
                         "Approval service is not initialized",
                     )
                 })?;
+                let questions = self.questions.clone().ok_or_else(|| {
+                    ArgmaxError::service(
+                        "QUESTION_SERVICE_NOT_READY",
+                        "Question service is not initialized",
+                    )
+                })?;
                 return super::codex_app_server::launch_turn(
                     &binary_path,
                     &input,
                     session_launch.as_ref(),
                     approvals,
+                    questions,
                     on_event,
                 )
                 .await;

@@ -162,8 +162,11 @@ struct TranscriptQuestion: Hashable, Sendable, Identifiable {
     var header: String
     var options: [TranscriptQuestionOption]
     var allowsMultiple: Bool
+    var responseID: String? = nil
+    var allowsOther: Bool = true
+    var isSecret: Bool = false
 
-    var id: String { header.isEmpty ? question : header }
+    var id: String { responseID ?? (header.isEmpty ? question : header) }
 }
 
 struct TranscriptQuestionCard: Hashable, Sendable, Identifiable {
@@ -172,6 +175,8 @@ struct TranscriptQuestionCard: Hashable, Sendable, Identifiable {
     var createdAt: String
     var questions: [TranscriptQuestion]
     var isOutstanding: Bool
+    var sessionID: String? = nil
+    var requestID: String? = nil
 }
 
 struct TranscriptPlan: Hashable, Sendable, Identifiable {

@@ -35,6 +35,7 @@ export const IPC_CHANNELS = [
   "terminal:terminate",
   "approvals:resolve",
   "approvals:pending",
+  "questions:resolve",
   "session:events-since",
   "session:agent-events",
   "session:fork",

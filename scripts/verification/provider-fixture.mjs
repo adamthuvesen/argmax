@@ -109,6 +109,14 @@ export const VERIFICATION_SCENARIOS = Object.freeze({
     visibleText: "Verification persistent Codex child follow-up response.",
     resumeConversationId: VERIFICATION_CONVERSATION_ID,
   },
+  codexUserInput: {
+    prompt: "[argmax-verification:codex-user-input]",
+    questionText: "Which verification route should I use?",
+    questionId: "verification-route",
+    requestId: "verification-user-input",
+    expectedAnswer: "API route",
+    visibleText: "Verification Codex received API route in the same turn.",
+  },
   persistentOpencodeSubagentFirst: {
     prompt: "[argmax-verification:persistent-opencode-subagent:first]",
     visibleText: "Verification persistent OpenCode child first response.",
@@ -560,11 +568,19 @@ function emitCodexTurn(prompt, turnId, resumed) {
 }
 
 async function runCodexAppServer(args) {
-  if (args.join(" ") !== "app-server --stdio") {
+  const config = args.slice(2);
+  const allowedConfig = new Set([
+    "tools.update_plan.enabled=true",
+    "tools.experimental_request_user_input.enabled=true",
+  ]);
+  if (args[0] !== "app-server" || args[1] !== "--stdio"
+      || config.length % 2 !== 0
+      || config.some((value, index) => index % 2 === 0 ? value !== "-c" : !allowedConfig.has(value))) {
     throw new Error(`unsupported Codex app-server arguments: ${args.join(" ")}`);
   }
   const lines = createInterface({ input: process.stdin });
   let resumed = false;
+  let questionTurnId = null;
   for await (const line of lines) {
     let request;
     try {
@@ -573,6 +589,25 @@ async function runCodexAppServer(args) {
       throw new Error("Codex app-server fixture received malformed JSON-RPC");
     }
     const { id, method, params = {} } = request;
+    if (method === undefined && id === VERIFICATION_SCENARIOS.codexUserInput.requestId) {
+      const definition = VERIFICATION_SCENARIOS.codexUserInput;
+      const answers = request.result?.answers?.[definition.questionId]?.answers;
+      if (!questionTurnId || request.error || !Array.isArray(answers)
+          || answers.length !== 1 || answers[0] !== definition.expectedAnswer) {
+        throw new Error("Codex question did not receive the expected structured answer");
+      }
+      codexNotification("item/completed", {
+        threadId: VERIFICATION_CONVERSATION_ID,
+        turnId: questionTurnId,
+        item: { id: "verification-question-answer", type: "agentMessage", text: definition.visibleText },
+      });
+      codexNotification("turn/completed", {
+        threadId: VERIFICATION_CONVERSATION_ID,
+        turn: { id: questionTurnId, status: "completed", items: [] },
+      });
+      questionTurnId = null;
+      continue;
+    }
     if (method === "initialized" && id === undefined) continue;
     if (id === undefined) {
       throw new Error(`Codex app-server fixture received unsupported notification ${method ?? "<missing>"}`);
@@ -600,7 +635,8 @@ async function runCodexAppServer(args) {
       const turnId = `argmax-verification-turn-${resumed ? "follow-up" : "first"}`;
       const first = prompt.includes(VERIFICATION_SCENARIOS.persistentCodexSubagentFirst.prompt);
       const second = prompt.includes(VERIFICATION_SCENARIOS.persistentCodexSubagentSecond.prompt);
-      if ((!first && !second) || first === resumed) {
+      const question = prompt.includes(VERIFICATION_SCENARIOS.codexUserInput.prompt);
+      if ((!first && !second && !question) || (question ? resumed : first === resumed)) {
         writeJsonRpc({
           jsonrpc: "2.0",
           id,
@@ -609,7 +645,34 @@ async function runCodexAppServer(args) {
         continue;
       }
       writeJsonRpc({ jsonrpc: "2.0", id, result: { turn: { id: turnId, status: "inProgress", items: [] } } });
-      emitCodexTurn(prompt, turnId, resumed);
+      if (question) {
+        if (!config.includes("tools.experimental_request_user_input.enabled=true")) {
+          throw new Error("Codex question tool was not enabled at launch");
+        }
+        const definition = VERIFICATION_SCENARIOS.codexUserInput;
+        questionTurnId = turnId;
+        codexNotification("turn/started", {
+          threadId: VERIFICATION_CONVERSATION_ID,
+          turn: { id: turnId, status: "inProgress", items: [] },
+        });
+        writeJsonRpc({
+          jsonrpc: "2.0", id: definition.requestId, method: "item/tool/requestUserInput",
+          params: {
+            threadId: VERIFICATION_CONVERSATION_ID, turnId, itemId: "verification-question",
+            isBlocking: true,
+            questions: [{
+              id: definition.questionId, header: "Route", question: definition.questionText,
+              isOther: true, isSecret: false,
+              options: [
+                { label: definition.expectedAnswer, description: "Resume the waiting request." },
+                { label: "Alternative", description: "Choose another route." },
+              ],
+            }],
+          },
+        });
+      } else {
+        emitCodexTurn(prompt, turnId, resumed);
+      }
     } else {
       writeJsonRpc({ jsonrpc: "2.0", id, error: { code: -32601, message: `unsupported method ${method}` } });
     }

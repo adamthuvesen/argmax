@@ -273,6 +273,7 @@ pub struct ProviderSessionService {
     termination_jobs: Arc<Mutex<HashMap<String, TerminationJob>>>,
     lifecycle: Arc<WorkspaceLifecycle>,
     approvals: Option<Arc<ApprovalService>>,
+    questions: OnceLock<Arc<crate::questions::service::QuestionService>>,
     session_control: OnceLock<Arc<SessionLaunchRegistry>>,
     /// Installed after database startup. A provider turn must capture code
     /// state before the first possible write, while scratch chats skip it.
@@ -391,6 +392,7 @@ impl ProviderSessionService {
             termination_jobs: Arc::new(Mutex::new(HashMap::new())),
             lifecycle,
             approvals,
+            questions: OnceLock::new(),
             session_control: OnceLock::new(),
             checkpoints: OnceLock::new(),
             goals: OnceLock::new(),
@@ -404,6 +406,12 @@ impl ProviderSessionService {
     pub fn set_session_control(&self, registry: Arc<SessionLaunchRegistry>) {
         if self.session_control.set(registry).is_err() {
             tracing::warn!("session control registry was already installed");
+        }
+    }
+
+    pub fn set_question_service(&self, questions: Arc<crate::questions::service::QuestionService>) {
+        if self.questions.set(questions).is_err() {
+            tracing::warn!("question service was already installed");
         }
     }
 
@@ -1569,10 +1577,8 @@ impl ProviderSessionService {
         let mut first_error = None;
         // Release native permission waiters before waiting for provider cancel.
         // ACP cannot finish session/cancel until pending requests are answered.
-        if let Some(approvals) = self.approvals.as_ref() {
-            if let Err(error) = approvals.cancel_session_pending(session_id) {
-                first_error = Some(error);
-            }
+        if let Err(error) = self.cancel_pending_interactions(session_id) {
+            first_error = Some(error);
         }
 
         match entry {
@@ -1596,10 +1602,8 @@ impl ProviderSessionService {
         if let Err(error) = self.cancel_session(session_id) {
             first_error.get_or_insert(error);
         }
-        if let Some(approvals) = self.approvals.as_ref() {
-            if let Err(error) = approvals.cancel_session_pending(session_id) {
-                first_error.get_or_insert(error);
-            }
+        if let Err(error) = self.cancel_pending_interactions(session_id) {
+            first_error.get_or_insert(error);
         }
         self.terminating
             .lock_or_recover("terminating")
@@ -2253,9 +2257,7 @@ impl ProviderSessionService {
             if is_multitask {
                 self.record_multitask_finish(session_id, SessionState::Failed, &now_iso());
             }
-            if let Some(approvals) = self.approvals.as_ref() {
-                approvals.cancel_session_pending(session_id)?;
-            }
+            self.cancel_pending_interactions(session_id)?;
         }
         Ok(recovered.len())
     }
@@ -2440,9 +2442,7 @@ impl ProviderSessionService {
             self.flush_queue
                 .lock_or_recover("flush queue")
                 .delete_session(&event.session_id);
-            if let Some(approvals) = self.approvals.as_ref() {
-                approvals.cancel_session_pending(&event.session_id)?;
-            }
+            self.cancel_pending_interactions(&event.session_id)?;
             return Ok(());
         }
         self.capture_pr_branch(&event.session_id);
@@ -2517,16 +2517,13 @@ impl ProviderSessionService {
         // The drain is what sends a follow-up the user queued during the turn.
         // It must not depend on the approvals cleanup succeeding: an error
         // there used to return early and strand the queue until the next turn.
-        let approvals_cancelled = match self.approvals.as_ref() {
-            Some(approvals) => approvals.cancel_session_pending(&event.session_id),
-            None => Ok(()),
-        };
+        let interactions_cancelled = self.cancel_pending_interactions(&event.session_id);
         self.settle_session_after_turn(&event.session_id);
         self.notify_launcher_of_turn_end(&event.session_id, state, &completed_at);
         if succeeded {
             self.drain_queue_after_complete(event.session_id);
         }
-        approvals_cancelled
+        interactions_cancelled
     }
 
     /// One completion notice per turn end, addressed to whoever launched this
@@ -3351,11 +3348,7 @@ impl ProviderSessionService {
         // clears them at this same point. Like there, a failure must not return
         // early: the queue drain below is what sends a follow-up the user typed
         // during the turn.
-        let approvals_cancelled = match self.approvals.as_ref() {
-            Some(approvals) => approvals.cancel_session_pending(session_id),
-            None => Ok(()),
-        };
-        let mut first_error = approvals_cancelled.err();
+        let mut first_error = self.cancel_pending_interactions(session_id).err();
         if let Some(HandleEntry::Resolved(handle)) = entry {
             if let Err(error) = handle.terminate().await {
                 let _ = self.abort_session_after_turn(
@@ -3454,6 +3447,24 @@ impl ProviderSessionService {
         }
         if !delta.is_empty() {
             (self.publish_delta)(delta);
+        }
+    }
+
+    fn cancel_pending_interactions(&self, session_id: &str) -> ArgmaxResult<()> {
+        let mut first_error = None;
+        if let Some(approvals) = self.approvals.as_ref() {
+            if let Err(error) = approvals.cancel_session_pending(session_id) {
+                first_error = Some(error);
+            }
+        }
+        if let Some(questions) = self.questions.get() {
+            if let Err(error) = questions.cancel_session_pending(session_id) {
+                first_error.get_or_insert(error);
+            }
+        }
+        match first_error {
+            Some(error) => Err(error),
+            None => Ok(()),
         }
     }
 

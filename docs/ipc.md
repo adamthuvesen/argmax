@@ -21,6 +21,12 @@ File and review operations use a `{ kind: "workspace" | "project", id }` target 
 
 `session:agent-events` fetches subagent activity for `{ sessionId, parentToolUseId }`. It imports trace events for the parent tool call and returns rows scoped to the subagent lifecycle. Main chat views use `session:events-since` to avoid trace disk scans.
 
+`questions:resolve` answers a pending Codex question with
+`{ sessionId, requestId, answers, dismissed? }`. `answers` maps question IDs to
+arrays of answer strings. Dismissal uses `dismissed: true` with no answers.
+The response resumes the original provider request. Pending and settled cards
+arrive through the session timeline, including after a UI reconnect.
+
 `session:events-since` accepts a `changeCursor` for mutation-aware recovery.
 The first response pairs an authoritative bounded tail with a cursor from the
 same SQLite read transaction. `resetRequired` replaces retained history,

@@ -17,8 +17,8 @@ use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 use crate::ipc::inputs::*;
 use crate::ipc::{
     activity, approvals, attachments, checkpoints, checks, connections, dashboard, git_ops, goals,
-    health, learnings, projects, providers, prs, remote, review, session, skills, system, terminal,
-    usage, workspace_files, workspaces,
+    health, learnings, projects, providers, prs, questions, remote, review, session, skills,
+    system, terminal, usage, workspace_files, workspaces,
 };
 use crate::state::AppState;
 
@@ -314,6 +314,10 @@ async fn dispatch_standard(
         "approvals:pending" => {
             let _input: ApprovalsPendingInput = parse(channel, input)?;
             encode(approvals::approvals_pending_impl(state)?)
+        }
+        "questions:resolve" => {
+            let input: QuestionsResolveInput = parse(channel, input)?;
+            encode(questions::questions_resolve_impl(state, input).await?)
         }
 
         "session:events-since" => {

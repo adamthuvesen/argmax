@@ -31,6 +31,7 @@ pub mod multitask;
 pub mod notifications;
 pub mod persistence;
 pub mod providers;
+pub mod questions;
 pub mod remote;
 pub mod review;
 pub mod routines;
@@ -823,6 +824,16 @@ pub fn run() {
                             if state.approvals.set(Arc::clone(&approvals)).is_err() {
                                 tracing::warn!("approval service state was already initialized");
                             }
+                            let question_delta_tx = delta_tx.clone();
+                            let questions = questions::service::QuestionService::with_publisher(
+                                Arc::clone(&database),
+                                move |delta| {
+                                    question_delta_tx.send(delta);
+                                },
+                            );
+                            if state.questions.set(Arc::clone(&questions)).is_err() {
+                                tracing::warn!("question service state was already initialized");
+                            }
                             let (session_launch_server, session_launch_registry) =
                                 match session_control::SessionLaunchServer::bind(Arc::clone(
                                     &database,
@@ -849,7 +860,7 @@ pub fn run() {
                                     (*state.provider_discovery).clone(),
                                     session_launch_registry.clone(),
                                     Arc::clone(&cursor_acp),
-                                ).with_approvals(Arc::clone(&approvals)).with_grok_acp(Arc::clone(&grok_acp)));
+                                ).with_approvals(Arc::clone(&approvals)).with_questions(Arc::clone(&questions)).with_grok_acp(Arc::clone(&grok_acp)));
                             let providers = providers::session_service::ProviderSessionService::with_launcher_and_lifecycle_and_approvals(
                                 Arc::clone(&database),
                                 provider_launcher,
@@ -857,6 +868,7 @@ pub fn run() {
                                 Arc::clone(&lifecycle),
                                 Some(Arc::clone(&approvals)),
                             );
+                            providers.set_question_service(Arc::clone(&questions));
                             // Kept for the boot-recovery pass below, which needs
                             // the same registry the socket hands out.
                             let after_turn_registry = session_launch_registry.clone();

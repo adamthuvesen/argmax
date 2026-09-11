@@ -81,6 +81,17 @@ impl SessionStateInput {
         self
     }
 
+    /// The live provider is parked on a blocking question. It needs the same
+    /// high-priority attention as a native approval until the user answers.
+    pub fn with_blocking_question(mut self) -> Self {
+        self.attention = compute_session_attention(SessionAttentionInput {
+            state: self.state,
+            has_pending_approval: false,
+            has_outstanding_question: true,
+        });
+        self
+    }
+
     /// The agent asked and stopped. Outranks everything the state implies on
     /// its own, but yields to a pending approval — that one has the provider
     /// process parked behind it. Applied by [`update_session_state`], which is

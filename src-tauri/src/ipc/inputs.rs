@@ -11,9 +11,9 @@ use crate::{
 use super::validation::{
     AgentMode, AttachmentMimeType, AttachmentPath, Base64ImageData, BaseRef, BranchName,
     CommandText, DiffContextLines, FileContent, GitCommitMessage, NonEmptyString, OpenPath,
-    PermissionMode, ProjectId, Prompt, ProviderId, ReasoningEffort, RelativePath, RepoPath,
-    SearchQuery, SessionId, StreamChunk, TaskLabel, TerminalId, ThemeMode, WorkspaceId,
-    ATTACHMENT_BYTE_CAP,
+    PermissionMode, ProjectId, Prompt, ProviderId, QuestionRequestId, ReasoningEffort,
+    RelativePath, RepoPath, SearchQuery, SessionId, StreamChunk, TaskLabel, TerminalId, ThemeMode,
+    WorkspaceId, ATTACHMENT_BYTE_CAP,
 };
 
 macro_rules! empty_input {
@@ -729,6 +729,16 @@ pub struct ApprovalsResolveInput {
 pub enum ApprovalResolution {
     Approved,
     Rejected,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct QuestionsResolveInput {
+    pub session_id: SessionId,
+    pub request_id: QuestionRequestId,
+    pub answers: std::collections::BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    pub dismissed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

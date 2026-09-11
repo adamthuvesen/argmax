@@ -37,6 +37,11 @@ in-app scheduler launches as normal top-level sessions. See
 
 ## Repositories
 
+`data_migrations` (v46) records one-time upgrades that depend on local paths.
+The external worktree location upgrade updates only legacy-default project
+settings and records completion in the same transaction. Existing workspace
+paths and subsequent user changes to project settings are preserved.
+
 Typed modules (`projects.rs`, `workspaces.rs`, `sessions.rs`, `events.rs`, `approvals.rs`, `checks.rs`, `usage.rs`, `learnings.rs`, `gh.rs`, `routines.rs`) expose queries to services and IPC.
 
 Focused reads in `dashboard.rs`:

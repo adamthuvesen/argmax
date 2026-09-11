@@ -89,9 +89,9 @@ function ProjectSettingsForm({
     }
     const location = worktreeLocation.trim();
     if (!location.startsWith("/")) {
-      // Worktree creation requires an absolute path inside the repository —
+      // Worktree creation requires an absolute path.
       // reject here so a bad value fails at save time, not at first launch.
-      setStatus({ kind: "error", message: "Worktree location must be an absolute path inside the repository." });
+      setStatus({ kind: "error", message: "Worktree location must be an absolute path." });
       return;
     }
     setSaving(true);
@@ -138,7 +138,7 @@ function ProjectSettingsForm({
           spellCheck={false}
         />
         <p className="settings-note">
-          Absolute path inside the repository where isolated worktrees are created.
+          Absolute folder for new worktrees. It can be outside the repository. Existing worktrees stay in place.
         </p>
       </div>
 

@@ -24,7 +24,10 @@ use argmax_lib::persistence::{
         count_move_arrivals, list_all_session_events, persist_timeline_event,
         PersistTimelineEventInput,
     },
-    projects::{persist_project, PersistProjectInput, ProjectSettings},
+    projects::{
+        find_project_by_id, migrate_default_worktree_locations, persist_project,
+        update_project_settings, PersistProjectInput, ProjectSettings,
+    },
     sessions::{
         persist_session, record_session_launch, session_launch_lineage,
         update_session_provider_conversation_id, PersistSessionInput, LAUNCH_KIND_AGENT,
@@ -216,6 +219,218 @@ async fn create_isolated_adds_worktree_and_persists_row() {
     assert!(recorded
         .iter()
         .any(|delta| delta.workspaces.iter().any(|w| w.id == summary.id)));
+}
+
+#[test]
+fn migrate_default_worktree_locations_updates_only_legacy_project_settings() {
+    let legacy_repo = tempfile::tempdir().expect("legacy repo");
+    let custom_repo = tempfile::tempdir().expect("custom repo");
+    let worktree_root = tempfile::tempdir().expect("external worktree root");
+    let database = Database::open_in_memory().expect("db");
+    {
+        let connection = database.connection();
+        connection
+            .execute(
+                "DELETE FROM data_migrations WHERE name = 'external_worktree_locations'",
+                [],
+            )
+            .expect("simulate database from before external worktree migration");
+    }
+    let legacy_location = legacy_repo.path().join(".argmax/worktrees");
+    let custom_location = custom_repo.path().join("custom-worktrees");
+
+    build_named_project(
+        &database,
+        "legacy-project",
+        "Legacy",
+        &legacy_repo.path().display().to_string(),
+        &legacy_location.display().to_string(),
+    );
+    build_named_project(
+        &database,
+        "custom-project",
+        "Custom",
+        &custom_repo.path().display().to_string(),
+        &custom_location.display().to_string(),
+    );
+    let existing_workspace_path = legacy_location.join("existing-workspace");
+    {
+        let connection = database.connection();
+        persist_workspace(
+            &connection,
+            &PersistWorkspaceInput {
+                id: "existing-workspace".to_owned(),
+                project_id: "legacy-project".to_owned(),
+                task_label: "Existing workspace".to_owned(),
+                branch: "argmax/existing".to_owned(),
+                base_ref: "main".to_owned(),
+                path: existing_workspace_path.display().to_string(),
+                state: "kept".to_owned(),
+                shared_workspace: false,
+                kind: "git".to_owned(),
+                dirty: false,
+                changed_files: 0,
+            },
+        )
+        .expect("persist existing workspace");
+    }
+
+    let connection = database.connection();
+    assert_eq!(
+        migrate_default_worktree_locations(&connection, worktree_root.path())
+            .expect("migrate worktree locations"),
+        1
+    );
+    let legacy_project = find_project_by_id(&connection, "legacy-project")
+        .expect("find legacy project")
+        .expect("legacy project");
+    assert_eq!(
+        legacy_project.settings.worktree_location,
+        worktree_root
+            .path()
+            .join("legacy-project")
+            .display()
+            .to_string()
+    );
+    let custom_project = find_project_by_id(&connection, "custom-project")
+        .expect("find custom project")
+        .expect("custom project");
+    assert_eq!(
+        custom_project.settings.worktree_location,
+        custom_location.display().to_string()
+    );
+    let existing_workspace =
+        find_workspace_by_id(&connection, "existing-workspace").expect("existing workspace");
+    assert_eq!(
+        existing_workspace.path,
+        existing_workspace_path.display().to_string()
+    );
+
+    let mut user_selected_settings = legacy_project.settings;
+    user_selected_settings.worktree_location = legacy_location.display().to_string();
+    update_project_settings(&connection, "legacy-project", &user_selected_settings)
+        .expect("restore old location as a later user choice");
+    assert_eq!(
+        migrate_default_worktree_locations(&connection, worktree_root.path())
+            .expect("repeat worktree location migration"),
+        0
+    );
+    let user_selected_project = find_project_by_id(&connection, "legacy-project")
+        .expect("find project after repeated migration")
+        .expect("legacy project after repeated migration");
+    assert_eq!(
+        user_selected_project.settings.worktree_location,
+        legacy_location.display().to_string()
+    );
+}
+
+#[tokio::test]
+async fn create_isolated_rejects_relative_worktree_location_before_creating_it() {
+    let repo = seed_git_repo(&[("README.md", "hi")]);
+    ensure_main_branch(repo.path());
+    let current_dir = std::env::current_dir().expect("current directory");
+    let relative_parent = tempfile::Builder::new()
+        .prefix("argmax-relative-worktree-")
+        .tempdir_in(&current_dir)
+        .expect("relative parent");
+    let relative_location = std::path::Path::new(
+        relative_parent
+            .path()
+            .file_name()
+            .expect("relative parent name"),
+    )
+    .join("worktrees");
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &relative_location.display().to_string(),
+    );
+    let service = WorkspaceService::new(database);
+
+    let error = service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+            task_label: TaskLabel::try_from("Relative root".to_owned()).expect("task label"),
+            base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
+        })
+        .await
+        .expect_err("relative worktree location must be rejected");
+
+    assert!(
+        error.to_string().contains("must be absolute"),
+        "unexpected error: {error}"
+    );
+    assert!(
+        !relative_parent.path().join("worktrees").exists(),
+        "validation must run before creating the configured directory"
+    );
+}
+
+#[tokio::test]
+async fn create_and_archive_isolated_worktree_under_external_configured_root() {
+    let repo = seed_git_repo(&[(".gitignore", "ignored/\n"), ("README.md", "hello")]);
+    ensure_main_branch(repo.path());
+    let external_root = tempfile::tempdir().expect("external worktree root");
+    let canonical_external_root =
+        std::fs::canonicalize(external_root.path()).expect("canonical external root");
+    let canonical_repo = std::fs::canonicalize(repo.path()).expect("canonical repo");
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &external_root.path().display().to_string(),
+    );
+    let (service, _recovery) = service_with_archive_recovery(&database);
+
+    let workspace = service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+            task_label: TaskLabel::try_from("External worktree".to_owned()).expect("task label"),
+            base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
+        })
+        .await
+        .expect("create external isolated worktree");
+    let stored_path = std::path::PathBuf::from(&workspace.path);
+    assert!(stored_path.starts_with(&canonical_external_root));
+    assert!(!stored_path.starts_with(&canonical_repo));
+    let persisted = {
+        let connection = database.connection();
+        find_workspace_by_id(&connection, &workspace.id).expect("persisted external workspace")
+    };
+    assert_eq!(persisted.path, workspace.path);
+    let registered = run_git_stdout(repo.path(), &["worktree", "list", "--porcelain"]);
+    assert!(
+        registered.contains(&workspace.path),
+        "git did not register external path {}: {registered}",
+        workspace.path
+    );
+
+    let ignored_dir = stored_path.join("ignored");
+    std::fs::create_dir_all(&ignored_dir).expect("ignored directory");
+    std::fs::write(ignored_dir.join("cache.db"), "external worktree data").expect("ignored file");
+    assert!(run_git_stdout(&stored_path, &["status", "--porcelain"])
+        .trim()
+        .is_empty());
+
+    let archived = service
+        .archive(WorkspacesArchiveInput {
+            workspace_id: WorkspaceId::try_from(workspace.id).expect("workspace id"),
+            force: None,
+        })
+        .await
+        .expect("archive external isolated worktree");
+    assert_eq!(archived.state, "archived");
+    assert!(!stored_path.exists());
+    let recovery_path = archived.recovery_path.expect("recovery path");
+    assert_eq!(
+        std::fs::read_to_string(std::path::Path::new(&recovery_path).join("ignored/cache.db"))
+            .expect("recovered external file"),
+        "external worktree data"
+    );
+    let registered = run_git_stdout(repo.path(), &["worktree", "list", "--porcelain"]);
+    assert!(registered.contains(&recovery_path));
+    assert!(!registered.contains(&workspace.path));
 }
 
 /// Shell prefix that parks a setup step until the test drops a `go` file in

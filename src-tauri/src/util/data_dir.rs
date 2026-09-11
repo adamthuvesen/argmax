@@ -11,6 +11,36 @@ use std::path::PathBuf;
 
 use tauri::{Manager, Runtime};
 
+/// Worktrees live outside source checkouts. Scratch profiles keep their own
+/// root so verification does not leave checkouts in the user's worktree store.
+pub fn worktree_root() -> crate::error::ArgmaxResult<PathBuf> {
+    if let Ok(raw) = std::env::var("ARGMAX_DATA_DIR") {
+        if !raw.trim().is_empty() {
+            let dir = PathBuf::from(raw);
+            let dir = if dir.is_absolute() {
+                dir
+            } else {
+                std::env::current_dir()
+                    .map_err(|error| {
+                        crate::error::ArgmaxError::service("WORKTREE_LOCATION", error.to_string())
+                    })?
+                    .join(dir)
+            };
+            return Ok(dir.join("local-state").join("worktrees"));
+        }
+    }
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .ok_or_else(|| {
+            crate::error::ArgmaxError::service(
+                "WORKTREE_LOCATION",
+                "An absolute HOME directory is required for worktree storage",
+            )
+        })?;
+    Ok(home.join(".argmax").join("worktrees"))
+}
+
 pub fn app_data_dir<R: Runtime>(app: &impl Manager<R>) -> tauri::Result<PathBuf> {
     match std::env::var("ARGMAX_DATA_DIR") {
         Ok(raw) if !raw.trim().is_empty() => {

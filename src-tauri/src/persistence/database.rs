@@ -110,6 +110,10 @@ impl Database {
     fn from_connection(mut connection: Connection, path: Option<PathBuf>) -> ArgmaxResult<Self> {
         configure_connection(&connection)?;
         run_migrations(&mut connection)?;
+        super::projects::migrate_default_worktree_locations(
+            &connection,
+            &crate::util::data_dir::worktree_root()?,
+        )?;
 
         let connection = Arc::new(Mutex::new(connection));
         // `tauri::async_runtime::spawn` rather than `tokio::spawn`: the setup

@@ -851,7 +851,26 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &SYNC_TOMBSTONE_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 46,
+        name: "data_migrations",
+        up: DATA_MIGRATIONS,
+        affected_tables: &["data_migrations"],
+        expected_columns: &phf_map! {
+            "data_migrations" => &["name", "applied_at"],
+        },
+        requires_foreign_keys_off: false,
+    },
 ];
+
+// Machine-specific settings upgrades cannot embed local paths in schema SQL.
+// Record their completion atomically with the corresponding data update.
+const DATA_MIGRATIONS: &str = r#"
+CREATE TABLE data_migrations (
+  name TEXT PRIMARY KEY NOT NULL,
+  applied_at TEXT NOT NULL
+);
+"#;
 
 // A provider transcript remains on disk when Settings deletes the projected
 // Argmax chat. Keep the provider conversation id independently of `sessions`
@@ -2264,6 +2283,7 @@ mod tests {
                     compute_migration_checksum(crate::persistence::activity::MIGRATION_SQL)
                 ),
                 (45, compute_migration_checksum(SYNCED_SESSION_TOMBSTONES)),
+                (46, compute_migration_checksum(DATA_MIGRATIONS)),
             ]
         );
 

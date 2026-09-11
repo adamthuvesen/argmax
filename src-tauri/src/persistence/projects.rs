@@ -1,9 +1,37 @@
 use rusqlite::{named_params, Connection, Row};
 use serde::Serialize;
 use specta::Type;
+use std::path::Path;
 
 use super::{json_error, sqlite_error, time::now_iso};
 use crate::error::{ArgmaxError, ArgmaxResult};
+
+/// Upgrade only the old default setting. Workspace paths are write-once and
+/// continue to identify the checkouts that already exist on disk.
+pub fn migrate_default_worktree_locations(
+    connection: &Connection,
+    root: &Path,
+) -> ArgmaxResult<usize> {
+    let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+    let first_run = transaction
+        .execute(
+            "INSERT OR IGNORE INTO data_migrations (name, applied_at) VALUES (?1, ?2)",
+            ["external_worktree_locations", now_iso().as_str()],
+        )
+        .map_err(sqlite_error)?;
+    if first_run == 0 {
+        return Ok(0);
+    }
+    let updated = transaction
+        .execute(
+            "UPDATE projects SET worktree_location = ?1 || '/' || id \
+         WHERE worktree_location = repo_path || '/.argmax/worktrees'",
+            [root.to_string_lossy().as_ref()],
+        )
+        .map_err(sqlite_error)?;
+    transaction.commit().map_err(sqlite_error)?;
+    Ok(updated)
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PersistProjectInput {

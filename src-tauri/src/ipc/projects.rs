@@ -311,8 +311,10 @@ pub(crate) async fn register_repo_path(
         assert_valid_ref_name(&metadata.repo_path, default_branch).await?;
     }
 
+    let project_id = Uuid::new_v4().to_string();
+    let settings = default_settings(&project_id)?;
     let project = PersistProjectInput {
-        id: Uuid::new_v4().to_string(),
+        id: project_id,
         name: metadata
             .repo_path
             .file_name()
@@ -322,7 +324,7 @@ pub(crate) async fn register_repo_path(
         repo_path: metadata.repo_path.to_string_lossy().to_string(),
         current_branch: metadata.current_branch,
         default_branch: metadata.default_branch,
-        settings: default_settings(&metadata.repo_path),
+        settings,
     };
 
     let project = {
@@ -483,17 +485,16 @@ async fn assert_valid_ref_name(repo_path: &Path, reference: &str) -> ArgmaxResul
     })
 }
 
-fn default_settings(repo_path: &Path) -> ProjectSettings {
-    ProjectSettings {
-        worktree_location: repo_path
-            .join(".argmax")
-            .join("worktrees")
+fn default_settings(project_id: &str) -> ArgmaxResult<ProjectSettings> {
+    Ok(ProjectSettings {
+        worktree_location: crate::util::data_dir::worktree_root()?
+            .join(project_id)
             .to_string_lossy()
             .to_string(),
         setup_command: String::new(),
         check_commands: Vec::new(),
         archive_on_merge: false,
-    }
+    })
 }
 
 fn project_git_error(error: ArgmaxError) -> ArgmaxError {
@@ -542,6 +543,12 @@ mod tests {
         let state = AppState::new();
         let database = Arc::new(Database::open_in_memory().expect("database"));
         let project = register_repo_path(&database, repo.clone()).await.unwrap();
+        assert_eq!(
+            PathBuf::from(&project.settings.worktree_location),
+            crate::util::data_dir::worktree_root()
+                .unwrap()
+                .join(&project.id)
+        );
         assert!(state.db.set(database).is_ok());
 
         let phases: &[&[&[&str]]] = &[

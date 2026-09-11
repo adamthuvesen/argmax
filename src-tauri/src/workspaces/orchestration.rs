@@ -526,16 +526,12 @@ impl WorkspaceService {
         let branch = format!("argmax/{name}-{}", &name_id.simple().to_string()[..8]);
 
         let worktree_location = project.settings.worktree_location.clone();
-        let worktree_path = PathBuf::from(&worktree_location).join(branch.replace('/', "-"));
-
-        // String-only containment check before mkdir — a bad persisted
-        // setting (e.g. `/tmp/argmax-oops`) must not side-effect a directory
-        // on disk that the post-mkdir realpath check then rejects.
-        assert_worktree_location_contained(
-            Path::new(&project.repo_path),
-            Path::new(&worktree_location),
-            false,
-        )?;
+        if !Path::new(&worktree_location).is_absolute() {
+            return Err(invalid_workspace(
+                format!("Worktree location must be absolute: {worktree_location}"),
+                "Choose an absolute worktree location in project settings.",
+            ));
+        }
         tokio::fs::create_dir_all(&worktree_location)
             .await
             .map_err(|e| {
@@ -544,17 +540,41 @@ impl WorkspaceService {
                     "Check the project's worktree location setting.",
                 )
             })?;
-        assert_worktree_location_contained(
-            Path::new(&project.repo_path),
-            Path::new(&worktree_location),
-            true,
-        )?;
+        // The configured root is the boundary, including for external roots.
+        // Resolve it once, then append our generated single-component name.
+        let worktree_root = tokio::fs::canonicalize(&worktree_location)
+            .await
+            .map_err(|error| {
+                invalid_workspace(
+                    format!("Could not resolve worktree location {worktree_location}: {error}"),
+                    "Confirm the configured worktree location is accessible.",
+                )
+            })?;
+        let worktree_path = worktree_root.join(branch.replace('/', "-"));
+        match tokio::fs::symlink_metadata(&worktree_path).await {
+            Ok(_) => {
+                return Err(invalid_workspace(
+                    format!(
+                        "Worktree destination already exists: {}",
+                        worktree_path.display()
+                    ),
+                    "Retry to generate a new worktree name.",
+                ))
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(invalid_workspace(
+                    format!("Could not inspect worktree destination: {error}"),
+                    "Confirm the configured worktree location is accessible.",
+                ))
+            }
+        }
 
         // Pre-flight branch-collision check so the error names what to retry.
         if branch_exists(&project.repo_path, &branch).await? {
             return Err(invalid_workspace(
                 format!("Branch {branch} already exists"),
-                "Retry with a different task label.",
+                "Retry to generate a new worktree name.",
             ));
         }
 
@@ -3144,54 +3164,6 @@ async fn ref_resolves(repo_path: &str, reference: &str) -> bool {
     )
     .await
     .is_ok()
-}
-
-fn assert_worktree_location_contained(
-    repo_path: &Path,
-    worktree_location: &Path,
-    use_realpath: bool,
-) -> ArgmaxResult<()> {
-    if !worktree_location.is_absolute() {
-        return Err(invalid_workspace(
-            format!(
-                "worktreeLocation must be absolute, got {}",
-                worktree_location.display()
-            ),
-            "Configure project.worktreeLocation to an absolute path inside the repo.",
-        ));
-    }
-    let (repo_norm, worktree_norm) = if use_realpath {
-        let repo = repo_path.canonicalize().map_err(|e| {
-            invalid_workspace(
-                format!("Could not resolve repoPath {}: {e}", repo_path.display()),
-                "Confirm the project's repoPath exists.",
-            )
-        })?;
-        let worktree = worktree_location.canonicalize().map_err(|e| {
-            invalid_workspace(
-                format!(
-                    "Could not resolve worktreeLocation {}: {e}",
-                    worktree_location.display()
-                ),
-                "Confirm the worktree location exists.",
-            )
-        })?;
-        (repo, worktree)
-    } else {
-        (normalize(repo_path), normalize(worktree_location))
-    };
-    if worktree_norm == repo_norm || worktree_norm.starts_with(&repo_norm) {
-        Ok(())
-    } else {
-        Err(invalid_workspace(
-            format!(
-                "worktreeLocation {} must be inside repoPath {}",
-                worktree_norm.display(),
-                repo_norm.display()
-            ),
-            "Choose a worktree location inside the project's repo and retry.",
-        ))
-    }
 }
 
 #[cfg(test)]

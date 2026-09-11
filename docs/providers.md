@@ -140,10 +140,18 @@ projection throws away.
 
 ### Questions the agent asks the user
 
-The question card is documented in [chat-cards.md](chat-cards.md). Two of the
-five providers reach it, and the two that do not are both blocked provider-side:
+The question card is documented in [chat-cards.md](chat-cards.md). Claude,
+Cursor, and Codex's async questions reach it.
 
-**Codex asks through `request_user_input`, and Argmax does not enable it.** The
+**Codex's `request_user_input_async` reaches the question dock.** Codex 0.154.0
+delivers it as an `agent_message` item with `delivery: "async"` and structured
+`questions`. The normalizer converts titles and string options to the existing
+`AskUserQuestion` card format. Start and completion keep the same item ID, so
+the immediate tool acknowledgement leaves one answerable card. The answer uses
+the existing next-user-message flow. Question shapes outside the card's one to
+four options remain visible as prose.
+
+**The separate synchronous `request_user_input` is not enabled.** The
 tool is off unless the launch passes
 `-c tools.experimental_request_user_input.enabled=true`, so today the model is
 told it does not exist and writes the question as prose instead. Turning it on

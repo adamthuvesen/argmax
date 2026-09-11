@@ -555,9 +555,10 @@ export function buildTurnRenderState(params: {
     collectAskUserQuestionState(params.toolItems);
   const exitPlanHasPlan = exitPlanTool !== null && parsePlan(exitPlanTool.markdown) !== null;
   const hasQuestionCard = askUserQuestionTool !== null;
+  const hasBlockingQuestion = hasQuestionCard && askUserQuestionTool.delivery !== "async";
   const cardCutoff = cardCutoffForTurn({
     exitPlanCreatedAt: exitPlanHasPlan && exitPlanTool ? exitPlanTool.createdAt : null,
-    questionCreatedAt: hasQuestionCard && askUserQuestionTool ? askUserQuestionTool.createdAt : null
+    questionCreatedAt: hasBlockingQuestion ? askUserQuestionTool.createdAt : null
   });
   const visibleAssistantGroups = (cardCutoff
     ? assistantGroups.filter((g) => g.createdAt < cardCutoff)
@@ -573,7 +574,7 @@ export function buildTurnRenderState(params: {
   // (via hiddenToolIds and the question-anchored cardCutoff).
   const planPrecededByQuestion =
     exitPlanHasPlan &&
-    hasQuestionCard &&
+    hasBlockingQuestion &&
     exitPlanTool !== null &&
     askUserQuestionTool !== null &&
     askUserQuestionTool.createdAt <= exitPlanTool.createdAt;
@@ -596,6 +597,6 @@ export function buildTurnRenderState(params: {
       assistantTimestamps: params.assistantTimestamps,
       toolItems: params.toolItems
     }),
-    isPausedOnUserInput: askUserQuestionTool !== null || exitPlanTool !== null
+    isPausedOnUserInput: hasBlockingQuestion || exitPlanTool !== null
   };
 }

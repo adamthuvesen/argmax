@@ -582,6 +582,54 @@ describe("SessionConversation — cards", () => {
     expect(call?.[3]).toBe("plan");
   });
 
+  it("shows one completed async Codex question and submits its answer", () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    const payload = {
+      type: "AskUserQuestion",
+      name: "AskUserQuestion",
+      id: "ask-1",
+      delivery: "async",
+      phase: "final_answer",
+      text: "Which surface?\n- iOS\n- Both",
+      input: { delivery: "async", questions: [{
+        question: "Which surface?",
+        header: "",
+        options: [{ label: "iOS" }, { label: "Both" }],
+        multiSelect: false
+      }] }
+    };
+    render(
+      <SessionConversation
+        events={[
+          event("u1", "user.message", "pick a surface", "2026-05-12T15:00:00.000Z"),
+          event("ask-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", payload),
+          event("ask-end", "command.completed", "AskUserQuestion", "2026-05-12T15:00:02.000Z", payload),
+          event("later", "message.completed", "I found the existing iPhone app.", "2026-05-12T15:00:03.000Z")
+        ]}
+        isLogOpen={false}
+        onSendSessionInput={onSend}
+        onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onClearSession={vi.fn().mockResolvedValue(undefined)}
+        onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
+        pendingMessages={[]}
+        onToggleLog={vi.fn()}
+        project={project}
+        rawOutputs={[]}
+        review={reviewStub()}
+        session={baseSession({ provider: "codex", state: "complete" })}
+        workspace={workspace}
+      />
+    );
+
+    expect(screen.getAllByLabelText("Question from agent")).toHaveLength(1);
+    expect(screen.getByText("I found the existing iPhone app.")).toBeInTheDocument();
+    expect(screen.queryByText("AskUserQuestion")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: /iOS/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(onSend.mock.calls[0]?.[1]).toBe("Which surface?: iOS");
+  });
+
   it("terminates the in-flight probe before sending the question dock answer (no queue wait)", async () => {
     // While Haiku is still emitting fallback narration after a denied
     // AskUserQuestion, session.state === "running". A naive send would queue
@@ -1117,6 +1165,27 @@ describe("SessionConversation — cards", () => {
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
   });
 
+
+  it("keeps Thinking visible while Codex works after an async question", () => {
+    vi.useFakeTimers();
+    renderConversation(
+      baseSession({ provider: "codex", state: "running" }),
+      [
+        event("u1", "user.message", "ask me", "2026-05-12T15:00:00.000Z"),
+        event("ask-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
+          id: "async-ask",
+          name: "AskUserQuestion",
+          delivery: "async",
+          input: { delivery: "async", questions: [{
+            question: "Which surface?", header: "", options: [{ label: "iOS" }]
+          }] }
+        })
+      ]
+    );
+    act(() => { vi.advanceTimersByTime(2000); });
+    expect(screen.getByLabelText("Question from agent")).toBeInTheDocument();
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+  });
 
   it("restores Thinking once the user submits and a new user.message arrives", () => {
     // After the user submits the card, a new user.message lands.

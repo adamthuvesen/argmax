@@ -118,26 +118,38 @@ pub fn normalize_tool_item(
 ) -> Option<PersistTimelineEventInput> {
     let item = item?;
     let item_type = item_type?;
-    if item_type == "agent_message"
-        || !matches!(provider_type, Some("item.started" | "item.completed"))
-    {
+    if !matches!(provider_type, Some("item.started" | "item.completed")) {
         return None;
     }
 
+    // Async questions are delivered as messages, but answered through the same
+    // next-user-message flow as the other providers' question cards.
+    let async_questions = if item_type == "agent_message" {
+        Some(async_question_input(item)?)
+    } else {
+        None
+    };
     let action = object_value(item.get("action"));
-    if !is_tool_like_item(item, action, item_type) {
+    if async_questions.is_none() && !is_tool_like_item(item, action, item_type) {
         return None;
     }
     // Codex collab items (`collab_tool_call`: spawn_agent / send_message_to_thread /
     // wait / close_agent) carry the tool under `tool`, not `name` — surface that
     // as the tool name so the renderer's agent bucket sees `spawn_agent`.
-    let tool_name = string_value(item.get("name"))
-        .or_else(|| string_value(item.get("tool")))
-        .unwrap_or(item_type);
+    let tool_name = if async_questions.is_some() {
+        "AskUserQuestion"
+    } else {
+        string_value(item.get("name"))
+            .or_else(|| string_value(item.get("tool")))
+            .unwrap_or(item_type)
+    };
     let mut tool_payload = item.clone();
     tool_payload.insert("type".to_string(), Value::String(tool_name.to_string()));
     tool_payload.insert("name".to_string(), Value::String(tool_name.to_string()));
-    tool_payload.insert("input".to_string(), extract_tool_input(item, action));
+    tool_payload.insert(
+        "input".to_string(),
+        async_questions.unwrap_or_else(|| extract_tool_input(item, action)),
+    );
     if let Some(provider_type) = provider_type {
         tool_payload.insert(
             "providerEventType".to_string(),
@@ -156,6 +168,41 @@ pub fn normalize_tool_item(
         tool_name,
         Value::Object(tool_payload),
     ))
+}
+
+fn async_question_input(item: &Map<String, Value>) -> Option<Value> {
+    if string_value(item.get("delivery")) != Some("async") {
+        return None;
+    }
+    let raw_questions = item.get("questions")?.as_array()?;
+    if raw_questions.is_empty() {
+        return None;
+    }
+    let mut questions = Vec::with_capacity(raw_questions.len());
+    for raw in raw_questions {
+        let title = raw.get("title")?.as_str()?;
+        let options = raw.get("options")?.as_array()?;
+        // Leave unsupported shapes as visible prose instead of creating a card
+        // that the clients cannot draw or silently dropping part of a question.
+        if title.trim().is_empty() || options.is_empty() || options.len() > 4 {
+            return None;
+        }
+        let mut labels = Vec::with_capacity(options.len());
+        for option in options {
+            let label = option.as_str()?;
+            if label.trim().is_empty() {
+                return None;
+            }
+            labels.push(serde_json::json!({ "label": label }));
+        }
+        questions.push(serde_json::json!({
+            "question": title,
+            "header": "",
+            "options": labels,
+            "multiSelect": false
+        }));
+    }
+    Some(serde_json::json!({ "questions": questions, "delivery": "async" }))
 }
 
 /// Codex reports native child work through collab tool rows. `spawn_agent` and
@@ -761,6 +808,71 @@ mod tests {
         EventNormalizer, NormalizerSessionContext,
     };
     use crate::providers::ProviderId;
+
+    #[test]
+    fn codex_async_questions_become_question_cards() {
+        let mut context = NormalizerSessionContext::default();
+        let item = json!({
+            "id": "ask-1",
+            "type": "agent_message",
+            "delivery": "async",
+            "phase": "final_answer",
+            "text": "Which surface?\n- iOS\n- Both",
+            "questions": [{ "title": "Which surface?", "options": ["iOS", "Both"] }]
+        });
+        for (provider_type, expected_type) in [
+            ("item.started", "command.started"),
+            ("item.completed", "command.completed"),
+        ] {
+            let result = normalize_provider_event(
+                ProviderId::Codex,
+                &output_event(&json!({ "type": provider_type, "item": item }).to_string()),
+                &mut context,
+            );
+            assert_eq!(result.events.len(), 1);
+            let event = &result.events[0];
+            assert_eq!(event.r#type, expected_type);
+            assert_eq!(event.message, "AskUserQuestion");
+            assert_eq!(event.payload["name"], "AskUserQuestion");
+            assert_eq!(event.payload["id"], "ask-1");
+            assert_eq!(event.payload["delivery"], "async");
+            assert_eq!(
+                event.payload["input"],
+                json!({ "delivery": "async", "questions": [{
+                "question": "Which surface?", "header": "",
+                "options": [{ "label": "iOS" }, { "label": "Both" }],
+                "multiSelect": false
+            }] })
+            );
+        }
+    }
+
+    #[test]
+    fn codex_unsupported_async_questions_remain_visible_prose() {
+        for questions in [
+            json!([]),
+            json!([{ "title": "", "options": ["A"] }]),
+            json!([{ "title": "Which?", "options": ["A", 42] }]),
+            json!([{ "title": "Which?", "options": ["A", "B", "C", "D", "E"] }]),
+            json!([{ "title": "Which?" }]),
+        ] {
+            let result = normalize_provider_event(
+                ProviderId::Codex,
+                &output_event(
+                    &json!({
+                        "type": "item.completed",
+                        "item": { "id": "ask-1", "type": "agent_message", "delivery": "async",
+                            "text": "Which surface?", "questions": questions }
+                    })
+                    .to_string(),
+                ),
+                &mut NormalizerSessionContext::default(),
+            );
+            assert_eq!(result.events.len(), 1);
+            assert_eq!(result.events[0].r#type, "message.completed");
+            assert_eq!(result.events[0].message, "Which surface?");
+        }
+    }
 
     #[test]
     fn codex_item_events_become_command_events() {

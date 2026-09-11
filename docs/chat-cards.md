@@ -216,6 +216,12 @@ The live question can only be in the last turn (answering it sends a user
 message, which starts a new one), so `SessionConversation` reads it off the last
 render item and the turn stops drawing its card.
 
+Codex's async questions use the same dock while the agent continues working.
+Their normalized input carries `delivery: "async"`, which keeps later assistant
+messages visible. Claude's blocking question cards still suppress fallback
+prose emitted after the ask. Submitting either kind uses the existing
+stop-before-answer flow.
+
 An **answered** question leaves the transcript entirely. The answer that follows
 it is the record; the card behind it would restate the question the reader just
 settled, under a live Send button that could send it again.

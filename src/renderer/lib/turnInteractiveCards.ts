@@ -13,6 +13,7 @@ export type ResolvedAskUserQuestionTool = {
   id: string;
   createdAt: string;
   questions: Question[];
+  delivery?: "async";
 };
 
 function normalizedInteractiveToolName(name: string): string {
@@ -74,12 +75,18 @@ export function collectAskUserQuestionState(toolItems: readonly TurnToolItem[]):
     const questions = parseQuestionsFromToolInput(candidate);
     if (!questions) continue;
     if (!tool) {
-      tool = { id: candidate.id, createdAt: candidate.createdAt, questions };
+      tool = {
+        id: candidate.id,
+        createdAt: candidate.createdAt,
+        questions,
+        ...(candidate.inputFull?.delivery === "async" ? { delivery: "async" as const } : {})
+      };
     }
   }
   return { tool, hiddenToolIds: candidateIds };
 }
 
+// Async questions remain answerable in the dock while progress cues continue.
 export function hasOutstandingCardAsk(events: TimelineEvent[], toolCalls: ToolCall[]): boolean {
   let lastUserMessageTime = "";
   for (const event of events) {
@@ -90,7 +97,7 @@ export function hasOutstandingCardAsk(events: TimelineEvent[], toolCalls: ToolCa
   }
   return toolCalls.some(
     (tool) =>
-      ((isAskUserQuestionToolName(tool.name) && parseQuestionsFromToolInput(tool)) ||
+      ((isAskUserQuestionToolName(tool.name) && tool.inputFull?.delivery !== "async" && parseQuestionsFromToolInput(tool)) ||
         isExitPlanModeToolName(tool.name)) &&
       tool.createdAt > lastUserMessageTime
   );

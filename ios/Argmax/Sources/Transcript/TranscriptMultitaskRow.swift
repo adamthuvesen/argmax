@@ -327,7 +327,7 @@ private struct TranscriptMultitaskDetail: View {
             }
         }
         .task(id: childSessionID) { await requestReload() }
-        .onChange(of: dashboard.transcriptRevision) { requestReloadSoon() }
+        .onReceive(dashboard.transcriptChanged) { requestReloadSoon() }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }

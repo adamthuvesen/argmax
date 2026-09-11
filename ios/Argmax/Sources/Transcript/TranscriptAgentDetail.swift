@@ -85,7 +85,7 @@ struct TranscriptAgentDetail: View {
             }
         }
         .task(id: agent.id) { await requestReload() }
-        .onChange(of: dashboard.transcriptRevision) { requestReloadSoon() }
+        .onReceive(dashboard.transcriptChanged) { requestReloadSoon() }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }

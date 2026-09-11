@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import OSLog
 
@@ -22,20 +23,22 @@ final class DashboardStore: ObservableObject {
     /// drops a snapshot equal to the one already held: a Mac with genuinely
     /// no chats answers with exactly that.
     @Published private(set) var loadedOnce = false
-    /// Detail sheets use invalidations too, including child sessions whose
-    /// events do not change the parent's projected rows.
-    @Published private(set) var transcriptRevision = 0
     @Published private(set) var isCachedSnapshot = false
-    @Published private(set) var reviewWorkspaceRevisions: [String: Int] = [:]
+    /// Invalidations are signals, not state. A busy turn pushes a delta per
+    /// streamed chunk, and a published counter bumped per chunk re-rendered
+    /// every view observing this store — the chat list under the open
+    /// transcript included — twenty times a second, which is the scroll
+    /// stutter in a running chat. Only the screens that refetch subscribe.
+    /// Detail sheets use transcript invalidations too, including child
+    /// sessions whose events do not change the parent's projected rows.
+    let transcriptChanged = PassthroughSubject<Void, Never>()
+    /// The workspaces whose review may have changed.
+    let reviewChanged = PassthroughSubject<Set<String>, Never>()
     private var snapshotVersion = 0
     private var cacheWrite: Task<Void, Never>?
 
-    func reviewWorkspaceRevision(for workspaceID: String) -> Int {
-        reviewWorkspaceRevisions[workspaceID, default: 0]
-    }
-
     private func invalidateReviews(_ ids: Set<String>) {
-        for id in ids { reviewWorkspaceRevisions[id, default: 0] &+= 1 }
+        if !ids.isEmpty { reviewChanged.send(ids) }
     }
 
     /// Read acknowledgements arrive in the same dashboard rows on every device.
@@ -108,7 +111,7 @@ final class DashboardStore: ObservableObject {
             for await event in events {
                 guard let self else { return }
                 self.onTranscriptEvent?(event)
-                self.transcriptRevision += 1
+                self.transcriptChanged.send()
                 switch event {
                 case .push(let channel, let payload):
                     if channel == "dashboard:delta" { self.apply(payload) }
@@ -125,7 +128,7 @@ final class DashboardStore: ObservableObject {
                 self.connection = state
                 self.onTranscriptConnection?(state)
                 if state == .live {
-                    self.transcriptRevision += 1
+                    self.transcriptChanged.send()
                     self.invalidateReviews(Set(self.snapshot.workspaces.map(\.id)))
                 }
                 // A reconnect misses whatever changed while the socket was
@@ -183,9 +186,9 @@ final class DashboardStore: ObservableObject {
         let after = Dictionary(uniqueKeysWithValues: loaded.workspaces.map { ($0.id, $0) })
         invalidateReviews(Set(before.keys).union(after.keys).filter { before[$0] != after[$0] })
         saveCache(loaded)
-        onTranscriptSnapshot?(loaded)
         guard loaded != snapshot else { return }
         snapshot = loaded
+        onTranscriptSnapshot?(loaded)
         regroup()
     }
 
@@ -200,9 +203,12 @@ final class DashboardStore: ObservableObject {
         affected.formUnion((delta.changedSessionIds ?? []).compactMap { sessionWorkspaces[$0] })
         invalidateReviews(affected)
         let merged = mergeDashboardDelta(snapshot, delta)
-        onTranscriptSnapshot?(merged)
+        // Most deltas change nothing here (a streamed chunk carries only
+        // `changedSessionIds`); handing an unchanged snapshot to the open
+        // transcript made it republish and re-project per chunk.
         guard merged != snapshot else { return }
         snapshot = merged
+        onTranscriptSnapshot?(merged)
         saveCache(merged)
         regroup()
     }

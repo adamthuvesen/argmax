@@ -188,7 +188,7 @@ missing `origin` falls back to the plain bubble rather than failing.
 
 ## Card Architecture
 
-In headless structured mode (`-p --output-format stream-json`), tools like `ExitPlanMode` and `AskUserQuestion` return tool results with status errors to signal pause for input. Argmax extracts the structured payload (`input.plan` or `input.questions`) and displays it as an interactive card instead of a failed tool call.
+In headless structured mode (`-p --output-format stream-json`), tools like `ExitPlanMode` and `AskUserQuestion` return tool results with status errors to signal pause for input. Argmax extracts the structured payload (`input.plan` or `input.questions`) and displays it as an interactive card instead of a failed tool call. For `AskUserQuestion` the error text is Argmax's own: the control channel denies the call with a message saying the question is on screen and the answer arrives as the next user message, so the model ends the turn instead of reading the CLI's default "did not answer" result as a dismissal (see [approvals-checks.md](approvals-checks.md)).
 
 `SendUserMessage` carries plain user-facing text, so it is normalized directly into `message.completed` rather than a card.
 

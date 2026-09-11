@@ -112,15 +112,28 @@ impl AgentMode {
 /// lowercase-alphanumeric fold, so `ExitPlanMode` and `exit_plan_mode` are one
 /// name.
 pub fn renders_as_interactive_card(tool_name: &str) -> bool {
-    let normalized: String = tool_name
+    matches!(
+        folded_tool_name(tool_name).as_str(),
+        "askuserquestion" | "askquestiontoolcall" | "sendusermessage" | "exitplanmode"
+    )
+}
+
+/// Whether the call is the provider's multiple-choice question tool, whose
+/// answer the user gives in the chat's question dock rather than in the tool
+/// result.
+pub fn asks_the_user_a_question(tool_name: &str) -> bool {
+    matches!(
+        folded_tool_name(tool_name).as_str(),
+        "askuserquestion" | "askquestiontoolcall"
+    )
+}
+
+fn folded_tool_name(tool_name: &str) -> String {
+    tool_name
         .chars()
         .filter(char::is_ascii_alphanumeric)
         .map(|character| character.to_ascii_lowercase())
-        .collect();
-    matches!(
-        normalized.as_str(),
-        "askuserquestion" | "askquestiontoolcall" | "sendusermessage" | "exitplanmode"
-    )
+        .collect()
 }
 
 #[cfg(test)]
@@ -142,5 +155,14 @@ mod tests {
         for name in ["Bash", "Edit", "Write", "askQuestion", "plan"] {
             assert!(!renders_as_interactive_card(name), "{name}");
         }
+    }
+
+    #[test]
+    fn only_the_question_tools_ask_the_user() {
+        use super::asks_the_user_a_question;
+        assert!(asks_the_user_a_question("AskUserQuestion"));
+        assert!(asks_the_user_a_question("askQuestionToolCall"));
+        assert!(!asks_the_user_a_question("ExitPlanMode"));
+        assert!(!asks_the_user_a_question("SendUserMessage"));
     }
 }

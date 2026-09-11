@@ -664,11 +664,16 @@ async fn server_request_response(
             | "item/fileChange/requestApproval"
             | "item/permissions/requestApproval"
     ) {
-        return rpc_error(
-            id,
-            -32601,
-            format!("Argmax does not support Codex app-server request {method}"),
-        );
+        // The text is what the model reads back, so the question tool's says
+        // how to ask instead: in prose, then end the turn for the reply.
+        let message = if method == "item/tool/requestUserInput" {
+            "Argmax does not show Codex's request_user_input. Ask the question in your reply \
+             and end the turn; the user's answer arrives as the next message."
+                .to_string()
+        } else {
+            format!("Argmax does not support Codex app-server request {method}")
+        };
+        return rpc_error(id, -32601, message);
     }
     let Some(request_thread_id) = params.get("threadId").and_then(Value::as_str) else {
         return rpc_error(id, -32602, "Approval request has no threadId");
@@ -1562,6 +1567,10 @@ mod tests {
         .await;
         assert_eq!(response["id"], "question-1");
         assert_eq!(response["error"]["code"], -32601);
+        assert!(response["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("Ask the question in your reply"));
         assert!(approvals.calls.lock().unwrap().is_empty());
     }
 

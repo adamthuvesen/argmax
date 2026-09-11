@@ -291,10 +291,12 @@ pub async fn launch_turn(
                             let task = requests.spawn(async move {
                                 let tool_input = message.pointer("/request/input").cloned().unwrap_or(json!({}));
                                 let command = tool_input.get("command").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| format!("{}\n{}", message.pointer("/request/tool_name").and_then(Value::as_str).unwrap_or("Tool request"), tool_input));
-                                if answers_itself(
-                                    &request_input,
-                                    message.pointer("/request/tool_name").and_then(Value::as_str),
-                                ) {
+                                let tool_name = message.pointer("/request/tool_name").and_then(Value::as_str);
+                                if tool_name.is_some_and(super::asks_the_user_a_question) {
+                                    let _ = writer.send(WriteRequest::control(question_shown_response(&request_id)));
+                                    return;
+                                }
+                                if answers_itself(&request_input, tool_name) {
                                     let _ = writer.send(WriteRequest::control(permission_response(&request_id, true, tool_input)));
                                     return;
                                 }
@@ -401,6 +403,25 @@ fn answers_itself(input: &ProviderLaunchInput, tool_name: Option<&str>) -> bool 
     }
     input.permission_mode == PermissionMode::AutoApprove
         && input.agent_mode == super::AgentMode::Auto
+}
+
+/// What the model reads back from `AskUserQuestion`. The chat draws the
+/// question in the composer's dock and the answer arrives as the next user
+/// message, so the CLI never sees answers. Allowing the call makes it report
+/// "The user did not answer the questions." before the user has even seen
+/// them, which models read as a dismissal and fall back to asking in prose.
+/// Denying lets the message carry the contract instead.
+const QUESTION_SHOWN_MESSAGE: &str = "The question is now in front of the user in the chat. \
+Their answer arrives as your next user message, so end this turn now: no further questions, \
+no prose restatement of the options, and no work that depends on the answer. \
+This is not a dismissal, so do not call AskUserQuestion again until the user has replied.";
+
+fn question_shown_response(id: &str) -> Value {
+    json!({"type":"control_response","response":{"subtype":"success","request_id":id,"response":{
+        "behavior":"deny",
+        "message":QUESTION_SHOWN_MESSAGE,
+        "decisionReason":{"type":"other","reason":"question shown in the Argmax chat"}
+    }}})
 }
 
 fn permission_response(id: &str, allowed: bool, input: Value) -> Value {
@@ -593,6 +614,18 @@ mod tests {
         let plan = launch_input(PermissionMode::AutoApprove, AgentMode::Plan);
         assert!(!answers_itself(&plan, Some("Bash")));
         assert!(answers_itself(&plan, Some("AskUserQuestion")));
+    }
+
+    #[test]
+    fn a_question_is_denied_with_the_dock_contract_not_allowed_unanswered() {
+        let response = question_shown_response("req-1");
+        assert_eq!(response["response"]["request_id"], "req-1");
+        assert_eq!(response["response"]["response"]["behavior"], "deny");
+        let message = response["response"]["response"]["message"]
+            .as_str()
+            .unwrap();
+        assert!(message.contains("next user message"), "{message}");
+        assert!(message.contains("not a dismissal"), "{message}");
     }
 
     #[test]

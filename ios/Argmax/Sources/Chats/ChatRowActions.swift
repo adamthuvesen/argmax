@@ -171,28 +171,36 @@ private struct ChatRowActions: ViewModifier {
                 .disabled(busy)
             }
             .contextMenu {
-                Button(pinTitle, systemImage: row.workspace.pinned ? "pin.slash" : "pin") {
-                    center.togglePin(row)
+                // The menu is the platform's own surface, drawn in its own
+                // materials and label colours, so its icons read as label
+                // colour like every other iOS menu rather than carrying the
+                // app tint through. Archive keeps the destructive red the
+                // role gives it.
+                Group {
+                    Button(pinTitle, systemImage: row.workspace.pinned ? "pin.slash" : "pin") {
+                        center.togglePin(row)
+                    }
+                    .disabled(busy)
+                    Button("Rename", systemImage: "pencil") {
+                        center.requestRename(row)
+                    }
+                    .disabled(busy)
+                    Button("Fork chat", systemImage: "arrow.triangle.branch") {
+                        center.fork(row, then: onFork)
+                    }
+                    .disabled(busy || !ChatRowActionCenter.isForkable(row))
+                    Button("New chat here", systemImage: "plus.bubble") {
+                        onNewChatHere(row)
+                    }
+                    Divider()
+                    Button(role: .destructive) {
+                        center.archive(row)
+                    } label: {
+                        Label("Archive", systemImage: "archivebox")
+                    }
+                    .disabled(busy)
                 }
-                .disabled(busy)
-                Button("Rename", systemImage: "pencil") {
-                    center.requestRename(row)
-                }
-                .disabled(busy)
-                Button("Fork chat", systemImage: "arrow.triangle.branch") {
-                    center.fork(row, then: onFork)
-                }
-                .disabled(busy || !ChatRowActionCenter.isForkable(row))
-                Button("New chat here", systemImage: "plus.bubble") {
-                    onNewChatHere(row)
-                }
-                Divider()
-                Button(role: .destructive) {
-                    center.archive(row)
-                } label: {
-                    Label("Archive", systemImage: "archivebox")
-                }
-                .disabled(busy)
+                .tint(Color.primary)
             }
     }
 }

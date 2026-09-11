@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { baseSession, renderConversation } from "../../test/sessionConversationTestHarness.js";
+import { baseSession, event, renderConversation } from "../../test/sessionConversationTestHarness.js";
 
 describe("SessionComposer picker shortcuts", () => {
   beforeEach(() => window.localStorage.clear());
@@ -25,5 +25,20 @@ describe("SessionComposer picker shortcuts", () => {
 
     fireEvent.keyDown(document, { key: "M", metaKey: true, shiftKey: true });
     expect(screen.queryByRole("listbox", { name: "Chat model" })).toBeNull();
+  });
+
+  it("recalls the last sent message on ⌘↑ only while the draft is empty", () => {
+    renderConversation(baseSession({ state: "complete" }), [
+      event("user-1", "user.message", "First ask", "2026-05-12T15:30:00.000Z"),
+      event("user-2", "user.message", "Second ask", "2026-05-12T15:40:00.000Z")
+    ]);
+    const prompt = screen.getByRole("textbox", { name: "Chat prompt" });
+
+    fireEvent.keyDown(prompt, { key: "ArrowUp", metaKey: true });
+    expect(prompt).toHaveValue("Second ask");
+
+    fireEvent.change(prompt, { target: { value: "typing" } });
+    fireEvent.keyDown(prompt, { key: "ArrowUp", metaKey: true });
+    expect(prompt).toHaveValue("typing");
   });
 });

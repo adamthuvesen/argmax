@@ -317,6 +317,7 @@ export function LaunchSurface({
   const reviewIsPanelOpen = reviewState.isPanelOpen;
   const reviewModes = reviewState.layout.modes;
   const reviewClosePane = reviewState.closePane;
+  const reviewOpenBrowser = reviewState.openBrowser;
   const lastResetSignal = useRef(resetSignal);
   const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
 
@@ -372,9 +373,10 @@ export function LaunchSurface({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [activeProject, reviewClosePane, reviewIsPanelOpen, reviewModes, reviewOpenPanelInFilesMode, toggleReviewPanel]);
 
-  // ⌘⇧M, ⌘⇧E and ⌘⇧R open the model, effort and folder pickers. Only the
-  // focused launcher answers, and the folder picker exists only on the task
-  // launcher: a side chat has no project to switch.
+  // ⌘⇧M, ⌘⇧E and ⌘⇧R open the model, effort and folder pickers and ⌘⇧I
+  // toggles the browser. Only the focused launcher answers, and the folder
+  // picker exists only on the task launcher: a side chat has no project to
+  // switch.
   const supportsEffort = model.reasoningEffort != null;
   useEffect(() => {
     if (!isFocused) return undefined;
@@ -410,11 +412,20 @@ export function LaunchSurface({
         );
         if (compactTrigger?.offsetParent) setCompactContextOpen(true);
         setProjectPickerOpen((open) => !open);
+        return;
+      }
+      if (key === "i" && window.argmax?.browser) {
+        event.preventDefault();
+        if (reviewIsPanelOpen && reviewModes.includes("browser")) {
+          reviewClosePane(reviewModes[0] === "browser" ? 0 : 1);
+        } else {
+          reviewOpenBrowser();
+        }
       }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [chatMode, isFocused, supportsEffort]);
+  }, [chatMode, isFocused, reviewClosePane, reviewIsPanelOpen, reviewModes, reviewOpenBrowser, supportsEffort]);
 
   useEffect(() => {
     if (resetSignal === lastResetSignal.current) return;

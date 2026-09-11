@@ -843,6 +843,22 @@ describe("App sidebar", () => {
     expect(screen.getAllByRole("tablist", { name: "Review panel mode" })).toHaveLength(1);
   });
 
+  it("toggles the browser in the focused pane's review panel with Cmd+Shift+I", async () => {
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    const input = await screen.findByLabelText("Chat prompt");
+    fireEvent.keyDown(input, { key: "I", metaKey: true, shiftKey: true });
+
+    expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Browser", selected: true })).toBeInTheDocument();
+
+    fireEvent.keyDown(input, { key: "I", metaKey: true, shiftKey: true });
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument()
+    );
+  });
+
   it("opens workspace files via the unified command palette on Cmd+P", async () => {
     listChangedFiles.mockResolvedValue([]);
     listWorkspaceFiles.mockResolvedValue([

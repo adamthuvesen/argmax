@@ -8,6 +8,7 @@ import type {
   ProviderId,
   QueuedMessageDelivery
 } from "../../shared/types.js";
+import type { FollowUpDelivery } from "../lib/uiPreferences.js";
 import { modelSupportsFastMode, type ModelPickerSelection } from "../lib/models.js";
 import { withToast, type ToastMessage } from "../lib/withToast.js";
 
@@ -35,7 +36,8 @@ export interface SessionCommands {
     model: ModelPickerSelection,
     agentMode: AgentMode,
     attachments?: ComposerAttachment[],
-    agentReferences?: AgentReference[]
+    agentReferences?: AgentReference[],
+    delivery?: FollowUpDelivery
   ) => Promise<void>;
   cancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   sendQueuedMessageNow: (
@@ -66,13 +68,15 @@ export function useSessionCommands({
       model: ModelPickerSelection,
       agentMode: AgentMode,
       attachments?: ComposerAttachment[],
-      agentReferences?: AgentReference[]
+      agentReferences?: AgentReference[],
+      delivery: FollowUpDelivery = "queue"
     ): Promise<void> => {
       if (!window.argmax) {
         throw new Error("Open the Tauri app window to send input to a live chat.");
       }
 
-      const result = await window.argmax.providers.sendInput({
+      const sendInput = delivery === "steer" ? window.argmax.providers.steerInput : window.argmax.providers.sendInput;
+      const result = await sendInput({
         sessionId,
         input,
         // Carries the picked provider; the backend only acts on it when it

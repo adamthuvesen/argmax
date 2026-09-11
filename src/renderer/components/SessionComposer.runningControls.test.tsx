@@ -28,6 +28,30 @@ describe("SessionComposer — running turn controls", () => {
     expect(onTerminateSession).not.toHaveBeenCalled();
   });
 
+  it("steers on Enter when configured as the default", async () => {
+    const onSendSessionInput = vi.fn(() => Promise.resolve());
+    renderConversation(baseSession({ state: "running" }), [], {
+      defaultFollowUpDelivery: "steer",
+      onSendSessionInput
+    });
+
+    const prompt = screen.getByLabelText("Chat prompt");
+    fireEvent.change(prompt, { target: { value: "Prioritize the migration" } });
+    fireEvent.keyDown(prompt, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(onSendSessionInput).toHaveBeenCalledWith(
+        "session-a",
+        "Prioritize the migration",
+        expect.anything(),
+        "auto",
+        undefined,
+        undefined,
+        "steer"
+      )
+    );
+  });
+
   it("stops without sending the draft when Stop is clicked", async () => {
     const { onSendSessionInput, onTerminateSession } = runningComposer();
 

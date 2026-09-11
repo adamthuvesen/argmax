@@ -160,7 +160,8 @@ import {
   resolveChatVerbosity,
   useBooleanUiPreference,
   useBoundedNumberPreference,
-  useChatVerbosityPreference
+  useChatVerbosityPreference,
+  useFollowUpDeliveryPreference
 } from "./lib/uiPreferences.js";
 import { randomSessionIcon } from "./lib/sessionIcons.js";
 import { isMultitaskSession, multitasksByParentSession } from "./lib/multitask.js";
@@ -214,6 +215,7 @@ export function App(): JSX.Element {
   const workspaceRef = useRef<HTMLElement | null>(null);
   const [workspaceWidth, setWorkspaceWidth] = useState(0);
   const [chatVerbosity, setChatVerbosity] = useChatVerbosityPreference();
+  const [followUpDelivery, setFollowUpDelivery] = useFollowUpDeliveryPreference();
   const { toolCallsDisplay, toolCallGroupsExpanded, thinkingDisplay } = useMemo(
     () => resolveChatVerbosity(chatVerbosity),
     [chatVerbosity]
@@ -2231,6 +2233,8 @@ export function App(): JSX.Element {
                 onPermissionModeChange={(provider, mode) => setPermissionModes((current) => ({ ...current, [provider]: mode }))}
                 newSessionMode={newSessionMode}
                 onNewSessionModeChange={setNewSessionMode}
+                followUpDelivery={followUpDelivery}
+                onFollowUpDeliveryChange={setFollowUpDelivery}
                 randomSessionIconEnabled={randomSessionIconEnabled}
                 onRandomSessionIconEnabledChange={setRandomSessionIconEnabled}
                 desktopNotificationsEnabled={desktopNotificationsEnabled}
@@ -2278,6 +2282,7 @@ export function App(): JSX.Element {
               defaultToolCallGroupsExpanded={toolCallGroupsExpanded}
               thinkingDisplay={thinkingDisplay}
               defaultTurnChangesExpanded={turnChangesExpanded}
+              defaultFollowUpDelivery={followUpDelivery}
               goalEnabled={goalEnabled}
               goalMaxTurns={goalMaxTurns}
               revertEnabled={revertEnabled}

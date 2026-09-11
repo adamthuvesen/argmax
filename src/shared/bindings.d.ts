@@ -176,6 +176,14 @@ async providersSendInput(input: ProvidersSendInput) : Promise<Result<SendInputRe
     else return { status: "error", error: e  as any };
 }
 },
+async providersSteerInput(input: ProvidersSendInput) : Promise<Result<SendInputResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("providers_steer_input", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async providersResize(input: ProvidersResizeInput) : Promise<Result<SystemOk, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("providers_resize", { input }) };

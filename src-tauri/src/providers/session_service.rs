@@ -908,7 +908,19 @@ impl ProviderSessionService {
         self: &Arc<Self>,
         input: ProvidersSendInput,
     ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(input, None, None, Queueing::Allowed)
+        self.send_input_scoped(input, None, None, Queueing::Allowed, false)
+            .await
+    }
+
+    /// Deliver a composer follow-up as guidance inside an active turn. This
+    /// uses the durable pending-message machinery first, then promotes that
+    /// exact row to a steer, so a failed native delivery remains visible for
+    /// retry rather than silently losing the user's text.
+    pub async fn steer_input(
+        self: &Arc<Self>,
+        input: ProvidersSendInput,
+    ) -> ArgmaxResult<SendInputResult> {
+        self.send_input_scoped(input, None, None, Queueing::Allowed, true)
             .await
     }
 
@@ -923,7 +935,7 @@ impl ProviderSessionService {
         input: ProvidersSendInput,
         origin: Option<MessageOrigin>,
     ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(input, origin, None, Queueing::Allowed)
+        self.send_input_scoped(input, origin, None, Queueing::Allowed, false)
             .await
     }
 
@@ -932,7 +944,7 @@ impl ProviderSessionService {
         input: ProvidersSendInput,
         identity: GoalTurnIdentity,
     ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(input, None, Some(identity), Queueing::Refused)
+        self.send_input_scoped(input, None, Some(identity), Queueing::Refused, false)
             .await
     }
 
@@ -943,7 +955,7 @@ impl ProviderSessionService {
         self: &Arc<Self>,
         input: ProvidersSendInput,
     ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(input, None, None, Queueing::Refused)
+        self.send_input_scoped(input, None, None, Queueing::Refused, false)
             .await
     }
 
@@ -954,6 +966,7 @@ impl ProviderSessionService {
         origin: Option<MessageOrigin>,
         goal_turn: Option<GoalTurnIdentity>,
         queueing: Queueing,
+        steer_when_queued: bool,
     ) -> ArgmaxResult<SendInputResult> {
         let session_id = input.session_id.as_str().to_string();
         let message = input.input.as_str().trim().to_string();
@@ -1063,15 +1076,33 @@ impl ProviderSessionService {
                 if queueing == Queueing::Refused {
                     return Err(turn_in_flight_error());
                 }
-                self.enqueue_pending_message(
+                let Some(pending) = self.enqueue_pending_message(
                     &session_id,
                     &message,
                     input.agent_mode.unwrap_or(AgentMode::Auto),
                     &input,
                     origin,
-                )?;
+                )?
+                else {
+                    return Ok(SendInputResult {
+                        ok: true,
+                        queued: false,
+                    });
+                };
                 drop(send_generation_guard);
                 drop(admission);
+                if steer_when_queued {
+                    return Box::pin(
+                        self.send_queued_message_now(ProvidersSendQueuedMessageNowInput {
+                            session_id: SessionId::try_from(session_id)
+                                .map_err(ArgmaxError::invalid)?,
+                            message_id: NonEmptyString::try_from(pending.id)
+                                .map_err(ArgmaxError::invalid)?,
+                            delivery: Some(QueuedMessageDelivery::Steer),
+                        }),
+                    )
+                    .await;
+                }
                 self.drain_queue_if_turn_ended(&session_id);
                 return Ok(SendInputResult {
                     ok: true,
@@ -1120,15 +1151,33 @@ impl ProviderSessionService {
             self.handles.lock_or_recover("handles").get(&session_id),
             Some(HandleEntry::Pending(_)) | Some(HandleEntry::Resolved(_))
         ) {
-            self.enqueue_pending_message(
+            let Some(pending) = self.enqueue_pending_message(
                 &session_id,
                 &message,
                 input.agent_mode.unwrap_or(AgentMode::Auto),
                 &input,
                 origin,
-            )?;
+            )?
+            else {
+                return Ok(SendInputResult {
+                    ok: true,
+                    queued: false,
+                });
+            };
             drop(send_generation_guard);
             drop(admission);
+            if steer_when_queued {
+                return Box::pin(self.send_queued_message_now(
+                    ProvidersSendQueuedMessageNowInput {
+                        session_id:
+                            SessionId::try_from(session_id).map_err(ArgmaxError::invalid)?,
+                        message_id:
+                            NonEmptyString::try_from(pending.id).map_err(ArgmaxError::invalid)?,
+                        delivery: Some(QueuedMessageDelivery::Steer),
+                    },
+                ))
+                .await;
+            }
             self.drain_queue_if_turn_ended(&session_id);
             return Ok(SendInputResult {
                 ok: true,
@@ -2900,7 +2949,7 @@ impl ProviderSessionService {
         agent_mode: AgentMode,
         input: &ProvidersSendInput,
         origin: Option<MessageOrigin>,
-    ) -> ArgmaxResult<()> {
+    ) -> ArgmaxResult<Option<PendingMessage>> {
         // A drained follow-up always keeps the session's current provider (see
         // pending_message_to_send_input), so when this send asked for a
         // different provider its model metadata belongs to that switch and
@@ -2908,6 +2957,18 @@ impl ProviderSessionService {
         // Codex model id onto a Claude session and relaunch with a foreign
         // --model flag.
         let mut connection = self.database.connection();
+        // The inbox is visible before send_input can acquire the checkout lock.
+        // Collection may therefore finish before there is a queue copy to remove.
+        // Keep this check under the writer lock through the queue insertion so
+        // collection either wins here or removes the inserted copy afterward.
+        if let Some(message_id) = origin
+            .as_ref()
+            .and_then(|origin| origin.message_id.as_deref())
+        {
+            if is_message_delivered(&connection, message_id)? {
+                return Ok(None);
+            }
+        }
         let switches_provider = match input.provider {
             Some(requested) => {
                 find_session_by_id(&connection, session_id)?.provider != requested.as_str()
@@ -2941,7 +3002,7 @@ impl ProviderSessionService {
                 format!("Pending follow-up queue is full ({MAX_PENDING_QUEUE})."),
             ));
         }
-        queue.push_back(PendingMessage {
+        let pending = PendingMessage {
             id: Uuid::new_v4().to_string(),
             session_id: session_id.to_string(),
             content: content.to_string(),
@@ -2955,12 +3016,13 @@ impl ProviderSessionService {
             origin,
             recovery_status: None,
             queued_at: now_iso(),
-        });
+        };
+        queue.push_back(pending.clone());
         replace_session_queue(&mut connection, session_id, &queue)?;
         queues.insert(session_id.to_string(), queue);
         drop(queues);
         self.publish_pending_messages(session_id);
-        Ok(())
+        Ok(Some(pending))
     }
 
     fn clear_queue(&self, session_id: &str) -> ArgmaxResult<()> {
@@ -4016,6 +4078,74 @@ mod tests {
             .expect("persist session");
         }
         database
+    }
+
+    #[test]
+    fn inbox_collection_before_enqueue_does_not_leave_a_pending_copy() {
+        use crate::persistence::session_messages::{
+            insert_session_message, take_undelivered_messages, NewSessionMessage,
+        };
+
+        let database = database_with_running_session();
+        let service = ProviderSessionService::with_launcher(
+            Arc::clone(&database),
+            Arc::new(CountingFailureLauncher::default()),
+            |_| {},
+        );
+        {
+            let mut connection = database.connection();
+            insert_session_message(
+                &connection,
+                &NewSessionMessage {
+                    id: "inbox-1".to_string(),
+                    from_session_id: None,
+                    to_session_id: "session-1".to_string(),
+                    body: "Peer guidance".to_string(),
+                    kind: "message".to_string(),
+                },
+            )
+            .unwrap();
+            assert_eq!(
+                take_undelivered_messages(&mut connection, "session-1", 10, 1000)
+                    .unwrap()
+                    .len(),
+                1
+            );
+        }
+        service
+            .reconcile_collected_messages("session-1", &["inbox-1".to_string()])
+            .unwrap();
+        let input = serde_json::from_value(json!({
+            "sessionId": "session-1", "input": "Peer guidance", "fastMode": false
+        }))
+        .unwrap();
+        service
+            .enqueue_pending_message(
+                "session-1",
+                "Peer guidance",
+                AgentMode::Auto,
+                &input,
+                Some(MessageOrigin {
+                    session_id: "peer".to_string(),
+                    label: "Peer".to_string(),
+                    kind: "message".to_string(),
+                    message_id: Some("inbox-1".to_string()),
+                }),
+            )
+            .unwrap();
+        assert!(service
+            .queues
+            .lock_or_recover("queues")
+            .get("session-1")
+            .is_none_or(VecDeque::is_empty));
+        assert!(
+            crate::persistence::pending_messages::list_session_pending_messages(
+                &database.connection(),
+                "session-1"
+            )
+            .unwrap()
+            .is_empty()
+        );
     }
 
     #[test]

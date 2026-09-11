@@ -1,4 +1,4 @@
-import type { ThinkingDisplay } from "../renderer/lib/uiPreferences.js";
+import type { FollowUpDelivery, ThinkingDisplay } from "../renderer/lib/uiPreferences.js";
 import { render, type RenderResult } from "@testing-library/react";
 import type { JSX } from "react";
 import { vi } from "vitest";
@@ -116,6 +116,7 @@ type ConversationOptions = {
   thinkingDisplay?: ThinkingDisplay;
   defaultToolCallsDisplay?: "expanded" | "collapsed" | "single-line";
   defaultToolCallGroupsExpanded?: boolean;
+  defaultFollowUpDelivery?: FollowUpDelivery;
   pendingMessages?: PendingMessage[];
   goalEnabled?: boolean;
   /** Stands in for the phone shell drawing the composer card itself. */
@@ -170,6 +171,7 @@ function conversationElement(
       {...(options.thinkingDisplay !== undefined ? { thinkingDisplay: options.thinkingDisplay } : {})}
       {...(options.defaultToolCallsDisplay !== undefined ? { defaultToolCallsDisplay: options.defaultToolCallsDisplay } : {})}
       {...(options.defaultToolCallGroupsExpanded !== undefined ? { defaultToolCallGroupsExpanded: options.defaultToolCallGroupsExpanded } : {})}
+      {...(options.defaultFollowUpDelivery !== undefined ? { defaultFollowUpDelivery: options.defaultFollowUpDelivery } : {})}
       {...(options.onMultitask ? { onMultitask: options.onMultitask } : {})}
       {...(options.onNewSession ? { onNewSession: options.onNewSession } : {})}
       {...(options.onOpenFile ? { onOpenFile: options.onOpenFile } : {})}

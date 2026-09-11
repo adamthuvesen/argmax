@@ -33,7 +33,7 @@ import type { GridCell, GridCoord, GridState, SplitPosition } from "../lib/gridS
 import type { MultitaskChild } from "../lib/multitask.js";
 import { findWorkspaceCell, isSessionCell, MAX_CELLS, MAX_COLS, MAX_ROWS } from "../lib/gridState.js";
 import { CHAT_PANE_MIN_WIDTH_PX, SESSION_CELL_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
-import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
+import type { FollowUpDelivery, ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import { SessionPane } from "./SessionPane.js";
 
@@ -75,6 +75,7 @@ interface SessionMultiGridProps {
   defaultToolCallGroupsExpanded?: boolean;
   thinkingDisplay?: ThinkingDisplay;
   defaultTurnChangesExpanded?: boolean;
+  defaultFollowUpDelivery?: FollowUpDelivery;
   goalEnabled?: boolean;
   goalMaxTurns?: number;
   revertEnabled?: boolean;
@@ -117,7 +118,8 @@ interface SessionMultiGridProps {
     model: ModelPickerSelection,
     agentMode: AgentMode,
     attachments?: ComposerAttachment[],
-    agentReferences?: AgentReference[]
+    agentReferences?: AgentReference[],
+    delivery?: FollowUpDelivery
   ) => Promise<void>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow: (
@@ -157,6 +159,7 @@ export function SessionMultiGrid({
   defaultToolCallGroupsExpanded,
   thinkingDisplay,
   defaultTurnChangesExpanded,
+  defaultFollowUpDelivery,
   goalEnabled,
   goalMaxTurns,
   revertEnabled,
@@ -415,6 +418,7 @@ export function SessionMultiGrid({
                         defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
                         thinkingDisplay={thinkingDisplay}
                         defaultTurnChangesExpanded={defaultTurnChangesExpanded}
+                        defaultFollowUpDelivery={defaultFollowUpDelivery}
                         goalEnabled={goalEnabled}
                         goalMaxTurns={goalMaxTurns}
                         revertEnabled={revertEnabled}

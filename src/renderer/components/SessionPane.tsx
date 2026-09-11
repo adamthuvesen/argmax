@@ -43,7 +43,7 @@ import { resolveOpenablePath } from "../lib/openableFile.js";
 import { readStoredReviewPanelSide } from "../lib/reviewPanelSide.js";
 import { buildSessionToolCalls } from "../lib/sessionConversationModel.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
-import { readBoundedNumberPreference, type ThinkingDisplay, type ToolCallsDisplay } from "../lib/uiPreferences.js";
+import { readBoundedNumberPreference, type FollowUpDelivery, type ThinkingDisplay, type ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { agentTabId, multitaskTabId } from "../lib/agentTabs.js";
 import { useAgentTabs } from "../hooks/useAgentTabs.js";
@@ -95,6 +95,7 @@ export function SessionPane({
   defaultToolCallGroupsExpanded,
   thinkingDisplay,
   defaultTurnChangesExpanded,
+  defaultFollowUpDelivery,
   goalEnabled,
   goalMaxTurns,
   revertEnabled,
@@ -149,6 +150,7 @@ export function SessionPane({
   defaultToolCallGroupsExpanded?: boolean;
   thinkingDisplay?: ThinkingDisplay;
   defaultTurnChangesExpanded?: boolean;
+  defaultFollowUpDelivery?: FollowUpDelivery;
   /** Settings → Agents → Conversation: show the goal strip / checkpoints panel. */
   goalEnabled?: boolean;
   goalMaxTurns?: number;
@@ -189,7 +191,8 @@ export function SessionPane({
     model: ModelPickerSelection,
     agentMode: AgentMode,
     attachments?: ComposerAttachment[],
-    agentReferences?: AgentReference[]
+    agentReferences?: AgentReference[],
+    delivery?: FollowUpDelivery
   ) => Promise<void>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow: (
@@ -353,6 +356,7 @@ export function SessionPane({
   const reviewIsPanelOpen = reviewState.isPanelOpen;
   const reviewModes = reviewState.layout.modes;
   const reviewClosePane = reviewState.closePane;
+  const reviewOpenBrowser = reviewState.openBrowser;
   const onRightPanelWidthChangeRef = useRef(onRightPanelWidthChange);
   useEffect(() => {
     onRightPanelWidthChangeRef.current = onRightPanelWidthChange;
@@ -606,8 +610,20 @@ export function SessionPane({
         }
         return;
       }
-      if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return;
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
       const key = event.key.toLowerCase();
+      // ⌘⇧I toggles the browser the way ⌘G toggles Files: open it in this
+      // pane's panel, or close just the browser half of a split.
+      if (event.shiftKey) {
+        if (key !== "i" || !window.argmax?.browser) return;
+        event.preventDefault();
+        if (reviewIsPanelOpen && reviewModes.includes("browser")) {
+          reviewClosePane(reviewModes[0] === "browser" ? 0 : 1);
+        } else {
+          reviewOpenBrowser();
+        }
+        return;
+      }
       if (key === "b") {
         event.preventDefault();
         reviewTogglePanel();
@@ -631,6 +647,7 @@ export function SessionPane({
     reviewIsPanelOpen,
     reviewModes,
     reviewClosePane,
+    reviewOpenBrowser,
     reviewOpenPanelInFilesMode,
     reviewTogglePanel
   ]);
@@ -738,6 +755,7 @@ export function SessionPane({
           defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
           thinkingDisplay={thinkingDisplay}
           defaultTurnChangesExpanded={defaultTurnChangesExpanded}
+          defaultFollowUpDelivery={defaultFollowUpDelivery}
           events={visibleEvents}
           eventsBackfilled={eventsBackfilled}
           fastModeEnabled={fastModeEnabled}

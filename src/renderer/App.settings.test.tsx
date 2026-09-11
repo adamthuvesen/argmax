@@ -7,6 +7,7 @@ import { CHAT_WIDTH_KEY } from "./lib/chatWidth.js";
 import { LAUNCH_MODEL_KEY } from "./lib/launchModelPreference.js";
 import {
   CHAT_VERBOSITY_KEY,
+  FOLLOW_UP_DELIVERY_KEY,
   COMPOSER_CONTEXT_INDICATOR_KEY,
   TURN_REVERT_ENABLED_KEY,
   DESKTOP_NOTIFICATIONS_KEY,
@@ -220,6 +221,20 @@ describe("App settings", () => {
 
     await waitFor(() =>
       expect(window.localStorage.getItem(CHAT_VERBOSITY_KEY)).toBe("1")
+    );
+  });
+
+  it("defaults working follow-ups to Queue and persists Steer when selected", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+    await openSettings("General");
+
+    const setting = await screen.findByRole("radiogroup", { name: "Follow-up while agent works" });
+    expect(within(setting).getByRole("radio", { name: "Queue" })).toBeChecked();
+    fireEvent.click(within(setting).getByRole("radio", { name: "Steer" }));
+
+    await waitFor(() =>
+      expect(window.localStorage.getItem(FOLLOW_UP_DELIVERY_KEY)).toBe("steer")
     );
   });
 

@@ -477,6 +477,9 @@ Inbox reads and waits remove collected messages from the pending queue and
 publish the updated queue immediately. Startup recovery also discards queued
 copies whose inbox records already confirm delivery. Reading a result mid-turn
 therefore removes its composer row without waiting for the turn to finish.
+Enqueue also checks delivery while holding the database writer lock. If the
+recipient collected the inbox row while the sender waited for the checkout
+lock, the sender reports it delivered without creating a pending copy.
 
 That id is what makes both directions safe. The queue checks the row before it
 sends, so a message the recipient already collected through `inbox_read` is

@@ -563,6 +563,7 @@ export function setupAppTestMocks(): void {
       discover: providersDiscover,
       launch: launchProvider,
       sendInput: sendProviderInput,
+      steerInput: sendProviderInput,
       resize: () => Promise.resolve({ ok: true }),
       terminate: terminateProvider,
       cancelQueuedMessage: () => Promise.resolve({ ok: true }),

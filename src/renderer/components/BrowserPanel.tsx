@@ -275,6 +275,8 @@ export function BrowserPanel({
     const previous = getActiveBrowserTabId(scopeId);
     if (previous) hideTabWebview(previous);
     openTabWebview(createBrowserTab(scopeId, DEFAULT_BROWSER_URL));
+    addressInputRef.current?.focus();
+    addressInputRef.current?.select();
   }, [hideTabWebview, openTabWebview, scopeId]);
 
   const closeTab = useCallback(

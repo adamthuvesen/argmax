@@ -321,6 +321,8 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       launch: (input: LaunchProviderSessionInput) => invokeCommand<SessionSummary>("providers:launch", input),
       sendInput: (input: ProviderSessionInput) =>
         invokeCommand<{ ok: true; queued: boolean }>("providers:send-input", input),
+      steerInput: (input: ProviderSessionInput) =>
+        invokeCommand<{ ok: true; queued: boolean }>("providers:steer-input", input),
       resize: (input: ProviderSessionResizeInput) => invokeCommand<{ ok: true }>("providers:resize", input),
       terminate: (sessionId: string) => invokeCommand<{ ok: true }>("providers:terminate", { sessionId }),
       cancelQueuedMessage: (input: ProvidersCancelQueuedMessageInput) =>

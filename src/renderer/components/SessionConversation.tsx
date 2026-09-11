@@ -83,7 +83,7 @@ import {
   isExitPlanModeToolName
 } from "../lib/turnInteractiveCards.js";
 import { liveThoughtOwnsProgress, turnAgentModeFromPrior } from "../lib/sessionTurnView.js";
-import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
+import type { FollowUpDelivery, ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import {
   createAnnotation,
@@ -163,6 +163,7 @@ export function SessionConversation({
   defaultToolCallGroupsExpanded,
   thinkingDisplay,
   defaultTurnChangesExpanded,
+  defaultFollowUpDelivery = "queue",
   events,
   eventsBackfilled = true,
   fastModeEnabled = false,
@@ -222,6 +223,7 @@ export function SessionConversation({
   defaultToolCallGroupsExpanded?: boolean;
   thinkingDisplay?: ThinkingDisplay;
   defaultTurnChangesExpanded?: boolean;
+  defaultFollowUpDelivery?: FollowUpDelivery;
   events: TimelineEvent[];
   /** The pane's backfill of this session's timeline has settled. Until it has,
       the transcript is whatever was left over from the last time the session
@@ -289,7 +291,8 @@ export function SessionConversation({
     model: ModelPickerSelection,
     agentMode: AgentMode,
     attachments?: ComposerAttachment[],
-    agentReferences?: AgentReference[]
+    agentReferences?: AgentReference[],
+    delivery?: FollowUpDelivery
   ) => Promise<void>;
   /** Follow-ups composed while the agent was running. Render as cancellable
       chips above the composer; cleared from the parent as the queue drains. */
@@ -748,6 +751,18 @@ export function SessionConversation({
     return null;
   }, [transcriptRenderItems]);
 
+  // ⌘↑ in an empty composer brings this back for editing: the last thing the
+  // user typed, steer or not, which is the one a typo or afterthought is in.
+  const lastSentPrompt = useMemo(() => {
+    for (let i = transcriptRenderItems.length - 1; i >= 0; i -= 1) {
+      const item = transcriptRenderItems[i];
+      if (!item || item.kind !== "user-message") continue;
+      const text = item.event.message.trim();
+      if (text) return text;
+    }
+    return null;
+  }, [transcriptRenderItems]);
+
   // The card floats in the right gutter whenever the conversation column is
   // wide enough to hold it without overlapping the transcript, regardless of
   // whether a right-hand panel is docked.
@@ -866,7 +881,9 @@ export function SessionConversation({
       text: string,
       model: ModelPickerSelection,
       mode: AgentMode,
-      attachments?: ComposerAttachment[]
+      attachments?: ComposerAttachment[],
+      _agentReferences?: AgentReference[],
+      delivery: FollowUpDelivery = "queue"
     ): Promise<void> => {
       const optimisticId = `optimistic:${targetSessionId}:${uuidV4()}`;
       if (sessionStateRef.current !== "running") {
@@ -905,9 +922,17 @@ export function SessionConversation({
               .filter((reference) => mentionedNames.has(reference.name.toLowerCase()))
           : [];
         if (references.length > 0) {
-          await onSendSessionInput(targetSessionId, text, model, mode, attachments, references);
+          if (delivery === "steer") {
+            await onSendSessionInput(targetSessionId, text, model, mode, attachments, references, delivery);
+          } else {
+            await onSendSessionInput(targetSessionId, text, model, mode, attachments, references);
+          }
         } else {
-          await onSendSessionInput(targetSessionId, text, model, mode, attachments);
+          if (delivery === "steer") {
+            await onSendSessionInput(targetSessionId, text, model, mode, attachments, undefined, delivery);
+          } else {
+            await onSendSessionInput(targetSessionId, text, model, mode, attachments);
+          }
         }
       } catch (error) {
         setOptimisticUserMessages((current) =>
@@ -1695,6 +1720,8 @@ export function SessionConversation({
         floating={floating}
         inputRef={inputRef}
         isQueueing={isQueueing}
+        defaultFollowUpDelivery={defaultFollowUpDelivery}
+        lastSentPrompt={lastSentPrompt}
         onFastModeEnabledChange={onFastModeEnabledChange}
         onDraftPresentChange={setComposerDraftPresent}
         onCancelQueuedMessage={onCancelQueuedMessage}

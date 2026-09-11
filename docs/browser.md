@@ -146,6 +146,7 @@ Both are async commands with a deadline. WebKit answers on the main queue and th
 
 ## Shortcuts
 
+- `⌘⇧I`: Toggle the browser in the focused pane's review panel, from a chat or the launcher. Closes only the browser half of a split, like `⌘G` for Files.
 - `⌘L`: Focus address bar.
 - Enter in the address bar: go to the URL. Reloads when it's already the current page — WKWebView does not navigate to the URL it is already showing.
 - `⌘T`: New tab.

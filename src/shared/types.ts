@@ -486,6 +486,7 @@ export interface ArgmaxApi {
     discover: (refresh?: boolean) => Promise<DiscoveredProvider[]>;
     launch: (input: LaunchProviderSessionInput) => Promise<SessionSummary>;
     sendInput: (input: ProviderSessionInput) => Promise<{ ok: true; queued: boolean }>;
+    steerInput: (input: ProviderSessionInput) => Promise<{ ok: true; queued: boolean }>;
     resize: (input: ProviderSessionResizeInput) => Promise<{ ok: true }>;
     terminate: (sessionId: string) => Promise<{ ok: true }>;
     cancelQueuedMessage: (input: ProvidersCancelQueuedMessageInput) => Promise<{ ok: true }>;

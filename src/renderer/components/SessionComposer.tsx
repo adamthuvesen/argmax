@@ -39,6 +39,7 @@ import {
 } from "react";
 import type {
   AgentMode,
+  AgentReference,
   ComposerAttachment,
   PendingMessage,
   ProviderId,
@@ -92,6 +93,7 @@ import { ProviderSwitchDialog } from "./ProviderSwitchDialog.js";
 import { SlashCommandMenu } from "./SlashCommandMenu.js";
 import { useProviderAvailability } from "../hooks/useProviderAvailability.js";
 import type { FontSize } from "../lib/fonts.js";
+import type { FollowUpDelivery } from "../lib/uiPreferences.js";
 
 const PROMPT_MAX_HEIGHT_PX = 168;
 
@@ -131,6 +133,8 @@ export function SessionComposer({
   inputRef,
   isFocused = true,
   isQueueing,
+  defaultFollowUpDelivery = "queue",
+  lastSentPrompt = null,
   onFastModeEnabledChange,
   onDraftPresentChange,
   onCancelQueuedMessage,
@@ -171,7 +175,11 @@ export function SessionComposer({
   floating?: boolean;
   inputRef: MutableRefObject<HTMLTextAreaElement | null>;
   isFocused?: boolean;
+  /** The user's most recent message in this chat; ⌘↑ in an empty draft recalls it. */
+  lastSentPrompt?: string | null;
   isQueueing: boolean;
+  /** Settings → General: the first action for a mid-turn follow-up. */
+  defaultFollowUpDelivery?: FollowUpDelivery;
   onFastModeEnabledChange?: (enabled: boolean) => void;
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow?: (
@@ -197,7 +205,9 @@ export function SessionComposer({
     input: string,
     model: ModelPickerSelection,
     agentMode: AgentMode,
-    attachments?: ComposerAttachment[]
+    attachments?: ComposerAttachment[],
+    agentReferences?: AgentReference[],
+    delivery?: FollowUpDelivery
   ) => Promise<void>;
   /** Reports whether the composer is holding a draft. The question dock takes
    *  this slot, so it waits while there is typing here to preserve. */
@@ -568,6 +578,23 @@ export function SessionComposer({
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       inputFormRef.current?.requestSubmit();
+      return;
+    }
+    // ⌘↑ in an empty draft recalls the last sent message for editing, the
+    // chat-app reflex for a typo or an afterthought. A draft in progress
+    // keeps the key's native meaning: jump to the start of the text.
+    if (
+      event.key === "ArrowUp" &&
+      event.metaKey &&
+      !event.shiftKey &&
+      !event.altKey &&
+      !event.ctrlKey &&
+      input.length === 0 &&
+      lastSentPrompt
+    ) {
+      event.preventDefault();
+      caretAfterInput.current = lastSentPrompt.length;
+      setInput(lastSentPrompt);
     }
   };
 
@@ -711,10 +738,18 @@ export function SessionComposer({
 
   const submitInput = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
-    // Mid-turn this reaches the backend queue: Enter always means "line up the
-    // follow-up", never "cut the current turn short".
+    // Queue is the default, but a user may choose to send immediate guidance
+    // into the active turn. Idle sends retain the ordinary follow-up path.
     await deliverDraft((sessionId, prompt, attachments) =>
-      onSendSessionInput(sessionId, prompt, selectedModel, agentMode, attachments)
+      onSendSessionInput(
+        sessionId,
+        prompt,
+        selectedModel,
+        agentMode,
+        attachments,
+        undefined,
+        isQueueing ? defaultFollowUpDelivery : "queue"
+      )
     );
   };
 

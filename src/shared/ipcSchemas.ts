@@ -24,6 +24,7 @@ export const IPC_CHANNELS = [
   "providers:discover",
   "providers:launch",
   "providers:send-input",
+  "providers:steer-input",
   "providers:resize",
   "providers:terminate",
   "providers:cancel-queued-message",

@@ -21,7 +21,7 @@ import type { NewSessionMode } from "../lib/newSessionMode.js";
 import type { PermissionMode, ProviderPermissionModes } from "../lib/permissionMode.js";
 import type { ChatWidth } from "../lib/chatWidth.js";
 import type { ReviewPanelSide } from "../lib/reviewPanelSide.js";
-import type { ChatVerbosity } from "../lib/uiPreferences.js";
+import type { ChatVerbosity, FollowUpDelivery } from "../lib/uiPreferences.js";
 import { AdvancedSettings } from "./settings/AdvancedSettings.js";
 import { AgentsSettings } from "./settings/AgentsSettings.js";
 import { AppearanceSettings } from "./settings/AppearanceSettings.js";
@@ -102,6 +102,8 @@ export function SettingsPanel({
   onPermissionModeChange,
   newSessionMode,
   onNewSessionModeChange,
+  followUpDelivery,
+  onFollowUpDeliveryChange,
   randomSessionIconEnabled,
   onRandomSessionIconEnabledChange,
   desktopNotificationsEnabled,
@@ -177,6 +179,8 @@ export function SettingsPanel({
   onPermissionModeChange: (provider: ProviderId, mode: PermissionMode) => void;
   newSessionMode: NewSessionMode;
   onNewSessionModeChange: (mode: NewSessionMode) => void;
+  followUpDelivery: FollowUpDelivery;
+  onFollowUpDeliveryChange: (delivery: FollowUpDelivery) => void;
   randomSessionIconEnabled: boolean;
   onRandomSessionIconEnabledChange: (v: boolean) => void;
   desktopNotificationsEnabled: boolean;
@@ -326,6 +330,8 @@ export function SettingsPanel({
           <GeneralSettings
             newSessionMode={newSessionMode}
             onNewSessionModeChange={onNewSessionModeChange}
+            followUpDelivery={followUpDelivery}
+            onFollowUpDeliveryChange={onFollowUpDeliveryChange}
             randomSessionIconEnabled={randomSessionIconEnabled}
             onRandomSessionIconEnabledChange={onRandomSessionIconEnabledChange}
             desktopNotificationsEnabled={desktopNotificationsEnabled}

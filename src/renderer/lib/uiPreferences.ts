@@ -25,6 +25,28 @@ export const BROWSER_PAGE_OPEN_KEY = "argmax.browser.pageOpen";
 export const GOAL_ENABLED_KEY = "argmax.goal.enabled";
 export const TURN_REVERT_ENABLED_KEY = "argmax.turnRevert.enabled";
 export const GOAL_MAX_TURNS_KEY = "argmax.goal.maxTurns";
+export const FOLLOW_UP_DELIVERY_KEY = "argmax.followUp.delivery";
+
+/** What Send does while an agent is still working. */
+export type FollowUpDelivery = "queue" | "steer";
+
+export function readStoredFollowUpDelivery(): FollowUpDelivery {
+  if (typeof window === "undefined") return "queue";
+  return window.localStorage.getItem(FOLLOW_UP_DELIVERY_KEY) === "steer" ? "steer" : "queue";
+}
+
+export function useFollowUpDeliveryPreference(): [FollowUpDelivery, (value: FollowUpDelivery) => void] {
+  const [value, setValue] = useState<FollowUpDelivery>(readStoredFollowUpDelivery);
+  const setPreference = useCallback((next: FollowUpDelivery) => {
+    setValue(next);
+    try {
+      window.localStorage.setItem(FOLLOW_UP_DELIVERY_KEY, next);
+    } catch {
+      // Storage failures leave the in-memory preference usable for this session.
+    }
+  }, []);
+  return [value, setPreference];
+}
 
 /** Turn budget a goal may spend before it stops and hands back. */
 export const GOAL_MAX_TURNS_MIN = 5;

@@ -120,5 +120,7 @@ export const RENDERER_ONLY_KEYBINDINGS: readonly RendererOnlyKeybinding[] = [
   { displayAccelerator: "⌘⇧M", label: "Open the model picker" },
   { displayAccelerator: "⌘⇧E", label: "Open the effort picker" },
   { displayAccelerator: "⌘⇧R", label: "Open the folder picker (new chat)" },
+  { displayAccelerator: "⌘⇧I", label: "Toggle browser panel" },
+  { displayAccelerator: "⌘↑", label: "Recall the last sent message into an empty draft" },
   { displayAccelerator: "Esc", label: "Close the topmost overlay" }
 ] as const;

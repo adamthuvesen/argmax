@@ -117,16 +117,11 @@ struct ChatListView: View {
             navigator.newChat = nil
             path.append(request)
         }
-        // A file reference names a file, so the tree and that file's viewer
-        // go on together: the back gesture then lands on the tree, which is
-        // where the reader would look for the file beside it.
+        // Review owns the selected file tab and its return to the file list.
         .onChange(of: navigator.review) { _, route in
             guard let route else { return }
             navigator.review = nil
             path.append(route)
-            if let filePath = route.filePath {
-                path.append(ReviewDetail.file(workspaceID: route.workspaceID, path: filePath))
-            }
         }
         .onChange(of: store.sections) { openWhenReady() }
         .onChange(of: navigator.awaitingSessionID) { openWhenReady() }
@@ -347,9 +342,7 @@ struct ChatListView: View {
         }
         guard path.isEmpty else { return }
         path.append(ReviewRoute(workspaceID: workspaceID, filePath: value("-argmax-open-file")))
-        if let filePath = value("-argmax-open-file") {
-            path.append(ReviewDetail.file(workspaceID: workspaceID, path: filePath))
-        } else if let filePath = value("-argmax-open-diff") {
+        if value("-argmax-open-file") == nil, let filePath = value("-argmax-open-diff") {
             path.append(ReviewDetail.diff(
                 workspaceID: workspaceID,
                 path: filePath,

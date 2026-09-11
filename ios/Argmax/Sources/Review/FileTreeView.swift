@@ -14,6 +14,9 @@ struct FileTreeView: View {
     /// transcript. Its folders are expanded and its row is scrolled to.
     var reveal: String?
     var onRefresh: (() async -> Void)?
+    /// Embedded review screens open a tab in place. Other callers keep the
+    /// navigation destination this tree originally used.
+    var onOpenFile: ((String) -> Void)? = nil
 
     @State private var expanded: Set<String> = []
     /// Consumed once: re-running the reveal on every redraw would fight the
@@ -74,10 +77,20 @@ struct FileTreeView: View {
             .buttonStyle(PressDim())
             .accessibilityAddTraits(expanded.contains(row.path) ? .isSelected : [])
         } else {
-            NavigationLink(value: ReviewDetail.file(workspaceID: workspaceID, path: row.path)) {
-                FileTreeRowLabel(row: row, isOpen: false)
+            if let onOpenFile {
+                Button {
+                    Haptics.light()
+                    onOpenFile(row.path)
+                } label: {
+                    FileTreeRowLabel(row: row, isOpen: false)
+                }
+                .buttonStyle(PressDim())
+            } else {
+                NavigationLink(value: ReviewDetail.file(workspaceID: workspaceID, path: row.path)) {
+                    FileTreeRowLabel(row: row, isOpen: false)
+                }
+                .buttonStyle(PressDim())
             }
-            .buttonStyle(PressDim())
         }
     }
 

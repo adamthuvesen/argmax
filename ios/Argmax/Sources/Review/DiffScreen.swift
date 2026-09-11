@@ -13,6 +13,10 @@ struct DiffScreen: View {
     let scope: ReviewScope
     let client: BridgeClient
 
+    private var revision = ""
+    private var onBack: (() -> Void)?
+    @State private var contentRevision = 0
+
     @Environment(\.dismiss) private var dismiss
     @State private var load: ReviewLoad = .idle
     /// Nil is git's own three lines — the rung an untouched diff arrives at.
@@ -30,17 +34,19 @@ struct DiffScreen: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .interactivePop()
-        .task(id: contextLines) {
+        .task(id: "\(revision)|\(contextLines.map(String.init) ?? "default")") {
             guard !canvas else { return }
             await fetch(contextLines)
         }
     }
 
-    init(workspaceID: String, path: String, scope: ReviewScope, client: BridgeClient) {
+    init(workspaceID: String, path: String, scope: ReviewScope, client: BridgeClient, revision: String = "", onBack: (() -> Void)? = nil) {
         self.workspaceID = workspaceID
         self.path = path
         self.scope = scope
         self.client = client
+        self.revision = revision
+        self.onBack = onBack
     }
 
     #if DEBUG
@@ -58,7 +64,7 @@ struct DiffScreen: View {
     #endif
 
     private var header: some View {
-        ScreenHeader(title: fileName, subtitle: directory, onBack: { dismiss() }) {
+        ScreenHeader(title: fileName, subtitle: directory, onBack: { if let onBack { onBack() } else { dismiss() } }) {
             expandControl
         }
     }
@@ -105,7 +111,7 @@ struct DiffScreen: View {
                 // The rung is in the key: climbing it is a different string
                 // for the same path, and without it the view would keep the
                 // diff the reader just asked to expand.
-                key: "\(path)|\(scope.rawValue)|\(contextLines.map(String.init) ?? "default")"
+                key: "\(path)|\(scope.rawValue)|\(contextLines.map(String.init) ?? "default")|\(contentRevision)"
             ))
             .ignoresSafeArea(.container, edges: .bottom)
         }
@@ -136,9 +142,14 @@ struct DiffScreen: View {
                 DiffParser.parse(loaded.content)
             }.value
             guard current == token else { return }
+            try Task.checkCancellation()
+            if blocks != parsed { contentRevision += 1 }
             blocks = parsed
             load = .ready
+        } catch is CancellationError {
+            return
         } catch {
+            guard !Task.isCancelled else { return }
             guard current == token else { return }
             blocks = []
             load = .failed(hostFailureMessage(error))

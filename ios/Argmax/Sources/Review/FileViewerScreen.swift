@@ -19,6 +19,11 @@ struct FileViewerScreen: View {
     /// The checkout's absolute path, which is what the image endpoint takes.
     let workspacePath: String
 
+    private var revision = ""
+    private var onBack: (() -> Void)?
+    @State private var contentRevision = 0
+    @State private var token = 0
+
     @Environment(\.dismiss) private var dismiss
     @State private var preview: WorkspaceFilePreview?
     @State private var load: ReviewLoad = .idle
@@ -33,17 +38,19 @@ struct FileViewerScreen: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .interactivePop()
-        .task {
+        .task(id: revision) {
             guard !canvas else { return }
             await fetch()
         }
     }
 
-    init(workspaceID: String, path: String, client: BridgeClient, workspacePath: String) {
+    init(workspaceID: String, path: String, client: BridgeClient, workspacePath: String, revision: String = "", onBack: (() -> Void)? = nil) {
         self.workspaceID = workspaceID
         self.path = path
         self.client = client
         self.workspacePath = workspacePath
+        self.revision = revision
+        self.onBack = onBack
     }
 
     #if DEBUG
@@ -61,7 +68,7 @@ struct FileViewerScreen: View {
     #endif
 
     private var header: some View {
-        ScreenHeader(title: fileName, subtitle: subtitle, onBack: { dismiss() })
+        ScreenHeader(title: fileName, subtitle: subtitle, onBack: { if let onBack { onBack() } else { dismiss() } })
     }
 
     @ViewBuilder
@@ -75,7 +82,7 @@ struct FileViewerScreen: View {
         } else {
             switch preview {
             case .text(let text, _, _):
-                CodeTextView(document: CodeDocument(content: .file(text), key: path))
+                CodeTextView(document: CodeDocument(content: .file(text), key: "\(path)|\(contentRevision)"))
                     .ignoresSafeArea(.container, edges: .bottom)
             case .skipped(let reason, let size):
                 skipped(reason, size)
@@ -96,7 +103,8 @@ struct FileViewerScreen: View {
         if reason == .binary, WorkspaceImage.isImage(path) {
             WorkspaceImageView(
                 absolutePath: workspacePath + "/" + path,
-                client: client
+                client: client,
+                revision: revision
             )
         } else {
             EmptyState(
@@ -127,11 +135,20 @@ struct FileViewerScreen: View {
     }
 
     private func fetch() async {
+        token += 1
+        let current = token
         load = .loading
         do {
-            preview = try await client.readWorkspaceFile(workspaceID: workspaceID, filePath: path)
+            let loaded = try await client.readWorkspaceFile(workspaceID: workspaceID, filePath: path)
+            guard current == token else { return }
+            try Task.checkCancellation()
+            if preview != loaded { contentRevision += 1 }
+            preview = loaded
             load = .ready
+        } catch is CancellationError {
+            return
         } catch {
+            guard !Task.isCancelled, current == token else { return }
             preview = nil
             load = .failed(hostFailureMessage(error))
         }

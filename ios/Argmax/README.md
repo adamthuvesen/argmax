@@ -65,11 +65,14 @@ setting applies to subagent and multitask details.
 `Sources/Review` is the review surface — Changes, the checkout's tree, one
 file's diff, one file's text — over the four reads the desktop panel makes
 (`review:list-changed-files`, `review:load-diff`, `workspace:list-files`,
-`workspace:read-file`), all of them already on the bridge. A drill-down rather
-than a panel: a changed file opens its diff on its own screen, a tree file
-opens its text on its own, which is also what keeps it fast — one screen is one
-file is one `UITextView` on TextKit 2, so layout costs what is on screen and
-not what is in the file. `CodeText.swift` has the why. Read-only, three scopes,
+`workspace:read-file`), all of them already on the bridge. Changed files open
+in diff tabs, and tree files open in source tabs. The horizontal tab strip
+keeps several files within reach while rendering only the selected viewer.
+Close a tab with its cross, or use File list to choose another file. Transcript
+file links open the file directly. Workspace activity and reconnects refresh
+the selected file and changes list, including edits that leave the file count
+unchanged. One active `UITextView` on TextKit 2 keeps layout proportional to
+what is on screen. `CodeText.swift` has the why. Read-only, three scopes,
 no syntax colouring; the reasoning for each is in
 [the plan](../../docs/plan/hybrid-native-phone.md#review-notes-from-the-first-device-build-2026-09-10).
 

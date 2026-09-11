@@ -29,6 +29,8 @@ struct WorkspaceImageView: View {
     /// Fit, until you ask for 1:1. A sprite sheet in a column this narrow is
     /// unreadable fitted, and unreachable without a way back out — so the tap
     /// toggles rather than zooming into a gesture you have to undo.
+    var revision = ""
+
     @State private var actualSize = false
 
     var body: some View {
@@ -58,7 +60,7 @@ struct WorkspaceImageView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task { await fetch() }
+        .task(id: revision) { await fetch() }
     }
 
     private func fetch() async {
@@ -74,8 +76,11 @@ struct WorkspaceImageView: View {
                 failure = "Can't show this image."
                 return
             }
+            try Task.checkCancellation()
             image = decoded
+            failure = nil
         } catch {
+            guard !Task.isCancelled else { return }
             failure = "Can't reach this image."
         }
     }

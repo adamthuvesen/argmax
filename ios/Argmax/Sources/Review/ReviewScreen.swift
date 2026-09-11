@@ -3,10 +3,9 @@ import SwiftUI
 // The review surface: what this chat changed, and what the checkout holds.
 //
 // The desktop puts these side by side in a panel with a tree column and an
-// editor. A phone has one column, so both views are lists that drill down: a
-// changed file opens its diff on its own screen, a tree file opens its text on
-// its own screen. That is also what makes the diff fast — one screen is one
-// file is one text view (see `CodeText.swift`).
+// editor. A phone has one column, so the lists and one active viewer share the
+// screen. Open files stay in a horizontal strip, which keeps comparison close
+// without making the code column any narrower (see `CodeText.swift`).
 
 struct ReviewScreen: View {
     let workspace: WorkspaceSummary
@@ -17,6 +16,9 @@ struct ReviewScreen: View {
     @StateObject private var store: ReviewStore
     @State private var mode: Mode = .changes
     @State private var scopeSheet = false
+    @State private var tabs: ReviewFileTabsState
+    @State private var fileRevision = 0
+    @State private var refreshTask: Task<Void, Never>?
     /// A canvas render has no Mac to read from, so the screen skips its own
     /// reads and draws whatever the store was seeded with.
     private var canvas = false
@@ -28,9 +30,13 @@ struct ReviewScreen: View {
         self.initialFilePath = initialFilePath
         self.onBack = onBack
         _store = StateObject(wrappedValue: ReviewStore(workspace: workspace, client: client))
-        // A file named on the way in is one the transcript linked to, so the
-        // screen opens on the tree that holds it rather than on the changes
-        // it may not be part of.
+        let initialDetail = initialFilePath.map {
+            ReviewDetail.file(workspaceID: workspace.id, path: $0)
+        }
+        _tabs = State(initialValue: ReviewFileTabsState(initial: initialDetail))
+        // A file named on the way in is one the transcript linked to. Keep
+        // Files selected behind its viewer so File list opens the matching
+        // tree rather than on a possibly unrelated changes comparison.
         _mode = State(initialValue: initialFilePath == nil ? .changes : .files)
     }
 
@@ -42,6 +48,7 @@ struct ReviewScreen: View {
         onBack = {}
         _store = StateObject(wrappedValue: store)
         _mode = State(initialValue: mode)
+        _tabs = State(initialValue: ReviewFileTabsState())
         canvas = true
     }
     #endif
@@ -50,25 +57,58 @@ struct ReviewScreen: View {
         ZStack {
             Theme.ground.ignoresSafeArea()
             VStack(spacing: 0) {
-                metaRow
-                body(for: mode)
+                if !tabs.open.isEmpty {
+                    ReviewFileTabs(
+                        details: tabs.open,
+                        active: tabs.active,
+                        onSelect: { tabs.select($0) },
+                        onClose: { tabs.close($0) },
+                        onShowList: { tabs.showList() }
+                    )
+                }
+                if let detail = tabs.active {
+                    ReviewDetailScreen(
+                        detail: detail,
+                        store: dashboard,
+                        revision: reviewRevision,
+                        onBack: onBack
+                    )
+                    // Diff and file viewers own local load and scrolling
+                    // state. A tab switch must construct the selected one.
+                    .id(detail)
+                } else {
+                    metaRow
+                    body(for: mode)
+                }
             }
-            .safeAreaInset(edge: .top, spacing: 0) { header }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if tabs.active == nil { header }
+            }
         }
         .toolbar(.hidden, for: .navigationBar)
         .interactivePop()
-        .task {
+        .task(id: reviewRevision) {
             guard !canvas else { return }
             await store.loadChangedFiles()
-            if initialFilePath != nil { await store.loadFileList() }
+            if mode == .files { await store.loadFileList() }
         }
-        // An agent writing mid-turn moves the workspace's own row; that delta
-        // is already on the socket, so the list follows it instead of polling.
-        .onChange(of: liveWorkspace?.changedFiles) {
-            guard !canvas else { return }
-            Task { await store.loadChangedFiles() }
+        .onChange(of: dashboard.transcriptRevision) {
+            guard !canvas, refreshTask == nil else { return }
+            // Coalesce streaming events without postponing reads until the
+            // entire turn ends. File counts alone miss repeated file edits.
+            refreshTask = Task {
+                do { try await Task.sleep(for: .milliseconds(500)) }
+                catch { return }
+                fileRevision += 1
+                refreshTask = nil
+            }
+        }
+        .onDisappear {
+            refreshTask?.cancel()
+            refreshTask = nil
         }
         .onChange(of: mode) { _, current in
+            tabs.showList()
             guard !canvas, current == .files else { return }
             Task { await store.loadFileList() }
         }
@@ -88,6 +128,13 @@ struct ReviewScreen: View {
     /// snapshot this screen was pushed with.
     private var liveWorkspace: WorkspaceSummary? {
         dashboard.snapshot.workspaces.first { $0.id == workspace.id }
+    }
+
+    /// Workspace metadata plus coalesced transcript invalidations refresh
+    /// repeated writes even when the changed-file count stays the same.
+    private var reviewRevision: String {
+        let current = liveWorkspace ?? workspace
+        return "\(current.lastActivityAt)|\(current.changedFiles)|\(dashboard.connection)|\(fileRevision)"
     }
 
     // MARK: - Header
@@ -174,11 +221,14 @@ struct ReviewScreen: View {
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(store.files) { file in
-                        NavigationLink(value: ReviewDetail.diff(
-                            workspaceID: workspace.id,
-                            path: file.path,
-                            scope: store.scope
-                        )) {
+                        Button {
+                            Haptics.light()
+                            tabs.open(ReviewDetail.diff(
+                                workspaceID: workspace.id,
+                                path: file.path,
+                                scope: store.scope
+                            ))
+                        } label: {
                             ChangedFileRow(file: file)
                         }
                         .buttonStyle(PressDim())
@@ -210,7 +260,10 @@ struct ReviewScreen: View {
                 entries: store.entries,
                 workspaceID: workspace.id,
                 reveal: initialFilePath,
-                onRefresh: { await store.loadFileList(force: true) }
+                onRefresh: { await store.loadFileList(force: true) },
+                onOpenFile: {
+                    tabs.open(ReviewDetail.file(workspaceID: workspace.id, path: $0))
+                }
             )
         }
     }
@@ -384,9 +437,8 @@ struct LoadingRows: View {
 }
 
 /// The review surface as a navigation value. `filePath` is set only when a
-/// file reference in the transcript asked for one, and selects the Files view
-/// rather than opening anything on its own: the viewer for that file is
-/// pushed on top of this, so the back gesture lands on the tree.
+/// file reference in the transcript asked for one, and the review screen opens
+/// that file directly in its tab strip.
 struct ReviewRoute: Hashable {
     let workspaceID: String
     var filePath: String?
@@ -394,10 +446,9 @@ struct ReviewRoute: Hashable {
 
 /// Where a tap inside the review screen goes.
 ///
-/// Every value here is enough to build the screen on its own — the scope
-/// travels with the request rather than being read back out of a store — so
-/// both destinations can be declared once, beside the stack's others, and a
-/// transcript link can push the tree and the file it named in one move.
+/// Every value here is enough to build the viewer on its own — the scope
+/// travels with the request rather than being read back out of a store. The
+/// review screen also uses it as the stable identity of an open tab.
 enum ReviewDetail: Hashable {
     case diff(workspaceID: String, path: String, scope: ReviewScope)
     case file(workspaceID: String, path: String)
@@ -405,15 +456,13 @@ enum ReviewDetail: Hashable {
 
 
 extension View {
-    /// The review surface and its two drill-downs, registered on the stack
-    /// that owns the path.
+    /// The review surface and the standalone detail destination, registered
+    /// on the stack that owns the path.
     ///
-    /// Declared here rather than inside `ReviewScreen` for one reason: a file
-    /// reference tapped in the transcript pushes the tree and the file it
-    /// named in the same transaction, and the second destination has to
-    /// already be registered when that runs. Factored out of `ChatListView`'s
-    /// body because three destinations of a generic `NavigationStack` is more
-    /// than the type-checker will solve in one expression.
+    /// Declared here rather than inside `ReviewScreen` so transcript routes
+    /// and older detail values resolve from the stack that owns the path.
+    /// Factored out of `ChatListView` because the type-checker cannot solve
+    /// all of its generic destinations in one expression.
     func reviewDestinations(store: DashboardStore, onPop: @escaping () -> Void) -> some View {
         navigationDestination(for: ReviewRoute.self) { route in
             ReviewRouteScreen(route: route, store: store, onPop: onPop)
@@ -455,6 +504,20 @@ private struct ReviewRouteScreen: View {
 private struct ReviewDetailScreen: View {
     let detail: ReviewDetail
     @ObservedObject var store: DashboardStore
+    private let revisionOverride: String?
+    private let onBack: (() -> Void)?
+
+    init(
+        detail: ReviewDetail,
+        store: DashboardStore,
+        revision: String? = nil,
+        onBack: (() -> Void)? = nil
+    ) {
+        self.detail = detail
+        _store = ObservedObject(wrappedValue: store)
+        revisionOverride = revision
+        self.onBack = onBack
+    }
 
     var body: some View {
         switch detail {
@@ -463,7 +526,9 @@ private struct ReviewDetailScreen: View {
                 workspaceID: workspaceID,
                 path: filePath,
                 scope: scope,
-                client: store.client
+                client: store.client,
+                revision: revision,
+                onBack: onBack
             )
         case .file(let workspaceID, let filePath):
             FileViewerScreen(
@@ -471,8 +536,24 @@ private struct ReviewDetailScreen: View {
                 path: filePath,
                 client: store.client,
                 workspacePath: store.snapshot.workspaces
-                    .first { $0.id == workspaceID }?.path ?? ""
+                    .first { $0.id == workspaceID }?.path ?? "",
+                revision: revision,
+                onBack: onBack
             )
+        }
+    }
+
+    private var revision: String {
+        if let revisionOverride { return revisionOverride }
+        guard let workspace = store.snapshot.workspaces.first(where: { $0.id == workspaceID }) else {
+            return "\(store.connection)"
+        }
+        return "\(workspace.lastActivityAt)|\(workspace.changedFiles)|\(store.connection)"
+    }
+
+    private var workspaceID: String {
+        switch detail {
+        case .diff(let workspaceID, _, _), .file(let workspaceID, _): return workspaceID
         }
     }
 }

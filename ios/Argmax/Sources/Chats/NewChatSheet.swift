@@ -129,12 +129,31 @@ struct NewChatSheet: View {
 
     /// One line a day, so it reads as the app's voice rather than a slot
     /// machine. A side chat has no checkout to speak of, so it gets its own.
-    static func greeting(for mode: NewChatMode) -> String {
-        let lines = mode == .sideChat
-            ? ["Ask away.", "No checkout, no ceremony.", "A quiet corner to think in."]
-            : ["Clean slate.", "What are we building?", "Say the word.", "Fresh worktree, no history yet.", "Ready when you are."]
-        let day = Calendar.current.ordinality(of: .day, in: .era, for: Date()) ?? 0
-        return lines[day % lines.count]
+    /// Two worktree lines are time-of-day instead: Stockholm's clock, not the
+    /// device's, since the fleet the app manages runs on that clock.
+    static func greeting(for mode: NewChatMode, now: Date = Date()) -> String {
+        guard mode != .sideChat else {
+            let lines = ["Ask away.", "No checkout, no ceremony.", "A quiet corner to think in.", "Scratch paper.", "No branch, no strings."]
+            let day = Calendar.current.ordinality(of: .day, in: .era, for: now) ?? 0
+            return lines[day % lines.count]
+        }
+
+        var stockholm = Calendar(identifier: .gregorian)
+        stockholm.timeZone = TimeZone(identifier: "Europe/Stockholm") ?? .current
+        let hour = stockholm.component(.hour, from: now)
+
+        switch hour {
+        case 5..<10:
+            return "Good morning, coffee and code?"
+        case 12..<14:
+            return "Midday, back at it?"
+        case 21..<23:
+            return "Evening, night owl?"
+        default:
+            let lines = ["What's on your mind today?", "What are we building?", "Clean slate.", "Go on, then.", "The ticket nobody wants.", "Ready to go."]
+            let day = stockholm.ordinality(of: .day, in: .era, for: now) ?? 0
+            return lines[day % lines.count]
+        }
     }
 
     // MARK: - The choices, and the one action

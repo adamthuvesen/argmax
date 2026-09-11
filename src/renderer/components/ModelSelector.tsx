@@ -386,8 +386,9 @@ function EffortSlider({
           }
         }}
       >
+        {/* No caret: the effort label sits inside the shared model pill, and two
+            carets in one pill only ask which half is the control. */}
         <span className="model-picker-label">{effortLabel(value)}</span>
-        <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />
       </button>
       {open && (
         <div
@@ -610,7 +611,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   };
 
   return (
-    <div className="model-picker-cluster">
+    <div className={`model-picker-cluster${withEffortSlider ? " model-picker-cluster--chip" : ""}`}>
     <div
       className={`project-picker-anchor model-picker-anchor${anchorClassName ? ` ${anchorClassName}` : ""}`}
       ref={flyout.setAnchor}
@@ -629,9 +630,10 @@ function ChipModelPicker<T extends ProviderModelSelection>({
           <Zap size={14} aria-hidden="true" className="model-picker-speed-icon" />
         ) : null}
         <span className="model-picker-label">{value.label}</span>
-        {/* Without the standalone effort chip beside it, the model chip is the
-            end of the control and carries the caret itself. */}
-        {showEffortSlider ? null : (
+        {/* In a composer the pill around model + effort is the affordance, the
+            way the phone draws it — no caret on either half. Settings has no
+            pill and no effort chip, so the model chip carries the caret. */}
+        {withEffortSlider ? null : (
           <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />
         )}
       </button>

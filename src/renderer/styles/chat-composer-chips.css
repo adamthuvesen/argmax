@@ -89,6 +89,13 @@
   font-weight: 400;
 }
 
+/* Inside the filled pill the model takes full ink — it is the headline of the
+   only filled control in the row, and --muted-strong on a fill reads recessed
+   where on the bare toolbar it read quiet. */
+.model-picker-cluster--chip .model-picker-anchor > .composer-context-chip {
+  color: var(--text);
+}
+
 /* Model + effort are one unit, so sit the effort chip tight to the model — much
    closer than the gap out to the rest of the toolbar. */
 .composer-chips-model,

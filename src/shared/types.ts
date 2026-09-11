@@ -664,6 +664,8 @@ export interface ArgmaxApi {
     onAgentOpen: (listener: (event: TerminalAgentOpenEvent) => void) => EventSubscription;
   };
   browser: {
+    chromeProfiles: () => Promise<ChromeProfile[]>;
+    importChromeHistory: (profileId: string) => Promise<ChromeHistoryImport>;
     open: (input: {
       url: string;
       bounds: BrowserBounds;
@@ -738,6 +740,8 @@ export type BrowserScreenshot = Bindings.BrowserScreenshot;
 /** `resultJson` is WebKit's JSON encoding of the value; empty when the script returned `undefined` — or threw. */
 export type BrowserEvaluateResult = Bindings.BrowserEvaluateResult;
 export type BrowserFillResult = Bindings.BrowserFillResult;
+export type ChromeProfile = Bindings.ChromeProfile;
+export type ChromeHistoryImport = Bindings.ChromeHistoryImport;
 /** One live browser tab, as the app (not the renderer) knows it. */
 export type BrowserTabInfo = Bindings.BrowserTabInfo;
 

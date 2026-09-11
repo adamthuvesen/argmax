@@ -122,6 +122,8 @@ export const IPC_CHANNELS = [
   "browser:get-text",
   "browser:extract",
   "browser:act",
+  "browser:chrome-profiles",
+  "browser:import-chrome-history",
   "routines:list",
   "routines:upsert",
   "routines:delete",

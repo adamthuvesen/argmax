@@ -13,6 +13,7 @@ pub mod activity;
 pub mod approvals;
 pub mod attachments;
 pub mod browser;
+pub mod browser_import;
 pub mod checkpoints;
 pub mod checks;
 pub mod connections;
@@ -158,6 +159,8 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "browser:get-text",
     "browser:extract",
     "browser:act",
+    "browser:chrome-profiles",
+    "browser:import-chrome-history",
     "routines:list",
     "routines:upsert",
     "routines:delete",
@@ -343,6 +346,8 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         browser::browser_get_text,
         browser::browser_extract,
         browser::browser_act,
+        browser_import::browser_chrome_profiles,
+        browser_import::browser_import_chrome_history,
         routines::routines_list,
         routines::routines_upsert,
         routines::routines_delete,

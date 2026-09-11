@@ -724,6 +724,8 @@ export function setupAppTestMocks(): void {
       )
     },
     browser: {
+      chromeProfiles: () => Promise.resolve([]),
+      importChromeHistory: () => Promise.resolve({ entries: [], totalAvailable: 0 }),
       open: () => Promise.resolve({ ok: true }),
       navigate: () => Promise.resolve({ ok: true }),
       back: () => Promise.resolve({ ok: true }),

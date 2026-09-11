@@ -27,6 +27,42 @@ Focus still routes new open requests: a chat link or the menu item opens Browser
 - **Login popups:** `window.open` creates a native browser window using Tauri's `on_new_window` callback and the opener's webview configuration. This preserves the popup reference, `window.opener`, `postMessage`, and closure checks that popup authentication needs, including opening a blank window before assigning its login URL. Ordinary `target="_blank"` links and modified clicks in panel tabs still open panel tabs. Popups skip the inherited tab-strip shortcuts. On macOS, [popup.rs](../src-tauri/src/browser/popup.rs) adds WebKit's missing close callback to the popup delegate so JavaScript closure also removes its native window.
 - **Positioning:** The renderer measures `.browser-panel-surface` and calls `browser:set-bounds` for the active tab. Inactive tabs are hidden. The review panel's own resizer and side preference need no browser-specific handling — a ResizeObserver on the surface re-glues the webview whenever the panel's width changes.
 
+## Importing Chrome History
+
+The browser toolbar's **Import from Chrome** button opens a profile picker.
+Choose a profile and click **Import history** to merge its recent pages into
+Argmax's address suggestions. The result reports how many pages were read and
+how many were new. Cookies and saved logins are not imported.
+
+The desktop-only `browser:chrome-profiles` and `browser:import-chrome-history`
+commands read Chrome's default data directory on macOS, Windows, and Linux.
+History is normally read through a read-only SQLite transaction, including
+committed WAL rows. If SQLite requires rollback-journal recovery, the importer
+recovers a private temporary copy of the database and journal. It checks source
+file identity and timestamps around the copy, retries changed copies, and rejects
+a WAL appearing during the copy. These checks detect ordinary concurrent writes
+but are not a transactional snapshot guarantee. Close Chrome and retry if the
+copy cannot stabilize. Only visible HTTP(S) pages with a visit timestamp are
+included, up to the 10,000 most recent.
+Profile paths must remain inside Chrome's data directory.
+
+Argmax retains up to 10,000 pages in IndexedDB, with an in-memory copy for
+address suggestions. Existing `argmax.browser.history` localStorage data migrates
+after a successful save. Repeating an import refreshes existing entries without
+adding duplicate URLs or inflating visit counts. Address suggestions favor URL
+prefixes, frequent visits, and recent visits. An empty address field shows the
+most recent pages. Storage failures are shown in the import dialog instead of
+reporting success.
+
+For a local source check, run:
+
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml imports_local_chrome_history_without_exposing_entries -- --ignored --nocapture
+```
+
+It reads installed Chrome profiles and prints counts and payload sizes without
+printing URLs or titles.
+
 ## Z-Order and Overlays
 
 Native child webviews render on top of DOM elements. [BrowserPanel.tsx](../src/renderer/components/BrowserPanel.tsx) hides the active webview while the collapsed sidebar peeks, so its navigation buttons receive clicks. It also checks for `[role="dialog"]` and `[data-browser-overlay="true"]` elements intersecting the surface bounds and sets `visible: false` while an overlay covers the panel area. Split menus and drop targets use the latter attribute. The webview returns when overlapping overlays are dismissed, preserving the current tab.

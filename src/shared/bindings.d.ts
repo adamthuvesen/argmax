@@ -978,6 +978,22 @@ async browserAct(input: BrowserActInput) : Promise<Result<ActionOutcome, ArgmaxE
     else return { status: "error", error: e  as any };
 }
 },
+async browserChromeProfiles(input: ChromeProfilesInput) : Promise<Result<ChromeProfile[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_chrome_profiles", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async browserImportChromeHistory(input: ImportChromeHistoryInput) : Promise<Result<ChromeHistoryImport, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_import_chrome_history", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async routinesList(input: RoutinesListInput) : Promise<Result<Routine[], ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("routines_list", { input }) };
@@ -1388,6 +1404,10 @@ export type CheckpointsListInput = { workspaceId: string; limit?: number }
 export type CheckpointsPreviewRewindInput = { workspaceId: string; checkpointId: string }
 export type CheckpointsRewindFilesInput = { workspaceId: string; checkpointId: string; expectedFingerprint: CheckoutFingerprint }
 export type ChecksRunInput = { workspaceId: WorkspaceId; command: CommandText }
+export type ChromeHistoryEntry = { url: string; title: string | null; visitedAt: number; visitCount: number }
+export type ChromeHistoryImport = { entries: ChromeHistoryEntry[]; totalAvailable: number }
+export type ChromeProfile = { id: string; name: string }
+export type ChromeProfilesInput = Record<string, never>
 export type CommandText = string
 export type ComposerAttachmentInput = { filePath: AttachmentPath; mimeType: AttachmentMimeType; sizeBytes: AttachmentSizeBytes }
 export type ConnectionAuthentication = "authenticated" | "required" | "not-applicable" | "unknown"
@@ -1486,6 +1506,7 @@ export type GoalState = "active" | "achieved" | "impossible" | "stopped"
 export type HealthPingInput = Record<string, never>
 export type HealthPingOutput = { ok: boolean; timestamp: string }
 export type IdeId = "vscode" | "cursor" | "windsurf" | "zed" | "iterm" | "terminal"
+export type ImportChromeHistoryInput = { profileId: string }
 /**
  * A single boundary-validation failure. Mirrors today's Zod
  * `InvalidInputIssue { path, code, message }` shape.

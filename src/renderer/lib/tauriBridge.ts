@@ -13,6 +13,8 @@ import type {
   BrowserAgentOpenEvent,
   BrowserEvaluateResult,
   BrowserFillResult,
+  ChromeProfile,
+  ChromeHistoryImport,
   BrowserFindResult,
   BrowserNewTabEvent,
   BrowserPageCommandEvent,
@@ -499,6 +501,9 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
         subscribe<TerminalAgentOpenEvent>("terminal:agent-open", listener)
     },
     browser: {
+      chromeProfiles: () => invokeCommand<ChromeProfile[]>("browser:chrome-profiles"),
+      importChromeHistory: (profileId: string) =>
+        invokeCommand<ChromeHistoryImport>("browser:import-chrome-history", { profileId }),
       open: (input) => invokeCommand<{ ok: true }>("browser:open", input),
       navigate: (url: string, tabId: string) =>
         invokeCommand<{ ok: true }>("browser:navigate", { url, tabId }),

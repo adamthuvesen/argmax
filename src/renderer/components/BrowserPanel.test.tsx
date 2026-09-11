@@ -1,7 +1,11 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi, BrowserStateEvent } from "../../shared/types.js";
-import { BROWSER_HISTORY_KEY } from "../lib/browserHistory.js";
+import {
+  BROWSER_HISTORY_KEY,
+  setBrowserHistoryStorageForTests,
+  type BrowserHistoryEntry
+} from "../lib/browserHistory.js";
 import { SIDEBAR_COLLAPSED_KEY } from "../lib/uiPreferences.js";
 import {
   resetSidebarChromeForTests,
@@ -11,6 +15,7 @@ import {
 import {
   applyBrowserTabs,
   BROWSER_PAGE_OWNER_ID,
+  createBrowserTab,
   getActiveBrowserTabId,
   getBrowserTabs,
   openInBrowserPanel,
@@ -34,6 +39,8 @@ const browserStub = {
   close: vi.fn(() => Promise.resolve({ ok: true as const })),
   stop: vi.fn(() => Promise.resolve({ ok: true as const })),
   fillCredentials: vi.fn(() => Promise.resolve({ ok: true, itemTitle: "GitHub" })),
+  chromeProfiles: vi.fn(() => Promise.resolve([{ id: "Default", name: "Personal" }])),
+  importChromeHistory: vi.fn(() => Promise.resolve({ entries: [], totalAvailable: 0 })),
   onState: vi.fn((listener: (event: BrowserStateEvent) => void) => {
     stateListener = listener;
     return () => {
@@ -123,6 +130,14 @@ beforeEach(() => {
   newTabListener = null;
   pageCommandListener = null;
   resetBrowserTabsForTests();
+  let historyEntries: BrowserHistoryEntry[] | undefined;
+  setBrowserHistoryStorageForTests({
+    load: () => Promise.resolve(historyEntries),
+    save: (nextEntries) => {
+      historyEntries = structuredClone(nextEntries);
+      return Promise.resolve();
+    }
+  });
   window.localStorage.removeItem(SIDEBAR_COLLAPSED_KEY);
   resetSidebarChromeForTests();
   for (const mock of Object.values(browserStub)) mock.mockClear();
@@ -282,15 +297,16 @@ describe("BrowserPanel", () => {
     expect(browserStub.navigate).not.toHaveBeenCalled();
   });
 
-  it("goes on Enter while history suggestions are open", () => {
+  it("goes on Enter while history suggestions are open", async () => {
     render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     act(() =>
       stateListener?.({ tabId: activeTabId(), url: "https://github.com", title: "GitHub", loading: false })
     );
     // A background tab's visit still feeds the omnibox; the active tab stays on GitHub.
+    const backgroundTab = createBrowserTab(BROWSER_PAGE_OWNER_ID, "https://example.com", false);
     act(() =>
       stateListener?.({
-        tabId: "not-the-active-tab",
+        tabId: backgroundTab.id,
         url: "https://example.com",
         title: "Example",
         loading: false
@@ -300,7 +316,7 @@ describe("BrowserPanel", () => {
     const address = screen.getByRole("textbox", { name: "Address" });
     fireEvent.focus(address);
     fireEvent.change(address, { target: { value: "example.com" } });
-    expect(screen.getByRole("dialog", { name: "History suggestions" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "History suggestions" })).toBeInTheDocument();
 
     fireEvent.keyDown(address, { key: "Enter" });
     expect(browserStub.navigate).toHaveBeenCalledWith("https://example.com", activeTabId());
@@ -452,7 +468,16 @@ describe("BrowserPanel", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("suggests visited pages while typing and navigates on pick", () => {
+  it("opens Chrome history import from the toolbar", async () => {
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Import from Chrome" }));
+
+    expect(await screen.findByRole("dialog", { name: "Import from Chrome" })).toBeInTheDocument();
+    expect(browserStub.chromeProfiles).toHaveBeenCalledOnce();
+  });
+
+  it("suggests visited pages while typing and navigates on pick", async () => {
     render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     act(() => stateListener?.({ tabId: activeTabId(), url: "https://github.com", title: "GitHub", loading: false }));
     act(() =>
@@ -463,12 +488,38 @@ describe("BrowserPanel", () => {
     fireEvent.focus(address);
     fireEvent.change(address, { target: { value: "git" } });
 
-    const popover = screen.getByRole("dialog", { name: "History suggestions" });
+    const popover = await screen.findByRole("dialog", { name: "History suggestions" });
     expect(popover).toHaveTextContent("GitHub");
     expect(popover).not.toHaveTextContent("Example Docs");
 
     fireEvent.click(screen.getByRole("button", { name: /GitHub/ }));
     expect(browserStub.navigate).toHaveBeenCalledWith("https://github.com", activeTabId());
+  });
+
+  it("records completed visits only for the strip this panel owns", async () => {
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    const foreignTab = createBrowserTab("another-browser-scope", "https://foreign.example.com");
+
+    act(() => stateListener?.({
+      tabId: foreignTab.id,
+      url: "https://foreign.example.com",
+      title: "Foreign page",
+      loading: false
+    }));
+    act(() => stateListener?.({
+      tabId: activeTabId(),
+      url: "https://owned.example.com",
+      title: "Owned page",
+      loading: false
+    }));
+
+    const address = screen.getByRole("textbox", { name: "Address" });
+    fireEvent.focus(address);
+    fireEvent.change(address, { target: { value: "foreign" } });
+    expect(screen.queryByRole("dialog", { name: "History suggestions" })).toBeNull();
+
+    fireEvent.change(address, { target: { value: "owned" } });
+    expect(await screen.findByRole("dialog", { name: "History suggestions" })).toHaveTextContent("Owned page");
   });
 
   it.each([["role", "dialog"], ["data-browser-overlay", "true"]])(

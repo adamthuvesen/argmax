@@ -8,10 +8,11 @@ import {
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
-import { ArrowLeft, ArrowRight, ExternalLink, KeyRound, Plus, RotateCw, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, ExternalLink, History, KeyRound, Plus, RotateCw, X } from "lucide-react";
 import type { BrowserBounds } from "../../shared/types.js";
 import { errorMessage } from "../../shared/error.js";
 import {
+  initializeBrowserHistory,
   recordBrowserVisit,
   suggestBrowserHistory,
   type BrowserHistoryEntry
@@ -39,6 +40,7 @@ import {
   type BrowserTab
 } from "../lib/browserPanel.js";
 import { WorkingNest } from "./WorkingNest.js";
+import { BrowserHistoryImport } from "./BrowserHistoryImport.js";
 import { sidebarChromeSnapshot, subscribeSidebarChrome } from "../state/sidebarChrome.js";
 
 interface BrowserPanelProps {
@@ -139,6 +141,7 @@ export function BrowserPanel({
   const [suggestions, setSuggestions] = useState<BrowserHistoryEntry[]>([]);
   const [suggestionIndex, setSuggestionIndex] = useState(-1);
   const [notice, setNotice] = useState<string | null>(null);
+  const [historyImportOpen, setHistoryImportOpen] = useState(false);
   const noticeTimerRef = useRef<number | null>(null);
 
   const showNotice = useCallback((message: string) => {
@@ -151,6 +154,18 @@ export function BrowserPanel({
     (error: unknown): void => showNotice(errorMessage(error)),
     [showNotice]
   );
+
+  useEffect(() => {
+    let mounted = true;
+    void initializeBrowserHistory()
+      .then(() => {
+        if (mounted && addressEditingRef.current) {
+          setSuggestions(suggestBrowserHistory(addressInputRef.current?.value ?? ""));
+        }
+      })
+      .catch(reportError);
+    return () => { mounted = false; };
+  }, [reportError]);
 
   const measureBounds = useCallback((): BrowserBounds | null => {
     const surface = surfaceRef.current;
@@ -503,7 +518,15 @@ export function BrowserPanel({
       }
       const scope = findBrowserTab(event.tabId)?.scopeId;
       if (scope) rememberBrowserUrl(event.url, scope);
-      if (!event.loading) recordBrowserVisit(event.url, event.title);
+      if (!event.loading && scope === scopeId) {
+        void recordBrowserVisit(event.url, event.title)
+          .then(() => {
+            if (addressEditingRef.current) {
+              setSuggestions(suggestBrowserHistory(addressInputRef.current?.value ?? ""));
+            }
+          })
+          .catch(reportError);
+      }
       if (event.tabId === getActiveBrowserTabId(scopeId) && !addressEditingRef.current) {
         setAddressValue(event.url);
       }
@@ -523,7 +546,7 @@ export function BrowserPanel({
       for (const timer of timers.values()) window.clearTimeout(timer);
       timers.clear();
     };
-  }, [browser, scopeId]);
+  }, [browser, reportError, scopeId]);
 
   // Switching tabs swaps the address bar to the new tab's URL.
   useEffect(() => {
@@ -560,7 +583,7 @@ export function BrowserPanel({
       }
       void browser.navigate(destination, activeTabId).catch(reportError);
     },
-    [activeTabId, browser, closeSuggestions, reportError]
+    [activeTabId, browser, closeSuggestions, reportError, scopeId]
   );
 
   const handleAddressSubmit = (event: FormEvent): void => {
@@ -841,6 +864,14 @@ export function BrowserPanel({
         </form>
         <button
           type="button"
+          title="Import from Chrome"
+          aria-label="Import from Chrome"
+          onClick={() => setHistoryImportOpen(true)}
+        >
+          <History size={14} strokeWidth={1.75} />
+        </button>
+        <button
+          type="button"
           title="Fill login from 1Password"
           aria-label="Fill login from 1Password"
           onClick={handleFillCredentials}
@@ -865,6 +896,9 @@ export function BrowserPanel({
         </div>
       ) : null}
       <div ref={surfaceRef} className="browser-panel-surface" />
+      {historyImportOpen ? (
+        <BrowserHistoryImport onClose={() => setHistoryImportOpen(false)} />
+      ) : null}
     </div>
   );
 }

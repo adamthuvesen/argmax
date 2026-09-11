@@ -12,6 +12,8 @@
 //! renderer mirrors it rather than owning it.
 
 pub mod automation;
+pub mod chrome_history;
+mod chrome_history_snapshot;
 pub mod eval;
 pub mod popup;
 pub mod registry;

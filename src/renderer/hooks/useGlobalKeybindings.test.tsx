@@ -47,6 +47,35 @@ describe("useGlobalKeybindings", () => {
     expect(onSelectWorkspace).toHaveBeenCalledWith("workspace-1");
   });
 
+  it("cycles through the sidebar on Cmd+Backquote, wrapping at both ends", () => {
+    const onSelectWorkspace = vi.fn();
+    const onCloseSettings = vi.fn();
+    renderHook(() =>
+      useGlobalKeybindings({
+        onMenuCommand: vi.fn(),
+        onOpenFilePalette: vi.fn(),
+        onOpenSearch: vi.fn(),
+        onOpenContentSearch: vi.fn(),
+        onSelectWorkspace,
+        onCloseSettings
+      })
+    );
+
+    // Nothing selected (launcher): forward lands on the first row, back on the last.
+    fireEvent.keyDown(document, { key: "§", code: "Backquote", metaKey: true });
+    expect(onSelectWorkspace).toHaveBeenLastCalledWith("workspace-1");
+    fireEvent.keyDown(document, { key: "°", code: "Backquote", metaKey: true, shiftKey: true });
+    expect(onSelectWorkspace).toHaveBeenLastCalledWith("workspace-3");
+
+    const rows = document.querySelectorAll(".session-row");
+    rows[2].innerHTML = '<a aria-current="true"></a>';
+    fireEvent.keyDown(document, { key: "`", code: "Backquote", metaKey: true });
+    expect(onSelectWorkspace).toHaveBeenLastCalledWith("workspace-1");
+    fireEvent.keyDown(document, { key: "~", code: "Backquote", metaKey: true, shiftKey: true });
+    expect(onSelectWorkspace).toHaveBeenLastCalledWith("workspace-2");
+    expect(onCloseSettings).toHaveBeenCalledTimes(4);
+  });
+
   it("resolves digit shortcuts from event.code fallback (Digit1..9 / Numpad1..9)", () => {
     const onSelectWorkspace = vi.fn();
     const onCloseSettings = vi.fn();

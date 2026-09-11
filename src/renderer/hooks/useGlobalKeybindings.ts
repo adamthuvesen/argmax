@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { requestCloseActiveReviewFileTab } from "../lib/reviewFilePanel.js";
-import { listVisibleSidebarWorkspaceIds } from "../lib/sidebarOrder.js";
+import { listVisibleSidebarWorkspaceIds, selectedSidebarWorkspaceId } from "../lib/sidebarOrder.js";
 import type { MenuCommand } from "../../shared/types.js";
 
 interface GlobalKeybindingArgs {
@@ -44,6 +44,7 @@ function parseDigitShortcut(event: KeyboardEvent): number | null {
  *
  * Bindings:
  *   Cmd/Ctrl+1..9 → open the nth session row in the sidebar, top to bottom
+ *   Cmd/Ctrl+§ (the key under Esc; ` on a US layout) → next chat, Shift for previous
  *   Cmd/Ctrl+,    → open-settings (menu command)
  *   Cmd/Ctrl+N    → new-session (menu command)
  *   Cmd/Ctrl+K    → open-command-palette (menu command), All filter
@@ -113,6 +114,26 @@ export function useGlobalKeybindings({
       if (event.key.toLowerCase() === "p" && !event.shiftKey) {
         event.preventDefault();
         onOpenFilePalette();
+        return;
+      }
+      // Matched on the physical key so it is ⌘§ on a Nordic layout and ⌘` on
+      // a US one: the key under Esc, a thumb away from ⌘Tab. Wraps at both
+      // ends; from the launcher it opens the first (or last) chat.
+      if (event.code === "Backquote" && !event.altKey) {
+        if (event.isComposing) return;
+        const ids = listVisibleSidebarWorkspaceIds();
+        if (ids.length === 0) return;
+        event.preventDefault();
+        const step = event.shiftKey ? -1 : 1;
+        const current = ids.indexOf(selectedSidebarWorkspaceId() ?? "");
+        const next =
+          current === -1
+            ? (step === 1 ? 0 : ids.length - 1)
+            : (current + step + ids.length) % ids.length;
+        const targetWorkspaceId = ids[next];
+        if (!targetWorkspaceId) return;
+        onCloseSettings();
+        onSelectWorkspace(targetWorkspaceId);
         return;
       }
       if (!event.altKey) {

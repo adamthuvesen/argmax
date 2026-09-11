@@ -15,3 +15,12 @@ export function listVisibleSidebarWorkspaceIds(): string[] {
     (id): id is string => Boolean(id)
   );
 }
+
+/** The row the sidebar marks as current, or null on the launcher and standalone pages. */
+export function selectedSidebarWorkspaceId(): string | null {
+  if (typeof document === "undefined") return null;
+  const link = document.querySelector<HTMLElement>(
+    '.project-list .session-row[data-workspace-id] [aria-current="true"]'
+  );
+  return link?.closest<HTMLElement>(".session-row")?.dataset.workspaceId ?? null;
+}

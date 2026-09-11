@@ -511,6 +511,9 @@ struct TranscriptComposer: View {
         dictation.stop()
         input = ""
         images.clear()
+        // The keyboard leaves with the message so the reply has the screen;
+        // a follow-up taps the composer to bring it back.
+        focused = false
         Haptics.light()
         Task {
             do {
@@ -532,6 +535,7 @@ struct TranscriptComposer: View {
                 input = trimmed
                 images.restore(sent)
                 failure = hostFailureMessage(error)
+                focused = true
             }
             sending = false
         }

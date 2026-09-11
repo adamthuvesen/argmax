@@ -482,17 +482,7 @@
     font-size: var(--text-2xl);
   }
 
-  .composer-context {
-    gap: var(--space-1);
-    padding: 0 42px 6px;
-    flex-wrap: wrap;
-  }
-
-  .composer-context .agent-mode-toggle {
-    /* On narrow widths the right-push would shove the mode pill onto its own
-       line; let it sit inline with the rest instead. */
-    margin-left: 0;
-  }  .conversation-surface {
+  .conversation-surface {
     padding-top: var(--space-5);
   }
 

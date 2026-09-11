@@ -252,8 +252,8 @@
 }
 
 .accent-picker-chip[data-accent-id="orange"] {
-  --accent-swatch-color: #9a603b;
-  --accent-swatch-soft: #f5ece5;
+  --accent-swatch-color: #b15810;
+  --accent-swatch-soft: #fff0e2;
 }
 
 .accent-picker-chip[data-accent-id="blue"] {
@@ -271,7 +271,7 @@
 }
 
 :root[data-theme="dark"] .accent-picker-chip[data-accent-id="orange"] {
-  --accent-swatch-color: #cc956f;
+  --accent-swatch-color: #ee9a50;
 }
 
 :root[data-theme="dark"] .accent-picker-chip[data-accent-id="blue"] {

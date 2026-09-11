@@ -5,7 +5,6 @@ import {
   CornerUpRight,
   Eraser,
   FileDiff,
-  Folder,
   FolderOpen,
   GitBranch,
   ListChecks,
@@ -53,10 +52,9 @@ import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
 import { useComposerDraft } from "../hooks/useComposerDraft.js";
-import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
-import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
 import { useFollowUpSuggestion } from "../hooks/useFollowUpSuggestion.js";
+import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import {
   appendReferencesToPrompt,
@@ -155,6 +153,7 @@ export function SessionComposer({
   shouldRefocusInput,
   status,
   workspace,
+  contextIndicatorEnabled = false,
   goalEnabled = true,
   goalMaxTurns,
   goalStatus
@@ -217,11 +216,13 @@ export function SessionComposer({
   selectedModel: ModelPickerSelection;
   session: SessionSummary | null;
   setAgentMode: Dispatch<SetStateAction<AgentMode>>;
-  setSelectedModel: Dispatch<SetStateAction<ModelPickerSelection>>;
+  setSelectedModel: (model: ModelPickerSelection) => void;
   setStatus: (status: ComposerStatus | null) => void;
   shouldRefocusInput: MutableRefObject<boolean>;
   status: ComposerStatus | null;
   workspace: WorkspaceSummary | null;
+  /** Settings → Appearance: show context-window usage in the active composer. */
+  contextIndicatorEnabled?: boolean;
   /** Settings → Agents → Conversation. Off removes `/goal` from the menu. */
   goalEnabled?: boolean;
   goalMaxTurns?: number;
@@ -243,7 +244,6 @@ export function SessionComposer({
     () => window.matchMedia?.("(pointer: coarse)").matches ?? false
   );
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
-  const [workspaceDetailsOpen, setWorkspaceDetailsOpen] = useState(false);
   // A pick that changes provider is held here until the user confirms: the new
   // agent can't resume this one's conversation, so the swap is worth a beat.
   // Cancelling drops the pick and the composer keeps the current provider. The
@@ -262,18 +262,14 @@ export function SessionComposer({
   // tabs changes, at which point the new set rides along again.
   const [dismissedOpenFilesKey, setDismissedOpenFilesKey] = useState<string | null>(null);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
+  // Below the toolbar's compact breakpoint the branch and the changed-file
+  // count fold behind a "…" instead of vanishing: the count is the way into
+  // the review panel, and model + effort keep the width it gives up.
+  const [compactContextOpen, setCompactContextOpen] = useState(false);
+  const compactContextRef = useRef<HTMLDivElement | null>(null);
   const openFilesKey = openFilePaths.join("\n");
   const openFilesAttached = openFilePaths.length > 0 && dismissedOpenFilesKey !== openFilesKey;
   const inputFormRef = useRef<HTMLFormElement | null>(null);
-  // The "…" panel sits nearest the composer's right edge, so it is the one that
-  // most often flips to end-alignment. That flip is now derived from the space
-  // available rather than hardcoded as `right: 0`, which was right only for as
-  // long as the trigger stayed at the edge.
-  const workspaceDetails = useAnchoredPopover({
-    open: workspaceDetailsOpen,
-    placement: "bottom-start",
-    strategy: "absolute"
-  });
   const {
     pendingAttachments,
     isDraggingFiles,
@@ -466,15 +462,16 @@ export function SessionComposer({
       `${changeSummary.additions === 1 ? "addition" : "additions"}, ${changeSummary.deletions} ` +
       `${changeSummary.deletions === 1 ? "deletion" : "deletions"}`
     : undefined;
-  const workspaceDetailsLabel = workspace
-    ? `Workspace details: branch ${workspace.branch}${
-        changeSummaryText ? `, ${changeSummaryText}` : ""
-      }`
-    : "Workspace details";
-  useDismissOnOutsideOrEscape(workspaceDetails.anchorRef, workspaceDetailsOpen, () =>
-    setWorkspaceDetailsOpen(false)
+  const branchLabel = workspace?.kind === "git" ? workspace.branch : null;
+  // Nothing to fold means no trigger: a non-git workspace with a clean tree
+  // would otherwise put a "…" on the row that opens an empty panel.
+  const hasWorkspaceContext = !floating && (branchLabel !== null || changeSummary !== null);
+  const workspaceContextSummary = `Workspace context: ${[branchLabel, changeSummaryText]
+    .filter((part) => part !== null)
+    .join(" · ")}`;
+  useDismissOnOutsideOrEscape(compactContextRef, compactContextOpen, () =>
+    setCompactContextOpen(false)
   );
-
   // Where the caret goes once text is put into the prompt for the user to
   // work on — set by the queued chip's Edit action. It has to wait for the
   // render that carries the new text: seeking on the old value would land in
@@ -1025,6 +1022,18 @@ export function SessionComposer({
         <FilePopover state={fileAutocomplete} inputRef={inputRef} />
       </div>
       <div className="session-input-toolbar">
+        {isRemoteBridge() || floating ? null : (
+          <button
+            type="button"
+            className="composer-tool"
+            title="Attach file"
+            aria-label="Attach file"
+            disabled={!canSend || isSending}
+            onClick={openFilePicker}
+          >
+            <Plus size={14} />
+          </button>
+        )}
         {session ? (
           <div className="composer-chips-group composer-chips-model">
             {session.state === "running" ? (
@@ -1070,21 +1079,56 @@ export function SessionComposer({
             )}
           </div>
         ) : null}
-        {session && !floating ? <ContextRing session={session} /> : null}
-        {workspace && !floating ? (
-          <div className="composer-footer composer-chips-group composer-chips-context" aria-label="Workspace context">
-            {changeSummary ? (
-              <button
-                type="button"
-                className="composer-footer-chip composer-footer-chip--changes"
-                title={changeSummaryText ?? undefined}
-                aria-label={changeSummaryAriaLabel}
-                aria-pressed={changeSummary.isOpen}
-                onClick={changeSummary.onOpen}
-              >
-                <ChangeCount additions={changeSummary.additions} deletions={changeSummary.deletions} />
-              </button>
-            ) : null}
+        {session && !floating && contextIndicatorEnabled ? <ContextRing session={session} /> : null}
+        {hasWorkspaceContext ? (
+          // Wide, the wrapper is `display: contents` and both chips sit on the
+          // chip floor directly; compact, it becomes the anchor for the "…".
+          <div
+            className="composer-chips-context-group"
+            data-compact-open={compactContextOpen ? "true" : undefined}
+            ref={compactContextRef}
+          >
+            <button
+              type="button"
+              className="composer-compact-context-trigger"
+              // The dot is the only trace a folded dirty tree leaves on the
+              // row, so the trigger carries it rather than the panel inside.
+              data-dirty={changeSummary ? "true" : undefined}
+              title={workspaceContextSummary}
+              aria-label={workspaceContextSummary}
+              aria-haspopup="dialog"
+              aria-expanded={compactContextOpen}
+              onClick={() => setCompactContextOpen((open) => !open)}
+            >
+              <MoreHorizontal size={14} aria-hidden="true" />
+            </button>
+            <div
+              className="composer-footer composer-chips-group composer-chips-context"
+              role={compactContextOpen ? "dialog" : undefined}
+              aria-label="Workspace context"
+            >
+              {branchLabel !== null ? (
+                <span className="composer-context-chip branch-chip" title={`Branch: ${branchLabel}`}>
+                  <GitBranch size={14} aria-hidden="true" />
+                  <span className="composer-context-chip-label">{branchLabel}</span>
+                </span>
+              ) : null}
+              {changeSummary ? (
+                <button
+                  type="button"
+                  className="composer-footer-chip composer-footer-chip--changes"
+                  title={changeSummaryText ?? undefined}
+                  aria-label={changeSummaryAriaLabel}
+                  aria-pressed={changeSummary.isOpen}
+                  onClick={() => {
+                    setCompactContextOpen(false);
+                    changeSummary.onOpen();
+                  }}
+                >
+                  <ChangeCount additions={changeSummary.additions} deletions={changeSummary.deletions} />
+                </button>
+              ) : null}
+            </div>
           </div>
         ) : null}
         {isRemoteBridge() && !floating ? (
@@ -1102,93 +1146,6 @@ export function SessionComposer({
           >
             <Paperclip size={15} aria-hidden="true" />
           </button>
-        ) : null}
-        {workspace && !floating ? (
-          <div className="composer-compact-context" ref={workspaceDetails.setAnchor}>
-            <button
-              type="button"
-              className="composer-compact-context-trigger"
-              title={workspaceDetailsLabel}
-              aria-label={workspaceDetailsLabel}
-              aria-haspopup="dialog"
-              aria-expanded={workspaceDetailsOpen}
-              onClick={() => setWorkspaceDetailsOpen((open) => !open)}
-            >
-              <MoreHorizontal size={14} aria-hidden="true" />
-              {changeSummary ? <span className="composer-compact-context-dot" aria-hidden="true" /> : null}
-            </button>
-            {workspaceDetailsOpen ? (
-              <div
-                className="composer-compact-context-popover"
-                role="dialog"
-                aria-label="Workspace details"
-                ref={workspaceDetails.setPopover}
-                style={workspaceDetails.floatingStyles}
-              >
-                {session && !isRemoteBridge() ? (
-                  <div className="composer-compact-context-row composer-compact-context-row--context">
-                    <span>Context</span>
-                    <ContextRing session={session} />
-                  </div>
-                ) : null}
-                {/* `system:open-path` is desktop-only (REMOTE_UNSUPPORTED), so
-                    over the bridge this row could only ever fail. */}
-                {workspace.sharedWorkspace || isRemoteBridge() ? null : (
-                  <button
-                    type="button"
-                    className="composer-compact-context-row"
-                    title={`Open worktree: ${workspace.path}`}
-                    aria-label={`Open worktree at ${workspace.path}`}
-                    onClick={() => {
-                      setWorkspaceDetailsOpen(false);
-                      if (!window.argmax) return;
-                      void window.argmax.system.openPath({ path: workspace.path }).catch(() => undefined);
-                    }}
-                  >
-                    <Folder size={12} aria-hidden="true" />
-                    <span>Worktree</span>
-                  </button>
-                )}
-                {changeSummary ? (
-                  <button
-                    type="button"
-                    className="composer-compact-context-row composer-compact-context-row--changes"
-                    aria-label={changeSummaryAriaLabel}
-                    aria-pressed={changeSummary.isOpen}
-                    onClick={() => {
-                      setWorkspaceDetailsOpen(false);
-                      changeSummary.onOpen();
-                    }}
-                  >
-                    <span>Changes</span>
-                    <ChangeCount additions={changeSummary.additions} deletions={changeSummary.deletions} />
-                  </button>
-                ) : null}
-                {workspace.kind === "git" ? (
-                  <div className="composer-compact-context-row" title={`Branch: ${workspace.branch}`}>
-                    <GitBranch size={12} aria-hidden="true" />
-                    <span className="composer-compact-context-branch">{workspace.branch}</span>
-                  </div>
-                ) : null}
-                {isRemoteBridge() ? null : (
-                <button
-                  type="button"
-                  className="composer-compact-context-row composer-compact-context-row--attach"
-                  title="Attach file"
-                  aria-label="Attach file"
-                  disabled={!canSend || isSending}
-                  onClick={() => {
-                    setWorkspaceDetailsOpen(false);
-                    openFilePicker();
-                  }}
-                >
-                  <Plus size={12} aria-hidden="true" />
-                  <span>Attach file</span>
-                </button>
-                )}
-              </div>
-            ) : null}
-          </div>
         ) : null}
         <span className="session-toolbar-spacer" />
         {onExpandToFullChat ? (

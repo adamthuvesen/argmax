@@ -251,17 +251,44 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByRole("button", { name: "Agent mode" })).toHaveTextContent("Plan");
   });
 
-  it("keeps the branch out of the composer row and behind the details popover", () => {
+  it("shows the branch as a chip in the composer row", () => {
     renderConversation(baseSession());
 
-    // The agent view is one session on one branch: naming it on every turn is
-    // noise. It stays one click away, in the workspace details popover.
-    expect(screen.queryByTitle("Branch: argmax/dashboard")).toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: /^Workspace details: branch argmax\/dashboard/ })
-    );
-    const popover = screen.getByRole("dialog", { name: "Workspace details" });
-    expect(within(popover).getByText("argmax/dashboard")).toBeInTheDocument();
+    expect(screen.getByTitle("Branch: argmax/dashboard")).toHaveTextContent("argmax/dashboard");
+  });
+
+  it("keeps the branch and changed files reachable behind the compact \"…\" trigger", () => {
+    // Below the toolbar's 720px breakpoint the CSS hides the two chips, so the
+    // trigger is the only way back to the Changes panel. jsdom applies no
+    // container query, so this pins the markup the query depends on: a trigger
+    // that names what it holds and toggles the group's open state.
+    renderConversation(baseSession(), [], {
+      review: reviewStub({
+        files: [{ path: "src/a.ts", status: "modified", additions: 10, deletions: 1, staged: false }]
+      })
+    });
+
+    const trigger = screen.getByRole("button", { name: /^Workspace context:/ });
+    expect(trigger).toHaveAccessibleName(/argmax\/dashboard/);
+    expect(trigger).toHaveAccessibleName(/1 file changed/);
+    // A dirty tree leaves no other trace on the row once the chips fold away.
+    expect(trigger).toHaveAttribute("data-dirty", "true");
+
+    const group = trigger.closest(".composer-chips-context-group");
+    expect(group).not.toHaveAttribute("data-compact-open");
+    fireEvent.click(trigger);
+    expect(group).toHaveAttribute("data-compact-open", "true");
+  });
+
+  it("hides the context indicator by default and shows it when enabled", () => {
+    const session = baseSession({ contextTokens: 10_000, contextWindow: 100_000 });
+    renderConversation(session);
+
+    expect(screen.queryByRole("button", { name: /Context window/ })).toBeNull();
+
+    cleanup();
+    renderConversation(session, [], { contextIndicatorEnabled: true });
+    expect(screen.getByRole("button", { name: "Context window 10% full — 10,000 of 100,000 tokens" })).toBeInTheDocument();
   });
 
   it("shows changed-file totals as a compact composer action and opens the review panel", () => {
@@ -288,37 +315,10 @@ describe("SessionConversation — streaming & composer", () => {
     expect(toggleChangesPanel).toHaveBeenCalledTimes(1);
   });
 
-  it("collapses workspace metadata behind a compact details popover", () => {
-    const toggleChangesPanel = vi.fn();
-    renderConversation(baseSession({ contextTokens: 10_000, contextWindow: 100_000 }), [], {
-      review: reviewStub({
-        files: [{ path: "src/a.ts", status: "modified", additions: 5, deletions: 2, staged: false }],
-        toggleChangesPanel
-      })
-    });
+  it("does not render the inactive workspace-details button", () => {
+    renderConversation(baseSession());
 
-    const detailsButton = screen.getByRole("button", {
-      name: "Workspace details: branch argmax/dashboard, 1 file changed"
-    });
-    fireEvent.click(detailsButton);
-
-    const popover = screen.getByRole("dialog", { name: "Workspace details" });
-    expect(
-      within(popover).getByRole("button", {
-        name: "Context window 10% full — 10,000 of 100,000 tokens"
-      })
-    ).toBeInTheDocument();
-    expect(within(popover).getByRole("button", { name: "Open worktree at /tmp/worktrees/dashboard" })).toBeInTheDocument();
-    const branchLabel = within(popover).getByText("argmax/dashboard");
-    expect(branchLabel).toBeInTheDocument();
-
-    const changesButton = within(popover).getByRole("button", {
-      name: "Open changed files in review panel: 1 file changed, 5 additions, 2 deletions"
-    });
-    expect(changesButton.compareDocumentPosition(branchLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(changesButton).toHaveTextContent("+5");
-    fireEvent.click(changesButton);
-    expect(toggleChangesPanel).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: /Workspace details/ })).toBeNull();
   });
 
   it("marks the compact changed-file action pressed when Changes is open", () => {

@@ -222,18 +222,19 @@
   overflow: hidden;
 }
 
-/* The "…" trigger is not a compact-only fallback any more: it is where every
-   secondary workspace action lives at every width — open worktree, attach a
-   file, jump to changes, read the full branch name. That is what lets the
-   toolbar itself stay at model / workspace / mode / send. */
-.composer-compact-context {
-  position: relative;
-  display: inline-flex;
-  flex: 0 0 auto;
+/* Branch and changed-file count share a wrapper so the compact layout has one
+   thing to fold. At full width the wrapper is not a box at all: its children
+   are the flex items, exactly as they were before the "…" existed. */
+.session-input-toolbar .composer-chips-context-group {
+  display: contents;
 }
 
-/* The launcher uses the same compact-details trigger as the chat composer.
-   At normal widths the original project and branch pickers stay inline. */
+.session-input-toolbar .composer-chips-context-group > .composer-compact-context-trigger {
+  display: none;
+}
+
+/* At normal widths the launcher's original project and branch pickers stay
+   inline. */
 .composer-context-group--workspace > .composer-compact-context-trigger {
   display: none;
 }
@@ -264,6 +265,19 @@
   color: var(--muted-strong);
 }
 
+/* Folded, an uncommitted tree has nothing left on the row to say so — the
+   trigger carries a dot instead, and the panel behind it carries the counts. */
+.session-input-toolbar .composer-compact-context-trigger[data-dirty="true"]::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
 /* A docked chat's way back to the pane: the same 28px quiet square as the
    context trigger, sitting beside Send where the other per-chat actions are. */
 .composer-expand-button {
@@ -284,102 +298,6 @@
   color: var(--muted-strong);
 }
 
-.composer-compact-context-dot {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 2px var(--panel);
-}
-
-.composer-compact-context-popover {
-  z-index: 40;
-  width: 244px;
-  max-width: calc(100cqw - 24px);
-  padding: var(--space-1_5);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-xl);
-  background: var(--panel);
-  box-shadow: var(--shadow-2);
-}
-
-.composer-compact-context-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  min-height: 30px;
-  padding: var(--space-1_5) var(--space-2);
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--muted-strong);
-  font-family: var(--font-prose);
-  font-size: var(--text-xs);
-  line-height: 1.2;
-  text-align: left;
-}
-
-button.composer-compact-context-row {
-  cursor: pointer;
-}
-
-button.composer-compact-context-row:hover,
-.composer-compact-context-row--changes[aria-pressed="true"] {
-  background: var(--panel-soft);
-  color: var(--text);
-}
-
-.composer-compact-context-row svg {
-  flex: 0 0 auto;
-  color: currentColor;
-  opacity: 0.72;
-}
-
-/* The toolbar has no "+" of its own — files arrive by drop or paste — so the
-   details popover carries the explicit picker wherever it renders. */
-.composer-compact-context-row--attach {
-  display: flex;
-}
-
-.composer-compact-context-branch {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.composer-compact-context-row--context {
-  justify-content: space-between;
-}
-
-.composer-compact-context-row--context .context-ring-anchor {
-  margin: 0;
-  padding: 0;
-}
-
-.composer-compact-context-row--changes {
-  justify-content: space-between;
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-}
-
-/* The popover carries what the row cannot show, never a second copy of what it
-   already does. Above the compact tier the context ring and the diff counts are
-   both inline, so their rows fold away here and the popover is left with the
-   two facts the row deliberately omits: the full branch name and the file
-   picker. Below the tier the inline pair folds instead and these come back. */
-@container (min-width: 721px) {
-  .composer-compact-context-dot,
-  .composer-compact-context-row--context,
-  .composer-compact-context-row--changes {
-    display: none;
-  }
-}
-
 /* Start the compact layout before side-by-side panes feel cramped. CSS
    container queries do not reliably accept var() in the condition, so
    accentTokens.test.ts pins this literal. */
@@ -390,8 +308,8 @@ button.composer-compact-context-row:hover,
 
   .session-input-toolbar {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 30px auto auto;
-    grid-template-areas: "model details mode send";
+    grid-template-columns: 30px minmax(0, 1fr) auto auto auto;
+    grid-template-areas: "attach model details mode send";
     align-items: center;
     column-gap: var(--space-1_5);
     row-gap: 0;
@@ -402,16 +320,17 @@ button.composer-compact-context-row:hover,
     flex-basis: 128px;
   }
 
-  /* The ring folds into the details popover here — the row has no column to
-     spare, and the popover already carries the same gauge. */
-  .session-input-toolbar > .context-ring-anchor {
-    display: none;
+  .session-input-toolbar .composer-tool {
+    grid-area: attach;
   }
 
-  .session-input-toolbar .composer-compact-context {
-    display: block;
-    grid-area: details;
-    justify-self: end;
+  .session-input-toolbar:has(> .context-ring-anchor) {
+    grid-template-columns: 30px minmax(0, 1fr) 30px auto auto auto;
+    grid-template-areas: "attach model context details mode send";
+  }
+
+  .session-input-toolbar > .context-ring-anchor {
+    grid-area: context;
   }
 
   .session-input-toolbar .composer-chips-mode {
@@ -424,8 +343,76 @@ button.composer-compact-context-row:hover,
     padding-inline: var(--space-2);
   }
 
+  /* The branch and the change count leave the row rather than squeeze the
+     model beside them — but they leave into the "…", not into nothing: the
+     count is the way into the review panel, and a folded control the user
+     cannot reach is a feature deleted by a media query. */
+  .session-input-toolbar .composer-chips-context-group {
+    position: relative;
+    display: block;
+    grid-area: details;
+  }
+
+  .session-input-toolbar .composer-chips-context-group > .composer-compact-context-trigger {
+    display: grid;
+  }
+
   .session-input-toolbar .composer-chips-context {
     display: none;
+  }
+
+  .session-input-toolbar
+    .composer-chips-context-group[data-compact-open="true"]
+    > .composer-chips-context {
+    position: absolute;
+    /* Upward, unlike the launcher's: this composer is docked to the bottom of
+       the pane, so a panel hung below it opens off-screen. */
+    bottom: calc(100% + 8px);
+    right: 0;
+    z-index: 40;
+    display: flex;
+    width: 208px;
+    max-width: calc(100cqw - 24px);
+    padding: var(--space-1_5);
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-xl);
+    background: var(--panel);
+    box-shadow: var(--shadow-2);
+    overflow: visible;
+  }
+
+  /* Folded, the chips are menu rows: the panel is the surface, so they give
+     back the fill and the capsule the way the launcher's pickers do. */
+  .session-input-toolbar
+    .composer-chips-context-group[data-compact-open="true"]
+    > .composer-chips-context
+    > :is(.composer-context-chip, .composer-footer-chip) {
+    width: 100%;
+    height: auto;
+    min-height: 30px;
+    max-width: none;
+    padding: var(--space-1_5) var(--space-2);
+    justify-content: flex-start;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--muted-strong);
+  }
+
+  .session-input-toolbar
+    .composer-chips-context-group[data-compact-open="true"]
+    .composer-context-chip-label {
+    max-width: none;
+  }
+
+  /* Only the count is clickable — the branch is a label here as it is on the
+     row, so it takes no hover. */
+  .session-input-toolbar
+    .composer-chips-context-group[data-compact-open="true"]
+    .composer-footer-chip--changes:hover {
+    background: var(--row-hover);
   }
 
   .session-input-toolbar .session-toolbar-spacer {

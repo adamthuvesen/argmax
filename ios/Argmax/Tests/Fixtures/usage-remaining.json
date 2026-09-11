@@ -1,0 +1,97 @@
+{
+  "fetchedAt": "2026-09-11T10:04:22.600359+00:00",
+  "providers": [
+    {
+      "kind": "subscription",
+      "message": null,
+      "messageUrl": null,
+      "planLabel": "Max 20x",
+      "provider": "claude",
+      "windows": [
+        {
+          "id": "five_hour",
+          "label": "5-hour",
+          "remainingPercent": 71,
+          "resetsAt": "2026-09-11T11:00:00.043039+00:00"
+        },
+        {
+          "id": "seven_day_fable",
+          "label": "Weekly Fable",
+          "remainingPercent": 47,
+          "resetsAt": "2026-09-15T09:00:00.043306+00:00"
+        },
+        {
+          "id": "seven_day",
+          "label": "Weekly",
+          "remainingPercent": 36,
+          "resetsAt": "2026-09-15T09:00:00.043063+00:00"
+        }
+      ]
+    },
+    {
+      "kind": "subscription",
+      "message": null,
+      "messageUrl": null,
+      "planLabel": "Pro",
+      "provider": "codex",
+      "windows": [
+        {
+          "id": "seven_day",
+          "label": "Weekly",
+          "remainingPercent": 29,
+          "resetsAt": "2026-09-15T04:01:46+00:00"
+        }
+      ]
+    },
+    {
+      "kind": "enterprise",
+      "message": "Cursor remaining lives on the Spending dashboard.",
+      "messageUrl": "https://cursor.com/dashboard/spending",
+      "planLabel": "Teams",
+      "provider": "cursor",
+      "windows": []
+    },
+    {
+      "kind": "subscription",
+      "message": null,
+      "messageUrl": null,
+      "planLabel": "OpenCode Go",
+      "provider": "opencode",
+      "windows": [
+        {
+          "id": "five_hour",
+          "label": "5-hour",
+          "remainingPercent": 100,
+          "resetsAt": "2026-09-11T15:04:22.293+00:00"
+        },
+        {
+          "id": "seven_day",
+          "label": "Weekly",
+          "remainingPercent": 99,
+          "resetsAt": "2026-09-14T00:00:00.293+00:00"
+        },
+        {
+          "id": "monthly",
+          "label": "Monthly",
+          "remainingPercent": 47,
+          "resetsAt": "2026-09-28T12:46:05.293+00:00"
+        }
+      ]
+    },
+    {
+      "kind": "subscription",
+      "message": null,
+      "messageUrl": null,
+      "planLabel": "SuperGrok",
+      "provider": "grok",
+      "windows": [
+        {
+          "id": "seven_day",
+          "label": "Weekly",
+          "remainingPercent": 0,
+          "resetsAt": "2026-09-13T04:40:24.899832+00:00"
+        }
+      ]
+    }
+  ]
+}

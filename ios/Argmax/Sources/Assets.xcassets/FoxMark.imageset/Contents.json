@@ -1,0 +1,23 @@
+{
+  "images": [
+    {
+      "filename": "fox-mark.png",
+      "idiom": "universal",
+      "scale": "1x"
+    },
+    {
+      "filename": "fox-mark@2x.png",
+      "idiom": "universal",
+      "scale": "2x"
+    },
+    {
+      "filename": "fox-mark@3x.png",
+      "idiom": "universal",
+      "scale": "3x"
+    }
+  ],
+  "info": {
+    "author": "argmax",
+    "version": 1
+  }
+}

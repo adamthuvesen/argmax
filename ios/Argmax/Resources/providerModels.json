@@ -1,0 +1,464 @@
+{
+  "generatedBy": "scripts/export-provider-models.mjs",
+  "efforts": [
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+    "ultra"
+  ],
+  "effortLabels": {
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High",
+    "xhigh": "Extra High",
+    "max": "Max",
+    "ultra": "Ultra"
+  },
+  "defaultEffort": "medium",
+  "launchPriority": [
+    "claude",
+    "codex",
+    "cursor",
+    "opencode",
+    "grok"
+  ],
+  "factoryModel": {
+    "provider": "claude",
+    "label": "Opus 5",
+    "modelId": "claude-opus-5",
+    "reasoningEffort": "medium"
+  },
+  "fallbackModel": {
+    "provider": "opencode",
+    "label": "Big Pickle",
+    "modelId": "opencode/big-pickle",
+    "reasoningEffort": null
+  },
+  "providers": [
+    {
+      "id": "claude",
+      "displayName": "Claude",
+      "forkCapable": true,
+      "titleModelId": "claude-sonnet-5",
+      "defaultModel": {
+        "provider": "claude",
+        "label": "Opus 5",
+        "modelId": "claude-opus-5",
+        "reasoningEffort": "medium"
+      },
+      "models": [
+        {
+          "label": "Fable 5.1",
+          "modelId": "claude-fable-5-1",
+          "contextWindow": 1000000,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ],
+          "defaultEffort": "medium"
+        },
+        {
+          "label": "Opus 5",
+          "modelId": "claude-opus-5",
+          "contextWindow": 1000000,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ],
+          "defaultEffort": "medium"
+        },
+        {
+          "label": "Sonnet 5",
+          "modelId": "claude-sonnet-5",
+          "contextWindow": 200000,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ],
+          "defaultEffort": "medium"
+        },
+        {
+          "label": "Haiku 4.5",
+          "modelId": "claude-haiku-4-5",
+          "contextWindow": 200000,
+          "reasoningEfforts": [],
+          "defaultEffort": null
+        }
+      ]
+    },
+    {
+      "id": "codex",
+      "displayName": "Codex",
+      "forkCapable": true,
+      "titleModelId": "gpt-5.6-luna",
+      "defaultModel": {
+        "provider": "codex",
+        "label": "GPT-5.6 Sol",
+        "modelId": "gpt-5.6-sol",
+        "reasoningEffort": "medium"
+      },
+      "models": [
+        {
+          "label": "GPT-6 Astra",
+          "modelId": "gpt-6-astra",
+          "contextWindow": 272000,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ],
+          "defaultEffort": "medium"
+        },
+        {
+          "label": "GPT-5.6 Sol",
+          "modelId": "gpt-5.6-sol",
+          "contextWindow": 258400,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ],
+          "defaultEffort": "medium"
+        },
+        {
+          "label": "GPT-5.6 Terra",
+          "modelId": "gpt-5.6-terra",
+          "contextWindow": 258400,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ],
+          "defaultEffort": "medium"
+        },
+        {
+          "label": "GPT-5.6 Luna",
+          "modelId": "gpt-5.6-luna",
+          "contextWindow": 258400,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultEffort": "medium"
+        }
+      ]
+    },
+    {
+      "id": "cursor",
+      "displayName": "Cursor",
+      "forkCapable": false,
+      "titleModelId": "composer-2.5",
+      "defaultModel": {
+        "provider": "cursor",
+        "label": "Grok 4.6 (Cursor)",
+        "modelId": "cursor-grok-4.6-medium",
+        "reasoningEffort": "medium"
+      },
+      "models": [
+        {
+          "label": "Auto Cost (Cursor)",
+          "modelId": "auto-smart[optimize_for=cost]",
+          "contextWindow": null,
+          "reasoningEfforts": [],
+          "defaultEffort": null
+        },
+        {
+          "label": "Auto Balance (Cursor)",
+          "modelId": "auto-smart[optimize_for=balanced]",
+          "contextWindow": null,
+          "reasoningEfforts": [],
+          "defaultEffort": null
+        },
+        {
+          "label": "Auto Intelligence (Cursor)",
+          "modelId": "auto-smart[optimize_for=intelligence]",
+          "contextWindow": null,
+          "reasoningEfforts": [],
+          "defaultEffort": null
+        },
+        {
+          "label": "Composer 2.5 (Cursor)",
+          "modelId": "composer-2.5",
+          "contextWindow": 1000000,
+          "reasoningEfforts": [],
+          "defaultEffort": null
+        },
+        {
+          "label": "Grok 4.6 (Cursor)",
+          "modelId": "cursor-grok-4.6-medium",
+          "contextWindow": 1000000,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "defaultEffort": "medium"
+        },
+        {
+          "label": "Gemini 3.8 Flash (Cursor)",
+          "modelId": "gemini-3.8-flash-medium",
+          "contextWindow": 1000000,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "defaultEffort": "medium"
+        },
+        {
+          "label": "GPT-5.6 Sol (Cursor)",
+          "modelId": "gpt-5.6-sol-medium",
+          "contextWindow": 1000000,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultEffort": "medium"
+        },
+        {
+          "label": "GPT-5.6 Terra (Cursor)",
+          "modelId": "gpt-5.6-terra-medium",
+          "contextWindow": 1000000,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultEffort": "medium"
+        },
+        {
+          "label": "GPT-5.6 Luna (Cursor)",
+          "modelId": "gpt-5.6-luna-medium",
+          "contextWindow": 1000000,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultEffort": "medium"
+        },
+        {
+          "label": "Claude Opus 5 (Cursor)",
+          "modelId": "claude-opus-5-thinking-medium",
+          "contextWindow": 1000000,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultEffort": "medium"
+        }
+      ]
+    },
+    {
+      "id": "opencode",
+      "displayName": "OpenCode",
+      "forkCapable": true,
+      "titleModelId": "opencode/big-pickle",
+      "defaultModel": {
+        "provider": "opencode",
+        "label": "GLM-5.3-Flash",
+        "modelId": "opencode-go/glm-5.3-flash",
+        "reasoningEffort": "high"
+      },
+      "models": [
+        {
+          "label": "Big Pickle",
+          "modelId": "opencode/big-pickle",
+          "contextWindow": 200000,
+          "reasoningEfforts": [],
+          "defaultEffort": null
+        },
+        {
+          "label": "Hy3 Free",
+          "modelId": "opencode/hy3-free",
+          "contextWindow": 190000,
+          "reasoningEfforts": [],
+          "defaultEffort": null
+        },
+        {
+          "label": "MiMo V2.5 Free",
+          "modelId": "opencode/mimo-v2.5-free",
+          "contextWindow": 200000,
+          "reasoningEfforts": [],
+          "defaultEffort": null
+        },
+        {
+          "label": "Nemotron 3.5 Lightning Free",
+          "modelId": "opencode/nemotron-3.5-lightning-free",
+          "contextWindow": 262144,
+          "reasoningEfforts": [],
+          "defaultEffort": null
+        },
+        {
+          "label": "Nemotron 3 Ultra Free",
+          "modelId": "opencode/nemotron-3-ultra-free",
+          "contextWindow": 1000000,
+          "reasoningEfforts": [],
+          "defaultEffort": null
+        },
+        {
+          "label": "Muse Spark 1.3 Free",
+          "modelId": "opencode/muse-spark-1.3-contributor-free",
+          "contextWindow": 1048576,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "defaultEffort": "medium"
+        },
+        {
+          "label": "GLM-5.3-Flash",
+          "modelId": "opencode-go/glm-5.3-flash",
+          "contextWindow": 1000000,
+          "reasoningEfforts": [
+            "low",
+            "high",
+            "max"
+          ],
+          "defaultEffort": "low"
+        },
+        {
+          "label": "GLM-5.3",
+          "modelId": "opencode-go/glm-5.3",
+          "contextWindow": 1000000,
+          "reasoningEfforts": [
+            "low",
+            "high",
+            "max"
+          ],
+          "defaultEffort": "low"
+        },
+        {
+          "label": "Kimi K3",
+          "modelId": "opencode-go/kimi-k3",
+          "contextWindow": 1048576,
+          "reasoningEfforts": [
+            "max"
+          ],
+          "defaultEffort": "max"
+        },
+        {
+          "label": "Qwen3.8 Max",
+          "modelId": "opencode-go/qwen3.8-max",
+          "contextWindow": 1000000,
+          "reasoningEfforts": [],
+          "defaultEffort": null
+        },
+        {
+          "label": "Qwen3.8 Flash",
+          "modelId": "opencode-go/qwen3.8-flash",
+          "contextWindow": 1000000,
+          "reasoningEfforts": [
+            "high",
+            "max"
+          ],
+          "defaultEffort": "high"
+        },
+        {
+          "label": "DeepSeek V4 Pro",
+          "modelId": "opencode-go/deepseek-v4-pro",
+          "contextWindow": 1000000,
+          "reasoningEfforts": [
+            "high",
+            "max"
+          ],
+          "defaultEffort": "high"
+        },
+        {
+          "label": "DeepSeek V4 Flash",
+          "modelId": "opencode-go/deepseek-v4-flash",
+          "contextWindow": 1000000,
+          "reasoningEfforts": [
+            "low",
+            "high",
+            "max"
+          ],
+          "defaultEffort": "low"
+        }
+      ]
+    },
+    {
+      "id": "grok",
+      "displayName": "Grok Build",
+      "forkCapable": true,
+      "titleModelId": "grok-4.6",
+      "defaultModel": {
+        "provider": "grok",
+        "label": "Grok 4.6",
+        "modelId": "grok-4.6",
+        "reasoningEffort": "medium"
+      },
+      "models": [
+        {
+          "label": "Grok 4.6",
+          "modelId": "grok-4.6",
+          "contextWindow": 500000,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "defaultEffort": "medium"
+        },
+        {
+          "label": "Grok 4.5",
+          "modelId": "grok-4.5",
+          "contextWindow": 500000,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "defaultEffort": "medium"
+        }
+      ]
+    }
+  ],
+  "defaultModelIds": {
+    "claude": "claude-opus-5",
+    "codex": "gpt-5.6-sol",
+    "cursor": "cursor-grok-4.6-medium",
+    "opencode": "opencode-go/glm-5.3-flash",
+    "grok": "grok-4.6"
+  }
+}

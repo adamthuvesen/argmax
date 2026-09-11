@@ -1,0 +1,126 @@
+[
+  {
+    "approvalSupport": "respondable",
+    "authenticated": true,
+    "binaryName": "claude",
+    "binaryPath": "/Users/adamthuvesen/.local/bin/claude",
+    "displayName": "Claude Code",
+    "goalSupport": {
+      "appManaged": {
+        "available": true
+      },
+      "independentReviewer": {
+        "available": true
+      },
+      "nativeControl": {
+        "available": false,
+        "reason": "Claude Code has native Goals, but Argmax has not verified host-controlled lifecycle events through its current CLI transport."
+      },
+      "nativeProduct": true
+    },
+    "installed": true,
+    "provider": "claude",
+    "setupGuidance": null,
+    "version": "2.1.267 (Claude Code)"
+  },
+  {
+    "approvalSupport": "respondable",
+    "authenticated": true,
+    "binaryName": "codex",
+    "binaryPath": "/Users/adamthuvesen/.local/bin/codex",
+    "displayName": "Codex",
+    "goalSupport": {
+      "appManaged": {
+        "available": true
+      },
+      "independentReviewer": {
+        "available": false,
+        "reason": "Codex read-only sandboxing is verified, but Argmax cannot yet prove that every installed customization and hook is excluded from a fresh reviewer invocation."
+      },
+      "nativeControl": {
+        "available": false,
+        "reason": "Codex native Goal state CRUD is verified, but its autonomous continuation lifecycle is not controllable through Argmax's per-turn app-server host yet."
+      },
+      "nativeProduct": true
+    },
+    "installed": true,
+    "provider": "codex",
+    "setupGuidance": null,
+    "version": "codex-cli 0.154.0"
+  },
+  {
+    "approvalSupport": "respondable",
+    "authenticated": true,
+    "binaryName": "cursor-agent",
+    "binaryPath": "/Users/adamthuvesen/.local/bin/cursor-agent",
+    "displayName": "Cursor",
+    "goalSupport": {
+      "appManaged": {
+        "available": true
+      },
+      "independentReviewer": {
+        "available": false,
+        "reason": "Cursor ask mode is read-only by convention, but Argmax has not verified an enforced no-write reviewer boundary for this CLI version."
+      },
+      "nativeControl": {
+        "available": false,
+        "reason": "Cursor has native Goals, but Argmax has not verified host-controlled lifecycle events through ACP."
+      },
+      "nativeProduct": true
+    },
+    "installed": true,
+    "provider": "cursor",
+    "setupGuidance": null,
+    "version": "2026.09.08-6caf4ff"
+  },
+  {
+    "approvalSupport": "respondable",
+    "authenticated": true,
+    "binaryName": "opencode",
+    "binaryPath": "/Users/adamthuvesen/.opencode/bin/opencode",
+    "displayName": "OpenCode",
+    "goalSupport": {
+      "appManaged": {
+        "available": true
+      },
+      "independentReviewer": {
+        "available": false,
+        "reason": "OpenCode's plan agent is read-only by convention, but Argmax has not verified an enforced no-write reviewer boundary."
+      },
+      "nativeControl": {
+        "available": false,
+        "reason": "OpenCode does not expose a verified native Goal lifecycle."
+      },
+      "nativeProduct": false
+    },
+    "installed": true,
+    "provider": "opencode",
+    "setupGuidance": null,
+    "version": "1.18.30"
+  },
+  {
+    "approvalSupport": "respondable",
+    "authenticated": true,
+    "binaryName": "grok",
+    "binaryPath": "/Users/adamthuvesen/.local/bin/grok",
+    "displayName": "Grok Build",
+    "goalSupport": {
+      "appManaged": {
+        "available": true
+      },
+      "independentReviewer": {
+        "available": false,
+        "reason": "Grok can restrict built-in tools, but its CLI still loads discovered MCP servers, plugins, and hooks during review."
+      },
+      "nativeControl": {
+        "available": false,
+        "reason": "Grok Build has native Goals, but Argmax has not verified host-controlled lifecycle events through ACP."
+      },
+      "nativeProduct": true
+    },
+    "installed": true,
+    "provider": "grok",
+    "setupGuidance": null,
+    "version": "grok 1.0.25 (f7e67d6988e2) [stable]"
+  }
+]

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Development for every configuration, because there is only one way
+	     this app is ever installed: from Xcode onto a phone you own. A device
+	     token is minted for one environment and rejected by the other, so the
+	     "Apple sandbox" switch in Argmax -> Settings -> Remote access has to
+	     be on to match (docs/remote.md). Change this to `production` only if
+	     the app is ever distributed, and flip that switch in the same breath. -->
+	<key>aps-environment</key>
+	<string>development</string>
+</dict>
+</plist>

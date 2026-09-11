@@ -1,0 +1,62 @@
+[
+  {
+    "counts": {
+      "active": 0,
+      "blocked": 0,
+      "failed": 12,
+      "reviewReady": 259
+    },
+    "currentBranch": "main",
+    "defaultBranch": "main",
+    "id": "c5207979-ead6-485e-bed2-e84ec5e69f88",
+    "latestActivityAt": "2026-09-10T16:26:05.867Z",
+    "name": "argmax",
+    "repoPath": "/Users/adamthuvesen/dev/menti/argmax",
+    "settings": {
+      "archiveOnMerge": false,
+      "checkCommands": [],
+      "setupCommand": "",
+      "worktreeLocation": "/Users/adamthuvesen/dev/menti/argmax/.argmax/worktrees"
+    }
+  },
+  {
+    "counts": {
+      "active": 0,
+      "blocked": 0,
+      "failed": 0,
+      "reviewReady": 13
+    },
+    "currentBranch": "main",
+    "defaultBranch": "main",
+    "id": "bfc10a74-a969-427e-8213-f67a60627295",
+    "latestActivityAt": "2026-09-10T07:37:26.340Z",
+    "name": "dotfiles",
+    "repoPath": "/Users/adamthuvesen/dotfiles",
+    "settings": {
+      "archiveOnMerge": false,
+      "checkCommands": [],
+      "setupCommand": "",
+      "worktreeLocation": "/Users/adamthuvesen/dotfiles/.argmax/worktrees"
+    }
+  },
+  {
+    "counts": {
+      "active": 0,
+      "blocked": 0,
+      "failed": 0,
+      "reviewReady": 22
+    },
+    "currentBranch": "main",
+    "defaultBranch": "main",
+    "id": "scratch-side-chats",
+    "latestActivityAt": "2026-09-09T06:10:52.698Z",
+    "name": "Side chats",
+    "repoPath": "/Users/adamthuvesen/Library/Application Support/com.argmax.rs/local-state/side-chats",
+    "settings": {
+      "archiveOnMerge": false,
+      "checkCommands": [],
+      "setupCommand": "",
+      "worktreeLocation": "/Users/adamthuvesen/Library/Application Support/com.argmax.rs/local-state/side-chats"
+    }
+  }
+]

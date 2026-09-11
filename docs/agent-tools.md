@@ -54,6 +54,19 @@ so a launcher can check one child without listing every session.
 `ultra`. `permissionMode` accepts `auto-approve`, `ask-each-time`, or
 `provider-defaults`. Omitted values inherit from the caller.
 
+`project` accepts a repository Argmax has never opened. A name or id must
+already be registered, but an absolute path is taken at face value: the
+repository at it is added as a project — the same row the folder picker would
+create, named after the folder, with the same default settings — and the
+session launches there. So an agent told "start a chat in ~/dev/thing" does not
+first need the user to add that folder by hand. A path inside a registered
+project resolves to that project instead of adding it twice, and a path that is
+a *linked worktree* is refused with `PROJECT_IS_CHECKOUT`: a worktree is a
+checkout of a project, not a project, so the error names the project to pass as
+`project` with the worktree as `path`. A path that is not a git repository at
+all is refused with `PROJECT_NOT_GIT`. `session_move` resolves its `project` the
+same way.
+
 `session_launch` can target a checkout as well as a project. `path` is an
 existing working tree of the target project, any directory `git worktree list`
 reports, including the main one. The new session shares that checkout. `worktree`
@@ -105,7 +118,8 @@ defaults to 8,000 characters and is capped at 40,000.
 
 `project_list` includes registered projects with no open sessions. Each row
 includes its repo path, current and default branches, configured checks, active
-session count, and latest activity.
+session count, and latest activity. A repository missing from the list is still
+reachable: naming its absolute path as `project` adds it.
 
 `schedule_followup` creates an enabled, one-shot scheduled task whose target is
 the calling session. Give either a delay in seconds or an RFC 3339 timestamp.
@@ -255,8 +269,9 @@ This is page-level capture in WKWebView, not a debugger protocol attachment.
 Response bodies and request headers are unavailable. Resource timing rows may
 not include a status. Tabs the user opened are not instrumented.
 
-`project` takes a registered project's name or its absolute repo path, and
-defaults to the caller's own project. `path` and `branch` pick a checkout of
+`project` takes a registered project's name, or any repository's absolute path
+— an unregistered one is added on first use, as above — and defaults to the
+caller's own project. `path` and `branch` pick a checkout of
 that project as described above. `provider` and `model` default to the
 caller's own: an agent that names neither launches a peer of itself. A named
 model is passed to the CLI as-is and stands in as its own sidebar label — Rust
@@ -267,8 +282,8 @@ A move is scheduled rather than immediate: it runs once the calling turn
 settles, since the agent asking for it is mid-turn.
 
 `session_move` takes exactly one destination. `project` moves to another
-registered project; `path` moves to another checkout of the project the chat is
-already in. `path` is the reason an agent should never reach for `cd` when the
+project, registering the repository at that path if Argmax has never opened it;
+`path` moves to another checkout of the project the chat is already in. `path` is the reason an agent should never reach for `cd` when the
 work belongs in a different worktree: `cd` moves only that shell, so the
 workspace card, its diff, and its commit and pull-request actions keep targeting
 the checkout the session started in, and the next turn relaunches there — the

@@ -13,7 +13,7 @@ use super::super::{
     registry::{AfterTurn, ParentLaunchSettings, SessionLaunchRegistry},
     MAX_CONTINUED_MOVES,
 };
-use super::resolve_project;
+use super::resolve_or_register_project;
 use crate::{
     error::ArgmaxError,
     ipc::{
@@ -24,7 +24,6 @@ use crate::{
         after_turn::{AfterTurnAction, ArchiveRequest, MoveDestinationRecord, MoveRequest},
         database::Database,
         events::{count_move_arrivals, persist_timeline_event, PersistTimelineEventInput},
-        projects::list_projects,
         sessions::find_session_by_id,
         workspaces::find_workspace_by_id,
     },
@@ -178,7 +177,7 @@ pub(super) async fn schedule_session_move(
         }
         (Some(_), None) => None,
     };
-    let (source_session, source_workspace, destination) = {
+    let (source_session, source_workspace) = {
         let connection = database.connection();
         let source_session =
             find_session_by_id(&connection, &parent.session_id).map_err(argmax_protocol_error)?;
@@ -190,16 +189,16 @@ pub(super) async fn schedule_session_move(
                 "This chat has no repository, so it has no checkouts to move between.",
             ));
         }
-        let projects = list_projects(&connection).map_err(argmax_protocol_error)?;
-        // A checkout move stays in the project it is already in, which is what
-        // `resolve_project` returns for a `None` selector.
-        let destination = resolve_project(
-            &projects,
-            action.project.as_deref(),
-            &source_workspace.project_id,
-        )?;
-        (source_session, source_workspace, destination)
+        (source_session, source_workspace)
     };
+    // A checkout move stays in the project it is already in, which is what the
+    // resolver returns for a `None` selector.
+    let destination = resolve_or_register_project(
+        &database,
+        action.project.as_deref(),
+        &source_workspace.project_id,
+    )
+    .await?;
     if checkout_path.is_none() && destination.id == source_workspace.project_id {
         return Err(protocol_error(
             "MOVE_SAME_PROJECT",

@@ -11,6 +11,7 @@ use super::inputs::*;
 use super::{live_database, read_off_main};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::git::exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
+use crate::persistence::database::Database;
 use crate::persistence::projects::{
     delete_project, list_projects, parse_github_remote, persist_project, require_project,
     update_project_branch, update_project_settings, PersistProjectInput, ProjectRemote,
@@ -281,6 +282,18 @@ pub(crate) async fn register_project_path(
     state: &AppState,
     candidate_path: PathBuf,
 ) -> ArgmaxResult<ProjectSummary> {
+    let database = live_database(state)?;
+    register_repo_path(&database, candidate_path).await
+}
+
+/// Add the repository at `candidate_path`, or return the project already
+/// registered for it. Takes the database rather than the app state so the
+/// session-control socket, which has no `AppState`, can register a repository
+/// an agent named for the first time.
+pub(crate) async fn register_repo_path(
+    database: &Database,
+    candidate_path: PathBuf,
+) -> ArgmaxResult<ProjectSummary> {
     let canonical_path = canonicalize_repo_path(&candidate_path).await?;
     let metadata = read_git_metadata(&canonical_path).await?;
     if let Some(default_branch) = metadata.default_branch.as_deref() {
@@ -302,7 +315,6 @@ pub(crate) async fn register_project_path(
     };
 
     let project = {
-        let database = live_database(state)?;
         let connection = database.connection();
         persist_project(&connection, &project)?
     };
@@ -311,7 +323,6 @@ pub(crate) async fn register_project_path(
         None => crate::git::ops::resolve_project_remote(&canonical_path).await,
     };
     if let Some(remote) = remote.as_ref() {
-        let database = live_database(state)?;
         let connection = database.connection();
         let _ = crate::persistence::projects::update_project_remote(
             &connection,

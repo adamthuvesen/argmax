@@ -10,7 +10,7 @@ use super::super::{
     registry::ParentLaunchSettings,
     MAX_LAUNCHES_PER_SESSION, MAX_LAUNCH_DEPTH,
 };
-use super::{resolve_project, task_label, terminal_cols, terminal_rows};
+use super::{resolve_or_register_project, task_label, terminal_cols, terminal_rows};
 use crate::{
     ipc::{
         inputs::{
@@ -21,7 +21,6 @@ use crate::{
     },
     persistence::{
         database::Database,
-        projects::list_projects,
         sessions::{
             find_session_by_id, record_session_launch, session_launch_lineage, LAUNCH_KIND_AGENT,
         },
@@ -98,11 +97,9 @@ pub(crate) async fn launch_with_spec(
         .map(task_label)
         .unwrap_or_else(|| task_label(prompt.as_str()));
     let task_label = TaskLabel::try_from(label).map_err(invalid_input_error)?;
-    let projects = {
-        let connection = database.connection();
-        list_projects(&connection).map_err(argmax_protocol_error)?
-    };
-    let project = resolve_project(&projects, spec.project.as_deref(), fallback_project_id)?;
+    let project =
+        resolve_or_register_project(&database, spec.project.as_deref(), fallback_project_id)
+            .await?;
     let project_id = ProjectId::try_from(project.id.clone()).map_err(invalid_input_error)?;
     let model_label = NonEmptyString::try_from(spec.model_label).map_err(invalid_input_error)?;
     let model_id = NonEmptyString::try_from(spec.model_id).map_err(invalid_input_error)?;

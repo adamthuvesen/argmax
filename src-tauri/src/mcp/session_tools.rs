@@ -41,8 +41,10 @@ pub struct SessionLaunchParams {
     /// The first prompt the new session runs. Write it as a standalone task:
     /// the new session starts with no memory of this conversation.
     pub prompt: String,
-    /// Registered project to launch in, by name or absolute repo path.
-    /// Defaults to this session's own project.
+    /// Project to launch in, by name or absolute repo path. A repository
+    /// Argmax has never opened is added the first time you name its path, so
+    /// the user does not have to add it by hand first. Defaults to this
+    /// session's own project.
     pub project: Option<String>,
     /// Provider to run: claude, codex, cursor, opencode, or grok. Defaults to
     /// the provider running this session.
@@ -201,9 +203,10 @@ pub struct SessionMessageParams {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SessionMoveParams {
-    /// The registered project to move to, by name or absolute repo path. It
-    /// must be a different project from the current one. Pass exactly one of
-    /// project or path.
+    /// The project to move to, by name or absolute repo path. It must be a
+    /// different project from the current one, and a repository Argmax has
+    /// never opened is added the first time you name its path. Pass exactly
+    /// one of project or path.
     #[serde(default)]
     pub project: Option<String>,
     /// Absolute path of an existing checkout of the project you are already
@@ -325,7 +328,9 @@ or context relief. A new session starts cold, so put everything it needs in the 
 top-level sidebar session, not a subagent. It is visible to the user, spends real tokens, and outlives \
 your turn. Launches are capped at two levels deep and ten per session. Pass `project` for another \
 registered project, `path` for an existing checkout of that project, and `worktree` plus optional \
-`branch` to fork an isolated worktree from that ref."
+`branch` to fork an isolated worktree from that ref. `project` also takes the absolute path of a \
+repository Argmax has never opened — it is added on first use, so a chat can start in a folder the \
+user has not added yet."
     )]
     async fn session_launch(
         &self,
@@ -522,7 +527,9 @@ looked."
         description = "List every repository registered in Argmax, with its path, current and \
 default branch, configured check commands, and how many sessions are active in it. session_list \
 only reveals projects that already have open chats, so this is how you find out what else you \
-could launch into, and which project name or path to pass to session_launch."
+could launch into, and which project name or path to pass to session_launch. A repository \
+missing from this list is not out of reach: pass its absolute path as `project` and Argmax adds \
+it."
     )]
     async fn project_list(
         &self,

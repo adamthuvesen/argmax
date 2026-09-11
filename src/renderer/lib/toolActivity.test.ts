@@ -3,7 +3,9 @@ import { buildSessionToolCalls } from "./sessionConversationModel.js";
 import type { TimelineEvent } from "../../shared/types.js";
 import {
   decodeToolActivity,
-  mergeToolActivity
+  mergeToolActivity,
+  type ToolActivity,
+  type ToolActivityKind
 } from "./toolActivity.js";
 import {
   describeToolAction,
@@ -180,6 +182,26 @@ describe("activity-aware summaries", () => {
         })
       )
     ).toMatch(/delet/i);
+  });
+
+  it("labels agent coordination, memory, git, browser, and plan", () => {
+    const label = (kind: ToolActivityKind, targets: string[] = []) =>
+      describeToolAction(tool({ name: kind, activity: { version: 1, kind, evidence: "tool", targets } }));
+    expect(label("agent-message")).toBe("Messaged an agent");
+    expect(label("agent-wait")).toBe("Waited for an agent");
+    expect(label("agent-stop")).toBe("Stopped an agent");
+    expect(label("memory-recall")).toBe("Recalled memory");
+    expect(label("memory-save")).toBe("Saved a memory");
+    expect(label("git", ["diff"])).toBe("Ran git diff");
+    expect(label("git", ["add", "commit"])).toBe("Ran git commands");
+    expect(label("browser")).toBe("Used the browser");
+    expect(label("plan")).toBe("Updated the plan");
+  });
+
+  it("keeps browser identity when a screenshot result arrives", () => {
+    const start: ToolActivity = { version: 1, kind: "browser", evidence: "tool", targets: [] };
+    const end: ToolActivity = { version: 1, kind: "image", evidence: "native", targets: [] };
+    expect(mergeToolActivity(start, end)?.kind).toBe("browser");
   });
 });
 

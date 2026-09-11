@@ -66,15 +66,23 @@ struct TranscriptToolIcon: View {
         case .agent: return "cpu"
         case .skill, .imageGenerate: return "sparkles"
         case .imageCapture: return "camera"
+        case .agentMessage: return "bubble.left"
+        case .agentWait: return "hourglass"
+        case .agentStop: return "stop.circle"
+        case .memoryRecall, .memorySave: return "brain"
+        case .git: return "arrow.triangle.branch"
+        case .browser: return "globe"
+        case .plan: return "checklist"
         }
     }
 
     static func uiColor(for kind: TranscriptToolActivityKind) -> UIColor {
         switch kind {
-        case .read, .command, .computer: return Theme.activityBlueColor
+        case .read, .command, .computer, .git: return Theme.activityBlueColor
         case .edit: return Theme.activityAmberColor
-        case .search, .list, .webSearch, .webFetch: return Theme.activityTealColor
-        case .image, .discovery, .tool, .agent, .skill, .imageCapture, .imageGenerate:
+        case .search, .list, .webSearch, .webFetch, .browser: return Theme.activityTealColor
+        case .image, .discovery, .tool, .agent, .skill, .imageCapture, .imageGenerate,
+             .agentMessage, .agentWait, .agentStop, .memoryRecall, .memorySave, .plan:
             return Theme.activityVioletColor
         }
     }

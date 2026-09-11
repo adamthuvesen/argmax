@@ -722,7 +722,7 @@ enum TranscriptProjection {
         guard let end else { return start }
         guard let start else { return end }
         let preservesStartKind = end.kind == .tool ||
-            ([.imageCapture, .imageGenerate, .computer].contains(start.kind) && end.kind == .image)
+            ([.imageCapture, .imageGenerate, .computer, .browser].contains(start.kind) && end.kind == .image)
         return TranscriptToolActivity(
             version: end.version,
             kind: preservesStartKind ? start.kind : end.kind,
@@ -764,6 +764,10 @@ enum TranscriptProjection {
         case "skill", "useskill", "loadskill": kind = .skill
         case "screenshot", "capturescreenshot": kind = .imageCapture
         case "imagegen", "imagegenerate", "generateimage": kind = .imageGenerate
+        case "sendmessage", "sessionmessage": kind = .agentMessage
+        case "waitagent", "wait", "sessionwait", "sessionstatus", "sessionread": kind = .agentWait
+        case "closeagent", "taskstop", "sessionstop": kind = .agentStop
+        case "todowrite", "updatetodos", "updatetodostoolcall": kind = .plan
         default: kind = .tool
         }
         let targets = path(in: input).map { [$0] } ?? []

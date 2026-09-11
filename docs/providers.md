@@ -328,6 +328,23 @@ Unsupported shell syntax also falls back to command activity, including
 descriptor duplication on a heredoc write and quoted tilde targets.
 A file path alone does not establish an edit or image view,
 and workspace diffs do not attribute opaque commands in a shared checkout.
+`git <subcommand>` sequences use git activity with the subcommands as targets
+(`Ran git diff`), ranked with reads and searches, so an in-place edit in the
+same sequence still wins.
+
+Beyond files and shell, five identities cover what used to be the generic
+"Used a tool" row: subagent coordination (`agent-message`, `agent-wait`,
+`agent-stop`, from Codex `send_message`/`wait_agent`/`close_agent`, Claude
+`SendMessage`/`TaskStop`, and the Argmax `session_*` tools under any namespace
+shape), memory (`memory-recall`, `memory-save`, from engram under
+`mcp__engram__`, `engram_` or bare Codex names, plus Argmax `learnings_*`),
+the Argmax browser (`browser`, which keeps its identity when a screenshot
+result arrives), and the agent's own plan (`plan`, from `TodoWrite`,
+`todo_write`, `updateTodos` and plan-mode switches). Namespaced MCP tools
+outside those servers stay generic: a Linear `create` is not a file write and a
+memory server's `read` is not a file read. Historical rows classified `tool`
+are refreshed on read like `image` and `command` rows, so old transcripts pick
+up the new identities without a migration.
 Grok's `use_tool` wrapper exposes the invoked tool's name and input to both
 clients, preserving the original wrapper in `toolWrapper` so integration
 artwork and call details survive discovery.

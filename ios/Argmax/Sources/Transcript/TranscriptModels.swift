@@ -159,6 +159,14 @@ enum TranscriptToolActivityKind: String, CaseIterable, Hashable, Sendable {
     case skill
     case imageCapture = "image-capture"
     case imageGenerate = "image-generate"
+    case agentMessage = "agent-message"
+    case agentWait = "agent-wait"
+    case agentStop = "agent-stop"
+    case memoryRecall = "memory-recall"
+    case memorySave = "memory-save"
+    case git
+    case browser
+    case plan
 }
 
 enum TranscriptToolActivityEvidence: String, Hashable, Sendable {
@@ -293,6 +301,23 @@ extension TranscriptToolActivity {
             labels = ("Using a computer", "Used a computer", "Computer use")
         case .agent:
             labels = ("Starting an agent", plural ? "Started agents" : "Started an agent", "Agent launch")
+        case .agentMessage:
+            labels = ("Messaging an agent", plural ? "Messaged agents" : "Messaged an agent", "Agent message")
+        case .agentWait:
+            labels = ("Waiting for an agent", plural ? "Waited for agents" : "Waited for an agent", "Agent wait")
+        case .agentStop:
+            labels = ("Stopping an agent", plural ? "Stopped agents" : "Stopped an agent", "Agent stop")
+        case .memoryRecall:
+            labels = ("Recalling memory", "Recalled memory", "Memory recall")
+        case .memorySave:
+            labels = ("Saving a memory", plural ? "Saved memories" : "Saved a memory", "Memory save")
+        case .git:
+            let subcommand = target.map { "git \($0)" } ?? "git commands"
+            labels = ("Running \(subcommand)", "Ran \(subcommand)", "Git command")
+        case .browser:
+            labels = ("Using the browser", "Used the browser", "Browser action")
+        case .plan:
+            labels = ("Updating the plan", "Updated the plan", "Plan update")
         case .skill:
             labels = ("Activating a skill", "Activated a skill", "Skill activation")
         case .tool:

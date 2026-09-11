@@ -10,10 +10,10 @@
   color: var(--session-icon-amber);
 }
 
-.tool-activity-icon:is([data-activity="search"], [data-activity="list"], [data-activity="web-search"], [data-activity="web-fetch"]) {
+.tool-activity-icon:is([data-activity="search"], [data-activity="list"], [data-activity="web-search"], [data-activity="web-fetch"], [data-activity="browser"]) {
   color: var(--session-icon-teal);
 }
 
-.tool-activity-icon:is([data-activity="image"], [data-activity="image-capture"], [data-activity="image-generate"], [data-activity="discovery"], [data-activity="skill"], [data-activity="agent"], [data-activity="tool"]) {
+.tool-activity-icon:is([data-activity="image"], [data-activity="image-capture"], [data-activity="image-generate"], [data-activity="discovery"], [data-activity="skill"], [data-activity="agent"], [data-activity="agent-message"], [data-activity="agent-wait"], [data-activity="agent-stop"], [data-activity="memory-recall"], [data-activity="memory-save"], [data-activity="plan"], [data-activity="tool"]) {
   color: var(--session-icon-violet);
 }

@@ -3,7 +3,8 @@ import type { ToolCall } from "./toolCalls.js";
 
 export const ACTIVITY_KINDS = [
   "read", "edit", "image", "search", "list", "web-search", "web-fetch",
-  "discovery", "command", "tool", "agent", "skill", "image-capture", "image-generate", "computer"
+  "discovery", "command", "tool", "agent", "skill", "image-capture", "image-generate", "computer",
+  "agent-message", "agent-wait", "agent-stop", "memory-recall", "memory-save", "git", "browser", "plan"
 ] as const;
 export type ToolActivityKind = typeof ACTIVITY_KINDS[number];
 export type ToolActivity = {
@@ -30,7 +31,7 @@ export function mergeToolActivity(start: ToolActivity | null, end: ToolActivity 
   if (!end) return start ?? undefined;
   if (start && end.kind === "tool") return start.kind === "discovery" && end.toolCount !== undefined
     ? { ...start, toolCount: end.toolCount } : start;
-  if (start && end.kind === "image" && ["image-capture", "image-generate", "computer"].includes(start.kind)) return start;
+  if (start && end.kind === "image" && ["image-capture", "image-generate", "computer", "browser"].includes(start.kind)) return start;
   return { ...start, ...end, targets: end.targets.length ? end.targets : start?.targets ?? [] };
 }
 
@@ -64,6 +65,17 @@ export function activityLabel(activity: ToolActivity, state: ActivityState, plur
     case "command": verbs = [plural ? "Running commands" : "Running a command", plural ? "Ran commands" : "Ran a command", "Command"]; break;
     case "computer": verbs = ["Using a computer", "Used a computer", "Computer use"]; break;
     case "agent": verbs = ["Starting an agent", plural ? "Started agents" : "Started an agent", "Agent launch"]; break;
+    case "agent-message": verbs = ["Messaging an agent", plural ? "Messaged agents" : "Messaged an agent", "Agent message"]; break;
+    case "agent-wait": verbs = ["Waiting for an agent", plural ? "Waited for agents" : "Waited for an agent", "Agent wait"]; break;
+    case "agent-stop": verbs = ["Stopping an agent", plural ? "Stopped agents" : "Stopped an agent", "Agent stop"]; break;
+    case "memory-recall": verbs = ["Recalling memory", "Recalled memory", "Memory recall"]; break;
+    case "memory-save": verbs = ["Saving a memory", plural ? "Saved memories" : "Saved a memory", "Memory save"]; break;
+    case "git": {
+      const subcommand = target ? `git ${target}` : "git commands";
+      verbs = [`Running ${subcommand}`, `Ran ${subcommand}`, "Git command"]; break;
+    }
+    case "browser": verbs = ["Using the browser", "Used the browser", "Browser action"]; break;
+    case "plan": verbs = ["Updating the plan", "Updated the plan", "Plan update"]; break;
     case "skill": verbs = ["Activating a skill", "Activated a skill", "Skill activation"]; break;
     case "tool": verbs = [plural ? "Using tools" : "Using a tool", plural ? "Used tools" : "Used a tool", "Tool call"]; break;
   }

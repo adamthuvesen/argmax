@@ -52,7 +52,9 @@ final class TranscriptToolIconTests: XCTestCase {
             .search: "magnifyingglass", .list: "folder", .webSearch: "globe",
             .webFetch: "globe", .discovery: "wrench.adjustable", .command: "terminal",
             .computer: "desktopcomputer", .tool: "wrench.and.screwdriver", .agent: "cpu", .skill: "sparkles",
-            .imageCapture: "camera", .imageGenerate: "sparkles"
+            .imageCapture: "camera", .imageGenerate: "sparkles", .agentMessage: "bubble.left",
+            .agentWait: "hourglass", .agentStop: "stop.circle", .memoryRecall: "brain", .memorySave: "brain",
+            .git: "arrow.triangle.branch", .browser: "globe", .plan: "checklist"
         ]
         for kind in TranscriptToolActivityKind.allCases {
             XCTAssertEqual(

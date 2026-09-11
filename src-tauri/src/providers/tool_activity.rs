@@ -32,11 +32,27 @@ enum ActivityKind {
     ImageCapture,
     ImageGenerate,
     Computer,
+    AgentMessage,
+    AgentWait,
+    AgentStop,
+    MemoryRecall,
+    MemorySave,
+    Git,
+    Browser,
+    Plan,
 }
 
 impl ActivityKind {
     fn as_str(self) -> &'static str {
         match self {
+            Self::AgentMessage => "agent-message",
+            Self::AgentWait => "agent-wait",
+            Self::AgentStop => "agent-stop",
+            Self::MemoryRecall => "memory-recall",
+            Self::MemorySave => "memory-save",
+            Self::Git => "git",
+            Self::Browser => "browser",
+            Self::Plan => "plan",
             Self::Read => "read",
             Self::Edit => "edit",
             Self::Image => "image",
@@ -114,13 +130,14 @@ pub fn enrich_tool_activity(event_type: &str, payload: &mut Value) {
         }
     }
     // Refresh historical classifications whose recognition has improved:
-    // metadata artwork is not a viewed image, and safe read sequences no
-    // longer need the generic command fallback.
+    // metadata artwork is not a viewed image, safe read sequences no longer
+    // need the generic command fallback, and generic tool rows may now have
+    // a named identity (agent coordination, memory, plan, browser).
     let refresh_activity = fields.get("activity").is_some_and(|activity| {
         activity.get("version").and_then(Value::as_u64) == Some(1)
             && matches!(
                 activity.get("kind").and_then(Value::as_str),
-                Some("image" | "command")
+                Some("image" | "command" | "tool")
             )
     });
     if !fields.contains_key("activity") || refresh_activity {
@@ -246,8 +263,11 @@ fn classify(payload: &Map<String, Value>) -> Option<Activity> {
             None,
         ));
     }
-    if is_argmax_browser_tool(name, payload) {
-        return Some(activity(ActivityKind::Tool, Evidence::Tool, payload, None));
+    if let Some(kind) = argmax_tool_kind(name, payload) {
+        return Some(activity(kind, Evidence::Tool, payload, None));
+    }
+    if let Some(kind) = memory_tool_kind(name, &leaf, payload) {
+        return Some(activity(kind, Evidence::Tool, payload, None));
     }
 
     if leaf == "run" && name.contains("__web__") {
@@ -342,8 +362,30 @@ fn classify(payload: &Map<String, Value>) -> Option<Activity> {
         "glob" | "find" | "findfiles" | "list" | "listfiles" | "listdir" | "listdirectory" => {
             (ActivityKind::List, Evidence::Tool, None)
         }
+        "rg" => (ActivityKind::Search, Evidence::Tool, None),
         "websearch" | "searchquery" => (ActivityKind::WebSearch, Evidence::Tool, None),
-        "webfetch" | "fetchurl" | "openurl" => (ActivityKind::WebFetch, Evidence::Tool, None),
+        "webfetch" | "fetchurl" | "openurl" | "fetch" => {
+            (ActivityKind::WebFetch, Evidence::Tool, None)
+        }
+        // Subagent coordination: Codex (`send_message`, `wait_agent`, `wait`,
+        // `close_agent`), Claude (`SendMessage`, `TaskStop`) and the Argmax
+        // session tools when a provider reports them without a namespace.
+        "sendmessage" | "sendinput" | "sessionmessage" => {
+            (ActivityKind::AgentMessage, Evidence::Tool, None)
+        }
+        "waitagent" | "wait" | "sessionwait" | "sessionstatus" | "sessionread" => {
+            (ActivityKind::AgentWait, Evidence::Tool, None)
+        }
+        "closeagent" | "taskstop" | "sessionstop" => {
+            (ActivityKind::AgentStop, Evidence::Tool, None)
+        }
+        "sessionlaunch" => (ActivityKind::Agent, Evidence::Tool, None),
+        "todowrite"
+        | "updatetodos"
+        | "updatetodostoolcall"
+        | "enterplanmode"
+        | "exitplanmode"
+        | "switchmode" => (ActivityKind::Plan, Evidence::Tool, None),
         "toolsearch" | "searchtool" | "getmcptools" | "getmcptoolstoolcall" => {
             (ActivityKind::Discovery, Evidence::Tool, None)
         }
@@ -418,9 +460,17 @@ fn activity_from_input(
             | ActivityKind::Search
             | ActivityKind::List
             | ActivityKind::ImageCapture => collect_named_strings(input, PATH_KEYS, &mut targets),
+            ActivityKind::Browser => collect_named_strings(input, &["url"], &mut targets),
             ActivityKind::Command
             | ActivityKind::Tool
             | ActivityKind::Agent
+            | ActivityKind::AgentMessage
+            | ActivityKind::AgentWait
+            | ActivityKind::AgentStop
+            | ActivityKind::MemoryRecall
+            | ActivityKind::MemorySave
+            | ActivityKind::Git
+            | ActivityKind::Plan
             | ActivityKind::Skill
             | ActivityKind::Computer
             | ActivityKind::ImageGenerate => {}
@@ -454,46 +504,57 @@ fn classify_web_run(input: Option<&Value>, payload: &Map<String, Value>) -> Opti
     Some(activity(kind, Evidence::Tool, payload, None))
 }
 
-fn is_argmax_browser_tool(name: &str, payload: &Map<String, Value>) -> bool {
-    let tool = name
-        .strip_prefix("mcp__argmax__")
+/// Argmax's own MCP tools arrive as `mcp__argmax__x`, `argmax__x`, `argmax_x`
+/// or a bare name with `server: "argmax"`, depending on the provider.
+fn argmax_tool_name<'a>(name: &'a str, payload: &Map<String, Value>) -> Option<&'a str> {
+    name.strip_prefix("mcp__argmax__")
         .or_else(|| name.strip_prefix("argmax__"))
         .or_else(|| name.strip_prefix("argmax_"))
         .or_else(|| {
             (payload.get("server").and_then(Value::as_str) == Some("argmax")).then_some(name)
-        });
-    matches!(
-        tool,
-        Some(
-            "browser_open"
-                | "browser_activate"
-                | "browser_duplicate"
-                | "browser_group_tabs"
-                | "browser_open_link"
-                | "browser_navigate"
-                | "browser_back"
-                | "browser_reload"
-                | "browser_tabs"
-                | "browser_close"
-                | "browser_snapshot"
-                | "browser_find"
-                | "browser_get_text"
-                | "browser_extract"
-                | "browser_click"
-                | "browser_type"
-                | "browser_select"
-                | "browser_hover"
-                | "browser_press_key"
-                | "browser_scroll"
-                | "browser_drag"
-                | "browser_wait_for"
-                | "browser_screenshot"
-                | "browser_evaluate"
-                | "browser_console"
-                | "browser_network"
-                | "browser_handle_dialog"
-        )
-    )
+        })
+}
+
+fn argmax_tool_kind(name: &str, payload: &Map<String, Value>) -> Option<ActivityKind> {
+    let tool = argmax_tool_name(name, payload)?;
+    let kind = match tool {
+        _ if tool.starts_with("browser_") => ActivityKind::Browser,
+        "session_launch" => ActivityKind::Agent,
+        "session_message" => ActivityKind::AgentMessage,
+        "session_wait" | "session_status" | "session_read" => ActivityKind::AgentWait,
+        "session_stop" => ActivityKind::AgentStop,
+        "learnings_search" => ActivityKind::MemoryRecall,
+        "learnings_add" => ActivityKind::MemorySave,
+        "terminal_spawn" => ActivityKind::Command,
+        _ => ActivityKind::Tool,
+    };
+    Some(kind)
+}
+
+/// Engram is the cross-tool memory server. Its namespaced names differ per
+/// provider (`mcp__engram__recall`, `engram_recall`, bare `recall` on Codex),
+/// so bare leaves are accepted only when the verb is unmistakably memory.
+fn memory_tool_kind(name: &str, leaf: &str, payload: &Map<String, Value>) -> Option<ActivityKind> {
+    let stripped = name
+        .strip_prefix("mcp__engram__")
+        .or_else(|| name.strip_prefix("mcp_engram_"))
+        .or_else(|| name.strip_prefix("engram_"));
+    let namespaced =
+        stripped.is_some() || payload.get("server").and_then(Value::as_str) == Some("engram");
+    let leaf = stripped.map(folded_name).unwrap_or_else(|| leaf.to_owned());
+    match leaf.as_str() {
+        "recall" | "recallcontext" | "recalltrace" | "recallstats" | "memorystats"
+        | "auditmemories" => Some(ActivityKind::MemoryRecall),
+        "remember" | "suggestmemories" | "editfact" | "forget" | "markstale" | "unmarkstale"
+        | "mergememories" | "correctmemory" | "importmemories" => Some(ActivityKind::MemorySave),
+        "inspect" | "listcandidates" | "doctor" if namespaced => Some(ActivityKind::MemoryRecall),
+        "approvecandidates" | "rejectcandidates" | "purge" | "sync" | "renameproject"
+            if namespaced =>
+        {
+            Some(ActivityKind::MemorySave)
+        }
+        _ => None,
+    }
 }
 
 fn resolve_use_tool<'a>(name: &'a str, input: Option<&'a Value>) -> (&'a str, Option<&'a Value>) {
@@ -545,6 +606,9 @@ fn folded_name(name: &str) -> String {
 }
 
 fn folded_leaf(name: &str) -> String {
+    // Grok reports a trailing-colon name ("Web search:"), which must not
+    // split into an empty leaf.
+    let name = name.trim_end_matches([':', '.', '/', ' ']);
     let leaf = name
         .rsplit("__")
         .next()
@@ -738,7 +802,11 @@ fn classify_simple_command(command: CommandValue<'_>) -> Option<(ActivityKind, V
         }
         for (index, words) in pipeline.into_iter().enumerate() {
             if let Some(mut activity) = classify_command_stage(&words, index > 0)? {
-                if let Some(directory) = working_directory.as_deref() {
+                // Git targets are subcommands, not paths under the cwd.
+                if let Some(directory) = working_directory
+                    .as_deref()
+                    .filter(|_| activity.kind != ActivityKind::Git)
+                {
                     prefix_relative_targets(&mut activity.targets, directory)?;
                 }
                 activities.push(activity);
@@ -763,7 +831,12 @@ fn classify_simple_command(command: CommandValue<'_>) -> Option<(ActivityKind, V
     // command may also print excerpts, while preparatory listings stay secondary.
     let winning_kind = activities
         .iter()
-        .find(|activity| matches!(activity.kind, ActivityKind::Read | ActivityKind::Search))
+        .find(|activity| {
+            matches!(
+                activity.kind,
+                ActivityKind::Read | ActivityKind::Search | ActivityKind::Git
+            )
+        })
         .or_else(|| activities.first())?
         .kind;
     let mut targets = activities
@@ -834,6 +907,7 @@ fn classify_command_stage(
         "ls" => (ActivityKind::List, ls_targets(args)?),
         "find" => (ActivityKind::List, find_targets(args)?),
         "fd" => (ActivityKind::List, fd_targets(args)?),
+        "git" => (ActivityKind::Git, vec![git_subcommand(args)?.to_owned()]),
         "wc" => {
             wc_targets(args)?;
             return Some(None);
@@ -843,6 +917,69 @@ fn classify_command_stage(
         _ => return None,
     };
     Some(Some(CommandStageActivity { kind, targets }))
+}
+
+const GIT_SUBCOMMANDS: &[&str] = &[
+    "add",
+    "am",
+    "apply",
+    "bisect",
+    "blame",
+    "branch",
+    "cat-file",
+    "checkout",
+    "cherry",
+    "cherry-pick",
+    "clean",
+    "clone",
+    "commit",
+    "config",
+    "describe",
+    "diff",
+    "fetch",
+    "grep",
+    "init",
+    "log",
+    "ls-files",
+    "ls-remote",
+    "merge",
+    "merge-base",
+    "mv",
+    "pull",
+    "push",
+    "rebase",
+    "reflog",
+    "remote",
+    "reset",
+    "restore",
+    "rev-list",
+    "rev-parse",
+    "revert",
+    "rm",
+    "shortlog",
+    "show",
+    "stash",
+    "status",
+    "submodule",
+    "switch",
+    "tag",
+    "worktree",
+];
+
+/// The subcommand after git's global options (`-C dir`, `-c k=v`, `--no-pager`).
+/// Unknown or aliased subcommands keep the row a plain command.
+fn git_subcommand(args: &[String]) -> Option<&str> {
+    let mut index = 0;
+    while let Some(arg) = args.get(index) {
+        match arg.as_str() {
+            "-C" | "-c" => index += 2,
+            flag if flag.starts_with('-') => index += 1,
+            subcommand => {
+                return GIT_SUBCOMMANDS.contains(&subcommand).then_some(subcommand);
+            }
+        }
+    }
+    None
 }
 
 fn literal_cd_target(words: &[String]) -> Option<&str> {
@@ -1752,7 +1889,7 @@ mod tests {
             json!({"name":"browser_screenshot","server":"argmax","tool":"browser_screenshot","result":{"type":"image","data":"omitted"}}),
             json!({"name":"argmax_browser_snapshot","input":{"tab":"tab-1"}}),
         ] {
-            assert_eq!(activity(payload)["kind"], "tool");
+            assert_eq!(activity(payload)["kind"], "browser");
         }
         assert_eq!(
             activity(json!({"name":"js","server":"node_repl","tool":"js"}))["kind"],
@@ -1966,6 +2103,112 @@ mod tests {
             assert_eq!(result["kind"], "tool", "{name}");
             assert_eq!(result["targets"], json!([]), "{name}");
         }
+    }
+
+    #[test]
+    fn agent_memory_plan_and_browser_tools_have_named_identities_on_every_provider() {
+        let cases = [
+            // Codex subagents
+            ("send_message", "agent-message"),
+            ("wait_agent", "agent-wait"),
+            ("wait", "agent-wait"),
+            ("close_agent", "agent-stop"),
+            // Claude
+            ("SendMessage", "agent-message"),
+            ("TaskStop", "agent-stop"),
+            ("TodoWrite", "plan"),
+            ("EnterPlanMode", "plan"),
+            // Cursor
+            ("updateTodosToolCall", "plan"),
+            ("fetch", "web-fetch"),
+            ("rg", "search"),
+            // Grok
+            ("todo_write", "plan"),
+            ("Web search:", "web-search"),
+            // OpenCode
+            ("todowrite", "plan"),
+            ("engram_recall", "memory-recall"),
+            ("engram_edit_fact", "memory-save"),
+            ("argmax_session_read", "agent-wait"),
+            // Argmax MCP under each namespace shape
+            ("mcp__argmax__browser_evaluate", "browser"),
+            ("mcp__argmax__session_launch", "agent"),
+            ("mcp__argmax__session_message", "agent-message"),
+            ("mcp__argmax__session_stop", "agent-stop"),
+            ("mcp__argmax__learnings_search", "memory-recall"),
+            ("mcp__argmax__learnings_add", "memory-save"),
+            ("mcp__argmax__terminal_spawn", "command"),
+            ("mcp__argmax__goal_set", "tool"),
+            ("session_status", "agent-wait"),
+            // Engram under each namespace shape, plus bare Codex names
+            ("mcp__engram__remember", "memory-save"),
+            ("mcp_engram_recall", "memory-recall"),
+            ("recall", "memory-recall"),
+            ("remember", "memory-save"),
+            ("mcp__engram__inspect", "memory-recall"),
+            ("mcp__engram__approve_candidates", "memory-save"),
+            // Generic verbs outside a memory namespace stay generic.
+            ("inspect", "tool"),
+            ("doctor", "tool"),
+        ];
+        for (name, kind) in cases {
+            let result = activity(json!({"name":name,"input":{}}));
+            assert_eq!(result["kind"], kind, "{name}");
+        }
+        let browser = activity(json!({
+            "name":"mcp__argmax__browser_open","input":{"url":"https://example.com"}
+        }));
+        assert_eq!(browser["targets"], json!(["https://example.com"]));
+        let screenshot = completed(json!({
+            "name":"mcp__argmax__browser_screenshot",
+            "content":[{"type":"image","source":{}}]
+        }));
+        assert_eq!(screenshot["activity"]["kind"], "browser");
+        let historical = {
+            let mut payload = json!({
+                "name":"send_message",
+                "activity":{"version":1,"kind":"tool","evidence":"tool","targets":[]}
+            });
+            enrich_tool_activity("command.started", &mut payload);
+            payload
+        };
+        assert_eq!(historical["activity"]["kind"], "agent-message");
+    }
+
+    #[test]
+    fn git_commands_carry_their_subcommand() {
+        let cases = [
+            ("git diff --stat", Some(json!(["diff"]))),
+            ("cd /repo && git status --short", Some(json!(["status"]))),
+            (
+                "git -C /repo --no-pager log --oneline -5",
+                Some(json!(["log"])),
+            ),
+            (
+                "git add -A && git commit -m \"fix: thing\"",
+                Some(json!(["add", "commit"])),
+            ),
+            ("git diff | head -20", Some(json!(["diff"]))),
+            ("git show HEAD:src/a.rs > /tmp/a.rs", None),
+            ("git foo", None),
+            ("git", None),
+        ];
+        for (command, targets) in cases {
+            let result = activity(json!({"name":"Bash","input":{"command":command}}));
+            match targets {
+                Some(targets) => {
+                    assert_eq!(result["kind"], "git", "{command}");
+                    assert_eq!(result["evidence"], "command", "{command}");
+                    assert_eq!(result["targets"], targets, "{command}");
+                }
+                None => assert_eq!(result["kind"], "command", "{command}"),
+            }
+        }
+        // An edit in the same sequence still wins.
+        let edit = activity(json!({
+            "name":"Bash","input":{"command":"sed -i '' 's/a/b/' x.rs && git diff"}
+        }));
+        assert_eq!(edit["kind"], "edit");
     }
 
     #[test]

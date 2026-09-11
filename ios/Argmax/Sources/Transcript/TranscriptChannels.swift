@@ -42,6 +42,7 @@ struct TranscriptSessionMetadata: Decodable, Hashable, Sendable, Identifiable {
 struct TranscriptWorkspaceMetadata: Decodable, Hashable, Sendable, Identifiable {
     var id: String
     var taskLabel: String
+    var path: String?
 }
 
 struct TranscriptDashboardSnapshot: Decodable, Hashable, Sendable {

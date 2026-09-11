@@ -128,14 +128,15 @@ private struct TranscriptToolRow: View {
                     .frame(minHeight: 44)
             }
             if let path = tool.filePath {
+                let label = tool.fileLabel ?? path
                 Button { onOpenFile(path) } label: {
-                    Label(path, systemImage: "doc.text")
+                    Label(label, systemImage: "doc.text")
                         .font(.caption)
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .frame(minHeight: 44)
                 }
-                .accessibilityLabel("Open \(path)")
+                .accessibilityLabel("Open \(label)")
             }
         }
         .padding(.horizontal, Spacing.row)

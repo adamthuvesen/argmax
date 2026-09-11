@@ -27,6 +27,7 @@ final class TranscriptStore: ObservableObject {
     private var ownerID: UUID?
     private var openSessionID: String?
     private var metadata: TranscriptSessionMetadata?
+    private var workspacePath: String?
     private var eventsByID: [String: TranscriptEvent] = [:]
     private var rawOutputsByID: [String: TranscriptRawOutput] = [:]
     private var pendingApprovals: [TranscriptApproval] = []
@@ -79,6 +80,7 @@ final class TranscriptStore: ObservableObject {
         metadataTask = nil
         openSessionID = id
         metadata = nil
+        workspacePath = nil
         eventsByID = [:]
         rawOutputsByID = [:]
         pendingApprovals = []
@@ -102,6 +104,7 @@ final class TranscriptStore: ObservableObject {
         metadataTask = nil
         openSessionID = nil
         metadata = nil
+        workspacePath = nil
         eventsByID = [:]
         rawOutputsByID = [:]
         pendingApprovals = []
@@ -174,6 +177,7 @@ final class TranscriptStore: ObservableObject {
               let row = snapshot.sessions.first(where: { $0.id == id })
         else { return }
         let workspace = snapshot.workspaces.first { $0.id == row.workspaceId }
+        workspacePath = workspace?.path
         let current = metadata
         ingest(metadata: TranscriptSessionMetadata(
             id: row.id,
@@ -199,7 +203,8 @@ final class TranscriptStore: ObservableObject {
     func preview(
         page: TranscriptPage,
         metadata row: TranscriptSessionMetadata,
-        title: String = "Preview"
+        title: String = "Preview",
+        workspacePath: String? = nil
     ) {
         generation += 1
         readTask?.cancel()
@@ -207,6 +212,7 @@ final class TranscriptStore: ObservableObject {
         readTask = nil
         metadataTask = nil
         openSessionID = row.id
+        self.workspacePath = workspacePath
         eventsByID = [:]
         rawOutputsByID = [:]
         pendingApprovals = []
@@ -221,8 +227,13 @@ final class TranscriptStore: ObservableObject {
     /// Load the trace for one provider-native child without changing the
     /// parent transcript on screen.
     func loadAgentEvents(for agent: TranscriptAgent) async throws -> [TranscriptItem] {
+        let workspacePath = workspacePath
         let page = try await client.transcriptAgentEvents(agent)
-        return TranscriptProjection.project(events: page.events, includingChildActivity: true)
+        return TranscriptProjection.project(
+            events: page.events,
+            includingChildActivity: true,
+            workspacePath: workspacePath
+        )
     }
 
     /// Load a dispatched multitask's chat without changing the parent
@@ -297,10 +308,11 @@ final class TranscriptStore: ObservableObject {
                 guard generation == startedGeneration, openSessionID == id else { return }
                 pendingApprovals = approvals
                 if let row = dashboard.sessions.first(where: { $0.id == id }) {
-                    let title = dashboard.workspaces.first(where: { $0.id == row.workspaceId })?.taskLabel
+                    let workspace = dashboard.workspaces.first(where: { $0.id == row.workspaceId })
+                    workspacePath = workspace?.path
                     ingest(
                         metadata: row,
-                        title: title,
+                        title: workspace?.taskLabel,
                         pendingMessages: dashboard.pendingMessages[id] ?? []
                     )
                 } else {
@@ -393,7 +405,8 @@ final class TranscriptStore: ObservableObject {
         let projected = TranscriptProjection.project(
             events: Array(eventsByID.values),
             session: metadata,
-            pendingApprovals: pendingApprovals
+            pendingApprovals: pendingApprovals,
+            workspacePath: workspacePath
         )
         if projected.isEmpty {
             items = rawFallbackItems()

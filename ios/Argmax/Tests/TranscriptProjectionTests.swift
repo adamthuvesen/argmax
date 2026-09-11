@@ -191,6 +191,98 @@ final class TranscriptProjectionTests: XCTestCase {
         XCTAssertEqual(multitask.answer, "Fixed")
     }
 
+    func testToolPathsUseWorkspaceRelativeLabelsAndPreserveTargets() throws {
+        let cases = [
+            (workspace: "/", path: "/Sources/App.swift", label: "Sources/App.swift"),
+            (
+                workspace: "/Users/adamthuvesen/dev/menti/a-very-long-workspace-name-that-exceeds-the-summary-limit/",
+                path: "/Users/adamthuvesen/dev/menti/a-very-long-workspace-name-that-exceeds-the-summary-limit/src/App.swift",
+                label: "src/App.swift"
+            ),
+            (
+                workspace: "/Users/dev/argmax",
+                path: "/Users/dev/argmax-other/App.swift",
+                label: "/Users/dev/argmax-other/App.swift"
+            ),
+            (workspace: "/Users/dev/argmax", path: "Sources/App.swift", label: "Sources/App.swift")
+        ]
+
+        for (index, testCase) in cases.enumerated() {
+            let path = testCase.path
+            let items = TranscriptProjection.project(
+                events: [event("edit-\(index)", "command.started", "Edit", 1, [
+                    "id": .string("tool-\(index)"),
+                    "name": .string("Edit"),
+                    "input": .object(["file_path": .string(path)])
+                ])],
+                workspacePath: testCase.workspace
+            )
+            let tool = try XCTUnwrap(items.compactMap { item -> TranscriptTool? in
+                guard case .tools(let group) = item else { return nil }
+                return group.tools.first
+            }.first)
+
+            XCTAssertEqual(tool.summary, "Edit · \(testCase.label)")
+            XCTAssertEqual(tool.fileLabel, testCase.label)
+            XCTAssertEqual(tool.filePath, path)
+            XCTAssertTrue(tool.input?.contains(path) == true)
+        }
+    }
+
+    func testChildAgentToolUsesWorkspaceRelativePath() throws {
+        let items = TranscriptProjection.project(
+            events: [
+                event("agent", "command.started", "Task", 1, [
+                    "id": .string("agent-tool"),
+                    "name": .string("Task"),
+                    "input": .object(["description": .string("Edit the app")])
+                ]),
+                event("child-edit", "command.started", "Edit", 2, [
+                    "id": .string("child-tool"),
+                    "name": .string("Edit"),
+                    "parent_tool_use_id": .string("agent-tool"),
+                    "input": .object(["file_path": .string("/Users/dev/argmax/src/App.swift")])
+                ])
+            ],
+            workspacePath: "/Users/dev/argmax"
+        )
+        let child = try XCTUnwrap(items.compactMap { item -> TranscriptTool? in
+            guard case .agents(let group) = item else { return nil }
+            return group.agents.first?.children.first
+        }.first)
+
+        XCTAssertEqual(child.summary, "Edit · src/App.swift")
+        XCTAssertEqual(child.fileLabel, "src/App.swift")
+        XCTAssertEqual(child.filePath, "/Users/dev/argmax/src/App.swift")
+    }
+
+    func testWorkspacePathDoesNotRewriteCommandsOrQueries() throws {
+        let items = TranscriptProjection.project(
+            events: [
+                event("bash", "command.started", "Bash", 1, [
+                    "id": .string("bash-tool"),
+                    "name": .string("Bash"),
+                    "input": .object(["command": .string("/Users/dev/argmax/scripts/check.sh")])
+                ]),
+                event("search", "command.started", "Search", 2, [
+                    "id": .string("search-tool"),
+                    "name": .string("Search"),
+                    "input": .object(["query": .string("/Users/dev/argmax/src")])
+                ])
+            ],
+            workspacePath: "/Users/dev/argmax"
+        )
+        let tools = items.compactMap { item -> [TranscriptTool]? in
+            guard case .tools(let group) = item else { return nil }
+            return group.tools
+        }.flatMap { $0 }
+
+        XCTAssertEqual(tools.map(\.summary), [
+            "Bash · /Users/dev/argmax/scripts/check.sh",
+            "Search · /Users/dev/argmax/src"
+        ])
+    }
+
     func testQuestionUsesFirstValidRetryAndSuppressesPostCardProse() throws {
         let events = [
             event("user", "user.message", "Choose", 1),

@@ -141,6 +141,7 @@ struct TranscriptTool: Hashable, Sendable, Identifiable {
     var createdAt: String
     var completedAt: String?
     var filePath: String?
+    var fileLabel: String?
 }
 
 struct TranscriptToolGroup: Hashable, Sendable, Identifiable {

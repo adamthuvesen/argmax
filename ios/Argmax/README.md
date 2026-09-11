@@ -31,6 +31,11 @@ for the boundary and maintenance tradeoff.
 - `Sources/Transcript/TranscriptScreen.swift` connects the transcript to the
   existing composer, review routes, and chat actions.
 
+Tool action labels and file links display paths relative to the chat's
+workspace. Labels shorten the path before truncating it so the filename stays
+visible. Raw tool inputs and file-opening targets retain their original paths.
+Paths outside the workspace keep their full location.
+
 - `Sources/Bridge/Channels.swift` — typed calls for the channels the phone
   writes on, each input mirroring its generated binding key for key. Whether a
   request carries an `operation` record is decided by

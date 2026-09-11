@@ -5,10 +5,15 @@ enum TranscriptProjection {
         events source: [TranscriptEvent],
         session: TranscriptSessionMetadata? = nil,
         pendingApprovals: [TranscriptApproval] = [],
-        includingChildActivity: Bool = false
+        includingChildActivity: Bool = false,
+        workspacePath: String? = nil
     ) -> [TranscriptItem] {
         let events = visibleEvents(source, includingChildActivity: includingChildActivity)
-        let toolStarts = correlatedTools(events: events, sessionRunning: session?.state == .running)
+        let toolStarts = correlatedTools(
+            events: events,
+            sessionRunning: session?.state == .running,
+            workspacePath: workspacePath
+        )
         let todoAtEvent = todoSnapshots(events: events)
         let multitasks = foldedMultitasks(events: events)
         let lastUserAt = events.last(where: { $0.type == "user.message" })?.createdAt ?? ""
@@ -443,12 +448,16 @@ enum TranscriptProjection {
         var providerChildSessionId: String?
         var providerParentConversationId: String?
         var agentCodename: String?
+        var workspacePath: String?
 
         var isAgent: Bool { TranscriptProjection.isAgentTool(normalizedToolName(name)) }
-        var preview: String? { TranscriptProjection.preview(name: name, input: inputObject) }
+        var preview: String? {
+            TranscriptProjection.preview(name: name, input: inputObject, workspacePath: workspacePath)
+        }
 
         var presentation: TranscriptTool {
-            TranscriptTool(
+            let filePath = TranscriptProjection.path(in: inputObject)
+            return TranscriptTool(
                 id: "tool-\(id)",
                 toolUseId: toolUseId,
                 name: name,
@@ -459,14 +468,16 @@ enum TranscriptProjection {
                 status: status,
                 createdAt: createdAt,
                 completedAt: completedAt,
-                filePath: TranscriptProjection.path(in: inputObject)
+                filePath: filePath,
+                fileLabel: filePath.map { TranscriptProjection.relativePath($0, workspacePath: workspacePath) }
             )
         }
     }
 
     private static func correlatedTools(
         events: [TranscriptEvent],
-        sessionRunning: Bool
+        sessionRunning: Bool,
+        workspacePath: String? = nil
     ) -> [String: ProjectedTool] {
         let completions = events.filter { $0.type == "command.completed" }
         var usedCompletions = Set<String>()
@@ -505,7 +516,8 @@ enum TranscriptProjection {
                 surface: payload["surface"]?.string,
                 providerChildSessionId: payload["providerChildSessionId"]?.string,
                 providerParentConversationId: payload["providerParentConversationId"]?.string,
-                agentCodename: string(payload, keys: ["agentCodename", "agentNickname"])
+                agentCodename: string(payload, keys: ["agentCodename", "agentNickname"]),
+                workspacePath: workspacePath
             )
         }
         return result
@@ -661,7 +673,11 @@ enum TranscriptProjection {
         lhs.createdAt == rhs.createdAt ? lhs.id < rhs.id : lhs.createdAt < rhs.createdAt
     }
 
-    private static func preview(name: String, input: [String: TranscriptJSONValue]) -> String? {
+    private static func preview(
+        name: String,
+        input: [String: TranscriptJSONValue],
+        workspacePath: String?
+    ) -> String? {
         let normalized = normalizedToolName(name)
         if isAgentTool(normalized) {
             return string(input, keys: ["description", "subagent_type", "subagentType", "prompt"])
@@ -669,11 +685,23 @@ enum TranscriptProjection {
         if normalized.contains("bash") || normalized.contains("shell") || normalized.contains("exec") {
             return string(input, keys: ["command", "cmd"])?.split(separator: "\n").first.map(String.init)
         }
-        return path(in: input) ?? string(input, keys: ["query", "pattern", "search_term", "url"])
+        if let path = path(in: input) {
+            return relativePath(path, workspacePath: workspacePath)
+        }
+        return string(input, keys: ["query", "pattern", "search_term", "url"])
     }
 
     private static func path(in input: [String: TranscriptJSONValue]) -> String? {
         string(input, keys: ["file_path", "filePath", "path", "relative_path"])
+    }
+
+    static func relativePath(_ path: String, workspacePath: String?) -> String {
+        guard path.hasPrefix("/"), var root = workspacePath, root.hasPrefix("/") else { return path }
+        while root.count > 1, root.hasSuffix("/") { root.removeLast() }
+        if path == root { return "." }
+        let prefix = root == "/" ? root : "\(root)/"
+        guard path.hasPrefix(prefix) else { return path }
+        return String(path.dropFirst(prefix.count))
     }
 
     private static func summary(name: String, preview: String?) -> String {

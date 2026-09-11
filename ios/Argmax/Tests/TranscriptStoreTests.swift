@@ -100,7 +100,7 @@ final class TranscriptStoreTests: XCTestCase {
             {"sessions":[{"id":"s","workspaceId":"w","provider":"codex","modelLabel":"Astra",
               "modelId":"gpt-6-astra","prompt":"Go","state":"running","attention":"normal",
               "reasoningEffort":"high","agentMode":"auto"}],
-             "workspaces":[{"id":"w","taskLabel":"Native transcript"}],
+             "workspaces":[{"id":"w","taskLabel":"Native transcript","path":"/Users/dev/argmax"}],
              "pendingMessages":{"s":[{"id":"p","sessionId":"s","content":"Then test",
                "agentMode":"auto","modelLabel":null,"modelId":"gpt-6-astra","reasoningEffort":"high",
                "recoveryStatus":null,"queuedAt":"2026-01-01T00:00:00Z","fastMode":false,
@@ -109,7 +109,37 @@ final class TranscriptStoreTests: XCTestCase {
         )
         let snapshot = try JSONDecoder().decode(TranscriptDashboardSnapshot.self, from: data)
         XCTAssertEqual(snapshot.sessions.first?.reasoningEffort, "high")
+        XCTAssertEqual(snapshot.workspaces.first?.path, "/Users/dev/argmax")
         XCTAssertEqual(snapshot.pendingMessages["s"]?.first?.content, "Then test")
+    }
+
+    func testDashboardWorkspacePathPropagatesIntoToolProjection() throws {
+        let store = try makeStore()
+        let path = "/Users/dev/argmax/src/App.swift"
+        store.preview(
+            page: page(events: [event("edit", "command.started", "Edit", 1, [
+                "id": .string("tool-1"),
+                "name": .string("Edit"),
+                "input": .object(["file_path": .string(path)])
+            ])]),
+            metadata: sessionMetadata(id: "session-1")
+        )
+        var workspace = previewWorkspace
+        workspace.id = "workspace-1"
+        workspace.path = "/Users/dev/argmax"
+        var session = previewSession
+        session.id = "session-1"
+        session.workspaceId = workspace.id
+        store.receive(snapshot: DashboardSnapshot(workspaces: [workspace], sessions: [session]))
+
+        let tool = try XCTUnwrap(store.items.compactMap { item -> TranscriptTool? in
+            guard case .tools(let group) = item else { return nil }
+            return group.tools.first
+        }.first)
+
+        XCTAssertEqual(tool.summary, "Edit · src/App.swift")
+        XCTAssertEqual(tool.fileLabel, "src/App.swift")
+        XCTAssertEqual(tool.filePath, path)
     }
 
     private func makeStore() throws -> TranscriptStore {

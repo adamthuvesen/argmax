@@ -28,8 +28,12 @@ struct TranscriptMarkdown: View {
 
     var body: some View {
         let key = TranscriptMarkdownKey(text: text, workspacePath: workspacePath, isThinking: isThinking)
-        let document = TranscriptMarkdownCache.shared.cached(key)
-            ?? (prepared?.key == key ? prepared?.document : nil)
+        // While a changed text is being prepared, keep the last document this
+        // row painted. A streamed answer changes text on every chunk, and
+        // dropping to the plain fallback in between is the paragraph
+        // re-wrapping in a different font a few times a second. Plain text
+        // is only for a row that has never had a document.
+        let document = TranscriptMarkdownCache.shared.cached(key) ?? prepared?.document
         VStack(alignment: .leading, spacing: 12) {
             if let document {
                 ForEach(Array(document.blocks.enumerated()), id: \.offset) { _, block in

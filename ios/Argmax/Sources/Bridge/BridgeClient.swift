@@ -185,6 +185,14 @@ actor BridgeClient {
     /// `nonisolated` because it reads nothing but two immutable lets: fetching
     /// an image should not queue behind whatever the actor is decoding.
     nonisolated func assetRequest(absolutePath: String) -> URLRequest? {
+        fileRequest(absolutePath: absolutePath, endpoint: "workspace-assets")
+    }
+
+    nonisolated func attachmentRequest(absolutePath: String) -> URLRequest? {
+        fileRequest(absolutePath: absolutePath, endpoint: "attachments")
+    }
+
+    private nonisolated func fileRequest(absolutePath: String, endpoint: String) -> URLRequest? {
         guard var components = URLComponents(url: socketURL, resolvingAgainstBaseURL: false) else {
             return nil
         }
@@ -200,7 +208,7 @@ actor BridgeClient {
         // is given, so a segment already encoded here comes out doubled — a
         // space becomes `%2520` and the host looks for a file whose name
         // contains the literal characters `%20`.
-        components.percentEncodedPath = "/api/workspace-assets/" + segments.joined(separator: "/")
+        components.percentEncodedPath = "/api/\(endpoint)/" + segments.joined(separator: "/")
         guard let url = components.url else { return nil }
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

@@ -332,6 +332,11 @@ struct ChatListView: View {
             else { return nil }
             return arguments[arguments.index(after: index)]
         }
+        if let sessionID = value("-argmax-open-session") {
+            navigator.awaitingSessionID = sessionID
+            openWhenReady()
+            return
+        }
         guard let workspaceID = value("-argmax-open-review") else { return }
         // The snapshot is a round trip behind the first paint, and the route
         // resolves against it.

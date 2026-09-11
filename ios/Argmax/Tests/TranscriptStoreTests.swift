@@ -1,0 +1,179 @@
+import XCTest
+@testable import Argmax
+
+@MainActor
+final class TranscriptStoreTests: XCTestCase {
+    func testClearHidesOpeningPromptAndEarlierRawOutput() throws {
+        let store = try makeStore()
+        var snapshot = page(events: [event("clear", "session.cleared", "Cleared", 2)])
+        snapshot.rawOutputs = [TranscriptRawOutput(
+            id: "old-output", sessionId: "session-1", stream: "stderr",
+            content: "Old human-readable error", createdAt: "2026-01-01T00:00:01.000Z", rowCursor: 1
+        )]
+        store.preview(page: snapshot, metadata: sessionMetadata(id: "session-1"))
+        XCTAssertTrue(store.items.isEmpty)
+
+        var next = page(events: [], cursor: 3, changeCursor: 4, reset: false)
+        next.rawOutputs = [TranscriptRawOutput(
+            id: "new-output", sessionId: "session-1", stream: "stderr",
+            content: "New human-readable error", createdAt: "2026-01-01T00:00:03.000Z", rowCursor: 3
+        )]
+        store.ingest(page: next, for: "session-1")
+        XCTAssertEqual(store.items.count, 1)
+        guard case .error(let output) = store.items[0] else { return XCTFail("expected raw error") }
+        XCTAssertEqual(output.message, "New human-readable error")
+    }
+
+    func testStaleOwnerCannotCloseNewerScreen() throws {
+        let store = try makeStore()
+        let first = UUID()
+        let second = UUID()
+
+        store.claim(first, sessionID: "session-1")
+        store.claim(second, sessionID: "session-2")
+
+        XCTAssertFalse(store.relinquish(first))
+        XCTAssertEqual(store.sessionID, "session-2")
+        XCTAssertTrue(store.relinquish(second))
+        XCTAssertNil(store.sessionID)
+        XCTAssertEqual(store.phase, .idle)
+    }
+
+    func testPageMergeAppliesEditsDeletionsAndAuthoritativeReset() throws {
+        let store = try makeStore()
+        let metadata = sessionMetadata(id: "session-1")
+        store.preview(
+            page: page(events: [event("user", "user.message", "Go", 1), event("answer", "message.completed", "Old", 2)]),
+            metadata: metadata,
+            title: "Native transcript"
+        )
+
+        store.ingest(
+            page: page(
+                events: [event("answer-2", "message.completed", "New", 3)],
+                deleted: ["answer"],
+                cursor: 3,
+                changeCursor: 4,
+                reset: false
+            ),
+            for: "session-1"
+        )
+        XCTAssertEqual(assistantTexts(store.items), ["New"])
+
+        store.ingest(
+            page: page(events: [event("replacement", "user.message", "Fresh chat", 8)], cursor: 8, changeCursor: 9),
+            for: "session-1",
+            authoritative: true
+        )
+        XCTAssertEqual(store.items.count, 1)
+        guard case .user(let message) = store.items[0] else { return XCTFail("expected reset user") }
+        XCTAssertEqual(message.text, "Fresh chat")
+    }
+
+    func testTraceSupersessionActsAsATombstone() throws {
+        let store = try makeStore()
+        store.preview(
+            page: page(events: [event("synthetic", "message.completed", "Synthetic", 1)]),
+            metadata: sessionMetadata(id: "session-1")
+        )
+        XCTAssertEqual(assistantTexts(store.items), ["Synthetic"])
+
+        store.ingest(
+            page: page(events: [event(
+                "synthetic",
+                "message.completed",
+                "Synthetic",
+                1,
+                ["traceSyntheticSuperseded": .bool(true)]
+            )], cursor: 1, changeCursor: 2, reset: false),
+            for: "session-1"
+        )
+        XCTAssertTrue(assistantTexts(store.items).isEmpty)
+        XCTAssertEqual(store.items.count, 1)
+        guard case .user(let prompt) = store.items[0] else { return XCTFail("expected opening prompt") }
+        XCTAssertEqual(prompt.text, "Go")
+    }
+
+    func testRichDashboardDecodesComposerMetadataAndPendingMessages() throws {
+        let data = Data(
+            """
+            {"sessions":[{"id":"s","workspaceId":"w","provider":"codex","modelLabel":"Astra",
+              "modelId":"gpt-6-astra","prompt":"Go","state":"running","attention":"normal",
+              "reasoningEffort":"high","agentMode":"auto"}],
+             "workspaces":[{"id":"w","taskLabel":"Native transcript"}],
+             "pendingMessages":{"s":[{"id":"p","sessionId":"s","content":"Then test",
+               "agentMode":"auto","modelLabel":null,"modelId":"gpt-6-astra","reasoningEffort":"high",
+               "recoveryStatus":null,"queuedAt":"2026-01-01T00:00:00Z","fastMode":false,
+               "attachments":[],"agentReferences":[]}]}}
+            """.utf8
+        )
+        let snapshot = try JSONDecoder().decode(TranscriptDashboardSnapshot.self, from: data)
+        XCTAssertEqual(snapshot.sessions.first?.reasoningEffort, "high")
+        XCTAssertEqual(snapshot.pendingMessages["s"]?.first?.content, "Then test")
+    }
+
+    private func makeStore() throws -> TranscriptStore {
+        let url = try XCTUnwrap(URL(string: "https://mac.example/mobile.html#token=test"))
+        return TranscriptStore(client: try BridgeClient(pairingURL: url))
+    }
+
+    private func sessionMetadata(id: String) -> TranscriptSessionMetadata {
+        TranscriptSessionMetadata(
+            id: id,
+            workspaceId: "workspace-1",
+            provider: "claude",
+            modelLabel: "Opus",
+            modelId: "claude-opus",
+            prompt: "Go",
+            state: .complete,
+            attention: .normal,
+            reasoningEffort: "high",
+            agentMode: "auto"
+        )
+    }
+
+    private func page(
+        events: [TranscriptEvent],
+        deleted: [String] = [],
+        cursor: Int64 = 2,
+        changeCursor: Int64? = 3,
+        reset: Bool = true
+    ) -> TranscriptPage {
+        TranscriptPage(
+            events: events,
+            rawOutputs: [],
+            eventCursor: cursor,
+            rawOutputCursor: 0,
+            changeCursor: changeCursor,
+            deletedEventIds: deleted,
+            deletedRawOutputIds: [],
+            resetRequired: reset,
+            hasMore: false
+        )
+    }
+
+    private func event(
+        _ id: String,
+        _ type: String,
+        _ message: String,
+        _ cursor: Int64,
+        _ payload: [String: TranscriptJSONValue] = [:]
+    ) -> TranscriptEvent {
+        TranscriptEvent(
+            id: id,
+            sessionId: "session-1",
+            type: type,
+            message: message,
+            payload: .object(payload),
+            createdAt: String(format: "2026-01-01T00:00:%02lld.000Z", cursor),
+            rowCursor: cursor
+        )
+    }
+
+    private func assistantTexts(_ items: [TranscriptItem]) -> [String] {
+        items.compactMap { item in
+            guard case .assistant(let message) = item else { return nil }
+            return message.text
+        }
+    }
+}

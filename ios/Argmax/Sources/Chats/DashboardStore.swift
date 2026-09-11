@@ -22,6 +22,9 @@ final class DashboardStore: ObservableObject {
     /// drops a snapshot equal to the one already held: a Mac with genuinely
     /// no chats answers with exactly that.
     @Published private(set) var loadedOnce = false
+    /// Detail sheets use invalidations too, including child sessions whose
+    /// events do not change the parent's projected rows.
+    @Published private(set) var transcriptRevision = 0
 
     /// Chats whose latest reply this phone has not opened. Reading clears
     /// `review-ready` and nothing else. Nil until the UI tracks it, which
@@ -33,6 +36,11 @@ final class DashboardStore: ObservableObject {
     var now: Date { didSet { regroup() } }
 
     let client: BridgeClient
+    // The bridge streams have one consumer. Forward transcript invalidations
+    // here so opening a chat cannot steal dashboard frames from the list.
+    var onTranscriptEvent: ((BridgeEvent) -> Void)?
+    var onTranscriptConnection: ((BridgeConnection) -> Void)?
+    var onTranscriptSnapshot: ((DashboardSnapshot) -> Void)?
     private var eventLoop: Task<Void, Never>?
     private var connectionLoop: Task<Void, Never>?
 
@@ -53,6 +61,8 @@ final class DashboardStore: ObservableObject {
             guard let events = self?.client.events else { return }
             for await event in events {
                 guard let self else { return }
+                self.onTranscriptEvent?(event)
+                self.transcriptRevision += 1
                 switch event {
                 case .push(let channel, let payload):
                     if channel == "dashboard:delta" { self.apply(payload) }
@@ -66,6 +76,8 @@ final class DashboardStore: ObservableObject {
             for await state in states {
                 guard let self else { return }
                 self.connection = state
+                self.onTranscriptConnection?(state)
+                if state == .live { self.transcriptRevision += 1 }
                 // A reconnect misses whatever changed while the socket was
                 // down, and the host replays nothing, so the snapshot is
                 // reloaded rather than resumed.
@@ -115,6 +127,7 @@ final class DashboardStore: ObservableObject {
     // needs a snapshot and a delta rather than a host.
 
     func ingest(snapshot loaded: DashboardSnapshot) {
+        onTranscriptSnapshot?(loaded)
         guard loaded != snapshot else { return }
         snapshot = loaded
         regroup()
@@ -122,16 +135,23 @@ final class DashboardStore: ObservableObject {
 
     func ingest(delta: DashboardDelta) {
         let merged = mergeDashboardDelta(snapshot, delta)
+        onTranscriptSnapshot?(merged)
         guard merged != snapshot else { return }
         snapshot = merged
         regroup()
     }
 
-    /// The grouped row for a chat, whichever section holds it. Nil while the
-    /// snapshot has not heard of it, or when grouping keeps it off the list
-    /// (an archived workspace, a multitask).
+    /// Resolve navigation independently of list visibility. Multitasks stay
+    /// out of the list but can still be opened as a full conversation.
     func row(forSessionID id: String) -> ChatRow? {
-        (sections.pinned + sections.priority + sections.chats).first { $0.session.id == id }
+        if let row = (sections.pinned + sections.priority + sections.chats).first(where: { $0.session.id == id }) {
+            return row
+        }
+        guard let session = snapshot.sessions.first(where: { $0.id == id }),
+              let workspace = snapshot.workspaces.first(where: { $0.id == session.workspaceId }) else { return nil }
+        return ChatRow(workspace: workspace, session: session,
+                       projectName: snapshot.projects.first { $0.id == workspace.projectId }?.name,
+                       attention: session.attention, working: session.state == .running)
     }
 
     private func apply(_ payload: Data) {

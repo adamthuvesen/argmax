@@ -1,103 +1,47 @@
 import SwiftUI
 
-/// One chat, pushed from the list.
-///
-/// The screen itself is a frame: our header, a trailing menu, and the shared
-/// web view filling everything under it. Everything inside the transcript —
-/// streaming, cards, approvals, the composer, the review screen — is the
-/// page's, which is the whole point of the seam.
+/// A native conversation, opened from the chat list.
 struct TranscriptScreen: View {
-    /// The row this was pushed from. A snapshot from the moment of the push,
-    /// so it is the fallback title and the source of everything the page
-    /// does not report: which project, whether there is a diff to open,
-    /// whether the chat can be forked.
     let row: ChatRow
 
-    @EnvironmentObject private var transcript: TranscriptHost
+    @EnvironmentObject private var transcript: TranscriptStore
     @EnvironmentObject private var navigator: ChatNavigator
     @EnvironmentObject private var store: DashboardStore
-    /// Told which chat is on screen, so a push about this one does not draw
-    /// a banner over the transcript it is announcing.
     @EnvironmentObject private var push: PushDelegate
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) private var colorScheme
-    @State private var forking = false
-    /// This screen's claim on the one shared web view. Stable for as long as
-    /// the screen is on the stack, which is what lets a duplicate screen for
-    /// the same chat leave without parking the page under the one that
-    /// stayed (`TranscriptHost.claim`).
-    @State private var screenID = UUID()
     @Environment(\.accentTint) private var accent
+    @State private var forking = false
+    @State private var screenID = UUID()
+    @State private var draft = ""
+    @State private var focusRequest = 0
 
     var body: some View {
-        ZStack(alignment: .top) {
-            // Painted under a web view that is transparent until the page
-            // draws, so the load never flashes white.
-            Theme.ground.ignoresSafeArea()
-            TranscriptWebView(host: transcript)
-                .opacity(transcript.ready ? 1 : 0)
-                .safeAreaInset(edge: .top, spacing: 0) { header }
-                // The native composer's own bottom edge — the web page hid
-                // its own, so nothing under this needs the home-indicator
-                // inset twice. Standard keyboard avoidance (no
-                // `.ignoresSafeArea(.keyboard)` here) is what shrinks the web
-                // view and lifts the card together when the composer's field
-                // takes focus.
-                .safeAreaInset(edge: .bottom, spacing: 0) { composerFloor }
-            if let failure = transcript.failure {
-                fallback(failure)
-                    .padding(.top, Spacing.headerHeight + Spacing.section)
-            }
+        NativeTranscriptView(client: store.client, onOpenFile: { openReview(filePath: $0) }) {
+            draft = "Please revise the plan: "
+            focusRequest += 1
+        }
+        .background(Theme.ground.ignoresSafeArea())
+        .safeAreaInset(edge: .top, spacing: 0) { header }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            TranscriptComposerFloor(
+                workspaceID: row.workspace.id,
+                client: store.client,
+                draft: $draft,
+                focusRequest: $focusRequest
+            )
+            .id(row.session.id)
+            .background(Theme.ground)
         }
         .toolbar(.hidden, for: .navigationBar)
         .interactivePop()
         .onAppear {
-            transcript.onBack = { dismiss() }
-            transcript.onHaptic = Haptics.play(_:)
-            // A file reference tapped in a message, and the page's own
-            // Changes affordance in the browser build. Both land on the
-            // native screen.
-            transcript.onOpenReview = { openReview(filePath: $0) }
-            transcript.setTheme(colorScheme == .dark ? .dark : .light)
-            transcript.loadIfNeeded()
-            transcript.claim(screenID)
-            transcript.openSession(row.session.id)
-            transcript.setComposerHidden(true)
+            transcript.claim(screenID, sessionID: row.session.id)
+            transcript.receive(snapshot: store.snapshot)
             push.openSessionID = row.session.id
         }
         .onDisappear {
-            // Only the screen that still owns the page tears it down. A
-            // second screen for this same chat can leave while the one under
-            // it is still being read, and `onDisappear` is not ordered
-            // against the next screen's `onAppear`.
             guard transcript.relinquish(screenID) else { return }
-            transcript.onBack = nil
-            transcript.onHaptic = nil
-            transcript.onOpenReview = nil
-            transcript.closeSession()
             if push.openSessionID == row.session.id { push.openSessionID = nil }
-        }
-        .onChange(of: colorScheme) {
-            transcript.setTheme(colorScheme == .dark ? .dark : .light)
-        }
-    }
-
-    /// The composer card, unless the page has raised its peek at delegated
-    /// work or docked a live question: both are drawn in the composer's slot,
-    /// and can only reach the bottom of the screen if the native card gives
-    /// the room up. Reading delegated work and replying to the chat that
-    /// spawned it are two acts; the card comes back once the peek has gone.
-    /// A question has nothing to type while it waits — the panel is
-    /// what you answer in — and the card returns when it is answered or
-    /// dismissed to answer in your own words.
-    @ViewBuilder
-    private var composerFloor: some View {
-        if !transcript.agentsOpen && !transcript.questionOpen {
-            // Only plays when the change carries an animation, which is the
-            // peek closing: the card rides up from the edge the sheet just
-            // left rather than popping into place.
-            TranscriptComposer(workspaceID: row.workspace.id)
-                .transition(.move(edge: .bottom))
         }
     }
 
@@ -111,15 +55,15 @@ struct TranscriptScreen: View {
                     menu
                 }
             }
-            // Until the page names the chat: one thin line under the
-            // header rather than a spinner in the middle of an empty
-            // screen, which reads as "nothing is here" instead of
-            // "something is coming". It runs past `ready` on purpose —
-            // a warm page still has to find a chat started a moment ago,
-            // and that wait is the blank one worth explaining.
-            if transcript.session == nil && transcript.failure == nil {
-                IndeterminateLine()
+            if transcript.phase == .loading { IndeterminateLine() }
+            if case .reconnecting = store.connection {
+                Label("Reconnecting to your Mac…", systemImage: "wifi.slash")
+                    .font(.caption)
+                    .foregroundStyle(Theme.muted)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, Spacing.snug)
             }
+
         }
     }
 
@@ -179,15 +123,14 @@ struct TranscriptScreen: View {
         navigator.review = ReviewRoute(workspaceID: row.workspace.id, filePath: filePath)
     }
 
-    /// What the page says the chat is called, until it has said anything.
+    /// Live metadata takes precedence over the row used to open this screen.
     private var title: String {
         let reported = transcript.session?.title
         if let reported, !reported.isEmpty { return reported }
         return row.workspace.taskLabel
     }
 
-    /// Project · state. The project never changes under a chat; the state is
-    /// whatever the page last reported, and falls back to the row's.
+    /// Project and current session state, with the opening row as fallback.
     private var subtitle: String {
         let state = stateLabel(transcript.session?.state ?? row.session.state)
         guard let project = row.projectName, !project.isEmpty else { return state }
@@ -261,17 +204,10 @@ struct TranscriptScreen: View {
         }
     }
 
-    /// One line of copy, one action.
-    private func fallback(_ message: String) -> some View {
-        EmptyState(
-            mark: .glyph("exclamationmark.triangle"),
-            message: message,
-            action: ("Retry", { transcript.reload() })
-        )
-    }
+
 }
 
-/// The wait before the page speaks: a 2pt line that sweeps under the header.
+/// Loading feedback that keeps the header and navigation available.
 ///
 /// Not a `ProgressView`. A spinner centred in an empty screen is the shape of
 /// "there is nothing here"; a line under the header is the shape of "the

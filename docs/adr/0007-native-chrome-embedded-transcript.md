@@ -1,3 +1,5 @@
+> Superseded by [ADR 0008](0008-native-iphone-transcript.md). Retained as the rationale for older phone builds.
+
 # The phone is native chrome around an embedded transcript
 
 The phone client began as `mobile.html` — the desktop renderer with a touch layout — first as a home-screen web app and then wrapped in a one-view WKWebView shell. It got every feature the desktop got, the day it got it, which is the whole reason it existed. It also never stopped feeling like a web page: rows that are `div`s, a back stack mirrored into `history.pushState` so the browser's edge swipe would do something, sheets drawn by CSS, a header whose height is arithmetic against the keyboard and three documented workarounds for what the keyboard does to `dvh`. Every one of those is chrome, and chrome is exactly what iOS does well and a web page does badly.

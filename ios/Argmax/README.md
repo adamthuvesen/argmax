@@ -1,12 +1,14 @@
 # Argmax for iPhone
 
-Native chrome around an embedded transcript: the list, navigation and sheets
-are SwiftUI, and the transcript stays the same React app in a web view,
-because that is where the product's complexity lives. See
-[docs/plan/hybrid-native-phone.md](../../docs/plan/hybrid-native-phone.md) for
-the plan and its design brief.
+The iPhone app uses native navigation, a native transcript, and a native
+composer over the paired Mac's authenticated WebSocket bridge. SwiftUI draws
+messages and controls inside reusable UIKit transcript cells. Mermaid and
+math use isolated, bundled rich-content viewers.
 
-Phase 2 — the data layer — is what is here now:
+See [the native transcript decision](../../docs/adr/0008-native-iphone-transcript.md)
+for the boundary and maintenance tradeoff.
+
+## Data and screens
 
 - `Sources/Bridge/BridgeClient.swift` — one authenticated WebSocket to the
   paired Mac, speaking the protocol in [docs/remote.md](../../docs/remote.md).
@@ -19,13 +21,15 @@ Phase 2 — the data layer — is what is here now:
   Chats, custom rows rather than stock cells, search, pull to refresh, and the
   quiet connection states. The brief it is drawn to is in
   [the plan](../../docs/plan/hybrid-native-phone.md#design-brief-phase-2-3-5).
-- `Sources/Transcript/` — the embedded transcript. `NativeMessages.swift`
-  mirrors the contract in `src/renderer/mobile/nativeHost.ts`;
-  `TranscriptWebView.swift` owns the one `WKWebView`, which loads
-  `mobile.html?embed=1` once and lives for the app's life;
-  `TranscriptScreen.swift` is the pushed screen around it.
-
-Phase 3 — new chat and chat actions — adds:
+- `Sources/Transcript/TranscriptStore.swift` owns transcript history, cursor
+  recovery, and composer state. `DashboardStore` forwards invalidations from
+  the shared connection.
+- `Sources/Transcript/TranscriptProjection.swift` turns normalized events
+  into messages, tool groups, plans, questions, approvals, and delegated work.
+- `Sources/Transcript/NativeTranscriptList.swift` owns reusable cells and
+  reading position. `TranscriptMarkdown.swift` renders native prose and code.
+- `Sources/Transcript/TranscriptScreen.swift` connects the transcript to the
+  existing composer, review routes, and chat actions.
 
 - `Sources/Bridge/Channels.swift` — typed calls for the channels the phone
   writes on, each input mirroring its generated binding key for key. Whether a
@@ -125,6 +129,7 @@ The project is generated, so start there:
 ```bash
 brew install xcodegen   # once, if you don't have it
 npm run build:icons     # only after the fox sprite changes
+npm run build:ios-rich-content  # after rich-viewer source or dependency changes
 cd ios/Argmax && xcodegen
 open Argmax.xcodeproj
 ```
@@ -210,22 +215,31 @@ xcrun devicectl device process launch --device <udid> \
 That is how a phone moves between Macs, or from the old `http://…:8790` origin
 to the TLS one, without re-typing the token.
 
+## Verifying the transcript
+
+A debug build accepts `-argmax-open-session <session id>` alongside
+`-argmax-pair <pairing link>` to open a real conversation on a simulator.
+Check a long conversation while streaming, scroll upward, open the keyboard,
+and return with Jump to latest. Check questions, approval failures, queued
+messages, code, tables, diagrams, images, and file links in both appearances
+and with larger accessibility text.
+
+`Tests/Transcript*Tests.swift` cover event projection, revision recovery,
+card actions, and Markdown structure. The rich viewer bundle is generated
+from the repository's locked Mermaid and KaTeX dependencies by
+`npm run build:ios-rich-content`. Commit regenerated resources with changes
+to the viewer or those dependencies.
+
 ## Known edges
 
 App Transport Security is at its default, so the app only reaches `https://`
-and `wss://`. That is deliberate: the transcript's page is only a secure
-context there, and the service worker, `crypto.randomUUID`, and the clipboard
-all depend on it. A tailnet without HTTPS certificates enabled cannot run this
-app — the browser at `http://…:8790` still works for that case. `PairingLink`
-derives `ws://` from an `http://` link anyway, so a debug build pointed at
-loopback reaches the bridge rather than failing obscurely; pairing itself
-still refuses the link.
+and `wss://`. Pairing requires the Mac's HTTPS Tailscale origin. A tailnet
+without HTTPS certificates can still use the browser client over HTTP.
 
-The transcript is only as new as the renderer the Mac is serving. `embed=1`,
-`window.argmaxNative` and the `ready` message all arrive with a built
-renderer (`npm run build`); against an older bundle the page loads, never
-says `ready`, and the screen falls back to "This chat didn’t load" after
-twelve seconds rather than spinning forever.
+Transcript presentation ships with the phone app. Host renderer rebuilds no
+longer change its UI. The phone still requires compatible bridge channels and
+normalised event payloads, so unknown event kinds remain visible as notices
+where possible and fixture tests pin the supported contracts.
 
 The phone does not replay mutations. The renderer persists an unresolved
 operation's identity in session storage and reuses it after a reload, so the

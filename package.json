@@ -11,6 +11,7 @@
     "build:renderer": "vite build",
     "build:icons": "node scripts/build-icons.mjs",
     "export:provider-models": "node scripts/export-provider-models.mjs",
+    "build:ios-rich-content": "node scripts/build-ios-rich-content.mjs",
     "lint": "eslint .",
     "test": "npm run test:unit && npm run test:perf && npm run test:rust",
     "test:unit": "vitest run",

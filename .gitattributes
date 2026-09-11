@@ -1,0 +1,2 @@
+# Bundled dependencies contain intentional whitespace inside string literals.
+ios/Argmax/Resources/RichContent/* linguist-generated=true -whitespace

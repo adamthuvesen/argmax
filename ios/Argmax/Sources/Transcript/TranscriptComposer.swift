@@ -1,31 +1,19 @@
 import PhotosUI
 import SwiftUI
 
-/// The composer for the chat on screen, drawn under the shared web view once
-/// it hides its own (`setComposer(true)`; `docs/plan/hybrid-native-phone.md`).
-///
-/// The same card `NewChatSheet`'s composer draws — field, model chip opening
-/// `PickerSheet`, effort chip opening `EffortDial`, round send button — plus
-/// the running-state controls the web composer carries and a phone has no
-/// other way to offer: Stop in place of send, a queue button beside it, and a
-/// compact stack of queued follow-ups above the card (`docs/chat-cards.md`).
-///
-/// Bound to `TranscriptHost.composer`, the wire state the page posts, so this
-/// view never has to re-derive the composer's own rules — which efforts a
-/// model offers, queue vs send while running — for whichever model the
-/// session is actually running. Picking a *different* model before sending is
-/// the one thing that state cannot describe yet, so that candidate reads its
-/// own effort ladder from the bundled catalogue instead, the same source
-/// `NewChatSheet` uses.
+/// The native chat composer, sharing live session and queue state with the
+/// transcript store. Model choices use the bundled provider catalogue.
 struct TranscriptComposer: View {
     let workspaceID: String
+    @Binding var input: String
+    var focusRequest = 0
+    var isObscured = false
 
-    @EnvironmentObject private var transcript: TranscriptHost
+    @EnvironmentObject private var transcript: TranscriptStore
     @EnvironmentObject private var store: DashboardStore
     @Environment(\.accentTint) private var accent
     @Environment(\.openURL) private var openURL
 
-    @State private var input = ""
     @FocusState private var focused: Bool
     @State private var sending = false
     @State private var stopping = false
@@ -81,6 +69,8 @@ struct TranscriptComposer: View {
             .screenGutter()
             .padding(.bottom, Spacing.snug)
             .task { await loadDiscovered() }
+            .onChange(of: focusRequest) { focused = true }
+            .onChange(of: isObscured) { if isObscured { focused = false } }
             .sheet(item: $picking) { picker($0, composer) }
             .sheet(item: $pendingProviderSwitch) { pending in
                 ProviderSwitchConfirmation(

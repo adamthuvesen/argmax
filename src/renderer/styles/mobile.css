@@ -68,8 +68,15 @@ html:has(.mobile-shell[data-embed]) body,
    of the way instead of doubling it. The conversation scroller already fills
    whatever the composer leaves (`flex: 1`), so removing it needs no other
    layout change. The live question's panel takes the same slot and stays
-   this page's: it posts `question` so the native card stands down instead. */
-.mobile-shell[data-composer-hidden] .session-composer-stack:not([data-question]) {
+   this page's: it posts `question` so the native card stands down instead.
+
+   Two stacks are exempt. The question dock (`data-question`) is one. The goal
+   bar (`data-goal`) is the other: the native card draws no goal row, so
+   hiding it with the composer would leave a running goal with no clear button
+   anywhere on the phone. It rides above the card instead, tucked under its
+   top edge the way it tucks behind this page's own composer. */
+.mobile-shell[data-composer-hidden]
+  .session-composer-stack:not([data-question]):not([data-goal]) {
   display: none;
 }
 

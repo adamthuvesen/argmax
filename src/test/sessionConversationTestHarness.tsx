@@ -118,6 +118,8 @@ type ConversationOptions = {
   defaultToolCallGroupsExpanded?: boolean;
   pendingMessages?: PendingMessage[];
   goalEnabled?: boolean;
+  /** Stands in for the phone shell drawing the composer card itself. */
+  nativeComposerFloor?: boolean;
   // The conversation's own prop types, not `ReturnType<typeof vi.fn>`:
   // Vitest 4 types a bare `vi.fn()` as `Mock<Procedure | Constructable>`,
   // which no longer widens to a call signature, so a loose option type here
@@ -153,6 +155,7 @@ function conversationElement(
     <SessionConversation
       isFocused={options.isFocused ?? true}
       goalEnabled={options.goalEnabled ?? true}
+      nativeComposerFloor={options.nativeComposerFloor ?? false}
       events={events}
       eventsBackfilled={options.eventsBackfilled ?? true}
       isLogOpen={false}

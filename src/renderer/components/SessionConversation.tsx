@@ -177,6 +177,7 @@ export function SessionConversation({
   floating = false,
   goalEnabled = true,
   goalMaxTurns,
+  nativeComposerFloor = false,
   revertEnabled = true,
   registerAnnotationSink,
   defaultIde = null,
@@ -260,6 +261,10 @@ export function SessionConversation({
       `/goal` command; off for revert hides "Revert to here" on a turn. */
   goalEnabled?: boolean;
   goalMaxTurns?: number;
+  /** The phone shell draws the composer natively and this page hides its own
+      stack, which would take the goal bar down with it. Set, the bar rides in
+      its own stack above the native card instead. */
+  nativeComposerFloor?: boolean;
   revertEnabled?: boolean;
   /** Lets the parent pane feed review-panel line comments into this
       conversation's annotation lane. Registered on mount, cleared on unmount. */
@@ -1299,6 +1304,14 @@ export function SessionConversation({
       <GoalStatus key={`goal:${session.id}`} session={session} />
     </Suspense>
   ) : null;
+  // Tucked into the composer everywhere the composer is this page's. Under the
+  // phone shell it is not: `setComposer(true)` hides that whole stack, and a
+  // goal bar hidden with it leaves a running goal with no clear button
+  // anywhere on the phone. So it gets its own stack above the native card,
+  // exempt from that rule the way a docked question is, and carrying the
+  // composer's type scale rather than the transcript's — it is chrome, and the
+  // shell reads the transcript two steps up.
+  const goalInComposer = !nativeComposerFloor;
 
   return (
     <section
@@ -1562,9 +1575,14 @@ export function SessionConversation({
           })}
         </section>
       ) : null}
+      {goalInComposer || !goalStatus ? null : (
+        <div className="session-composer-stack" data-goal data-type-scale="composer">
+          {goalStatus}
+        </div>
+      )}
       {questionDocked && liveQuestion ? (
         <div className="session-composer-stack" data-question>
-          {goalStatus}
+          {goalInComposer ? goalStatus : null}
           <QuestionDock
             key={liveQuestion.tool.id}
             questions={liveQuestion.tool.questions}
@@ -1608,7 +1626,7 @@ export function SessionConversation({
         workspace={workspace}
         goalEnabled={goalEnabled}
         goalMaxTurns={goalMaxTurns}
-        goalStatus={goalStatus}
+        goalStatus={goalInComposer ? goalStatus : null}
       />
       )}
     </section>

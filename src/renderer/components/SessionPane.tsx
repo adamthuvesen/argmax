@@ -772,6 +772,7 @@ export function SessionPane({
           workspace={workspace}
           goalEnabled={goalEnabled}
           goalMaxTurns={goalMaxTurns}
+          nativeComposerFloor={nativeComposerFloor}
           revertEnabled={revertEnabled}
         />
 

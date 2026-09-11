@@ -14,6 +14,7 @@ import {
   Paperclip,
   Pencil,
   Play,
+  PlugZap,
   Plus,
   Quote,
   Send,
@@ -47,6 +48,7 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
+import { canSteerQueuedMessage } from "../lib/queuedSteer.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
@@ -72,6 +74,7 @@ import {
 import {
   dispatchedCommandNames,
   isClearCommand,
+  isMcpCommand,
   type ComposerCommand
 } from "../lib/composerCommands.js";
 import { multitaskCommandPrompt } from "../lib/multitask.js";
@@ -81,6 +84,7 @@ import { appendOpenFilesToPrompt, openFilesChipLabel } from "../lib/openFileCont
 import { splitSkillTokens } from "../lib/slashHighlight.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { ChangeCount } from "./ChangeCount.js";
+import { ConnectionDialog } from "./ConnectionDialog.js";
 import { isRemoteBridge } from "../lib/tauriBridge.js";
 import { ContextRing } from "./ContextRing.js";
 import { FilePopover } from "./FilePopover.js";
@@ -125,9 +129,10 @@ export function SessionComposer({
   fastModeEnabled = false,
   floating = false,
   inputRef,
+  isFocused = true,
   isQueueing,
   onFastModeEnabledChange,
-  onFocusChange,
+  onDraftPresentChange,
   onCancelQueuedMessage,
   onSendQueuedMessageNow,
   onMultitask,
@@ -162,6 +167,7 @@ export function SessionComposer({
       and file attach, so the toolbar keeps only model, mode, and send. */
   floating?: boolean;
   inputRef: MutableRefObject<HTMLTextAreaElement | null>;
+  isFocused?: boolean;
   isQueueing: boolean;
   onFastModeEnabledChange?: (enabled: boolean) => void;
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
@@ -190,7 +196,9 @@ export function SessionComposer({
     agentMode: AgentMode,
     attachments?: ComposerAttachment[]
   ) => Promise<void>;
-  onFocusChange?: (focused: boolean) => void;
+  /** Reports whether the composer is holding a draft. The question dock takes
+   *  this slot, so it waits while there is typing here to preserve. */
+  onDraftPresentChange?: (present: boolean) => void;
   /** Offered by the provider-switch dialog as the recommended alternative:
       opens the launcher with the picked model and this composer's draft. */
   onStartNewSession?: (seed: NewSessionSeed) => void;
@@ -253,6 +261,7 @@ export function SessionComposer({
   // Dismissing the open-files chip skips those paths until the set of open
   // tabs changes, at which point the new set rides along again.
   const [dismissedOpenFilesKey, setDismissedOpenFilesKey] = useState<string | null>(null);
+  const [connectionsOpen, setConnectionsOpen] = useState(false);
   const openFilesKey = openFilePaths.join("\n");
   const openFilesAttached = openFilePaths.length > 0 && dismissedOpenFilesKey !== openFilesKey;
   const inputFormRef = useRef<HTMLFormElement | null>(null);
@@ -288,6 +297,10 @@ export function SessionComposer({
     // shared with LaunchSurface); lift them into the error kind here.
     setStatus: (message) => setStatus(message === null ? null : { kind: "error", message })
   });
+
+  useEffect(() => {
+    onDraftPresentChange?.(input.trim() !== "" || pendingAttachments.length > 0);
+  }, [input, pendingAttachments, onDraftPresentChange]);
 
   const toggleMode = useCallback((): void => {
     setAgentMode((mode) => toggleAgentMode(mode));
@@ -329,6 +342,13 @@ export function SessionComposer({
         hint: "Start a fresh conversation here",
         icon: Eraser,
         run: () => void onClearSession(session.id).catch(() => undefined)
+      });
+      commands.push({
+        name: "mcp",
+        label: "Connections",
+        hint: "Show MCP servers, plugins, and connectors",
+        icon: PlugZap,
+        run: () => setConnectionsOpen(true)
       });
     }
     if (session && onMultitask) {
@@ -466,15 +486,15 @@ export function SessionComposer({
     caretAfterInput.current = null;
     const field = inputRef.current;
     if (!field) return;
-    field.focus();
+    if (isFocused) field.focus();
     field.setSelectionRange(caret, caret);
-  }, [input, inputRef]);
+  }, [input, inputRef, isFocused]);
 
-  const hasMounted = useRef(false);
+  const wasFocused = useRef(false);
   useEffect(() => {
-    const isMount = !hasMounted.current;
-    hasMounted.current = true;
-    if (isSending || !canSend) return;
+    const becameFocused = isFocused && !wasFocused.current;
+    wasFocused.current = isFocused;
+    if (!isFocused || isSending || !canSend) return;
     const refocusRequested = shouldRefocusInput.current;
     shouldRefocusInput.current = false;
     // Touch devices (the phone companion) get no programmatic focus: it pops
@@ -482,11 +502,14 @@ export function SessionComposer({
     // opens. Refocusing after an explicit send is still allowed.
     if (!refocusRequested && (reviewPanelOpen || isCoarsePointer)) return;
     // Sending can finish after the reader has moved to another pane or
-    // control. Only initial mounting gets to claim focus from outside here.
+    // control. Only activating this pane gets to claim focus from outside here.
     const active = document.activeElement;
-    if (!isMount && active !== document.body && !inputFormRef.current?.contains(active)) return;
+    // Keyboard navigation can activate a pane through another control. Keep
+    // that control focused instead of redirecting its first keystroke.
+    if (becameFocused && active !== inputRef.current && inputRef.current?.closest('[role="region"]')?.contains(active)) return;
+    if (!becameFocused && active !== document.body && !inputFormRef.current?.contains(active)) return;
     inputRef.current?.focus({ preventScroll: true });
-  }, [reviewPanelOpen, canSend, inputRef, isCoarsePointer, isSending, shouldRefocusInput]);
+  }, [reviewPanelOpen, canSend, inputRef, isCoarsePointer, isFocused, isSending, shouldRefocusInput]);
 
   const onSessionInputKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>): void => {
     slashAutocomplete.onKeyDown(event);
@@ -541,6 +564,13 @@ export function SessionComposer({
       return;
     }
 
+    if (isMcpCommand(trimmedInput)) {
+      setInput("");
+      clearDraft(session.id);
+      setConnectionsOpen(true);
+      return;
+    }
+
     if (isClearCommand(trimmedInput)) {
       setSendingSessionId(session.id);
       setStatus(null);
@@ -563,8 +593,8 @@ export function SessionComposer({
     }
 
     // `/goal <condition>` configures the session rather than sending a message.
-    // Setting one starts its own first turn, so this composer only clears the
-    // draft and gets out of the way.
+    // Setting one starts its own first turn when the chat is idle, so this
+    // composer only clears the draft and gets out of the way.
     const goalCommand = goalEnabled ? parseGoalCommand(trimmedInput) : null;
     if (goalCommand && workspace) {
       setSendingSessionId(session.id);
@@ -668,10 +698,6 @@ export function SessionComposer({
       data-type-scale="composer"
       ref={inputFormRef}
       onSubmit={(event) => void submitInput(event)}
-      onFocus={() => onFocusChange?.(true)}
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) onFocusChange?.(false);
-      }}
       onDragEnter={onComposerDragEnter}
       onDragOver={onComposerDragOver}
       onDragLeave={onComposerDragLeave}
@@ -691,13 +717,7 @@ export function SessionComposer({
         <div className="composer-queued-lane" role="list" aria-label="Queued follow-ups">
           {pendingMessages.map((entry) => {
             const sessionIsRunning = session?.state === "running";
-            const canSteer =
-              sessionIsRunning &&
-              (session.provider === "codex" || session.provider === "claude") &&
-              (entry.modelId === undefined || entry.modelId === session.modelId) &&
-              (entry.reasoningEffort === undefined ||
-                entry.reasoningEffort === session.reasoningEffort) &&
-              entry.agentMode === (session.agentMode ?? "auto");
+            const canSteer = session !== null && canSteerQueuedMessage(session, entry);
             const cancel = (): void => {
               if (!session || !onCancelQueuedMessage) return;
               void onCancelQueuedMessage(session.id, entry.id).catch((error: unknown) => {
@@ -1266,6 +1286,17 @@ export function SessionComposer({
         </p>
       ) : null}
       <ImageLightbox src={lightboxSrc} alt="Attached image" onClose={() => setLightboxSrc(null)} />
+      {session && connectionsOpen ? (
+        <ConnectionDialog
+          anchorRef={inputFormRef}
+          provider={session.provider}
+          workspaceId={workspace?.id ?? null}
+          onClose={() => {
+            setConnectionsOpen(false);
+            if (isFocused) inputRef.current?.focus();
+          }}
+        />
+      ) : null}
       {/* Only while the pick still applies: the same idle session it was made
           on. A turn starting mid-dialog would queue the follow-up and keep the
           current provider anyway, so the offer would be a lie. */}
@@ -1277,7 +1308,7 @@ export function SessionComposer({
           onSwitch={() => {
             setSelectedModel(pendingProviderSwitch.model);
             setPendingProviderSwitch(null);
-            inputRef.current?.focus();
+            if (isFocused) inputRef.current?.focus();
           }}
           onStartNewSession={
             onStartNewSession

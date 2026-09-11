@@ -235,6 +235,24 @@ describe("App settings", () => {
     );
   });
 
+  it("shows the fox by default and hides every mascot when turned off", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+    expect(screen.getAllByRole("img", { name: /^Fox mascot/ }).length).toBeGreaterThan(0);
+
+    await openSettings("Appearance");
+    await screen.findByRole("heading", { name: "Layout" });
+
+    const toggle = screen.getByRole("checkbox", { name: "Fox mascot" });
+    expect(toggle).toBeChecked();
+
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(window.localStorage.getItem("argmax.mascot.visible")).toBe("false")
+    );
+    expect(screen.queryByRole("img", { name: /^Fox mascot/ })).toBeNull();
+  });
+
   it("disables PR milestone celebrations by default and persists turning them on", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });

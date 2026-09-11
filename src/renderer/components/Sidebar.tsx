@@ -1,6 +1,5 @@
 import {
   Activity,
-  ChartNoAxesColumn,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -66,14 +65,16 @@ import {
   showKeyboardCheatSheet,
   showSchedulePage,
   showSettings,
-  showUsagePage
+  showActivityPage
 } from "../state/overlays.js";
 import { usePaneGrid } from "../state/paneGrid.js";
 import { setSidebarPeek, useSidebarChrome } from "../state/sidebarChrome.js";
 import { beginWorkspaceDrag, endWorkspaceDrag } from "../state/workspaceDrag.js";
 import { computePriorityEntries, nextPriorityIdleAt, workingWorkspaceIds } from "../lib/priority.js";
 import { formatSessionIds } from "../lib/sessionIds.js";
+import { warmLedgerPagesOnIntent } from "../lib/ledgerPrefetch.js";
 import { useUnreadWorkspaceIds } from "../lib/sessionUnread.js";
+import { useMascotVisible } from "../lib/mascotVisibility.js";
 import { Mascot } from "./Mascot.js";
 import { SidebarSessionRow, type WorkspaceClickModifiers } from "./SidebarSessionRow.js";
 
@@ -255,6 +256,10 @@ export function Sidebar({
     [fullLauncherOpen, grid.rows]
   );
   const canDragWorkspaceToGrid = snapshot.sessions.length > 0;
+  const warmLedgerPages = useCallback((): void => {
+    if (loadState !== "ready" || typeof window === "undefined" || !window.argmax) return;
+    warmLedgerPagesOnIntent(window.argmax);
+  }, [loadState]);
   // Per-launch behavior: every project starts collapsed so no sessions are
   // visible on app start. After the first non-empty snapshot, we set a
   // sessionStorage marker so subsequent re-mounts within the same renderer
@@ -304,6 +309,7 @@ export function Sidebar({
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const sortMenuAnchorRef = useRef<HTMLDivElement | null>(null);
   const [identityMenuOpen, setIdentityMenuOpen] = useState(false);
+  const mascotVisible = useMascotVisible();
   const identityMenuAnchorRef = useRef<HTMLDivElement | null>(null);
   // Per-project actions menu. `mode === "confirm"` swaps the menu in-place
   // for a "Remove '{name}'?" prompt — no separate modal needed. The popover
@@ -1094,14 +1100,15 @@ export function Sidebar({
         <button
           className="rail-nav-item"
           type="button"
-          title="Usage"
-          aria-label="Usage"
-          onClick={showUsagePage}
+          title="Hacking"
+          aria-label="Hacking"
+          onMouseEnter={warmLedgerPages}
+          onClick={showActivityPage}
         >
           <span className="rail-nav-glyph" aria-hidden="true">
-            <ChartNoAxesColumn size={14} />
+            <Activity size={14} />
           </span>
-          <span className="rail-nav-label">Usage</span>
+          <span className="rail-nav-label">Hacking</span>
         </button>
         {onOpenBrowser && typeof window !== "undefined" && window.argmax?.browser ? (
           <button
@@ -1593,9 +1600,13 @@ export function Sidebar({
             aria-expanded={identityMenuOpen}
             onClick={() => setIdentityMenuOpen((open) => !open)}
           >
-            <span className="identity-avatar" aria-hidden="true">
-              <Mascot size={24} className="identity-avatar-mascot" />
-            </span>
+            {mascotVisible ? (
+              // The avatar box is a fixed 30px square, so it goes with the fox
+              // rather than leaving a gap beside the name.
+              <span className="identity-avatar" aria-hidden="true">
+                <Mascot size={24} className="identity-avatar-mascot" />
+              </span>
+            ) : null}
             <span className="identity-meta">
               <span className="identity-name">Argmax</span>
               {identitySubLabel ? (

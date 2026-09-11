@@ -1,8 +1,19 @@
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { baseSession, renderConversation } from "../../test/sessionConversationTestHarness.js";
+import { SETTLE_MS } from "../hooks/useFollowUpSuggestion.js";
 
 const STATIC_PLACEHOLDER = "Reply to your agent, or @-mention files";
+
+/**
+ * Suggestions are cached per session and finished turn, so a test that reused
+ * one would read the previous test's stub. Each turn ends at its own instant.
+ */
+let turnCounter = 0;
+function finishedTurn(): { state: "complete"; completedAt: string } {
+  turnCounter += 1;
+  return { state: "complete", completedAt: `2026-05-12T15:54:${String(turnCounter).padStart(2, "0")}.000Z` };
+}
 
 /**
  * A partial `window.argmax` crashes the pane — sibling components (the actions
@@ -39,7 +50,7 @@ describe("SessionComposer follow-up suggestion", () => {
     );
     stubSuggestion(suggestFollowUp);
 
-    renderConversation(baseSession({ state: "complete" }));
+    renderConversation(baseSession(finishedTurn()));
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText("Add a test for the empty case")).toBeTruthy();
@@ -56,7 +67,7 @@ describe("SessionComposer follow-up suggestion", () => {
   it("accepts the suggestion with Tab so Enter sends it", async () => {
     stubSuggestion(() => Promise.resolve({ suggestion: "Add a test for the empty case" }));
     const onSendSessionInput = vi.fn(() => Promise.resolve());
-    renderConversation(baseSession({ state: "complete" }), [], { onSendSessionInput });
+    renderConversation(baseSession(finishedTurn()), [], { onSendSessionInput });
 
     const input = await screen.findByPlaceholderText("Add a test for the empty case");
     fireEvent.keyDown(input, { key: "Tab" });
@@ -76,7 +87,7 @@ describe("SessionComposer follow-up suggestion", () => {
 
   it("leaves a half-written draft alone when Tab is pressed", async () => {
     stubSuggestion(() => Promise.resolve({ suggestion: "Add a test for the empty case" }));
-    renderConversation(baseSession({ state: "complete" }));
+    renderConversation(baseSession(finishedTurn()));
 
     const input = await screen.findByPlaceholderText("Add a test for the empty case");
     fireEvent.change(input, { target: { value: "Actually, " } });
@@ -98,7 +109,7 @@ describe("SessionComposer follow-up suggestion", () => {
   it("keeps the static placeholder when the helper model has nothing to offer", async () => {
     stubSuggestion(() => Promise.resolve({ suggestion: null }));
 
-    renderConversation(baseSession({ state: "complete" }));
+    renderConversation(baseSession(finishedTurn()));
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText(STATIC_PLACEHOLDER)).toBeTruthy();
@@ -108,10 +119,37 @@ describe("SessionComposer follow-up suggestion", () => {
   it("keeps the static placeholder when the helper call fails", async () => {
     stubSuggestion(() => Promise.reject(new Error("cli missing")));
 
-    renderConversation(baseSession({ state: "complete" }));
+    renderConversation(baseSession(finishedTurn()));
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText(STATIC_PLACEHOLDER)).toBeTruthy();
     });
+  });
+
+  it("reuses the suggestion its last turn earned when the chat is reopened", async () => {
+    const suggestFollowUp = vi.fn(() => Promise.resolve({ suggestion: "Ship it" }));
+    stubSuggestion(suggestFollowUp);
+    const session = baseSession(finishedTurn());
+
+    renderConversation(session);
+    await screen.findByPlaceholderText("Ship it");
+    cleanup();
+    renderConversation(session);
+
+    // Straight from the cache, so switching back and forth between chats does
+    // not spawn a provider CLI per visit.
+    await screen.findByPlaceholderText("Ship it");
+    expect(suggestFollowUp).toHaveBeenCalledTimes(1);
+  });
+
+  it("spawns no helper for a chat the user only passes through", async () => {
+    const suggestFollowUp = vi.fn(() => Promise.resolve({ suggestion: "never asked" }));
+    stubSuggestion(suggestFollowUp);
+
+    renderConversation(baseSession(finishedTurn()));
+    cleanup();
+
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_MS + 100));
+    expect(suggestFollowUp).not.toHaveBeenCalled();
   });
 });

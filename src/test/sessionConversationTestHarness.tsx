@@ -112,6 +112,7 @@ export function cursorAssistantPayload(text: string): Record<string, unknown> {
 type ConversationProps = Parameters<typeof SessionConversation>[0];
 
 type ConversationOptions = {
+  isFocused?: ConversationProps["isFocused"];
   thinkingDisplay?: ThinkingDisplay;
   defaultToolCallsDisplay?: "expanded" | "collapsed" | "single-line";
   defaultToolCallGroupsExpanded?: boolean;
@@ -129,6 +130,8 @@ type ConversationOptions = {
   onClearSession?: ConversationProps["onClearSession"];
   onNewSession?: ConversationProps["onNewSession"];
   onOpenFile?: (path: string, opts?: { line?: number | null; preferIde?: boolean }) => void;
+  onOpenDiff?: (path: string) => void;
+  onOpenChanges?: () => void;
   onOpenAgent?: (tool: ToolCall) => void;
   onOpenSideChat?: (seedPrompt: string) => Promise<void>;
   onOpenDetails?: (seedPrompt: string) => Promise<void>;
@@ -148,6 +151,7 @@ function conversationElement(
 ): JSX.Element {
   return (
     <SessionConversation
+      isFocused={options.isFocused ?? true}
       goalEnabled={options.goalEnabled ?? true}
       events={events}
       eventsBackfilled={options.eventsBackfilled ?? true}
@@ -165,6 +169,8 @@ function conversationElement(
       {...(options.onMultitask ? { onMultitask: options.onMultitask } : {})}
       {...(options.onNewSession ? { onNewSession: options.onNewSession } : {})}
       {...(options.onOpenFile ? { onOpenFile: options.onOpenFile } : {})}
+      {...(options.onOpenDiff ? { onOpenDiff: options.onOpenDiff } : {})}
+      {...(options.onOpenChanges ? { onOpenChanges: options.onOpenChanges } : {})}
       onOpenAgent={options.onOpenAgent ?? vi.fn()}
       {...(options.onOpenSideChat ? { onOpenSideChat: options.onOpenSideChat } : {})}
       {...(options.onOpenDetails ? { onOpenDetails: options.onOpenDetails } : {})}

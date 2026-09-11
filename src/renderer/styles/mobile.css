@@ -40,6 +40,38 @@ html:has(.mobile-shell) body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* ---- Embed mode (the native iPhone shell hosts this page) ----
+
+   `?embed=1` puts this page inside the iPhone app's web view, which draws the
+   header and the chat list itself (nativeHost.ts, docs/plan/hybrid-native-phone.md).
+   The page paints no surface of its own: the web view is transparent over the
+   native container, so a cold open shows that container rather than a flash of
+   --bg before the transcript arrives. The session overlay keeps its background
+   — once a transcript is up it is the surface, and the review screen rides the
+   same overlay. Bottom safe-area handling is unchanged. */
+html:has(.mobile-shell[data-embed]),
+html:has(.mobile-shell[data-embed]) body,
+.mobile-shell[data-embed] {
+  background: transparent;
+}
+
+/* No header row is rendered in embed mode, so the standoff that separated the
+   transcript from its hairline has nothing left to clear: the first bubble
+   starts at the top of the web view, under the native bar. */
+.mobile-shell[data-embed] .mobile-session-screen .conversation-surface {
+  padding-top: 0;
+}
+
+/* `setComposer(true)`: the native shell draws its own card — field, model and
+   effort chips, queued follow-ups — under the web view, so the page's own
+   composer stack (queued lane included, since it is nested inside) gets out
+   of the way instead of doubling it. The conversation scroller already fills
+   whatever the composer leaves (`flex: 1`), so removing it needs no other
+   layout change. */
+.mobile-shell[data-composer-hidden] .session-composer-stack {
+  display: none;
+}
+
 /* ---- Headers (shared frame for list and session screens) ---- */
 
 .mobile-list-header,
@@ -508,6 +540,19 @@ html:has(.mobile-shell) body {
   height: 40px;
 }
 
+/* Stop and Dismiss on a multitask row wait for a hover a thumb never produces,
+   so on the phone they were 20px squares at 0 opacity — invisible, and still
+   the topmost thing under a thumb aiming at the row's right end, which is how
+   a tap meant to open the multitask dismissed it instead. Stand them open and
+   grow the hit area the same way the queued follow-up's actions do; the glyph
+   inside keeps its size, and the row is 54px tall, so 40px fits without
+   changing its height. */
+.mobile-shell .multitask-row-stop {
+  width: 40px;
+  height: 40px;
+  opacity: 1;
+}
+
 /* The composer's compact layout is container-query driven, and its container
    root on desktop is the multigrid cell — absent here. Without a container
    ancestor the ≤720px rules never match and the phone gets the full desktop
@@ -587,6 +632,88 @@ html:has(.mobile-shell) body {
 
 .mobile-shell .session-input-toolbar .composer-context-chip {
   font-size: var(--text-base-plus);
+}
+
+/* The effort dial.
+   ---------------
+   The desktop's effort control is a chip that opens a 292px popover with a
+   24px rail: a mouse can put a 3px cursor anywhere on it. A thumb cannot,
+   and it covers the rail while it tries. Same drawing — the head, the
+   pixel-field rail, the cursor riding the fill's leading edge, the stops
+   with their short labels underneath — at phone scale: the composer's full
+   width, a 44pt track, and a handle wide enough to hold. Each snap posts a
+   light haptic to the shell (ModelSelector.tsx), which is what tells you
+   which stop you are on when your thumb is over the label.
+
+   The rail is placed by the composer card rather than by the chip it opens
+   from, so the two ancestors between them stop being containing blocks
+   here. Nothing else in the chip row is absolutely positioned. */
+.mobile-shell .effort-slider-anchor,
+.mobile-shell .composer-chips-model {
+  position: static;
+}
+
+.mobile-shell .effort-slider-popover {
+  /* Floating UI measures a chip-anchored placement and writes it inline; a
+     dial that is always the composer's width in the same place above it
+     needs no measuring. */
+  inset: auto 0 calc(100% + var(--space-2)) 0 !important;
+  width: auto !important;
+  transform: none !important;
+  padding: var(--space-3) var(--space-4) var(--space-3);
+}
+
+/* The model menu, same treatment: the composer's width, sitting on the
+   composer, rows a thumb can hit. The desktop's 292px column anchored to a
+   chip is a mouse's menu. */
+.mobile-shell .model-picker-flyout {
+  inset: auto 0 calc(100% + var(--space-2)) 0 !important;
+  width: auto !important;
+  transform: none !important;
+}
+
+.mobile-shell .model-picker-popover .project-picker-option {
+  min-height: 44px;
+}
+
+.mobile-shell .effort-slider-track {
+  height: 44px;
+}
+
+/* A handle, not a hairline: the width of a thumb's contact patch, still
+   centred on the fill's leading edge so the rail and the bar arrive at a
+   stop together. */
+.mobile-shell .effort-slider-cursor {
+  top: -2px;
+  bottom: -2px;
+  width: 26px;
+  border-radius: var(--radius-md);
+}
+
+/* The stops are the fast way to a level, so they take a thumb's hit area.
+   The tick and the label keep their size; only the target grows. */
+.mobile-shell .effort-slider-stops {
+  height: 40px;
+}
+
+.mobile-shell .effort-slider-stop {
+  padding: var(--space-2) var(--space-2_5) 0;
+  font-size: var(--text-xs);
+}
+
+/* The rail runs edge to edge here, so the outer two labels would hang off
+   it. They line up with their own tick instead of straddling it — the tick
+   stays exactly on its position, which is what the label is pointing at. */
+.mobile-shell .effort-slider-stop:first-child {
+  align-items: flex-start;
+  padding-left: 0;
+  transform: none;
+}
+
+.mobile-shell .effort-slider-stop:last-child {
+  align-items: flex-end;
+  padding-right: 0;
+  transform: translateX(-100%);
 }
 
 /* ---- New session ---- */
@@ -1170,15 +1297,15 @@ html:has(.mobile-shell) body {
 
 /* Delegated work, raised over the transcript.
    ------------------------------------------
-   Anchored inside the session column and stopped short of the composer, so the
-   parent chat stays legible above and answerable below: a subagent result is
-   something you read and then reply to, and a full screen would make that two
-   navigations instead of none. */
+   A bottom sheet: it comes up off the screen's own bottom edge and covers the
+   parent's composer and multitask lane, the way every other sheet on the
+   phone does. It used to stop above them — measuring their height and holding
+   that much clear — which left the parent's composer live under a second one
+   and made the peek the only sheet here that never reached the edge. The
+   parent's composer comes back when it closes. */
 .mobile-agent-overlay {
   position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
+  inset: 0;
   z-index: 6;
   display: flex;
   flex-direction: column;
@@ -1186,11 +1313,17 @@ html:has(.mobile-shell) body {
   pointer-events: none;
 }
 
-/* Only over the transcript. The composer sits below this layer and stays live. */
+/* Over everything the sheet covers, so a tap outside it closes rather than
+   reaching the composer underneath. The same scrim the phone's own bottom
+   sheets use: a veil mixed from --bg was a dark one on charcoal but a
+   near-white one on paper, where the panel is #ffffff on a #fdfdfd ground and
+   the hairline was the only thing saying a sheet had come up.
+   --modal-backdrop is dark in both themes, so the peek reads as raised on
+   paper too. */
 .mobile-agent-overlay-scrim {
   position: absolute;
   inset: 0;
-  background: color-mix(in oklab, var(--bg) 62%, transparent);
+  background: var(--modal-backdrop);
   pointer-events: auto;
 }
 
@@ -1200,10 +1333,10 @@ html:has(.mobile-shell) body {
   flex-direction: column;
   min-height: 0;
   height: 76%;
-  /* A multitask carries its own composer, and without this it would sit edge to
-     edge with the parent's directly below the panel — two identical cards with
-     no seam between the chat you are peeking at and the one you are in. */
-  padding-bottom: var(--space-2);
+  /* The sheet reaches the screen's edge, so its own floor — a multitask's
+     composer, a subagent's last line — keeps the home indicator's clearance
+     the way the chat screen's composer does. */
+  padding-bottom: var(--mobile-bottom-inset);
   border-top: 1px solid var(--line);
   border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
   background: var(--panel);
@@ -1278,6 +1411,29 @@ html:has(.mobile-shell) body {
 .mobile-agent-overlay-body .review-agents {
   flex: 1;
   min-height: 0;
+}
+
+/* The peek's own header — the agent's name, its type and its model — sits
+   above the body, and the body dissolves under it instead of being sliced.
+   The peek opens on the agent's newest line, so its first visible line is
+   usually a scrolled one: against a hard edge that read as text rendering
+   *under* the header. The transcript's own scrim, one edge of it, on the
+   viewport outside the scroller so the header keeps its full contrast. The
+   content's 24px top padding is what the fade lands on at rest. */
+.mobile-agent-overlay-body .agent-activity-viewport {
+  isolation: isolate;
+}
+
+.mobile-agent-overlay-body .agent-activity-viewport::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: var(--space-4);
+  z-index: 1;
+  background: linear-gradient(to bottom, var(--panel), transparent);
+  pointer-events: none;
 }
 
 /* The goal sheet. The desktop body is a capped strip that scrolls inside the

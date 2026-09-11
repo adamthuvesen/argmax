@@ -253,7 +253,12 @@ export function TerminalTabsPanel({
               aria-labelledby={`terminal-tab-${tab.id}`}
               aria-hidden={!isActive}
             >
-              <TerminalInstance tabId={tab.id} workspaceId={workspaceId} visible={visible && isActive} />
+              <TerminalInstance
+                tabId={tab.id}
+                workspaceId={workspaceId}
+                terminalId={tab.terminalId}
+                visible={visible && isActive}
+              />
             </div>
           );
         })}

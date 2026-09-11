@@ -1,4 +1,4 @@
-import { Globe, Plug } from "lucide-react";
+import { Globe, Monitor, Plug } from "lucide-react";
 import type { JSX } from "react";
 import { serverIconFor } from "../lib/serverIcons.js";
 
@@ -16,6 +16,9 @@ export function ServerIcon({
   server: string | null;
   web?: boolean;
 }): JSX.Element | null {
+  if (server === "cua repl") {
+    return <Monitor size={12} className="tool-call-row-server-icon" role="img" aria-label="Computer use" />;
+  }
   const icon = server ? serverIconFor(server) : null;
   if (!icon) {
     // A brand mark still wins for a browser server that has one. Otherwise the

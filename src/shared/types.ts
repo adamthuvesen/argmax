@@ -1,10 +1,12 @@
 import type * as Bindings from "./bindings.js";
-
 // Backend-derived IPC and diagnostics types come from generated Rust bindings.
 // `ArgmaxApi` and renderer-only domain shapes remain hand-written below.
 export type AgentMode = Bindings.AgentMode;
 export type AttachmentMimeType = Bindings.AttachmentMimeType;
 export type DatabaseStats = Bindings.DatabaseStats;
+export type ChatCleanupPreview = Bindings.ChatCleanupPreview;
+export type DeleteOldChatsInput = Bindings.DeleteOldChatsInput;
+export type DeleteOldChatsResult = Bindings.DeleteOldChatsResult;
 export type DetectedIde = Bindings.DetectedIde;
 export type DiagnosticsReport = Bindings.DiagnosticsReport;
 export type IdeId = Bindings.IdeId;
@@ -20,6 +22,8 @@ export type GoalSetInput = Bindings.GoalSetInput;
 export type GoalSessionInput = Bindings.GoalSessionInput;
 export type GoalListInput = Bindings.GoalListInput;
 export type ReasoningEffort = Bindings.ReasoningEffort;
+export type ActivitySummary = Bindings.ActivitySummary;
+export type ActivitySummaryInput = Bindings.ActivitySummaryInput;
 export type UsageWindow = Bindings.UsageWindow;
 export type UsageResolution = Bindings.UsageResolution;
 export type UsageTokenTotals = Bindings.UsageTokenTotals;
@@ -40,6 +44,10 @@ export type UsageProviderRemaining = Bindings.UsageProviderRemaining;
 export type UsageLimitWindow = Bindings.UsageLimitWindow;
 export type UsagePlanKind = Bindings.UsagePlanKind;
 export type RemoteStatus = Bindings.RemoteStatus;
+export type RemoteApnsStatus = Bindings.RemoteApnsStatus;
+export type RemotePushDevice = Bindings.RemotePushDevice;
+export type RemotePushTestResult = Bindings.RemotePushTestResult;
+export type RemotePushCapability = Bindings.RemotePushCapability;
 export type StartupPhaseRecord = Bindings.StartupPhaseRecord;
 
 export interface DiscoveredProvider {
@@ -161,6 +169,12 @@ export interface TerminalDataEvent {
   data: string;
 }
 
+export interface TerminalAgentOpenEvent {
+  terminalId: string;
+  workspaceId: string;
+  command?: string | null;
+}
+
 export interface TerminalExitEvent {
   terminalId: string;
   exitCode: number;
@@ -227,10 +241,12 @@ export type GitPushResult = Bindings.GitPushResult;
 export type GitCreateBranchResult = Bindings.GitCreateBranchResult;
 export type GitViewOrCreatePrResult = Bindings.GitViewOrCreatePrResult;
 export type SkillsListInput = OptionalNullable<Bindings.SkillsListInput, "workspaceId">;
+export type ConnectionsListInput = OptionalNullable<Bindings.ConnectionsListInput, "workspaceId">;
 export type OpenInIdeInput = Bindings.WorkspacesOpenInIdeInput;
 
 export type SkillSource = Bindings.SkillSource;
 export type SkillSummary = Bindings.SkillSummary;
+export type ConnectionSummary = Bindings.ConnectionSummary;
 export type ProjectSummary = Bindings.ProjectSummary;
 
 /** Untagged on the wire, so the binding has `cancelled: boolean` on both arms. */
@@ -558,6 +574,13 @@ export interface ArgmaxApi {
   skills: {
     list: (input: SkillsListInput) => Promise<SkillSummary[]>;
   };
+  connections: {
+    list: (input: ConnectionsListInput) => Promise<ConnectionSummary[]>;
+  };
+  settings: {
+    previewChatCleanup: () => Promise<ChatCleanupPreview>;
+    deleteOldChats: (input: DeleteOldChatsInput) => Promise<DeleteOldChatsResult>;
+  };
   system: {
     openPath: (input: { path: string; cwd?: string }) => Promise<{ ok: true }>;
     listDetectedIdes: () => Promise<DetectedIde[]>;
@@ -581,6 +604,17 @@ export interface ArgmaxApi {
     getStatus: () => Promise<RemoteStatus>;
     setConfig: (input: { enabled: boolean; port: number; ntfyTopic: string }) => Promise<RemoteStatus>;
     testNotification: () => Promise<{ ok: true }>;
+    setApnsConfig: (input: {
+      keyPath: string;
+      keyId: string;
+      teamId: string;
+      sandbox: boolean;
+    }) => Promise<RemoteStatus>;
+    registerPushDevice: (input: { token: string; name: string }) => Promise<RemotePushDevice[]>;
+    unregisterPushDevice: (input: { token: string }) => Promise<RemotePushDevice[]>;
+    pushTest: () => Promise<RemotePushTestResult[]>;
+    /** What the phone checks before asking iOS for notification permission. */
+    pushCapability: () => Promise<RemotePushCapability>;
   };
   sync: {
     getStatus: () => Promise<SyncStatus>;
@@ -598,6 +632,9 @@ export interface ArgmaxApi {
   usage: {
     summary: (input: UsageSummaryInput) => Promise<UsageSummary>;
     remaining: () => Promise<UsageRemaining>;
+  };
+  activity: {
+    summary: (input: ActivitySummaryInput) => Promise<ActivitySummary>;
   };
   menu: {
     onCommand: (listener: (command: MenuCommand) => void) => () => void;
@@ -624,6 +661,7 @@ export interface ArgmaxApi {
     terminate: (terminalId: string) => Promise<{ ok: true }>;
     onData: (listener: (event: TerminalDataEvent) => void) => EventSubscription;
     onExit: (listener: (event: TerminalExitEvent) => void) => EventSubscription;
+    onAgentOpen: (listener: (event: TerminalAgentOpenEvent) => void) => EventSubscription;
   };
   browser: {
     open: (input: {

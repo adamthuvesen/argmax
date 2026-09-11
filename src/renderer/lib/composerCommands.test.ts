@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { dispatchedCommandNames, isClearCommand } from "./composerCommands.js";
+import { dispatchedCommandNames, isClearCommand, isMcpCommand } from "./composerCommands.js";
 
 describe("dispatchedCommandNames", () => {
   const all = { hasSession: true, canMultitask: true, goalEnabled: true };
 
   it("marks the commands the composer acts on itself", () => {
-    expect(dispatchedCommandNames(all)).toEqual(new Set(["clear", "multitask", "goal"]));
+    expect(dispatchedCommandNames(all)).toEqual(new Set(["clear", "mcp", "multitask", "goal"]));
   });
 
   /// A tinted token has to dispatch. Listing a name whose submit branch is off
@@ -25,5 +25,13 @@ describe("isClearCommand", () => {
     expect(isClearCommand("/clear")).toBe(true);
     expect(isClearCommand("  /clear  ")).toBe(true);
     expect(isClearCommand("/clear the cache")).toBe(false);
+  });
+});
+
+describe("isMcpCommand", () => {
+  it("matches the bare command and nothing that merely starts with it", () => {
+    expect(isMcpCommand("/mcp")).toBe(true);
+    expect(isMcpCommand("  /MCP  ")).toBe(true);
+    expect(isMcpCommand("/mcp list")).toBe(false);
   });
 });

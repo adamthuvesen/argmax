@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type JSX, type MouseEvent } from "react";
+import { useMascotVisible } from "../lib/mascotVisibility.js";
 import baseSprite from "../../../assets/fox-mascot.txt?raw";
 import winkSprite from "../../../assets/fox-mascot-wink.txt?raw";
 import sleepySprite from "../../../assets/fox-mascot-sleepy.txt?raw";
@@ -134,10 +135,11 @@ export function Mascot({
   disabled,
   title,
   shades = false
-}: MascotProps): JSX.Element {
+}: MascotProps): JSX.Element | null {
   const ariaLabel = label ?? (shades ? SHADES_LABEL : MOOD_LABEL[mood]);
   const classes = ["mascot", className].filter(Boolean).join(" ");
 
+  const visible = useMascotVisible();
   const [isPet, setIsPet] = useState(false);
   const petTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -149,6 +151,11 @@ export function Mascot({
       }
     };
   }, []);
+
+  // Settings → Appearance → Fox mascot. Gated here rather than at each call
+  // site so one switch reaches every fox; the hooks above still run, so the
+  // pet timer keeps its cleanup when the fox is turned off mid-hop.
+  if (!visible) return null;
 
   const spriteName = spriteFor(mood, isPet, shades);
 

@@ -1,7 +1,8 @@
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useRef, type JSX } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setViewportMeasurementPaused, useVisualViewportInsets } from "./useVisualViewportInsets.js";
+import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
+import { useVisualViewportInsets } from "./useVisualViewportInsets.js";
 
 /**
  * The stuck-viewport repair is invisible once it has run — the shell is hidden
@@ -13,7 +14,20 @@ const reflowsWhileHidden: string[] = [];
 function Harness(): JSX.Element {
   const shellRef = useRef<HTMLDivElement>(null);
   useVisualViewportInsets(shellRef);
-  return <div ref={shellRef} className="mobile-shell" />;
+  const { attachmentInputRef, openFilePicker, onAttachmentInputChange } = useComposerAttachments({
+    draftKey: "launch-viewport",
+    workspacePath: null,
+    setInput: () => undefined,
+    setStatus: () => undefined
+  });
+  return (
+    <div ref={shellRef} className="mobile-shell">
+      <input ref={attachmentInputRef} type="file" hidden onChange={onAttachmentInputChange} />
+      <button type="button" onClick={() => openFilePicker()}>
+        Attach
+      </button>
+    </div>
+  );
 }
 
 const viewport = {
@@ -88,23 +102,21 @@ describe("useVisualViewportInsets", () => {
     expect(reflowsWhileHidden).toEqual([]);
   });
 
-  it("holds the published viewport while a native picker is open", () => {
-    // Tapping attach opens the iOS menu, which dismisses the keyboard and
-    // hands back the full height. Publishing that mid-gesture is what dropped
-    // the composer and left a blank strip under it.
-    renderShell();
-    reportViewport(932, 596);
-    setViewportMeasurementPaused(true);
-    reportViewport(932, 932);
-    const root = document.documentElement.style;
-    expect(root.getPropertyValue("--mobile-viewport-height")).toBe("596px");
-    expect(root.getPropertyValue("--mobile-keyboard-inset")).toBe("336px");
-
-    // Releasing catches up in one write, without waiting for another resize.
-    act(() => setViewportMeasurementPaused(false));
-    expect(root.getPropertyValue("--mobile-viewport-height")).toBe("932px");
-    expect(root.getPropertyValue("--mobile-keyboard-inset")).toBe("0px");
-  });
+  it.each([0, 336])(
+    "publishes the restored viewport when the keyboard closes during attach (offsetTop %i)",
+    (offset) => {
+      renderShell();
+      viewport.offsetTop = offset;
+      reportViewport(932, 596 - offset);
+      fireEvent.click(screen.getByRole("button", { name: "Attach" }));
+      viewport.offsetTop = 0;
+      reportViewport(932, 932);
+      const root = document.documentElement.style;
+      expect(root.getPropertyValue("--mobile-viewport-height")).toBe("932px");
+      expect(root.getPropertyValue("--mobile-viewport-offset")).toBe("0px");
+      expect(root.getPropertyValue("--mobile-keyboard-inset")).toBe("0px");
+    }
+  );
 
   it("reads a rotation as a new height, not as the bug", () => {
     renderShell();

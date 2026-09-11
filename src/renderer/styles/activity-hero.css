@@ -1,0 +1,220 @@
+/* ============================================================
+   Activity hero — the window's one number on the left, the
+   year it sits inside on the right.
+
+   The pairing is the whole idea: a numeral answers "how much",
+   and only the year beside it answers "and is that normal for
+   me". Neither half works alone, so they share one card and a
+   rule between them rather than being two cards a scroll apart.
+   ============================================================ */
+
+.activity-hero {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  gap: var(--space-6) 32px;
+  align-items: stretch;
+}
+
+@media (max-width: 1080px) {
+  .activity-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.activity-hero-left {
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+  padding-right: 32px;
+  border-right: 0.5px solid var(--line);
+}
+
+@media (max-width: 1080px) {
+  .activity-hero-left {
+    padding-right: 0;
+    padding-bottom: var(--space-5);
+    border-right: 0;
+    border-bottom: 0.5px solid var(--line);
+  }
+}
+
+.activity-hero-total {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.activity-hero-figure {
+  margin: 0;
+  font-size: 64px;
+  /* Geist ships 400/500/700 statics and CSS rounds a request above 500
+     upward, so 500 is the top of the display range before the face jumps to
+     bold. */
+  font-weight: 500;
+  line-height: 0.96;
+  letter-spacing: -0.035em;
+  color: var(--text);
+}
+
+.activity-hero-figure-label {
+  margin: 0;
+  font-size: var(--text-sm-plus);
+  line-height: 1.4;
+  color: var(--muted-strong);
+}
+
+.activity-hero-stats {
+  display: grid;
+  gap: var(--space-2_5);
+  margin: 0;
+  padding-top: var(--space-4);
+  border-top: 0.5px solid var(--line);
+}
+
+.activity-hero-stat {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.activity-hero-stat dt {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.activity-hero-stat dd {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 500;
+  color: var(--text);
+}
+
+.activity-hero-right {
+  display: grid;
+  align-content: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.activity-hero-eyebrow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/* The caveat belongs on the label rather than in a footnote: this grid is the
+   only figure on the page the repository filter does not narrow. */
+.activity-hero-eyebrow-note {
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+/* ---------- The heatmap ---------- */
+
+.activity-heatmap {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.activity-heatmap-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  /* The last month label sits at its column's left edge and reads to the
+     right of it, so it hangs past the viewBox by design. */
+  overflow: visible;
+}
+
+.activity-heatmap-months text,
+.activity-heatmap-rows text {
+  fill: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 10px;
+}
+
+/* Four filled steps plus an empty one, mixed from --sage toward the card it
+   sits on, so the ramp inverts with the theme for free: on paper it runs
+   white to deep green, in dark it runs charcoal to mint. */
+.activity-heatmap-cell[data-level="0"],
+.activity-heatmap-swatch[data-level="0"] {
+  fill: var(--line-soft);
+  background: var(--line-soft);
+}
+
+.activity-heatmap-cell[data-level="1"],
+.activity-heatmap-swatch[data-level="1"] {
+  fill: color-mix(in oklab, var(--sage) 28%, var(--panel));
+  background: color-mix(in oklab, var(--sage) 28%, var(--panel));
+}
+
+.activity-heatmap-cell[data-level="2"],
+.activity-heatmap-swatch[data-level="2"] {
+  fill: color-mix(in oklab, var(--sage) 52%, var(--panel));
+  background: color-mix(in oklab, var(--sage) 52%, var(--panel));
+}
+
+.activity-heatmap-cell[data-level="3"],
+.activity-heatmap-swatch[data-level="3"] {
+  fill: color-mix(in oklab, var(--sage) 76%, var(--panel));
+  background: color-mix(in oklab, var(--sage) 76%, var(--panel));
+}
+
+.activity-heatmap-cell[data-level="4"],
+.activity-heatmap-swatch[data-level="4"] {
+  fill: var(--sage);
+  background: var(--sage);
+}
+
+/* Today is ringed rather than recoloured: its level still has to be readable,
+   and a fifth colour would compete with the ramp. */
+.activity-heatmap-cell[data-today="true"] {
+  stroke: var(--text);
+  stroke-width: 1;
+}
+
+.activity-heatmap-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.activity-heatmap-swatch {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+}
+
+.activity-heatmap-legend > :first-child {
+  margin-right: var(--space-1);
+}
+
+/* ---------- Streaks: a caption on the grid, not a third column ---------- */
+
+.activity-hero-streaks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1_5);
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--muted-strong);
+}
+
+.activity-hero-streak {
+  color: var(--text);
+}
+
+.activity-hero-streak strong {
+  font-weight: 500;
+}

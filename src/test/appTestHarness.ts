@@ -13,13 +13,17 @@ import {
 } from "./fixtures/dashboardSnapshot.js";
 import { usageRemainingFixture } from "./fixtures/usageRemaining.js";
 import { usageSummaryFixture, usageSummaryFor } from "./fixtures/usageSummary.js";
+import { demoActivitySummary } from "../renderer/demoActivity.js";
 import { resetLauncherSurfaceForTests } from "../renderer/state/launcherSurface.js";
 import { resetOverlaysForTests } from "../renderer/state/overlays.js";
 import { resetPaneGridForTests } from "../renderer/state/paneGrid.js";
 import { resetSidebarChromeForTests } from "../renderer/state/sidebarChrome.js";
 import { resetToastForTests } from "../renderer/state/toast.js";
 import { resetWorkspaceDragForTests } from "../renderer/state/workspaceDrag.js";
+import { resetLedgerPageStateForTests } from "../renderer/lib/ledgerPageState.js";
+import { resetLedgerPrefetchForTests } from "../renderer/lib/ledgerPrefetch.js";
 import { resetSessionUnreadForTests } from "../renderer/lib/sessionUnread.js";
+import { resetMascotVisibilityForTests } from "../renderer/lib/mascotVisibility.js";
 
 // Resolve the panels App.tsx mounts through `React.lazy` before any test runs.
 //
@@ -104,12 +108,14 @@ export type AppTestMocks = {
   testNotificationStub: AppTestMockFn<ArgmaxApi["system"]["testNotification"]>;
   workspaceStatus: AppTestMockFn<ArgmaxApi["workspaces"]["status"]>;
   skillsList: AppTestMockFn<ArgmaxApi["skills"]["list"]>;
+  connectionsList: AppTestMockFn<ArgmaxApi["connections"]["list"]>;
   openInIde: AppTestMockFn<ArgmaxApi["workspaces"]["openInIde"]>;
   listDetectedIdes: AppTestMockFn<ArgmaxApi["system"]["listDetectedIdes"]>;
   setWorkspaceIcon: AppTestMockFn<ArgmaxApi["workspaces"]["setIcon"]>;
   setPriorityDismissed: AppTestMockFn<ArgmaxApi["workspaces"]["setPriorityDismissed"]>;
   usageSummary: AppTestMockFn<ArgmaxApi["usage"]["summary"]>;
   usageRemaining: AppTestMockFn<ArgmaxApi["usage"]["remaining"]>;
+  activitySummary: AppTestMockFn<ArgmaxApi["activity"]["summary"]>;
 };
 
 export let createCurrentWorkspace: AppTestMocks["createCurrentWorkspace"];
@@ -146,6 +152,7 @@ let multitaskStub: AppTestMocks["multitaskStub"];
 export let testNotificationStub: AppTestMocks["testNotificationStub"];
 export let workspaceStatus: AppTestMocks["workspaceStatus"];
 export let skillsList: AppTestMocks["skillsList"];
+export let connectionsList: AppTestMocks["connectionsList"];
 export let openInIde: AppTestMocks["openInIde"];
 export let listDetectedIdes: AppTestMocks["listDetectedIdes"];
 export let setWorkspaceIcon: AppTestMocks["setWorkspaceIcon"];
@@ -154,6 +161,7 @@ export let setPriorityDismissed: AppTestMocks["setPriorityDismissed"];
  *  to put the Usage page into a specific state. */
 export let usageSummary: AppTestMocks["usageSummary"];
 export let usageRemaining: AppTestMocks["usageRemaining"];
+export let activitySummary: AppTestMocks["activitySummary"];
 export let menuCommandListener: ((command: MenuCommand) => void) | null = null;
 
 export function setupAppTestMocks(): void {
@@ -161,12 +169,15 @@ export function setupAppTestMocks(): void {
   // Shell state lives in modules that outlive an unmount, so a value one test
   // leaves behind would otherwise decide what the next one renders.
   resetOverlaysForTests();
+  resetLedgerPageStateForTests();
+  resetLedgerPrefetchForTests();
   resetLauncherSurfaceForTests();
   resetPaneGridForTests();
   resetToastForTests();
   resetWorkspaceDragForTests();
   resetSidebarChromeForTests();
   resetSessionUnreadForTests();
+  resetMascotVisibilityForTests();
   // Pre-seed the boot-collapse markers so existing App tests render the
   // sidebar with projects and session groups expanded (the pre-fix behavior).
   // Sidebar tests that exercise the boot-collapse seeds clear these markers
@@ -357,12 +368,16 @@ export function setupAppTestMocks(): void {
     size: 0
   });
   skillsList = vi.fn<ArgmaxApi["skills"]["list"]>().mockResolvedValue([]);
+  connectionsList = vi.fn<ArgmaxApi["connections"]["list"]>().mockResolvedValue([]);
   usageSummary = vi
     .fn<ArgmaxApi["usage"]["summary"]>()
     .mockImplementation((input) => Promise.resolve(usageSummaryFor(input)));
   usageRemaining = vi
     .fn<ArgmaxApi["usage"]["remaining"]>()
     .mockResolvedValue(usageRemainingFixture());
+  activitySummary = vi
+    .fn<ArgmaxApi["activity"]["summary"]>()
+    .mockImplementation((input) => Promise.resolve(demoActivitySummary(input)));
   openInIde = vi.fn<ArgmaxApi["workspaces"]["openInIde"]>().mockResolvedValue({ ok: true });
   listDetectedIdes = vi.fn<ArgmaxApi["system"]["listDetectedIdes"]>().mockResolvedValue([
     { id: "vscode", label: "VS Code", appPath: "/Applications/Visual Studio Code.app", hasCli: true },
@@ -405,6 +420,9 @@ export function setupAppTestMocks(): void {
     usage: {
       summary: usageSummary,
       remaining: usageRemaining
+    },
+    activity: {
+      summary: activitySummary
     },
     routines: {
       list: () => Promise.resolve([]),
@@ -602,6 +620,13 @@ export function setupAppTestMocks(): void {
     skills: {
       list: skillsList
     },
+    connections: {
+      list: connectionsList
+    },
+    settings: {
+      previewChatCleanup: () => Promise.reject(new Error("Chat cleanup not stubbed")),
+      deleteOldChats: () => Promise.reject(new Error("Chat cleanup not stubbed"))
+    },
     system: {
       openPath: () => Promise.resolve({ ok: true }),
       listDetectedIdes: listDetectedIdes,
@@ -618,7 +643,12 @@ export function setupAppTestMocks(): void {
     remote: {
       getStatus: () => Promise.reject(new Error("remote status unavailable in tests")),
       setConfig: () => Promise.reject(new Error("remote config unavailable in tests")),
-      testNotification: () => Promise.resolve({ ok: true })
+      testNotification: () => Promise.resolve({ ok: true }),
+      setApnsConfig: () => Promise.reject(new Error("remote config unavailable in tests")),
+      registerPushDevice: () => Promise.resolve([]),
+      unregisterPushDevice: () => Promise.resolve([]),
+      pushTest: () => Promise.resolve([]),
+      pushCapability: () => Promise.resolve({ configured: false })
     },
     menu: {
       onCommand: (listener) => {
@@ -661,7 +691,8 @@ export function setupAppTestMocks(): void {
       resize: () => Promise.resolve({ ok: true }),
       terminate: () => Promise.resolve({ ok: true }),
       onData: () => () => undefined,
-      onExit: () => () => undefined
+      onExit: () => () => undefined,
+      onAgentOpen: () => () => undefined
     },
     sync: {
       getStatus: vi.fn(() =>

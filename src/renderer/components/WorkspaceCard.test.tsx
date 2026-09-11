@@ -272,7 +272,7 @@ describe("WorkspaceCard", () => {
   it("shows the subagent roster once the session spawns agents", () => {
     renderCard({ subagents: subagentCluster() });
 
-    const section = screen.getByRole("region", { name: "Subagents" });
+    const section = screen.getByRole("region", { name: "Agents" });
     // Codenames and statuses surface in the hover roster, one chip per launch.
     const roster = section.querySelector(".workspace-card-subagents");
     expect(roster?.getAttribute("title")).toContain("Io — Completed");
@@ -286,7 +286,7 @@ describe("WorkspaceCard", () => {
     const onOpenAgents = vi.fn();
     renderCard({ subagents: subagentCluster(), onOpenAgents });
 
-    fireEvent.click(screen.getByRole("button", { name: "Open Subagents" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open Agents" }));
 
     expect(onOpenAgents).toHaveBeenCalledTimes(1);
   });
@@ -303,7 +303,7 @@ describe("WorkspaceCard", () => {
     }));
     renderCard({ subagents: { entries, running: 0, hasMultitask: false } });
 
-    const section = screen.getByRole("region", { name: "Subagents" });
+    const section = screen.getByRole("region", { name: "Agents" });
     expect(section.querySelectorAll(".workspace-card-agent")).toHaveLength(6); // 5 chips + "+2"
     expect(section.textContent).toContain("+2");
   });
@@ -312,7 +312,7 @@ describe("WorkspaceCard", () => {
     renderCard({ subagents: subagentCluster({ hasMultitask: true }) });
 
     expect(screen.getByRole("region", { name: "Alongside" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Subagents" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Agents" })).toBeNull();
   });
 
   // The chip used to fall back to the first letter of the task label, so a
@@ -345,6 +345,6 @@ describe("WorkspaceCard", () => {
   it("keeps the subagents section out of a session that never spawned one", () => {
     renderCard({ subagents: null });
 
-    expect(screen.queryByRole("region", { name: "Subagents" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Agents" })).toBeNull();
   });
 });

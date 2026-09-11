@@ -312,6 +312,22 @@ async sessionSuggestFollowUp(input: SessionSuggestFollowUpInput) : Promise<Resul
     else return { status: "error", error: e  as any };
 }
 },
+async settingsPreviewChatCleanup() : Promise<Result<ChatCleanupPreview, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("settings_preview_chat_cleanup") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async settingsDeleteOldChats(input: DeleteOldChatsInput) : Promise<Result<DeleteOldChatsResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("settings_delete_old_chats", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async reviewListChangedFiles(input: ReviewListChangedFilesInput) : Promise<Result<ChangedFileSummary[], ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("review_list_changed_files", { input }) };
@@ -491,6 +507,14 @@ async checksRun(input: ChecksRunInput) : Promise<Result<CheckRun, ArgmaxError>> 
 async skillsList(input: SkillsListInput) : Promise<Result<SkillSummary[], ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("skills_list", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async connectionsList(input: ConnectionsListInput) : Promise<Result<ConnectionSummary[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("connections_list", { input }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -736,6 +760,56 @@ async remoteTestNotification(input: RemoteTestNotificationInput) : Promise<Resul
     else return { status: "error", error: e  as any };
 }
 },
+async remoteSetApnsConfig(input: RemoteSetApnsConfigInput) : Promise<Result<RemoteStatus, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("remote_set_apns_config", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async remoteRegisterPushDevice(input: RemoteRegisterPushDeviceInput) : Promise<Result<RemotePushDevice[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("remote_register_push_device", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async remoteUnregisterPushDevice(input: RemoteUnregisterPushDeviceInput) : Promise<Result<RemotePushDevice[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("remote_unregister_push_device", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Settings → "Send test push". Every paired phone gets one, and each answer
+ * comes back on its own row: a single retired token must not read as a
+ * broken auth key.
+ */
+async remotePushTest(input: RemotePushTestInput) : Promise<Result<RemotePushTestResult[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("remote_push_test", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Whether push can work at all from here, for a client that has to decide
+ * whether to ask iOS for notification permission. Asking and then never
+ * sending anything is worse than not asking.
+ */
+async remotePushCapability(input: RemotePushCapabilityInput) : Promise<Result<RemotePushCapability, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("remote_push_capability", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async syncGetStatus() : Promise<Result<SyncStatus, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("sync_get_status") };
@@ -967,6 +1041,14 @@ async usageRemaining(input: UsageRemainingInput) : Promise<Result<UsageRemaining
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async activitySummary(input: ActivitySummaryInput) : Promise<Result<ActivitySummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("activity_summary", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -989,6 +1071,164 @@ url: string;
  * What the action touched, for a tool row a person can read.
  */
 detail: string | null }
+export type ActivityBusiestDay = { date: string; commits: number }
+/**
+ * Commits in the window by local weekday (Monday first) and local hour.
+ */
+export type ActivityCadence = { byWeekday: number[]; byHour: number[] }
+/**
+ * State of the `gh` half. `available` is false when `gh` is missing, signed
+ * out, or the last refresh failed with nothing cached; the local half of the
+ * page renders either way.
+ */
+export type ActivityGithubState = { available: boolean; login: string | null; error: string | null; lastFetchedAt: string | null }
+/**
+ * One cell per local day. Always the 365 days ending today, whatever the
+ * window is.
+ */
+export type ActivityHeatmapDay = { date: string; commits: number }
+export type ActivityPrState = "open" | "merged" | "closed"
+export type ActivityPullRequest = { number: number; title: string;
+/**
+ * `owner/name`.
+ */
+repository: string;
+/**
+ * The local project whose remote matches, else `None`.
+ */
+projectId: string | null; url: string; state: ActivityPrState; isDraft: boolean; createdAt: string; mergedAt: string | null; closedAt: string | null; additions: number; deletions: number;
+/**
+ * `merged_at - created_at` in seconds; `None` unless merged.
+ */
+cycleSeconds: number | null }
+export type ActivityRepository = { projectId: string; name: string; path: string;
+/**
+ * `owner/name` parsed from the origin remote; `None` when the project has
+ * no GitHub remote.
+ */
+githubRepo: string | null; commits: number; linesAdded: number; linesRemoved: number; prsMerged: number;
+/**
+ * Newest commit in the whole ledger, not just the window, so a repository
+ * with a quiet month still says when it was last touched.
+ */
+lastCommitAt: string | null;
+/**
+ * This repository's share of the window's commits across every
+ * repository, 0..1. It stays a share of the whole even while one project
+ * is in focus — the same rule the Usage tiles follow.
+ */
+share: number }
+export type ActivityResolution = "hour" | "day" | "week"
+export type ActivityReview = { number: number; title: string; repository: string; url: string; state: ActivityReviewState; submittedAt: string }
+export type ActivityReviewState = "approved" | "changes_requested" | "commented"
+export type ActivityScanPhase = "idle" | "scanning" | "complete"
+export type ActivityScanState = { phase: ActivityScanPhase; reposTotal: number; reposDone: number;
+/**
+ * RFC 3339 UTC; `None` before the first sweep finishes.
+ */
+lastCompletedAt: string | null }
+/**
+ * One chart bucket. `bucket_start` is the bucket's first instant as RFC 3339
+ * UTC; the renderer formats it in `ActivitySummary::time_zone`.
+ */
+export type ActivitySeriesPoint = { bucketStart: string;
+/**
+ * Only repositories with commits in the bucket.
+ */
+byRepository: ActivitySeriesRepository[] }
+export type ActivitySeriesRepository = { projectId: string; commits: number; linesAdded: number; linesRemoved: number }
+/**
+ * Streak arithmetic runs over the whole ledger, not the window: a 40-day
+ * streak is a 40-day streak whether or not the 7-day view can see all of it.
+ * `busiest_day` is the exception and is scoped to the window.
+ */
+export type ActivityStreaks = { currentDays: number; currentStart: string | null; longestDays: number; longestStart: string | null; longestEnd: string | null; busiestDay: ActivityBusiestDay | null }
+export type ActivitySummary = { window: ActivityWindow;
+/**
+ * The project the totals, series, streaks, cadence, pull requests and
+ * reviews are narrowed to; `None` is every repository. `repositories` and
+ * `heatmap` are never narrowed.
+ */
+projectId: string | null;
+/**
+ * IANA zone the renderer asked for; day buckets follow it.
+ */
+timeZone: string;
+/**
+ * RFC 3339 UTC instants bounding the window, start inclusive, end
+ * exclusive.
+ */
+rangeStart: string; rangeEnd: string; resolution: ActivityResolution;
+/**
+ * Author emails the commits were matched on: `git config user.email` in
+ * each repository plus the global one.
+ */
+authorEmails: string[]; scan: ActivityScanState; github: ActivityGithubState; totals: ActivityTotals;
+/**
+ * The same-length window immediately before, narrowed the same way.
+ * `None` when the ledger cannot honestly cover it.
+ */
+previous: ActivityTotals | null;
+/**
+ * Every project, ranked by commits in the window, descending. Projects
+ * with no commits are included.
+ */
+repositories: ActivityRepository[];
+/**
+ * One point per bucket, empty buckets included.
+ */
+series: ActivitySeriesPoint[]; heatmap: ActivityHeatmapDay[]; streaks: ActivityStreaks; cadence: ActivityCadence;
+/**
+ * Authored by the user and created or merged inside the window, newest
+ * activity first, capped at [`MAX_PULL_REQUESTS`].
+ */
+pullRequests: ActivityPullRequest[];
+/**
+ * Submitted inside the window, newest first, capped at [`MAX_REVIEWS`].
+ */
+reviews: ActivityReview[];
+/**
+ * Median `cycle_seconds` over the pull requests merged in the window.
+ */
+medianCycleSeconds: number | null }
+export type ActivitySummaryInput = { window: ActivityWindow;
+/**
+ * Narrow the totals, series, streaks, cadence, pull requests and reviews
+ * to one project. `repositories` and `heatmap` always cover every
+ * repository, so the page can still offer the others.
+ */
+projectId?: ProjectId | null;
+/**
+ * IANA zone name, e.g. `Europe/Stockholm`. Every day, week, and hour
+ * bucket is cut on it, and the handler rejects a name it cannot resolve.
+ */
+timeZone: NonEmptyString }
+export type ActivityTotals = { commits: number; linesAdded: number; linesRemoved: number; filesChanged: number;
+/**
+ * Distinct local days with at least one commit.
+ */
+activeDays: number; prsOpened: number; prsMerged: number;
+/**
+ * Closed without merging.
+ */
+prsClosed: number;
+/**
+ * Review submissions on pull requests the user did not author.
+ */
+reviewsGiven: number; reviewApprovals: number; reviewChangesRequested: number;
+/**
+ * Review submissions that neither approved nor requested changes.
+ */
+reviewComments: number }
+export type ActivityWindow = "24h" | "7d" | "30d" |
+/**
+ * The 12 months ending today.
+ */
+"12m" |
+/**
+ * The current calendar year, January 1 local through now.
+ */
+"year"
 export type AgentMode = "auto" | "plan"
 export type AgentReference = { name: NonEmptyString; providerChildSessionId: NonEmptyString; providerParentConversationId: NonEmptyString }
 export type ApprovalId = string
@@ -1140,6 +1380,7 @@ export type ChangedFileSummary = { path: string; status: string; additions: numb
  * review action because it never overwrites the worktree.
  */
 staged: boolean; oldPath?: string | null }
+export type ChatCleanupPreview = { cleanupId: string; cutoffAt: string; chatCount: number }
 export type CheckRun = { id: string; workspaceId: string; command: string; status: string; exitCode: number | null; summary: string | null; startedAt: string; completedAt: string | null }
 export type CheckoutFingerprint = { headSha: string; branch: string; worktreeTree: string; indexTree: string }
 export type Checkpoint = { id: string; workspaceId: string; sessionId: string | null; label: string; branch: string; headSha: string; worktreeTree: string; indexTree: string; untrackedPaths: string[]; turnBoundary: string | null; providerConversationId: string | null; recoveryOf: string | null; createdAt: string }
@@ -1149,6 +1390,12 @@ export type CheckpointsRewindFilesInput = { workspaceId: string; checkpointId: s
 export type ChecksRunInput = { workspaceId: WorkspaceId; command: CommandText }
 export type CommandText = string
 export type ComposerAttachmentInput = { filePath: AttachmentPath; mimeType: AttachmentMimeType; sizeBytes: AttachmentSizeBytes }
+export type ConnectionAuthentication = "authenticated" | "required" | "not-applicable" | "unknown"
+export type ConnectionAvailability = "available" | "disabled"
+export type ConnectionKind = "mcp-server" | "plugin" | "connector"
+export type ConnectionScope = "built-in" | "user" | "project"
+export type ConnectionSummary = { name: string; kind: ConnectionKind; scope: ConnectionScope; availability: ConnectionAvailability; authentication: ConnectionAuthentication; statusDetail: string; authenticationCommand: string | null }
+export type ConnectionsListInput = { provider: ProviderId; workspaceId: WorkspaceId | null }
 export type DashboardListInput = Record<string, never>
 export type DashboardListSnapshot = { projects: ProjectSummary[]; workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[]; pendingMessages: Partial<{ [key in string]: PendingMessage[] }> }
 export type DatabaseStats = { rowCounts: RowCounts; walBytes: number; walAutocheckpoint: number }
@@ -1158,6 +1405,8 @@ export type DatabaseStats = { rowCounts: RowCounts; walBytes: number; walAutoche
  * and the runtime block (`ps` shellout) that `system:diagnostics` collects.
  */
 export type DebugSnapshot = { generatedAt: string; ipcStats: IpcChannelStats[]; logs: LogEntry[] }
+export type DeleteOldChatsInput = { cleanupId: string }
+export type DeleteOldChatsResult = { deletedChatCount: number; skippedRecentCount: number; skippedRunningCount: number }
 export type DetectedIde = { id: IdeId; label: string; appPath: string; hasCli: boolean }
 export type DiagnosticsReport = { appVersion: string; sqliteVersion: string; databasePath: string; archiveRecoveryPath: string; platform: string; arch: string; generatedAt: string; startupPhases: StartupPhaseRecord[]; databaseStats: DatabaseStats; ipcStats: IpcChannelStats[]; recentLogs: LogEntry[]; sqlitePragmas: SqlitePragmas; runtime: RuntimeDiagnostics }
 /**
@@ -1407,7 +1656,54 @@ export type QueuedMessageDelivery = "interrupt" | "steer"
 export type RawProviderOutput = { id: string; sessionId: string; stream: string; content: string; createdAt: string; rowCursor: number | null }
 export type ReasoningEffort = "low" | "medium" | "high" | "xhigh" | "max" | "ultra"
 export type RelativePath = string
+/**
+ * Direct-to-Apple push, as Settings shows it. Separate from the on-disk
+ * [`crate::remote::ApnsConfig`] because it also answers "is this usable",
+ * which the config cannot.
+ */
+export type RemoteApnsStatus = {
+/**
+ * True once the key path, key id, and team id are all filled in. Devices
+ * can pair before that; they just receive nothing until it flips.
+ */
+configured: boolean; keyPath: string | null; keyId: string | null; teamId: string | null; sandbox: boolean; devices: RemotePushDevice[] }
 export type RemoteGetStatusInput = Record<string, never>
+/**
+ * What the phone needs before it asks iOS for notification permission: does
+ * this host hold an APNs key at all. The full [`RemoteApnsStatus`] would
+ * answer it too, but that arrives with the pairing token attached.
+ */
+export type RemotePushCapability = { configured: boolean }
+export type RemotePushCapabilityInput = Record<string, never>
+export type RemotePushDevice = { token: string; name: string; registeredAt: string }
+export type RemotePushTestInput = Record<string, never>
+/**
+ * One row of the "Send test push" result: the phone, and whether Apple took
+ * it. Reported per device so one dead phone does not read as a broken key.
+ */
+export type RemotePushTestResult = { token: string; name: string; ok: boolean; error: string | null }
+export type RemoteRegisterPushDeviceInput = {
+/**
+ * APNs device token as the native app reports it: hex, no spaces. The
+ * app re-registers on every launch, so an existing token is an update
+ * rather than a second row.
+ */
+token: string;
+/**
+ * Shown in Settings so the user can tell two phones apart.
+ */
+name: string }
+export type RemoteSetApnsConfigInput = {
+/**
+ * Absolute path to the `.p8` auth key. Empty clears APNs push, which is
+ * how the Settings panel turns it off.
+ */
+keyPath: string; keyId: string; teamId: string;
+/**
+ * Send to Apple's development host, which is where a debug build of the
+ * phone app's tokens live.
+ */
+sandbox: boolean }
 export type RemoteSetConfigInput = { enabled: boolean; port: number;
 /**
  * Raw topic field from the Settings form: empty clears push, a full
@@ -1429,8 +1725,9 @@ tailnetUrl: string | null; tailscaleRunning: boolean;
  * The URL the QR code encodes: tailnet when known, loopback otherwise,
  * with the token in the fragment (never sent over the wire).
  */
-pairingUrl: string; qrSvg: string; serveCommand: string }
+pairingUrl: string; qrSvg: string; serveCommand: string; apns: RemoteApnsStatus }
 export type RemoteTestNotificationInput = Record<string, never>
+export type RemoteUnregisterPushDeviceInput = { token: string }
 export type RepoPath = string
 export type ReviewCommitStagedInput = { workspaceId: string; message: string }
 /**
@@ -1555,7 +1852,9 @@ contextTokens: number;
 imported: boolean;
 /**
  * The model's context-window size, when the provider reports it (Codex).
- * The renderer falls back to a per-model table when this is null.
+ * Cleared on a provider or model-id change. The renderer falls back to a
+ * per-model table when this is null, and ignores a leftover value on any
+ * provider other than Codex.
  */
 contextWindow?: number | null;
 /**

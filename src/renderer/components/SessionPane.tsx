@@ -40,6 +40,7 @@ import { lastTurnEditedPaths } from "../lib/lastTurnFiles.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import { resolveOpenablePath } from "../lib/openableFile.js";
 import { readStoredReviewPanelSide } from "../lib/reviewPanelSide.js";
+import { buildSessionToolCalls } from "../lib/sessionConversationModel.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import { readBoundedNumberPreference, type ThinkingDisplay, type ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { ToolCall } from "../lib/toolCalls.js";
@@ -63,9 +64,11 @@ const AgentsView = lazy(() =>
     default: (await import("./AgentsView.js")).AgentsView
   }))
 );
-const ReviewPanel = lazy(async () => ({
-  default: (await import("./ReviewPanel.js")).ReviewPanel
-}));
+const ReviewPanel = lazy(() =>
+  importChunk(async () => ({
+    default: (await import("./ReviewPanel.js")).ReviewPanel
+  }))
+);
 import { SessionConversation } from "./SessionConversation.js";
 // TerminalTabsPanel pulls in @xterm/xterm + addons + xterm CSS — heavy and
 // only loaded when the user opens the review panel's Terminal view, which
@@ -97,6 +100,7 @@ export function SessionPane({
   onLoadAgentEvents,
   onLoadSessionEvents,
   onNewSession,
+  onOpenChanges,
   onOpenFile,
   onOpenSideChat,
   onOpenSession,
@@ -146,6 +150,10 @@ export function SessionPane({
   /** Close button is shown when provided. Used by the multi-pane grid; absent in single-pane mode. */
   onClose?: () => void;
   onOpenFile?: (path: string, opts?: { line?: number | null; preferIde?: boolean }) => void;
+  /** Opens the host's own changes surface with no file picked. Only a host
+   *  that owns one supplies it (the phone's review screen); the desktop opens
+   *  its dock through this pane's own review state instead. */
+  onOpenChanges?: () => void;
   onFastModeEnabledChange?: (enabled: boolean) => void;
   /** Called on mount and on session.id change to backfill timeline events for this pane's session. */
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
@@ -232,6 +240,38 @@ export function SessionPane({
     events,
     rawOutputs
   );
+  const cursorBackgroundAgentIds = useMemo(() => {
+    if (session?.provider !== "cursor") return [];
+    return buildSessionToolCalls(
+      visibleEvents,
+      session.state === "running",
+      session.state === "failed" || session.state === "cancelled"
+    )
+      .filter((tool) => tool.backgroundLaunch && tool.status === "running")
+      .map((tool) => tool.toolUseId);
+  }, [session?.provider, session?.state, visibleEvents]);
+  useEffect(() => {
+    if (!sessionId || !onLoadAgentEvents || cursorBackgroundAgentIds.length === 0) return;
+    let inFlight = false;
+    const poll = async (): Promise<void> => {
+      if (document.hidden || inFlight) return;
+      inFlight = true;
+      try {
+        await Promise.all(
+          cursorBackgroundAgentIds.map((parentToolUseId) =>
+            onLoadAgentEvents(sessionId, parentToolUseId)
+          )
+        );
+      } catch {
+        // The next tick retries transient trace-read or IPC failures.
+      } finally {
+        inFlight = false;
+      }
+    };
+    void poll();
+    const interval = window.setInterval(() => void poll(), 1500);
+    return () => window.clearInterval(interval);
+  }, [cursorBackgroundAgentIds, onLoadAgentEvents, sessionId]);
   // Which files the agent wrote in its newest turn, for the review panel's
   // "Last turn" scope. Null without a session: there is no turn to scope to.
   const lastTurnPaths = useMemo(() => lastTurnEditedPaths(visibleEvents), [visibleEvents]);
@@ -625,6 +665,7 @@ export function SessionPane({
     >
       <div className="session-main-column">
         <SessionConversation
+          isFocused={isFocused}
           checks={checks}
           defaultToolCallsDisplay={defaultToolCallsDisplay}
           defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
@@ -655,6 +696,8 @@ export function SessionPane({
           onForkSession={onForkSession}
           onRunCheck={onRunCheck}
           onOpenFile={handleOpenFile}
+          onOpenDiff={onOpenFile ? handleOpenFile : undefined}
+          onOpenChanges={onOpenChanges}
           onOpenAgent={handleOpenAgent}
           onOpenMultitask={handleOpenMultitask}
           multitasks={multitasks}
@@ -698,6 +741,14 @@ export function SessionPane({
               onLoadSessionEvents={onLoadSessionEvents}
               onOpenAgent={handleOpenAgent}
               onOpenFile={handleOpenFile}
+              // A multitask's changed-file rows and its Review button open the
+              // containing dock's Changes view on the desktop. The phone has no
+              // dock, so they take the same way in as a file reference tapped in
+              // the transcript: the host's review screen. Both land on this
+              // pane's workspace, which is the checkout a multitask shares by
+              // default — the desktop dock scopes them the same way.
+              onOpenDiff={handleOpenFile}
+              onOpenReview={onOpenChanges}
               multitasks={multitasks}
               pendingMessages={pendingMessages}
               onCancelQueuedMessage={onCancelQueuedMessage}

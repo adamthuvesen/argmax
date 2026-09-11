@@ -1,0 +1,6 @@
+/* Activity — aggregator only. Order matters: the page shell and the shared
+   series tokens first, then the surfaces that sit inside its cards. */
+@import url("./activity-page.css");
+@import url("./activity-hero.css");
+@import url("./activity-chart.css");
+@import url("./activity-ledger.css");

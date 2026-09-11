@@ -56,6 +56,7 @@ import {
   lastAgentResponseEvent,
   lastSignificantSessionEvent,
   latestClearEvent,
+  openRunMarkerAt,
   outputsAfterClear,
   subAgentToolUseIds
 } from "../lib/sessionConversationModel.js";
@@ -95,6 +96,7 @@ import { SessionComposer, type ComposerStatus, type NewSessionSeed } from "./Ses
 import { importChunk } from "../lib/importChunk.js";
 const GoalStatus = lazy(() => importChunk(async () => ({ default: (await import("./GoalStatus.js")).GoalStatus })));
 import { SessionActionsMenu } from "./SessionActionsMenu.js";
+import { WorkingNest } from "./WorkingNest.js";
 import { WorkspaceCard } from "./WorkspaceCard.js";
 import { ThinkingLabel } from "./ThinkingLabel.js";
 import { MultitaskRow } from "./MultitaskRow.js";
@@ -159,6 +161,7 @@ export function SessionConversation({
   events,
   eventsBackfilled = true,
   fastModeEnabled = false,
+  isFocused = true,
   isLogOpen,
   isTerminalOpen,
   onClose,
@@ -192,6 +195,8 @@ export function SessionConversation({
   onToggleTerminal,
   onToggleWorkspaceCard,
   onOpenFile,
+  onOpenDiff,
+  onOpenChanges,
   onOpenAgent,
   onOpenMultitask,
   multitasks,
@@ -214,6 +219,7 @@ export function SessionConversation({
       was open, and restoring it must not read as new activity. */
   eventsBackfilled?: boolean;
   fastModeEnabled?: boolean;
+  isFocused?: boolean;
   isLogOpen: boolean;
   isTerminalOpen?: boolean;
   onFastModeEnabledChange?: (enabled: boolean) => void;
@@ -294,6 +300,11 @@ export function SessionConversation({
       provided, the chip routes to the in-app right panel by default, with
       ⌘/Ctrl-click flagged via `preferIde` for the external IDE shortcut. */
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
+  /** A host that owns its own review surface (the phone) routes a tapped
+      changed file here instead of into this pane's dock, which it has none of. */
+  onOpenDiff?: (path: string) => void;
+  /** Same, for the card's Review button. */
+  onOpenChanges?: () => void;
   onOpenAgent?: (tool: ToolCall) => void;
   /** Opens a multitask's chat in this pane's dock, beside the subagents. */
   onOpenMultitask?: (sessionId: string) => void;
@@ -356,9 +367,9 @@ export function SessionConversation({
   const addAnnotation = useCallback(
     (selection: ChatSelection): void => {
       setPendingAnnotations((prev) => [...prev, createAnnotation(selection.text)]);
-      inputRef.current?.focus();
+      if (isFocused) inputRef.current?.focus();
     },
-    []
+    [isFocused]
   );
   const removeAnnotation = useCallback((id: string): void => {
     setPendingAnnotations((prev) => prev.filter((a) => a.id !== id));
@@ -381,10 +392,10 @@ export function SessionConversation({
     if (!registerAnnotationSink) return undefined;
     registerAnnotationSink((input) => {
       setPendingAnnotations((prev) => [...prev, createDiffNoteAnnotation(input)]);
-      inputRef.current?.focus();
+      if (isFocused) inputRef.current?.focus();
     });
     return () => registerAnnotationSink(null);
-  }, [registerAnnotationSink]);
+  }, [isFocused, registerAnnotationSink]);
   // `events` is sorted descending upstream (mergeDashboardDelta), so a reverse
   // gives ascending order for free without a per-tick string comparator pass.
   const reconciledOptimisticUserMessages = useMemo(
@@ -457,6 +468,7 @@ export function SessionConversation({
     [events, rawOutputs]
   );
   const conversationEvents = useMemo(() => buildConversationEvents(liveEvents), [liveEvents]);
+  const openRunAt = useMemo(() => openRunMarkerAt(liveEvents), [liveEvents]);
   // Child session state and title by id: a multitask row believes these over
   // its own timeline, which knows only what was written at dispatch — not a
   // turn that ended while the app was shut, and not the short title minted a
@@ -658,6 +670,7 @@ export function SessionConversation({
         (item) =>
           item.kind !== "turn" ||
           item.assistantEvents.length > 0 ||
+          item.steerEvents.length > 0 ||
           item.toolItems.length > 0
       ),
     [renderItems]
@@ -707,6 +720,10 @@ export function SessionConversation({
   // wide enough to hold it without overlapping the transcript, regardless of
   // whether a right-hand panel is docked.
   const showWorkspaceCard = workspaceCardEnabled;
+  // Only a mounted card earns the right gutter. The attribute says the card is
+  // in the tree; the container queries in chat-workspace-card.css decide the
+  // widths where it is on screen and the transcript slides left for it.
+  const workspaceCardMounted = showWorkspaceCard && workspace?.kind === "git";
   const conversationScrollRef = useRef<HTMLDivElement | null>(null);
   // The width gate lives in CSS (chat-workspace-card.css keeps the card
   // `display: none` until the pane can hold it beside the transcript), so
@@ -931,10 +948,9 @@ export function SessionConversation({
         (tool) =>
           tool.status === "running" &&
           tool.parentToolUseId === null &&
-          // A backgrounded agent's launch row spins forever — no completion for
-          // it ever arrives — and nothing about it advances while the child
-          // works. Reading it as visible progress silenced this cue for the
-          // rest of the session, including on later turns that launched nothing.
+          // A backgrounded agent's launch row advances only when the child
+          // reports its own terminal state. Reading the receipt itself as
+          // visible progress silences this cue throughout the child's work.
           !tool.backgroundLaunch &&
           !isExitPlanModeToolName(tool.name) &&
           !isAskUserQuestionToolName(tool.name)
@@ -1232,13 +1248,17 @@ export function SessionConversation({
   // the reader can answer in their own words, and the question stays in the
   // transcript as the card it was before.
   const [dismissedQuestionId, setDismissedQuestionId] = useState<string | null>(null);
-  const [composerFocused, setComposerFocused] = useState(false);
-  const questionDocked = liveQuestion !== null && liveQuestion.tool.id !== dismissedQuestionId && !composerFocused;
-  // Preserve the input on the arrival render, then keep this question inline
-  // after blur too. Docking on blur would remove a Send button mid-click.
+  const [composerDraftPresent, setComposerDraftPresent] = useState(false);
+  const questionDocked =
+    liveQuestion !== null && liveQuestion.tool.id !== dismissedQuestionId && !composerDraftPresent;
+  // A draft the reader typed outranks the dock, which would cover it. Composer
+  // *focus* must not: sending refocuses the input and it keeps that focus for
+  // the whole turn, so gating on focus left almost every question inline until
+  // the chat was reopened. Sticky by id, so clearing the draft cannot pull a
+  // Send button out from under a click.
   useLayoutEffect(() => {
-    if (composerFocused && liveQuestion) setDismissedQuestionId(liveQuestion.tool.id);
-  }, [composerFocused, liveQuestion]);
+    if (composerDraftPresent && liveQuestion) setDismissedQuestionId(liveQuestion.tool.id);
+  }, [composerDraftPresent, liveQuestion]);
   const answerLiveQuestion = useCallback(
     (answerMarkdown: string): Promise<boolean> => {
       if (!session || !liveQuestion) return Promise.resolve(false);
@@ -1262,7 +1282,11 @@ export function SessionConversation({
   ) : null;
 
   return (
-    <section className="conversation-surface" aria-label="Conversation">
+    <section
+      className="conversation-surface"
+      aria-label="Conversation"
+      data-workspace-card={workspaceCardMounted ? "true" : undefined}
+    >
       <div className="section-heading" data-window-drag={floating ? undefined : true}>
         <div className="session-title" data-titled={sessionTitle ? "true" : undefined}>
           {workspace && workspace.kind !== "git" ? (
@@ -1332,9 +1356,25 @@ export function SessionConversation({
       {/* Wrapper for the scroll edges: `.scroll-fade` sits on this box,
           outside the scroller, so the sticky scroll-to-latest button
           inside the list never fades with the content passing under it. */}
-      <div className="conversation-scroll scroll-fade" ref={conversationScrollRef} data-restoring={restoringTranscript ? "true" : undefined}>
+      {/* The backlog lands in pages, each one growing the transcript and
+          re-pinning it to the bottom, so a chat opened cold would show its
+          first prompt at the top and then jump. Keep the list laid out but
+          invisible until the last page is in; the scroll controller pins the
+          bottom in the meantime and the reveal changes nothing it measured. */}
+      <div
+        className="conversation-scroll scroll-fade"
+        ref={conversationScrollRef}
+        data-restoring={restoringTranscript ? "true" : undefined}
+        data-loading={eventsBackfilled ? undefined : "true"}
+      >
+        {eventsBackfilled ? null : (
+          <div className="conversation-loading loading-line" role="status">
+            <WorkingNest active size={12} />
+            Loading chat…
+          </div>
+        )}
         {prMilestone ? <TurnExhale key={prMilestone} weight={1} onDone={finishPrMilestone} /> : null}
-        {showWorkspaceCard && workspace && workspace.kind === "git" ? (
+        {workspaceCardMounted && workspace ? (
           <WorkspaceCard
             changeSummary={changeSummary}
             changesState={review.filesState}
@@ -1395,6 +1435,7 @@ export function SessionConversation({
                     item={item}
                     priorItem={index > 0 ? transcriptRenderItems[index - 1] ?? null : null}
                     isLatestTurn={index === transcriptRenderItems.length - 1}
+                    openRunAt={openRunAt}
                     session={session}
                     selectedModel={selectedModel}
                     workspace={workspace}
@@ -1422,8 +1463,8 @@ export function SessionConversation({
                     restoringTranscript={restoringTranscript}
                     questionIsDocked={questionDocked && index === transcriptRenderItems.length - 1}
                     todo={todoByTurn.get(item.id) ?? null}
-                    onOpenDiff={review.openFile}
-                    onOpenReview={review.openChangesPanel}
+                    onOpenDiff={onOpenDiff ?? review.openFile}
+                    onOpenReview={onOpenChanges ?? review.openChangesPanel}
                   />
                 );
               })
@@ -1515,6 +1556,7 @@ export function SessionConversation({
         </div>
       ) : (
       <SessionComposer
+        isFocused={isFocused}
         agentMode={agentMode}
         canSend={canSend}
         changeSummary={changeSummary}
@@ -1523,7 +1565,7 @@ export function SessionConversation({
         inputRef={inputRef}
         isQueueing={isQueueing}
         onFastModeEnabledChange={onFastModeEnabledChange}
-        onFocusChange={setComposerFocused}
+        onDraftPresentChange={setComposerDraftPresent}
         onCancelQueuedMessage={onCancelQueuedMessage}
         onSendQueuedMessageNow={onSendQueuedMessageNow}
         onMultitask={onMultitask}

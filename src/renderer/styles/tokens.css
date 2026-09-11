@@ -29,18 +29,16 @@
   --code-font-features: "liga" 0, "clig" 0, "calt" 0;
 
   --bg: #fdfdfd;
-  --sidebar: #fafbfb;
+  --sidebar: #f9f9f7;
   --panel: #ffffff;
-  /* Review panel (right sidebar): matches --panel in light; dark sits between
-     the main view and the left sidebar so the surface order reads
-     bg < review < sidebar instead of the review panel being the lightest. */
-  --review-panel: #ffffff;
+  /* Both sidebars share warm paper in light and lifted charcoal in dark. */
+  --review-panel: #f9f9f7;
   /* File-tree column inside the review panel. Paper sinks, charcoal lifts:
      in light this sits a step under the panel, in dark a step above it — the
      same trick --tool-block-surface plays, and the reason the column can't
      just take --panel-sunken (in dark that is the darkest surface in the app
      and the column would read as a hole rather than a sidebar). */
-  --review-sidebar: #f6f7f8;
+  --review-sidebar: #f6f6f3;
   --panel-soft: #fafafa;
   /* The two composers (.composer in the launcher, .session-input in a session).
      They are cards, but the one card the user types into, so dark lifts them a
@@ -399,6 +397,14 @@
   --type-step: calc(var(--chrome-type-step) + 1px);
 }
 
+/* Light composer controls need stronger ink at their compact label size.
+   Recompute chip ink here so it follows the local muted colors. */
+:root:not([data-theme="dark"]) :is(.composer, .session-input) {
+  --muted: color-mix(in oklab, #716c63, var(--ink-toward) var(--ink-pull));
+  --muted-strong: color-mix(in oklab, #49463f, var(--ink-toward) var(--ink-pull));
+  --chip-ink: color-mix(in oklab, var(--muted) 65%, var(--muted-strong));
+}
+
 :root,
 [data-font-size],
 [data-type-scale] {
@@ -436,20 +442,14 @@
   --fox-line: #75381f;
   color-scheme: dark;
 
-  /* Two-tone charcoal, neutral rather than yellow-leaning. The main view is
-     the well at #141414; every chrome surface that reads as "the lighter
-     gray" — left sidebar, composer, cards, review panel — shares one fill at
-     #1a1a1a, so the app has a background and a surface, not a staircase. The
-     bg-to-surface gap is deliberately tight: the chrome seam is carried by the
-     sidebar's 1px --line border, so the fills only need to hint at depth. Any
-     change to --bg has to move the first-paint mirrors with it — Tauri's
-     window backgroundColor, DARK_BG in ipc/system.rs, and the xterm theme — or
-     the app flashes a different black on cold start. */
+  /* Neutral charcoal: sidebars sit quietly between the main view and cards.
+     Changes to --bg must also update the first-paint mirrors in Tauri's
+     window backgroundColor, DARK_BG in ipc/system.rs, and the xterm theme. */
 
   --bg: #141414;
-  --sidebar: #1a1a1a;
+  --sidebar: #171717;
   --panel: #1a1a1a;
-  --review-panel: #1a1a1a;
+  --review-panel: #171717;
   --review-sidebar: #202020;
   --panel-soft: #212121;
   --composer-surface: #202020;

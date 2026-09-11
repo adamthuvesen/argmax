@@ -38,9 +38,10 @@ import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { BrowserPage } from "./components/BrowserPage.js";
 import { ScheduleRail } from "./components/scheduled/ScheduleRail.js";
-import { UsageRail } from "./components/usage/UsageRail.js";
+import { UsageRail, type LedgerPage } from "./components/usage/UsageRail.js";
 import { SettingsRail } from "./components/settings/SettingsRail.js";
-import { MAX_COLS, findSessionCell, terminalWorkspaceId } from "./lib/gridState.js";
+import { MAX_COLS, findSessionCell, focusedCell, terminalWorkspaceId } from "./lib/gridState.js";
+import { findSharedCheckoutWorkspace } from "./lib/projectCheckoutWorkspace.js";
 import { isEarlySessionStop } from "./lib/earlyStop.js";
 import { getWorkspaceTerminalState, requestTerminalVisible } from "./lib/terminalTabs.js";
 import { requestCloseActiveBrowserTab } from "./lib/browserPanel.js";
@@ -56,9 +57,11 @@ import {
   CommandPalette,
   ScheduledTasksPanel,
   SettingsPanel,
+  ActivityPanel,
   UsagePanel,
   useLazyOverlayPrefetch
 } from "./hooks/useLazyOverlayPrefetch.js";
+import { useLedgerPrefetch } from "./hooks/useLedgerPrefetch.js";
 import { useGlobalKeybindings } from "./hooks/useGlobalKeybindings.js";
 import { DEFAULT_WORKSPACE_MIN_WIDTH_PX, useSidebarResize } from "./hooks/useSidebarResize.js";
 import {
@@ -69,6 +72,7 @@ import {
   showKeyboardCheatSheet,
   showSchedulePage,
   showSettings,
+  showActivityPage,
   showUsagePage,
   useOverlayEscape,
   useOverlays
@@ -186,6 +190,14 @@ export function App(): JSX.Element {
   const isSettingsOpen = standalonePage === "settings";
   const isScheduledTasksOpen = standalonePage === "schedule";
   const isUsageOpen = standalonePage === "usage";
+  const isActivityOpen = standalonePage === "activity";
+  // Usage and Activity share one rail, so the rail renders for either and the
+  // nav is the same callback in both directions.
+  const isLedgerOpen = isUsageOpen || isActivityOpen;
+  const openLedgerPage = (page: LedgerPage): void => {
+    if (page === "usage") showUsagePage();
+    else showActivityPage();
+  };
   const standalonePageOpen = standalonePage !== null;
   const toast = useToast();
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.argmax);
@@ -413,6 +425,8 @@ export function App(): JSX.Element {
     followWorkspaceProject: !isFullLauncherOpen
   });
 
+  useLedgerPrefetch(loadState === "ready");
+
   const {
     grid,
     sessionsById,
@@ -591,37 +605,6 @@ export function App(): JSX.Element {
   const openFilePalette = useCallback((): void => showCommandPalette("files"), []);
   const openMessagePalette = useCallback((): void => showCommandPalette("messages"), []);
   const openContentPalette = useCallback((): void => showCommandPalette("contents"), []);
-  const toggleIntegratedTerminal = useCallback((): void => {
-    const workspaceId = terminalWorkspaceId(grid, [
-      selectedWorkspace?.id,
-      selectedSession?.workspaceId,
-      snapshot.sessions[0]?.workspaceId
-    ]);
-    if (!workspaceId) {
-      showErrorToast("Open a chat before toggling the terminal.");
-      return;
-    }
-
-    hideCommandPalette();
-    hideKeyboardCheatSheet();
-    hideStandalonePage();
-    hideFullLauncher();
-    setIsBrowserPageOpen(false);
-    openWorkspaceChat(workspaceId, { ctrlOrMeta: false, alt: false });
-    // Address the request to the workspace, not to a component: the pane that
-    // owns the terminal's review panel may only be mounting now (⌘J from
-    // Settings opens the chat first). It consumes the request once, so a pane
-    // that remounts later never replays it. The toggle resolves here, against
-    // the workspace's own remembered state, so a pane mounting into a restored
-    // terminal is told "hide" rather than "flip whatever you came up as".
-    requestTerminalVisible(workspaceId, !getWorkspaceTerminalState(workspaceId).showing);
-  }, [
-    grid,
-    openWorkspaceChat,
-    selectedSession?.workspaceId,
-    selectedWorkspace?.id,
-    snapshot.sessions
-  ]);
   const openWorkspaceFromKeybinding = useCallback(
     (workspaceId: string): void => {
       // Cmd+1..9 always replaces the focused pane (no split modifier).
@@ -645,16 +628,6 @@ export function App(): JSX.Element {
     },
     [openWorkspaceChat]
   );
-  useGlobalKeybindings({
-    onMenuCommand: handleMenuCommand,
-    onCloseFocusedPane: closeFocusedPane,
-    onOpenFilePalette: openFilePalette,
-    onOpenSearch: openMessagePalette,
-    onOpenContentSearch: openContentPalette,
-    onToggleTerminal: toggleIntegratedTerminal,
-    onSelectWorkspace: openWorkspaceFromKeybinding,
-    onCloseSettings: hideStandalonePage
-  });
 
   usePersistedSetting(PROVIDER_PERMISSION_MODES_KEY, JSON.stringify(permissionModes));
   usePersistedSetting(NEW_SESSION_MODE_KEY, newSessionMode);
@@ -1229,6 +1202,86 @@ export function App(): JSX.Element {
     [handleLaunchModelChange, launcherProject, openLauncherPaneInGrid, selectedProject]
   );
 
+  const toggleIntegratedTerminal = useCallback((): void => {
+    hideCommandPalette();
+    hideKeyboardCheatSheet();
+    hideStandalonePage();
+    setIsBrowserPageOpen(false);
+
+    const toggleForProject = async (project: ProjectSummary): Promise<void> => {
+      if (!window.argmax) return;
+      let checkout: WorkspaceSummary | null = findSharedCheckoutWorkspace(
+        project,
+        snapshot.workspaces
+      );
+      if (!checkout) {
+        const created = await window.argmax.workspaces.createCurrent({
+          projectId: project.id,
+          taskLabel: project.name
+        });
+        checkout = created;
+        setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [created] }));
+      }
+      requestTerminalVisible(
+        checkout.id,
+        !getWorkspaceTerminalState(checkout.id).showing
+      );
+    };
+
+    const focused = focusedCell(grid);
+    if (focused?.kind === "launcher") {
+      const project = snapshot.projects.find((entry) => entry.id === focused.projectId);
+      if (!project) {
+        showErrorToast("Pick a project before toggling the terminal.");
+        return;
+      }
+      void toggleForProject(project);
+      return;
+    }
+
+    if (isFullLauncherOpen && launcherProject && !launcherSideChatMode) {
+      void toggleForProject(launcherProject);
+      return;
+    }
+
+    const workspaceId = terminalWorkspaceId(grid, [
+      selectedWorkspace?.id,
+      selectedSession?.workspaceId,
+      snapshot.sessions[0]?.workspaceId
+    ]);
+    if (!workspaceId) {
+      showErrorToast("Open a chat before toggling the terminal.");
+      return;
+    }
+
+    hideFullLauncher();
+    openWorkspaceChat(workspaceId, { ctrlOrMeta: false, alt: false });
+    requestTerminalVisible(workspaceId, !getWorkspaceTerminalState(workspaceId).showing);
+  }, [
+    grid,
+    isFullLauncherOpen,
+    launcherProject,
+    launcherSideChatMode,
+    openWorkspaceChat,
+    selectedSession?.workspaceId,
+    selectedWorkspace?.id,
+    setSnapshot,
+    snapshot.projects,
+    snapshot.sessions,
+    snapshot.workspaces
+  ]);
+
+  useGlobalKeybindings({
+    onMenuCommand: handleMenuCommand,
+    onCloseFocusedPane: closeFocusedPane,
+    onOpenFilePalette: openFilePalette,
+    onOpenSearch: openMessagePalette,
+    onOpenContentSearch: openContentPalette,
+    onToggleTerminal: toggleIntegratedTerminal,
+    onSelectWorkspace: openWorkspaceFromKeybinding,
+    onCloseSettings: hideStandalonePage
+  });
+
   const launchTask = useCallback(
     async (
       prompt: string,
@@ -1630,6 +1683,7 @@ export function App(): JSX.Element {
         onOpenScheduledTasks: showSchedulePage,
         onOpenBrowser: typeof window !== "undefined" && window.argmax?.browser ? onOpenBrowserRow : undefined,
         onOpenUsage: showUsagePage,
+        onOpenActivity: showActivityPage,
         onOpenSettingsSection: (group, sectionId) => showSettings(group, sectionId),
         onOpenSearch: openMessagePalette,
         preferences: {
@@ -1773,13 +1827,21 @@ export function App(): JSX.Element {
     return running;
   }, [snapshot.sessions, workspacesById]);
 
+  const handleCheckoutWorkspaceCreated = useCallback(
+    (workspace: WorkspaceSummary): void => {
+      setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [workspace] }));
+    },
+    [setSnapshot]
+  );
+
   const renderLaunchSurface = useCallback(
     // `project` is allowed to differ from `selectedProject` because the
     // grid renders launcher cells with explicit project arguments. A grid
     // launcher owns its project: switching repos there retargets that cell
     // instead of moving the app's selection off the sessions being watched.
-    (project: ProjectSummary | null, options: { embedded?: boolean } = {}): JSX.Element => (
+    (project: ProjectSummary | null, options: { embedded?: boolean; isFocused?: boolean } = {}): JSX.Element => (
       <LaunchSurface
+        isFocused={options.isFocused ?? true}
         claimsBrowserRequests={!options.embedded}
         fastModeEnabled={fastModeEnabled}
         hasRunningSession={projectIdsWithRunningSession.has((project ?? launcherProject)?.id ?? "")}
@@ -1808,12 +1870,15 @@ export function App(): JSX.Element {
         rightPanelToggleSignal={rightPanelToggleSignal}
         registerPaletteFileContext={registerPaletteFileContext}
         sideChatMode={launcherSideChatMode}
+        workspaces={snapshot.workspaces}
+        onCheckoutWorkspaceCreated={handleCheckoutWorkspaceCreated}
       />
     ),
     [
       addProject,
       fastModeEnabled,
       goalEnabled,
+      handleCheckoutWorkspaceCreated,
       handleProjectUpdated,
       handleLaunchModelChange,
       launcherResetSignal,
@@ -1828,12 +1893,13 @@ export function App(): JSX.Element {
       realProjects,
       registerPaletteFileContext,
       rightPanelToggleSignal,
-      setFastModeEnabled
+      setFastModeEnabled,
+      snapshot.workspaces
     ]
   );
 
   const renderEmbeddedLaunchSurface = useCallback(
-    (project: ProjectSummary | null): JSX.Element => renderLaunchSurface(project, { embedded: true }),
+    (project: ProjectSummary | null, isFocused: boolean): JSX.Element => renderLaunchSurface(project, { embedded: true, isFocused }),
     [renderLaunchSurface]
   );
 
@@ -1886,6 +1952,7 @@ export function App(): JSX.Element {
       data-settings-open={isSettingsOpen ? "true" : undefined}
       data-schedule-open={isScheduledTasksOpen ? "true" : undefined}
       data-usage-open={isUsageOpen ? "true" : undefined}
+      data-activity-open={isActivityOpen ? "true" : undefined}
       data-browser-page-open={isBrowserPageOpen && !standalonePageOpen ? "true" : undefined}
       data-sidebar-collapsed={sidebarCollapsed && !standalonePageOpen ? "true" : undefined}
       data-sidebar-peek={sidebarCollapsed && sidebarPeek ? "true" : undefined}
@@ -1974,8 +2041,12 @@ export function App(): JSX.Element {
         />
       ) : isScheduledTasksOpen ? (
         <ScheduleRail onBack={() => hideStandalonePage()} />
-      ) : isUsageOpen ? (
-        <UsageRail onBack={() => hideStandalonePage()} />
+      ) : isLedgerOpen ? (
+        <UsageRail
+          active={isActivityOpen ? "activity" : "usage"}
+          onBack={() => hideStandalonePage()}
+          onNavigate={openLedgerPage}
+        />
       ) : (
         <Sidebar
           loadState={loadState}
@@ -2103,10 +2174,19 @@ export function App(): JSX.Element {
             <Suspense fallback={<SkeletonPane label="Loading scheduled tasks" />}>
               <ScheduledTasksPanel projects={realProjects} onOpenSession={openSessionById} />
             </Suspense>
-          ) : isUsageOpen ? (
-            <Suspense fallback={<SkeletonPane label="Loading usage" />}>
-              <UsagePanel />
-            </Suspense>
+          ) : isLedgerOpen ? (
+            <>
+              <div className={isUsageOpen ? undefined : "ledger-page-parked"} aria-hidden={!isUsageOpen}>
+                <Suspense fallback={isUsageOpen ? <SkeletonPane label="Loading usage" /> : null}>
+                  <UsagePanel visible={isUsageOpen} />
+                </Suspense>
+              </div>
+              <div className={isActivityOpen ? undefined : "ledger-page-parked"} aria-hidden={!isActivityOpen}>
+                <Suspense fallback={isActivityOpen ? <SkeletonPane label="Loading activity" /> : null}>
+                  <ActivityPanel visible={isActivityOpen} />
+                </Suspense>
+              </div>
+            </>
           ) : isBrowserPageOpen ? (
             <BrowserPage onClose={() => setIsBrowserPageOpen(false)} />
           ) : isFullLauncherOpen ? (

@@ -14,13 +14,20 @@ const DISMISS_DISTANCE_PX = 72;
 const CLOSE_MS = 180;
 
 /**
- * A subagent or multitask peek, raised over the transcript.
+ * A subagent or multitask peek, raised over the transcript as a bottom sheet.
  *
- * Deliberately not a full screen: the delegated work is something you glance at
- * and act on in the chat that spawned it, so the parent stays visible above and
- * its composer stays live below. The backdrop stops at the composer's top edge,
- * so a reply is one tap away without dismissing anything — on a phone that is
- * the difference between reading a result and answering it.
+ * It rises from the bottom edge and covers the parent's composer and its
+ * multitask lane. An earlier pass stopped it above them — measuring the
+ * floor's furniture and holding that many pixels clear — so a reply to the
+ * parent was one tap away while the peek was up. On a phone that read as two
+ * composers stacked, and the sheet was the only thing on the screen that did
+ * not come all the way up. Reading delegated work and replying to the chat
+ * that spawned it are two acts, and the second one waits for the sheet to
+ * close: the parent's composer comes back the moment it does.
+ *
+ * Still not a full screen. The transcript stays visible above, which is what
+ * says the peek belongs to the chat behind it rather than being a place you
+ * navigated to.
  */
 export function AgentOverlay({
   label,
@@ -32,7 +39,6 @@ export function AgentOverlay({
   children: ReactNode;
 }): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const [composerInset, setComposerInset] = useState(0);
   const [dragY, setDragY] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -51,57 +57,6 @@ export function AgentOverlay({
   }, [closing]);
 
   useEffect(() => () => window.clearTimeout(closeTimerRef.current), []);
-
-  // What the overlay clears is the gap from the column's floor up to the
-  // composer's top edge, not the composer's own height: the chat screen holds
-  // the home-indicator clearance under the composer, so reserving the height
-  // alone lands the panel's edge that far inside the composer — invisible on a
-  // desktop browser, a sliced composer on a phone. Queued follow-ups belong
-  // above that edge too, so the whole stack is the landmark, and both it and
-  // the column are watched: a follow-up being typed grows one, the keyboard
-  // opening shrinks the other.
-  useLayoutEffect(() => {
-    const host = hostRef.current;
-    const column = host?.closest(".session-main-column");
-    if (!(host instanceof HTMLElement) || !(column instanceof HTMLElement)) return;
-
-    const parentComposer = (): HTMLElement | null => {
-      const match = [...column.querySelectorAll(".session-composer-stack")].find(
-        (candidate) => !host.contains(candidate)
-      );
-      return match instanceof HTMLElement ? match : null;
-    };
-
-    const measure = (): void => {
-      const composer = parentComposer();
-      if (!composer) {
-        setComposerInset(0);
-        return;
-      }
-      setComposerInset(
-        Math.max(0, column.getBoundingClientRect().bottom - composer.getBoundingClientRect().top)
-      );
-    };
-
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(column);
-    const surface = column.querySelector(".conversation-surface");
-    if (surface) observer.observe(surface);
-    const composer = parentComposer();
-    if (composer) {
-      observer.observe(composer);
-      if (composer.parentElement) observer.observe(composer.parentElement);
-    }
-    // The question dock swaps the composer node without necessarily resizing
-    // the column, so childList on the surface is what rebinds the landmark.
-    const mutation = new MutationObserver(measure);
-    if (surface) mutation.observe(surface, { childList: true });
-    return () => {
-      observer.disconnect();
-      mutation.disconnect();
-    };
-  }, []);
 
   // iOS does not move focus when a row is tapped, so a raised keyboard from
   // the parent composer would still be up and squeeze this peek to a sliver.
@@ -147,11 +102,7 @@ export function AgentOverlay({
   };
 
   return (
-    <div
-      className="mobile-agent-overlay"
-      ref={hostRef}
-      style={{ bottom: `${composerInset}px` }}
-    >
+    <div className="mobile-agent-overlay" ref={hostRef}>
       <div className="mobile-agent-overlay-scrim" role="presentation" onClick={requestClose} />
       <div
         className="mobile-agent-overlay-panel"

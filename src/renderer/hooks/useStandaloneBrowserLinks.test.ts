@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createBrowserTab, getActiveBrowserTabId, getBrowserRequest, getBrowserTabs, openInBrowserPanel, resetBrowserSurfaceForTests, resetBrowserTabsForTests } from "../lib/browserPanel.js";
+import { BROWSER_PAGE_OWNER_ID, createBrowserTab, getActiveBrowserTabId, getBrowserRequest, getBrowserTabs, openInBrowserPanel, resetBrowserSurfaceForTests, resetBrowserTabsForTests } from "../lib/browserPanel.js";
 import { LINK_TARGET_KEY } from "../lib/linkTarget.js";
 import { useStandaloneBrowserLinks } from "./useStandaloneBrowserLinks.js";
 
@@ -14,17 +14,16 @@ afterEach(() => {
 
 describe("useStandaloneBrowserLinks", () => {
   it("activates an explicitly requested new tab even when the default target is system", () => {
-    const existingTab = createBrowserTab("https://example.com/existing");
+    const existingTab = createBrowserTab(BROWSER_PAGE_OWNER_ID, "https://example.com/existing");
     const onOpenInAppBrowser = vi.fn();
     renderHook(() => useStandaloneBrowserLinks({ active: true, onOpenInAppBrowser }));
 
     act(() => openInBrowserPanel("https://example.com/new", { newTab: true }));
 
     expect(onOpenInAppBrowser).toHaveBeenCalledWith("https://example.com/new");
-    expect(getActiveBrowserTabId()).toBe(getBrowserRequest()?.tabId);
-    expect(getActiveBrowserTabId()).not.toBe(existingTab.id);
-    expect(getBrowserTabs()).toHaveLength(2);
-    expect(getBrowserTabs()[0]).toEqual(existingTab);
+    expect(getBrowserRequest()).toMatchObject({ url: "https://example.com/new", newTab: true });
+    expect(getActiveBrowserTabId(BROWSER_PAGE_OWNER_ID)).toBe(existingTab.id);
+    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID)).toEqual([existingTab]);
   });
 
   it("opens the in-app browser page when a standalone page is active", () => {

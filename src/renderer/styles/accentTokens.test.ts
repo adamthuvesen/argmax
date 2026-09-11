@@ -203,12 +203,14 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     expect(darkLow).toContain("--background-bg-target: #2c2c2c;");
     expect(lightHigh).toContain("--background-bg-target: #ffffff;");
     expect(lightHigh).toContain("--background-terminal-target: #ffffff;");
-    expect(darkHigh).toContain("--background-bg-target: #000000;");
-    expect(darkHigh).toContain("--background-terminal-target: #000000;");
-    expect(darkHigh).toContain("--background-panel-target: #060606;");
-    expect(darkHigh).toContain("--background-composer-target: #0c0c0c;");
-    expect(darkHigh).toContain("--background-panel-soft-target: #0d0d0d;");
-    expect(darkHigh).toContain("--background-sunken-target: #000000;");
+    // Dark mode stops short of black so the rungs above the default stay
+    // even and level 10 keeps a surface distinct from its borders.
+    expect(darkHigh).toContain("--background-bg-target: #0a0a0a;");
+    expect(darkHigh).toContain("--background-terminal-target: #0a0a0a;");
+    expect(darkHigh).toContain("--background-panel-target: #101010;");
+    expect(darkHigh).toContain("--background-composer-target: #161616;");
+    expect(darkHigh).toContain("--background-panel-soft-target: #171717;");
+    expect(darkHigh).toContain("--background-sunken-target: #050505;");
   });
 
   it("keeps review scope menus below their trigger", () => {
@@ -285,20 +287,31 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     // One card column on each side: the card itself, its inset from the pane
     // edge, and the clearance that keeps it off the transcript.
     const gutter = pixels(cardBody, "--workspace-card-width") + pixels(cardBody, "right") + 14;
+    // The column cannot read a custom property off the card, so it restates
+    // the same number. Drift there would move the card onto the transcript.
+    expect(pixels(cssRuleBody(card, ".session-main-column"), "--workspace-card-gutter")).toBe(gutter);
 
     const measure = (width: number, suffix: string): number => {
       const body = cssRuleBody(conversation, `.app-shell[data-chat-width="${width}"]`);
       return pixels(body, `--chat-content-width${suffix}`);
     };
-    const suffixes: Record<string, string> = {
-      "": "",
-      " :is(.session-grid.review-open, .session-grid.log-open)": "-docked",
-      " .session-grid.review-open.log-open": "-tight"
+    // Each dock state's measure and its minimum left gutter — the transcript
+    // slides left until it hits that minimum, and that is where the card goes.
+    const suffixes: Record<string, { measure: string; grid: string }> = {
+      "": { measure: "", grid: ".session-grid" },
+      " :is(.session-grid.review-open, .session-grid.log-open)": {
+        measure: "-docked",
+        grid: ".session-grid.review-open"
+      },
+      " .session-grid.review-open.log-open": {
+        measure: "-tight",
+        grid: ".session-grid.review-open.log-open"
+      }
     };
 
     const rules = [
       ...card.matchAll(
-        /@container \(min-width: (?<threshold>\d+)px\) \{\s*(?<selector>[^{]*?)\s*\.workspace-card \{\s*display: flex;/g
+        /@container \(min-width: (?<threshold>\d+)px\) \{\s*(?<selector>[^{]*?)\s*\.workspace-card \{\s*display: flex;(?<block>[\s\S]*?)\n\}\n/g
       )
     ];
     expect(rules).toHaveLength(15);
@@ -311,10 +324,18 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
       const shell = /^\.app-shell\[data-chat-width="(?<width>\d)"\]/.exec(selector);
       expect(shell?.groups?.width, selector).toBeDefined();
       const width = Number(shell?.groups?.width);
-      const suffix = suffixes[selector.slice(shell?.[0].length)];
-      expect(suffix, selector).toBeDefined();
+      const state = suffixes[selector.slice(shell?.[0].length)];
+      expect(state, selector).toBeDefined();
+      const minimumGutter = pixels(cssRuleBody(conversation, state.grid), "--session-inline-padding-min");
 
-      expect(Number(rule.groups?.threshold), selector).toBe(measure(width, suffix) + gutter * 2);
+      expect(Number(rule.groups?.threshold), selector).toBe(
+        measure(width, state.measure) + gutter + minimumGutter
+      );
+      // The card and the shift switch together: a block that revealed the card
+      // without handing it the gutter would land it on the transcript.
+      expect(rule.groups?.block, selector).toContain(
+        "--session-inline-padding: var(--session-inline-padding-beside-card);"
+      );
     }
   });
 });

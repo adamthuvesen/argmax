@@ -35,6 +35,19 @@ function tool(overrides: Partial<ToolCall> = {}): ToolCall {
 }
 
 describe("ToolCallRow", () => {
+  it.each(["js", "js_reset"])("renders Codex computer use (%s) with a monitor and readable label", (action) => {
+    render(<ToolCallRow tool={tool({
+      name: `mcp__cua_repl__${action}`,
+      inputPreview: "",
+      inputFull: { code: "await cua.getState()" }
+    })} />);
+
+    expect(screen.getByRole("img", { name: "Computer use" })).toBeInTheDocument();
+    const row = screen.getByRole("button", { name: "Computer use" });
+    fireEvent.click(row);
+    expect(screen.getByText(/await cua\.getState\(\)/)).toBeInTheDocument();
+  });
+
   it.each(["running", "error"] as const)("keeps %s tool failures collapsed until opened", (status) => {
     const failed = tool({ status: "error", error: "Permission denied" });
     const { rerender } = render(<ToolCallRow tool={tool({ status })} />);

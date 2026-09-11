@@ -1,33 +1,46 @@
 import { Check, Copy } from "lucide-react";
-import type { JSX } from "react";
+import { useState, type JSX } from "react";
+import { PROVIDER_DISPLAY_NAMES } from "../../../shared/providerModels.js";
+import type { ProviderId } from "../../../shared/types.js";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard.js";
 import { PROVIDER_SETUP, PROVIDER_SETUP_ORDER } from "../../lib/providerSetup.js";
+import { ConnectionCatalog } from "../ConnectionCatalog.js";
 import { RemoteSettings } from "./RemoteSettings.js";
 import { SettingGroup, SettingNote, SettingRow } from "./settingsPrimitives.js";
 
 export function IntegrationsSettings(): JSX.Element {
+  const [provider, setProvider] = useState<ProviderId>("claude");
+  const setup = PROVIDER_SETUP[provider];
   return (
     <>
-      <SettingGroup id="settings-mcp" label="MCP servers">
+      <SettingGroup id="settings-mcp" label="Connections">
         <SettingNote>
-          Each agent loads its own MCP configuration when Argmax launches it. Add and authenticate
-          servers with the provider's own CLI or settings.
+          MCP servers, plugins, and provider connectors available to each agent. Authentication is
+          checked by the provider when it exposes that status.
         </SettingNote>
-        {PROVIDER_SETUP_ORDER.map((providerId) => {
-          const setup = PROVIDER_SETUP[providerId];
-          return (
-            <SettingRow
+        <div className="connection-provider-tabs" role="tablist" aria-label="Connection provider">
+          {PROVIDER_SETUP_ORDER.map((providerId) => (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={provider === providerId}
               key={providerId}
-              label={setup.displayName}
-              description={<code className="settings-row-code">{setup.mcpCommand ?? "Settings → Tools & MCP"}</code>}
-              control={
-                setup.mcpCommand ? (
-                  <CopyCommandButton command={setup.mcpCommand} name={setup.displayName} />
-                ) : null
-              }
-            />
-          );
-        })}
+              onClick={() => setProvider(providerId)}
+            >
+              {PROVIDER_DISPLAY_NAMES[providerId]}
+            </button>
+          ))}
+        </div>
+        <ConnectionCatalog key={provider} provider={provider} />
+        <SettingRow
+          label={`Add to ${setup.displayName}`}
+          description={<code className="settings-row-code">{setup.mcpCommand ?? "Settings → Tools & MCP"}</code>}
+          control={
+            setup.mcpCommand ? (
+              <CopyCommandButton command={setup.mcpCommand} name={setup.displayName} />
+            ) : null
+          }
+        />
       </SettingGroup>
 
       <RemoteSettings />

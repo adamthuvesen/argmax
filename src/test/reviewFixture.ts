@@ -34,6 +34,7 @@ export function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
     openMultitask: () => {},
     openBrowser: () => {},
     browserOwner: false,
+    browserScopeId: "launcher",
     browserRequest: null,
     terminalWorkspaceId: null,
     openTerminal: () => {},

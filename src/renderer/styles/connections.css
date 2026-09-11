@@ -1,0 +1,345 @@
+.connection-provider-tabs {
+  display: flex;
+  gap: var(--space-1);
+  overflow-x: auto;
+  padding-block: var(--space-2);
+}
+
+.connection-provider-tabs button {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 0 var(--space-2_5);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.connection-provider-tabs button:hover {
+  color: var(--text);
+  background: var(--panel-soft);
+}
+
+.connection-provider-tabs button[aria-selected="true"] {
+  color: var(--text);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 24%, transparent);
+}
+
+.connection-catalog {
+  min-width: 0;
+}
+
+.connection-catalog-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 34px;
+  color: var(--muted-strong);
+  font-size: var(--text-sm);
+}
+
+.connection-catalog-summary strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.connection-catalog-counts {
+  color: var(--muted);
+}
+
+.connection-refresh {
+  display: grid;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.connection-refresh:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--panel-soft);
+}
+
+.connection-refresh:disabled {
+  opacity: 0.45;
+}
+
+.connection-refresh:disabled svg {
+  animation: connection-spin 900ms linear infinite;
+}
+
+@keyframes connection-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.connection-list {
+  display: flex;
+  flex-direction: column;
+  max-height: min(440px, 52dvh);
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  border-block: 1px solid var(--line-soft);
+}
+
+.connection-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 52px;
+  padding-block: var(--space-1_5);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.connection-row:last-child {
+  border-bottom: 0;
+}
+
+.connection-kind-icon {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: var(--radius-md);
+  color: var(--muted-strong);
+  background: var(--panel-sunken);
+}
+
+.connection-kind-icon[data-kind="connector"] {
+  color: var(--accent-deep);
+  background: var(--accent-soft);
+}
+
+.connection-row-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.connection-row-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-1_5);
+}
+
+.connection-row-title strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.connection-kind,
+.connection-scope {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: var(--text-2xs);
+}
+
+.connection-kind {
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--panel-sunken);
+}
+
+.connection-detail {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.connection-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.connection-status[data-status="connected"],
+.connection-status[data-status="available"] {
+  color: var(--sage);
+}
+
+.connection-status[data-status="needs-authentication"] {
+  color: var(--amber);
+}
+
+.connection-status[data-status="disabled"] {
+  color: var(--rose);
+}
+
+.connection-auth-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 26px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted-strong);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.connection-auth-action:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
+.connection-catalog-footnote,
+.connection-catalog-empty,
+.connection-catalog-error {
+  margin: var(--space-2) 0 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+
+.connection-catalog-error {
+  color: var(--rose);
+}
+
+.connection-dialog-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 125;
+  background: rgba(20, 24, 32, 0.36);
+  backdrop-filter: blur(3px);
+}
+
+/* Stands in the composer's footprint: ConnectionDialog measures the composer
+   form against the overlay and writes --anchor-left / -width / -bottom, so the
+   dialog shares its edges and baseline and grows upward from there. The cap
+   keeps it a panel rather than a page; past it the list scrolls. */
+.connection-dialog {
+  position: absolute;
+  left: var(--anchor-left, 16px);
+  bottom: var(--anchor-bottom, 16px);
+  display: flex;
+  width: var(--anchor-width, calc(100% - 32px));
+  max-height: min(560px, calc(100% - var(--anchor-bottom, 16px) - var(--space-3)));
+  min-height: 220px;
+  flex-direction: column;
+  padding: 20px 22px 18px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2xl);
+  background: var(--panel);
+  box-shadow: var(--shadow-popover);
+}
+
+.connection-dialog-header {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2_5);
+}
+
+.connection-dialog-mark {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: var(--radius-lg);
+  color: var(--accent-deep);
+  background: var(--accent-soft);
+}
+
+.connection-dialog-header h2,
+.connection-dialog-header p {
+  margin: 0;
+}
+
+.connection-dialog-header h2 {
+  color: var(--text);
+  font-size: var(--text-md-plus);
+}
+
+.connection-dialog-header p {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.connection-dialog-close {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.connection-dialog-close:hover {
+  color: var(--text);
+  background: var(--panel-soft);
+}
+
+.connection-dialog .connection-catalog {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.connection-dialog .connection-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+}
+
+@media (max-width: 560px) {
+  .connection-catalog-counts,
+  .connection-scope {
+    display: none;
+  }
+
+  .connection-row {
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+  }
+
+  .connection-status {
+    grid-column: 3;
+  }
+
+  .connection-auth-action {
+    grid-column: 2 / -1;
+    justify-self: start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connection-refresh:disabled svg {
+    animation: none;
+  }
+}

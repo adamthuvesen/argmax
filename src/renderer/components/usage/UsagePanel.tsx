@@ -1,6 +1,17 @@
 import { CalendarDays } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type JSX } from "react";
 import type { ProviderId, UsageRemaining, UsageSummary, UsageWindow } from "../../../shared/types.js";
+import {
+  getCachedUsageRemaining,
+  getCachedUsageRemainingError,
+  getCachedUsageSummary,
+  getUsageUiState,
+  markUsageRemainingHoldOver,
+  patchUsageUiState,
+  setCachedUsageRemaining,
+  setCachedUsageSummary,
+  usageRemainingHasSettled
+} from "../../lib/ledgerPageState.js";
 import { SegmentedControl, SettingsListPicker } from "../settings/settingsPrimitives.js";
 import { UsageAreaChart } from "./UsageAreaChart.js";
 import { UsageBreakdown } from "./UsageBreakdown.js";
@@ -100,17 +111,24 @@ async function fetchRemaining(): Promise<UsageRemaining> {
   return demoUsageRemaining();
 }
 
-export function UsagePanel(): JSX.Element {
-  const [usageWindow, setUsageWindow] = useState<UsageWindow>("30d");
-  const [metric, setMetric] = useState<UsageMetric>("cost");
-  /** The provider the page is narrowed to; null is every provider. */
-  const [provider, setProvider] = useState<ProviderId | null>(null);
-  const [summary, setSummary] = useState<UsageSummary | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [remaining, setRemaining] = useState<UsageRemaining | null>(null);
-  const [remainingError, setRemainingError] = useState<string | null>(null);
-  const [remainingHoldOver, setRemainingHoldOver] = useState(false);
+export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.Element {
+  const cachedUi = getUsageUiState();
   const timeZoneRef = useRef(hostTimeZone());
+  const [usageWindow, setUsageWindow] = useState<UsageWindow>(cachedUi.usageWindow);
+  const [metric, setMetric] = useState<UsageMetric>(cachedUi.metric);
+  /** The provider the page is narrowed to; null is every provider. */
+  const [provider, setProvider] = useState<ProviderId | null>(cachedUi.provider);
+  const [summary, setSummary] = useState<UsageSummary | null>(() =>
+    getCachedUsageSummary(cachedUi.usageWindow, cachedUi.provider, timeZoneRef.current)
+  );
+  /** Boot prefetch or a revisit — paint the ledger without waiting on remaining. */
+  const openedFromCache = useRef(summary !== null);
+  const [error, setError] = useState<string | null>(null);
+  const [remaining, setRemaining] = useState<UsageRemaining | null>(() => getCachedUsageRemaining());
+  const [remainingError, setRemainingError] = useState<string | null>(() =>
+    getCachedUsageRemainingError()
+  );
+  const [remainingHoldOver, setRemainingHoldOver] = useState(() => usageRemainingHasSettled());
   // Only the newest request may write state: a slow 30-day scan must not
   // land on top of the 24h window the user switched to while it ran.
   const requestRef = useRef(0);
@@ -123,6 +141,7 @@ export function UsagePanel(): JSX.Element {
       try {
         const next = await fetchSummary(target, scope, timeZoneRef.current);
         if (requestRef.current !== request) return;
+        setCachedUsageSummary(target, scope, timeZoneRef.current, next);
         setSummary(next);
         setError(null);
       } catch (cause) {
@@ -139,32 +158,46 @@ export function UsagePanel(): JSX.Element {
     try {
       const next = await fetchRemaining();
       if (remainingRequestRef.current !== request) return;
+      setCachedUsageRemaining(next, null);
       setRemaining(next);
       setRemainingError(null);
     } catch (cause) {
       if (remainingRequestRef.current !== request) return;
-      setRemainingError(cause instanceof Error ? cause.message : "Could not read remaining usage.");
+      const message =
+        cause instanceof Error ? cause.message : "Could not read remaining usage.";
+      setCachedUsageRemaining(null, message);
+      setRemainingError(message);
     }
   }, []);
 
-  // A new window clears the page to a skeleton: its numbers mean something
-  // else. A new provider keeps the page up and swaps the figures when they
-  // land — a warm sweep is sub-second, and a skeleton flash on every row
-  // press would make the filter feel like navigation.
   useEffect(() => {
-    setSummary(null);
+    patchUsageUiState({ usageWindow, metric, provider });
+  }, [metric, provider, usageWindow]);
+
+  // A new window clears to a skeleton only when nothing is cached for it.
+  // Provider changes keep the page up and swap the figures when they land —
+  // a warm sweep is sub-second, and a skeleton flash on every row press would
+  // make the filter feel like navigation.
+  useEffect(() => {
+    setSummary(getCachedUsageSummary(usageWindow, provider, timeZoneRef.current));
   }, [usageWindow]);
 
   useEffect(() => {
+    if (!visible) return;
     void load(usageWindow, provider);
-  }, [load, provider, usageWindow]);
+  }, [load, provider, usageWindow, visible]);
 
   useEffect(() => {
+    if (!visible) return;
     void loadRemaining();
-  }, [loadRemaining]);
+  }, [loadRemaining, visible]);
 
   useEffect(() => {
-    const timer = globalThis.setTimeout(() => setRemainingHoldOver(true), REMAINING_HOLD_MS);
+    if (usageRemainingHasSettled()) return;
+    const timer = globalThis.setTimeout(() => {
+      setRemainingHoldOver(true);
+      markUsageRemainingHoldOver();
+    }, REMAINING_HOLD_MS);
     return () => globalThis.clearTimeout(timer);
   }, []);
 
@@ -175,20 +208,21 @@ export function UsagePanel(): JSX.Element {
   // settled, so a later window switch skeletons the ledger alone and the
   // remaining card, which does not follow the window, keeps its numbers up.
   const remainingSettled = remaining !== null || remainingError !== null || remainingHoldOver;
+  const canPaint = openedFromCache.current || remainingSettled;
 
   const scanning = summary?.scan.phase === "scanning";
   useEffect(() => {
+    if (!visible) return;
     const period = scanning ? SCANNING_REFRESH_MS : REFRESH_MS;
     const timer = globalThis.setInterval(() => void load(usageWindow, provider), period);
     return () => globalThis.clearInterval(timer);
-  }, [load, provider, scanning, usageWindow]);
+  }, [load, provider, scanning, usageWindow, visible]);
 
   // The range and the scan stamp qualify the numbers below them, so they wait
   // for the same reveal.
-  const rangeLabel =
-    summary && remainingSettled
-      ? formatRangeLabel(summary.rangeStart, summary.rangeEnd, summary.resolution, summary.timeZone)
-      : "";
+  const rangeLabel = summary
+    ? formatRangeLabel(summary.rangeStart, summary.rangeEnd, summary.resolution, summary.timeZone)
+    : "";
   const chartTitle = summary?.resolution === "hour" ? "Hourly" : "Daily";
   const chartHeading = `${chartTitle} ${metric === "cost" ? "cost" : "tokens"}`;
   const scanStamp = summary ? formatScanStamp(summary.scan.lastCompletedAt, summary.timeZone) : null;
@@ -240,7 +274,7 @@ export function UsagePanel(): JSX.Element {
           </div>
         </header>
 
-        {remainingSettled ? (
+        {canPaint ? (
           <>
             {error ? (
               <div className="usage-notice" data-tone="error" role="alert">
@@ -262,12 +296,14 @@ export function UsagePanel(): JSX.Element {
             ) : null}
             {!summary && !error ? <UsageSkeleton /> : null}
 
-            <UsageRemainingCard
-              remaining={remaining}
-              error={remainingError}
-              timeZone={timeZoneRef.current}
-              onRefresh={() => void loadRemaining()}
-            />
+            {remainingSettled || openedFromCache.current ? (
+              <UsageRemainingCard
+                remaining={remaining}
+                error={remainingError}
+                timeZone={timeZoneRef.current}
+                onRefresh={() => void loadRemaining()}
+              />
+            ) : null}
           </>
         ) : (
           <UsageSkeleton />

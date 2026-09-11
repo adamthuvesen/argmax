@@ -8,16 +8,18 @@ import { hideFullLauncher } from "./launcherSurface.js";
 // What is stacked over the shell: a full-screen page, the command palette, or
 // the keyboard cheat sheet.
 //
-// Settings, Scheduled tasks, and Usage occupy the same slot in the workspace
-// column, so one field holds whichever is showing and every close path clears
-// it — a navigation site cannot leave one stranded over the grid. The palette
-// and the cheat sheet float above that slot and open independently.
+// Settings, Scheduled tasks, Usage, and Activity occupy the same slot in the
+// workspace column, so one field holds whichever is showing and every close
+// path clears it — a navigation site cannot leave one stranded over the grid.
+// The palette and the cheat sheet float above that slot and open
+// independently. Usage and Activity additionally share one rail, which is how
+// a reader crosses between them without going back out through the sidebar.
 //
 // Sidebar rows, the Argmax menu, the command palette, and the app menu all
 // open the same pages. They call the mutators here rather than being handed a
 // callback per page.
 
-export type StandalonePage = "settings" | "schedule" | "usage";
+export type StandalonePage = "settings" | "schedule" | "usage" | "activity";
 
 export interface OverlaysSnapshot {
   /** Which full-screen page owns the workspace column, if any. */
@@ -79,6 +81,11 @@ export function showSchedulePage(): void {
 export function showUsagePage(): void {
   hideFullLauncher();
   publish({ ...state, standalonePage: "usage", paletteOpen: false });
+}
+
+export function showActivityPage(): void {
+  hideFullLauncher();
+  publish({ ...state, standalonePage: "activity", paletteOpen: false });
 }
 
 /** Returns the workspace column to the grid, whichever page held it. */

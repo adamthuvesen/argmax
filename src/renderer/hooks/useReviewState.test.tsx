@@ -939,6 +939,18 @@ describe("useReviewState — IPC fan-out resistance", () => {
     );
   });
 
+  it("exposes terminal mode for a project-backed panel when a checkout workspace is provided", () => {
+    const { result } = renderHook(() =>
+      useReviewState(projectSource(makeProject()), null, { terminalWorkspaceId: "workspace-shared" })
+    );
+
+    expect(result.current.terminalWorkspaceId).toBe("workspace-shared");
+    act(() => {
+      result.current.openTerminal();
+    });
+    expect(result.current.layout.modes).toContain("terminal");
+  });
+
   it("edits and saves project files from the launcher review state", async () => {
     const { result } = renderHook(() => useReviewState(projectSource(makeProject())));
 

@@ -33,8 +33,9 @@ export function summarizeFileChanges(changes: FileChange[]): ChangeCounts {
 }
 
 /** Which single-file edit family a tool name belongs to, or `null` for a tool
- *  that does not write files. Cursor uses camelCase like `writeToolCall`, so
- *  recognition is by substring and catches all three providers. */
+ *  that does not write files. Provider names range from Cursor's camelCase
+ *  `writeToolCall` to Grok's `search_replace`, so recognition is by the
+ *  established write verbs rather than an exhaustive name list. */
 function classifySingleFileTool(lower: string): {
   isMultiEdit: boolean;
   isWrite: boolean;
@@ -45,7 +46,11 @@ function classifySingleFileTool(lower: string): {
   const isWrite =
     !isMultiEdit && (lower.includes("write") || lower.includes("create_file") || lower.includes("createfile"));
   const isEdit =
-    !isMultiEdit && (lower.includes("edit") || lower.includes("patch") || lower.includes("update_file"));
+    !isMultiEdit &&
+    (lower.includes("edit") ||
+      lower.includes("patch") ||
+      lower.includes("replace") ||
+      lower.includes("update_file"));
   const isDelete =
     lower.includes("delete") || lower.includes("remove_file") || lower.includes("removefile");
   if (!isWrite && !isEdit && !isMultiEdit && !isDelete) return null;
@@ -126,8 +131,32 @@ export function interpretFileChange(
   const path = pickString(input, SINGLE_FILE_PATH_KEYS);
   if (!path) return null;
 
+  const reportedOperation = pickString(input, ["operation", "kind", "type"])?.toLowerCase();
+  if (reportedOperation === "delete" || reportedOperation === "remove") {
+    return [{ kind: "delete", path }];
+  }
   if (isDelete && !isWrite && !isEdit) {
     return [{ kind: "delete", path }];
+  }
+
+  // A provider that names one path and hands over the diff itself. Cursor
+  // reports every write this way (its ACP stream sends whole-file before and
+  // after text, reduced to a diff in cursor_acp.rs), and it is the shape
+  // measured diffs write back onto a Codex row.
+  const provided = pickString(input, ["unified_diff", "diff", "patch"]);
+  if (provided) {
+    const hunks = parseUnifiedDiff(provided);
+    const { adds, dels } = tallyHunks(hunks);
+    if (hunks.length > 0) {
+      return isCreationDiff(hunks, dels)
+        ? [{ kind: "create", path, hunks, addCount: adds }]
+        : [{ kind: "edit", path, hunks, addCount: adds, delCount: dels }];
+    }
+  }
+
+  if (reportedOperation === "create" || reportedOperation === "add") {
+    const content = typeof input.content === "string" ? input.content : "";
+    return [makeCreate(path, content)];
   }
 
   if (isMultiEdit) {
@@ -188,6 +217,11 @@ export function interpretFileChange(
         hunks,
         addCount: built.adds,
         delCount: built.dels,
+        // These values are replacement snippets, not whole-file snapshots.
+        // Their synthetic hunk starts at 1 only because the provider does not
+        // report the real line. Showing that number would make it a false
+        // clickable claim.
+        noLineNumbers: true,
         ...(replaceAll ? { note: "Applies to all matches" } : {})
       }
     ];
@@ -225,7 +259,7 @@ function interpretCodexFileChange(input: Record<string, unknown>): FileChange[] 
     const entry = raw as Record<string, unknown>;
     const path = pickString(entry, ["path", "file_path", "filepath"]);
     if (!path) continue;
-    const kind = pickString(entry, ["kind", "type", "operation"])?.toLowerCase() ?? null;
+    const kind = codexChangeKind(entry);
 
     if (kind === "delete" || kind === "remove") {
       result.push({ kind: "delete", path });
@@ -247,7 +281,13 @@ function interpretCodexFileChange(input: Record<string, unknown>): FileChange[] 
       // create either way: the file is still new to the tree.
       if (content === null && diffString) {
         const hunks = parseUnifiedDiff(diffString);
-        result.push({ kind: "create", path, hunks, addCount: tallyHunks(hunks).adds });
+        // Current Codex sends a new file's body in `diff`, without unified
+        // headers. Older and measured rows send a real unified diff.
+        if (hunks.length === 0) {
+          result.push(makeCreate(path, diffString));
+        } else {
+          result.push({ kind: "create", path, hunks, addCount: tallyHunks(hunks).adds });
+        }
         continue;
       }
       result.push(makeCreate(path, content ?? ""));
@@ -286,9 +326,19 @@ function interpretCodexFileChange(input: Record<string, unknown>): FileChange[] 
   return result.length > 0 ? result : null;
 }
 
+/** Codex app-server originally sent `kind: "update"` and now sends
+ *  `kind: { type: "update", move_path: null }`. Accept both generations so
+ *  creates and deletes do not silently degrade to generic edits. */
+function codexChangeKind(entry: Record<string, unknown>): string | null {
+  const direct = pickString(entry, ["kind", "type", "operation"]);
+  if (direct) return direct.toLowerCase();
+  const kind = objectAt(entry, "kind");
+  return kind ? pickString(kind, ["type", "kind", "operation"])?.toLowerCase() ?? null : null;
+}
+
 export function synthesizeHunk(oldText: string, newText: string): { diff: string; adds: number; dels: number } {
-  const oldLines = oldText === "" ? [] : oldText.split("\n");
-  const newLines = newText === "" ? [] : newText.split("\n");
+  const oldLines = textLines(oldText);
+  const newLines = textLines(newText);
   const oldStart = oldLines.length === 0 ? 0 : 1;
   const newStart = newLines.length === 0 ? 0 : 1;
   const header = `@@ -${oldStart},${oldLines.length} +${newStart},${newLines.length} @@`;
@@ -301,6 +351,14 @@ export function synthesizeHunk(oldText: string, newText: string): { diff: string
     adds: newLines.length,
     dels: oldLines.length
   };
+}
+
+/** Whether a diff describes a file that did not exist before: git's own
+ *  `@@ -0,0` marker for an empty left side, with nothing removed. */
+function isCreationDiff(blocks: ParsedDiffBlock[], dels: number): boolean {
+  if (dels > 0) return false;
+  const first = blocks.find((block) => block.kind === "hunk");
+  return first !== undefined && first.kind === "hunk" && first.header.startsWith("@@ -0,0 ");
 }
 
 function tallyHunks(blocks: ParsedDiffBlock[]): { adds: number; dels: number } {
@@ -332,8 +390,15 @@ function objectAt(input: Record<string, unknown>, key: string): Record<string, u
 }
 
 function countLines(text: string): number {
-  if (text === "") return 0;
-  return text.split("\n").length;
+  return textLines(text).length;
+}
+
+/** Logical file lines. A final newline terminates the preceding line; it does
+ *  not create another empty one. More than one final newline still preserves
+ *  the intentionally blank lines before the last terminator. */
+function textLines(text: string): string[] {
+  if (text === "") return [];
+  return text.endsWith("\n") ? text.slice(0, -1).split("\n") : text.split("\n");
 }
 
 function looksBinary(text: string): boolean {

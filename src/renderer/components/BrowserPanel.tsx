@@ -21,6 +21,7 @@ import {
   activateBrowserTab,
   createBrowserTab,
   DEFAULT_BROWSER_URL,
+  findBrowserTab,
   getActiveBrowserTabId,
   getBrowserTabs,
   isBrowserTabMaterialized,
@@ -41,6 +42,8 @@ import { WorkingNest } from "./WorkingNest.js";
 import { sidebarChromeSnapshot, subscribeSidebarChrome } from "../state/sidebarChrome.js";
 
 interface BrowserPanelProps {
+  /** Chat, launcher, or Browser-page strip this chrome shows. */
+  scopeId: string;
   /** Normalized http(s) URL the browser should show. */
   url: string;
   /**
@@ -55,6 +58,8 @@ interface BrowserPanelProps {
    * page with a different set of refs.
    */
   requestTabId?: string;
+  /** Open a fresh tab for this request instead of navigating the active one. */
+  requestNewTab?: boolean;
   /** A split swap can move the surface without changing its size. */
   panePosition?: "top" | "bottom";
   onClose: () => void;
@@ -108,9 +113,11 @@ function TabFavicon({ url }: { url: string }): JSX.Element {
  * swapping halves inside a split panel keeps it mounted and updates its bounds.
  */
 export function BrowserPanel({
+  scopeId,
   url,
   requestSeq,
   requestTabId,
+  requestNewTab,
   panePosition,
   onClose
 }: BrowserPanelProps): JSX.Element {
@@ -121,8 +128,8 @@ export function BrowserPanel({
   /** What the user typed, before ↑/↓ started swapping in suggestions. */
   const typedValueRef = useRef("");
   const overlayOpenRef = useRef(false);
-  const tabs = useSyncExternalStore(subscribeBrowserTabs, getBrowserTabs);
-  const activeTabId = useSyncExternalStore(subscribeBrowserTabs, getActiveBrowserTabId);
+  const tabs = useSyncExternalStore(subscribeBrowserTabs, () => getBrowserTabs(scopeId));
+  const activeTabId = useSyncExternalStore(subscribeBrowserTabs, () => getActiveBrowserTabId(scopeId));
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
   const [addressValue, setAddressValue] = useState(activeTab?.url ?? url);
   // Ref, not state: it's only read inside event handlers, and a state dep
@@ -169,7 +176,7 @@ export function BrowserPanel({
 
   /** Re-glue the active tab's webview to the surface (or hide it under overlays). */
   const syncBounds = useCallback(() => {
-    const tabId = getActiveBrowserTabId();
+    const tabId = getActiveBrowserTabId(scopeId);
     if (!browser || !tabId) return;
     const bounds = measureBounds();
     if (!bounds) return;
@@ -177,7 +184,7 @@ export function BrowserPanel({
     void browser
       .setBounds({ bounds, visible: !overlayOpenRef.current, tabId })
       .catch(() => undefined);
-  }, [browser, measureBounds, overlaysSurface]);
+  }, [browser, measureBounds, overlaysSurface, scopeId]);
 
   /** Create the tab's webview, or navigate + show it when it already exists. */
   const openTabWebview = useCallback(
@@ -226,40 +233,40 @@ export function BrowserPanel({
 
   const switchToTab = useCallback(
     (tabId: string): void => {
-      const previous = getActiveBrowserTabId();
+      const previous = getActiveBrowserTabId(scopeId);
       if (previous === tabId) return;
       if (previous) hideTabWebview(previous);
       activateBrowserTab(tabId);
-      const tab = getBrowserTabs().find((candidate) => candidate.id === tabId);
+      const tab = getBrowserTabs(scopeId).find((candidate) => candidate.id === tabId);
       if (tab) showTabWebview(tab);
     },
-    [hideTabWebview, showTabWebview]
+    [hideTabWebview, showTabWebview, scopeId]
   );
 
-  const tabDrag = useBrowserTabDrag(switchToTab);
+  const tabDrag = useBrowserTabDrag(scopeId, switchToTab);
 
   const cycleTab = useCallback(
     (step: 1 | -1): void => {
-      const list = getBrowserTabs();
+      const list = getBrowserTabs(scopeId);
       if (list.length < 2) return;
-      const index = list.findIndex((tab) => tab.id === getActiveBrowserTabId());
+      const index = list.findIndex((tab) => tab.id === getActiveBrowserTabId(scopeId));
       const next = list[(index + step + list.length) % list.length];
       if (next) switchToTab(next.id);
     },
-    [switchToTab]
+    [switchToTab, scopeId]
   );
 
   const addTab = useCallback((): void => {
-    const previous = getActiveBrowserTabId();
+    const previous = getActiveBrowserTabId(scopeId);
     if (previous) hideTabWebview(previous);
-    openTabWebview(createBrowserTab(DEFAULT_BROWSER_URL));
-  }, [hideTabWebview, openTabWebview]);
+    openTabWebview(createBrowserTab(scopeId, DEFAULT_BROWSER_URL));
+  }, [hideTabWebview, openTabWebview, scopeId]);
 
   const closeTab = useCallback(
     (tabId: string): void => {
       void browser?.close(tabId).catch(() => undefined);
       const nextActive = removeBrowserTab(tabId);
-      if (getBrowserTabs().length === 0) {
+      if (getBrowserTabs(scopeId).length === 0) {
         onClose();
         return;
       }
@@ -267,7 +274,7 @@ export function BrowserPanel({
       // restored tab whose webview doesn't exist yet in this app run.
       if (nextActive) showTabWebview(nextActive);
     },
-    [browser, onClose, showTabWebview]
+    [browser, onClose, scopeId, showTabWebview]
   );
 
   // Route open-in-pane requests: no tabs yet creates the first one; otherwise
@@ -279,18 +286,28 @@ export function BrowserPanel({
     // A tab the app already created (a session's) is switched to, not
     // navigated to: its webview exists and holds the refs the agent is using.
     const requested = requestTabId
-      ? (getBrowserTabs().find((tab) => tab.id === requestTabId) ?? null)
+      ? (getBrowserTabs(scopeId).find((tab) => tab.id === requestTabId) ?? null)
       : null;
     if (requested) {
-      const previous = getActiveBrowserTabId();
+      const previous = getActiveBrowserTabId(scopeId);
       if (previous && previous !== requested.id) hideTabWebview(previous);
       activateBrowserTab(requested.id);
       showTabWebview(requested);
       return;
     }
-    const active = getBrowserTabs().find((tab) => tab.id === getActiveBrowserTabId()) ?? null;
+    if (requestNewTab) {
+      const previous = getActiveBrowserTabId(scopeId);
+      if (previous) hideTabWebview(previous);
+      openTabWebview(createBrowserTab(scopeId, url || DEFAULT_BROWSER_URL));
+      return;
+    }
+    const active = getBrowserTabs(scopeId).find((tab) => tab.id === getActiveBrowserTabId(scopeId)) ?? null;
     if (!active) {
-      openTabWebview(createBrowserTab(url));
+      openTabWebview(createBrowserTab(scopeId, url || DEFAULT_BROWSER_URL));
+      return;
+    }
+    if (!url) {
+      showTabWebview(active);
       return;
     }
     if (active.url !== url) {
@@ -309,8 +326,10 @@ export function BrowserPanel({
     hideTabWebview,
     openTabWebview,
     reportError,
+    requestNewTab,
     requestSeq,
     requestTabId,
+    scopeId,
     showTabWebview,
     syncBounds,
     url
@@ -320,18 +339,20 @@ export function BrowserPanel({
   useEffect(() => {
     if (!browser) return;
     const subscription = browser.onNewTab((event) => {
-      const active = getActiveBrowserTabId();
+      const parent = findBrowserTab(event.tabId);
+      if (parent && parent.scopeId !== scopeId) return;
+      const active = getActiveBrowserTabId(scopeId);
       if (event.tabId !== active) {
         // A hidden background tab opened a popup (timer, ad): add the tab
         // without stealing focus. It materializes on first activation.
-        createBrowserTab(event.url, false);
+        createBrowserTab(scopeId, event.url, false);
         return;
       }
       if (active) hideTabWebview(active);
-      openTabWebview(createBrowserTab(event.url));
+      openTabWebview(createBrowserTab(scopeId, event.url));
     });
     return () => subscription();
-  }, [browser, hideTabWebview, openTabWebview]);
+  }, [browser, hideTabWebview, openTabWebview, scopeId]);
 
   const goBack = useCallback(
     (tabId: string): void => {
@@ -389,7 +410,7 @@ export function BrowserPanel({
       if (event.button !== 3 && event.button !== 4) return;
       const panel = panelRef.current;
       if (!panel || !(event.target instanceof Node) || !panel.contains(event.target)) return;
-      const active = getActiveBrowserTabId();
+      const active = getActiveBrowserTabId(scopeId);
       if (!active) return;
       event.preventDefault();
       if (event.button === 3) goBack(active);
@@ -397,30 +418,30 @@ export function BrowserPanel({
     };
     document.addEventListener("mouseup", onMouseUp, true);
     return () => document.removeEventListener("mouseup", onMouseUp, true);
-  }, [browser, goBack, goForward]);
+  }, [browser, goBack, goForward, scopeId]);
 
   // Menu ⌘W with the pane open: App routes it here to close the active tab.
   useEffect(
     () =>
       onBrowserCloseActiveTabRequest(() => {
-        const active = getActiveBrowserTabId();
+        const active = getActiveBrowserTabId(scopeId);
         if (active) closeTab(active);
       }),
-    [closeTab]
+    [closeTab, scopeId]
   );
 
   // Hide the active webview when the panel unmounts; the tab store and the
   // native webviews survive, so reopening restores every tab's session.
   useEffect(
     () => () => {
-      const tabId = getActiveBrowserTabId();
+      const tabId = getActiveBrowserTabId(scopeId);
       if (tabId) {
         void window.argmax?.browser
           .setBounds({ bounds: { x: 0, y: 0, width: 1, height: 1 }, visible: false, tabId })
           .catch(() => undefined);
       }
     },
-    []
+    [scopeId]
   );
 
   // Keep the active native view glued to the placeholder.
@@ -480,15 +501,16 @@ export function BrowserPanel({
           window.setTimeout(() => setBrowserTabLoading(event.tabId, false), 20_000)
         );
       }
-      rememberBrowserUrl(event.url);
+      const scope = findBrowserTab(event.tabId)?.scopeId;
+      if (scope) rememberBrowserUrl(event.url, scope);
       if (!event.loading) recordBrowserVisit(event.url, event.title);
-      if (event.tabId === getActiveBrowserTabId() && !addressEditingRef.current) {
+      if (event.tabId === getActiveBrowserTabId(scopeId) && !addressEditingRef.current) {
         setAddressValue(event.url);
       }
     });
     // Re-arm for tabs already mid-load: the effect re-subscribes on address
     // focus changes, and cleanup below dropped their timers.
-    for (const tab of getBrowserTabs()) {
+    for (const tab of getBrowserTabs(scopeId)) {
       if (tab.loading && !timers.has(tab.id)) {
         timers.set(
           tab.id,
@@ -501,7 +523,7 @@ export function BrowserPanel({
       for (const timer of timers.values()) window.clearTimeout(timer);
       timers.clear();
     };
-  }, [browser]);
+  }, [browser, scopeId]);
 
   // Switching tabs swaps the address bar to the new tab's URL.
   useEffect(() => {
@@ -531,7 +553,7 @@ export function BrowserPanel({
       // WKWebView's loadRequest is a no-op for the URL already on the tab, so
       // Enter in the omnibox would look like it did nothing. Reload instead —
       // the same "go" gesture Chrome and Safari use on the current URL.
-      const current = getBrowserTabs().find((tab) => tab.id === activeTabId)?.url;
+      const current = getBrowserTabs(scopeId).find((tab) => tab.id === activeTabId)?.url;
       if (current === destination) {
         void browser.reload(activeTabId).catch(reportError);
         return;
@@ -585,12 +607,12 @@ export function BrowserPanel({
       const key = event.key.toLowerCase();
       // ⌘⇧T reopens the most recently closed tab, from anywhere.
       if (event.metaKey && event.shiftKey && !event.altKey && !event.ctrlKey && key === "t") {
-        const url = popRecentlyClosedBrowserTab();
+        const url = popRecentlyClosedBrowserTab(scopeId);
         if (!url) return;
         event.preventDefault();
-        const previous = getActiveBrowserTabId();
+        const previous = getActiveBrowserTabId(scopeId);
         if (previous) hideTabWebview(previous);
-        openTabWebview(createBrowserTab(url));
+        openTabWebview(createBrowserTab(scopeId, url));
         return;
       }
       if (!event.metaKey || event.altKey || event.shiftKey || event.ctrlKey) return;
@@ -612,17 +634,17 @@ export function BrowserPanel({
       if (!panel || !(event.target instanceof Node) || !panel.contains(event.target)) return;
       if (key === "w") {
         event.preventDefault();
-        const active = getActiveBrowserTabId();
+        const active = getActiveBrowserTabId(scopeId);
         if (active) closeTab(active);
       } else if (key === "r") {
         event.preventDefault();
-        const active = getActiveBrowserTabId();
+        const active = getActiveBrowserTabId(scopeId);
         if (active) void browser?.reload(active).catch(reportError);
       }
     };
     document.addEventListener("keydown", onKeyDown, true);
     return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [addTab, browser, closeTab, cycleTab, hideTabWebview, openTabWebview, reportError]);
+  }, [addTab, browser, closeTab, cycleTab, hideTabWebview, openTabWebview, reportError, scopeId]);
 
   const handleFillCredentials = (): void => {
     if (!browser || !activeTabId) return;

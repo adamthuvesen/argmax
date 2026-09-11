@@ -1014,6 +1014,19 @@ describe("App sidebar", () => {
       size: 24,
       mtimeMs: 123
     });
+    mockDashboardSnapshot({
+      ...snapshot,
+      workspaces: [
+        ...snapshot.workspaces,
+        {
+          ...snapshot.workspaces[0],
+          id: "workspace-checkout",
+          path: primaryProject().repoPath,
+          sharedWorkspace: true,
+          taskLabel: "Argmax checkout"
+        }
+      ]
+    });
 
     render(<App />);
 
@@ -1023,6 +1036,7 @@ describe("App sidebar", () => {
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     expect(await screen.findByRole("tab", { name: "Files", selected: true })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Terminal" })).toBeInTheDocument();
     expect(screen.queryByText("2 files")).not.toBeInTheDocument();
     expect(listProjectFiles).toHaveBeenCalledWith({ kind: "project", id: "project-1" });
 

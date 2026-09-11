@@ -210,6 +210,11 @@
 
 .composer-input {
   position: relative;
+  /* Same guard as .session-input-field: without it the field's automatic
+     minimum size is the longest unbreakable run in the textarea (a pasted URL),
+     which propagates up through .composer and blows the launcher past its
+     760px shell. */
+  min-width: 0;
   /* The textarea's height bounds are shared: the slash-command mirror has to
      land on the textarea's box, not this taller, centring one. */
   --composer-field-min-height: 52px;

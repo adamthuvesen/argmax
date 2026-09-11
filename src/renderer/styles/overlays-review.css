@@ -1139,13 +1139,28 @@
   letter-spacing: 0.02em;
 }
 
+/* Below roughly 160px a tab cannot pay for both a full chip and a title worth
+   reading: favicon, gaps and ✕ take 58px, the chip another 41, and the four
+   agent tabs of a 640px panel were left showing "Sur…". So the chip drops to
+   a plain accent dot — the "not your tab" signal survives at 6px and the name
+   gets its room back. The text is clipped out of a 6px-tall box rather than
+   removed, so the element keeps its `aria-label` for assistive tech. */
+@container (max-width: 160px) {
+  .browser-tab-agent {
+    width: 6px;
+    height: 6px;
+    padding: 0;
+    border-radius: 50%;
+    background: var(--accent);
+    color: transparent;
+  }
+}
+
 /* The ✕ stays in flow but invisible until the tab is active, hovered or
-   focused, so nothing shifts when it appears. */
-/* A squeezed tab (a 320px panel holding five) keeps what is left of its title
-   and drops the chip and, unless active, the ✕ — both would otherwise eat
-   the whole label. Activating the tab brings its ✕ back. */
+   focused, so nothing shifts when it appears. A squeezed tab (a 320px panel
+   holding five) drops it unless the tab is active, since 24px of invisible
+   button would otherwise eat what is left of the label. */
 @container (max-width: 110px) {
-  .browser-tab-agent,
   .browser-tab:not([aria-selected="true"]) .browser-tab-close {
     display: none;
   }

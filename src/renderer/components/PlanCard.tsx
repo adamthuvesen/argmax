@@ -5,10 +5,13 @@ import remarkGfm from "remark-gfm";
 import type { Plan, PlanItem, PlanSubSection } from "../lib/parsePlan.js";
 import { needsMath } from "../lib/needsMath.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
+import { importChunk } from "../lib/importChunk.js";
 
-const PlanInlineMath = lazy(async () => ({
-  default: (await import("./MathMarkdown.js")).PlanInlineMath
-}));
+const PlanInlineMath = lazy(() =>
+  importChunk(async () => ({
+    default: (await import("./MathMarkdown.js")).PlanInlineMath
+  }))
+);
 
 export type PlanCardProps = {
   plan: Plan;

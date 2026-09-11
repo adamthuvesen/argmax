@@ -168,13 +168,18 @@ function joinAnswerFragments(previous: string, incoming: string): string {
  */
 export function coalesceAssistantGroups(
   assistantEvents: readonly TimelineEvent[],
-  options: { splitAt?: readonly string[]; streaming?: boolean } = {}
+  options: {
+    hardSplitAt?: readonly string[];
+    splitAt?: readonly string[];
+    streaming?: boolean;
+  } = {}
 ): AssistantGroup[] {
   const assistantGroups: AssistantGroup[] = [];
   type Buffer = { id: string; createdAt: string; lastCreatedAt: string; lastEventId: string; text: string };
   let answerBuffer: Buffer | null = null;
   let thinkingBuffer: Buffer | null = null;
   let previousEventCreatedAt: string | null = null;
+  const hardSplitAt = options.hardSplitAt ?? [];
   const splitAt = options.splitAt ?? [];
   const streaming = options.streaming ?? true;
   // Raw PTY tracing that the renderer already dropped as noise can be followed
@@ -229,9 +234,20 @@ export function coalesceAssistantGroups(
     const previous = previousEventCreatedAt;
     return previous !== null && splitAt.some((time) => time >= previous && time < event.createdAt);
   };
-  const pushErrorLine = (event: TimelineEvent, message: string): void => {
+  const hardSplitBefore = (event: TimelineEvent): boolean => {
+    const previous = previousEventCreatedAt;
+    return (
+      previous !== null &&
+      hardSplitAt.some((time) => time > previous && time <= event.createdAt)
+    );
+  };
+  const pushErrorLine = (
+    event: TimelineEvent,
+    message: string,
+    canJoinPrevious = true
+  ): void => {
     const last = assistantGroups[assistantGroups.length - 1];
-    if (last?.error) {
+    if (canJoinPrevious && last?.error) {
       last.text = `${last.text}\n${message}`;
       last.lastActivityAt = event.createdAt;
       boundaryEventId = event.id;
@@ -249,7 +265,8 @@ export function coalesceAssistantGroups(
   };
   for (const event of assistantEvents) {
     const canonical = decodeTimelineEvent(event);
-    if (splitBefore(event)) {
+    const startsAfterHardBoundary = hardSplitBefore(event);
+    if (startsAfterHardBoundary || splitBefore(event)) {
       flushThinking();
       flushAnswer();
     }
@@ -271,7 +288,7 @@ export function coalesceAssistantGroups(
         previousEventCreatedAt = event.createdAt;
         continue;
       }
-      pushErrorLine(event, message);
+      pushErrorLine(event, message, !startsAfterHardBoundary);
       previousEventCreatedAt = event.createdAt;
       continue;
     }
@@ -288,7 +305,7 @@ export function coalesceAssistantGroups(
       const last = assistantGroups[assistantGroups.length - 1];
       if (last?.error) {
         const message = event.message.trim();
-        if (message.length > 0) pushErrorLine(event, message);
+        if (message.length > 0) pushErrorLine(event, message, !startsAfterHardBoundary);
         previousEventCreatedAt = event.createdAt;
         continue;
       }
@@ -337,6 +354,7 @@ export function coalesceAssistantGroups(
     const last = assistantGroups[assistantGroups.length - 1];
     if (
       last &&
+      !startsAfterHardBoundary &&
       !isLiveDeltaGroup(last) &&
       !last.thinking &&
       !last.error &&
@@ -351,6 +369,7 @@ export function coalesceAssistantGroups(
     }
     if (
       last &&
+      !startsAfterHardBoundary &&
       !isLiveDeltaGroup(last) &&
       !last.thinking &&
       !last.error &&
@@ -518,12 +537,14 @@ export type TurnRenderState = {
 
 export function buildTurnRenderState(params: {
   assistantEvents: readonly TimelineEvent[];
+  assistantHardSplitAt?: readonly string[];
   toolItems: readonly TurnToolItem[];
   priorItem: RenderItem | null;
   assistantTimestamps: readonly number[];
   isStreamingTurn?: boolean;
 }): TurnRenderState {
   const assistantGroups = coalesceAssistantGroups(params.assistantEvents, {
+    hardSplitAt: params.assistantHardSplitAt,
     splitAt: toolStartTimes(params.toolItems),
     streaming: params.isStreamingTurn ?? true
   });

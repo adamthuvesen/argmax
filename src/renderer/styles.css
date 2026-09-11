@@ -14,7 +14,9 @@
 @import url("./styles/settings.css");
 @import url("./styles/scheduled-tasks.css");
 @import url("./styles/usage.css");
+@import url("./styles/activity.css");
 @import url("./styles/chat.css");
+@import url("./styles/connections.css");
 @import url("./styles/overlays.css");
 @import url("./styles/motion.css");
 

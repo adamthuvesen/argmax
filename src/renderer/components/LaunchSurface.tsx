@@ -9,6 +9,7 @@ import {
   MoreHorizontal,
   Paperclip,
   Play,
+  PlugZap,
   Plus,
   Target,
   X
@@ -31,7 +32,8 @@ import {
   SCRATCH_PROJECT_ID,
   type AgentMode,
   type ComposerAttachment,
-  type ProjectSummary
+  type ProjectSummary,
+  type WorkspaceSummary
 } from "../../shared/types.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { errorMessage } from "../../shared/error.js";
@@ -48,6 +50,7 @@ import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
 import { useComposerDraft } from "../hooks/useComposerDraft.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
+import { useProjectCheckoutTerminal } from "../hooks/useProjectCheckoutTerminal.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
@@ -65,7 +68,7 @@ import {
   launcherModeTitle,
   type LauncherMode
 } from "../lib/agentMode.js";
-import type { ComposerCommand } from "../lib/composerCommands.js";
+import { isMcpCommand, type ComposerCommand } from "../lib/composerCommands.js";
 import {
   readStoredWorkspaceMode,
   toggleWorkspaceMode,
@@ -73,17 +76,21 @@ import {
   type WorkspaceMode
 } from "../lib/workspaceMode.js";
 import { ComposerPixelField } from "./ComposerPixelField.js";
+import { ConnectionDialog } from "./ConnectionDialog.js";
 import { PickerFilterRow } from "./PickerFilterRow.js";
 import { PickerLead } from "./PickerLead.js";
 import { collapseHome } from "../lib/pathDisplay.js";
+import { importChunk } from "../lib/importChunk.js";
 import { LaunchModelSelector } from "./ModelSelector.js";
 import { Mascot, type MascotMood } from "./Mascot.js";
 // ReviewPanel pulls in shiki + diff utilities — heavy and only needed when
 // the right-side review pane is open. Lazy-mounted (ralph B4) so the
 // launcher's first paint doesn't ship the highlighter.
-const ReviewPanel = lazy(async () => ({
-  default: (await import("./ReviewPanel.js")).ReviewPanel
-}));
+const ReviewPanel = lazy(() =>
+  importChunk(async () => ({
+    default: (await import("./ReviewPanel.js")).ReviewPanel
+  }))
+);
 import { FilePopover } from "./FilePopover.js";
 import { ImageLightbox } from "./ImageLightbox.js";
 import { SkeletonPane } from "./SkeletonPane.js";
@@ -91,9 +98,11 @@ import { SlashCommandMenu } from "./SlashCommandMenu.js";
 // WelcomePane only renders on a fresh install (no projects) — lazy-mounted
 // (ralph B2) so its provider-discovery code path doesn't ship in the main
 // launcher bundle for the common case.
-const WelcomePane = lazy(async () => ({
-  default: (await import("./WelcomePane.js")).WelcomePane
-}));
+const WelcomePane = lazy(() =>
+  importChunk(async () => ({
+    default: (await import("./WelcomePane.js")).WelcomePane
+  }))
+);
 
 const PROMPT_MAX_HEIGHT_PX = 168;
 
@@ -117,6 +126,7 @@ function isOptionButtonTarget(target: EventTarget | null): boolean {
 
 export function LaunchSurface({
   claimsBrowserRequests = false,
+  isFocused = true,
   fastModeEnabled = false,
   goalEnabled = true,
   hasRunningSession = false,
@@ -135,12 +145,15 @@ export function LaunchSurface({
   resetSignal,
   rightPanelToggleSignal,
   registerPaletteFileContext,
-  sideChatMode = false
+  sideChatMode = false,
+  workspaces = [],
+  onCheckoutWorkspaceCreated
 }: {
   /** True when this launcher is the only surface on screen, so chat links and
    *  the actions menu have nowhere else to open the browser. False for a
    *  launcher cell sharing the grid with session panes. */
   claimsBrowserRequests?: boolean;
+  isFocused?: boolean;
   fastModeEnabled?: boolean;
   goalEnabled?: boolean;
   /** True while an agent is running in this launcher's project. The hero fox
@@ -177,7 +190,13 @@ export function LaunchSurface({
     context: { source: { kind: "workspace" | "project"; id: string }; onPick: (path: string) => void } | null
   ) => void;
   sideChatMode?: boolean;
+  /** Workspaces from the dashboard snapshot — used to resolve the checkout
+   *  row that backs the launcher's Terminal tab. */
+  workspaces?: readonly WorkspaceSummary[];
+  onCheckoutWorkspaceCreated?: (workspace: WorkspaceSummary) => void;
 }): JSX.Element {
+  const isFocusedRef = useRef(isFocused);
+  isFocusedRef.current = isFocused;
   // Side chat is the repo-less flavor of this surface: same composer and
   // model picker, but no project, branch, worktree, or review chrome. The
   // selected project stays untouched behind the mode so switching back is
@@ -235,6 +254,7 @@ export function LaunchSurface({
   const branchPickerRef = useRef<HTMLDivElement | null>(null);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [compactContextOpen, setCompactContextOpen] = useState(false);
+  const [connectionsOpen, setConnectionsOpen] = useState(false);
   const compactContextRef = useRef<HTMLDivElement | null>(null);
 
   // Provider discovery for the model picker. Non-blocking: fires after mount
@@ -272,7 +292,21 @@ export function LaunchSurface({
     () => (activeProject ? { kind: "project", project: activeProject } : null),
     [activeProject]
   );
-  const reviewState = useReviewState(reviewSource, null, { claimsBrowserRequests });
+  const onWorkspaceCreated = useCallback(
+    (workspace: WorkspaceSummary): void => {
+      onCheckoutWorkspaceCreated?.(workspace);
+    },
+    [onCheckoutWorkspaceCreated]
+  );
+  const { terminalWorkspaceId, ensureCheckoutWorkspace } = useProjectCheckoutTerminal(
+    activeProject,
+    workspaces,
+    onWorkspaceCreated
+  );
+  const reviewState = useReviewState(reviewSource, null, {
+    claimsBrowserRequests,
+    terminalWorkspaceId
+  });
   const reviewOpenPanelInFilesMode = reviewState.openPanelInFilesMode;
   const reviewOpenInFilesView = reviewState.openInFilesView;
   const reviewClosePanel = reviewState.closePanel;
@@ -281,6 +315,11 @@ export function LaunchSurface({
   const reviewClosePane = reviewState.closePane;
   const lastResetSignal = useRef(resetSignal);
   const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
+
+  useEffect(() => {
+    if (!reviewState.isPanelOpen || !activeProject) return;
+    void ensureCheckoutWorkspace();
+  }, [activeProject, ensureCheckoutWorkspace, reviewState.isPanelOpen]);
 
   // Register this surface's file source + pick handler with App so the
   // command palette can surface project files in its Files group. Cleared
@@ -440,7 +479,7 @@ export function LaunchSurface({
       onBranchSwitch(updated);
     } catch (error) {
       setStatus(errorMessage(error) || "Could not switch branch.");
-      promptInputRef.current?.focus();
+      if (isFocusedRef.current) promptInputRef.current?.focus();
     }
   }, [activeProject, onBranchSwitch]);
   // Typing into an open picker filters it through useTypeToFilter. The lists take
@@ -489,18 +528,23 @@ export function LaunchSurface({
   const contextPickerOpenRef = useRef(false);
   contextPickerOpenRef.current = anyContextPickerOpen;
 
+  const wasFocused = useRef(false);
   // Auto-focus the prompt when the launcher is the active surface — on
   // first visit, on project switch, and again whenever the right-side
   // review panel closes, so the user can keep typing without clicking.
   useEffect(() => {
-    if ((!projectId && !chatMode) || reviewIsPanelOpen || isSubmitting) return;
+    const becameFocused = isFocused && !wasFocused.current;
+    wasFocused.current = isFocused;
+    if (!isFocused || (!projectId && !chatMode) || reviewIsPanelOpen || isSubmitting) return;
     // An open picker holds focus to filter keystrokes; a re-render behind it
     // (a dashboard delta re-identifying the project) must not yank that away.
     if (contextPickerOpenRef.current) return;
+    const active = document.activeElement;
+    if (becameFocused && active !== promptInputRef.current && promptInputRef.current?.closest('[role="region"]')?.contains(active)) return;
     promptInputRef.current?.focus();
     // Metadata refreshes replace the project object even in background cells.
-    // Only a different project should refocus and interrupt another composer.
-  }, [projectId, chatMode, reviewIsPanelOpen, isSubmitting]);
+    // Only the active launcher may refocus after its project changes.
+  }, [projectId, chatMode, reviewIsPanelOpen, isSubmitting, isFocused]);
 
   // The hero fox reacts to the user and to real work, never to a clock alone:
   // it thinks while this project has an agent running, and dozes off only once
@@ -599,6 +643,13 @@ export function LaunchSurface({
       });
     }
     commands.push({
+      name: "mcp",
+      label: "Connections",
+      hint: "Show MCP servers, plugins, and connectors",
+      icon: PlugZap,
+      run: () => setConnectionsOpen(true)
+    });
+    commands.push({
       name: "attach",
       label: "Attach file",
       hint: "Add an image or file to the prompt",
@@ -675,7 +726,14 @@ export function LaunchSurface({
   // Same accent tint for `/skill` tokens as the session composer: a mirror
   // div behind a transparent-text textarea (see chat-composer-chips.css).
   const skillHighlight = useMemo(
-    () => splitSkillTokens(prompt, (name) => (goalEnabled && name === "goal") || slashAutocomplete.skillNames.has(name)),
+    () =>
+      splitSkillTokens(
+        prompt,
+        (name) =>
+          name === "mcp" ||
+          (goalEnabled && name === "goal") ||
+          slashAutocomplete.skillNames.has(name)
+      ),
     [goalEnabled, prompt, slashAutocomplete.skillNames]
   );
   const highlightBackdropRef = useRef<HTMLDivElement | null>(null);
@@ -710,6 +768,12 @@ export function LaunchSurface({
     event.preventDefault();
     const trimmedPrompt = prompt.trim();
     if (!trimmedPrompt || isSubmitting) {
+      return;
+    }
+    if (isMcpCommand(trimmedPrompt)) {
+      setPrompt("");
+      if (draftKey) clearDraft(draftKey);
+      setConnectionsOpen(true);
       return;
     }
 
@@ -1153,7 +1217,7 @@ export function LaunchSurface({
               aria-label="Dismiss error"
               onClick={() => {
                 setStatus(null);
-                promptInputRef.current?.focus();
+                if (isFocusedRef.current) promptInputRef.current?.focus();
               }}
             >
               <X size={14} />
@@ -1163,6 +1227,17 @@ export function LaunchSurface({
       </form>
       </div>
       <ImageLightbox src={lightboxSrc} alt="Attached image" onClose={() => setLightboxSrc(null)} />
+      {connectionsOpen ? (
+        <ConnectionDialog
+          anchorRef={formRef}
+          provider={model.provider}
+          workspaceId={null}
+          onClose={() => {
+            setConnectionsOpen(false);
+            if (isFocusedRef.current) promptInputRef.current?.focus();
+          }}
+        />
+      ) : null}
       {isReviewOpen ? (
         <Suspense fallback={null}>
           <ReviewPanel review={reviewState} />

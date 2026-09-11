@@ -11,8 +11,14 @@
 const SESSION_PARAM = "session";
 
 /** Ids come from the host, but a link is user-editable — keep the accepted
- *  shape narrow so nothing exotic reaches a lookup. */
+ *  shape narrow so nothing exotic reaches a lookup. Shared with the native
+ *  shell's `openSession(id)`, which arrives by the same untrusted route
+ *  (a string interpolated into `evaluateJavaScript`). */
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+export function isDeepLinkSessionId(value: string): boolean {
+  return ID_PATTERN.test(value);
+}
 
 export function takeDeepLinkSessionId(): string | null {
   if (typeof window === "undefined") return null;
@@ -28,5 +34,5 @@ export function takeDeepLinkSessionId(): string | null {
     window.location.pathname + (query ? `?${query}` : "") + window.location.hash
   );
 
-  return ID_PATTERN.test(raw) ? raw : null;
+  return isDeepLinkSessionId(raw) ? raw : null;
 }

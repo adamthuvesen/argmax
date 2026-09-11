@@ -3,7 +3,11 @@ import { listen as tauriListen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import type { IpcChannel } from "../../shared/ipcSchemas.js";
 import type {
+  ActivitySummary,
+  ActivitySummaryInput,
   ArgmaxApi,
+  ChatCleanupPreview,
+  DeleteOldChatsResult,
   AttachmentSaveImageInput,
   BrowserActionOutcome,
   BrowserAgentOpenEvent,
@@ -22,6 +26,7 @@ import type {
   ChangedFileSummary,
   CheckRun,
   Checkpoint,
+  ConnectionSummary,
   RewindPreview,
   RewindFilesResult,
   DashboardDelta,
@@ -52,6 +57,9 @@ import type {
   ProvidersCancelQueuedMessageInput,
   ProvidersSendQueuedMessageNowInput,
   RegisterProjectInput,
+  RemotePushCapability,
+  RemotePushDevice,
+  RemotePushTestResult,
   RemoteStatus,
   RemoveProjectInput,
   ResolveApprovalInput,
@@ -76,6 +84,7 @@ import type {
   SkillSummary,
   SyncStatus,
   EventSubscription,
+  TerminalAgentOpenEvent,
   TerminalDataEvent,
   TerminalExitEvent,
   TerminalResizeInput,
@@ -399,6 +408,13 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
     skills: {
       list: (input) => invokeCommand<SkillSummary[]>("skills:list", input)
     },
+    connections: {
+      list: (input) => invokeCommand<ConnectionSummary[]>("connections:list", input)
+    },
+    settings: {
+      previewChatCleanup: () => invokeCommand<ChatCleanupPreview>("settings:preview-chat-cleanup"),
+      deleteOldChats: (input) => invokeCommand<DeleteOldChatsResult>("settings:delete-old-chats", input)
+    },
     system: {
       openPath: (input) => invokeCommand<{ ok: true }>("system:open-path", input),
       listDetectedIdes: () => invokeCommand<DetectedIde[]>("system:list-detected-ides"),
@@ -420,7 +436,14 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
     remote: {
       getStatus: () => invokeCommand<RemoteStatus>("remote:get-status"),
       setConfig: (input) => invokeCommand<RemoteStatus>("remote:set-config", input),
-      testNotification: () => invokeCommand<{ ok: true }>("remote:test-notification")
+      testNotification: () => invokeCommand<{ ok: true }>("remote:test-notification"),
+      setApnsConfig: (input) => invokeCommand<RemoteStatus>("remote:set-apns-config", input),
+      registerPushDevice: (input) =>
+        invokeCommand<RemotePushDevice[]>("remote:register-push-device", input),
+      unregisterPushDevice: (input) =>
+        invokeCommand<RemotePushDevice[]>("remote:unregister-push-device", input),
+      pushTest: () => invokeCommand<RemotePushTestResult[]>("remote:push-test"),
+      pushCapability: () => invokeCommand<RemotePushCapability>("remote:push-capability")
     },
     sync: {
       getStatus: () => invokeCommand<SyncStatus>("sync:get-status"),
@@ -439,6 +462,9 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
     usage: {
       summary: (input: UsageSummaryInput) => invokeCommand<UsageSummary>("usage:summary", input),
       remaining: () => invokeCommand<UsageRemaining>("usage:remaining")
+    },
+    activity: {
+      summary: (input: ActivitySummaryInput) => invokeCommand<ActivitySummary>("activity:summary", input)
     },
     menu: {
       onCommand: (listener) => subscribe<MenuCommand>("menu:command", listener)
@@ -468,7 +494,9 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       onData: (listener: (event: TerminalDataEvent) => void) =>
         subscribe<TerminalDataEvent>("terminal:data", listener),
       onExit: (listener: (event: TerminalExitEvent) => void) =>
-        subscribe<TerminalExitEvent>("terminal:exit", listener)
+        subscribe<TerminalExitEvent>("terminal:exit", listener),
+      onAgentOpen: (listener: (event: TerminalAgentOpenEvent) => void) =>
+        subscribe<TerminalAgentOpenEvent>("terminal:agent-open", listener)
     },
     browser: {
       open: (input) => invokeCommand<{ ok: true }>("browser:open", input),

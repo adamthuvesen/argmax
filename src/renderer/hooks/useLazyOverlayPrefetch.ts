@@ -1,4 +1,5 @@
 import { lazy, useEffect } from "react";
+import { importChunk } from "../lib/importChunk.js";
 
 // Heavy overlays are dynamic-imported on first open so the launcher's first
 // paint doesn't construct the palette / search code paths (audit P4.03).
@@ -9,6 +10,7 @@ const importCommandPalette = () => import("../components/CommandPalette.js");
 const importSettingsPanel = () => import("../components/SettingsPanel.js");
 const importScheduledTasksPanel = () => import("../components/scheduled/ScheduledTasksPanel.js");
 const importUsagePanel = () => import("../components/usage/UsagePanel.js");
+const importActivityPanel = () => import("../components/activity/ActivityPanel.js");
 // ReviewPanel pulls in CodeMirror + every @codemirror/lang-* package — ~680KB.
 // LaunchSurface and SessionPane each lazy-import it locally; warming it from
 // here means the first ⌘P Enter (which opens ReviewPanel in Files mode) hits a
@@ -17,18 +19,21 @@ const importUsagePanel = () => import("../components/usage/UsagePanel.js");
 // this prefetch share the same module instance.
 const importReviewPanel = () => import("../components/ReviewPanel.js");
 
-export const CommandPalette = lazy(async () => ({
-  default: (await importCommandPalette()).CommandPalette
-}));
-export const SettingsPanel = lazy(async () => ({
-  default: (await importSettingsPanel()).SettingsPanel
-}));
-export const ScheduledTasksPanel = lazy(async () => ({
-  default: (await importScheduledTasksPanel()).ScheduledTasksPanel
-}));
-export const UsagePanel = lazy(async () => ({
-  default: (await importUsagePanel()).UsagePanel
-}));
+export const CommandPalette = lazy(() =>
+  importChunk(async () => ({ default: (await importCommandPalette()).CommandPalette }))
+);
+export const SettingsPanel = lazy(() =>
+  importChunk(async () => ({ default: (await importSettingsPanel()).SettingsPanel }))
+);
+export const ScheduledTasksPanel = lazy(() =>
+  importChunk(async () => ({ default: (await importScheduledTasksPanel()).ScheduledTasksPanel }))
+);
+export const UsagePanel = lazy(() =>
+  importChunk(async () => ({ default: (await importUsagePanel()).UsagePanel }))
+);
+export const ActivityPanel = lazy(() =>
+  importChunk(async () => ({ default: (await importActivityPanel()).ActivityPanel }))
+);
 
 /** Warm lazy overlay chunks after first paint so the first ⌘K / ⌘F / Settings open isn't paying for transform+fetch+parse on the keypress. */
 export function useLazyOverlayPrefetch(): void {
@@ -56,6 +61,7 @@ export function useLazyOverlayPrefetch(): void {
       importSettingsPanel().catch(swallow);
       importScheduledTasksPanel().catch(swallow);
       importUsagePanel().catch(swallow);
+      importActivityPanel().catch(swallow);
       importReviewPanel().catch(swallow);
     };
     const scheduleHeavy = (): void => {

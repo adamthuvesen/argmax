@@ -10,8 +10,8 @@ import {
 } from "../state/sidebarChrome.js";
 import {
   applyBrowserTabs,
+  BROWSER_PAGE_OWNER_ID,
   getActiveBrowserTabId,
-  getBrowserRequest,
   getBrowserTabs,
   openInBrowserPanel,
   requestCloseActiveBrowserTab,
@@ -112,8 +112,8 @@ function appendDialog(
   return dialog;
 }
 
-function activeTabId(): string {
-  const id = getActiveBrowserTabId();
+function activeTabId(scopeId = BROWSER_PAGE_OWNER_ID): string {
+  const id = getActiveBrowserTabId(scopeId);
   if (!id) throw new Error("no active browser tab");
   return id;
 }
@@ -138,7 +138,7 @@ afterEach(() => {
 
 describe("BrowserPanel", () => {
   it("creates the first tab's webview for the requested URL", () => {
-    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     expect(browserStub.open).toHaveBeenCalledWith(
       expect.objectContaining({ url: "https://github.com", tabId: activeTabId() })
     );
@@ -147,22 +147,29 @@ describe("BrowserPanel", () => {
   });
 
   it("opens a link request in a fresh webview and preserves the current tab", () => {
-    const { rerender } = render(<BrowserPanel url="https://github.com" requestSeq={1} onClose={() => undefined} />);
+    const { rerender } = render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" requestSeq={1} onClose={() => undefined} />);
     const previousTabId = activeTabId();
     browserStub.open.mockClear();
     browserStub.navigate.mockClear();
 
     act(() => openInBrowserPanel("https://example.com", { newTab: true }));
-    const request = getBrowserRequest();
-    rerender(<BrowserPanel url="https://example.com" requestSeq={2} requestTabId={request?.tabId} onClose={() => undefined} />);
+    rerender(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://example.com"
+        requestSeq={2}
+        requestNewTab
+        onClose={() => undefined}
+      />
+    );
 
-    expect(getActiveBrowserTabId()).toBe(request?.tabId);
-    expect(getBrowserTabs()).toEqual([
-      expect.objectContaining({ id: previousTabId, url: "https://github.com" }),
-      expect.objectContaining({ id: request?.tabId, url: "https://example.com" })
-    ]);
+    const tabs = getBrowserTabs(BROWSER_PAGE_OWNER_ID);
+    expect(tabs).toHaveLength(2);
+    expect(tabs[0]).toEqual(expect.objectContaining({ id: previousTabId, url: "https://github.com" }));
+    expect(tabs[1]).toEqual(expect.objectContaining({ url: "https://example.com" }));
+    expect(getActiveBrowserTabId(BROWSER_PAGE_OWNER_ID)).toBe(tabs[1]?.id);
     expect(browserStub.open).toHaveBeenCalledWith(
-      expect.objectContaining({ url: "https://example.com", tabId: request?.tabId })
+      expect.objectContaining({ url: "https://example.com", tabId: tabs[1]?.id })
     );
     expect(browserStub.setBounds).toHaveBeenCalledWith(
       expect.objectContaining({ tabId: previousTabId, visible: false })
@@ -171,8 +178,8 @@ describe("BrowserPanel", () => {
   });
 
   it("shows an agent's tab instead of navigating the user's, and badges it", () => {
-    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
-    const userTab = activeTabId();
+    render(<BrowserPanel scopeId="session-a" url="https://github.com" onClose={() => undefined} />);
+    const userTab = activeTabId("session-a");
     browserStub.open.mockClear();
     browserStub.navigate.mockClear();
 
@@ -206,6 +213,7 @@ describe("BrowserPanel", () => {
     act(() => {
       render(
         <BrowserPanel
+          scopeId="session-a"
           url="https://example.com"
           requestSeq={2}
           requestTabId="agent-1"
@@ -213,14 +221,14 @@ describe("BrowserPanel", () => {
         />
       );
     });
-    expect(getActiveBrowserTabId()).toBe("agent-1");
+    expect(getActiveBrowserTabId("session-a")).toBe("agent-1");
     expect(browserStub.open).not.toHaveBeenCalled();
     expect(browserStub.navigate).not.toHaveBeenCalled();
   });
 
   it("shows a session's group label on the tabs it grouped", () => {
-    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
-    const userTab = activeTabId();
+    render(<BrowserPanel scopeId="session-a" url="https://github.com" onClose={() => undefined} />);
+    const userTab = activeTabId("session-a");
 
     act(() =>
       applyBrowserTabs([
@@ -251,7 +259,7 @@ describe("BrowserPanel", () => {
   });
 
   it("navigates on address submit after normalizing the input", () => {
-    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     const address = screen.getByRole("textbox", { name: "Address" });
     fireEvent.change(address, { target: { value: "example.com" } });
     fireEvent.submit(address.closest("form") as HTMLFormElement);
@@ -259,7 +267,7 @@ describe("BrowserPanel", () => {
   });
 
   it("navigates when Enter is pressed in the address bar", () => {
-    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     const address = screen.getByRole("textbox", { name: "Address" });
     fireEvent.change(address, { target: { value: "example.com" } });
     fireEvent.keyDown(address, { key: "Enter" });
@@ -267,7 +275,7 @@ describe("BrowserPanel", () => {
   });
 
   it("reloads when the address bar submits the tab's current URL", () => {
-    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     const address = screen.getByRole("textbox", { name: "Address" });
     fireEvent.keyDown(address, { key: "Enter" });
     expect(browserStub.reload).toHaveBeenCalledWith(activeTabId());
@@ -275,7 +283,7 @@ describe("BrowserPanel", () => {
   });
 
   it("goes on Enter while history suggestions are open", () => {
-    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     act(() =>
       stateListener?.({ tabId: activeTabId(), url: "https://github.com", title: "GitHub", loading: false })
     );
@@ -300,7 +308,7 @@ describe("BrowserPanel", () => {
   });
 
   it("turns non-URL address input into a Google search", () => {
-    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     const address = screen.getByRole("textbox", { name: "Address" });
     fireEvent.change(address, { target: { value: "tauri multiwebview docs" } });
     fireEvent.submit(address.closest("form") as HTMLFormElement);
@@ -313,7 +321,7 @@ describe("BrowserPanel", () => {
   it("clears the loading spinner on stop and via the watchdog", () => {
     vi.useFakeTimers();
     try {
-      render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+      render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
       act(() =>
         stateListener?.({ tabId: activeTabId(), url: "https://github.com", title: null, loading: true })
       );
@@ -338,7 +346,7 @@ describe("BrowserPanel", () => {
   });
 
   it("syncs the address bar from webview navigation events", () => {
-    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     act(() =>
       stateListener?.({ tabId: activeTabId(), url: "https://github.com/argmax", title: "Argmax", loading: false })
     );
@@ -349,7 +357,7 @@ describe("BrowserPanel", () => {
   });
 
   it("leaves the address bar alone for a background tab's navigation", () => {
-    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     act(() =>
       stateListener?.({ tabId: "not-the-active-tab", url: "https://example.com", title: null, loading: false })
     );
@@ -358,7 +366,7 @@ describe("BrowserPanel", () => {
 
   it("adds a tab, switches back, and closes down to the panel", () => {
     const onClose = vi.fn();
-    render(<BrowserPanel url="https://github.com" onClose={onClose} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={onClose} />);
     const firstTab = activeTabId();
 
     fireEvent.click(screen.getByRole("button", { name: "New tab" }));
@@ -384,7 +392,7 @@ describe("BrowserPanel", () => {
   });
 
   it("carries a tab past its neighbour and lands it in that slot", () => {
-    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     act(() => applyBrowserTabs(threeTabs(activeTabId())));
     const [alpha] = layOutStrip();
     if (!alpha) throw new Error("no tabs");
@@ -398,16 +406,16 @@ describe("BrowserPanel", () => {
     expect(carried[0]).toHaveStyle({ transform: "translateX(110px)" });
     expect(carried[1]).toHaveStyle({ transform: "translateX(-100px)" });
     expect(carried[2]).not.toHaveAttribute("style");
-    expect(getBrowserTabs().map((tab) => tab.title)).toEqual(["Alpha", "Beta", "Gamma"]);
+    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).map((tab) => tab.title)).toEqual(["Alpha", "Beta", "Gamma"]);
 
     pointer(window, "pointerup", 160);
-    expect(getBrowserTabs().map((tab) => tab.title)).toEqual(["Beta", "Alpha", "Gamma"]);
+    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).map((tab) => tab.title)).toEqual(["Beta", "Alpha", "Gamma"]);
     expect(screen.getAllByRole("tab")[0]).toHaveTextContent("Beta");
     expect(screen.getAllByRole("tab")[1]).not.toHaveAttribute("data-drag");
   });
 
   it("treats a press that barely moves as a plain tab switch", () => {
-    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     act(() => applyBrowserTabs(threeTabs(activeTabId())));
     const gamma = layOutStrip()[2];
     if (!gamma) throw new Error("no third tab");
@@ -416,25 +424,25 @@ describe("BrowserPanel", () => {
     pointer(window, "pointermove", 252);
     pointer(window, "pointerup", 252);
 
-    expect(getBrowserTabs().map((tab) => tab.title)).toEqual(["Alpha", "Beta", "Gamma"]);
+    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).map((tab) => tab.title)).toEqual(["Alpha", "Beta", "Gamma"]);
     expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("Gamma");
   });
 
   it("moves the focused tab with the keyboard", () => {
-    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     act(() => applyBrowserTabs(threeTabs(activeTabId())));
 
     fireEvent.keyDown(screen.getByRole("button", { name: "Alpha" }), { key: "ArrowRight", altKey: true });
-    expect(getBrowserTabs().map((tab) => tab.title)).toEqual(["Beta", "Alpha", "Gamma"]);
+    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).map((tab) => tab.title)).toEqual(["Beta", "Alpha", "Gamma"]);
 
     // The first tab has nowhere further left to go.
     fireEvent.keyDown(screen.getByRole("button", { name: "Beta" }), { key: "ArrowLeft", altKey: true });
-    expect(getBrowserTabs().map((tab) => tab.title)).toEqual(["Beta", "Alpha", "Gamma"]);
+    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).map((tab) => tab.title)).toEqual(["Beta", "Alpha", "Gamma"]);
   });
 
   it("wires toolbar actions to the bridge and close to the parent", () => {
     const onClose = vi.fn();
-    render(<BrowserPanel url="https://github.com" onClose={onClose} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={onClose} />);
     const tab = activeTabId();
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     fireEvent.click(screen.getByRole("button", { name: "Reload" }));
@@ -445,7 +453,7 @@ describe("BrowserPanel", () => {
   });
 
   it("suggests visited pages while typing and navigates on pick", () => {
-    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     act(() => stateListener?.({ tabId: activeTabId(), url: "https://github.com", title: "GitHub", loading: false }));
     act(() =>
       stateListener?.({ tabId: activeTabId(), url: "https://example.com/docs", title: "Example Docs", loading: false })
@@ -468,7 +476,7 @@ describe("BrowserPanel", () => {
     // The surface sits in the right-hand column; a session-pane dialog (provider
     // switch, composer popover) opens to its left and must leave the page alive.
     stubRect(document.body, { x: 0, y: 0, width: 1200, height: 800 });
-    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     const surface = document.querySelector(".browser-panel-surface");
     if (!(surface instanceof HTMLElement)) throw new Error("no browser surface");
     stubRect(surface, { x: 800, y: 60, width: 400, height: 740 });
@@ -501,12 +509,12 @@ describe("BrowserPanel", () => {
       .mockReturnValue(new DOMRect(800, 60, 400, 350));
     try {
       const { rerender } = render(
-        <BrowserPanel url="https://github.com" onClose={() => undefined} panePosition="top" />
+        <BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} panePosition="top" />
       );
       await act(async () => { await Promise.resolve(); });
       browserStub.setBounds.mockClear();
       bounds.mockReturnValue(new DOMRect(800, 420, 400, 350));
-      rerender(<BrowserPanel url="https://github.com" onClose={() => undefined} panePosition="bottom" />);
+      rerender(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} panePosition="bottom" />);
       expect(browserStub.setBounds).toHaveBeenCalledWith(expect.objectContaining({
         tabId: activeTabId(),
         visible: true,
@@ -518,7 +526,7 @@ describe("BrowserPanel", () => {
   });
 
   it("yields the native webview while the collapsed sidebar peeks", async () => {
-    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     await act(async () => {
       await Promise.resolve();
     });
@@ -548,7 +556,7 @@ describe("BrowserPanel", () => {
   });
 
   it("opens a page-requested popup as a new tab", () => {
-    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     const firstTab = activeTabId();
 
     act(() => newTabListener?.({ tabId: firstTab, url: "https://docs.github.com" }));
@@ -562,7 +570,7 @@ describe("BrowserPanel", () => {
   });
 
   it("adds a background tab's popup without stealing focus", () => {
-    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     const firstTab = activeTabId();
     browserStub.open.mockClear();
 
@@ -574,7 +582,7 @@ describe("BrowserPanel", () => {
   });
 
   it("recreates a restored neighbor's webview when closing the active tab", () => {
-    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     const firstTab = activeTabId();
     fireEvent.click(screen.getByRole("button", { name: "New tab" }));
 
@@ -589,7 +597,7 @@ describe("BrowserPanel", () => {
   });
 
   it("reopens the last closed tab on ⌘⇧T", () => {
-    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     fireEvent.click(screen.getByRole("button", { name: "New tab" }));
     const secondTab = activeTabId();
     fireEvent.click(screen.getByRole("button", { name: /Close tab.*google/i }));
@@ -605,19 +613,19 @@ describe("BrowserPanel", () => {
   it("retries webview creation after a failed open instead of leaving a zombie tab", async () => {
     browserStub.open.mockRejectedValueOnce({ message: "boom" });
     const { rerender } = render(
-      <BrowserPanel url="https://github.com" requestSeq={1} onClose={() => undefined} />
+      <BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" requestSeq={1} onClose={() => undefined} />
     );
     expect(await screen.findByRole("status")).toHaveTextContent("boom");
 
     // The failed tab was un-marked, so the next open request recreates the
     // webview instead of navigating a label that never existed.
-    rerender(<BrowserPanel url="https://github.com" requestSeq={2} onClose={() => undefined} />);
+    rerender(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" requestSeq={2} onClose={() => undefined} />);
     expect(browserStub.open).toHaveBeenCalledTimes(2);
     expect(browserStub.navigate).not.toHaveBeenCalled();
   });
 
   it("opens a new tab on ⌘T regardless of focus", () => {
-    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     const firstTab = activeTabId();
     // macOS WebKit leaves focus on <body> after clicks — ⌘T must still work.
     fireEvent.keyDown(document.body, { key: "t", metaKey: true });
@@ -627,7 +635,7 @@ describe("BrowserPanel", () => {
 
   it("closes the active tab on the menu's close request", () => {
     const onClose = vi.fn();
-    render(<BrowserPanel url="https://github.com" onClose={onClose} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={onClose} />);
     const firstTab = activeTabId();
     act(() => {
       requestCloseActiveBrowserTab();
@@ -638,7 +646,7 @@ describe("BrowserPanel", () => {
 
   it("routes shortcuts pressed inside the page to tab actions", () => {
     const onClose = vi.fn();
-    render(<BrowserPanel url="https://github.com" onClose={onClose} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={onClose} />);
     const firstTab = activeTabId();
 
     act(() => pageCommandListener?.({ tabId: firstTab, command: "new-tab" }));
@@ -659,7 +667,7 @@ describe("BrowserPanel", () => {
   });
 
   it("navigates history from the page's mouse thumb buttons", () => {
-    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     const firstTab = activeTabId();
 
     act(() => pageCommandListener?.({ tabId: firstTab, command: "back" }));
@@ -670,7 +678,7 @@ describe("BrowserPanel", () => {
   });
 
   it("navigates history from thumb buttons clicked on the pane chrome", () => {
-    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     const tabId = activeTabId();
     const toolbarTarget = screen.getByRole("textbox", { name: "Address" });
 
@@ -682,7 +690,7 @@ describe("BrowserPanel", () => {
   });
 
   it("surfaces the 1Password fill result", async () => {
-    render(<BrowserPanel url="https://github.com" onClose={() => undefined} />);
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     fireEvent.click(screen.getByRole("button", { name: "Fill login from 1Password" }));
     expect(browserStub.fillCredentials).toHaveBeenCalledWith(activeTabId());
     expect(await screen.findByText("Filled from 1Password: GitHub")).toBeInTheDocument();

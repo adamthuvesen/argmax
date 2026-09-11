@@ -149,20 +149,14 @@ describe("foldRenderItems", () => {
     const turnsAfterSteer = afterSteer.filter((item) => item.kind === "turn");
     expect(afterSteer.map((item) => item.kind)).toEqual([
       "user-message",
-      "turn",
-      "user-message",
       "turn"
     ]);
     expect(turnsAfterSteer[0]?.id).toBe(turnBeforeSteer?.id);
     expect(topLevelToolIds(turnsAfterSteer[0])).toEqual(["read"]);
     expect(turnsAfterSteer[0]?.kind === "turn" ? turnsAfterSteer[0].toolItems[0]?.tool.status : null)
       .toBe("running");
-    expect(
-      afterSteer.find(
-        (item) => item.kind === "user-message" && item.event.id === "steer"
-      )?.kind
-    ).toBe("user-message");
-    expect(turnsAfterSteer[1]?.id).toBe("turn-after-steer-steer");
+    expect(turnsAfterSteer[0]?.steerEvents.map((event) => event.id)).toEqual(["steer"]);
+    expect(turnsAfterSteer[0]?.assistantEvents.map((event) => event.id)).toEqual(["intro", "answer"]);
   });
 
   it("collapses a compaction bracket into one seam that ends the turn", () => {

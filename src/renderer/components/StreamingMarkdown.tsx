@@ -6,6 +6,7 @@ import { matchFileChip, normalizeFileChipPath } from "../lib/fileChipPath.js";
 import { splitLogSegments } from "../lib/logDump.js";
 import { isMermaidFenceClass } from "../lib/mermaidFence.js";
 import { needsMath } from "../lib/needsMath.js";
+import { importChunk } from "../lib/importChunk.js";
 import { CodeBlock } from "./CodeBlock.js";
 import { FileChip, type FileChipOpenOptions } from "./FileChip.js";
 import { LogBlock } from "./LogBlock.js";
@@ -16,13 +17,20 @@ import { WebLink } from "./WebLink.js";
 import { withToast } from "../lib/withToast.js";
 import { showToast } from "../state/toast.js";
 
-const MermaidDiagram = lazy(async () => ({
-  default: (await import("./MermaidDiagram.js")).MermaidDiagram
-}));
+// Through importChunk because a paired phone keeps its page alive across
+// renderer rebuilds: the hashed chunk it asks for is gone, and a rejected
+// lazy load inside the transcript takes the whole app to the error boundary.
+const MermaidDiagram = lazy(() =>
+  importChunk(async () => ({
+    default: (await import("./MermaidDiagram.js")).MermaidDiagram
+  }))
+);
 
-const ChatMathMarkdown = lazy(async () => ({
-  default: (await import("./MathMarkdown.js")).ChatMathMarkdown
-}));
+const ChatMathMarkdown = lazy(() =>
+  importChunk(async () => ({
+    default: (await import("./MathMarkdown.js")).ChatMathMarkdown
+  }))
+);
 
 const SMOOTH_STREAM_TICK_MS = 32;
 /** Floor of the typewriter: what a block reveals per tick once it has caught up

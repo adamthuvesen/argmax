@@ -1055,6 +1055,29 @@ describe("SessionConversation — streaming & composer", () => {
     expect(container.querySelector(".chat-bubble.user")?.textContent).not.toContain(`@${imagePath}`);
   });
 
+  it("opens an attached screenshot in a pane-scoped preview", () => {
+    const imagePath =
+      "/Users/me/Library/Application Support/argmax/local-state/attachments/session-a/screenshot 1.png";
+    renderConversation(
+      baseSession({ state: "running" }),
+      [
+        event(
+          "u1",
+          "user.message",
+          `Check this screenshot @${imagePath}`,
+          "2026-05-12T15:00:00.000Z",
+          {
+            attachments: [{ filePath: imagePath, mimeType: "image/png", sizeBytes: 1234 }]
+          }
+        )
+      ]
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "View image: screenshot 1.png" }));
+    const dialog = screen.getByRole("dialog", { name: "Attached image" });
+    expect(dialog.parentElement).toHaveClass("conversation-surface");
+  });
+
   it("synthesizes a user bubble from session.prompt before the user.message event arrives", () => {
     renderConversation(baseSession({ state: "running", prompt: "@AGENTS.md" }), []);
 
@@ -1430,8 +1453,26 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByText("follow-up").closest("[data-turn-anchor]")).not.toBeNull();
   });
 
-  it("keeps the turn's scroll anchor through steers and advances it for a new prompt", () => {
-    const session = baseSession({ provider: "claude", state: "running" });
+  it("shows steering before the agent produces its first output", () => {
+    const session = baseSession({ provider: "codex", state: "running" });
+    const events = [
+      event("u1", "user.message", "Review the change", "2026-05-12T15:00:00.000Z"),
+      event("steer", "user.message", "Start with the tests", "2026-05-12T15:00:01.000Z", {
+        delivery: "steer"
+      })
+    ];
+    const view = renderConversation(session, events);
+    expect(screen.getByText("Start with the tests")).toBeVisible();
+    expect(screen.getByRole("button", { name: /Working/ })).toBeInTheDocument();
+
+    rerenderConversation(view.rerender, { ...session, state: "failed" }, events);
+    expect(screen.getByText("Start with the tests")).toBeVisible();
+  });
+
+  it.each(["claude", "codex"] as const)("keeps %s's active turn through steers and advances it for a new prompt", (provider) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-12T15:00:10.000Z"));
+    const session = baseSession({ provider, state: "running" });
     let events = [
       event("u1", "user.message", "Review the change", "2026-05-12T15:00:00.000Z"),
       event("task", "command.started", "Agent", "2026-05-12T15:00:01.000Z", {
@@ -1441,23 +1482,49 @@ describe("SessionConversation — streaming & composer", () => {
     const options = { defaultToolCallsDisplay: "collapsed" as const };
     const view = renderConversation(session, events, options);
     const agent = screen.getByRole("button", { name: startedAgentName("Review changes") });
+    const workingChip = screen.getByRole("button", { name: /Working/ });
     const prompt = screen.getByText("Review the change");
     expect(prompt.closest("[data-turn-anchor]")).not.toBeNull();
 
     for (const [index, text] of ["Do not post yet", "Check the tests too"].entries()) {
       events = [...events, event(`steer-${index}`, "user.message", text, `2026-05-12T15:00:0${index + 2}.000Z`, {
-        delivery: "steer"
+        delivery: "steer",
+        attachments: [{ filePath: `/tmp/guidance-${index}.png`, mimeType: "image/png", sizeBytes: 1234 }]
+      }), event(`ack-${index}`, "message.completed", "Acknowledged.", `2026-05-12T15:00:0${index + 2}.000Z`, {
+        phase: "commentary"
       })];
       rerenderConversation(view.rerender, session, events, options);
       expect(prompt.closest("[data-turn-anchor]")).not.toBeNull();
       expect(screen.getByText(text).closest("[data-turn-anchor]")).toBeNull();
       expect(agent).toBeInTheDocument();
+      expect(screen.getByRole("img", { name: `Attached image: guidance-${index}.png` }))
+        .toHaveAttribute("src", attachmentProtocolUrl(`/tmp/guidance-${index}.png`));
+      expect(screen.getAllByRole("button", { name: /Working/ })).toHaveLength(1);
+      expect(screen.getByRole("button", { name: /Working/ })).toBe(workingChip);
+      expect(screen.queryByRole("button", { name: /Worked/ })).not.toBeInTheDocument();
+      const replies = screen.getAllByText("Acknowledged.");
+      expect(replies).toHaveLength(index + 1);
+      expect(screen.getByText(text).compareDocumentPosition(replies[index]))
+        .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     }
 
-    events = [...events, event("u2", "user.message", "Now review another change", "2026-05-12T15:00:04.000Z")];
+    rerenderConversation(view.rerender, { ...session, state: "complete" }, events, options);
+    act(() => { vi.advanceTimersByTime(1000); });
+    expect(screen.getAllByRole("button", { name: /Worked/ })).toHaveLength(1);
+    expect(screen.getByText("Do not post yet")).toBeVisible();
+    expect(screen.getByText("Check the tests too")).toBeVisible();
+
+    events = [...events,
+      event("u2", "user.message", "Now review another change", "2026-05-12T15:00:04.000Z"),
+      event("next-task", "command.started", "Read", "2026-05-12T15:00:05.000Z", {
+        id: "next-read", name: "Read", input: { file_path: "/tmp/another-change.ts" }
+      })
+    ];
     rerenderConversation(view.rerender, session, events, options);
     expect(prompt.closest("[data-turn-anchor]")).toBeNull();
     expect(screen.getByText("Now review another change").closest("[data-turn-anchor]")).not.toBeNull();
+    expect(screen.getAllByRole("button", { name: /Worked/ })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /Working/ })).toHaveLength(1);
   });
 
   it("hides Thinking for Codex once a visible tool starts running", () => {

@@ -319,10 +319,13 @@
   border-top: 0.5px solid var(--line-soft);
 }
 
-/* Lists paint their own rows edge to edge. */
-.settings-card > .settings-providers-list,
-.settings-card > .project-knowledge-list {
+/* Provider rows paint their own dividers edge to edge. */
+.settings-card > .settings-providers-list {
   padding: 0;
+}
+
+.settings-card > .project-knowledge-list {
+  padding: 10px 14px;
 }
 
 .settings-card > *:first-child {

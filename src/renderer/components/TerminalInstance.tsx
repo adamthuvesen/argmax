@@ -18,10 +18,12 @@ import {
 export function TerminalInstance({
   tabId,
   workspaceId,
+  terminalId,
   visible
 }: {
   tabId: string;
   workspaceId: string;
+  terminalId?: string;
   visible: boolean;
 }): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -31,7 +33,7 @@ export function TerminalInstance({
     const container = containerRef.current;
     if (!container || !window.argmax) return;
 
-    const runtime = attachTerminalTab(tabId, workspaceId, container);
+    const runtime = attachTerminalTab(tabId, workspaceId, container, terminalId);
     runtimeRef.current = runtime;
 
     const ro = new ResizeObserver(() => {
@@ -45,7 +47,7 @@ export function TerminalInstance({
       detachTerminalTab(tabId);
       runtimeRef.current = null;
     };
-  }, [tabId, workspaceId]);
+  }, [tabId, workspaceId, terminalId]);
 
   // When the terminal becomes visible after being hidden (⌘J, another panel
   // mode, or another tab being active), xterm's renderer can be out of sync

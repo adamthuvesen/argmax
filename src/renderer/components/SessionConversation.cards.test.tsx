@@ -6,6 +6,7 @@ import {
   event,
   project,
   renderConversation,
+  rerenderConversation,
   reviewStub,
   workspace
 } from "../../test/sessionConversationTestHarness.js";
@@ -220,6 +221,46 @@ describe("SessionConversation — cards", () => {
     // Closing is not declining: the composer returns so the reader can answer
     // in their own words.
     fireEvent.click(screen.getByRole("button", { name: "Answer in your own words" }));
+    expect(screen.getByLabelText("Chat prompt")).toBeInTheDocument();
+  });
+
+  it("docks a question that arrives while the composer still holds focus from the last send, and stays inline for a typed draft", () => {
+    const questionEvents = [
+      event("u1", "user.message", "what should we do", "2026-05-12T15:00:00.000Z", {}),
+      event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
+        type: "tool_use",
+        id: "tu_q_focus",
+        name: "AskUserQuestion",
+        input: {
+          questions: [
+            {
+              question: "Pick a direction",
+              header: "Direction",
+              multiSelect: false,
+              options: [{ label: "Fix audit findings" }, { label: "General maintenance" }]
+            }
+          ]
+        }
+      })
+    ];
+    const session = baseSession({ provider: "claude", state: "running" });
+    const { rerender } = renderConversation(session, [questionEvents[0]]);
+
+    // Sending refocuses the input, so the composer holds focus for the whole
+    // turn. That must not push the question into the scrollback.
+    fireEvent.focus(screen.getByLabelText("Chat prompt"));
+    rerenderConversation(rerender, session, questionEvents);
+    expect(screen.getByLabelText("Question from agent")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Chat prompt")).not.toBeInTheDocument();
+
+    cleanup();
+
+    // A draft is the one thing the dock would cover, so that question stays
+    // in the transcript and the composer keeps the slot.
+    const typed = renderConversation(session, [questionEvents[0]]);
+    fireEvent.change(screen.getByLabelText("Chat prompt"), { target: { value: "half a thought" } });
+    rerenderConversation(typed.rerender, session, questionEvents);
+    expect(screen.getByLabelText("Question from agent")).toBeInTheDocument();
     expect(screen.getByLabelText("Chat prompt")).toBeInTheDocument();
   });
 

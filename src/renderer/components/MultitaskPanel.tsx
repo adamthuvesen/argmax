@@ -27,6 +27,7 @@ import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
  */
 export function MultitaskPanel({
   events = [],
+  isFocused = true,
   pendingMessages,
   rawOutputs = [],
   session,
@@ -44,6 +45,7 @@ export function MultitaskPanel({
   onTerminateSession
 }: {
   events?: TimelineEvent[];
+  isFocused?: boolean;
   pendingMessages: PendingMessage[];
   rawOutputs?: RawProviderOutput[];
   session: SessionSummary;
@@ -89,6 +91,7 @@ export function MultitaskPanel({
   return (
     <div className="multitask-panel">
       <SessionConversation
+        isFocused={isFocused}
         events={sessionEvents}
         floating
         headingLabel={taskLabel}

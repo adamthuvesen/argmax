@@ -372,6 +372,234 @@ describe("MobileApp", () => {
     );
   });
 
+  it("brings the peek up over the parent's composer and multitask lane", async () => {
+    // A bottom sheet, not a panel parked above the chat's floor: it reaches
+    // the bottom edge and covers both the composer and the lane the row was
+    // tapped in, and they come back when it closes. An earlier pass measured
+    // that furniture and held it clear, which left a second composer live
+    // under the sheet.
+    const parent = snapshot.sessions[0];
+    mockDashboardSnapshot({
+      ...snapshot,
+      workspaces: [
+        ...snapshot.workspaces,
+        {
+          ...snapshot.workspaces[0],
+          id: "workspace-multitask",
+          taskLabel: "Fix the changelog date",
+          state: "complete",
+          sharedWorkspace: true
+        }
+      ],
+      sessions: [
+        ...snapshot.sessions,
+        {
+          ...parent,
+          id: "session-multitask",
+          workspaceId: "workspace-multitask",
+          state: "complete",
+          launchedBySessionId: parent.id,
+          launchKind: "multitask",
+          prompt: "The changelog says 2025 for the 0.4 entry."
+        }
+      ],
+      events: [
+        ...snapshot.events,
+        {
+          id: "event-multitask-launched",
+          sessionId: parent.id,
+          type: "multitask.launched",
+          message: "Running alongside: Fix the changelog date",
+          payload: {
+            childSessionId: "session-multitask",
+            childWorkspaceId: "workspace-multitask",
+            taskLabel: "Fix the changelog date",
+            prompt: "The changelog says 2025 for the 0.4 entry.",
+            worktree: false
+          },
+          createdAt: "2026-05-08T15:54:01.000Z"
+        }
+      ]
+    });
+
+    // jsdom measures everything as a zero box, so the untouched branch below
+    // is what it would have returned anyway.
+    const box = (top: number, bottom: number): DOMRect =>
+      ({ top, bottom, left: 0, right: 390, width: 390, height: bottom - top, x: 0, y: top }) as DOMRect;
+    const rects = vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: Element): DOMRect {
+        if (this.classList.contains("session-main-column")) return box(0, 800);
+        if (this.classList.contains("multitask-composer-lane")) return box(540, 620);
+        if (this.classList.contains("session-composer-stack")) return box(620, 800);
+        return box(0, 0);
+      });
+
+    try {
+      render(<MobileApp />);
+
+      const list = await screen.findByRole("region", { name: "Chat list" });
+      fireEvent.click(within(list).getByRole("button", { name: /Build dashboard/ }));
+      await screen.findByRole("region", { name: "Conversation" });
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Open multitask: Fix the changelog date" })
+      );
+
+      const overlay = await screen.findByRole("dialog", { name: "Delegated work" });
+      // No inline floor at all: the sheet's bottom is the screen's, in CSS.
+      expect(overlay.closest(".mobile-agent-overlay")).not.toHaveAttribute("style");
+
+      fireEvent.click(screen.getByRole("button", { name: "Close Delegated work" }));
+      await waitFor(() =>
+        expect(screen.queryByRole("dialog", { name: "Delegated work" })).not.toBeInTheDocument()
+      );
+      // The parent's composer is answerable again the moment the sheet goes.
+      expect(screen.getByRole("textbox", { name: "Chat prompt" })).toBeInTheDocument();
+    } finally {
+      rects.mockRestore();
+    }
+  });
+
+  // A multitask's turn footer lists the files it wrote and offers Review. On
+  // the desktop both open the containing dock's Changes view; the phone has no
+  // dock, so both have to reach the review screen — the same one a file
+  // reference tapped in the transcript opens. They used to reach nothing: the
+  // overlay handed `AgentsView` no `onOpenDiff`/`onOpenReview`, so the panel
+  // fell back to its own inert review state and the taps did nothing at all.
+  async function openMultitaskPeekWithChanges(): Promise<void> {
+    const parent = snapshot.sessions[0];
+    mockDashboardSnapshot({
+      ...snapshot,
+      workspaces: [
+        ...snapshot.workspaces,
+        {
+          ...snapshot.workspaces[0],
+          id: "workspace-multitask",
+          taskLabel: "Fix the changelog date",
+          state: "complete",
+          sharedWorkspace: true
+        }
+      ],
+      sessions: [
+        ...snapshot.sessions,
+        {
+          ...parent,
+          id: "session-multitask",
+          workspaceId: "workspace-multitask",
+          state: "complete",
+          launchedBySessionId: parent.id,
+          launchKind: "multitask",
+          prompt: "The changelog says 2025 for the 0.4 entry."
+        }
+      ],
+      events: [
+        ...snapshot.events,
+        {
+          id: "event-multitask-launched",
+          sessionId: parent.id,
+          type: "multitask.launched",
+          message: "Running alongside: Fix the changelog date",
+          payload: {
+            childSessionId: "session-multitask",
+            childWorkspaceId: "workspace-multitask",
+            taskLabel: "Fix the changelog date",
+            prompt: "The changelog says 2025 for the 0.4 entry.",
+            worktree: false
+          },
+          createdAt: "2026-05-08T15:54:01.000Z"
+        },
+        {
+          id: "event-multitask-user",
+          sessionId: "session-multitask",
+          type: "user.message",
+          message: "The changelog says 2025 for the 0.4 entry.",
+          payload: { source: "multitask" },
+          createdAt: "2026-05-08T15:54:01.000Z"
+        },
+        {
+          id: "event-multitask-edit-start",
+          sessionId: "session-multitask",
+          type: "command.started",
+          message: "Edit",
+          payload: {
+            id: "edit-1",
+            name: "Edit",
+            input: {
+              file_path: "/tmp/worktrees/dashboard/CHANGELOG.md",
+              old_string: "2025",
+              new_string: "2026"
+            }
+          },
+          createdAt: "2026-05-08T15:54:02.000Z"
+        },
+        {
+          id: "event-multitask-edit-done",
+          sessionId: "session-multitask",
+          type: "command.completed",
+          message: "Edit",
+          payload: { id: "edit-1", name: "Edit", output: "ok" },
+          createdAt: "2026-05-08T15:54:03.000Z"
+        },
+        {
+          id: "event-multitask-answer",
+          sessionId: "session-multitask",
+          type: "message.completed",
+          message: "Corrected the 0.4 heading to 2026.",
+          payload: {},
+          createdAt: "2026-05-08T15:54:04.000Z"
+        }
+      ]
+    });
+
+    render(<MobileApp />);
+    const list = await screen.findByRole("region", { name: "Chat list" });
+    fireEvent.click(within(list).getByRole("button", { name: /Build dashboard/ }));
+    await screen.findByRole("region", { name: "Conversation" });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open multitask: Fix the changelog date" })
+    );
+    await screen.findByRole("dialog", { name: "Delegated work" });
+  }
+
+  it("opens a file a multitask wrote on the review screen, from the peek", async () => {
+    listWorkspaceFiles.mockResolvedValue([{ path: "CHANGELOG.md" }]);
+    readWorkspaceFile.mockResolvedValue({
+      kind: "text",
+      content: "## 0.4 — 2026",
+      size: 13,
+      mtimeMs: 1
+    });
+
+    await openMultitaskPeekWithChanges();
+
+    // The turn's activity rows name the same file, so reach the row through
+    // the changes card's own header rather than by label alone.
+    const header = await screen.findByRole("button", { name: "Hide 1 file changed" });
+    const card = header.closest("section");
+    if (!card) throw new Error("turn changes card is not a section");
+    fireEvent.click(within(card).getByRole("button", { name: "Edited CHANGELOG.md" }));
+
+    await screen.findByRole("tablist", { name: "Review mode" });
+    expect(await screen.findByLabelText("Preview of CHANGELOG.md")).toBeInTheDocument();
+  });
+
+  it("opens the review screen's changes from a multitask peek's Review button", async () => {
+    listChangedFiles.mockResolvedValue([
+      { path: "CHANGELOG.md", status: "modified", additions: 1, deletions: 1, staged: false }
+    ]);
+
+    await openMultitaskPeekWithChanges();
+
+    const peek = screen.getByRole("dialog", { name: "Delegated work" });
+    fireEvent.click(within(peek).getByRole("button", { name: "Review changed files" }));
+
+    await screen.findByRole("tablist", { name: "Review mode" });
+    // No file was picked, so it lands on Changes rather than a file preview.
+    expect(screen.getByRole("tab", { name: "Changes" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByLabelText("Changed files")).toHaveTextContent("CHANGELOG.md");
+  });
+
   it("closes the delegated-work overlay on a hardware back gesture, keeping the chat", async () => {
     mockDashboardSnapshot({
       ...snapshot,
@@ -688,6 +916,37 @@ describe("MobileApp", () => {
     );
     expect(launchProvider.mock.calls[0][0]).not.toHaveProperty("permissionMode");
     expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
+  });
+
+  it("goes straight from the new-chat screen into the launched chat", async () => {
+    const launchedWorkspace = { ...snapshot.workspaces[0], id: "workspace-new", taskLabel: "Fresh chat" };
+    const launchedSession = { ...snapshot.sessions[0], id: "session-new", workspaceId: "workspace-new" };
+    createCurrentWorkspace.mockResolvedValue(launchedWorkspace);
+    launchProvider.mockResolvedValue(launchedSession);
+
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "Chat list" });
+
+    // The shell's screen attribute is the navigation itself: a "list" reading
+    // between "new" and "session" is the flash this guards against.
+    const shell = document.querySelector(".mobile-shell") as HTMLElement;
+    const screens: string[] = [];
+    const observer = new MutationObserver(() => {
+      const current = shell.dataset.screen ?? "";
+      if (screens[screens.length - 1] !== current) screens.push(current);
+    });
+    observer.observe(shell, { attributes: true, attributeFilter: ["data-screen"] });
+
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+      fireEvent.change(screen.getByLabelText("Task"), { target: { value: "Start something new" } });
+      fireEvent.click(screen.getByRole("button", { name: "Start chat" }));
+
+      expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
+      expect(screens).toEqual(["new", "session"]);
+    } finally {
+      observer.disconnect();
+    }
   });
 
   it("archives a chat stopped within 10s of launch and returns to the list", async () => {

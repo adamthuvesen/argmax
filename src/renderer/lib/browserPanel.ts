@@ -8,6 +8,10 @@
  * a time. The owner is whichever panel most recently entered Browser mode, not
  * the focused one: clicking into another pane's chat must not yank the page
  * away, while that pane switching to Browser takes it over deliberately.
+ *
+ * Tab strips are per scope: each chat, the launcher, and the rail's Browser
+ * page keep their own tabs, order, and active tab. Native webviews stay in one
+ * process-wide pool; a demoted surface hides them rather than destroying them.
  */
 
 import type { BrowserTabInfo } from "../../shared/types.js";
@@ -15,10 +19,11 @@ import type { BrowserTabInfo } from "../../shared/types.js";
 /** Start page when the browser (or a fresh tab) is opened without a target. */
 export const DEFAULT_BROWSER_URL = "https://www.google.com";
 
-// Where the browser last was, for a strip with no tabs in it: a closed-out
-// pane, or the first open of a run. While a tab exists the tab store is what
-// a reopen reads, since that is the copy the app keeps current.
-let lastUrl: string | null = null;
+/** Stable owner id for the full-workspace Browser page (not a review panel). */
+export const BROWSER_PAGE_OWNER_ID = "browser-page";
+
+/** Tab strip for the launcher's review panel, which has no session. */
+export const LAUNCHER_BROWSER_SCOPE_ID = "launcher";
 
 export interface BrowserOpenRequest {
   url: string;
@@ -28,31 +33,33 @@ export interface BrowserOpenRequest {
   /** Show this existing tab instead of navigating the active one. Set when a
    *  session's tab is what the pane was asked to show. */
   tabId?: string;
+  /** Open a fresh tab in the claiming pane's strip instead of navigating. */
+  newTab?: boolean;
 }
 
 let openRequest: BrowserOpenRequest | null = null;
 const requestListeners = new Set<() => void>();
 
 export function openInBrowserPanel(url: string, options?: { newTab?: boolean }): void {
-  const tab = options?.newTab ? createBrowserTab(url, false) : null;
-  lastUrl = url;
-  openRequest = { url, seq: (openRequest?.seq ?? 0) + 1 };
-  if (tab) openRequest.tabId = tab.id;
+  openRequest = {
+    url,
+    seq: (openRequest?.seq ?? 0) + 1,
+    ...(options?.newTab ? { newTab: true as const } : {})
+  };
   for (const listener of requestListeners) listener();
 }
 
-/** Open the browser without a target: where it last was, or the start page. */
+/** Open the browser without a target: the claiming pane restores its own strip. */
 export function openBrowserPanel(): void {
-  openInBrowserPanel(lastBrowsedUrl());
+  openRequest = { url: "", seq: (openRequest?.seq ?? 0) + 1 };
+  for (const listener of requestListeners) listener();
 }
 
-/** The URL a reopen should land on: what the active tab is showing. Read from
- *  the tab store, which the app's registry keeps current whether or not any
- *  browser chrome is mounted — a URL remembered alongside it drifts, and a
- *  reopen at a drifted URL navigates the live tab out from under the user. */
-export function lastBrowsedUrl(): string {
-  const active = tabs.find((tab) => tab.id === activeTabId);
-  return active?.url ?? lastUrl ?? DEFAULT_BROWSER_URL;
+/** The URL a reopen should land on: what that scope's active tab is showing. */
+export function lastBrowsedUrl(scopeId: string): string {
+  const state = scopes.get(scopeId);
+  const active = state?.tabs.find((tab) => tab.id === state.activeTabId);
+  return active?.url ?? state?.lastUrl ?? DEFAULT_BROWSER_URL;
 }
 
 export function subscribeBrowserRequest(listener: () => void): () => void {
@@ -68,14 +75,15 @@ export function getBrowserRequest(): BrowserOpenRequest | null {
 }
 
 /** Called on in-page navigation so a reopen lands where the user browsed to. */
-export function rememberBrowserUrl(url: string): void {
-  if (url.length > 0) lastUrl = url;
+export function rememberBrowserUrl(url: string, scopeId: string): void {
+  if (url.length === 0) return;
+  const state = ensureScope(scopeId);
+  if (state.lastUrl === url) return;
+  state.lastUrl = url;
+  persistTabs();
 }
 
 // --- Surface ownership ------------------------------------------------------
-
-/** Stable owner id for the full-workspace Browser page (not a review panel). */
-export const BROWSER_PAGE_OWNER_ID = "browser-page";
 
 let ownerId: string | null = null;
 const ownerListeners = new Set<() => void>();
@@ -110,7 +118,6 @@ export function releaseBrowserSurface(id: string): void {
 export function resetBrowserSurfaceForTests(): void {
   openRequest = null;
   ownerId = null;
-  lastUrl = null;
   for (const listener of requestListeners) listener();
   for (const listener of ownerListeners) listener();
 }
@@ -129,6 +136,8 @@ export function resetBrowserSurfaceForTests(): void {
 
 export interface BrowserTab {
   id: string;
+  /** Chat, launcher, or Browser-page strip this tab belongs to. */
+  scopeId: string;
   url: string;
   title: string | null;
   /** True while the tab's page is loading. Not persisted. */
@@ -140,30 +149,108 @@ export interface BrowserTab {
   group: string | null;
 }
 
-const TABS_KEY = "argmax.browser.tabs";
+interface ScopeState {
+  tabs: BrowserTab[];
+  activeTabId: string | null;
+  lastUrl: string | null;
+  recentlyClosed: string[];
+}
 
-let tabs: BrowserTab[] = [];
-let activeTabId: string | null = null;
+const TABS_KEY = "argmax.browser.tabs";
+const EMPTY_TABS: BrowserTab[] = [];
+const MAX_RECENTLY_CLOSED = 20;
+
+const scopes = new Map<string, ScopeState>();
 let nextTabSeq = 1;
 /** Tabs whose native webview exists in THIS app run. A restored tab is not
  *  materialized until its first activation recreates the webview. */
 const materializedTabs = new Set<string>();
 const tabListeners = new Set<() => void>();
 
+function emptyScope(): ScopeState {
+  return { tabs: [], activeTabId: null, lastUrl: null, recentlyClosed: [] };
+}
+
+function ensureScope(scopeId: string): ScopeState {
+  const existing = scopes.get(scopeId);
+  if (existing) return existing;
+  const created = emptyScope();
+  scopes.set(scopeId, created);
+  return created;
+}
+
 function persistTabs(): void {
   if (typeof window === "undefined") return;
   try {
+    const snapshot: Record<
+      string,
+      { activeTabId: string | null; lastUrl: string | null; tabs: Array<{ id: string; url: string; title: string | null }> }
+    > = {};
+    for (const [scopeId, state] of scopes) {
+      if (state.tabs.length === 0 && state.lastUrl === null) continue;
+      snapshot[scopeId] = {
+        activeTabId: state.activeTabId,
+        lastUrl: state.lastUrl,
+        tabs: state.tabs.map((tab) => ({ id: tab.id, url: tab.url, title: tab.title }))
+      };
+    }
     window.localStorage.setItem(
       TABS_KEY,
       JSON.stringify({
-        activeTabId,
         nextTabSeq,
-        tabs: tabs.map((tab) => ({ id: tab.id, url: tab.url, title: tab.title }))
+        scopes: snapshot
       })
     );
   } catch {
     // Tab restoration is a convenience, never an error.
   }
+}
+
+function isPersistedTab(tab: unknown): tab is { id: string; url: string; title: string | null } {
+  return (
+    typeof tab === "object" &&
+    tab !== null &&
+    typeof (tab as { id: unknown }).id === "string" &&
+    // Ids become native webview labels; a corrupted one would make the
+    // tab permanently un-openable (Rust rejects non-slug labels).
+    /^[a-z0-9-]{1,32}$/.test((tab as { id: string }).id) &&
+    typeof (tab as { url: unknown }).url === "string"
+  );
+}
+
+function restoreScope(
+  scopeId: string,
+  snapshot: { activeTabId?: unknown; lastUrl?: unknown; tabs?: unknown }
+): void {
+  if (!Array.isArray(snapshot.tabs)) return;
+  const restored = snapshot.tabs.filter(isPersistedTab);
+  if (restored.length === 0 && typeof snapshot.lastUrl !== "string") return;
+  const state = ensureScope(scopeId);
+  state.tabs = restored.map((tab) => ({
+    id: tab.id,
+    scopeId,
+    url: tab.url,
+    title: typeof tab.title === "string" ? tab.title : null,
+    loading: false,
+    ownerSessionId: null,
+    group: null
+  }));
+  state.activeTabId =
+    typeof snapshot.activeTabId === "string" && state.tabs.some((tab) => tab.id === snapshot.activeTabId)
+      ? snapshot.activeTabId
+      : (state.tabs[0]?.id ?? null);
+  state.lastUrl = typeof snapshot.lastUrl === "string" ? snapshot.lastUrl : null;
+}
+
+function highestRestoredSeq(): number {
+  let highest = 0;
+  for (const state of scopes.values()) {
+    for (const tab of state.tabs) {
+      const match = /^tab-(\d+)$/.exec(tab.id);
+      if (match) highest = Math.max(highest, Number(match[1]));
+    }
+  }
+  return highest;
 }
 
 function restoreTabs(): void {
@@ -181,42 +268,24 @@ function restoreTabs(): void {
     activeTabId?: unknown;
     nextTabSeq?: unknown;
     tabs?: unknown;
+    scopes?: unknown;
   };
-  if (!Array.isArray(snapshot.tabs)) return;
-  const restored = snapshot.tabs.filter(
-    (tab): tab is { id: string; url: string; title: string | null } =>
-      typeof tab === "object" &&
-      tab !== null &&
-      typeof (tab as { id: unknown }).id === "string" &&
-      // Ids become native webview labels; a corrupted one would make the
-      // tab permanently un-openable (Rust rejects non-slug labels).
-      /^[a-z0-9-]{1,32}$/.test((tab as { id: string }).id) &&
-      typeof (tab as { url: unknown }).url === "string"
-  );
-  if (restored.length === 0) return;
-  tabs = restored.map((tab) => ({
-    id: tab.id,
-    url: tab.url,
-    title: typeof tab.title === "string" ? tab.title : null,
-    loading: false,
-    ownerSessionId: null,
-    group: null
-  }));
-  activeTabId =
-    typeof snapshot.activeTabId === "string" && tabs.some((tab) => tab.id === snapshot.activeTabId)
-      ? snapshot.activeTabId
-      : (tabs[0]?.id ?? null);
-  // Never below max(restored ids)+1 — a colliding id would map two tabs onto
-  // one native webview label.
-  const highestRestoredSeq = tabs.reduce((highest, tab) => {
-    const match = /^tab-(\d+)$/.exec(tab.id);
-    return match ? Math.max(highest, Number(match[1])) : highest;
-  }, 0);
+  if (snapshot.scopes && typeof snapshot.scopes === "object") {
+    for (const [scopeId, value] of Object.entries(snapshot.scopes)) {
+      if (typeof value === "object" && value !== null) {
+        restoreScope(scopeId, value as { activeTabId?: unknown; lastUrl?: unknown; tabs?: unknown });
+      }
+    }
+  } else if (Array.isArray(snapshot.tabs)) {
+    // Pre-scope snapshots were one app-wide strip. They belong to the rail
+    // Browser page so chats do not inherit a shared history.
+    restoreScope(BROWSER_PAGE_OWNER_ID, snapshot);
+  }
   const persistedSeq =
     typeof snapshot.nextTabSeq === "number" && Number.isFinite(snapshot.nextTabSeq)
       ? Math.floor(snapshot.nextTabSeq)
       : 0;
-  nextTabSeq = Math.max(1, persistedSeq, highestRestoredSeq + 1);
+  nextTabSeq = Math.max(1, persistedSeq, highestRestoredSeq() + 1);
 }
 
 restoreTabs();
@@ -224,6 +293,21 @@ restoreTabs();
 function notifyTabListeners(): void {
   persistTabs();
   for (const listener of tabListeners) listener();
+}
+
+function findScopeIdForTab(id: string): string | null {
+  for (const [scopeId, state] of scopes) {
+    if (state.tabs.some((tab) => tab.id === id)) return scopeId;
+  }
+  return null;
+}
+
+export function findBrowserTab(id: string): BrowserTab | null {
+  for (const state of scopes.values()) {
+    const tab = state.tabs.find((candidate) => candidate.id === id);
+    if (tab) return tab;
+  }
+  return null;
 }
 
 /** True when the tab's native webview exists in this app run. */
@@ -242,12 +326,12 @@ export function unmarkBrowserTabMaterialized(id: string): void {
 }
 
 export function setBrowserTabLoading(id: string, loading: boolean): void {
-  const index = tabs.findIndex((tab) => tab.id === id);
-  const current = tabs[index];
-  if (!current || current.loading === loading) return;
-  const next = [...tabs];
-  next[index] = { ...current, loading };
-  tabs = next;
+  const tab = findBrowserTab(id);
+  if (!tab || tab.loading === loading) return;
+  const state = ensureScope(tab.scopeId);
+  state.tabs = state.tabs.map((candidate) =>
+    candidate.id === id ? { ...candidate, loading } : candidate
+  );
   notifyTabListeners();
 }
 
@@ -257,17 +341,18 @@ export function subscribeBrowserTabs(listener: () => void): () => void {
 }
 
 /** Stable snapshot for useSyncExternalStore: `tabs` is replaced, never mutated. */
-export function getBrowserTabs(): BrowserTab[] {
-  return tabs;
+export function getBrowserTabs(scopeId: string): BrowserTab[] {
+  return scopes.get(scopeId)?.tabs ?? EMPTY_TABS;
 }
 
-export function getActiveBrowserTabId(): string | null {
-  return activeTabId;
+export function getActiveBrowserTabId(scopeId: string): string | null {
+  return scopes.get(scopeId)?.activeTabId ?? null;
 }
 
-export function createBrowserTab(url: string, activate = true): BrowserTab {
+export function createBrowserTab(scopeId: string, url: string, activate = true): BrowserTab {
   const tab: BrowserTab = {
     id: `tab-${nextTabSeq}`,
+    scopeId,
     url,
     title: null,
     loading: false,
@@ -275,15 +360,20 @@ export function createBrowserTab(url: string, activate = true): BrowserTab {
     group: null
   };
   nextTabSeq += 1;
-  tabs = [...tabs, tab];
-  if (activate) activeTabId = tab.id;
+  const state = ensureScope(scopeId);
+  state.tabs = [...state.tabs, tab];
+  if (activate) state.activeTabId = tab.id;
+  state.lastUrl = url;
   notifyTabListeners();
   return tab;
 }
 
 export function activateBrowserTab(id: string): void {
-  if (activeTabId === id || !tabs.some((tab) => tab.id === id)) return;
-  activeTabId = id;
+  const scopeId = findScopeIdForTab(id);
+  if (!scopeId) return;
+  const state = ensureScope(scopeId);
+  if (state.activeTabId === id) return;
+  state.activeTabId = id;
   notifyTabListeners();
 }
 
@@ -291,43 +381,44 @@ export function activateBrowserTab(id: string): void {
  *  pushes never touch it — so a carried tab keeps its new place across a
  *  restart through the persisted list. */
 export function moveBrowserTab(id: string, toIndex: number): void {
-  const from = tabs.findIndex((tab) => tab.id === id);
-  const moved = tabs[from];
+  const scopeId = findScopeIdForTab(id);
+  if (!scopeId) return;
+  const state = ensureScope(scopeId);
+  const from = state.tabs.findIndex((tab) => tab.id === id);
+  const moved = state.tabs[from];
   if (!moved) return;
-  const to = Math.max(0, Math.min(toIndex, tabs.length - 1));
+  const to = Math.max(0, Math.min(toIndex, state.tabs.length - 1));
   if (to === from) return;
-  const next = [...tabs];
+  const next = [...state.tabs];
   next.splice(from, 1);
   next.splice(to, 0, moved);
-  tabs = next;
+  state.tabs = next;
   notifyTabListeners();
 }
 
-/** URLs of closed tabs, most recent last — the ⌘⇧T reopen stack. Session
- *  only; a reopened tab gets a fresh id and webview. */
-const recentlyClosedUrls: string[] = [];
-const MAX_RECENTLY_CLOSED = 20;
-
-export function popRecentlyClosedBrowserTab(): string | null {
-  return recentlyClosedUrls.pop() ?? null;
+export function popRecentlyClosedBrowserTab(scopeId: string): string | null {
+  return ensureScope(scopeId).recentlyClosed.pop() ?? null;
 }
 
 /** Drops the tab and returns the neighbor to activate, if the closed tab was
  *  active. The caller owns destroying the native webview. */
 export function removeBrowserTab(id: string): BrowserTab | null {
-  const index = tabs.findIndex((tab) => tab.id === id);
+  const scopeId = findScopeIdForTab(id);
+  if (!scopeId) return null;
+  const state = ensureScope(scopeId);
+  const index = state.tabs.findIndex((tab) => tab.id === id);
   if (index === -1) return null;
-  const closed = tabs[index];
+  const closed = state.tabs[index];
   if (closed) {
-    recentlyClosedUrls.push(closed.url);
-    if (recentlyClosedUrls.length > MAX_RECENTLY_CLOSED) recentlyClosedUrls.shift();
+    state.recentlyClosed.push(closed.url);
+    if (state.recentlyClosed.length > MAX_RECENTLY_CLOSED) state.recentlyClosed.shift();
   }
-  tabs = tabs.filter((tab) => tab.id !== id);
+  state.tabs = state.tabs.filter((tab) => tab.id !== id);
   materializedTabs.delete(id);
   let nextActive: BrowserTab | null = null;
-  if (activeTabId === id) {
-    nextActive = tabs[Math.min(index, tabs.length - 1)] ?? null;
-    activeTabId = nextActive?.id ?? null;
+  if (state.activeTabId === id) {
+    nextActive = state.tabs[Math.min(index, state.tabs.length - 1)] ?? null;
+    state.activeTabId = nextActive?.id ?? null;
   }
   notifyTabListeners();
   return nextActive;
@@ -335,12 +426,10 @@ export function removeBrowserTab(id: string): BrowserTab | null {
 
 /** Test-only: clears tabs, the id counter, and persisted state. */
 export function resetBrowserTabsForTests(): void {
-  tabs = [];
-  activeTabId = null;
+  scopes.clear();
   nextTabSeq = 1;
   materializedTabs.clear();
   registrySeen.clear();
-  recentlyClosedUrls.length = 0;
   agentOpenRequest = null;
   tabSyncStarted = false;
   if (typeof window !== "undefined") window.localStorage.removeItem(TABS_KEY);
@@ -356,64 +445,85 @@ export function resetBrowserTabsForTests(): void {
  *  flight, and dropping either would be a race. */
 const registrySeen = new Set<string>();
 
-/** Folds a `browser:tabs` push into the strip. */
+function tabsEqual(next: BrowserTab[], current: BrowserTab[]): boolean {
+  return (
+    next.length === current.length &&
+    next.every((tab, index) => {
+      const existing = current[index];
+      return (
+        existing !== undefined &&
+        existing.id === tab.id &&
+        existing.scopeId === tab.scopeId &&
+        existing.url === tab.url &&
+        existing.title === tab.title &&
+        existing.loading === tab.loading &&
+        existing.ownerSessionId === tab.ownerSessionId &&
+        existing.group === tab.group
+      );
+    })
+  );
+}
+
+function foldLiveTab(tab: BrowserTab, live: BrowserTabInfo): BrowserTab {
+  return {
+    ...tab,
+    url: live.url,
+    title: live.title ?? tab.title,
+    loading: live.loading,
+    ownerSessionId: live.ownerSessionId,
+    group: live.group
+  };
+}
+
+/** Folds a `browser:tabs` push into the strips. Agent-owned tabs land in that
+ *  session's strip; user tabs stay in the scope that already listed them. */
 export function applyBrowserTabs(incoming: readonly BrowserTabInfo[]): void {
   const byId = new Map(incoming.map((tab) => [tab.tabId, tab]));
-  const next: BrowserTab[] = [];
-  for (const tab of tabs) {
-    const live = byId.get(tab.id);
-    if (live) {
-      next.push({
-        id: tab.id,
-        url: live.url,
-        // The registry learns a title on load-finish; until then keep the one
-        // the strip already showed rather than blanking the label.
-        title: live.title ?? tab.title,
-        loading: live.loading,
-        ownerSessionId: live.ownerSessionId,
-        group: live.group
-      });
-      byId.delete(tab.id);
-    } else if (!registrySeen.has(tab.id)) {
-      next.push(tab);
+  let changed = false;
+
+  for (const state of scopes.values()) {
+    const next: BrowserTab[] = [];
+    for (const tab of state.tabs) {
+      const live = byId.get(tab.id);
+      if (live) {
+        next.push(foldLiveTab(tab, live));
+        byId.delete(tab.id);
+      } else if (!registrySeen.has(tab.id)) {
+        next.push(tab);
+      }
+    }
+    if (!tabsEqual(next, state.tabs)) {
+      state.tabs = next;
+      if (state.activeTabId !== null && !next.some((tab) => tab.id === state.activeTabId)) {
+        state.activeTabId = next[0]?.id ?? null;
+      }
+      changed = true;
     }
   }
-  // Whatever is left is new to this renderer — a tab a session just opened.
+
   for (const tab of incoming) {
     if (!byId.has(tab.tabId)) continue;
-    next.push({
-      id: tab.tabId,
-      url: tab.url,
-      title: tab.title,
-      loading: tab.loading,
-      ownerSessionId: tab.ownerSessionId,
-      group: tab.group
-    });
-    // The app created the webview, so it exists in this run already.
+    const scopeId = tab.ownerSessionId ?? BROWSER_PAGE_OWNER_ID;
+    const state = ensureScope(scopeId);
+    state.tabs = [
+      ...state.tabs,
+      {
+        id: tab.tabId,
+        scopeId,
+        url: tab.url,
+        title: tab.title,
+        loading: tab.loading,
+        ownerSessionId: tab.ownerSessionId,
+        group: tab.group
+      }
+    ];
+    if (state.activeTabId === null) state.activeTabId = tab.tabId;
     materializedTabs.add(tab.tabId);
+    changed = true;
   }
-  for (const tab of incoming) registrySeen.add(tab.tabId);
 
-  const unchanged =
-    next.length === tabs.length &&
-    next.every((tab, index) => {
-      const current = tabs[index];
-      return (
-        current !== undefined &&
-        current.id === tab.id &&
-        current.url === tab.url &&
-        current.title === tab.title &&
-        current.loading === tab.loading &&
-        current.ownerSessionId === tab.ownerSessionId &&
-        current.group === tab.group
-      );
-    });
-  if (unchanged) return;
-  tabs = next;
-  if (activeTabId !== null && !tabs.some((tab) => tab.id === activeTabId)) {
-    activeTabId = tabs[0]?.id ?? null;
-  }
-  notifyTabListeners();
+  for (const tab of incoming) registrySeen.add(tab.tabId);
+  if (changed) notifyTabListeners();
 }
 
 // --- Agent-opened tabs ------------------------------------------------------
@@ -473,13 +583,14 @@ export function ensureBrowserTabSync(): void {
 }
 
 export function updateBrowserTabState(id: string, url: string, title: string | null): void {
-  const index = tabs.findIndex((tab) => tab.id === id);
-  if (index === -1) return;
-  const current = tabs[index];
-  if (!current || (current.url === url && (title === null || current.title === title))) return;
-  const next = [...tabs];
-  next[index] = { ...current, url, title: title ?? current.title };
-  tabs = next;
+  const tab = findBrowserTab(id);
+  if (!tab) return;
+  if (tab.url === url && (title === null || tab.title === title)) return;
+  const state = ensureScope(tab.scopeId);
+  state.tabs = state.tabs.map((candidate) =>
+    candidate.id === id ? { ...candidate, url, title: title ?? candidate.title } : candidate
+  );
+  state.lastUrl = url;
   notifyTabListeners();
 }
 

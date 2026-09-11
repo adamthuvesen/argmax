@@ -1,10 +1,17 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  MASCOT_VISIBLE_STORAGE_KEY,
+  resetMascotVisibilityForTests,
+  setMascotVisible
+} from "../lib/mascotVisibility.js";
 import { Mascot } from "./Mascot.js";
 
 describe("Mascot", () => {
   afterEach(() => {
     cleanup();
+    window.localStorage.removeItem(MASCOT_VISIBLE_STORAGE_KEY);
+    resetMascotVisibilityForTests();
   });
 
   it("renders idle by default with role=img and data-mood=idle", () => {
@@ -104,6 +111,26 @@ describe("Mascot", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("draws nothing once the mascot is turned off in Appearance", () => {
+    window.localStorage.setItem(MASCOT_VISIBLE_STORAGE_KEY, "false");
+    resetMascotVisibilityForTests();
+    const { container } = render(<Mascot onClick={() => undefined} />);
+    expect(container.querySelector("svg")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Fox mascot" })).toBeNull();
+  });
+
+  it("comes back when the setting is turned on again", () => {
+    window.localStorage.setItem(MASCOT_VISIBLE_STORAGE_KEY, "false");
+    resetMascotVisibilityForTests();
+    render(<Mascot />);
+    expect(screen.queryByRole("img")).toBeNull();
+
+    act(() => {
+      setMascotVisible(true);
+    });
+    expect(screen.getByRole("img", { name: "Fox mascot" })).toBeTruthy();
   });
 
   it("wears the sunglasses sprite and says so in the label", () => {

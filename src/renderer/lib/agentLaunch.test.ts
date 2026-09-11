@@ -78,8 +78,17 @@ describe("isInternalAgentLaunchMetadata", () => {
     ).toBe(true);
   });
 
+  it("detects Claude SendMessage resume receipts", () => {
+    expect(
+      isInternalAgentLaunchMetadata(
+        '{"success":true,"message":"Resuming agent a5c5b27","resumedAgentId":"a5c5b27a1557fa19e","pin":{"id":"a5c5b27a1557fa19e","name":"a5c5b27a1557fa19e","ref":"eeee52"}}'
+      )
+    ).toBe(true);
+  });
+
   it("returns false for real subagent completion text", () => {
     expect(isInternalAgentLaunchMetadata("Checked the repository layout. Found 12 components.")).toBe(false);
+    expect(isInternalAgentLaunchMetadata("I'll resume the agent work from the last typecheck.")).toBe(false);
   });
 
   it("does not mistake the footer on a finished subagent result for a launch", () => {

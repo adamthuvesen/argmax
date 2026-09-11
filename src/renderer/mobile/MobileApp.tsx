@@ -1,14 +1,27 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
 import { FolderGit2, Laptop, Menu, MoreHorizontal, PenLine, Search } from "lucide-react";
-import { FORK_CAPABLE_PROVIDERS } from "../../shared/providerModels.js";
-import { SCRATCH_PROJECT_ID, type SessionSummary, type WorkspaceSummary } from "../../shared/types.js";
+import {
+  FORK_CAPABLE_PROVIDERS,
+  PROVIDER_MODELS,
+  normalizeModelId,
+  reasoningEffortsForModel
+} from "../../shared/providerModels.js";
+import {
+  SCRATCH_PROJECT_ID,
+  type AttentionState,
+  type SessionState,
+  type SessionSummary,
+  type WorkspaceSummary
+} from "../../shared/types.js";
 import { LinesSkeleton } from "../components/LinesSkeleton.js";
 import { SessionPane } from "../components/SessionPane.js";
 import { WorkingNest } from "../components/WorkingNest.js";
 import type { NewSessionSeed } from "../components/SessionComposer.js";
 import { BottomSheet, SheetOption } from "./BottomSheet.js";
 import { takeDeepLinkSessionId } from "./deepLink.js";
+import { canSteerQueuedMessage } from "../lib/queuedSteer.js";
 import { MobileScreenHeader } from "./MobileScreenHeader.js";
+import { installNativeApi, isEmbedded, postToNative } from "./nativeHost.js";
 import { NewSessionScreen, type PickerKind } from "./NewSessionScreen.js";
 import { useMobileBackNavigation } from "./useMobileBackNavigation.js";
 import { useVisualViewportInsets } from "./useVisualViewportInsets.js";
@@ -19,6 +32,7 @@ import { isEarlySessionStop } from "../lib/earlyStop.js";
 import { hiddenMultitaskWorkspaceIds, isMultitaskSession, multitasksByParentSession } from "../lib/multitask.js";
 import { importChunk } from "../lib/importChunk.js";
 import { loadDashboardSnapshot } from "../lib/loadDashboardSnapshot.js";
+import { mergeDashboardDelta } from "../lib/snapshot.js";
 import { useUnreadWorkspaceIds } from "../lib/sessionUnread.js";
 import {
   computePriorityEntries,
@@ -74,6 +88,11 @@ const AWAITING_LABEL: Record<"approval-needed" | "blocked", string> = {
   "approval-needed": "needs approval",
   blocked: "waiting for input"
 };
+
+// How long a link to a chat this page has never heard of stays latched: long
+// enough to cover a cold load and a chat the native shell started a moment
+// ago, short enough that it cannot surprise anyone later.
+const DEEP_LINK_GRACE_MS = 8_000;
 
 interface SessionListRow {
   workspace: WorkspaceSummary;
@@ -338,6 +357,15 @@ function MobileAppearanceControls({
 }
 
 export function MobileApp(): JSX.Element {
+  // Whether the native iPhone shell is hosting this page (`?embed=1`). It
+  // cannot change without a reload, so pin it at mount: every embed branch
+  // below reads a constant rather than re-deciding per render.
+  const [embedded] = useState(isEmbedded);
+  // Whether native has taken over the composer (`setComposer`). Native calls
+  // this once the shell is drawing its own card under the web view; a state
+  // rather than a constant because the call — like every other native → web
+  // call — races the page's own mount.
+  const [composerHidden, setComposerHidden] = useState(false);
   const shellRef = useRef<HTMLDivElement>(null);
   useVisualViewportInsets(shellRef);
   const [toast, setToast] = useState<ToastMessage | null>(null);
@@ -371,6 +399,7 @@ export function MobileApp(): JSX.Element {
 
   const {
     snapshot,
+    setSnapshot,
     timelines,
     loadState,
     loadError,
@@ -380,11 +409,13 @@ export function MobileApp(): JSX.Element {
     selectedWorkspaceId,
     setSelectedSessionId,
     setSelectedWorkspaceId,
+    setSelectedProjectId,
     selectedProject,
     refresh,
     loadSessionEvents,
     openWorkspaceChat,
-    resolveApproval
+    resolveApproval,
+    pendingSelectionRef
   } = useDashboardSession(loadDashboardSnapshot, { onErrorToast: (message) => showToast({ kind: "error", message }) });
 
   const handleEarlyStop = useCallback(
@@ -414,21 +445,39 @@ export function MobileApp(): JSX.Element {
   // A push notification links to one session: `mobile.html?session=<id>`. The
   // id is read once at mount — before any snapshot exists — and cashed in as
   // soon as the session shows up, so tapping a push lands on the transcript
-  // that raised it instead of the list.
+  // that raised it instead of the list. The native shell's `openSession(id)`
+  // uses the same latch, for the same reason: it can call in before the first
+  // snapshot has landed.
   const [pendingDeepLink, setPendingDeepLink] = useState(takeDeepLinkSessionId);
+  const deepLinkRereadRef = useRef<string | null>(null);
   useEffect(() => {
     if (!pendingDeepLink) return;
     const linked = snapshot.sessions.find((session) => session.id === pendingDeepLink);
-    // Keep waiting while the first snapshot is still loading; a session that
-    // never arrives (archived, wrong host) simply leaves the reader on the list.
-    if (!linked) {
-      if (loadState === "loading") return;
+    if (linked) {
       setPendingDeepLink(null);
+      openWorkspaceChat(linked.workspaceId);
       return;
     }
-    setPendingDeepLink(null);
-    openWorkspaceChat(linked.workspaceId);
-  }, [loadState, openWorkspaceChat, pendingDeepLink, snapshot.sessions]);
+    // Keep waiting while the first snapshot is still loading.
+    if (loadState === "loading") return;
+    // A loaded snapshot without it is not an answer either: the native shell
+    // starts a chat on its own socket and opens it in the same breath, so the
+    // id routinely arrives here ahead of the delta carrying its row. Re-read
+    // once for it rather than dropping the link on the first miss, which left
+    // the reader on a blank pane under the previous chat's title.
+    if (deepLinkRereadRef.current === pendingDeepLink) return;
+    deepLinkRereadRef.current = pendingDeepLink;
+    void refresh();
+  }, [loadState, openWorkspaceChat, pendingDeepLink, refresh, snapshot.sessions]);
+
+  // A link to a chat that never arrives — archived, or another Mac's — must
+  // not stay latched: a session id that shows up minutes later would yank the
+  // reader out of whatever they had opened by hand.
+  useEffect(() => {
+    if (!pendingDeepLink) return;
+    const timer = window.setTimeout(() => setPendingDeepLink(null), DEEP_LINK_GRACE_MS);
+    return () => window.clearTimeout(timer);
+  }, [pendingDeepLink]);
 
   const [connection, setConnection] = useState<RemoteConnectionState>({
     status: "connected",
@@ -580,6 +629,13 @@ export function MobileApp(): JSX.Element {
     setReviewScopeSheetOpen(false);
   }, []);
 
+  // Both the web header's Changes button and the native shell's "Changes"
+  // land here, so the review screen has one way in from a chat.
+  const openReviewScreen = useCallback(() => {
+    setReviewFilePath(null);
+    setReviewOpen(true);
+  }, []);
+
   const closeSession = useCallback(() => {
     closeReview();
     setSelectedSessionId(null);
@@ -716,15 +772,34 @@ export function MobileApp(): JSX.Element {
     setNewSessionSheet(null);
   }, []);
 
+  // The launch response is the new chat: seeding it into the snapshot and
+  // selecting it in the same batch takes the New chat screen straight to the
+  // transcript. Waiting on a dashboard refresh instead would render the list
+  // in between, because neither the workspace nor the session exists in the
+  // snapshot this screen closed over.
   const handleLaunched = useCallback(
-    async (workspaceId: string): Promise<void> => {
-      // The snapshot predates the new workspace; refresh before opening it so
-      // openWorkspaceChat can resolve the row.
-      await refresh();
+    (workspace: WorkspaceSummary, session: SessionSummary): void => {
+      pendingSelectionRef.current = { sessionId: session.id, workspaceId: workspace.id };
+      setSnapshot((current) =>
+        mergeDashboardDelta(current, { workspaces: [workspace], sessions: [session] })
+      );
       closeNewSession();
-      openWorkspaceChat(workspaceId);
+      setSelectedProjectId(workspace.projectId);
+      setSelectedWorkspaceId(workspace.id);
+      setSelectedSessionId(session.id);
+      // The seed carries the chat; this only reconciles the rest of the
+      // dashboard (checks, the list's other rows) behind it.
+      void refresh();
     },
-    [closeNewSession, openWorkspaceChat, refresh]
+    [
+      closeNewSession,
+      pendingSelectionRef,
+      refresh,
+      setSelectedProjectId,
+      setSelectedSessionId,
+      setSelectedWorkspaceId,
+      setSnapshot
+    ]
   );
 
   // The phone has no dock: with no `multitasks` handed to the pane, a multitask
@@ -848,7 +923,213 @@ export function MobileApp(): JSX.Element {
     reviewScopeSheetOpen,
     reviewShown
   ]);
-  useMobileBackNavigation(screenDepth, goBackOneScreen);
+  // Native owns the navigation stack in embed mode, so the page must not
+  // mirror its depth into history: a depth of 0 pushes nothing and leaves the
+  // hook's popstate listener inert.
+  useMobileBackNavigation(embedded ? 0 : screenDepth, goBackOneScreen);
+
+  // ---- Native shell (embed mode) ----------------------------------------
+  // Every effect below is inert unless the iPhone app's web view loaded this
+  // page. nativeHost.ts holds the message and call types; the Swift side of
+  // the contract is in docs/plan/hybrid-native-phone.md.
+
+  // A back gesture arrives as a native pop, not a popstate. What the page
+  // still owns are its own sub-screens — review, the file drill-down, the
+  // agent overlay — so Escape pops one of those first and only asks native to
+  // leave the chat when none is left.
+  useEffect(() => {
+    if (!embedded) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      if (screenDepth > 1) {
+        goBackOneScreen();
+        return;
+      }
+      postToNative({ type: "back" });
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [embedded, goBackOneScreen, screenDepth]);
+
+  // `ready` is native's cue that `window.argmaxNative` exists and the data is
+  // live. "Connected" is exactly the authenticated state: wsTransport
+  // publishes it from the `auth-ok` frame. Read from the transport rather
+  // than the `connection` state above, which starts optimistically connected
+  // and would fire this on the first commit of a page that has yet to
+  // authenticate.
+  const readyPostedRef = useRef(false);
+  useEffect(() => {
+    if (!embedded) return;
+    return subscribeRemoteConnection((state) => {
+      if (readyPostedRef.current || state.status !== "connected") return;
+      readyPostedRef.current = true;
+      postToNative({ type: "ready" });
+    });
+  }, [embedded]);
+
+  // Backgrounding the phone kills the socket on every app switch, so only a
+  // drop that outlives a reconnect is worth a native error state.
+  useEffect(() => {
+    if (!embedded || connection.status === "connected") return;
+    const timer = window.setTimeout(
+      () => postToNative({ type: "error", message: REMOTE_CONNECTION_LOST_MESSAGE }),
+      5000
+    );
+    return () => window.clearTimeout(timer);
+  }, [connection.status, embedded]);
+
+  // The native header draws its title and status from this, so it goes out on
+  // open and on every change to what it carries. Primitives, not the session
+  // object: a delta that touches nothing here must not re-post.
+  const openSession = sessionOpen ? selectedSession : null;
+  const openSessionId = openSession?.id ?? null;
+  const openSessionState = openSession?.state ?? null;
+  const openSessionAttention = openSession?.attention ?? null;
+  const openSessionTitle = selectedWorkspace?.taskLabel ?? "";
+  useEffect(() => {
+    if (!embedded) return;
+    if (openSessionId === null || openSessionState === null || openSessionAttention === null) return;
+    postToNative({
+      type: "session",
+      sessionId: openSessionId,
+      title: openSessionTitle,
+      state: openSessionState,
+      attention: openSessionAttention
+    });
+  }, [embedded, openSessionAttention, openSessionId, openSessionState, openSessionTitle]);
+
+  // The native composer's own state, so it can draw itself without
+  // re-deriving the composer's rules. `supportsReasoningEffort` gates
+  // `efforts` the way `ModelSelector` does — a fast model with no rung on the
+  // ladder must not offer one just because `reasoningEffortsForModel` always
+  // returns a list.
+  const openSessionProvider = openSession?.provider ?? null;
+  const openSessionModelId = openSession?.modelId ?? null;
+  const openSessionModelLabel = openSession?.modelLabel ?? null;
+  const openSessionEffort = openSession?.reasoningEffort ?? null;
+  const openSessionPending = openSessionId ? (snapshot.pendingMessages?.[openSessionId] ?? []) : [];
+  // A content key rather than the array itself: `pendingMessages` is a fresh
+  // object on every snapshot, and a delta that leaves this session's queue
+  // untouched must not re-post.
+  const openSessionAgentMode = openSession?.agentMode ?? null;
+  const openSessionPendingKey = openSessionPending
+    .map((entry) => `${entry.id}:${entry.content}:${entry.modelId ?? ""}:${entry.reasoningEffort ?? ""}:${entry.agentMode}`)
+    .join("|");
+  useEffect(() => {
+    if (!embedded) return;
+    if (
+      openSessionId === null ||
+      openSessionProvider === null ||
+      openSessionModelId === null ||
+      openSessionModelLabel === null ||
+      openSessionState === null
+    ) {
+      return;
+    }
+    const modelEntry = PROVIDER_MODELS[openSessionProvider]?.find(
+      (candidate) => normalizeModelId(candidate.modelId) === normalizeModelId(openSessionModelId)
+    );
+    postToNative({
+      type: "composer",
+      sessionId: openSessionId,
+      provider: openSessionProvider,
+      modelId: openSessionModelId,
+      modelLabel: openSessionModelLabel,
+      effort: openSessionEffort,
+      efforts: modelEntry?.supportsReasoningEffort
+        ? [...reasoningEffortsForModel(openSessionProvider, openSessionModelId)]
+        : [],
+      queued: openSessionPending.map((entry) => ({
+        id: entry.id,
+        text: entry.content,
+        canSteer: openSession !== null && canSteerQueuedMessage(openSession, entry)
+      })),
+      running: openSessionState === "running"
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- openSessionPendingKey stands in for openSessionPending's contents.
+  }, [
+    embedded,
+    openSessionId,
+    openSessionProvider,
+    openSessionModelId,
+    openSessionModelLabel,
+    openSessionEffort,
+    openSessionState,
+    openSessionAgentMode,
+    openSessionPendingKey
+  ]);
+
+  const reviewPostedRef = useRef(false);
+  useEffect(() => {
+    if (!embedded) return;
+    // Nothing to close before the first open — native starts with its own bar up.
+    if (!reviewShown && !reviewPostedRef.current) return;
+    reviewPostedRef.current = reviewShown;
+    postToNative({ type: "review", open: reviewShown });
+  }, [embedded, reviewShown]);
+
+  const agentsPostedRef = useRef(false);
+  useEffect(() => {
+    if (!embedded) return;
+    // Same as review: nothing to close before the first open — the native
+    // composer card is up from the moment the chat is.
+    if (!agentOverlayShown && !agentsPostedRef.current) return;
+    agentsPostedRef.current = agentOverlayShown;
+    postToNative({ type: "agents", open: agentOverlayShown });
+  }, [embedded, agentOverlayShown]);
+
+  // Haptics fire on transitions inside one chat. Opening a chat that is
+  // already complete, or already waiting on you, must not buzz — so a change
+  // of session id resets the comparison instead of firing it.
+  const hapticSeenRef = useRef<{
+    sessionId: string | null;
+    state: SessionState | null;
+    attention: AttentionState | null;
+  }>({ sessionId: null, state: null, attention: null });
+  useEffect(() => {
+    if (!embedded) return;
+    const seen = hapticSeenRef.current;
+    hapticSeenRef.current = {
+      sessionId: openSessionId,
+      state: openSessionState,
+      attention: openSessionAttention
+    };
+    if (seen.sessionId !== openSessionId) return;
+    if (openSessionAttention === "approval-needed" && seen.attention !== "approval-needed") {
+      postToNative({ type: "haptic", kind: "warning" });
+    }
+    if (openSessionState === "complete" && seen.state !== "complete") {
+      postToNative({ type: "haptic", kind: "success" });
+    }
+  }, [embedded, openSessionAttention, openSessionId, openSessionState]);
+
+  const sendSessionInput = commands.sendSessionInput;
+  const sendSessionInputWithHaptic = useCallback<typeof sendSessionInput>(
+    (...args) => {
+      postToNative({ type: "haptic", kind: "light" });
+      return sendSessionInput(...args);
+    },
+    [sendSessionInput]
+  );
+
+  // Native calls in once `ready` has gone out. `openSession` routes through
+  // the same latch the push deep link uses, so an id that arrives before the
+  // snapshot does still lands when the session shows up.
+  useEffect(() => {
+    if (!embedded) return;
+    return installNativeApi({
+      openSession: setPendingDeepLink,
+      closeSession,
+      openReview: openReviewScreen,
+      // Appearance is the shell's to decide while it hosts us. Both of these
+      // apply for the page's lifetime only: writing them would overwrite the
+      // preferences this phone keeps for its own browser tab.
+      setTheme,
+      setAccent: applyAccentToDocument,
+      setUserBubble: applyUserBubbleTintToDocument,
+      setComposer: setComposerHidden
+    });
+  }, [closeSession, embedded, openReviewScreen]);
 
   const empty =
     filteredRows.pinnedRows.length === 0 &&
@@ -870,133 +1151,144 @@ export function MobileApp(): JSX.Element {
       className="mobile-shell"
       data-font-size={
         // Reading a transcript wants a larger type than scanning a list of
-        // chats does, so the two screens run at their own scale.
-        sessionOpen || newSessionOpen ? "7" : "3"
+        // chats does, so the two screens run at their own scale. Inside the
+        // native shell the transcript is the whole screen rather than one
+        // pane of a web app, and 7 read two steps small there — so embed
+        // mode takes two more. Applied as an attribute for this page's
+        // lifetime only: the phone's stored web preference is the browser
+        // tab's, and the shell has no business rewriting it.
+        sessionOpen || newSessionOpen ? (embedded ? "9" : "7") : "3"
       }
       data-screen={newSessionOpen ? "new" : sessionOpen ? "session" : "list"}
+      data-embed={embedded || undefined}
+      data-composer-hidden={composerHidden || undefined}
     >
-      <div
-        className="mobile-list-screen"
-        data-font-size="3"
-        data-parked={listParked || undefined}
-        aria-hidden={listParked}
-        inert={listParked || undefined}
-      >
-        <header className="mobile-list-header">
-          <button
-            type="button"
-            className="mobile-icon-button"
-            aria-label="Open navigation"
-            aria-haspopup="dialog"
-            aria-expanded={listMenuOpen}
-            onClick={() => setListMenuOpen(true)}
-          >
-            <Menu size={21} aria-hidden />
-          </button>
-          <div className="mobile-list-identity">
-            <h1>Remote</h1>
-            <span className="mobile-list-device">
-              <span className="mobile-list-device-dot" aria-hidden="true" />
-              <Laptop size={14} aria-hidden="true" />
-              <span>Mac</span>
-            </span>
-          </div>
-          <div className="mobile-list-header-actions">
+      {/* The native shell owns the chat list, so in embed mode the web one
+          never mounts: the session screen is the root. */}
+      {embedded ? null : (
+        <div
+          className="mobile-list-screen"
+          data-font-size="3"
+          data-parked={listParked || undefined}
+          aria-hidden={listParked}
+          inert={listParked || undefined}
+        >
+          <header className="mobile-list-header">
             <button
               type="button"
               className="mobile-icon-button"
-              aria-label="Remote options"
+              aria-label="Open navigation"
               aria-haspopup="dialog"
               aria-expanded={listMenuOpen}
               onClick={() => setListMenuOpen(true)}
             >
-              <MoreHorizontal size={21} aria-hidden />
+              <Menu size={21} aria-hidden />
             </button>
-          </div>
-        </header>
-        {connectionBanner}
-        {/* The scroller is the list landmark: sections come and go with
-            triage, so this is the one stable handle on "the sessions". */}
-        <div
-          ref={listScrollRef}
-          className="mobile-list-scroll"
-          role="region"
-          aria-label="Chat list"
-          onScroll={(event) => {
-            if (!listParked) listScrollTopRef.current = event.currentTarget.scrollTop;
-          }}
-        >
-          {loadState === "error" ? (
-            <div className="mobile-empty" role="alert">
-              <p>Could not reach Argmax.</p>
-              {loadError ? <p className="mobile-empty-detail">{loadError}</p> : null}
-              <button type="button" className="mobile-retry" onClick={() => void refresh()}>
-                Retry
+            <div className="mobile-list-identity">
+              <h1>Remote</h1>
+              <span className="mobile-list-device">
+                <span className="mobile-list-device-dot" aria-hidden="true" />
+                <Laptop size={14} aria-hidden="true" />
+                <span>Mac</span>
+              </span>
+            </div>
+            <div className="mobile-list-header-actions">
+              <button
+                type="button"
+                className="mobile-icon-button"
+                aria-label="Remote options"
+                aria-haspopup="dialog"
+                aria-expanded={listMenuOpen}
+                onClick={() => setListMenuOpen(true)}
+              >
+                <MoreHorizontal size={21} aria-hidden />
               </button>
             </div>
-          ) : empty ? (
-            <div className="mobile-empty">
-              <p>
-                {loadState === "loading"
-                  ? "Connecting…"
-                  : searchQuery.trim()
-                    ? `No chats match “${searchQuery.trim()}”.`
-                    : "No active chats."}
-              </p>
-            </div>
-          ) : (
-            <>
-              <SessionSection
-                label="Pinned"
-                rows={filteredRows.pinnedRows}
-                projectNamesById={projectNamesById}
-                unreadIds={unreadIds}
-                nowMs={nowMs}
-                onOpen={openWorkspaceChat}
-                onOpenActions={setActionsRow}
-              />
-              <SessionSection
-                label="Priority"
-                rows={filteredRows.priorityRows}
-                projectNamesById={projectNamesById}
-                unreadIds={unreadIds}
-                nowMs={nowMs}
-                onOpen={openWorkspaceChat}
-                onOpenActions={setActionsRow}
-              />
-              <SessionSection
-                label={filteredRows.pinnedRows.length > 0 || filteredRows.priorityRows.length > 0 ? "Chats" : "All chats"}
-                rows={filteredRows.activityRows}
-                projectNamesById={projectNamesById}
-                unreadIds={unreadIds}
-                nowMs={nowMs}
-                onOpen={openWorkspaceChat}
-                onOpenActions={setActionsRow}
-              />
-            </>
-          )}
-        </div>
-        <div className="mobile-list-dock">
-          <label className="mobile-list-search">
-            <Search size={19} aria-hidden="true" />
-            <input
-              type="search"
-              aria-label="Search chats"
-              placeholder="Search chats"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-            />
-          </label>
-          <button
-            type="button"
-            className="mobile-list-compose"
-            aria-label="New chat"
-            onClick={startNewChat}
+          </header>
+          {connectionBanner}
+          {/* The scroller is the list landmark: sections come and go with
+              triage, so this is the one stable handle on "the sessions". */}
+          <div
+            ref={listScrollRef}
+            className="mobile-list-scroll"
+            role="region"
+            aria-label="Chat list"
+            onScroll={(event) => {
+              if (!listParked) listScrollTopRef.current = event.currentTarget.scrollTop;
+            }}
           >
-            <PenLine size={23} aria-hidden="true" />
-          </button>
+            {loadState === "error" ? (
+              <div className="mobile-empty" role="alert">
+                <p>Could not reach Argmax.</p>
+                {loadError ? <p className="mobile-empty-detail">{loadError}</p> : null}
+                <button type="button" className="mobile-retry" onClick={() => void refresh()}>
+                  Retry
+                </button>
+              </div>
+            ) : empty ? (
+              <div className="mobile-empty">
+                <p>
+                  {loadState === "loading"
+                    ? "Connecting…"
+                    : searchQuery.trim()
+                      ? `No chats match “${searchQuery.trim()}”.`
+                      : "No active chats."}
+                </p>
+              </div>
+            ) : (
+              <>
+                <SessionSection
+                  label="Pinned"
+                  rows={filteredRows.pinnedRows}
+                  projectNamesById={projectNamesById}
+                  unreadIds={unreadIds}
+                  nowMs={nowMs}
+                  onOpen={openWorkspaceChat}
+                  onOpenActions={setActionsRow}
+                />
+                <SessionSection
+                  label="Priority"
+                  rows={filteredRows.priorityRows}
+                  projectNamesById={projectNamesById}
+                  unreadIds={unreadIds}
+                  nowMs={nowMs}
+                  onOpen={openWorkspaceChat}
+                  onOpenActions={setActionsRow}
+                />
+                <SessionSection
+                  label={filteredRows.pinnedRows.length > 0 || filteredRows.priorityRows.length > 0 ? "Chats" : "All chats"}
+                  rows={filteredRows.activityRows}
+                  projectNamesById={projectNamesById}
+                  unreadIds={unreadIds}
+                  nowMs={nowMs}
+                  onOpen={openWorkspaceChat}
+                  onOpenActions={setActionsRow}
+                />
+              </>
+            )}
+          </div>
+          <div className="mobile-list-dock">
+            <label className="mobile-list-search">
+              <Search size={19} aria-hidden="true" />
+              <input
+                type="search"
+                aria-label="Search chats"
+                placeholder="Search chats"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className="mobile-list-compose"
+              aria-label="New chat"
+              onClick={startNewChat}
+            >
+              <PenLine size={23} aria-hidden="true" />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
       {sessionOpen ? (
         <div
           className="mobile-screen-overlay"
@@ -1005,48 +1297,49 @@ export function MobileApp(): JSX.Element {
           inert={sessionParked || undefined}
         >
             <div className="mobile-session-screen">
-              <MobileScreenHeader
-                onBack={closeSession}
-                backLabel="Back to chats"
-                title={selectedWorkspace?.taskLabel ?? ""}
-                actions={
-                  selectedWorkspace ? (
-                    <>
-                      {/* Only changes live here. Starting a chat and archiving
-                          one are both a tap away in the list's row menu, and
-                          three icons crowded a bar whose left half is a title
-                          that needs the room. */}
-                      {/* A side chat runs in an app-owned scratch directory with
-                          one empty commit, so this button would open a permanently
-                          empty diff and an empty tree. Tapping a file the agent
-                          wrote there still opens the review screen from the
-                          transcript — only the standing entry point is dropped. */}
-                      {selectedWorkspace.kind === "git" ? (
-                        <button
-                          type="button"
-                          className="mobile-icon-button"
-                          onClick={() => {
-                            setReviewFilePath(null);
-                            setReviewOpen(true);
-                          }}
-                          aria-label={
-                            selectedWorkspace.changedFiles > 0
-                              ? `Files and changes, ${selectedWorkspace.changedFiles} changed`
-                              : "Files and changes"
-                          }
-                        >
-                          <FolderGit2 size={18} aria-hidden />
-                          {selectedWorkspace.changedFiles > 0 ? (
-                            <span className="mobile-header-badge" aria-hidden>
-                              {selectedWorkspace.changedFiles}
-                            </span>
-                          ) : null}
-                        </button>
-                      ) : null}
-                    </>
-                  ) : undefined
-                }
-              />
+              {/* Native draws the title and the back affordance, so the web
+                  bar would be a second one. */}
+              {embedded ? null : (
+                <MobileScreenHeader
+                  onBack={closeSession}
+                  backLabel="Back to chats"
+                  title={selectedWorkspace?.taskLabel ?? ""}
+                  actions={
+                    selectedWorkspace ? (
+                      <>
+                        {/* Only changes live here. Starting a chat and archiving
+                            one are both a tap away in the list's row menu, and
+                            three icons crowded a bar whose left half is a title
+                            that needs the room. */}
+                        {/* A side chat runs in an app-owned scratch directory with
+                            one empty commit, so this button would open a permanently
+                            empty diff and an empty tree. Tapping a file the agent
+                            wrote there still opens the review screen from the
+                            transcript — only the standing entry point is dropped. */}
+                        {selectedWorkspace.kind === "git" ? (
+                          <button
+                            type="button"
+                            className="mobile-icon-button"
+                            onClick={openReviewScreen}
+                            aria-label={
+                              selectedWorkspace.changedFiles > 0
+                                ? `Files and changes, ${selectedWorkspace.changedFiles} changed`
+                                : "Files and changes"
+                            }
+                          >
+                            <FolderGit2 size={18} aria-hidden />
+                            {selectedWorkspace.changedFiles > 0 ? (
+                              <span className="mobile-header-badge" aria-hidden>
+                                {selectedWorkspace.changedFiles}
+                              </span>
+                            ) : null}
+                          </button>
+                        ) : null}
+                      </>
+                    ) : undefined
+                  }
+                />
+              )}
               {connectionBanner}
               <SessionPane
                 approvals={snapshot.approvals}
@@ -1057,7 +1350,7 @@ export function MobileApp(): JSX.Element {
                 project={selectedProject}
                 onLoadSessionEvents={loadSessionEvents}
                 onResolveApproval={resolveApproval}
-                onSendSessionInput={commands.sendSessionInput}
+                onSendSessionInput={embedded ? sendSessionInputWithHaptic : commands.sendSessionInput}
                 onCancelQueuedMessage={commands.cancelQueuedMessage}
                 onSendQueuedMessageNow={commands.sendQueuedMessageNow}
                 onTerminateSession={commands.terminateSession}
@@ -1066,7 +1359,8 @@ export function MobileApp(): JSX.Element {
                 onClearSession={commands.clearSession}
                 onForkSession={forkSession}
                 onNewSession={
-                  selectedWorkspace
+                  // Starting a chat is the native shell's job while it hosts us.
+                  !embedded && selectedWorkspace
                     ? (seed) => startNewChatFromWorkspace(selectedWorkspace, seed)
                     : undefined
                 }
@@ -1074,6 +1368,7 @@ export function MobileApp(): JSX.Element {
                   setReviewFilePath(path);
                   setReviewOpen(true);
                 }}
+                onOpenChanges={openReviewScreen}
                 multitasks={selectedSession ? (multitasksByParent.get(selectedSession.id) ?? []) : []}
                 agentsViewAvailable={false}
                 agentsPresentation="overlay"

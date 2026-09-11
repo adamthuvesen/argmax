@@ -114,7 +114,7 @@ function dropDurationMs(strip: HTMLElement | null): number {
  * Drag-to-reorder for the browser tab strip. `onPick` runs on the press, the
  * way a browser selects the tab you grab before you have moved it.
  */
-export function useBrowserTabDrag(onPick: (id: string) => void): BrowserTabDrag {
+export function useBrowserTabDrag(scopeId: string, onPick: (id: string) => void): BrowserTabDrag {
   const stripRef = useRef<HTMLDivElement | null>(null);
   const grabRef = useRef<Grab | null>(null);
   const dropRef = useRef<{ timer: ReturnType<typeof setTimeout>; land: () => void } | null>(null);
@@ -132,13 +132,13 @@ export function useBrowserTabDrag(onPick: (id: string) => void): BrowserTabDrag 
         // Address the landing slot by the tab it displaces: a registry push
         // during the carry can add or drop tabs, and an index captured at the
         // press would then point at a stranger.
-        const live = getBrowserTabs();
+        const live = getBrowserTabs(scopeId);
         const anchor = anchorId ? live.findIndex((tab) => tab.id === anchorId) : -1;
         moveBrowserTab(id, anchor === -1 ? toIndex : anchor);
       }
       setCarry(null);
     },
-    []
+    [scopeId]
   );
 
   /** Lands a drop that is still settling, so the next press measures a strip
@@ -212,7 +212,7 @@ export function useBrowserTabDrag(onPick: (id: string) => void): BrowserTabDrag 
       onPick(id);
       const strip = stripRef.current;
       if (!strip) return;
-      const list = getBrowserTabs();
+      const list = getBrowserTabs(scopeId);
       const fromIndex = list.findIndex((tab) => tab.id === id);
       if (fromIndex === -1 || list.length < 2) return;
       const nodes = Array.from(strip.querySelectorAll<HTMLElement>('[role="tab"]'));
@@ -244,7 +244,7 @@ export function useBrowserTabDrag(onPick: (id: string) => void): BrowserTabDrag 
         frame: null
       };
     },
-    [flushDrop, onPick]
+    [flushDrop, onPick, scopeId]
   );
 
   // The pointer leaves the strip on any real carry, so the window owns the

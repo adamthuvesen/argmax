@@ -5,6 +5,7 @@ import {
   SCRATCH_PROJECT_ID,
   type ComposerAttachment,
   type ProjectSummary,
+  type SessionSummary,
   type WorkspaceSummary
 } from "../../shared/types.js";
 import { Mascot } from "../components/Mascot.js";
@@ -146,8 +147,9 @@ export function NewSessionScreen({
   initialSeed?: NewSessionSeed | null;
   backLabel?: string;
   onClose: () => void;
-  /** Called with the new workspace id after refresh-worthy state exists. */
-  onLaunched: (workspaceId: string) => Promise<void>;
+  /** Called with the rows the launch created, so the caller can open the chat
+   *  without waiting for a dashboard refresh to carry them. */
+  onLaunched: (workspace: WorkspaceSummary, session: SessionSummary) => void;
   onError: (message: string) => void;
   /** Which picker is open. Owned by MobileApp so a back gesture can dismiss
    *  it instead of tearing down this screen and the typed prompt. */
@@ -288,8 +290,9 @@ export function NewSessionScreen({
             })
           : await window.argmax.workspaces.createCurrent({ projectId: repoTarget.id, taskLabel })
         : await window.argmax.workspaces.createScratch({ taskLabel, kind: null });
+      let session: SessionSummary;
       try {
-        await window.argmax.providers.launch({
+        session = await window.argmax.providers.launch({
           workspaceId: workspace.id,
           provider: model.provider,
           prompt: finalPrompt,
@@ -324,7 +327,7 @@ export function NewSessionScreen({
         .catch(() => undefined);
       setPrompt("");
       clearAttachments();
-      await onLaunched(workspace.id);
+      onLaunched(workspace, session);
     } catch (error) {
       onError(error instanceof Error ? error.message : "Starting the chat failed.");
       setLaunching(false);

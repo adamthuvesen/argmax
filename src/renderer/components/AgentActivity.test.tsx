@@ -227,6 +227,63 @@ describe("AgentActivity", () => {
     expect(screen.getByText("First result")).toBeInTheDocument();
     expect(screen.getByText("Second result")).toBeInTheDocument();
   });
+
+  it("does not show a Claude SendMessage resume receipt as the run's answer", () => {
+    const resume = JSON.stringify({
+      success: true,
+      message: "Resuming agent a5c5b27",
+      resumedAgentId: "a5c5b27a1557fa19e",
+      pin: { id: "a5c5b27a1557fa19e", name: "a5c5b27a1557fa19e", ref: "eeee52" }
+    });
+    render(
+      <AgentActivity
+        events={[
+          event("resume-end", "command.completed", "2026-05-12T15:01:02.000Z", "tool_result", {
+            tool_use_id: "send-2",
+            content: resume
+          }),
+          event("second-start", "agent.started", "2026-05-12T15:01:01.000Z", "Agent started", {
+            providerChildSessionId: "a5c5b27a1557fa19e",
+            providerParentConversationId: "parent-native",
+            agentRootToolUseId: "task-1",
+            agentRunId: "send-2",
+            description: "Build /next/brain Ask on live stream"
+          }),
+          event("send", "command.started", "2026-05-12T15:01:00.000Z", "SendMessage", {
+            id: "send-2",
+            name: "SendMessage",
+            providerInvocationId: "invoke-2",
+            input: { to: "a5c5b27a1557fa19e", message: "Continue." }
+          }),
+          event("first-done", "agent.completed", "2026-05-12T15:00:03.000Z", "First result", {
+            providerChildSessionId: "a5c5b27a1557fa19e",
+            providerParentConversationId: "parent-native",
+            agentRootToolUseId: "task-1",
+            agentRunId: "task-1",
+            status: "completed"
+          }),
+          event("first-start", "agent.started", "2026-05-12T15:00:01.000Z", "Agent started", {
+            providerChildSessionId: "a5c5b27a1557fa19e",
+            providerParentConversationId: "parent-native",
+            agentRootToolUseId: "task-1",
+            agentRunId: "task-1"
+          }),
+          event("task-start", "command.started", "2026-05-12T15:00:00.000Z", "Task", {
+            id: "task-1",
+            name: "Task",
+            input: { description: "Build /next/brain Ask on live stream", subagent_type: "implementer" }
+          })
+        ]}
+        parentSession={session}
+        parentToolUseId="task-1"
+        workspace={workspace}
+      />
+    );
+
+    expect(screen.queryByText(/resumedAgentId/)).not.toBeInTheDocument();
+    expect(screen.getAllByRole("region", { name: /Agent result/ })).toHaveLength(1);
+    expect(screen.getByText("First result")).toBeInTheDocument();
+  });
   afterEach(() => {
     vi.useRealTimers();
     cleanup();

@@ -12,6 +12,7 @@ import type { ProviderId } from "../../shared/types.js";
 import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
+import { postToNative } from "../mobile/nativeHost.js";
 import { EffortPixelField } from "./EffortPixelField.js";
 import { PickerFilterRow } from "./PickerFilterRow.js";
 import { PickerLead } from "./PickerLead.js";
@@ -350,7 +351,13 @@ function EffortSlider({
   const selectIndex = (next: number): void => {
     const clamped = Math.min(maxIndex, Math.max(0, next));
     const effort = efforts[clamped];
-    if (effort) setDraft(effort);
+    if (!effort || effort === draft) return;
+    // Felt, not just seen. On the phone this control is a dial across the
+    // composer and the thumb dragging it covers the label it is moving to,
+    // so the snap has to arrive some other way. A no-op in every browser but
+    // the iPhone shell's, which is why there is no check for one here.
+    postToNative({ type: "haptic", kind: "light" });
+    setDraft(effort);
   };
 
   const posFromClientX = (clientX: number): number => {

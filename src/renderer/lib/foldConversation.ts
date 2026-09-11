@@ -31,6 +31,7 @@ export type RenderItem =
       kind: "turn";
       id: string;
       assistantEvents: TimelineEvent[];
+      steerEvents: TimelineEvent[];
       toolItems: TurnToolItem[];
       assistantTimestamps: number[];
       /** Multitasks dispatched during this turn, collected above the composer. */
@@ -56,8 +57,9 @@ export function foldConversationItems(
 
 /**
  * Second-level fold: group user→assistant→tools into a single "turn" so the
- * chat has Codex-style rhythm. User messages stay standalone; everything
- * between two user messages folds under one "Worked for Xs" chip header.
+ * chat has Codex-style rhythm. A turn's opening user message stays standalone.
+ * steering messages remain chronological children of that active turn. The
+ * assistant and tool work folds under one "Worked for Xs" chip header.
  *
  * If `session` has a `prompt` but no `user.message` event has landed yet
  * (the brief window between launch and the first delta), synthesize a
@@ -94,6 +96,7 @@ export function foldRenderItems(
   let pending:
     | {
         assistantEvents: TimelineEvent[];
+        steerEvents: TimelineEvent[];
         toolItems: TurnToolItem[];
         multitasks: MultitaskNotice[];
         firstId: string | null;
@@ -158,7 +161,13 @@ export function foldRenderItems(
       }
     }
     if (!pending) {
-      pending = { assistantEvents: [], toolItems: [], multitasks: [], firstId: activeTurnId };
+      pending = {
+        assistantEvents: [],
+        steerEvents: [],
+        toolItems: [],
+        multitasks: [],
+        firstId: activeTurnId
+      };
     }
     pending.multitasks.push(notice);
   };
@@ -181,6 +190,7 @@ export function foldRenderItems(
     if (!pending) return;
     if (
       pending.assistantEvents.length > 0 ||
+      pending.steerEvents.length > 0 ||
       pending.toolItems.length > 0 ||
       pending.multitasks.length > 0
     ) {
@@ -188,6 +198,7 @@ export function foldRenderItems(
         kind: "turn",
         id: pending.firstId ?? `turn-${out.length}`,
         assistantEvents: pending.assistantEvents,
+        steerEvents: pending.steerEvents,
         toolItems: foldTurnToolItems(pending.toolItems),
         assistantTimestamps: pending.assistantEvents.map((e) => Date.parse(e.createdAt)),
         multitasks: pending.multitasks
@@ -276,21 +287,38 @@ export function foldRenderItems(
       canonical?.kind === "message" &&
       canonical.role === "user"
     ) {
+      // Steering is guidance inside the active native turn. Keep it in the
+      // same render item so the TurnBlock, live state, timer, and tool
+      // ownership survive while the user bubble remains in chronological
+      // transcript order.
+      if (canonical.delivery === "steer") {
+        if (!pending) {
+          pending = {
+            assistantEvents: [],
+            steerEvents: [],
+            toolItems: [],
+            multitasks: [],
+            firstId: activeTurnId
+          };
+        }
+        pending.steerEvents.push(item.event);
+        continue;
+      }
       flush();
       out.push({ kind: "user-message", event: item.event });
-      // A steer stays visible where it happened without ending the native
-      // turn. The next rendered fragment gets a unique key, while the tool
-      // already running above it keeps its existing component and timer.
-      activeTurnId =
-        canonical.delivery === "steer"
-          ? `turn-after-steer-${item.event.id}`
-          : `turn-${item.event.id}`;
+      activeTurnId = `turn-${item.event.id}`;
       continue;
     }
     if (item.kind === "tool") registerLaunch(item.tool);
     if (item.kind === "tool" && !belongsToThisTurn(item.tool)) continue;
     if (!pending) {
-      pending = { assistantEvents: [], toolItems: [], multitasks: [], firstId: activeTurnId };
+      pending = {
+        assistantEvents: [],
+        steerEvents: [],
+        toolItems: [],
+        multitasks: [],
+        firstId: activeTurnId
+      };
     }
     if (item.kind === "message") {
       pending.assistantEvents.push(item.event);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { commandIconServer, parseCommandIconRules } from "./commandIcons.js";
+import { commandIconServer, DEFAULT_RULES, parseCommandIconRules } from "./commandIcons.js";
 import type { ToolCall } from "./toolCalls.js";
 
 const rules = parseCommandIconRules([{
@@ -30,6 +30,19 @@ describe("command icons", () => {
 
   it.each(["echo run_only_sql", "cat run_only_sql.py", "run_only_sql_backup", "python other.py", "echo ok\nrun_only_sql"])("does not match %s", (command) => {
     expect(commandIconServer(tool(command), rules)).toBeNull();
+  });
+
+  it.each([
+    "gh pr create --fill",
+    "gh run watch 42",
+    "/opt/homebrew/bin/gh pr view 1158 --json state",
+    "zsh -lc 'gh auth status'"
+  ])("marks the GitHub CLI in %s by default", (command) => {
+    expect(commandIconServer(tool(command), DEFAULT_RULES)).toBe("github");
+  });
+
+  it.each(["git push", "ghost --help", "echo gh pr create"])("leaves %s unmarked", (command) => {
+    expect(commandIconServer(tool(command), DEFAULT_RULES)).toBeNull();
   });
 
   it("leaves public defaults and non-shell tools alone", () => {

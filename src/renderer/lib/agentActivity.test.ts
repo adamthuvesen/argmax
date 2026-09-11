@@ -194,6 +194,38 @@ describe("buildAgentActivity", () => {
     expect(activity.limited).toBe(false);
   });
 
+  it("hides Claude SendMessage resume receipts from the result", () => {
+    const activity = buildAgentActivity({
+      parentToolUseId: "task-root",
+      agentRunId: "send-2",
+      events: [
+        event("resume", "command.completed", "2026-05-12T15:00:03.000Z", "tool_result", {
+          tool_use_id: "send-2",
+          content:
+            '{"success":true,"message":"Resuming agent a5c5b27","resumedAgentId":"a5c5b27a1557fa19e","pin":{"id":"a5c5b27a1557fa19e","name":"a5c5b27a1557fa19e","ref":"eeee52"}}'
+        }),
+        event("start", "agent.started", "2026-05-12T15:00:02.100Z", "Agent started", {
+          providerInvocationId: "invoke-2",
+          providerChildSessionId: "a5c5b27a1557fa19e",
+          providerParentConversationId: "parent-native",
+          agentRunId: "send-2",
+          agentRootToolUseId: "task-root",
+          description: "Build /next/brain Ask on live stream"
+        }),
+        event("send", "command.started", "2026-05-12T15:00:02.000Z", "SendMessage", {
+          id: "send-2",
+          name: "SendMessage",
+          providerInvocationId: "invoke-2",
+          input: { to: "a5c5b27a1557fa19e", message: "Continue." }
+        })
+      ],
+      sessionRunning: true
+    });
+
+    expect(activity.finalOutput).toBeNull();
+    expect(activity.status).toBe("running");
+  });
+
   it("keeps real agent final output visible", () => {
     const activity = buildAgentActivity({
       parentToolUseId: "toolu_parent",

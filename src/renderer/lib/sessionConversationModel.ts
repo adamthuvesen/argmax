@@ -296,6 +296,18 @@ function foldCodexAgentControlTools(tools: readonly ToolCall[]): ToolCall[] {
     .map((tool) => replacements.get(tool.id) ?? tool);
 }
 
+// Cursor answers a backgrounded `task` with a dispatch receipt — a completion
+// carrying `result: { durationMs, isBackground: true }` and no agent output —
+// about a hundred milliseconds after the launch, and never completes that call
+// again. The flag rides the result rather than the arguments, so unlike every
+// other provider's background launch there is nothing on the request side to
+// tell a dispatched agent apart from one that ran all the way to its answer.
+function isBackgroundDispatchReceipt(completion: TimelineEvent): boolean {
+  if (!isPlainObject(completion.payload)) return false;
+  const result = completion.payload.result;
+  return isPlainObject(result) && result.isBackground === true;
+}
+
 function isStillRunningAgentLaunch(
   name: string,
   input: Record<string, unknown>,
@@ -312,6 +324,7 @@ function isStillRunningAgentLaunch(
   if (name.toLowerCase() === "spawn_agent" || name.toLowerCase() === "spawn_subagent") return true;
   if (canonical.running) return true;
   if (output && isInternalAgentLaunchMetadata(output)) return true;
+  if (isBackgroundDispatchReceipt(completion)) return true;
   const runInBackground = input.run_in_background ?? input.runInBackground;
   if (runInBackground === true || runInBackground === "true") return true;
   return false;
@@ -374,6 +387,43 @@ export function hasRenderableSessionContent(
       );
     })
   );
+}
+
+/** Lifecycle markers that close a provider run the `streaming` beacon opened. */
+const RUN_CLOSING_LIFECYCLE = new Set(["completed", "cancelled", "recovered-from-crash"]);
+
+/**
+ * When the transcript's newest run marker is the `session.streaming` beacon —
+ * the provider started writing and nothing has closed the run since — its
+ * timestamp. Null once a completion, a cancellation or a real error lands.
+ *
+ * The session row says the same thing, but it travels a slower road: a
+ * `dashboard:delta` carries no session rows (lib.rs strips them), so state
+ * costs the renderer a `dashboard:list` round trip while transcript events
+ * arrive on their own revision feed. On the phone that gap is seconds, and a
+ * row still reading "complete" from before the turn began made the running
+ * turn render as finished — chip settled, footer up, every file it had
+ * written so far posted as a Changed-files card. The transcript is the
+ * fresher source for "is this turn still going", on every client.
+ *
+ * Payload-truncation errors are not the turn failing, so they do not close it.
+ */
+export function openRunMarkerAt(events: readonly TimelineEvent[]): string | null {
+  let newest: { createdAt: string; open: boolean } | null = null;
+  for (const event of events) {
+    const canonical = decodeTimelineEvent(event);
+    const open = canonical.kind === "lifecycle" && canonical.name === "streaming";
+    const closing =
+      (canonical.kind === "lifecycle" && RUN_CLOSING_LIFECYCLE.has(canonical.name)) ||
+      (canonical.kind === "error" && !canonical.isPayloadTruncation);
+    if (!open && !closing) continue;
+    if (newest && event.createdAt < newest.createdAt) continue;
+    // A closing marker wins a tie: a run that ended on the same millisecond it
+    // last wrote is over.
+    if (newest && event.createdAt === newest.createdAt && !newest.open) continue;
+    newest = { createdAt: event.createdAt, open };
+  }
+  return newest?.open ? newest.createdAt : null;
 }
 
 type StartedTool = {
@@ -574,16 +624,13 @@ export function buildSessionToolCalls(
           ? "done"
           : "running";
       // An async launch answers in milliseconds with a receipt, so the tool is
-      // `done` while its agent has barely started. The row keeps spinning to
-      // say so — but it is the only running row the session will ever show for
-      // that agent, since the child's completion arrives as a
-      // `<task-notification>` prompt nothing here parses yet. Flag it so
-      // consumers can tell "an agent is off working" from "a tool is executing
-      // in front of the reader".
+      // `done` while its agent has barely started. Keep the row running until
+      // the provider's child lifecycle reports its own terminal state. This is
+      // independent of the parent turn: a child may finish before or after it.
       const isBackgroundLaunch =
         nativeLifecycle === undefined &&
         status === "done" &&
-        sessionRunning &&
+        (sessionRunning || (completion !== null && isBackgroundDispatchReceipt(completion))) &&
         isStillRunningAgentLaunch(name, input, output, completion);
       // An exit ends unfinished native work even when the provider exits cleanly.
       // Use the persisted boundary so resuming the parent cannot revive old runs.

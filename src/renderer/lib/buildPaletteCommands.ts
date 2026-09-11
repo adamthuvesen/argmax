@@ -1,6 +1,7 @@
 import {
   ChartNoAxesColumn,
   Clock,
+  GitCommitHorizontal,
   Folder,
   Globe,
   MessageSquare,
@@ -25,6 +26,7 @@ export type BuildPaletteCommandsInput = {
   onOpenScheduledTasks: () => void;
   onOpenBrowser?: () => void;
   onOpenUsage: () => void;
+  onOpenActivity: () => void;
   /** Jumps straight to one settings section — feeds the palette's Settings scope. */
   onOpenSettingsSection: (group: SettingsGroupId, sectionId: string) => void;
   /** Reopens the palette on its Messages tab — the mouse path to ⌘F. */
@@ -47,6 +49,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
     onOpenScheduledTasks,
     onOpenBrowser,
     onOpenUsage,
+    onOpenActivity,
     onOpenSettingsSection,
     onOpenSearch,
     preferences,
@@ -104,6 +107,14 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
       group: "Actions",
       icon: ChartNoAxesColumn,
       run: onOpenUsage
+    },
+    {
+      id: "action:open-activity",
+      label: "Open Activity",
+      subtitle: "Commits, pull requests, and reviews",
+      group: "Actions",
+      icon: GitCommitHorizontal,
+      run: onOpenActivity
     },
     {
       id: "action:search-sessions",

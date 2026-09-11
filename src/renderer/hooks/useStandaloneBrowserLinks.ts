@@ -26,7 +26,7 @@ export function useStandaloneBrowserLinks(options: {
     if (isRemoteBridge()) return;
 
     const url = pendingBrowserRequest.url;
-    if (pendingBrowserRequest.tabId || readStoredLinkTarget() === "argmax") {
+    if (pendingBrowserRequest.tabId || pendingBrowserRequest.newTab || readStoredLinkTarget() === "argmax") {
       if (pendingBrowserRequest.tabId) activateBrowserTab(pendingBrowserRequest.tabId);
       onOpenInAppBrowser(url);
       return;

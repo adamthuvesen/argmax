@@ -7,6 +7,7 @@ import {
   showCommandPalette,
   showKeyboardCheatSheet,
   showSchedulePage,
+  showActivityPage,
   showSettings,
   showUsagePage
 } from "./overlays.js";
@@ -25,6 +26,11 @@ describe("overlays", () => {
 
     showUsagePage();
     expect(overlaysSnapshot().standalonePage).toBe("usage");
+
+    // Usage and Activity share the rail, but they still share the slot: the
+    // one that is not showing must not be left mounted behind it.
+    showActivityPage();
+    expect(overlaysSnapshot().standalonePage).toBe("activity");
   });
 
   // Every navigation site in the shell dismisses the page before showing a

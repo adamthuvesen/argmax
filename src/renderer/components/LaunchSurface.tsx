@@ -969,6 +969,15 @@ export function LaunchSurface({
           </button>
         </div>
         <div className="composer-context">
+          <button
+            className="composer-tool"
+            type="button"
+            title="Attach file"
+            aria-label="Attach file"
+            onClick={openFilePicker}
+          >
+            <Plus size={14} />
+          </button>
           <div className="composer-context-group composer-context-group--model">
             <LaunchModelSelector
               ariaLabel="Switch model"
@@ -1163,15 +1172,6 @@ export function LaunchSurface({
             </div>
           </div>
           )}
-          <button
-            className="composer-tool"
-            type="button"
-            title="Attach file"
-            aria-label="Attach file"
-            onClick={openFilePicker}
-          >
-            <Plus size={14} />
-          </button>
           <div className="composer-context-group composer-context-group--behavior">
             {/* Auto is the resting mode and carries no flags, so it stays unlabelled;
                 the chip appears only once Tab or the palette picks Plan or Chat. */}

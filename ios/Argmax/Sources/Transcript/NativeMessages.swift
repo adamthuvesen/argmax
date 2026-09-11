@@ -86,8 +86,12 @@ enum NativeMessage: Hashable, Sendable {
     case composer(NativeComposerState)
     /// The page asked to leave the chat — its own back affordance, or Escape.
     case back
-    /// The review screen opened or closed, so native can hide its own bar.
-    case review(open: Bool)
+    /// Open the review surface — the transcript's Changes button, or a file
+    /// reference tapped in a message. The screen is native, so this is a
+    /// request rather than a report: the page never draws review in embed
+    /// mode. `filePath` is set only by a file reference, and names the file
+    /// to open on top of the tree.
+    case openReview(sessionID: String, filePath: String?)
     /// The peek at delegated work opened or closed. It is meant to cover the
     /// parent's composer, which in this shell is native chrome the page's own
     /// sheet cannot reach over.
@@ -111,7 +115,9 @@ extension NativeMessage {
         case .session: return "session"
         case .composer: return "composer"
         case .back: return "back"
-        case .review(let open): return open ? "review(open)" : "review(closed)"
+        // The path is left out with every other payload: it is the person's
+        // own checkout, and a log stream is read over someone's shoulder.
+        case .openReview: return "openReview"
         case .agents(let open): return open ? "agents(open)" : "agents(closed)"
         case .question(let open): return open ? "question(open)" : "question(closed)"
         case .haptic(let kind): return "haptic(\(kind.rawValue))"
@@ -126,6 +132,8 @@ extension NativeMessage: Decodable {
         case open
         case kind
         case message
+        case sessionId
+        case filePath
     }
 
     init(from decoder: Decoder) throws {
@@ -134,7 +142,13 @@ extension NativeMessage: Decodable {
         switch type {
         case "ready": self = .ready
         case "back": self = .back
-        case "review": self = .review(open: try container.decode(Bool.self, forKey: .open))
+        case "openReview":
+            self = .openReview(
+                sessionID: try container.decode(String.self, forKey: .sessionId),
+                // A page one build behind may not send it yet, and a review
+                // screen without a file named is still a review screen.
+                filePath: try container.decodeIfPresent(String.self, forKey: .filePath)
+            )
         case "agents": self = .agents(open: try container.decode(Bool.self, forKey: .open))
         case "question": self = .question(open: try container.decode(Bool.self, forKey: .open))
         case "haptic": self = .haptic(try container.decode(NativeHapticKind.self, forKey: .kind))
@@ -191,9 +205,6 @@ enum NativeCommand: Hashable, Sendable {
     /// Whether the page fills user bubbles with the accent ("accent") or
     /// leaves them a quiet gray ("neutral").
     case setUserBubble(String)
-    /// Open the review screen for the chat on screen — the trailing menu's
-    /// "Changes", which has no native screen of its own yet.
-    case openReview
     /// Hide (or restore) the page's own composer stack, because the native
     /// card under the web view is drawing it instead.
     case setComposer(hidden: Bool)
@@ -210,8 +221,6 @@ enum NativeCommand: Hashable, Sendable {
             return call("setAccent", jsonLiteral(tint))
         case .setUserBubble(let tint):
             return call("setUserBubble", jsonLiteral(tint))
-        case .openReview:
-            return call("openReview")
         case .setComposer(let hidden):
             // A bare JS boolean, not a JSON string literal — `jsonLiteral`
             // would quote it, and the page's guard (`typeof hidden !==

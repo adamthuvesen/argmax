@@ -63,8 +63,14 @@ export type NativeMessage =
     }
   /** The web asked to leave the session — its own back affordance, or Escape. */
   | { type: "back" }
-  /** The review screen opened or closed, so native can hide its own bar. */
-  | { type: "review"; open: boolean }
+  /**
+   * Open the review surface — the transcript's Changes button, or a file
+   * reference tapped in a message. In embed mode the screen is native
+   * (`ios/Argmax/Sources/Review`), so this is a request rather than a report:
+   * the page never draws review there. `filePath` is set only by a file
+   * reference, and names the file to open on top of the tree.
+   */
+  | { type: "openReview"; sessionId: string; filePath: string | null }
   /**
    * The peek at delegated work opened or closed. The sheet is meant to cover
    * the parent's composer, and in the shell that composer is native chrome
@@ -89,12 +95,6 @@ export interface NativeApi {
   openSession: (sessionId: string) => void;
   /** Park the pane, used when the native stack pops. */
   closeSession: () => void;
-  /**
-   * Open the review screen for the chat on screen — the native trailing
-   * menu's "Changes". The review screen is still the page's, so the shell
-   * asks for it rather than drawing one.
-   */
-  openReview: () => void;
   /** Follow the system appearance, overriding `argmax.theme.mode`. */
   setTheme: (mode: ResolvedTheme) => void;
   /** One of the desktop tints. */
@@ -168,7 +168,6 @@ export function installNativeApi(handlers: NativeApi): () => void {
       handlers.openSession(sessionId);
     },
     closeSession: () => handlers.closeSession(),
-    openReview: () => handlers.openReview(),
     setTheme: (mode: ResolvedTheme) => {
       if (mode !== "light" && mode !== "dark") {
         logger.error("renderer.native-host", "setTheme: not a theme", { mode });

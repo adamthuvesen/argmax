@@ -215,16 +215,56 @@ describe("MobileApp embed mode", () => {
     );
   });
 
-  it("opens the review screen on openReview", async () => {
+  it("asks native for the review surface when a file reference is tapped", async () => {
+    // The review surface is native in the shell, so the page's own screen
+    // never mounts here — which also keeps its lazy chunk (CodeMirror, shiki,
+    // KaTeX) off the tailnet. What the page still owns is the transcript, so
+    // a file the agent wrote is where a request for review comes from, and it
+    // carries both the chat it is about and the file it named.
+    mockDashboardSnapshot({
+      ...snapshot,
+      events: [
+        ...snapshot.events,
+        {
+          id: "event-write",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "Write",
+          payload: {
+            id: "tu_write",
+            name: "Write",
+            input: { file_path: "/tmp/worktrees/dashboard/src/panel.ts", content: "a\nb" }
+          },
+          createdAt: "2026-05-08T15:54:03.000Z"
+        }
+      ]
+    });
     await renderEmbedded();
     act(() => window.argmaxNative?.openSession("session-1"));
     await screen.findByRole("region", { name: "Conversation" });
 
-    // The native trailing menu's "Changes": the shell has no review screen
-    // of its own, so it asks the page for the one it already has.
-    act(() => window.argmaxNative?.openReview());
+    // The chip opens the change inline; "Open" beside it is the file itself.
+    fireEvent.click(await screen.findByRole("button", { name: "Edited panel.ts" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open /tmp/worktrees/dashboard/src/panel.ts" })
+    );
 
-    await waitFor(() => expect(posted("review")).toEqual([{ type: "review", open: true }]));
+    await waitFor(() =>
+      expect(posted("openReview")).toEqual([
+        { type: "openReview", sessionId: "session-1", filePath: "src/panel.ts" }
+      ])
+    );
+    // And nothing of the page's own review screen came up behind it.
+    expect(screen.queryByRole("tab", { name: "Changes" })).not.toBeInTheDocument();
+  });
+
+  it("never installs an openReview call for native to make", async () => {
+    // The direction is inverted from the first build of this contract: the
+    // shell used to ask the page to draw review. Leaving the old call
+    // installed would let a shell one build behind open a screen that is no
+    // longer there.
+    await renderEmbedded();
+    expect(window.argmaxNative).not.toHaveProperty("openReview");
   });
 
   it("asks native to stand its composer down while the peek is up", async () => {
@@ -278,10 +318,16 @@ describe("MobileApp embed mode", () => {
     await waitFor(() =>
       expect(screen.queryByRole("dialog", { name: "Delegated work" })).not.toBeInTheDocument()
     );
-    expect(posted("agents")).toEqual([
-      { type: "agents", open: true },
-      { type: "agents", open: false }
-    ]);
+    // Waited for, not asserted outright: the sheet leaving the DOM and the
+    // page reporting it are two renders — the overlay unmounts, then it hands
+    // its dismiss back and the effect posts. The "not before it has gone"
+    // half of this rule is the bare assertion above.
+    await waitFor(() =>
+      expect(posted("agents")).toEqual([
+        { type: "agents", open: true },
+        { type: "agents", open: false }
+      ])
+    );
   });
 
   // The native card has the page's composer stack hidden, and the live

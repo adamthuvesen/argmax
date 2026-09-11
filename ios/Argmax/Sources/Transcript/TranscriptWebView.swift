@@ -34,9 +34,6 @@ final class TranscriptHost: NSObject, ObservableObject {
     /// `TranscriptComposer` draws its card from. Nil until the first
     /// `composer` message, which follows `session` shortly after `ready`.
     @Published private(set) var composer: NativeComposerState?
-    /// The page's review screen is up, so it is drawing its own bar and the
-    /// native one has to get out of the way.
-    @Published private(set) var reviewOpen = false
     /// The page's peek at delegated work is up. It rises from the bottom edge
     /// to cover the parent's composer, so the native card stands down for as
     /// long as it is there.
@@ -47,6 +44,9 @@ final class TranscriptHost: NSObject, ObservableObject {
     @Published private(set) var questionOpen = false
     /// The last thing that went wrong, cleared by the next load that works.
     @Published private(set) var failure: String?
+    /// The page asked for the review surface — the screen it names is the
+    /// native one, pushed by whoever is hosting this transcript.
+    var onOpenReview: ((String?) -> Void)?
 
     /// The page asked to leave the chat. The screen on top pops.
     var onBack: (() -> Void)?
@@ -131,7 +131,6 @@ final class TranscriptHost: NSObject, ObservableObject {
         ready = false
         session = nil
         composer = nil
-        reviewOpen = false
         agentsOpen = false
         questionOpen = false
         readyWatchdog?.cancel()
@@ -211,12 +210,6 @@ final class TranscriptHost: NSObject, ObservableObject {
         send(.setTheme(theme))
     }
 
-    /// The trailing menu's "Changes". The review screen is still the page's,
-    /// so the native side asks for it rather than drawing one.
-    func openReview() {
-        send(.openReview)
-    }
-
     /// Tells the page its own composer should get out of the way — the
     /// native card under the web view is drawing it instead. `TranscriptScreen`
     /// sends this once it appears; `beginLoad` re-seeds it on every reload,
@@ -267,8 +260,13 @@ final class TranscriptHost: NSObject, ObservableObject {
         case .composer(let state):
             guard state.sessionId == wantedSession else { return }
             composer = state
-        case .review(let open):
-            reviewOpen = open
+        // The review surface is native, so this is the page asking for a
+        // push. Same rule as `session`: a request about a chat other than the
+        // one on screen is the page catching up on a switch, and honouring it
+        // would open the diff of the chat just left.
+        case .openReview(let sessionID, let filePath):
+            guard sessionID == wantedSession else { return }
+            onOpenReview?(filePath)
         case .agents(let open):
             // Asymmetric on purpose. Going up, the card leaves instantly: the
             // sheet waits for the floor to clear before it rises, and a card

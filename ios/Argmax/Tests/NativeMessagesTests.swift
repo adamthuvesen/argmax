@@ -11,8 +11,20 @@ final class NativeMessageDecodingTests: XCTestCase {
     func testDecodesEveryMessageType() {
         XCTAssertEqual(NativeMessage(body: ["type": "ready"]), .ready)
         XCTAssertEqual(NativeMessage(body: ["type": "back"]), .back)
-        XCTAssertEqual(NativeMessage(body: ["type": "review", "open": true]), .review(open: true))
-        XCTAssertEqual(NativeMessage(body: ["type": "review", "open": false]), .review(open: false))
+        XCTAssertEqual(
+            NativeMessage(body: ["type": "openReview", "sessionId": "s-1", "filePath": "src/a.ts"]),
+            .openReview(sessionID: "s-1", filePath: "src/a.ts")
+        )
+        // The Changes button names no file; a page one build behind may omit
+        // the key entirely, and both mean the same screen.
+        XCTAssertEqual(
+            NativeMessage(body: ["type": "openReview", "sessionId": "s-1", "filePath": NSNull()]),
+            .openReview(sessionID: "s-1", filePath: nil)
+        )
+        XCTAssertEqual(
+            NativeMessage(body: ["type": "openReview", "sessionId": "s-1"]),
+            .openReview(sessionID: "s-1", filePath: nil)
+        )
         XCTAssertEqual(NativeMessage(body: ["type": "agents", "open": true]), .agents(open: true))
         XCTAssertEqual(NativeMessage(body: ["type": "agents", "open": false]), .agents(open: false))
         XCTAssertEqual(NativeMessage(body: ["type": "question", "open": true]), .question(open: true))
@@ -179,7 +191,6 @@ final class NativeCommandTests: XCTestCase {
             NativeCommand.setUserBubble("neutral").javaScript,
             #"window.argmaxNative?.setUserBubble?.("neutral")"#
         )
-        XCTAssertEqual(NativeCommand.openReview.javaScript, "window.argmaxNative?.openReview?.()")
         XCTAssertEqual(
             NativeCommand.setComposer(hidden: true).javaScript,
             "window.argmaxNative?.setComposer?.(true)"
@@ -243,12 +254,10 @@ final class TranscriptHostQueueTests: XCTestCase {
         host.receive(.ready)
 
         host.openSession("s-2")
-        host.openReview()
         host.closeSession()
 
         XCTAssertEqual(run, [
             #"window.argmaxNative?.openSession?.("s-2")"#,
-            "window.argmaxNative?.openReview?.()",
             "window.argmaxNative?.closeSession?.()"
         ])
     }
@@ -297,12 +306,10 @@ final class TranscriptHostQueueTests: XCTestCase {
         host.receive(.question(open: false))
         XCTAssertFalse(host.questionOpen)
 
-        host.receive(.review(open: true))
         host.receive(.haptic(.success))
         host.receive(.back)
 
         XCTAssertEqual(host.session?.title, "A chat")
-        XCTAssertTrue(host.reviewOpen)
         XCTAssertEqual(haptics, [.success])
         XCTAssertEqual(backs, 1)
 
@@ -352,5 +359,43 @@ final class CompactElapsedTests: XCTestCase {
     func testSurvivesNothingAndTheFuture() {
         XCTAssertEqual(compactElapsed(since: nil, now: now), "")
         XCTAssertEqual(compactElapsed(since: now.addingTimeInterval(120), now: now), "now")
+    }
+}
+
+
+/// The review surface is native, so `openReview` is the page asking for a
+/// push. It is honoured on the same rule `session` is: only for the chat the
+/// shell asked to open.
+@MainActor
+final class NativeReviewRequestTests: XCTestCase {
+    private let pairing = URL(string: "https://mac.tailnet.ts.net/mobile.html#token=t")!
+
+    func testAsksForTheReviewSurfaceForTheChatOnScreen() {
+        let host = TranscriptHost(pairingURL: pairing) { _ in }
+        var opened: [String?] = []
+        host.onOpenReview = { opened.append($0) }
+        host.receive(.ready)
+        host.openSession("s-1")
+
+        host.receive(.openReview(sessionID: "s-1", filePath: nil))
+        host.receive(.openReview(sessionID: "s-1", filePath: "src/a.ts"))
+
+        XCTAssertEqual(opened.count, 2)
+        XCTAssertNil(opened[0])
+        XCTAssertEqual(opened[1], "src/a.ts")
+    }
+
+    /// A request that crosses a session switch would open the diff of the
+    /// chat just left, which is the one screen nobody asked for.
+    func testDropsARequestAboutAnotherChat() {
+        let host = TranscriptHost(pairingURL: pairing) { _ in }
+        var opened = 0
+        host.onOpenReview = { _ in opened += 1 }
+        host.receive(.ready)
+        host.openSession("s-2")
+
+        host.receive(.openReview(sessionID: "s-1", filePath: "src/a.ts"))
+
+        XCTAssertEqual(opened, 0)
     }
 }

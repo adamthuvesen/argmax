@@ -629,12 +629,26 @@ export function MobileApp(): JSX.Element {
     setReviewScopeSheetOpen(false);
   }, []);
 
-  // Both the web header's Changes button and the native shell's "Changes"
-  // land here, so the review screen has one way in from a chat.
-  const openReviewScreen = useCallback(() => {
-    setReviewFilePath(null);
-    setReviewOpen(true);
-  }, []);
+  // The web header's Changes button. In the shell the review surface is
+  // native, so the request goes out over the bridge and this page draws
+  // nothing: `openReview` carries the chat it is about, the way `session`
+  // does, so a request that crosses a session switch can be dropped. Both the
+  // header's button and a file reference tapped in the transcript land here,
+  // so the review surface has one way in from a chat.
+  const requestReview = useCallback(
+    (filePath: string | null) => {
+      if (embedded) {
+        if (selectedSessionId) {
+          postToNative({ type: "openReview", sessionId: selectedSessionId, filePath });
+        }
+        return;
+      }
+      setReviewFilePath(filePath);
+      setReviewOpen(true);
+    },
+    [embedded, selectedSessionId]
+  );
+  const openReviewScreen = useCallback(() => requestReview(null), [requestReview]);
 
   const closeSession = useCallback(() => {
     closeReview();
@@ -838,7 +852,10 @@ export function MobileApp(): JSX.Element {
   // Mirrors the render below: the review screen needs a workspace to draw, and
   // a workspace that drops out of the snapshot must take its history entry
   // with it, or one back press changes nothing on screen.
-  const reviewShown = sessionOpen && reviewOpen && selectedWorkspace !== null;
+  // Never under the shell: review is a native screen there, and leaving this
+  // branch reachable would also pull the lazy chunk behind it — CodeMirror,
+  // shiki and KaTeX — over the tailnet for nothing.
+  const reviewShown = !embedded && sessionOpen && reviewOpen && selectedWorkspace !== null;
   const sessionParked = newSessionOpen || reviewShown || appearanceOpen;
   // A sheet is a screen as far as a back gesture is concerned: without this,
   // back on the list screen leaves the app with the sheet still up, and back
@@ -1059,15 +1076,6 @@ export function MobileApp(): JSX.Element {
     openSessionPendingKey
   ]);
 
-  const reviewPostedRef = useRef(false);
-  useEffect(() => {
-    if (!embedded) return;
-    // Nothing to close before the first open — native starts with its own bar up.
-    if (!reviewShown && !reviewPostedRef.current) return;
-    reviewPostedRef.current = reviewShown;
-    postToNative({ type: "review", open: reviewShown });
-  }, [embedded, reviewShown]);
-
   const agentsPostedRef = useRef(false);
   useEffect(() => {
     if (!embedded) return;
@@ -1120,7 +1128,6 @@ export function MobileApp(): JSX.Element {
     return installNativeApi({
       openSession: setPendingDeepLink,
       closeSession,
-      openReview: openReviewScreen,
       // Appearance is the shell's to decide while it hosts us. Both of these
       // apply for the page's lifetime only: writing them would overwrite the
       // preferences this phone keeps for its own browser tab.
@@ -1129,7 +1136,7 @@ export function MobileApp(): JSX.Element {
       setUserBubble: applyUserBubbleTintToDocument,
       setComposer: setComposerHidden
     });
-  }, [closeSession, embedded, openReviewScreen]);
+  }, [closeSession, embedded]);
 
   const empty =
     filteredRows.pinnedRows.length === 0 &&
@@ -1364,10 +1371,7 @@ export function MobileApp(): JSX.Element {
                     ? (seed) => startNewChatFromWorkspace(selectedWorkspace, seed)
                     : undefined
                 }
-                onOpenFile={(path) => {
-                  setReviewFilePath(path);
-                  setReviewOpen(true);
-                }}
+                onOpenFile={requestReview}
                 onOpenChanges={openReviewScreen}
                 multitasks={selectedSession ? (multitasksByParent.get(selectedSession.id) ?? []) : []}
                 agentsViewAvailable={false}

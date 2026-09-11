@@ -104,6 +104,7 @@ struct ChatListView: View {
             .navigationDestination(for: InsightsRoute.self) { _ in
                 InsightsScreen(onBack: { path.removeLast() })
             }
+            .reviewDestinations(store: store, onPop: { path.removeLast() })
         }
         .environmentObject(navigator)
         .onReceive(clock) { _ in store.refreshClock() }
@@ -116,6 +117,17 @@ struct ChatListView: View {
             navigator.newChat = nil
             path.append(request)
         }
+        // A file reference names a file, so the tree and that file's viewer
+        // go on together: the back gesture then lands on the tree, which is
+        // where the reader would look for the file beside it.
+        .onChange(of: navigator.review) { _, route in
+            guard let route else { return }
+            navigator.review = nil
+            path.append(route)
+            if let filePath = route.filePath {
+                path.append(ReviewDetail.file(workspaceID: route.workspaceID, path: filePath))
+            }
+        }
         .onChange(of: store.sections) { openWhenReady() }
         .onChange(of: navigator.awaitingSessionID) { openWhenReady() }
         .onChange(of: push.tappedSessionID) { openTappedNotification() }
@@ -123,6 +135,7 @@ struct ChatListView: View {
         // any of this exists, so the value is read once on the way in as
         // well as watched.
         .task { openTappedNotification() }
+        .task { await openReviewFromLaunch() }
         .task {
             guard !reduceMotion else {
                 settled = true
@@ -296,6 +309,46 @@ struct ChatListView: View {
     /// opens the way a fork does — the id waits in the navigator until the
     /// row for it is in the snapshot — so a cold launch from the lock screen
     /// lands on the chat rather than on the list.
+    /// `-argmax-open-review <workspace id>`, optionally with
+    /// `-argmax-open-file <path>` or `-argmax-open-diff <path>`, opens the
+    /// review surface at launch.
+    ///
+    /// Debug builds only, and the same family as `-argmax-unpaired` and
+    /// `-argmax-pair`. A simulator cannot be tapped from a script — a custom
+    /// URL raises a system alert that only a hand can answer — so without a
+    /// way in, the screens that need a real checkout behind them could only
+    /// ever be reviewed from fixtures. See ios/Argmax/README.md.
+    private func openReviewFromLaunch() async {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        func value(_ flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag),
+                  arguments.index(after: index) < arguments.endIndex
+            else { return nil }
+            return arguments[arguments.index(after: index)]
+        }
+        guard let workspaceID = value("-argmax-open-review") else { return }
+        // The snapshot is a round trip behind the first paint, and the route
+        // resolves against it.
+        for _ in 0..<40 where !store.snapshot.workspaces.contains(where: { $0.id == workspaceID }) {
+            try? await Task.sleep(for: .milliseconds(250))
+        }
+        guard path.isEmpty else { return }
+        path.append(ReviewRoute(workspaceID: workspaceID, filePath: value("-argmax-open-file")))
+        if let filePath = value("-argmax-open-file") {
+            path.append(ReviewDetail.file(workspaceID: workspaceID, path: filePath))
+        } else if let filePath = value("-argmax-open-diff") {
+            path.append(ReviewDetail.diff(
+                workspaceID: workspaceID,
+                path: filePath,
+                scope: ReviewScope(
+                    rawValue: UserDefaults.standard.string(forKey: "argmax.review.scope") ?? ""
+                ) ?? .branch
+            ))
+        }
+        #endif
+    }
+
     private func openTappedNotification() {
         guard let sessionID = push.tappedSessionID else { return }
         push.tappedSessionID = nil
@@ -360,6 +413,9 @@ final class ChatNavigator: ObservableObject {
     /// host will send back so the stack has something to push.
     @Published var awaitingSessionID: String?
     @Published var newChat: NewChatRequest?
+    /// The review surface a transcript asked for — its own Changes button, or
+    /// a file reference tapped in a message.
+    @Published var review: ReviewRoute?
 }
 
 /// What "+" and "New chat here" open, as one value so there is one sheet.

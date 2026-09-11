@@ -22,6 +22,7 @@ struct TranscriptScreen: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @State private var forking = false
+    @Environment(\.accentTint) private var accent
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -48,6 +49,10 @@ struct TranscriptScreen: View {
         .onAppear {
             transcript.onBack = { dismiss() }
             transcript.onHaptic = Haptics.play(_:)
+            // A file reference tapped in a message, and the page's own
+            // Changes affordance in the browser build. Both land on the
+            // native screen.
+            transcript.onOpenReview = { openReview(filePath: $0) }
             transcript.setTheme(colorScheme == .dark ? .dark : .light)
             transcript.loadIfNeeded()
             transcript.openSession(row.session.id)
@@ -57,6 +62,7 @@ struct TranscriptScreen: View {
         .onDisappear {
             transcript.onBack = nil
             transcript.onHaptic = nil
+            transcript.onOpenReview = nil
             transcript.closeSession()
             if push.openSessionID == row.session.id { push.openSessionID = nil }
         }
@@ -86,25 +92,80 @@ struct TranscriptScreen: View {
 
     // MARK: - Header
 
-    @ViewBuilder
     private var header: some View {
-        // The review screen draws its own bar. Two would be one too many.
-        if !transcript.reviewOpen {
-            VStack(spacing: 0) {
-                ScreenHeader(title: title, subtitle: subtitle, onBack: { dismiss() }) {
+        VStack(spacing: 0) {
+            ScreenHeader(title: title, subtitle: subtitle, onBack: { dismiss() }) {
+                HStack(spacing: Spacing.tight) {
+                    changesButton
                     menu
                 }
-                // Until the page names the chat: one thin line under the
-                // header rather than a spinner in the middle of an empty
-                // screen, which reads as "nothing is here" instead of
-                // "something is coming". It runs past `ready` on purpose —
-                // a warm page still has to find a chat started a moment ago,
-                // and that wait is the blank one worth explaining.
-                if transcript.session == nil && transcript.failure == nil {
-                    IndeterminateLine()
-                }
+            }
+            // Until the page names the chat: one thin line under the
+            // header rather than a spinner in the middle of an empty
+            // screen, which reads as "nothing is here" instead of
+            // "something is coming". It runs past `ready` on purpose —
+            // a warm page still has to find a chat started a moment ago,
+            // and that wait is the blank one worth explaining.
+            if transcript.session == nil && transcript.failure == nil {
+                IndeterminateLine()
             }
         }
+    }
+
+    /// Changes, one tap from the transcript, carrying its own count.
+    ///
+    /// A side chat runs in an app-owned scratch directory with one empty
+    /// commit, so this would open a permanently empty diff and an empty tree.
+    /// A file reference tapped in the transcript still opens the review
+    /// screen there — only the standing entry point is dropped.
+    @ViewBuilder
+    private var changesButton: some View {
+        if row.workspace.kind == .git {
+            Button {
+                openReview(filePath: nil)
+            } label: {
+                Image(systemName: "arrow.triangle.branch")
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(Theme.muted)
+                    .frame(width: 32, height: 32)
+                    .overlay(alignment: .topTrailing) { changedBadge }
+                    .contentShape(.rect)
+            }
+            .buttonStyle(PressDim())
+            .accessibilityLabel(
+                changedFiles > 0
+                    ? "Files and changes, \(changedFiles) changed"
+                    : "Files and changes"
+            )
+        }
+    }
+
+    /// The count the desktop's own button carries. Drawn only when there is
+    /// one: a standing "0" is a number the eye has to dismiss on every glance.
+    @ViewBuilder
+    private var changedBadge: some View {
+        if changedFiles > 0 {
+            Text(verbatim: changedFiles > 99 ? "99+" : "\(changedFiles)")
+                .font(.system(size: 10, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(Theme.ground)
+                .padding(.horizontal, 4)
+                .frame(minWidth: 15, minHeight: 15)
+                .background(accent.color, in: .capsule)
+                .offset(x: 3, y: -1)
+                .accessibilityHidden(true)
+        }
+    }
+
+    /// The live count, not the one this screen was pushed with: an agent
+    /// writing mid-turn moves it on the dashboard delta.
+    private var changedFiles: Int {
+        store.snapshot.workspaces.first { $0.id == row.workspace.id }?.changedFiles
+            ?? row.workspace.changedFiles
+    }
+
+    private func openReview(filePath: String?) {
+        navigator.review = ReviewRoute(workspaceID: row.workspace.id, filePath: filePath)
     }
 
     /// What the page says the chat is called, until it has said anything.
@@ -144,13 +205,6 @@ struct TranscriptScreen: View {
         // through, the same as the chat row's context menu.
         Menu {
             Group {
-                // A side chat runs in an app-owned scratch directory with one
-                // empty commit, so this would open a permanently empty diff.
-                if row.workspace.kind == .git {
-                    Button("Changes", systemImage: "arrow.triangle.branch") {
-                        transcript.openReview()
-                    }
-                }
                 Button("Fork chat", systemImage: "arrow.triangle.pull") { fork() }
                     .disabled(!isForkable || forking)
                 Button("New chat here", systemImage: "plus.bubble") {

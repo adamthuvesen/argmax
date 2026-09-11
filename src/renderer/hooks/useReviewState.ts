@@ -461,30 +461,26 @@ export function useReviewState(
     return () => releaseBrowserSurface(panelId);
   }, [panelId, showsBrowser]);
 
-  // Open-in-browser requests (chat links, the actions menu). Every panel
-  // tracks the sequence, so one that was unfocused when a request landed does
-  // not act on it later when focus arrives; only the panel taking requests
-  // right now switches itself to Browser mode.
+  // Handle chat links in the click's batch, without rendering the closed
+  // panel first and opening it in a later effect. Only the panel taking
+  // requests right now responds; later focus changes never replay a request.
   // The tab list is pushed by the app, and a session can open a tab with no
   // browser chrome on screen — so the subscription has to exist wherever a
   // review panel does, not only where one is showing the browser.
   useEffect(() => ensureBrowserTabSync(), []);
   useEffect(() => ensureAgentTerminalSync(), []);
 
-  const pendingBrowserRequest = useSyncExternalStore(subscribeBrowserRequest, getBrowserRequest);
   const claimsBrowserRequests = useRef(options?.claimsBrowserRequests ?? false);
   claimsBrowserRequests.current = options?.claimsBrowserRequests ?? false;
-  const handledBrowserSeq = useRef(pendingBrowserRequest?.seq ?? 0);
-  useEffect(() => {
-    if (!pendingBrowserRequest || pendingBrowserRequest.seq === handledBrowserSeq.current) return;
-    handledBrowserSeq.current = pendingBrowserRequest.seq;
-    if (!claimsBrowserRequests.current) return;
+  useEffect(() => subscribeBrowserRequest(() => {
+    const request = getBrowserRequest();
+    if (!request || !claimsBrowserRequests.current) return;
     openBrowserAt(
-      pendingBrowserRequest.url || lastBrowsedUrl(browserScopeId),
-      pendingBrowserRequest.tabId,
-      pendingBrowserRequest.newTab
+      request.url || lastBrowsedUrl(browserScopeId),
+      request.tabId,
+      request.newTab
     );
-  }, [browserScopeId, openBrowserAt, pendingBrowserRequest]);
+  }), [browserScopeId, openBrowserAt]);
 
   // A tab this panel's session opened: show it here, so the user watches the
   // agent browse. Every panel sees the request; only the one whose session

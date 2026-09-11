@@ -201,17 +201,46 @@ async fn create_isolated_adds_worktree_and_persists_row() {
         .any(|delta| delta.workspaces.iter().any(|w| w.id == summary.id)));
 }
 
+/// Shell prefix that parks a setup step until the test drops a `go` file in
+/// the worktree, so the test can prove `create_isolated` returned first.
+const WAIT_FOR_GO: &str = "while [ ! -f go ]; do sleep 0.05; done";
+
+async fn wait_for(what: &str, mut condition: impl FnMut() -> bool) {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    while !condition() {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "timed out waiting for {what}"
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+
+fn checks_for(
+    database: &Database,
+    workspace_id: &str,
+) -> Vec<argmax_lib::persistence::checks::CheckRun> {
+    let connection = database.connection();
+    list_checks(
+        &connection,
+        Some(std::slice::from_ref(&workspace_id.to_owned())),
+        10,
+    )
+    .expect("list checks")
+}
+
 #[tokio::test]
-async fn create_isolated_runs_setup_command_in_fresh_worktree() {
+async fn create_isolated_runs_setup_command_after_returning() {
     let repo = seed_git_repo(&[("README.md", "hi")]);
     ensure_main_branch(repo.path());
     let worktree_location = repo.path().join("worktrees");
     let database = Arc::new(Database::open_in_memory().expect("db"));
+    let setup_command = format!("{WAIT_FOR_GO}; echo ready > setup-ran.txt");
     build_project_with_setup(
         &database,
         &repo.path().display().to_string(),
         &worktree_location.display().to_string(),
-        "echo ready > setup-ran.txt",
+        &setup_command,
     );
     let (publisher, _sink) = capture_publisher();
     let service = service_with_checks(&database, publisher);
@@ -225,19 +254,97 @@ async fn create_isolated_runs_setup_command_in_fresh_worktree() {
         .await
         .expect("create isolated");
 
-    // The command ran inside the new worktree, before create_isolated
-    // returned — the agent launching next finds its dependencies in place.
-    assert!(std::path::Path::new(&summary.path)
-        .join("setup-ran.txt")
-        .exists());
-    // And it left a persisted check row the review surface can show.
-    let checks = {
-        let connection = database.connection();
-        list_checks(&connection, Some(std::slice::from_ref(&summary.id)), 10).expect("list checks")
-    };
+    // The checkout is there for the agent launching next, but the setup
+    // command is still parked: creation did not wait for it.
+    let worktree = std::path::PathBuf::from(&summary.path);
+    assert!(worktree.join("README.md").exists());
+    assert!(!worktree.join("setup-ran.txt").exists());
+
+    std::fs::write(worktree.join("go"), "").expect("release the setup command");
+    wait_for("the setup command to run in the worktree", || {
+        worktree.join("setup-ran.txt").exists()
+    })
+    .await;
+    // And it left a persisted check row the review surface can show. The
+    // repo has no post-checkout hook, so that is the only row.
+    wait_for("the check row to settle", || {
+        checks_for(&database, &summary.id)
+            .first()
+            .is_some_and(|check| check.status == "passed")
+    })
+    .await;
+    let checks = checks_for(&database, &summary.id);
     assert_eq!(checks.len(), 1);
-    assert_eq!(checks[0].command, "echo ready > setup-ran.txt");
-    assert_eq!(checks[0].status, "passed");
+    assert_eq!(checks[0].command, setup_command);
+}
+
+/// A post-checkout hook that clones `node_modules` used to hold `git worktree
+/// add`, and with it the chat opening, for the whole copy. Creation now skips
+/// hooks and replays this one afterwards with the arguments git would have
+/// passed for a new-branch checkout.
+#[cfg(unix)]
+#[tokio::test]
+async fn create_isolated_replays_the_post_checkout_hook_after_returning() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let repo = seed_git_repo(&[("README.md", "hi")]);
+    ensure_main_branch(repo.path());
+    let hook = repo.path().join(".git/hooks/post-checkout");
+    std::fs::write(
+        &hook,
+        format!("#!/bin/sh\n{WAIT_FOR_GO}\nprintf '%s' \"$*\" > hook-args.txt\n"),
+    )
+    .expect("write post-checkout hook");
+    std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755))
+        .expect("make hook executable");
+    let worktree_location = repo.path().join("worktrees");
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &worktree_location.display().to_string(),
+    );
+    let (publisher, _sink) = capture_publisher();
+    let service = service_with_checks(&database, publisher);
+
+    let summary = service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+            task_label: TaskLabel::try_from("Hooked".to_owned()).expect("task label"),
+            base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
+        })
+        .await
+        .expect("create isolated");
+
+    let worktree = std::path::PathBuf::from(&summary.path);
+    assert!(worktree.join("README.md").exists());
+    assert!(!worktree.join("hook-args.txt").exists());
+
+    std::fs::write(worktree.join("go"), "").expect("release the hook");
+    wait_for("the hook to run in the worktree", || {
+        worktree.join("hook-args.txt").exists()
+    })
+    .await;
+    let head = run_git_stdout(&worktree, &["rev-parse", "HEAD"]);
+    assert_eq!(
+        std::fs::read_to_string(worktree.join("hook-args.txt")).expect("hook args"),
+        format!("0000000000000000000000000000000000000000 {} 1", head.trim())
+    );
+    wait_for("the hook's check row to settle", || {
+        checks_for(&database, &summary.id)
+            .first()
+            .is_some_and(|check| check.status == "passed")
+    })
+    .await;
+    let checks = checks_for(&database, &summary.id);
+    assert_eq!(checks.len(), 1);
+    assert!(
+        checks[0]
+            .command
+            .starts_with("git hook run post-checkout -- "),
+        "{}",
+        checks[0].command
+    );
 }
 
 #[tokio::test]
@@ -265,12 +372,13 @@ async fn create_isolated_survives_failing_setup_command() {
         .expect("workspace creation must survive a failing setup command");
 
     assert!(std::path::Path::new(&summary.path).exists());
-    let checks = {
-        let connection = database.connection();
-        list_checks(&connection, Some(std::slice::from_ref(&summary.id)), 10).expect("list checks")
-    };
-    assert_eq!(checks.len(), 1);
-    assert_eq!(checks[0].status, "failed");
+    wait_for("the failing check row to settle", || {
+        checks_for(&database, &summary.id)
+            .first()
+            .is_some_and(|check| check.status == "failed")
+    })
+    .await;
+    assert_eq!(checks_for(&database, &summary.id).len(), 1);
 }
 
 #[tokio::test]

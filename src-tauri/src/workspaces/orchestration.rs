@@ -140,6 +140,12 @@ const GIT_TIMEOUT_MS: u64 = 60_000;
 const BRANCH_SLUG_LEN: usize = 16;
 const SLUG_MAX_LEN: usize = 42;
 
+/// `core.hooksPath` pointed where no hook can live, so `git worktree add` runs
+/// only the checkout. `post_checkout_replay_command` runs the skipped hook.
+const HOOKS_DISABLED: &str = "core.hooksPath=/dev/null";
+/// What git passes a post-checkout hook as the previous HEAD of a new branch.
+const NULL_SHA: &str = "0000000000000000000000000000000000000000";
+
 /// Stable id of the hidden singleton project that owns every scratch
 /// workspace (repo-less side chats and "More details" popups). Mirrored in
 /// `src/shared/types.ts` (`SCRATCH_PROJECT_ID`) so the renderer can exclude it
@@ -548,9 +554,15 @@ impl WorkspaceService {
             ));
         }
 
+        // Only the checkout runs here. The repository's post-checkout hook is
+        // replayed by `finish_worktree_in_background` once the row exists:
+        // one that clones `node_modules` held this call, and with it the chat
+        // opening, for as long as the copy took.
         let add_result = run_git_text(
             Path::new(&project.repo_path),
             &[
+                "-c",
+                HOOKS_DISABLED,
                 "worktree",
                 "add",
                 "-b",
@@ -574,7 +586,7 @@ impl WorkspaceService {
         }
 
         // Block scope, not drop(): the async Send analysis must see the
-        // non-Send connection guard end before the setup-command await below.
+        // non-Send connection guard end before the discard await below.
         let persisted = (|| {
             let connection = self.database.connection();
             let workspace = persist_workspace(
@@ -613,27 +625,66 @@ impl WorkspaceService {
         if let Err(error) = self.watch(&workspace.id) {
             tracing::warn!(workspace_id = %workspace.id, ?error, "workspace watcher failed to start");
         }
-        self.run_setup_command(&workspace.id, &project.settings.setup_command)
-            .await;
+        self.finish_worktree_in_background(
+            workspace.id.clone(),
+            worktree_path,
+            project.settings.setup_command.clone(),
+        );
         Ok(workspace)
     }
 
-    /// Run the project's setup command in a freshly created worktree, before
-    /// the caller launches an agent into it (dependencies install once per
-    /// worktree). Runs through CheckService so the command gets the standard
-    /// risk gate, timeout, output capture, and a persisted check row the
-    /// review surface can show. Failure never blocks the workspace — the
-    /// agent can usually repair a broken setup itself — so this only warns.
-    async fn run_setup_command(self: &Arc<Self>, workspace_id: &str, setup_command: &str) {
+    /// What a fresh worktree needs beyond the checkout: the repository's
+    /// `post-checkout` hook, then the project's setup command. Both run after
+    /// the caller has its workspace back, so the chat opens as soon as the
+    /// files are there and dependency installs land in the checks lane while
+    /// the agent reads. Failure never fails the workspace — the agent can
+    /// usually repair a broken setup itself — so each only warns.
+    fn finish_worktree_in_background(
+        self: &Arc<Self>,
+        workspace_id: String,
+        worktree_path: PathBuf,
+        setup_command: String,
+    ) {
+        let service = Arc::clone(self);
+        tokio::spawn(async move {
+            service
+                .replay_post_checkout_hook(&workspace_id, &worktree_path)
+                .await;
+            service
+                .run_setup_command(&workspace_id, &setup_command)
+                .await;
+        });
+    }
+
+    /// Run the hook `git worktree add` skipped, with the arguments git gives
+    /// it for a new-branch checkout. A repository without one runs nothing
+    /// and grows no check row.
+    async fn replay_post_checkout_hook(&self, workspace_id: &str, worktree_path: &Path) {
+        let Some(command) = post_checkout_replay_command(worktree_path).await else {
+            return;
+        };
+        self.run_worktree_setup_check(workspace_id, &command, "post-checkout hook")
+            .await;
+    }
+
+    async fn run_setup_command(&self, workspace_id: &str, setup_command: &str) {
         let command = setup_command.trim();
         if command.is_empty() {
             return;
         }
+        self.run_worktree_setup_check(workspace_id, command, "setup command")
+            .await;
+    }
+
+    /// Runs through CheckService so the command gets the standard risk gate,
+    /// timeout, output capture, and a persisted check row the review surface
+    /// can show.
+    async fn run_worktree_setup_check(&self, workspace_id: &str, command: &str, what: &str) {
         let Some(checks) = self.checks.as_ref() else {
             tracing::warn!(
                 workspace_id,
                 command,
-                "setup command configured but check service is unavailable"
+                "{what} configured but check service is unavailable"
             );
             return;
         };
@@ -653,10 +704,10 @@ impl WorkspaceService {
                 workspace_id,
                 command,
                 status = %run.status,
-                "setup command did not pass"
+                "{what} did not pass"
             ),
             Err(error) => {
-                tracing::warn!(workspace_id, command, ?error, "setup command could not run")
+                tracing::warn!(workspace_id, command, ?error, "{what} could not run")
             }
         }
     }
@@ -3036,6 +3087,42 @@ async fn assert_valid_ref(repo_path: &str, reference: &str) -> ArgmaxResult<()> 
         ));
     }
     Ok(())
+}
+
+/// The `git hook run` invocation that replays a repository's `post-checkout`
+/// hook in a fresh worktree, or `None` when it has none. `--git-path hooks`
+/// honours `core.hooksPath`, and `git hook run` gives the hook the cwd and
+/// environment git itself would.
+async fn post_checkout_replay_command(worktree_path: &Path) -> Option<String> {
+    let timeout = Duration::from_millis(GIT_TIMEOUT_MS);
+    let hooks_dir = run_git_text(worktree_path, ["rev-parse", "--git-path", "hooks"], timeout)
+        .await
+        .ok()?;
+    let hook = worktree_path.join(hooks_dir.trim()).join("post-checkout");
+    if !is_executable_file(&hook) {
+        return None;
+    }
+    let head = run_git_text(worktree_path, ["rev-parse", "HEAD"], timeout)
+        .await
+        .ok()?;
+    Some(format!(
+        "git hook run post-checkout -- {NULL_SHA} {} 1",
+        head.trim()
+    ))
+}
+
+fn is_executable_file(path: &Path) -> bool {
+    let Ok(metadata) = std::fs::metadata(path) else {
+        return false;
+    };
+    #[cfg(unix)]
+    let executable = {
+        use std::os::unix::fs::PermissionsExt;
+        metadata.permissions().mode() & 0o111 != 0
+    };
+    #[cfg(not(unix))]
+    let executable = true;
+    metadata.is_file() && executable
 }
 
 /// True when `reference` resolves to a commit we can fork a worktree from

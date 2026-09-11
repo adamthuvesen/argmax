@@ -281,10 +281,9 @@ async fn run_git_command(
     }
     // Launched from Finder/Dock, Argmax inherits launchd's stripped PATH, which
     // has no `/opt/homebrew/bin`. Git hooks then can't find the tools they call,
-    // and a post-checkout hook's exit status *is* the command's — so a hook that
-    // fails to find `lefthook` makes `git worktree add` exit 127, and Argmax
-    // discards the worktree it just created. Hand git the PATH the user's own
-    // terminal would give it.
+    // and a hook's exit status *is* the command's — so a pre-commit hook that
+    // fails to find `lefthook` makes `git commit` exit 127. Hand git the PATH
+    // the user's own terminal would give it.
     #[cfg(unix)]
     command.env("PATH", login_shell::path());
     // After the injected PATH, so a caller can still override it.

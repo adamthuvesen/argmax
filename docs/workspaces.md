@@ -12,7 +12,7 @@ Rust manages workspace lifecycle, file operations, and git integration under `sr
   - `current`: Shared checkout (`create_current`).
   - `worktree`: Isolated worktree (`create_isolated`), branched as `argmax/<slug>-<short-id>`.
   Agent `session_launch` can also attach to an existing checkout (`path`) or fork an isolated worktree from a named `branch`. See [agent-tools.md](agent-tools.md).
-- **Setup commands:** For isolated worktrees, the project's configured setup command runs via `CheckService` after creation. Failures are recorded as check rows and do not block workspace creation.
+- **Worktree setup:** `create_isolated` returns as soon as the checkout exists. `git worktree add` runs with hooks disabled, then a background task replays the repository's `post-checkout` hook with `git hook run` (git 2.36+, only when the hook exists) and runs the project's configured setup command, each through `CheckService` as a check row in the new worktree. Check children get the login-shell `PATH`, like git's do. Failures are recorded on the check rows and never fail the workspace, and the agent's first turn may start while they run.
 - **Archiving:**
   - Successful archives quietly leave the active list. Recovery access lives in Settings, while notifications are reserved for failures or changes that need attention.
   - Shared checkouts mark `archived` immediately and drain child processes in the background.

@@ -123,7 +123,11 @@ file's diff, one file's text — over the four reads the desktop panel makes
 (`review:list-changed-files`, `review:load-diff`, `workspace:list-files`,
 `workspace:read-file`), all of them already on the bridge. Changed files open
 in diff tabs, and tree files open in source tabs. The horizontal tab strip
-keeps several files within reach while rendering only the selected viewer.
+keeps several files within reach while rendering only the selected viewer, and
+is the open file's only bar: the tab names it, so the viewer under it drops its
+own header and shows code from the first line. The context control rides the
+strip's trailing edge. A viewer pushed on its own — from a transcript file link
+— keeps the header, since nothing else there says which file it is.
 Close a tab with its cross, or use File list to choose another file. Transcript
 file links open the file directly. Workspace activity and reconnects refresh
 the selected file and changes list, including edits that leave the file count

@@ -497,6 +497,7 @@ struct TranscriptComposer: View {
         // same files listed for the host to record with the message.
         let prompt = images.prompt(from: trimmed)
         sending = true
+        let thinkingStart = composer.running ? nil : transcript.beginThinking()
         failure = nil
         dictation.stop()
         input = ""
@@ -522,6 +523,7 @@ struct TranscriptComposer: View {
             } catch {
                 // The draft is not lost: text and images go back the same way
                 // a failed desktop send restores them.
+                if let thinkingStart { transcript.cancelThinking(thinkingStart) }
                 input = trimmed
                 images.restore(sent)
                 failure = hostFailureMessage(error)

@@ -14,6 +14,20 @@ final class TranscriptStore: ObservableObject {
     @Published private(set) var composer: NativeComposerState?
     @Published private(set) var phase: TranscriptLoadPhase = .idle
     @Published private(set) var connection: BridgeConnection = .connecting
+    @Published private(set) var thinkingStart: TranscriptThinking?
+    private var thinkingBaseline: Set<String> = []
+
+    func beginThinking() -> TranscriptThinking {
+        let start = TranscriptThinking(id: UUID().uuidString,
+                                       startedAt: ISO8601DateFormatter.withMilliseconds.string(from: Date()))
+        thinkingBaseline = Set(items.map(\.id))
+        thinkingStart = start
+        return start
+    }
+
+    func cancelThinking(_ start: TranscriptThinking) {
+        if thinkingStart == start { thinkingStart = nil }
+    }
 
     var isLoading: Bool { phase == .loading }
     var failure: String? {
@@ -78,6 +92,8 @@ final class TranscriptStore: ObservableObject {
         metadataTask?.cancel()
         readTask = nil
         metadataTask = nil
+        thinkingStart = nil
+        thinkingBaseline = []
         openSessionID = id
         metadata = nil
         workspacePath = nil
@@ -97,6 +113,8 @@ final class TranscriptStore: ObservableObject {
     }
 
     func closeSession() {
+        thinkingStart = nil
+        thinkingBaseline = []
         generation += 1
         readTask?.cancel()
         metadataTask?.cancel()
@@ -351,6 +369,9 @@ final class TranscriptStore: ObservableObject {
         title: String?,
         pendingMessages: [TranscriptPendingMessage]?
     ) {
+        if let session, row.state != session.state, row.state != .running {
+            thinkingStart = nil
+        }
         metadata = row
         let displayTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedTitle = displayTitle.flatMap { $0.isEmpty ? nil : $0 } ?? openingLine(row.prompt)
@@ -405,6 +426,15 @@ final class TranscriptStore: ObservableObject {
             items = rawFallbackItems()
         } else {
             items = projected
+        }
+        if thinkingStart != nil, items.contains(where: { item in
+            guard !thinkingBaseline.contains(item.id) else { return false }
+            switch item {
+            case .user, .notice: return false
+            default: return true
+            }
+        }) {
+            thinkingStart = nil
         }
     }
 

@@ -5,10 +5,12 @@ import SwiftUI
 enum MobileTranscriptRow: Equatable, Identifiable {
     case item(TranscriptItem)
     case activity([TranscriptItem])
+    case thinking(TranscriptThinking)
 
     var id: String {
         switch self {
         case .item(let item): return item.id
+        case .thinking(let thinking): return "thinking-\(thinking.id)"
         case .activity(let items): return "mobile-activity-\(items[0].id)"
         }
     }
@@ -17,6 +19,7 @@ enum MobileTranscriptRow: Equatable, Identifiable {
     var verticalPadding: CGFloat {
         switch self {
         case .activity: return 0
+        case .thinking: return Spacing.snug
         case .item(let item):
             switch item {
             case .thought, .tools, .todo, .notice: return 0
@@ -79,6 +82,7 @@ struct MobileTranscriptRowView<Content: View>: View {
     private var rowContent: some View {
         switch row {
         case .item(let item): content(item)
+        case .thinking(let thinking): TranscriptThinkingLabel(thinking: thinking).id(thinking)
         case .activity(let items):
             DisclosureGroup(isExpanded: $expanded) {
                 VStack(alignment: .leading, spacing: Spacing.snug) {

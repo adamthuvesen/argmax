@@ -65,12 +65,16 @@ struct TranscriptComposer: View {
 
     var body: some View {
         if let composer = transcript.composer {
+            // One column, one width: the gutter is applied here so the PR
+            // pill, the queued lane and the card all share the card's edges.
+            // The pill sits on top, above the queue, so a stack of queued
+            // follow-ups grows down toward the card and leaves it in place.
             VStack(alignment: .leading, spacing: Spacing.snug) {
-                if !composer.queued.isEmpty {
-                    queue(composer)
-                }
                 if let pullRequest {
                     pullRequestPill(pullRequest, sessionID: composer.sessionId)
+                }
+                if !composer.queued.isEmpty {
+                    queue(composer)
                 }
                 card(composer)
             }
@@ -340,7 +344,6 @@ struct TranscriptComposer: View {
                 .background(Theme.raised, in: .rect(cornerRadius: Radius.control, style: .continuous))
             }
         }
-        .screenGutter()
     }
 
     /// One glyph in the queued row. 30pt of hit area around a caption-sized

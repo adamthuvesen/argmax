@@ -312,11 +312,15 @@ async fn dispatch_standard(
 
         "session:events-since" => {
             let input: SessionEventsSinceInput = parse(channel, input)?;
-            encode(session::session_events_since_impl(state, input).await?)
+            let mut page = session::session_events_since_impl(state, input).await?;
+            super::transcript_trim::trim_for_remote(&mut page);
+            encode(page)
         }
         "session:agent-events" => {
             let input: SessionAgentEventsInput = parse(channel, input)?;
-            encode(session::session_agent_events_impl(state, input).await?)
+            let mut page = session::session_agent_events_impl(state, input).await?;
+            super::transcript_trim::trim_payloads_for_remote(&mut page);
+            encode(page)
         }
         "session:suggest-follow-up" => {
             let input: SessionSuggestFollowUpInput = parse(channel, input)?;

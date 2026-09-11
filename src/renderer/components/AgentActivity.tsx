@@ -133,6 +133,7 @@ function renderAssistantGroup({
       <ThoughtBlock
         key={group.id}
         display={thinkingDisplay}
+        previewText={group.text}
         defaultExpanded={thoughtExpanded}
         live={thinkingLive}
         // The newest burst never folds in place: the pane follows its own

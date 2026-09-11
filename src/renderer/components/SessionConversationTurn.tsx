@@ -174,8 +174,8 @@ function SessionConversationTurnInner({
   // the body stays open (`holdOpen`) for as long as this is the newest turn:
   // folding it right then would drop the whole reasoning out of a transcript
   // pinned to the bottom at the exact moment the answer starts arriving. An
-  // explicit fold from the turn chip still wins in Compact. Balanced and
-  // Detailed keep thoughts inline regardless of tool disclosure or turn age.
+  // explicit fold from the turn chip still wins in Compact. Balanced previews
+  // only live reasoning. Detailed keeps labelled thoughts inline.
   //
   // The beat belongs to the turn's newest reasoning burst, never to every burst
   // in it: tool boundaries flush a fresh thinking group, so this flag read
@@ -313,6 +313,7 @@ function SessionConversationTurnInner({
           <ThoughtBlock
             key={group.id}
             display={thinkingDisplay}
+            previewText={group.text}
             defaultExpanded={toolsExpandOverride ?? false}
             live={groupLive}
             holdOpen={

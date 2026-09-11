@@ -399,7 +399,7 @@ describe("SessionConversation — streaming & composer", () => {
     expect(container.querySelectorAll(".streaming-caret")).toHaveLength(0);
   });
 
-  it("renders extended-thinking as a collapsed Thought block that persists after the answer", () => {
+  it("renders settled Balanced thinking as a collapsed Thought block beside the answer", () => {
     const thinking = "The user is asking me to read files. Let me start with the README.";
     const answer = "Here's the repo overview.";
 
@@ -411,7 +411,8 @@ describe("SessionConversation — streaming & composer", () => {
         // with payload.thinking === true.
         event("t1", "message.delta", thinking, "2026-05-12T15:00:01.000Z", { thinking: true }),
         event("m1", "message.completed", answer, "2026-05-12T15:00:02.000Z")
-      ]
+      ],
+      { thinkingDisplay: "preview" }
     );
 
     // The Thought disclosure survives the turn's completion (not pruned), and
@@ -420,6 +421,7 @@ describe("SessionConversation — streaming & composer", () => {
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(toggle.textContent).toContain("Thought");
     expect(screen.getByText(answer)).toBeTruthy();
+    expect(screen.queryByLabelText("Thinking preview")).not.toBeInTheDocument();
     // Collapsed by default — the reasoning text is not shown until expanded.
     expect(screen.queryByText(thinking)).toBeNull();
 
@@ -442,7 +444,7 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByRole("button", { name: "Thought 5s" })).toBeInTheDocument();
   });
 
-  it("renders restored thoughts inline without a heading or disclosure in Balanced", () => {
+  it("renders restored thoughts inline with a persistent label in Detailed", () => {
     const thinking = "I should inspect the settings plumbing before touching the UI.";
     const answer = "Settings are wired.";
 
@@ -457,12 +459,12 @@ describe("SessionConversation — streaming & composer", () => {
     );
 
     expect(screen.queryByRole("button", { name: "Thought" })).not.toBeInTheDocument();
-    expect(screen.queryByText(/^Thought(?: \d.*)?$/)).not.toBeInTheDocument();
+    expect(screen.getByText("Thought")).toBeInTheDocument();
     expect(screen.getByText(thinking)).toBeTruthy();
     expect(screen.getByText(answer)).toBeTruthy();
   });
 
-  it("keeps streamed inline thoughts through a new turn and switches back to Compact", () => {
+  it("keeps labelled Detailed thoughts through a new turn and switches back to Compact", () => {
     const thinking = "Weighing both designs before I answer.";
     const session = baseSession({ state: "running" });
     const events = [
@@ -476,6 +478,7 @@ describe("SessionConversation — streaming & composer", () => {
     };
     const { rerender } = renderConversation(session, events, options);
     expect(screen.getByText(thinking)).toBeInTheDocument();
+    expect(screen.getByText("Thinking")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Thinking" })).not.toBeInTheDocument();
     expect(screen.queryByRole("article", { name: "Thinking" })).not.toBeInTheDocument();
 
@@ -486,6 +489,7 @@ describe("SessionConversation — streaming & composer", () => {
     ];
     rerenderConversation(rerender, session, history, options);
     expect(screen.getByText(thinking)).toBeInTheDocument();
+    expect(screen.getByText("Thought")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Thought" })).not.toBeInTheDocument();
 
     rerenderConversation(rerender, session, history, { ...options, thinkingDisplay: "collapsed" });
@@ -516,41 +520,71 @@ describe("SessionConversation — streaming & composer", () => {
   });
 
   // A tool boundary flushes a fresh thinking group, so a model that reasons
-  // between calls without narrating holds one per call. Read turn-wide, `live`
-  // expanded every one of them: a Gemini turn through Cursor put 272 reasoning
-  // bursts on screen as 272 simultaneously open blocks. Only the newest burst
-  // is the live beat; the ones behind it are settled history.
-  it("keeps only the newest reasoning burst live across a tool boundary", () => {
+  // between calls without narrating holds one per call. A Gemini turn through
+  // Cursor produced 272 reasoning bursts. Balanced previews only the current
+  // one and keeps every superseded burst folded.
+  it("previews only Cursor's newest reasoning burst and keeps a manual expansion through completion", () => {
     const earlier = "First I should look at the normalizer.";
-    const newest = "Now I know where the deltas come from.";
+    const newest = [
+      "**Full analysis start**",
+      "x".repeat(620),
+      "Newest conclusion"
+    ].join("\n\n");
+    const session = baseSession({ provider: "cursor", state: "running" });
+    const events = [
+      event("u1", "user.message", "explore the repo", "2026-05-12T15:00:00.000Z"),
+      event("t1", "message.delta", earlier, "2026-05-12T15:00:01.000Z", { thinking: true }),
+      event("c1", "command.started", "Bash", "2026-05-12T15:00:02.000Z", {
+        type: "tool_use",
+        tool_use_id: "tu_grep",
+        input: { command: "grep -rn thinking" }
+      }),
+      event("c1-end", "command.completed", "Bash", "2026-05-12T15:00:03.000Z", {
+        tool_use_id: "tu_grep",
+        content: "cursor.rs:24"
+      }),
+      event("t2", "message.delta", newest, "2026-05-12T15:00:04.000Z", { thinking: true })
+    ];
+    const options = {
+      thinkingDisplay: "preview" as const,
+      defaultToolCallsDisplay: "collapsed" as const,
+      defaultToolCallGroupsExpanded: false
+    };
 
-    renderConversation(
-      baseSession({ provider: "cursor", state: "running" }),
-      [
-        event("u1", "user.message", "explore the repo", "2026-05-12T15:00:00.000Z"),
-        event("t1", "message.delta", earlier, "2026-05-12T15:00:01.000Z", { thinking: true }),
-        event("c1", "command.started", "Bash", "2026-05-12T15:00:02.000Z", {
-          type: "tool_use",
-          tool_use_id: "tu_grep",
-          input: { command: "grep -rn thinking" }
-        }),
-        event("c1-end", "command.completed", "Bash", "2026-05-12T15:00:03.000Z", {
-          tool_use_id: "tu_grep",
-          content: "cursor.rs:24"
-        }),
-        event("t2", "message.delta", newest, "2026-05-12T15:00:04.000Z", { thinking: true })
-      ]
-    );
+    const { rerender } = renderConversation(session, events, options);
 
     const live = screen.getAllByRole("button", { name: "Thinking" });
     expect(live).toHaveLength(1);
-    expect(live[0]).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText(newest)).toBeTruthy();
+    expect(live[0]).toHaveAttribute("aria-expanded", "false");
+    const preview = screen.getByLabelText("Thinking preview");
+    expect(preview.textContent).toBe(`…${newest.slice(-600)}`);
+    expect(preview).not.toHaveTextContent("Full analysis start");
     // The superseded burst settles to a collapsed "Thought" header, so its body
     // is out of the transcript rather than stacked above the live one.
     const settled = screen.getByRole("button", { name: /^Thought/ });
     expect(settled).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText(earlier)).toBeNull();
+
+    fireEvent.click(live[0]);
+    expect(live[0]).toHaveAttribute("aria-expanded", "true");
+    expect(screen.queryByLabelText("Thinking preview")).not.toBeInTheDocument();
+    expect(screen.getByText("Full analysis start").tagName).toBe("STRONG");
+    expect(screen.getByText("Newest conclusion")).toBeInTheDocument();
+
+    rerenderConversation(
+      rerender,
+      session,
+      [...events, event("m1", "message.completed", "Here is the answer.", "2026-05-12T15:00:05.000Z")],
+      options
+    );
+
+    expect(screen.getAllByRole("button", { name: "Thought" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Thought" }).map((button) => button.getAttribute("aria-expanded"))).toEqual([
+      "false",
+      "true"
+    ]);
+    expect(screen.getByText("Full analysis start")).toBeInTheDocument();
+    expect(screen.getByText("Here is the answer.")).toBeInTheDocument();
   });
 
   // Reasoning is normalized as a `message.delta` (`thinking: true`), so before
@@ -603,7 +637,7 @@ describe("SessionConversation — streaming & composer", () => {
 
   it.each([
     { label: "compact", display: "collapsed" as const, thinkingDisplay: "collapsed" as const },
-    { label: "balanced", display: "collapsed" as const, thinkingDisplay: "inline" as const },
+    { label: "balanced", display: "collapsed" as const, thinkingDisplay: "preview" as const },
     { label: "minimal", display: "single-line" as const, thinkingDisplay: "collapsed" as const }
   ])("leaves the pre-answer beat to the live Thought block alone ($label)", ({ display, thinkingDisplay, label }) => {
     vi.useFakeTimers();
@@ -622,13 +656,14 @@ describe("SessionConversation — streaming & composer", () => {
       vi.advanceTimersByTime(3000);
     });
 
-    // Compact keeps the live activity disclosure collapsed, Balanced keeps the
-    // thought inline, and Minimal retains its expanded live Thought block.
+    // Compact keeps the live activity disclosure collapsed, Balanced shows a
+    // capped preview behind a closed disclosure, and Minimal retains its
+    // expanded live Thought block.
     if (label === "compact") {
       expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute("aria-expanded", "false");
     } else if (label === "balanced") {
-      expect(screen.getByText("Mapping the renderer")).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "Thinking" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute("aria-expanded", "false");
+      expect(screen.getByLabelText("Thinking preview")).toHaveTextContent("**Mapping the renderer**");
     } else {
       expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute("aria-expanded", "true");
     }
@@ -722,12 +757,14 @@ describe("SessionConversation — streaming & composer", () => {
     );
 
     expect(screen.queryByRole("button", { name: "Thought" })).not.toBeInTheDocument();
+    expect(screen.getByText("Thought")).toBeInTheDocument();
     expect(screen.getByText(thinking)).toBeTruthy();
 
     // Inline thoughts are transcript prose, independent of tool disclosure.
     fireEvent.click(screen.getByRole("button", { name: /Worked/ }));
 
     expect(screen.queryByRole("button", { name: "Thought" })).not.toBeInTheDocument();
+    expect(screen.getByText("Thought")).toBeInTheDocument();
     expect(screen.getByText(thinking)).toBeInTheDocument();
   });
 

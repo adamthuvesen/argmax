@@ -103,8 +103,8 @@ export type ToolCallsDisplay = "expanded" | "collapsed" | "single-line";
 
 const TOOL_CALLS_DISPLAY_VALUES: readonly ToolCallsDisplay[] = ["expanded", "collapsed", "single-line"];
 
-/** Whether thought content uses a disclosure row or stays visible inline. */
-export type ThinkingDisplay = "collapsed" | "inline";
+/** Whether thoughts collapse, preview live reasoning, or stay visible in full. */
+export type ThinkingDisplay = "collapsed" | "preview" | "inline";
 
 /** 1–4 scale governing default tool calls, groups, and thinking detail. */
 export type ChatVerbosity = 1 | 2 | 3 | 4;
@@ -125,8 +125,8 @@ export const CHAT_VERBOSITY_LABELS: Record<ChatVerbosity, string> = {
 export const CHAT_VERBOSITY_HINTS: Record<ChatVerbosity, string> = {
   1: "Activity summaries while working. Finished turns keep the answer. Expand Worked to inspect all tool activity, including failed attempts.",
   2: "One short activity summary between messages. Expand to see commands, files, and agent activity.",
-  3: "One short activity summary between messages, with thoughts always shown inline.",
-  4: "Tool calls and groups open on the latest turn, with thoughts always shown inline."
+  3: "Activity summaries with a short preview of current thinking. Expand thoughts to read more.",
+  4: "Tool calls and groups open on the latest turn, with full, labelled thoughts."
 };
 
 export function resolveChatVerbosity(verbosity: ChatVerbosity): ResolvedVerbosity {
@@ -136,7 +136,7 @@ export function resolveChatVerbosity(verbosity: ChatVerbosity): ResolvedVerbosit
     case 2:
       return { toolCallsDisplay: "collapsed", toolCallGroupsExpanded: false, thinkingDisplay: "collapsed" };
     case 3:
-      return { toolCallsDisplay: "collapsed", toolCallGroupsExpanded: false, thinkingDisplay: "inline" };
+      return { toolCallsDisplay: "collapsed", toolCallGroupsExpanded: false, thinkingDisplay: "preview" };
     case 4:
       return { toolCallsDisplay: "expanded", toolCallGroupsExpanded: true, thinkingDisplay: "inline" };
   }

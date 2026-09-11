@@ -629,7 +629,7 @@
   min-width: 0;
   max-width: 100%;
   padding: var(--tool-call-block-pad) 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--tool-block-surface);
 }
 
@@ -832,7 +832,7 @@
   min-width: 0;
   max-width: 100%;
   padding: 11px 13px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--tool-block-surface);
 }
 

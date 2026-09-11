@@ -53,6 +53,10 @@ Focused reads in `dashboard.rs`:
   type but `message.delta`), so a long thinking turn cannot push the user
   message and earlier turns out of the initial read; those turns come back
   without their thinking blocks, since `message.completed` carries the answer.
+  The 500-row page never begins inside a delta run: it reaches back to the
+  durable row before it, up to 5000 rows in total, so a chat opened while a
+  long answer is still streaming shows the answer from its first word rather
+  than from wherever the page happened to cut.
   Later requests page at most 500 durable changes, including updates and
   deletions. If a cursor predates its session's retained history or is ahead of
   the database, the response requests replacement with a fresh bounded tail.

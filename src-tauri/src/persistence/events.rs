@@ -74,6 +74,11 @@ pub const SESSION_EVENT_PAGE_LIMIT: usize = 500;
 // Durable rows (everything but `message.delta`) the cursorless tail keeps in
 // addition to the newest page. Same size as the renderer's protected budget.
 pub const SESSION_TAIL_DURABLE_LIMIT: usize = 2000;
+// How far past the newest page the cursorless tail may reach back to finish
+// the delta run it landed in. One Codex answer streams ~1000 word-sized
+// deltas (5 KB of prose measured 2026-09-12), so a 500-row page opened
+// mid-answer began the bubble mid-sentence until `message.completed` landed.
+pub const SESSION_TAIL_OPEN_RUN_LIMIT: usize = 5000;
 pub const SESSION_RAW_OUTPUT_PAGE_LIMIT: usize = 100;
 pub const SESSION_CHANGE_PAGE_LIMIT: usize = 500;
 // `session:agent-events` scans the session tail on every pane poll, so the
@@ -1898,22 +1903,43 @@ fn list_event_rows(
             // answer, so keeping them restores the earlier turns at the cost
             // of their thinking blocks. The cap mirrors the renderer's
             // protected-row budget in snapshot.ts.
+            //
+            // The newest page must not begin inside a delta run: the clients
+            // rebuild a streaming bubble by concatenating the deltas they hold,
+            // so a page cut mid-answer paints the answer from its cut point
+            // until the completion lands. The floor therefore steps back from
+            // the page's oldest row to the durable row before it, bounded by
+            // SESSION_TAIL_OPEN_RUN_LIMIT rows in total.
             let mut statement = connection
                 .prepare_cached(
-                    "SELECT * FROM (
-                    SELECT rowid AS row_cursor, * FROM events WHERE rowid IN (
-                        SELECT rowid FROM (
-                            SELECT rowid FROM events WHERE session_id = ?1
-                            ORDER BY rowid DESC LIMIT ?2
-                        )
-                        UNION
-                        SELECT rowid FROM (
-                            SELECT rowid FROM events
-                            WHERE session_id = ?1 AND type <> 'message.delta'
-                            ORDER BY rowid DESC LIMIT ?3
-                        )
+                    "WITH page AS (
+                        SELECT rowid FROM events WHERE session_id = ?1
+                        ORDER BY rowid DESC LIMIT ?2
+                    ),
+                    durable AS (
+                        SELECT rowid FROM events
+                        WHERE session_id = ?1 AND type <> 'message.delta'
+                        ORDER BY rowid DESC LIMIT ?3
+                    ),
+                    run_floor AS (
+                        SELECT MAX(
+                            COALESCE((
+                                SELECT MAX(rowid) FROM events
+                                WHERE session_id = ?1 AND type <> 'message.delta'
+                                  AND rowid < (SELECT MIN(rowid) FROM page)
+                            ), 0),
+                            COALESCE((
+                                SELECT rowid FROM events WHERE session_id = ?1
+                                ORDER BY rowid DESC LIMIT 1 OFFSET ?4
+                            ), 0)
+                        ) AS rowid
                     )
-                ) ORDER BY row_cursor ASC",
+                    SELECT rowid AS row_cursor, * FROM events
+                    WHERE session_id = ?1 AND (
+                        rowid > (SELECT rowid FROM run_floor)
+                        OR rowid IN (SELECT rowid FROM durable)
+                    )
+                    ORDER BY row_cursor ASC",
                 )
                 .map_err(sqlite_error)?;
             let rows = statement
@@ -1922,6 +1948,7 @@ fn list_event_rows(
                         session_id,
                         SESSION_EVENT_PAGE_LIMIT as i64,
                         SESSION_TAIL_DURABLE_LIMIT as i64,
+                        SESSION_TAIL_OPEN_RUN_LIMIT as i64,
                     ),
                     event_row_to_timeline_event,
                 )
@@ -2170,7 +2197,8 @@ mod change_feed_tests {
         let connection = database.connection();
         insert_typed_event(&connection, "prompt", "s1", "user.message", "fix it");
         insert_typed_event(&connection, "tool", "s1", "command.started", "read");
-        for index in 0..(SESSION_EVENT_PAGE_LIMIT + 10) {
+        let flood = SESSION_TAIL_OPEN_RUN_LIMIT + 10;
+        for index in 0..flood {
             insert_typed_event(
                 &connection,
                 &format!("delta-{index}"),
@@ -2192,13 +2220,13 @@ mod change_feed_tests {
         assert_eq!(ids.last(), Some(&"answer"));
         assert!(
             !ids.contains(&"delta-10"),
-            "the oldest deltas still fall out"
+            "deltas beyond the open-run cap still fall out"
         );
         assert!(
             ids.contains(&"delta-11"),
-            "the newest page of deltas is kept"
+            "the newest deltas up to the cap are kept"
         );
-        assert_eq!(ids.len(), SESSION_EVENT_PAGE_LIMIT + 2);
+        assert_eq!(ids.len(), SESSION_TAIL_OPEN_RUN_LIMIT + 2);
         assert_eq!(
             initial.event_cursor,
             initial
@@ -2207,6 +2235,44 @@ mod change_feed_tests {
                 .and_then(|event| event.row_cursor)
                 .unwrap()
         );
+    }
+
+    // Opening a chat while an answer longer than one page is still streaming
+    // used to paint the bubble from the page's cut point. The tail now steps
+    // back to the durable row before the page so the whole open run arrives.
+    #[test]
+    fn initial_tail_does_not_cut_an_open_answer_mid_stream() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_typed_event(&connection, "prompt", "s1", "user.message", "explain");
+        insert_event(&connection, "first-answer", "s1", "On it.");
+        insert_typed_event(
+            &connection,
+            "search",
+            "s1",
+            "command.completed",
+            "web_search",
+        );
+        let run = SESSION_EVENT_PAGE_LIMIT + 200;
+        for index in 0..run {
+            insert_typed_event(
+                &connection,
+                &format!("delta-{index}"),
+                "s1",
+                "message.delta",
+                "word",
+            );
+        }
+
+        let initial =
+            list_session_changes_since(&connection, "s1", None, None, None).expect("initial");
+        let ids = ids(&initial.events);
+        assert_eq!(
+            &ids[..4],
+            ["prompt", "first-answer", "search", "delta-0"],
+            "the open run starts at its first delta"
+        );
+        assert_eq!(ids.len(), run + 3);
     }
 
     #[test]

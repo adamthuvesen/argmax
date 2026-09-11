@@ -152,7 +152,10 @@ private struct TranscriptExpandedRichContent: View {
     }
 }
 
-private struct TranscriptRichZoomCanvas<Content: View>: View {
+/// Fits the content to the viewport, then lets pinch, pan, and the
+/// controls take it from there. Shared by the diagram, equation, and
+/// image viewers so a full-size decode never lays out at its pixel size.
+struct TranscriptRichZoomCanvas<Content: View>: View {
     let content: Content
     @State private var scale: CGFloat = 1
     @State private var settledScale: CGFloat = 1

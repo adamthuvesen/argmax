@@ -234,9 +234,12 @@ private struct TranscriptFullScreenImage: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView([.horizontal, .vertical]) {
+            TranscriptRichZoomCanvas {
+                // Laid out at the decode's own size; the canvas fits it to the
+                // viewport, so swapping the thumbnail for the full decode
+                // changes resolution, not the size on screen.
                 if let image = expandedImage ?? image {
-                    Image(uiImage: image).resizable().aspectRatio(contentMode: .fit).padding(16)
+                    Image(uiImage: image).padding(16)
                 }
             }
             .background(Theme.ground)

@@ -23,6 +23,52 @@ pub fn trim_for_remote(result: &mut SessionEventsSinceResult) {
     drop_superseded_deltas(&mut result.events);
 }
 
+/// The most transcript bytes one bridge reply carries.
+///
+/// `URLSessionWebSocketTask` refuses a message over its 1 MiB default and
+/// closes the socket, which the phone reported as "Can't reach your Mac" for
+/// exactly the chats whose tail crossed that line (a Cursor chat with 6,700
+/// rows sent 1.46 MB after the trim above). The budget counts serialized
+/// events only; the frame's own envelope and the raw-output page (100 rows)
+/// ride in the headroom.
+pub const REMOTE_PAGE_BUDGET_BYTES: usize = 768 * 1024;
+
+/// Cut a row-cursor page to the byte budget, oldest rows first.
+///
+/// A cut page owes the rest through the row cursors: `has_more` sends the
+/// client back with `eventCursor` and no `changeCursor`, which
+/// `list_session_events_since` answers page by page until the last one
+/// carries the change cursor. Mutation pages (`changeCursor` in the request)
+/// are never cut here: their cursor is a feed sequence, not a rowid, so a
+/// prefix of their rows has no continuation.
+pub fn fit_to_budget(result: &mut SessionEventsSinceResult, budget: usize) {
+    let mut spent = 0usize;
+    let mut kept = 0usize;
+    for event in &result.events {
+        let bytes = serde_json::to_vec(event)
+            .map(|json| json.len())
+            .unwrap_or(0);
+        // One row always goes, however large, or the page would never advance.
+        if kept > 0 && spent + bytes > budget {
+            break;
+        }
+        spent += bytes;
+        kept += 1;
+    }
+    if kept == result.events.len() {
+        return;
+    }
+    result.events.truncate(kept);
+    result.event_cursor = result
+        .events
+        .iter()
+        .filter_map(|event| event.row_cursor)
+        .max()
+        .unwrap_or(result.event_cursor);
+    result.change_cursor = None;
+    result.has_more = true;
+}
+
 /// Payload weight only. The subagent peek (`session:agent-events`) renders
 /// child prose the delta sweep deliberately skips, so it takes this half.
 pub fn trim_payloads_for_remote(result: &mut SessionEventsSinceResult) {
@@ -235,6 +281,54 @@ mod tests {
 
     fn ids(result: &SessionEventsSinceResult) -> Vec<&str> {
         result.events.iter().map(|e| e.id.as_str()).collect()
+    }
+
+    #[test]
+    fn an_oversized_page_is_cut_to_its_oldest_rows_and_owes_the_rest_by_row_cursor() {
+        let filler = "x".repeat(400);
+        let mut result = page(vec![
+            event(1, "user.message", "Go", json!({ "text": filler })),
+            event(2, "command.completed", "done", json!({ "text": filler })),
+            event(3, "message.completed", "answer", json!({ "text": filler })),
+        ]);
+        result.change_cursor = Some(99);
+        result.event_cursor = 3;
+        let two_rows = result.events[..2]
+            .iter()
+            .map(|event| serde_json::to_vec(event).unwrap().len())
+            .sum::<usize>();
+
+        fit_to_budget(&mut result, two_rows);
+
+        assert_eq!(ids(&result), vec!["event-1", "event-2"]);
+        assert_eq!(result.event_cursor, 2);
+        assert_eq!(result.change_cursor, None);
+        assert!(result.has_more);
+    }
+
+    #[test]
+    fn a_page_within_budget_keeps_its_change_cursor() {
+        let mut result = page(vec![event(1, "user.message", "Go", json!({}))]);
+        result.change_cursor = Some(7);
+        fit_to_budget(&mut result, REMOTE_PAGE_BUDGET_BYTES);
+        assert_eq!(result.change_cursor, Some(7));
+        assert!(!result.has_more);
+    }
+
+    #[test]
+    fn a_single_row_over_budget_still_goes_so_the_page_advances() {
+        let mut result = page(vec![
+            event(
+                1,
+                "command.completed",
+                "big",
+                json!({ "text": "x".repeat(4000) }),
+            ),
+            event(2, "message.completed", "answer", json!({})),
+        ]);
+        fit_to_budget(&mut result, 16);
+        assert_eq!(ids(&result), vec!["event-1"]);
+        assert!(result.has_more);
     }
 
     #[test]

@@ -271,6 +271,10 @@ async fn dispatch_standard(
             let input: ProvidersSendInput = parse(channel, input)?;
             encode(providers::providers_send_input_impl(state, input).await?)
         }
+        "providers:steer-input" => {
+            let input: ProvidersSendInput = parse(channel, input)?;
+            encode(providers::providers_steer_input_impl(state, input).await?)
+        }
         "providers:resize" => {
             let input: ProvidersResizeInput = parse(channel, input)?;
             encode(providers::providers_resize_impl(state, input)?)
@@ -322,8 +326,15 @@ async fn dispatch_standard(
 
         "session:events-since" => {
             let input: SessionEventsSinceInput = parse(channel, input)?;
+            let row_paged = input.change_cursor.is_none();
             let mut page = session::session_events_since_impl(state, input).await?;
             super::transcript_trim::trim_for_remote(&mut page);
+            if row_paged || page.reset_required {
+                super::transcript_trim::fit_to_budget(
+                    &mut page,
+                    super::transcript_trim::REMOTE_PAGE_BUDGET_BYTES,
+                );
+            }
             encode(page)
         }
         "session:agent-events" => {

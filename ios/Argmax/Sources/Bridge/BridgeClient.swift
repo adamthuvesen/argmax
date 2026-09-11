@@ -190,7 +190,17 @@ actor BridgeClient {
         self.cacheNamespace = SHA256.hash(data: Data((socketURL.absoluteString + "\u{0}" + token).utf8))
             .map { String(format: "%02x", $0) }.joined()
         self.monitorNetwork = monitorNetwork
-        self.makeSocket = socketFactory ?? { urlSession.webSocketTask(with: $0) }
+        self.makeSocket = socketFactory ?? { url in
+            let task = urlSession.webSocketTask(with: url)
+            // The default 1 MiB ceiling closed the socket outright on a long
+            // chat's backfill frame, which surfaced as "Can't reach your
+            // Mac." for that one chat only. The host now caps a row-paged
+            // reply to `REMOTE_PAGE_BUDGET_BYTES` (768 KiB events, serialized)
+            // plus its envelope and the raw-output page riding along, so this
+            // just clears that with room rather than removing the ceiling.
+            task.maximumMessageSize = 4 * 1024 * 1024
+            return task
+        }
         self.operationStore = RemoteOperationStore(scope: cacheNamespace, directory: operationDirectory)
         (events, eventContinuation) = AsyncStream.makeStream(of: BridgeEvent.self)
         (connectionStates, connectionContinuation) = AsyncStream.makeStream(of: BridgeConnection.self)

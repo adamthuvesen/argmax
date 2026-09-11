@@ -92,22 +92,34 @@ pub fn list_session_events_since(
     event_cursor: Option<i64>,
     raw_output_cursor: Option<i64>,
 ) -> ArgmaxResult<SessionEventsSinceResult> {
-    let event_rows = list_event_rows(connection, session_id, event_cursor)?;
-    let raw_output_rows = list_raw_output_rows(connection, session_id, raw_output_cursor)?;
+    // The continuation of a backfill the bridge cut to fit one socket
+    // message. Row pages carry no change cursor until the last one: a client
+    // that has a change cursor reads the mutation feed instead, which would
+    // skip the rows still owed here. The last page's cursor is the head from
+    // this read, so a mutation landing between two pages to a row an earlier
+    // page already delivered is not replayed until the next authoritative
+    // read; the window is one backfill, seconds long.
+    let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+    let event_rows = list_event_rows(&transaction, session_id, event_cursor)?;
+    let raw_output_rows = list_raw_output_rows(&transaction, session_id, raw_output_cursor)?;
+    let head = change_feed_head(&transaction)?;
+    transaction.commit().map_err(sqlite_error)?;
     let next_event_cursor = max_row_cursor(&event_rows, event_cursor.unwrap_or(0));
     let next_raw_output_cursor =
         max_raw_row_cursor(&raw_output_rows, raw_output_cursor.unwrap_or(0));
+    let has_more = event_rows.len() >= SESSION_EVENT_PAGE_LIMIT
+        || raw_output_rows.len() >= SESSION_RAW_OUTPUT_PAGE_LIMIT;
 
     Ok(SessionEventsSinceResult {
         events: event_rows,
         raw_outputs: raw_output_rows,
         event_cursor: next_event_cursor,
         raw_output_cursor: next_raw_output_cursor,
-        change_cursor: None,
+        change_cursor: (!has_more).then_some(head),
         deleted_event_ids: Vec::new(),
         deleted_raw_output_ids: Vec::new(),
         reset_required: false,
-        has_more: false,
+        has_more,
     })
 }
 
@@ -2450,6 +2462,36 @@ mod change_feed_tests {
         assert!(page.events.is_empty());
         assert!(page.deleted_event_ids.is_empty());
         assert_eq!(page.change_cursor, Some(cursor));
+    }
+
+    #[test]
+    fn row_pages_withhold_the_change_cursor_until_the_last_page() {
+        let database = seeded_database();
+        let connection = database.connection();
+        for index in 0..=SESSION_EVENT_PAGE_LIMIT {
+            insert_event(&connection, &format!("e{index}"), "s1", "row");
+        }
+
+        let first = list_session_changes_since(&connection, "s1", Some(0), Some(0), None)
+            .expect("first row page");
+        assert_eq!(first.events.len(), SESSION_EVENT_PAGE_LIMIT);
+        assert!(first.has_more);
+        assert_eq!(first.change_cursor, None);
+
+        let second = list_session_changes_since(
+            &connection,
+            "s1",
+            Some(first.event_cursor),
+            Some(first.raw_output_cursor),
+            None,
+        )
+        .expect("last row page");
+        assert_eq!(ids(&second.events), vec!["e500"]);
+        assert!(!second.has_more);
+        assert_eq!(
+            second.change_cursor,
+            Some(change_feed_head(&connection).expect("feed head"))
+        );
     }
 
     #[test]

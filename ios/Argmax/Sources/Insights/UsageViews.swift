@@ -3,8 +3,8 @@ import SwiftUI
 
 // The Usage page: hero totals, provider cards, daily cost chart, token flow,
 // and model breakdown — the desktop `UsagePanel` sections, stacked for a
-// phone. All narrowing is client-side in `InsightsStore`; the cards always
-// read the global summary.
+// phone. The provider filter narrows on the host; the cards always
+// list every provider, so the picker keeps offering the others.
 
 // MARK: - Hero
 
@@ -177,7 +177,7 @@ struct UsageDailyChart: View {
     /// Dense: every provider has a value on every day. A stacked area with
     /// days missing interpolates across the gap and draws stray curves.
     private var buckets: [Bucket] {
-        let points = store.usageSeries()
+        let points = store.usage?.series ?? []
         let useTokens = store.usageMode == .tokens
         let providers = Array(Set(points.flatMap { $0.values.map(\.provider) })).sorted()
         return points.flatMap { point -> [Bucket] in
@@ -262,7 +262,7 @@ struct UsageDailyChart: View {
     }
 
     private var daySpan: Int {
-        max(1, store.usageSeries().count)
+        max(1, store.usage?.series.count ?? 0)
     }
 
     private var legendTrailing: String? {
@@ -402,7 +402,7 @@ struct UsageBreakdown: View {
     }
 
     private var modelRows: some View {
-        let rows = Array(store.usageModels().prefix(12))
+        let rows = Array((store.usage?.models ?? []).prefix(12))
         let peak = rows.map(\.costUsd).max() ?? 1
         return VStack(spacing: 0) {
             ForEach(rows, id: \.modelId) { row in

@@ -12,10 +12,10 @@ import Foundation
 
 // MARK: - Inputs
 
-/// `UsageSummaryInput`. `provider` narrows server-side, but the phone always
-/// sends `null` and filters client-side instead: the provider cards stay
-/// global while the chart and breakdown narrow, the desktop's "tiles never
-/// narrow" rule (`UsageProviderRows.tsx`), without a second fetch.
+/// `UsageSummaryInput`. `provider` narrows server-side: the hero, previous
+/// period, chart, and breakdown follow it while the provider rows stay
+/// global, the desktop's "tiles never narrow" rule (`UsageProviderRows.tsx`).
+/// The phone sends the picker's choice, `null` for all providers.
 struct UsageSummaryInput: Encodable, Sendable {
     var window: String
     var timeZone: String

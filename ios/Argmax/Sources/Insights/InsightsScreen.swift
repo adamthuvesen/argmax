@@ -34,6 +34,7 @@ struct InsightsScreen: View {
         .refreshable { await store.reloadCurrent() }
         .onChange(of: store.tab) { _, tab in Task { await store.ensure(tab) } }
         .onChange(of: store.usageWindow) { Task { await store.reloadUsage() } }
+        .onChange(of: store.providerFilter) { Task { await store.reloadUsage() } }
         .onChange(of: store.activityWindow) { Task { await store.reloadActivity() } }
         .navigationTitle("")
     }
@@ -206,11 +207,13 @@ struct InsightsScreen: View {
 
     private var showingSkeleton: Bool {
         // Bones only when there is nothing truthful to show: no data at all,
-        // or data for a different window than the picker names. Same-window
-        // stale numbers stay up behind a refresh — the "Updating…" line says
-        // so — because a blank page is never faster than an old one.
+        // or data for a different window or provider than the pickers name.
+        // Same-picker stale numbers stay up behind a refresh — the "Updating…"
+        // line says so — because a blank page is never faster than an old one.
         if store.tab == .usage {
-            return store.usage == nil || store.usage?.window != store.usageWindow
+            guard let usage = store.usage else { return true }
+            return usage.window != store.usageWindow
+                || usage.provider != store.providerFilter
         }
         return store.activity == nil || store.activity?.window != store.activityWindow
     }

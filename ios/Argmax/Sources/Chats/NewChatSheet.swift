@@ -454,6 +454,12 @@ struct NewChatSheet: View {
         // The words are already in the prompt; leaving the mic open past the
         // launch would keep dictating into a sheet that is closing.
         dictation.stop()
+        // Drop the keyboard here rather than letting the push carry it: the
+        // transcript this lands on avoids the keyboard, so a field that is
+        // still first responder when the screen swaps opens the chat with the
+        // web view already shrunk and the composer lifted over it. Resigning
+        // before the round trip gives the keyboard the whole launch to leave.
+        promptFocused = false
 
         do {
             let workspace = try await client.createWorkspace(plan.creation)

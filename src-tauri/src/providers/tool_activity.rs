@@ -862,13 +862,13 @@ fn classify_simple_command(command: CommandValue<'_>) -> Option<(ActivityKind, V
     let parsed = command_stages(command)?;
     let mut activities = Vec::new();
     let mut working_directory = None;
+    let mut directory_is_trustworthy = true;
     for (pipeline_index, pipeline) in parsed.pipelines.into_iter().enumerate() {
         if pipeline_index == 0 && pipeline.len() == 1 {
             if let Some(directory) = literal_cd_target(&pipeline[0]) {
-                if parsed.separators.first() != Some(&SequenceSeparator::OnSuccess) {
-                    return None;
-                }
-                working_directory = Some(directory.to_string());
+                directory_is_trustworthy =
+                    parsed.separators.first() == Some(&SequenceSeparator::OnSuccess);
+                working_directory = Some(directory);
                 continue;
             }
         }
@@ -886,7 +886,14 @@ fn classify_simple_command(command: CommandValue<'_>) -> Option<(ActivityKind, V
         }
     }
 
-    select_command_activity(activities)
+    let (kind, targets) = select_command_activity(activities)?;
+    // A `;`-joined `cd` can silently fail and leave the next command running
+    // against the wrong directory. That's cosmetically wrong but harmless for
+    // a Read/Search label; for Edit it would misreport which file was mutated.
+    if kind == ActivityKind::Edit && !directory_is_trustworthy {
+        return None;
+    }
+    Some((kind, targets))
 }
 
 fn select_command_activity(
@@ -1060,16 +1067,20 @@ fn git_subcommand(args: &[String]) -> Option<&str> {
     None
 }
 
-fn literal_cd_target(words: &[String]) -> Option<&str> {
-    if words.len() != 2
-        || words[0] != "cd"
-        || words[1].is_empty()
-        || words[1].starts_with('-')
-        || words[1].starts_with('~')
-    {
+fn literal_cd_target(words: &[String]) -> Option<String> {
+    if words.len() != 2 || words[0] != "cd" || words[1].is_empty() || words[1].starts_with('-') {
         return None;
     }
-    Some(&words[1])
+    let target = &words[1];
+    if target == "~" {
+        return std::env::var("HOME").ok();
+    }
+    if let Some(rest) = target.strip_prefix("~/") {
+        let home = std::env::var("HOME").ok()?;
+        return Some(format!("{}/{rest}", home.trim_end_matches('/')));
+    }
+    // `~user` expansion needs a passwd lookup we don't do here.
+    (!target.starts_with('~')).then(|| target.clone())
 }
 
 fn prefix_relative_targets(targets: &mut [String], directory: &str) -> Option<()> {
@@ -2235,12 +2246,51 @@ mod tests {
             "cd ios/Argmax; sed -i '' 's/a/b/' file.txt",
             "cd ios/Argmax\nsed -i '' 's/a/b/' file.txt",
             "cd ios/Argmax && sed -i '' 's/a/b/' ~/file.txt",
-            "cd ~/Argmax && sed -i '' 's/a/b/' file.txt",
         ] {
             let fallback = activity(json!({"name":"Bash","input":{"command":command}}));
             assert_eq!(fallback["kind"], "command", "{command}");
             assert_eq!(fallback["evidence"], "tool", "{command}");
         }
+    }
+
+    #[test]
+    fn tilde_cd_targets_expand_against_home() {
+        let home = std::env::var("HOME").expect("HOME is set in the test environment");
+
+        let read = activity(json!({
+            "name":"Bash",
+            "input":{"command":"cd ~/dev/menti/argmax; sed -n 180,240p src/renderer/foo.tsx"}
+        }));
+        assert_eq!(read["kind"], "read");
+        assert_eq!(
+            read["targets"],
+            json!([format!("{home}/dev/menti/argmax/src/renderer/foo.tsx")])
+        );
+
+        let search = activity(json!({
+            "name":"Bash",
+            "input":{"command":"cd ~/dev/menti/argmax; grep -rn \"hasMore\" src/renderer"}
+        }));
+        assert_eq!(search["kind"], "search");
+        assert_eq!(
+            search["targets"],
+            json!([format!("{home}/dev/menti/argmax/src/renderer")])
+        );
+
+        let edit = activity(json!({
+            "name":"Bash",
+            "input":{"command":"cd ~/Argmax && sed -i '' 's/a/b/' file.txt"}
+        }));
+        assert_eq!(edit["kind"], "edit");
+        assert_eq!(edit["targets"], json!([format!("{home}/Argmax/file.txt")]));
+
+        // Edits stay gated to `&&`: a silently failed `cd` there would
+        // mislabel which file actually got mutated.
+        let edit_fallback = activity(json!({
+            "name":"Bash",
+            "input":{"command":"cd ios/Argmax; sed -i '' 's/a/b/' file.txt"}
+        }));
+        assert_eq!(edit_fallback["kind"], "command");
     }
 
     #[test]

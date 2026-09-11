@@ -557,7 +557,6 @@ final class TranscriptStore: ObservableObject {
                     await job.value
                 } onCancel: { job.cancel() }
                 guard !Task.isCancelled, self.generation == startedGeneration else { return }
-                if version != self.projectionVersion { continue }
                 if self.items.isEmpty {
                     // The list opens at the tail, and a row paints plain text
                     // until its Markdown is prepared. On the first paint of an
@@ -570,16 +569,21 @@ final class TranscriptStore: ObservableObject {
                             TranscriptMarkdownCache.prepare(keys)
                         }.value
                         guard !Task.isCancelled, self.generation == startedGeneration else { return }
-                        if version != self.projectionVersion { continue }
                         TranscriptMarkdownCache.shared.store(prepared)
                     }
                 }
+                // Publish what was projected even when newer content landed
+                // meanwhile. A running chat invalidates the projection on
+                // every streamed chunk, so waiting for a quiet moment left an
+                // opened chat blank for the whole turn; the next pass below
+                // catches the list up.
                 self.publishProjection(projected.isEmpty ? fallback : projected)
-                self.projectionTask = nil
                 // Content has arrived by now (the guard above), so an empty
                 // projection is a genuinely empty chat.
                 if self.phase == .loading { self.phase = .ready }
                 self.cacheCurrentTranscript()
+                if version != self.projectionVersion { continue }
+                self.projectionTask = nil
                 return
             }
         }

@@ -226,6 +226,36 @@ final class TranscriptStoreTests: XCTestCase {
         XCTAssertEqual(store.phase, .idle)
     }
 
+    /// A running chat invalidates the projection on every streamed chunk.
+    /// The first projection must still reach the screen; waiting for a
+    /// quiet moment left the opened chat blank for the whole turn.
+    func testStreamingChatPaintsWhileContentKeepsArriving() async throws {
+        let store = try makeStore()
+        store.openSession("session-1")
+        let history = (1...1500).map { index in
+            event("answer-\(index)", "message.completed",
+                  String(repeating: "Streamed **answer** \(index) with `code` and a [link](https://example.com). ", count: 12),
+                  Int64(index))
+        }
+        store.ingest(page: page(events: history, cursor: 1500, changeCursor: 1500), for: "session-1", authoritative: true)
+        XCTAssertEqual(store.phase, .loading)
+
+        // Chunks land faster than a projection completes, for as long as the turn runs.
+        let deadline = ContinuousClock.now + .seconds(20)
+        var cursor: Int64 = 1500
+        while ContinuousClock.now < deadline, store.items.isEmpty {
+            cursor += 1
+            store.ingest(page: page(events: [event("chunk", "message.completed", "Chunk \(cursor)", cursor)],
+                                    cursor: cursor, changeCursor: cursor, reset: false),
+                         for: "session-1")
+            await Task.yield()
+        }
+
+        XCTAssertFalse(store.items.isEmpty, "the chat stayed blank while chunks kept arriving")
+        store.closeSession()
+        await store.waitForProjection()
+    }
+
     private func makeStore() throws -> TranscriptStore {
         let url = try XCTUnwrap(URL(string: "https://mac.example/mobile.html#token=test"))
         return TranscriptStore(client: try BridgeClient(pairingURL: url))

@@ -34,6 +34,7 @@ import { importChunk } from "../lib/importChunk.js";
 import { loadDashboardSnapshot } from "../lib/loadDashboardSnapshot.js";
 import { mergeDashboardDelta } from "../lib/snapshot.js";
 import { useUnreadWorkspaceIds } from "../lib/sessionUnread.js";
+import { chatSessionByWorkspace } from "../lib/workspaceChat.js";
 import {
   computePriorityEntries,
   computeWorkspaceAttention,
@@ -545,7 +546,7 @@ export function MobileApp(): JSX.Element {
   // them. Priority ages rows out 30 minutes after their last message, which
   // the shared minute clock below is close enough to notice.
   const { pinnedRows, priorityRows, activityRows } = useMemo(() => {
-    const sessionsByWorkspace = new Map(snapshot.sessions.map((session) => [session.workspaceId, session]));
+    const sessionsByWorkspace = chatSessionByWorkspace(snapshot.sessions);
     const attentionByWorkspace = computeWorkspaceAttention(
       snapshot.workspaces,
       snapshot.sessions,

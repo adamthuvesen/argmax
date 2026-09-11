@@ -15,6 +15,45 @@ final class ChatSectionsTests: XCTestCase {
         XCTAssertTrue(sections.isEmpty)
     }
 
+    /// Two top-level sessions land in one checkout more often than the
+    /// domain model admits (a repeated prompt, an import beside a live chat).
+    /// The row has to name the same one the page opens — the most recently
+    /// active — or it describes one chat and opens another.
+    func testAWorkspaceWithTwoChatsShowsTheMostRecentlyActive() {
+        let snapshot = DashboardSnapshot(
+            workspaces: [makeWorkspace(id: "w-1")],
+            // Newest first, the order the host sends and `mergeDashboardDelta`
+            // keeps — which is exactly the order last-writer-wins got wrong.
+            sessions: [
+                makeSession(id: "s-new", workspaceId: "w-1", lastActivityAt: "2026-09-11T16:58:58.256Z"),
+                makeSession(id: "s-old", workspaceId: "w-1", lastActivityAt: "2026-09-11T16:42:39.181Z")
+            ]
+        )
+        XCTAssertEqual(groupChatRows(snapshot: snapshot, now: testNow).chats.first?.session.id, "s-new")
+    }
+
+    /// Order in the array is not the rule: a delta can hand the rows back in
+    /// any order, and the newest is still the chat.
+    func testTheNewestChatWinsWhateverOrderTheRowsArriveIn() {
+        let sessions = [
+            makeSession(id: "s-new", workspaceId: "w-1", lastActivityAt: "2026-09-11T16:58:58.256Z"),
+            makeSession(id: "s-old", workspaceId: "w-1", lastActivityAt: "2026-09-11T16:42:39.181Z")
+        ]
+        XCTAssertEqual(chatSessionByWorkspace(sessions)["w-1"]?.id, "s-new")
+        XCTAssertEqual(chatSessionByWorkspace(sessions.reversed())["w-1"]?.id, "s-new")
+    }
+
+    /// Two rows minted in the same millisecond still resolve the same way
+    /// every time — the dashboard query's `last_activity_at DESC, id DESC`.
+    func testATieIsBrokenById() {
+        let sessions = [
+            makeSession(id: "s-a", workspaceId: "w-1"),
+            makeSession(id: "s-b", workspaceId: "w-1")
+        ]
+        XCTAssertEqual(chatSessionByWorkspace(sessions)["w-1"]?.id, "s-b")
+        XCTAssertEqual(chatSessionByWorkspace(sessions.reversed())["w-1"]?.id, "s-b")
+    }
+
     func testArchivedAndPopupWorkspacesStayOut() {
         let snapshot = DashboardSnapshot(
             workspaces: [

@@ -74,6 +74,7 @@ import { computePriorityEntries, nextPriorityIdleAt, workingWorkspaceIds } from 
 import { formatSessionIds } from "../lib/sessionIds.js";
 import { warmLedgerPagesOnIntent } from "../lib/ledgerPrefetch.js";
 import { useUnreadWorkspaceIds } from "../lib/sessionUnread.js";
+import { chatSessionByWorkspace } from "../lib/workspaceChat.js";
 import { useMascotVisible } from "../lib/mascotVisibility.js";
 import { Mascot } from "./Mascot.js";
 import { SidebarSessionRow, type WorkspaceClickModifiers } from "./SidebarSessionRow.js";
@@ -413,7 +414,7 @@ export function Sidebar({
   // marker on the row, so a session that came from the terminal is never
   // mistaken for one this app started.
   const copyableIdsByWorkspace = useMemo(() => {
-    const sessions = new Map(snapshot.sessions.map((session) => [session.workspaceId, session]));
+    const sessions = chatSessionByWorkspace(snapshot.sessions);
     return new Map(
       snapshot.workspaces.map((workspace) => [
         workspace.id,

@@ -19,6 +19,7 @@ import {
 import { SessionTimelines } from "../lib/sessionTimelines.js";
 import { sessionMoveDestination, type SessionMoveDestination } from "../lib/projectMove.js";
 import { subscribeRemoteConnection } from "../lib/wsTransport.js";
+import { chatSessionFor } from "../lib/workspaceChat.js";
 
 function isTerminalTimelineEvent(event: TimelineEvent): boolean {
   const decoded = decodeTimelineEvent(event);
@@ -575,7 +576,7 @@ export function useDashboardSession(
   const selectedSession = useMemo(
     () =>
       (selectedSessionId ? snapshot.sessions.find((session) => session.id === selectedSessionId) : null) ??
-      (selectedWorkspaceId ? snapshot.sessions.find((session) => session.workspaceId === selectedWorkspaceId) : null) ??
+      (selectedWorkspaceId ? chatSessionFor(snapshot.sessions, selectedWorkspaceId) : null) ??
       null,
     [snapshot.sessions, selectedSessionId, selectedWorkspaceId]
   );
@@ -738,7 +739,7 @@ export function useDashboardSession(
   const openWorkspaceChat = useCallback(
     (workspaceId: string): void => {
       const workspace = snapshot.workspaces.find((item) => item.id === workspaceId) ?? null;
-      const session = snapshot.sessions.find((item) => item.workspaceId === workspaceId) ?? null;
+      const session = chatSessionFor(snapshot.sessions, workspaceId);
       setSelectedProjectIdState(workspace?.projectId ?? null);
       setSelectedWorkspaceIdState(workspaceId);
       setSelectedSessionIdState(session?.id ?? null);

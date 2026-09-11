@@ -61,7 +61,7 @@ A coding-agent CLI Argmax drives — Claude Code, Codex, Cursor, or OpenCode. A 
 _Avoid_: Agent, CLI, tool, backend
 
 **Session**:
-One agent run inside one workspace: its provider, model, prompt, lifecycle state, token usage, and cost. The unit users think of as "a chat". A workspace holds exactly one — forking, importing, and agent-launched sessions all create a fresh workspace rather than a second session. The schema permits more, but nothing may rely on that. This bounds identity, not parallelism: any number of sessions may run at once, each in its own workspace, including many against the same checkout and branch.
+One agent run inside one workspace: its provider, model, prompt, lifecycle state, token usage, and cost. The unit users think of as "a chat". A workspace holds exactly one — forking, importing, and agent-launched sessions all create a fresh workspace rather than a second session. The schema permits more, and peers launched into the same checkout do produce them, but nothing may rely on that: a workspace's chat is its most recently active session (`chatSessionByWorkspace`), and every surface must name the same one. This bounds identity, not parallelism: any number of sessions may run at once, each in its own workspace, including many against the same checkout and branch.
 _Avoid_: Conversation, chat, run, thread, agent
 
 The display name for a session is **chat**: the sidebar, menus, and mobile say chat; code and docs say session.

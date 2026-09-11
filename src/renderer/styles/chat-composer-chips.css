@@ -298,10 +298,18 @@
   color: var(--muted-strong);
 }
 
-/* Start the compact layout before side-by-side panes feel cramped. CSS
+/* The session composer folds its branch and changed-file count behind "…"
+   only once the unfolded row would run out of room. The container is
+   .session-input itself, so this is the composer's own content width (its
+   border box less 30px of padding). Worst case the
+   row holds attach, a long model + effort (~190px), the branch at its 180px
+   cap, the changed-file count, a Plan/Chat chip, the context ring and send:
+   about 630px, and the branch is the only thing that gives, so at 600px it
+   still shows a dozen characters. Above that the toolbar's spacer collapses
+   first and the branch ellipsizes, which reads better than the fold. CSS
    container queries do not reliably accept var() in the condition, so
    accentTokens.test.ts pins this literal. */
-@container (max-width: 720px) {
+@container (max-width: 600px) {
   .session-input {
     padding: var(--space-2) var(--space-2_5);
   }
@@ -424,7 +432,13 @@
     grid-area: send;
     justify-self: end;
   }
+}
 
+/* The launcher folds earlier than the session composer: its row also carries
+   the project and branch pickers, whose labels ellipsize to nothing useful
+   before 600px. Its container is .launcher-scroll, whose content width is
+   the launcher shell's, so this is the launcher composer's own width too. */
+@container (max-width: 720px) {
   .launcher-surface .composer-context {
     display: grid;
     grid-template-columns: 30px minmax(0, 1fr) 30px auto;

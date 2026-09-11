@@ -245,6 +245,7 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
 
     expect(SESSION_CELL_MIN_WIDTH_PX).toBeLessThan(720);
     expect(CHAT_PANE_MIN_WIDTH_PX).toBeLessThan(SESSION_CELL_MIN_WIDTH_PX);
+    expect(chatComposer).toContain("@container (max-width: 600px)");
     expect(chatComposer).toContain("@container (max-width: 720px)");
   });
 

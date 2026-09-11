@@ -78,7 +78,12 @@ struct ChatRowGlyphView: View {
                 WorkingNest(size: size, tint: SessionIcon.color(for: tint))
             case .icon(let name, let tint):
                 Image(systemName: SessionIcon.symbol(for: name) ?? "circle")
-                    .typeSymbol(size: size, weight: .medium)
+                    // A symbol's point size is its font size, and the glyph
+                    // draws taller and wider than that: at the slot's own
+                    // size a Brain overran the meta text beside it by a
+                    // third. Four-fifths puts its cap height on the text's
+                    // and the PR mark's.
+                    .typeSymbol(size: size * 0.8, weight: .medium)
                     .symbolRenderingMode(.hierarchical)
                     // An icon with no colour is still a deliberate pick, so
                     // it draws in the ink rather than falling all the way

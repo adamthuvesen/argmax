@@ -89,6 +89,8 @@ message is an object with a `type` string:
 | `composer` | `sessionId`, `provider`, `modelId`, `modelLabel`, `effort`, `efforts`, `queued: {id, text}[]`, `running` | on open and whenever any of these change, so the native composer card can draw itself without re-deriving the composer's own rules |
 | `back` | — | web asked to leave the session (its own back affordance, or Escape) |
 | `review` | `open: boolean` | review screen opened/closed, so native can hide its own bar |
+| `agents` | `open: boolean` | the peek at delegated work opened/closed; it is drawn to cover the parent's composer, so the native card stands down while it is up |
+| `question` | `open: boolean` | the live question took the composer's slot or gave it back; the page draws the panel, so the native card stands down while it is up |
 | `haptic` | `kind: "light" \| "success" \| "warning"` | send, approve, error |
 | `error` | `message` | bridge auth failed / disconnected for >5s |
 

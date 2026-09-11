@@ -92,6 +92,10 @@ enum NativeMessage: Hashable, Sendable {
     /// parent's composer, which in this shell is native chrome the page's own
     /// sheet cannot reach over.
     case agents(open: Bool)
+    /// The live question took the composer's slot, or gave it back. The page
+    /// draws the panel itself — options, paging, the answer path are the
+    /// desktop's — so the native card stands down while it is up.
+    case question(open: Bool)
     case haptic(NativeHapticKind)
     /// Bridge auth failed, or the socket has been down for more than 5s.
     case error(message: String)
@@ -109,6 +113,7 @@ extension NativeMessage {
         case .back: return "back"
         case .review(let open): return open ? "review(open)" : "review(closed)"
         case .agents(let open): return open ? "agents(open)" : "agents(closed)"
+        case .question(let open): return open ? "question(open)" : "question(closed)"
         case .haptic(let kind): return "haptic(\(kind.rawValue))"
         case .error: return "error"
         }
@@ -131,6 +136,7 @@ extension NativeMessage: Decodable {
         case "back": self = .back
         case "review": self = .review(open: try container.decode(Bool.self, forKey: .open))
         case "agents": self = .agents(open: try container.decode(Bool.self, forKey: .open))
+        case "question": self = .question(open: try container.decode(Bool.self, forKey: .open))
         case "haptic": self = .haptic(try container.decode(NativeHapticKind.self, forKey: .kind))
         case "error": self = .error(message: try container.decode(String.self, forKey: .message))
         case "session": self = .session(try NativeSession(from: decoder))

@@ -41,6 +41,10 @@ final class TranscriptHost: NSObject, ObservableObject {
     /// to cover the parent's composer, so the native card stands down for as
     /// long as it is there.
     @Published private(set) var agentsOpen = false
+    /// The page's live question has taken the composer's slot. The panel is
+    /// the page's own, so the native card stands down until the question is
+    /// answered or dismissed.
+    @Published private(set) var questionOpen = false
     /// The last thing that went wrong, cleared by the next load that works.
     @Published private(set) var failure: String?
 
@@ -129,6 +133,7 @@ final class TranscriptHost: NSObject, ObservableObject {
         composer = nil
         reviewOpen = false
         agentsOpen = false
+        questionOpen = false
         readyWatchdog?.cancel()
         readyWatchdog = nil
         // The native shell always draws its own composer once it has a page
@@ -172,9 +177,10 @@ final class TranscriptHost: NSObject, ObservableObject {
     func closeSession() {
         wantedSession = nil
         forgetReportedSession()
-        // Parking the pane takes the peek with it, and the page does not
-        // report a close it was not asked for.
+        // Parking the pane takes the peek and the question panel with it,
+        // and the page does not report a close it was not asked for.
         agentsOpen = false
+        questionOpen = false
         send(.closeSession)
     }
 
@@ -264,7 +270,19 @@ final class TranscriptHost: NSObject, ObservableObject {
         case .review(let open):
             reviewOpen = open
         case .agents(let open):
-            agentsOpen = open
+            // Asymmetric on purpose. Going up, the card leaves instantly: the
+            // sheet is about to cover that floor, so nobody sees it go, and a
+            // card animating out would resize the web view under a sheet that
+            // is mid-rise. Coming back it is the first thing on the screen —
+            // the page reports the close as the sheet starts to leave — so it
+            // rises behind the departing sheet instead of popping in after it.
+            if open {
+                agentsOpen = true
+            } else {
+                withAnimation(.easeOut(duration: 0.18)) { agentsOpen = false }
+            }
+        case .question(let open):
+            questionOpen = open
         case .back:
             onBack?()
         case .haptic(let kind):

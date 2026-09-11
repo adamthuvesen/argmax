@@ -66,14 +66,21 @@ struct TranscriptScreen: View {
     }
 
     /// The composer card, unless the page has raised its peek at delegated
-    /// work: that sheet is drawn to cover the composer, and it can only reach
-    /// the bottom of the screen if the native card gives the room up. Reading
-    /// delegated work and replying to the chat that spawned it are two acts;
-    /// the card comes back the moment the peek closes.
+    /// work or docked a live question: both are drawn in the composer's slot,
+    /// and can only reach the bottom of the screen if the native card gives
+    /// the room up. Reading delegated work and replying to the chat that
+    /// spawned it are two acts; the card comes back the moment the peek
+    /// closes. A question has nothing to type while it waits — the panel is
+    /// what you answer in — and the card returns when it is answered or
+    /// dismissed to answer in your own words.
     @ViewBuilder
     private var composerFloor: some View {
-        if !transcript.agentsOpen {
+        if !transcript.agentsOpen && !transcript.questionOpen {
+            // Only plays when the change carries an animation, which is the
+            // peek closing: the card rides back up behind the sheet on its
+            // way out rather than appearing under it.
             TranscriptComposer()
+                .transition(.move(edge: .bottom))
         }
     }
 

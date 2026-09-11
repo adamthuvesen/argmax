@@ -277,6 +277,58 @@ describe("MobileApp embed mode", () => {
     );
   });
 
+  // The native card has the page's composer stack hidden, and the live
+  // question docks in that stack — so the page keeps the panel and asks the
+  // card to stand down instead, the way the agents peek does.
+  it("asks native to drop its composer card while a question is docked, and to bring it back on dismiss", async () => {
+    mockDashboardSnapshot({
+      ...snapshot,
+      events: [
+        ...snapshot.events,
+        {
+          id: "event-question",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "AskUserQuestion",
+          payload: {
+            type: "tool_use",
+            id: "tu_q",
+            name: "AskUserQuestion",
+            input: {
+              questions: [
+                {
+                  question: "Pick a direction",
+                  header: "Direction",
+                  multiSelect: false,
+                  options: [{ label: "Fix audit findings" }, { label: "General maintenance" }]
+                }
+              ]
+            }
+          },
+          createdAt: "2026-05-08T15:54:01.000Z"
+        }
+      ]
+    });
+    await renderEmbedded();
+    act(() => window.argmaxNative?.setComposer(true));
+    act(() => window.argmaxNative?.openSession("session-1"));
+    await screen.findByRole("region", { name: "Conversation" });
+
+    const dock = await screen.findByLabelText("Question from agent");
+    // Exempt from the hidden composer stack: the panel is the page's to draw.
+    expect(dock.closest(".session-composer-stack")).toHaveAttribute("data-question");
+    await waitFor(() => expect(posted("question")).toEqual([{ type: "question", open: true }]));
+
+    fireEvent.click(screen.getByRole("button", { name: "Answer in your own words" }));
+
+    await waitFor(() =>
+      expect(posted("question")).toEqual([
+        { type: "question", open: true },
+        { type: "question", open: false }
+      ])
+    );
+  });
+
   it("asks native to leave the chat on Escape", async () => {
     await renderEmbedded();
     act(() => window.argmaxNative?.openSession("session-1"));

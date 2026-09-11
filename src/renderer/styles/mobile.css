@@ -67,8 +67,9 @@ html:has(.mobile-shell[data-embed]) body,
    composer stack (queued lane included, since it is nested inside) gets out
    of the way instead of doubling it. The conversation scroller already fills
    whatever the composer leaves (`flex: 1`), so removing it needs no other
-   layout change. */
-.mobile-shell[data-composer-hidden] .session-composer-stack {
+   layout change. The live question's panel takes the same slot and stays
+   this page's: it posts `question` so the native card stands down instead. */
+.mobile-shell[data-composer-hidden] .session-composer-stack:not([data-question]) {
   display: none;
 }
 
@@ -1324,9 +1325,20 @@ html:has(.mobile-shell[data-embed]) body,
   position: absolute;
   inset: 0;
   background: var(--modal-backdrop);
+  opacity: 0;
+  transition: opacity var(--duration-base) var(--ease);
   pointer-events: auto;
 }
 
+.mobile-agent-overlay[data-raised] .mobile-agent-overlay-scrim {
+  opacity: 1;
+}
+
+/* One transform, two directions: the sheet is parked below the edge and
+   raised by `data-raised`, so the ride out is the ride in reversed and either
+   can interrupt the other mid-flight. Keyframes could not — a dismissal had
+   to restart from the top, which is what made a swipe snap back before it
+   left. */
 .mobile-agent-overlay-panel {
   position: relative;
   display: flex;
@@ -1341,39 +1353,24 @@ html:has(.mobile-shell[data-embed]) body,
   border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
   background: var(--panel);
   box-shadow: 0 -18px 40px -24px rgb(0 0 0 / 0.75);
+  transform: translateY(100%);
+  transition: transform var(--duration-base) var(--ease);
   pointer-events: auto;
-  animation: mobile-agent-overlay-rise var(--duration-medium, 220ms) var(--ease) both;
 }
 
+.mobile-agent-overlay[data-raised] .mobile-agent-overlay-panel {
+  transform: translateY(0);
+}
+
+/* Under a thumb the sheet is the finger's, not the transition's. */
 .mobile-agent-overlay-panel[data-dragging] {
-  animation: none;
   transition: none;
 }
 
-.mobile-agent-overlay-panel[data-closing] {
-  animation: mobile-agent-overlay-fall var(--duration-medium, 180ms) var(--ease) both;
+/* Below the edge, on the way up or on the way out: nothing on it is
+   answerable, and the scrim behind it is what a tap reaches. */
+.mobile-agent-overlay:not([data-raised]) .mobile-agent-overlay-panel {
   pointer-events: none;
-}
-
-@keyframes mobile-agent-overlay-rise {
-  from {
-    transform: translateY(12px);
-    opacity: 0;
-  }
-}
-
-@keyframes mobile-agent-overlay-fall {
-  to {
-    transform: translateY(16px);
-    opacity: 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mobile-agent-overlay-panel,
-  .mobile-agent-overlay-panel[data-closing] {
-    animation: none;
-  }
 }
 
 .mobile-agent-overlay-grip {

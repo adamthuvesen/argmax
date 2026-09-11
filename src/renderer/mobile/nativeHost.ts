@@ -72,6 +72,13 @@ export type NativeMessage =
    * peek is up.
    */
   | { type: "agents"; open: boolean }
+  /**
+   * The live question took the composer's slot, or gave it back. The page
+   * keeps drawing the question panel itself — its options, paging and answer
+   * path are the desktop's — so the native card stands down while it is up
+   * and returns when the question is answered or dismissed.
+   */
+  | { type: "question"; open: boolean }
   | { type: "haptic"; kind: NativeHapticKind }
   /** Bridge auth failed, or the socket has been down for more than 5s. */
   | { type: "error"; message: string };

@@ -418,8 +418,8 @@ final class ChatNavigator: ObservableObject {
     /// host will send back so the stack has something to push.
     @Published var awaitingSessionID: String?
     @Published var newChat: NewChatRequest?
-    /// The review surface a transcript asked for — its own Changes button, or
-    /// a file reference tapped in a message.
+    /// The review surface a transcript asked for: its Changes button, a file
+    /// reference, or an edit activity that opens a diff.
     @Published var review: ReviewRoute?
 }
 

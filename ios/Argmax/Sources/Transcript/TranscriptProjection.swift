@@ -555,7 +555,13 @@ enum TranscriptProjection {
         }
 
         var presentation: TranscriptTool {
-            let filePath = TranscriptProjection.path(in: inputObject)
+            let activityPath = activity.kind == .edit && activity.targets.count == 1
+                ? activity.targets.first
+                : nil
+            // Codex file_change carries its path inside input.changes[]. The
+            // host already extracts that shape into activity.targets, so use
+            // the single observed target when there is no top-level path.
+            let filePath = TranscriptProjection.path(in: inputObject) ?? activityPath
             var tool = TranscriptTool(
                 id: "tool-\(id)",
                 toolUseId: toolUseId,

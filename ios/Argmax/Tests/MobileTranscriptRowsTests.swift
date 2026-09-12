@@ -72,6 +72,18 @@ final class MobileTranscriptRowsTests: XCTestCase {
         XCTAssertEqual(TranscriptToolActivity.summary(for: [read, command]).iconKind, .read)
     }
 
+    func testOnlyEditActivitiesOpenWorkspaceRelativeDiffs() {
+        var edit = tool("edit", kind: .edit, status: .done, completionObserved: true)
+        edit.filePath = "/repo/Sources/App.swift"
+        edit.fileLabel = "Sources/App.swift"
+        var read = tool("read", kind: .read, status: .done, completionObserved: true)
+        read.filePath = "/repo/Sources/App.swift"
+        read.fileLabel = "Sources/App.swift"
+
+        XCTAssertEqual(edit.diffPath, "Sources/App.swift")
+        XCTAssertNil(read.diffPath)
+    }
+
     private func message(_ id: String, user: Bool = false) -> TranscriptItem {
         let message = TranscriptMessage(id: id, role: user ? .user : .assistant, text: id, createdAt: "1", isStreaming: false, isSteering: false, originLabel: nil, attachments: [])
         return user ? .user(message) : .assistant(message)

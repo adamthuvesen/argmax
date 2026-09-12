@@ -21,7 +21,11 @@ struct TranscriptScreen: View {
     @State private var screenHeight: CGFloat = 0
 
     var body: some View {
-        NativeTranscriptView(client: store.client, onOpenFile: { openReview(filePath: $0) }) {
+        NativeTranscriptView(
+            client: store.client,
+            onOpenFile: { openReview(filePath: $0) },
+            onOpenDiff: { openReview(diffPath: $0) }
+        ) {
             draft = "Please revise the plan: "
             focusRequest += 1
         }
@@ -186,6 +190,10 @@ struct TranscriptScreen: View {
 
     private func openReview(filePath: String?) {
         navigator.review = ReviewRoute(workspaceID: row.workspace.id, filePath: filePath)
+    }
+
+    private func openReview(diffPath: String) {
+        navigator.review = ReviewRoute(workspaceID: row.workspace.id, diffPath: diffPath)
     }
 
     /// Live metadata takes precedence over the row used to open this screen.

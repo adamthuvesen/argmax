@@ -10,6 +10,7 @@ import SwiftUI
 struct ReviewScreen: View {
     let workspace: WorkspaceSummary
     let initialFilePath: String?
+    let initialDiffPath: String?
     let onBack: () -> Void
 
     @EnvironmentObject private var dashboard: DashboardStore
@@ -30,18 +31,27 @@ struct ReviewScreen: View {
 
     enum Mode: String, Hashable { case changes, files }
 
-    init(workspace: WorkspaceSummary, client: BridgeClient, initialFilePath: String?, onBack: @escaping () -> Void) {
+    init(
+        workspace: WorkspaceSummary,
+        client: BridgeClient,
+        initialFilePath: String?,
+        initialDiffPath: String? = nil,
+        onBack: @escaping () -> Void
+    ) {
         self.workspace = workspace
         self.initialFilePath = initialFilePath
+        self.initialDiffPath = initialDiffPath
         self.onBack = onBack
-        _store = StateObject(wrappedValue: ReviewStore(workspace: workspace, client: client))
-        let initialDetail = initialFilePath.map {
+        let reviewStore = ReviewStore(workspace: workspace, client: client)
+        _store = StateObject(wrappedValue: reviewStore)
+        let initialDetail = initialDiffPath.map {
+            ReviewDetail.diff(workspaceID: workspace.id, path: $0, scope: reviewStore.scope)
+        } ?? initialFilePath.map {
             ReviewDetail.file(workspaceID: workspace.id, path: $0)
         }
         _tabs = State(initialValue: ReviewFileTabsState(initial: initialDetail))
-        // A file named on the way in is one the transcript linked to. Keep
-        // Files selected behind its viewer so File list opens the matching
-        // tree rather than on a possibly unrelated changes comparison.
+        // A file reference opens Files behind its viewer. An edit activity
+        // opens Changes behind its diff, matching the desktop review panel.
         _mode = State(initialValue: initialFilePath == nil ? .changes : .files)
     }
 
@@ -50,6 +60,7 @@ struct ReviewScreen: View {
     init(store: ReviewStore, mode: Mode = .changes) {
         workspace = store.workspace
         initialFilePath = nil
+        initialDiffPath = nil
         onBack = {}
         _store = StateObject(wrappedValue: store)
         _mode = State(initialValue: mode)
@@ -458,12 +469,13 @@ struct LoadingRows: View {
     }
 }
 
-/// The review surface as a navigation value. `filePath` is set only when a
-/// file reference in the transcript asked for one, and the review screen opens
-/// that file directly in its tab strip.
+/// The review surface as a navigation value. A file reference sets `filePath`,
+/// while an edit activity sets `diffPath`. The review screen opens the requested
+/// view directly in its tab strip.
 struct ReviewRoute: Hashable {
     let workspaceID: String
-    var filePath: String?
+    var filePath: String? = nil
+    var diffPath: String? = nil
 }
 
 /// Where a tap inside the review screen goes.
@@ -511,6 +523,7 @@ private struct ReviewRouteScreen: View {
                 workspace: workspace,
                 client: store.client,
                 initialFilePath: route.filePath,
+                initialDiffPath: route.diffPath,
                 onBack: onPop
             )
         } else {

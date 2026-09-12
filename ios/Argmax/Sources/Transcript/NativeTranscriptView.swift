@@ -3,6 +3,7 @@ import SwiftUI
 struct NativeTranscriptView: View {
     let client: BridgeClient
     let onOpenFile: (String) -> Void
+    let onOpenDiff: (String) -> Void
     let onRevisePlan: () -> Void
     @EnvironmentObject private var transcript: TranscriptStore
     @EnvironmentObject private var appearance: Appearance
@@ -53,7 +54,8 @@ struct NativeTranscriptView: View {
             ) { row in
                 MobileTranscriptRowView(row: row) { item in
                 TranscriptContentRow(item: item, client: client,
-                                     onOpenFile: onOpenFile, onRevisePlan: onRevisePlan,
+                                     onOpenFile: onOpenFile, onOpenDiff: onOpenDiff,
+                                     onRevisePlan: onRevisePlan,
                                      onOpenSession: { navigator.awaitingSessionID = $0 })
                 }
                     .padding(.vertical, row.verticalPadding)
@@ -101,6 +103,7 @@ struct TranscriptContentRow: View {
     let item: TranscriptItem
     let client: BridgeClient
     let onOpenFile: (String) -> Void
+    var onOpenDiff: ((String) -> Void)? = nil
     var onRevisePlan: () -> Void = {}
     var onOpenSession: ((String) -> Void)?
 
@@ -111,7 +114,7 @@ struct TranscriptContentRow: View {
         case .thought(let thought):
             TranscriptThoughtRow(thought: thought, client: client, onOpenFile: onOpenFile)
         case .tools(let group):
-            TranscriptToolsRow(group: group, onOpenFile: onOpenFile)
+            TranscriptToolsRow(group: group, onOpenFile: onOpenFile, onOpenDiff: onOpenDiff)
         case .todo(let list):
             TranscriptTodoRow(list: list)
         case .notice(let notice):

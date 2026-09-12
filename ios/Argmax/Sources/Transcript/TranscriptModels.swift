@@ -233,6 +233,14 @@ struct TranscriptTool: Hashable, Sendable, Identifiable {
     /// cannot be worded as successful merely because its completion arrived.
     var completionStatus: String? = nil
 
+    /// The review path an edit row opens. Tool inputs retain absolute paths,
+    /// while the review surface keys changed files by workspace-relative path.
+    /// Reads and other file-bearing tools still open their file preview.
+    var diffPath: String? {
+        guard activity.kind == .edit, let filePath else { return nil }
+        return fileLabel ?? filePath
+    }
+
     var activityState: TranscriptToolActivityState {
         if status == .running { return .running }
         if ["cancelled", "canceled", "interrupted"].contains(completionStatus?.lowercased()) {

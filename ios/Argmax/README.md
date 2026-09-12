@@ -100,6 +100,10 @@ line. Opening a row grows one block — arguments (never for a command), payload
 footer — and nothing else moves. The mockups the shape was chosen from are in
 `docs/design/phone-activity-group`.
 
+An edit row is the exception: it carries a navigation chevron and opens that
+file's diff directly in the native review screen. File reads and file links
+continue to open the current file contents.
+
 Settings → Chat detail controls this iPhone independently of the desktop.
 Compact is the default and folds thoughts and tool activity together between
 messages. Minimal also folds interim narration once an answer arrives.

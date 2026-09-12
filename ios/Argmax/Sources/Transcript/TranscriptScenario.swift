@@ -26,7 +26,12 @@ struct TranscriptScenario: View {
             .buttonStyle(.bordered)
             .frame(minHeight: 44)
             .dynamicTypeSize(.large)
-            NativeTranscriptView(client: scenario.client, onOpenFile: { _ in }, onRevisePlan: {})
+            NativeTranscriptView(
+                client: scenario.client,
+                onOpenFile: { _ in },
+                onOpenDiff: { _ in },
+                onRevisePlan: {}
+            )
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     // The floor, not the bare composer: an outstanding question
                     // takes this slot, and its ceiling is read off the screen.
@@ -97,7 +102,9 @@ private final class TranscriptScenarioState: ObservableObject {
             let cursor = 2 + offset * 2
             let activity = activity(kind: call.2, targets: call.3, toolCount: call.4)
             events.append(toolEvent(cursor, type: "command.started", id: call.0, name: call.1,
-                                    activity: activity, completed: false))
+                                    activity: activity,
+                                    filePath: call.2 == "edit" ? call.3.first : nil,
+                                    completed: false))
             events.append(toolEvent(cursor + 1, type: "command.completed", id: call.0, name: call.1,
                                     activity: activity, completed: true))
         }
@@ -126,6 +133,7 @@ private final class TranscriptScenarioState: ObservableObject {
         id: String,
         name: String,
         activity: TranscriptJSONValue,
+        filePath: String? = nil,
         completed: Bool
     ) -> TranscriptEvent {
         var payload: [String: TranscriptJSONValue] = [
@@ -136,6 +144,9 @@ private final class TranscriptScenarioState: ObservableObject {
             payload["output"] = .string("Completed")
         } else {
             payload["name"] = .string(name)
+            if let filePath {
+                payload["input"] = .object(["file_path": .string(filePath)])
+            }
         }
         return TranscriptEvent(
             id: "activity-\(id)-\(completed ? "end" : "start")",

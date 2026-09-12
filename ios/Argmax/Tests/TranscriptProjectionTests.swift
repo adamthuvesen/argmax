@@ -541,6 +541,33 @@ final class TranscriptProjectionTests: XCTestCase {
         XCTAssertEqual(tool.summary, "File read")
     }
 
+    func testCodexFileChangeUsesItsSingleActivityTargetForDiffNavigation() throws {
+        let activity: TranscriptJSONValue = .object([
+            "version": .number(1),
+            "kind": .string("edit"),
+            "evidence": .string("native"),
+            "targets": .array([.string("/repo/Sources/App.swift")])
+        ])
+        let tool = try XCTUnwrap(firstTool(TranscriptProjection.project(
+            events: [event("edit", "command.started", "file_change", 1, [
+                "id": .string("edit-1"),
+                "name": .string("file_change"),
+                "input": .object([
+                    "changes": .array([.object([
+                        "kind": .string("update"),
+                        "path": .string("/repo/Sources/App.swift")
+                    ])])
+                ]),
+                "activity": activity
+            ])],
+            workspacePath: "/repo"
+        )))
+
+        XCTAssertEqual(tool.filePath, "/repo/Sources/App.swift")
+        XCTAssertEqual(tool.fileLabel, "Sources/App.swift")
+        XCTAssertEqual(tool.diffPath, "Sources/App.swift")
+    }
+
     func testClaudeIsErrorCompletionMarksTheToolFailed() throws {
         let tool = try XCTUnwrap(firstTool(TranscriptProjection.project(events: [
             event("read", "command.started", "Read", 1, [

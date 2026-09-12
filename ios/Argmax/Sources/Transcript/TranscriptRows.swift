@@ -159,6 +159,7 @@ struct TranscriptThoughtRow: View {
 struct TranscriptToolsRow: View {
     let group: TranscriptToolGroup
     let onOpenFile: (String) -> Void
+    var onOpenDiff: ((String) -> Void)? = nil
     @Environment(\.mobileChatDetail) private var detail
     @Environment(\.activityToolsAreRevealed) private var activityToolsAreRevealed
 
@@ -169,14 +170,14 @@ struct TranscriptToolsRow: View {
         if detail == .detailed || activityToolsAreRevealed {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(group.tools) { tool in
-                    TranscriptToolRow(tool: tool, onOpenFile: onOpenFile)
+                    TranscriptToolRow(tool: tool, onOpenFile: onOpenFile, onOpenDiff: onOpenDiff)
                 }
             }
         } else {
         DisclosureGroup {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(group.tools) { tool in
-                    TranscriptToolRow(tool: tool, onOpenFile: onOpenFile)
+                    TranscriptToolRow(tool: tool, onOpenFile: onOpenFile, onOpenDiff: onOpenDiff)
                 }
             }
         } label: {
@@ -267,6 +268,7 @@ struct TranscriptActivityRow<Icon: View>: View {
     let verb: String?
     let target: String?
     var mono = false
+    var showsNavigation = false
     @ViewBuilder let icon: () -> Icon
 
     var body: some View {
@@ -286,6 +288,12 @@ struct TranscriptActivityRow<Icon: View>: View {
                     .truncationMode(.tail)
             }
             Spacer(minLength: 0)
+            if showsNavigation {
+                Image(systemName: "chevron.right")
+                    .typeSymbol(.caption, weight: .semibold)
+                    .foregroundStyle(Theme.muted)
+                    .accessibilityHidden(true)
+            }
         }
         .frame(minHeight: Self.height)
         .contentShape(.rect)
@@ -299,23 +307,48 @@ struct TranscriptActivityRow<Icon: View>: View {
 private struct TranscriptToolRow: View {
     let tool: TranscriptTool
     let onOpenFile: (String) -> Void
+    let onOpenDiff: ((String) -> Void)?
 
     private var isCommand: Bool { tool.activity.kind == .command }
 
+    @ViewBuilder
     var body: some View {
-        DisclosureGroup {
-            block
-                .padding(.leading, TranscriptActivityRow<EmptyView>.targetInset)
-                .padding(.top, Spacing.hair)
-                .padding(.bottom, Spacing.snug)
-        } label: {
-            let parts = Self.splitLeadingVerb(tool.summary.isEmpty ? tool.name : tool.summary)
-            TranscriptActivityRow(verb: parts.verb, target: parts.target, mono: isCommand && parts.verb != nil) {
-                TranscriptToolIcon(name: tool.name, activity: tool.activity)
+        if let diffPath = tool.diffPath, let onOpenDiff {
+            Button {
+                Haptics.light()
+                onOpenDiff(diffPath)
+            } label: {
+                rowLabel(showsNavigation: true)
             }
+            .buttonStyle(PressDim())
+            .accessibilityHint("Opens this file's diff")
+        } else {
+            DisclosureGroup {
+                block
+                    .padding(.leading, TranscriptActivityRow<EmptyView>.targetInset)
+                    .padding(.top, Spacing.hair)
+                    .padding(.bottom, Spacing.snug)
+            } label: {
+                rowLabel()
+            }
+            .disclosureGroupStyle(TranscriptDisclosureStyle(
+                chevron: false,
+                minHeight: TranscriptActivityRow<EmptyView>.height
+            ))
+            .tint(Theme.muted)
         }
-        .disclosureGroupStyle(TranscriptDisclosureStyle(chevron: false, minHeight: TranscriptActivityRow<EmptyView>.height))
-        .tint(Theme.muted)
+    }
+
+    private func rowLabel(showsNavigation: Bool = false) -> some View {
+        let parts = Self.splitLeadingVerb(tool.summary.isEmpty ? tool.name : tool.summary)
+        return TranscriptActivityRow(
+            verb: parts.verb,
+            target: parts.target,
+            mono: isCommand && parts.verb != nil,
+            showsNavigation: showsNavigation
+        ) {
+            TranscriptToolIcon(name: tool.name, activity: tool.activity)
+        }
     }
 
     /// The opened row grows one block, in the order the call happened:

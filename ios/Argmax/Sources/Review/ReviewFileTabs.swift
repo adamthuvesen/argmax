@@ -57,9 +57,10 @@ struct DiffCanExpandKey: PreferenceKey {
     }
 }
 
-/// A phone-sized version of the desktop editor tabs. Each tab says whether it
-/// is a checkout file or a diff, since the same path can be open in both forms
-/// and in more than one review comparison.
+/// A flat file bar for the phone. Each item says whether it is a checkout file
+/// or a diff, since the same path can be open in both forms and in more than
+/// one review comparison. Selection follows the rest of the iOS app: weight
+/// and ink do the work, without turning the current file into a chip.
 ///
 /// The strip is also the embedded viewer's toolbar: the trailing slot carries
 /// whatever the open file can do, so the viewer under it is code and nothing
@@ -94,7 +95,7 @@ struct ReviewFileTabs<Trailing: View>: View {
                                 .id(detail)
                         }
                     }
-                    .padding(.horizontal, Spacing.gutter)
+                    .padding(.horizontal, Spacing.snug)
                     // The tabs are 44pt tall on their own, which with a hair
                     // of air is the same 52pt bar every other screen wears.
                     .padding(.vertical, Spacing.tight)
@@ -126,20 +127,15 @@ struct ReviewFileTabs<Trailing: View>: View {
                 Haptics.light()
                 onSelect(detail)
             } label: {
-                HStack(spacing: Spacing.snug) {
-                    Image(systemName: detail.tabSymbol)
-                        .typeSymbol(.caption, weight: .medium)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(detail.fileName)
-                            .typeStyle(.footnote, weight: selected ? .semibold : .regular)
-                        Text(detail.tabKind)
-                            .typeStyle(.caption2)
-                            .foregroundStyle(Theme.muted)
-                    }
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(detail.fileName)
+                        .typeStyle(selected ? .headline : .footnote,
+                                   weight: selected ? .semibold : .regular)
+                        .foregroundStyle(selected ? Theme.ink : Theme.mutedStrong)
+                    Text(detail.tabKind)
+                        .typeSubtitle()
                 }
-                .foregroundStyle(Theme.ink)
-                .padding(.leading, Spacing.row)
+                .lineLimit(1)
                 .frame(minHeight: 44)
                 .contentShape(.rect)
             }
@@ -161,12 +157,6 @@ struct ReviewFileTabs<Trailing: View>: View {
             .accessibilityLabel("Close \(detail.accessibilityDescription)")
         }
         .fixedSize(horizontal: true, vertical: false)
-        .background(selected ? Theme.raised : Theme.ground,
-                    in: .rect(cornerRadius: Radius.control, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-                .strokeBorder(Theme.line, lineWidth: 1)
-        }
     }
 }
 
@@ -212,13 +202,6 @@ extension ReviewDetail {
         case .file: kind = "File"
         }
         return directory.isEmpty ? kind : "\(directory) · \(kind)"
-    }
-
-    fileprivate var tabSymbol: String {
-        switch self {
-        case .diff: return "arrow.left.arrow.right"
-        case .file: return "doc"
-        }
     }
 
     var accessibilityDescription: String {

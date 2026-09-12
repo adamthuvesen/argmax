@@ -32,6 +32,10 @@ function contentTop(content: HTMLDivElement, node: Element): number {
   return node.getBoundingClientRect().top - content.getBoundingClientRect().top;
 }
 
+function physicalScrollTop(scroll: HTMLDivElement, maxTop: number): number {
+  return Math.max(0, Math.min(scroll.scrollTop, maxTop));
+}
+
 function scrollableAncestor(
   scroll: HTMLDivElement,
   target: EventTarget | null,
@@ -200,8 +204,9 @@ export function useConversationScroll({
 
     if (!enabled) {
       if (content) content.style.removeProperty("min-height");
-      lastScrollTopRef.current = scroll.scrollTop;
-      lastMaxScrollTopRef.current = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+      const maxTop = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+      lastScrollTopRef.current = physicalScrollTop(scroll, maxTop);
+      lastMaxScrollTopRef.current = maxTop;
       setShowScrollToBottom(false);
       setNewBelowCount(0);
       return;
@@ -213,21 +218,22 @@ export function useConversationScroll({
     // our scroll listener. Classify that pending upward move before a follow
     // write can erase it. A reduced scroll range identifies a layout clamp.
     const currentMaxTop = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+    const currentTop = physicalScrollTop(scroll, currentMaxTop);
     const rangeShrank = currentMaxTop < lastMaxScrollTopRef.current - BOTTOM_EPSILON_PX;
     const clampedToNewBottom =
       rangeShrank &&
       lastScrollTopRef.current > currentMaxTop + BOTTOM_EPSILON_PX &&
-      Math.abs(scroll.scrollTop - currentMaxTop) <= BOTTOM_EPSILON_PX;
+      Math.abs(currentTop - currentMaxTop) <= BOTTOM_EPSILON_PX;
     if (
       modeRef.current === "following" &&
-      scroll.scrollTop < lastScrollTopRef.current - BOTTOM_EPSILON_PX &&
+      currentTop < lastScrollTopRef.current - BOTTOM_EPSILON_PX &&
       !clampedToNewBottom
     ) {
       detach();
     } else if (
       modeRef.current === "detached" &&
-      scroll.scrollTop > lastScrollTopRef.current &&
-      scroll.scrollTop >= lastMaxScrollTopRef.current - BOTTOM_EPSILON_PX &&
+      currentTop > lastScrollTopRef.current &&
+      currentTop >= lastMaxScrollTopRef.current - BOTTOM_EPSILON_PX &&
       !rangeShrank
     ) {
       // Recognize a return before the queued scroll event is consumed. New
@@ -282,7 +288,7 @@ export function useConversationScroll({
         if (content && anchor && content.contains(anchor.node)) {
           const nextContentTop = contentTop(content, anchor.node);
           const delta = nextContentTop - anchor.contentTop;
-          const baseTop = clampedToNewBottom ? lastScrollTopRef.current : scroll.scrollTop;
+          const baseTop = clampedToNewBottom ? lastScrollTopRef.current : currentTop;
           if (clampedToNewBottom || Math.abs(delta) > BOTTOM_EPSILON_PX) {
             scroll.scrollTop = baseTop + delta;
           }
@@ -297,8 +303,9 @@ export function useConversationScroll({
       setShowScrollToBottom(true);
     }
 
-    lastScrollTopRef.current = scroll.scrollTop;
-    lastMaxScrollTopRef.current = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+    const settledMaxTop = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+    lastScrollTopRef.current = physicalScrollTop(scroll, settledMaxTop);
+    lastMaxScrollTopRef.current = settledMaxTop;
   }, [detach, enabled, rememberAnchor, startFollowing]);
 
   const scrollToBottom = useCallback((): void => {
@@ -367,14 +374,14 @@ export function useConversationScroll({
     // followed. Two frames, because a wheel scroll is composited and its
     // scrollTop can land after the frame the event was dispatched in.
     const releaseFollowing = (): void => {
-      const topBeforeGesture = scroll.scrollTop;
       const bottomBeforeGesture = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+      const topBeforeGesture = physicalScrollTop(scroll, bottomBeforeGesture);
       detach();
       reconcile();
       if (topBeforeGesture < bottomBeforeGesture - BOTTOM_EPSILON_PX) return;
       requestAnimationFrame(() => requestAnimationFrame(() => {
         if (modeRef.current !== "detached") return;
-        if (Math.abs(scroll.scrollTop - topBeforeGesture) > BOTTOM_EPSILON_PX) return;
+        if (Math.abs(physicalScrollTop(scroll, bottomBeforeGesture) - topBeforeGesture) > BOTTOM_EPSILON_PX) return;
         startFollowing();
         reconcile();
       }));
@@ -414,10 +421,12 @@ export function useConversationScroll({
       touchTargetRef.current = null;
     };
     const onScroll = (): void => {
-      const top = scroll.scrollTop;
       const previousTop = lastScrollTopRef.current;
       const height = scroll.scrollHeight;
       const maxTop = Math.max(0, height - scroll.clientHeight);
+      // WebKit exposes elastic positions outside [0, maxTop]. A bounce back
+      // from that visual overscroll is not reader movement through content.
+      const top = physicalScrollTop(scroll, maxTop);
       const rangeShrank = maxTop < lastMaxScrollTopRef.current - BOTTOM_EPSILON_PX;
       const clampedToNewBottom =
         rangeShrank &&

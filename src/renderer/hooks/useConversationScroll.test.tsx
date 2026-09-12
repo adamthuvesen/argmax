@@ -324,6 +324,34 @@ describe("useConversationScroll", () => {
     expect(controller.showScrollToBottom).toBe(false);
   });
 
+  it("stays attached when elastic overscroll bounces back to the physical bottom", () => {
+    const props: HarnessProps = { items: ["one"] };
+    const view = render(<Harness {...props} />);
+    const geometry: Geometry = {
+      viewportHeight: 500,
+      naturalHeight: 1300,
+      top: 0,
+      promptTop: 700,
+      blockTop: 750,
+      turnTop: 0
+    };
+    const { scroll } = installGeometry(geometry);
+    act(() => view.rerender(<Harness {...props} />));
+    expect(geometry.top).toBe(800);
+
+    // WebKit reports elastic positions beyond the normal scroll range. The
+    // snap back is layout motion, not an upward gesture from the reader.
+    geometry.top = 840;
+    act(() => { scroll.dispatchEvent(new Event("scroll")); });
+    geometry.top = 800;
+    act(() => { scroll.dispatchEvent(new Event("scroll")); });
+
+    expect(controller.showScrollToBottom).toBe(false);
+    geometry.naturalHeight = 1500;
+    act(() => flushResize());
+    expect(geometry.top).toBe(1000);
+  });
+
   it.each(["observer first", "scroll first"])(
     "restores a detached reader when viewport growth clamps before %s reconciliation",
     (order) => {

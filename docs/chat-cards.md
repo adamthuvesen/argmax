@@ -122,7 +122,9 @@ reports negative wheel deltas as it snaps back, a thumb drifts upward on a tap
 — and a release there would be permanent, because with nowhere left to move no
 scroll event can arrive to end it. The controller checks two frames later
 (a wheel scroll is composited and can land after its own frame) and resumes
-following if the viewport never moved.
+following if the viewport never moved. WebKit's elastic `scrollTop` values are
+normalized to the physical scroll range before motion is classified, so the
+bounce back from beyond an edge cannot detach a live conversation.
 
 Returning to the bottom is recognized before layout reconciliation records
 the position, even if the native scroll event is still queued. If output

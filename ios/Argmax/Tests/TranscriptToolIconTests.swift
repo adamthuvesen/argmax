@@ -54,9 +54,16 @@ final class TranscriptToolIconTests: XCTestCase {
             .computer: "desktopcomputer", .tool: "wrench.and.screwdriver", .agent: "cpu", .skill: "sparkles",
             .imageCapture: "camera", .imageGenerate: "sparkles", .agentMessage: "bubble.left",
             .agentWait: "hourglass", .agentStop: "stop.circle", .memoryRecall: "brain", .memorySave: "brain",
-            .git: "arrow.triangle.branch", .browser: "globe", .plan: "checklist"
+            .browser: "globe", .plan: "checklist"
         ]
         for kind in TranscriptToolActivityKind.allCases {
+            if kind == .git {
+                XCTAssertEqual(
+                    TranscriptToolIcon.source(for: "plain", activity: activity(kind)),
+                    .gitBranch
+                )
+                continue
+            }
             XCTAssertEqual(
                 TranscriptToolIcon.source(for: "plain", activity: activity(kind)),
                 .system(name: expectedSymbols[kind]!)

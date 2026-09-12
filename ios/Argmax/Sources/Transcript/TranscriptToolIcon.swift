@@ -9,6 +9,7 @@ import UIKit
 struct TranscriptToolIcon: View {
     enum Source: Equatable {
         case asset(name: String, title: String)
+        case gitBranch
         case system(name: String)
     }
 
@@ -27,6 +28,13 @@ struct TranscriptToolIcon: View {
                     .resizable()
                     .scaledToFit()
                     .foregroundStyle(Theme.muted)
+            case .gitBranch:
+                GitBranchGlyph()
+                    .stroke(
+                        activity.map { Color(Self.uiColor(for: $0.kind, colorMode: colorMode)) }
+                            ?? Theme.muted,
+                        style: StrokeStyle(lineWidth: size / 12, lineCap: .round, lineJoin: .round)
+                    )
             case .system(let systemName):
                 Image(systemName: systemName)
                     .resizable()
@@ -40,6 +48,7 @@ struct TranscriptToolIcon: View {
     }
 
     static func source(for toolName: String, activity: TranscriptToolActivity? = nil) -> Source {
+        if activity?.kind == .git { return .gitBranch }
         if activity?.kind == .computer { return .system(name: systemSymbol(for: .computer)) }
         if let server = serverName(in: toolName), let icon = catalogue.icon(for: server) {
             return .asset(name: "Integrations/\(icon.key)", title: icon.title)

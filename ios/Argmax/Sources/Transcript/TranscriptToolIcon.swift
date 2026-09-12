@@ -16,19 +16,23 @@ struct TranscriptToolIcon: View {
     var size: CGFloat = 16
     var activity: TranscriptToolActivity? = nil
 
+    @Environment(\.activityIconColorMode) private var colorMode
+
     var body: some View {
         Group {
             switch Self.source(for: name, activity: activity) {
             case .asset(let assetName, _):
                 Image(assetName)
-                    .renderingMode(.original)
+                    .renderingMode(colorMode == .color ? .original : .template)
                     .resizable()
                     .scaledToFit()
+                    .foregroundStyle(Theme.muted)
             case .system(let systemName):
                 Image(systemName: systemName)
                     .resizable()
                     .scaledToFit()
-                    .foregroundStyle(activity.map { Color(Self.uiColor(for: $0.kind)) } ?? Theme.muted)
+                    .foregroundStyle(activity.map { Color(Self.uiColor(for: $0.kind, colorMode: colorMode)) }
+                        ?? Theme.muted)
             }
         }
         .frame(width: size, height: size)
@@ -76,7 +80,11 @@ struct TranscriptToolIcon: View {
         }
     }
 
-    static func uiColor(for kind: TranscriptToolActivityKind) -> UIColor {
+    static func uiColor(
+        for kind: TranscriptToolActivityKind,
+        colorMode: ActivityIconColorMode = .color
+    ) -> UIColor {
+        guard colorMode == .color else { return Theme.mutedColor }
         switch kind {
         case .read, .command, .computer, .git: return Theme.activityBlueColor
         case .edit: return Theme.activityAmberColor

@@ -365,6 +365,8 @@ continuous text selection and large-file layout. UIKit also supplies the
 swipe-back and shake-to-re-pair gesture helpers.
 
 Native tool icons reuse the desktop artwork in `src/renderer/lib/serverIcons.ts`.
+Settings → Appearance → Activity icons switches both system symbols and MCP
+artwork between their semantic colours and a muted monochrome treatment.
 After changing that artwork or its native aliases, run `npm run export:ios-tool-icons`
 and commit the generated `Assets.xcassets/Integrations` and `Resources/toolIcons.json`.
 

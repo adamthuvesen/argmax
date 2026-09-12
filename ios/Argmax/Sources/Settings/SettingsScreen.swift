@@ -84,6 +84,18 @@ struct SettingsScreen: View {
                     }
                     .padding(Spacing.row)
                     HairlineDivider(inset: Spacing.row)
+                    VStack(alignment: .leading, spacing: Spacing.row) {
+                        Text("Activity icons").typeContent()
+                        Segmented(
+                            options: ActivityIconColorMode.allCases,
+                            selection: $appearance.activityIconColorMode,
+                            label: \.label
+                        )
+                        Text("Color distinguishes kinds of work. Monochrome keeps every transcript icon muted.")
+                            .typeMeta()
+                    }
+                    .padding(Spacing.row)
+                    HairlineDivider(inset: Spacing.row)
                     SettingToggle(
                         label: "Chat icons",
                         detail: "The icon, pull request, or CLI mark under a chat's title. Off, only a running chat is marked.",

@@ -31,6 +31,22 @@ enum ThemeChoice: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Whether transcript activity icons carry their semantic colours or recede
+/// into the same muted ink as the rest of the activity ledger.
+enum ActivityIconColorMode: String, CaseIterable, Identifiable, Sendable {
+    case color
+    case monochrome
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .color: return "Color"
+        case .monochrome: return "Monochrome"
+        }
+    }
+}
+
 /// Theme and accent, persisted and handed to everything that draws.
 ///
 /// The keys are the web client's own (`argmax.theme.mode`,
@@ -69,6 +85,9 @@ final class Appearance: ObservableObject {
     /// The phone's own five-step type scale. It stays device-local because
     /// the desktop has a different range and separate app/chat scales.
     static let fontScaleKey = "argmax.phone.font.scale"
+    /// Transcript activity is native-only, so its icon treatment is a local
+    /// phone preference rather than a web appearance key.
+    static let activityIconColorModeKey = "argmax.phone.activityIconColorMode"
 
     @Published var theme: ThemeChoice {
         didSet { store.set(theme.rawValue, forKey: Self.themeKey) }
@@ -131,6 +150,10 @@ final class Appearance: ObservableObject {
         didSet { store.set(fontScale.rawValue, forKey: Self.fontScaleKey) }
     }
 
+    @Published var activityIconColorMode: ActivityIconColorMode {
+        didSet { store.set(activityIconColorMode.rawValue, forKey: Self.activityIconColorModeKey) }
+    }
+
     /// The value the page keys its stylesheet off (`data-user-bubble`).
     var bubbleTint: String { accentBubbles ? "accent" : "neutral" }
 
@@ -154,6 +177,9 @@ final class Appearance: ObservableObject {
         chatDetail = MobileChatDetail(rawValue: store.integer(forKey: Self.chatDetailKey)) ?? .compact
         typeface = AppTypeface(rawValue: store.string(forKey: Self.typefaceKey) ?? "") ?? .system
         fontScale = AppFontScale(rawValue: store.integer(forKey: Self.fontScaleKey)) ?? .standard
+        activityIconColorMode = ActivityIconColorMode(
+            rawValue: store.string(forKey: Self.activityIconColorModeKey) ?? ""
+        ) ?? .color
     }
 }
 
@@ -169,6 +195,7 @@ extension View {
             .environment(\.providerMarks, appearance.providerMarks)
             .environment(\.mascotVisible, appearance.mascot)
             .environment(\.mobileChatDetail, appearance.chatDetail)
+            .environment(\.activityIconColorMode, appearance.activityIconColorMode)
             .tint(appearance.tint.color)
             .preferredColorScheme(appearance.theme.colorScheme)
     }
@@ -192,6 +219,10 @@ private struct MascotVisibleKey: EnvironmentKey {
     static let defaultValue = true
 }
 
+private struct ActivityIconColorModeKey: EnvironmentKey {
+    static let defaultValue = ActivityIconColorMode.color
+}
+
 extension EnvironmentValues {
     var chatIcons: Bool {
         get { self[ChatIconsKey.self] }
@@ -206,5 +237,10 @@ extension EnvironmentValues {
     var mascotVisible: Bool {
         get { self[MascotVisibleKey.self] }
         set { self[MascotVisibleKey.self] = newValue }
+    }
+
+    var activityIconColorMode: ActivityIconColorMode {
+        get { self[ActivityIconColorModeKey.self] }
+        set { self[ActivityIconColorModeKey.self] = newValue }
     }
 }

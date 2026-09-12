@@ -70,6 +70,14 @@ final class TranscriptToolIconTests: XCTestCase {
         XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .search), style: .light), [47, 128, 121])
         XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .image), style: .dark), [179, 146, 240])
         XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .edit), style: .light), [181, 135, 47])
+        XCTAssertEqual(
+            components(TranscriptToolIcon.uiColor(for: .edit, colorMode: .monochrome), style: .light),
+            [122, 118, 108]
+        )
+        XCTAssertEqual(
+            components(TranscriptToolIcon.uiColor(for: .search, colorMode: .monochrome), style: .dark),
+            [138, 133, 123]
+        )
     }
 
     func testComputerActivityOverridesAnIntegrationBrand() {

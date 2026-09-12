@@ -29,6 +29,7 @@ final class AppearanceTests: XCTestCase {
         XCTAssertEqual(appearance.tint, .orange)
         XCTAssertEqual(appearance.chatDetail, .compact)
         XCTAssertEqual(appearance.fontScale, .standard)
+        XCTAssertEqual(appearance.activityIconColorMode, .color)
     }
 
     func testChatDetailSurvivesARelaunch() {
@@ -104,6 +105,20 @@ final class AppearanceTests: XCTestCase {
         store.set(99, forKey: Appearance.fontScaleKey)
 
         XCTAssertEqual(Appearance(store: store).fontScale, .standard)
+    }
+
+    func testActivityIconColorModeSurvivesARelaunchAndRejectsUnknownValues() {
+        let first = Appearance(store: store)
+        first.activityIconColorMode = .monochrome
+
+        XCTAssertEqual(
+            store.string(forKey: Appearance.activityIconColorModeKey),
+            ActivityIconColorMode.monochrome.rawValue
+        )
+        XCTAssertEqual(Appearance(store: store).activityIconColorMode, .monochrome)
+
+        store.set("sepia", forKey: Appearance.activityIconColorModeKey)
+        XCTAssertEqual(Appearance(store: store).activityIconColorMode, .color)
     }
 
     func testBothChoicesSurviveARelaunch() {

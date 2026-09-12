@@ -220,8 +220,12 @@ function ToolCallGroupBubbleInner({
             aria-label={`${activityHeadline}${previewText ? ": " + previewText : ""}`}
             onClick={() => toggleExpanded(!expanded)}
           >
-            {group.tools.length > 0 ? iconServer ? <ServerIcon server={iconServer} />
-              : <ToolActivityIcon kind={summary.iconKind ?? "tool"} /> : null}
+            {group.tools.length > 0 ? (
+              <span className="activity-icon-slot">
+                {iconServer ? <ServerIcon server={iconServer} />
+                  : <ToolActivityIcon kind={summary.iconKind ?? "tool"} />}
+              </span>
+            ) : null}
             <span className="tool-call-group-eyebrow activity-summary-headline" aria-hidden="true">
               <span className="tool-call-group-eyebrow-label">{headline.verb}</span>
               {headline.rest ? (

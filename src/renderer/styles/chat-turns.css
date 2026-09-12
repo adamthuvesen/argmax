@@ -447,6 +447,22 @@
   user-select: none;
 }
 
+/* Reads, commands, server marks, and the live WorkingNest are drawn at three
+   different sizes. Give them one type-scale-aware column so changing activity
+   never moves the mark's centre or the label that follows it. */
+.activity-icon-slot {
+  flex: 0 0 calc(var(--text-base) + 2px);
+  display: inline-flex;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--text-base) + 2px);
+}
+
+.activity-icon-slot > .tool-call-row-server-icon {
+  margin-right: 0;
+}
+
 /* The one mark that ignores its `size` prop: in the transcript it has to grow
    with the chat type scale, not stay pinned at 12px. `-override` rather than
    `width`, because the prop arrives as an inline custom property that no class

@@ -123,8 +123,10 @@ function ToolCallRowInner({
     ) : null;
   const rowContent = (
     <>
-      {iconServer || (!tool.activity && isWebToolName(tool.name)) ? <ServerIcon server={iconServer} web={isWebToolName(tool.name)} />
-        : <ToolActivityIcon kind={tool.activity?.kind ?? "tool"} />}
+      <span className="activity-icon-slot">
+        {iconServer || (!tool.activity && isWebToolName(tool.name)) ? <ServerIcon server={iconServer} web={isWebToolName(tool.name)} />
+          : <ToolActivityIcon kind={tool.activity?.kind ?? "tool"} />}
+      </span>
       <span className="tool-call-row-verb">{verb}</span>
       {target ? (
         <span className="tool-call-row-target">{shortenPathsInText(target)}</span>

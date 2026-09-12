@@ -5,7 +5,8 @@ use specta::Type;
 use super::approvals::{list_pending_approvals, ApprovalRequest};
 use super::checks::{list_checks, CheckRun};
 use super::events::{
-    list_session_agent_events_for_identity, list_session_changes_since, SessionEventsSinceResult,
+    list_session_agent_events_for_identity, list_session_changes_since,
+    list_session_changes_since_with_budget, SessionEventsSinceResult,
 };
 use super::projects::{list_projects, ProjectSummary};
 use super::sessions::{list_sessions_for_dashboard, SessionSummary};
@@ -87,6 +88,24 @@ pub fn list_session_tail(
         event_cursor,
         raw_output_cursor,
         change_cursor,
+    )
+}
+
+pub fn list_session_tail_for_remote(
+    connection: &Connection,
+    session_id: &str,
+    event_cursor: Option<i64>,
+    raw_output_cursor: Option<i64>,
+    change_cursor: Option<i64>,
+    change_page_budget_bytes: usize,
+) -> ArgmaxResult<SessionEventsSinceResult> {
+    list_session_changes_since_with_budget(
+        connection,
+        session_id,
+        event_cursor,
+        raw_output_cursor,
+        change_cursor,
+        change_page_budget_bytes,
     )
 }
 

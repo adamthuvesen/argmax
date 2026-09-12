@@ -108,11 +108,137 @@ final class BridgeRecoveryTests: XCTestCase {
         await client.disconnect()
     }
 
-    private func makeClient(_ sockets: [TestBridgeSocket]) throws -> (BridgeClient, URL) {
+    func testOversizedTranscriptFallsBackToAuthenticatedHTTPWithoutLosingTheBody() async throws {
+        let socket = TestBridgeSocket()
+        let answer = String(repeating: "x", count: 4 * 1024 * 1024 + 1)
+        let responseData = try JSONSerialization.data(withJSONObject: [
+            "ok": ["events": [["message": answer]]],
+        ])
+        let recorder = TestHTTPLoader(result: .success(responseData))
+        let (client, directory) = try makeClient([socket], httpLoader: recorder.load)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let input = TranscriptEventsSinceInput(
+            sessionId: "s-1", eventCursor: 7, rawOutputCursor: 11, changeCursor: 42
+        )
+        let call = Task { try await client.request("session:events-since", input: input) }
+        let sent = try await request(on: socket)
+        socket.reply(to: sent, error: "REMOTE_RESPONSE_TOO_LARGE", settled: false)
+
+        let payload = try await call.value
+        let decoded = try XCTUnwrap(JSONSerialization.jsonObject(with: payload) as? [String: Any])
+        let events = try XCTUnwrap(decoded["events"] as? [[String: Any]])
+        XCTAssertEqual(events.first?["message"] as? String, answer)
+        XCTAssertGreaterThan(responseData.count, 4 * 1024 * 1024)
+
+        let request = try XCTUnwrap(recorder.requests.first)
+        XCTAssertEqual(request.url?.absoluteString, "https://mac.example/api/transcript")
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer test")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+        let body = try XCTUnwrap(request.httpBody)
+        let envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(envelope["channel"] as? String, "session:events-since")
+        XCTAssertEqual(envelope["input"] as? NSDictionary, sent["input"] as? NSDictionary)
+        await client.disconnect()
+    }
+
+    func testTranscriptHTTPErrorUsesHostErrorAndMutationDoesNotFallback() async throws {
+        let socket = TestBridgeSocket()
+        let response = try JSONSerialization.data(withJSONObject: [
+            "error": [
+                "code": "SERVICE_ERROR",
+                "sub_code": "TRANSCRIPT_FAILED",
+                "message": "transcript failed",
+            ],
+        ])
+        let recorder = TestHTTPLoader(result: .success(response))
+        let (client, directory) = try makeClient([socket], httpLoader: recorder.load)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let read = Task { try await client.request("session:agent-events", input: ["sessionId": "s-1"]) }
+        let readFrame = try await request(on: socket)
+        socket.reply(to: readFrame, error: "REMOTE_RESPONSE_TOO_LARGE", settled: false)
+        do {
+            _ = try await read.value
+            XCTFail("expected the HTTP dispatcher error")
+        } catch {
+            XCTAssertEqual(error as? BridgeError, .host(
+                code: "SERVICE_ERROR", subCode: "TRANSCRIPT_FAILED", message: "transcript failed"
+            ))
+        }
+
+        let mutation = Task { try await client.request("session:stop", input: ["sessionId": "s-1"]) }
+        let mutationFrame = try await request(on: socket, count: 2)
+        socket.reply(to: mutationFrame, error: "REMOTE_RESPONSE_TOO_LARGE", settled: true)
+        do {
+            _ = try await mutation.value
+            XCTFail("mutation must not use the transcript endpoint")
+        } catch {
+            guard case .host(_, let subCode, _) = error as? BridgeError else {
+                return XCTFail("expected a host error, got \(error)")
+            }
+            XCTAssertEqual(subCode, "REMOTE_RESPONSE_TOO_LARGE")
+        }
+        XCTAssertEqual(recorder.requests.count, 1)
+        await client.disconnect()
+    }
+
+    func testCancellingTranscriptHTTPFallbackCancelsTheRequest() async throws {
+        let socket = TestBridgeSocket()
+        let loader = BlockingHTTPLoader()
+        let (client, directory) = try makeClient([socket], httpLoader: loader.load)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let call = Task { try await client.request("session:events-since", input: ["sessionId": "s-1"]) }
+        let sent = try await request(on: socket)
+        socket.reply(to: sent, error: "REMOTE_RESPONSE_TOO_LARGE", settled: false)
+        try await wait { loader.hasStarted }
+
+        call.cancel()
+
+        do {
+            _ = try await call.value
+            XCTFail("expected cancellation")
+        } catch is CancellationError {}
+        XCTAssertTrue(loader.wasCancelled)
+        await client.disconnect()
+    }
+
+    func testReconnectCancelsTranscriptHTTPFallbackAndAllowsAnAuthoritativeRead() async throws {
+        let first = TestBridgeSocket(), second = TestBridgeSocket()
+        let loader = BlockingHTTPLoader()
+        let (client, directory) = try makeClient([first, second], httpLoader: loader.load)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let stale = Task { try await client.request("session:events-since", input: ["sessionId": "s-1"]) }
+        let sent = try await request(on: first)
+        first.reply(to: sent, error: "REMOTE_RESPONSE_TOO_LARGE", settled: false)
+        try await wait { loader.hasStarted }
+
+        await client.reconnectNow(force: true)
+
+        do {
+            _ = try await stale.value
+            XCTFail("reconnect must cancel the stale HTTP read")
+        } catch {
+            XCTAssertEqual(error as? BridgeError, .disconnected)
+        }
+        XCTAssertTrue(loader.wasCancelled)
+
+        let authoritative = Task { try await client.request("session:events-since", input: ["sessionId": "s-1"]) }
+        let reread = try await request(on: second)
+        second.reply(to: reread)
+        _ = try await authoritative.value
+        await client.disconnect()
+    }
+
+    private func makeClient(
+        _ sockets: [TestBridgeSocket],
+        httpLoader: (@Sendable (URLRequest) async throws -> (Data, URLResponse))? = nil
+    ) throws -> (BridgeClient, URL) {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let sequence = TestSocketSequence(sockets)
         let client = try BridgeClient(pairingURL: XCTUnwrap(URL(string: "https://mac.example/mobile.html#token=test")),
-            operationDirectory: directory, monitorNetwork: false, socketFactory: { _ in sequence.next() })
+            operationDirectory: directory, monitorNetwork: false, socketFactory: { _ in sequence.next() },
+            httpLoader: httpLoader)
         return (client, directory)
     }
 
@@ -127,6 +253,44 @@ final class BridgeRecoveryTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(10))
         }
         XCTFail("Timed out waiting for scripted socket")
+        throw BridgeError.disconnected
+    }
+}
+
+private final class TestHTTPLoader: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedRequests: [URLRequest] = []
+    private let result: Result<Data, Error>
+
+    init(result: Result<Data, Error>) {
+        self.result = result
+    }
+
+    var requests: [URLRequest] { lock.withLock { recordedRequests } }
+
+    func load(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        lock.withLock { recordedRequests.append(request) }
+        let data = try result.get()
+        return (data, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+    }
+}
+
+private final class BlockingHTTPLoader: @unchecked Sendable {
+    private let lock = NSLock()
+    private var started = false
+    private var cancelled = false
+
+    var hasStarted: Bool { lock.withLock { started } }
+    var wasCancelled: Bool { lock.withLock { cancelled } }
+
+    func load(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        lock.withLock { started = true }
+        do {
+            try await Task.sleep(for: .seconds(60))
+        } catch {
+            lock.withLock { cancelled = true }
+            throw error
+        }
         throw BridgeError.disconnected
     }
 }

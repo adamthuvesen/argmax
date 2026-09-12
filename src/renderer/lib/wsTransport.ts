@@ -34,6 +34,8 @@ const MAX_RECONNECT_MS = 8_000;
 const HEARTBEAT_MS = 20_000;
 /** No answer by then and the socket is a corpse, whatever `readyState` says. */
 const PONG_TIMEOUT_MS = 8_000;
+/** Match the native client's URLRequest timeout for oversized transcript reads. */
+const TRANSCRIPT_HTTP_TIMEOUT_MS = 60_000;
 
 /**
  * How long a request may sit unsent before it fails. A queued command replayed
@@ -75,6 +77,8 @@ export interface WsTransportOptions {
   url?: string;
   /** Seam for tests; defaults to a real `WebSocket`. */
   connect?: ConnectRemote;
+  /** Seam for the oversized-transcript HTTP fallback. */
+  fetch?: typeof fetch;
   /** Seam for tests; defaults to `window.prompt`. */
   promptForToken?: () => string | null;
 }
@@ -127,6 +131,10 @@ interface PendingRequest {
   retryTimer: ReturnType<typeof setTimeout> | null;
   operation?: RemoteOperation;
   sent: boolean;
+  channel: IpcChannel;
+  transcriptBody: string;
+  fallbackAttempted: boolean;
+  fallbackController: AbortController | null;
 }
 
 function connectBrowserSocket(url: string, handlers: RemoteSocketHandlers): RemoteSocket {
@@ -146,6 +154,19 @@ function connectBrowserSocket(url: string, handlers: RemoteSocketHandlers): Remo
 function defaultRemoteUrl(): string {
   const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${scheme}//${window.location.host}/api/ws`;
+}
+
+function transcriptUrl(socketUrl: string): string {
+  const endpoint = new URL(socketUrl, window.location.href);
+  endpoint.protocol = endpoint.protocol === "wss:" ? "https:" : "http:";
+  endpoint.pathname = "/api/transcript";
+  endpoint.search = "";
+  endpoint.hash = "";
+  return endpoint.toString();
+}
+
+function canFetchTranscript(channel: IpcChannel): boolean {
+  return channel === "session:events-since" || channel === "session:agent-events";
 }
 
 function asFrame(value: unknown): Record<string, unknown> | null {
@@ -170,6 +191,7 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
   const connect = options.connect ?? connectBrowserSocket;
   const url = options.url ?? defaultRemoteUrl();
   const promptForToken = options.promptForToken ?? (() => window.prompt("Argmax remote token"));
+  const fetchRequest = options.fetch ?? ((input, init) => window.fetch(input, init));
   const operationOwner = createRemoteOperationOwner();
 
   const queued: PendingRequest[] = [];
@@ -324,6 +346,14 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
       }, 500);
       return;
     }
+    if (failure?.code === "SERVICE_ERROR" &&
+        failure.sub_code === "REMOTE_RESPONSE_TOO_LARGE" &&
+        canFetchTranscript(request.channel) && !request.fallbackAttempted) {
+      request.fallbackAttempted = true;
+      request.fallbackController = new AbortController();
+      void fetchTranscript(request, generation);
+      return;
+    }
     inFlight.delete(id);
     clearQueueTimer(request);
     if (request.retryTimer !== null) clearTimeout(request.retryTimer);
@@ -337,6 +367,67 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
       return;
     }
     request.resolve(frame.ok);
+  }
+
+  async function fetchTranscript(request: PendingRequest, startedGeneration: number): Promise<void> {
+    const controller = request.fallbackController;
+    if (!controller) return;
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, TRANSCRIPT_HTTP_TIMEOUT_MS);
+    try {
+      const response = await fetchRequest(transcriptUrl(url), {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token ?? ""}`,
+          "Content-Type": "application/json"
+        },
+        body: request.transcriptBody,
+        signal: controller.signal
+      });
+      if (response.status === 401) {
+        throw remoteFailure({ code: "UNAUTHORIZED", message: "Pair with your Mac again." });
+      }
+      if (!response.ok) {
+        throw remoteFailure({
+          code: "SERVICE_ERROR",
+          sub_code: "REMOTE_HTTP_ERROR",
+          message: `Argmax remote transcript request failed (${response.status}).`
+        });
+      }
+      const envelope = asFrame(await response.json());
+      if (inFlight.get(request.id) !== request || generation !== startedGeneration) return;
+      inFlight.delete(request.id);
+      request.fallbackController = null;
+      if (!envelope) {
+        request.reject(new Error("Malformed response from Argmax remote"));
+      } else if ("error" in envelope) {
+        request.reject(remoteFailure(envelope.error));
+      } else if ("ok" in envelope) {
+        request.resolve(envelope.ok);
+      } else {
+        request.reject(new Error("Malformed response from Argmax remote"));
+      }
+    } catch (error) {
+      if (inFlight.get(request.id) !== request || generation !== startedGeneration) return;
+      inFlight.delete(request.id);
+      request.fallbackController = null;
+      if (timedOut) {
+        request.reject(remoteFailure({
+          code: "SERVICE_ERROR",
+          sub_code: "REMOTE_RESPONSE_TIMEOUT",
+          message: "The Mac did not confirm this request in time."
+        }));
+      } else {
+        request.reject(controller.signal.aborted
+          ? new Error(REMOTE_CONNECTION_LOST_MESSAGE)
+          : error);
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   function dispatchEvent(frame: Record<string, unknown>): void {
@@ -411,6 +502,7 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
     socket = null;
     stopHeartbeat();
     for (const request of inFlight.values()) {
+      request.fallbackController?.abort();
       if (request.operation && operationReplay) {
         if (request.retryTimer !== null) clearTimeout(request.retryTimer);
         request.retryTimer = null;
@@ -542,7 +634,11 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
         queueTimer: null,
         retryTimer: null,
         operation,
-        sent: operation ? remoteOperationWasSent(operation) : false
+        sent: operation ? remoteOperationWasSent(operation) : false,
+        channel,
+        transcriptBody: JSON.stringify({ channel, input }),
+        fallbackAttempted: false,
+        fallbackController: null
       };
       request.queueTimer = setTimeout(() => expireQueued(request), QUEUE_TIMEOUT_MS);
       queued.push(request);

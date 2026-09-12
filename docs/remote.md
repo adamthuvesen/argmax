@@ -76,6 +76,25 @@ an Argmax build with this change, remove the old phone icon and add the mobile
 page to the home screen again. Use the pairing link or QR code in Settings →
 Integrations → Remote access if the new installation needs pairing.
 
+## Transcript reply sizes
+
+Transcript WebSocket replies have a 768 KiB limit, measured after JSON
+serialization across the complete response, including raw output and the
+envelope. The native client's 4 MiB receive limit is a separate ceiling.
+Row pages continue through row cursors. Mutation pages consume a byte-bounded
+prefix of the change feed and continue through `changeCursor`, so updates
+and deletions cannot disappear when a page fills.
+
+An individual event or raw-output row may exceed the budget. The host then
+returns `REMOTE_RESPONSE_TOO_LARGE` in a small WebSocket response. The browser,
+native client, and command-line bridge retry the identical read through authenticated
+`POST /api/transcript` with `{channel,input}`. This endpoint accepts only
+`session:events-since` and `session:agent-events`, uses the same dispatcher and
+remote payload trimming, and returns `{ok}` or `{error}`. HTTP carries the
+complete page without splitting a logical event or truncating its content.
+The client applies only the successful read's cursors. Older clients report
+the size error and need updating to recover the page.
+
 ## Recovering remote actions
 
 Synchronous Codex question cards submit `questions:resolve` from both the

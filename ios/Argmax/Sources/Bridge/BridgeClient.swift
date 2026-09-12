@@ -135,10 +135,14 @@ actor BridgeClient {
     /// 17th with `REMOTE_REQUEST_LIMIT`. Queueing here means a burst waits
     /// instead of failing.
     private static let maxInFlight = 16
+    private static let httpTranscriptChannels: Set<String> = [
+        "session:events-since", "session:agent-events",
+    ]
 
     private let token: String
     private let monitorNetwork: Bool
     private let makeSocket: @Sendable (URL) -> any BridgeSocket
+    private let loadHTTP: @Sendable (URLRequest) async throws -> (Data, URLResponse)
     private let operationStore: RemoteOperationStore
     private var activeOperationIDs: Set<String> = []
     private var operationReplay = false
@@ -166,6 +170,7 @@ actor BridgeClient {
     private var heartbeatLoop: Task<Void, Never>?
     private var reconnectTimer: Task<Void, Never>?
     private var pongTimer: Task<Void, Never>?
+    private var httpFallbacks: [UUID: Task<(Data, URLResponse), Error>] = [:]
 
     private var connection: BridgeConnection = .connecting
     private var authenticated = false
@@ -181,7 +186,8 @@ actor BridgeClient {
 
     init(pairingURL: URL, urlSession: URLSession = .shared,
          operationDirectory: URL? = nil, monitorNetwork: Bool = true,
-         socketFactory: (@Sendable (URL) -> any BridgeSocket)? = nil) throws {
+         socketFactory: (@Sendable (URL) -> any BridgeSocket)? = nil,
+         httpLoader: (@Sendable (URLRequest) async throws -> (Data, URLResponse))? = nil) throws {
         guard let socketURL = PairingLink.socketURL(for: pairingURL),
               let token = PairingLink.token(in: pairingURL)
         else { throw BridgeError.unusablePairingLink }
@@ -193,14 +199,14 @@ actor BridgeClient {
         self.makeSocket = socketFactory ?? { url in
             let task = urlSession.webSocketTask(with: url)
             // The default 1 MiB ceiling closed the socket outright on a long
-            // chat's backfill frame, which surfaced as "Can't reach your
-            // Mac." for that one chat only. The host now caps a row-paged
-            // reply to `REMOTE_PAGE_BUDGET_BYTES` (768 KiB events, serialized)
-            // plus its envelope and the raw-output page riding along, so this
-            // just clears that with room rather than removing the ceiling.
+            // chat's backfill frame. The host now caps the complete transcript
+            // response at 768 KiB and redirects an oversized entity through
+            // the authenticated HTTP fallback, so this leaves headroom for
+            // protocol drift without removing the ceiling.
             task.maximumMessageSize = 4 * 1024 * 1024
             return task
         }
+        self.loadHTTP = httpLoader ?? { request in try await urlSession.data(for: request) }
         self.operationStore = RemoteOperationStore(scope: cacheNamespace, directory: operationDirectory)
         (events, eventContinuation) = AsyncStream.makeStream(of: BridgeEvent.self)
         (connectionStates, connectionContinuation) = AsyncStream.makeStream(of: BridgeConnection.self)
@@ -378,6 +384,14 @@ actor BridgeClient {
                         try operationStore.save(saved)
                     }
                     if let error = reply.error {
+                        if Self.shouldFetchTranscript(channel: channel, error: error) {
+                            return try await fetchTranscript(
+                                channel: channel,
+                                encodedInput: encoded,
+                                startedLifecycle: startedLifecycle,
+                                startedGeneration: generation
+                            )
+                        }
                         if !reply.settled, operation != nil,
                            case .host(_, let subCode, _) = error,
                            subCode == "REMOTE_OPERATION_PENDING", Date() < recoveryDeadline {
@@ -415,6 +429,84 @@ actor BridgeClient {
     private static var unknownOutcome: BridgeError {
         .host(code: "SERVICE_ERROR", subCode: "REMOTE_OUTCOME_UNKNOWN",
               message: "The action's outcome is unconfirmed. Check the chat before trying again.")
+    }
+
+    private static func shouldFetchTranscript(channel: String, error: BridgeError) -> Bool {
+        guard httpTranscriptChannels.contains(channel),
+              case .host(let code, let subCode, _) = error
+        else { return false }
+        return code == "SERVICE_ERROR" && subCode == "REMOTE_RESPONSE_TOO_LARGE"
+    }
+
+    private func fetchTranscript(
+        channel: String,
+        encodedInput: Data,
+        startedLifecycle: Int,
+        startedGeneration: Int
+    ) async throws -> Data {
+        guard var components = URLComponents(url: socketURL, resolvingAgainstBaseURL: false) else {
+            throw BridgeError.malformedResponse
+        }
+        components.scheme = socketURL.scheme == "wss" ? "https" : "http"
+        components.path = "/api/transcript"
+        components.query = nil
+        components.fragment = nil
+        guard let url = components.url else { throw BridgeError.malformedResponse }
+
+        let input = try JSONSerialization.jsonObject(with: encodedInput, options: [.fragmentsAllowed])
+        let body = try JSONSerialization.data(
+            withJSONObject: ["channel": channel, "input": input],
+            options: [.sortedKeys]
+        )
+        var request = URLRequest(url: url, timeoutInterval: 60)
+        request.httpMethod = "POST"
+        request.httpBody = body
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let fallbackID = UUID()
+        let loader = loadHTTP
+        let fallback = Task { try await loader(request) }
+        httpFallbacks[fallbackID] = fallback
+        defer { httpFallbacks.removeValue(forKey: fallbackID) }
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await withTaskCancellationHandler {
+                try await fallback.value
+            } onCancel: {
+                fallback.cancel()
+            }
+        } catch is CancellationError {
+            if Task.isCancelled { throw CancellationError() }
+            if lifecycle != startedLifecycle || generation != startedGeneration {
+                throw BridgeError.disconnected
+            }
+            throw CancellationError()
+        }
+        try Task.checkCancellation()
+        guard lifecycle == startedLifecycle, generation == startedGeneration else {
+            throw BridgeError.disconnected
+        }
+        guard let http = response as? HTTPURLResponse else { throw BridgeError.malformedResponse }
+        if http.statusCode == 401 { throw BridgeError.authenticationFailed }
+        guard (200..<300).contains(http.statusCode) else {
+            throw BridgeError.host(
+                code: "SERVICE_ERROR",
+                subCode: "REMOTE_HTTP_ERROR",
+                message: "Argmax remote transcript request failed (\(http.statusCode))."
+            )
+        }
+        guard let envelope = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw BridgeError.malformedResponse
+        }
+        if let error = envelope["error"] {
+            throw Self.hostError(error)
+        }
+        guard let value = envelope["ok"],
+              let encoded = try? JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed])
+        else { throw BridgeError.malformedResponse }
+        return encoded
     }
 
     private func sendOnce(channel: String, encodedInput: Data, operation: RemoteOperation?) async throws -> RemoteReply {
@@ -701,6 +793,9 @@ actor BridgeClient {
         pongTimer = nil
         reconnectTimer?.cancel()
         reconnectTimer = nil
+        let fallbacks = httpFallbacks.values
+        httpFallbacks.removeAll()
+        for fallback in fallbacks { fallback.cancel() }
         socket?.cancel(with: .goingAway, reason: nil)
         socket = nil
 

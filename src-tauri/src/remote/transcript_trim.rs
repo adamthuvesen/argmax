@@ -23,14 +23,10 @@ pub fn trim_for_remote(result: &mut SessionEventsSinceResult) {
     drop_superseded_deltas(&mut result.events);
 }
 
-/// The most transcript bytes one bridge reply carries.
-///
-/// `URLSessionWebSocketTask` refuses a message over its 1 MiB default and
-/// closes the socket, which the phone reported as "Can't reach your Mac" for
-/// exactly the chats whose tail crossed that line (a Cursor chat with 6,700
-/// rows sent 1.46 MB after the trim above). The budget counts serialized
-/// events only; the frame's own envelope and the raw-output page (100 rows)
-/// ride in the headroom.
+/// Maximum bytes in a complete transcript WebSocket reply. The native client
+/// allows 4 MiB messages, but keeping replies smaller leaves room for other
+/// work on the connection. Row/feed budgets reduce ordinary pages. `ws.rs`
+/// checks the final envelope and redirects oversized replies to HTTP.
 pub const REMOTE_PAGE_BUDGET_BYTES: usize = 768 * 1024;
 
 /// Cut a row-cursor page to the byte budget, oldest rows first.
@@ -39,8 +35,8 @@ pub const REMOTE_PAGE_BUDGET_BYTES: usize = 768 * 1024;
 /// client back with `eventCursor` and no `changeCursor`, which
 /// `list_session_events_since` answers page by page until the last one
 /// carries the change cursor. Mutation pages (`changeCursor` in the request)
-/// are never cut here: their cursor is a feed sequence, not a rowid, so a
-/// prefix of their rows has no continuation.
+/// are budgeted while consuming the feed instead: cutting their hydrated
+/// event rows here would discard the sequence needed for continuation.
 pub fn fit_to_budget(result: &mut SessionEventsSinceResult, budget: usize) {
     let mut spent = 0usize;
     let mut kept = 0usize;
@@ -48,7 +44,8 @@ pub fn fit_to_budget(result: &mut SessionEventsSinceResult, budget: usize) {
         let bytes = serde_json::to_vec(event)
             .map(|json| json.len())
             .unwrap_or(0);
-        // One row always goes, however large, or the page would never advance.
+        // One row always goes so the page advances. The final WS size gate
+        // sends an oversized row through the authenticated HTTP retry.
         if kept > 0 && spent + bytes > budget {
             break;
         }

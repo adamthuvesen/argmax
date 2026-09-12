@@ -327,7 +327,13 @@ async fn dispatch_standard(
         "session:events-since" => {
             let input: SessionEventsSinceInput = parse(channel, input)?;
             let row_paged = input.change_cursor.is_none();
-            let mut page = session::session_events_since_impl(state, input).await?;
+            let mut page = session::session_events_since_remote_impl(
+                state,
+                input,
+                // Reserve the RPC envelope outside SessionEventsSinceResult.
+                super::transcript_trim::REMOTE_PAGE_BUDGET_BYTES - 128,
+            )
+            .await?;
             super::transcript_trim::trim_for_remote(&mut page);
             if row_paged || page.reset_required {
                 super::transcript_trim::fit_to_budget(

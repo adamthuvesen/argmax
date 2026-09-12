@@ -9,14 +9,17 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-use axum::body::Body;
-use axum::extract::State as AxumState;
+use axum::body::{Body, Bytes};
+use axum::extract::{DefaultBodyLimit, State as AxumState};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
-use axum::Router;
+use axum::routing::{get, post};
+use axum::{Json, Router};
+use serde::Deserialize;
+use serde_json::Value;
 use sha2::{Digest, Sha256};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
+use tokio::sync::Semaphore;
 
 use super::RemoteConfig;
 
@@ -33,6 +36,7 @@ pub struct RemoteBridge {
     pub app: AppHandle,
     pub token: String,
     assets: AssetSource,
+    transcript_slots: Semaphore,
 }
 
 enum AssetSource {
@@ -68,10 +72,15 @@ pub async fn serve(app: AppHandle, config: RemoteConfig) {
     let bridge = Arc::new(RemoteBridge {
         token: config.token,
         assets: AssetSource::from_env(),
+        transcript_slots: Semaphore::new(16),
         app,
     });
     let router = Router::new()
         .route("/api/ws", get(super::ws::upgrade))
+        .route(
+            "/api/transcript",
+            post(serve_transcript).layer(DefaultBodyLimit::max(64 * 1024)),
+        )
         .fallback(serve_asset)
         // Gzip the asset responses (~4:1 on JS/CSS). The layer skips the
         // WebSocket upgrade on its own: 101 responses carry no body.
@@ -92,6 +101,58 @@ pub async fn serve(app: AppHandle, config: RemoteConfig) {
     if let Err(error) = axum::serve(listener, router).await {
         tracing::warn!(?error, "remote bridge stopped");
     }
+}
+
+/// Only transcript reads may bypass the WebSocket message ceiling. Re-reading
+/// the same cursors is safe because the rejected WS reply was never applied.
+pub(super) fn is_transcript_channel(channel: &str) -> bool {
+    matches!(channel, "session:events-since" | "session:agent-events")
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TranscriptRequest {
+    channel: String,
+    input: Value,
+}
+
+fn transcript_request(
+    token: &str,
+    headers: &HeaderMap,
+    uri: &Uri,
+    body: &[u8],
+) -> Result<TranscriptRequest, StatusCode> {
+    if !authenticate_token(token, headers, uri) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let request: TranscriptRequest =
+        serde_json::from_slice(body).map_err(|_| StatusCode::BAD_REQUEST)?;
+    if !is_transcript_channel(&request.channel) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    Ok(request)
+}
+
+async fn serve_transcript(
+    AxumState(bridge): AxumState<Arc<RemoteBridge>>,
+    headers: HeaderMap,
+    uri: Uri,
+    body: Bytes,
+) -> Response {
+    let request = match transcript_request(&bridge.token, &headers, &uri, &body) {
+        Ok(request) => request,
+        Err(status) => return status.into_response(),
+    };
+    let Ok(_slot) = bridge.transcript_slots.try_acquire() else {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
+    };
+    let state = bridge.app.state::<crate::state::AppState>();
+    let result = super::dispatch::dispatch(&state, &request.channel, request.input).await;
+    (
+        [(header::CACHE_CONTROL, "no-store")],
+        Json(super::operations::outcome(result)),
+    )
+        .into_response()
 }
 
 async fn serve_asset(
@@ -459,6 +520,69 @@ mod tests {
     use tauri::test::{mock_builder, mock_context};
     use tauri::utils::assets::{AssetKey, AssetsIter, CspHash};
     use tempfile::tempdir;
+
+    #[test]
+    fn transcript_http_requires_authentication_before_reading_the_request() {
+        let uri = Uri::from_static("/api/transcript");
+        assert!(matches!(
+            transcript_request("secret", &HeaderMap::new(), &uri, b"invalid json"),
+            Err(StatusCode::UNAUTHORIZED)
+        ));
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer wrong"),
+        );
+        assert!(matches!(
+            transcript_request(
+                "secret",
+                &headers,
+                &uri,
+                br#"{"channel":"session:events-since","input":{}}"#
+            ),
+            Err(StatusCode::UNAUTHORIZED)
+        ));
+    }
+
+    #[test]
+    fn transcript_http_preserves_read_cursors_and_rejects_other_channels() {
+        let uri = Uri::from_static("/api/transcript");
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer secret"),
+        );
+        for channel in ["session:events-since", "session:agent-events"] {
+            let input =
+                serde_json::json!({"sessionId": "s1", "changeCursor": 37, "eventCursor": 8});
+            let body = serde_json::json!({"channel": channel, "input": input}).to_string();
+            let request = transcript_request("secret", &headers, &uri, body.as_bytes()).unwrap();
+            assert_eq!(request.channel, channel);
+            assert_eq!(request.input, input);
+        }
+        for channel in [
+            "providers:launch",
+            "session:stop",
+            "dashboard:list",
+            "unknown",
+        ] {
+            let body = serde_json::json!({"channel": channel, "input": {}}).to_string();
+            assert!(matches!(
+                transcript_request("secret", &headers, &uri, body.as_bytes()),
+                Err(StatusCode::FORBIDDEN)
+            ));
+        }
+        for body in [
+            b"invalid".as_slice(),
+            br#"{"channel":"session:events-since"}"#,
+            br#"{"channel":"session:events-since","input":{},"operation":{}}"#,
+        ] {
+            assert!(matches!(
+                transcript_request("secret", &headers, &uri, body),
+                Err(StatusCode::BAD_REQUEST)
+            ));
+        }
+    }
 
     /// The two files the mobile bundle needs to answer a chunk request, so the
     /// test runs against Tauri's real resolver instead of a stand-in for it.

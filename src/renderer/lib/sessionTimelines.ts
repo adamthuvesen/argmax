@@ -241,14 +241,15 @@ export class SessionTimelines {
     if (authoritative) {
       bucket.eventCursor = result.eventCursor;
       bucket.rawOutputCursor = result.rawOutputCursor;
+      // A byte-paged reset withholds its change cursor until backfill ends.
+      // Keeping the rejected cursor would request that same reset forever.
+      bucket.changeCursor = result.changeCursor ?? null;
     } else {
       bucket.eventCursor = Math.max(bucket.eventCursor ?? 0, result.eventCursor);
       bucket.rawOutputCursor = Math.max(bucket.rawOutputCursor ?? 0, result.rawOutputCursor);
     }
-    if (result.changeCursor != null) {
-      bucket.changeCursor = authoritative
-        ? result.changeCursor
-        : Math.max(bucket.changeCursor ?? 0, result.changeCursor);
+    if (!authoritative && result.changeCursor != null) {
+      bucket.changeCursor = Math.max(bucket.changeCursor ?? 0, result.changeCursor);
     }
     bucket.authoritativeReadRequired = false;
     bucket.pendingReads.delete(ticket.readIdentity);

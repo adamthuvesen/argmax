@@ -58,6 +58,28 @@ function visit(store: SessionTimelines, sessionId: string): void {
 }
 
 describe("SessionTimelines", () => {
+  it("continues a byte-paged reset by row cursor instead of replaying the stale change cursor", () => {
+    const store = new SessionTimelines();
+    store.finishRead("session", store.beginRead("session"),
+      result([event("session", "old", 1)], [], 1, 0, { changeCursor: 999 }));
+    const staleRead = store.beginRead("session");
+    expect(staleRead.changeCursor).toBe(999);
+
+    store.finishRead("session", staleRead,
+      result([event("session", "first", 2)], [], 2, 0, {
+        resetRequired: true, hasMore: true, changeCursor: null
+      }));
+    const continuation = store.beginRead("session");
+    expect(continuation.changeCursor).toBeNull();
+    expect(continuation.eventCursor).toBe(2);
+
+    store.finishRead("session", continuation,
+      result([event("session", "second", 3)], [], 3, 0, { changeCursor: 10 }));
+    expect(new Set(store.getSnapshot("session").events.map((row) => row.id)))
+      .toEqual(new Set(["first", "second"]));
+    expect(store.beginRead("session").changeCursor).toBe(10);
+  });
+
   it("reads an absent snapshot without creating an inactive bucket", () => {
     const store = new SessionTimelines();
 

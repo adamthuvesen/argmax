@@ -58,9 +58,12 @@ Focused reads in `dashboard.rs`:
   long answer is still streaming shows the answer from its first word rather
   than from wherever the page happened to cut.
   Later requests page at most 500 durable changes, including updates and
-  deletions. If a cursor predates its session's retained history or is ahead of
-  the database, the response requests replacement with a fresh bounded tail.
-  The older SQLite `rowid` cursors remain accepted for compatibility.
+  deletions. Remote reads may stop earlier at their serialized response budget.
+  The returned cursor advances only through the mutation sequence actually
+  consumed, and repeated changes to one entity count once. If a cursor predates
+  its session's retained history or is ahead of the database, the response
+  requests replacement with a fresh bounded tail. The older SQLite `rowid`
+  cursors remain accepted for compatibility.
 
 Native Cursor task runs persist the same lifecycle correlation fields as the
 other native providers. The child id comes from

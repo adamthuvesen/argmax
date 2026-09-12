@@ -821,7 +821,7 @@ impl ProviderSessionService {
             // while a cold launcher still owns its current directory.
             let _admission = admission;
             let event_service = Arc::clone(&service);
-            let callback_invocation_id = provider_invocation_id;
+            let callback_invocation_id = provider_invocation_id.clone();
             let launch_result = async {
                 service.capture_before_provider_turn(&session_id).await?;
                 if !matches!(
@@ -900,6 +900,38 @@ impl ProviderSessionService {
                 if let Err(error) = service.apply_op(&handle, op).await {
                     tracing::error!(?error, "failed to apply queued op after launch");
                 }
+            }
+            if provider == ProviderId::Codex {
+                service.watch_codex_subagent_traces(session_id, provider_invocation_id, handle);
+            }
+        });
+    }
+
+    fn watch_codex_subagent_traces(
+        self: &Arc<Self>,
+        session_id: String,
+        provider_invocation_id: String,
+        handle: Arc<dyn ProviderRuntimeHandle>,
+    ) {
+        let service = Arc::downgrade(self);
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                let Some(service) = service.upgrade() else {
+                    break;
+                };
+                if handle.disposed()
+                    || !service.is_current_provider_invocation(&session_id, &provider_invocation_id)
+                    || !service
+                        .handles
+                        .lock_or_recover("handles")
+                        .contains_key(&session_id)
+                {
+                    break;
+                }
+                // Codex can omit every spawn and wait notification. Discover
+                // disk-backed children even while the parent emits no output.
+                service.schedule_subagent_trace_reconciliation(&session_id);
             }
         });
     }
@@ -3729,6 +3761,17 @@ impl ProviderSessionService {
         Ok(Some(event))
     }
 
+    pub(crate) fn reconcile_subagent_traces(&self, session_id: &str) -> ArgmaxResult<usize> {
+        let written = reconcile_session_subagent_traces(&self.database, session_id)?;
+        if written > 0 {
+            self.publish(DashboardDelta {
+                changed_session_ids: vec![session_id.to_string()],
+                ..DashboardDelta::default()
+            });
+        }
+        Ok(written)
+    }
+
     fn schedule_subagent_trace_reconciliation(&self, session_id: &str) {
         let session_id = session_id.to_string();
         {
@@ -3742,14 +3785,20 @@ impl ProviderSessionService {
             reconciliations.insert(session_id.clone(), false);
         }
         let database = Arc::clone(&self.database);
+        let publish_delta = Arc::clone(&self.publish_delta);
         let in_flight = Arc::clone(&self.subagent_reconciliations);
         tauri::async_runtime::spawn_blocking(move || loop {
-            if let Err(error) = reconcile_session_subagent_traces(&database, &session_id) {
-                tracing::warn!(
+            match reconcile_session_subagent_traces(&database, &session_id) {
+                Ok(written) if written > 0 => publish_delta(DashboardDelta {
+                    changed_session_ids: vec![session_id.clone()],
+                    ..DashboardDelta::default()
+                }),
+                Ok(_) => {}
+                Err(error) => tracing::warn!(
                     error = %error,
                     session_id,
                     "failed to reconcile live subagent trace events"
-                );
+                ),
             }
             let should_rescan = {
                 let mut reconciliations = in_flight.lock_or_recover("subagent reconciliations");

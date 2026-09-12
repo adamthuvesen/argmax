@@ -287,9 +287,15 @@ Subagent tool calls (`Task`, `spawn_agent`, `task`) open an activity pane:
 
 Trace recovery requires authoritative lineage. Argmax does not attach a transcript to a parent by time or repository alone. Claude and OpenCode stay stream-native. Cursor uses its streamed launch plus an agent ID or the existing prompt match. Codex may synthesize a launch from the child trace because the trace names its parent conversation directly. If the real Codex launch arrives later, reconciliation keeps the real row, reparents the imported child rows, and emits hidden tombstones that remove the synthetic row from open chats.
 
+Codex synthetic launches follow the latest turn in the child trace. Forked
+history can include completed parent turns, so `task_started` clears any earlier
+completion. Reconciliation removes a saved completion when the latest turn is
+running and replaces outdated results when that turn finishes. The deletion
+travels through the session mutation feed so open chats correct their status.
+
 Lineage alone is not enough for Codex, because Codex runs review threads of its own: the guardian that judges a pending action before it runs, and the reviewer behind `/review`. Both are child rollouts naming the parent thread, and neither is a subagent — nobody spawned them and they carry no task. Reconciliation reads them from the rollout header (`thread_source: "guardian_review"`, or a `source.subagent` of `guardian`/`review`) and skips them, and deletes any placeholder launch an earlier sweep invented for one.
 
-Initial session backfill and open agent panes run reconciliation off the main thread. Live agent-control events queue one serialized scan per session. A terminal provider event waits for the final serialized scan and includes its new launch or tombstone rows in the same dashboard delta, so completion cannot stop the renderer poll before recovery arrives.
+Initial session backfill and open agent panes run reconciliation off the main thread. Live agent-control events queue one serialized scan per session. Active Codex invocations also request a scan every two seconds, because the provider can omit both spawn and wait events while its children work. The watcher stops when its invocation is replaced or its handle ends or is removed. Unchanged trace files stay cached. Background scans and agent-pane reads publish a session-change hint after writing or deleting rows, so recovery reaches an open chat even when the parent is silent. A terminal provider event waits for the final serialized scan and includes its new launch or tombstone rows in the same dashboard delta.
 
 ## Measured File-Change Diffs
 

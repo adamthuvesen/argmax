@@ -115,6 +115,7 @@ pub(crate) async fn session_agent_events_impl(
     input: SessionAgentEventsInput,
 ) -> ArgmaxResult<SessionEventsSinceResult> {
     let database = live_database(state)?;
+    let providers = state.providers.get().cloned();
     let session_id = input.session_id.into_string();
     let parent_tool_use_id = input.parent_tool_use_id.into_string();
     let provider_parent_conversation_id = input
@@ -124,7 +125,13 @@ pub(crate) async fn session_agent_events_impl(
         .provider_child_session_id
         .map(|value| value.into_string());
     tauri::async_runtime::spawn_blocking(move || {
-        reconcile_subagent_traces_with_warning(&database, &session_id);
+        if let Some(providers) = providers {
+            if let Err(error) = providers.reconcile_subagent_traces(&session_id) {
+                tracing::warn!(error = %error, session_id, "failed to reconcile subagent trace events");
+            }
+        } else {
+            reconcile_subagent_traces_with_warning(&database, &session_id);
+        }
         if let Err(error) =
             import_subagent_trace_events(&database, &session_id, &parent_tool_use_id)
         {

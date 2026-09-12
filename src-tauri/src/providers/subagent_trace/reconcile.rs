@@ -60,6 +60,7 @@ struct SyntheticLaunchTakeover {
 
 pub(super) struct ReconciliationWork {
     launches: Vec<PersistTimelineEventInput>,
+    refreshed_synthetic_children: HashSet<String>,
     takeovers: Vec<SyntheticLaunchTakeover>,
     /// Placeholder launch ids an earlier sweep invented for a rollout we now
     /// recognize as one of Codex's own review threads.
@@ -244,6 +245,7 @@ pub(super) fn codex_native_runs(
 pub(super) fn reconciliation_work(home: &Path, plan: &ReconciliationPlan) -> ReconciliationWork {
     let mut work = ReconciliationWork {
         launches: Vec::new(),
+        refreshed_synthetic_children: HashSet::new(),
         takeovers: Vec::new(),
         prunes: Vec::new(),
         import: TraceImport {
@@ -303,6 +305,8 @@ pub(super) fn reconciliation_work(home: &Path, plan: &ReconciliationPlan) -> Rec
         };
         let lines = read_trace_lines(&key.path);
         if real.is_none() {
+            work.refreshed_synthetic_children
+                .insert(child_id.to_string());
             work.launches.extend(synthetic_launch_events(
                 &context,
                 &child.meta,
@@ -334,6 +338,34 @@ pub(super) fn apply_reconciliation(
         take_over_synthetic_launch(connection, session_id, &takeover)?;
     }
     let mut written = 0;
+    if !work.refreshed_synthetic_children.is_empty() {
+        // A fork includes earlier parent completions, and a persistent child can
+        // start another turn. Reconcile the receipt as well as inserting new rows
+        // so a previously observed completion cannot survive a running turn.
+        for row in list_session_tool_events(connection, session_id)? {
+            if row.r#type != "command.completed"
+                || row.payload.get(SYNTHETIC_LAUNCH_MARKER) != Some(&Value::Bool(true))
+                || !row
+                    .payload
+                    .get("providerChildSessionId")
+                    .and_then(Value::as_str)
+                    .is_some_and(|child| work.refreshed_synthetic_children.contains(child))
+            {
+                continue;
+            }
+            let unchanged = work.launches.iter().any(|launch| {
+                launch.id == row.id
+                    && launch.payload == row.payload
+                    && launch.created_at.as_deref() == Some(row.created_at.as_str())
+            });
+            if !unchanged {
+                if let Some(cursor) = row.row_cursor {
+                    delete_event_row(connection, cursor)?;
+                    written += 1;
+                }
+            }
+        }
+    }
     for launch in work.launches {
         if persist_timeline_event_if_absent(connection, &launch)?.is_some() {
             written += 1;
@@ -541,14 +573,14 @@ fn codex_child_outcome(lines: &[TraceLine]) -> Option<CodexChildOutcome> {
         if let Some(("message.completed", message, _)) = codex_trace_event_payload(object) {
             final_message = Some(message);
         }
-        let is_terminal = object.get("type").and_then(Value::as_str) == Some("event_msg")
-            && object
-                .get("payload")
-                .and_then(Value::as_object)
-                .and_then(|payload| payload.get("type"))
-                .and_then(Value::as_str)
-                .is_some_and(|kind| CODEX_TERMINAL_EVENTS.contains(&kind));
-        if is_terminal {
+        let event_kind = (object.get("type").and_then(Value::as_str) == Some("event_msg"))
+            .then(|| object.get("payload")?.get("type")?.as_str())
+            .flatten();
+        if event_kind == Some("task_started") {
+            completed = false;
+            completed_at = None;
+            final_message = None;
+        } else if event_kind.is_some_and(|kind| CODEX_TERMINAL_EVENTS.contains(&kind)) {
             completed = true;
             completed_at = line.timestamp.clone().or(completed_at);
         }
@@ -630,6 +662,77 @@ mod tests {
             .expect("reconcile again");
         assert_eq!(second, 0);
         assert_eq!(session_events(&connection).len(), before);
+    }
+
+    #[test]
+    fn reconciliation_reopens_a_child_after_inherited_or_previous_completion() {
+        let database = Database::open_in_memory().expect("db");
+        let connection = database.connection();
+        seed_session(&connection, "codex", "s1");
+        update_session_provider_conversation_id(&connection, "s1", "parent-thread")
+            .expect("provider id");
+        let home = TempDir::new().expect("home");
+        let mut trace = child_trace(true);
+        write_codex_child_trace(home.path(), "child-thread", &trace);
+        reconcile_session_subagent_traces_from_home(&connection, "s1", home.path())
+            .expect("reconcile old completion");
+        assert!(synthetic_launch_completed(&connection));
+
+        let before = list_session_events_since(&connection, "s1", None, None).expect("snapshot");
+        trace.push_str(concat!(
+            "{\"timestamp\":\"2026-07-08T14:48:00.000Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"child-turn\"}}\n",
+            "{\"timestamp\":\"2026-07-08T14:48:01.000Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"agent_message\",\"message\":\"Still reviewing.\"}}\n"
+        ));
+        write_codex_child_trace(home.path(), "child-thread", &trace);
+        let written = reconcile_session_subagent_traces_from_home(&connection, "s1", home.path())
+            .expect("reconcile running child");
+        assert!(written > 0);
+        assert!(!synthetic_launch_completed(&connection));
+        let changes = crate::persistence::events::list_session_changes_since(
+            &connection,
+            "s1",
+            None,
+            None,
+            before.change_cursor,
+        )
+        .expect("completion deletion");
+        assert!(changes
+            .deleted_event_ids
+            .contains(&"trace-launch:s1:child-thread:completed".to_string()));
+
+        // A first import of the same fork must also ignore its inherited end.
+        let lines = read_trace_lines(
+            &find_codex_child_traces(
+                home.path(),
+                &reconciliation_plan(&connection, "s1")
+                    .expect("plan")
+                    .expect("codex"),
+            )[0]
+            .path,
+        );
+        assert!(codex_child_outcome(&lines).is_none());
+
+        trace.push_str(concat!(
+            "{\"timestamp\":\"2026-07-08T14:49:00.000Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"agent_message\",\"message\":\"Review finished.\"}}\n",
+            "{\"timestamp\":\"2026-07-08T14:49:01.000Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"child-turn\"}}\n"
+        ));
+        write_codex_child_trace(home.path(), "child-thread", &trace);
+        reconcile_session_subagent_traces_from_home(&connection, "s1", home.path())
+            .expect("reconcile actual completion");
+        let completion = session_events(&connection)
+            .into_iter()
+            .find(|event| {
+                event.r#type == "command.completed"
+                    && event.payload[SYNTHETIC_LAUNCH_MARKER] == json!(true)
+            })
+            .expect("child completion");
+        assert_eq!(completion.created_at, "2026-07-08T14:49:01.000Z");
+        assert_eq!(completion.payload["output"], "Review finished.");
+        assert_eq!(
+            reconcile_session_subagent_traces_from_home(&connection, "s1", home.path())
+                .expect("unchanged trace"),
+            0
+        );
     }
 
     #[test]

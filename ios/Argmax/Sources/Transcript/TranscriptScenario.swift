@@ -145,7 +145,11 @@ private final class TranscriptScenarioState: ObservableObject {
         } else {
             payload["name"] = .string(name)
             if let filePath {
-                payload["input"] = .object(["file_path": .string(filePath)])
+                payload["input"] = .object([
+                    "file_path": .string(filePath),
+                    "old_string": .string("old"),
+                    "new_string": .string("new\nextra")
+                ])
             }
         }
         return TranscriptEvent(

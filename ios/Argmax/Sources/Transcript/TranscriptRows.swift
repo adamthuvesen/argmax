@@ -268,6 +268,7 @@ struct TranscriptActivityRow<Icon: View>: View {
     let verb: String?
     let target: String?
     var mono = false
+    var changeCounts: TranscriptChangeCounts? = nil
     var showsNavigation = false
     @ViewBuilder let icon: () -> Icon
 
@@ -287,6 +288,13 @@ struct TranscriptActivityRow<Icon: View>: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
+            if let changeCounts {
+                ChangeCount(
+                    additions: changeCounts.additions,
+                    deletions: changeCounts.deletions
+                )
+                .accessibilityHidden(true)
+            }
             Spacer(minLength: 0)
             if showsNavigation {
                 Image(systemName: "chevron.right")
@@ -300,7 +308,15 @@ struct TranscriptActivityRow<Icon: View>: View {
         // iOS joins sibling texts with ", ", which reads "Edited, App.swift".
         // One label keeps the verb and target one spoken phrase.
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel([verb, target].compactMap { $0 }.joined(separator: " "))
+        .accessibilityLabel(accessibilityText)
+    }
+
+    private var accessibilityText: String {
+        var label = [verb, target].compactMap { $0 }.joined(separator: " ")
+        if let changeCounts {
+            label += ", \(changeCounts.additions) added, \(changeCounts.deletions) removed"
+        }
+        return label
     }
 }
 
@@ -345,6 +361,7 @@ private struct TranscriptToolRow: View {
             verb: parts.verb,
             target: parts.target,
             mono: isCommand && parts.verb != nil,
+            changeCounts: tool.visibleChangeCounts,
             showsNavigation: showsNavigation
         ) {
             TranscriptToolIcon(name: tool.name, activity: tool.activity)

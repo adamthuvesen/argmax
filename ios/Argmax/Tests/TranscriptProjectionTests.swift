@@ -549,23 +549,61 @@ final class TranscriptProjectionTests: XCTestCase {
             "targets": .array([.string("/repo/Sources/App.swift")])
         ])
         let tool = try XCTUnwrap(firstTool(TranscriptProjection.project(
-            events: [event("edit", "command.started", "file_change", 1, [
-                "id": .string("edit-1"),
-                "name": .string("file_change"),
-                "input": .object([
-                    "changes": .array([.object([
-                        "kind": .string("update"),
-                        "path": .string("/repo/Sources/App.swift")
-                    ])])
+            events: [
+                event("edit", "command.started", "file_change", 1, [
+                    "id": .string("edit-1"),
+                    "name": .string("file_change"),
+                    "input": .object([
+                        "changes": .array([.object([
+                            "kind": .string("update"),
+                            "path": .string("/repo/Sources/App.swift"),
+                            "unified_diff": .string("@@ -1,1 +1,2 @@\n-old\n+new\n+extra\n")
+                        ])])
+                    ]),
+                    "activity": activity
                 ]),
-                "activity": activity
-            ])],
+                event("edit-end", "command.completed", "done", 2, [
+                    "tool_use_id": .string("edit-1"),
+                    "status": .string("completed")
+                ])
+            ],
             workspacePath: "/repo"
         )))
 
         XCTAssertEqual(tool.filePath, "/repo/Sources/App.swift")
         XCTAssertEqual(tool.fileLabel, "Sources/App.swift")
         XCTAssertEqual(tool.diffPath, "Sources/App.swift")
+        XCTAssertEqual(tool.visibleChangeCounts, TranscriptChangeCounts(additions: 2, deletions: 1))
+    }
+
+    func testEditCountsRequireAnObservedSuccessfulCompletion() throws {
+        let start = event("edit", "command.started", "Edit", 1, [
+            "id": .string("edit-1"),
+            "name": .string("Edit"),
+            "input": .object([
+                "file_path": .string("Sources/App.swift"),
+                "old_string": .string("old\n"),
+                "new_string": .string("new\nextra\n")
+            ]),
+            "activity": .object([
+                "version": .number(1),
+                "kind": .string("edit"),
+                "evidence": .string("tool"),
+                "targets": .array([.string("Sources/App.swift")])
+            ])
+        ])
+        let running = try XCTUnwrap(firstTool(TranscriptProjection.project(events: [start])))
+        let failed = try XCTUnwrap(firstTool(TranscriptProjection.project(events: [
+            start,
+            event("edit-end", "command.completed", "failed", 2, [
+                "tool_use_id": .string("edit-1"),
+                "status": .string("failed")
+            ])
+        ])))
+
+        XCTAssertEqual(running.changeCounts, TranscriptChangeCounts(additions: 2, deletions: 1))
+        XCTAssertNil(running.visibleChangeCounts)
+        XCTAssertNil(failed.visibleChangeCounts)
     }
 
     func testClaudeIsErrorCompletionMarksTheToolFailed() throws {

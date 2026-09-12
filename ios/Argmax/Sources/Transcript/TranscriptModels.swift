@@ -213,6 +213,11 @@ enum TranscriptToolActivityState: Hashable, Sendable {
     case unconfirmed
 }
 
+struct TranscriptChangeCounts: Hashable, Sendable {
+    var additions: Int
+    var deletions: Int
+}
+
 struct TranscriptTool: Hashable, Sendable, Identifiable {
     var id: String
     var toolUseId: String
@@ -226,6 +231,7 @@ struct TranscriptTool: Hashable, Sendable, Identifiable {
     var completedAt: String?
     var filePath: String?
     var fileLabel: String?
+    var changeCounts: TranscriptChangeCounts? = nil
     var activity: TranscriptToolActivity = .generic
     /// True only when a matching provider completion event was present.
     var completionObserved: Bool = false
@@ -239,6 +245,16 @@ struct TranscriptTool: Hashable, Sendable, Identifiable {
     var diffPath: String? {
         guard activity.kind == .edit, let filePath else { return nil }
         return fileLabel ?? filePath
+    }
+
+    /// Counts have the finality of a result. An inferred completion, failure,
+    /// cancellation, or live edit keeps them off the row.
+    var visibleChangeCounts: TranscriptChangeCounts? {
+        guard activityState == .succeeded,
+              let changeCounts,
+              changeCounts.additions > 0 || changeCounts.deletions > 0
+        else { return nil }
+        return changeCounts
     }
 
     var activityState: TranscriptToolActivityState {

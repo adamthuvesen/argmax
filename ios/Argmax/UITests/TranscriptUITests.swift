@@ -150,7 +150,7 @@ final class TranscriptUITests: XCTestCase {
         collapsed.tap()
 
         XCTAssertEqual(app.buttons.matching(identifier: summary).count, 1)
-        XCTAssertTrue(app.buttons["Edited App.swift"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Edited App.swift, 2 added, 1 removed"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Viewed wireframe.png"].exists)
         screenshot("activity-colours-expanded")
 

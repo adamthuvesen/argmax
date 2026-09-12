@@ -575,6 +575,7 @@ enum TranscriptProjection {
                 completedAt: completedAt,
                 filePath: filePath,
                 fileLabel: filePath.map { TranscriptProjection.relativePath($0, workspacePath: workspacePath) },
+                changeCounts: TranscriptProjection.changeCounts(activity: activity, input: inputObject),
                 activity: activity,
                 completionObserved: completionObserved,
                 completionStatus: completionStatus
@@ -1049,6 +1050,119 @@ enum TranscriptProjection {
             if let value = object[key]?.string, !value.isEmpty { return value }
         }
         return nil
+    }
+
+    /// The activity row's `+N −N`, derived from the same provider payloads as
+    /// the desktop. A missing body or whole-file deletion has no line count.
+    private static func changeCounts(
+        activity: TranscriptToolActivity,
+        input: [String: TranscriptJSONValue]
+    ) -> TranscriptChangeCounts? {
+        guard activity.kind == .edit else { return nil }
+        if let changes = input["changes"]?.array {
+            let counts = changes.compactMap { value in
+                value.object.flatMap { changeCounts(in: $0) }
+            }
+            guard !counts.isEmpty else { return nil }
+            return TranscriptChangeCounts(
+                additions: counts.reduce(0) { $0 + $1.additions },
+                deletions: counts.reduce(0) { $0 + $1.deletions }
+            )
+        }
+        return changeCounts(in: input)
+    }
+
+    private static func changeCounts(
+        in input: [String: TranscriptJSONValue]
+    ) -> TranscriptChangeCounts? {
+        let operation = changeOperation(in: input)
+        if operation == "delete" || operation == "remove" { return nil }
+
+        let add = input["add"]?.object ?? input["create"]?.object
+        let update = input["update"]?.object ?? input["edit"]?.object
+        let isCreate = operation == "add" || operation == "create" || add != nil
+        let content = add.flatMap { string($0, keys: ["content", "text"]) }
+            ?? string(input, keys: ["content", "text", "new_text"])
+        if isCreate, let content {
+            return TranscriptChangeCounts(additions: textLineCount(content), deletions: 0)
+        }
+
+        let diff = string(input, keys: ["unified_diff", "diff", "patch"])
+            ?? update.flatMap { string($0, keys: ["unified_diff", "diff", "patch"]) }
+        if let diff {
+            let parsed = diffLineCounts(diff)
+            if parsed.additions > 0 || parsed.deletions > 0 { return parsed }
+            if isCreate {
+                return TranscriptChangeCounts(additions: textLineCount(diff), deletions: 0)
+            }
+        }
+
+        if let edits = input["edits"]?.array {
+            let counts = edits.compactMap { value -> TranscriptChangeCounts? in
+                guard let edit = value.object else { return nil }
+                return replacementCounts(in: edit)
+            }
+            guard !counts.isEmpty else { return nil }
+            return TranscriptChangeCounts(
+                additions: counts.reduce(0) { $0 + $1.additions },
+                deletions: counts.reduce(0) { $0 + $1.deletions }
+            )
+        }
+
+        if let counts = update.flatMap({ replacementCounts(in: $0) }) ?? replacementCounts(in: input) {
+            return counts
+        }
+        if let content {
+            return TranscriptChangeCounts(additions: textLineCount(content), deletions: 0)
+        }
+        return nil
+    }
+
+    private static func replacementCounts(
+        in input: [String: TranscriptJSONValue]
+    ) -> TranscriptChangeCounts? {
+        let old = string(input, keys: ["old_string", "oldString", "before", "old"])
+        let new = string(input, keys: ["new_string", "newString", "after", "new"])
+        guard old != nil || new != nil else { return nil }
+        return TranscriptChangeCounts(
+            additions: textLineCount(new ?? ""),
+            deletions: textLineCount(old ?? "")
+        )
+    }
+
+    private static func changeOperation(
+        in input: [String: TranscriptJSONValue]
+    ) -> String? {
+        if let direct = string(input, keys: ["operation", "kind", "type"]) {
+            return direct.lowercased()
+        }
+        for key in ["kind", "type", "operation"] {
+            if let nested = input[key]?.object,
+               let value = string(nested, keys: ["type", "kind", "operation"]) {
+                return value.lowercased()
+            }
+        }
+        return nil
+    }
+
+    private static func diffLineCounts(_ diff: String) -> TranscriptChangeCounts {
+        var additions = 0
+        var deletions = 0
+        for case .hunk(_, _, let lines) in DiffParser.parse(diff) {
+            for line in lines {
+                if line.kind == .addition { additions += 1 }
+                if line.kind == .deletion { deletions += 1 }
+            }
+        }
+        return TranscriptChangeCounts(additions: additions, deletions: deletions)
+    }
+
+    /// A final newline terminates the preceding line. It does not add an
+    /// extra empty line to the activity total.
+    private static func textLineCount(_ text: String) -> Int {
+        guard !text.isEmpty else { return 0 }
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).count
+        return text.hasSuffix("\n") ? lines - 1 : lines
     }
 
     // MARK: - Todos, approvals, multitasks and notices

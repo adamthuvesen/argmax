@@ -99,6 +99,7 @@ export type AppTestMocks = {
   sessionAgentEvents: AppTestMockFn<ArgmaxApi["session"]["agentEvents"]>;
   sessionCostSummary: AppTestMockFn<ArgmaxApi["session"]["costSummary"]>;
   sendProviderInput: AppTestMockFn<ArgmaxApi["providers"]["sendInput"]>;
+  steerProviderInput: AppTestMockFn<ArgmaxApi["providers"]["steerInput"]>;
   terminateProvider: AppTestMockFn<ArgmaxApi["providers"]["terminate"]>;
   providersDiscover: AppTestMockFn<ArgmaxApi["providers"]["discover"]>;
   diagnosticsStub: AppTestMockFn<ArgmaxApi["system"]["diagnostics"]>;
@@ -144,6 +145,7 @@ export let sessionEventsSince: AppTestMocks["sessionEventsSince"];
 export let sessionAgentEvents: AppTestMocks["sessionAgentEvents"];
 let sessionCostSummary: AppTestMocks["sessionCostSummary"];
 export let sendProviderInput: AppTestMocks["sendProviderInput"];
+export let steerProviderInput: AppTestMocks["steerProviderInput"];
 export let terminateProvider: AppTestMocks["terminateProvider"];
 export let providersDiscover: AppTestMocks["providersDiscover"];
 export let diagnosticsStub: AppTestMocks["diagnosticsStub"];
@@ -267,6 +269,7 @@ export function setupAppTestMocks(): void {
     costUsd: 0.012
   });
   sendProviderInput = vi.fn<ArgmaxApi["providers"]["sendInput"]>().mockResolvedValue({ ok: true, queued: false });
+  steerProviderInput = vi.fn<ArgmaxApi["providers"]["steerInput"]>().mockResolvedValue({ ok: true, queued: false });
   terminateProvider = vi.fn<ArgmaxApi["providers"]["terminate"]>().mockResolvedValue({ ok: true });
   providersDiscover = vi.fn<ArgmaxApi["providers"]["discover"]>().mockResolvedValue([]);
   diagnosticsStub = vi.fn<ArgmaxApi["system"]["diagnostics"]>().mockResolvedValue({
@@ -563,7 +566,7 @@ export function setupAppTestMocks(): void {
       discover: providersDiscover,
       launch: launchProvider,
       sendInput: sendProviderInput,
-      steerInput: sendProviderInput,
+      steerInput: steerProviderInput,
       resize: () => Promise.resolve({ ok: true }),
       terminate: terminateProvider,
       cancelQueuedMessage: () => Promise.resolve({ ok: true }),

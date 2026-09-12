@@ -377,6 +377,17 @@ function EffortSlider({
     if (open) trackRef.current?.focus({ preventScroll: true });
   }, [open]);
 
+  // A host can open the picker without the chip's click, which is where the
+  // draft is reset — a shortcut that reopens it would otherwise show, and a
+  // later dismiss commit, a value the user had already discarded. Reopening
+  // mid-drag also never runs the drag cleanup, so clear that here too.
+  useEffect(() => {
+    if (open) {
+      setDraft(value);
+      setDragging(false);
+    }
+  }, [open, value]);
+
   // Suppress page-wide text selection for the duration of a drag — otherwise a
   // drag past the track edge selects the composer text behind the popover.
   useEffect(() => {

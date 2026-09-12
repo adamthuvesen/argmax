@@ -66,6 +66,14 @@ export function ThoughtBlock({
   const expanded = userToggle?.autoExpanded === autoExpanded ? userToggle.value : autoExpanded;
   const label = formatThoughtLabel(live, durationMs);
   const titleVerb = live ? "thinking" : "thought";
+  // The tail cut is in UTF-16 units and can split a surrogate pair; a tail
+  // that starts with a lone low surrogate would render a replacement
+  // character at the head of the preview.
+  const previewTail = (() => {
+    if (previewText.length <= 600) return previewText;
+    const tail = previewText.slice(-600);
+    return /[\uDC00-\uDFFF]/.test(tail[0] ?? "") ? `…${tail.slice(1)}` : `…${tail}`;
+  })();
   // Inline thoughts remain part of the transcript, including when the reader
   // folds tool activity or a newer turn arrives.
   if (display === "inline") {
@@ -102,7 +110,7 @@ export function ThoughtBlock({
       </button>
       {display === "preview" && live && !expanded ? (
         <p className="thought-block-preview" aria-label="Thinking preview">
-          {previewText.length > 600 ? `…${previewText.slice(-600)}` : previewText}
+          {previewTail}
         </p>
       ) : null}
       {expanded ? <div className="thought-block-body">{children}</div> : null}

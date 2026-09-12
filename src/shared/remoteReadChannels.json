@@ -29,5 +29,6 @@
   "system:list-detected-ides",
   "learnings:list",
   "sources:list",
-  "prs:list-for-session"
+  "prs:list-for-session",
+  "browser:chrome-profiles"
 ]

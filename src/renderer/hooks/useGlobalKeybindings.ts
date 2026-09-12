@@ -120,7 +120,7 @@ export function useGlobalKeybindings({
       // a US one: the key under Esc, a thumb away from ⌘Tab. Wraps at both
       // ends; from the launcher it opens the first (or last) chat.
       if (event.code === "Backquote" && !event.altKey) {
-        if (event.isComposing) return;
+        if (event.isComposing || event.repeat) return;
         const ids = listVisibleSidebarWorkspaceIds();
         if (ids.length === 0) return;
         event.preventDefault();

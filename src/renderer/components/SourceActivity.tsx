@@ -24,7 +24,7 @@ export function SourceActivity({ activity }: { activity: ProjectSourceActivity }
           <p>{isWebLink ? <WebLink href={location}>{location}</WebLink> : <code>{location}</code>}</p>
           <p>{activity.guidance}</p>
           <p>
-            {isRead ? "Retrieved" : "Added by agent"} <time dateTime={activity.at}>{activity.at}</time>.
+            {isRead ? "Retrieved" : "Added by agent"} <time dateTime={activity.at}>{activity.at.slice(0, 10)}</time>.
             {isRead ? " Retrieval does not verify the source’s claims." : " Listed for future reference, not read or verified."}
           </p>
           {activity.truncated ? <p>Only part of the content was returned to the agent.</p> : null}

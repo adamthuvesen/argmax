@@ -163,6 +163,26 @@ pub fn enrich_tool_activity(event_type: &str, payload: &mut Value) {
             fields.insert("activity".to_string(), value);
         }
     }
+    // Reading the entrypoint is how providers without a Skill tool activate
+    // skills. Apply this to persisted activity too, so old chats agree.
+    if let Some(activity) = fields.get_mut("activity") {
+        let reads_skills = activity.get("version").and_then(Value::as_u64) == Some(1)
+            && activity.get("kind").and_then(Value::as_str) == Some("read")
+            && activity
+                .get("targets")
+                .and_then(Value::as_array)
+                .is_some_and(|targets| {
+                    !targets.is_empty()
+                        && targets.iter().all(|target| {
+                            target.as_str().is_some_and(|path| {
+                                path.rsplit(['/', '\\']).next() == Some("SKILL.md")
+                            })
+                        })
+                });
+        if reads_skills {
+            activity["kind"] = json!("skill");
+        }
+    }
     enrich_command_outcome(event_type, fields);
 }
 
@@ -1735,6 +1755,36 @@ mod tests {
     fn completed(mut payload: serde_json::Value) -> serde_json::Value {
         enrich_tool_activity("command.completed", &mut payload);
         payload
+    }
+
+    #[test]
+    fn skill_entrypoint_reads_activate_skills_including_history() {
+        for payload in [
+            json!({"name":"Read","input":{"file_path":"/skills/impl/SKILL.md"}}),
+            json!({"name":"Bash","input":{"command":"cat /skills/impl/SKILL.md"}}),
+            json!({"name":"command_execution","command_actions":[{"type":"read","path":"/skills/impl/SKILL.md"}]}),
+            json!({"activity":{"version":1,"kind":"read","evidence":"tool","targets":["/skills/impl/SKILL.md"]}}),
+        ] {
+            let result = activity(payload);
+            assert_eq!(result["kind"], "skill");
+            assert_eq!(result["targets"], json!(["/skills/impl/SKILL.md"]));
+        }
+        for command in [
+            "cat /skills/impl/references/guide.md",
+            "cat /skills/impl/SKILL.md README.md",
+            "cat /skills/impl/NOT-SKILL.md",
+        ] {
+            assert_eq!(
+                activity(json!({"name":"Bash","input":{"command":command}}))["kind"],
+                "read"
+            );
+        }
+        assert_eq!(
+            activity(
+                json!({"name":"Write","input":{"file_path":"/skills/impl/SKILL.md","content":"updated"}})
+            )["kind"],
+            "edit"
+        );
     }
 
     #[test]

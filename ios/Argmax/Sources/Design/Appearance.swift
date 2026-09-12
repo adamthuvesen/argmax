@@ -47,12 +47,12 @@ enum ActivityIconColorMode: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-/// Theme and accent, persisted and handed to everything that draws.
+/// Theme, accent, and activity icon treatment, persisted and handed to
+/// everything that draws.
 ///
-/// The keys are the web client's own (`argmax.theme.mode`,
-/// `argmax.accent.tint`) so the two halves of the phone speak one vocabulary
-/// — but the values are not synced from the Mac: appearance is per device,
-/// which is the rule the desktop's own phone menu already follows.
+/// Theme and accent use the web client's keys so both clients speak one
+/// vocabulary. Values are not synced from the Mac: appearance is per device,
+/// and the phone keeps its activity icon choice under a phone-specific key.
 ///
 /// SwiftUI propagates appearance changes to the transcript and rich viewers
 /// through the same environment as the rest of the app.

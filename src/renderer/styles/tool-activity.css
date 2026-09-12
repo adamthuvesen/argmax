@@ -17,3 +17,15 @@
 .tool-activity-icon:is([data-activity="image"], [data-activity="image-capture"], [data-activity="image-generate"], [data-activity="discovery"], [data-activity="skill"], [data-activity="agent"], [data-activity="agent-message"], [data-activity="agent-wait"], [data-activity="agent-stop"], [data-activity="memory-recall"], [data-activity="memory-save"], [data-activity="plan"], [data-activity="tool"]) {
   color: var(--session-icon-violet);
 }
+
+/* Monochrome is intentionally scoped to transcript activity. Navigation and
+   status icons keep their existing roles, while tool kinds and brand marks
+   recede into the activity ledger's muted ink. Brand paths use inline fills,
+   so the path override is the one deliberate !important in this rule. */
+:root[data-activity-icon-color="monochrome"] :is(.tool-activity-icon, .tool-call-row-server-icon) {
+  color: var(--muted);
+}
+
+:root[data-activity-icon-color="monochrome"] .tool-call-row-server-icon path {
+  fill: currentColor !important;
+}

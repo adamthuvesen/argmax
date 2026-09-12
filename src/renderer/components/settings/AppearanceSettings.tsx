@@ -16,6 +16,12 @@ import {
   useSessionUnderline
 } from "../../lib/activityMark.js";
 import {
+  ACTIVITY_ICON_COLOR_MODE_OPTIONS,
+  isActivityIconColorMode,
+  setActivityIconColorMode,
+  useActivityIconColorMode
+} from "../../lib/activityIconColorMode.js";
+import {
   CHAT_WIDTH_HINTS,
   CHAT_WIDTH_MAX,
   CHAT_WIDTH_MIN,
@@ -168,6 +174,7 @@ export function AppearanceSettings({
   // source of truth. See lib/activityMark.ts.
   const activityMark = useActivityMark();
   const sessionUnderline = useSessionUnderline();
+  const activityIconColorMode = useActivityIconColorMode();
   // Same reason as the activity mark: the fox renders from four unrelated
   // places, so it reads its own store rather than a prop. See lib/mascotVisibility.ts.
   const mascotVisible = useMascotVisible();
@@ -198,6 +205,28 @@ export function AppearanceSettings({
           label="Accent"
           description={ACCENT_OPTIONS.find((option) => option.id === accentId)?.hint}
           control={<AccentPicker value={accentId} onChange={onAccentChange} />}
+        />
+        <SettingRow
+          label="Activity icons"
+          description={
+            ACTIVITY_ICON_COLOR_MODE_OPTIONS.find(
+              (option) => option.id === activityIconColorMode
+            )?.hint
+          }
+          control={
+            <SegmentedControl
+              ariaLabel="Activity icons"
+              name="activity-icon-color"
+              value={activityIconColorMode}
+              onChange={(value) => {
+                if (isActivityIconColorMode(value)) setActivityIconColorMode(value);
+              }}
+              options={ACTIVITY_ICON_COLOR_MODE_OPTIONS.map((option) => ({
+                value: option.id,
+                label: option.label
+              }))}
+            />
+          }
         />
         <SettingRow
           label="Activity mark"

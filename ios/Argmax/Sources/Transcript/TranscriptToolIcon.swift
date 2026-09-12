@@ -54,7 +54,7 @@ struct TranscriptToolIcon: View {
     static func systemSymbol(for kind: TranscriptToolActivityKind) -> String {
         switch kind {
         case .read: return "book"
-        case .edit: return "pencil"
+        case .edit: return "square.and.pencil"
         case .image: return "photo.on.rectangle.angled"
         case .search: return "magnifyingglass"
         case .list: return "folder"

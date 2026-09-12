@@ -48,7 +48,7 @@ final class TranscriptToolIconTests: XCTestCase {
 
     func testEveryActivityKindHasTheExpectedColoredSystemFallback() {
         let expectedSymbols: [TranscriptToolActivityKind: String] = [
-            .read: "book", .edit: "pencil", .image: "photo.on.rectangle.angled",
+            .read: "book", .edit: "square.and.pencil", .image: "photo.on.rectangle.angled",
             .search: "magnifyingglass", .list: "folder", .webSearch: "globe",
             .webFetch: "globe", .discovery: "wrench.adjustable", .command: "terminal",
             .computer: "desktopcomputer", .tool: "wrench.and.screwdriver", .agent: "cpu", .skill: "sparkles",

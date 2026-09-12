@@ -111,8 +111,7 @@ enum LimitCopy {
         return String(format: "%.1f%% left", (percent * 10).rounded() / 10)
     }
 
-    /// "resets in 45m", "resets in 3h", "resets in 2d", then a date once the
-    /// countdown stops meaning anything.
+    /// "resets in 45m", "resets in 3h", or "resets in 17d".
     static func reset(_ value: String?, now: Date = Date()) -> String? {
         guard let value, let at = parseWireTimestamp(value) else { return nil }
         let seconds = at.timeIntervalSince(now)
@@ -122,17 +121,8 @@ enum LimitCopy {
         let hours = (minutes / 60).rounded()
         if hours < 24 { return "resets in \(Int(hours))h" }
         let days = (hours / 24).rounded()
-        if days < 5 { return "resets in \(Int(days))d" }
-        return "resets \(resetDate.string(from: at))"
+        return "resets in \(Int(days))d"
     }
-
-    /// "Sep 28", in the phone's own time zone — the reset is a moment, and
-    /// the person reading it is here.
-    private static let resetDate: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.setLocalizedDateFormatFromTemplate("MMM d")
-        return formatter
-    }()
 }
 
 // MARK: - Fetch

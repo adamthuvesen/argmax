@@ -301,7 +301,6 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
               <UsageRemainingCard
                 remaining={remaining}
                 error={remainingError}
-                timeZone={timeZoneRef.current}
                 onRefresh={() => void loadRemaining()}
               />
             ) : null}

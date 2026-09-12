@@ -29,8 +29,8 @@ function kindLabel(row: UsageProviderRemaining): string {
   }
 }
 
-function WindowMeter({ window, timeZone }: { window: UsageLimitWindow; timeZone: string }): JSX.Element {
-  const reset = formatResetIn(window.resetsAt, timeZone);
+function WindowMeter({ window }: { window: UsageLimitWindow }): JSX.Element {
+  const reset = formatResetIn(window.resetsAt);
   return (
     <div className="usage-remaining-window">
       <div className="usage-remaining-window-meta">
@@ -91,11 +91,9 @@ function RemainingDetail({
 }
 
 function RemainingRow({
-  row,
-  timeZone
+  row
 }: {
   row: UsageProviderRemaining;
-  timeZone: string;
 }): JSX.Element {
   const title = kindLabel(row);
   const showWindows = row.kind === "subscription" && row.windows.length > 0;
@@ -109,7 +107,7 @@ function RemainingRow({
       {showWindows ? (
         <div className="usage-remaining-windows">
           {row.windows.map((window) => (
-            <WindowMeter key={window.id} window={window} timeZone={timeZone} />
+            <WindowMeter key={window.id} window={window} />
           ))}
         </div>
       ) : (
@@ -125,12 +123,10 @@ function RemainingRow({
 export function UsageRemainingCard({
   remaining,
   error,
-  timeZone,
   onRefresh
 }: {
   remaining: UsageRemaining | null;
   error: string | null;
-  timeZone: string;
   onRefresh: () => void;
 }): JSX.Element {
   return (
@@ -152,7 +148,7 @@ export function UsageRemainingCard({
       {remaining ? (
         <ul className="usage-remaining-list" aria-label="Remaining usage by provider">
           {remaining.providers.map((row) => (
-            <RemainingRow key={row.provider} row={row} timeZone={timeZone} />
+            <RemainingRow key={row.provider} row={row} />
           ))}
         </ul>
       ) : error ? null : (

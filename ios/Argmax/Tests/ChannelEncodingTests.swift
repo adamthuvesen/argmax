@@ -12,15 +12,17 @@ final class ChannelEncodingTests: XCTestCase {
     /// A defaults suite of its own: `RemoteOperation.mint` writes an install
     /// id, and a test must not adopt or clobber the app's.
     private var defaults: UserDefaults!
+    private var suiteName: String!
 
     override func setUpWithError() throws {
-        let suite = "argmax.tests.\(UUID().uuidString)"
-        defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        suiteName = "argmax.tests.\(UUID().uuidString)"
+        defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
     }
 
     override func tearDown() {
-        defaults.removePersistentDomain(forName: defaults.description)
+        defaults.removePersistentDomain(forName: suiteName)
         defaults = nil
+        suiteName = nil
     }
 
     /// One request, as a dictionary.

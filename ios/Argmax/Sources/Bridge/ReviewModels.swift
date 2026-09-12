@@ -26,9 +26,9 @@ enum ReviewComparison: String, Codable, Hashable, Sendable {
 /// `ChangedFileSummary`. One row of the Changes list.
 struct ChangedFileSummary: Codable, Hashable, Sendable, Identifiable {
     var path: String
-    /// Git's own porcelain letter, lowercased by the host: `modified`,
-    /// `added`, `deleted`, `renamed`, `untracked`. Kept as a string because
-    /// a status this app has not heard of must still draw a row.
+    /// Git's own porcelain `XY` code as the host sends it: `M`, `A`, `D`,
+    /// `R`, `??`. Kept as a string because a status this app has not heard
+    /// of must still draw a row.
     var status: String
     var additions: Int
     var deletions: Int

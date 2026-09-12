@@ -469,6 +469,14 @@ struct NewChatSheet: View {
 
     // MARK: - Starting
 
+    /// A lost socket or a reply the host never confirmed leaves the launch's
+    /// outcome unknown; archiving on one would terminate a chat that may be
+    /// running. Only a definite host-side failure says no session started.
+    private static func outcomeIsAmbiguous(_ error: Error) -> Bool {
+        guard case .host(_, let subCode, _)? = error as? BridgeError else { return false }
+        return subCode == "REMOTE_OUTCOME_UNKNOWN" || subCode == "REMOTE_RESPONSE_TIMEOUT"
+    }
+
     private func start() async {
         guard let plan, !launching else { return }
         launching = true
@@ -490,11 +498,12 @@ struct NewChatSheet: View {
                 session = try await client.launchSession(plan.launchInput(workspaceID: workspace.id))
             } catch {
                 // No session started, so the workspace and its worktree would
-                // sit stranded with no explanation. A lost socket is the
-                // exception: the host may have launched fine and only the
-                // reply went missing, and archiving there would kill a live
-                // chat and delete its worktree.
-                if (error as? BridgeError) != .disconnected {
+                // sit stranded with no explanation. An ambiguous outcome is
+                // the exception: a lost socket or a timed-out reply means the
+                // host may have launched fine, and archiving there would kill
+                // a live chat and delete its worktree. Leave it for the
+                // recovery screen to judge.
+                if !Self.outcomeIsAmbiguous(error) {
                     _ = try? await client.archiveWorkspace(workspaceID: workspace.id, force: true)
                 }
                 throw error

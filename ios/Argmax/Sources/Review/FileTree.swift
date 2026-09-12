@@ -50,7 +50,10 @@ enum FileTree {
         func freeze() -> FileTreeNode {
             let sorted = children.sorted {
                 if $0.isDirectory != $1.isDirectory { return $0.isDirectory }
-                return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+                // Plain collation, matching the desktop's `localeCompare`:
+                // Finder-style numeric ordering would disagree with the Mac
+                // about where `File10.txt` sits next to `File2.txt`.
+                return $0.name.localizedCompare($1.name) == .orderedAscending
             }
             return FileTreeNode(name: name, path: path, isDirectory: isDirectory,
                 children: sorted.map { $0.freeze() })

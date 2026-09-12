@@ -55,13 +55,26 @@ struct RemoteRecoveryScreen: View {
         (try? JSONDecoder().decode([String: TranscriptJSONValue].self, from: operation.input))?["sessionId"]?.string
     }
 
+    /// The journal holds this app's own mutation channels
+    /// (`Bridge/Channels.swift`); the names must match those, or every row
+    /// falls through to the generic label.
     private func label(_ channel: String) -> String {
         switch channel {
-        case "session:send-message", "session:follow-up": return "Send message"
-        case "session:stop", "session:terminate": return "Stop chat"
-        case "session:launch": return "Start chat"
+        case "providers:send-input", "providers:send-queued-message-now": return "Send message"
+        case "providers:cancel-queued-message": return "Cancel queued message"
+        case "providers:launch": return "Start chat"
+        case "providers:terminate": return "Stop chat"
+        case "workspaces:create-isolated", "workspaces:create-current", "workspaces:create-scratch":
+            return "Create chat"
+        case "workspaces:autotitle", "workspaces:set-label": return "Rename chat"
+        case "workspaces:set-pinned": return "Update chat pin"
         case "workspaces:archive": return "Archive chat"
-        case "approvals:respond": return "Answer approval"
+        case "session:multitask": return "Dispatch a chat"
+        case "session:fork": return "Fork chat"
+        case "questions:resolve": return "Answer question"
+        case "git:view-or-create-pr": return "Open pull request"
+        case "attachments:save-image": return "Save image"
+        case "remote:register-push-device", "remote:unregister-push-device": return "Update push pairing"
         default: return "Remote action"
         }
     }

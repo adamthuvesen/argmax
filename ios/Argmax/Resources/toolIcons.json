@@ -6,7 +6,8 @@
       "title": "Argmax",
       "aliases": [
         "argmax"
-      ]
+      ],
+      "monochromeKey": "argmax-mono"
     },
     {
       "key": "slack",

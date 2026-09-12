@@ -126,7 +126,7 @@ final class TranscriptToolIconTests: XCTestCase {
 
     func testEveryGeneratedKeyHasARealNamespacedAsset() throws {
         let names = TranscriptToolIcon.generatedAssetNames
-        XCTAssertEqual(names.count, 14)
+        XCTAssertEqual(names.count, 15)
         XCTAssertEqual(Set(names).count, names.count)
         for name in names {
             let image = try XCTUnwrap(UIImage(named: name), "\(name) is missing from Assets.xcassets")
@@ -134,6 +134,20 @@ final class TranscriptToolIconTests: XCTestCase {
             XCTAssertGreaterThan(image.size.height, 0, "\(name) has no intrinsic height")
             XCTAssertNotNil(image.imageAsset, "\(name) is not backed by an asset catalogue image")
         }
+    }
+
+    /// The row tints an asset through its alpha, which turns a layered drawing
+    /// into its own silhouette. The mascot is the only mark with layers to
+    /// lose, so it is the only one that carries a second, alpha-stepped image.
+    func testTheLayeredMascotSwapsToATintedRenditionInMonochrome() {
+        XCTAssertEqual(
+            TranscriptToolIcon.source(for: "session_list"),
+            .asset(name: "Integrations/argmax", monochrome: "Integrations/argmax-mono", title: "Argmax")
+        )
+        XCTAssertEqual(
+            TranscriptToolIcon.source(for: "mcp__linear__list_issues"),
+            .asset(name: "Integrations/linear", monochrome: nil, title: "Linear")
+        )
     }
 
 

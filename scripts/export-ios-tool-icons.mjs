@@ -55,11 +55,14 @@ function xml(value) {
   return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
 }
 
-function svg(icon, monochromeFill) {
+function svg(icon, monochromeFill, toneDepth) {
   const layers = icon.layers.map((layer) => {
     const fill = layer.fill === null ? monochromeFill : foxFills[layer.fill] ?? layer.fill;
     if (!fill || fill.startsWith("var(")) throw new Error(`Unsupported fill ${layer.fill} in ${icon.title}`);
-    return `  <path d="${xml(layer.path)}" fill="${xml(fill)}"/>`;
+    // A tinted rendition carries its depth as alpha, because the iPhone tints
+    // the mark through its alpha channel and discards these colours entirely.
+    const depth = toneDepth ? ` fill-opacity="${toneDepth[layer.tone]}"` : "";
+    return `  <path d="${xml(layer.path)}" fill="${xml(fill)}"${depth}/>`;
   });
   const crispEdges = icon.title === "Argmax" ? ' shape-rendering="crispEdges"' : "";
   return [
@@ -103,11 +106,15 @@ async function loadServerIcons() {
   }
 }
 
-const { serverIconFor } = await loadServerIcons();
+const { serverIconFor, SERVER_ICON_TONE_DEPTH } = await loadServerIcons();
 const catalogue = integrations.map((entry) => {
   const icon = serverIconFor(entry.aliases[0]);
   if (!icon) throw new Error(`serverIconFor has no artwork for ${entry.aliases[0]}`);
-  return { ...entry, title: icon.title, icon };
+  // Tinting a layered drawing by alpha flattens it to its own silhouette, so a
+  // mark that names its tones gets a second image set carrying the monochrome
+  // ramp as alpha. The rest are a single path already, or survive flattening.
+  const monochromeKey = icon.layers.every((layer) => layer.tone) ? `${entry.key}-mono` : null;
+  return { ...entry, title: icon.title, icon, monochromeKey };
 });
 
 await rm(assetsRoot, { recursive: true, force: true });
@@ -117,25 +124,46 @@ await writeFile(
   `${JSON.stringify({ info: { author: "xcode", version: 1 }, properties: { "provides-namespace": true } }, null, 2)}\n`
 );
 
-for (const { key, icon } of catalogue) {
+async function writeImageSet(key, light, dark) {
   const imageSet = path.join(assetsRoot, `${key}.imageset`);
-  const hasAppearanceVariants = icon.layers.some((layer) => layer.fill === null);
   await mkdir(imageSet, { recursive: true });
-  if (hasAppearanceVariants) {
-    await writeFile(path.join(imageSet, `${key}-light.svg`), svg(icon, "#1F1D18"));
-    await writeFile(path.join(imageSet, `${key}-dark.svg`), svg(icon, "#F4F2EC"));
+  if (dark === undefined) {
+    await writeFile(path.join(imageSet, `${key}.svg`), light);
   } else {
-    await writeFile(path.join(imageSet, `${key}.svg`), svg(icon, "#1F1D18"));
+    await writeFile(path.join(imageSet, `${key}-light.svg`), light);
+    await writeFile(path.join(imageSet, `${key}-dark.svg`), dark);
   }
   await writeFile(
     path.join(imageSet, "Contents.json"),
-    `${JSON.stringify(imageSetContents(key, hasAppearanceVariants), null, 2)}\n`
+    `${JSON.stringify(imageSetContents(key, dark !== undefined), null, 2)}\n`
   );
+}
+
+for (const { key, icon, monochromeKey } of catalogue) {
+  const hasAppearanceVariants = icon.layers.some((layer) => layer.fill === null);
+  await writeImageSet(
+    key,
+    svg(icon, "#1F1D18"),
+    hasAppearanceVariants ? svg(icon, "#F4F2EC") : undefined
+  );
+  if (monochromeKey) {
+    // The ramp reads away from the row, so each appearance carries its own.
+    await writeImageSet(
+      monochromeKey,
+      svg(icon, "#1F1D18", SERVER_ICON_TONE_DEPTH.light),
+      svg(icon, "#1F1D18", SERVER_ICON_TONE_DEPTH.dark)
+    );
+  }
 }
 
 const manifest = {
   generatedBy: "scripts/export-ios-tool-icons.mjs",
-  icons: catalogue.map(({ key, title, aliases }) => ({ key, title, aliases })),
+  icons: catalogue.map(({ key, title, aliases, monochromeKey }) => ({
+    key,
+    title,
+    aliases,
+    ...(monochromeKey ? { monochromeKey } : {})
+  })),
   mcpServersWithoutIcons
 };
 await mkdir(path.dirname(manifestPath), { recursive: true });

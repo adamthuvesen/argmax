@@ -1,11 +1,35 @@
 import { siGithub, siLinear, siNotion, siSnowflake, siSpotify, siVercel } from "simple-icons";
 import sprite from "../../../assets/fox-mascot.txt?raw";
 
+/** Sprite roles the mascot keeps apart once monochrome puts every fill on one
+ *  ink: the outline holds the silhouette, fur and cream stay separate masses,
+ *  and the eye is knocked out to the row behind it. */
+export type ServerIconTone = "line" | "fur" | "cream" | "eye";
+
+/**
+ * How much of the one ink each tone keeps under monochrome, per theme.
+ *
+ * Depth reads away from the row, so the ramp inverts between themes: the ink is
+ * the dark end on a light row and the light end on a dark one, and a shared
+ * ramp would put the near-black outline at the brightest point of a dark row
+ * while sinking the cream muzzle into it. Both consumers restate these numbers
+ * rather than read them — tool-activity.css as `--fox-mono-*`, and
+ * scripts/export-ios-tool-icons.mjs as baked alpha, since iPhone tints the
+ * mark by its alpha channel. A test pins the CSS to this table.
+ */
+export const SERVER_ICON_TONE_DEPTH: Record<"light" | "dark", Record<ServerIconTone, number>> = {
+  light: { line: 1, fur: 0.62, cream: 0.26, eye: 0 },
+  dark: { line: 0.1, fur: 0.58, cream: 0.92, eye: 1 }
+};
+
 export interface ServerIconLayer {
   path: string;
   /** Fill colour, or null for a black mark that takes the row's text colour
    *  instead of vanishing on the dark theme. */
   fill: string | null;
+  /** Depth to hold under monochrome. Only the mascot sets it; a brand mark is
+   *  either a single path already or stays legible flattened. */
+  tone?: ServerIconTone;
 }
 
 export interface ServerIcon {
@@ -90,19 +114,22 @@ const LINEAR: ServerIcon = {
 // columns and rows that hold the ears, eyes and muzzle, in the mascot's own
 // colour tokens so it follows the theme like the launcher fox does.
 const FOX_HEAD = { left: 24, top: 0, width: 28, height: 24 };
-const FOX_FILL: Record<string, string> = {
-  K: "var(--fox-line)",
-  o: "var(--fox-fur)",
-  d: "var(--fox-fur-shade)",
-  c: "var(--fox-cream)",
-  t: "var(--fox-cream-shade)",
-  x: "var(--fox-nose)",
-  w: "#ffffff"
+// The sprite's two shade colours ride with the colour they shade: at 12px the
+// shading is below a pixel, and a fifth tone would only muddy the split that
+// carries the head.
+const FOX_CELLS: Record<string, { fill: string; tone: ServerIconTone }> = {
+  K: { fill: "var(--fox-line)", tone: "line" },
+  o: { fill: "var(--fox-fur)", tone: "fur" },
+  d: { fill: "var(--fox-fur-shade)", tone: "fur" },
+  c: { fill: "var(--fox-cream)", tone: "cream" },
+  t: { fill: "var(--fox-cream-shade)", tone: "cream" },
+  x: { fill: "var(--fox-nose)", tone: "line" },
+  w: { fill: "#ffffff", tone: "eye" }
 };
 
 function foxHeadIcon(): ServerIcon {
   const grid = sprite.split("\n").filter((row) => row !== "" && !row.startsWith("#"));
-  const layers = Object.entries(FOX_FILL).map(([cell, fill]) => {
+  const layers = Object.entries(FOX_CELLS).map(([cell, { fill, tone }]) => {
     // One unit square per cell, merged along the row: at 12px the geometry
     // count is what matters, not the byte count.
     const runs: string[] = [];
@@ -120,7 +147,7 @@ function foxHeadIcon(): ServerIcon {
         x = end + 1;
       }
     }
-    return { fill, path: runs.join("") };
+    return { fill, tone, path: runs.join("") };
   });
   return {
     title: "Argmax",

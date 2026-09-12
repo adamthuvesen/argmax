@@ -8,6 +8,7 @@ import {
   SESSION_CELL_MIN_WIDTH_PX
 } from "../lib/layoutConstants.js";
 import { DEFAULT_INK_STRENGTH } from "../lib/inkStrength.js";
+import { SERVER_ICON_TONE_DEPTH } from "../lib/serverIcons.js";
 
 function readSource(path: string): string {
   return readFileSync(resolve(process.cwd(), path), "utf8");
@@ -359,6 +360,23 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
       expect(rule.groups?.block, selector).toContain(
         "--session-inline-padding: var(--session-inline-padding-beside-card);"
       );
+    }
+  });
+
+  it("restates the monochrome mascot ramp that the iPhone export also bakes", () => {
+    const activity = readSource("src/renderer/styles/tool-activity.css");
+    const selectors = {
+      light: ':root[data-activity-icon-color="monochrome"] .tool-call-row-server-icon',
+      dark: ':root[data-theme="dark"][data-activity-icon-color="monochrome"] .tool-call-row-server-icon'
+    };
+
+    // CSS cannot import the table, and the iPhone export bakes the same numbers
+    // into alpha, so drift here would split the two surfaces apart silently.
+    for (const [theme, depths] of Object.entries(SERVER_ICON_TONE_DEPTH)) {
+      const body = cssRuleBody(activity, selectors[theme as "light" | "dark"]);
+      for (const [tone, depth] of Object.entries(depths)) {
+        expect(body, `${theme} ${tone}`).toContain(`--fox-mono-${tone}: ${depth};`);
+      }
     }
   });
 });

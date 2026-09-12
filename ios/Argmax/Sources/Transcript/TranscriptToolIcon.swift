@@ -8,7 +8,10 @@ import UIKit
 /// web, shell and unbranded MCP tools keep distinct system fallbacks.
 struct TranscriptToolIcon: View {
     enum Source: Equatable {
-        case asset(name: String, title: String)
+        /// `monochrome` is the same mark with the depth of each sprite role
+        /// baked into alpha, for the marks that would otherwise flatten to a
+        /// silhouette once the row tints them.
+        case asset(name: String, monochrome: String?, title: String)
         case gitBranch
         case system(name: String)
     }
@@ -22,8 +25,8 @@ struct TranscriptToolIcon: View {
     var body: some View {
         Group {
             switch Self.source(for: name, activity: activity) {
-            case .asset(let assetName, _):
-                Image(assetName)
+            case .asset(let assetName, let monochrome, _):
+                Image(colorMode == .color ? assetName : monochrome ?? assetName)
                     .renderingMode(colorMode == .color ? .original : .template)
                     .resizable()
                     .scaledToFit()
@@ -51,7 +54,11 @@ struct TranscriptToolIcon: View {
         if activity?.kind == .git { return .gitBranch }
         if activity?.kind == .computer { return .system(name: systemSymbol(for: .computer)) }
         if let server = serverName(in: toolName), let icon = catalogue.icon(for: server) {
-            return .asset(name: "Integrations/\(icon.key)", title: icon.title)
+            return .asset(
+                name: "Integrations/\(icon.key)",
+                monochrome: icon.monochromeKey.map { "Integrations/\($0)" },
+                title: icon.title
+            )
         }
         if let activity { return .system(name: systemSymbol(for: activity.kind)) }
         if isWebTool(toolName) { return .system(name: "globe") }
@@ -60,7 +67,7 @@ struct TranscriptToolIcon: View {
     }
 
     static func assetName(for toolName: String, activity: TranscriptToolActivity? = nil) -> String? {
-        guard case .asset(let name, _) = source(for: toolName, activity: activity) else { return nil }
+        guard case .asset(let name, _, _) = source(for: toolName, activity: activity) else { return nil }
         return name
     }
 
@@ -107,7 +114,9 @@ struct TranscriptToolIcon: View {
     /// Used by the asset-integrity test so adding an exported mark cannot fail
     /// silently as an empty SwiftUI image.
     static var generatedAssetNames: [String] {
-        catalogue.icons.map { "Integrations/\($0.key)" }
+        catalogue.icons.flatMap { icon in
+            ["Integrations/\(icon.key)"] + (icon.monochromeKey.map { ["Integrations/\($0)"] } ?? [])
+        }
     }
 
     private static let argmaxToolNames: Set<String> = [
@@ -176,6 +185,8 @@ private struct TranscriptToolIconCatalog: Decodable {
         var key: String
         var title: String
         var aliases: [String]
+        /// Set only for marks the exporter gave a tinted rendition.
+        var monochromeKey: String?
     }
 
     var icons: [Icon]

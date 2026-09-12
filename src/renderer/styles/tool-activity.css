@@ -29,3 +29,44 @@
 :root[data-activity-icon-color="monochrome"] .tool-call-row-server-icon path {
   fill: currentColor !important;
 }
+
+/* One ink turns the mascot's head into a solid lump, so the sprite's palette
+   roles come back as depths of that ink: the outline and nose at full strength
+   hold the ears and muzzle, fur sits back from them, cream separates the
+   muzzle and inner ears the way its colour does, and the eye drops to the row
+   behind it. Opacity, not fill, so the override above still lands. */
+:root[data-activity-icon-color="monochrome"] .tool-call-row-server-icon {
+  --fox-mono-line: 1;
+  --fox-mono-fur: 0.62;
+  --fox-mono-cream: 0.26;
+  --fox-mono-eye: 0;
+}
+
+/* The ramp follows the ink, not the sprite, so the dark row inverts it. There
+   the ink is the light end and the row is the dark one, which puts a near-black
+   outline at the brightest point on screen and sinks the cream muzzle into the
+   background — a bright mask instead of a fox. Reading it upward from the row
+   restores the order the colour artwork has: outline a hair off the background,
+   fur above it, muzzle and inner ears bright, eyes brightest. */
+:root[data-theme="dark"][data-activity-icon-color="monochrome"] .tool-call-row-server-icon {
+  --fox-mono-line: 0.1;
+  --fox-mono-fur: 0.58;
+  --fox-mono-cream: 0.92;
+  --fox-mono-eye: 1;
+}
+
+:root[data-activity-icon-color="monochrome"] .tool-call-row-server-icon path[data-tone="line"] {
+  fill-opacity: var(--fox-mono-line);
+}
+
+:root[data-activity-icon-color="monochrome"] .tool-call-row-server-icon path[data-tone="fur"] {
+  fill-opacity: var(--fox-mono-fur);
+}
+
+:root[data-activity-icon-color="monochrome"] .tool-call-row-server-icon path[data-tone="cream"] {
+  fill-opacity: var(--fox-mono-cream);
+}
+
+:root[data-activity-icon-color="monochrome"] .tool-call-row-server-icon path[data-tone="eye"] {
+  fill-opacity: var(--fox-mono-eye);
+}

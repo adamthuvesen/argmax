@@ -16,6 +16,10 @@ final class TranscriptMarkdownCache {
     }
     private let documents = NSCache<NSString, Entry>()
     private var pending: [TranscriptMarkdownKey: Task<TranscriptMarkdownDocument, Never>] = [:]
+    // Waiters suspended on the two-wide preparation queue. Resuming is
+    // keyed by id so the cancellation path and the release path can never
+    // resume the same continuation twice; both run on this actor.
+    private var waiters: [UUID: CheckedContinuation<Void, Never>] = [:]
 
     init() {
         documents.totalCostLimit = 12 * 1_024 * 1_024
@@ -49,9 +53,7 @@ final class TranscriptMarkdownCache {
     }
 
     func document(_ key: TranscriptMarkdownKey) async throws -> TranscriptMarkdownDocument {
-        while pending.count >= 2, pending[key] == nil {
-            try await Task.sleep(for: .milliseconds(5))
-        }
+        try await awaitSlot(key)
         try Task.checkCancellation()
         if let value = cached(key) { return value }
         if let task = pending[key] { return await task.value }
@@ -64,7 +66,43 @@ final class TranscriptMarkdownCache {
         pending[key] = task
         let value = await task.value
         pending[key] = nil
+        releaseSlots()
         documents.setObject(Entry(value), forKey: cacheKey(key), cost: key.text.utf8.count * 4 + 512)
         return value
+    }
+
+    private static let preparationLimit = 2
+
+    /// Suspend instead of spinning: an eager stack mounts every row at once,
+    /// and a poll loop here woke every prose row on the main actor every few
+    /// milliseconds until the queue drained.
+    private func awaitSlot(_ key: TranscriptMarkdownKey) async throws {
+        while pending.count >= Self.preparationLimit, pending[key] == nil {
+            let id = UUID()
+            defer { waiters[id] = nil }
+            do {
+                try await withTaskCancellationHandler(operation: {
+                    try Task.checkCancellation()
+                    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                        waiters[id] = continuation
+                    }
+                }, onCancel: {
+                    Task { @MainActor in
+                        self.waiters.removeValue(forKey: id)?.resume()
+                    }
+                })
+            } catch {
+                // Woken by cancellation; the continuation, if any, was
+                // consumed by the cancellation path.
+                throw error
+            }
+        }
+    }
+
+    private func releaseSlots() {
+        while pending.count < Self.preparationLimit, !waiters.isEmpty {
+            let id = waiters.keys.first!
+            waiters.removeValue(forKey: id)?.resume()
+        }
     }
 }

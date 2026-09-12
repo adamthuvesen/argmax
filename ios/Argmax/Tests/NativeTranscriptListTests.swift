@@ -135,19 +135,20 @@ final class NativeTranscriptListTests: XCTestCase {
         }
     }
 
-    func testLazyStackOnlyPresentsTheVisibleRows() async {
+    /// The transcript is an eager stack on purpose: a lazy stack guesses the
+    /// height of rows it has not realised, and the tail scroll lands on that
+    /// guess, past the real last row. Pin that the tail row is realised and
+    /// the viewport actually sits at the real content end.
+    func testEagerStackRealizesTheTailRow() async {
         let state = TranscriptListTestState(items: transcriptItems(count: 500))
         let host = TranscriptListTestHost(state: state, size: CGSize(width: 320, height: 240))
         defer { host.close() }
 
         guard await waitForScrollView(in: host, where: {
-            abs(tailGap(in: $0)) < 1 && !state.appearedIDs.isEmpty
+            abs(tailGap(in: $0)) < 1 && state.appearedIDs.contains("item-499")
         }) != nil else {
-            return XCTFail("The lazy transcript did not present its tail rows")
+            return XCTFail("The eager transcript did not present its tail row at the tail")
         }
-
-        XCTAssertLessThan(state.appearedIDs.count, state.items.count / 2)
-        XCTAssertTrue(state.appearedIDs.contains("item-499"))
     }
 
     func testUserScrollPhasesDetachUntilTheReaderFinishesNearTheTail() {

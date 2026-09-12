@@ -977,6 +977,9 @@ enum TranscriptProjection {
             switch tool.activityState {
             case .running: return "Running \(command)"
             case .succeeded: return "Ran \(command)"
+            // An unconfirmed call has not been approved, so its detail stays
+            // out of the summary, like the search and edit kinds.
+            case .unconfirmed: return tool.activitySummary
             default: return "\(tool.activitySummary): \(command)"
             }
         case .tool:

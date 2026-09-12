@@ -289,6 +289,10 @@ struct TranscriptActivityRow<Icon: View>: View {
         }
         .frame(minHeight: Self.height)
         .contentShape(.rect)
+        // iOS joins sibling texts with ", ", which reads "Edited, App.swift".
+        // One label keeps the verb and target one spoken phrase.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel([verb, target].compactMap { $0 }.joined(separator: " "))
     }
 }
 

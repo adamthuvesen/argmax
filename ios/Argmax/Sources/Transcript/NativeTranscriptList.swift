@@ -27,6 +27,7 @@ where Item.ID == String {
     // realised row's layout, on every frame of a drag.
     @State private var phase: ScrollPhase = .idle
     @State private var tailScrollScheduled = false
+    @State private var anchorScrollScheduled = false
 
     var body: some View {
         ScrollView {
@@ -74,10 +75,25 @@ where Item.ID == String {
         .accessibilityIdentifier("native-transcript")
         .onScrollGeometryChange(for: TranscriptScrollGeometry.self) { value in
             TranscriptScrollGeometry(value)
-        } action: { _, next in
+        } action: { previous, next in
             readingPosition.visibleTop = next.visibleTop
+            readingPosition.topInset = next.topInset
             if following && !phase.isUserControlled && !next.isAtTail {
                 requestScrollToTail()
+            }
+            // A scroll whose offset moves without a phase transition (a
+            // programmatic offset set) never passes through
+            // `onScrollPhaseChange`, so the reading anchor would keep
+            // pointing at where the reader used to be. Only an offset move
+            // re-anchors: when content above the reader changes height the
+            // offset is untouched, and re-anchoring there would adopt the
+            // walked-down position before the compensation scroll has
+            // applied. While a compensation scroll is in flight its own
+            // intermediate offsets must not re-anchor, or the anchor lands
+            // on whatever row happens to be under the top edge mid-flight.
+            if !following && !phase.isUserControlled && !anchorScrollScheduled
+                && previous.visibleTop != next.visibleTop {
+                readingPosition.anchor(at: next.visibleTop)
             }
         }
         .onScrollPhaseChange { previous, next, context in
@@ -123,11 +139,23 @@ where Item.ID == String {
     /// An eager stack keeps the scroll offset, not the view under it, when
     /// content above the reader changes height: older history landing, or a
     /// card above finishing, would walk the paragraph they are reading down
-    /// the screen. Put the anchored row back where it was.
+    /// the screen. Put the anchored row back where it was. The write waits
+    /// for the layout pass to finish: issued from inside a geometry action
+    /// it is resolved against the half-updated content and lands short. And
+    /// never fight an active gesture: the tail path checks the same phase,
+    /// and once the reader lets go the idle transition re-anchors where
+    /// they landed.
     private func rowTopChanged(_ id: String, top: CGFloat) {
-        guard let wanted = readingPosition.rowTopChanged(id, top: top, following: following) else { return }
-        withTransaction(Transaction(animation: nil)) {
-            position.scrollTo(y: wanted)
+        let moved = readingPosition.rowTopChanged(id, top: top, following: following)
+        guard moved, !phase.isUserControlled, !anchorScrollScheduled else { return }
+        anchorScrollScheduled = true
+        Task { @MainActor in
+            await Task.yield()
+            anchorScrollScheduled = false
+            guard !phase.isUserControlled, let wanted = readingPosition.pendingAnchorOffset() else { return }
+            withTransaction(Transaction(animation: nil)) {
+                position.scrollTo(y: wanted + readingPosition.topInset)
+            }
         }
     }
 
@@ -153,22 +181,44 @@ final class TranscriptReadingPosition {
     private var anchorID: String?
     private var anchorOffset: CGFloat = 0
     var visibleTop: CGFloat = 0
+    /// The scroll view's top content inset. `ScrollPosition.scrollTo(y:)`
+    /// measures from the inset-inclusive origin while row tops and the
+    /// geometry's visible rect measure from the content origin, so a
+    /// compensation scroll has to add it or lands short by exactly the inset.
+    var topInset: CGFloat = 0
 
     /// Anchor on the row under the top of the viewport.
     func anchor(at visibleTop: CGFloat) {
         self.visibleTop = visibleTop
+        pendingCompensation = false
         guard let row = rowTops.filter({ $0.value <= visibleTop }).max(by: { $0.value < $1.value })
             ?? rowTops.min(by: { $0.value < $1.value }) else { return }
         anchorID = row.key
         anchorOffset = row.value - visibleTop
     }
 
-    func release() { anchorID = nil }
+    func release() {
+        anchorID = nil
+        pendingCompensation = false
+    }
 
     /// The offset that puts the anchored row back, when this change moved it.
-    func rowTopChanged(_ id: String, top: CGFloat, following: Bool) -> CGFloat? {
+    /// Returns whether the anchored row moved and a compensation is due;
+    /// `pendingAnchorOffset` resolves it from the latest recorded tops, so
+    /// the scroll is computed against finished layout, not a mid-update one.
+    func rowTopChanged(_ id: String, top: CGFloat, following: Bool) -> Bool {
         rowTops[id] = top
-        guard !following, id == anchorID else { return nil }
+        guard !following, id == anchorID else { return false }
+        let moved = abs(top - anchorOffset - visibleTop) > 0.5
+        if moved { pendingCompensation = true }
+        return moved
+    }
+
+    private var pendingCompensation = false
+
+    func pendingAnchorOffset() -> CGFloat? {
+        guard pendingCompensation, let anchorID, let top = rowTops[anchorID] else { return nil }
+        pendingCompensation = false
         let wanted = top - anchorOffset
         guard abs(wanted - visibleTop) > 0.5 else { return nil }
         return wanted
@@ -191,6 +241,7 @@ enum TranscriptScrollBehavior {
 private struct TranscriptScrollGeometry: Equatable {
     var tailGap: CGFloat = 0
     var visibleTop: CGFloat = 0
+    var topInset: CGFloat = 0
 
     init() {}
 
@@ -198,6 +249,7 @@ private struct TranscriptScrollGeometry: Equatable {
         visibleTop = geometry.visibleRect.minY
         tailGap = geometry.contentSize.height + geometry.contentInsets.bottom
             - geometry.visibleRect.maxY
+        topInset = geometry.contentInsets.top
     }
 
     var isAtTail: Bool { tailGap <= 0.5 }

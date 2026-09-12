@@ -319,10 +319,11 @@ describe("SessionConversationTurn", () => {
     expect(chip).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(chip);
     expect(chip).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getAllByRole("button", { name: "Thought" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Thought" })).toHaveLength(1);
+    expect(screen.getByText("Reviewing the request.")).toBeInTheDocument();
   });
 
-  it("names thought-first turn disclosures uniquely", () => {
+  it("opens thought-only turns independently", () => {
     const firstTurn: Extract<RenderItem, { kind: "turn" }> = {
       ...turn,
       id: "turn-thought-1",
@@ -366,13 +367,9 @@ describe("SessionConversationTurn", () => {
     const disclosures = screen.getAllByRole("button", { name: "Thought" });
     expect(disclosures).toHaveLength(2);
     fireEvent.click(disclosures[0]);
+    expect(screen.getByText("Reviewing the first request.")).toBeInTheDocument();
+    expect(screen.queryByText("Reviewing the second request.")).toBeNull();
     fireEvent.click(disclosures[1]);
-
-    const targetIds = disclosures.map((disclosure) => disclosure.getAttribute("aria-controls"));
-    expect(new Set(targetIds).size).toBe(2);
-    for (const targetId of targetIds) {
-      expect(targetId).not.toBeNull();
-      expect(targetId ? document.getElementById(targetId) : null).not.toBeNull();
-    }
+    expect(screen.getByText("Reviewing the second request.")).toBeInTheDocument();
   });
 });

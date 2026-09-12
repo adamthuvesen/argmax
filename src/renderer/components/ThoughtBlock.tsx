@@ -36,6 +36,7 @@ export function ThoughtBlock({
   previewText,
   display = "collapsed",
   defaultExpanded = false,
+  autoExpandWhileLive = true,
   live = false,
   holdOpen = false,
   durationMs
@@ -44,6 +45,8 @@ export function ThoughtBlock({
   previewText: string;
   display?: ThinkingDisplay;
   defaultExpanded?: boolean;
+  /** Compact reasoning stays behind its own disclosure even while live. */
+  autoExpandWhileLive?: boolean;
   live?: boolean;
   /** Keep a block that opened itself while live open after `live` ends. */
   holdOpen?: boolean;
@@ -60,7 +63,7 @@ export function ThoughtBlock({
   useEffect(() => {
     if (live) setOpenedLive(true);
   }, [live]);
-  const autoExpanded = display === "preview"
+  const autoExpanded = display === "preview" || !autoExpandWhileLive
     ? defaultExpanded
     : live || (holdOpen && openedLive) || defaultExpanded;
   const expanded = userToggle?.autoExpanded === autoExpanded ? userToggle.value : autoExpanded;

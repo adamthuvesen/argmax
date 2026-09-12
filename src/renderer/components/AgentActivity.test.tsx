@@ -598,6 +598,34 @@ describe("AgentActivity", () => {
     expect(within(pane).getByRole("button", { name: "Ran git status --short" })).toBeInTheDocument();
   });
 
+  it("keeps live Compact reasoning behind one collapsed disclosure", () => {
+    render(
+      <AgentActivity
+        events={[
+          event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+            id: "task-1", name: "Task", input: { description: "Explore repo" }
+          }),
+          event("thought", "message.delta", "2026-05-12T15:00:02.000Z", "Inspecting the files.", {
+            parent_tool_use_id: "task-1", thinking: true
+          })
+        ]}
+        defaultToolCallsDisplay="collapsed"
+        defaultToolCallGroupsExpanded={false}
+        thinkingDisplay="collapsed"
+        parentSession={session}
+        parentToolUseId="task-1"
+        workspace={workspace}
+      />
+    );
+
+    const disclosure = screen.getByRole("button", { name: "Thinking" });
+    expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Inspecting the files.")).toBeNull();
+    fireEvent.click(disclosure);
+    expect(screen.getByText("Inspecting the files.")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Thinking" })).toHaveLength(1);
+  });
+
   it("keeps prose and nested agent launches between regular tool runs", () => {
     render(
       <AgentActivity

@@ -121,7 +121,18 @@ function deltaTextForBuffer(event: TimelineEvent, currentText: string): string {
  * on its own. Whitespace on either side already separates the two, so a normal
  * stream is left byte for byte as it arrived.
  */
-function appendThinking(current: string, incoming: string): string {
+function appendThinking(current: string, incoming: string, payload: TimelineEvent["payload"]): string {
+  // Older Codex streams lost summary-part separators, then replayed the whole
+  // item. Match that exact saved suffix and restore its authoritative spacing.
+  const summary = payload.summary;
+  if (payload.type === "reasoning" && payload.providerEventType === "item.completed" &&
+      Array.isArray(summary) && summary.every((part): part is string => typeof part === "string") &&
+      incoming === summary.join("\n")) {
+    const streamed = summary.join("");
+    if (streamed.length > 0 && current.endsWith(streamed)) {
+      return current.slice(0, -streamed.length) + incoming;
+    }
+  }
   if (incoming.startsWith(current)) return current + incoming.slice(current.length);
   if (isBurstSeam(current, incoming)) return `${current}\n\n${incoming}`;
   return current + incoming;
@@ -328,7 +339,7 @@ export function coalesceAssistantGroups(
       }
       thinkingBuffer.lastCreatedAt = event.createdAt;
       thinkingBuffer.lastEventId = event.id;
-      thinkingBuffer.text = appendThinking(thinkingBuffer.text, event.message);
+      thinkingBuffer.text = appendThinking(thinkingBuffer.text, event.message, event.payload);
       previousEventCreatedAt = event.createdAt;
       continue;
     }

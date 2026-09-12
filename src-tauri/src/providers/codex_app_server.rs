@@ -802,6 +802,20 @@ fn rpc_error(id: Value, code: i64, message: impl Into<String>) -> Value {
 #[derive(Default)]
 struct EventTranslation {
     last_usage: Option<Value>,
+    reasoning_streams: HashMap<String, ReasoningStream>,
+    last_reasoning_item_id: Option<String>,
+}
+
+#[derive(Default)]
+struct ReasoningStream {
+    streamed: bool,
+    last_part: Option<ReasoningPart>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ReasoningPart {
+    Summary(Option<u64>),
+    Content(Option<u64>),
 }
 
 impl EventTranslation {
@@ -812,12 +826,44 @@ impl EventTranslation {
                 let Some(item) = params.get("item") else {
                     return Vec::new();
                 };
+                let is_reasoning = item.get("type").and_then(Value::as_str) == Some("reasoning");
+                if !is_reasoning {
+                    self.last_reasoning_item_id = None;
+                } else if method == "item/completed" {
+                    let item_id = item.get("id").and_then(Value::as_str);
+                    if item_id.is_some_and(|id| {
+                        self.reasoning_streams
+                            .remove(id)
+                            .is_some_and(|stream| stream.streamed)
+                    }) {
+                        return Vec::new();
+                    }
+                }
                 let event_type = if method == "item/started" {
                     "item.started"
                 } else {
                     "item.completed"
                 };
-                vec![json!({ "type": event_type, "item": exec_item(item) })]
+                let mut item = exec_item(item);
+                if is_reasoning && method == "item/completed" {
+                    if let Some(item_id) =
+                        item.get("id").and_then(Value::as_str).map(str::to_string)
+                    {
+                        if self
+                            .last_reasoning_item_id
+                            .as_deref()
+                            .is_some_and(|last| last != item_id)
+                        {
+                            if let Some(text) =
+                                item.get("text").and_then(Value::as_str).map(str::to_string)
+                            {
+                                item["text"] = Value::String(format!("\n{text}"));
+                            }
+                        }
+                        self.last_reasoning_item_id = Some(item_id);
+                    }
+                }
+                vec![json!({ "type": event_type, "item": item })]
             }
             // Codex revises its plan through its own notification rather than
             // through an item lifecycle, and it names the running step — the
@@ -840,19 +886,22 @@ impl EventTranslation {
             "item/agentMessage/delta" => params
                 .get("delta")
                 .and_then(Value::as_str)
-                .map(|text| vec![json!({ "type": "message.delta", "text": text })])
-                .unwrap_or_default(),
-            "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" => params
-                .get("delta")
-                .and_then(Value::as_str)
                 .map(|text| {
-                    vec![json!({
-                        "type": "message.delta",
-                        "text": text,
-                        "thinking": true,
-                    })]
+                    self.last_reasoning_item_id = None;
+                    vec![json!({ "type": "message.delta", "text": text })]
                 })
                 .unwrap_or_default(),
+            "item/reasoning/summaryTextDelta" => self.reasoning_delta(
+                params,
+                ReasoningPart::Summary(params.get("summaryIndex").and_then(Value::as_u64)),
+            ),
+            "item/reasoning/textDelta" => self.reasoning_delta(
+                params,
+                ReasoningPart::Content(params.get("contentIndex").and_then(Value::as_u64)),
+            ),
+            // The following text delta carries the same summary index. Using
+            // that index avoids persisting a whitespace-only separator event.
+            "item/reasoning/summaryPartAdded" => Vec::new(),
             "thread/tokenUsage/updated" => {
                 self.last_usage = params.get("tokenUsage").cloned();
                 Vec::new()
@@ -874,6 +923,46 @@ impl EventTranslation {
             }
             _ => Vec::new(),
         }
+    }
+
+    fn reasoning_delta(&mut self, params: &Value, part: ReasoningPart) -> Vec<Value> {
+        let Some(text) = params.get("delta").and_then(Value::as_str) else {
+            return Vec::new();
+        };
+        if text.is_empty() {
+            return Vec::new();
+        }
+        let Some(item_id) = params.get("itemId").and_then(Value::as_str) else {
+            return vec![json!({
+                "type": "message.delta",
+                "text": text,
+                "thinking": true,
+            })];
+        };
+
+        let item_boundary = self
+            .last_reasoning_item_id
+            .as_deref()
+            .is_some_and(|last| last != item_id);
+        let stream = self
+            .reasoning_streams
+            .entry(item_id.to_string())
+            .or_default();
+        let part_boundary = stream.streamed && stream.last_part.is_some_and(|last| last != part);
+        let text = if item_boundary || part_boundary {
+            format!("\n{text}")
+        } else {
+            text.to_string()
+        };
+        stream.streamed = true;
+        stream.last_part = Some(part);
+        self.last_reasoning_item_id = Some(item_id.to_string());
+
+        vec![json!({
+            "type": "message.delta",
+            "text": text,
+            "thinking": true,
+        })]
     }
 }
 
@@ -1367,6 +1456,105 @@ mod tests {
             dynamic_tool[0]["item"]["result"]["_meta"]["opaqueKeyName"],
             "kept"
         );
+    }
+
+    #[test]
+    fn streamed_reasoning_keeps_part_boundaries_without_replaying_completion() {
+        use crate::providers::normalizer::{
+            normalize_provider_event, NormalizerSessionContext, ProviderOutputEvent,
+        };
+
+        let mut translation = EventTranslation::default();
+        assert!(translation
+            .translate(
+                "item/reasoning/summaryPartAdded",
+                &json!({ "itemId": "reasoning-1", "summaryIndex": 0 }),
+            )
+            .is_empty());
+
+        let mut lines = Vec::new();
+        lines.extend(translation.translate(
+            "item/reasoning/summaryTextDelta",
+            &json!({ "itemId": "reasoning-1", "summaryIndex": 0, "delta": "First" }),
+        ));
+        lines.extend(translation.translate(
+            "item/reasoning/summaryTextDelta",
+            &json!({ "itemId": "reasoning-1", "summaryIndex": 0, "delta": " part" }),
+        ));
+        lines.extend(translation.translate(
+            "item/reasoning/summaryTextDelta",
+            &json!({ "itemId": "reasoning-1", "summaryIndex": 1, "delta": "Second" }),
+        ));
+        assert!(translation
+            .translate(
+                "item/completed",
+                &json!({
+                    "item": {
+                        "id": "reasoning-1",
+                        "type": "reasoning",
+                        "summary": ["First part", "Second"],
+                        "content": [],
+                    }
+                }),
+            )
+            .is_empty());
+        lines.extend(translation.translate(
+            "item/completed",
+            &json!({
+                "item": {
+                    "id": "reasoning-2",
+                    "type": "reasoning",
+                    "summary": ["Completion only"],
+                    "content": [],
+                }
+            }),
+        ));
+
+        let mut context = NormalizerSessionContext::default();
+        let mut messages = Vec::new();
+        for line in lines {
+            let event = ProviderOutputEvent {
+                session_id: "session-1".to_string(),
+                stream: ProviderOutputStream::Stdout,
+                message: format!("{line}\n"),
+                created_at: "2026-09-13T12:00:00Z".to_string(),
+            };
+            let normalized = normalize_provider_event(ProviderId::Codex, &event, &mut context);
+            messages.extend(normalized.events.into_iter().map(|event| {
+                assert_eq!(event.r#type, "message.delta");
+                assert_eq!(event.payload["thinking"], true);
+                event.message
+            }));
+        }
+
+        assert_eq!(
+            messages,
+            ["First", " part", "\nSecond", "\nCompletion only"]
+        );
+    }
+
+    #[test]
+    fn empty_reasoning_delta_does_not_hide_completed_reasoning() {
+        let mut translation = EventTranslation::default();
+        assert!(translation
+            .translate(
+                "item/reasoning/summaryTextDelta",
+                &json!({ "itemId": "reasoning-1", "summaryIndex": 0, "delta": "" }),
+            )
+            .is_empty());
+
+        let completed = translation.translate(
+            "item/completed",
+            &json!({
+                "item": {
+                    "id": "reasoning-1",
+                    "type": "reasoning",
+                    "summary": ["Still visible"],
+                    "content": [],
+                }
+            }),
+        );
+        assert_eq!(completed[0]["item"]["text"], "Still visible");
     }
 
     #[test]

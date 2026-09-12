@@ -190,6 +190,9 @@ function ToolCallGroupBubbleInner({
     : renderRows(rows);
   const activityStatus = activityIsLive ? "running" : summary.status;
 
+  // A thought already owns its disclosure. Only tool work needs an outer one.
+  if (hasActivityMembers && group.tools.length === 0) return <>{activityBody}</>;
+
   return (
     <div
       className="tool-call-group activity-summary-line"

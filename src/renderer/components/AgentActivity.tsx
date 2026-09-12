@@ -109,6 +109,7 @@ function renderAssistantGroup({
   group,
   thinkingLive,
   thoughtExpanded,
+  autoExpandWhileLive,
   thinkingDisplay,
   holdThoughtOpen,
   agentKey,
@@ -121,6 +122,7 @@ function renderAssistantGroup({
   thinkingDisplay: ThinkingDisplay | undefined;
   /** The pane chip's explicit disclosure override. */
   thoughtExpanded: boolean | undefined;
+  autoExpandWhileLive: boolean;
   holdThoughtOpen: boolean;
   /** Namespaces this pane's group ids, which only count within one agent run. */
   agentKey: string | null;
@@ -135,6 +137,7 @@ function renderAssistantGroup({
         display={thinkingDisplay}
         previewText={group.text}
         defaultExpanded={thoughtExpanded}
+        autoExpandWhileLive={autoExpandWhileLive}
         live={thinkingLive}
         // The newest burst never folds in place: the pane follows its own
         // scroll to the bottom, so losing the reasoning's height the moment the
@@ -396,6 +399,7 @@ function AgentActivityRun({
         group,
         thinkingLive: groupLive,
         thoughtExpanded: activityExpandOverride ?? false,
+        autoExpandWhileLive: !compactActivity,
         thinkingDisplay,
         // Keyed on the group, not on `groupLive`: the hold has to outlast live
         // so the newest block is still open when the answer lands under it.

@@ -175,6 +175,22 @@ describe("coalesceAssistantGroups", () => {
     expect(groups[0]?.text).toBe("I need to read.");
   });
 
+  it.each([true, false])("replays saved Codex summary parts once (streamed=%s)", (streamed) => {
+    const summary = ["**Planning auto-merge activation**", "**Deciding on polling strategy for checks**"];
+    const groups = coalesceAssistantGroups([
+      assistantEvent("prior", "message.delta", "Earlier reasoning.\n\n", "2026-09-13T07:49:23.000Z", { thinking: true }),
+      ...(streamed ? summary.map((part, index) => assistantEvent(
+        `delta-${index}`, "message.delta", part, `2026-09-13T07:49:${24 + index}.000Z`, { thinking: true }
+      )) : []),
+      assistantEvent("completed", "message.delta", summary.join("\n"), "2026-09-13T07:49:30.213Z", {
+        thinking: true, type: "reasoning", providerEventType: "item.completed", summary
+      })
+    ]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.text).toBe(`Earlier reasoning.\n\n${summary.join("\n")}`);
+  });
+
   it("anchors a streamed answer group's lastActivityAt to its FINAL delta", () => {
     // The first delta can predate the turn's tool calls (Cursor streams from
     // the turn start). Ordering keys off lastActivityAt so the answer settles

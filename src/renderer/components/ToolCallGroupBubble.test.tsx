@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildToolCallGroup, type ToolCall } from "../lib/toolCalls.js";
 import type { ActivityMember } from "../lib/turnChildren.js";
 import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
+import { ThoughtBlock } from "./ThoughtBlock.js";
 
 afterEach(() => {
   cleanup();
@@ -180,20 +181,22 @@ describe("ToolCallGroupBubble", () => {
     expect(screen.getByRole("button", { name: "Ran git status --short" })).toBeInTheDocument();
   });
 
-  it("uses Thinking as the live headline for thought-only activity", () => {
+  it.each([false, true])("keeps thought-only activity to one disclosure (live=%s)", (live) => {
     render(
       <ToolCallGroupBubble
         compact
         group={buildToolCallGroup([])}
-        activityMembers={[{ kind: "thought", id: "thought", node: <span>Working</span>, live: true }]}
+        activityMembers={[{
+          kind: "thought", id: "thought", live,
+          node: <ThoughtBlock live={live} previewText="Working" durationMs={5000}>Working</ThoughtBlock>
+        }]}
       />
     );
 
-    expect(screen.getByRole("button", { name: "Thinking" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Thinking" }).parentElement).toHaveAttribute(
-      "data-status",
-      "running"
-    );
+    const disclosure = screen.getByRole("button", { name: live ? "Thinking" : "Thought 5s" });
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+    if (!live) fireEvent.click(disclosure);
+    expect(screen.getByText("Working")).toBeInTheDocument();
   });
 
   it("holds the edit total back until the group stops working", () => {

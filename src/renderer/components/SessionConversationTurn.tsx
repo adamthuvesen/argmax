@@ -315,6 +315,7 @@ function SessionConversationTurnInner({
             display={thinkingDisplay}
             previewText={group.text}
             defaultExpanded={toolsExpandOverride ?? false}
+            autoExpandWhileLive={!compactActivity}
             live={groupLive}
             holdOpen={
               isLatestTurn && toolsExpandOverride !== false && group.id === liveThoughtGroupId

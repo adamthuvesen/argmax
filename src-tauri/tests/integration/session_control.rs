@@ -913,10 +913,9 @@ async fn observing_stopping_and_waiting_on_a_launched_session() {
     assert_eq!(messages[0]["fromSessionId"], "session-parent");
     assert_eq!(messages[0]["fromLabel"], "Parent");
     assert!(
-        providers
+        !providers
             .pending_messages_snapshot()
-            .get("session-child")
-            .is_none(),
+            .contains_key("session-child"),
         "collecting the inbox must remove its in-memory follow-up copy"
     );
     let durable_pending: i64 = database
@@ -1583,10 +1582,9 @@ async fn a_completion_notice_queued_behind_a_running_turn_stays_collectable() {
         .expect("body")
         .contains("finished with state cancelled"));
     assert!(
-        providers
+        !providers
             .pending_messages_snapshot()
-            .get("session-parent")
-            .is_none(),
+            .contains_key("session-parent"),
         "waiting must remove the in-memory copies of every collected message"
     );
     let durable_pending: i64 = database

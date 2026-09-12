@@ -236,16 +236,17 @@ pub fn mark_workspaces_viewed(
     let mut changed_ids = Vec::new();
 
     for observation in observations {
-        let current_activity: String = transaction
+        let current_activity: Option<String> = transaction
             .prepare_cached("SELECT last_activity_at FROM workspaces WHERE id = ?")
             .map_err(sqlite_error)?
             .query_row([observation.workspace_id.as_str()], |row| row.get(0))
-            .map_err(|error| match error {
-                rusqlite::Error::QueryReturnedNoRows => {
-                    ArgmaxError::record_not_found("workspace", &observation.workspace_id)
-                }
-                other => sqlite_error(other),
-            })?;
+            .ok();
+        // A workspace deleted between the client's snapshot and this call is
+        // not an error: skipping it keeps the other observations in the
+        // batch, and read state for a row that no longer exists is moot.
+        let Some(current_activity) = current_activity else {
+            continue;
+        };
 
         if observation.observed_activity_at > current_activity {
             return Err(ArgmaxError::invalid(InvalidInputIssue::at(

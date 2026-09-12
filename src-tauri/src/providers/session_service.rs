@@ -1506,19 +1506,25 @@ impl ProviderSessionService {
             self.clear_queue(&session_id)?;
         }
 
-        let connection = self.database.connection();
-        let session = clear_session_conversation(&connection, &session_id)?;
-        let event = persist_timeline_event(
-            &connection,
-            &PersistTimelineEventInput {
-                id: Uuid::new_v4().to_string(),
-                session_id: session_id.clone(),
-                r#type: "session.cleared".to_string(),
-                message: "Cleared conversation.".to_string(),
-                payload: json!({}),
-                created_at: None,
-            },
-        )?;
+        let (session, event) = {
+            let connection = self.database.connection();
+            let session = clear_session_conversation(&connection, &session_id)?;
+            let event = persist_timeline_event(
+                &connection,
+                &PersistTimelineEventInput {
+                    id: Uuid::new_v4().to_string(),
+                    session_id: session_id.clone(),
+                    r#type: "session.cleared".to_string(),
+                    message: "Cleared conversation.".to_string(),
+                    payload: json!({}),
+                    created_at: None,
+                },
+            )?;
+            (session, event)
+        };
+        // The writer connection is dropped before publishing: the delta's
+        // push body reads through `read_connection`, whose fallback would
+        // re-lock the writer this thread may still be holding.
         self.publish(DashboardDelta {
             sessions: vec![session.clone()],
             events: vec![event],
@@ -2264,41 +2270,47 @@ impl ProviderSessionService {
         }
         for recovered_session in &recovered {
             let session_id = &recovered_session.id;
-            let connection = self.database.connection();
-            let session = update_session_state(
-                &connection,
-                session_id,
-                &SessionStateInput::transition(SessionState::Failed).finished_at(now_iso()),
-            )?;
-            // Mirror the session terminal-state onto the workspace so the
-            // dashboard doesn't keep showing a `running` workspace whose
-            // session was just marked `failed`.
-            let workspace = update_workspace_state_for_session_state(
-                &connection,
-                &session.workspace_id,
-                SessionState::Failed,
-            )?;
-            let event = persist_timeline_event(
-                &connection,
-                &PersistTimelineEventInput {
-                    id: Uuid::new_v4().to_string(),
-                    session_id: session_id.clone(),
-                    r#type: "process_did_not_survive_restart".to_string(),
-                    message: "Provider process did not survive restart.".to_string(),
-                    payload: json!({}),
-                    created_at: None,
-                },
-            )?;
+            // The writer connection is dropped before publishing: the delta's
+            // push body reads through `read_connection`, whose fallback would
+            // re-lock the writer this thread may still be holding.
+            let (session, workspace, event, is_multitask, projects) = {
+                let connection = self.database.connection();
+                let session = update_session_state(
+                    &connection,
+                    session_id,
+                    &SessionStateInput::transition(SessionState::Failed).finished_at(now_iso()),
+                )?;
+                // Mirror the session terminal-state onto the workspace so the
+                // dashboard doesn't keep showing a `running` workspace whose
+                // session was just marked `failed`.
+                let workspace = update_workspace_state_for_session_state(
+                    &connection,
+                    &session.workspace_id,
+                    SessionState::Failed,
+                )?;
+                let event = persist_timeline_event(
+                    &connection,
+                    &PersistTimelineEventInput {
+                        id: Uuid::new_v4().to_string(),
+                        session_id: session_id.clone(),
+                        r#type: "process_did_not_survive_restart".to_string(),
+                        message: "Provider process did not survive restart.".to_string(),
+                        payload: json!({}),
+                        created_at: None,
+                    },
+                )?;
+                let is_multitask = session_launch_kind(&connection, session_id)
+                    .is_ok_and(|kind| kind == LAUNCH_KIND_MULTITASK);
+                let projects = list_projects(&connection)?;
+                (session, workspace, event, is_multitask, projects)
+            };
             self.publish(DashboardDelta {
-                projects: list_projects(&connection)?,
+                projects,
                 workspaces: vec![workspace],
                 sessions: vec![session],
                 events: vec![event],
                 ..DashboardDelta::default()
             });
-            let is_multitask = session_launch_kind(&connection, session_id)
-                .is_ok_and(|kind| kind == LAUNCH_KIND_MULTITASK);
-            drop(connection);
             // A multitask that was mid-turn when the app went down never wrote
             // its finish row, so the chat that dispatched it would keep saying
             // "running alongside" for a process that died with the app. Boot is

@@ -864,12 +864,20 @@ fn classify_simple_command(command: CommandValue<'_>) -> Option<(ActivityKind, V
     let mut working_directory = None;
     let mut directory_is_trustworthy = true;
     for (pipeline_index, pipeline) in parsed.pipelines.into_iter().enumerate() {
-        if pipeline_index == 0 && pipeline.len() == 1 {
+        if pipeline.len() == 1 {
             if let Some(directory) = literal_cd_target(&pipeline[0]) {
-                directory_is_trustworthy =
-                    parsed.separators.first() == Some(&SequenceSeparator::OnSuccess);
-                working_directory = Some(directory);
-                continue;
+                if pipeline_index == 0 {
+                    directory_is_trustworthy =
+                        parsed.separators.first() == Some(&SequenceSeparator::OnSuccess);
+                    working_directory = Some(directory);
+                    continue;
+                }
+                // A later `cd` changes the directory the following targets
+                // are prefixed with, and the prefixing never accounts for it:
+                // `cd a && cd src && sed ...` would report targets under `a`.
+                // The resolved directory is stale from here on, so an Edit
+                // must not report targets under it.
+                directory_is_trustworthy = false;
             }
         }
         for (index, words) in pipeline.into_iter().enumerate() {

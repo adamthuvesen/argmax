@@ -145,6 +145,16 @@ fn redirected_output_targets(tokens: &[Token]) -> Option<Vec<String>> {
     let mut index = 0;
     while index < tokens.len() {
         if !tokens[index].quoted && matches!(tokens[index].text.as_str(), ">" | ">>") {
+            // `2>&1` duplicates a file descriptor. The tokenizer splits `>&`
+            // into two tokens, so the `&` and the fd number after it would
+            // otherwise read as a literal path named "&".
+            if tokens
+                .get(index + 1)
+                .is_some_and(|t| !t.quoted && t.text == "&")
+            {
+                index += 3;
+                continue;
+            }
             let target = tokens.get(index + 1)?;
             if !is_literal_path(&target.text) || (target.text.starts_with('~') && target.quoted) {
                 return None;

@@ -48,7 +48,7 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
-import { canSteerQueuedMessage } from "../lib/queuedSteer.js";
+import { canSteerQueuedMessage, hasSteeringContextHeadroom } from "../lib/queuedSteer.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
@@ -739,7 +739,16 @@ export function SessionComposer({
   const submitInput = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     // Queue is the default, but a user may choose to send immediate guidance
-    // into the active turn. Idle sends retain the ordinary follow-up path.
+    // into the active turn. A near-full Codex context stays queued because an
+    // automatic compaction can otherwise forget the first response to the
+    // steer and answer it again. Idle sends retain the ordinary follow-up path.
+    const delivery =
+      isQueueing &&
+      defaultFollowUpDelivery === "steer" &&
+      session &&
+      hasSteeringContextHeadroom(session)
+        ? "steer"
+        : "queue";
     await deliverDraft((sessionId, prompt, attachments) =>
       onSendSessionInput(
         sessionId,
@@ -748,7 +757,7 @@ export function SessionComposer({
         agentMode,
         attachments,
         undefined,
-        isQueueing ? defaultFollowUpDelivery : "queue"
+        delivery
       )
     );
   };

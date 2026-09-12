@@ -988,7 +988,7 @@ enum TranscriptProjection {
             case .succeeded: return "Used \(detail)"
             case .failed: return "\(detail) failed"
             case .cancelled: return "\(detail) cancelled"
-            case .unconfirmed: return "\(detail) (unconfirmed)"
+            case .unconfirmed: return detail
             }
         default:
             return tool.activitySummary

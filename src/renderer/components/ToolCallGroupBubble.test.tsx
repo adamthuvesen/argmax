@@ -32,11 +32,11 @@ describe("observed activity", () => {
     expect(header).toHaveAttribute("aria-expanded", "true");
   });
 
-  it("does not call failed or unconfirmed work successful in a mixed group", () => {
+  it("does not call failed or uncertain work successful in a mixed group", () => {
     const edit = tool("edit", { status: "error", activity: { version: 1, kind: "edit", evidence: "tool", targets: [] } });
     const read = tool("read", { completionObserved: false, activity: { version: 1, kind: "read", evidence: "tool", targets: [] } });
     render(<ToolCallGroupBubble compact group={buildToolCallGroup([edit, read])} />);
-    expect(screen.getByRole("button", { name: "File change failed, file read (unconfirmed)" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "File change failed, file read" })).toHaveAttribute("aria-expanded", "false");
   });
 });
 

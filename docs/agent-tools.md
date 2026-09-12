@@ -624,7 +624,7 @@ can still hand each session its own credential.
 |---|---|---|
 | Claude | `--mcp-config '<inline json>'` | no |
 | Codex | `-c mcp_servers.argmax.*` | no |
-| Cursor (composer, ACP) | `mcpServers` in `session/new` / `session/load` | no |
+| Cursor (composer, ACP) | user MCPs from one home-scoped Cursor login; Cursor-approved project servers and `argmax` in `session/new` / `session/load` | no |
 | OpenCode | `OPENCODE_CONFIG_CONTENT` (inline JSON, merged over the user's config) | no |
 | Cursor (other models, PTY) | `<workspace>/.cursor/mcp.json`, merged over the user's own | yes, restored at exit |
 | Grok Build | `<workspace>/.grok/config.toml` plus a folder-trust grant | yes, removed at exit |

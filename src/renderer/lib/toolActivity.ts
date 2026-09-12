@@ -81,7 +81,7 @@ export function activityLabel(activity: ToolActivity, state: ActivityState, plur
   }
   if (state === "running") return verbs[0];
   if (state === "succeeded") return verbs[1];
-  return `${verbs[2]} ${state === "unconfirmed" ? "(unconfirmed)" : state}`;
+  return state === "unconfirmed" ? verbs[2] : `${verbs[2]} ${state}`;
 }
 
 export function describeActivity(tool: ToolCall): string | null {

@@ -37,6 +37,8 @@ struct TranscriptSessionMetadata: Codable, Hashable, Sendable, Identifiable {
     var attention: AttentionState
     var reasoningEffort: String?
     var agentMode: String?
+    var contextTokens: Int? = nil
+    var contextWindow: Int? = nil
 }
 
 struct TranscriptWorkspaceMetadata: Decodable, Hashable, Sendable, Identifiable {

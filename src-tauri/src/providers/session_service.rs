@@ -92,6 +92,12 @@ use crate::{
 };
 
 const MAX_PENDING_QUEUE: usize = 64;
+/// Codex may auto-compact between the first response to a steer and the tool
+/// continuation that follows it. Its replacement history keeps the user steer
+/// but can omit that first response, causing the model to answer it again.
+/// Queue near-full contexts for the next turn instead, with room for the first
+/// post-steer tool result.
+const CODEX_STEER_MAX_CONTEXT_PERCENT: i64 = 85;
 /// How many state changes a `session_wait` subscriber may fall behind before
 /// it is told to re-read the rows instead. A blocked waiter wakes on every
 /// message, so this only ever fills during a burst.
@@ -129,6 +135,17 @@ fn ensure_permission_mode_supported(
         ));
     }
     Ok(())
+}
+
+fn has_steering_context_headroom(session: &SessionSummary) -> bool {
+    if session.provider != ProviderId::Codex.as_str() {
+        return true;
+    }
+    let Some(context_window) = session.context_window.filter(|window| *window > 0) else {
+        return true;
+    };
+    session.context_tokens.saturating_mul(100)
+        < context_window.saturating_mul(CODEX_STEER_MAX_CONTEXT_PERCENT)
 }
 
 fn cap_notice_answer(answer: &str) -> String {
@@ -1016,7 +1033,7 @@ impl ProviderSessionService {
             .unwrap_or(0);
         self.ensure_no_pending_after_turn(&session_id)?;
 
-        let (workspace_id, session_provider, session_permission_mode) = {
+        let (workspace_id, session_provider, session_permission_mode, steering_context_headroom) = {
             let _send_generation = self.lock_send_generation(&session_id, send_generation)?;
             let connection = self.database.connection();
             let session = find_session_by_id(&connection, &session_id)?;
@@ -1045,10 +1062,12 @@ impl ProviderSessionService {
                     tracing::info!(session_id = %session_id, "imported session adopted");
                 }
             }
+            let steering_context_headroom = has_steering_context_headroom(&session);
             (
                 session.workspace_id,
                 parse_provider(&session.provider)?,
                 parse_permission_mode(&session.permission_mode)?,
+                steering_context_headroom,
             )
         };
         if self
@@ -1123,7 +1142,7 @@ impl ProviderSessionService {
                 };
                 drop(send_generation_guard);
                 drop(admission);
-                if steer_when_queued {
+                if steer_when_queued && steering_context_headroom {
                     return Box::pin(
                         self.send_queued_message_now(ProvidersSendQueuedMessageNowInput {
                             session_id: SessionId::try_from(session_id)
@@ -1198,7 +1217,7 @@ impl ProviderSessionService {
             };
             drop(send_generation_guard);
             drop(admission);
-            if steer_when_queued {
+            if steer_when_queued && steering_context_headroom {
                 return Box::pin(self.send_queued_message_now(
                     ProvidersSendQueuedMessageNowInput {
                         session_id:
@@ -2094,6 +2113,12 @@ impl ProviderSessionService {
                 return Err(ArgmaxError::service(
                     "STEER_NOT_RUNNING",
                     "The turn has finished. This follow-up is still queued.",
+                ));
+            }
+            if !has_steering_context_headroom(&session) {
+                return Err(ArgmaxError::service(
+                    "STEER_CONTEXT_COMPACTION",
+                    "Codex is close to compacting its context. This follow-up is still queued for the next turn.",
                 ));
             }
             let handle = self.live_handle(session_id).ok_or_else(|| {

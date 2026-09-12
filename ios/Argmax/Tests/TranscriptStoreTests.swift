@@ -197,7 +197,7 @@ final class TranscriptStoreTests: XCTestCase {
             return group.tools.first
         }.first)
 
-        XCTAssertEqual(tool.summary, "File change (unconfirmed)")
+        XCTAssertEqual(tool.summary, "File change")
         XCTAssertEqual(tool.fileLabel, "src/App.swift")
         XCTAssertEqual(tool.filePath, path)
     }

@@ -3,7 +3,9 @@ use super::super::{
 };
 use super::{database_with_running_session, CountingFailureLauncher};
 use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::ipc::inputs::{ProvidersSendQueuedMessageNowInput, QueuedMessageDelivery};
+use crate::ipc::inputs::{
+    ProvidersSendInput, ProvidersSendQueuedMessageNowInput, QueuedMessageDelivery,
+};
 use crate::ipc::validation::{NonEmptyString, SessionId};
 use crate::persistence::events::list_session_events_since;
 use crate::persistence::pending_messages::{list_session_pending_messages, replace_session_queue};
@@ -177,6 +179,87 @@ async fn successful_steer_persists_delivery_and_leaves_session_running() {
     assert_eq!(
         find_session_by_id(&connection, "session-1").unwrap().state,
         SessionState::Running
+    );
+}
+
+#[tokio::test]
+async fn codex_near_compaction_keeps_the_follow_up_queued() {
+    let (service, handle, launcher) = steer_service(SteerHandleConfig {
+        supports_steering: true,
+        steer_error: None,
+    });
+    service
+        .database
+        .connection()
+        .execute(
+            "UPDATE sessions SET provider = 'codex', model_id = 'gpt-5.6-sol', context_tokens = 226235, context_window = 258400 WHERE id = 'session-1'",
+            [],
+        )
+        .unwrap();
+    let mut message = pending("near-compaction", "approved");
+    message.model_id = Some("gpt-5.6-sol".to_string());
+    let message_id = seed_queue(&service, message);
+
+    let error = steer_now(&service, &message_id).await.unwrap_err();
+
+    assert!(matches!(
+        error,
+        ArgmaxError::ServiceError { ref sub_code, .. }
+            if sub_code == "STEER_CONTEXT_COMPACTION"
+    ));
+    assert_eq!(handle.steer_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(handle.terminate_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(launcher.launches.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        service.pending_messages_snapshot()["session-1"][0].content,
+        "approved"
+    );
+}
+
+#[tokio::test]
+async fn direct_steer_near_compaction_becomes_an_ordinary_queued_follow_up() {
+    let (service, handle, _) = steer_service(SteerHandleConfig {
+        supports_steering: true,
+        steer_error: None,
+    });
+    service
+        .database
+        .connection()
+        .execute(
+            "UPDATE sessions SET provider = 'codex', model_id = 'gpt-5.6-sol', context_tokens = 226235, context_window = 258400 WHERE id = 'session-1'",
+            [],
+        )
+        .unwrap();
+    service
+        .database
+        .connection()
+        .execute(
+            "UPDATE workspaces SET path = ? WHERE id = 'workspace-1'",
+            [std::env::current_dir()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()],
+        )
+        .unwrap();
+    let input: ProvidersSendInput = serde_json::from_value(json!({
+        "sessionId": "session-1",
+        "input": "approved",
+        "modelLabel": "GPT-5.6 Sol",
+        "modelId": "gpt-5.6-sol",
+        "reasoningEffort": null,
+        "fastMode": false,
+        "agentMode": "auto",
+        "attachments": null
+    }))
+    .unwrap();
+
+    let result = service.steer_input(input).await.unwrap();
+
+    assert!(result.queued);
+    assert_eq!(handle.steer_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        service.pending_messages_snapshot()["session-1"][0].content,
+        "approved"
     );
 }
 

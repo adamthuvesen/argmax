@@ -329,7 +329,7 @@ extension TranscriptToolActivity {
         case .succeeded: return labels.succeeded
         case .failed: return "\(labels.neutral) failed"
         case .cancelled: return "\(labels.neutral) cancelled"
-        case .unconfirmed: return "\(labels.neutral) (unconfirmed)"
+        case .unconfirmed: return labels.neutral
         }
     }
 

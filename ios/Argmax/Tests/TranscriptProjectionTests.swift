@@ -265,7 +265,7 @@ final class TranscriptProjectionTests: XCTestCase {
         }.first)
         XCTAssertEqual(agent.agentCodename, "Gauss")
         XCTAssertEqual(agent.providerChildSessionId, "child-1")
-        XCTAssertEqual(agent.children.first?.summary, "Command (unconfirmed)")
+        XCTAssertEqual(agent.children.first?.summary, "Command")
 
         let todo = try XCTUnwrap(items.compactMap { item -> TranscriptTodoList? in
             guard case .todo(let list) = item else { return nil }
@@ -319,7 +319,7 @@ final class TranscriptProjectionTests: XCTestCase {
                 return group.tools.first
             }.first)
 
-            XCTAssertEqual(tool.summary, "File change (unconfirmed)")
+            XCTAssertEqual(tool.summary, "File change")
             XCTAssertEqual(tool.fileLabel, testCase.label)
             XCTAssertEqual(tool.filePath, path)
             XCTAssertTrue(tool.input?.contains(path) == true)
@@ -348,7 +348,7 @@ final class TranscriptProjectionTests: XCTestCase {
             return group.agents.first?.children.first
         }.first)
 
-        XCTAssertEqual(child.summary, "File change (unconfirmed)")
+        XCTAssertEqual(child.summary, "File change")
         XCTAssertEqual(child.fileLabel, "src/App.swift")
         XCTAssertEqual(child.filePath, "/Users/dev/argmax/src/App.swift")
     }
@@ -397,8 +397,8 @@ final class TranscriptProjectionTests: XCTestCase {
         }.flatMap { $0 }
 
         XCTAssertEqual(tools.map(\.summary), [
-            "Command (unconfirmed)",
-            "File search (unconfirmed)"
+            "Command",
+            "File search"
         ])
     }
 
@@ -442,7 +442,7 @@ final class TranscriptProjectionTests: XCTestCase {
         let unconfirmed = try XCTUnwrap(firstTool(TranscriptProjection.project(
             events: [event("read", "command.started", "Read", 1, started)]
         )))
-        XCTAssertEqual(unconfirmed.summary, "File read (unconfirmed)")
+        XCTAssertEqual(unconfirmed.summary, "File read")
     }
 
     func testGenericToolAndCommandCaptionsKeepTheirUsefulPreviewAndLifecycle() throws {
@@ -520,7 +520,7 @@ final class TranscriptProjectionTests: XCTestCase {
         XCTAssertEqual(succeeded.summary, "Used a computer")
         XCTAssertEqual(succeeded.activity.label(state: .failed), "Computer use failed")
         XCTAssertEqual(succeeded.activity.label(state: .cancelled), "Computer use cancelled")
-        XCTAssertEqual(succeeded.activity.label(state: .unconfirmed), "Computer use (unconfirmed)")
+        XCTAssertEqual(succeeded.activity.label(state: .unconfirmed), "Computer use")
     }
 
     func testVisibleAssistantProgressSettlesAnUnmatchedNonAgentTool() throws {
@@ -538,7 +538,7 @@ final class TranscriptProjectionTests: XCTestCase {
 
         XCTAssertEqual(tool.status, .done)
         XCTAssertFalse(tool.completionObserved)
-        XCTAssertEqual(tool.summary, "File read (unconfirmed)")
+        XCTAssertEqual(tool.summary, "File read")
     }
 
     func testClaudeIsErrorCompletionMarksTheToolFailed() throws {
@@ -695,7 +695,7 @@ final class TranscriptProjectionTests: XCTestCase {
             ])
         ])))
         XCTAssertEqual(tool.activity.kind, .edit)
-        XCTAssertEqual(tool.summary, "File change (unconfirmed)")
+        XCTAssertEqual(tool.summary, "File change")
     }
 
     func testQuestionUsesFirstValidRetryAndSuppressesPostCardProse() throws {

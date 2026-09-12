@@ -137,7 +137,7 @@ function ToolCallRowInner({
       )}
       {tool.status === "running" ? (
         <span className="tool-call-row-running" aria-hidden="true">
-          <WorkingNest active size={13} />
+          <WorkingNest active size={14} />
         </span>
       ) : null}
     </>

@@ -687,8 +687,15 @@ final class TranscriptStore: ObservableObject {
     }
 
     private func canSteer(_ message: TranscriptPendingMessage, session: TranscriptSessionMetadata) -> Bool {
-        session.state == .running &&
+        let hasContextHeadroom: Bool
+        if session.provider == "codex", let window = session.contextWindow, window > 0 {
+            hasContextHeadroom = Double(session.contextTokens ?? 0) / Double(window) < 0.85
+        } else {
+            hasContextHeadroom = true
+        }
+        return session.state == .running &&
             (session.provider == "claude" || session.provider == "codex") &&
+            hasContextHeadroom &&
             (message.modelId == nil || message.modelId == session.modelId) &&
             (message.reasoningEffort == nil || message.reasoningEffort == session.reasoningEffort) &&
             message.agentMode == (session.agentMode ?? "auto")

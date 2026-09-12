@@ -52,6 +52,36 @@ describe("SessionComposer — running turn controls", () => {
     );
   });
 
+  it("queues instead of steering when Codex is close to compaction", async () => {
+    const onSendSessionInput = vi.fn(() => Promise.resolve());
+    renderConversation(
+      baseSession({
+        state: "running",
+        contextTokens: 226_235,
+        contextWindow: 258_400
+      }),
+      [],
+      {
+        defaultFollowUpDelivery: "steer",
+        onSendSessionInput
+      }
+    );
+
+    const prompt = screen.getByLabelText("Chat prompt");
+    fireEvent.change(prompt, { target: { value: "Prioritize the migration" } });
+    fireEvent.keyDown(prompt, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(onSendSessionInput).toHaveBeenCalledWith(
+        "session-a",
+        "Prioritize the migration",
+        expect.anything(),
+        "auto",
+        undefined
+      )
+    );
+  });
+
   it("stops without sending the draft when Stop is clicked", async () => {
     const { onSendSessionInput, onTerminateSession } = runningComposer();
 

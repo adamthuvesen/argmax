@@ -218,10 +218,14 @@ fn read_json_mcp(
             .get("enabled")
             .and_then(Value::as_bool)
             .is_some_and(|enabled| !enabled);
-        insert(
-            rows,
-            configured_server(name, scope, provider, is_remote, disabled),
-        );
+        let mut server = configured_server(name, scope, provider, is_remote, disabled);
+        if provider == ProviderId::Cursor && scope == ConnectionScope::Project && is_remote {
+            server.authentication_command = path
+                .parent()
+                .and_then(Path::parent)
+                .map(|workspace| cursor_auth_command(name, workspace));
+        }
+        insert(rows, server);
     }
 }
 
@@ -607,9 +611,21 @@ fn auth_command(provider: ProviderId, name: &str, is_remote: bool) -> Option<Str
         ProviderId::Claude => Some(format!("claude mcp login {}", login_shell::quote(name))),
         ProviderId::Codex => Some(format!("codex mcp login {}", login_shell::quote(name))),
         ProviderId::Opencode => Some(format!("opencode mcp auth {}", login_shell::quote(name))),
-        ProviderId::Cursor => Some("Open Cursor Settings → Tools & MCP".to_owned()),
+        ProviderId::Cursor => Some(cursor_auth_command(name, Path::new("~"))),
         ProviderId::Grok => None,
     }
+}
+
+fn cursor_auth_command(name: &str, scope: &Path) -> String {
+    let directory = if scope == Path::new("~") {
+        "~".to_owned()
+    } else {
+        login_shell::quote(&scope.to_string_lossy())
+    };
+    format!(
+        "cd {directory} && cursor-agent mcp login {}",
+        login_shell::quote(name)
+    )
 }
 
 fn authentication_detail(authentication: ConnectionAuthentication) -> &'static str {
@@ -750,5 +766,19 @@ mod tests {
         assert_eq!(values.len(), 1);
         assert_eq!(values[0].name, "Vercel");
         assert_eq!(values[0].kind, ConnectionKind::Plugin);
+    }
+
+    #[test]
+    fn cursor_project_authentication_runs_from_the_checkout() {
+        let workspace = Path::new("/tmp/project with spaces");
+
+        assert_eq!(
+            cursor_auth_command("project server", workspace),
+            "cd '/tmp/project with spaces' && cursor-agent mcp login 'project server'"
+        );
+        assert_eq!(
+            cursor_auth_command("linear", Path::new("~")),
+            "cd ~ && cursor-agent mcp login 'linear'"
+        );
     }
 }

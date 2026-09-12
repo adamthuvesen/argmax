@@ -243,7 +243,7 @@ function ToolCallGroupBubbleInner({
                 still-growing count the finality of a result. */}
             {activityStatus === "running" ? (
               <span className="tool-call-group-running" aria-label="running" title="Running">
-                <WorkingNest active size={13} />
+                <WorkingNest active size={14} />
               </span>
             ) : changeCounts ? (
               <span

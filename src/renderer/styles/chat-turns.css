@@ -447,9 +447,10 @@
   user-select: none;
 }
 
-/* Reads, commands, server marks, and the live WorkingNest are drawn at three
-   different sizes. Give them one type-scale-aware column so changing activity
-   never moves the mark's centre or the label that follows it. */
+/* Every transcript activity mark occupies the same type-scale-aware column and
+   draws at the same 14px size. The centered wrapper opts icons out of the
+   sentence's baseline alignment, so switching activity never moves the mark's
+   centre or the label that follows it. */
 .activity-icon-slot {
   flex: 0 0 calc(var(--text-base) + 2px);
   display: inline-flex;
@@ -463,12 +464,11 @@
   margin-right: 0;
 }
 
-/* The one mark that ignores its `size` prop: in the transcript it has to grow
-   with the chat type scale, not stay pinned at 12px. `-override` rather than
-   `width`, because the prop arrives as an inline custom property that no class
-   could outrank — see styles/working-nest.css. */
+/* Keep the live mark on the same 14px box as the static activity glyphs.
+   `-override` is the stylesheet-owned hook for its inline size custom property;
+   see styles/working-nest.css. */
 .thinking-working-nest {
-  --working-nest-size-override: calc(var(--text-base) + 2px);
+  --working-nest-size-override: 14px;
 }
 
 /* Sized and weighted like the answer that replaces it, so the label reads as
@@ -1180,8 +1180,8 @@ button.tool-call-row-button {
 .tool-call-row-server-icon {
   flex: 0 0 auto;
   align-self: center;
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   margin-right: 1px;
   color: var(--muted-strong);
 }

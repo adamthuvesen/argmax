@@ -91,7 +91,7 @@ describe("activity-aware summaries", () => {
     expect(describeToolAction(call)).toBe("Used a computer");
     expect(describeToolAction({ ...call, status: "running" })).toBe("Using a computer");
     expect(describeToolAction({ ...call, status: "error" })).toBe("Computer use failed");
-    expect(describeToolAction({ ...call, completionObserved: false })).toBe("Computer use (unconfirmed)");
+    expect(describeToolAction({ ...call, completionObserved: false })).toBe("Computer use");
   });
   it("dedupes duplicate tool ids in a group", () => {
     const a = tool({ name: "Read", id: "dup", toolUseId: "tu-dup" });
@@ -109,7 +109,7 @@ describe("activity-aware summaries", () => {
     ).toBe("Read a file");
   });
 
-  it("labels running read, unconfirmed done read, and failed edit precisely", () => {
+  it("labels running read, uncertain done read, and failed edit precisely", () => {
     const readActivity = { version: 1 as const, kind: "read" as const, evidence: "tool" as const, targets: ["/repo/a.ts"] };
     expect(
       describeToolAction(
@@ -126,7 +126,7 @@ describe("activity-aware summaries", () => {
           activity: readActivity
         })
       )
-    ).toBe("File read (unconfirmed)");
+    ).toBe("File read");
     expect(
       describeToolAction(
         tool({
@@ -224,7 +224,7 @@ describe("buildSessionToolCalls integration", () => {
   it("does not infer a successful read from the session stopping", () => {
     const calls = buildSessionToolCalls([start], false);
     expect(calls[0]?.completionObserved).toBe(false);
-    expect(describeToolAction(calls[0])).toBe("File read (unconfirmed)");
+    expect(describeToolAction(calls[0])).toBe("File read");
   });
 
   it.each([{ status: "cancelled" }, { cancelled: true }, { canceled: true }])("keeps cancelled results out of successful activity: %j", (cancellation) => {

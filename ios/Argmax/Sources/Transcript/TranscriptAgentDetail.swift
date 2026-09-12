@@ -80,7 +80,9 @@ struct TranscriptAgentDetail: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { onDismiss() }
+                    HeaderGlyphButton(systemName: "xmark", label: "Close", tint: Theme.muted) {
+                        onDismiss()
+                    }
                 }
             }
         }

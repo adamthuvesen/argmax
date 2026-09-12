@@ -178,6 +178,28 @@ final class TranscriptProjectionTests: XCTestCase {
         XCTAssertEqual(Set(items.map(\.id)).count, items.count)
     }
 
+    func testItemsWithMatchingTimestampsKeepTheirEventCursorOrder() {
+        let timestamp = "2026-01-01T00:00:02.000Z"
+        var toolStart = event("read", "command.started", "Read", 2, [
+            "id": .string("tool-1"),
+            "name": .string("Read")
+        ])
+        var toolEnd = event("read-end", "command.completed", "done", 3, [
+            "tool_use_id": .string("tool-1")
+        ])
+        var answer = event("answer", "message.completed", "It is fixed.", 4)
+        toolStart.createdAt = timestamp
+        toolEnd.createdAt = timestamp
+        answer.createdAt = timestamp
+
+        let items = TranscriptProjection.project(events: [answer, toolEnd, toolStart])
+
+        XCTAssertEqual(items.count, 2)
+        guard case .tools = items[0], case .assistant = items[1] else {
+            return XCTFail("expected the tool before the answer")
+        }
+    }
+
     func testProjectsToolAgentTodoApprovalAndMultitaskModels() throws {
         let events = [
             event("user", "user.message", "Build it", 1),

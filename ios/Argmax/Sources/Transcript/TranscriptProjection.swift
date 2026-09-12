@@ -229,7 +229,11 @@ enum TranscriptProjection {
         for approval in pendingApprovals where !existingApprovalIDs.contains(approval.id) {
             items.append(.approval(approval))
         }
-        return items.sorted(by: itemOrder)
+        // Each item is appended when its first contributing event is visited,
+        // and events are already in canonical cursor order. The synthetic
+        // prompt and unpersisted approvals provide the leading and trailing
+        // fallback positions for items without a source cursor.
+        return items
     }
 
     // MARK: - Ordering and visibility
@@ -367,11 +371,6 @@ enum TranscriptProjection {
         }
         if lhs.id == rhs.id { return .orderedSame }
         return lhs.id < rhs.id ? .orderedAscending : .orderedDescending
-    }
-
-    private static func itemOrder(_ lhs: TranscriptItem, _ rhs: TranscriptItem) -> Bool {
-        if lhs.createdAt != rhs.createdAt { return lhs.createdAt < rhs.createdAt }
-        return lhs.id < rhs.id
     }
 
     // MARK: - Messages

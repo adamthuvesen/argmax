@@ -139,9 +139,12 @@ struct TranscriptScreen: View {
             Button {
                 openReview(filePath: nil)
             } label: {
-                Image(systemName: "arrow.triangle.branch")
-                    .typeSymbol(.body, weight: .medium)
-                    .foregroundStyle(Theme.muted)
+                GitBranchGlyph()
+                    .stroke(
+                        Theme.muted,
+                        style: StrokeStyle(lineWidth: 17 / 12, lineCap: .round, lineJoin: .round)
+                    )
+                    .frame(width: 17, height: 17)
                     .frame(width: 32, height: 32)
                     .overlay(alignment: .topTrailing) { changedBadge }
                     .contentShape(.rect)

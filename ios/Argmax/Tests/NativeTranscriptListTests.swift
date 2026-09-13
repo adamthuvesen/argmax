@@ -157,7 +157,7 @@ final class NativeTranscriptListTests: XCTestCase {
         guard await waitForScrollView(in: host, where: { scrollView in
             guard let frame = state.rowFrames["new-prompt"]?.frame else { return false }
             let viewport = scrollView.convert(scrollView.bounds, to: host.window)
-            return state.following && abs(frame.minY - viewport.minY - scrollView.adjustedContentInset.top - 16) < 1
+            return state.following && abs(frame.minY - viewport.minY - scrollView.adjustedContentInset.top) < 1
         }) != nil else {
             return XCTFail("A new turn did not place its prompt at the top inset")
         }
@@ -166,7 +166,7 @@ final class NativeTranscriptListTests: XCTestCase {
         guard await waitForScrollView(in: host, where: { scrollView in
             guard let frame = state.rowFrames["new-prompt"]?.frame else { return false }
             let viewport = scrollView.convert(scrollView.bounds, to: host.window)
-            return abs(frame.minY - viewport.minY - scrollView.adjustedContentInset.top - 16) < 1
+            return abs(frame.minY - viewport.minY - scrollView.adjustedContentInset.top) < 1
         }) != nil else {
             return XCTFail("Short output moved the new prompt away from the top inset")
         }
@@ -216,7 +216,7 @@ final class NativeTranscriptListTests: XCTestCase {
         guard await waitForScrollView(in: host, where: { scrollView in
             guard let prompt = state.rowFrames["prompt"]?.frame else { return false }
             let viewport = scrollView.convert(scrollView.bounds, to: host.window)
-            return abs(prompt.minY - viewport.minY - scrollView.adjustedContentInset.top - 16) < 1
+            return abs(prompt.minY - viewport.minY - scrollView.adjustedContentInset.top) < 1
         }) != nil else {
             let scrollView = host.scrollView!
             return XCTFail("Prompt y=\(state.rowFrames["prompt"]?.frame.minY ?? -1), viewport=\(scrollView.convert(scrollView.bounds, to: host.window)), insets=\(scrollView.adjustedContentInset)")
@@ -225,7 +225,10 @@ final class NativeTranscriptListTests: XCTestCase {
         let scrollView = host.scrollView!
         let viewport = scrollView.convert(scrollView.bounds, to: host.window)
         XCTAssertEqual(state.rowFrames["prompt"]!.frame.minY,
-                       viewport.minY + scrollView.adjustedContentInset.top + 16, accuracy: 1)
+                       viewport.minY + scrollView.adjustedContentInset.top, accuracy: 1)
+        XCTAssertLessThanOrEqual(state.rowFrames["item-23"]!.frame.maxY,
+                                 viewport.minY + scrollView.adjustedContentInset.top + 1,
+                                 "The previous response must be entirely above the visible transcript")
 
         state.sessionID = "reopened-session"
         for _ in 0..<20 { await settle(host) }
@@ -286,7 +289,7 @@ final class NativeTranscriptListTests: XCTestCase {
         }
         let viewport = scrollView.convert(scrollView.bounds, to: host.window)
         XCTAssertEqual(prompt.frame.minY,
-                       viewport.minY + scrollView.adjustedContentInset.top + 16, accuracy: 1)
+                       viewport.minY + scrollView.adjustedContentInset.top, accuracy: 1)
     }
 
     func testSteeringKeepsDetachedReadingPosition() async {

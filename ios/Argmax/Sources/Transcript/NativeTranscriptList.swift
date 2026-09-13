@@ -48,7 +48,8 @@ where Item.ID == String {
     }
 
     /// Keep enough empty tail beneath the latest prompt for the physical
-    /// bottom to put that prompt at the transcript's 16-point top inset.
+    /// bottom to put that prompt row directly below the header. The row's
+    /// own padding separates the bubble from the header without exposing history.
     /// Real output replaces this reservation point for point, then ordinary
     /// tail following takes over once the turn is taller than the viewport.
     private var turnFloorHeight: CGFloat {
@@ -56,7 +57,7 @@ where Item.ID == String {
               let anchor = turnAnchorMeasurement,
               anchor.id == reservedTurnAnchorID else { return 0 }
         let usableViewportHeight = max(0, viewportHeight - topInset - bottomInset)
-        let reservation = anchor.top - 16 + usableViewportHeight - naturalContentHeight
+        let reservation = anchor.top + usableViewportHeight - naturalContentHeight
         return min(max(0, reservation), usableViewportHeight)
     }
 
@@ -237,7 +238,7 @@ where Item.ID == String {
                        anchor.id == reservedTurnAnchorID {
                         // ScrollPosition already includes the top safe-area
                         // inset. Adding it again hides the prompt under the header.
-                        position.scrollTo(y: anchor.top - 16)
+                        position.scrollTo(y: anchor.top)
                     } else {
                         position.scrollTo(edge: .bottom)
                     }

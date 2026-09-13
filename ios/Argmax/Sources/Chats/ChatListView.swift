@@ -30,6 +30,9 @@ struct ChatListView: View {
     /// The one-time row settle. False for exactly one frame after the first
     /// rows arrive.
     @State private var settled = false
+    /// Stable session ids connect each visible row to the transcript it
+    /// opens. The system owns the animation and its interactive reversal.
+    @Namespace private var chatTransitions
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -67,7 +70,10 @@ struct ChatListView: View {
             .animation(.easeOut(duration: 0.2), value: store.connection)
             .overlay(alignment: .bottomTrailing) { newChatButton }
             .toolbar(.hidden, for: .navigationBar)
-            .navigationDestination(for: ChatRow.self) { TranscriptScreen(row: $0) }
+            .navigationDestination(for: ChatRow.self) { row in
+                TranscriptScreen(row: row)
+                    .navigationTransition(.zoom(sourceID: row.session.id, in: chatTransitions))
+            }
             .navigationDestination(for: NewChatRequest.self) { request in
                 NewChatSheet(
                     store: store,
@@ -279,6 +285,7 @@ struct ChatListView: View {
                         onFork: { navigator.awaitingSessionID = $0 },
                         onNewChatHere: { navigator.newChat = NewChatRequest(workspaceID: $0.workspace.id) }
                     )
+                    .matchedTransitionSource(id: row.session.id, in: chatTransitions)
                     .plainRow()
                 }
             }
@@ -300,12 +307,9 @@ struct ChatListView: View {
         // of the screen you are looking at is not what either intent asked
         // for. Same rule as `openTappedNotification`.
         guard push.openSessionID != wanted else { return }
-        Task {
-            // The New chat page is still popping; a push that starts during
-            // that transition is dropped, so the row's push waits it out.
-            try? await Task.sleep(for: .milliseconds(320))
-            path.append(row)
-        }
+        // Do not wait for an in-flight pop. Fluid navigation coordinates a
+        // new push with the transition already running.
+        path.append(row)
     }
 
     /// A tapped notification names a chat (`sessionId` in the payload). It

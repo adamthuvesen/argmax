@@ -37,6 +37,12 @@ history into pages, the store accumulates them before publishing the rows so
 the screen opens on the latest messages. Live output follows the bottom until
 the reader scrolls away.
 
+Opening a chat uses iOS 18's system zoom navigation transition, matched by the
+session id from its list row. The transition remains continuously interactive,
+including when a person catches the push with the edge-swipe gesture and
+reverses it. Navigation does not keep temporary transition state or gate a new
+pop on whether another transition is still running.
+
 Tool action labels and file links display paths relative to the chat's
 workspace. Labels shorten the path before truncating it so the filename stays
 visible. Raw tool inputs and file-opening targets retain their original paths.

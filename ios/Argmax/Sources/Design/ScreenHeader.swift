@@ -149,8 +149,9 @@ extension View {
     /// whenever the bar is hidden, on the reasoning that a screen with no
     /// bar may have drawn its own back affordance somewhere the swipe would
     /// fight. Ours has, and it does not fight — so the recogniser is turned
-    /// back on with a delegate that begins only when there is something to
-    /// pop and no transition already running.
+    /// back on with a delegate that begins whenever there is something to
+    /// pop. Fluid transitions can be grabbed and reversed while they run, so
+    /// transition state must not gate the gesture.
     func interactivePop() -> some View {
         background(InteractivePopEnabler().frame(width: 0, height: 0))
     }
@@ -204,9 +205,9 @@ private final class PopGestureDelegate: NSObject, UIGestureRecognizerDelegate {
 
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         guard let stack else { return false }
-        // At the root there is nothing behind the screen; mid-transition the
-        // stack is already moving and a second pop corrupts it.
-        return stack.viewControllers.count > 1 && stack.transitionCoordinator == nil
+        // At the root there is nothing behind the screen. Otherwise UIKit
+        // coordinates a new pop with any transition already in flight.
+        return stack.viewControllers.count > 1
     }
 
     /// The transcript's scroller starts at the left edge. The pop has to win

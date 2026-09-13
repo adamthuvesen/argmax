@@ -4,6 +4,7 @@
   "description": "Allows the main app window to use required Tauri core APIs.",
   "windows": ["main"],
   "permissions": [
+    "dialog:allow-message",
     "core:event:default",
     "core:window:allow-inner-size",
     "core:window:allow-scale-factor",

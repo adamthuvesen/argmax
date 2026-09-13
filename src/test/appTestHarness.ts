@@ -640,6 +640,7 @@ export function setupAppTestMocks(): void {
       deleteOldChats: () => Promise.reject(new Error("Chat cleanup not stubbed"))
     },
     system: {
+      confirm: (message) => Promise.resolve(window.confirm(message)),
       openPath: () => Promise.resolve({ ok: true }),
       listDetectedIdes: listDetectedIdes,
       diagnostics: diagnosticsStub,

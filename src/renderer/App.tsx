@@ -701,16 +701,16 @@ export function App(): JSX.Element {
     // an archive-failed retry cannot silently act on newer changes.
     const workspace = workspacesById.get(workspaceId);
     let force = false;
-    if (workspace?.dirty && !workspace.sharedWorkspace) {
-      const fileLabel = workspace.changedFiles === 1 ? "1 uncommitted change" : `${workspace.changedFiles} uncommitted changes`;
-      const confirmed = window.confirm(
-        `${workspace.taskLabel} has ${fileLabel}. Archive this worktree and keep its files in recovery storage?`
-      );
-      if (!confirmed) return;
-      force = true;
-    }
     let result: Awaited<ReturnType<typeof window.argmax.workspaces.archive>>;
     try {
+      if (workspace?.dirty && !workspace.sharedWorkspace) {
+        const fileLabel = workspace.changedFiles === 1 ? "1 uncommitted change" : `${workspace.changedFiles} uncommitted changes`;
+        const confirmed = await window.argmax.system.confirm(
+          `${workspace.taskLabel} has ${fileLabel}. Archive this worktree and keep its files in recovery storage?`
+        );
+        if (!confirmed) return;
+        force = true;
+      }
       result = await window.argmax.workspaces.archive({ workspaceId, force });
     } catch (error) {
       showErrorToast(error instanceof Error ? error.message : "Workspace archive failed.");
@@ -721,15 +721,15 @@ export function App(): JSX.Element {
     // confirm dialog above never showed. Re-prompt once with the real count
     // and retry with force; declining leaves the row kept, as intended.
     if (result.workspace.state === "kept" && !force && !result.workspace.sharedWorkspace) {
-      const fileLabel = result.workspace.changedFiles === 1 ? "1 uncommitted change" : `${result.workspace.changedFiles} uncommitted changes`;
-      const confirmed = window.confirm(
-        `${result.workspace.taskLabel} has ${fileLabel}. Archive this worktree and keep its files in recovery storage?`
-      );
-      if (!confirmed) {
-        setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [result.workspace] }));
-        return;
-      }
       try {
+        const fileLabel = result.workspace.changedFiles === 1 ? "1 uncommitted change" : `${result.workspace.changedFiles} uncommitted changes`;
+        const confirmed = await window.argmax.system.confirm(
+          `${result.workspace.taskLabel} has ${fileLabel}. Archive this worktree and keep its files in recovery storage?`
+        );
+        if (!confirmed) {
+          setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [result.workspace] }));
+          return;
+        }
         result = await window.argmax.workspaces.archive({ workspaceId, force: true });
       } catch (error) {
         showErrorToast(error instanceof Error ? error.message : "Workspace archive failed.");

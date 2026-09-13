@@ -2,6 +2,12 @@
 
 Renderer IPC talks to Rust through `window.argmax`. Commands use explicit names (`"providers:launch"`, `"session:events-since"`, etc.). Window drag and zoom controls use Tauri's window API directly via [windowChrome.ts](../src/renderer/lib/windowChrome.ts).
 
+`window.argmax.system.confirm(message)` resolves to a boolean. The desktop
+bridge uses the official dialog plugin's message command with OK and Cancel
+buttons. The remote browser shows its own confirmation locally. Callers await
+the result and treat dialog errors as failed actions. The plugin's injected
+`window.confirm` is asynchronous and must not be used as a synchronous guard.
+
 ## Files
 
 | File | Role |

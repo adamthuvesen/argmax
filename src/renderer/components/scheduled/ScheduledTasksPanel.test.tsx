@@ -54,6 +54,10 @@ const routinesStub = {
   resetSession: vi.fn<ArgmaxApi["routines"]["resetSession"]>()
 };
 
+const systemStub = {
+  confirm: vi.fn<ArgmaxApi["system"]["confirm"]>()
+};
+
 beforeEach(() => {
   vi.restoreAllMocks();
   routinesStub.list.mockReset();
@@ -62,6 +66,7 @@ beforeEach(() => {
   routinesStub.setEnabled.mockReset();
   routinesStub.runNow.mockReset();
   routinesStub.resetSession.mockReset();
+  systemStub.confirm.mockReset();
   routinesStub.list.mockResolvedValue([routine()]);
   routinesStub.delete.mockResolvedValue(null);
   routinesStub.upsert.mockImplementation((input) =>
@@ -78,7 +83,8 @@ beforeEach(() => {
   routinesStub.resetSession.mockImplementation((id) =>
     Promise.resolve(routine({ id, runTarget: "same_session", lastSessionId: null }))
   );
-  window.argmax = { routines: routinesStub } as unknown as ArgmaxApi;
+  systemStub.confirm.mockResolvedValue(true);
+  window.argmax = { routines: routinesStub, system: systemStub } as unknown as ArgmaxApi;
 });
 
 afterEach(() => {
@@ -175,9 +181,59 @@ describe("ScheduledTasksPanel", () => {
     await waitFor(() => expect(routinesStub.resetSession).toHaveBeenCalledWith("r1"));
   });
 
-  it("reports a failed action as an alert, not as a success status", async () => {
+  it("waits for delete confirmation before mutating the routine", async () => {
+    let settleConfirmation: (confirmed: boolean) => void;
+    systemStub.confirm.mockReturnValue(
+      new Promise((resolve) => {
+        settleConfirmation = resolve;
+      })
+    );
+    render(<ScheduledTasksPanel projects={[project()]} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete Morning triage" }));
+
+    expect(routinesStub.delete).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Delete Morning triage" })).toBeDisabled();
+
+    settleConfirmation!(false);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Delete Morning triage" })).toBeEnabled());
+    expect(routinesStub.delete).not.toHaveBeenCalled();
+  });
+
+  it("keeps the routine when delete confirmation is declined", async () => {
+    systemStub.confirm.mockResolvedValue(false);
+    render(<ScheduledTasksPanel projects={[project()]} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete Morning triage" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Delete Morning triage" })).toBeEnabled());
+    expect(routinesStub.delete).not.toHaveBeenCalled();
+    expect(screen.getByRole("listitem")).toHaveTextContent("Morning triage");
+  });
+
+  it("deletes the confirmed routine exactly once", async () => {
+    systemStub.confirm.mockResolvedValue(true);
+    render(<ScheduledTasksPanel projects={[project()]} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete Morning triage" }));
+
+    await waitFor(() => expect(routinesStub.delete).toHaveBeenCalledWith("r1"));
+    expect(routinesStub.delete).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a rejected delete confirmation without deleting", async () => {
+    systemStub.confirm.mockRejectedValue(new Error("confirmation unavailable"));
+    render(<ScheduledTasksPanel projects={[project()]} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete Morning triage" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("confirmation unavailable");
+    expect(routinesStub.delete).not.toHaveBeenCalled();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("reports a failed confirmed deletion as an alert, not as a success status", async () => {
     routinesStub.delete.mockRejectedValue(new Error("routine not found: r1"));
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<ScheduledTasksPanel projects={[project()]} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Delete Morning triage" }));

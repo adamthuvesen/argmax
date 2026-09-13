@@ -300,14 +300,20 @@ export function ScheduledTasksPanel({
   const removeRoutine = useCallback(
     async (routine: Routine) => {
       if (!window.argmax) return;
-      if (!window.confirm(`Delete “${routine.name}”? Chats it already started stay in the sidebar.`)) return;
+      const { id, name } = routine;
+      const api = window.argmax;
       beginAction();
+      setBusy(true);
       try {
-        await window.argmax.routines.delete(routine.id);
+        const confirmed = await api.system.confirm(`Delete “${name}”? Chats it already started stay in the sidebar.`);
+        if (!confirmed) return;
+        await api.routines.delete(id);
         setStatus("Task deleted.");
         await reload();
       } catch (error) {
         setActionError(errorMessage(error, "Could not delete the task."));
+      } finally {
+        setBusy(false);
       }
     },
     [beginAction, reload]

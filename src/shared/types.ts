@@ -592,6 +592,7 @@ export interface ArgmaxApi {
     deleteOldChats: (input: DeleteOldChatsInput) => Promise<DeleteOldChatsResult>;
   };
   system: {
+    confirm: (message: string) => Promise<boolean>;
     openPath: (input: { path: string; cwd?: string }) => Promise<{ ok: true }>;
     listDetectedIdes: () => Promise<DetectedIde[]>;
     diagnostics: () => Promise<DiagnosticsReport>;

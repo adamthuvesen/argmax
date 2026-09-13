@@ -1,5 +1,6 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen as tauriListen } from "@tauri-apps/api/event";
+import { confirm as confirmDialog } from "@tauri-apps/plugin-dialog";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import type { IpcChannel } from "../../shared/ipcSchemas.js";
 import type {
@@ -430,6 +431,9 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       deleteOldChats: (input) => invokeCommand<DeleteOldChatsResult>("settings:delete-old-chats", input)
     },
     system: {
+      confirm: (message) => isTauriRuntime()
+        ? confirmDialog(message, { title: "Argmax", kind: "warning" })
+        : Promise.resolve(window.confirm(message)),
       openPath: (input) => invokeCommand<{ ok: true }>("system:open-path", input),
       listDetectedIdes: () => invokeCommand<DetectedIde[]>("system:list-detected-ides"),
       diagnostics: () => invokeCommand<DiagnosticsReport>("system:diagnostics"),

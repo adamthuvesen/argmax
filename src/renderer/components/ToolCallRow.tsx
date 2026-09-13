@@ -89,6 +89,11 @@ function ToolCallRowInner({
   const toolTypeBucket = getToolTypeBucket(tool.name);
   const mcpServer = parseMcpToolName(tool.name)?.server ?? null;
   const iconServer = tool.activity?.kind === "computer" ? null : mcpServer ?? commandIconServer(tool);
+  const iconKind = tool.activity?.kind ?? "tool";
+  const iconIsDanger = tool.status === "error"
+    || tool.cancelled === true
+    || tool.activity?.operation === "delete"
+    || iconKind === "agent-stop";
   const hasLeadingContent = Boolean(childTools && childTools.length > 0);
   const hasDetail = toolCallHasExpandableDetail(tool, { hasLeadingContent });
   const expanded =
@@ -125,7 +130,7 @@ function ToolCallRowInner({
     <>
       <span className="activity-icon-slot">
         {iconServer || (!tool.activity && isWebToolName(tool.name)) ? <ServerIcon server={iconServer} web={isWebToolName(tool.name)} />
-          : <ToolActivityIcon kind={tool.activity?.kind ?? "tool"} />}
+          : <ToolActivityIcon kind={iconKind} danger={iconIsDanger} />}
       </span>
       <span className="tool-call-row-verb">{verb}</span>
       {target ? (

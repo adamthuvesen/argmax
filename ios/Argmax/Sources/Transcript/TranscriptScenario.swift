@@ -84,8 +84,8 @@ private final class TranscriptScenarioState: ObservableObject {
     }
 
     /// Provider-neutral activity metadata rendered through the production
-    /// projection. The fixture includes all four semantic colours and one MCP
-    /// mark, so a simulator screenshot catches both palette and precedence.
+    /// projection. The fixture includes every activity colour and one MCP mark,
+    /// so a simulator screenshot catches both palette and precedence.
     private func activityEvents() -> [TranscriptEvent] {
         var events = [event(1, type: "user.message", text: "Polish the transcript activity")]
         let calls: [(String, String, String, [String], Int?)] = [
@@ -94,6 +94,7 @@ private final class TranscriptScenarioState: ObservableObject {
             ("search", "Grep", "search", [], nil),
             ("image", "ViewImage", "image", ["design/wireframe.png"], nil),
             ("discover", "ToolSearch", "discovery", [], 3),
+            ("skill", "Skill", "skill", [], nil),
             ("command", "Bash", "command", [], nil),
             ("computer", "computer", "computer", [], nil),
             ("linear", "mcp__linear__list_issues", "tool", [], nil)
@@ -108,7 +109,7 @@ private final class TranscriptScenarioState: ObservableObject {
             events.append(toolEvent(cursor + 1, type: "command.completed", id: call.0, name: call.1,
                                     activity: activity, completed: true))
         }
-        events.append(event(18, type: "message.completed", text: "The activity summary is ready."))
+        events.append(event(20, type: "message.completed", text: "The activity summary is ready."))
         return events
     }
 

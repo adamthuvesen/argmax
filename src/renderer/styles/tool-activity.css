@@ -1,21 +1,40 @@
 .tool-activity-icon {
   flex: 0 0 auto;
-  color: var(--session-icon-blue);
+  color: var(--activity-purple);
   animation: none;
   transition: none;
   transform: none;
 }
 
 .tool-activity-icon[data-activity="edit"] {
-  color: var(--session-icon-amber);
+  color: var(--activity-coral);
 }
 
-.tool-activity-icon:is([data-activity="search"], [data-activity="list"], [data-activity="web-search"], [data-activity="web-fetch"], [data-activity="browser"]) {
-  color: var(--session-icon-teal);
+.tool-activity-icon:is(
+  [data-activity="read"],
+  [data-activity="search"],
+  [data-activity="list"],
+  [data-activity="web-search"],
+  [data-activity="web-fetch"],
+  [data-activity="browser"]
+) {
+  color: var(--activity-blue);
 }
 
-.tool-activity-icon:is([data-activity="image"], [data-activity="image-capture"], [data-activity="image-generate"], [data-activity="discovery"], [data-activity="skill"], [data-activity="agent"], [data-activity="agent-message"], [data-activity="agent-wait"], [data-activity="agent-stop"], [data-activity="memory-recall"], [data-activity="memory-save"], [data-activity="plan"], [data-activity="tool"]) {
-  color: var(--session-icon-violet);
+.tool-activity-icon[data-activity="git"] {
+  color: var(--activity-green);
+}
+
+.tool-activity-icon:is([data-activity="command"], [data-activity="computer"]) {
+  color: var(--activity-orange);
+}
+
+.tool-activity-icon[data-activity="skill"] {
+  color: var(--activity-gold);
+}
+
+.tool-activity-icon[data-tone="danger"] {
+  color: var(--activity-red);
 }
 
 /* Monochrome is intentionally scoped to transcript activity. Navigation and

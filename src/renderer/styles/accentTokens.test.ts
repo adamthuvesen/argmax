@@ -51,6 +51,36 @@ function fontWeight(rule: string): number {
 }
 
 describe("CSS contracts that cannot be exercised in jsdom", () => {
+  it("keeps the stable activity palette readable on transcript surfaces", () => {
+    const tokens = readSource("src/renderer/styles/tokens.css");
+    for (const theme of ["light", "dark"]) {
+      const base = cssRuleBody(tokens, theme === "dark" ? ':root[data-theme="dark"]' : ":root");
+      for (const activity of ["purple", "blue", "green", "coral", "orange", "gold", "red"]) {
+        for (const surface of ["bg", "panel"]) {
+          expect(contrast(readHex(base, `activity-${activity}`), readHex(base, surface))).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    }
+  });
+
+  it("maps transcript activities to their stable semantic colors", () => {
+    const styles = readSource("src/renderer/styles/tool-activity.css");
+    const colorFor = (activity: string): string => {
+      const rule = styles.split("}").find((block) => block.includes(`[data-activity="${activity}"]`));
+      const match = /color:\s*var\(--activity-(?<color>[a-z]+)\)/.exec(rule ?? "");
+      expect(match?.groups?.color).toBeDefined();
+      return match?.groups?.color ?? "";
+    };
+
+    for (const activity of ["read", "search", "list", "web-search", "web-fetch", "browser"]) {
+      expect(colorFor(activity)).toBe("blue");
+    }
+    expect(colorFor("edit")).toBe("coral");
+    expect(colorFor("git")).toBe("green");
+    for (const activity of ["command", "computer"]) expect(colorFor(activity)).toBe("orange");
+    expect(colorFor("skill")).toBe("gold");
+  });
+
   it.each(["teal", "purple", "orange", "blue", "coral"])("keeps %s highlights and bubbles readable in both themes", (accent) => {
     const tokens = readSource("src/renderer/styles/tokens.css");
     for (const theme of ["light", "dark"]) {

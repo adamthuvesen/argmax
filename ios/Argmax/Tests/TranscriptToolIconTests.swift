@@ -46,7 +46,7 @@ final class TranscriptToolIconTests: XCTestCase {
         )
     }
 
-    func testEveryActivityKindHasTheExpectedColoredSystemFallback() {
+    func testEveryActivityKindHasTheExpectedSemanticSystemFallback() {
         let expectedSymbols: [TranscriptToolActivityKind: String] = [
             .read: "book", .edit: "square.and.pencil", .image: "photo.on.rectangle.angled",
             .search: "magnifyingglass", .list: "folder", .webSearch: "globe",
@@ -71,12 +71,23 @@ final class TranscriptToolIconTests: XCTestCase {
             XCTAssertNotNil(UIImage(systemName: expectedSymbols[kind]!))
         }
 
-        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .read), style: .light), [63, 127, 216])
-        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .command), style: .dark), [138, 174, 242])
-        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .computer), style: .light), [63, 127, 216])
-        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .search), style: .light), [47, 128, 121])
-        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .image), style: .dark), [179, 146, 240])
-        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .edit), style: .light), [181, 135, 47])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .read), style: .light), [57, 102, 150])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .search), style: .light), [57, 102, 150])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .webSearch), style: .dark), [126, 166, 207])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .command), style: .dark), [231, 150, 71])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .computer), style: .light), [175, 91, 0])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .git), style: .light), [68, 108, 86])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .image), style: .dark), [173, 148, 208])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .edit), style: .light), [148, 75, 62])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .skill), style: .light), [154, 106, 0])
+        XCTAssertEqual(
+            components(TranscriptToolIcon.uiColor(for: .command, state: .failed), style: .dark),
+            [240, 112, 127]
+        )
+        XCTAssertEqual(
+            components(TranscriptToolIcon.uiColor(for: .edit, operation: .delete), style: .light),
+            [200, 65, 81]
+        )
         XCTAssertEqual(
             components(TranscriptToolIcon.uiColor(for: .edit, colorMode: .monochrome), style: .light),
             [122, 118, 108]

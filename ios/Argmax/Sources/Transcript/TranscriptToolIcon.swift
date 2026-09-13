@@ -19,6 +19,7 @@ struct TranscriptToolIcon: View {
     let name: String
     var size: CGFloat = 16
     var activity: TranscriptToolActivity? = nil
+    var state: TranscriptToolActivityState? = nil
 
     @Environment(\.activityIconColorMode) private var colorMode
 
@@ -34,7 +35,7 @@ struct TranscriptToolIcon: View {
             case .gitBranch:
                 GitBranchGlyph()
                     .stroke(
-                        activity.map { Color(Self.uiColor(for: $0.kind, colorMode: colorMode)) }
+                        activity.map { Color(Self.uiColor(for: $0, state: state, colorMode: colorMode)) }
                             ?? Theme.muted,
                         style: StrokeStyle(lineWidth: size / 12, lineCap: .round, lineJoin: .round)
                     )
@@ -42,7 +43,7 @@ struct TranscriptToolIcon: View {
                 Image(systemName: systemName)
                     .resizable()
                     .scaledToFit()
-                    .foregroundStyle(activity.map { Color(Self.uiColor(for: $0.kind, colorMode: colorMode)) }
+                    .foregroundStyle(activity.map { Color(Self.uiColor(for: $0, state: state, colorMode: colorMode)) }
                         ?? Theme.muted)
             }
         }
@@ -98,17 +99,39 @@ struct TranscriptToolIcon: View {
 
     static func uiColor(
         for kind: TranscriptToolActivityKind,
+        operation: TranscriptToolActivityOperation? = nil,
+        state: TranscriptToolActivityState? = nil,
         colorMode: ActivityIconColorMode = .color
     ) -> UIColor {
         guard colorMode == .color else { return Theme.mutedColor }
-        switch kind {
-        case .read, .command, .computer, .git: return Theme.activityBlueColor
-        case .edit: return Theme.activityAmberColor
-        case .search, .list, .webSearch, .webFetch, .browser: return Theme.activityTealColor
-        case .image, .discovery, .tool, .agent, .skill, .imageCapture, .imageGenerate,
-             .agentMessage, .agentWait, .agentStop, .memoryRecall, .memorySave, .plan:
-            return Theme.activityVioletColor
+        if state == .failed || state == .cancelled || operation == .delete || kind == .agentStop {
+            return Theme.activityRedColor
         }
+        switch kind {
+        case .read, .search, .list, .webSearch, .webFetch, .browser:
+            return Theme.activityBlueColor
+        case .edit: return Theme.activityCoralColor
+        case .git: return Theme.activityGreenColor
+        case .command, .computer: return Theme.activityOrangeColor
+        case .skill: return Theme.activityGoldColor
+        case .image, .discovery, .tool, .agent, .imageCapture, .imageGenerate,
+             .agentMessage, .agentWait, .memoryRecall, .memorySave, .plan:
+            return Theme.activityPurpleColor
+        case .agentStop: return Theme.activityRedColor
+        }
+    }
+
+    static func uiColor(
+        for activity: TranscriptToolActivity,
+        state: TranscriptToolActivityState? = nil,
+        colorMode: ActivityIconColorMode = .color
+    ) -> UIColor {
+        uiColor(
+            for: activity.kind,
+            operation: activity.operation,
+            state: state,
+            colorMode: colorMode
+        )
     }
 
     /// Used by the asset-integrity test so adding an exported mark cannot fail

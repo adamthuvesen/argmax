@@ -154,6 +154,17 @@
   --session-icon-pink: #c4527d;
   --session-icon-red: #c84151;
 
+  /* Stable transcript activity hues. These borrow the named accent palette
+     without following the user's selected accent, so a color keeps the same
+     meaning in every chat. Gold is reserved for skill activation. */
+  --activity-purple: #70558f;
+  --activity-blue: #396696;
+  --activity-green: #446c56;
+  --activity-coral: #944b3e;
+  --activity-orange: #af5b00;
+  --activity-gold: #9a6a00;
+  --activity-red: #c84151;
+
   /* Usage page series colours — one per provider, assigned by identity so a
      window that reorders the rows never repaints them. Chosen against --bg
      and --panel with the dataviz validator: worst all-pairs CVD ΔE 8.8,
@@ -550,6 +561,14 @@
   --session-icon-amber: #d9a566;
   --session-icon-pink: #ec8bad;
   --session-icon-red: #f0707f;
+
+  --activity-purple: #ad94d0;
+  --activity-blue: #7ea6cf;
+  --activity-green: #6dab86;
+  --activity-coral: #d18e82;
+  --activity-orange: #e79647;
+  --activity-gold: #e7bb58;
+  --activity-red: #f0707f;
 
   /* Usage series, stepped for charcoal rather than flipped: same five hues,
      more light and less chroma, revalidated on --panel and --bg (worst

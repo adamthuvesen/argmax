@@ -189,6 +189,10 @@ function ToolCallGroupBubbleInner({
       : <div key={member.id}>{renderRows(buildGroupRows(member.tools))}</div>)
     : renderRows(rows);
   const activityStatus = activityIsLive ? "running" : summary.status;
+  const iconIsDanger = activityStatus === "error"
+    || firstTool?.cancelled === true
+    || firstTool?.activity?.operation === "delete"
+    || summary.iconKind === "agent-stop";
 
   // A thought already owns its disclosure. Only tool work needs an outer one.
   if (hasActivityMembers && group.tools.length === 0) return <>{activityBody}</>;
@@ -223,7 +227,7 @@ function ToolCallGroupBubbleInner({
             {group.tools.length > 0 ? (
               <span className="activity-icon-slot">
                 {iconServer ? <ServerIcon server={iconServer} />
-                  : <ToolActivityIcon kind={summary.iconKind ?? "tool"} />}
+                  : <ToolActivityIcon kind={summary.iconKind ?? "tool"} danger={iconIsDanger} />}
               </span>
             ) : null}
             <span className="tool-call-group-eyebrow activity-summary-headline" aria-hidden="true">

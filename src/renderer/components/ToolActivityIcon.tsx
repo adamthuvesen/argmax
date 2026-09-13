@@ -13,7 +13,21 @@ const ICONS = {
   "memory-recall": Brain, "memory-save": Brain, git: GitBranch, browser: Globe, plan: ListChecks
 };
 
-export function ToolActivityIcon({ kind }: { kind: ToolActivityKind }): JSX.Element {
+export function ToolActivityIcon({
+  kind,
+  danger = false
+}: {
+  kind: ToolActivityKind;
+  danger?: boolean;
+}): JSX.Element {
   const Icon = ICONS[kind];
-  return <Icon size={14} className="tool-activity-icon" data-activity={kind} aria-hidden="true" />;
+  return (
+    <Icon
+      size={14}
+      className="tool-activity-icon"
+      data-activity={kind}
+      data-tone={danger ? "danger" : undefined}
+      aria-hidden="true"
+    />
+  );
 }

@@ -220,7 +220,7 @@ struct TranscriptFoldLabel: View {
                     WorkingNest(size: 16).transition(.opacity)
                 }
                 ForEach(shown.icons) { tool in
-                    TranscriptToolIcon(name: tool.name, activity: tool.activity)
+                    TranscriptToolIcon(name: tool.name, activity: tool.activity, state: tool.activityState)
                         .transition(.opacity)
                 }
                 Text(shown.summary)
@@ -364,7 +364,7 @@ private struct TranscriptToolRow: View {
             changeCounts: tool.visibleChangeCounts,
             showsNavigation: showsNavigation
         ) {
-            TranscriptToolIcon(name: tool.name, activity: tool.activity)
+            TranscriptToolIcon(name: tool.name, activity: tool.activity, state: tool.activityState)
         }
     }
 

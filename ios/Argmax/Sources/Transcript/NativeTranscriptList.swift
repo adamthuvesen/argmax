@@ -43,7 +43,9 @@ where Item.ID == String {
         guard viewportHeight > 0,
               let anchor = turnAnchorMeasurement,
               anchor.id == turnAnchorID else { return 0 }
-        return max(0, anchor.top - 16 + viewportHeight - bottomInset - naturalContentHeight)
+        let usableViewportHeight = max(0, viewportHeight - bottomInset)
+        let reservation = anchor.top - 16 + usableViewportHeight - naturalContentHeight
+        return min(max(0, reservation), usableViewportHeight)
     }
 
     var body: some View {
@@ -87,7 +89,11 @@ where Item.ID == String {
         // scroll view when the first rows arrive paints once, at the tail.
         .id(items.isEmpty)
         .background(.clear)
-        .scrollDismissesKeyboard(.interactively)
+        // A transcript drag is a reading gesture, so give the screen back to
+        // the conversation immediately. Interactive dismissal can stop
+        // between keyboard frames and leave the manually inset composer
+        // stranded above the bottom edge.
+        .scrollDismissesKeyboard(.immediately)
         .defaultScrollAnchor(.bottom, for: .initialOffset)
         .scrollPosition($position)
         .accessibilityIdentifier("native-transcript")
@@ -99,7 +105,7 @@ where Item.ID == String {
             if abs(viewportHeight - next.viewportHeight) > 0.5 { viewportHeight = next.viewportHeight }
             if abs(bottomInset - next.bottomInset) > 0.5 { bottomInset = next.bottomInset }
             if following && !phase.isUserControlled && !next.isAtTail {
-                requestScrollToTail()
+                requestFollowingPosition()
             }
             // A scroll whose offset moves without a phase transition (a
             // programmatic offset set) never passes through
@@ -129,7 +135,7 @@ where Item.ID == String {
             if next == .idle {
                 turnScrollPending = false
                 if updated {
-                    requestScrollToTail()
+                    requestFollowingPosition()
                 } else {
                     readingPosition.anchor(at: context.geometry.visibleRect.minY)
                 }
@@ -138,30 +144,36 @@ where Item.ID == String {
         .onChange(of: following) { _, next in
             if next {
                 readingPosition.release()
-                requestScrollToTail()
+                requestFollowingPosition()
             }
         }
         .onChange(of: items) { _, _ in
-            if following { requestScrollToTail() }
+            if following { requestFollowingPosition() }
+        }
+        .onChange(of: turnFloorHeight) { _, _ in
+            // On a real device the initial bottom request can finish before
+            // row and viewport measurements establish the turn floor. Resolve
+            // the target again once that reservation becomes concrete.
+            if following { requestFollowingPosition() }
         }
         .onChange(of: turnAnchorID) { previous, next in
             guard next != nil, previous != next else { return }
             readingPosition.release()
             turnScrollPending = phase.isUserControlled
             if !following { following = true }
-            requestScrollToTail()
+            requestFollowingPosition()
         }
         .onChange(of: presentationID) { _, _ in
-            if following { requestScrollToTail() }
+            if following { requestFollowingPosition() }
         }
         .onChange(of: sessionID, initial: true) { _, _ in
             phase = .idle
             following = true
-            requestScrollToTail()
+            requestFollowingPosition()
         }
         .onChange(of: scrollRequest) { _, _ in
             following = true
-            requestScrollToTail()
+            requestFollowingPosition()
         }
     }
 
@@ -192,14 +204,24 @@ where Item.ID == String {
         }
     }
 
-    private func requestScrollToTail() {
+    private func requestFollowingPosition() {
         guard !tailScrollScheduled else { return }
         tailScrollScheduled = true
         Task { @MainActor in
             await Task.yield()
             if following && !phase.isUserControlled {
                 withTransaction(Transaction(animation: nil)) {
-                    position.scrollTo(edge: .bottom)
+                    if turnFloorHeight > 0,
+                       let anchor = turnAnchorMeasurement,
+                       anchor.id == turnAnchorID {
+                        // A bottom-edge request can resolve to the transparent
+                        // reservation itself on a physical device. Target the
+                        // prompt instead so the reserved space can never fill
+                        // the viewport on its own.
+                        position.scrollTo(y: anchor.top - 16 + readingPosition.topInset)
+                    } else {
+                        position.scrollTo(edge: .bottom)
+                    }
                 }
             }
             tailScrollScheduled = false

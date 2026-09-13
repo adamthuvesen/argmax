@@ -179,6 +179,23 @@ final class NativeTranscriptListTests: XCTestCase {
         }
     }
 
+    func testOpeningShortExistingTurnPlacesItsPromptAtTheTop() async {
+        var items = transcriptItems(count: 24)
+        items.append(.init(id: "existing-prompt", height: 44))
+        items.append(.init(id: "existing-reply", height: 88))
+        let state = TranscriptListTestState(items: items, turnAnchorID: "existing-prompt")
+        let host = TranscriptListTestHost(state: state, size: CGSize(width: 320, height: 240))
+        defer { host.close() }
+
+        guard await waitForScrollView(in: host, where: { scrollView in
+            guard let frame = state.rowFrames["existing-prompt"]?.frame else { return false }
+            let viewport = scrollView.convert(scrollView.bounds, to: host.window)
+            return abs(frame.minY - viewport.minY - 16) < 1
+        }) != nil else {
+            return XCTFail("Opening a short existing turn did not place its prompt at the top inset")
+        }
+    }
+
     func testSteeringKeepsDetachedReadingPosition() async {
         let state = TranscriptListTestState(items: transcriptItems(count: 28))
         state.turnAnchorID = "item-27"

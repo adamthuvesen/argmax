@@ -82,15 +82,21 @@ final class TranscriptUITests: XCTestCase {
         screenshot("keyboard-open")
 
         let scroll = app.scrollViews["native-transcript"]
-        // Drag inside the visible transcript, above the keyboard: a drag that
-        // starts on the keyboard's frame is routed to the keyboard window and
-        // never reaches the transcript's interactive dismiss. The drag is
-        // slow and ends with a hold, so the interactive dismissal tracks the
-        // finger for its whole length instead of reading as a fling.
-        scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05))
-            .press(forDuration: 0.05, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)),
-                   withVelocity: .slow, thenHoldForDuration: 0.4)
+        // Scrolling toward older messages dismisses the keyboard immediately;
+        // interactive dismissal could strand the composer at a partial inset.
+        let scrollFrame = scroll.frame
+        let keyboardTop = app.keyboards.firstMatch.frame.minY
+        let endY = min(scrollFrame.height - 20, keyboardTop - scrollFrame.minY - 40)
+        let start = scroll.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: scrollFrame.width / 2, dy: max(20, endY - 180)))
+        let end = scroll.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: scrollFrame.width / 2, dy: endY))
+        start.press(forDuration: 0.05, thenDragTo: end,
+                   withVelocity: .slow, thenHoldForDuration: 0.2)
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        let composerBottomAfterDismissal = app.buttons["Stop"].frame.maxY
+        let screenBottomAfterDismissal = app.windows.firstMatch.frame.maxY
+        XCTAssertLessThan(screenBottomAfterDismissal - composerBottomAfterDismissal, 100)
         if app.buttons["Jump to latest"].exists { app.buttons["Jump to latest"].tap() }
         app.buttons["Size"].tap()
         XCTAssertTrue(app.staticTexts["Stream end 1"].isHittable)

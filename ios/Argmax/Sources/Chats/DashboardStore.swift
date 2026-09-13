@@ -156,11 +156,18 @@ final class DashboardStore: ObservableObject {
 
     /// Pull to refresh, and every path that needs the whole list again.
     func reload() async {
+        let requestedAtVersion = snapshotVersion
         do {
             let loaded = try await client.request("dashboard:list", as: DashboardSnapshot.self)
             loadFailure = nil
             loadedOnce = true
             isCachedSnapshot = false
+            // A mutation response or pushed delta can advance the local
+            // snapshot while this read is in flight. Its rows are newer than
+            // a full snapshot whose database read began before they existed.
+            // The delta loop schedules another read when reconciliation is
+            // needed, so never let this older answer erase those rows.
+            guard snapshotVersion == requestedAtVersion else { return }
             ingest(snapshot: loaded)
         } catch let error as BridgeError {
             loadFailure = error

@@ -401,10 +401,10 @@ final class TestBridgeSocket: BridgeSocket, @unchecked Sendable {
             if let next { continuation.resume(with: next) }
         }
     }
-    func reply(to frame: [String: Any], error: String? = nil, settled: Bool = true) {
+    func reply(to frame: [String: Any], ok: Any = ["done": true], error: String? = nil, settled: Bool = true) {
         var response: [String: Any] = ["type": "response", "id": frame["id"]!, "operationSettled": settled]
         if let error { response["error"] = ["code": "SERVICE_ERROR", "sub_code": error, "message": error] }
-        else { response["ok"] = ["done": true] }
+        else { response["ok"] = ok }
         feed(response)
     }
     private func feed(_ frame: [String: Any]) {

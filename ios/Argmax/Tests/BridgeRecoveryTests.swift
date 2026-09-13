@@ -354,7 +354,7 @@ private final class TestSocketSequence: @unchecked Sendable {
     }
 }
 
-private final class TestBridgeSocket: BridgeSocket, @unchecked Sendable {
+final class TestBridgeSocket: BridgeSocket, @unchecked Sendable {
     private let lock = NSLock()
     private var messages: [[String: Any]] = []
     private var queued: [Result<URLSessionWebSocketTask.Message, Error>] = []

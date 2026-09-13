@@ -133,19 +133,6 @@ struct TranscriptScreen: View {
                 }
             }
             if let draftFailure { Text(draftFailure).typeMeta().foregroundStyle(Theme.rose) }
-            if transcript.showingCachedContent {
-                Text("Saved on this iPhone. Updating when your Mac is available.").typeMeta()
-            }
-            if case .reconnecting = store.connection {
-                Label {
-                    Text("Reconnecting to your Mac…").typeStyle(.footnote)
-                } icon: {
-                    Image(systemName: "wifi.slash").typeSymbol(.caption)
-                }
-                    .foregroundStyle(Theme.muted)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, Spacing.snug)
-            }
         }
         .background(Theme.ground)
     }
@@ -224,6 +211,9 @@ struct TranscriptScreen: View {
 
     /// Project and current session state, with the opening row as fallback.
     private var subtitle: String {
+        // Refresh status must not change the transcript's safe-area height.
+        if case .reconnecting = store.connection { return "Reconnecting to your Mac…" }
+        if transcript.showingCachedContent { return "Saved on this iPhone · Waiting for your Mac" }
         let state = stateLabel(transcript.session?.state ?? row.session.state)
         guard let project = row.projectName, !project.isEmpty else { return state }
         return "\(project) · \(state)"

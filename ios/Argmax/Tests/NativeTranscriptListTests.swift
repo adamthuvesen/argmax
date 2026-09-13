@@ -5,6 +5,85 @@ import XCTest
 
 @MainActor
 final class NativeTranscriptListTests: XCTestCase {
+    func testCachedChatRefreshDoesNotResizeTranscriptHeader() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = DeviceCache(directory: directory)
+        let socket = TestBridgeSocket(holdAuth: true)
+        let client = try BridgeClient(
+            pairingURL: XCTUnwrap(URL(string: "https://mac.example/mobile.html#token=header-test")),
+            operationDirectory: directory, monitorNetwork: false, socketFactory: { _ in socket }
+        )
+        let metadata = TranscriptSessionMetadata(
+            id: "s-1", workspaceId: "w-1", provider: "claude", modelLabel: "Opus",
+            modelId: "claude-opus", prompt: "Go", state: .complete, attention: .normal,
+            reasoningEffort: "high", agentMode: "auto"
+        )
+        let page = TranscriptPage(events: [TranscriptEvent(
+            id: "answer", sessionId: "s-1", type: "message.completed",
+            message: String(repeating: "A cached answer with unchanged content.\n\n", count: 30),
+            payload: .object([:]), createdAt: "2026-01-01T00:00:01.000Z", rowCursor: 1
+        )], rawOutputs: [], eventCursor: 1, rawOutputCursor: 0, changeCursor: 1,
+           deletedEventIds: [], deletedRawOutputIds: [], resetRequired: true, hasMore: false)
+        let seed = TranscriptStore(client: client, cache: cache)
+        seed.preview(page: page, metadata: metadata)
+        seed.ingest(page: page, for: "s-1")
+        await seed.waitForProjection()
+        await seed.flushCache()
+        seed.closeSession()
+
+        let transcript = TranscriptStore(client: client, cache: cache)
+        let dashboard = DashboardStore(client: client, cache: cache)
+        dashboard.ingest(snapshot: previewSnapshot)
+        let root = TranscriptScreen(row: previewRow)
+            .environmentObject(transcript)
+            .environmentObject(dashboard)
+            .environmentObject(ChatNavigator())
+            .environmentObject(PushDelegate())
+            .environmentObject(Appearance(store: UserDefaults(suiteName: UUID().uuidString)!))
+        let controller = UIHostingController(rootView: root)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true; window.rootViewController = nil; transcript.closeSession() }
+        func layout() {
+            controller.view.frame = window.bounds
+            window.setNeedsLayout()
+            window.layoutIfNeeded()
+            controller.view.setNeedsLayout()
+            controller.view.layoutIfNeeded()
+        }
+        for _ in 0..<60 {
+            layout()
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertTrue(transcript.showingCachedContent)
+        XCTAssertFalse(transcript.items.isEmpty)
+        let scroll = try XCTUnwrap(descendant(of: UIScrollView.self, in: controller.view, where: {
+            !($0 is UITextView) && $0.contentSize.height >
+                $0.bounds.height - $0.adjustedContentInset.top - $0.adjustedContentInset.bottom
+        }))
+        let oldInset = scroll.adjustedContentInset.top
+        let oldFrame = scroll.convert(scroll.bounds, to: window)
+        let oldItems = transcript.items
+        let oldOffset = scroll.contentOffset.y
+        transcript.ingest(page: page, for: "s-1", authoritative: true)
+        await transcript.waitForProjection()
+        for _ in 0..<30 {
+            layout()
+            XCTAssertEqual(scroll.contentOffset.y, oldOffset, accuracy: 0.5,
+                           "Identical live content must not transiently move the reading position")
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertFalse(transcript.showingCachedContent)
+        XCTAssertEqual(transcript.items, oldItems)
+        XCTAssertEqual(scroll.adjustedContentInset.top, oldInset, accuracy: 0.5,
+                       "Replacing identical cached content must not change the header height")
+        XCTAssertEqual(scroll.convert(scroll.bounds, to: window).minY, oldFrame.minY, accuracy: 0.5)
+        XCTAssertEqual(scroll.bounds.height, oldFrame.height, accuracy: 0.5)
+        await client.disconnect()
+    }
+
     func testInitialLayoutResizeAndContentGrowthStayAtTheLatestRow() async {
         let state = TranscriptListTestState(items: transcriptItems(count: 24))
         let host = TranscriptListTestHost(state: state, size: CGSize(width: 320, height: 240))
@@ -511,10 +590,12 @@ private func settle(_ host: TranscriptListTestHost) async {
 }
 
 @MainActor
-private func descendant<ViewType: UIView>(of type: ViewType.Type, in view: UIView) -> ViewType? {
-    if let match = view as? ViewType { return match }
+private func descendant<ViewType: UIView>(
+    of type: ViewType.Type, in view: UIView, where condition: (ViewType) -> Bool = { _ in true }
+) -> ViewType? {
+    if let match = view as? ViewType, condition(match) { return match }
     for subview in view.subviews {
-        if let match = descendant(of: type, in: subview) { return match }
+        if let match = descendant(of: type, in: subview, where: condition) { return match }
     }
     return nil
 }

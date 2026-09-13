@@ -6,9 +6,11 @@ import {
   createTauriCapabilities,
   startWdioSession
 } from "@wdio/tauri-service";
-import { runChecked } from "./common.mjs";
+import { delay, runChecked } from "./common.mjs";
 
 const DEFAULT_START_TIMEOUT_MS = 60_000;
+const DESKTOP_EXIT_TIMEOUT_MS = 5_000;
+const DESKTOP_DESCENDANT_EXIT_TIMEOUT_MS = 2_000;
 export const NATIVE_STOP_MINIMUM_SESSION_AGE_MS = 10_001;
 const desktopProcesses = new WeakMap();
 
@@ -42,6 +44,132 @@ async function freeLoopbackPort() {
 
 function errorMessage(error) {
   return error instanceof Error ? error.stack ?? error.message : String(error);
+}
+
+async function processSnapshot() {
+  const result = await runChecked("/bin/ps", ["-axo", "pid=,ppid=,lstart="], { timeoutMs: 5_000 });
+  return result.stdout
+    .split("\n")
+    .map((line) => line.match(/^\s*(\d+)\s+(\d+)\s+(.+?)\s*$/))
+    .filter(Boolean)
+    .map((match) => ({ pid: Number(match[1]), parentPid: Number(match[2]), startedAt: match[3] }));
+}
+
+function processDescendants(processes, parentPid) {
+  const ownedPids = new Set([parentPid]);
+  const descendants = [];
+  let foundAnotherGeneration = true;
+  while (foundAnotherGeneration) {
+    foundAnotherGeneration = false;
+    for (const processInfo of processes) {
+      if (ownedPids.has(processInfo.pid) || !ownedPids.has(processInfo.parentPid)) continue;
+      ownedPids.add(processInfo.pid);
+      descendants.push(processInfo);
+      foundAnotherGeneration = true;
+    }
+  }
+  return descendants;
+}
+
+export function matchingProcessIdentities(processes, expected) {
+  const actualByPid = new Map(processes.map((processInfo) => [processInfo.pid, processInfo]));
+  return expected.filter((processInfo) => actualByPid.get(processInfo.pid)?.startedAt === processInfo.startedAt);
+}
+
+async function waitForProcessExit(expected, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let remaining = expected;
+  while (remaining.length > 0 && Date.now() < deadline) {
+    await delay(50);
+    remaining = matchingProcessIdentities(await processSnapshot(), expected);
+  }
+  return remaining;
+}
+
+async function signalMatchingProcesses(expected, signal) {
+  const matching = matchingProcessIdentities(await processSnapshot(), expected);
+  for (const processInfo of matching) {
+    try {
+      process.kill(processInfo.pid, signal);
+    } catch (error) {
+      if (error?.code !== "ESRCH") throw error;
+    }
+  }
+  return matching;
+}
+
+async function closeDesktopProcessTree(browser) {
+  const processInfo = desktopProcesses.get(browser);
+  const errors = [];
+  let appIdentity = null;
+  let descendants = [];
+  let identityStatus = "unknown";
+  try {
+    if (!processInfo) throw new Error("Could not identify the verification app process before closing it");
+    const before = await processSnapshot();
+    appIdentity = matchingProcessIdentities(before, [processInfo])[0] ?? null;
+    if (!appIdentity) {
+      identityStatus = before.some((candidate) => candidate.pid === processInfo.pid) ? "reused" : "exited";
+      return {
+        appPid: processInfo.pid,
+        appStartedAt: processInfo.startedAt,
+        identityStatus,
+        descendantPids: [],
+        terminatedDescendantPids: []
+      };
+    }
+    identityStatus = "matched";
+    descendants = processDescendants(before, appIdentity.pid);
+  } catch (error) {
+    errors.push(error);
+  }
+
+  if (appIdentity) {
+    try {
+      await cleanupWdioSession(browser);
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+
+  if (appIdentity) {
+    try {
+      const runningApp = await waitForProcessExit([appIdentity], DESKTOP_EXIT_TIMEOUT_MS);
+      if (runningApp.length > 0) {
+        throw new Error(`Verification app process ${appIdentity.pid} remained alive after WebDriver cleanup`);
+      }
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+
+  let terminatedDescendants = [];
+  if (descendants.length > 0) {
+    try {
+      terminatedDescendants = await signalMatchingProcesses(descendants, "SIGTERM");
+      let remaining = await waitForProcessExit(terminatedDescendants, DESKTOP_DESCENDANT_EXIT_TIMEOUT_MS);
+      if (remaining.length > 0) {
+        await signalMatchingProcesses(remaining, "SIGKILL");
+        remaining = await waitForProcessExit(remaining, DESKTOP_DESCENDANT_EXIT_TIMEOUT_MS);
+      }
+      if (remaining.length > 0) {
+        throw new Error(`Owned verification descendants remained alive: ${remaining.map((entry) => entry.pid).join(", ")}`);
+      }
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Desktop cleanup failed: ${errors.map(errorMessage).join("; ")}`);
+  }
+  return {
+    appPid: processInfo.pid,
+    appStartedAt: processInfo.startedAt,
+    identityStatus,
+    descendantPids: descendants.map((entry) => entry.pid),
+    terminatedDescendantPids: terminatedDescendants.map((entry) => entry.pid)
+  };
 }
 
 async function captureDesktopState(browser) {
@@ -123,6 +251,11 @@ async function desktopProcessForPort(port, expectedBinary) {
     throw new Error(`Expected one verification app on WebDriver port ${port}, found: ${pids.join(", ") || "none"}`);
   }
   const pid = Number(pids[0]);
+  const beforeExecutableCheck = await processSnapshot();
+  const identity = beforeExecutableCheck.find((candidate) => candidate.pid === pid);
+  if (!identity) {
+    throw new Error(`Verification app process ${pid} exited before its executable could be checked`);
+  }
   const processFiles = await runChecked(
     "/usr/sbin/lsof",
     ["-a", "-p", String(pid), "-d", "txt", "-Fn"],
@@ -141,7 +274,10 @@ async function desktopProcessForPort(port, expectedBinary) {
       `Process ${pid} on WebDriver port ${port} is ${executable ?? "unknown"}, expected ${expectedBinary}`
     );
   }
-  return { pid, executable };
+  if (matchingProcessIdentities(await processSnapshot(), [identity]).length !== 1) {
+    throw new Error(`Verification app process ${pid} changed identity while its executable was checked`);
+  }
+  return { ...identity, executable };
 }
 
 async function renderedTextEvidence(browser, expectedText) {
@@ -361,9 +497,16 @@ export async function connectDesktop({
     desktopProcesses.set(browser, await desktopProcessForPort(embeddedPort, binary));
     await ensureDesktopForeground(browser);
   } catch (error) {
-    desktopProcesses.delete(browser);
-    await cleanupWdioSession(browser);
-    throw error;
+    let cleanupError = null;
+    try {
+      if (desktopProcesses.has(browser)) await closeDesktopProcessTree(browser);
+      else await cleanupWdioSession(browser);
+    } catch (caught) {
+      cleanupError = caught;
+    } finally {
+      desktopProcesses.delete(browser);
+    }
+    throw new Error(`${errorMessage(error)}${cleanupError ? `; ${errorMessage(cleanupError)}` : ""}`);
   }
   let closed = false;
   return {
@@ -373,7 +516,7 @@ export async function connectDesktop({
       if (closed) return;
       closed = true;
       try {
-        await cleanupWdioSession(browser);
+        return await closeDesktopProcessTree(browser);
       } finally {
         desktopProcesses.delete(browser);
       }
@@ -640,32 +783,112 @@ export async function verifyDesktopSession({
 }
 
 /** Send a follow-up through the native composer in the attached app. */
-export async function sendDesktopMessage({ browser, input }) {
+export async function sendDesktopMessage({ browser, input, sessionId = null, expectQueued = false }) {
   if (!browser) throw new Error("sendDesktopMessage requires browser");
   if (typeof input !== "string" || input.trim() === "") {
     throw new Error("sendDesktopMessage requires non-empty input");
   }
+  if (expectQueued && !sessionId) throw new Error("queued sendDesktopMessage requires sessionId");
 
   await ensureDesktopForeground(browser);
 
   const composer = await browser.$('[aria-label="Chat prompt"]');
   await composer.waitForEnabled({ timeout: 20_000 });
   await composer.setValue(input);
-  const send = await browser.$('[aria-label="Send follow-up"]');
-  await send.waitForEnabled({ timeout: 10_000 });
-  await send.click();
+  if (expectQueued) {
+    await browser.keys("Enter");
+  } else {
+    const send = await browser.$('[aria-label="Send follow-up"]');
+    await send.waitForEnabled({ timeout: 10_000 });
+    await send.click();
+  }
   await browser.waitUntil(async () => (await composer.getValue()) === "", {
     timeout: 10_000,
     interval: 100,
     timeoutMsg: "Native composer did not clear after sending the follow-up"
   });
 
+  let queuedMessage = null;
+  if (expectQueued) {
+    await browser.waitUntil(
+      async () => {
+        const dashboard = await browser.execute(async function pendingMessage(id, content) {
+          const snapshot = await window.argmax.dashboard.list();
+          const entries = snapshot.pendingMessages[id] ?? [];
+          return entries.length === 1 && entries[0].content === content ? entries[0] : null;
+        }, sessionId, input);
+        queuedMessage = dashboard;
+        return queuedMessage !== null;
+      },
+      { timeout: 10_000, interval: 100, timeoutMsg: "Native follow-up was not persisted in the pending queue" }
+    );
+  }
+
   const uiState = await captureDesktopState(browser);
   return {
     ok: rendererErrors(uiState).length === 0,
     assertions: [
       { name: "native composer accepts follow-up text", ok: true },
-      { name: "native composer sends follow-up through the UI", ok: true }
+      { name: expectQueued ? "native composer queues follow-up with Enter" : "native composer sends follow-up through the UI", ok: true },
+      ...(queuedMessage ? [{ name: "native follow-up appears once in the pending queue", ok: true, detail: queuedMessage.id }] : [])
+    ],
+    queuedMessage,
+    uiState,
+    errors: rendererErrorMessages(uiState)
+  };
+}
+
+/** Explicitly send one recovered follow-up through its native queue action. */
+export async function sendDesktopQueuedMessage({ browser, sessionId, messageId, input }) {
+  if (!browser) throw new Error("sendDesktopQueuedMessage requires browser");
+  if (!sessionId || !messageId) throw new Error("sendDesktopQueuedMessage requires sessionId and messageId");
+  if (typeof input !== "string" || input.trim() === "") {
+    throw new Error("sendDesktopQueuedMessage requires non-empty input");
+  }
+
+  await ensureDesktopForeground(browser);
+  const queuedMessages = await browser.execute(async function pendingMessages(id) {
+    const snapshot = await window.argmax.dashboard.list();
+    return snapshot.pendingMessages[id] ?? [];
+  }, sessionId);
+  if (
+    queuedMessages.length !== 1
+    || queuedMessages[0].id !== messageId
+    || queuedMessages[0].content !== input
+  ) {
+    throw new Error(`Expected exactly one recovered queued follow-up ${messageId} before explicit Send`);
+  }
+  let send = null;
+  await browser.waitUntil(
+    async () => {
+      const candidates = await browser.$$('button[aria-label^="Send queued follow-up: "]');
+      const matchingActions = [];
+      for (const candidate of candidates) {
+        if ((await candidate.getAttribute("aria-label")) === `Send queued follow-up: ${input}`) matchingActions.push(candidate);
+      }
+      if (matchingActions.length !== 1) return false;
+      [send] = matchingActions;
+      return true;
+    },
+    { timeout: 10_000, interval: 100, timeoutMsg: "Recovered follow-up did not expose exactly one matching Send action" }
+  );
+  await send.waitForEnabled({ timeout: 10_000 });
+  await send.click();
+  await browser.waitUntil(
+    async () =>
+      await browser.execute(async function sessionQueueIsEmpty(id) {
+        const snapshot = await window.argmax.dashboard.list();
+        return (snapshot.pendingMessages[id] ?? []).length === 0;
+      }, sessionId),
+    { timeout: 10_000, interval: 100, timeoutMsg: `Session queue was not empty after sending follow-up ${messageId}` }
+  );
+
+  const uiState = await captureDesktopState(browser);
+  return {
+    ok: rendererErrors(uiState).length === 0,
+    assertions: [
+      { name: "native recovered follow-up exposes an explicit Send action", ok: true },
+      { name: "native explicit Send removes the recovered pending row", ok: true }
     ],
     uiState,
     errors: rendererErrorMessages(uiState)

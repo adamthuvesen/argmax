@@ -31,6 +31,7 @@ const terminalStates = new Set(["complete", "failed", "cancelled"]);
 const persistentSubagentScenarios = new Set(["persistent-subagent", "persistent-codex-subagent", "persistent-opencode-subagent", "persistent-cursor-subagent"]);
 const scenarioDefinitionKeys = Object.freeze({
   "chat-resume": "chatResumeFirst",
+  "queued-restart": "chatResumeFirst",
   "persistent-subagent": "persistentSubagentFirst",
   "persistent-codex-subagent": "persistentCodexSubagentFirst",
   "codex-user-input": "codexUserInput",
@@ -256,7 +257,34 @@ function assertRecordIncludes(records, expected, label) {
   }
 }
 
-async function runScenario({ bridge, scenario, provider, repoPath, controlDir, verifyUi, sendInput, terminate, restartBackend, timeoutMs, timeline }) {
+function assertOnlyPendingMessage(entries, expected, label) {
+  if (
+    entries.length !== 1
+    || entries[0].id !== expected.id
+    || entries[0].content !== expected.content
+  ) {
+    throw new Error(`${label} must contain exactly queued follow-up ${expected.id}`);
+  }
+  return entries[0];
+}
+
+async function runScenario({
+  bridge,
+  scenario,
+  provider,
+  repoPath,
+  controlDir,
+  databasePath,
+  outputDir,
+  verifyUi,
+  sendInput,
+  queueInput,
+  sendQueuedInput,
+  terminate,
+  restartBackend,
+  timeoutMs,
+  timeline
+}) {
   const definition = definitionForScenario(scenario);
   const { workspace } = await resolveProjectAndWorkspace(bridge, repoPath, definition.prompt);
   const launched = await launchFixture(bridge, workspace.id, definition.prompt, provider);
@@ -327,6 +355,148 @@ async function runScenario({ bridge, scenario, provider, repoPath, controlDir, v
       expectIdle: true
     });
     return { session: second.session, workspace, records: combined, browser: [streamingUi, toolUi, ui] };
+  }
+
+  if (scenario === "queued-restart") {
+    const secondPrompt = VERIFICATION_SCENARIOS.chatResumeSecond.prompt;
+    await waitForFile(path.join(controlDir, `${VERIFICATION_BARRIERS.chatResumeStream}.ready`), timeoutMs);
+    const streamingUi = await verifyUi({
+      name: "queued-running",
+      expectedTexts: [VERIFICATION_SCENARIOS.chatResumeFirst.visibleText],
+      expectIdle: false
+    });
+    const queuedAction = await queueInput(launched.id, secondPrompt);
+    const pendingMessage = queuedAction.queuedMessage;
+    if (!pendingMessage?.id || pendingMessage.content !== secondPrompt) {
+      throw new Error("native composer did not return the persisted queued follow-up");
+    }
+    const expectedQueuedMessage = { id: pendingMessage.id, content: secondPrompt };
+    const queuedDashboard = await bridge.call("dashboard:list", {});
+    assertOnlyPendingMessage(
+      queuedDashboard.pendingMessages[launched.id] ?? [],
+      expectedQueuedMessage,
+      "dashboard queue before restart"
+    );
+    const beforeRestart = await sqliteSnapshot(databasePath, launched.id);
+    await writeJson(path.join(outputDir, "queued-before-restart.json"), beforeRestart);
+    const firstTurnDeltaSequence = beforeRestart.events
+      .filter((event) => event.type === "message.delta" && typeof event.message === "string" && event.message.length > 0)
+      .map((event) => ({ id: event.id, message: event.message }));
+    if (firstTurnDeltaSequence.length === 0) {
+      throw new Error("held first turn did not persist any streamed content before restart");
+    }
+    const durableBefore = assertOnlyPendingMessage(
+      beforeRestart.pendingMessages,
+      expectedQueuedMessage,
+      "SQLite queue before restart"
+    );
+    if (durableBefore.deliveryState !== "pending") {
+      throw new Error("SQLite queued follow-up was not pending before restart");
+    }
+    if (beforeRestart.events.some((event) => event.type === "user.message" && event.message === secondPrompt)) {
+      throw new Error("queued follow-up was recorded as a user turn before delivery");
+    }
+
+    const resumedBridge = await restartBackend();
+    timeline.push({ at: new Date().toISOString(), type: "backend-restarted", sessionId: launched.id });
+    await delay(1_000);
+    const recoveredDashboard = await resumedBridge.call("dashboard:list", {});
+    const recoveredDashboardMessage = assertOnlyPendingMessage(
+      recoveredDashboard.pendingMessages[launched.id] ?? [],
+      expectedQueuedMessage,
+      "dashboard queue after restart"
+    );
+    if (!["unsent", "delivery-unknown"].includes(recoveredDashboardMessage.recoveryStatus)) {
+      throw new Error("restart did not recover the queued follow-up as paused or delivery-uncertain");
+    }
+    const recovered = await sqliteSnapshot(databasePath, launched.id);
+    await writeJson(path.join(outputDir, "queued-after-restart.json"), recovered);
+    const recoveredFirstTurnDeltaSequence = recovered.events
+      .filter((event) => event.type === "message.delta" && typeof event.message === "string" && event.message.length > 0)
+      .map((event) => ({ id: event.id, message: event.message }));
+    if (JSON.stringify(recoveredFirstTurnDeltaSequence) !== JSON.stringify(firstTurnDeltaSequence)) {
+      throw new Error("restart changed the persisted first-turn stream fragments");
+    }
+    const durableRecovered = assertOnlyPendingMessage(
+      recovered.pendingMessages,
+      expectedQueuedMessage,
+      "SQLite queue after restart"
+    );
+    if (!["recovered", "delivery_unknown"].includes(durableRecovered.deliveryState)) {
+      throw new Error("SQLite did not mark the queued follow-up as recovered");
+    }
+    if (recovered.events.some((event) => event.type === "user.message" && event.message === secondPrompt)) {
+      throw new Error("recovered queued follow-up replayed without an explicit send");
+    }
+    const recoveryLabel = recoveredDashboardMessage.recoveryStatus === "delivery-unknown"
+      ? "Delivery uncertain • check the chat before sending again"
+      : "Paused • not sent";
+    const recoveredUi = await verifyUi({
+      name: "queued-recovered",
+      expectedTexts: [secondPrompt, recoveryLabel],
+      expectIdle: true
+    });
+
+    const beforeSend = await resumedBridge.call("session:events-since", {
+      sessionId: launched.id,
+      eventCursor: null,
+      rawOutputCursor: null,
+      changeCursor: null
+    });
+    const recoveredRecords = [
+      ...beforeSend.events.map((event) => ({ kind: "event", ...event })),
+      ...beforeSend.rawOutputs.map((output) => ({ kind: "rawOutput", ...output }))
+    ];
+    const beforeExplicitSend = await sqliteSnapshot(databasePath, launched.id);
+    assertOnlyPendingMessage(
+      beforeExplicitSend.pendingMessages,
+      expectedQueuedMessage,
+      "SQLite queue before explicit Send"
+    );
+    const userMessagesBeforeExplicitSend = beforeExplicitSend.events
+      .filter((event) => event.type === "user.message" && event.message === secondPrompt);
+    if (userMessagesBeforeExplicitSend.length !== 0) {
+      throw new Error("recovered queued follow-up replayed before explicit Send");
+    }
+    await sendQueuedInput(launched.id, pendingMessage.id, secondPrompt);
+    const second = await collectUntilTerminal(resumedBridge, launched.id, timeoutMs, beforeSend);
+    if (second.session.state !== "complete") throw new Error(`recovered follow-up ended in ${second.session.state}`);
+    assertIncludes(second.records, VERIFICATION_SCENARIOS.chatResumeSecond.visibleText, "recovered follow-up");
+    const finalSnapshot = await sqliteSnapshot(databasePath, launched.id);
+    const deliveredUserMessages = finalSnapshot.events
+      .filter((event) => event.type === "user.message" && event.message === secondPrompt);
+    if (deliveredUserMessages.length !== 1) {
+      throw new Error(`recovered follow-up persisted ${deliveredUserMessages.length} user turns instead of one`);
+    }
+    if (finalSnapshot.pendingMessages.length !== 0) {
+      throw new Error("SQLite session queue was not empty after delivering the follow-up");
+    }
+    const finalDashboard = await resumedBridge.call("dashboard:list", {});
+    if ((finalDashboard.pendingMessages[launched.id] ?? []).length !== 0) {
+      throw new Error("dashboard session queue was not empty after delivering the follow-up");
+    }
+    const completeUi = await verifyUi({
+      name: "queued-complete",
+      expectedTexts: [
+        VERIFICATION_SCENARIOS.chatResumeFirst.visibleText,
+        VERIFICATION_SCENARIOS.chatResumeSecond.visibleText
+      ],
+      expectIdle: true
+    });
+    return {
+      session: second.session,
+      workspace,
+      records: [...recoveredRecords, ...second.records],
+      browser: [streamingUi, recoveredUi, completeUi],
+      bridge: resumedBridge,
+      assertions: [
+        { name: "held-first-turn-fragments-preserved", ok: true, value: firstTurnDeltaSequence.length },
+        { name: "queued-follow-up-persisted-before-restart", ok: true, value: pendingMessage.id },
+        { name: "recovered-follow-up-requires-explicit-send", ok: true, value: recoveredDashboardMessage.recoveryStatus },
+        { name: "recovered-follow-up-delivered-exactly-once", ok: true, value: deliveredUserMessages[0].id },
+        { name: "delivered-follow-up-cleared-from-pending-journal", ok: true }
+      ]
+    };
   }
 
   if (persistentSubagentScenarios.has(scenario)) {
@@ -482,13 +652,14 @@ async function runScenario({ bridge, scenario, provider, repoPath, controlDir, v
 }
 
 async function sqliteSnapshot(databasePath, sessionId) {
-  const sql = "SELECT json_object('sessions',(SELECT json_group_array(json_object('id',id,'state',state,'provider',provider,'providerConversationId',provider_conversation_id)) FROM sessions),'events',(SELECT json_group_array(json_object('sessionId',session_id,'type',type,'message',message,'createdAt',created_at)) FROM events ORDER BY created_at),'rawOutputs',(SELECT json_group_array(json_object('sessionId',session_id,'stream',stream,'content',content,'createdAt',created_at)) FROM raw_outputs ORDER BY created_at));";
+  const sql = "SELECT json_object('sessions',(SELECT json_group_array(json_object('id',id,'state',state,'provider',provider,'providerConversationId',provider_conversation_id)) FROM sessions),'events',(SELECT json_group_array(json_object('id',id,'sessionId',session_id,'type',type,'message',message,'createdAt',created_at)) FROM events ORDER BY created_at),'rawOutputs',(SELECT json_group_array(json_object('sessionId',session_id,'stream',stream,'content',content,'createdAt',created_at)) FROM raw_outputs ORDER BY created_at),'pendingMessages',(SELECT json_group_array(json_object('id',id,'sessionId',session_id,'content',content,'position',position,'deliveryState',delivery_state,'queuedAt',queued_at)) FROM pending_messages ORDER BY position));";
   const result = await runChecked("sqlite3", [databasePath, sql], { timeoutMs: 20_000 });
   const all = JSON.parse(result.stdout.trim());
   return {
     sessions: all.sessions.filter((entry) => entry.id === sessionId),
     events: all.events.filter((entry) => entry.sessionId === sessionId),
-    rawOutputs: all.rawOutputs.filter((entry) => entry.sessionId === sessionId)
+    rawOutputs: all.rawOutputs.filter((entry) => entry.sessionId === sessionId),
+    pendingMessages: all.pendingMessages.filter((entry) => entry.sessionId === sessionId)
   };
 }
 
@@ -497,6 +668,7 @@ function expectedPersistenceTexts(scenario) {
   if (scenario === "chat-resume") {
     return [VERIFICATION_SCENARIOS.chatResumeFirst.visibleText, VERIFICATION_SCENARIOS.chatResumeSecond.visibleText];
   }
+  if (scenario === "queued-restart") return [VERIFICATION_SCENARIOS.chatResumeSecond.visibleText];
   if (scenario === "persistent-subagent") {
     return [
       VERIFICATION_SCENARIOS.persistentSubagentFirst.visibleText,
@@ -700,6 +872,9 @@ export async function runVerification(options) {
     if (persistentSubagentScenarios.has(options.scenario) && options.native !== "off") {
       throw new Error(`${options.scenario} requires --native off because it verifies a scratch backend restart`);
     }
+    if (options.scenario === "queued-restart" && options.native !== "required") {
+      throw new Error("queued-restart requires native verification");
+    }
     report.source.beforeBuild = await checkoutFingerprint(repoRoot);
     const targetDir = path.join(repoRoot, "src-tauri", "target", "verification");
     const rendererOutDir = path.join(repoRoot, "dist", "verification");
@@ -821,6 +996,7 @@ export async function runVerification(options) {
       report.native.actions ??= [];
       report.native.actions.push(result);
       if (!result.ok) throw new Error(`native UI action failed: ${result.errors.join("; ")}`);
+      return result;
     };
     const sendInput = desktopHandle
       ? async (_sessionId, input) => recordNativeAction(await desktopModule.sendDesktopMessage({ browser: desktopHandle.browser, input }))
@@ -833,22 +1009,63 @@ export async function runVerification(options) {
           reasoningEffort: null,
           fastMode: false
         });
+    const queueInput = desktopHandle
+      ? async (sessionId, input) => recordNativeAction(await desktopModule.sendDesktopMessage({
+          browser: desktopHandle.browser,
+          input,
+          sessionId,
+          expectQueued: true
+        }))
+      : () => { throw new Error("queued-restart requires the native composer"); };
+    const sendQueuedInput = desktopHandle
+      ? async (sessionId, messageId, input) => recordNativeAction(await desktopModule.sendDesktopQueuedMessage({
+          browser: desktopHandle.browser,
+          sessionId,
+          messageId,
+          input
+        }))
+      : () => { throw new Error("queued-restart requires the native queued-message action"); };
     const terminate = desktopHandle
       ? async (sessionId) => recordNativeAction(await desktopModule.stopDesktopSession({ browser: desktopHandle.browser, sessionId }))
       : (sessionId) => bridge.call("providers:terminate", { sessionId });
     const restartBackend = async () => {
-      if (desktopHandle || !app) throw new Error("scratch backend restart is unavailable");
       bridge?.close();
       bridge = null;
-      report.process.scratch.restart = await app.stop();
-      app = await startScratchApp({
-        dataDir: profile,
-        binary,
-        env,
-        port: remotePort,
-        readyTimeoutMs: Math.min(options.timeoutMs, 60_000),
-      });
-      report.process.scratch.restarted = { pid: app.pid, port: app.port };
+      if (desktopHandle) {
+        const cleanup = await desktopHandle.close();
+        desktopHandle = null;
+        restoreDriverOutput?.();
+        report.process.desktop.restart = { closed: true, cleanup };
+        if (interrupting) throw new Error("verification interrupted before native restart");
+        const desktopPort = await freePort();
+        restoreDriverOutput = silenceDriverOutput();
+        const desktopConnection = desktopModule.connectDesktop({
+          appBinaryPath: binary,
+          outputDir: path.join(outputDir, "native"),
+          env: { ...env, ARGMAX_DATA_DIR: profile },
+          port: desktopPort,
+          startTimeoutMs: Math.min(options.timeoutMs, 60_000)
+        });
+        pendingDesktopConnection = desktopConnection;
+        try {
+          desktopHandle = await desktopConnection;
+        } finally {
+          if (pendingDesktopConnection === desktopConnection) pendingDesktopConnection = null;
+        }
+        if (interrupting) throw new Error("verification interrupted during native restart");
+        report.process.desktop.restarted = { driverOwned: true, remotePort, embeddedPort: desktopHandle.port };
+      } else {
+        if (!app) throw new Error("scratch backend restart is unavailable");
+        report.process.scratch.restart = await app.stop();
+        app = await startScratchApp({
+          dataDir: profile,
+          binary,
+          env,
+          port: remotePort,
+          readyTimeoutMs: Math.min(options.timeoutMs, 60_000),
+        });
+        report.process.scratch.restarted = { pid: app.pid, port: app.port };
+      }
       bridge = await connectBridgeWhenReady({ port: remotePort, token: remoteToken }, options.timeoutMs);
       const health = await bridge.call("health:ping", {});
       if (!health) throw new Error("scratch backend did not become healthy after restart");
@@ -860,16 +1077,21 @@ export async function runVerification(options) {
       provider,
       repoPath,
       controlDir,
+      databasePath,
+      outputDir,
       timeoutMs: options.timeoutMs,
       timeline: report.timeline,
       verifyUi,
       sendInput,
+      queueInput,
+      sendQueuedInput,
       terminate,
       restartBackend,
     });
     bridge = scenarioResult.bridge ?? bridge;
     report.session = { id: scenarioResult.session.id, workspaceId: scenarioResult.workspace.id, state: scenarioResult.session.state };
     report.assertions.push({ name: "scenario-state", ok: true, value: scenarioResult.session.state });
+    report.assertions.push(...(scenarioResult.assertions ?? []));
     if (persistentSubagentScenarios.has(options.scenario)) {
       report.assertions.push(
         { name: "persistent-child-stable-id", ok: true, value: scenarioResult.nativeChildId },
@@ -889,10 +1111,11 @@ export async function runVerification(options) {
     bridge.close();
     bridge = null;
     if (desktopHandle) {
-      await desktopHandle.close();
+      const cleanup = await desktopHandle.close();
       desktopHandle = null;
       restoreDriverOutput?.();
       report.process.desktop.closed = true;
+      report.process.desktop.cleanup = cleanup;
     } else {
       report.process.scratch.exit = await app.stop();
       app = null;
@@ -910,7 +1133,7 @@ export async function runVerification(options) {
         ok: persistedMessages.some((message) => message.includes(text))
       }))
     ];
-    if (options.scenario === "chat-resume") {
+    if (options.scenario === "chat-resume" || options.scenario === "queued-restart") {
       persistenceAssertions.push({
         name: "sqlite-provider-conversation-persisted",
         ok: persistedSession?.providerConversationId === VERIFICATION_CONVERSATION_ID,
@@ -979,9 +1202,9 @@ export async function runVerification(options) {
         }
       }
       try {
-        await desktopHandle.close();
+        const cleanup = await desktopHandle.close();
         restoreDriverOutput?.();
-        report.process.desktop = { ...report.process.desktop, closed: true };
+        report.process.desktop = { ...report.process.desktop, closed: true, cleanup };
       } catch (error) {
         report.status = "failed";
         report.errors.push({ message: `desktop cleanup failed: ${error.message}` });

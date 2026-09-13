@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { parseDoctorArgs } from "../../scripts/doctor.mjs";
 import { parseScratchArgs } from "../../scripts/scratch-app.mjs";
 import { parseVerifyArgs } from "../../scripts/verify.mjs";
-import { NATIVE_STOP_MINIMUM_SESSION_AGE_MS } from "../../scripts/verification/desktop.mjs";
+import { matchingProcessIdentities, NATIVE_STOP_MINIMUM_SESSION_AGE_MS } from "../../scripts/verification/desktop.mjs";
 import { checkoutFingerprint, runChecked } from "../../scripts/verification/common.mjs";
 import { redact } from "../../scripts/verification/evidence.mjs";
 import { EARLY_STOP_WINDOW_MS } from "../renderer/lib/earlyStop.js";
@@ -287,6 +287,10 @@ describe("verification script arguments", () => {
       scenario: "persistent-cursor-subagent",
       native: "off",
     });
+    expect(parseVerifyArgs(["--scenario", "queued-restart"])).toMatchObject({
+      scenario: "queued-restart",
+      native: "required",
+    });
     expect(() => parseVerifyArgs(["--out"])).toThrow(/requires a value/);
     expect(() => parseScratchArgs(["--port", "70000"])).toThrow(/between 1 and 65535/);
     expect(() => parseScratchArgs(["--data-dir"])).toThrow(/requires a value/);
@@ -299,6 +303,13 @@ describe("verification script arguments", () => {
 });
 
 describe("verification evidence", () => {
+  it("rejects a reused process id when the start time changed", () => {
+    const expected = [{ pid: 42, parentPid: 1, startedAt: "Sun Sep 13 10:00:00 2026" }];
+    const reused = [{ pid: 42, parentPid: 1, startedAt: "Sun Sep 13 10:01:00 2026" }];
+
+    expect(matchingProcessIdentities(reused, expected)).toEqual([]);
+  });
+
   it("redacts nested credentials, bearer values, and pairing tokens", () => {
     expect(
       redact({

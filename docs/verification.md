@@ -10,6 +10,7 @@ ladder as the definition of "verified".
 ```bash
 npm run doctor
 npm run verify -- --scenario chat-resume
+npm run verify -- --scenario queued-restart
 npm run verify -- --scenario persistent-subagent --native off
 npm run verify -- --scenario persistent-codex-subagent --native off
 npm run verify -- --scenario codex-user-input
@@ -34,6 +35,15 @@ original JSON-RPC request.
 a running provider can be stopped. `provider-error` checks that a provider
 failure becomes a failed session. These commands are local checks and are not
 part of CI or the pre-push gate.
+
+`queued-restart` holds a first turn mid-stream, queues a follow-up through the
+native composer, then restarts the app on the same isolated profile. It checks
+that the dashboard and SQLite each contain only that pending-message id and
+text, the persisted first-turn delta sequence stays unchanged, startup does
+not replay the follow-up, and the composer labels it paused or
+delivery-uncertain with one explicit Send action. Sending that recovered row
+must record and complete the follow-up exactly once, then leave the session's
+dashboard and SQLite pending-message queues empty.
 
 `persistent-subagent --native off` checks the Claude native child identity,
 separate lifecycle runs for the initial launch and a `SendMessage` continuation,

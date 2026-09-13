@@ -113,9 +113,10 @@ do not include the driver. A verification request sent to an ordinary binary
 fails before app startup instead of falling back to installed providers.
 Before native interaction, the runner brings its isolated app window to the
 foreground and fails if that window remains hidden.
-Foreground failures include macOS activation and on-screen window counts,
-alongside the driver error, to distinguish a loaded webview from a visible
-window. A diagnostic probe failure remains explicit.
+Foreground activation timeouts are classified as
+`foreground-activation-timeout`. Their evidence includes the console lock
+state, activation request result, candidate activation and window state, and
+the frontmost process identity. A diagnostic probe failure remains explicit.
 
 Native `cancellation` waits beyond the ten-second early-stop window, checks
 that the session is still running, then clicks Stop. This verifies a retained

@@ -11,7 +11,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { parseDoctorArgs } from "../../scripts/doctor.mjs";
 import { parseScratchArgs } from "../../scripts/scratch-app.mjs";
 import { parseVerifyArgs } from "../../scripts/verify.mjs";
-import { matchingProcessIdentities, NATIVE_STOP_MINIMUM_SESSION_AGE_MS } from "../../scripts/verification/desktop.mjs";
+import {
+  foregroundActivationTimeoutDetails,
+  matchingProcessIdentities,
+  NATIVE_STOP_MINIMUM_SESSION_AGE_MS,
+  parseMacosConsoleLockState,
+} from "../../scripts/verification/desktop.mjs";
 import { checkoutFingerprint, runChecked } from "../../scripts/verification/common.mjs";
 import { redact } from "../../scripts/verification/evidence.mjs";
 import { EARLY_STOP_WINDOW_MS } from "../renderer/lib/earlyStop.js";
@@ -285,6 +290,62 @@ afterEach(async () => {
 });
 
 describe("verification script arguments", () => {
+  it("classifies foreground activation timeouts with native process and lock evidence", () => {
+    const activationRequest = {
+      activated: true,
+      before: { active: false, frontmost: { pid: 418, localizedName: "loginwindow" } },
+      after: { active: false, frontmost: { pid: 418, localizedName: "loginwindow" } },
+    };
+    const failureState = {
+      activated: null,
+      before: { active: false },
+      after: {
+        pid: 123,
+        localizedName: "Argmax Verification",
+        bundleIdentifier: "com.argmax.verification",
+        launchDate: "2026-09-13T12:00:00Z",
+        active: false,
+        hidden: false,
+        windowCount: 1,
+        onScreenWindowCount: 1,
+        frontmost: { pid: 418, localizedName: "loginwindow", bundleIdentifier: "com.apple.loginwindow" },
+      },
+    };
+
+    expect(foregroundActivationTimeoutDetails({
+      pid: 123,
+      visibilityError: new Error("document stayed hidden"),
+      activationRequest,
+      failureState,
+      consoleLock: { ioConsoleLocked: true, screenIsLocked: true },
+    })).toMatchObject({
+      classification: "foreground-activation-timeout",
+      pid: 123,
+      visibilityError: expect.stringContaining("document stayed hidden"),
+      consoleLock: { ioConsoleLocked: true, screenIsLocked: true },
+      frontmostProcess: { pid: 418, localizedName: "loginwindow", bundleIdentifier: "com.apple.loginwindow" },
+      candidateState: {
+        pid: 123,
+        localizedName: "Argmax Verification",
+        active: false,
+        windowCount: 1,
+        onScreenWindowCount: 1,
+      },
+      activationRequest: { result: true },
+    });
+  });
+
+  it("parses explicit macOS console lock states without guessing an absent session key", () => {
+    expect(parseMacosConsoleLockState('"IOConsoleLocked" = No')).toEqual({
+      ioConsoleLocked: false,
+      screenIsLocked: null,
+    });
+    expect(parseMacosConsoleLockState('"IOConsoleLocked" = Yes, "CGSSessionScreenIsLocked" = Yes')).toEqual({
+      ioConsoleLocked: true,
+      screenIsLocked: true,
+    });
+  });
+
   it("waits beyond the renderer early-stop restore window before native cancellation", () => {
     expect(NATIVE_STOP_MINIMUM_SESSION_AGE_MS).toBeGreaterThan(EARLY_STOP_WINDOW_MS);
   });

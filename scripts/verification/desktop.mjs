@@ -193,9 +193,22 @@ async function macosDesktopState(pid, activate) {
     "import AppKit",
     "import CoreGraphics",
     `guard let app = NSRunningApplication(processIdentifier: pid_t(${pid})) else { exit(2) }`,
+    "let dateFormatter = ISO8601DateFormatter()",
+    "func stringOrNull(_ value: String?) -> Any {",
+    "  guard let value else { return NSNull() }",
+    "  return value",
+    "}",
+    "func dateOrNull(_ value: Date?) -> Any {",
+    "  guard let value else { return NSNull() }",
+    "  return dateFormatter.string(from: value)",
+    "}",
+    "func identity(_ runningApplication: NSRunningApplication?) -> Any {",
+    "  guard let runningApplication else { return NSNull() }",
+    "  return [\"pid\": runningApplication.processIdentifier, \"localizedName\": stringOrNull(runningApplication.localizedName), \"bundleIdentifier\": stringOrNull(runningApplication.bundleIdentifier), \"launchDate\": dateOrNull(runningApplication.launchDate)]",
+    "}",
     "func state() -> [String: Any] {",
     "  let windows = (CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] ?? []).filter { ($0[kCGWindowOwnerPID as String] as? Int32) == app.processIdentifier }",
-    "  return [\"policy\": app.activationPolicy.rawValue, \"active\": app.isActive, \"hidden\": app.isHidden, \"finishedLaunching\": app.isFinishedLaunching, \"frontmostPid\": NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1, \"windowCount\": windows.count, \"onScreenWindowCount\": windows.filter { $0[kCGWindowIsOnscreen as String] as? Bool == true }.count]",
+    "  return [\"pid\": app.processIdentifier, \"localizedName\": stringOrNull(app.localizedName), \"bundleIdentifier\": stringOrNull(app.bundleIdentifier), \"launchDate\": dateOrNull(app.launchDate), \"policy\": app.activationPolicy.rawValue, \"active\": app.isActive, \"hidden\": app.isHidden, \"finishedLaunching\": app.isFinishedLaunching, \"frontmost\": identity(NSWorkspace.shared.frontmostApplication), \"frontmostPid\": NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1, \"windowCount\": windows.count, \"onScreenWindowCount\": windows.filter { $0[kCGWindowIsOnscreen as String] as? Bool == true }.count]",
     "}",
     "let before = state()",
     `let activated: Any = ${activate ? "app.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])" : "NSNull()"}`,
@@ -204,6 +217,43 @@ async function macosDesktopState(pid, activate) {
   ].join("\n");
   const result = await runChecked("/usr/bin/swift", ["-e", source], { timeoutMs: 10_000 });
   return JSON.parse(result.stdout);
+}
+
+export function parseMacosConsoleLockState(output) {
+  const ioConsoleLocked = output.match(/"IOConsoleLocked"\s*=\s*(Yes|No)/)?.[1];
+  const screenIsLocked = output.match(/"CGSSessionScreenIsLocked"\s*=\s*(Yes|No)/)?.[1];
+  return {
+    ioConsoleLocked: ioConsoleLocked ? ioConsoleLocked === "Yes" : null,
+    screenIsLocked: screenIsLocked ? screenIsLocked === "Yes" : null
+  };
+}
+
+async function macosConsoleLockState() {
+  const result = await runChecked("/usr/sbin/ioreg", ["-n", "Root", "-d1"], { timeoutMs: 5_000 });
+  return parseMacosConsoleLockState(result.stdout);
+}
+
+export function foregroundActivationTimeoutDetails({
+  pid,
+  visibilityError,
+  activationRequest,
+  failureState,
+  consoleLock
+}) {
+  return {
+    classification: "foreground-activation-timeout",
+    pid,
+    visibilityError: errorMessage(visibilityError),
+    consoleLock,
+    frontmostProcess: failureState?.after?.frontmost ?? activationRequest?.after?.frontmost ?? null,
+    candidateState: failureState?.after ?? activationRequest?.after ?? null,
+    activationRequest: {
+      result: activationRequest?.activated ?? null,
+      before: activationRequest?.before ?? null,
+      after: activationRequest?.after ?? null
+    },
+    ...(failureState?.diagnosticError ? { diagnosticError: failureState.diagnosticError } : {})
+  };
 }
 
 async function ensureDesktopForeground(browser) {
@@ -227,15 +277,24 @@ async function ensureDesktopForeground(browser) {
       { timeout: 5_000, interval: 50, timeoutMsg: `Verification app process ${processInfo.pid} did not become visible` }
     );
   } catch (visibilityError) {
-    let failureState;
-    try {
-      failureState = await macosDesktopState(processInfo.pid, false);
-    } catch (diagnosticError) {
-      failureState = { diagnosticError: errorMessage(diagnosticError) };
-    }
-    throw new Error(
-      `Verification app process ${processInfo.pid} did not become visible: ${errorMessage(visibilityError)}; ${JSON.stringify({ activation, failureState })}`
-    );
+    const [failureStateResult, consoleLockResult] = await Promise.allSettled([
+      macosDesktopState(processInfo.pid, false),
+      macosConsoleLockState()
+    ]);
+    const failureState = failureStateResult.status === "fulfilled"
+      ? failureStateResult.value
+      : { diagnosticError: errorMessage(failureStateResult.reason) };
+    const consoleLock = consoleLockResult.status === "fulfilled"
+      ? consoleLockResult.value
+      : { diagnosticError: errorMessage(consoleLockResult.reason) };
+    const details = foregroundActivationTimeoutDetails({
+      pid: processInfo.pid,
+      visibilityError,
+      activationRequest: activation,
+      failureState,
+      consoleLock
+    });
+    throw new Error(`foreground-activation-timeout: ${JSON.stringify(details)}`);
   }
   return { changed: visibilityState !== "visible", pid: processInfo.pid };
 }

@@ -241,6 +241,7 @@ final class TranscriptStore: ObservableObject {
         connection = state
         switch state {
         case .live:
+            if openSessionID != nil, case .failed = phase { phase = .loading }
             authoritativeReadRequested = true
             metadataDirty = true
             scheduleReads()

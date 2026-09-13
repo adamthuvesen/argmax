@@ -224,7 +224,9 @@ final class TranscriptStoreTests: XCTestCase {
         XCTAssertNil(store.sessionID)
         XCTAssertNil(store.composer)
         XCTAssertTrue(store.items.isEmpty)
-        XCTAssertNotNil(store.failure)
+        XCTAssertEqual(store.failure, "This chat is no longer available on the Mac.")
+        store.receive(connection: .live)
+        XCTAssertEqual(store.failure, "This chat is no longer available on the Mac.")
         await client.disconnect()
     }
 

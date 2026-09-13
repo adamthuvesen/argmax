@@ -2,6 +2,51 @@ import XCTest
 @testable import Argmax
 
 final class BridgeRecoveryTests: XCTestCase {
+    @MainActor
+    func testTranscriptClearsDisconnectedFailureAfterARecoveredPage() async throws {
+        let first = TestBridgeSocket(), second = TestBridgeSocket()
+        let (client, directory) = try makeClient([first, second])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = TranscriptStore(client: client, cache: DeviceCache(directory: directory))
+        store.openSession("session-1")
+
+        try await wait {
+            first.requests.contains { $0["channel"] as? String == "session:events-since" }
+        }
+        first.fail()
+        for _ in 0..<500 where store.failure == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(store.failure, "Can't reach your Mac.")
+
+        store.receive(connection: .live)
+        XCTAssertEqual(store.phase, .loading)
+        store.ingest(page: TranscriptPage(
+            events: [TranscriptEvent(
+                id: "answer-1",
+                sessionId: "session-1",
+                type: "message.completed",
+                message: "Recovered answer",
+                payload: .object([:]),
+                createdAt: "2026-01-01T00:00:01.000Z",
+                rowCursor: 1
+            )],
+            rawOutputs: [],
+            eventCursor: 1,
+            rawOutputCursor: 0,
+            changeCursor: 1,
+            deletedEventIds: [],
+            deletedRawOutputIds: [],
+            resetRequired: true,
+            hasMore: false
+        ), for: "session-1", authoritative: true)
+        await store.waitForProjection()
+
+        XCTAssertEqual(store.phase, .ready)
+        XCTAssertNil(store.failure)
+        await client.disconnect()
+    }
+
     func testLostReplyReplaysSameIdentityAndSettlesOnce() async throws {
         let first = TestBridgeSocket(), second = TestBridgeSocket()
         let (client, directory) = try makeClient([first, second])

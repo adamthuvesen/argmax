@@ -1604,6 +1604,7 @@ export function SessionConversation({
                     defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
                     thinkingDisplay={thinkingDisplay}
                     defaultTurnChangesExpanded={defaultTurnChangesExpanded}
+                    transcriptDetached={showScrollToBottom}
                     restoringTranscript={restoringTranscript}
                     todo={todoByTurn.get(item.id) ?? null}
                     onOpenDiff={onOpenDiff ?? review.openFile}

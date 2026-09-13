@@ -14,6 +14,41 @@ function longTranscript(turns: number): TimelineEvent[] {
   return events;
 }
 
+/** One provider turn with more internal rows than the outer turn window sees. */
+function giantTurn(steps: number): TimelineEvent[] {
+  const events: TimelineEvent[] = [
+    event("giant-user", "user.message", "inspect everything", "2026-01-01T00:00:00.000Z")
+  ];
+  for (let index = 0; index < steps; index += 1) {
+    const at = (offsetMs: number): string =>
+      new Date(Date.UTC(2026, 0, 1, 0, 1, 0, index * 1_000 + offsetMs)).toISOString();
+    events.push(
+      event(
+        `progress-${index}`,
+        "message.delta",
+        `progress ${index}`,
+        at(0),
+        { thinking: true }
+      ),
+      event(
+        `tool-${index}-start`,
+        "command.started",
+        "Read",
+        at(100),
+        { id: `tool-${index}`, name: "Read", input: { file_path: `src/${index}.ts` } }
+      ),
+      event(
+        `tool-${index}-end`,
+        "command.completed",
+        "tool_result",
+        at(200),
+        { tool_use_id: `tool-${index}`, content: `file ${index}` }
+      )
+    );
+  }
+  return events;
+}
+
 describe("SessionConversation — render window", () => {
   afterEach(cleanup);
 
@@ -54,5 +89,22 @@ describe("SessionConversation — render window", () => {
     // newest turn is still mounted, because the window is anchored to the end.
     expect(earliestVisible()).toBeLessThan(before);
     expect(screen.getByText("answer 399")).toBeTruthy();
+  });
+
+  it("bounds nested activity inside one giant turn without inventing turns", () => {
+    renderConversation(baseSession(), giantTurn(80), {
+      defaultToolCallsDisplay: "collapsed",
+      defaultToolCallGroupsExpanded: false,
+      thinkingDisplay: "preview"
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
+    expect(screen.getByRole("button", { name: "Read 79.ts" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Read 0.ts" })).toBeNull();
+    expect(document.querySelectorAll(".turn-block")).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: /Show earlier activity/ }));
+    expect(screen.getByRole("button", { name: "Read 56.ts" })).toBeTruthy();
+    expect(document.querySelectorAll(".turn-block")).toHaveLength(1);
   });
 });

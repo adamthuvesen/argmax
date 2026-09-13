@@ -52,8 +52,15 @@ import {
 import type { FileChipOpenOptions } from "./FileChip.js";
 import type { ComposerStatus } from "./SessionComposer.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
+import { useStableTailWindow } from "../hooks/useStableTailWindow.js";
 
 type TurnRenderItem = Extract<RenderItem, { kind: "turn" }>;
+
+// The conversation-level window counts turns. A provider can keep one turn
+// open for hours, so that outer bound alone does not bound the DOM. Keep each
+// turn's rendered body small as well. Explicit reveals may grow it by design.
+const TURN_BODY_WINDOW = 16;
+const TURN_BODY_WINDOW_STEP = 32;
 
 function SessionConversationTurnInner({
   item,
@@ -82,6 +89,7 @@ function SessionConversationTurnInner({
   defaultToolCallGroupsExpanded,
   thinkingDisplay,
   defaultTurnChangesExpanded,
+  transcriptDetached = false,
   restoringTranscript = false,
   todo = null
 }: {
@@ -116,6 +124,8 @@ function SessionConversationTurnInner({
   defaultToolCallGroupsExpanded?: boolean;
   thinkingDisplay?: ThinkingDisplay;
   defaultTurnChangesExpanded?: boolean;
+  /** Freeze this turn's mounted row ids while the reader is away from latest. */
+  transcriptDetached?: boolean;
   restoringTranscript?: boolean;
   /** The agent's plan as it stood when this turn ended, or null if it never
    *  touched one. */
@@ -496,6 +506,7 @@ function SessionConversationTurnInner({
       compact={compactToolSummaries}
       defaultExpanded={!minimalActivity && toolsExpanded}
       defaultToolsExpanded={toolRowsExpanded}
+      transcriptDetached={transcriptDetached}
       workspaceCwd={workspace?.path ?? null}
       agentCodenames={agentCodenames}
       onOpenFile={onOpenFile}
@@ -529,6 +540,16 @@ function SessionConversationTurnInner({
       };
     }
     return { kind: child.kind, id: child.id, node: child.node };
+  });
+  const {
+    visibleItems: mountedBodyChildren,
+    hiddenEarlierCount: hiddenEarlierBodyCount,
+    showEarlier: showEarlierBody
+  } = useStableTailWindow(bodyChildren, {
+    initialCount: TURN_BODY_WINDOW,
+    pageSize: TURN_BODY_WINDOW_STEP,
+    detached: transcriptDetached,
+    getId: (child) => child.id
   });
   const earliestCreatedAt = [...assistantChildren, ...toolChildren]
     .map((c) => c.createdAt)
@@ -608,7 +629,9 @@ function SessionConversationTurnInner({
       onToggleTools={() => setToolsExpandOverride(!toolsExpanded)}
       hasCollapsibleActivity={compactActivity && bodyChildren.some((child) => child.kind === "tool")}
       hideWorkingWhenCollapsed={minimalActivity}
-      body={bodyChildren}
+      body={mountedBodyChildren}
+      hiddenEarlierBodyCount={hiddenEarlierBodyCount}
+      onShowEarlierBody={showEarlierBody}
       {...(earliestCreatedAt ? { headerTimestampIso: earliestCreatedAt } : {})}
       {...(turnMarkdown ? { turnMarkdown } : {})}
       {...(changesCard ? { changes: changesCard } : {})}

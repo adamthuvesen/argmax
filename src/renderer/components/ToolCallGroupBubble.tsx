@@ -11,6 +11,7 @@ import {
 } from "../lib/toolCalls.js";
 import { codenameForTool } from "../lib/agentNames.js";
 import type { ActivityMember } from "../lib/turnChildren.js";
+import { useStableTailWindow } from "../hooks/useStableTailWindow.js";
 import { ActivityStat } from "./ActivityStat.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { ToolCallRow } from "./ToolCallRow.js";
@@ -27,6 +28,7 @@ type ToolCallGroupBubbleProps = {
   compact?: boolean;
   defaultExpanded?: boolean;
   defaultToolsExpanded?: boolean;
+  transcriptDetached?: boolean;
   workspaceCwd?: string | null;
   agentCodenames?: Map<string, string>;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
@@ -39,6 +41,126 @@ type UserToggle = {
 };
 
 const PREVIEW_DWELL_MS = 600;
+const GROUP_DETAIL_WINDOW = 16;
+const GROUP_DETAIL_WINDOW_STEP = 32;
+type GroupRow = ReturnType<typeof buildGroupRows>[number];
+
+type ToolRowsWindowProps = {
+  rows: readonly GroupRow[];
+  detached: boolean;
+  defaultToolsExpanded?: boolean;
+  singletonDisclosure: { toolId: string; expanded: boolean } | null;
+  workspaceCwd?: string | null;
+  agentCodenames?: Map<string, string>;
+  onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
+  onOpenAgent?: (tool: ToolCall) => void;
+};
+
+function ToolChildrenWindow({
+  tools,
+  detached,
+  defaultToolsExpanded,
+  workspaceCwd,
+  onOpenFile,
+  onOpenAgent
+}: Omit<ToolRowsWindowProps, "rows" | "singletonDisclosure" | "agentCodenames"> & {
+  tools: readonly ToolCall[];
+}): JSX.Element {
+  const {
+    visibleItems,
+    hiddenEarlierCount,
+    showEarlier
+  } = useStableTailWindow(tools, {
+    initialCount: GROUP_DETAIL_WINDOW,
+    pageSize: GROUP_DETAIL_WINDOW_STEP,
+    detached,
+    getId: (tool) => tool.id
+  });
+  return (
+    <div className="tool-call-agent-children">
+      {hiddenEarlierCount > 0 ? (
+        <button
+          type="button"
+          className="conversation-show-earlier tool-group-show-earlier"
+          onClick={showEarlier}
+        >
+          Show earlier child activity ({hiddenEarlierCount} hidden)
+        </button>
+      ) : null}
+      {visibleItems.map((tool) => (
+        <ToolCallRow
+          key={tool.id}
+          tool={tool}
+          defaultExpanded={defaultToolsExpanded}
+          workspaceCwd={workspaceCwd ?? null}
+          onOpenFile={onOpenFile}
+          onOpenAgent={onOpenAgent}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ToolRowsWindow({
+  rows,
+  detached,
+  defaultToolsExpanded,
+  singletonDisclosure,
+  workspaceCwd,
+  agentCodenames,
+  onOpenFile,
+  onOpenAgent
+}: ToolRowsWindowProps): JSX.Element {
+  const {
+    visibleItems,
+    hiddenEarlierCount,
+    showEarlier
+  } = useStableTailWindow(rows, {
+    initialCount: GROUP_DETAIL_WINDOW,
+    pageSize: GROUP_DETAIL_WINDOW_STEP,
+    detached,
+    getId: ({ tool }) => tool.id
+  });
+  return (
+    <>
+      {hiddenEarlierCount > 0 ? (
+        <button
+          type="button"
+          className="conversation-show-earlier tool-group-show-earlier"
+          onClick={showEarlier}
+        >
+          Show earlier tool calls ({hiddenEarlierCount} hidden)
+        </button>
+      ) : null}
+      {visibleItems.map(({ tool, children }) => (
+        <div key={tool.id}>
+          <ToolCallRow
+            tool={tool}
+            defaultExpanded={
+              singletonDisclosure?.toolId === tool.id
+                ? singletonDisclosure.expanded
+                : defaultToolsExpanded
+            }
+            workspaceCwd={workspaceCwd ?? null}
+            agentCodename={codenameForTool(tool, agentCodenames)}
+            onOpenFile={onOpenFile}
+            onOpenAgent={onOpenAgent}
+          />
+          {children.length > 0 ? (
+            <ToolChildrenWindow
+              tools={children}
+              detached={detached}
+              defaultToolsExpanded={defaultToolsExpanded}
+              workspaceCwd={workspaceCwd}
+              onOpenFile={onOpenFile}
+              onOpenAgent={onOpenAgent}
+            />
+          ) : null}
+        </div>
+      ))}
+    </>
+  );
+}
 
 function stableDisclosureId(prefix: string, groupId: string): string {
   return `${prefix}-${groupId}`.replace(/[^a-zA-Z0-9_-]/g, "-");
@@ -51,6 +173,7 @@ function ToolCallGroupBubbleInner({
   compact = false,
   defaultExpanded,
   defaultToolsExpanded,
+  transcriptDetached = false,
   workspaceCwd,
   agentCodenames,
   onOpenFile,
@@ -151,43 +274,58 @@ function ToolCallGroupBubbleInner({
     toggleExpanded(value);
   };
 
-  const renderRows = (toolRows: ReturnType<typeof buildGroupRows>): JSX.Element[] =>
-    toolRows.map(({ tool, children }) => (
-      <div key={tool.id}>
-        <ToolCallRow
-          tool={tool}
-          defaultExpanded={
-            singletonDisclosure?.toolId === tool.id
-              ? singletonDisclosure.expanded
-              : defaultToolsExpanded
-          }
-          workspaceCwd={workspaceCwd ?? null}
-          agentCodename={codenameForTool(tool, agentCodenames)}
+  const {
+    visibleItems: visibleActivityMembers,
+    hiddenEarlierCount: hiddenActivityMembers,
+    showEarlier: showEarlierActivity
+  } = useStableTailWindow(activityMembers ?? [], {
+    initialCount: GROUP_DETAIL_WINDOW,
+    pageSize: GROUP_DETAIL_WINDOW_STEP,
+    detached: transcriptDetached,
+    getId: (member) => member.id
+  });
+  const activityBody = hasActivityMembers
+    ? (
+        <>
+          {hiddenActivityMembers > 0 ? (
+            <button
+              type="button"
+              className="conversation-show-earlier tool-group-show-earlier"
+              onClick={showEarlierActivity}
+            >
+              Show earlier activity ({hiddenActivityMembers} hidden)
+            </button>
+          ) : null}
+          {visibleActivityMembers.map((member) => member.kind === "thought"
+            ? <div key={member.id}>{member.node}</div>
+            : (
+                <div key={member.id}>
+                  <ToolRowsWindow
+                    rows={buildGroupRows(member.tools)}
+                    detached={transcriptDetached}
+                    defaultToolsExpanded={defaultToolsExpanded}
+                    singletonDisclosure={singletonDisclosure}
+                    workspaceCwd={workspaceCwd}
+                    agentCodenames={agentCodenames}
+                    onOpenFile={onOpenFile}
+                    onOpenAgent={onOpenAgent}
+                  />
+                </div>
+              ))}
+        </>
+      )
+    : (
+        <ToolRowsWindow
+          rows={rows}
+          detached={transcriptDetached}
+          defaultToolsExpanded={defaultToolsExpanded}
+          singletonDisclosure={singletonDisclosure}
+          workspaceCwd={workspaceCwd}
+          agentCodenames={agentCodenames}
           onOpenFile={onOpenFile}
           onOpenAgent={onOpenAgent}
         />
-        {children.length > 0 ? (
-          <div className="tool-call-agent-children">
-            {children.map((child) => (
-              <ToolCallRow
-                key={child.id}
-                tool={child}
-                defaultExpanded={defaultToolsExpanded}
-                workspaceCwd={workspaceCwd ?? null}
-                onOpenFile={onOpenFile}
-                onOpenAgent={onOpenAgent}
-              />
-            ))}
-          </div>
-        ) : null}
-      </div>
-    ));
-
-  const activityBody = hasActivityMembers
-    ? activityMembers?.map((member) => member.kind === "thought"
-      ? <div key={member.id}>{member.node}</div>
-      : <div key={member.id}>{renderRows(buildGroupRows(member.tools))}</div>)
-    : renderRows(rows);
+      );
   const activityStatus = activityIsLive ? "running" : summary.status;
   const iconIsDanger = activityStatus === "error"
     || firstTool?.cancelled === true
@@ -276,6 +414,7 @@ export const ToolCallGroupBubble = memo(ToolCallGroupBubbleInner, (prev, next) =
   if (prev.compact !== next.compact) return false;
   if (prev.defaultExpanded !== next.defaultExpanded) return false;
   if (prev.defaultToolsExpanded !== next.defaultToolsExpanded) return false;
+  if (prev.transcriptDetached !== next.transcriptDetached) return false;
   if (prev.workspaceCwd !== next.workspaceCwd) return false;
   if (prev.agentCodenames !== next.agentCodenames) return false;
   if (prev.onOpenFile !== next.onOpenFile) return false;

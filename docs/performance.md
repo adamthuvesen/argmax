@@ -226,9 +226,18 @@ serializing large message and tool bodies into the cache.
 
 [SessionConversation](../src/renderer/components/SessionConversation.tsx) mounts
 the last `CONVERSATION_WINDOW` (120) render items and reveals the rest on
-request. Session sizes are heavily skewed — p50 is ~53 events, p95 is ~743, and
-the largest holds 3,040 events and 3.3 MB of text — so without a window a long
-session re-reconciled thousands of live subtrees on every streaming delta.
+request. That outer limit counts turns, so each turn also mounts only its last
+16 body rows. Expanded tool and mixed-activity groups mount 16 rows at a time,
+including nested agent activity. Each boundary has an explicit Show earlier
+control. Session sizes are heavily skewed, so these nested limits matter for a
+provider that keeps one turn open for hours instead of producing many turns.
+Without them, one long turn re-reconciled thousands of live subtrees on every
+streaming delta.
+
+While the reader follows live output, each window tracks the newest rows. Once
+the reader scrolls away from the bottom, [useStableTailWindow](../src/renderer/hooks/useStableTailWindow.ts)
+retains the mounted row ids until following resumes. New output therefore does
+not evict the reader's logical anchor just because a bounded tail moved.
 
 Paced markdown reveals use a numeric Unicode cursor and slice the source
 string without retaining a character array or joining each visible prefix.

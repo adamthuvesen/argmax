@@ -74,6 +74,8 @@ export function TurnBlock({
   onToggleTools,
   hasCollapsibleActivity = false,
   hideWorkingWhenCollapsed,
+  hiddenEarlierBodyCount = 0,
+  onShowEarlierBody,
   headerTimestampIso,
   turnMarkdown,
   changes,
@@ -103,6 +105,10 @@ export function TurnBlock({
   /** True when a Compact thought-only activity run still has a disclosure. */
   hasCollapsibleActivity?: boolean;
   hideWorkingWhenCollapsed?: boolean;
+  /** Rows kept out of the DOM by the turn's render window. */
+  hiddenEarlierBodyCount?: number;
+  /** Reveal the next page of older rows without changing the logical turn. */
+  onShowEarlierBody?: () => void;
   // The canonical timestamp shown in the turn header (typically the earliest
   // assistant event in the turn). Per-paragraph timestamps inside the body
   // are visually suppressed once a turn-level one is available.
@@ -273,6 +279,15 @@ export function TurnBlock({
           className="turn-block-body"
           data-just-revealed={justRevealed ? "true" : undefined}
         >
+          {hiddenEarlierBodyCount > 0 && onShowEarlierBody ? (
+            <button
+              type="button"
+              className="conversation-show-earlier turn-show-earlier"
+              onClick={onShowEarlierBody}
+            >
+              Show earlier activity ({hiddenEarlierBodyCount} hidden)
+            </button>
+          ) : null}
           {groupToolRuns(visibleBody)}
         </div>
       ) : null}

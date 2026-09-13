@@ -155,6 +155,13 @@ change. CSS `overflow-anchor: none` keeps browser anchoring from competing
 with the controller. ResizeObserver watches the transcript rows and viewport,
 including composer, panel, and hidden-tab size changes.
 
+Long-session rendering uses nested tail windows as well as the outer transcript
+window. A turn mounts 16 body rows and an expanded activity group mounts 16
+details at a time, with Show earlier controls for older content. While detached,
+those windows retain the exact mounted ids instead of advancing with new output.
+This keeps a single hours-long provider turn bounded without changing its
+logical turn, summaries, copy text, duration, or changed-file accounting.
+
 The design draws on [use-stick-to-bottom](https://github.com/stackblitz-labs/use-stick-to-bottom)'s
 immediate wheel cancellation. Its shrink-triggered reattachment near the
 bottom conflicts with the detached-reading contract here, so Argmax owns this

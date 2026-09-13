@@ -77,6 +77,20 @@ describe("ToolCallGroupBubble", () => {
     expect(screen.getByText("Contents of first")).toBeInTheDocument();
   });
 
+  it("bounds a giant expanded group and reveals older tool rows", () => {
+    const tools = Array.from({ length: 80 }, (_, index) => tool(`tool-${index}`));
+    render(<ToolCallGroupBubble compact group={buildToolCallGroup(tools)} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Read files" }));
+    expect(screen.getByRole("button", { name: "Read tool-79.ts" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Read tool-0.ts" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Show earlier tool calls/ }));
+    expect(screen.getByRole("button", { name: "Read tool-32.ts" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Show earlier tool calls/ }));
+    expect(screen.getByRole("button", { name: "Read tool-0.ts" })).toBeInTheDocument();
+  });
+
   it("preserves a reader's expansion when one call grows into a group", () => {
     const first = tool("first");
     const { rerender } = render(<ToolCallGroupBubble group={buildToolCallGroup([first])} />);

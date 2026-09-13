@@ -57,6 +57,10 @@ struct TranscriptAgentGroupView: View {
                 onDismiss: { selectedAgent = nil }
             )
         }
+        .onChange(of: group.agents) { _, agents in
+            guard let selectedAgent else { return }
+            self.selectedAgent = agents.first { $0.id == selectedAgent.id }
+        }
     }
 
     @ViewBuilder

@@ -1054,6 +1054,62 @@ final class TranscriptProjectionTests: XCTestCase {
         XCTAssertEqual(page.changeCursor, 2)
     }
 
+    func testNativeAgentLifecycleOverridesTheLaunchTransportReceipt() throws {
+        let launch: [String: TranscriptJSONValue] = [
+            "id": .string("spawn-1"),
+            "name": .string("spawn_agent"),
+            "providerInvocationId": .string("invocation-1")
+        ]
+        let lifecycle: [String: TranscriptJSONValue] = [
+            "agentRunId": .string("spawn-1"),
+            "providerInvocationId": .string("invocation-1"),
+            "providerChildSessionId": .string("child-1"),
+            "providerParentConversationId": .string("parent-1")
+        ]
+        let session = TranscriptSessionMetadata(
+            id: "session-1", workspaceId: "workspace-1", provider: "codex",
+            modelLabel: "GPT", modelId: "gpt-5", prompt: "Start",
+            state: .running, attention: .normal, reasoningEffort: nil, agentMode: "auto"
+        )
+
+        let running = try XCTUnwrap(firstAgent(TranscriptProjection.project(events: [
+            event("launch", "command.started", "spawn_agent", 1, launch),
+            event("receipt", "command.completed", "spawn_agent", 2, launch),
+            event("started", "agent.started", "Agent started", 3, lifecycle)
+        ], session: session)))
+        XCTAssertEqual(running.status, .running)
+        XCTAssertNil(running.completedAt)
+        XCTAssertEqual(running.providerChildSessionId, "child-1")
+
+        var completedLifecycle = lifecycle
+        completedLifecycle["status"] = .string("completed")
+        let completed = try XCTUnwrap(firstAgent(TranscriptProjection.project(events: [
+            event("launch", "command.started", "spawn_agent", 1, launch),
+            event("receipt", "command.completed", "spawn_agent", 2, launch),
+            event("started", "agent.started", "Agent started", 3, lifecycle),
+            event("completed", "agent.completed", "Agent completed", 4, completedLifecycle)
+        ], session: session)))
+        XCTAssertEqual(completed.status, .done)
+        XCTAssertEqual(completed.completedAt, "2026-01-01T00:00:04.000Z")
+
+        var failedLifecycle = lifecycle
+        failedLifecycle["status"] = .string("failed")
+        let failed = try XCTUnwrap(firstAgent(TranscriptProjection.project(events: [
+            event("launch", "command.started", "spawn_agent", 1, launch),
+            event("started", "agent.started", "Agent started", 2, lifecycle),
+            event("failed", "agent.completed", "Agent failed", 3, failedLifecycle)
+        ], session: session)))
+        XCTAssertEqual(failed.status, .failed)
+
+        let interrupted = try XCTUnwrap(firstAgent(TranscriptProjection.project(events: [
+            event("launch", "command.started", "spawn_agent", 1, launch),
+            event("started", "agent.started", "Agent started", 2, lifecycle),
+            event("exit", "session.cancelled", "Session cancelled", 3)
+        ], session: session)))
+        XCTAssertEqual(interrupted.status, .failed)
+        XCTAssertEqual(interrupted.completedAt, "2026-01-01T00:00:03.000Z")
+    }
+
     /// A cancelled call is an interruption — the user stopped the turn, or the
     /// provider dropped an in-flight call — not something that failed.
     func testCancelledToolCallsAreNotFailures() throws {
@@ -1082,6 +1138,13 @@ final class TranscriptProjectionTests: XCTestCase {
         items.compactMap { item -> TranscriptTool? in
             guard case .tools(let group) = item else { return nil }
             return group.tools.first
+        }.first
+    }
+
+    private func firstAgent(_ items: [TranscriptItem]) -> TranscriptAgent? {
+        items.compactMap { item -> TranscriptAgent? in
+            guard case .agents(let group) = item else { return nil }
+            return group.agents.first
         }.first
     }
 

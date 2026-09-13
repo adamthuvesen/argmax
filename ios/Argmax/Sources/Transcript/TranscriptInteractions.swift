@@ -231,8 +231,11 @@ struct TranscriptInteractiveRow: View {
                     onOpenFile: onOpenFile
                 )
             case .multitask(let multitask):
+                let live = liveMultitask(for: multitask)
                 TranscriptMultitaskRow(
                     multitask: multitask,
+                    liveState: live?.state,
+                    liveLabel: live?.label,
                     client: client,
                     onLoad: loadMultitask,
                     onOpenFile: onOpenFile,
@@ -293,5 +296,15 @@ struct TranscriptInteractiveRow: View {
             sendContext: context(for: session),
             workspacePath: workspacePath
         )
+    }
+
+    private func liveMultitask(
+        for multitask: TranscriptMultitask
+    ) -> (state: String, label: String?)? {
+        guard let childSessionID = multitask.childSessionId,
+              let session = dashboard.snapshot.sessions.first(where: { $0.id == childSessionID })
+        else { return nil }
+        let label = dashboard.snapshot.workspaces.first(where: { $0.id == session.workspaceId })?.taskLabel
+        return (session.state.rawWire, label)
     }
 }

@@ -56,6 +56,8 @@ func transcriptMultitaskStatus(_ state: String?) -> (label: String, status: Tran
 
 struct TranscriptMultitaskRow: View {
     let multitask: TranscriptMultitask
+    let liveState: String?
+    let liveLabel: String?
     let client: BridgeClient
     let onLoad: (String) async throws -> TranscriptMultitaskDetailSnapshot
     var onOpenFile: (String) -> Void = { _ in }
@@ -67,23 +69,33 @@ struct TranscriptMultitaskRow: View {
     @State private var failure: String?
 
     private var state: (label: String, status: TranscriptToolStatus) {
-        transcriptMultitaskStatus(multitask.state)
+        transcriptMultitaskStatus(liveState ?? multitask.state)
+    }
+
+    private var taskLabel: String {
+        let current = liveLabel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return current.isEmpty ? multitask.taskLabel : current
     }
 
     init(
         multitask: TranscriptMultitask,
+        liveState: String? = nil,
+        liveLabel: String? = nil,
         client: BridgeClient,
         onLoad: @escaping (String) async throws -> TranscriptMultitaskDetailSnapshot,
         onOpenFile: @escaping (String) -> Void = { _ in },
         onOpenFullChat: ((String) -> Void)? = nil
     ) {
         self.multitask = multitask
+        self.liveState = liveState
+        self.liveLabel = liveLabel
         self.client = client
         self.onLoad = onLoad
         self.onOpenFile = onOpenFile
         self.onOpenFullChat = onOpenFullChat
         let persisted = multitask.childSessionId.map { TranscriptMultitaskDismissals.contains($0) } ?? false
-        _dismissed = State(initialValue: persisted && transcriptMultitaskStatus(multitask.state).status != .running)
+        let resolvedState = liveState ?? multitask.state
+        _dismissed = State(initialValue: persisted && transcriptMultitaskStatus(resolvedState).status != .running)
     }
 
     var body: some View {
@@ -105,7 +117,7 @@ struct TranscriptMultitaskRow: View {
                 } label: {
                     VStack(alignment: .leading, spacing: Spacing.hair) {
                         HStack(spacing: Spacing.snug) {
-                            Text(multitask.taskLabel)
+                            Text(taskLabel)
                                 .typeStyle(.footnote, weight: .medium)
                                 .foregroundStyle(Theme.ink)
                                 .lineLimit(2)
@@ -134,7 +146,7 @@ struct TranscriptMultitaskRow: View {
                 }
                 .buttonStyle(PressDim())
                 .disabled(multitask.childSessionId == nil)
-                .accessibilityLabel("Open multitask: \(multitask.taskLabel), \(state.label)")
+                .accessibilityLabel("Open multitask: \(taskLabel), \(state.label)")
 
                 if state.status == .running, let childSessionID = multitask.childSessionId {
                     Button {
@@ -150,7 +162,7 @@ struct TranscriptMultitaskRow: View {
                     .buttonStyle(PressDim())
                     .foregroundStyle(Theme.stop)
                     .disabled(stopping)
-                    .accessibilityLabel("Stop multitask: \(multitask.taskLabel)")
+                    .accessibilityLabel("Stop multitask: \(taskLabel)")
                 } else if state.status != .running {
                     Button {
                         Haptics.light()
@@ -163,7 +175,7 @@ struct TranscriptMultitaskRow: View {
                     }
                     .buttonStyle(PressDim())
                     .foregroundStyle(Theme.muted)
-                    .accessibilityLabel("Dismiss multitask: \(multitask.taskLabel)")
+                    .accessibilityLabel("Dismiss multitask: \(taskLabel)")
                 }
             }
             .padding(.horizontal, Spacing.row)
@@ -173,7 +185,7 @@ struct TranscriptMultitaskRow: View {
             .sheet(isPresented: $showingDetail) {
                 if let childSessionID = multitask.childSessionId {
                     TranscriptMultitaskDetail(
-                        title: multitask.taskLabel,
+                        title: taskLabel,
                         childSessionID: childSessionID,
                         client: client,
                         onLoad: onLoad,
@@ -183,7 +195,7 @@ struct TranscriptMultitaskRow: View {
                     )
                 }
             }
-            .onChange(of: multitask.state) {
+            .onChange(of: state.status) {
                 if state.status == .running { dismissed = false }
             }
         }
@@ -322,7 +334,9 @@ private struct TranscriptMultitaskDetail: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { onDismiss() }
+                    HeaderGlyphButton(systemName: "xmark", label: "Close", tint: Theme.muted) {
+                        onDismiss()
+                    }
                 }
             }
         }

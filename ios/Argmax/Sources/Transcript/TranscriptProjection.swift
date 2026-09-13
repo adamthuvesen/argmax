@@ -585,12 +585,47 @@ enum TranscriptProjection {
         }
     }
 
+    private struct NativeAgentLifecycle {
+        var phase: String
+        var createdAt: String
+        var status: String?
+        var metadata: [String: TranscriptJSONValue]
+    }
+
     private static func correlatedTools(
         events: [TranscriptEvent],
         sessionRunning: Bool,
         workspacePath: String? = nil
     ) -> [String: ProjectedTool] {
         let completions = events.filter { $0.type == "command.completed" }
+        let sessionEndAt = events.reduce(into: "") { latest, event in
+            let isSessionEnd = event.type == "session.completed" ||
+                event.type == "session.cancelled" ||
+                event.type == "session.recovered-from-crash"
+            if isSessionEnd,
+               event.payloadObject["raw"]?.bool != true,
+               string(event.payloadObject, keys: ["parent_tool_use_id", "parentToolUseId"]) == nil,
+               event.createdAt > latest {
+                latest = event.createdAt
+            }
+        }
+        var nativeAgentLifecycles: [String: NativeAgentLifecycle] = [:]
+        for event in events where event.type == "agent.started" || event.type == "agent.completed" {
+            let payload = event.payloadObject
+            guard let runID = payload["agentRunId"]?.string else { continue }
+            let key = nativeAgentLifecycleKey(
+                invocationID: payload["providerInvocationId"]?.string,
+                runID: runID
+            )
+            var metadata = nativeAgentLifecycles[key]?.metadata ?? [:]
+            for (field, value) in payload where value != .null { metadata[field] = value }
+            nativeAgentLifecycles[key] = NativeAgentLifecycle(
+                phase: event.type == "agent.completed" ? "completed" : "started",
+                createdAt: event.createdAt,
+                status: payload["status"]?.string,
+                metadata: metadata
+            )
+        }
         let latestAnswer = events.last { event in
             let payload = event.payloadObject
             return event.type == "message.completed" || (
@@ -617,14 +652,28 @@ enum TranscriptProjection {
             let input = mergedInput(payload, endPayload)
             let name = toolName(payload)
             let failed = isFailed(endPayload)
+            let lifecycle = isAgentTool(normalizedToolName(name))
+                ? nativeAgentLifecycles[nativeAgentLifecycleKey(invocationID: invocation, runID: toolUseID)]
+                : nil
             let hasLaterAnswer = latestAnswer.map { compare(start, $0) == .orderedAscending } ?? false
             let activity = mergedActivity(
                 start: decodedActivity(payload["activity"]),
                 end: decodedActivity(endPayload["activity"])
             ) ?? legacyActivity(name: name, input: input)
-            let status: TranscriptToolStatus = completion == nil
+            let transportStatus: TranscriptToolStatus = completion == nil
                 ? (sessionRunning && (!hasLaterAnswer || isAgentTool(normalizedToolName(name))) ? .running : .done)
                 : (failed ? .failed : .done)
+            let status: TranscriptToolStatus
+            if let lifecycle {
+                if lifecycle.phase == "started" {
+                    status = sessionEndAt >= lifecycle.createdAt ? .failed : .running
+                } else {
+                    status = (lifecycle.status == "completed" || lifecycle.status == "success") ? .done : .failed
+                }
+            } else {
+                status = transportStatus
+            }
+            let metadata = lifecycle?.metadata ?? [:]
             result[start.id] = ProjectedTool(
                 id: start.id,
                 toolUseId: toolUseID,
@@ -632,15 +681,22 @@ enum TranscriptProjection {
                 inputObject: input,
                 inputText: formatted(input),
                 output: output(endPayload),
-                error: failed ? error(endPayload) : nil,
+                error: status == .failed ? error(endPayload) : nil,
                 status: status,
                 createdAt: start.createdAt,
-                completedAt: completion?.createdAt,
+                completedAt: status == .running
+                    ? nil
+                    : (lifecycle?.phase == "completed"
+                        ? lifecycle?.createdAt
+                        : (lifecycle?.phase == "started" ? sessionEndAt : completion?.createdAt)),
                 parentToolUseId: payload["parent_tool_use_id"]?.string,
                 surface: payload["surface"]?.string,
-                providerChildSessionId: payload["providerChildSessionId"]?.string,
-                providerParentConversationId: payload["providerParentConversationId"]?.string,
-                agentCodename: string(payload, keys: ["agentCodename", "agentNickname"]),
+                providerChildSessionId: payload["providerChildSessionId"]?.string
+                    ?? metadata["providerChildSessionId"]?.string,
+                providerParentConversationId: payload["providerParentConversationId"]?.string
+                    ?? metadata["providerParentConversationId"]?.string,
+                agentCodename: string(payload, keys: ["agentCodename", "agentNickname"])
+                    ?? string(metadata, keys: ["agentCodename", "agentNickname"]),
                 workspacePath: workspacePath,
                 activity: activity,
                 completionObserved: completion != nil,
@@ -648,6 +704,10 @@ enum TranscriptProjection {
             )
         }
         return result
+    }
+
+    private static func nativeAgentLifecycleKey(invocationID: String?, runID: String) -> String {
+        "\(invocationID ?? "")\u{0}\(runID)"
     }
 
     private static func toolName(_ payload: [String: TranscriptJSONValue]) -> String {

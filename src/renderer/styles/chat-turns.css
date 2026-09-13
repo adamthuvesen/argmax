@@ -478,6 +478,14 @@
   margin-right: 0;
 }
 
+/* An expanded row may unwrap its target onto several lines. Anchor the mark to
+   the first line instead of centering it in the taller button, which made the
+   mark jump down when details opened. */
+.tool-call-row-button > .activity-icon-slot {
+  align-self: flex-start;
+  height: 1.4em;
+}
+
 /* Keep the live mark on the same 14px box as the static activity glyphs.
    `-override` is the stylesheet-owned hook for its inline size custom property;
    see styles/working-nest.css. */

@@ -48,6 +48,9 @@ struct TranscriptToolIcon: View {
             }
         }
         .frame(width: size, height: size)
+        // `square.and.pencil` sits optically low inside its SF Symbol canvas.
+        // Lift it one point so mixed activity icons share the same visual axis.
+        .offset(y: activity?.kind == .edit ? -1 : 0)
         .accessibilityHidden(true)
     }
 

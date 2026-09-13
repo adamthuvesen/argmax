@@ -1,17 +1,47 @@
 # Stabilization Phase 4: release confidence
 
-Phase 4 executed every release-confidence check that this host and the
-available credentials could support. The candidate is not accepted for
-release. Live provider compatibility, a short runtime soak, simulator recovery,
-native chat journeys and an unsigned package smoke pass. Foreground activation,
-physical-device recovery, prolonged use and several native interaction
-boundaries remain open. Automatic self-update is outside the chosen release
-scope and is not a blocker.
+Phase 4 completed the practical release-confidence scope chosen by the user.
+No known blocker remains in that scope. Live provider compatibility, a short
+runtime soak, simulator recovery, physical iPhone network recovery, native chat
+and archive journeys, and an unsigned package smoke pass. Automatic self-update
+and exhaustive release infrastructure are outside the chosen scope.
 
 The runtime candidate is `fb716634`. `0459f7b4` adds types and assertions to the
 verification harness without changing application runtime code. The packaged
 application was built from `fb716634`. The final full source gate ran from
 `0459f7b4`.
+
+## Final blocker review
+
+The user narrowed the release bar after the original Phase 4 pass. Automatic
+updates, APNs, hours-long soak testing, sleep and wake testing, and exhaustive
+native and external journey coverage are deferred coverage. They are not
+release blockers for this local manual app and DMG release.
+
+The remaining practical blockers were closed as follows:
+
+- B11 was a verification launch collision. The runner launched a raw macOS
+  executable without a bundle identifier, while the installed `com.argmax.rs`
+  app was running. The candidate reached `ready-to-show` and owned an on-screen
+  window, but macOS kept the installed app frontmost. Two controlled launches
+  of the same binary under `com.argmax.verification` became active and visible.
+  `4665a3c4` applies that identity to native verification runs. The normal
+  `chat-resume` journey then passed with no visibility recovery. Report:
+  `/private/tmp/argmax-b11-chat-resume-bundled-e5ffec98/report.json`.
+- Dirty archive Cancel and OK were exercised through the native AppKit dialog
+  in a disposable isolated worktree. Cancel preserved the original path, exact
+  dirty bytes, Git status, workspace and sidebar row. OK removed the original
+  path, marked the workspace archived, and retained the exact 9-byte file at
+  the same relative path in a registered recovery checkout. Direct proof:
+  `/private/tmp/argmax-dirty-archive-e5ffec98-v4/manual-proof.json`.
+- A physical iPhone kept cached navigation and the latest chat readable during
+  Airplane Mode, then resumed live messages after connectivity returned. The
+  first run exposed a stale `Can't reach your Mac.` banner until the chat was
+  reopened. `d44be954` resets a failed active transcript before its
+  authoritative reconnect read. Twenty-two focused recovery and transcript
+  tests passed. The user installed the updated build and repeated the same
+  in-place recovery. The banner cleared without navigation and messages were
+  neither duplicated nor lost.
 
 ## Executed checks
 
@@ -62,18 +92,19 @@ the native Codex blocking-question journey passed all 23 assertions on
 conversation and the composer returned to idle. Report:
 `/private/tmp/argmax-phase4-fb716634-codex-user-input/report.json`.
 
-B11 remains open. The mixed results show foreground contention in the
-verification environment, but they do not explain every earlier startup or
-foreground failure. A passing rerun is not closure.
+B11 is closed for the observed failures. The new process evidence and the
+same-binary bundle experiment explain the unlocked foreground timeout without
+attributing the separate locked-console occurrence to the same cause.
 
 ### iPhone and remote recovery
 
 Sixty-eight focused BridgeRecovery, TranscriptStore, ChannelEncoding, Review,
 ReviewFileTabs and Push tests passed. Eight transcript UI tests also passed in
-the simulator. The user subsequently installed the latest iOS build on a
-physical iPhone. That closes the installation prerequisite, but no physical
-device recovery journey has been observed. APNs, radio loss, backgrounding and
-restart recovery therefore remain open.
+the simulator. The user installed the latest iOS build on a physical iPhone.
+Airplane Mode launch and in-place recovery passed on that device. The stale
+offline banner found during the first run was fixed, tested, installed and
+confirmed on the repeated device run. APNs, backgrounding and host restart are
+deferred coverage.
 
 ### Runtime soak
 
@@ -84,8 +115,8 @@ samples while executing 1,550 dashboard reads with no failed calls. RSS was
 growth was observed. Evidence:
 `/private/tmp/argmax-phase4-soak-a08b.ndjson`.
 
-This is a bounded smoke test, not the hours-long prolonged-use, sleep/wake and
-concurrent-agent acceptance required for release confidence.
+This is the bounded soak selected for this release. Hours-long prolonged use,
+sleep and wake, and concurrent-agent soak coverage are deferred.
 
 ### Package
 
@@ -127,19 +158,8 @@ application was not touched.
 
 ## Release assessment
 
-Release acceptance is withheld until these prerequisites are complete:
-
-1. Resolve B11 with repeatable native foreground and startup behavior, including
-   attribution of the older unexplained failures.
-2. Complete the explicitly deferred native dirty-archive Cancel and OK checks.
-3. Exercise physical-device APNs, network loss, backgrounding and restart
-   recovery on the installed iOS build.
-4. Run an hours-long prolonged-use check covering sleep/wake and concurrent
-   provider work.
-5. Complete the remaining native and external boundaries recorded in the
-   [Phase 3 journey register](stabilization-phase3-2026-09-13.md), especially
-   large diff and annotation interaction, Stage and Commit, terminal, embedded
-   browser, clock-driven scheduling, import, goals, connections and GitHub.
-
-This assessment is deliberately narrower than “bug-free” or “release-ready.”
-It records demonstrated behavior and preserves every untested boundary.
+The practical release blockers are closed for the user's local manual release
+scope. The deferred checks above remain useful future coverage, but none is a
+prerequisite for this release. This does not claim the application is bug-free.
+A distributed artifact should still be built from the intended committed
+source.

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "date": "2026-09-13",
   "stage": "phase-4",
-  "assessment": "release-acceptance-withheld",
+  "assessment": "practical-release-blockers-closed",
   "source": {
     "runtimeCandidate": "fb716634",
     "finalGateCandidate": "0459f7b4",
@@ -27,13 +27,24 @@
       "status": "passed-after-independent-foreground-timeout",
       "report": "/private/tmp/argmax-phase4-fb716634-codex-user-input/report.json"
     },
-    "b11": "open"
+    "b11": {
+      "status": "closed-verification-launch-identity",
+      "fixCommit": "4665a3c4",
+      "report": "/private/tmp/argmax-b11-chat-resume-bundled-e5ffec98/report.json"
+    },
+    "dirtyArchive": {
+      "status": "passed-native-cancel-and-confirm",
+      "proof": "/private/tmp/argmax-dirty-archive-e5ffec98-v4/manual-proof.json"
+    }
   },
   "ios": {
     "focusedTestsPassed": 68,
     "transcriptUiTestsPassed": 8,
-    "physicalDevice": "latest-build-installed-recovery-open",
-    "installationSource": "user-reported"
+    "physicalDevice": "network-loss-and-in-place-recovery-passed",
+    "installationSource": "user-reported-and-devicectl-confirmed",
+    "staleOfflineBannerFix": "d44be954",
+    "postFixFocusedTestsPassed": 22,
+    "postFixPhysicalRetest": "passed-user-observed"
   },
   "soak": {
     "status": "short-smoke-passed",
@@ -94,11 +105,11 @@
     "rustIntegrationIgnored": 5,
     "log": "/private/tmp/argmax-phase4-0459f7b4-precheck.log"
   },
-  "openPrerequisites": [
-    "B11 native foreground and startup intermittency",
-    "native dirty archive Cancel and OK acceptance deferred by user",
-    "physical-device APNs, network loss, backgrounding and restart recovery on the installed build",
-    "hours-long prolonged-use, sleep-wake and concurrent-provider acceptance",
+  "openPrerequisites": [],
+  "deferredCoverage": [
+    "automatic updater and signed update feed",
+    "physical-device APNs, backgrounding and host restart recovery",
+    "hours-long prolonged-use, sleep-wake and concurrent-provider soak",
     "remaining native and external journey boundaries in the Phase 3 register"
   ]
 }

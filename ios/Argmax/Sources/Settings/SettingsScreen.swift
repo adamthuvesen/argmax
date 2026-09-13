@@ -20,6 +20,9 @@ struct SettingsScreen: View {
     @EnvironmentObject private var appearance: Appearance
     @EnvironmentObject private var push: PushRegistration
     @State private var confirmingRepair = false
+    /// Read by `Dictation` as each recognition task opens, so a flick here
+    /// reaches the next phrase without restarting anything.
+    @AppStorage(Dictation.onDeviceKey) private var dictateOnDevice = true
 
     var body: some View {
         ScrollView {
@@ -113,6 +116,17 @@ struct SettingsScreen: View {
                         label: "Fox mascot",
                         detail: "The fox in the Chats header, on a new chat, and on an empty screen.",
                         isOn: $appearance.mascot
+                    )
+                }
+
+                SettingGroup("Dictation") {
+                    SettingToggle(
+                        label: "Keep audio on this phone",
+                        detail: Dictation.canReadOnDevice
+                            ? "This phone's own model reads what you say, so a prompt never leaves it. Off, Apple's service reads it — more accurate."
+                            : "This phone has no model for your language, so dictation goes to Apple's service.",
+                        enabled: Dictation.canReadOnDevice,
+                        isOn: $dictateOnDevice
                     )
                 }
 

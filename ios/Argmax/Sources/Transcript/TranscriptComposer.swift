@@ -34,9 +34,10 @@ struct TranscriptComposer: View {
     @StateObject private var images = ComposerImages()
     @State private var photoPicks: [PhotosPickerItem] = []
     @StateObject private var dictation = Dictation()
-    /// The draft as it stood when the mic was opened. Partial results rewrite
-    /// the tail after it rather than stacking on each other.
-    @State private var draftBeforeDictation = ""
+    /// The dictated tail as it was last written into the field. Each update
+    /// replaces it rather than rebuilding the whole draft, so typing and
+    /// editing while the mic is open survive the next partial result.
+    @State private var dictatedTail = ""
 
     private let catalog = ProviderCatalog.bundled
 
@@ -155,8 +156,8 @@ struct TranscriptComposer: View {
                 .composerChipSurface()
                 Spacer(minLength: Spacing.tight)
                 if dictation.available {
-                    DictateButton(dictation: dictation, draft: { input }) { draft in
-                        draftBeforeDictation = draft
+                    DictateButton(dictation: dictation) {
+                        dictatedTail = ""
                         failure = nil
                     }
                 }
@@ -193,12 +194,13 @@ struct TranscriptComposer: View {
             }
         }
         .onChange(of: dictation.heard) { _, heard in
-            input = draftWithDictation(draftBeforeDictation, heard: heard)
+            input = draftWithDictation(input, heard: heard, replacing: dictatedTail)
+            dictatedTail = heard
         }
         .onChange(of: dictation.failure) { _, reported in
             if let reported { failure = reported }
         }
-        .onDisappear { dictation.stop() }
+        .onDisappear { dictation.discard() }
     }
 
     private func openPullRequest(sessionID: String) {
@@ -506,7 +508,7 @@ struct TranscriptComposer: View {
         sending = true
         let thinkingStart = composer.running ? nil : transcript.beginThinking()
         failure = nil
-        dictation.stop()
+        dictation.discard()
         input = ""
         images.clear()
         // The keyboard leaves with the message so the reply has the screen;

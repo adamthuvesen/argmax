@@ -107,7 +107,7 @@ targets:
         # say where the audio goes, because on-device is the promise this app
         # makes everywhere else.
         NSMicrophoneUsageDescription: Argmax uses the microphone to dictate a prompt into the composer.
-        NSSpeechRecognitionUsageDescription: Argmax turns dictated prompts into text on this iPhone wherever it can, and through Apple's speech service where this iPhone has no model for your language.
+        NSSpeechRecognitionUsageDescription: Argmax turns dictated prompts into text on this iPhone by default, and through Apple's speech service if you turn that on in Settings or this iPhone has no model for your language.
         # The bundled faces, registered at launch. iOS reads this list once,
         # so a file present in Resources/Fonts and absent here is half a
         # megabyte of app that never draws — TypographyTests asserts every

@@ -40,9 +40,10 @@ struct NewChatSheet: View {
     @StateObject private var images = ComposerImages()
     @State private var photoPicks: [PhotosPickerItem] = []
     @StateObject private var dictation = Dictation()
-    /// The draft as it stood when the mic was opened. Partial results rewrite
-    /// the tail after it rather than stacking on each other.
-    @State private var draftBeforeDictation = ""
+    /// The dictated tail as it was last written into the field. Each update
+    /// replaces it rather than rebuilding the whole draft, so typing and
+    /// editing while the mic is open survive the next partial result.
+    @State private var dictatedTail = ""
     @State private var promptFocused = false
     @Environment(\.accentTint) private var accent
     @Environment(\.mascotVisible) private var mascotVisible
@@ -204,8 +205,8 @@ struct NewChatSheet: View {
                 .composerChipSurface()
                 Spacer(minLength: Spacing.tight)
                 if dictation.available {
-                    DictateButton(dictation: dictation, draft: { prompt }) { draft in
-                        draftBeforeDictation = draft
+                    DictateButton(dictation: dictation) {
+                        dictatedTail = ""
                         failure = nil
                     }
                 }
@@ -221,12 +222,13 @@ struct NewChatSheet: View {
             }
         }
         .onChange(of: dictation.heard) { _, heard in
-            prompt = draftWithDictation(draftBeforeDictation, heard: heard)
+            prompt = draftWithDictation(prompt, heard: heard, replacing: dictatedTail)
+            dictatedTail = heard
         }
         .onChange(of: dictation.failure) { _, reported in
             if let reported { failure = reported }
         }
-        .onDisappear { dictation.stop() }
+        .onDisappear { dictation.discard() }
     }
 
     /// Where pre-launch images are stored: there is no session yet, so they
@@ -483,7 +485,7 @@ struct NewChatSheet: View {
         failure = nil
         // The words are already in the prompt; leaving the mic open past the
         // launch would keep dictating into a sheet that is closing.
-        dictation.stop()
+        dictation.discard()
         // Drop the keyboard here rather than letting the push carry it: the
         // transcript this lands on avoids the keyboard, so a field that is
         // still first responder when the screen swaps opens the chat with the

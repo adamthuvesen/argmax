@@ -93,6 +93,9 @@ final class TranscriptUITests: XCTestCase {
         if app.buttons["Jump to latest"].exists { app.buttons["Jump to latest"].tap() }
         app.buttons["Size"].tap()
         XCTAssertTrue(app.staticTexts["Stream end 1"].isHittable)
+        let composerBottom = app.buttons["Stop"].frame.maxY
+        let screenBottom = app.windows.firstMatch.frame.maxY
+        XCTAssertLessThan(screenBottom - composerBottom, 100)
         screenshot("accessibility-type")
     }
 

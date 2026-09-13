@@ -171,6 +171,21 @@ final class NativeTranscriptListTests: XCTestCase {
             from: .animating, after: .idle, tailGap: 120, current: true
         ))
     }
+
+    func testKeyboardInsetUsesOnlyTheVisibleKeyboardOverlap() {
+        XCTAssertEqual(
+            transcriptKeyboardInset(keyboardTop: 538, containerBottom: 874),
+            336
+        )
+        XCTAssertEqual(
+            transcriptKeyboardInset(keyboardTop: 874, containerBottom: 874),
+            0
+        )
+        XCTAssertEqual(
+            transcriptKeyboardInset(keyboardTop: 900, containerBottom: 874),
+            0
+        )
+    }
 }
 
 private struct TranscriptListTestItem: Identifiable, Equatable {

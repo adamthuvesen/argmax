@@ -1,4 +1,6 @@
+import Combine
 import SwiftUI
+import UIKit
 
 /// A native conversation, opened from the chat list.
 struct TranscriptScreen: View {
@@ -19,31 +21,48 @@ struct TranscriptScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var focusRequest = 0
     @State private var screenHeight: CGFloat = 0
+    @State private var keyboardInset: CGFloat = 0
 
     var body: some View {
-        NativeTranscriptView(
-            client: store.client,
-            onOpenFile: { openReview(filePath: $0) },
-            onOpenDiff: { openReview(diffPath: $0) }
-        ) {
-            draft = "Please revise the plan: "
-            focusRequest += 1
-        }
-        .environment(\.transcriptWorkspacePath,
-                     store.snapshot.workspaces.first { $0.id == row.workspace.id }?.path ?? row.workspace.path)
-        .background(Theme.ground.ignoresSafeArea())
-        .safeAreaInset(edge: .top, spacing: 0) { header }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            TranscriptComposerFloor(
-                workspaceID: row.workspace.id,
+        GeometryReader { geometry in
+            NativeTranscriptView(
                 client: store.client,
-                screenHeight: screenHeight,
-                draft: $draft,
-                focusRequest: $focusRequest
-            )
-            .id(row.session.id)
-            .background(Theme.ground)
+                onOpenFile: { openReview(filePath: $0) },
+                onOpenDiff: { openReview(diffPath: $0) }
+            ) {
+                draft = "Please revise the plan: "
+                focusRequest += 1
+            }
+            .environment(\.transcriptWorkspacePath,
+                         store.snapshot.workspaces.first { $0.id == row.workspace.id }?.path ?? row.workspace.path)
+            .background(Theme.ground.ignoresSafeArea())
+            .safeAreaInset(edge: .top, spacing: 0) { header }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                TranscriptComposerFloor(
+                    workspaceID: row.workspace.id,
+                    client: store.client,
+                    screenHeight: screenHeight,
+                    draft: $draft,
+                    focusRequest: $focusRequest
+                )
+                .id(row.session.id)
+                .padding(.bottom, keyboardInset)
+                .background(Theme.ground)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) {
+                keyboardInset = transcriptKeyboardInset(
+                    notification: $0,
+                    containerBottom: geometry.frame(in: .global).maxY
+                )
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                keyboardInset = 0
+            }
         }
+        // SwiftUI can retain its keyboard safe area after the keyboard has
+        // left, pinning a safe-area inset at the old keyboard top. UIKit's
+        // frame notifications above are the single source of keyboard space.
+        .ignoresSafeArea(.keyboard)
         // Measured outside the insets, so the question dock's own growth
         // cannot feed back into the height it is allowed to grow to.
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { screenHeight = $0 }
@@ -278,6 +297,26 @@ struct TranscriptScreen: View {
     }
 
 
+}
+
+func transcriptKeyboardInset(
+    notification: Notification,
+    containerBottom: CGFloat
+) -> CGFloat {
+    guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else {
+        return 0
+    }
+    return transcriptKeyboardInset(
+        keyboardTop: frame.minY,
+        containerBottom: containerBottom
+    )
+}
+
+func transcriptKeyboardInset(
+    keyboardTop: CGFloat,
+    containerBottom: CGFloat
+) -> CGFloat {
+    max(0, containerBottom - keyboardTop)
 }
 
 /// Loading feedback that keeps the header and navigation available.

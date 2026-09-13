@@ -1,5 +1,7 @@
 #if DEBUG
+import Combine
 import SwiftUI
+import UIKit
 
 /// Deterministic UI-test content using the production projection, transcript,
 /// composer, and rich viewers. The preview client never opens a connection.
@@ -9,38 +11,52 @@ struct TranscriptScenario: View {
     @State private var input = ""
     @State private var focusRequest = 0
     @State private var screenHeight: CGFloat = 0
+    @State private var keyboardInset: CGFloat = 0
     @State private var dark = ProcessInfo.processInfo.arguments.contains("-scenario-dark")
     @State private var large = ProcessInfo.processInfo.arguments.contains("-scenario-large")
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Button("Stream", action: scenario.stream)
-                Button("Prepend", action: scenario.prepend)
-                Button("Rich", action: scenario.showRich)
-                Button("Ask", action: scenario.ask)
-                Button("Theme") { dark.toggle() }
-                Button("Size") { large.toggle() }
-            }
-            .typeStyle(.caption)  // type-exception: the #if DEBUG scenario toolbar, which never ships
-            .buttonStyle(.bordered)
-            .frame(minHeight: 44)
-            .dynamicTypeSize(.large)
-            NativeTranscriptView(
-                client: scenario.client,
-                onOpenFile: { _ in },
-                onOpenDiff: { _ in },
-                onRevisePlan: {}
-            )
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    // The floor, not the bare composer: an outstanding question
-                    // takes this slot, and its ceiling is read off the screen.
-                    TranscriptComposerFloor(workspaceID: "w-scenario", client: scenario.client,
-                                            screenHeight: screenHeight,
-                                            draft: $input, focusRequest: $focusRequest)
-                        .background(Theme.ground)
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                HStack {
+                    Button("Stream", action: scenario.stream)
+                    Button("Prepend", action: scenario.prepend)
+                    Button("Rich", action: scenario.showRich)
+                    Button("Ask", action: scenario.ask)
+                    Button("Theme") { dark.toggle() }
+                    Button("Size") { large.toggle() }
                 }
+                .typeStyle(.caption)  // type-exception: the #if DEBUG scenario toolbar, which never ships
+                .buttonStyle(.bordered)
+                .frame(minHeight: 44)
+                .dynamicTypeSize(.large)
+                NativeTranscriptView(
+                    client: scenario.client,
+                    onOpenFile: { _ in },
+                    onOpenDiff: { _ in },
+                    onRevisePlan: {}
+                )
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        // The floor, not the bare composer: an outstanding question
+                        // takes this slot, and its ceiling is read off the screen.
+                        TranscriptComposerFloor(workspaceID: "w-scenario", client: scenario.client,
+                                                screenHeight: screenHeight,
+                                                draft: $input, focusRequest: $focusRequest)
+                            .padding(.bottom, keyboardInset)
+                            .background(Theme.ground)
+                    }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) {
+                keyboardInset = transcriptKeyboardInset(
+                    notification: $0,
+                    containerBottom: geometry.frame(in: .global).maxY
+                )
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                keyboardInset = 0
+            }
         }
+        .ignoresSafeArea(.keyboard)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { screenHeight = $0 }
         .background(Theme.ground)
         .environmentObject(scenario.transcript)

@@ -209,37 +209,43 @@ struct TranscriptComposerFloor: View {
     var body: some View {
         VStack(spacing: 0) {
             if let question {
-                ScrollView {
-                    TranscriptQuestionDock(card: question, onAnswer: { response in
-                        guard let context = sendContext else { return false }
-                        let sent = await interactions.answerQuestion(
-                            response,
-                            card: question,
-                            context: context
-                        )
-                        if sent {
-                            dismissed.insert(question.id)
-                            await transcript.reload()
-                        }
-                        return sent
-                    }, onDismiss: {
-                        guard let context = sendContext else { return false }
-                        let resolved = await interactions.dismissQuestion(card: question, context: context)
-                        if resolved {
-                            dismissed.insert(question.id)
-                            await transcript.reload()
-                            focusRequest += 1
-                        }
-                        return resolved
-                    })
-                    .id(question.id)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { dockHeight = $0 }
+                ScrollViewReader { scroll in
+                    ScrollView {
+                        TranscriptQuestionDock(card: question, onAnswer: { response in
+                            guard let context = sendContext else { return false }
+                            let sent = await interactions.answerQuestion(
+                                response,
+                                card: question,
+                                context: context
+                            )
+                            if sent {
+                                dismissed.insert(question.id)
+                                await transcript.reload()
+                            }
+                            return sent
+                        }, onDismiss: {
+                            guard let context = sendContext else { return false }
+                            let resolved = await interactions.dismissQuestion(card: question, context: context)
+                            if resolved {
+                                dismissed.insert(question.id)
+                                await transcript.reload()
+                                focusRequest += 1
+                            }
+                            return resolved
+                        }, onOtherFocus: {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                scroll.scrollTo(question.id, anchor: .bottom)
+                            }
+                        })
+                        .id(question.id)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { dockHeight = $0 }
+                    }
+                    // maxHeight, not height: the scroll view is greedy, so it takes
+                    // the question's own height, and gives the space back when the
+                    // keyboard leaves it less room than that.
+                    .frame(maxHeight: min(dockHeight > 0 ? dockHeight : dockCeiling, dockCeiling))
+                    .scrollBounceBehavior(.basedOnSize)
                 }
-                // maxHeight, not height: the scroll view is greedy, so it takes
-                // the question's own height, and gives the space back when the
-                // keyboard leaves it less room than that.
-                .frame(maxHeight: min(dockHeight > 0 ? dockHeight : dockCeiling, dockCeiling))
-                .scrollBounceBehavior(.basedOnSize)
                 if let failure = interactions.failure {
                     Text(failure).typeStyle(.footnote).foregroundStyle(Theme.rose).screenGutter()
                 }

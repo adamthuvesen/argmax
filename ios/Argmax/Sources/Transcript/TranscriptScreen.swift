@@ -52,7 +52,7 @@ struct TranscriptScreen: View {
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) {
                 keyboardInset = transcriptKeyboardInset(
                     notification: $0,
-                    containerBottom: geometry.frame(in: .global).maxY
+                    containerBottom: geometry.frame(in: .global).maxY + geometry.safeAreaInsets.bottom
                 )
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in

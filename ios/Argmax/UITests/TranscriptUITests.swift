@@ -99,6 +99,30 @@ final class TranscriptUITests: XCTestCase {
         screenshot("accessibility-type")
     }
 
+    func testQuestionOtherAnswerStaysAboveKeyboard() {
+        app.terminate()
+        app.launchArguments.append("-scenario-ask")
+        app.launch()
+
+        let other = app.buttons["Other"]
+        XCTAssertTrue(other.waitForExistence(timeout: 10))
+        other.tap()
+
+        let answer = app.textFields["Your own answer"]
+        XCTAssertTrue(answer.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        answer.typeText("Keep this visible")
+
+        let question = app.otherElements["Question from agent"]
+        let send = question.buttons["Send"]
+        let keyboardTop = app.keyboards.firstMatch.frame.minY
+        XCTAssertLessThan(answer.frame.maxY, keyboardTop)
+        XCTAssertLessThan(send.frame.maxY, keyboardTop)
+        XCTAssertTrue(answer.isHittable)
+        XCTAssertTrue(send.isHittable)
+        screenshot("question-other-keyboard-open")
+    }
+
     func testComposerUsesTheStandardEditMenuForTextPaste() {
         let composer = app.descendants(matching: .any).matching(identifier: "Message").firstMatch
         XCTAssertTrue(composer.waitForExistence(timeout: 5))

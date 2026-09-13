@@ -80,6 +80,7 @@ struct TranscriptQuestionDock: View {
     let card: TranscriptQuestionCard
     let onAnswer: (TranscriptQuestionResponse) async -> Bool
     let onDismiss: () async -> Bool
+    let onOtherFocus: () -> Void
 
     @State private var page = 0
     @State private var selections: [[Int]]
@@ -91,11 +92,13 @@ struct TranscriptQuestionDock: View {
     init(
         card: TranscriptQuestionCard,
         onAnswer: @escaping (TranscriptQuestionResponse) async -> Bool,
-        onDismiss: @escaping () async -> Bool
+        onDismiss: @escaping () async -> Bool,
+        onOtherFocus: @escaping () -> Void = {}
     ) {
         self.card = card
         self.onAnswer = onAnswer
         self.onDismiss = onDismiss
+        self.onOtherFocus = onOtherFocus
         _selections = State(initialValue: Array(repeating: [], count: card.questions.count))
         _otherText = State(initialValue: Array(repeating: "", count: card.questions.count))
     }
@@ -288,7 +291,15 @@ struct TranscriptQuestionDock: View {
         }
 
         if index == question.options.count {
-            focusedOtherPage = page
+            if selections[page].contains(index) {
+                focusedOtherPage = page
+                Task { @MainActor in
+                    await Task.yield()
+                    onOtherFocus()
+                }
+            } else {
+                focusedOtherPage = nil
+            }
         } else if !question.allowsMultiple && page < card.questions.count - 1 {
             move(to: page + 1)
         }

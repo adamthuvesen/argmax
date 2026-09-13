@@ -514,7 +514,6 @@ struct TranscriptComposer: View {
         // The keyboard leaves with the message so the reply has the screen;
         // a follow-up taps the composer to bring it back.
         focused = false
-        Haptics.light()
         Task {
             do {
                 _ = try await store.client.sendInput(
@@ -619,7 +618,7 @@ struct TranscriptComposer: View {
                     Task { try? await store.client.autoTitleWorkspace(autoTitle) }
                 }
             } catch {
-                Haptics.warning()
+                Haptics.error()
                 failure = hostFailureMessage(error)
             }
             sendingQueuedID = nil

@@ -25,7 +25,10 @@ struct ActivityHero: View {
                     ? InsightsFormat.compact(
                         Double(totals.linesAdded + totals.linesRemoved)
                     )
-                    : InsightsFormat.compact(Double(totals.commits))
+                    : InsightsFormat.compact(Double(totals.commits)),
+                value: useLines
+                    ? Double(totals.linesAdded + totals.linesRemoved)
+                    : Double(totals.commits)
             )
             .accessibilityLabel(
                 useLines

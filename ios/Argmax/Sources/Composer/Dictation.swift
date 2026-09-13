@@ -379,7 +379,6 @@ struct DictateButton: View {
     var body: some View {
         Button {
             if !dictation.listening { onOpen() }
-            Haptics.light()
             dictation.toggle()
         } label: {
             Image(systemName: dictation.listening ? "waveform" : "mic")

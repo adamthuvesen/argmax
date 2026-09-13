@@ -222,7 +222,7 @@ struct TranscriptApprovalCard: View {
                 Haptics.success()
             } else {
                 failure = "The provider did not accept the response. Try again."
-                Haptics.warning()
+                Haptics.error()
             }
             submitting = nil
         }

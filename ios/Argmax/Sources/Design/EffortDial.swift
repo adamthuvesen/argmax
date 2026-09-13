@@ -298,7 +298,7 @@ struct EffortDial: View {
         let effort = efforts[clamped]
         guard effort != selection else { return }
         // Felt, not just seen: the thumb covers the label it is moving to.
-        Haptics.light()
+        Haptics.selection()
         selection = effort
     }
 }

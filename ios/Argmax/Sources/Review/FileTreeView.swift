@@ -74,7 +74,6 @@ struct FileTreeView: View {
     private func rowView(_ row: FileTreeRow) -> some View {
         if row.isDirectory {
             Button {
-                Haptics.light()
                 withAnimation(.easeOut(duration: 0.16)) {
                     if expanded.contains(row.path) {
                         expanded.remove(row.path)
@@ -90,7 +89,6 @@ struct FileTreeView: View {
         } else {
             if let onOpenFile {
                 Button {
-                    Haptics.light()
                     onOpenFile(row.path)
                 } label: {
                     FileTreeRowLabel(row: row, isOpen: false)
@@ -111,7 +109,6 @@ struct FileTreeView: View {
     private func collapseAll(_ rows: [FileTreeRow]) -> some View {
         if !expanded.isEmpty {
             Button {
-                Haptics.light()
                 withAnimation(.easeOut(duration: 0.16)) { expanded.removeAll() }
             } label: {
                 Image(systemName: "chevron.up.chevron.down")

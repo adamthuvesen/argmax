@@ -161,6 +161,7 @@ struct TranscriptRichZoomCanvas<Content: View>: View {
     @State private var settledScale: CGFloat = 1
     @State private var offset: CGSize = .zero
     @State private var settledOffset: CGSize = .zero
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var contentSize: CGSize = .zero
 
     init(@ViewBuilder content: () -> Content) {
@@ -245,14 +246,14 @@ struct TranscriptRichZoomCanvas<Content: View>: View {
     }
 
     private func setScale(_ newScale: CGFloat, maximumScale: CGFloat) {
-        withAnimation(.easeOut(duration: 0.15)) {
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) {
             scale = min(max(newScale, 0.75), maximumScale)
             settledScale = scale
         }
     }
 
     private func reset() {
-        withAnimation(.easeOut(duration: 0.2)) {
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
             scale = 1
             settledScale = 1
             offset = .zero

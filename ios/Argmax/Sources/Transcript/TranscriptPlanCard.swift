@@ -52,7 +52,6 @@ struct TranscriptPlanCard: View {
                 Button {
                     UIPasteboard.general.string = plan.markdown
                     copied = true
-                    Haptics.light()
                 } label: {
                     Image(systemName: copied ? "checkmark" : "doc.on.doc")
                         .frame(width: 34, height: 34)
@@ -86,7 +85,6 @@ struct TranscriptPlanCard: View {
                 if plan.isOutstanding && !submitted {
                     HStack(spacing: Spacing.snug) {
                         QuietButton(title: "Revise", systemImage: "pencil") {
-                            Haptics.light()
                             onRevise()
                             withAnimation(.easeOut(duration: 0.16)) { collapsed = true }
                         }
@@ -130,7 +128,7 @@ struct TranscriptPlanCard: View {
             } else {
                 accepting = false
                 failure = "The plan response was not sent. Try again."
-                Haptics.warning()
+                Haptics.error()
             }
         }
     }

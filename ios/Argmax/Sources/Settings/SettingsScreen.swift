@@ -23,6 +23,7 @@ struct SettingsScreen: View {
     /// Read by `Dictation` as each recognition task opens, so a flick here
     /// reaches the next phrase without restarting anything.
     @AppStorage(Dictation.onDeviceKey) private var dictateOnDevice = true
+    @AppStorage(Haptics.enabledKey) private var hapticsEnabled = true
 
     var body: some View {
         ScrollView {
@@ -127,6 +128,14 @@ struct SettingsScreen: View {
                             : "This phone has no model for your language, so dictation goes to Apple's service.",
                         enabled: Dictation.canReadOnDevice,
                         isOn: $dictateOnDevice
+                    )
+                }
+
+                SettingGroup("Feedback") {
+                    SettingToggle(
+                        label: "Haptics",
+                        detail: "Short taps for selections and important outcomes. Standard iOS controls keep their system feedback.",
+                        isOn: $hapticsEnabled
                     )
                 }
 
@@ -274,7 +283,6 @@ struct SettingToggle: View {
         }
         .disabled(!enabled)
         .padding(Spacing.row)
-        .onChange(of: isOn) { _, _ in Haptics.light() }
     }
 }
 
@@ -296,7 +304,8 @@ struct Segmented<Option: Hashable & Identifiable>: View {
             ForEach(options) { option in
                 let chosen = option == selection
                 Button {
-                    Haptics.light()
+                    guard !chosen else { return }
+                    Haptics.selection()
                     selection = option
                 } label: {
                     Text(label(option))
@@ -318,6 +327,7 @@ struct Segmented<Option: Hashable & Identifiable>: View {
             }
         }
         .padding(3)
+        .animation(.easeOut(duration: 0.15), value: selection)
         // A step *down* from the card it sits in, so the track reads as a
         // groove rather than a second card.
         .background(Theme.ground, in: .rect(cornerRadius: Radius.control, style: .continuous))
@@ -334,7 +344,8 @@ struct AccentChips: View {
             ForEach(AccentTint.allCases) { tint in
                 let chosen = tint == selection
                 Button {
-                    Haptics.light()
+                    guard !chosen else { return }
+                    Haptics.selection()
                     selection = tint
                 } label: {
                     ZStack {
@@ -354,6 +365,7 @@ struct AccentChips: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(.easeOut(duration: 0.15), value: selection)
     }
 }
 

@@ -169,7 +169,6 @@ struct ChatListView: View {
             ScreenHeader(title: "", trailing: {
                 HStack(spacing: Spacing.tight) {
                     HeaderGlyphButton(systemName: "chart.bar", label: "Insights", tint: Theme.ink, weight: .semibold, filled: true) {
-                        Haptics.light()
                         path.append(InsightsRoute.root)
                     }
                     HeaderGlyphButton(systemName: "ellipsis", label: "Settings", tint: Theme.ink, weight: .semibold, filled: true) {
@@ -209,7 +208,6 @@ struct ChatListView: View {
     /// thing to a list, and this opens a sheet you write in.
     private var newChatButton: some View {
         Button {
-            Haptics.light()
             navigator.newChat = NewChatRequest()
         } label: {
             Image(systemName: "square.and.pencil")
@@ -276,7 +274,6 @@ struct ChatListView: View {
                         // seconds of a list assembling itself.
                         stagger: min(offset + index, 10)
                     ) {
-                        Haptics.light()
                         path.append(row)
                     }
                     .chatRowActions(

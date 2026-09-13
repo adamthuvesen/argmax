@@ -134,7 +134,7 @@ struct PickerSheet<Value: Hashable>: View {
 
     private func row(_ option: PickerOption<Value>) -> some View {
         Button {
-            Haptics.light()
+            if selection != option.value { Haptics.selection() }
             selection = option.value
             dismiss()
         } label: {

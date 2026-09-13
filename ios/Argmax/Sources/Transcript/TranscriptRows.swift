@@ -362,7 +362,6 @@ private struct TranscriptToolRow: View {
     var body: some View {
         if let diffPath = tool.diffPath, let onOpenDiff {
             Button {
-                Haptics.light()
                 onOpenDiff(diffPath)
             } label: {
                 rowLabel(showsNavigation: true)

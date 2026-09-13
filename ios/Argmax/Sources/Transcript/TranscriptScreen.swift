@@ -280,7 +280,7 @@ struct TranscriptScreen: View {
             if let forked = try? await store.client.forkSession(sessionID: row.session.id) {
                 navigator.awaitingSessionID = forked.session.id
             } else {
-                Haptics.warning()
+                Haptics.error()
             }
             forking = false
         }

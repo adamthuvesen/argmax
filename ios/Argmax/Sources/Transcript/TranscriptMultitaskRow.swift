@@ -112,7 +112,6 @@ struct TranscriptMultitaskRow: View {
                 }
 
                 Button {
-                    Haptics.light()
                     showingDetail = multitask.childSessionId != nil
                 } label: {
                     VStack(alignment: .leading, spacing: Spacing.hair) {
@@ -165,7 +164,6 @@ struct TranscriptMultitaskRow: View {
                     .accessibilityLabel("Stop multitask: \(taskLabel)")
                 } else if state.status != .running {
                     Button {
-                        Haptics.light()
                         if let childSessionID = multitask.childSessionId {
                             TranscriptMultitaskDismissals.dismiss(childSessionID)
                         }
@@ -208,7 +206,6 @@ struct TranscriptMultitaskRow: View {
         Task {
             do {
                 _ = try await client.terminateSession(sessionID: sessionID)
-                Haptics.warning()
             } catch {
                 failure = hostFailureMessage(error)
             }
@@ -447,7 +444,7 @@ private struct TranscriptMultitaskDetail: View {
                 Haptics.success()
                 await requestReload()
             } else {
-                Haptics.warning()
+                Haptics.error()
             }
             sending = false
         }

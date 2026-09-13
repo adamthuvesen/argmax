@@ -13,10 +13,7 @@ struct PrimaryButton: View {
     @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
-        Button {
-            Haptics.light()
-            action()
-        } label: {
+        Button(action: action) {
             HStack(spacing: Spacing.snug) {
                 if busy {
                     // The system spinner, tinted: a hand-drawn one would be
@@ -97,10 +94,7 @@ struct PickerCell: View {
     static let minHeight: CGFloat = 56
 
     var body: some View {
-        Button {
-            Haptics.light()
-            action()
-        } label: {
+        Button(action: action) {
             HStack(spacing: Spacing.snug) {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(label)

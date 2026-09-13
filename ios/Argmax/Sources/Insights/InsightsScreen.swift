@@ -91,7 +91,8 @@ struct InsightsScreen: View {
         return Menu {
             ForEach(windows, id: \.self) { window in
                 Button(windowTitle(window)) {
-                    Haptics.light()
+                    guard window != selection else { return }
+                    Haptics.selection()
                     if store.tab == .usage {
                         store.usageWindow = window
                     } else {
@@ -109,12 +110,14 @@ struct InsightsScreen: View {
         let providers = store.usage?.providers ?? []
         return Menu {
             Button("All providers") {
-                Haptics.light()
+                guard store.providerFilter != nil else { return }
+                Haptics.selection()
                 withAnimation(.easeOut(duration: 0.2)) { store.providerFilter = nil }
             }
             ForEach(providers) { provider in
                 Button(ProviderMark.displayName(provider.provider)) {
-                    Haptics.light()
+                    guard store.providerFilter != provider.provider else { return }
+                    Haptics.selection()
                     withAnimation(.easeOut(duration: 0.2)) {
                         store.providerFilter = provider.provider
                     }
@@ -135,12 +138,14 @@ struct InsightsScreen: View {
         let repos = store.activity?.repositories ?? []
         return Menu {
             Button("All repositories") {
-                Haptics.light()
+                guard store.projectFilter != nil else { return }
+                Haptics.selection()
                 withAnimation(.easeOut(duration: 0.2)) { store.projectFilter = nil }
             }
             ForEach(repos.prefix(12)) { repo in
                 Button(repo.name) {
-                    Haptics.light()
+                    guard store.projectFilter != repo.projectId else { return }
+                    Haptics.selection()
                     withAnimation(.easeOut(duration: 0.2)) {
                         store.projectFilter = repo.projectId
                     }

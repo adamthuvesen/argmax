@@ -518,7 +518,7 @@ struct NewChatSheet: View {
             Haptics.success()
             onLaunched(workspace, session)
         } catch {
-            Haptics.warning()
+            Haptics.error()
             failure = hostFailureMessage(error)
             launching = false
         }

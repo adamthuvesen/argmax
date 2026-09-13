@@ -21,7 +21,8 @@ struct UsageHero: View {
             InsightsHeroNumber(
                 text: useTokens
                     ? InsightsFormat.compact(summary.tokens.processed)
-                    : InsightsFormat.usdFull(summary.costUsd)
+                    : InsightsFormat.usdFull(summary.costUsd),
+                value: useTokens ? summary.tokens.processed : summary.costUsd
             )
             .accessibilityLabel(
                 useTokens
@@ -112,7 +113,7 @@ struct UsageProviderCards: View {
             ? provider.tokens.processed : provider.costUsd
         let share = total > 0 ? value / total : 0
         return Button {
-            Haptics.light()
+            Haptics.selection()
             withAnimation(.easeOut(duration: 0.2)) {
                 store.providerFilter = chosen ? nil : provider.provider
             }

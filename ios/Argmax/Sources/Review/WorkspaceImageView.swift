@@ -32,6 +32,7 @@ struct WorkspaceImageView: View {
     var revision = ""
 
     @State private var actualSize = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Group {
@@ -46,8 +47,10 @@ struct WorkspaceImageView: View {
                             maxHeight: actualSize ? image.size.height : .infinity
                         )
                         .onTapGesture {
-                            Haptics.light()
-                            withAnimation(.easeOut(duration: 0.18)) { actualSize.toggle() }
+                            Haptics.selection()
+                            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                                actualSize.toggle()
+                            }
                         }
                         .accessibilityLabel(actualSize ? "Image, actual size" : "Image, fitted")
                         .accessibilityHint("Double tap to switch size")

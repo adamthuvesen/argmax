@@ -256,7 +256,6 @@ struct ReviewScreen: View {
                 LazyVStack(spacing: 0) {
                     ForEach(store.files) { file in
                         Button {
-                            Haptics.light()
                             tabs.open(ReviewDetail.diff(
                                 workspaceID: workspace.id,
                                 path: file.path,
@@ -323,7 +322,7 @@ struct ReviewModeSwitch: View {
         let selected = mode == value
         return Button {
             guard !selected else { return }
-            Haptics.light()
+            Haptics.selection()
             mode = value
         } label: {
             Text(label)

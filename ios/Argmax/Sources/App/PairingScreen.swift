@@ -109,7 +109,7 @@ struct PairingScreen: View {
     private func connect() {
         guard let url = PairingLink.validate(link) else {
             rejected = true
-            Haptics.warning()
+            Haptics.error()
             return
         }
         editing = false

@@ -12,7 +12,6 @@ struct TranscriptAgentGroupView: View {
         VStack(spacing: Spacing.tight) {
             ForEach(group.agents) { agent in
                 Button {
-                    Haptics.light()
                     selectedAgent = agent
                 } label: {
                     HStack(spacing: Spacing.row) {

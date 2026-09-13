@@ -124,7 +124,7 @@ struct ReviewFileTabs<Trailing: View>: View {
         return HStack(spacing: 0) {
             Button {
                 guard !selected else { return }
-                Haptics.light()
+                Haptics.selection()
                 onSelect(detail)
             } label: {
                 VStack(alignment: .leading, spacing: 1) {
@@ -144,7 +144,6 @@ struct ReviewFileTabs<Trailing: View>: View {
             .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
 
             Button {
-                Haptics.light()
                 onClose(detail)
             } label: {
                 Image(systemName: "xmark")
@@ -169,7 +168,7 @@ struct ReviewContextButton: View {
 
     var body: some View {
         Button {
-            Haptics.light()
+            Haptics.selection()
             action()
         } label: {
             Image(systemName: "arrow.up.and.down.text.horizontal")

@@ -164,10 +164,15 @@ system's; the pixels are ours).
 - **Spacing.** 4pt grid. Screen gutter 20pt. Row 12/16. Section gap 28pt.
   Header height 52pt below the safe area.
 - **Corners.** 10pt for chips and buttons, 14pt for sheets and cards, `.continuous`.
-- **Motion.** System durations. Allowed custom motion: the fox nest breathing
-  while a chat runs (the same 1.2s easeInOut the web uses), a 150ms fade for
-  attention chips appearing, the list's rows settling in on first load with a
-  40ms stagger, once. Nothing bounces.
+- **Motion.** System transitions and short, state-bearing animations only:
+  fluid navigation, direct manipulation and disclosure, changing numeric
+  insights and share bars, attention fades, the list's one-time row settle,
+  and the fox nest while a chat runs. Nothing bounces. Large, spatial, and
+  repeating motion yields to Reduce Motion.
+- **Haptics.** Stock controls own their system feedback. Custom feedback uses
+  selection patterns for discrete value changes and notification patterns for
+  important outcomes. Ordinary buttons and navigation stay quiet. Settings
+  offers one switch for all custom haptics.
 - **Glyphs.** SF Symbols, `.medium` weight, hierarchical rendering. Provider
   marks are the repo's own (`docs/design/agent-emblems`), drawn at 16pt.
 - **Copy.** Sentence case; CONTEXT.md vocabulary (chat, project, workspace,

@@ -43,6 +43,19 @@ including when a person catches the push with the edge-swipe gesture and
 reverses it. Navigation does not keep temporary transition state or gate a new
 pop on whether another transition is still running.
 
+Changing Usage and Activity totals use the system's directional numeric-text
+transition, while their share bars animate the corresponding geometry change.
+Both become immediate updates under Reduce Motion, as do image and rich-content
+zoom controls. Selection surfaces use brief color interpolation and never
+bounce.
+
+Custom haptics follow UIKit's semantic generators: selection feedback for a
+new discrete value, success or error feedback for an important completed
+operation, and no generic buzz for ordinary buttons or navigation. The
+generators attach to the active SwiftUI host view and are reused. Settings →
+Feedback → Haptics disables every custom pattern; native controls retain the
+system feedback iOS owns.
+
 Tool action labels and file links display paths relative to the chat's
 workspace. Labels shorten the path before truncating it so the filename stays
 visible. Raw tool inputs and file-opening targets retain their original paths.

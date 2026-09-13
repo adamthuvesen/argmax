@@ -221,7 +221,6 @@ struct TranscriptQuestionDock: View {
                 .accessibilityLabel("Next question")
             }
             Button {
-                Haptics.light()
                 dismiss()
             } label: {
                 Image(systemName: "xmark").frame(width: 34, height: 34)
@@ -278,7 +277,7 @@ struct TranscriptQuestionDock: View {
 
     private func pick(_ index: Int) {
         guard let question = currentQuestion, selections.indices.contains(page) else { return }
-        Haptics.light()
+        Haptics.selection()
         if question.allowsMultiple {
             if let existing = selections[page].firstIndex(of: index) {
                 selections[page].remove(at: existing)
@@ -342,7 +341,7 @@ struct TranscriptQuestionDock: View {
             } else {
                 sending = false
                 failure = "Your answer was not sent. Try again."
-                Haptics.warning()
+                Haptics.error()
             }
         }
     }
@@ -353,13 +352,11 @@ struct TranscriptQuestionDock: View {
         focusedOtherPage = nil
         failure = nil
         Task {
-            if await onDismiss() {
-                Haptics.light()
-            } else {
-                sending = false
-                failure = "The question could not be dismissed. Try again."
-                Haptics.warning()
-            }
+            let didDismiss = await onDismiss()
+            guard !didDismiss else { return }
+            sending = false
+            failure = "The question could not be dismissed. Try again."
+            Haptics.error()
         }
     }
 }

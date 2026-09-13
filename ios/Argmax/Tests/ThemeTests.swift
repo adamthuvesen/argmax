@@ -51,13 +51,13 @@ final class ThemeTests: XCTestCase {
     func testEveryAccentTintResolvesInBothAppearances() {
         let expected: [AccentTint: (String, String)] = [
             .green: ("#446C56", "#6DAB86"),
-            .teal: ("#1F7474", "#5CB4B3"),
-            .purple: ("#613E9A", "#714FB0"),
+            .teal: ("#207070", "#65B0B0"),
+            .purple: ("#70558F", "#AD94D0"),
             .neutral: ("#6C6960", "#A8A49B"),
             .black: ("#1C1B18", "#F4F2EC"),
-            .orange: ("#BD580F", "#E88845"),
-            .blue: ("#30609A", "#6693C9"),
-            .coral: ("#A64354", "#E96C7F")
+            .orange: ("#AF5B00", "#E79647"),
+            .blue: ("#396696", "#7EA6CF"),
+            .coral: ("#944B3E", "#D18E82")
         ]
         XCTAssertEqual(Set(expected.keys), Set(AccentTint.allCases))
         for (tint, pair) in expected {
@@ -66,14 +66,32 @@ final class ThemeTests: XCTestCase {
         }
     }
 
-    /// The phone's default is the fox orange, not the desktop's green, and
+    func testEveryAccentCrestMatchesDesktopDeep() {
+        let expected: [AccentTint: (String, String)] = [
+            .green: ("#2E503E", "#8CC3A1"),
+            .teal: ("#005656", "#85C5C4"),
+            .purple: ("#553B73", "#C1ACE1"),
+            .neutral: ("#4A473E", "#C2BEB4"),
+            .black: ("#0F0E0C", "#FBF9F5"),
+            .orange: ("#8B4500", "#FAB36D"),
+            .blue: ("#244C77", "#9ABBDE"),
+            .coral: ("#753428", "#E2A79C")
+        ]
+        XCTAssertEqual(Set(expected.keys), Set(AccentTint.allCases))
+        for (tint, pair) in expected {
+            XCTAssertEqual(hex(tint.crestColor, light), pair.0, "\(tint.rawValue) crest light")
+            XCTAssertEqual(hex(tint.crestColor, dark), pair.1, "\(tint.rawValue) crest dark")
+        }
+    }
+
+    /// The phone's default is orange rather than the desktop's green, and
     /// the asset catalogue carries the same pair because it is also the
     /// icon's tint.
     func testTheDefaultTintIsTheAssetCatalogueOrange() {
         XCTAssertEqual(AccentTint.fallback, .orange)
         let asset = try? XCTUnwrap(UIColor(named: "Accent"))
-        XCTAssertEqual(hex(asset ?? .clear, light), "#BD580F")
-        XCTAssertEqual(hex(asset ?? .clear, dark), "#E88845")
+        XCTAssertEqual(hex(asset ?? .clear, light), "#AF5B00")
+        XCTAssertEqual(hex(asset ?? .clear, dark), "#E79647")
     }
 
     /// Ink on an accent fill is cream, except on the one tint that is itself

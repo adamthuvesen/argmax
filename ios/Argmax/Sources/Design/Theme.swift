@@ -202,29 +202,29 @@ enum AccentTint: String, CaseIterable, Identifiable, Sendable {
     /// pixels lean toward, so the flat mosaic has depth.
     var crestColor: UIColor {
         switch self {
-        case .green: return Theme.dynamic(light: 0x2E_50_3E, dark: 0x55_88_6C)
-        case .teal: return Theme.dynamic(light: 0x0B_56_56, dark: 0x82_CC_CA)
-        case .purple: return Theme.dynamic(light: 0x46_28_7B, dark: 0x83_66_B3)
+        case .green: return Theme.dynamic(light: 0x2E_50_3E, dark: 0x8C_C3_A1)
+        case .teal: return Theme.dynamic(light: 0x00_56_56, dark: 0x85_C5_C4)
+        case .purple: return Theme.dynamic(light: 0x55_3B_73, dark: 0xC1_AC_E1)
         case .neutral: return Theme.dynamic(light: 0x4A_47_3E, dark: 0xC2_BE_B4)
         case .black: return Theme.dynamic(light: 0x0F_0E_0C, dark: 0xFB_F9_F5)
-        case .orange: return Theme.dynamic(light: 0x9C_45_0B, dark: 0xF2_A5_6C)
-        case .blue: return Theme.dynamic(light: 0x22_48_78, dark: 0x8F_AC_D8)
-        case .coral: return Theme.dynamic(light: 0x86_2B_3C, dark: 0xF3_8A_97)
+        case .orange: return Theme.dynamic(light: 0x8B_45_00, dark: 0xFA_B3_6D)
+        case .blue: return Theme.dynamic(light: 0x24_4C_77, dark: 0x9A_BB_DE)
+        case .coral: return Theme.dynamic(light: 0x75_34_28, dark: 0xE2_A7_9C)
         }
     }
 
     var uiColor: UIColor {
         switch self {
         case .green: return Theme.dynamic(light: 0x44_6C_56, dark: 0x6D_AB_86)
-        case .teal: return Theme.dynamic(light: 0x1F_74_74, dark: 0x5C_B4_B3)
-        case .purple: return Theme.dynamic(light: 0x61_3E_9A, dark: 0x71_4F_B0)
+        case .teal: return Theme.dynamic(light: 0x20_70_70, dark: 0x65_B0_B0)
+        case .purple: return Theme.dynamic(light: 0x70_55_8F, dark: 0xAD_94_D0)
         case .neutral: return Theme.dynamic(light: 0x6C_69_60, dark: 0xA8_A4_9B)
         case .black: return Theme.dynamic(light: 0x1C_1B_18, dark: 0xF4_F2_EC)
         // The asset catalogue already carries this pair, because it is also
         // the icon's global tint. Reading it back keeps one copy.
-        case .orange: return UIColor(named: "Accent") ?? Theme.dynamic(light: 0xBD_58_0F, dark: 0xE8_88_45)
-        case .blue: return Theme.dynamic(light: 0x30_60_9A, dark: 0x66_93_C9)
-        case .coral: return Theme.dynamic(light: 0xA6_43_54, dark: 0xE9_6C_7F)
+        case .orange: return UIColor(named: "Accent") ?? Theme.dynamic(light: 0xAF_5B_00, dark: 0xE7_96_47)
+        case .blue: return Theme.dynamic(light: 0x39_66_96, dark: 0x7E_A6_CF)
+        case .coral: return Theme.dynamic(light: 0x94_4B_3E, dark: 0xD1_8E_82)
         }
     }
 

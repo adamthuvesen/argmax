@@ -233,7 +233,7 @@ The app icon is generated with every other icon artifact: `build:icons` writes
 desktop icon draws, at full bleed and without an alpha channel, which is what
 iOS takes. It is committed, so a plain build needs nothing. The `Accent`
 colorset beside it is hand-kept — the desktop orange tint from `tokens.css`,
-`#bd580f` light and `#e88845` dark — and is the app's global accent. So is
+`#af5b00` light and `#e79647` dark — and is the app's global accent. So is
 `Sources/Assets.xcassets/Providers`: the five CLIs' own brand marks, as
 template vectors, with the source URL and date for each in the README beside
 them. Adding a provider to `providerModels.json` means adding its mark there

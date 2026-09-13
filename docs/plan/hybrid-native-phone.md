@@ -151,7 +151,7 @@ system's; the pixels are ours).
 - **Ink.** `#f4f2ec` on dark, `#1f1d18` on light for primary text; secondary
   is the `--muted` warm grey (`#8a857b` blended toward the ink). Never pure
   white or pure black text.
-- **Accent.** One: the fox orange, `#e88845` dark / `#bd580f` light
+- **Accent.** One: the fox orange, `#e79647` dark / `#af5b00` light
   (`Color("Accent")`). It marks *the running thing* and *the primary action*
   and nothing else. Attention uses its own three: needs-you amber, failed
   red, done sage (`--sage` from tokens) — muted fills at 16% with the full

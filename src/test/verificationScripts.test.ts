@@ -312,27 +312,27 @@ describe("verification script arguments", () => {
       },
     };
 
-    expect(foregroundActivationTimeoutDetails({
+    const details = foregroundActivationTimeoutDetails({
       pid: 123,
       visibilityError: new Error("document stayed hidden"),
       activationRequest,
       failureState,
       consoleLock: { ioConsoleLocked: true, screenIsLocked: true },
-    })).toMatchObject({
-      classification: "foreground-activation-timeout",
-      pid: 123,
-      visibilityError: expect.stringContaining("document stayed hidden"),
-      consoleLock: { ioConsoleLocked: true, screenIsLocked: true },
-      frontmostProcess: { pid: 418, localizedName: "loginwindow", bundleIdentifier: "com.apple.loginwindow" },
-      candidateState: {
-        pid: 123,
-        localizedName: "Argmax Verification",
-        active: false,
-        windowCount: 1,
-        onScreenWindowCount: 1,
-      },
-      activationRequest: { result: true },
     });
+
+    expect(details.classification).toBe("foreground-activation-timeout");
+    expect(details.pid).toBe(123);
+    expect(details.visibilityError).toContain("document stayed hidden");
+    expect(details.consoleLock).toEqual({ ioConsoleLocked: true, screenIsLocked: true });
+    expect(details.frontmostProcess?.pid).toBe(418);
+    expect(details.frontmostProcess?.localizedName).toBe("loginwindow");
+    expect(details.frontmostProcess?.bundleIdentifier).toBe("com.apple.loginwindow");
+    expect(details.candidateState?.pid).toBe(123);
+    expect(details.candidateState?.localizedName).toBe("Argmax Verification");
+    expect(details.candidateState?.active).toBe(false);
+    expect(details.candidateState?.windowCount).toBe(1);
+    expect(details.candidateState?.onScreenWindowCount).toBe(1);
+    expect(details.activationRequest.result).toBe(true);
   });
 
   it("parses explicit macOS console lock states without guessing an absent session key", () => {

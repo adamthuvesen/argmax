@@ -28,6 +28,7 @@ import { effortForModel, PROVIDER_TITLE_MODEL, type ReasoningEffort } from "../s
 import type { MessageHit as PaletteMessageHit } from "./components/CommandPalette.js";
 import { parseFtsSnippet } from "./lib/paletteSearch.js";
 import { usePersistedSetting } from "./hooks/usePersistedSetting.js";
+import { useMotionPresence } from "./hooks/useMotionPresence.js";
 import { EmptyState } from "./components/EmptyState.js";
 import { KeyboardCheatSheet } from "./components/KeyboardCheatSheet.js";
 import { LaunchSurface } from "./components/LaunchSurface.js";
@@ -213,6 +214,11 @@ export function App(): JSX.Element {
   };
   const standalonePageOpen = standalonePage !== null;
   const toast = useToast();
+  const paletteMotion = useMotionPresence(paletteOpen);
+  const toastMotion = useMotionPresence(toast !== null);
+  const retainedToastRef = useRef(toast);
+  if (toast !== null) retainedToastRef.current = toast;
+  const paintedToast = toast ?? retainedToastRef.current;
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.argmax);
   const workspaceRef = useRef<HTMLElement | null>(null);
   const workspaceDropOverlayRef = useRef<HTMLDivElement | null>(null);
@@ -2094,10 +2100,12 @@ export function App(): JSX.Element {
         are full-screen modals and a loading spinner would flash worse
         than a 1-frame delay on the cold-open path.
       */}
-      {paletteOpen ? (
+      {paletteMotion.present ? (
         <Suspense fallback={null}>
           <CommandPalette
             open={paletteOpen}
+            motionState={paletteMotion.motionState}
+            onMotionEnd={paletteMotion.onMotionEnd}
             commands={paletteCommands}
             initialScope={paletteScope}
             onClose={() => hideCommandPalette()}
@@ -2110,9 +2118,15 @@ export function App(): JSX.Element {
         </Suspense>
       ) : null}
       <KeyboardCheatSheet open={cheatSheetOpen} onClose={() => hideKeyboardCheatSheet()} />
-      {toast ? (
-        <div className={`toast toast-${toast.kind}`} role="status">
-          <span>{toast.message}</span>
+      {toastMotion.present && paintedToast ? (
+        <div
+          className={`toast toast-${paintedToast.kind}`}
+          data-motion-state={toastMotion.motionState}
+          role="status"
+          aria-hidden={toast === null ? true : undefined}
+          onAnimationEnd={toastMotion.onMotionEnd}
+        >
+          <span>{paintedToast.message}</span>
           <button type="button" onClick={() => dismissToast()} aria-label="Dismiss">
             ×
           </button>

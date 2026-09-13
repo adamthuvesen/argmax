@@ -57,6 +57,10 @@
 }
 
 .debug-tabs {
+  --sliding-tab-top: calc(100% - 2px);
+  --sliding-tab-height: 2px;
+  --sliding-tab-background: var(--ink);
+  --sliding-tab-radius: 1px;
   display: flex;
   gap: 2px;
 }
@@ -76,7 +80,7 @@
 
 .debug-tabs button[aria-selected="true"] {
   color: var(--text);
-  border-bottom-color: var(--ink);
+  border-bottom-color: transparent;
 }
 
 .debug-tab {

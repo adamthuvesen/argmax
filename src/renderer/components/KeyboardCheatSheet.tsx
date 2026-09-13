@@ -2,6 +2,7 @@ import { useEffect, useRef, type JSX } from "react";
 import { KEYBOARD_BINDINGS } from "../lib/keyboardBindings.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
+import { useMotionPresence } from "../hooks/useMotionPresence.js";
 
 export function KeyboardCheatSheet({
   open,
@@ -12,6 +13,7 @@ export function KeyboardCheatSheet({
 }): JSX.Element | null {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const motion = useMotionPresence(open);
   useDismissOnOutsideOrEscape(dialogRef, open, onClose, undefined, { trapFocus: true });
   useRestoreFocus(open);
 
@@ -20,16 +22,19 @@ export function KeyboardCheatSheet({
     closeButtonRef.current?.focus();
   }, [open]);
 
-  if (!open) return null;
+  if (!motion.present) return null;
 
   return (
     <div
-      className="cheat-sheet-overlay"
+      className="cheat-sheet-overlay motion-modal-overlay"
+      data-motion-state={motion.motionState}
       role="dialog"
       aria-label="Keyboard shortcuts"
       aria-modal="true"
+      aria-hidden={open ? undefined : true}
+      onAnimationEnd={motion.onMotionEnd}
     >
-      <div className="cheat-sheet" ref={dialogRef}>
+      <div className="cheat-sheet motion-modal-surface" ref={dialogRef}>
         <header className="cheat-sheet-header">
           <h2>Keyboard shortcuts</h2>
           <button ref={closeButtonRef} type="button" aria-label="Close" onClick={onClose}>

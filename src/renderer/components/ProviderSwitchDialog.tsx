@@ -59,12 +59,13 @@ export function ProviderSwitchDialog({
 
   const overlay = (
     <div
-      className="provider-switch-overlay"
+      className="provider-switch-overlay motion-modal-overlay"
+      data-motion-state="open"
       role="dialog"
       aria-modal="true"
       aria-label={`Switch this chat to ${toName}`}
     >
-      <div ref={dialogRef} className="provider-switch-dialog">
+      <div ref={dialogRef} className="provider-switch-dialog motion-modal-surface">
         <h2>Switch to {toName}?</h2>
         <p>
           {`${toName} can't resume ${fromName}'s chat. It starts fresh from a short summary of this chat.`}

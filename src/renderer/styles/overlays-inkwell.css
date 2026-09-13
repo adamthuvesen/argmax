@@ -72,6 +72,8 @@
 }
 
 .command-palette-tabs {
+  --sliding-tab-background: var(--overlay-panel-raised);
+  --sliding-tab-radius: 999px;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -104,7 +106,7 @@
    ring competing with the rows below it. */
 .command-palette-tab.selected {
   color: var(--text);
-  background: var(--overlay-panel-raised);
+  background: transparent;
 }
 
 .command-palette-tab:focus-visible {

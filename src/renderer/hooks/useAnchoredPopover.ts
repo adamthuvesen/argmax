@@ -78,6 +78,15 @@ export interface AnchoredPopover {
 /** A capped popover never shrinks below this; below it, scrolling is useless. */
 const MIN_CAPPED_HEIGHT = 120;
 
+function popoverTransformOrigin(placement: Placement): string {
+  const [side, alignment = "center"] = placement.split("-");
+  const blockOrigin = side === "top" ? "bottom" : side === "bottom" ? "top" : "center";
+  const inlineOrigin = alignment === "start" ? "left" : alignment === "end" ? "right" : "center";
+  if (side === "left") return `${alignment === "start" ? "top" : alignment === "end" ? "bottom" : "center"} right`;
+  if (side === "right") return `${alignment === "start" ? "top" : alignment === "end" ? "bottom" : "center"} left`;
+  return `${blockOrigin} ${inlineOrigin}`;
+}
+
 /** A zero-size virtual element at the cursor, for right-click menus. */
 function pointReference({ x, y }: AnchorPoint): VirtualElement {
   return {
@@ -161,8 +170,14 @@ export function useAnchoredPopover({
   // block and collapses it to the padding. Clearing the far edges keeps the
   // element sized by its content wherever it is placed.
   const floatingStyles = useMemo(
-    () => ({ ...anchoredStyles, right: "auto", bottom: "auto" }),
-    [anchoredStyles]
+    () =>
+      ({
+        ...anchoredStyles,
+        right: "auto",
+        bottom: "auto",
+        "--popover-transform-origin": popoverTransformOrigin(resolvedPlacement)
+      }) as CSSProperties,
+    [anchoredStyles, resolvedPlacement]
   );
 
   return {

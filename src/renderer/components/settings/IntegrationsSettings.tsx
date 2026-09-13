@@ -8,6 +8,7 @@ import { ConnectionCatalog } from "../ConnectionCatalog.js";
 import { EngramSettings } from "./EngramSettings.js";
 import { RemoteSettings } from "./RemoteSettings.js";
 import { SettingGroup, SettingNote, SettingRow } from "./settingsPrimitives.js";
+import { SlidingTabIndicator } from "../SlidingTabIndicator.js";
 
 export function IntegrationsSettings(): JSX.Element {
   const [provider, setProvider] = useState<ProviderId>("claude");
@@ -21,6 +22,7 @@ export function IntegrationsSettings(): JSX.Element {
           checked by the provider when it exposes that status.
         </SettingNote>
         <div className="connection-provider-tabs" role="tablist" aria-label="Connection provider">
+          <SlidingTabIndicator activeKey={provider} />
           {PROVIDER_SETUP_ORDER.map((providerId) => (
             <button
               type="button"

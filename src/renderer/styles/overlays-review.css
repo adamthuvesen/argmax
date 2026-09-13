@@ -585,6 +585,8 @@
 }
 
 .review-mode-tabs {
+  --sliding-tab-background: var(--panel-soft);
+  --sliding-tab-radius: var(--radius-md);
   display: inline-flex;
   gap: var(--space-1_5);
 }

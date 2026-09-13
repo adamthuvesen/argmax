@@ -33,6 +33,7 @@ import { createPortal } from "react-dom";
 import { useAnchoredPopover, type AnchorPoint } from "../hooks/useAnchoredPopover.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { PickerLead } from "./PickerLead.js";
+import { SlidingTabIndicator } from "./SlidingTabIndicator.js";
 import {
   REVIEW_SCOPE_LABELS,
   type ReviewChangesScope,
@@ -197,6 +198,7 @@ function ReviewModeTabs({
   return (
     <>
       <div className="review-mode-tabs" role="tablist" aria-label="Review panel mode">
+        <SlidingTabIndicator activeKey={activeMode} />
         {modes.map((item) => (
           <button
             role="tab"

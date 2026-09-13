@@ -10,14 +10,25 @@
 //! index and worktree are never touched. Blobs and trees land in the repo's
 //! object database as unreferenced objects, which `git gc` collects.
 
-use std::{path::Path, time::Duration};
+use std::{
+    io::ErrorKind,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use tempfile::tempdir;
+use tokio::fs as async_fs;
 
 use super::exec::{run_git_text_with_options, GitExecOptions};
 use crate::error::{ArgmaxError, ArgmaxResult};
 
 const SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(60);
+const INDEX_CAPTURE_ATTEMPTS: usize = 3;
+
+enum IndexCaptureAttempt {
+    Complete(String),
+    Retry(ArgmaxError),
+}
 
 /// Snapshot the worktree as a tree object.
 ///
@@ -130,7 +141,141 @@ pub async fn snapshot_visible_worktree(repo_path: &Path) -> ArgmaxResult<String>
 /// it. `git write-tree` rejects unresolved index entries, which is precisely
 /// the state checkpointing must refuse.
 pub async fn index_tree(repo_path: &Path) -> ArgmaxResult<String> {
-    tree_from_index(repo_path, snapshot_options()).await
+    let resolved_index = run_git_text_with_options(
+        repo_path,
+        ["rev-parse", "--path-format=absolute", "--git-path", "index"],
+        snapshot_options(),
+    )
+    .await?;
+    let real_index = PathBuf::from(resolved_index.trim());
+    if real_index.as_os_str().is_empty() {
+        return Err(ArgmaxError::service(
+            "GIT_TEMP_INDEX_FAILED",
+            "git did not resolve the checkout index path",
+        ));
+    }
+
+    let mut last_retry = None;
+    for _ in 0..INDEX_CAPTURE_ATTEMPTS {
+        let scratch = tempdir().map_err(|error| {
+            ArgmaxError::service(
+                "GIT_TEMP_INDEX_FAILED",
+                format!("could not create temp git index: {error}"),
+            )
+        })?;
+        let scratch_index = scratch.path().join("index");
+        let options = || {
+            let mut options =
+                GitExecOptions::default().with_env("GIT_INDEX_FILE", scratch_index.as_os_str());
+            options.timeout = SNAPSHOT_TIMEOUT;
+            options
+        };
+
+        match async_fs::copy(&real_index, &scratch_index).await {
+            Ok(_) => {}
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                run_git_text_with_options(repo_path, ["read-tree", "--empty"], options()).await?;
+                return tree_from_index(repo_path, options()).await;
+            }
+            Err(error) => return Err(index_copy_error(&real_index, error)),
+        }
+
+        match finish_index_capture(repo_path, &real_index, scratch.path(), &scratch_index).await? {
+            IndexCaptureAttempt::Complete(tree) => return Ok(tree),
+            IndexCaptureAttempt::Retry(error) => last_retry = Some(error),
+        }
+    }
+
+    let reason = last_retry.expect("every incomplete capture records its failure");
+    Err(ArgmaxError::service(
+        "GIT_TEMP_INDEX_UNSTABLE",
+        format!(
+            "could not capture a stable git index after {INDEX_CAPTURE_ATTEMPTS} attempts: {reason}"
+        ),
+    ))
+}
+
+async fn finish_index_capture(
+    repo_path: &Path,
+    real_index: &Path,
+    scratch_dir: &Path,
+    scratch_index: &Path,
+) -> ArgmaxResult<IndexCaptureAttempt> {
+    let options = || {
+        let mut options =
+            GitExecOptions::default().with_env("GIT_INDEX_FILE", scratch_index.as_os_str());
+        options.timeout = SNAPSHOT_TIMEOUT;
+        options
+    };
+
+    // Resolve the companion through the copied index. Querying the live index
+    // here can pair an old main index with a newly rotated shared index.
+    let resolved_shared_index = match run_git_text_with_options(
+        repo_path,
+        ["rev-parse", "--path-format=absolute", "--shared-index-path"],
+        options(),
+    )
+    .await
+    {
+        Ok(path) => path,
+        Err(error) => {
+            if index_file_changed(real_index, scratch_index).await? {
+                return Ok(IndexCaptureAttempt::Retry(error));
+            }
+            return Err(error);
+        }
+    };
+
+    if !resolved_shared_index.trim().is_empty() {
+        let shared_index = PathBuf::from(resolved_shared_index.trim());
+        let file_name = shared_index.file_name().ok_or_else(|| {
+            ArgmaxError::service(
+                "GIT_TEMP_INDEX_FAILED",
+                format!(
+                    "git resolved a shared index path without a file name: {}",
+                    shared_index.display()
+                ),
+            )
+        })?;
+        if let Err(error) = async_fs::copy(&shared_index, scratch_dir.join(file_name)).await {
+            if error.kind() == ErrorKind::NotFound {
+                return Ok(IndexCaptureAttempt::Retry(index_copy_error(
+                    &shared_index,
+                    error,
+                )));
+            }
+            return Err(index_copy_error(&shared_index, error));
+        }
+    }
+
+    tree_from_index(repo_path, options())
+        .await
+        .map(IndexCaptureAttempt::Complete)
+}
+
+async fn index_file_changed(real_index: &Path, scratch_index: &Path) -> ArgmaxResult<bool> {
+    let copied = async_fs::read(scratch_index)
+        .await
+        .map_err(|error| index_read_error(scratch_index, error))?;
+    match async_fs::read(real_index).await {
+        Ok(current) => Ok(current != copied),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(true),
+        Err(error) => Err(index_read_error(real_index, error)),
+    }
+}
+
+fn index_copy_error(source: &Path, error: std::io::Error) -> ArgmaxError {
+    ArgmaxError::service(
+        "GIT_TEMP_INDEX_FAILED",
+        format!("could not copy git index {}: {error}", source.display()),
+    )
+}
+
+fn index_read_error(source: &Path, error: std::io::Error) -> ArgmaxError {
+    ArgmaxError::service(
+        "GIT_TEMP_INDEX_FAILED",
+        format!("could not read git index {}: {error}", source.display()),
+    )
 }
 
 async fn tree_from_index(repo_path: &Path, options: GitExecOptions) -> ArgmaxResult<String> {
@@ -242,7 +387,7 @@ fn split_nul(raw: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
+    use std::{fs, time::SystemTime};
     use tempfile::TempDir;
 
     async fn git(repo: &Path, args: &[&str]) -> String {
@@ -364,5 +509,165 @@ mod tests {
         .await
         .expect_err("missing base tree");
         assert!(error.to_string().contains("could not read tree"));
+    }
+
+    #[tokio::test]
+    async fn index_tree_treats_a_missing_index_as_empty() {
+        let repo = TempDir::new().expect("temp dir");
+        git(repo.path(), &["init", "--initial-branch=main"]).await;
+        let resolved = git(
+            repo.path(),
+            &["rev-parse", "--path-format=absolute", "--git-path", "index"],
+        )
+        .await;
+        assert!(!Path::new(resolved.trim()).exists());
+
+        let empty_file = repo.path().join("empty-tree");
+        fs::write(&empty_file, "").expect("write empty tree source");
+        let expected = git(
+            repo.path(),
+            &["hash-object", "-t", "tree", empty_file.to_str().unwrap()],
+        )
+        .await;
+
+        assert_eq!(index_tree(repo.path()).await.unwrap(), expected.trim());
+    }
+
+    #[tokio::test]
+    async fn index_tree_surfaces_other_index_copy_failures() {
+        let repo = TempDir::new().expect("temp dir");
+        git(repo.path(), &["init", "--initial-branch=main"]).await;
+        let resolved = git(
+            repo.path(),
+            &["rev-parse", "--path-format=absolute", "--git-path", "index"],
+        )
+        .await;
+        fs::create_dir(resolved.trim()).expect("replace absent index with directory");
+
+        let error = index_tree(repo.path())
+            .await
+            .expect_err("index copy failure");
+        assert!(
+            error.to_string().contains("could not copy git index"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn index_tree_reads_a_split_index_in_a_linked_worktree() {
+        let repo = repo_with_commit().await;
+        let linked = TempDir::new().expect("linked worktree dir");
+        let linked_path = linked.path().to_str().expect("utf-8 path");
+        git(
+            repo.path(),
+            &["worktree", "add", "-b", "linked", linked_path],
+        )
+        .await;
+        git(linked.path(), &["update-index", "--split-index"]).await;
+        fs::write(linked.path().join("kept.txt"), "linked staged\n").expect("write");
+        git(linked.path(), &["add", "kept.txt"]).await;
+
+        let real_index = git(
+            linked.path(),
+            &["rev-parse", "--path-format=absolute", "--git-path", "index"],
+        )
+        .await;
+        let shared_index = git(
+            linked.path(),
+            &["rev-parse", "--path-format=absolute", "--shared-index-path"],
+        )
+        .await;
+        assert!(Path::new(real_index.trim()).exists());
+        assert!(Path::new(shared_index.trim()).exists());
+        assert!(
+            real_index.contains(".git/worktrees/"),
+            "linked index was {real_index}"
+        );
+        assert!(
+            shared_index.contains(".git/worktrees/"),
+            "linked shared index was {shared_index}"
+        );
+
+        let expected = git(linked.path(), &["write-tree"]).await;
+        assert_eq!(index_tree(linked.path()).await.unwrap(), expected.trim());
+    }
+
+    #[tokio::test]
+    async fn index_tree_recaptures_when_a_split_index_companion_expires() {
+        let repo = repo_with_commit().await;
+        let path = repo.path();
+        fs::write(path.join("other.txt"), "other\n").expect("write second baseline file");
+        git(path, &["add", "other.txt"]).await;
+        git(path, &["commit", "-m", "second baseline file"]).await;
+        git(path, &["config", "splitIndex.sharedIndexExpire", "now"]).await;
+        git(path, &["update-index", "--split-index"]).await;
+        let real_index = PathBuf::from(
+            git(
+                path,
+                &["rev-parse", "--path-format=absolute", "--git-path", "index"],
+            )
+            .await
+            .trim(),
+        );
+        fs::write(path.join("kept.txt"), "second staged generation\n").expect("write");
+        git(path, &["add", "kept.txt"]).await;
+        let first_shared_index = PathBuf::from(
+            git(
+                path,
+                &["rev-parse", "--path-format=absolute", "--shared-index-path"],
+            )
+            .await
+            .trim(),
+        );
+        let scratch = TempDir::new().expect("scratch index dir");
+        let scratch_index = scratch.path().join("index");
+        fs::copy(&real_index, &scratch_index).expect("copy first index generation");
+
+        fs::File::options()
+            .write(true)
+            .open(&first_shared_index)
+            .expect("open first shared index")
+            .set_times(fs::FileTimes::new().set_modified(SystemTime::UNIX_EPOCH))
+            .expect("age first shared index");
+        git(path, &["update-index", "--split-index"]).await;
+        let second_shared_index = PathBuf::from(
+            git(
+                path,
+                &["rev-parse", "--path-format=absolute", "--shared-index-path"],
+            )
+            .await
+            .trim(),
+        );
+        assert_ne!(first_shared_index, second_shared_index);
+        assert!(!first_shared_index.exists());
+
+        let attempt = finish_index_capture(path, &real_index, scratch.path(), &scratch_index)
+            .await
+            .expect("classify expired generation");
+        assert!(matches!(attempt, IndexCaptureAttempt::Retry(_)));
+
+        let expected = git(path, &["write-tree"]).await;
+        assert_eq!(index_tree(path).await.unwrap(), expected.trim());
+    }
+
+    #[tokio::test]
+    async fn index_tree_refuses_unmerged_entries() {
+        let repo = repo_with_commit().await;
+        let path = repo.path();
+        git(path, &["checkout", "-b", "other"]).await;
+        fs::write(path.join("kept.txt"), "other\n").expect("write other");
+        git(path, &["commit", "-am", "other"]).await;
+        git(path, &["checkout", "main"]).await;
+        fs::write(path.join("kept.txt"), "main\n").expect("write main");
+        git(path, &["commit", "-am", "main"]).await;
+        run_git_text_with_options(path, ["merge", "other"], snapshot_options())
+            .await
+            .expect_err("merge conflict");
+
+        let error = index_tree(path).await.expect_err("unmerged index");
+        assert!(
+            error.to_string().contains("unmerged"),
+            "unexpected error: {error}"
+        );
     }
 }

@@ -19,7 +19,8 @@ final class TranscriptUITests: XCTestCase {
         let more = app.buttons["Show more"]
         XCTAssertTrue(more.waitForExistence(timeout: 10))
         XCTAssertEqual(app.buttons.matching(identifier: "Show more").count, 1)
-        XCTAssertTrue(app.staticTexts["Short prompt"].isHittable)
+        XCTAssertTrue(more.isHittable)
+        XCTAssertFalse(app.staticTexts["Short prompt"].isHittable)
         XCTAssertEqual(more.value as? String, "Collapsed")
         screenshot("user-bubble-collapsed")
         more.tap()

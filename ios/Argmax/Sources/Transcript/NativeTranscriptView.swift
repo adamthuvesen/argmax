@@ -19,6 +19,15 @@ struct NativeTranscriptView: View {
         }, detail: appearance.chatDetail)
     }
 
+    /// A steering message belongs to the active turn. Only a regular user
+    /// message starts a turn and earns the transcript's top anchor.
+    private var turnAnchorID: String? {
+        for item in transcript.items.reversed() {
+            if case .user(let message) = item, !message.isSteering { return message.id }
+        }
+        return nil
+    }
+
     /// The last row owns the turn's live work while the session runs.
     private var tailIsLive: Bool {
         transcript.session?.state == .running && transcript.connection == .live
@@ -49,6 +58,7 @@ struct NativeTranscriptView: View {
                 items: rows,
                 sessionID: transcript.session?.sessionId ?? "",
                 scrollRequest: scrollRequest,
+                turnAnchorID: turnAnchorID,
                 presentationID: appearance.tint.rawValue + appearance.bubbleTint + (workspacePath ?? "") + String(appearance.chatDetail.rawValue),
                 following: $following
             ) { row in

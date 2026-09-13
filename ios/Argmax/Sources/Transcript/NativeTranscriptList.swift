@@ -8,6 +8,7 @@ where Item.ID == String {
     let items: [Item]
     let sessionID: String
     let scrollRequest: Int
+    var turnAnchorID: String?
     var presentationID = ""
     @Binding var following: Bool
     @ViewBuilder var row: (Item) -> Row
@@ -28,39 +29,56 @@ where Item.ID == String {
     @State private var phase: ScrollPhase = .idle
     @State private var tailScrollScheduled = false
     @State private var anchorScrollScheduled = false
+    @State private var turnScrollPending = false
+    @State private var viewportHeight: CGFloat = 0
+    @State private var bottomInset: CGFloat = 0
+    @State private var naturalContentHeight: CGFloat = 0
+    @State private var turnAnchorMeasurement: TranscriptTurnAnchorMeasurement?
+
+    /// Keep enough empty tail beneath the latest prompt for the physical
+    /// bottom to put that prompt at the transcript's 16-point top inset.
+    /// Real output replaces this reservation point for point, then ordinary
+    /// tail following takes over once the turn is taller than the viewport.
+    private var turnFloorHeight: CGFloat {
+        guard viewportHeight > 0,
+              let anchor = turnAnchorMeasurement,
+              anchor.id == turnAnchorID else { return 0 }
+        return max(0, anchor.top - 16 + viewportHeight - bottomInset - naturalContentHeight)
+    }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                // Not a `LazyVStack`. A lazy stack sizes every row it has not
-                // realised at the average of the ones it has, and a chat is a
-                // few short rows around one very tall answer, so that average
-                // is thousands of points off. The content height it reports
-                // is the sum of those guesses; the tail scroll lands at that
-                // guessed end, past the real last row, and the viewport shows
-                // the empty remainder of an over-estimated slot with nothing
-                // left to realise and correct it. Seen as an opened or
-                // just-sent chat that is blank until it is scrolled by hand.
-                // Eager rows have exact heights, so the content end is real.
                 VStack(spacing: 0) {
-                    ForEach(items) { item in
-                        row(item)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, Spacing.gutter)
-                            .onGeometryChange(for: CGFloat.self) {
-                                $0.frame(in: .named(Self.contentSpace)).minY
-                            } action: { top in
-                                rowTopChanged(item.id, top: top)
-                            }
+                    // Not a `LazyVStack`. A lazy stack sizes every row it has
+                    // not realised at the average of the ones it has, and a
+                    // chat is a few short rows around one very tall answer,
+                    // so that average is thousands of points off. Eager rows
+                    // have exact heights, so the content end is real.
+                    VStack(spacing: 0) {
+                        ForEach(items) { item in
+                            row(item)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, Spacing.gutter)
+                                .onGeometryChange(for: CGFloat.self) {
+                                    $0.frame(in: .named(Self.contentSpace)).minY
+                                } action: { top in
+                                    rowTopChanged(item.id, top: top)
+                                }
+                        }
                     }
+                    .scrollTargetLayout()
+                    footer()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, Spacing.gutter)
                 }
-                .scrollTargetLayout()
-                footer()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, Spacing.gutter)
+                .padding(.top, 16)
+                .padding(.bottom, 20)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                    if abs(naturalContentHeight - height) > 0.5 { naturalContentHeight = height }
+                }
+                Color.clear.frame(height: turnFloorHeight)
             }
-            .padding(.top, 16)
-            .padding(.bottom, 20)
             .coordinateSpace(name: Self.contentSpace)
         }
         // The bottom initial-offset anchor is spent on the first layout, empty
@@ -78,6 +96,8 @@ where Item.ID == String {
         } action: { previous, next in
             readingPosition.visibleTop = next.visibleTop
             readingPosition.topInset = next.topInset
+            if abs(viewportHeight - next.viewportHeight) > 0.5 { viewportHeight = next.viewportHeight }
+            if abs(bottomInset - next.bottomInset) > 0.5 { bottomInset = next.bottomInset }
             if following && !phase.isUserControlled && !next.isAtTail {
                 requestScrollToTail()
             }
@@ -102,10 +122,12 @@ where Item.ID == String {
                 from: previous,
                 after: next,
                 tailGap: TranscriptScrollGeometry(context.geometry).tailGap,
-                current: following
+                current: following,
+                turnScrollPending: turnScrollPending
             )
             if following != updated { following = updated }
             if next == .idle {
+                turnScrollPending = false
                 if updated {
                     requestScrollToTail()
                 } else {
@@ -121,6 +143,13 @@ where Item.ID == String {
         }
         .onChange(of: items) { _, _ in
             if following { requestScrollToTail() }
+        }
+        .onChange(of: turnAnchorID) { previous, next in
+            guard next != nil, previous != next else { return }
+            readingPosition.release()
+            turnScrollPending = phase.isUserControlled
+            if !following { following = true }
+            requestScrollToTail()
         }
         .onChange(of: presentationID) { _, _ in
             if following { requestScrollToTail() }
@@ -146,6 +175,10 @@ where Item.ID == String {
     /// and once the reader lets go the idle transition re-anchors where
     /// they landed.
     private func rowTopChanged(_ id: String, top: CGFloat) {
+        if id == turnAnchorID {
+            let next = TranscriptTurnAnchorMeasurement(id: id, top: top)
+            if turnAnchorMeasurement != next { turnAnchorMeasurement = next }
+        }
         let moved = readingPosition.rowTopChanged(id, top: top, following: following)
         guard moved, !phase.isUserControlled, !anchorScrollScheduled else { return }
         anchorScrollScheduled = true
@@ -230,8 +263,10 @@ enum TranscriptScrollBehavior {
         from previous: ScrollPhase,
         after phase: ScrollPhase,
         tailGap: CGFloat,
-        current: Bool
+        current: Bool,
+        turnScrollPending: Bool = false
     ) -> Bool {
+        if turnScrollPending { return true }
         if phase.isUserControlled { return false }
         if phase == .idle && previous.isUserControlled { return tailGap < 28 }
         return current
@@ -242,6 +277,8 @@ private struct TranscriptScrollGeometry: Equatable {
     var tailGap: CGFloat = 0
     var visibleTop: CGFloat = 0
     var topInset: CGFloat = 0
+    var bottomInset: CGFloat = 0
+    var viewportHeight: CGFloat = 0
 
     init() {}
 
@@ -250,9 +287,16 @@ private struct TranscriptScrollGeometry: Equatable {
         tailGap = geometry.contentSize.height + geometry.contentInsets.bottom
             - geometry.visibleRect.maxY
         topInset = geometry.contentInsets.top
+        bottomInset = geometry.contentInsets.bottom
+        viewportHeight = geometry.visibleRect.height
     }
 
     var isAtTail: Bool { tailGap <= 0.5 }
+}
+
+private struct TranscriptTurnAnchorMeasurement: Equatable {
+    let id: String
+    let top: CGFloat
 }
 
 extension NativeTranscriptList where Footer == EmptyView {
@@ -260,11 +304,13 @@ extension NativeTranscriptList where Footer == EmptyView {
         items: [Item],
         sessionID: String,
         scrollRequest: Int,
+        turnAnchorID: String? = nil,
         presentationID: String = "",
         following: Binding<Bool>,
         @ViewBuilder row: @escaping (Item) -> Row
     ) {
         self.init(items: items, sessionID: sessionID, scrollRequest: scrollRequest,
+                  turnAnchorID: turnAnchorID,
                   presentationID: presentationID, following: following, row: row) { EmptyView() }
     }
 }

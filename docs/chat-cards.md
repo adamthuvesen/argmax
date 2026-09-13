@@ -156,6 +156,11 @@ the gesture. A folding Thought block below the reader therefore cannot
 shorten the scroll range and clamp them upward. This may leave blank space
 below a collapsed turn until the reader resumes following.
 
+The native iPhone transcript follows the same turn rule. Its shrinking tail
+reservation lets a new non-steering user message sit below the transcript's
+top inset until output fills the viewport. A steering message does not change
+the turn anchor, resume following, or move a detached reading position.
+
 Detached layout changes preserve the visible anchor. Nested scroll areas use
 their outer box so scrolling a diff cannot look like a transcript layout
 change. CSS `overflow-anchor: none` keeps browser anchoring from competing

@@ -135,6 +135,86 @@ final class NativeTranscriptListTests: XCTestCase {
         }
     }
 
+    func testNewTurnResumesFollowingWithItsPromptAtTheTop() async {
+        let state = TranscriptListTestState(items: transcriptItems(count: 24))
+        let host = TranscriptListTestHost(state: state, size: CGSize(width: 320, height: 240))
+        defer { host.close() }
+
+        guard let scrollView = await waitForScrollView(in: host, where: {
+            $0.contentSize.height > $0.bounds.height && abs(tailGap(in: $0)) < 1
+        }) else {
+            return XCTFail("The hosted transcript did not finish its initial layout")
+        }
+
+        state.following = false
+        await settle(host)
+        scrollView.setContentOffset(CGPoint(x: 0, y: 160), animated: false)
+        await settle(host)
+
+        state.items.append(.init(id: "new-prompt", height: 44))
+        state.turnAnchorID = "new-prompt"
+
+        guard await waitForScrollView(in: host, where: { scrollView in
+            guard let frame = state.rowFrames["new-prompt"]?.frame else { return false }
+            let viewport = scrollView.convert(scrollView.bounds, to: host.window)
+            return state.following && abs(frame.minY - viewport.minY - 16) < 1
+        }) != nil else {
+            return XCTFail("A new turn did not place its prompt at the top inset")
+        }
+
+        state.items.append(contentsOf: transcriptItems(count: 2, prefix: "short-output"))
+        guard await waitForScrollView(in: host, where: { scrollView in
+            guard let frame = state.rowFrames["new-prompt"]?.frame else { return false }
+            let viewport = scrollView.convert(scrollView.bounds, to: host.window)
+            return abs(frame.minY - viewport.minY - 16) < 1
+        }) != nil else {
+            return XCTFail("Short output moved the new prompt away from the top inset")
+        }
+
+        state.items.append(contentsOf: transcriptItems(count: 8, prefix: "long-output"))
+        guard await waitForScrollView(in: host, where: {
+            abs(tailGap(in: $0)) < 1 && state.rowFrames["new-prompt"]?.frame.minY ?? .infinity < $0.frame.minY
+        }) != nil else {
+            return XCTFail("Long output did not yield the turn floor to tail following")
+        }
+    }
+
+    func testSteeringKeepsDetachedReadingPosition() async {
+        let state = TranscriptListTestState(items: transcriptItems(count: 28))
+        state.turnAnchorID = "item-27"
+        let host = TranscriptListTestHost(state: state, size: CGSize(width: 320, height: 260))
+        defer { host.close() }
+
+        guard let scrollView = await waitForScrollView(in: host, where: {
+            $0.contentSize.height > $0.bounds.height && abs(tailGap(in: $0)) < 1
+        }) else {
+            return XCTFail("The hosted transcript did not finish its initial layout")
+        }
+
+        state.following = false
+        await settle(host)
+        state.rowFrames.removeAll()
+        scrollView.setContentOffset(CGPoint(x: 0, y: 500), animated: false)
+        await settle(host)
+
+        let viewport = scrollView.convert(scrollView.bounds, to: host.window)
+        guard let anchor = state.rowFrames
+            .filter({ $0.value.frame.maxY > viewport.minY && $0.value.frame.minY < viewport.maxY })
+            .min(by: { $0.value.frame.minY < $1.value.frame.minY }) else {
+            return XCTFail("The hosted transcript did not report a visible reading anchor")
+        }
+
+        state.items.append(.init(id: "steering", height: 44))
+
+        guard await waitForScrollView(in: host, where: { _ in
+            state.rowFrames["steering"] != nil
+                && abs((state.rowFrames[anchor.key]?.frame.minY ?? .infinity) - anchor.value.frame.minY) < 1
+        }) != nil else {
+            return XCTFail("Steering moved the detached reading position")
+        }
+        XCTAssertFalse(state.following)
+    }
+
     /// The transcript is an eager stack on purpose: a lazy stack guesses the
     /// height of rows it has not realised, and the tail scroll lands on that
     /// guess, past the real last row. Pin that the tail row is realised and
@@ -170,6 +250,10 @@ final class NativeTranscriptListTests: XCTestCase {
         XCTAssertTrue(TranscriptScrollBehavior.following(
             from: .animating, after: .idle, tailGap: 120, current: true
         ))
+        XCTAssertTrue(TranscriptScrollBehavior.following(
+            from: .decelerating, after: .idle, tailGap: 120, current: false,
+            turnScrollPending: true
+        ))
     }
 
     func testKeyboardInsetUsesOnlyTheVisibleKeyboardOverlap() {
@@ -204,11 +288,13 @@ private final class TranscriptListTestState: ObservableObject {
     @Published var following = true
     @Published var scrollRequest = 0
     @Published var sessionID = "session-1"
+    @Published var turnAnchorID: String?
     @Published var appearedIDs: Set<String> = []
     var rowFrames: [String: TranscriptListTestRowGeometry] = [:]
 
-    init(items: [TranscriptListTestItem]) {
+    init(items: [TranscriptListTestItem], turnAnchorID: String? = nil) {
         self.items = items
+        self.turnAnchorID = turnAnchorID
     }
 }
 
@@ -221,6 +307,7 @@ private struct TranscriptListTestView: View {
             items: state.items,
             sessionID: state.sessionID,
             scrollRequest: state.scrollRequest,
+            turnAnchorID: state.turnAnchorID,
             following: $state.following
         ) { item in
             Text(item.id)

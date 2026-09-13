@@ -118,7 +118,8 @@ export function useGlobalKeybindings({
       }
       // Matched on the physical key so it is ⌘§ on a Nordic layout and ⌘` on
       // a US one: the key under Esc, a thumb away from ⌘Tab. Wraps at both
-      // ends; from the launcher it opens the first (or last) chat.
+      // ends; from the launcher it opens the first (or last) chat. The native
+      // menu carries the same command when focus sits outside this webview.
       if (event.code === "Backquote" && !event.altKey) {
         if (event.isComposing || event.repeat) return;
         const ids = listVisibleSidebarWorkspaceIds();

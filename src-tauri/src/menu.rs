@@ -12,6 +12,8 @@ static WEBVIEW_ZOOM: std::sync::Mutex<f64> = std::sync::Mutex::new(1.0);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MenuCommand {
     NewSession,
+    NextChat,
+    PreviousChat,
     OpenSettings,
     ToggleSidebar,
     ToggleLeftSidebar,
@@ -23,8 +25,10 @@ pub enum MenuCommand {
 }
 
 impl MenuCommand {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 11] = [
         Self::NewSession,
+        Self::NextChat,
+        Self::PreviousChat,
         Self::OpenSettings,
         Self::ToggleSidebar,
         Self::ToggleLeftSidebar,
@@ -38,6 +42,8 @@ impl MenuCommand {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::NewSession => "new-session",
+            Self::NextChat => "next-chat",
+            Self::PreviousChat => "previous-chat",
             Self::OpenSettings => "open-settings",
             Self::ToggleSidebar => "toggle-sidebar",
             Self::ToggleLeftSidebar => "toggle-left-sidebar",
@@ -108,6 +114,16 @@ pub fn app_menu_spec(is_dev: bool) -> Vec<MenuSpec> {
             MenuCommand::OpenCommandPalette,
             "Command Palette…",
             Some("CmdOrCtrl+K"),
+        ),
+        command(
+            MenuCommand::NextChat,
+            "Next Chat",
+            Some("CmdOrCtrl+Backquote"),
+        ),
+        command(
+            MenuCommand::PreviousChat,
+            "Previous Chat",
+            Some("CmdOrCtrl+Shift+Backquote"),
         ),
         command(
             MenuCommand::ToggleSidebar,
@@ -519,6 +535,16 @@ mod tests {
                     Some("CmdOrCtrl+K"),
                 ),
                 (
+                    MenuCommand::NextChat,
+                    "Next Chat",
+                    Some("CmdOrCtrl+Backquote"),
+                ),
+                (
+                    MenuCommand::PreviousChat,
+                    "Previous Chat",
+                    Some("CmdOrCtrl+Shift+Backquote"),
+                ),
+                (
                     MenuCommand::ToggleSidebar,
                     "Toggle Right Sidebar",
                     Some("CmdOrCtrl+B"),
@@ -562,6 +588,8 @@ mod tests {
     #[test]
     fn menu_command_ids_preserve_renderer_contract() {
         assert_eq!(MenuCommand::NewSession.as_str(), "new-session");
+        assert_eq!(MenuCommand::NextChat.as_str(), "next-chat");
+        assert_eq!(MenuCommand::PreviousChat.as_str(), "previous-chat");
         assert_eq!(MenuCommand::OpenSettings.as_str(), "open-settings");
         assert_eq!(MenuCommand::ToggleSidebar.as_str(), "toggle-sidebar");
         assert_eq!(MenuCommand::ToggleDebugLog.as_str(), "toggle-debug-log");

@@ -166,6 +166,21 @@ describe("App sidebar", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /Pinned work/ })).toHaveAttribute("aria-current", "true")
     );
+
+    act(() => menuCommandListener?.("next-chat"));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Build dashboard/ })).toHaveAttribute("aria-current", "true")
+    );
+
+    act(() => menuCommandListener?.("previous-chat"));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Pinned work/ })).toHaveAttribute("aria-current", "true")
+    );
+
+    act(() => menuCommandListener?.("previous-chat"));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Build dashboard/ })).toHaveAttribute("aria-current", "true")
+    );
   });
 
   it("follows a moved session only while its source is selected", async () => {

@@ -58,6 +58,20 @@ export const MENU_KEYBINDINGS: readonly MenuKeybinding[] = [
     menuLocation: "file"
   },
   {
+    command: "next-chat",
+    accelerator: "CmdOrCtrl+Backquote",
+    displayAccelerator: "⌘§",
+    label: "Next chat",
+    menuLocation: "view"
+  },
+  {
+    command: "previous-chat",
+    accelerator: "CmdOrCtrl+Shift+Backquote",
+    displayAccelerator: "⌘⇧§",
+    label: "Previous chat",
+    menuLocation: "view"
+  },
+  {
     command: "close-surface",
     accelerator: "CmdOrCtrl+W",
     displayAccelerator: "⌘W",
@@ -109,7 +123,6 @@ export interface RendererOnlyKeybinding {
 
 export const RENDERER_ONLY_KEYBINDINGS: readonly RendererOnlyKeybinding[] = [
   { displayAccelerator: "⌘1 – ⌘9", label: "Jump to chat 1–9" },
-  { displayAccelerator: "⌘§ / ⌘⇧§", label: "Next / previous chat (the key under Esc)" },
   // ⌘P opens the same palette as ⌘K with the Files filter pre-selected.
   // Tab cycles filters once it is open, so neither chord is a dead end.
   { displayAccelerator: "⌘P", label: "Open command palette on Files" },

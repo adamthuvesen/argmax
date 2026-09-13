@@ -893,6 +893,8 @@ export type Learning = Retype<Bindings.Learning, { kind: LearningKind }>;
 
 export type MenuCommand =
   | "new-session"
+  | "next-chat"
+  | "previous-chat"
   | "open-settings"
   | "toggle-sidebar"
   | "toggle-left-sidebar"

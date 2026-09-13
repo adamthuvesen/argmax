@@ -408,14 +408,7 @@ pub(crate) fn open_tab(
             })
             .build();
             match window {
-                Ok(window) => {
-                    if let Err(error) = crate::browser::popup::install_close_handler(&window) {
-                        tracing::error!(%error, "could not install browser popup close callback");
-                        let _ = window.close();
-                        return tauri::webview::NewWindowResponse::Deny;
-                    }
-                    tauri::webview::NewWindowResponse::Create { window }
-                }
+                Ok(window) => tauri::webview::NewWindowResponse::Create { window },
                 Err(error) => {
                     tracing::error!(%error, "could not create browser popup");
                     tauri::webview::NewWindowResponse::Deny
@@ -505,6 +498,12 @@ pub(crate) fn open_tab(
             LogicalSize::new(bounds.width.max(1.0), bounds.height.max(1.0)),
         )
         .map_err(|error| ArgmaxError::service("BROWSER_CREATE_FAILED", error.to_string()))?;
+    crate::browser::popup::install_close_handler(&created).map_err(|error| {
+        ArgmaxError::service(
+            "BROWSER_CREATE_FAILED",
+            format!("install popup close callback: {error}"),
+        )
+    })?;
     if !visible {
         let _ = created.hide();
     }

@@ -2,7 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { chmod, copyFile, mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -12,6 +12,8 @@ import { buildScratchApp, freePort, scratchBinaryPath, startScratchApp } from ".
 import { verifyBrowserSession } from "./verification/browser.mjs";
 import { checkoutFingerprint, delay, fileSha256, runChecked, terminateRunningCommands, uniqueRunId } from "./verification/common.mjs";
 import { copyIfPresent, listEvidenceFiles, redact, redactEvidenceTextFiles, writeJson, writeNdjson } from "./verification/evidence.mjs";
+import { verifySessionMove } from "./verification/session-move.mjs";
+import { verifyStagedPreservingRevert } from "./verification/workspace-recovery.mjs";
 import {
   VERIFICATION_BARRIERS,
   VERIFICATION_CONVERSATION_ID,
@@ -22,6 +24,7 @@ import {
   VERIFICATION_OPENCODE_PROVIDER,
   VERIFICATION_OPENCODE_SUBAGENT,
   VERIFICATION_PROVIDER,
+  VERIFICATION_MOVED_CONVERSATION_ID,
   VERIFICATION_SCENARIOS,
   VERIFICATION_SUBAGENT,
 } from "./verification/provider-fixture.mjs";
@@ -39,6 +42,8 @@ const scenarioDefinitionKeys = Object.freeze({
   "persistent-cursor-subagent": "persistentCursorSubagentFirst",
   cancellation: "cancellation",
   "provider-error": "providerError",
+  "session-move": "sessionMoveFirst",
+  "staged-revert": "providerError",
 });
 
 function providerForScenario(scenario) {
@@ -81,6 +86,10 @@ export function parseVerifyArgs(argv) {
   }
   if (!['required', 'auto', 'off'].includes(options.native)) {
     throw new Error("--native must be required, auto, or off");
+  }
+  if (["session-move", "staged-revert"].includes(options.scenario)
+      && options.native !== "required") {
+    throw new Error(`${options.scenario} requires native verification`);
   }
   if (!Number.isFinite(options.timeoutMs) || options.timeoutMs < 5000) throw new Error("--timeout must be at least 5 seconds");
   return options;
@@ -273,9 +282,12 @@ async function runScenario({
   scenario,
   provider,
   repoPath,
+  movePath,
   controlDir,
+  invocationLog,
   databasePath,
   outputDir,
+  browser,
   verifyUi,
   sendInput,
   queueInput,
@@ -289,6 +301,21 @@ async function runScenario({
   const { workspace } = await resolveProjectAndWorkspace(bridge, repoPath, definition.prompt);
   const launched = await launchFixture(bridge, workspace.id, definition.prompt, provider);
   timeline.push({ at: new Date().toISOString(), type: "session-launched", sessionId: launched.id, workspaceId: workspace.id });
+
+  if (scenario === "session-move") {
+    return verifySessionMove({
+      bridge,
+      browser,
+      sourceSession: launched,
+      sourceWorkspace: workspace,
+      repoPath,
+      movePath,
+      controlDir,
+      outputDir: path.join(outputDir, "native"),
+      timeoutMs,
+      invocationLog,
+    });
+  }
 
   if (scenario === "codex-user-input") {
     const deadline = Date.now() + timeoutMs;
@@ -645,9 +672,9 @@ async function runScenario({
   }
 
   const result = await collectUntilTerminal(bridge, launched.id, timeoutMs);
-  if (result.session.state !== "failed") throw new Error(`provider-error scenario ended in ${result.session.state}`);
-  assertIncludes(result.records, definition.diagnostic, "provider error diagnostic");
-  const ui = await verifyUi({ name: "provider-error", expectedTexts: [definition.diagnostic], expectIdle: true });
+  if (result.session.state !== "failed") throw new Error(`${scenario} scenario ended in ${result.session.state}`);
+  assertIncludes(result.records, definition.diagnostic, `${scenario} diagnostic`);
+  const ui = await verifyUi({ name: scenario, expectedTexts: [definition.diagnostic], expectIdle: true });
   return { session: result.session, workspace, records: result.records, browser: [ui] };
 }
 
@@ -669,6 +696,9 @@ function expectedPersistenceTexts(scenario) {
     return [VERIFICATION_SCENARIOS.chatResumeFirst.visibleText, VERIFICATION_SCENARIOS.chatResumeSecond.visibleText];
   }
   if (scenario === "queued-restart") return [VERIFICATION_SCENARIOS.chatResumeSecond.visibleText];
+  if (scenario === "session-move") {
+    return [VERIFICATION_SCENARIOS.sessionMoveFirst.visibleText, VERIFICATION_SCENARIOS.sessionMoveSecond.visibleText];
+  }
   if (scenario === "persistent-subagent") {
     return [
       VERIFICATION_SCENARIOS.persistentSubagentFirst.visibleText,
@@ -737,10 +767,23 @@ export async function runVerification(options) {
   await Promise.all([mkdir(profile, { recursive: true }), mkdir(home, { recursive: true }), mkdir(controlDir, { recursive: true })]);
   await writeFile(path.join(profile, "sync.json"), `${JSON.stringify({ claude: false, codex: false, cursor: false, opencode: false, grok: false, windowHours: 24 })}\n`);
   await initializeRepo(repoPath);
+  let movePath = null;
+  if (options.scenario === "session-move") {
+    const siblingPath = path.join(runRoot, "sibling");
+    await runChecked(
+      "git",
+      ["worktree", "add", "-q", "-b", "verification-session-move-target", siblingPath],
+      { cwd: repoPath, timeoutMs: 10_000 },
+    );
+    movePath = await realpath(siblingPath);
+  }
 
   const fixturePath = path.join(repoRoot, "scripts", "verification", "provider-fixture.mjs");
   const provider = providerForScenario(options.scenario);
-  const env = isolatedEnvironment(home, fixturePath, controlDir, invocationLog, provider);
+  const env = {
+    ...isolatedEnvironment(home, fixturePath, controlDir, invocationLog, provider),
+    ...(movePath ? { ARGMAX_VERIFICATION_MOVE_PATH: movePath } : {}),
+  };
   const report = {
     schemaVersion: 1,
     runId,
@@ -872,8 +915,9 @@ export async function runVerification(options) {
     if (persistentSubagentScenarios.has(options.scenario) && options.native !== "off") {
       throw new Error(`${options.scenario} requires --native off because it verifies a scratch backend restart`);
     }
-    if (options.scenario === "queued-restart" && options.native !== "required") {
-      throw new Error("queued-restart requires native verification");
+    if (["queued-restart", "session-move", "staged-revert"].includes(options.scenario)
+        && options.native !== "required") {
+      throw new Error(`${options.scenario} requires native verification`);
     }
     report.source.beforeBuild = await checkoutFingerprint(repoRoot);
     const targetDir = path.join(repoRoot, "src-tauri", "target", "verification");
@@ -1071,24 +1115,56 @@ export async function runVerification(options) {
       if (!health) throw new Error("scratch backend did not become healthy after restart");
       return bridge;
     };
-    scenarioResult = await runScenario({
-      bridge,
-      scenario: options.scenario,
-      provider,
-      repoPath,
-      controlDir,
-      databasePath,
-      outputDir,
-      timeoutMs: options.timeoutMs,
-      timeline: report.timeline,
-      verifyUi,
-      sendInput,
-      queueInput,
-      sendQueuedInput,
-      terminate,
-      restartBackend,
-    });
+    try {
+      scenarioResult = await runScenario({
+        bridge,
+        scenario: options.scenario,
+        provider,
+        repoPath,
+        movePath,
+        controlDir,
+        invocationLog,
+        databasePath,
+        outputDir,
+        browser: desktopHandle?.browser ?? null,
+        timeoutMs: options.timeoutMs,
+        timeline: report.timeline,
+        verifyUi,
+        sendInput,
+        queueInput,
+        sendQueuedInput,
+        terminate,
+        restartBackend,
+      });
+    } catch (error) {
+      if (options.scenario === "session-move") {
+        const nativeOutput = path.join(outputDir, "native");
+        const failurePath = path.join(nativeOutput, "session-move-failure.json");
+        const artifacts = ["session-move-source.png", "session-move-destination.png", "session-move.json"]
+          .filter((name) => existsSync(path.join(nativeOutput, name)));
+        await writeJson(failurePath, { message: error.message, repoPath, movePath, artifacts });
+        report.native.sessionMove = { failure: failurePath, artifacts };
+      }
+      throw error;
+    }
     bridge = scenarioResult.bridge ?? bridge;
+    if (options.scenario === "session-move") {
+      report.native.sessionMove = {
+        proof: path.join(outputDir, "native", "session-move.json"),
+        phases: scenarioResult.browser,
+      };
+    }
+    if (options.scenario === "staged-revert") {
+      const recovery = await verifyStagedPreservingRevert({
+        bridge,
+        browser: desktopHandle.browser,
+        workspace: scenarioResult.workspace,
+        outputDir: path.join(outputDir, "native"),
+        timeoutMs: options.timeoutMs
+      });
+      report.workspaceRecovery = recovery;
+      report.assertions.push(...recovery.assertions);
+    }
     report.session = { id: scenarioResult.session.id, workspaceId: scenarioResult.workspace.id, state: scenarioResult.session.state };
     report.assertions.push({ name: "scenario-state", ok: true, value: scenarioResult.session.state });
     report.assertions.push(...(scenarioResult.assertions ?? []));
@@ -1133,10 +1209,12 @@ export async function runVerification(options) {
         ok: persistedMessages.some((message) => message.includes(text))
       }))
     ];
-    if (options.scenario === "chat-resume" || options.scenario === "queued-restart") {
+    if (options.scenario === "chat-resume" || options.scenario === "queued-restart" || options.scenario === "session-move") {
       persistenceAssertions.push({
         name: "sqlite-provider-conversation-persisted",
-        ok: persistedSession?.providerConversationId === VERIFICATION_CONVERSATION_ID,
+        ok: persistedSession?.providerConversationId === (options.scenario === "session-move"
+          ? VERIFICATION_MOVED_CONVERSATION_ID
+          : VERIFICATION_CONVERSATION_ID),
         value: persistedSession?.providerConversationId
       });
     }

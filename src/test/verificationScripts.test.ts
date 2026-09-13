@@ -83,6 +83,34 @@ it("initializes the Claude fixture and reads its prompt without waiting for stdi
   }
 }, 3000);
 
+it("rejects the session-move fixture before calling the CLI when controls are missing", async () => {
+  const child = spawn(
+    process.execPath,
+    [fixture, "-p", "--", "[argmax-verification:session-move:first]"],
+    {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...fixtureEnvironment,
+        ARGMAX_BIN: "",
+        ARGMAX_SESSION_LAUNCH_SOCKET: "",
+        ARGMAX_SESSION_LAUNCH_TOKEN: "",
+        ARGMAX_VERIFICATION_MOVE_PATH: "",
+      },
+    },
+  );
+  let stdout = "";
+  let stderr = "";
+  child.stdout.setEncoding("utf8").on("data", (chunk: string) => { stdout += chunk; });
+  child.stderr.setEncoding("utf8").on("data", (chunk: string) => { stderr += chunk; });
+  const code = await new Promise<number | null>((resolve, reject) => {
+    child.once("close", resolve);
+    child.once("error", reject);
+  });
+  expect(code).toBe(64);
+  expect(stdout).toBe("");
+  expect(stderr).toContain("session-move fixture requires ARGMAX_BIN");
+});
+
 it.each(["persistent-codex-subagent:first", "codex-user-input"])("serves Codex %s while stdin remains open", async (scenario) => {
   const child = spawn(process.execPath, [fixture, "app-server", "--stdio", "-c", "tools.experimental_request_user_input.enabled=true"], {
     stdio: ["pipe", "pipe", "pipe"],
@@ -291,6 +319,20 @@ describe("verification script arguments", () => {
       scenario: "queued-restart",
       native: "required",
     });
+    expect(parseVerifyArgs(["--scenario", "session-move"])).toMatchObject({
+      scenario: "session-move",
+      native: "required",
+    });
+    expect(() => parseVerifyArgs(["--scenario", "session-move", "--native", "off"])).toThrow(
+      /requires native verification/,
+    );
+    expect(parseVerifyArgs(["--scenario", "staged-revert"])).toMatchObject({
+      scenario: "staged-revert",
+      native: "required",
+    });
+    expect(() => parseVerifyArgs(["--scenario", "staged-revert", "--native", "off"])).toThrow(
+      /requires native verification/,
+    );
     expect(() => parseVerifyArgs(["--out"])).toThrow(/requires a value/);
     expect(() => parseScratchArgs(["--port", "70000"])).toThrow(/between 1 and 65535/);
     expect(() => parseScratchArgs(["--data-dir"])).toThrow(/requires a value/);

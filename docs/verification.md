@@ -18,6 +18,8 @@ npm run verify -- --scenario persistent-opencode-subagent --native off
 npm run verify -- --scenario persistent-cursor-subagent --native off
 npm run verify -- --scenario cancellation
 npm run verify -- --scenario provider-error
+npm run verify -- --scenario session-move
+npm run verify -- --scenario staged-revert
 ```
 
 The scenario runner builds a verification binary and renderer from the current
@@ -44,6 +46,23 @@ not replay the follow-up, and the composer labels it paused or
 delivery-uncertain with one explicit Send action. Sending that recovered row
 must record and complete the follow-up exactly once, then leave the session's
 dashboard and SQLite pending-message queues empty.
+
+`staged-revert` launches the failed provider fixture to leave an idle native
+session, then creates one staged file and one file with unstaged edits in its
+disposable workspace. A backend-bridge subcase proves an obsolete diff
+revision fails with `REVIEW_STALE_REVISION` without changing the newer file
+bytes or index. The native Review action then reverts the fresh unstaged file,
+records its recovery checkpoint, refreshes the UI, and preserves the cached
+diff and index tree exactly.
+
+`session-move` creates a sibling worktree and has the Claude fixture call the
+production `argmax session move --path` CLI from an active turn. It checks the
+scheduled request, keeps the source workspace, carries the provider
+conversation as a fork, and completes the continuation in the sibling
+checkout. The native window must follow the move without another click and
+show the destination seam, branch, and response. Its evidence also records
+both checkout paths, provider invocations, timeline seams, and unchanged
+fixture files. This scenario requires native verification.
 
 `persistent-subagent --native off` checks the Claude native child identity,
 separate lifecycle runs for the initial launch and a `SendMessage` continuation,

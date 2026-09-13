@@ -13,7 +13,7 @@ Tracked by [src-tauri/src/util/startup_timer.rs](../src-tauri/src/util/startup_t
 
 `npm run check:bundle` (scripts/check-bundle.mjs) caps the cold-start module
 graph — the entry chunk plus every `<link rel="modulepreload">` Vite emits —
-at 1.76 MiB desktop / 1.60 MiB mobile. The desktop allowance includes a small
+at 1.76 MiB desktop / 1.61 MiB mobile. The desktop allowance includes a small
 startup tradeoff for navigation readiness. Measured 2026-09-09 from the existing
 build: 1.70 MiB desktop and 1.57 MiB mobile. Desktop rose 0.05 MiB to cover
 todo cards, goals, and the rest of this stack.
@@ -25,6 +25,12 @@ chunk when the text may contain math ([needsMath](../src/renderer/lib/needsMath.
 mirrors `normalizeMathDelimiters`' early return, so `$`- and `\`-free text
 never pays for it). Markdown with math first paints the plain render as the
 Suspense fallback, then swaps in the formatted equations once the chunk lands.
+
+Shiki syntax highlighting follows the same rule. Its core and JavaScript regex
+engine load only after a code fence or diff mounts through
+[highlighter.ts](../src/renderer/lib/highlighter.ts); those surfaces already
+paint plain text until the shared highlighter signals readiness, then repaint
+with token colors.
 
 Do not add a `vendor-katex` (or any unified-ecosystem) `manualChunks` rule to
 [vite.config.ts](../vite.config.ts) without re-measuring. A named KaTeX chunk

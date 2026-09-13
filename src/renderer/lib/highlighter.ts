@@ -1,11 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import {
-  createHighlighterCore,
-  type HighlighterCore,
-  type LanguageInput,
-  type ThemeInput
-} from "shiki/core";
-import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
+import type { HighlighterCore, LanguageInput, ThemeInput } from "shiki/core";
 import { errorMessage } from "../../shared/error.js";
 import { logger } from "../../shared/logger.js";
 import { themeAppearance } from "./theme.js";
@@ -90,11 +84,17 @@ const readyCallbacks = new Set<() => void>();
 function ensureHighlighter(): HighlighterCore | null {
   if (highlighter) return highlighter;
   if (highlighterPromise) return null;
-  highlighterPromise = createHighlighterCore({
-    themes: CURATED_THEMES,
-    langs: CURATED_LANGS,
-    engine: createJavaScriptRegexEngine()
-  })
+  highlighterPromise = Promise.all([
+    import("shiki/core"),
+    import("shiki/engine/javascript")
+  ])
+    .then(([{ createHighlighterCore }, { createJavaScriptRegexEngine }]) =>
+      createHighlighterCore({
+        themes: CURATED_THEMES,
+        langs: CURATED_LANGS,
+        engine: createJavaScriptRegexEngine()
+      })
+    )
     .then((instance) => {
       highlighter = instance;
       for (const cb of readyCallbacks) cb();

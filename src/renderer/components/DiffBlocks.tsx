@@ -219,7 +219,7 @@ function UnifiedHunk({
     <div className="diff-hunk">
       <div className="diff-hunk-header">
         <span>{block.header}</span>
-        {onIndexHunk ? <button type="button" onClick={onIndexHunk} aria-label={`${indexHunkLabel} hunk`}>{indexHunkLabel} hunk</button> : null}
+        {onIndexHunk ? <button type="button" onClick={onIndexHunk} aria-label={`${indexHunkLabel} hunk`}>{indexHunkLabel}</button> : null}
         {onRevertHunk ? <button type="button" onClick={onRevertHunk} aria-label="Revert unstaged hunk">Revert</button> : null}
       </div>
       {block.lines.map((line, index) => {

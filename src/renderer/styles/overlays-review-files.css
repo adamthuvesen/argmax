@@ -1106,6 +1106,13 @@
   border-bottom: 1px solid var(--line-soft);
 }
 
+.diff-hunk-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 /* The unchanged lines git left out between two hunks. A plain band in chat
    cards; in the review panel it is a full-width button that reloads the file
    with more context. */

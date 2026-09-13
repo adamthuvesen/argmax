@@ -105,6 +105,39 @@ async function prepareEvidenceDirectory(outputDir) {
   await mkdir(outputDir, { recursive: true });
 }
 
+async function prepareNativeAppBinary(binaryDirectory, sourceBinary) {
+  if (process.platform !== "darwin") return sourceBinary;
+
+  // A raw executable has no macOS app identity and can lose activation to the
+  // installed Argmax process. WebDriver still launches the executable itself.
+  const contentsDirectory = path.join(binaryDirectory, "Argmax Verification.app", "Contents");
+  const macosDirectory = path.join(contentsDirectory, "MacOS");
+  const nativeBinary = path.join(macosDirectory, "argmax");
+  await mkdir(macosDirectory, { recursive: true });
+  await copyFile(sourceBinary, nativeBinary);
+  await chmod(nativeBinary, (await stat(sourceBinary)).mode);
+  await writeFile(path.join(contentsDirectory, "Info.plist"), `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key>
+  <string>argmax</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.argmax.verification</string>
+  <key>CFBundleName</key>
+  <string>Argmax Verification</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+</dict>
+</plist>
+`);
+  return nativeBinary;
+}
+
 function isolatedEnvironment(home, fixturePath, controlDir, invocationLog, provider) {
   const env = {};
   for (const [key, value] of Object.entries(process.env)) {
@@ -943,10 +976,16 @@ export async function runVerification(options) {
     await mkdir(binaryDirectory, { recursive: true });
     await copyFile(builtBinary, binary);
     await chmod(binary, (await stat(builtBinary)).mode);
+    const nativeBinary = options.native === "off"
+      ? binary
+      : await prepareNativeAppBinary(binaryDirectory, builtBinary);
     const binarySha256 = await fileSha256(binary);
+    const nativeBinarySha256 = await fileSha256(nativeBinary);
     report.build = {
       sourceBinary: builtBinary,
-      launchedBinary: binary,
+      launchedBinary: options.native === "off" ? binary : nativeBinary,
+      backendBinary: binary,
+      nativeBinary,
       binarySha256,
       release: options.release,
       rendererDiagnostics: true,
@@ -960,14 +999,14 @@ export async function runVerification(options) {
     await writeFile(path.join(profile, "remote.json"), `${JSON.stringify({ enabled: true, port: remotePort, token: remoteToken }, null, 2)}\n`, { mode: 0o600 });
     if (options.native !== "off") {
       desktopModule = await import("./verification/desktop.mjs");
-      const prerequisites = await desktopModule.inspectDesktopPrerequisites({ appBinaryPath: binary });
+      const prerequisites = await desktopModule.inspectDesktopPrerequisites({ appBinaryPath: nativeBinary });
       report.native = { prerequisites };
       if (prerequisites.available) {
         const desktopPort = await freePort();
         if (interrupting) throw new Error("verification interrupted before native startup");
         restoreDriverOutput = silenceDriverOutput();
         const desktopConnection = desktopModule.connectDesktop({
-          appBinaryPath: binary,
+          appBinaryPath: nativeBinary,
           outputDir: path.join(outputDir, "native"),
           env: { ...env, ARGMAX_DATA_DIR: profile },
           port: desktopPort,
@@ -988,6 +1027,7 @@ export async function runVerification(options) {
     }
     if (!desktopHandle) {
       if (interrupting) throw new Error("verification interrupted before scratch startup");
+      report.build.launchedBinary = binary;
       const scratchStart = startScratchApp({
         dataDir: profile,
         binary,
@@ -1084,7 +1124,7 @@ export async function runVerification(options) {
         const desktopPort = await freePort();
         restoreDriverOutput = silenceDriverOutput();
         const desktopConnection = desktopModule.connectDesktop({
-          appBinaryPath: binary,
+          appBinaryPath: nativeBinary,
           outputDir: path.join(outputDir, "native"),
           env: { ...env, ARGMAX_DATA_DIR: profile },
           port: desktopPort,
@@ -1225,6 +1265,7 @@ export async function runVerification(options) {
     report.source.afterRun = await checkoutFingerprint(repoRoot);
     if (report.source.afterBuild.sha256 !== report.source.afterRun.sha256) throw new Error("checkout changed during verification; evidence does not describe one source state");
     if (await fileSha256(binary) !== binarySha256) throw new Error("verification binary changed during the run");
+    if (await fileSha256(nativeBinary) !== nativeBinarySha256) throw new Error("native verification binary changed during the run");
     report.assertions.push({ name: "checkout-stable", ok: true });
     report.status = "passed";
   } catch (error) {

@@ -76,6 +76,8 @@ export function ActivityPanel({ visible = true }: { visible?: boolean } = {}): J
   const [metric, setMetric] = useState<ActivityMetric>(cachedUi.metric);
   /** The repository the page is narrowed to; null is every repository. */
   const [projectId, setProjectId] = useState<string | null>(cachedUi.projectId);
+  const projectIdRef = useRef(projectId);
+  projectIdRef.current = projectId;
   const [summary, setSummary] = useState<ActivitySummary | null>(() =>
     getCachedActivitySummary(cachedUi.activityWindow, cachedUi.projectId, timeZoneRef.current)
   );
@@ -112,7 +114,7 @@ export function ActivityPanel({ visible = true }: { visible?: boolean } = {}): J
   // a warm read is sub-second, and a skeleton flash on every row press would
   // make the filter feel like navigation.
   useEffect(() => {
-    setSummary(getCachedActivitySummary(activityWindow, projectId, timeZoneRef.current));
+    setSummary(getCachedActivitySummary(activityWindow, projectIdRef.current, timeZoneRef.current));
   }, [activityWindow]);
 
   useEffect(() => {

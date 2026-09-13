@@ -119,6 +119,8 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
   const [metric, setMetric] = useState<UsageMetric>(cachedUi.metric);
   /** The provider the page is narrowed to; null is every provider. */
   const [provider, setProvider] = useState<ProviderId | null>(cachedUi.provider);
+  const providerRef = useRef(provider);
+  providerRef.current = provider;
   const [summary, setSummary] = useState<UsageSummary | null>(() =>
     getCachedUsageSummary(cachedUi.usageWindow, cachedUi.provider, timeZoneRef.current)
   );
@@ -180,7 +182,7 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
   // a warm sweep is sub-second, and a skeleton flash on every row press would
   // make the filter feel like navigation.
   useEffect(() => {
-    setSummary(getCachedUsageSummary(usageWindow, provider, timeZoneRef.current));
+    setSummary(getCachedUsageSummary(usageWindow, providerRef.current, timeZoneRef.current));
   }, [usageWindow]);
 
   useEffect(() => {

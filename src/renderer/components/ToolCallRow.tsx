@@ -13,7 +13,8 @@ import {
 } from "../lib/toolCalls.js";
 import { ActivityStat } from "./ActivityStat.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
-import { ToolCallDetail, toolCallHasExpandableDetail } from "./ToolCallDetail.js";
+import { ToolCallDetail } from "./ToolCallDetail.js";
+import { toolCallHasExpandableDetail } from "./toolCallDetailLogic.js";
 import { ServerIcon } from "./ServerIcon.js";
 import { WorkingNest } from "./WorkingNest.js";
 import { ToolActivityIcon } from "./ToolActivityIcon.js";

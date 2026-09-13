@@ -11,7 +11,8 @@ import { useSettleHold } from "../hooks/useSettleHold.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { AgentEmblem } from "./AgentEmblem.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
-import { ToolCallDetail, toolCallHasExpandableDetail } from "./ToolCallDetail.js";
+import { ToolCallDetail } from "./ToolCallDetail.js";
+import { toolCallHasExpandableDetail } from "./toolCallDetailLogic.js";
 import { WORKING_NEST_SETTLE_MS, WorkingNest } from "./WorkingNest.js";
 
 /**

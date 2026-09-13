@@ -1102,7 +1102,7 @@ export function App(): JSX.Element {
       clearPaneGrid();
       openRepoProjectLauncher(projectId);
     },
-    [openRepoProjectLauncher]
+    [openRepoProjectLauncher, setIsBrowserPageOpen]
   );
   const onOpenWorkspaceChatRow = useCallback(
     (workspaceId: string, modifiers: Parameters<typeof openWorkspaceChat>[1]): void => {
@@ -1140,7 +1140,7 @@ export function App(): JSX.Element {
       setIsBrowserPageOpen(false);
       openWorkspaceChat(target.workspaceId, { ctrlOrMeta: false, alt: false });
     },
-    [snapshot.sessions, openWorkspaceChat]
+    [snapshot.sessions, openWorkspaceChat, setIsBrowserPageOpen]
   );
   const onOpenLauncherRow = useCallback((): void => {
     hideStandalonePage();
@@ -1326,6 +1326,7 @@ export function App(): JSX.Element {
     launcherProject,
     launcherSideChatMode,
     openWorkspaceChat,
+    setIsBrowserPageOpen,
     selectedSession?.workspaceId,
     selectedWorkspace?.id,
     setSnapshot,
@@ -1782,6 +1783,7 @@ export function App(): JSX.Element {
       openWorkspaceChat,
       openMessagePalette,
       onOpenBrowserRow,
+      setIsBrowserPageOpen,
       setSelectedProjectId,
       themeMode,
       handleThemeModeChange,
@@ -1849,7 +1851,7 @@ export function App(): JSX.Element {
         }
       }));
     },
-    [sessionLabelById, snapshot.sessions, openWorkspaceChat]
+    [sessionLabelById, snapshot.sessions, openWorkspaceChat, setIsBrowserPageOpen]
   );
 
   // `git grep` over the active surface's checkout, backing the palette's

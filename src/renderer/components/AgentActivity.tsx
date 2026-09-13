@@ -723,15 +723,16 @@ function AgentActivityRun({
 }
 
 export function AgentActivity(props: Parameters<typeof AgentActivityRun>[0]): JSX.Element {
-  const [historyHydrated, setHistoryHydrated] = useState(!props.onLoadAgentEvents);
-  const loadAgentEvents = useCallback<NonNullable<typeof props.onLoadAgentEvents>>(async (...args) => {
+  const onLoadAgentEventsProp = props.onLoadAgentEvents;
+  const [historyHydrated, setHistoryHydrated] = useState(!onLoadAgentEventsProp);
+  const loadAgentEvents = useCallback<NonNullable<typeof onLoadAgentEventsProp>>(async (...args) => {
     try {
-      return await props.onLoadAgentEvents?.(...args);
+      return await onLoadAgentEventsProp?.(...args);
     } finally {
       setHistoryHydrated(true);
     }
-  }, [props.onLoadAgentEvents]);
-  const onLoadAgentEvents = props.onLoadAgentEvents ? loadAgentEvents : undefined;
+  }, [onLoadAgentEventsProp]);
+  const onLoadAgentEvents = onLoadAgentEventsProp ? loadAgentEvents : undefined;
   const parentSessionId = props.parentSession?.id ?? null;
   const visibleEvents = parentSessionId
     ? props.events.filter((event) => event.sessionId === parentSessionId)

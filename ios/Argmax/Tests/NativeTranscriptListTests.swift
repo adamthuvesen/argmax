@@ -250,7 +250,7 @@ final class NativeTranscriptListTests: XCTestCase {
         XCTAssertEqual(tailGap(in: scrollView), 0, accuracy: 1)
     }
 
-    func testOpeningChatShorterThanViewportPlacesReplyAtBottom() async {
+    func testOpeningChatShorterThanViewportHasNoEmptySpaceAbovePrompt() async {
         let state = TranscriptListTestState(items: [.init(id: "prompt", height: 44),
                                                    .init(id: "reply", height: 88)],
                                             turnAnchorID: "prompt")
@@ -259,12 +259,12 @@ final class NativeTranscriptListTests: XCTestCase {
         let host = TranscriptListTestHost(state: state, size: CGSize(width: 390, height: 844))
         defer { host.close() }
         for _ in 0..<20 { await settle(host) }
-        guard let scrollView = host.scrollView, let reply = state.rowFrames["reply"] else {
+        guard let scrollView = host.scrollView, let prompt = state.rowFrames["prompt"] else {
             return XCTFail("The short chat did not lay out")
         }
         let viewport = scrollView.convert(scrollView.bounds, to: host.window)
-        XCTAssertEqual(reply.frame.maxY,
-                       viewport.maxY - scrollView.adjustedContentInset.bottom - 20, accuracy: 1)
+        XCTAssertEqual(prompt.frame.minY,
+                       viewport.minY + scrollView.adjustedContentInset.top + 16, accuracy: 1)
         XCTAssertEqual(scrollView.contentSize.height, 44 + 88 + 36, accuracy: 1)
     }
 

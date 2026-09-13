@@ -107,7 +107,7 @@ where Item.ID == String {
         // stranded above the bottom edge.
         .scrollDismissesKeyboard(.immediately)
         .defaultScrollAnchor(.bottom, for: .initialOffset)
-        .defaultScrollAnchor(.bottom, for: .alignment)
+        .defaultScrollAnchor(.top, for: .alignment)
         .scrollPosition($position)
         .accessibilityIdentifier("native-transcript")
         .onScrollGeometryChange(for: TranscriptScrollGeometry.self) { value in

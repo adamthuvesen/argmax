@@ -1287,36 +1287,29 @@ enum TranscriptProjection {
 
     // MARK: - Todos, approvals, multitasks and notices
 
+    /// Same fold as `src/renderer/lib/todoList.ts`: snapshots replace, merges
+    /// patch by id, and each turn that touched the plan keeps the list as it
+    /// stood when that turn ended.
     private static func todoSnapshots(events: [TranscriptEvent]) -> [String: TranscriptTodoList] {
         var items: [TranscriptTodoItem] = []
         var latestByTurn: [String: (eventID: String, list: TranscriptTodoList)] = [:]
         var turnID = "opening"
         for event in events {
-            if event.type == "user.message", event.payloadObject["delivery"]?.string != "steer" { turnID = event.id }
-            guard event.type == "todo.updated", let rawItems = event.payloadObject["items"]?.array else { continue }
-            let incoming = rawItems.enumerated().compactMap { index, value in
-                todoItem(value, fallbackID: "item-\(index)")
+            if event.type == "user.message", event.payloadObject["delivery"]?.string != "steer" {
+                turnID = event.id
             }
+            guard event.type == "todo.updated" else { continue }
+            guard let rawItems = event.payloadObject["items"]?.array else { continue }
+            let incoming = rawItems.compactMap(todoItem)
             guard !incoming.isEmpty else { continue }
             if event.payloadObject["mode"]?.string == "snapshot" {
-                items = incoming.compactMap { item in
-                    guard let status = item.status else { return nil }
-                    return TranscriptTodoItem(id: item.id, text: item.text, status: status)
-                }
+                items = incoming.filter { $0.status != .removed }
             } else {
-                for item in incoming {
-                    if item.status == nil {
-                        items.removeAll { $0.id == item.id }
-                    } else if let index = items.firstIndex(where: { $0.id == item.id }) {
-                        items[index] = TranscriptTodoItem(
-                            id: item.id,
-                            text: item.text ?? items[index].text,
-                            status: item.status ?? items[index].status
-                        )
-                    } else if let status = item.status {
-                        items.append(TranscriptTodoItem(id: item.id, text: item.text, status: status))
-                    }
-                }
+                for item in incoming { items = mergeTodo(items, item) }
+            }
+            if items.isEmpty {
+                latestByTurn.removeValue(forKey: turnID)
+                continue
             }
             let list = TranscriptTodoList(id: "todo-\(turnID)", items: items, createdAt: event.createdAt)
             latestByTurn[turnID] = (event.id, list)
@@ -1324,16 +1317,42 @@ enum TranscriptProjection {
         return Dictionary(uniqueKeysWithValues: latestByTurn.values.map { ($0.eventID, $0.list) })
     }
 
-    private static func todoItem(
-        _ value: TranscriptJSONValue,
-        fallbackID: String
-    ) -> (id: String, text: String?, status: TranscriptTodoStatus?)? {
+    private static func todoItem(_ value: TranscriptJSONValue) -> TranscriptTodoItem? {
         guard let object = value.object else { return nil }
-        let id = object["id"]?.string ?? object["text"]?.string ?? fallbackID
-        let rawStatus = object["status"]?.string
-        if rawStatus == "removed" { return (id, nil, nil) }
-        guard let rawStatus, let status = TranscriptTodoStatus(rawValue: rawStatus) else { return nil }
-        return (id, object["text"]?.string, status)
+        guard let rawStatus = object["status"]?.string,
+              let status = TranscriptTodoStatus(rawValue: rawStatus)
+        else { return nil }
+        return TranscriptTodoItem(
+            id: nonempty(object["id"]?.string),
+            text: nonempty(object["text"]?.string),
+            status: status
+        )
+    }
+
+    private static func nonempty(_ value: String?) -> String? {
+        guard let value, !value.isEmpty else { return nil }
+        return value
+    }
+
+    private static func mergeTodo(
+        _ items: [TranscriptTodoItem],
+        _ incoming: TranscriptTodoItem
+    ) -> [TranscriptTodoItem] {
+        if incoming.status == .removed {
+            guard let id = incoming.id else { return items }
+            return items.filter { $0.id != id }
+        }
+        guard let id = incoming.id else { return items + [incoming] }
+        if let index = items.firstIndex(where: { $0.id == id }) {
+            var next = items
+            next[index] = TranscriptTodoItem(
+                id: id,
+                text: incoming.text ?? items[index].text,
+                status: incoming.status
+            )
+            return next
+        }
+        return items + [incoming]
     }
 
     private static func approval(from event: TranscriptEvent) -> TranscriptApproval? {

@@ -43,6 +43,30 @@ final class MobileTranscriptRowsTests: XCTestCase {
         }
     }
 
+    /// The agent's plan is a beat in the conversation, not another tool
+    /// row, so Compact and Minimal keep it outside the activity fold.
+    func testPlanStaysVisibleInsteadOfFoldingIntoActivity() {
+        let plan = TranscriptItem.todo(.init(
+            id: "todo-user",
+            items: [
+                .init(id: "1", text: "Collect skill names", status: .active),
+                .init(id: "2", text: "Wire the labels", status: .pending)
+            ],
+            createdAt: "1"
+        ))
+        for detail in [MobileChatDetail.minimal, .compact] {
+            let rows = MobileTranscriptRow.rows(
+                [message("user", user: true), thought("thought"), plan, tools("tools"), message("answer")],
+                detail: detail
+            )
+            XCTAssertTrue(rows.contains(.item(plan)))
+            XCTAssertFalse(rows.contains { row in
+                if case .activity(let items) = row { return items.contains(plan) }
+                return false
+            })
+        }
+    }
+
     func testHigherLevelsKeepStepsIndividuallyInspectableAndEmptyInputIsEmpty() {
         let items = [thought("thought"), tools("tools"), message("answer")]
         for detail in [MobileChatDetail.balanced, .detailed] {

@@ -106,6 +106,7 @@ struct TranscriptContentRow: View {
     var onOpenDiff: ((String) -> Void)? = nil
     var onRevisePlan: () -> Void = {}
     var onOpenSession: ((String) -> Void)?
+    @EnvironmentObject private var transcript: TranscriptStore
 
     var body: some View {
         switch item {
@@ -116,7 +117,12 @@ struct TranscriptContentRow: View {
         case .tools(let group):
             TranscriptToolsRow(group: group, onOpenFile: onOpenFile, onOpenDiff: onOpenDiff)
         case .todo(let list):
-            TranscriptTodoRow(list: list)
+            TranscriptTodoRow(
+                list: list,
+                running: transcript.session?.state == .running
+                    && transcript.connection == .live
+                    && list.isCurrentTurn(in: transcript.items)
+            )
         case .notice(let notice):
             Text(notice.text)
                 .typeStyle(.footnote)

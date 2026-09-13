@@ -76,7 +76,10 @@ export function activityLabel(activity: ToolActivity, state: ActivityState, plur
     }
     case "browser": verbs = ["Using the browser", "Used the browser", "Browser action"]; break;
     case "plan": verbs = ["Updating the plan", "Updated the plan", "Plan update"]; break;
-    case "skill": verbs = ["Activating a skill", "Activated a skill", "Skill activation"]; break;
+    case "skill": {
+      const named = plural ? "skills" : target ? `${target} skill` : "a skill";
+      verbs = [`Activating ${named}`, `Activated ${named}`, "Skill activation"]; break;
+    }
     case "tool": verbs = [plural ? "Using tools" : "Using a tool", plural ? "Used tools" : "Used a tool", "Tool call"]; break;
   }
   if (state === "running") return verbs[0];
@@ -87,8 +90,19 @@ export function activityLabel(activity: ToolActivity, state: ActivityState, plur
 export function describeActivity(tool: ToolCall): string | null {
   const activity = tool.activity;
   if (!activity) return null;
-  const target = activity.targets.length === 1 ? activity.targets[0]?.split(/[\\/]/).pop() : undefined;
+  const raw = activity.targets.length === 1 ? activity.targets[0] : undefined;
+  const target = raw === undefined
+    ? undefined
+    : activity.kind === "skill" ? skillTargetName(raw) : raw.split(/[\\/]/).pop();
   return activityLabel(activity, toolActivityState(tool), activity.targets.length > 1, target);
+}
+
+/** Parent folder of `SKILL.md`, otherwise the last path component. */
+function skillTargetName(target: string): string | undefined {
+  const parts = target.split(/[\\/]/).filter(Boolean);
+  const file = parts.at(-1);
+  if (file === "SKILL.md") return parts.at(-2);
+  return file;
 }
 
 export function summarizeActivities(tools: ToolCall[]): { headline: string; iconKind: ToolActivityKind } {
@@ -106,8 +120,12 @@ export function summarizeActivities(tools: ToolCall[]): { headline: string; icon
       activity.targets.forEach((path) => group.targets.add(path));
     } else groups.set(key, { activity, state, count: 1, targets: new Set(activity.targets) });
   }
-  const labels = [...groups.values()].map(({ activity, state, count, targets }) =>
-    activityLabel(activity, state, targets.size ? targets.size > 1 : count > 1));
+  const labels = [...groups.values()].map(({ activity, state, count, targets }) => {
+    const plural = targets.size ? targets.size > 1 : count > 1;
+    const raw = activity.kind === "skill" && !plural && targets.size === 1 ? [...targets][0] : undefined;
+    const target = raw === undefined ? undefined : skillTargetName(raw);
+    return activityLabel(activity, state, plural, target);
+  });
   return {
     headline: labels.map((label, index) => index ? label[0]?.toLowerCase() + label.slice(1) : label).join(", "),
     iconKind: groups.values().next().value?.activity.kind ?? "tool"

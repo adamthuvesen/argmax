@@ -36,7 +36,7 @@ enum MobileTranscriptRow: Equatable, Identifiable {
                 case .user:
                     laterWork = false
                     laterAnswer = false
-                case .thought, .tools, .todo: laterWork = true
+                case .thought, .tools: laterWork = true
                 case .assistant(let message):
                     if laterWork && laterAnswer && message.attachments.isEmpty { narration.insert(item.id) }
                     laterAnswer = true
@@ -52,7 +52,7 @@ enum MobileTranscriptRow: Equatable, Identifiable {
         for item in items {
             let fold: Bool
             switch item {
-            case .thought, .todo, .tools: fold = true
+            case .thought, .tools: fold = true
             case .assistant: fold = narration.contains(item.id)
             default: fold = false
             }

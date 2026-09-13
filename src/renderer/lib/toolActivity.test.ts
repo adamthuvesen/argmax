@@ -196,6 +196,53 @@ describe("activity-aware summaries", () => {
     expect(label("git", ["add", "commit"])).toBe("Ran git commands");
     expect(label("browser")).toBe("Used the browser");
     expect(label("plan")).toBe("Updated the plan");
+    expect(label("skill")).toBe("Activated a skill");
+    expect(label("skill", ["debug"])).toBe("Activated debug skill");
+    expect(label("skill", ["debug", "impl"])).toBe("Activated skills");
+    expect(
+      describeToolAction(
+        tool({
+          name: "Read",
+          activity: {
+            version: 1,
+            kind: "skill",
+            evidence: "tool",
+            targets: ["/skills/debug/SKILL.md"]
+          }
+        })
+      )
+    ).toBe("Activated debug skill");
+    expect(
+      describeToolAction(
+        tool({
+          name: "Skill",
+          status: "running",
+          activity: { version: 1, kind: "skill", evidence: "tool", targets: ["debug"] }
+        })
+      )
+    ).toBe("Activating debug skill");
+    expect(
+      summarizeToolGroup([
+        tool({
+          name: "Skill",
+          activity: { version: 1, kind: "skill", evidence: "tool", targets: ["debug"] }
+        })
+      ]).headline
+    ).toBe("Activated debug skill");
+    expect(
+      summarizeToolGroup([
+        tool({
+          name: "Skill",
+          id: "skill-a",
+          activity: { version: 1, kind: "skill", evidence: "tool", targets: ["debug"] }
+        }),
+        tool({
+          name: "Skill",
+          id: "skill-b",
+          activity: { version: 1, kind: "skill", evidence: "tool", targets: ["impl"] }
+        })
+      ]).headline
+    ).toBe("Activated skills");
   });
 
   it("keeps browser identity when a screenshot result arrives", () => {

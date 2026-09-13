@@ -164,26 +164,90 @@ pub fn enrich_tool_activity(event_type: &str, payload: &mut Value) {
         }
     }
     // Reading the entrypoint is how providers without a Skill tool activate
-    // skills. Apply this to persisted activity too, so old chats agree.
+    // skills. Apply this to persisted activity too, so old chats agree, and
+    // keep the skill's directory name on `targets` so the row can name it.
+    let skill_input = tool_input(fields).cloned();
     if let Some(activity) = fields.get_mut("activity") {
-        let reads_skills = activity.get("version").and_then(Value::as_u64) == Some(1)
-            && activity.get("kind").and_then(Value::as_str) == Some("read")
-            && activity
-                .get("targets")
-                .and_then(Value::as_array)
-                .is_some_and(|targets| {
-                    !targets.is_empty()
-                        && targets.iter().all(|target| {
-                            target.as_str().is_some_and(|path| {
-                                path.rsplit(['/', '\\']).next() == Some("SKILL.md")
-                            })
-                        })
-                });
-        if reads_skills {
-            activity["kind"] = json!("skill");
-        }
+        normalize_skill_activity(activity, skill_input.as_ref());
     }
     enrich_command_outcome(event_type, fields);
+}
+
+fn normalize_skill_activity(activity: &mut Value, input: Option<&Value>) {
+    let Some(fields) = activity.as_object_mut() else {
+        return;
+    };
+    if fields.get("version").and_then(Value::as_u64) != Some(1) {
+        return;
+    }
+    let kind = fields.get("kind").and_then(Value::as_str);
+    let reads_skills = kind == Some("read")
+        && fields
+            .get("targets")
+            .and_then(Value::as_array)
+            .is_some_and(|targets| !targets.is_empty() && targets.iter().all(is_skill_md_target));
+    if kind != Some("skill") && !reads_skills {
+        return;
+    }
+    if reads_skills {
+        fields.insert("kind".to_string(), json!("skill"));
+    }
+    if let Some(Value::Array(targets)) = fields.get_mut("targets") {
+        let rewritten = targets
+            .iter()
+            .filter_map(|target| {
+                let path = target.as_str().filter(|path| !path.is_empty())?;
+                if is_skill_md_path(path) {
+                    skill_name_from_path(path).map(Value::String)
+                } else {
+                    Some(Value::String(path.to_owned()))
+                }
+            })
+            .collect::<Vec<_>>();
+        *targets = rewritten;
+    }
+    let empty_targets = fields
+        .get("targets")
+        .and_then(Value::as_array)
+        .is_none_or(|targets| targets.is_empty());
+    if empty_targets {
+        if let Some(name) = skill_input_name(input) {
+            fields.insert("targets".to_string(), json!([name]));
+        }
+    }
+}
+
+fn is_skill_md_target(value: &Value) -> bool {
+    value.as_str().is_some_and(is_skill_md_path)
+}
+
+fn is_skill_md_path(path: &str) -> bool {
+    path.rsplit(['/', '\\']).next() == Some("SKILL.md")
+}
+
+fn skill_name_from_path(path: &str) -> Option<String> {
+    let file = path.rsplit(['/', '\\']).next()?;
+    if file != "SKILL.md" {
+        return None;
+    }
+    let parent = path[..path.len() - file.len()].trim_end_matches(['/', '\\']);
+    parent
+        .rsplit(['/', '\\'])
+        .next()
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned)
+}
+
+fn skill_input_name(input: Option<&Value>) -> Option<String> {
+    let fields = input?.as_object()?;
+    ["skill", "name", "command"].into_iter().find_map(|key| {
+        fields
+            .get(key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+    })
 }
 
 fn enrich_command_outcome(event_type: &str, payload: &mut Map<String, Value>) {
@@ -422,7 +486,7 @@ fn classify(payload: &Map<String, Value>) -> Option<Activity> {
         "toolsearch" | "searchtool" | "getmcptools" | "getmcptoolstoolcall" => {
             (ActivityKind::Discovery, Evidence::Tool, None)
         }
-        "skill" | "loadskill" => (ActivityKind::Skill, Evidence::Tool, None),
+        "skill" | "loadskill" | "useskill" => (ActivityKind::Skill, Evidence::Tool, None),
         "task" | "agent" | "spawnsubagent" | "tasktoolcall" | "spawnagent" => {
             (ActivityKind::Agent, Evidence::Tool, None)
         }
@@ -520,9 +584,13 @@ fn activity_from_input(
             | ActivityKind::MemorySave
             | ActivityKind::Git
             | ActivityKind::Plan
-            | ActivityKind::Skill
             | ActivityKind::Computer
             | ActivityKind::ImageGenerate => {}
+            ActivityKind::Skill => {
+                if let Some(name) = skill_input_name(Some(input)) {
+                    targets.push(name);
+                }
+            }
         }
     }
     deduplicate(&mut targets);
@@ -1767,7 +1835,7 @@ mod tests {
         ] {
             let result = activity(payload);
             assert_eq!(result["kind"], "skill");
-            assert_eq!(result["targets"], json!(["/skills/impl/SKILL.md"]));
+            assert_eq!(result["targets"], json!(["impl"]));
         }
         for command in [
             "cat /skills/impl/references/guide.md",
@@ -1785,6 +1853,48 @@ mod tests {
             )["kind"],
             "edit"
         );
+    }
+
+    #[test]
+    fn skill_tools_put_the_skill_name_on_targets_including_history() {
+        assert_eq!(
+            activity(json!({"name":"Skill","input":{"skill":"debug"}}))["targets"],
+            json!(["debug"])
+        );
+        assert_eq!(
+            activity(json!({"name":"skill","input":{"name":"git-release"}}))["targets"],
+            json!(["git-release"])
+        );
+        assert_eq!(
+            activity(json!({"name":"use_skill","input":{"command":"review"}}))["targets"],
+            json!(["review"])
+        );
+        assert_eq!(
+            activity(json!({
+                "name":"Skill",
+                "input":{"skill":"debug"},
+                "activity":{"version":1,"kind":"skill","evidence":"tool","targets":[]}
+            }))["targets"],
+            json!(["debug"])
+        );
+        assert_eq!(
+            activity(json!({
+                "name":"Read",
+                "activity":{
+                    "version":1,
+                    "kind":"skill",
+                    "evidence":"tool",
+                    "targets":["/skills/debug/SKILL.md"]
+                }
+            }))["targets"],
+            json!(["debug"])
+        );
+        let prefer_skill = activity(json!({
+            "name":"Skill",
+            "input":{"skill":"debug","name":"other","command":"also"}
+        }));
+        assert_eq!(prefer_skill["kind"], "skill");
+        assert_eq!(prefer_skill["targets"], json!(["debug"]));
     }
 
     #[test]

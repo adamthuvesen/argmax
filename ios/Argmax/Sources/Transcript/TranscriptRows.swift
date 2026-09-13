@@ -479,36 +479,122 @@ private struct TranscriptToolRow: View {
 
 struct TranscriptTodoRow: View {
     let list: TranscriptTodoList
+    var running = false
+
+    @State private var userExpanded: Bool?
+
+    private var expanded: Bool { userExpanded ?? running }
 
     var body: some View {
-        DisclosureGroup {
-            VStack(alignment: .leading, spacing: Spacing.row) {
-                ForEach(list.items) { item in
-                    Label {
-                        Text(item.text ?? "Task").typeStyle(.footnote)
-                    } icon: {
-                        Image(systemName: symbol(item.status)).typeSymbol(.footnote)
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeOut(duration: 0.16)) { userExpanded = !expanded }
+            } label: {
+                HStack(spacing: Spacing.tight) {
+                    Image(systemName: "chevron.right")
+                        .typeSymbol(.caption2, weight: .semibold)
+                        .foregroundStyle(Theme.muted.opacity(expanded ? 0.55 : 0.28))
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+                        .accessibilityHidden(true)
+                    Text("Plan")
+                        .typeStyle(.footnote)
+                        .foregroundStyle(Theme.mutedStrong)
+                        .fixedSize()
+                    Text("\(list.doneCount) of \(list.items.count)")
+                        .typeStyle(.footnote, monospacedDigit: true)
+                        .foregroundStyle(Theme.muted)
+                        .fixedSize()
+                    if !expanded, let tail = list.collapsedTail {
+                        Text(tail)
+                            .typeStyle(.footnote)
+                            .foregroundStyle(Theme.muted)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                     }
-                        .foregroundStyle(item.status == .active ? Theme.ink : Theme.muted)
-                        .strikethrough(item.status == .cancelled)
+                    Spacer(minLength: 0)
+                }
+                .frame(minHeight: TranscriptActivityRow<EmptyView>.height)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(headLabel)
+            .accessibilityValue(expanded ? "Expanded" : "Collapsed")
+            .accessibilityAddTraits(.isButton)
+
+            if expanded {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(list.visibleItems.enumerated()), id: \.offset) { _, item in
+                        todoItem(item)
+                    }
                 }
             }
-            .padding(.bottom, Spacing.snug)
-        } label: {
-            Text("Plan · \(list.items.filter { $0.status == .done }.count) of \(list.items.count) complete")
-                .typeStyle(.footnote)
-                .foregroundStyle(Theme.muted)
-                .frame(minHeight: 44)
         }
-        .tint(Theme.muted)
+        .accessibilityElement(children: .contain)
     }
 
-    private func symbol(_ status: TranscriptTodoStatus) -> String {
+    private var headLabel: String {
+        var label = "Plan \(list.doneCount) of \(list.items.count)"
+        if !expanded, let tail = list.collapsedTail {
+            label += " \(tail)"
+        }
+        return label
+    }
+
+    private func todoItem(_ item: TranscriptTodoItem) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Spacing.tight) {
+            todoMark(item.status)
+                .frame(width: 12, height: 12)
+                .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
+            Text(TranscriptTodoList.label(for: item))
+                .typeStyle(.footnote, weight: item.status == .active && item.text != nil ? .medium : .regular)
+                .foregroundStyle(labelInk(item))
+                .strikethrough(item.status == .cancelled, color: Theme.line)
+        }
+        .padding(.vertical, Spacing.tight)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(statusLabel(item.status)), \(TranscriptTodoList.label(for: item))")
+    }
+
+    @ViewBuilder
+    private func todoMark(_ status: TranscriptTodoStatus) -> some View {
         switch status {
-        case .pending: "circle"
-        case .active: "circle.lefthalf.filled"
-        case .done: "checkmark.circle.fill"
-        case .cancelled: "minus.circle"
+        case .done:
+            Image(systemName: "checkmark")
+                .typeSymbol(size: 9, weight: .semibold)
+                .foregroundStyle(Theme.sage)
+                .accessibilityHidden(true)
+        case .active:
+            WorkingNest(size: 12, active: running)
+                .accessibilityHidden(true)
+        case .cancelled:
+            Image(systemName: "xmark")
+                .typeSymbol(size: 8, weight: .semibold)
+                .foregroundStyle(Theme.muted)
+                .accessibilityHidden(true)
+        case .pending, .removed:
+            Circle()
+                .strokeBorder(Theme.muted.opacity(0.55), lineWidth: 1.25)
+                .frame(width: 7, height: 7)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func labelInk(_ item: TranscriptTodoItem) -> Color {
+        if item.text == nil { return Theme.muted }
+        switch item.status {
+        case .done, .cancelled, .removed: return Theme.muted
+        case .pending: return Theme.mutedStrong
+        case .active: return Theme.ink
+        }
+    }
+
+    private func statusLabel(_ status: TranscriptTodoStatus) -> String {
+        switch status {
+        case .done: "Done"
+        case .active: "In progress"
+        case .pending: "Pending"
+        case .cancelled: "Cancelled"
+        case .removed: "Removed"
         }
     }
 }

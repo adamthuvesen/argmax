@@ -34,6 +34,7 @@ function tool(overrides: Partial<ToolCall> & Pick<ToolCall, "name">): ToolCall {
     createdAt: overrides.createdAt ?? "2026-05-12T15:00:00.000Z",
     completedAt: overrides.completedAt ?? "2026-05-12T15:00:01.000Z",
     completionObserved: overrides.completionObserved,
+    activity: overrides.activity,
     error: overrides.error ?? null,
     parentToolUseId: overrides.parentToolUseId ?? null
   };
@@ -575,10 +576,17 @@ describe("describeToolAction", () => {
     );
   });
 
-  it("skill → 'Activated skill <name>'", () => {
-    expect(describeToolAction(tool({ name: "Skill", inputPreview: "brain-curate" }))).toBe(
-      "Activated skill brain-curate"
-    );
+  it("skill → 'Activated <name> skill'", () => {
+    expect(
+      describeToolAction(
+        tool({
+          name: "Skill",
+          inputPreview: "brain-curate",
+          completionObserved: true,
+          activity: { version: 1, kind: "skill", evidence: "tool", targets: ["brain-curate"] }
+        })
+      )
+    ).toBe("Activated brain-curate skill");
     expect(extractToolInputPreview("Skill", { skill: "brain-curate" })).toBe("brain-curate");
   });
 

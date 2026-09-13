@@ -161,12 +161,7 @@ struct TranscriptAgentActivityRow: View {
         case .approval(let approval):
             Label(approval.command, systemImage: "lock.shield").typeMeta()
         case .todo(let list):
-            VStack(alignment: .leading, spacing: Spacing.tight) {
-                ForEach(list.items) { item in
-                    Label(item.text ?? "Untitled task", systemImage: item.status == .done ? "checkmark.circle.fill" : "circle")
-                        .typeMeta()
-                }
-            }
+            TranscriptTodoRow(list: list)
         case .agents(let group):
             // Named, because an agent that delegated further is the one thing
             // in this sheet the reader cannot open from here.

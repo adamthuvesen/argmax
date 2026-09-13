@@ -1077,6 +1077,13 @@
   padding-left: 0;
 }
 
+/* Opening a group remounts its child rows for inspection. Replaying the live
+   row entrance transform there briefly composites the icons, then makes their
+   rasterization snap sideways when the transform layer is released. */
+.tool-call-group-body .tool-call-row {
+  animation: none;
+}
+
 /* Activity headlines stay mounted as calls arrive. Fade once on entry without
    replaying the animation when the summary or current action changes. */
 .activity-summary-line .activity-summary-headline {

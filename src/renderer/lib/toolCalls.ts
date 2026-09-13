@@ -367,13 +367,6 @@ export function describeToolAction(tool: ToolCall): string {
     return `${activity}: ${command}`;
   }
   if (activity && tool.activity?.kind !== "tool") return activity;
-  // Claude's Skill tool fires when the agent activates a skill. The skill's
-  // full body streams separately (and is dropped upstream as noise), so the
-  // row is the one durable marker — make it name the skill outright instead of
-  // a bare "Skill".
-  if (tool.name.toLowerCase() === "skill") {
-    return tool.inputPreview ? `Activated skill ${tool.inputPreview}` : "Activated skill";
-  }
   const mcpLabel = mcpToolLabel(tool.name);
   if (mcpLabel) return tool.inputPreview ? `${mcpLabel} ${tool.inputPreview}` : mcpLabel;
   const bucket = getFineBucket(tool.name);

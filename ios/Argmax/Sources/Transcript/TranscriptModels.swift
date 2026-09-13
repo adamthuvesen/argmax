@@ -268,7 +268,7 @@ struct TranscriptTool: Hashable, Sendable, Identifiable {
 
     var activitySummary: String {
         let target: String? = activity.targets.count == 1
-            ? activity.targets[0].split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init)
+            ? TranscriptToolActivity.displayTarget(activity.targets[0], kind: activity.kind)
             : nil
         return activity.label(state: activityState, plural: activity.targets.count > 1, target: target)
     }
@@ -283,6 +283,16 @@ struct TranscriptToolGroup: Hashable, Sendable, Identifiable {
 }
 
 extension TranscriptToolActivity {
+    /// Parent folder of `SKILL.md`, otherwise the last path component.
+    static func displayTarget(_ path: String, kind: TranscriptToolActivityKind) -> String? {
+        let parts = path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).map(String.init)
+        guard let file = parts.last, !file.isEmpty else { return nil }
+        if kind == .skill, file == "SKILL.md" {
+            return parts.dropLast().last
+        }
+        return file
+    }
+
     func label(state: TranscriptToolActivityState, plural: Bool = false, target: String? = nil) -> String {
         let file = target ?? (plural ? "files" : "a file")
         let image = target ?? (plural ? "images" : "an image")
@@ -343,7 +353,8 @@ extension TranscriptToolActivity {
         case .plan:
             labels = ("Updating the plan", "Updated the plan", "Plan update")
         case .skill:
-            labels = ("Activating a skill", "Activated a skill", "Skill activation")
+            let named = plural ? "skills" : (target.map { "\($0) skill" } ?? "a skill")
+            labels = ("Activating \(named)", "Activated \(named)", "Skill activation")
         case .tool:
             labels = (plural ? "Using tools" : "Using a tool",
                       plural ? "Used tools" : "Used a tool", "Tool call")
@@ -382,10 +393,11 @@ extension TranscriptToolActivity {
             }
         }
         let labels = groups.map { group in
-            group.activity.label(
-                state: group.state,
-                plural: group.targets.isEmpty ? group.count > 1 : group.targets.count > 1
-            )
+            let plural = group.targets.isEmpty ? group.count > 1 : group.targets.count > 1
+            let target: String? = group.activity.kind == .skill && !plural && group.targets.count == 1
+                ? group.targets.first.flatMap { TranscriptToolActivity.displayTarget($0, kind: .skill) }
+                : nil
+            return group.activity.label(state: group.state, plural: plural, target: target)
         }
         let headline = labels.enumerated().map { index, label in
             guard index > 0, let first = label.first else { return label }
@@ -437,10 +449,13 @@ enum TranscriptTodoStatus: String, Hashable, Sendable {
     case active
     case done
     case cancelled
+    case removed
 }
 
-struct TranscriptTodoItem: Hashable, Sendable, Identifiable {
-    var id: String
+struct TranscriptTodoItem: Hashable, Sendable {
+    /// Null for OpenCode, which numbers nothing.
+    var id: String?
+    /// Null until a snapshot names it; Grok sends status-only deltas.
     var text: String?
     var status: TranscriptTodoStatus
 }
@@ -449,6 +464,34 @@ struct TranscriptTodoList: Hashable, Sendable, Identifiable {
     var id: String
     var items: [TranscriptTodoItem]
     var createdAt: String
+
+    var doneCount: Int { items.filter { $0.status == .done }.count }
+    var active: TranscriptTodoItem? { items.first { $0.status == .active } }
+    var visibleItems: [TranscriptTodoItem] { items.filter { $0.status != .removed } }
+
+    /// What the headline says once the list is folded away.
+    var collapsedTail: String? {
+        if let text = active?.text { return "· \(text)" }
+        guard !items.isEmpty else { return nil }
+        if doneCount == items.count { return "· all done" }
+        if doneCount == 0 { return "· not started" }
+        return nil
+    }
+
+    static func label(for item: TranscriptTodoItem) -> String {
+        if let text = item.text { return text }
+        if let id = item.id { return "Task \(id)" }
+        return "Untitled task"
+    }
+
+    /// The turn that owns this card is still the latest one.
+    func isCurrentTurn(in items: [TranscriptItem]) -> Bool {
+        guard let index = items.lastIndex(where: { $0.id == id }) else { return false }
+        return !items[(index + 1)...].contains { item in
+            if case .user(let message) = item { return !message.isSteering }
+            return false
+        }
+    }
 }
 
 enum TranscriptApprovalStatus: String, Hashable, Sendable {

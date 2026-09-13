@@ -63,6 +63,13 @@ when that turn ended, so scrolling back does not rewrite history.
 [TodoCard.tsx](../src/renderer/components/TodoCard.tsx) is expanded while its
 turn runs and collapsed to one line once it ends, until the reader says
 otherwise. The active row carries `WorkingNest`, the app's one running mark.
+The iPhone transcript uses the same fold
+([TranscriptProjection.swift](../ios/Argmax/Sources/Transcript/TranscriptProjection.swift))
+and the same card grammar
+([TranscriptTodoRow](../ios/Argmax/Sources/Transcript/TranscriptRows.swift)):
+expanded while its turn runs, collapsed to one line once it ends. Compact and
+Minimal keep the plan as its own row; it does not fold into the activity
+summary.
 
 Grok is the one provider whose two transports disagree: over ACP — which is
 what Argmax launches — the list arrives inside a *tool result* as a JSON string

@@ -629,6 +629,54 @@ final class TranscriptProjectionTests: XCTestCase {
         XCTAssertEqual(succeeded.activity.label(state: .unconfirmed), "Computer use")
     }
 
+    func testSkillActivityNamesTheSkillFromTargetsOrSkillMdParent() {
+        let unnamed = TranscriptToolActivity(
+            version: 1, kind: .skill, evidence: .tool, targets: [], operation: nil, toolCount: nil
+        )
+        XCTAssertEqual(unnamed.label(state: .succeeded), "Activated a skill")
+        XCTAssertEqual(unnamed.label(state: .running), "Activating a skill")
+        XCTAssertEqual(unnamed.label(state: .succeeded, plural: true), "Activated skills")
+
+        let named = TranscriptToolActivity(
+            version: 1, kind: .skill, evidence: .tool, targets: ["debug"], operation: nil, toolCount: nil
+        )
+        XCTAssertEqual(named.label(state: .succeeded, target: "debug"), "Activated debug skill")
+        XCTAssertEqual(named.label(state: .running, target: "debug"), "Activating debug skill")
+        XCTAssertEqual(
+            TranscriptToolActivity.displayTarget("/skills/debug/SKILL.md", kind: .skill),
+            "debug"
+        )
+        XCTAssertEqual(TranscriptToolActivity.displayTarget("debug", kind: .skill), "debug")
+
+        let namedTool = TranscriptTool(
+            id: "skill-1", toolUseId: "skill-1", name: "Skill", summary: "",
+            input: "debug", output: nil, error: nil,
+            status: .done, createdAt: "1", completedAt: "2",
+            filePath: nil, fileLabel: nil,
+            activity: named,
+            completionObserved: true
+        )
+        XCTAssertEqual(namedTool.activitySummary, "Activated debug skill")
+        XCTAssertEqual(TranscriptToolActivity.summary(for: [namedTool]).headline, "Activated debug skill")
+        XCTAssertEqual(
+            TranscriptToolActivity.summary(for: [
+                namedTool,
+                TranscriptTool(
+                    id: "skill-2", toolUseId: "skill-2", name: "Skill", summary: "",
+                    input: nil, output: nil, error: nil,
+                    status: .done, createdAt: "1", completedAt: "2",
+                    filePath: nil, fileLabel: nil,
+                    activity: TranscriptToolActivity(
+                        version: 1, kind: .skill, evidence: .tool, targets: ["impl"],
+                        operation: nil, toolCount: nil
+                    ),
+                    completionObserved: true
+                )
+            ]).headline,
+            "Activated skills"
+        )
+    }
+
     func testVisibleAssistantProgressSettlesAnUnmatchedNonAgentTool() throws {
         let runningSession = TranscriptSessionMetadata(
             id: "session-1", workspaceId: "workspace-1", provider: "claude",
@@ -1244,6 +1292,157 @@ final class TranscriptProjectionTests: XCTestCase {
         items.compactMap { item -> TranscriptTool? in
             guard case .tools(let group) = item else { return nil }
             return group.tools.first
+        }.first
+    }
+
+    func testTodoSnapshotReplacesTheListAndMergeKeepsEarlierText() throws {
+        let items = TranscriptProjection.project(events: [
+            event("user", "user.message", "Build it", 1),
+            event("snap", "todo.updated", "todo", 2, [
+                "mode": .string("snapshot"),
+                "items": .array([
+                    .object(["id": .string("1"), "text": .string("Read the normalizers"), "status": .string("done")]),
+                    .object(["id": .string("2"), "text": .string("Write the projection"), "status": .string("active")]),
+                    .object(["id": .string("3"), "text": .string("Verify with checks"), "status": .string("pending")])
+                ])
+            ]),
+            event("merge", "todo.updated", "todo", 3, [
+                "mode": .string("merge"),
+                "items": .array([
+                    .object(["id": .string("2"), "status": .string("done")]),
+                    .object(["id": .string("3"), "status": .string("active")])
+                ])
+            ])
+        ])
+        let todo = try XCTUnwrap(firstTodo(items))
+        XCTAssertEqual(todo.items.map(\.text), [
+            "Read the normalizers", "Write the projection", "Verify with checks"
+        ])
+        XCTAssertEqual(todo.items.map(\.status), [.done, .done, .active])
+        XCTAssertEqual(todo.doneCount, 2)
+        XCTAssertEqual(todo.active?.text, "Verify with checks")
+        XCTAssertEqual(todo.id, "todo-user")
+    }
+
+    func testTodoMergeKeepsAnIdOnlyRowAndDropsRemovedItems() throws {
+        let unnamed = try XCTUnwrap(firstTodo(TranscriptProjection.project(events: [
+            event("merge", "todo.updated", "todo", 1, [
+                "mode": .string("merge"),
+                "items": .array([.object(["id": .string("7"), "status": .string("active")])])
+            ])
+        ])))
+        XCTAssertEqual(unnamed.items, [.init(id: "7", text: nil, status: .active)])
+        XCTAssertEqual(TranscriptTodoList.label(for: unnamed.items[0]), "Task 7")
+
+        let trimmed = try XCTUnwrap(firstTodo(TranscriptProjection.project(events: [
+            event("snap", "todo.updated", "todo", 1, [
+                "mode": .string("snapshot"),
+                "items": .array([
+                    .object(["id": .string("1"), "text": .string("Keep"), "status": .string("pending")]),
+                    .object(["id": .string("2"), "text": .string("Drop"), "status": .string("pending")])
+                ])
+            ]),
+            event("drop", "todo.updated", "todo", 2, [
+                "mode": .string("merge"),
+                "items": .array([.object(["id": .string("2"), "status": .string("removed")])])
+            ])
+        ])))
+        XCTAssertEqual(trimmed.visibleItems.map(\.text), ["Keep"])
+    }
+
+    func testTodoMergeRemovingTheLastItemRemovesTheCard() {
+        let items = TranscriptProjection.project(events: [
+            event("user", "user.message", "Build it", 1),
+            event("snap", "todo.updated", "todo", 2, [
+                "mode": .string("snapshot"),
+                "items": .array([
+                    .object(["id": .string("1"), "text": .string("Only task"), "status": .string("pending")])
+                ])
+            ]),
+            event("drop", "todo.updated", "todo", 3, [
+                "mode": .string("merge"),
+                "items": .array([.object(["id": .string("1"), "status": .string("removed")])])
+            ])
+        ])
+
+        XCTAssertNil(firstTodo(items))
+    }
+
+    func testTodoCardPerTurnKeepsThePlanAsItStood() throws {
+        let items = TranscriptProjection.project(events: [
+            event("user-1", "user.message", "First", 1),
+            event("snap", "todo.updated", "todo", 2, [
+                "mode": .string("snapshot"),
+                "items": .array([
+                    .object(["id": .string("1"), "text": .string("One"), "status": .string("pending")]),
+                    .object(["id": .string("2"), "text": .string("Two"), "status": .string("pending")])
+                ])
+            ]),
+            event("done", "todo.updated", "todo", 3, [
+                "mode": .string("merge"),
+                "items": .array([.object(["id": .string("1"), "status": .string("done")])])
+            ]),
+            event("user-2", "user.message", "Continue", 4),
+            event("active", "todo.updated", "todo", 5, [
+                "mode": .string("merge"),
+                "items": .array([.object(["id": .string("2"), "status": .string("active")])])
+            ])
+        ])
+        let todos = items.compactMap { item -> TranscriptTodoList? in
+            guard case .todo(let list) = item else { return nil }
+            return list
+        }
+        XCTAssertEqual(todos.map(\.id), ["todo-user-1", "todo-user-2"])
+        XCTAssertEqual(todos[0].doneCount, 1)
+        XCTAssertNil(todos[0].active)
+        XCTAssertEqual(todos[1].doneCount, 1)
+        XCTAssertEqual(todos[1].active?.text, "Two")
+        XCTAssertEqual(todos[1].collapsedTail, "· Two")
+        XCTAssertTrue(todos[1].isCurrentTurn(in: items))
+        XCTAssertFalse(todos[0].isCurrentTurn(in: items))
+    }
+
+    func testEmptyOrMalformedTodoEventsDoNotWipeTheList() throws {
+        let items = TranscriptProjection.project(events: [
+            event("keep", "todo.updated", "todo", 1, [
+                "mode": .string("snapshot"),
+                "items": .array([
+                    .object(["id": .string("1"), "text": .string("Survives"), "status": .string("pending")])
+                ])
+            ]),
+            event("empty", "todo.updated", "todo", 2, [
+                "mode": .string("snapshot"),
+                "items": .array([])
+            ]),
+            event("bad", "todo.updated", "todo", 3, [
+                "mode": .string("snapshot"),
+                "items": .array([.object(["status": .string("not-a-status")]), .number(7)])
+            ])
+        ])
+        let todo = try XCTUnwrap(firstTodo(items))
+        XCTAssertEqual(todo.items, [.init(id: "1", text: "Survives", status: .pending)])
+        XCTAssertEqual(todo.collapsedTail, "· not started")
+    }
+
+    func testOpenCodeSnapshotWithNoIdsStillProjectsAList() throws {
+        let todo = try XCTUnwrap(firstTodo(TranscriptProjection.project(events: [
+            event("snap", "todo.updated", "todo", 1, [
+                "mode": .string("snapshot"),
+                "items": .array([
+                    .object(["text": .string("Read"), "status": .string("done")]),
+                    .object(["text": .string("Write"), "status": .string("active")])
+                ])
+            ])
+        ])))
+        XCTAssertEqual(todo.items.map(\.id), [nil, nil])
+        XCTAssertEqual(todo.items.map(\.text), ["Read", "Write"])
+        XCTAssertEqual(todo.doneCount, 1)
+    }
+
+    private func firstTodo(_ items: [TranscriptItem]) -> TranscriptTodoList? {
+        items.compactMap { item -> TranscriptTodoList? in
+            guard case .todo(let list) = item else { return nil }
+            return list
         }.first
     }
 

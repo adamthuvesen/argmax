@@ -1,0 +1,216 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-09-13",
+  "assessment": "phase2-three-journeys-passed-provisional-native-archive-deferred",
+  "stage": {
+    "overall": "open_native_archive_deferred",
+    "queuedMessageRestart": "passed_provisional",
+    "dirtyArchive": "deferred_by_user",
+    "guardedFileRevert": "passed_provisional",
+    "sessionMove": "passed_provisional"
+  },
+  "source": {
+    "head": "50a5c471d9ff3ccc29e865487793e5530e0f5235",
+    "phase2Report": "docs/review/stabilization-phase2-2026-09-13.md",
+    "queuedRestartV4": {
+      "commit": "85e57a46",
+      "candidate": "/private/tmp/argmax-phase2-queued-restart-v4-20260913",
+      "head": "50a5c471d9ff3ccc29e865487793e5530e0f5235",
+      "checkoutFingerprintSha256": "32bbd0b9a58d9cac925ef39bc889610254bd1f8a58852dd2fa0c299fc0b9e263",
+      "report": "/private/tmp/argmax-phase2-queued-restart-v4-native-20260913/report.json",
+      "reportSha256": "3cda5945e7a79438b5e54b7b7f5831685da6b3949724fd3350109e7469c7b974",
+      "sourceFingerprints": {
+        "beforeBuildSha256": "32bbd0b9a58d9cac925ef39bc889610254bd1f8a58852dd2fa0c299fc0b9e263",
+        "afterBuildSha256": "32bbd0b9a58d9cac925ef39bc889610254bd1f8a58852dd2fa0c299fc0b9e263",
+        "afterRunSha256": "32bbd0b9a58d9cac925ef39bc889610254bd1f8a58852dd2fa0c299fc0b9e263"
+      }
+    }
+  },
+  "confirmationFix": {
+    "commit": "36527166",
+    "candidate": "/private/tmp/argmax-phase2-confirmation-20260913",
+    "focusedTests": {
+      "passed": 75,
+      "failed": 0
+    },
+    "scheduledFinalRerun": {
+      "passed": 14,
+      "failed": 0
+    },
+    "typecheck": {
+      "passed": true
+    },
+    "rendererBuild": {
+      "passed": true
+    },
+    "bundleBudget": {
+      "passed": true
+    },
+    "nativeBuild": {
+      "passed": true,
+      "binary": "/private/tmp/argmax-phase2-confirmation-bin/argmax",
+      "binarySha256": "8ab30bb305b8b390de7be4db2c45e801ca4172da07690aa3e816193693f5e16e",
+      "log": "/private/tmp/argmax-phase2-confirmation-cargo.log"
+    },
+    "nativeDialogAcceptance": {
+      "blocked": true,
+      "actualMacOsAccessibility": false,
+      "acceptanceComplete": false,
+      "userDecision": "Leave native dialog verification open for now"
+    }
+  },
+  "queuedRestartEvidence": {
+    "status": "passed",
+    "heldFirstTurnFragments": 2,
+    "queuedFollowUpId": "62f4b822-063b-4b81-9687-0af94e020c2e",
+    "secondUserEvents": {
+      "beforeRestart": 0,
+      "afterRecovery": 0,
+      "afterSend": 1
+    },
+    "finalPendingQueues": {
+      "dashboardAfterSend": 0,
+      "sqliteAfterSend": 0
+    },
+    "cleanup": {
+      "restartIdentityStatus": "matched",
+      "restartAppPid": 11103,
+      "restartDescendantPids": [
+        11320
+      ],
+      "finalAppPid": 11373,
+      "finalDescendantPids": []
+    }
+  },
+  "openIssues": [
+    {
+      "id": "B11",
+      "status": "open",
+      "note": "Native desktop startup repeatability remains a release prerequisite."
+    }
+  ],
+  "combinedLocalChanges": {
+    "precheckLog": "/private/tmp/argmax-combined-precheck-20260913.log",
+    "passed": true,
+    "rendererTests": 3000,
+    "perfTests": 9,
+    "rustUnitPassed": 1209,
+    "rustUnitIgnored": 3,
+    "rustIntegrationPassed": 163,
+    "rustIntegrationIgnored": 5,
+    "iosIconPassed": 7,
+    "iosResult": "/private/tmp/argmax-combined-ios-icons-20260913.xcresult",
+    "commits": [
+      "4fdc1e6c",
+      "cb529290",
+      "d148a90f"
+    ],
+    "limit": "Predates B14 Rust fix and final session-move integration."
+  },
+  "indexSnapshotFix": {
+    "id": "B14",
+    "commit": "aeae98bc",
+    "status": "fixed_and_verified",
+    "rust": {
+      "unitPassed": 1217,
+      "unitIgnored": 3,
+      "integrationPassed": 163,
+      "integrationIgnored": 5,
+      "log": "/private/tmp/argmax-b14-cargo-tests.log"
+    },
+    "clippy": {
+      "passed": true,
+      "log": "/private/tmp/argmax-b14-clippy.log"
+    },
+    "formatPassed": true,
+    "independentReview": "no_material_findings"
+  },
+  "guardedFileRevert": {
+    "status": "passed",
+    "candidate": "/private/tmp/argmax-phase2-final-20260913",
+    "head": "cb5292907f5a1ca29c34a083b6b3a8ae499a1a22",
+    "sourceFingerprints": {
+      "beforeBuild": "61c2165bb94820955813108340a1b081e886aacee8b02a8ae3b580716ff9e84f",
+      "afterBuild": "61c2165bb94820955813108340a1b081e886aacee8b02a8ae3b580716ff9e84f",
+      "afterRun": "61c2165bb94820955813108340a1b081e886aacee8b02a8ae3b580716ff9e84f"
+    },
+    "report": "/private/tmp/argmax-phase2-final-revert-v3-native-20260913/report.json",
+    "reportSha256": "552e430a6da53786089cde95a64ab5887c9963a56bc344c94d46af2ffa050edf",
+    "proof": "/private/tmp/argmax-phase2-final-revert-v3-native-20260913/native/workspace-recovery.json",
+    "nativeRevert": true,
+    "staleRevisionDriver": "backend-bridge",
+    "stagedDiffPreserved": true,
+    "indexTreePreserved": true,
+    "checkpointSaved": true,
+    "preservedDiffRendered": true,
+    "cleanup": {
+      "appPid": 81818,
+      "appStartedAt": "Sun Sep 13 14:50:09 2026",
+      "identityStatus": "matched",
+      "descendantPids": [],
+      "terminatedDescendantPids": []
+    },
+    "commit": "4a97aafd"
+  },
+  "hostLimitedRevert": {
+    "report": "/private/tmp/argmax-phase2-final-revert-native-20260913/report.json",
+    "status": "inconclusive_before_initial_ui",
+    "sourceIncludesFinalB14Fix": true,
+    "frontmostPid": 418,
+    "frontmostProcess": "loginwindow",
+    "consoleScreenLocked": true,
+    "limit": "PID identity and lock-state observations were made after failure, not embedded in that report. This does not close B11."
+  },
+  "sessionMove": {
+    "status": "passed",
+    "candidate": "/private/tmp/argmax-phase2-final-20260913",
+    "head": "cb5292907f5a1ca29c34a083b6b3a8ae499a1a22",
+    "sourceFingerprints": {
+      "beforeBuild": "0797cb7116f0bf5f778987567400a70881a1462f06844158afa5730af6268525",
+      "afterBuild": "0797cb7116f0bf5f778987567400a70881a1462f06844158afa5730af6268525",
+      "afterRun": "0797cb7116f0bf5f778987567400a70881a1462f06844158afa5730af6268525"
+    },
+    "report": "/private/tmp/argmax-phase2-final-move-v5-native-20260913/report.json",
+    "reportSha256": "3574a3506a4c6e2819e17e8084523c33cf17c4334dfae327101343fc2bba1599",
+    "proof": "/private/tmp/argmax-phase2-final-move-v5-native-20260913/native/session-move.json",
+    "assertions": 45,
+    "nativeAutomaticFollow": true,
+    "nativeDestinationIdle": true,
+    "bothCheckoutsPreserved": true,
+    "copiedHistory": true,
+    "providerConversationForked": true,
+    "providerChatInvocations": 2,
+    "cleanup": {
+      "appPid": 86111,
+      "appStartedAt": "Sun Sep 13 14:56:53 2026",
+      "identityStatus": "matched",
+      "descendantPids": [
+        86380
+      ],
+      "terminatedDescendantPids": []
+    },
+    "limits": [
+      "Fixture-provider acceptance, not a live-provider compatibility check.",
+      "Move marker is asserted in the DOM. Final screenshot shows the idle destination response, not the marker above the viewport."
+    ],
+    "commit": "4a97aafd"
+  },
+  "verificationScripts": {
+    "focusedTestsPassed": 13,
+    "log": "/private/tmp/argmax-phase2-final-script-tests.log",
+    "typecheckPassed": true,
+    "typecheckLog": "/private/tmp/argmax-phase2-final-typecheck.log",
+    "note": "Typecheck preceded final MJS-only harness corrections. Final corrected helpers passed syntax checks and native runs.",
+    "commit": "4a97aafd"
+  },
+  "cleanup": {
+    "observedAbsentPids": [
+      81818,
+      84586,
+      86111,
+      86380
+    ],
+    "buildCacheCleanupManifest": "/private/tmp/argmax-build-cleanup-20260913.json",
+    "approximateDiskFreedGb": 12
+  }
+}

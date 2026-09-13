@@ -4,8 +4,9 @@ Phase 4 executed every release-confidence check that this host and the
 available credentials could support. The candidate is not accepted for
 release. Live provider compatibility, a short runtime soak, simulator recovery,
 native chat journeys and an unsigned package smoke pass. Foreground activation,
-the real updater path, physical-device recovery, prolonged use and several
-native interaction boundaries remain open.
+physical-device recovery, prolonged use and several native interaction
+boundaries remain open. Automatic self-update is outside the chosen release
+scope and is not a blocker.
 
 The runtime candidate is `fb716634`. `0459f7b4` adds types and assertions to the
 verification harness without changing application runtime code. The packaged
@@ -69,9 +70,10 @@ foreground failure. A passing rerun is not closure.
 
 Sixty-eight focused BridgeRecovery, TranscriptStore, ChannelEncoding, Review,
 ReviewFileTabs and Push tests passed. Eight transcript UI tests also passed in
-the simulator. A physical iPhone was visible to Xcode, but this phase did not
-install or mutate it. Pairing, APNs, radio loss, backgrounding and restart
-recovery therefore remain open.
+the simulator. The user subsequently installed the latest iOS build on a
+physical iPhone. That closes the installation prerequisite, but no physical
+device recovery journey has been observed. APNs, radio loss, backgrounding and
+restart recovery therefore remain open.
 
 ### Runtime soak
 
@@ -101,14 +103,15 @@ The host lacks Screen Recording permission, so that smoke has state evidence
 but no screenshot. The installed `/Applications/Argmax.app` was not quit,
 replaced or upgraded.
 
-### Updater
+### Distribution scope
 
-Updater acceptance could not run. `plugins.updater.pubkey` is empty and
-`bundle.createUpdaterArtifacts` is not enabled. The current build therefore
-creates only the app and DMG, without a signed update archive, signature or
-usable `latest.json`. `docs/release.md` now describes the actual configuration
-and the required release inputs. A fake key or unsigned local feed would not
-exercise the production trust path.
+The user chose manual app and DMG releases. Automatic self-update is deferred
+and is not required for release acceptance. The existing updater configuration
+has no public key and does not create updater artifacts, so it must not be
+treated as an active release channel. No updater key, signed update archive or
+`latest.json` feed is needed for the chosen scope. macOS signing and notarization
+remain optional distribution hardening if the app is later shared beyond this
+machine.
 
 ### Build cleanup
 
@@ -129,14 +132,11 @@ Release acceptance is withheld until these prerequisites are complete:
 1. Resolve B11 with repeatable native foreground and startup behavior, including
    attribution of the older unexplained failures.
 2. Complete the explicitly deferred native dirty-archive Cancel and OK checks.
-3. Exercise physical-device pairing, APNs, network loss, backgrounding and
-   restart recovery.
-4. Supply the real updater public key and private signing credential, enable
-   updater artifacts, publish a signed `latest.json`, sign and notarize the app,
-   then perform an actual upgrade from the installed predecessor.
-5. Run an hours-long prolonged-use check covering sleep/wake and concurrent
+3. Exercise physical-device APNs, network loss, backgrounding and restart
+   recovery on the installed iOS build.
+4. Run an hours-long prolonged-use check covering sleep/wake and concurrent
    provider work.
-6. Complete the remaining native and external boundaries recorded in the
+5. Complete the remaining native and external boundaries recorded in the
    [Phase 3 journey register](stabilization-phase3-2026-09-13.md), especially
    large diff and annotation interaction, Stage and Commit, terminal, embedded
    browser, clock-driven scheduling, import, goals, connections and GitHub.

@@ -32,7 +32,8 @@
   "ios": {
     "focusedTestsPassed": 68,
     "transcriptUiTestsPassed": 8,
-    "physicalDevice": "not-mutated-acceptance-open"
+    "physicalDevice": "latest-build-installed-recovery-open",
+    "installationSource": "user-reported"
   },
   "soak": {
     "status": "short-smoke-passed",
@@ -52,7 +53,9 @@
     "installedAppUntouched": true
   },
   "updater": {
-    "status": "blocked",
+    "status": "deferred-out-of-scope",
+    "releaseChannel": "manual-app-and-dmg",
+    "releaseBlocker": false,
     "publicKeyConfigured": false,
     "createUpdaterArtifacts": false,
     "signedFeedAvailable": false
@@ -94,8 +97,7 @@
   "openPrerequisites": [
     "B11 native foreground and startup intermittency",
     "native dirty archive Cancel and OK acceptance deferred by user",
-    "physical-device pairing, APNs, network loss, backgrounding and restart recovery",
-    "signed and notarized updater artifacts, feed and actual upgrade",
+    "physical-device APNs, network loss, backgrounding and restart recovery on the installed build",
     "hours-long prolonged-use, sleep-wake and concurrent-provider acceptance",
     "remaining native and external journey boundaries in the Phase 3 register"
   ]

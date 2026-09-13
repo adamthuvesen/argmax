@@ -30,7 +30,7 @@ remains deferred by the user.
 | J15 Learnings, sources, skills and connections | Automated pass | Scope, keyboard, failed-read and provider-health tests pass. A combined native walkthrough remains open. |
 | J16 Usage and activity | Passed, provisional | The CLI path defect is fixed. Parser, scanner and UI tests pass. Live ledger totals were reconciled to Argmax's fork-copy and duplicate policy. External readers use incompatible policies, so cross-tool equality remains open. |
 | J17 GitHub PR and CI feedback | Automated pass | Attribution, retry, deduplication and bounded follow-up tests pass. A real GitHub journey remains open. |
-| J18 iPhone and remote web | Simulator pass | 68 focused recovery, transcript and review tests plus 8 transcript UI tests pass. Physical-device pairing, radio loss, APNs and restart recovery remain open. |
+| J18 iPhone and remote web | Simulator pass, device installed | 68 focused recovery, transcript and review tests plus 8 transcript UI tests pass. The user installed the latest iOS build on a physical iPhone. Radio loss, APNs, backgrounding and restart recovery remain open. |
 | J19 Appearance, diagnostics and release | Provisional | Dark, light, narrow, settings, schedule, activity and search renders were inspected. Packaging and release limits are recorded in Phase 4. |
 
 ## Executed checks

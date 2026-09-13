@@ -56,7 +56,7 @@
     "J15": "automated-pass-native-open",
     "J16": "passed-provisional-oracle-policies-incompatible",
     "J17": "automated-pass-real-github-open",
-    "J18": "simulator-pass-physical-device-open",
+    "J18": "simulator-pass-device-installed-recovery-open",
     "J19": "provisional-see-phase-4"
   },
   "commits": [

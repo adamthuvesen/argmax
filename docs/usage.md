@@ -168,8 +168,11 @@ zone the renderer resolves too. Hour buckets are UTC hours.
 ## Checking the numbers
 
 `argmax usage --days 7 --json` prints the ledger as per-day, per-model token
-totals. `node scripts/check-usage-oracle.mjs --days 7` compares those with
-`ccusage daily --json` and `codexbar cost --format json` for Claude and Codex.
+totals from `<app-data>/local-state/argmax.sqlite`, the same database the
+running app uses. Setting `ARGMAX_DATA_DIR` changes `<app-data>` for both the
+app and this command. `node scripts/check-usage-oracle.mjs --days 7` compares
+those with `ccusage daily --json` and `codexbar cost --format json` for Claude
+and Codex.
 A row where all three agree is `ok`; a row where Argmax matches one oracle
 and the other differs is `oracles-differ` and is reported, not failed; a row
 where Argmax matches neither is a `MISMATCH` and fails the script. On

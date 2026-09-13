@@ -267,5 +267,23 @@ fn database_path() -> PathBuf {
             }
         }
     };
-    dir.join("argmax.sqlite")
+    database_path_in_app_data_dir(dir)
+}
+
+fn database_path_in_app_data_dir(app_data_dir: PathBuf) -> PathBuf {
+    app_data_dir.join("local-state").join("argmax.sqlite")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::database_path_in_app_data_dir;
+    use std::path::PathBuf;
+
+    #[test]
+    fn database_path_uses_the_runtime_local_state_layout() {
+        assert_eq!(
+            database_path_in_app_data_dir(PathBuf::from("/tmp/argmax-profile")),
+            PathBuf::from("/tmp/argmax-profile/local-state/argmax.sqlite")
+        );
+    }
 }

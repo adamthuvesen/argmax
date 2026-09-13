@@ -1,6 +1,6 @@
 # Data
 
-Rust manages SQLite storage under [src-tauri/src/persistence](../src-tauri/src/persistence). The database file is `argmax.sqlite` in the Tauri app data folder, operating with WAL and SHM sidecars.
+Rust manages SQLite storage under [src-tauri/src/persistence](../src-tauri/src/persistence). The database file is `local-state/argmax.sqlite` in the Tauri app data folder, operating with WAL and SHM sidecars. `ARGMAX_DATA_DIR` overrides that app data folder for scratch profiles.
 
 ## Migrations
 

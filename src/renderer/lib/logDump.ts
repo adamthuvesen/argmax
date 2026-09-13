@@ -14,8 +14,25 @@
  * failure. Codex login errors still show: they do not use those crate paths.
  */
 
-const MCP_CLIENT_TRACING_CRATES = ["rmcp", "codex_rmcp_client"] as const;
+const NOISY_CODEX_TRACING_MODULES = [
+  "rmcp",
+  "codex_rmcp_client",
+  "codex_mcp",
+  "codex_core::tools",
+  "codex_core_plugins",
+  "codex_skills",
+  "codex_skills_extension",
+  "codex_models_manager",
+  "codex_api::endpoint::responses_websocket"
+] as const;
 const MISSING_CUSTOM_TOOL_OUTPUT = "Custom tool call output is missing for call id:";
+const UNSUPPORTED_MCP_ELICITATION =
+  "Argmax does not support Codex app-server request mcpServer/elicitation/request";
+const NOISY_PLAIN_PROVIDER_PREFIXES = [
+  "Skill descriptions were shortened to fit",
+  "failed to parse plugin hooks config",
+  "Reconnecting..."
+] as const;
 
 export type LogLevel = "ERROR" | "WARN" | "WARNING" | "INFO" | "DEBUG" | "TRACE";
 
@@ -59,18 +76,26 @@ export function splitTrailingLogFields(message: string): string {
 
 export function isMcpClientTracingTarget(target: string | null | undefined): boolean {
   if (!target) return false;
-  return MCP_CLIENT_TRACING_CRATES.some(
+  return ["rmcp", "codex_rmcp_client"].some(
     (crate) => target === crate || target.startsWith(`${crate}::`)
   );
 }
 
+export function isNoisyPlainProviderLine(message: string): boolean {
+  const trimmed = message.trim();
+  return trimmed.length === 0 || NOISY_PLAIN_PROVIDER_PREFIXES.some((prefix) => trimmed.startsWith(prefix));
+}
+
 export function isNoisyProviderTracing(target: string | null | undefined, message: string): boolean {
-  if (isMcpClientTracingTarget(target)) return true;
+  if (target && NOISY_CODEX_TRACING_MODULES.some(
+    (module) => target === module || target.startsWith(`${module}::`)
+  )) return true;
+  const appServerEventHandling = target === "codex_app_server::bespoke_event_handling" ||
+    Boolean(target?.startsWith("codex_app_server::bespoke_event_handling::"));
+  if (appServerEventHandling && message.includes(UNSUPPORTED_MCP_ELICITATION)) return true;
   const utilCrate = target === "codex_core::util" || Boolean(target?.startsWith("codex_core::util::"));
   if (utilCrate && message.includes(MISSING_CUSTOM_TOOL_OUTPUT)) return true;
-  // Tool-router records (apply_patch verification, and the like) are Codex
-  // bookkeeping that leaked onto the PTY. The chat already has the tool row.
-  return target === "codex_core::tools" || Boolean(target?.startsWith("codex_core::tools::"));
+  return false;
 }
 
 /** First tracing record on this line, or null if the line is ordinary text. */

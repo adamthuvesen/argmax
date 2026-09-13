@@ -21,6 +21,34 @@ final class TranscriptProjectionTests: XCTestCase {
         ).compactSummary)
     }
 
+    func testUnsupportedMcpElicitationDiagnosticIsHidden() {
+        let message = "2026-09-13T17:25:56.613064Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32601, data: None, message: \"Argmax does not support Codex app-server request mcpServer/elicitation/request\" }"
+        let items = TranscriptProjection.project(events: [
+            event("error-1", "error", message, 1)
+        ])
+
+        XCTAssertTrue(items.isEmpty)
+        XCTAssertTrue(TranscriptError.isRedundantProviderDiagnostic(message))
+    }
+
+    func testHistoricalProviderNoiseIsHiddenButRealFailuresRemain() {
+        for message in [
+            "Reconnecting... waiting for network",
+            "Skill descriptions were shortened to fit the skills context budget.",
+            "2026-09-05T08:12:48Z WARN codex_skills::interface: invalid icon path",
+            "2026-09-01T09:08:10Z ERROR codex_core::tools::router: apply_patch verification failed",
+            "2026-09-01T08:22:24Z ERROR codex_rmcp_client::oauth: failed during shutdown"
+        ] {
+            XCTAssertTrue(TranscriptError.isRedundantProviderDiagnostic(message), message)
+        }
+        XCTAssertFalse(TranscriptError.isRedundantProviderDiagnostic(
+            "2026-09-13T09:35:06Z ERROR codex_core::session: No space left on device"
+        ))
+        XCTAssertFalse(TranscriptError.isRedundantProviderDiagnostic(
+            "Authentication failed; run `codex login`"
+        ))
+    }
+
     func testCompletedThoughtItemsReplaceTheirLiveSummariesWithoutDuplication() throws {
         let completed = TranscriptProjection.project(events: [
             event("live-1", "message.delta", "**Inspecting files**", 1, [

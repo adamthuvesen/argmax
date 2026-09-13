@@ -564,6 +564,46 @@ struct TranscriptError: Hashable, Sendable, Identifiable {
     var operation: String?
     var createdAt: String
 
+    static func isRedundantProviderDiagnostic(_ message: String) -> Bool {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || [
+            "Skill descriptions were shortened to fit",
+            "failed to parse plugin hooks config",
+            "Reconnecting..."
+        ].contains(where: { trimmed.hasPrefix($0) }) {
+            return true
+        }
+        guard let target = tracingTarget(in: trimmed) else { return false }
+        if target == "codex_app_server::bespoke_event_handling" &&
+            trimmed.contains("Argmax does not support Codex app-server request mcpServer/elicitation/request") {
+            return true
+        }
+        if target == "codex_core::util" || target.hasPrefix("codex_core::util::") {
+            return trimmed.contains("Custom tool call output is missing for call id:")
+        }
+        return [
+            "rmcp",
+            "codex_rmcp_client",
+            "codex_mcp",
+            "codex_core::tools",
+            "codex_core_plugins",
+            "codex_skills",
+            "codex_skills_extension",
+            "codex_models_manager",
+            "codex_api::endpoint::responses_websocket"
+        ].contains(where: { target == $0 || target.hasPrefix("\($0)::") })
+    }
+
+    private static func tracingTarget(in message: String) -> String? {
+        let levels = [" ERROR ", " WARN ", " WARNING ", " INFO ", " DEBUG ", " TRACE "]
+        guard let level = levels.compactMap({ message.range(of: $0) }).min(by: {
+            $0.lowerBound < $1.lowerBound
+        }) else { return nil }
+        let suffix = message[level.upperBound...]
+        guard let separator = suffix.range(of: ": ") else { return nil }
+        return String(suffix[..<separator.lowerBound])
+    }
+
     /// Old hosts rejected valid Default-mode Codex questions, then Codex kept
     /// working. Preserve the diagnostic without presenting it as a failed turn.
     var compactSummary: String? {

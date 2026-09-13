@@ -322,6 +322,33 @@ describe("coalesceAssistantGroups", () => {
     expect(groups[0]?.error).toBeFalsy();
   });
 
+  it("drops the legacy unsupported MCP elicitation diagnostic", () => {
+    const log =
+      '2026-09-13T17:25:56.613064Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32601, data: None, message: "Argmax does not support Codex app-server request mcpServer/elicitation/request" }';
+    const groups = coalesceAssistantGroups([
+      assistantEvent("a1", "message.completed", "Continuing.", "2026-09-13T17:25:55.000Z"),
+      assistantEvent("e1", "error", log, "2026-09-13T17:25:56.617Z")
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.text).toBe("Continuing.");
+  });
+
+  it.each([
+    "Reconnecting... waiting for network",
+    "Reconnecting... 5/5",
+    "Skill descriptions were shortened to fit the skills context budget."
+  ])("drops stale provider advisory error rows: %s", (message) => {
+    expect(coalesceAssistantGroups([
+      assistantEvent("e1", "error", message, "2026-09-13T17:25:56.617Z")
+    ])).toHaveLength(0);
+  });
+
+  it("keeps a real plain provider error", () => {
+    expect(coalesceAssistantGroups([
+      assistantEvent("e1", "error", "Authentication failed; run `codex login`", "2026-09-13T17:25:56.617Z")
+    ])).toHaveLength(1);
+  });
+
   it("drops Codex apply_patch tracing that leaked in as stdout deltas, including context lines", () => {
     const header =
       "2026-09-01T09:08:10.411255Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in run_two_model_serving.py:";

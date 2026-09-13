@@ -2,7 +2,13 @@ import type { TimelineEvent } from "../../shared/types.js";
 import { stringValue } from "../../shared/typeGuards.js";
 import { decodeTimelineEvent } from "./canonicalTimeline.js";
 import type { RenderItem } from "./foldConversation.js";
-import { isNoisyProviderTracing, matchTracingRecord, parseLogDump, splitLogSegments } from "./logDump.js";
+import {
+  isNoisyPlainProviderLine,
+  isNoisyProviderTracing,
+  matchTracingRecord,
+  parseLogDump,
+  splitLogSegments
+} from "./logDump.js";
 import { parsePlan } from "./parsePlan.js";
 import {
   collectAskUserQuestionState,
@@ -330,7 +336,10 @@ export function coalesceAssistantGroups(
     ) {
       flushThinking();
       flushAnswer();
-      if (tracing && isNoisyProviderTracing(tracing.target, tracing.message)) {
+      if (
+        (tracing && isNoisyProviderTracing(tracing.target, tracing.message)) ||
+        (!tracing && canonical.kind === "error" && isNoisyPlainProviderLine(event.message))
+      ) {
         dropRawContinuations = true;
         previousEventCreatedAt = event.createdAt;
         continue;

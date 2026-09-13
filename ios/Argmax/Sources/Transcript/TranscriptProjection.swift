@@ -211,7 +211,8 @@ enum TranscriptProjection {
                 continue
             }
 
-            if event.type == "error", payload["truncatedEventId"] == nil {
+            if event.type == "error", payload["truncatedEventId"] == nil,
+               !TranscriptError.isRedundantProviderDiagnostic(event.message) {
                 items.append(.error(TranscriptError(
                     id: "error-\(event.id)",
                     message: event.message,
@@ -496,6 +497,7 @@ enum TranscriptProjection {
     }
 
     private static func appendLog(_ event: TranscriptEvent, stream: String, to items: inout [TranscriptItem]) {
+        if TranscriptError.isRedundantProviderDiagnostic(event.message) { return }
         let error = TranscriptError(
             id: "log-\(event.id)",
             message: event.message,

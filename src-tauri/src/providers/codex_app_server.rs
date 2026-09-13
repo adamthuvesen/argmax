@@ -811,6 +811,18 @@ async fn server_request_response(
     let id = request.get("id").cloned().unwrap_or(Value::Null);
     let method = request.get("method").and_then(Value::as_str).unwrap_or("");
     let params = request.get("params").unwrap_or(&Value::Null);
+    // MCP servers may ask the host to render a form or open an authentication
+    // URL. Argmax has no elicitation surface yet, and the app-server protocol
+    // requires clients that cannot render one to decline it rather than return
+    // a method-not-found error. The MCP tool result retains the actionable
+    // failure, such as a connector reauthentication link.
+    if method == "mcpServer/elicitation/request" {
+        return json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": { "action": "decline", "content": null }
+        });
+    }
     if !matches!(
         method,
         "item/commandExecution/requestApproval"
@@ -2036,6 +2048,37 @@ mod tests {
             questions.calls.lock().unwrap().as_slice(),
             &[("question-1".to_string(), "\"ask-1\"".to_string())]
         );
+    }
+
+    #[tokio::test]
+    async fn unsupported_mcp_elicitation_is_declined_without_a_protocol_error() {
+        let response = server_request_response(
+            &json!({
+                "id": "elicitation-1",
+                "method": "mcpServer/elicitation/request",
+                "params": {
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "serverName": "codex_apps",
+                    "mode": "url",
+                    "message": "Reconnect Slack",
+                    "url": "https://example.com/reconnect",
+                    "elicitationId": "reauth-1"
+                }
+            }),
+            &FakeApproval::default(),
+            &FakeQuestion::default(),
+            "session-1",
+            "invocation-1",
+            "thread-1",
+            "turn-1",
+        )
+        .await;
+
+        assert_eq!(response["id"], "elicitation-1");
+        assert_eq!(response["result"]["action"], "decline");
+        assert_eq!(response["result"]["content"], Value::Null);
+        assert!(response.get("error").is_none());
     }
 
     #[cfg(unix)]

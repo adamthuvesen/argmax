@@ -196,6 +196,13 @@ duplicate or stale answers fail. Answer values are not persisted in the
 question events, including answers to secret questions. The launch flag and
 protocol remain experimental, so verify their schema when upgrading Codex.
 
+**MCP elicitations are declined until Argmax has a general form surface.** An
+app or MCP server can send `mcpServer/elicitation/request` for structured input
+or a URL flow such as connector reauthentication. Argmax returns the protocol's
+`decline` response instead of a method-not-found error. The associated tool
+result remains visible with its actionable failure, while the redundant
+app-server diagnostic is suppressed in current and historical transcripts.
+
 **Grok's `ask_user_question` is not exposed over ACP.** The binary carries the
 tool and documents it, and `features.ask_user_question` defaults to true, but
 over `grok agent stdio` — the only transport Argmax uses — Grok reports the tool

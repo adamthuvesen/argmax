@@ -674,7 +674,8 @@ final class TranscriptStore: ObservableObject {
             .filter { output in
                 if let clearedAt, output.createdAt <= clearedAt { return false }
                 let text = output.content.trimmingCharacters(in: .whitespacesAndNewlines)
-                return !text.isEmpty && !text.hasPrefix("{") && !text.hasPrefix("[")
+                return !text.isEmpty && !text.hasPrefix("{") && !text.hasPrefix("[") &&
+                    !TranscriptError.isRedundantProviderDiagnostic(text)
             }
             .sorted { lhs, rhs in
                 if let left = lhs.rowCursor, let right = rhs.rowCursor, left != right { return left < right }

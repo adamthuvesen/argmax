@@ -415,6 +415,19 @@ The kind is a claim about the row, so a notice is no longer written as one. Back
 
 Tracing-style records that leak into assistant markdown (`2026-09-01T07:21:37Z ERROR crate::module: ...`) lift out of the paragraph into the same block. Concatenated records split on the next timestamp, and trailing `key="value"` fields wrap onto their own line so a long `session_id` does not glue two records together. Detection lives in [logDump.ts](../src/renderer/lib/logDump.ts). A date in ordinary prose is not a log. MCP HTTP client crates (`rmcp::`, `codex_rmcp_client::`) are dropped: those lines are session-teardown noise, not a failure the chat can act on. So is `codex_core::util: Custom tool call output is missing`, which Codex logs after a cancelled in-flight custom tool. So is `codex_core::tools::router` apply_patch verification, including the expected-context lines that follow on the PTY. Those records are tool bookkeeping, not a session failure. Codex login errors still show because they use a different crate path. The normalizer classifies tracing-format raw PTY lines the same way so they are not stored as `message.delta`.
 
+Older Codex sessions may contain `codex_app_server::bespoke_event_handling`
+errors saying Argmax did not support `mcpServer/elicitation/request`. Those are
+also hidden: the associated MCP tool row already carries the actionable failure,
+and current hosts decline an elicitation they cannot render without generating
+the protocol error.
+
+The same historical filter covers the complete backend housekeeping list: MCP
+startup and teardown, plugin and skill cache refresh, model-cache refresh,
+WebSocket-to-HTTPS fallback, retry progress beginning with `Reconnecting...`,
+and skill-budget advisories. These rows either have an actionable tool result
+or recover on their own. Authentication failures, exhausted retries, storage
+errors, provider limits, and session persistence failures remain visible.
+
 ## Thinking Indicators and Thought Blocks
 
 ### Pre-Answer Thinking Indicator

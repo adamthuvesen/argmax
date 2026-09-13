@@ -1245,6 +1245,13 @@ const NOISY_CODEX_TRACING_MODULES: &[&str] = &[
 ];
 
 fn is_noisy_provider_tracing(target: &str, message: &str) -> bool {
+    if target_is(target, "codex_app_server::bespoke_event_handling")
+        && message.contains(
+            "Argmax does not support Codex app-server request mcpServer/elicitation/request",
+        )
+    {
+        return true;
+    }
     if target_is(target, "codex_core::util")
         && message.contains("Custom tool call output is missing for call id:")
     {
@@ -1259,6 +1266,7 @@ fn is_noisy_provider_tracing(target: &str, message: &str) -> bool {
 const NOISY_PLAIN_STDERR_PREFIXES: &[&str] = &[
     CODEX_SKILL_BUDGET_NOTICE_PREFIX,
     "failed to parse plugin hooks config",
+    "Reconnecting...",
 ];
 
 const CODEX_SKILL_BUDGET_NOTICE_PREFIX: &str = "Skill descriptions were shortened to fit";
@@ -1535,6 +1543,19 @@ mod tests {
         assert!(result.events.is_empty());
     }
 
+    #[test]
+    fn unsupported_mcp_elicitation_protocol_error_is_dropped() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                "2026-09-13T17:25:56.613064Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32601, data: None, message: \"Argmax does not support Codex app-server request mcpServer/elicitation/request\" }\n",
+            ),
+            &mut context,
+        );
+        assert!(result.events.is_empty());
+    }
+
     // Each line captured from a real Codex session's "Error" card.
     #[test]
     fn codex_housekeeping_tracing_is_dropped() {
@@ -1567,9 +1588,16 @@ mod tests {
         );
         assert!(dropped.events.is_empty());
 
-        let kept = normalize_provider_event(
+        let reconnecting = normalize_provider_event(
             ProviderId::Codex,
             &stderr("Reconnecting... 2/5 (unexpected status 404 Not Found)\n"),
+            &mut context,
+        );
+        assert!(reconnecting.events.is_empty());
+
+        let kept = normalize_provider_event(
+            ProviderId::Codex,
+            &stderr("Authentication failed; run `codex login`\n"),
             &mut context,
         );
         assert_eq!(kept.events.len(), 1);

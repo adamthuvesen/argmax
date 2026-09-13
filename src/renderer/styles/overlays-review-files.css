@@ -305,10 +305,6 @@
   color: var(--text);
 }
 
-.agent-roster-popover li[aria-selected="true"] .agent-roster-item {
-  box-shadow: inset 2px 0 0 var(--accent);
-}
-
 .agent-roster-mark {
   display: inline-flex;
   align-items: center;

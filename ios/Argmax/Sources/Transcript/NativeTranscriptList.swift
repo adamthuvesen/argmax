@@ -9,6 +9,8 @@ where Item.ID == String {
     let sessionID: String
     let scrollRequest: Int
     var turnAnchorID: String?
+    var anchorInitialTurn = false
+    var isReady = true
     var presentationID = ""
     @Binding var following: Bool
     @ViewBuilder var row: (Item) -> Row
@@ -31,9 +33,19 @@ where Item.ID == String {
     @State private var anchorScrollScheduled = false
     @State private var turnScrollPending = false
     @State private var viewportHeight: CGFloat = 0
+    @State private var topInset: CGFloat = 0
     @State private var bottomInset: CGFloat = 0
     @State private var naturalContentHeight: CGFloat = 0
     @State private var turnAnchorMeasurement: TranscriptTurnAnchorMeasurement?
+    @State private var activeTurnAnchorID: String?
+
+    private var reservedTurnAnchorID: String? {
+        activeTurnAnchorID ?? (anchorInitialTurn ? turnAnchorID : nil)
+    }
+
+    private var turnContext: TranscriptTurnContext {
+        TranscriptTurnContext(sessionID: sessionID, anchorID: turnAnchorID, isReady: isReady)
+    }
 
     /// Keep enough empty tail beneath the latest prompt for the physical
     /// bottom to put that prompt at the transcript's 16-point top inset.
@@ -42,8 +54,8 @@ where Item.ID == String {
     private var turnFloorHeight: CGFloat {
         guard viewportHeight > 0,
               let anchor = turnAnchorMeasurement,
-              anchor.id == turnAnchorID else { return 0 }
-        let usableViewportHeight = max(0, viewportHeight - bottomInset)
+              anchor.id == reservedTurnAnchorID else { return 0 }
+        let usableViewportHeight = max(0, viewportHeight - topInset - bottomInset)
         let reservation = anchor.top - 16 + usableViewportHeight - naturalContentHeight
         return min(max(0, reservation), usableViewportHeight)
     }
@@ -95,6 +107,7 @@ where Item.ID == String {
         // stranded above the bottom edge.
         .scrollDismissesKeyboard(.immediately)
         .defaultScrollAnchor(.bottom, for: .initialOffset)
+        .defaultScrollAnchor(.bottom, for: .alignment)
         .scrollPosition($position)
         .accessibilityIdentifier("native-transcript")
         .onScrollGeometryChange(for: TranscriptScrollGeometry.self) { value in
@@ -103,6 +116,7 @@ where Item.ID == String {
             readingPosition.visibleTop = next.visibleTop
             readingPosition.topInset = next.topInset
             if abs(viewportHeight - next.viewportHeight) > 0.5 { viewportHeight = next.viewportHeight }
+            if abs(topInset - next.topInset) > 0.5 { topInset = next.topInset }
             if abs(bottomInset - next.bottomInset) > 0.5 { bottomInset = next.bottomInset }
             if following && !phase.isUserControlled && !next.isAtTail {
                 requestFollowingPosition()
@@ -156,8 +170,14 @@ where Item.ID == String {
             // the target again once that reservation becomes concrete.
             if following { requestFollowingPosition() }
         }
-        .onChange(of: turnAnchorID) { previous, next in
-            guard next != nil, previous != next else { return }
+        .onChange(of: turnContext) { previous, next in
+            // Opening or restoring history establishes a baseline, not a new
+            // turn. Only a new prompt in an already-live chat earns a floor.
+            guard previous.sessionID == next.sessionID,
+                  previous.isReady, next.isReady,
+                  previous.anchorID != next.anchorID,
+                  let anchorID = next.anchorID else { return }
+            activeTurnAnchorID = anchorID
             readingPosition.release()
             turnScrollPending = phase.isUserControlled
             if !following { following = true }
@@ -167,6 +187,7 @@ where Item.ID == String {
             if following { requestFollowingPosition() }
         }
         .onChange(of: sessionID, initial: true) { _, _ in
+            activeTurnAnchorID = nil
             phase = .idle
             following = true
             requestFollowingPosition()
@@ -213,12 +234,10 @@ where Item.ID == String {
                 withTransaction(Transaction(animation: nil)) {
                     if turnFloorHeight > 0,
                        let anchor = turnAnchorMeasurement,
-                       anchor.id == turnAnchorID {
-                        // A bottom-edge request can resolve to the transparent
-                        // reservation itself on a physical device. Target the
-                        // prompt instead so the reserved space can never fill
-                        // the viewport on its own.
-                        position.scrollTo(y: anchor.top - 16 + readingPosition.topInset)
+                       anchor.id == reservedTurnAnchorID {
+                        // ScrollPosition already includes the top safe-area
+                        // inset. Adding it again hides the prompt under the header.
+                        position.scrollTo(y: anchor.top - 16)
                     } else {
                         position.scrollTo(edge: .bottom)
                     }
@@ -321,18 +340,26 @@ private struct TranscriptTurnAnchorMeasurement: Equatable {
     let top: CGFloat
 }
 
+private struct TranscriptTurnContext: Equatable {
+    let sessionID: String
+    let anchorID: String?
+    let isReady: Bool
+}
+
 extension NativeTranscriptList where Footer == EmptyView {
     init(
         items: [Item],
         sessionID: String,
         scrollRequest: Int,
         turnAnchorID: String? = nil,
+        anchorInitialTurn: Bool = false,
+        isReady: Bool = true,
         presentationID: String = "",
         following: Binding<Bool>,
         @ViewBuilder row: @escaping (Item) -> Row
     ) {
         self.init(items: items, sessionID: sessionID, scrollRequest: scrollRequest,
-                  turnAnchorID: turnAnchorID,
+                  turnAnchorID: turnAnchorID, anchorInitialTurn: anchorInitialTurn, isReady: isReady,
                   presentationID: presentationID, following: following, row: row) { EmptyView() }
     }
 }

@@ -89,6 +89,7 @@ struct TranscriptScreen: View {
         }
         .onDisappear {
             saveDraft(debounce: false)
+            if navigator.launchedSessionID == row.session.id { navigator.launchedSessionID = nil }
             guard transcript.relinquish(screenID) else { return }
             if push.openSessionID == row.session.id { push.openSessionID = nil }
         }
@@ -146,8 +147,8 @@ struct TranscriptScreen: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, Spacing.snug)
             }
-
         }
+        .background(Theme.ground)
     }
 
     /// Changes, one tap from the transcript, carrying its own count.

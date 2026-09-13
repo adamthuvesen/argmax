@@ -342,6 +342,7 @@ final class TranscriptStore: ObservableObject {
         projectionTask = nil
         publishProjection(TranscriptProjection.project(events: Array(eventsByID.values),
             session: metadata, pendingApprovals: pendingApprovals, workspacePath: workspacePath))
+        showingCachedContent = false
         phase = .ready
     }
 
@@ -435,7 +436,6 @@ final class TranscriptStore: ObservableObject {
         guard let id = openSessionID else { return }
         contentVersion += 1
         hasMoreHistory = page.hasMore
-        showingCachedContent = false
         if authoritative || page.resetRequired {
             eventsByID = [:]
             rawOutputsByID = [:]
@@ -555,6 +555,7 @@ final class TranscriptStore: ObservableObject {
                     return
                 }
                 let version = self.projectionVersion
+                let includesLiveContent = self.contentVersion > 0
                 let events = Array(self.eventsByID.values)
                 let metadata = self.metadata
                 let approvals = self.pendingApprovals
@@ -591,6 +592,8 @@ final class TranscriptStore: ObservableObject {
                 // opened chat blank for the whole turn; the next pass below
                 // catches the list up.
                 self.publishProjection(projected.isEmpty ? fallback : projected)
+                // Readiness and the rows it describes must change together.
+                if includesLiveContent { self.showingCachedContent = false }
                 // Content has arrived by now (the guard above), so an empty
                 // projection is a genuinely empty chat.
                 if self.phase == .loading { self.phase = .ready }

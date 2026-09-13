@@ -59,6 +59,10 @@ struct NativeTranscriptView: View {
                 sessionID: transcript.session?.sessionId ?? "",
                 scrollRequest: scrollRequest,
                 turnAnchorID: turnAnchorID,
+                anchorInitialTurn: navigator.launchedSessionID != nil
+                    && navigator.launchedSessionID == transcript.session?.sessionId,
+                isReady: transcript.phase == .ready && transcript.connection == .live
+                    && !transcript.showingCachedContent,
                 presentationID: appearance.tint.rawValue + appearance.bubbleTint + (workspacePath ?? "") + String(appearance.chatDetail.rawValue),
                 following: $following
             ) { row in

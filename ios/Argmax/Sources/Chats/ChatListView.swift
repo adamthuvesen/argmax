@@ -75,6 +75,7 @@ struct ChatListView: View {
                     preselectedProjectID: request.projectID,
                     branchFromWorkspaceID: request.workspaceID,
                     onLaunched: { workspace, session in
+                        navigator.launchedSessionID = session.id
                         // The launch answered with the rows themselves, so
                         // the chat takes the form's place in one update:
                         // seeding them means the row exists now, and
@@ -417,6 +418,7 @@ final class ChatNavigator: ObservableObject {
     /// A chat that has just been launched or forked, waiting for the row the
     /// host will send back so the stack has something to push.
     @Published var awaitingSessionID: String?
+    @Published var launchedSessionID: String?
     @Published var newChat: NewChatRequest?
     /// The review surface a transcript asked for: its Changes button, a file
     /// reference, or an edit activity that opens a diff.

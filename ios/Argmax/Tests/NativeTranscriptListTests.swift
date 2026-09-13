@@ -157,7 +157,7 @@ final class NativeTranscriptListTests: XCTestCase {
         guard await waitForScrollView(in: host, where: { scrollView in
             guard let frame = state.rowFrames["new-prompt"]?.frame else { return false }
             let viewport = scrollView.convert(scrollView.bounds, to: host.window)
-            return state.following && abs(frame.minY - viewport.minY - 16) < 1
+            return state.following && abs(frame.minY - viewport.minY - scrollView.adjustedContentInset.top - 16) < 1
         }) != nil else {
             return XCTFail("A new turn did not place its prompt at the top inset")
         }
@@ -166,7 +166,7 @@ final class NativeTranscriptListTests: XCTestCase {
         guard await waitForScrollView(in: host, where: { scrollView in
             guard let frame = state.rowFrames["new-prompt"]?.frame else { return false }
             let viewport = scrollView.convert(scrollView.bounds, to: host.window)
-            return abs(frame.minY - viewport.minY - 16) < 1
+            return abs(frame.minY - viewport.minY - scrollView.adjustedContentInset.top - 16) < 1
         }) != nil else {
             return XCTFail("Short output moved the new prompt away from the top inset")
         }
@@ -179,7 +179,7 @@ final class NativeTranscriptListTests: XCTestCase {
         }
     }
 
-    func testOpeningShortExistingTurnPlacesItsPromptAtTheTop() async {
+    func testOpeningShortExistingTurnEndsAtReplyWithoutReservedSpace() async {
         var items = transcriptItems(count: 24)
         items.append(.init(id: "existing-prompt", height: 44))
         items.append(.init(id: "existing-reply", height: 88))
@@ -187,13 +187,106 @@ final class NativeTranscriptListTests: XCTestCase {
         let host = TranscriptListTestHost(state: state, size: CGSize(width: 320, height: 240))
         defer { host.close() }
 
-        guard await waitForScrollView(in: host, where: { scrollView in
-            guard let frame = state.rowFrames["existing-prompt"]?.frame else { return false }
-            let viewport = scrollView.convert(scrollView.bounds, to: host.window)
-            return abs(frame.minY - viewport.minY - 16) < 1
-        }) != nil else {
-            return XCTFail("Opening a short existing turn did not place its prompt at the top inset")
+        guard let scrollView = await waitForScrollView(in: host, where: {
+            abs(tailGap(in: $0)) < 1 && state.rowFrames["existing-reply"] != nil
+        }) else {
+            return XCTFail("Opening a chat did not reach its last reply")
         }
+        for _ in 0..<20 { await settle(host) }
+        XCTAssertEqual(scrollView.contentSize.height, 24 * 44 + 44 + 88 + 36, accuracy: 1)
+        XCTAssertEqual(tailGap(in: scrollView), 0, accuracy: 1)
+    }
+
+    func testActiveTurnKeepsPromptBelowHeaderAndReopeningRemovesReservation() async {
+        var items = transcriptItems(count: 24)
+        let state = TranscriptListTestState(items: items)
+        state.headerHeight = 100
+        state.composerHeight = 120
+        let host = TranscriptListTestHost(state: state, size: CGSize(width: 390, height: 844))
+        defer { host.close() }
+
+        guard await waitForScrollView(in: host, where: { abs(tailGap(in: $0)) < 1 }) != nil else {
+            return XCTFail("The initial transcript did not reach its tail")
+        }
+        items.append(.init(id: "prompt", height: 44))
+        items.append(.init(id: "reply", height: 180))
+        state.items = items
+        state.turnAnchorID = "prompt"
+
+        guard await waitForScrollView(in: host, where: { scrollView in
+            guard let prompt = state.rowFrames["prompt"]?.frame else { return false }
+            let viewport = scrollView.convert(scrollView.bounds, to: host.window)
+            return abs(prompt.minY - viewport.minY - scrollView.adjustedContentInset.top - 16) < 1
+        }) != nil else {
+            let scrollView = host.scrollView!
+            return XCTFail("Prompt y=\(state.rowFrames["prompt"]?.frame.minY ?? -1), viewport=\(scrollView.convert(scrollView.bounds, to: host.window)), insets=\(scrollView.adjustedContentInset)")
+        }
+        for _ in 0..<20 { await settle(host) }
+        let scrollView = host.scrollView!
+        let viewport = scrollView.convert(scrollView.bounds, to: host.window)
+        XCTAssertEqual(state.rowFrames["prompt"]!.frame.minY,
+                       viewport.minY + scrollView.adjustedContentInset.top + 16, accuracy: 1)
+
+        state.sessionID = "reopened-session"
+        for _ in 0..<20 { await settle(host) }
+        XCTAssertEqual(scrollView.contentSize.height, 24 * 44 + 44 + 180 + 36, accuracy: 1)
+        XCTAssertEqual(tailGap(in: scrollView), 0, accuracy: 1)
+    }
+
+    func testLoadingHistoryDoesNotStartAnActiveTurn() async {
+        let state = TranscriptListTestState(items: [])
+        state.isReady = false
+        let host = TranscriptListTestHost(state: state, size: CGSize(width: 320, height: 240))
+        defer { host.close() }
+        await settle(host)
+        state.items = transcriptItems(count: 24)
+        state.turnAnchorID = "item-23"
+        state.isReady = true
+        guard let scrollView = await waitForScrollView(in: host, where: {
+            $0.contentSize.height > 1000 && abs(tailGap(in: $0)) < 1
+        }) else { return XCTFail("Loaded history did not reach its tail") }
+        for _ in 0..<20 { await settle(host) }
+        XCTAssertEqual(scrollView.contentSize.height, 24 * 44 + 36, accuracy: 1)
+        XCTAssertEqual(tailGap(in: scrollView), 0, accuracy: 1)
+    }
+
+    func testOpeningChatShorterThanViewportPlacesReplyAtBottom() async {
+        let state = TranscriptListTestState(items: [.init(id: "prompt", height: 44),
+                                                   .init(id: "reply", height: 88)],
+                                            turnAnchorID: "prompt")
+        state.headerHeight = 100
+        state.composerHeight = 120
+        let host = TranscriptListTestHost(state: state, size: CGSize(width: 390, height: 844))
+        defer { host.close() }
+        for _ in 0..<20 { await settle(host) }
+        guard let scrollView = host.scrollView, let reply = state.rowFrames["reply"] else {
+            return XCTFail("The short chat did not lay out")
+        }
+        let viewport = scrollView.convert(scrollView.bounds, to: host.window)
+        XCTAssertEqual(reply.frame.maxY,
+                       viewport.maxY - scrollView.adjustedContentInset.bottom - 20, accuracy: 1)
+        XCTAssertEqual(scrollView.contentSize.height, 44 + 88 + 36, accuracy: 1)
+    }
+
+    func testNewlyLaunchedChatPlacesFirstPromptAtTop() async {
+        let state = TranscriptListTestState(items: [])
+        state.anchorInitialTurn = true
+        state.isReady = false
+        state.headerHeight = 100
+        state.composerHeight = 120
+        let host = TranscriptListTestHost(state: state, size: CGSize(width: 390, height: 844))
+        defer { host.close() }
+        await settle(host)
+        state.items = [.init(id: "first-prompt", height: 180), .init(id: "reply", height: 88)]
+        state.turnAnchorID = "first-prompt"
+        state.isReady = true
+        for _ in 0..<20 { await settle(host) }
+        guard let scrollView = host.scrollView, let prompt = state.rowFrames["first-prompt"] else {
+            return XCTFail("The newly launched chat did not lay out")
+        }
+        let viewport = scrollView.convert(scrollView.bounds, to: host.window)
+        XCTAssertEqual(prompt.frame.minY,
+                       viewport.minY + scrollView.adjustedContentInset.top + 16, accuracy: 1)
     }
 
     func testSteeringKeepsDetachedReadingPosition() async {
@@ -306,8 +399,12 @@ private final class TranscriptListTestState: ObservableObject {
     @Published var scrollRequest = 0
     @Published var sessionID = "session-1"
     @Published var turnAnchorID: String?
+    @Published var isReady = true
+    var anchorInitialTurn = false
     @Published var appearedIDs: Set<String> = []
     var rowFrames: [String: TranscriptListTestRowGeometry] = [:]
+    var headerHeight: CGFloat = 0
+    var composerHeight: CGFloat = 0
 
     init(items: [TranscriptListTestItem], turnAnchorID: String? = nil) {
         self.items = items
@@ -320,26 +417,32 @@ private struct TranscriptListTestView: View {
 
     var body: some View {
         let itemCount = state.items.count
-        NativeTranscriptList(
-            items: state.items,
-            sessionID: state.sessionID,
-            scrollRequest: state.scrollRequest,
-            turnAnchorID: state.turnAnchorID,
-            following: $state.following
-        ) { item in
-            Text(item.id)
-                .frame(maxWidth: .infinity, minHeight: item.height, alignment: .leading)
-                .accessibilityIdentifier(item.id)
-                .onAppear { state.appearedIDs.insert(item.id) }
-                .onGeometryChange(for: TranscriptListTestRowGeometry.self) { proxy in
-                    TranscriptListTestRowGeometry(
-                        frame: proxy.frame(in: .global),
-                        itemCount: itemCount
-                    )
-                } action: { value in
-                    state.rowFrames[item.id] = value
-                }
+        VStack(spacing: 0) {
+            NativeTranscriptList(
+                items: state.items,
+                sessionID: state.sessionID,
+                scrollRequest: state.scrollRequest,
+                turnAnchorID: state.turnAnchorID,
+                anchorInitialTurn: state.anchorInitialTurn,
+                isReady: state.isReady,
+                following: $state.following
+            ) { item in
+                Text(item.id)
+                    .frame(maxWidth: .infinity, minHeight: item.height, alignment: .leading)
+                    .accessibilityIdentifier(item.id)
+                    .onAppear { state.appearedIDs.insert(item.id) }
+                    .onGeometryChange(for: TranscriptListTestRowGeometry.self) { proxy in
+                        TranscriptListTestRowGeometry(
+                            frame: proxy.frame(in: .global),
+                            itemCount: itemCount
+                        )
+                    } action: { value in
+                        state.rowFrames[item.id] = value
+                    }
+            }
         }
+        .safeAreaInset(edge: .top, spacing: 0) { Color.clear.frame(height: state.headerHeight) }
+        .safeAreaInset(edge: .bottom, spacing: 0) { Color.clear.frame(height: state.composerHeight) }
     }
 }
 

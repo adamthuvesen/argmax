@@ -17,6 +17,57 @@ export type ToolArgument = { key: string; value: string };
 /** Past this, a value stops being something you can read inside a footer run. */
 const INLINE_VALUE_CHARS = 32;
 
+/**
+ * Codex encrypts collab `send_message` bodies with Fernet. The token is a
+ * url-safe base64 blob that always starts `gAAAAA`. Applied to every provider:
+ * Claude `SendMessage`, Cursor, OpenCode, and Grok send plaintext (or have no
+ * equivalent tool), so they never match. A future collab token still hides.
+ */
+export function isOpaqueCiphertext(value: string): boolean {
+  const compact = value.replace(/\s+/g, "");
+  return compact.length >= 80 && /^gAAAAA[A-Za-z0-9_-]+={0,2}$/.test(compact);
+}
+
+const AGENT_MESSAGE_TRANSPORT_KEYS = new Set([
+  "agentId",
+  "agent_id",
+  "pin",
+  "receiverThreadIds",
+  "receiver_thread_ids",
+  "resumedAgentId",
+  "resumed_agent_id",
+  "senderThreadId",
+  "sender_thread_id",
+  "targetThreadId",
+  "target_thread_id",
+  "threadId",
+  "thread_id",
+  "to"
+]);
+
+function foldedToolName(name: string): string {
+  return name.toLowerCase().replace(/[-_]/g, "");
+}
+
+export function isAgentMessageToolName(name: string): boolean {
+  const folded = foldedToolName(name);
+  return folded === "sendmessage" || folded === "sendinput" || folded.endsWith("sessionmessage");
+}
+
+/** Drop ciphertext values and Codex thread-id plumbing the row already named. */
+export function displayToolInput(
+  name: string,
+  input: Record<string, unknown>
+): Record<string, unknown> {
+  const dropTransport = isAgentMessageToolName(name);
+  return Object.fromEntries(
+    Object.entries(input).filter(([key, value]) => {
+      if (dropTransport && AGENT_MESSAGE_TRANSPORT_KEYS.has(key)) return false;
+      return !dropTransport || typeof value !== "string" || !isOpaqueCiphertext(value);
+    })
+  );
+}
+
 function formatValue(value: unknown): string {
   if (typeof value === "string") return value;
   if (value === null) return "null";

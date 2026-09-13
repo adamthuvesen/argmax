@@ -1,6 +1,13 @@
 import { Fragment, useMemo, useState, type JSX, type ReactNode } from "react";
 import { interpretFileChange } from "../lib/fileChange.js";
-import { argumentsFitFooter, toolArguments, type ToolArgument } from "../lib/toolArguments.js";
+import {
+  argumentsFitFooter,
+  displayToolInput,
+  isAgentMessageToolName,
+  isOpaqueCiphertext,
+  toolArguments,
+  type ToolArgument
+} from "../lib/toolArguments.js";
 import {
   displayBashCommand,
   extractOpenablePath,
@@ -10,6 +17,7 @@ import {
   unwrapBashCommand,
   type ToolCall
 } from "../lib/toolCalls.js";
+import { isInternalAgentLaunchMetadata } from "../lib/agentLaunch.js";
 import { FileChangeCard } from "./FileChangeCard.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { displayPath } from "../lib/displayPath.js";
@@ -72,12 +80,17 @@ function pickString(input: Record<string, unknown>, keys: readonly string[]): st
 }
 
 function visibleInputForTool(tool: ToolCall): Record<string, unknown> {
-  if (isCodexAgentTool(tool)) return tool.inputFull;
+  let input = tool.inputFull;
+  if (isCodexAgentTool(tool)) {
+    return displayToolInput(tool.name, input);
+  }
   // For Task (sub-agent) tools, drop the `prompt` field — it's a long
   // multi-paragraph instruction that bloats the toggled detail and adds
   // nothing the user can act on. Keep description + subagent_type.
-  if (getToolTypeBucket(tool.name) !== "agent") return tool.inputFull;
-  return Object.fromEntries(Object.entries(tool.inputFull).filter(([k]) => k !== "prompt"));
+  if (getToolTypeBucket(tool.name) === "agent") {
+    input = Object.fromEntries(Object.entries(input).filter(([k]) => k !== "prompt"));
+  }
+  return displayToolInput(tool.name, input);
 }
 
 function hasNonRedundantInput(
@@ -112,8 +125,14 @@ function displayCommandFull(command: string, cwd: string | null | undefined): st
   return shortenCommandCwd(unwrapBashCommand(command), cwd);
 }
 
-function hasVisibleToolOutput(output: string | null): boolean {
-  return output !== null && output.trim().length > 0;
+function hasVisibleToolOutput(tool: ToolCall, output: string | null): boolean {
+  if (output === null || output.trim().length === 0) return false;
+  if (isAgentMessageToolName(tool.name) && isOpaqueCiphertext(output)) return false;
+  // Claude's SendMessage result is `{success, resumedAgentId, pin}`, not the
+  // child's answer. Codex collab ciphertext is already caught above. Leave
+  // launch-row receipts alone: those rows exist to open the agent pane.
+  if (isAgentMessageToolName(tool.name) && isInternalAgentLaunchMetadata(output)) return false;
+  return true;
 }
 
 /** True when expanding the row would reveal a payload, leftover arguments, a
@@ -152,7 +171,7 @@ export function toolCallHasExpandableDetail(
     showCommandBlock ||
     showArguments ||
     Boolean(options?.hasLeadingContent) ||
-    (hasVisibleToolOutput(tool.output) && !tool.error)
+    (hasVisibleToolOutput(tool, tool.output) && !tool.error)
   );
 }
 
@@ -301,7 +320,7 @@ export function ToolCallDetail({
 
   const outputBody = output.body;
   const showOutput =
-    hasVisibleToolOutput(outputBody) &&
+    hasVisibleToolOutput(tool, outputBody) &&
     (!tool.error || outputBody.trim() !== tool.error.trim());
   const truncated = showOutput && outputBody.length > MAX_OUTPUT_CHARS;
   const shownOutput = truncated && !showFullOutput ? `${outputBody.slice(0, MAX_OUTPUT_CHARS)}\n…` : outputBody;
@@ -346,7 +365,7 @@ export function ToolCallDetail({
   // A read that printed nothing still has somewhere to go: the footer offers
   // Open. The row above already names the file, so nothing repeats it.
   const showOpenAction = Boolean(
-    !canShowFilePreview && openable && !hasVisibleToolOutput(tool.output)
+    !canShowFilePreview && openable && !hasVisibleToolOutput(tool, tool.output)
   );
 
   const footer = (

@@ -53,6 +53,93 @@ final class TranscriptProjectionTests: XCTestCase {
         )
     }
 
+    func testGluedCodexTitlesInOneFragmentOpenParagraphs() throws {
+        let items = TranscriptProjection.project(events: [
+            event(
+                "live-1",
+                "message.delta",
+                "**Designing test with fake client for failure****Exploring test seam placement**",
+                1,
+                ["thinking": .bool(true)]
+            )
+        ])
+        guard case .thought(let thought) = items.first else { return XCTFail("expected thought") }
+        XCTAssertEqual(
+            thought.text,
+            "**Designing test with fake client for failure**\n\n**Exploring test seam placement**"
+        )
+    }
+
+    func testCodexSendMessageCiphertextIsNotToolInput() throws {
+        let ciphertext = "gAAAAABqpr4RdQiuoPbbS8PNeXuPtwfMGzgdXSHeWlWEyxGKhoB8JNw93a0oEyUkXVys9_wfawjMwX2QyWz8Ld6BwXbK_iZ0zfaCj5BZ5d038NLnbMX1rp3M00FqlwAaKycytD6E"
+        let items = TranscriptProjection.project(events: [
+            event("send", "command.started", "send_message", 1, [
+                "id": .string("send-1"),
+                "name": .string("send_message"),
+                "input": .object([
+                    "message": .string(ciphertext),
+                    "receiver_thread_ids": .array([.string("thread-child")])
+                ])
+            ]),
+            event("send-end", "command.completed", "tool_result", 2, [
+                "tool_use_id": .string("send-1"),
+                "content": .string(ciphertext)
+            ])
+        ])
+        let tool = try XCTUnwrap(items.compactMap { item -> TranscriptTool? in
+            guard case .tools(let group) = item else { return nil }
+            return group.tools.first
+        }.first)
+        XCTAssertNil(tool.input)
+        XCTAssertNil(tool.output)
+        XCTAssertFalse(tool.input?.contains("gAAAAA") == true)
+    }
+
+    func testUnrelatedToolKeepsFernetShapedInputAndOutput() throws {
+        let ciphertext = "gAAAAABqpr4RdQiuoPbbS8PNeXuPtwfMGzgdXSHeWlWEyxGKhoB8JNw93a0oEyUkXVys9_wfawjMwX2QyWz8Ld6BwXbK_iZ0zfaCj5BZ5d038NLnbMX1rp3M00FqlwAaKycytD6E"
+        let items = TranscriptProjection.project(events: [
+            event("start", "command.started", "CryptoTool", 1, [
+                "id": .string("crypto-1"),
+                "name": .string("CryptoTool"),
+                "input": .object(["token": .string(ciphertext)])
+            ]),
+            event("end", "command.completed", "tool_result", 2, [
+                "tool_use_id": .string("crypto-1"),
+                "content": .string(ciphertext)
+            ])
+        ])
+        let tool = try XCTUnwrap(items.compactMap { item -> TranscriptTool? in
+            guard case .tools(let group) = item else { return nil }
+            return group.tools.first
+        }.first)
+        XCTAssertTrue(tool.input?.contains(ciphertext) == true)
+        XCTAssertEqual(tool.output, ciphertext)
+    }
+
+    func testClaudeSendMessageKeepsTheReadableBody() throws {
+        let items = TranscriptProjection.project(events: [
+            event("send", "command.started", "SendMessage", 1, [
+                "id": .string("send-1"),
+                "name": .string("SendMessage"),
+                "input": .object([
+                    "to": .string("a5c5b27a1557fa19e"),
+                    "message": .string("Please also check the iOS path.")
+                ])
+            ]),
+            event("send-end", "command.completed", "tool_result", 2, [
+                "tool_use_id": .string("send-1"),
+                "content": .string("{\"success\":true,\"resumedAgentId\":\"a5c5b27a1557fa19e\"}")
+            ])
+        ])
+        let tool = try XCTUnwrap(items.compactMap { item -> TranscriptTool? in
+            guard case .tools(let group) = item else { return nil }
+            return group.tools.first
+        }.first)
+        XCTAssertTrue(tool.input?.contains("Please also check the iOS path.") == true)
+        XCTAssertFalse(tool.input?.contains("a5c5b27a1557fa19e") == true)
+        XCTAssertNil(tool.output)
+    }
+
     func testLiveSummaryFragmentsOpenParagraphsRatherThanCollidingDelimiters() throws {
         // Without a completed item to correct them — which is every provider
         // but Codex — two summaries glued end to end rendered as one line

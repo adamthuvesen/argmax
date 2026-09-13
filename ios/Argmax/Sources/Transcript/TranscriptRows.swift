@@ -331,6 +331,20 @@ private struct TranscriptToolRow: View {
 
     private var isCommand: Bool { tool.activity.kind == .command }
 
+    private var hasExpandableDetail: Bool {
+        if tool.filePath != nil { return true }
+        if !isCommand, let input = tool.input?.trimmingCharacters(in: .whitespacesAndNewlines), !input.isEmpty {
+            return true
+        }
+        if let output = tool.output?.trimmingCharacters(in: .whitespacesAndNewlines), !output.isEmpty {
+            return true
+        }
+        if let error = tool.error?.trimmingCharacters(in: .whitespacesAndNewlines), !error.isEmpty {
+            return true
+        }
+        return false
+    }
+
     @ViewBuilder
     var body: some View {
         if let diffPath = tool.diffPath, let onOpenDiff {
@@ -342,7 +356,7 @@ private struct TranscriptToolRow: View {
             }
             .buttonStyle(PressDim())
             .accessibilityHint("Opens this file's diff")
-        } else {
+        } else if hasExpandableDetail {
             DisclosureGroup {
                 block
                     .padding(.leading, TranscriptActivityRow<EmptyView>.targetInset)
@@ -356,6 +370,8 @@ private struct TranscriptToolRow: View {
                 minHeight: TranscriptActivityRow<EmptyView>.height
             ))
             .tint(Theme.muted)
+        } else {
+            rowLabel()
         }
     }
 

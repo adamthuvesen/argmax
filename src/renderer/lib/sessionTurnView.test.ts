@@ -462,4 +462,40 @@ describe("reasoning bursts", () => {
 
     expect(groups[0].text).toBe("I need to checkthe normalizer.");
   });
+
+  // Codex sends each summary as its own `**Header**` fragment. Glued end to
+  // end the delimiters collapse into `****` and the titles read as one line.
+  it("opens a paragraph between Codex reasoning titles", () => {
+    const groups = coalesceAssistantGroups([
+      think("t1", "**Adding missing session default**", "2026-05-12T15:00:01.000Z"),
+      think("t2", "**Searching session completion events**", "2026-05-12T15:00:02.000Z")
+    ]);
+
+    expect(groups[0].text).toBe(
+      "**Adding missing session default**\n\n**Searching session completion events**"
+    );
+  });
+
+  it("splits Codex titles that already arrived glued as ****", () => {
+    const groups = coalesceAssistantGroups([
+      think(
+        "t1",
+        "**Designing test with fake client for failure****Exploring test seam placement**",
+        "2026-05-12T15:00:01.000Z"
+      )
+    ]);
+
+    expect(groups[0].text).toBe(
+      "**Designing test with fake client for failure**\n\n**Exploring test seam placement**"
+    );
+  });
+
+  it("does not treat a mid-word ** split as a new title", () => {
+    const groups = coalesceAssistantGroups([
+      think("t1", "**Plan", "2026-05-12T15:00:01.000Z"),
+      think("t2", "ning the patch**", "2026-05-12T15:00:02.000Z")
+    ]);
+
+    expect(groups[0].text).toBe("**Planning the patch**");
+  });
 });

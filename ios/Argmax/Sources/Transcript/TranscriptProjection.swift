@@ -420,7 +420,7 @@ enum TranscriptProjection {
         }
         items.append(.thought(TranscriptThought(
             id: "thought-\(event.id)",
-            text: event.message,
+            text: splitCollapsedThoughtTitles(event.message),
             createdAt: event.createdAt,
             isStreaming: streaming
         )))
@@ -475,19 +475,24 @@ enum TranscriptProjection {
     /// render as one run-on line, so a fragment that opens a header opens a
     /// paragraph too. Mid-word deltas still join without a seam.
     private static func combinedThoughtText(_ existing: String, _ incoming: String) -> String {
-        if incoming.hasPrefix(existing) { return incoming }
+        if incoming.hasPrefix(existing) { return splitCollapsedThoughtTitles(incoming) }
         if existing.hasSuffix(incoming) { return existing }
         if incoming.hasPrefix("**") && existing.hasSuffix("**") {
             return joinThoughtParagraphs(existing, incoming)
         }
-        return existing + incoming
+        return splitCollapsedThoughtTitles(existing + incoming)
     }
 
     private static func joinThoughtParagraphs(_ existing: String, _ incoming: String) -> String {
-        guard !existing.isEmpty else { return incoming }
-        if existing.hasSuffix("\n\n") { return existing + incoming }
-        if existing.hasSuffix("\n") { return existing + "\n" + incoming }
-        return existing + "\n\n" + incoming
+        guard !existing.isEmpty else { return splitCollapsedThoughtTitles(incoming) }
+        if existing.hasSuffix("\n\n") { return splitCollapsedThoughtTitles(existing + incoming) }
+        if existing.hasSuffix("\n") { return splitCollapsedThoughtTitles(existing + "\n" + incoming) }
+        return splitCollapsedThoughtTitles(existing + "\n\n" + incoming)
+    }
+
+    /// `**A****B**` is two Codex titles, not four asterisks of prose.
+    private static func splitCollapsedThoughtTitles(_ text: String) -> String {
+        text.replacingOccurrences(of: "****", with: "**\n\n**")
     }
 
     private static func appendLog(_ event: TranscriptEvent, stream: String, to items: inout [TranscriptItem]) {
@@ -679,9 +684,9 @@ enum TranscriptProjection {
                 toolUseId: toolUseID,
                 name: name,
                 inputObject: input,
-                inputText: formatted(input),
-                output: output(endPayload),
-                error: status == .failed ? error(endPayload) : nil,
+                inputText: formatted(displayInput(input, name: name)),
+                output: displayOutput(output(endPayload), name: name),
+                error: status == .failed ? displayOutput(error(endPayload), name: name) : nil,
                 status: status,
                 createdAt: start.createdAt,
                 completedAt: status == .running
@@ -1092,6 +1097,61 @@ enum TranscriptProjection {
         let prefix = root == "/" ? root : "\(root)/"
         guard path.hasPrefix(prefix) else { return path }
         return String(path.dropFirst(prefix.count))
+    }
+
+    private static let agentMessageTransportKeys: Set<String> = [
+        "agentId", "agent_id", "pin",
+        "receiverThreadIds", "receiver_thread_ids",
+        "resumedAgentId", "resumed_agent_id",
+        "senderThreadId", "sender_thread_id",
+        "targetThreadId", "target_thread_id",
+        "threadId", "thread_id", "to"
+    ]
+
+    private static func foldedToolName(_ name: String) -> String {
+        name.lowercased().replacingOccurrences(of: "-", with: "").replacingOccurrences(of: "_", with: "")
+    }
+
+    private static func isAgentMessageTool(_ name: String) -> Bool {
+        let folded = foldedToolName(name)
+        return folded == "sendmessage" || folded == "sendinput" || folded.hasSuffix("sessionmessage")
+    }
+
+    /// Codex collab `send_message` bodies are Fernet tokens (`gAAAAA…`).
+    private static func isOpaqueCiphertext(_ value: String) -> Bool {
+        let compact = String(value.filter { !$0.isWhitespace })
+        guard compact.count >= 80, compact.hasPrefix("gAAAAA") else { return false }
+        return compact.utf8.allSatisfy {
+            ($0 >= 65 && $0 <= 90) || ($0 >= 97 && $0 <= 122) || ($0 >= 48 && $0 <= 57)
+                || $0 == 45 || $0 == 95 || $0 == 61
+        }
+    }
+
+    private static func isLaunchMetadata(_ value: String) -> Bool {
+        let normalized = value.lowercased()
+        return normalized.contains("resumedagentid")
+            || normalized.contains("this tool result is internal metadata")
+            || normalized.contains("subagent started in background")
+    }
+
+    private static func displayInput(
+        _ object: [String: TranscriptJSONValue],
+        name: String
+    ) -> [String: TranscriptJSONValue] {
+        let dropTransport = isAgentMessageTool(name)
+        var result: [String: TranscriptJSONValue] = [:]
+        for (key, value) in object {
+            if dropTransport, agentMessageTransportKeys.contains(key) { continue }
+            if dropTransport, case .string(let text) = value, isOpaqueCiphertext(text) { continue }
+            result[key] = value
+        }
+        return result
+    }
+
+    private static func displayOutput(_ value: String?, name: String) -> String? {
+        guard let value else { return nil }
+        if isAgentMessageTool(name), isOpaqueCiphertext(value) || isLaunchMetadata(value) { return nil }
+        return value
     }
 
     private static func formatted(_ object: [String: TranscriptJSONValue]) -> String? {

@@ -1,6 +1,7 @@
 import { safeJsonParse, safeJsonParseRecord } from "../../shared/safeJson.js";
 import type { TimelineEvent } from "../../shared/types.js";
 import { interpretFileChange, summarizeFileChanges, type ChangeCounts } from "./fileChange.js";
+import { isOpaqueCiphertext } from "./toolArguments.js";
 import { describeActivity, summarizeActivities, type ToolActivity, type ToolActivityKind } from "./toolActivity.js";
 
 export type ToolCall = {
@@ -598,7 +599,9 @@ export function extractToolInputPreview(name: string, input: Record<string, unkn
     // Claude's Skill tool input is `{ skill: "<name>" }`; surface that name so
     // the row reads "Activated skill <name>".
     const skill = input.skill ?? input.name ?? input.command;
-    if (typeof skill === "string" && skill.trim().length > 0) return skill.slice(0, 72);
+    if (typeof skill === "string" && skill.trim().length > 0 && !isOpaqueCiphertext(skill)) {
+      return skill.slice(0, 72);
+    }
     return "";
   }
   if (isAgentToolName(name)) {

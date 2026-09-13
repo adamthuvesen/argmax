@@ -62,6 +62,13 @@ Spawned sessions run in the workspace worktree. Project-scoped `.mcp.json` or `.
 
 Argmax adds one server of its own per launch — `argmax`, the agent tools — through each provider's per-launch mechanism, without disturbing the user's configured servers. For Cursor's one-shot path and for Grok that mechanism is a config file written into the workspace and put back when the child exits; a `.cursor/mcp.json` the user keeps is merged, never replaced ([agent-tools.md](agent-tools.md)).
 
+Codex sessions also receive ChatGPT's app-managed `cua_repl` server when the
+`computer-use@openai-bundled` plugin is enabled and its
+`unified-computer-use` runtime is present in the Codex plugin cache. This makes
+the Computer Use tools available in Argmax without replacing the user's Codex
+MCP configuration. ChatGPT installs and updates that runtime, so Argmax leaves
+Codex unchanged when the plugin is disabled or the runtime is unavailable.
+
 Customize → Integrations → Connections calls `connections:list` for a provider. `/mcp` opens the same inventory for the selected or active provider. The inventory includes MCP servers, installed plugins, and provider connectors when the provider reports them. Claude and OpenCode health-check their servers, so Argmax can show **Connected** or **Needs login**. Other providers often expose configuration without token validity, which Argmax shows as **Unknown**. A local stdio server is **Available** because it does not use a separate MCP OAuth login.
 
 Authentication stays with the provider. A connection row can copy the provider's login command or settings route when one exists. Argmax does not read, store, or broker provider OAuth tokens.

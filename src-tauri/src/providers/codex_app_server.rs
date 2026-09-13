@@ -8,6 +8,8 @@
 //! answers every server request so Codex can never wait on an unsupported UI.
 
 use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
@@ -39,6 +41,9 @@ use crate::util::sync::LockOrRecover;
 
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(20);
 const CANCEL_TIMEOUT: Duration = Duration::from_secs(5);
+const COMPUTER_USE_PLUGIN: &str = "computer-use@openai-bundled";
+const COMPUTER_USE_RUNTIME: &str = "unified-computer-use";
+const COMPUTER_USE_SERVER: &str = "cua_repl";
 
 /// Launch one Codex turn over its native app-server protocol.
 ///
@@ -58,6 +63,8 @@ pub async fn launch_turn(
     if let Some(config) = session_launch {
         environment_overrides.extend(config.env_pairs());
     }
+    let provider_environment = build_provider_environment(environment_overrides);
+    let computer_use_server = computer_use_server(&provider_environment);
     let mut command = Command::new(binary_path);
     command
         // `update_plan` is Codex's todo list, and it is off unless the config
@@ -73,7 +80,7 @@ pub async fn launch_turn(
         ])
         .current_dir(&input.workspace_path)
         .env_clear()
-        .envs(build_provider_environment(environment_overrides))
+        .envs(provider_environment)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -131,7 +138,7 @@ pub async fn launch_turn(
         } else {
             "thread/start"
         };
-        let thread_params = thread_params(input, session_launch);
+        let thread_params = thread_params(input, session_launch, computer_use_server.as_ref());
         let thread_response = rpc.request(thread_method, thread_params).await?;
         let thread_id = thread_response
             .pointer("/thread/id")
@@ -312,6 +319,7 @@ pub async fn launch_turn(
 fn thread_params(
     input: &ProviderLaunchInput,
     session_launch: Option<&SessionLaunchProcessConfig>,
+    computer_use_server: Option<&Value>,
 ) -> Value {
     let mut params = Map::new();
     params.insert("cwd".to_string(), json!(input.workspace_path));
@@ -320,8 +328,8 @@ fn thread_params(
         params.insert("threadId".to_string(), json!(resume_id));
     }
     apply_permission_policy(&mut params, input, false);
-    if let Some(config) = session_launch {
-        params.insert("config".to_string(), mcp_config(config));
+    if let Some(config) = mcp_config(session_launch, computer_use_server) {
+        params.insert("config".to_string(), config);
     }
     Value::Object(params)
 }
@@ -398,19 +406,134 @@ fn effective_effort(input: &ProviderLaunchInput) -> Option<&'static str> {
     })
 }
 
-fn mcp_config(config: &SessionLaunchProcessConfig) -> Value {
-    json!({
-        "mcp_servers": {
-            mcp_injection::SERVER_NAME: {
+fn mcp_config(
+    session_launch: Option<&SessionLaunchProcessConfig>,
+    computer_use_server: Option<&Value>,
+) -> Option<Value> {
+    let mut servers = Map::new();
+    if let Some(config) = session_launch {
+        servers.insert(
+            mcp_injection::SERVER_NAME.to_string(),
+            json!({
                 "command": config.argmax_bin(),
                 "args": ["mcp"],
                 "env": {
                     SESSION_LAUNCH_SOCKET_ENV: config.socket_path(),
                     SESSION_LAUNCH_TOKEN_ENV: config.token(),
-                },
+                }
+            }),
+        );
+    }
+    if let Some(server) = computer_use_server {
+        servers.insert(COMPUTER_USE_SERVER.to_string(), server.clone());
+    }
+    (!servers.is_empty()).then(|| json!({ "mcp_servers": servers }))
+}
+
+fn computer_use_server(environment: &[(String, String)]) -> Option<Value> {
+    match codex_home(environment).and_then(|home| computer_use_server_from_home(&home)) {
+        Ok(server) => server,
+        Err(error) => {
+            tracing::warn!(%error, "Codex Computer Use is enabled but unavailable in Argmax");
+            None
+        }
+    }
+}
+
+fn codex_home(environment: &[(String, String)]) -> Result<PathBuf, String> {
+    let value = |name: &str| {
+        environment
+            .iter()
+            .find_map(|(key, value)| (key == name && !value.is_empty()).then_some(value))
+    };
+    if let Some(path) = value("CODEX_HOME") {
+        return Ok(PathBuf::from(path));
+    }
+    value("HOME")
+        .map(|home| PathBuf::from(home).join(".codex"))
+        .ok_or_else(|| "neither CODEX_HOME nor HOME is set".to_string())
+}
+
+fn computer_use_server_from_home(codex_home: &Path) -> Result<Option<Value>, String> {
+    let config_path = codex_home.join("config.toml");
+    let config = match fs::read_to_string(&config_path) {
+        Ok(config) => config,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("could not read {}: {error}", config_path.display())),
+    };
+    if !computer_use_is_enabled(&config) {
+        return Ok(None);
+    }
+
+    let runtime_root = codex_home
+        .join("plugins/cache/openai-bundled")
+        .join(COMPUTER_USE_RUNTIME);
+    let versions = fs::read_dir(&runtime_root).map_err(|error| {
+        format!(
+            "could not find the ChatGPT Computer Use runtime at {}: {error}",
+            runtime_root.display()
+        )
+    })?;
+    let mut versions = versions
+        .flatten()
+        .filter(|entry| entry.path().is_dir())
+        .collect::<Vec<_>>();
+    versions.sort_by_key(|entry| version_key(&entry.file_name().to_string_lossy()));
+
+    for version in versions.into_iter().rev() {
+        let manifest_path = version.path().join(".mcp.json");
+        let Ok(body) = fs::read_to_string(&manifest_path) else {
+            continue;
+        };
+        let Ok(document) = serde_json::from_str::<Value>(&body) else {
+            continue;
+        };
+        if let Some(server) = document
+            .pointer(&format!("/mcpServers/{COMPUTER_USE_SERVER}"))
+            .filter(|server| server.is_object())
+        {
+            return Ok(Some(server.clone()));
+        }
+    }
+
+    Err(format!(
+        "no valid {COMPUTER_USE_SERVER} configuration was found under {}",
+        runtime_root.display()
+    ))
+}
+
+fn computer_use_is_enabled(config: &str) -> bool {
+    let expected_section = format!("plugins.\"{COMPUTER_USE_PLUGIN}\"");
+    let mut in_section = false;
+    for line in config.lines() {
+        let trimmed = line.trim();
+        if let Some(section) = trimmed
+            .strip_prefix('[')
+            .and_then(|value| value.strip_suffix(']'))
+        {
+            in_section = section == expected_section;
+            continue;
+        }
+        if in_section {
+            let Some((key, value)) = trimmed.split_once('=') else {
+                continue;
+            };
+            if key.trim() == "enabled" {
+                return value
+                    .split('#')
+                    .next()
+                    .is_some_and(|value| value.trim() == "true");
             }
         }
-    })
+    }
+    false
+}
+
+fn version_key(version: &str) -> Vec<u64> {
+    version
+        .split('.')
+        .map(|part| part.parse().unwrap_or_default())
+        .collect()
 }
 
 struct RpcPeer {
@@ -1362,7 +1485,7 @@ mod tests {
     fn permission_modes_use_the_documented_app_server_policies() {
         let defaults_input = input(PermissionMode::ProviderDefaults);
         for defaults in [
-            thread_params(&defaults_input, None),
+            thread_params(&defaults_input, None, None),
             turn_params(&defaults_input, "thread-1", "Do the work".into()),
         ] {
             assert!(defaults.get("approvalPolicy").is_none());
@@ -1372,7 +1495,7 @@ mod tests {
         }
 
         let ask_input = input(PermissionMode::AskEachTime);
-        let ask_thread = thread_params(&ask_input, None);
+        let ask_thread = thread_params(&ask_input, None, None);
         assert_eq!(ask_thread["approvalPolicy"], "on-request");
         assert_eq!(ask_thread["approvalsReviewer"], "user");
         assert_eq!(ask_thread["sandbox"], "workspace-write");
@@ -1382,7 +1505,7 @@ mod tests {
         assert_eq!(ask_turn["sandboxPolicy"]["type"], "workspaceWrite");
 
         let full_input = input(PermissionMode::AutoApprove);
-        let full_thread = thread_params(&full_input, None);
+        let full_thread = thread_params(&full_input, None, None);
         assert_eq!(full_thread["approvalPolicy"], "on-request");
         assert_eq!(full_thread["approvalsReviewer"], "auto_review");
         assert_eq!(full_thread["sandbox"], "danger-full-access");
@@ -1390,6 +1513,68 @@ mod tests {
         assert_eq!(full_turn["approvalPolicy"], "on-request");
         assert_eq!(full_turn["approvalsReviewer"], "auto_review");
         assert_eq!(full_turn["sandboxPolicy"]["type"], "dangerFullAccess");
+    }
+
+    #[test]
+    fn computer_use_runtime_follows_the_enabled_plugin_setting() {
+        let codex_home = tempfile::tempdir().expect("temporary Codex home");
+        let runtime = codex_home
+            .path()
+            .join("plugins/cache/openai-bundled/unified-computer-use/26.908.40834");
+        fs::create_dir_all(&runtime).expect("Computer Use runtime directory");
+        fs::write(
+            runtime.join(".mcp.json"),
+            r#"{"mcpServers":{"cua_repl":{"command":"/app/cua-node","args":["repl.mjs"]}}}"#,
+        )
+        .expect("Computer Use manifest");
+
+        fs::write(
+            codex_home.path().join("config.toml"),
+            "[plugins.\"computer-use@openai-bundled\"]\nenabled = false\n",
+        )
+        .expect("disabled config");
+        assert_eq!(
+            computer_use_server_from_home(codex_home.path()).expect("disabled setting"),
+            None
+        );
+
+        fs::write(
+            codex_home.path().join("config.toml"),
+            "[plugins.\"computer-use@openai-bundled\"]\nenabled = true # user setting\n",
+        )
+        .expect("enabled config");
+        let server = computer_use_server_from_home(codex_home.path())
+            .expect("enabled setting")
+            .expect("Computer Use server");
+        assert_eq!(server["command"], "/app/cua-node");
+        assert_eq!(server["args"], json!(["repl.mjs"]));
+    }
+
+    #[test]
+    fn codex_thread_merges_argmax_and_computer_use_servers() {
+        let session_launch = SessionLaunchProcessConfig::for_tests(
+            "/tmp/argmax.sock",
+            "secret-token",
+            "/Applications/Argmax.app/Contents/MacOS/argmax",
+        );
+        let computer_use = json!({
+            "command": "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+            "args": ["cua-repl.mjs"],
+        });
+        let params = thread_params(
+            &input(PermissionMode::AutoApprove),
+            Some(&session_launch),
+            Some(&computer_use),
+        );
+
+        assert_eq!(
+            params["config"]["mcp_servers"][mcp_injection::SERVER_NAME]["command"],
+            "/Applications/Argmax.app/Contents/MacOS/argmax"
+        );
+        assert_eq!(
+            params["config"]["mcp_servers"][COMPUTER_USE_SERVER],
+            computer_use
+        );
     }
 
     #[test]

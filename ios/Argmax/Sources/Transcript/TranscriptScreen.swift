@@ -132,7 +132,6 @@ struct TranscriptScreen: View {
                     menu
                 }
             }
-            if transcript.phase == .loading { IndeterminateLine() }
             if let draftFailure { Text(draftFailure).typeMeta().foregroundStyle(Theme.rose) }
             if transcript.showingCachedContent {
                 Text("Saved on this iPhone. Updating when your Mac is available.").typeMeta()

@@ -12,6 +12,21 @@ final class TranscriptUITests: XCTestCase {
         XCTAssertTrue(app.scrollViews["native-transcript"].waitForExistence(timeout: 10))
     }
 
+    func testLoadingAnimationRevealsCompleteChat() {
+        app.terminate()
+        app.launchArguments.append("-scenario-loading")
+        app.launch()
+        let loading = app.activityIndicators["transcript-loading"]
+        XCTAssertTrue(loading.waitForExistence(timeout: 5))
+        XCTAssertEqual(loading.label, "Loading chat…")
+        XCTAssertFalse(app.staticTexts["The complete chat is ready."].exists)
+        screenshot("chat-loading")
+        app.buttons["Stream"].tap()
+        XCTAssertTrue(app.staticTexts["The complete chat is ready."].waitForExistence(timeout: 5))
+        XCTAssertFalse(loading.exists)
+        screenshot("chat-loaded")
+    }
+
     func testLongUserBubbleExpandsAndCollapses() {
         app.terminate()
         app.launchArguments.append("-scenario-user-bubble")

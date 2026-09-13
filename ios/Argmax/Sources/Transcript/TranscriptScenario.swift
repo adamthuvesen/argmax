@@ -97,6 +97,9 @@ private final class TranscriptScenarioState: ObservableObject {
             transcript.preview(page: page(activityEvents()), metadata: metadata)
         }
         if ProcessInfo.processInfo.arguments.contains("-scenario-ask") { ask() }
+        if ProcessInfo.processInfo.arguments.contains("-scenario-loading") {
+            transcript.preview(page: page([]), metadata: metadata, isLoading: true)
+        }
     }
 
     /// Provider-neutral activity metadata rendered through the production
@@ -181,6 +184,13 @@ private final class TranscriptScenarioState: ObservableObject {
     }
 
     func stream() {
+        if ProcessInfo.processInfo.arguments.contains("-scenario-loading") {
+            transcript.preview(page: page([
+                event(1, type: "user.message", text: "Load this chat"),
+                event(2, type: "message.completed", text: "The complete chat is ready.")
+            ]), metadata: metadata)
+            return
+        }
         streamCount += 1
         let body = "Answer 49\n\n" + String(repeating: "More streamed content wraps across the available width.\n\n", count: streamCount * 3)
             + "Stream end \(streamCount)"

@@ -318,7 +318,8 @@ final class TranscriptStore: ObservableObject {
         metadata row: TranscriptSessionMetadata,
         title: String = "Preview",
         workspacePath: String? = nil,
-        pendingMessages: [TranscriptPendingMessage] = []
+        pendingMessages: [TranscriptPendingMessage] = [],
+        isLoading: Bool = false
     ) {
         generation += 1
         projectionVersion += 1
@@ -343,7 +344,7 @@ final class TranscriptStore: ObservableObject {
         publishProjection(TranscriptProjection.project(events: Array(eventsByID.values),
             session: metadata, pendingApprovals: pendingApprovals, workspacePath: workspacePath))
         showingCachedContent = false
-        phase = .ready
+        phase = isLoading ? .loading : .ready
     }
 
     /// Load the trace for one provider-native child without changing the

@@ -109,6 +109,18 @@ struct NativeTranscriptView: View {
                 }
             }
         }
+        .opacity(transcript.phase == .loading ? 0 : 1)
+        .allowsHitTesting(transcript.phase != .loading)
+        .accessibilityHidden(transcript.phase == .loading)
+        .overlay {
+            if transcript.phase == .loading {
+                ProgressView {
+                    Text("Loading chat…").typeStyle(.footnote)
+                }
+                .foregroundStyle(Theme.muted)
+                .accessibilityIdentifier("transcript-loading")
+            }
+        }
         .onChange(of: transcript.session?.sessionId) { following = true }
     }
 }

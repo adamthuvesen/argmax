@@ -9,6 +9,7 @@ import {
 import { runChecked } from "./common.mjs";
 
 const DEFAULT_START_TIMEOUT_MS = 60_000;
+export const NATIVE_STOP_MINIMUM_SESSION_AGE_MS = 10_001;
 const desktopProcesses = new WeakMap();
 
 async function isExecutable(filePath) {
@@ -59,6 +60,24 @@ async function captureDesktopState(browser) {
   });
 }
 
+async function macosDesktopState(pid, activate) {
+  const source = [
+    "import AppKit",
+    "import CoreGraphics",
+    `guard let app = NSRunningApplication(processIdentifier: pid_t(${pid})) else { exit(2) }`,
+    "func state() -> [String: Any] {",
+    "  let windows = (CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] ?? []).filter { ($0[kCGWindowOwnerPID as String] as? Int32) == app.processIdentifier }",
+    "  return [\"policy\": app.activationPolicy.rawValue, \"active\": app.isActive, \"hidden\": app.isHidden, \"finishedLaunching\": app.isFinishedLaunching, \"frontmostPid\": NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1, \"windowCount\": windows.count, \"onScreenWindowCount\": windows.filter { $0[kCGWindowIsOnscreen as String] as? Bool == true }.count]",
+    "}",
+    "let before = state()",
+    `let activated: Any = ${activate ? "app.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])" : "NSNull()"}`,
+    "let data = try! JSONSerialization.data(withJSONObject: [\"before\": before, \"activated\": activated, \"after\": state()])",
+    "print(String(data: data, encoding: .utf8)!)"
+  ].join("\n");
+  const result = await runChecked("/usr/bin/swift", ["-e", source], { timeoutMs: 10_000 });
+  return JSON.parse(result.stdout);
+}
+
 async function ensureDesktopForeground(browser) {
   const visibilityState = await browser.execute(function currentVisibility() {
     return document.visibilityState;
@@ -66,20 +85,30 @@ async function ensureDesktopForeground(browser) {
 
   const processInfo = desktopProcesses.get(browser);
   if (!processInfo) throw new Error("Could not identify the verification app process to foreground it");
-  const source = [
-    "import AppKit",
-    `guard let app = NSRunningApplication(processIdentifier: pid_t(${processInfo.pid})) else { exit(2) }`,
-    "guard app.activate(options: [.activateAllWindows, .activateIgnoringOtherApps]) else { exit(3) }"
-  ].join("\n");
-  await runChecked("/usr/bin/swift", ["-e", source], { timeoutMs: 10_000 });
+  const activation = await macosDesktopState(processInfo.pid, true);
+  if (activation.activated !== true) {
+    throw new Error(`Could not activate verification app process ${processInfo.pid}: ${JSON.stringify(activation)}`);
+  }
 
-  await browser.waitUntil(
-    async () =>
-      await browser.execute(function documentIsVisible() {
-        return document.visibilityState === "visible";
-      }),
-    { timeout: 5_000, interval: 50, timeoutMsg: `Verification app process ${processInfo.pid} did not become visible` }
-  );
+  try {
+    await browser.waitUntil(
+      async () =>
+        await browser.execute(function documentIsVisible() {
+          return document.visibilityState === "visible";
+        }),
+      { timeout: 5_000, interval: 50, timeoutMsg: `Verification app process ${processInfo.pid} did not become visible` }
+    );
+  } catch (visibilityError) {
+    let failureState;
+    try {
+      failureState = await macosDesktopState(processInfo.pid, false);
+    } catch (diagnosticError) {
+      failureState = { diagnosticError: errorMessage(diagnosticError) };
+    }
+    throw new Error(
+      `Verification app process ${processInfo.pid} did not become visible: ${errorMessage(visibilityError)}; ${JSON.stringify({ activation, failureState })}`
+    );
+  }
   return { changed: visibilityState !== "visible", pid: processInfo.pid };
 }
 
@@ -644,10 +673,51 @@ export async function sendDesktopMessage({ browser, input }) {
 }
 
 /** Stop the running provider through the native session control. */
-export async function stopDesktopSession({ browser }) {
+export async function stopDesktopSession({
+  browser,
+  sessionId
+}) {
   if (!browser) throw new Error("stopDesktopSession requires browser");
+  if (!sessionId) throw new Error("stopDesktopSession requires sessionId");
 
   await ensureDesktopForeground(browser);
+
+  const beforeWait = await browser.execute(async function sessionBeforeStop(id) {
+    const dashboard = await window.argmax.dashboard.list();
+    const session = dashboard.sessions.find((candidate) => candidate.id === id);
+    return session ? { startedAt: session.startedAt, state: session.state } : null;
+  }, sessionId);
+  if (!beforeWait?.startedAt || beforeWait.state !== "running") {
+    throw new Error(`Native stop expected running session ${sessionId}`);
+  }
+  const startedAtMs = Date.parse(beforeWait.startedAt);
+  if (Number.isNaN(startedAtMs)) {
+    throw new Error(`Native stop received invalid session start time: ${beforeWait.startedAt}`);
+  }
+  const remainingEarlyStopMs = startedAtMs + NATIVE_STOP_MINIMUM_SESSION_AGE_MS - Date.now();
+  if (remainingEarlyStopMs > 0) {
+    await browser.waitUntil(
+      () => Date.now() - startedAtMs >= NATIVE_STOP_MINIMUM_SESSION_AGE_MS,
+      {
+        timeout: remainingEarlyStopMs + 1_000,
+        interval: 25,
+        timeoutMsg: `Native stop did not reach the ${NATIVE_STOP_MINIMUM_SESSION_AGE_MS}ms minimum session age`
+      }
+    );
+  }
+  const sessionAgeMs = Date.now() - startedAtMs;
+  if (sessionAgeMs < NATIVE_STOP_MINIMUM_SESSION_AGE_MS) {
+    throw new Error(`Native stop did not reach the ${NATIVE_STOP_MINIMUM_SESSION_AGE_MS}ms minimum session age`);
+  }
+
+  const beforeClick = await browser.execute(async function sessionBeforeStop(id) {
+    const dashboard = await window.argmax.dashboard.list();
+    const session = dashboard.sessions.find((candidate) => candidate.id === id);
+    return session?.state ?? null;
+  }, sessionId);
+  if (beforeClick !== "running") {
+    throw new Error(`Session ${sessionId} stopped before the native Stop click: ${beforeClick ?? "missing"}`);
+  }
 
   const stop = await browser.$('[aria-label="Stop chat"]');
   await stop.waitForEnabled({ timeout: 20_000 });
@@ -657,7 +727,15 @@ export async function stopDesktopSession({ browser }) {
   const uiState = await captureDesktopState(browser);
   return {
     ok: rendererErrors(uiState).length === 0,
-    assertions: [{ name: "native session control stops the running chat", ok: true }],
+    assertions: [
+      {
+        name: "native Stop waits past the early-stop restore window",
+        ok: true,
+        detail: `session age ${sessionAgeMs}ms`
+      },
+      { name: "native session remains running until the Stop click", ok: true },
+      { name: "native session control stops the running chat", ok: true }
+    ],
     uiState,
     errors: rendererErrorMessages(uiState)
   };

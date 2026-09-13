@@ -199,6 +199,7 @@ async function promptFrom(args) {
             response: { subtype: "success", request_id: message.request_id, response: {} },
           });
         } else if (message.type === "user" && typeof message.message?.content === "string") {
+          await emit(message);
           return message.message.content;
         } else {
           throw new Error("verification fixture received an unsupported control input");

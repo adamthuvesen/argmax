@@ -11,8 +11,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { parseDoctorArgs } from "../../scripts/doctor.mjs";
 import { parseScratchArgs } from "../../scripts/scratch-app.mjs";
 import { parseVerifyArgs } from "../../scripts/verify.mjs";
+import { NATIVE_STOP_MINIMUM_SESSION_AGE_MS } from "../../scripts/verification/desktop.mjs";
 import { checkoutFingerprint, runChecked } from "../../scripts/verification/common.mjs";
 import { redact } from "../../scripts/verification/evidence.mjs";
+import { EARLY_STOP_WINDOW_MS } from "../renderer/lib/earlyStop.js";
 
 const temporaryDirectories: string[] = [];
 const fixture = fileURLToPath(new URL("../../scripts/verification/provider-fixture.mjs", import.meta.url));
@@ -47,6 +49,7 @@ it("initializes the Claude fixture and reads its prompt without waiting for stdi
   const lines = createInterface({ input: child.stdout });
   let stderr = "";
   let initialized = false;
+  let replayedUserPrompt = false;
   let emittedSystemInit = false;
   child.stderr.setEncoding("utf8").on("data", (chunk: string) => { stderr += chunk; });
   try {
@@ -59,10 +62,16 @@ it("initializes the Claude fixture and reads its prompt without waiting for stdi
         child.stdin.write(`${JSON.stringify({ type: "user", message: { role: "user", content: "[argmax-verification:provider-error]" } })}\n`);
       } else if (message.type === "system" && message.subtype === "init") {
         emittedSystemInit = true;
+      } else if (
+        message.type === "user"
+        && (message.message as { content?: unknown } | undefined)?.content === "[argmax-verification:provider-error]"
+      ) {
+        replayedUserPrompt = true;
       }
     }
     const code = await exited;
     expect(initialized).toBe(true);
+    expect(replayedUserPrompt).toBe(true);
     expect(emittedSystemInit).toBe(true);
     expect(code).toBe(42);
     expect(stderr).toContain("Verification provider failed as requested.");
@@ -248,6 +257,10 @@ afterEach(async () => {
 });
 
 describe("verification script arguments", () => {
+  it("waits beyond the renderer early-stop restore window before native cancellation", () => {
+    expect(NATIVE_STOP_MINIMUM_SESSION_AGE_MS).toBeGreaterThan(EARLY_STOP_WINDOW_MS);
+  });
+
   it("defaults to the deterministic resume scenario with required native verification", () => {
     expect(parseVerifyArgs([])).toMatchObject({
       scenario: "chat-resume",
@@ -304,6 +317,8 @@ describe("verification evidence", () => {
     const repository = await mkdtemp(path.join(tmpdir(), "argmax-fingerprint-test-"));
     temporaryDirectories.push(repository);
     await runChecked("git", ["init", "-q"], { cwd: repository });
+    // A globally enabled fsmonitor can write into .git while cleanup removes it.
+    await runChecked("git", ["config", "core.fsmonitor", "false"], { cwd: repository });
     await writeFile(path.join(repository, "tracked.txt"), "one\n");
     await runChecked("git", ["add", "tracked.txt"], { cwd: repository });
     await runChecked("git", ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-q", "-m", "fixture"], {

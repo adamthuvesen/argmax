@@ -84,6 +84,14 @@ do not include the driver. A verification request sent to an ordinary binary
 fails before app startup instead of falling back to installed providers.
 Before native interaction, the runner brings its isolated app window to the
 foreground and fails if that window remains hidden.
+Foreground failures include macOS activation and on-screen window counts,
+alongside the driver error, to distinguish a loaded webview from a visible
+window. A diagnostic probe failure remains explicit.
+
+Native `cancellation` waits beyond the ten-second early-stop window, checks
+that the session is still running, then clicks Stop. This verifies a retained
+cancelled session. The renderer tests separately cover early stop restoring
+the draft and archiving the workspace.
 
 Run `doctor` from the same host that will run verification. It reports the
 capabilities available to that process. OS permission checks it cannot prove

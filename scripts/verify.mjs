@@ -834,7 +834,7 @@ export async function runVerification(options) {
           fastMode: false
         });
     const terminate = desktopHandle
-      ? async () => recordNativeAction(await desktopModule.stopDesktopSession({ browser: desktopHandle.browser }))
+      ? async (sessionId) => recordNativeAction(await desktopModule.stopDesktopSession({ browser: desktopHandle.browser, sessionId }))
       : (sessionId) => bridge.call("providers:terminate", { sessionId });
     const restartBackend = async () => {
       if (desktopHandle || !app) throw new Error("scratch backend restart is unavailable");

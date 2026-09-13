@@ -29,11 +29,19 @@ use crate::session_control::{argmax_protocol_error, SessionControlError};
 /// Points, not device pixels: the capture is rasterised at this width so its
 /// base64 survives the provider's own per-line JSON cap (4 MiB in
 /// `providers::normalizer`). A whole retina window would not.
-const SCREENSHOT_MAX_WIDTH_POINTS: f64 = 720.0;
+// Retina WebKit returns two device pixels per point. Keep the delivered image
+// near 720 pixels wide so ordinary screenshots fit the provider's JSON limit.
+const SCREENSHOT_MAX_WIDTH_POINTS: f64 = 360.0;
 
 /// Above this the image is dropped and the reply is text only. A tool result
 /// too large to parse is worse than one that explains itself.
 const SCREENSHOT_MAX_BASE64_BYTES: usize = 900_000;
+const SCREENSHOT_MIN_WIDTH_POINTS: f64 = 1.0;
+
+fn next_screenshot_width(current: f64, encoded_bytes: usize) -> f64 {
+    let target_ratio = (SCREENSHOT_MAX_BASE64_BYTES as f64 / encoded_bytes as f64).sqrt() * 0.9;
+    (current * target_ratio.min(0.75)).max(SCREENSHOT_MIN_WIDTH_POINTS)
+}
 
 /// One browser action on the session-control socket.
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
@@ -334,14 +342,23 @@ async fn run(
         }
         BrowserRequest::Screenshot { tab, element_ref } => {
             let target = owned_target(app, session_id, tab)?;
-            let captured = automation::screenshot(
-                app,
-                &target,
-                element_ref.as_deref(),
-                Some(SCREENSHOT_MAX_WIDTH_POINTS),
-            )
-            .await?;
-            let encoded = encode_base64(&captured.png);
+            let mut width_points = SCREENSHOT_MAX_WIDTH_POINTS;
+            let (captured, encoded) = loop {
+                let captured = automation::screenshot(
+                    app,
+                    &target,
+                    element_ref.as_deref(),
+                    Some(width_points),
+                )
+                .await?;
+                let encoded = encode_base64(&captured.png);
+                if encoded.len() <= SCREENSHOT_MAX_BASE64_BYTES
+                    || width_points <= SCREENSHOT_MIN_WIDTH_POINTS
+                {
+                    break (captured, encoded);
+                }
+                width_points = next_screenshot_width(width_points, encoded.len());
+            };
             let oversized = encoded.len() > SCREENSHOT_MAX_BASE64_BYTES;
             Ok(BrowserOutcome {
                 result: json!({
@@ -467,8 +484,15 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::BrowserRequest;
+    use super::{next_screenshot_width, BrowserRequest, SCREENSHOT_MAX_BASE64_BYTES};
     use crate::browser::automation::BrowserAction;
+
+    #[test]
+    fn oversized_screenshots_are_retried_at_a_narrower_width() {
+        let next = next_screenshot_width(360.0, SCREENSHOT_MAX_BASE64_BYTES * 4);
+        assert!(next < 180.0);
+        assert!(next >= 1.0);
+    }
 
     #[test]
     fn requests_round_trip_through_the_wire_shape() {

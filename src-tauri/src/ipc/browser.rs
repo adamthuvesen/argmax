@@ -479,10 +479,14 @@ pub(crate) fn open_tab(
                 return;
             }
             tracing::debug!(%url, tab = %load_tab, "browser tab page loaded");
+            // Loading is a navigation fact, not a title-eval fact. WebKit can
+            // drop a callback queued around the first load, which used to
+            // leave a fully rendered tab spinning forever.
+            emit_state(&load_app, load_tab.clone(), url.clone(), None, false);
             let title_app = load_app.clone();
             let title_tab = load_tab.clone();
             let title_url = url.clone();
-            let eval_result = webview.eval_with_callback("document.title", move |value| {
+            let _ = webview.eval_with_callback("document.title", move |value| {
                 let title = serde_json::from_str::<String>(&value).unwrap_or_default();
                 emit_state(
                     &title_app,
@@ -492,9 +496,6 @@ pub(crate) fn open_tab(
                     false,
                 );
             });
-            if eval_result.is_err() {
-                emit_state(&load_app, load_tab.clone(), url, None, false);
-            }
         });
 
     let created = window

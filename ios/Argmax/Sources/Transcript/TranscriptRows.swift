@@ -14,6 +14,7 @@ struct TranscriptMessageRow: View {
         VStack(alignment: .leading, spacing: Spacing.snug) {
             if !message.attachments.isEmpty {
                 TranscriptAttachmentStrip(attachments: message.attachments, client: client,
+                                          alignment: message.role == .user ? .trailing : .leading,
                                           onOpenFile: onOpenFile)
             }
             if hasMessageCopy {
@@ -74,6 +75,18 @@ struct TranscriptMessageRow: View {
                 UIPasteboard.general.string = message.text
             }
             ShareLink(item: message.text)
+        } preview: {
+            // The automatic snapshot scales an entire long answer into the
+            // menu and preserves its transparent background over other rows.
+            Text(message.text)
+                .typeStyle(.body)
+                .lineLimit(8)
+                .multilineTextAlignment(.leading)
+                .frame(width: 280, alignment: .leading)
+                .padding(Spacing.row)
+                .foregroundStyle(Theme.ink)
+                .background(Theme.raised)
+                .clipShape(RoundedRectangle(cornerRadius: Radius.card))
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(message.role == .user ? "Your message" : "Assistant message")

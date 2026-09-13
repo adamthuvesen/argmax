@@ -27,6 +27,29 @@ final class TranscriptUITests: XCTestCase {
         screenshot("chat-loaded")
     }
 
+    func testLongMessageCopyMenuUsesCompactPreviewAndCopiesFullText() {
+        app.terminate()
+        app.launchArguments.append("-scenario-copy-preview")
+        app.launch()
+        let ending = app.staticTexts["Copy test ending"]
+        XCTAssertTrue(ending.waitForExistence(timeout: 10))
+        ending.press(forDuration: 1)
+        let copy = app.buttons["Copy message"]
+        XCTAssertTrue(copy.waitForExistence(timeout: 5))
+        screenshot("long-message-copy-preview")
+        copy.tap()
+        let composer = app.descendants(matching: .any).matching(identifier: "Message").firstMatch
+        composer.tap()
+        composer.press(forDuration: 1)
+        let paste = app.menuItems["Paste"]
+        XCTAssertTrue(paste.waitForExistence(timeout: 5))
+        paste.tap()
+        let pasted = composer.value as? String ?? ""
+        XCTAssertTrue(pasted.hasPrefix("Long answer to copy"))
+        XCTAssertTrue(pasted.hasSuffix("## Copy test ending"))
+        XCTAssertTrue(pasted.contains("| Read | Write |"))
+    }
+
     func testLongUserBubbleExpandsAndCollapses() {
         app.terminate()
         app.launchArguments.append("-scenario-user-bubble")

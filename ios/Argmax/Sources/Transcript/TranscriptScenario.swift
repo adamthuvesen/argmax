@@ -100,6 +100,15 @@ private final class TranscriptScenarioState: ObservableObject {
         if ProcessInfo.processInfo.arguments.contains("-scenario-loading") {
             transcript.preview(page: page([]), metadata: metadata, isLoading: true)
         }
+        if ProcessInfo.processInfo.arguments.contains("-scenario-copy-preview") {
+            let answer = "Long answer to copy\n\n"
+                + String(repeating: "A long answer with **formatting** and `code` should have a compact menu preview.\n\n", count: 30)
+                + "| Read | Write |\n| --- | --- |\n| Yes | No |\n\n## Copy test ending"
+            transcript.preview(page: page([
+                event(1, type: "user.message", text: "Explain access"),
+                event(2, type: "message.completed", text: answer)
+            ]), metadata: metadata)
+        }
     }
 
     /// Provider-neutral activity metadata rendered through the production

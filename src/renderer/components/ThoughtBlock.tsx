@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { Brain, ChevronRight } from "lucide-react";
 import { useEffect, useState, type JSX, type ReactNode } from "react";
 import { formatThoughtLabel } from "../formatElapsed.js";
 import type { ThinkingDisplay } from "../lib/uiPreferences.js";
@@ -11,9 +11,9 @@ import type { ThinkingDisplay } from "../lib/uiPreferences.js";
  *
  * Speaks the same disclosure vocabulary as the turn/tool rows — a quiet label
  * and chevron — so reasoning and tool work read as one consistent set of
- * foldable sections within a turn. The label stays neutral-muted (not the tool
- * groups' sage) so reasoning reads as a quieter sibling, subordinate to the
- * actual work and the answer.
+ * foldable sections within a turn. The violet brain identifies reasoning while
+ * the label stays neutral-muted, so it remains subordinate to the actual work
+ * and the answer.
  *
  * Preview mode bounds the latest live reasoning and only opens the full body
  * on request. Inline mode keeps the full body and its label visible.
@@ -82,7 +82,12 @@ export function ThoughtBlock({
   if (display === "inline") {
     return (
       <div className="thought-block" data-live={live ? "true" : undefined} data-display="inline">
-        <span className="thought-block-eyebrow-label">{label}</span>
+        <span className="thought-block-eyebrow">
+          <span className="activity-icon-slot">
+            <Brain size={14} className="thought-block-icon" aria-hidden="true" />
+          </span>
+          <span className="thought-block-eyebrow-label">{label}</span>
+        </span>
         <div className="thought-block-body">{children}</div>
       </div>
     );
@@ -103,6 +108,9 @@ export function ThoughtBlock({
         onClick={() => setUserToggle({ value: !expanded, autoExpanded })}
       >
         <span className="thought-block-eyebrow">
+          <span className="activity-icon-slot">
+            <Brain size={14} className="thought-block-icon" aria-hidden="true" />
+          </span>
           <span className="thought-block-eyebrow-label">{label}</span>
         </span>
         <ChevronRight

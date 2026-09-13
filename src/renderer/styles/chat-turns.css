@@ -301,8 +301,15 @@
 .thought-block-eyebrow {
   display: inline-flex;
   align-items: center;
+  gap: var(--space-1_5);
   flex: 0 1 auto;
   min-width: 0;
+}
+
+.thought-block-icon {
+  flex: 0 0 auto;
+  color: var(--activity-purple);
+  opacity: 0.78;
 }
 
 .thought-block-eyebrow-label {
@@ -335,11 +342,18 @@
 }
 
 /* While the agent is actively thinking, the eyebrow is fully present and softly
-   pulses to read as live, in place of the generic Thinking indicator. */
-.thought-block[data-live="true"] .thought-block-eyebrow-label {
-  color: var(--muted-strong);
+   pulses as one unit to read as live, in place of the generic Thinking indicator. */
+.thought-block[data-live="true"] .thought-block-eyebrow {
   animation: thought-pulse 1600ms var(--ease) infinite;
   animation-play-state: var(--loop-play-state, running);
+}
+
+.thought-block[data-live="true"] .thought-block-eyebrow-label {
+  color: var(--muted-strong);
+}
+
+.thought-block[data-live="true"] .thought-block-icon {
+  opacity: 1;
 }
 
 @keyframes thought-pulse {
@@ -348,7 +362,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .thought-block[data-live="true"] .thought-block-eyebrow-label {
+  .thought-block[data-live="true"] .thought-block-eyebrow {
     animation: none;
   }
 }

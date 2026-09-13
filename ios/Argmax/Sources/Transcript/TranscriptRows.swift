@@ -109,6 +109,7 @@ struct TranscriptThoughtRow: View {
     let client: BridgeClient
     let onOpenFile: (String) -> Void
     @Environment(\.mobileChatDetail) private var detail
+    @Environment(\.activityIconColorMode) private var activityIconColorMode
     @State private var showFullThought = false
 
     var body: some View {
@@ -138,9 +139,12 @@ struct TranscriptThoughtRow: View {
                 verb: thought.isStreaming ? "Thinking" : "Thought",
                 target: thought.isStreaming ? nil : TranscriptThought.title(of: thought.text)
             ) {
-                Image(systemName: "circle.dashed")
+                Image(systemName: "brain")
                     .typeSymbol(size: 14)
-                    .foregroundStyle(Theme.muted)
+                    .foregroundStyle(
+                        (activityIconColorMode == .color ? Theme.activityPurple : Theme.muted)
+                            .opacity(thought.isStreaming ? 1 : 0.78)
+                    )
                     .frame(width: 16, height: 16)
             }
         }

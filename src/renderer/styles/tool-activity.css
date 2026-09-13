@@ -38,10 +38,14 @@
 }
 
 /* Monochrome is intentionally scoped to transcript activity. Navigation and
-   status icons keep their existing roles, while tool kinds and brand marks
-   recede into the activity ledger's muted ink. Brand paths use inline fills,
-   so the path override is the one deliberate !important in this rule. */
-:root[data-activity-icon-color="monochrome"] :is(.tool-activity-icon, .tool-call-row-server-icon) {
+   status icons keep their existing roles, while tool kinds, thoughts, and
+   brand marks recede into the activity ledger's muted ink. Brand paths use
+   inline fills, so the path override is the one deliberate !important here. */
+:root[data-activity-icon-color="monochrome"] :is(
+  .tool-activity-icon,
+  .tool-call-row-server-icon,
+  .thought-block-icon
+) {
   color: var(--muted);
 }
 

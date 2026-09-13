@@ -533,6 +533,7 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       forward: (tabId: string) => invokeCommand<{ ok: true }>("browser:forward", { tabId }),
       reload: (tabId: string) => invokeCommand<{ ok: true }>("browser:reload", { tabId }),
       stop: (tabId: string) => invokeCommand<{ ok: true }>("browser:stop", { tabId }),
+      setTheme: (mode) => invokeCommand<{ ok: true }>("browser:set-theme", { mode }),
       setBounds: (input) => invokeCommand<{ ok: true }>("browser:set-bounds", input),
       close: (tabId: string) => invokeCommand<{ ok: true }>("browser:close", { tabId }),
       fillCredentials: (tabId: string) =>

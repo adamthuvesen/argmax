@@ -77,6 +77,8 @@ export function AppearanceSettings({
   onFontFamilyChange,
   themeMode,
   onThemeModeChange,
+  browserThemeMode,
+  onBrowserThemeModeChange,
   accentId,
   onAccentChange,
   userBubbleTint,
@@ -124,6 +126,8 @@ export function AppearanceSettings({
   onBackgroundIntensityChange: (intensity: BackgroundIntensity) => void;
   themeMode: ThemeMode;
   onThemeModeChange: (mode: ThemeMode) => void;
+  browserThemeMode: ThemeMode;
+  onBrowserThemeModeChange: (mode: ThemeMode) => void;
   accentId: AccentId;
   onAccentChange: (accentId: AccentId) => void;
   userBubbleTint: UserBubbleTint;
@@ -186,6 +190,18 @@ export function AppearanceSettings({
           label="Theme"
           description={THEME_OPTIONS.find((option) => option.id === themeMode)?.hint}
           control={<ThemePicker value={themeMode} onChange={onThemeModeChange} />}
+        />
+        <SettingRow
+          label="Browser theme"
+          description="Controls websites independently of the Argmax interface. System follows macOS."
+          control={
+            <ThemePicker
+              ariaLabel="Browser theme"
+              name="browser-theme-mode"
+              value={browserThemeMode}
+              onChange={onBrowserThemeModeChange}
+            />
+          }
         />
         <SettingRow
           label="Background intensity"

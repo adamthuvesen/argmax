@@ -88,6 +88,8 @@ export function SettingsPanel({
   onBackgroundIntensityChange,
   themeMode,
   onThemeModeChange,
+  browserThemeMode,
+  onBrowserThemeModeChange,
   accentId,
   onAccentChange,
   userBubbleTint,
@@ -165,6 +167,8 @@ export function SettingsPanel({
   onBackgroundIntensityChange: (intensity: BackgroundIntensity) => void;
   themeMode: ThemeMode;
   onThemeModeChange: (mode: ThemeMode) => void;
+  browserThemeMode: ThemeMode;
+  onBrowserThemeModeChange: (mode: ThemeMode) => void;
   accentId: AccentId;
   onAccentChange: (accentId: AccentId) => void;
   userBubbleTint: UserBubbleTint;
@@ -361,6 +365,8 @@ export function SettingsPanel({
             onBackgroundIntensityChange={onBackgroundIntensityChange}
             themeMode={themeMode}
             onThemeModeChange={onThemeModeChange}
+            browserThemeMode={browserThemeMode}
+            onBrowserThemeModeChange={onBrowserThemeModeChange}
             accentId={accentId}
             onAccentChange={onAccentChange}
             userBubbleTint={userBubbleTint}

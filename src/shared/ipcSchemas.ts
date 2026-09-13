@@ -118,6 +118,7 @@ export const IPC_CHANNELS = [
   "browser:reload",
   "browser:stop",
   "browser:set-bounds",
+  "browser:set-theme",
   "browser:close",
   "browser:fill-credentials",
   "browser:screenshot",

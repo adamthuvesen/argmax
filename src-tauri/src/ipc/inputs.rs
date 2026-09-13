@@ -172,6 +172,12 @@ pub struct BrowserNavigateInput {
     pub tab_id: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserSetThemeInput {
+    pub mode: ThemeMode,
+}
+
 /// Logical (CSS-pixel) rect of the renderer placeholder the browser webview
 /// is glued to. The main webview fills the whole window, so viewport
 /// coordinates map 1:1 onto window coordinates.

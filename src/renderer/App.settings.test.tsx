@@ -4,6 +4,7 @@ import { App } from "./App.js";
 import type { DashboardSnapshot } from "../shared/types.js";
 import { ACCENT_STORAGE_KEY } from "./lib/accent.js";
 import { CHAT_WIDTH_KEY } from "./lib/chatWidth.js";
+import { BROWSER_THEME_STORAGE_KEY } from "./lib/browserTheme.js";
 import { LAUNCH_MODEL_KEY } from "./lib/launchModelPreference.js";
 import {
   CHAT_VERBOSITY_KEY,
@@ -675,6 +676,22 @@ describe("App settings", () => {
     expect(document.documentElement.getAttribute("data-font")).toBe(id);
     expect(window.localStorage.getItem("argmax.font.scale")).toBe("6");
     expect(document.documentElement.getAttribute("data-font-size")).toBe("6");
+  });
+
+  it("changes the browser theme without changing the app theme", async () => {
+    window.localStorage.setItem("argmax.theme.mode", "dark");
+    const setBrowserTheme = vi.spyOn(window.argmax!.browser, "setTheme");
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings("Appearance");
+    const browserTheme = screen.getByRole("radiogroup", { name: "Browser theme" });
+    fireEvent.click(within(browserTheme).getByRole("radio", { name: "Light" }));
+
+    await waitFor(() => expect(setBrowserTheme).toHaveBeenLastCalledWith("light"));
+    expect(window.localStorage.getItem(BROWSER_THEME_STORAGE_KEY)).toBe("light");
+    expect(window.localStorage.getItem("argmax.theme.mode")).toBe("dark");
+    expect(document.documentElement.dataset.theme).toBe("dark");
   });
 
   it("persists font heaviness independently of ink and restores it on remount", async () => {

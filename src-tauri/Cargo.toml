@@ -184,8 +184,12 @@ objc2-foundation = { version = "0.3", features = [
     "NSData",
     "NSDictionary",
     "NSError",
+    "NSDistributedNotificationCenter",
+    "NSNotification",
+    "NSOperation",
     "NSProcessInfo",
     "NSString",
+    "NSUserDefaults",
 ] }
 objc2-user-notifications = { version = "0.3", default-features = false, features = [
     "block2",
@@ -200,6 +204,7 @@ objc2-user-notifications = { version = "0.3", default-features = false, features
 objc2-app-kit = { version = "0.3", default-features = false, features = [
     "std",
     "NSBitmapImageRep",
+    "NSAppearance",
     "NSGraphics",
     "NSImage",
     "NSImageRep",

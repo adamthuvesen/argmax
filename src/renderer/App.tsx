@@ -308,6 +308,8 @@ export function App(): JSX.Element {
   const {
     themeMode,
     setThemeMode,
+    browserThemeMode,
+    setBrowserThemeMode,
     accentId,
     setAccentId,
     userBubbleTint,
@@ -2276,6 +2278,8 @@ export function App(): JSX.Element {
                 onBackgroundIntensityChange={setBackgroundIntensity}
                 themeMode={themeMode}
                 onThemeModeChange={handleThemeModeChange}
+                browserThemeMode={browserThemeMode}
+                onBrowserThemeModeChange={setBrowserThemeMode}
                 accentId={accentId}
                 onAccentChange={handleAccentChange}
                 userBubbleTint={userBubbleTint}

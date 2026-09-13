@@ -401,15 +401,19 @@ export function FontFamilyPicker({
  *  three-way choice on the page uses. */
 export function ThemePicker({
   value,
-  onChange
+  onChange,
+  ariaLabel = "Theme",
+  name = "theme-mode"
 }: {
   value: ThemeMode;
   onChange: (mode: ThemeMode) => void;
+  ariaLabel?: string;
+  name?: string;
 }): JSX.Element {
   return (
     <SegmentedControl
-      ariaLabel="Theme"
-      name="theme-mode"
+      ariaLabel={ariaLabel}
+      name={name}
       value={value}
       onChange={(next) => {
         const picked = THEME_OPTIONS.find((option) => option.id === next);

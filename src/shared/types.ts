@@ -697,6 +697,7 @@ export interface ArgmaxApi {
     forward: (tabId: string) => Promise<{ ok: true }>;
     reload: (tabId: string) => Promise<{ ok: true }>;
     stop: (tabId: string) => Promise<{ ok: true }>;
+    setTheme: (mode: Bindings.ThemeMode) => Promise<{ ok: true }>;
     setBounds: (input: { bounds: BrowserBounds; visible: boolean; tabId: string }) => Promise<{ ok: true }>;
     /** Destroys the tab's webview (history and session included). */
     close: (tabId: string) => Promise<{ ok: true }>;

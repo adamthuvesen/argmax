@@ -408,7 +408,20 @@ pub(crate) fn open_tab(
             })
             .build();
             match window {
-                Ok(window) => tauri::webview::NewWindowResponse::Create { window },
+                Ok(window) => {
+                    let browser_theme = *popup_app
+                        .state::<AppState>()
+                        .browser_theme
+                        .lock()
+                        .unwrap_or_else(|error| error.into_inner());
+                    if let Err(error) = crate::browser::theme::apply(window.as_ref(), browser_theme)
+                    {
+                        tracing::error!(%error, "could not apply browser popup theme");
+                        let _ = window.close();
+                        return tauri::webview::NewWindowResponse::Deny;
+                    }
+                    tauri::webview::NewWindowResponse::Create { window }
+                }
                 Err(error) => {
                     tracing::error!(%error, "could not create browser popup");
                     tauri::webview::NewWindowResponse::Deny
@@ -498,6 +511,12 @@ pub(crate) fn open_tab(
             LogicalSize::new(bounds.width.max(1.0), bounds.height.max(1.0)),
         )
         .map_err(|error| ArgmaxError::service("BROWSER_CREATE_FAILED", error.to_string()))?;
+    let browser_theme = *app
+        .state::<AppState>()
+        .browser_theme
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    crate::browser::theme::apply(&created, browser_theme)?;
     crate::browser::popup::install_close_handler(&created).map_err(|error| {
         ArgmaxError::service(
             "BROWSER_CREATE_FAILED",
@@ -570,6 +589,22 @@ pub fn browser_set_bounds(app: AppHandle, input: BrowserSetBoundsInput) -> Argma
         webview.hide()
     }
     .map_err(|error| ArgmaxError::service("BROWSER_BOUNDS_FAILED", error.to_string()))?;
+    Ok(SystemOk { ok: true })
+}
+
+#[tauri::command(rename = "browser:set-theme")]
+#[specta::specta]
+pub fn browser_set_theme(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    input: BrowserSetThemeInput,
+) -> ArgmaxResult<SystemOk> {
+    *state
+        .browser_theme
+        .lock()
+        .unwrap_or_else(|error| error.into_inner()) = input.mode;
+    crate::browser::theme::observe_system_changes(&app);
+    crate::browser::theme::apply_all(&app, input.mode)?;
     Ok(SystemOk { ok: true })
 }
 

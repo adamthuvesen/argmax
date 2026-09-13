@@ -15,6 +15,7 @@ use crate::browser::registry::BrowserTabRegistry;
 use crate::checks::service::CheckService;
 use crate::dock::{DockBadgeService, TauriDockBadgeSink};
 use crate::gh::poller::GhPoller;
+use crate::ipc::validation::ThemeMode;
 use crate::notifications::{NotificationService, NotificationSink};
 use crate::persistence::Database;
 use crate::providers::cursor_acp::CursorAcpSessions;
@@ -118,6 +119,8 @@ pub struct AppState {
     /// this list; an agent opening a page has no renderer to ask, so the app
     /// keeps it and pushes `browser:tabs` for the strip to mirror.
     pub browser_tabs: Arc<BrowserTabRegistry>,
+    /// Appearance used by website webviews, independent of the app shell.
+    pub browser_theme: std::sync::Mutex<ThemeMode>,
 }
 
 // Hand-written because `broadcast::Sender` has no `Default`; every other field
@@ -158,6 +161,7 @@ impl Default for AppState {
             skills: Arc::new(SkillRegistry::from_env()),
             keep_awake: Arc::default(),
             browser_tabs: Arc::default(),
+            browser_theme: std::sync::Mutex::new(ThemeMode::System),
         }
     }
 }

@@ -946,6 +946,14 @@ async browserSetBounds(input: BrowserSetBoundsInput) : Promise<Result<SystemOk, 
     else return { status: "error", error: e  as any };
 }
 },
+async browserSetTheme(input: BrowserSetThemeInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_set_theme", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async browserClose(input: BrowserCloseInput) : Promise<Result<SystemOk, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("browser_close", { input }) };
@@ -1423,6 +1431,7 @@ export type BrowserSetBoundsInput = { bounds: BrowserBounds;
  * false for tabs behind the active one.
  */
 visible: boolean; tabId: string }
+export type BrowserSetThemeInput = { mode: ThemeMode }
 export type BrowserSnapshotInput = { tabId?: string | null; sessionId?: string | null;
 /**
  * Drops plain text and non-heading structure, leaving only what can be

@@ -60,6 +60,7 @@ pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
     "browser:reload",
     "browser:stop",
     "browser:set-bounds",
+    "browser:set-theme",
     "browser:close",
     "browser:fill-credentials",
     "browser:screenshot",

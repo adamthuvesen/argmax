@@ -55,9 +55,12 @@ import {
   resolveTheme,
   writeStoredTheme
 } from "../lib/theme.js";
+import { readStoredBrowserTheme, writeStoredBrowserTheme } from "../lib/browserTheme.js";
 export function useLauncherAppearance(): {
   themeMode: ThemeMode;
   setThemeMode: (mode: ThemeMode) => void;
+  browserThemeMode: ThemeMode;
+  setBrowserThemeMode: (mode: ThemeMode) => void;
   accentId: AccentId;
   setAccentId: (accentId: AccentId) => void;
   userBubbleTint: UserBubbleTint;
@@ -79,6 +82,9 @@ export function useLauncherAppearance(): {
   detectedIdes: DetectedIde[];
 } {
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => readStoredTheme());
+  const [browserThemeMode, setBrowserThemeMode] = useState<ThemeMode>(() =>
+    readStoredBrowserTheme()
+  );
   const [accentId, setAccentId] = useState<AccentId>(() => readStoredAccent());
   const [userBubbleTint, setUserBubbleTint] = useState<UserBubbleTint>(() =>
     readStoredUserBubbleTint()
@@ -166,6 +172,18 @@ export function useLauncherAppearance(): {
   }, [themeMode]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    writeStoredBrowserTheme(browserThemeMode);
+    if (window.argmax?.browser) {
+      void window.argmax.browser.setTheme(browserThemeMode).catch((error: unknown) => {
+        logger.warn("renderer.launcher", "browser theme update failed", {
+          error: errorMessage(error)
+        });
+      });
+    }
+  }, [browserThemeMode]);
+
+  useEffect(() => {
     if (ideListLoadedRef.current) return;
     if (!window.argmax) return;
     ideListLoadedRef.current = true;
@@ -191,6 +209,8 @@ export function useLauncherAppearance(): {
   return {
     themeMode,
     setThemeMode,
+    browserThemeMode,
+    setBrowserThemeMode,
     accentId,
     setAccentId,
     userBubbleTint,

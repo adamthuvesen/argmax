@@ -143,13 +143,14 @@ final class TranscriptUITests: XCTestCase {
         app.launchArguments.append("-scenario-activity")
         app.launch()
 
-        let summary = "Read files, edited a file, searched files, viewed an image, loaded tools, ran a command, used a computer, used a tool"
-        let collapsed = app.buttons[summary]
+        let summary = "Read files, edited a file, searched files, viewed an image, loaded tools, activated a skill, ran a command, used a computer, used a tool"
+        let summaryButton = app.buttons.matching(NSPredicate(format: "label == %@", summary))
+        let collapsed = summaryButton.firstMatch
         XCTAssertTrue(collapsed.waitForExistence(timeout: 10))
         screenshot("activity-colours-collapsed")
         collapsed.tap()
 
-        XCTAssertEqual(app.buttons.matching(identifier: summary).count, 1)
+        XCTAssertEqual(summaryButton.count, 1)
         XCTAssertTrue(app.buttons["Edited App.swift, 2 added, 1 removed"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Viewed wireframe.png"].exists)
         screenshot("activity-colours-expanded")

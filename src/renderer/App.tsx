@@ -99,6 +99,7 @@ import {
 } from "./state/paneGrid.js";
 import { setSidebarPeek, toggleSidebarCollapsed, useSidebarChrome } from "./state/sidebarChrome.js";
 import { dismissToast, showErrorToast, showInfoToast, showToast, toastSnapshot, useToast } from "./state/toast.js";
+import { subscribeWorkspacePointerDrag } from "./state/workspaceDrag.js";
 import { isBrowserPreview } from "./lib/env.js";
 import { animateThemeChange, type ThemeMode } from "./lib/theme.js";
 import type { AccentId } from "./lib/accent.js";
@@ -213,6 +214,7 @@ export function App(): JSX.Element {
   const toast = useToast();
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.argmax);
   const workspaceRef = useRef<HTMLElement | null>(null);
+  const workspaceDropOverlayRef = useRef<HTMLDivElement | null>(null);
   const [workspaceWidth, setWorkspaceWidth] = useState(0);
   const [chatVerbosity, setChatVerbosity] = useChatVerbosityPreference();
   const [followUpDelivery, setFollowUpDelivery] = useFollowUpDeliveryPreference();
@@ -1980,6 +1982,29 @@ export function App(): JSX.Element {
     handleDropWorkspace(draggingWorkspaceId, { row: 0, col: 0, position: "replace" });
   }, [draggingWorkspaceId, handleDropWorkspace, showWorkspaceDropTarget]);
 
+  useEffect(() => {
+    if (!showWorkspaceDropTarget || !draggingWorkspaceId) return undefined;
+    const contains = (clientX: number, clientY: number): boolean => {
+      const overlay = workspaceDropOverlayRef.current;
+      if (!overlay) return false;
+      const rect = overlay.getBoundingClientRect();
+      return clientX >= rect.left && clientX <= rect.right &&
+        clientY >= rect.top && clientY <= rect.bottom;
+    };
+    return subscribeWorkspacePointerDrag({
+      move: ({ clientX, clientY }) => {
+        setIsWorkspaceDropPreviewVisible(contains(clientX, clientY));
+      },
+      drop: ({ clientX, clientY }) => {
+        setIsWorkspaceDropPreviewVisible(false);
+        if (!contains(clientX, clientY)) return;
+        hideFullLauncher();
+        handleDropWorkspace(draggingWorkspaceId, { row: 0, col: 0, position: "replace" });
+      },
+      cancel: () => setIsWorkspaceDropPreviewVisible(false)
+    });
+  }, [draggingWorkspaceId, handleDropWorkspace, showWorkspaceDropTarget]);
+
   return (
     <PrMilestoneCelebrationContext.Provider value={prMilestoneCelebrationEnabled}>
     <SessionTimelineProvider store={timelines}>
@@ -2327,6 +2352,7 @@ export function App(): JSX.Element {
         </div>
         {showWorkspaceDropTarget ? (
           <div
+            ref={workspaceDropOverlayRef}
             className="workspace-drop-overlay"
             aria-hidden="true"
             onDragOver={handleWorkspaceSurfaceDragOver}

@@ -337,45 +337,30 @@ describe("App grid", () => {
     });
   });
 
-  it("previews and opens the first grid pane when a sidebar session is dropped onto the launcher", async () => {
-    render(<App />);
+  it("opens the first grid pane when a sidebar session is pointer-dropped onto the launcher", async () => {
+    const bounds = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue(new DOMRect(50, 50, 800, 600));
+    const pointer = (target: Element | Window, type: string, clientX: number): void => {
+      // jsdom lacks PointerEvent, so preserve the coordinates and pointer ID.
+      const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX, clientY: 100 });
+      Object.defineProperty(event, "pointerId", { value: 1 });
+      fireEvent(target, event);
+    };
+    try {
+      render(<App />);
 
-    const row = await screen.findByRole("button", { name: "Build dashboard" });
-    expect(row).toHaveAttribute("draggable", "true");
+      const row = await screen.findByRole("button", { name: "Build dashboard" });
+      expect(row).not.toHaveAttribute("draggable");
 
-    const setData = vi.fn();
-    fireEvent.dragStart(row, {
-      dataTransfer: {
-        setData,
-        setDragImage: vi.fn(),
-        effectAllowed: "move"
-      }
-    });
+      pointer(row, "pointerdown", 100);
+      pointer(window, "pointermove", 110);
+      pointer(window, "pointerup", 200);
 
-    expect(setData).toHaveBeenCalled();
-    const dropOverlay = await waitFor(() => {
-      const overlay = document.querySelector<HTMLElement>(".workspace-drop-overlay");
-      if (!overlay) throw new Error("Expected workspace drop overlay to render");
-      return overlay;
-    });
-
-    fireEvent.dragOver(dropOverlay, {
-      dataTransfer: {
-        dropEffect: "move"
-      }
-    });
-    await waitFor(() => {
-      expect(document.querySelector('.workspace-drop-zone[data-hovered="true"]')).toBeInTheDocument();
-    });
-
-    fireEvent.drop(dropOverlay, {
-      dataTransfer: {
-        dropEffect: "move"
-      }
-    });
-
-    expect(await screen.findByRole("group", { name: "Chat panes" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Build dashboard" })).toBeInTheDocument();
+      expect(await screen.findByRole("group", { name: "Chat panes" })).toBeInTheDocument();
+      expect(screen.getByRole("region", { name: "Build dashboard" })).toBeInTheDocument();
+    } finally {
+      bounds.mockRestore();
+    }
   });
 
   it("keeps the current session and opens a launcher pane to the right from New chat", async () => {
@@ -738,8 +723,8 @@ describe("App grid", () => {
       ...snapshot,
       sessions: snapshot.sessions.map((session) => ({
         ...session,
-        state: entryPoint === "panel" ? "running" as const : "complete" as const,
-        completedAt: entryPoint === "panel" ? null : "2026-05-08T15:55:00.000Z"
+        state: "running" as const,
+        completedAt: null
       })),
       events: [
         {
@@ -810,12 +795,7 @@ describe("App grid", () => {
     });
     expect(document.getElementById("review-agent-task-1")).not.toHaveAttribute("aria-hidden");
 
-    // Closing one tab leaves the other open in the panel.
-    fireEvent.click(screen.getByRole("button", { name: "Close Knuth" }));
-    await waitFor(() => {
-      expect(within(tablist).getAllByRole("tab")).toHaveLength(1);
-    });
-    expect(screen.getAllByRole("region", { name: /^Agent activity: / })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "All agents 2" })).toBeInTheDocument();
     if (entryPoint === "panel") {
       fireEvent.keyDown(document, { key: "b", metaKey: true });
       expect(screen.queryByRole("tablist", { name: "Subagents and multitasks" })).toBeNull();
@@ -920,10 +900,12 @@ describe("App grid", () => {
       await Promise.resolve();
     });
 
-    // Only the superseded spawn is pruned. The Task and discovered retry remain.
+    // Only the superseded spawn is pruned. The selected completed survivor
+    // stays in the strip; the other completed entry remains in the roster.
     await waitFor(() => {
-      expect(within(subagentTabs).getAllByRole("tab")).toHaveLength(2);
+      expect(within(subagentTabs).getAllByRole("tab")).toHaveLength(1);
     });
+    expect(screen.getByRole("button", { name: "All agents 2" })).toBeInTheDocument();
     expect(screen.getAllByRole("region", { name: /^Agent activity: / })).toHaveLength(1);
     expect(screen.getByRole("region", { name: /^Agent activity: .+ — Map renderer$/ })).toBeInTheDocument();
   });

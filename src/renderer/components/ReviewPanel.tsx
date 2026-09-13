@@ -53,6 +53,9 @@ import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { MultitaskChild } from "../lib/multitask.js";
 import type { ToolCall } from "../lib/toolCalls.js";
+import { buildSessionToolCalls } from "../lib/sessionConversationModel.js";
+import { assignAgentCodenames } from "../lib/agentNames.js";
+import { buildAgentRoster } from "../lib/agentRoster.js";
 import { AgentsView } from "./AgentsView.js";
 import { BrowserPanel } from "./BrowserPanel.js";
 import { statusLabel, summarizeChangedFiles } from "../lib/changedFiles.js";
@@ -176,11 +179,12 @@ function ReviewModeTabs({
     icon: JSX.Element;
     label: string;
     mode: ReviewPanelMode;
+    showSingleCount?: boolean;
   }> = [
     { mode: "changes", label: "Changes", icon: <GitBranch size={14} aria-hidden="true" /> },
     { mode: "files", label: "Files", icon: <Folder size={14} aria-hidden="true" /> },
     ...(hasAgents
-      ? [{ mode: "agents" as const, label: "Agents", icon: <Bot size={16} aria-hidden="true" />, count: agentCount }]
+      ? [{ mode: "agents" as const, label: "Agents", icon: <Bot size={16} aria-hidden="true" />, count: agentCount, showSingleCount: true }]
       : []),
     ...(hasBrowser
       ? [{ mode: "browser" as const, label: "Browser", icon: <Globe size={14} aria-hidden="true" /> }]
@@ -213,7 +217,9 @@ function ReviewModeTabs({
           >
             {item.icon}
             <span className="review-mode-tab-label">{item.label}</span>
-            {item.count && item.count > 1 ? <span className="review-mode-tab-count">{item.count}</span> : null}
+            {item.count && (item.showSingleCount || item.count > 1)
+              ? <span className="review-mode-tab-count">{item.count}</span>
+              : null}
           </button>
         ))}
       </div>
@@ -527,6 +533,18 @@ function ReviewPanelPane({
   const selectedFile = review.files.find((file) => file.path === review.selectedFilePath) ?? null;
   const totals = summarizeChangedFiles(review.files);
   const diffBlocks = useMemo(() => parseUnifiedDiff(review.diff?.content ?? ""), [review.diff?.content]);
+  const agentEvents = agents?.events;
+  const agentMultitasks = agents?.multitasks;
+  const agentParentState = agents?.parentSession?.state;
+  const agentRoster = useMemo(() => {
+    if (!agentEvents) return null;
+    const tools = buildSessionToolCalls(
+      agentEvents,
+      agentParentState === "running",
+      agentParentState === "failed" || agentParentState === "cancelled"
+    );
+    return buildAgentRoster(tools, assignAgentCodenames(tools), agentMultitasks);
+  }, [agentEvents, agentMultitasks, agentParentState]);
   // The diff view knows the line; only the panel knows which comparison it was
   // taken against. Memoized because `DiffBlocks` is memoized on its props.
   const changesScope = review.changesScope;
@@ -579,13 +597,6 @@ function ReviewPanelPane({
     maxLeftColumnWidth(panelWidth)
   );
 
-  // ⌘W closes the active tab whichever strip owns it, so a subagent tab
-  // behaves like the file tab beside it.
-  const closeActiveAgentTab = useCallback((): void => {
-    const activeTabId = review.agentTabs.activeTabId;
-    if (activeTabId) review.agentTabs.closeTab(activeTabId);
-  }, [review.agentTabs]);
-
   const activeTerminalTabId = terminalTabs.activeTabId;
   const closeActiveTerminalTab = useCallback((): void => {
     if (terminalWorkspaceId && activeTerminalTabId) {
@@ -604,12 +615,8 @@ function ReviewPanelPane({
       return () => registerReviewFileTabCloseHandler(null);
     }
     if (isAgents) {
-      if (!review.agentTabs.activeTabId) {
-        registerReviewFileTabCloseHandler(null);
-        return undefined;
-      }
-      registerReviewFileTabCloseHandler(closeActiveAgentTab);
-      return () => registerReviewFileTabCloseHandler(null);
+      registerReviewFileTabCloseHandler(null);
+      return undefined;
     }
     if (review.mode !== "files") {
       registerReviewFileTabCloseHandler(null);
@@ -628,7 +635,6 @@ function ReviewPanelPane({
     return () => registerReviewFileTabCloseHandler(null);
   }, [
     activeTerminalTabId,
-    closeActiveAgentTab,
     closeActiveTerminalTab,
     isAgents,
     isFocused,
@@ -775,7 +781,7 @@ function ReviewPanelPane({
         <div className="review-toolbar-titles">
           <ReviewModeTabs
             activeMode={mode}
-            agentCount={review.agentTabs.tabIds.length}
+            agentCount={agentRoster?.running ?? 0}
             hasAgents={Boolean(agents)}
             hasBrowser={hasBrowser}
             hasTerminal={Boolean(terminalWorkspaceId)}

@@ -1025,8 +1025,6 @@ export function Sidebar({
                   onSetIcon={onSetWorkspaceIcon}
                   onSyncNow={onSyncNowWorkspace}
                   onAddToPriority={addToPriority}
-                  onWorkspaceDragStart={beginWorkspaceDrag}
-                  onWorkspaceDragEnd={endWorkspaceDrag}
                   detectedIdes={detectedIdes}
                   defaultIde={defaultIde}
                 />
@@ -1183,8 +1181,6 @@ export function Sidebar({
                   onRename={onRenameWorkspace}
                   onSetIcon={onSetWorkspaceIcon}
                   onSyncNow={onSyncNowWorkspace}
-                  onWorkspaceDragStart={beginWorkspaceDrag}
-                  onWorkspaceDragEnd={endWorkspaceDrag}
                   detectedIdes={detectedIdes}
                   defaultIde={defaultIde}
                 />
@@ -1248,8 +1244,6 @@ export function Sidebar({
                       : undefined
                   }
                   priorityReason={entry.reason ?? undefined}
-                  onWorkspaceDragStart={beginWorkspaceDrag}
-                  onWorkspaceDragEnd={endWorkspaceDrag}
                   detectedIdes={detectedIdes}
                   defaultIde={defaultIde}
                 />
@@ -1326,8 +1320,6 @@ export function Sidebar({
                             onSetIcon={onSetWorkspaceIcon}
                             onSyncNow={onSyncNowWorkspace}
                             onAddToPriority={addToPriority}
-                            onWorkspaceDragStart={beginWorkspaceDrag}
-                            onWorkspaceDragEnd={endWorkspaceDrag}
                             detectedIdes={detectedIdes}
                             defaultIde={defaultIde}
                           />
@@ -1489,8 +1481,6 @@ export function Sidebar({
                         onSetIcon={onSetWorkspaceIcon}
                         onSyncNow={onSyncNowWorkspace}
                         onAddToPriority={addToPriority}
-                        onWorkspaceDragStart={beginWorkspaceDrag}
-                        onWorkspaceDragEnd={endWorkspaceDrag}
                         detectedIdes={detectedIdes}
                         defaultIde={defaultIde}
                       />

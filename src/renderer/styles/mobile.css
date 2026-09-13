@@ -1534,7 +1534,19 @@ html:has(.mobile-shell[data-embed]) body,
    space once there is something to switch between. Hiding the shell and not
    just the tab list: the shell carries the padding and the hairline, which
    without tabs read as an empty bar under the grabber. */
-.mobile-agent-overlay-body .file-tabs-shell:not(:has(.file-tab + .file-tab)) {
+.mobile-agent-overlay-body .file-tabs-shell:not(.agent-tabs-shell):not(:has(.file-tab + .file-tab)) {
+  display: none;
+}
+
+.mobile-agent-overlay-body .agent-tabs-shell {
+  padding-inline: var(--space-2);
+}
+
+.mobile-agent-overlay-body .agent-roster-trigger {
+  min-height: 40px;
+}
+
+.mobile-agent-overlay-body .agent-roster-overflow {
   display: none;
 }
 

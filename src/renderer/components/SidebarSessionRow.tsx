@@ -22,7 +22,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type DragEvent as ReactDragEvent,
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent
@@ -32,10 +31,13 @@ import type { DetectedIde, IdeId, WorkspaceSummary } from "../../shared/types.js
 import { useAnchoredPopover, type AnchorPoint } from "../hooks/useAnchoredPopover.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
-import { WORKSPACE_DRAG_MIME } from "../lib/gridState.js";
 import type { PriorityReasonKind } from "../lib/priority.js";
 import { resolveSessionIcon, resolveSessionIconColor } from "../lib/sessionIcons.js";
 import { stableHash32 } from "../lib/stableHash.js";
+import {
+  beginWorkspacePointerDrag,
+  consumeWorkspaceDragClick
+} from "../state/workspaceDrag.js";
 import { SessionIconPicker } from "./SessionIconPicker.js";
 import { WorkingNest } from "./WorkingNest.js";
 
@@ -73,8 +75,6 @@ type SidebarSessionRowProps = {
   onOpenInIde: (workspaceId: string, ide: IdeId, options?: { pinAsDefault?: boolean }) => void;
   onTogglePin?: (workspaceId: string, pinned: boolean) => void;
   onRename?: (workspaceId: string, taskLabel: string) => void;
-  onWorkspaceDragStart?: (workspaceId: string) => void;
-  onWorkspaceDragEnd?: () => void;
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
   /**
@@ -224,8 +224,6 @@ function SidebarSessionRowInner({
   onOpenInIde,
   onTogglePin,
   onRename,
-  onWorkspaceDragStart,
-  onWorkspaceDragEnd,
   detectedIdes,
   defaultIde,
   subtitle,
@@ -376,33 +374,6 @@ function SidebarSessionRowInner({
     }
   };
 
-  const handleWorkspaceDragStart = (event: ReactDragEvent<HTMLButtonElement>): void => {
-    event.stopPropagation();
-    if (!canDragToGrid) {
-      event.preventDefault();
-      return;
-    }
-    event.dataTransfer.setData(WORKSPACE_DRAG_MIME, workspace.id);
-    event.dataTransfer.effectAllowed = "copyMove";
-    // Use the row button itself as the drag image so the OS preview shows
-    // the workspace label instead of the default button rendering with
-    // its sibling action chrome stripped.
-    if (event.currentTarget instanceof HTMLElement) {
-      const rect = event.currentTarget.getBoundingClientRect();
-      event.dataTransfer.setDragImage(
-        event.currentTarget,
-        Math.max(0, event.clientX - rect.left),
-        Math.max(0, event.clientY - rect.top)
-      );
-    }
-    onWorkspaceDragStart?.(workspace.id);
-  };
-
-  const handleWorkspaceDragEnd = (event: ReactDragEvent<HTMLButtonElement>): void => {
-    event.stopPropagation();
-    onWorkspaceDragEnd?.();
-  };
-
   const handleSessionLinkKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") {
       return;
@@ -511,17 +482,36 @@ function SidebarSessionRowInner({
             // apart. A pseudo-element cannot inherit `animation-delay`, so it
             // travels as a custom property (styles/shell-sessions.css).
             style={{ "--row-phase": `-${stableHash32(workspace.id) % 1800}ms` } as CSSProperties}
-            draggable={canDragToGrid}
             onKeyDown={handleSessionLinkKeyDown}
             onContextMenu={handleContextMenu}
-            onClick={(event) =>
+            onClick={(event) => {
+              if (consumeWorkspaceDragClick(workspace.id)) return;
               onOpenWorkspaceChat(workspace.id, {
                 ctrlOrMeta: event.metaKey || event.ctrlKey,
                 alt: event.altKey
-              })
-            }
-            onDragStart={handleWorkspaceDragStart}
-            onDragEnd={handleWorkspaceDragEnd}
+              });
+            }}
+            onPointerDown={(event) => {
+              if (!canDragToGrid || event.button !== 0) return;
+              // In project view the surrounding wrapper remains natively
+              // draggable for sidebar reordering. Disable it for this pointer
+              // session so the chat-title gesture cannot open WebKit's HTML
+              // drag machinery before the grid path takes over.
+              const wrapper = event.currentTarget.closest<HTMLElement>(".session-row-wrap");
+              const restoreWrapperDrag = wrapper?.draggable
+                ? () => {
+                    wrapper.draggable = true;
+                  }
+                : undefined;
+              if (wrapper) wrapper.draggable = false;
+              beginWorkspacePointerDrag(workspace.id, {
+                pointerId: event.pointerId,
+                button: event.button,
+                clientX: event.clientX,
+                clientY: event.clientY,
+                onFinish: restoreWrapperDrag
+              });
+            }}
           >
             {leadingGlyph ?? <span className="session-link-lead-spacer" aria-hidden="true" />}
             {subtitle || importedProvider || launchedByLabel ? (
@@ -744,8 +734,6 @@ export function sidebarSessionRowEqual(
   if (prev.onOpenInIde !== next.onOpenInIde) return false;
   if (prev.onTogglePin !== next.onTogglePin) return false;
   if (prev.onRename !== next.onRename) return false;
-  if (prev.onWorkspaceDragStart !== next.onWorkspaceDragStart) return false;
-  if (prev.onWorkspaceDragEnd !== next.onWorkspaceDragEnd) return false;
   if (prev.subtitle !== next.subtitle) return false;
   if (prev.importedProvider !== next.importedProvider) return false;
   if (prev.launchedByLabel !== next.launchedByLabel) return false;

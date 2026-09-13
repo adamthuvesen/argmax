@@ -821,6 +821,7 @@ export function SessionPane({
             <AgentsView
               chatFontSize={chatFontSize}
               events={visibleEvents}
+              stripLimit={2}
               defaultToolCallsDisplay={defaultToolCallsDisplay}
               defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
               thinkingDisplay={thinkingDisplay}

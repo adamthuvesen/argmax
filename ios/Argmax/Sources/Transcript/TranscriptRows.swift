@@ -62,7 +62,7 @@ struct TranscriptMessageRow: View {
                 .background {
                     if message.role == .user {
                         RoundedRectangle(cornerRadius: Radius.card)
-                            .fill(appearance.accentBubbles ? accent.color.opacity(0.12) : Theme.raised)
+                            .fill(appearance.accentBubbles ? accent.color.opacity(0.50) : Theme.userMessageNeutral)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

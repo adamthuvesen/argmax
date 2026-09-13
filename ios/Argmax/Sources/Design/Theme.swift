@@ -21,6 +21,8 @@ enum Theme {
     /// A raised surface is the ground plus 4% ink — never a grey card with a
     /// shadow. Sheets, fields, the reconnecting strip, chip fills.
     static let raisedColor = blend(groundColor, toward: inkColor, 0.04)
+    /// Desktop `--user-message-bg` when accent bubbles are disabled.
+    static let userMessageNeutralColor = dynamic(light: 0xEE_F0_F1, dark: 0x21_21_21)
     /// What a row looks like under the thumb. Same recipe, one step up.
     static let pressedColor = blend(groundColor, toward: inkColor, 0.06)
     /// Primary text. Warm off-white on charcoal, warm near-black on paper —
@@ -94,6 +96,7 @@ enum Theme {
 
     static var ground: Color { Color(groundColor) }
     static var raised: Color { Color(raisedColor) }
+    static var userMessageNeutral: Color { Color(userMessageNeutralColor) }
     static var pressed: Color { Color(pressedColor) }
     static var ink: Color { Color(inkColor) }
     static var muted: Color { Color(mutedColor) }

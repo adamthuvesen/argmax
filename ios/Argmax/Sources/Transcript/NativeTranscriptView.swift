@@ -123,6 +123,39 @@ struct TranscriptContentRow: View {
                 .foregroundStyle(Theme.muted)
                 .frame(maxWidth: .infinity, alignment: .center)
         case .error(let error):
+            TranscriptErrorRow(error: error)
+        case .question:
+            EmptyView()
+        case .plan, .approval, .agents, .multitask:
+            TranscriptInteractiveRow(item: item, client: client,
+                                     onOpenFile: onOpenFile, onRevisePlan: onRevisePlan,
+                                     onOpenSession: onOpenSession)
+        }
+    }
+}
+
+private struct TranscriptErrorRow: View {
+    let error: TranscriptError
+    @State private var expanded = false
+
+    var body: some View {
+        if let summary = error.compactSummary {
+            DisclosureGroup(isExpanded: $expanded) {
+                Text(error.message)
+                    .textSelection(.enabled)
+                    .typeStyle(.footnote)
+                    .foregroundStyle(Theme.rose)
+                    .padding(.bottom, Spacing.snug)
+            } label: {
+                Label {
+                    Text(summary).typeStyle(.footnote)
+                } icon: {
+                    Image(systemName: "info.circle").typeSymbol(.footnote)
+                }
+                .foregroundStyle(Theme.muted)
+            }
+            .disclosureGroupStyle(TranscriptDisclosureStyle(minHeight: 44))
+        } else {
             Label {
                 Text(error.message).textSelection(.enabled).typeStyle(.footnote)
             } icon: {
@@ -132,12 +165,6 @@ struct TranscriptContentRow: View {
             .padding(Spacing.row)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Theme.rose.opacity(0.08), in: .rect(cornerRadius: Radius.control))
-        case .question:
-            EmptyView()
-        case .plan, .approval, .agents, .multitask:
-            TranscriptInteractiveRow(item: item, client: client,
-                                     onOpenFile: onOpenFile, onRevisePlan: onRevisePlan,
-                                     onOpenSession: onOpenSession)
         }
     }
 }

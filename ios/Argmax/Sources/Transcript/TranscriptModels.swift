@@ -520,6 +520,14 @@ struct TranscriptError: Hashable, Sendable, Identifiable {
     var code: String?
     var operation: String?
     var createdAt: String
+
+    /// Old hosts rejected valid Default-mode Codex questions, then Codex kept
+    /// working. Preserve the diagnostic without presenting it as a failed turn.
+    var compactSummary: String? {
+        guard message.contains("codex_app_server::bespoke_event_handling"),
+              message.contains("Codex question must be blocking") else { return nil }
+        return "Codex continued past a nonblocking question"
+    }
 }
 
 enum TranscriptItem: Hashable, Sendable, Identifiable {

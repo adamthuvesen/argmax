@@ -2,6 +2,25 @@ import XCTest
 @testable import Argmax
 
 final class TranscriptProjectionTests: XCTestCase {
+    func testKnownNonblockingQuestionRejectionIsACompactDiagnostic() {
+        let error = TranscriptError(
+            id: "error-1",
+            message: "2026-09-13T12:18:51Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: Codex question must be blocking",
+            code: "stderr",
+            operation: nil,
+            createdAt: "2026-09-13T12:18:51Z"
+        )
+
+        XCTAssertEqual(error.compactSummary, "Codex continued past a nonblocking question")
+        XCTAssertNil(TranscriptError(
+            id: "error-2",
+            message: "Codex turn failed",
+            code: nil,
+            operation: nil,
+            createdAt: "2026-09-13T12:18:51Z"
+        ).compactSummary)
+    }
+
     func testCompletedThoughtItemsReplaceTheirLiveSummariesWithoutDuplication() throws {
         let completed = TranscriptProjection.project(events: [
             event("live-1", "message.delta", "**Inspecting files**", 1, [

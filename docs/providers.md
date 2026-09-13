@@ -170,20 +170,24 @@ the immediate tool acknowledgement leaves one answerable card. The answer uses
 the existing next-user-message flow. Question shapes outside the card's one to
 four options remain visible as prose.
 
-**Synchronous `request_user_input` resumes the waiting turn.** The app-server
+**Native `request_user_input` follows Codex's delivery mode.** The app-server
 launch enables `tools.experimental_request_user_input.enabled=true`.
-`item/tool/requestUserInput` is a server request, so Argmax keeps its JSON-RPC
-response open and publishes a question card with the request and question IDs.
-Desktop and iPhone submit structured answers through `questions:resolve`.
-Codex receives those answers on the original request and continues the same
-turn. Dismissing sends an empty answer map. Neither action terminates the
-provider or starts a follow-up turn.
+`item/tool/requestUserInput` is a server request with an `isBlocking` flag.
+Plan-mode requests block. Argmax keeps their JSON-RPC response open and
+publishes a question card with the request and question IDs. Desktop and iPhone
+submit structured answers through `questions:resolve`, which resumes the same
+turn. Dismissing sends an empty answer map.
 
-Pending cards are stored in the timeline and return after a UI reconnect.
-Answered, dismissed, and cancelled requests settle the card, and duplicate or
-stale answers fail. Answer values are not persisted in the question events,
-including answers to secret questions. The launch flag and protocol remain
-experimental, so verify their schema when upgrading Codex.
+Default-mode requests are nonblocking. Argmax publishes them as async question
+cards and immediately returns an empty answer map, so Codex can keep working.
+Answering one uses the next-user-message flow shared with
+`request_user_input_async`.
+
+Pending blocking cards are stored in the timeline and return after a UI
+reconnect. Answered, dismissed, and cancelled requests settle the card, and
+duplicate or stale answers fail. Answer values are not persisted in the
+question events, including answers to secret questions. The launch flag and
+protocol remain experimental, so verify their schema when upgrading Codex.
 
 **Grok's `ask_user_question` is not exposed over ACP.** The binary carries the
 tool and documents it, and `features.ask_user_question` defaults to true, but

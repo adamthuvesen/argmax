@@ -88,7 +88,11 @@ impl QuestionService {
         request_id: &str,
         params: &Value,
     ) -> ArgmaxResult<Value> {
-        let receiver = self.register_native(session_id, invocation_id, request_id, params)?;
+        let parsed = parse_request(params)?;
+        if !parsed.is_blocking {
+            return self.record_async(session_id, invocation_id, request_id, parsed);
+        }
+        let receiver = self.register_native(session_id, invocation_id, request_id, parsed)?;
         receiver.await.map_err(|_| {
             ArgmaxError::service(
                 "QUESTION_CANCELLED",
@@ -102,9 +106,8 @@ impl QuestionService {
         session_id: &str,
         invocation_id: &str,
         request_id: &str,
-        params: &Value,
+        parsed: ParsedRequest,
     ) -> ArgmaxResult<oneshot::Receiver<Value>> {
-        let parsed = parse_request(params)?;
         let public_request_id = Uuid::new_v4().to_string();
         let key = (session_id.to_string(), public_request_id.clone());
         let mut pending = self.pending.lock_or_recover("native questions");
@@ -185,6 +188,69 @@ impl QuestionService {
             ..DashboardDelta::default()
         });
         Ok(receiver)
+    }
+
+    /// Default-mode Codex questions are advisory: the provider keeps working
+    /// and expects an immediate response. Persist the same async card shape as
+    /// `request_user_input_async`, then acknowledge without inventing an
+    /// answer. A user's later response travels as the next user message.
+    fn record_async(
+        &self,
+        session_id: &str,
+        invocation_id: &str,
+        request_id: &str,
+        parsed: ParsedRequest,
+    ) -> ArgmaxResult<Value> {
+        let connection = self.database.connection();
+        let transaction = connection
+            .unchecked_transaction()
+            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+        let current = find_session_by_id(&transaction, session_id)?;
+        if !matches!(current.state, SessionState::Running | SessionState::Waiting) {
+            return Err(ArgmaxError::service(
+                "QUESTION_CANCELLED",
+                "The provider turn has ended",
+            ));
+        }
+        if has_durable_request(&transaction, session_id, invocation_id, request_id)? {
+            return Err(ArgmaxError::service(
+                "QUESTION_DUPLICATE",
+                "This provider question was already received",
+            ));
+        }
+
+        let started_payload = async_question_started_payload(&parsed, invocation_id, request_id);
+        let started = persist_timeline_event(
+            &transaction,
+            &PersistTimelineEventInput {
+                id: Uuid::new_v4().to_string(),
+                session_id: session_id.to_string(),
+                r#type: "command.started".to_string(),
+                message: "AskUserQuestion".to_string(),
+                payload: started_payload,
+                created_at: None,
+            },
+        )?;
+        let completed = persist_timeline_event(
+            &transaction,
+            &PersistTimelineEventInput {
+                id: Uuid::new_v4().to_string(),
+                session_id: session_id.to_string(),
+                r#type: "command.completed".to_string(),
+                message: "AskUserQuestion".to_string(),
+                payload: async_question_completed_payload(&parsed, invocation_id, request_id),
+                created_at: None,
+            },
+        )?;
+        transaction
+            .commit()
+            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+        drop(connection);
+        self.publish(DashboardDelta {
+            events: vec![started, completed],
+            ..DashboardDelta::default()
+        });
+        Ok(json!({ "answers": {} }))
     }
 
     pub fn resolve(
@@ -350,6 +416,7 @@ impl QuestionService {
 }
 
 struct ParsedRequest {
+    is_blocking: bool,
     item_id: String,
     thread_id: String,
     turn_id: String,
@@ -358,9 +425,10 @@ struct ParsedRequest {
 }
 
 fn parse_request(params: &Value) -> ArgmaxResult<ParsedRequest> {
-    if params.get("isBlocking").and_then(Value::as_bool) != Some(true) {
-        return Err(invalid_request("Codex question must be blocking"));
-    }
+    let is_blocking = params
+        .get("isBlocking")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| invalid_request("Codex question has no isBlocking flag"))?;
     let item_id = required_text(params, "itemId")?;
     let thread_id = required_text(params, "threadId")?;
     let turn_id = required_text(params, "turnId")?;
@@ -413,11 +481,50 @@ fn parse_request(params: &Value) -> ArgmaxResult<ParsedRequest> {
         questions.push(QuestionDefinition { id, is_secret });
     }
     Ok(ParsedRequest {
+        is_blocking,
         item_id,
         thread_id,
         turn_id,
         normalized_questions,
         questions,
+    })
+}
+
+fn async_question_started_payload(
+    request: &ParsedRequest,
+    invocation_id: &str,
+    provider_request_id: &str,
+) -> Value {
+    json!({
+        "id": request.item_id,
+        "type": "AskUserQuestion",
+        "name": "AskUserQuestion",
+        "status": "running",
+        "provider": "codex",
+        "providerRequestId": provider_request_id,
+        "providerInvocationId": invocation_id,
+        "threadId": request.thread_id,
+        "turnId": request.turn_id,
+        "input": {
+            "delivery": "async",
+            "questions": request.normalized_questions,
+        },
+    })
+}
+
+fn async_question_completed_payload(
+    request: &ParsedRequest,
+    invocation_id: &str,
+    provider_request_id: &str,
+) -> Value {
+    json!({
+        "id": request.item_id,
+        "type": "AskUserQuestion",
+        "name": "AskUserQuestion",
+        "status": "completed",
+        "provider": "codex",
+        "providerRequestId": provider_request_id,
+        "providerInvocationId": invocation_id,
     })
 }
 
@@ -524,7 +631,7 @@ fn has_durable_request(
 ) -> ArgmaxResult<bool> {
     let count = connection
         .query_row(
-            "SELECT COUNT(*) FROM events WHERE session_id = ?1 AND type = 'command.started' AND json_extract(payload_json, '$.input.delivery') = 'blocking' AND json_extract(payload_json, '$.providerInvocationId') = ?2 AND json_extract(payload_json, '$.providerRequestId') = ?3",
+            "SELECT COUNT(*) FROM events WHERE session_id = ?1 AND type = 'command.started' AND json_extract(payload_json, '$.providerInvocationId') = ?2 AND json_extract(payload_json, '$.providerRequestId') = ?3",
             (session_id, invocation_id, request_id),
             |row| row.get::<_, i64>(0),
         )
@@ -743,6 +850,41 @@ mod tests {
         assert!(
             matches!(duplicate, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "QUESTION_NOT_PENDING")
         );
+    }
+
+    #[tokio::test]
+    async fn nonblocking_question_becomes_an_async_card_without_failing_the_provider() {
+        let database = setup();
+        let service = QuestionService::new(Arc::clone(&database));
+        let mut params = request_params(false);
+        params["isBlocking"] = json!(false);
+
+        let response = service
+            .request_native("s1", "invocation-1", "rpc-1", &params)
+            .await
+            .unwrap();
+
+        assert_eq!(response, json!({"answers": {}}));
+        let session = find_session_by_id(&database.connection(), "s1").unwrap();
+        assert_eq!(session.state, SessionState::Running);
+        assert_eq!(session.attention, AttentionState::Normal);
+        let events = list_session_events_since(&database.connection(), "s1", None, None)
+            .unwrap()
+            .events;
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].r#type, "command.started");
+        assert_eq!(
+            events[0].payload.pointer("/input/delivery"),
+            Some(&json!("async"))
+        );
+        assert_eq!(
+            events[0].payload.pointer("/input/questions/0/id"),
+            Some(&json!("target"))
+        );
+        assert!(events[0].payload.get("requestId").is_none());
+        assert_eq!(events[1].r#type, "command.completed");
+        assert_eq!(events[1].payload["id"], events[0].payload["id"]);
+        assert!(has_outstanding_card_ask(&database.connection(), "s1").unwrap());
     }
 
     #[tokio::test]

@@ -230,10 +230,12 @@ messages visible. Claude's blocking question cards still suppress fallback
 prose emitted after the ask. Submitting either kind uses the existing
 stop-before-answer flow.
 
-Synchronous Codex questions carry `delivery: "blocking"` and `requestId`.
+Plan-mode Codex questions carry `delivery: "blocking"` and `requestId`.
 Their answers go to `questions:resolve`, which resumes the waiting request
-within the same turn. A settled request no longer suppresses later assistant
-messages. These questions remain answerable when the composer has a draft,
+within the same turn. Default-mode `request_user_input` requests carry
+`delivery: "async"`, so the dock uses the next-user-message flow while Codex
+keeps working. A settled blocking request no longer suppresses later assistant
+messages. Blocking questions remain answerable when the composer has a draft,
 and the draft returns after the question is settled.
 
 An **answered** question leaves the dock. Legacy card answers appear as user

@@ -18,16 +18,23 @@ import SwiftUI
 /// keyboard is not.
 ///
 /// One open microphone per session, and a run of recognition tasks behind it.
-/// The recognizer finalizes a phrase on its own — a pause it reads as an
-/// ending, a segment limit on the service path — and a session that ended
-/// there would cut a person off mid-prompt, so each finalized phrase is
-/// committed and a fresh task takes over on the same open microphone. What is
-/// committed never moves again; only the phrase still being spoken is
-/// rewritten as the recognizer changes its mind, which is what keeps finished
-/// words from shifting under the cursor.
+/// A task is never left running across a pause, because the recognizer starts
+/// a new utterance of its own accord on the other side of one and — on device
+/// especially — its transcription starts over with it, reporting the new words
+/// as if they were the whole thing. So the phrase boundary is ours: a pause of
+/// `phraseGap` with no new word closes the phrase off, and a fresh task takes
+/// the next one. What is closed off never moves again except to be replaced by
+/// its own task's final, better-punctuated reading of the same words; only the
+/// phrase still being spoken is rewritten as the recognizer changes its mind.
+/// That is what keeps finished words from shifting under the cursor, and what
+/// keeps a pause from wiping the prompt.
 ///
-/// A session ends on the second tap, on the recognizer failing twice over, or
-/// when the view goes away.
+/// The next task takes the microphone before the one being closed is told its
+/// audio has ended, so a word spoken in the handover goes to one of the two
+/// rather than into the gap between them.
+///
+/// A session ends on the second tap, on two recognition tasks in a row hearing
+/// nothing, or when the view goes away.
 @MainActor
 final class Dictation: ObservableObject {
     /// Where the audio is read: this phone, or Apple's service. Settings owns
@@ -51,19 +58,23 @@ final class Dictation: ObservableObject {
     private let sink = AudioSink()
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
-    /// The finalized phrases of this session, in order. Frozen once here.
+    /// The closed-off phrases of this session, in order.
     private var committed: [String] = []
-    /// The phrase the recognizer is still working on, and still revising.
+    /// The phrase the current task is still working on, and still revising.
     private var pending = ""
-    /// Recognition tasks that have ended without hearing anything, back to
-    /// back, reset by any result. Two is the end of the session: one is a
-    /// segment limit or a blip worth taking again, a pair is a recognizer that
-    /// is not coming back — and a recognizer that refuses instantly would
-    /// otherwise be handed a fresh task forever.
+    /// Phrases closed off at a pause, by the request whose task is still
+    /// working on a final reading of them. The slot each one already holds in
+    /// `committed` is what fixes the order of the transcript here, rather than
+    /// leaving it to whichever task answers first.
+    private var cuts: [ObjectIdentifier: CutPhrase] = [:]
+    /// Closes off the current phrase once no new word has arrived for
+    /// `phraseGap`. Restarted by every word.
+    private var phraseEnd: Task<Void, Never>?
+    /// Recognition tasks that have ended without hearing a word, back to back.
+    /// Two is the end of the session: one is a blip worth taking again, a pair
+    /// is a recognizer with nothing to say — and one that refuses instantly
+    /// would otherwise be handed a fresh task forever.
     private var failures = 0
-    /// When the current task opened, so an instant empty ending is read as a
-    /// refusal rather than as a phrase that came to its natural end.
-    private var opened = ContinuousClock.now
     /// Set for the async gap before `listening` goes true, so a second tap
     /// during the authorization round-trip cannot start a second session and
     /// install a second tap on the same audio bus.
@@ -81,6 +92,18 @@ final class Dictation: ObservableObject {
     init(store: UserDefaults = .standard) {
         self.store = store
     }
+
+    /// A phrase closed off at a pause: the slot its words already occupy in
+    /// `committed`, and the task still working on a final reading of them.
+    private struct CutPhrase {
+        let slot: Int
+        let task: SFSpeechRecognitionTask
+    }
+
+    /// How long a phrase goes without a new word before it is closed off.
+    /// Short enough to beat the recognizer to its own utterance boundary,
+    /// which is the boundary that used to take the whole prompt with it.
+    private static let phraseGap = Duration.milliseconds(1200)
 
     /// Whether this phone can dictate at all — no recognizer for the current
     /// locale, or the service is down, and the button has nothing to offer.
@@ -112,6 +135,7 @@ final class Dictation: ObservableObject {
         pending = ""
         failures = 0
         heard = ""
+        cuts = [:]
         let session = generation
         guard await authorized() else { return }
         // The first dictation is the only one that waits here, and the prompts
@@ -145,6 +169,7 @@ final class Dictation: ObservableObject {
         // the draft and make finished words look like they had been deleted.
         listening = false
         finishing = true
+        phraseEnd?.cancel()
         sink.replace(nil)
         request?.endAudio()
         closeMicrophone()
@@ -188,7 +213,7 @@ final class Dictation: ObservableObject {
     }
 
     /// One recognition task, feeding off the microphone this session already
-    /// opened. Each one ends with a finalized phrase, and the next takes over.
+    /// opened. Each one carries one phrase, and the next takes over.
     private func listen(_ recognizer: SFSpeechRecognizer) {
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
@@ -202,35 +227,82 @@ final class Dictation: ObservableObject {
         request.requiresOnDeviceRecognition = onDevice
         self.request = request
         sink.replace(request)
-        opened = .now
 
+        // The request identifies the task the callback belongs to: a task
+        // closed off at a pause keeps answering after the next one has the
+        // microphone, and its last word belongs to its own phrase.
         task = recognizer.recognitionTask(with: request) { [weak self] result, error in
             Task { @MainActor in
-                self?.received(result, error: error, from: recognizer)
+                self?.received(result, error: error, for: request, from: recognizer)
             }
+        }
+    }
+
+    /// Close the current phrase off and start the next one.
+    ///
+    /// The phrase as it stands goes into `committed` now and its task is left
+    /// to sharpen it in place, because the alternative — waiting for the final
+    /// before opening the next task — is a gap in the microphone exactly where
+    /// someone is most likely to start speaking again.
+    private func cutPhrase(_ recognizer: SFSpeechRecognizer) {
+        guard listening, !finishing, let ending = request else { return }
+        let phrase = pending.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !phrase.isEmpty else { return }
+        committed.append(phrase)
+        pending = ""
+        if let task {
+            cuts[ObjectIdentifier(ending)] = CutPhrase(slot: committed.count - 1, task: task)
+        }
+        listen(recognizer)
+        ending.endAudio()
+    }
+
+    /// Every word heard puts the end of the phrase back out of reach.
+    private func schedulePhraseEnd(_ recognizer: SFSpeechRecognizer) {
+        phraseEnd?.cancel()
+        phraseEnd = Task { [weak self] in
+            try? await Task.sleep(for: Self.phraseGap)
+            guard !Task.isCancelled else { return }
+            self?.cutPhrase(recognizer)
         }
     }
 
     private func received(
         _ result: SFSpeechRecognitionResult?,
         error: Error?,
+        for request: SFSpeechAudioBufferRecognitionRequest,
         from recognizer: SFSpeechRecognizer
     ) {
-        // A task cancelled by `close()` can still call back. The session it
-        // belonged to is over, and its transcript has been handed over to the
-        // field already, so nothing it says now belongs anywhere.
-        guard listening || finishing else { return }
+        if let cut = cuts[ObjectIdentifier(request)] {
+            refine(cut, with: result, error: error, request: request)
+            return
+        }
+        // A task cancelled by `close()`, or superseded and already forgotten,
+        // can still call back. The phrase it was carrying is on screen and the
+        // microphone has moved on, so nothing it says now belongs anywhere.
+        guard request === self.request, listening || finishing else { return }
         if let result {
-            pending = result.bestTranscription.formattedString
+            let next = result.bestTranscription.formattedString
             failures = 0
-            publish()
+            // Only a reading that says something new is a word heard. An
+            // unchanged one repeated through a silence would otherwise keep
+            // pushing the end of the phrase out of reach forever.
+            if next != pending {
+                if recognizerStartedOver(after: pending, hearing: next) { commitPending() }
+                pending = next
+                publish()
+                schedulePhraseEnd(recognizer)
+            }
         }
         guard error != nil || result?.isFinal == true else { return }
+        phraseEnd?.cancel()
+        // A task that ends empty while the phrase before it is still being
+        // finalized is the recognizer busy with that one, not a recognizer
+        // with nothing to say: take the next task without holding it against
+        // the session. Every cut resolves, so this cannot hold forever.
         let heardNothing = pending.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         commitPending()
-        if error != nil || (heardNothing && opened.duration(to: .now) < .milliseconds(200)) {
-            failures += 1
-        }
+        failures = heardNothing && cuts.isEmpty ? failures + 1 : 0
 
         if finishing {
             close()
@@ -242,6 +314,25 @@ final class Dictation: ObservableObject {
             return
         }
         listen(recognizer)
+    }
+
+    /// A phrase closed off at a pause, as its own task finally reads it: the
+    /// same words, better punctuated. Only its ending is wanted — its partials
+    /// are already on screen — and only when it has words to offer, since an
+    /// empty final would take a spoken phrase off the screen.
+    private func refine(
+        _ cut: CutPhrase,
+        with result: SFSpeechRecognitionResult?,
+        error: Error?,
+        request: SFSpeechAudioBufferRecognitionRequest
+    ) {
+        guard error != nil || result?.isFinal == true else { return }
+        cuts[ObjectIdentifier(request)] = nil
+        let phrase = (result?.bestTranscription.formattedString ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !phrase.isEmpty, cut.slot < committed.count else { return }
+        committed[cut.slot] = phrase
+        publish()
     }
 
     /// The phrase the recognizer has finished with joins the ones before it.
@@ -264,7 +355,11 @@ final class Dictation: ObservableObject {
     private func close() {
         lastCall?.cancel()
         lastCall = nil
+        phraseEnd?.cancel()
+        phraseEnd = nil
         closeMicrophone()
+        for cut in cuts.values { cut.task.cancel() }
+        cuts = [:]
         task?.cancel()
         task = nil
         request = nil
@@ -319,6 +414,31 @@ final class Dictation: ObservableObject {
         }
         return true
     }
+}
+
+/// Whether the recognizer has moved on to a new utterance and started its
+/// transcription over, rather than carried on revising the phrase it was
+/// reading. `Dictation.phraseGap` is what normally closes a phrase off before
+/// this can happen; this is the backstop for a recognizer that reads a pause
+/// as an ending sooner than we do.
+///
+/// A revision keeps the words it has settled and reworks the tail, so a
+/// reading that disagrees about the opening words is a different phrase. Only
+/// asked of a phrase long enough for that to be certain: a revision of two or
+/// three words routinely rewrites all of them, and mistaking one of those for
+/// a new phrase would leave both readings in the draft.
+func recognizerStartedOver(after settled: String, hearing next: String) -> Bool {
+    let heard = spokenWords(settled)
+    guard heard.count >= 4 else { return false }
+    return spokenWords(next).prefix(3) != heard.prefix(3)
+}
+
+/// Words with the case and the punctuation the recognizer revises for free
+/// taken off them, so that only a real disagreement counts as one.
+private func spokenWords(_ text: String) -> [String] {
+    text.lowercased()
+        .components(separatedBy: CharacterSet.alphanumerics.inverted)
+        .filter { !$0.isEmpty }
 }
 
 /// The recognition request the microphone tap is feeding.

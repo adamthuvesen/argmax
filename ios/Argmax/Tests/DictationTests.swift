@@ -65,6 +65,37 @@ final class DictationTests: XCTestCase {
         XCTAssertEqual(draftWithDictation("Half a prompt", heard: "", replacing: ""), "Half a prompt")
     }
 
+    /// The recognizer starts a new utterance after a pause and, on device,
+    /// starts its transcription over with it — reporting the new words as if
+    /// they were the whole thing. Mistaking that for a revision is what used
+    /// to wipe the prompt at the first pause.
+    func testANewUtteranceIsNotReadAsARevision() {
+        let settled = "Look at the diff on this branch"
+        XCTAssertTrue(recognizerStartedOver(after: settled, hearing: "then tell me what you think"))
+        XCTAssertTrue(recognizerStartedOver(after: settled, hearing: "and ship it"))
+        // A shorter reading that keeps the opening is the same phrase, cut
+        // back — not a new one.
+        XCTAssertFalse(recognizerStartedOver(after: settled, hearing: "Look at the diff"))
+    }
+
+    /// Case and punctuation arrive late — `addsPunctuation` capitalizes the
+    /// first word of a phrase the recognizer has already reported — and none
+    /// of that is a new phrase.
+    func testLatePunctuationIsNotANewPhrase() {
+        XCTAssertFalse(
+            recognizerStartedOver(after: "look at the diff and ship it", hearing: "Look at the diff, and ship it.")
+        )
+    }
+
+    /// A revision of a phrase two or three words long routinely rewrites all
+    /// of them, so those are never read as a new phrase: both readings would
+    /// end up in the draft.
+    func testAShortPhraseIsNeverReadAsANewOne() {
+        XCTAssertFalse(recognizerStartedOver(after: "Look at", hearing: "Looking at"))
+        XCTAssertFalse(recognizerStartedOver(after: "Ship", hearing: "Chip the fix"))
+        XCTAssertFalse(recognizerStartedOver(after: "", hearing: "anything"))
+    }
+
     /// Silence leaves the draft exactly as it was — no stray space to delete
     /// before typing the prompt by hand.
     func testSilenceLeavesTheDraftAlone() {

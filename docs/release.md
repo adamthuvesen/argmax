@@ -15,12 +15,14 @@ export TAURI_SIGNING_PRIVATE_KEY="$(op read 'op://<vault>/Argmax Tauri updater/p
 export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(op read 'op://<vault>/Argmax Tauri updater/private key password')"
 ```
 
-The updater public key is committed to `src-tauri/tauri.conf.json` under `plugins.updater.pubkey`.
+Before a release, commit the real updater public key to
+`src-tauri/tauri.conf.json` under `plugins.updater.pubkey`. An empty value is
+invalid. The matching private key stays in 1Password.
 
 ## App Icons
 
 `npm run build:icons` generates icon files from [scripts/build-icons.mjs](../scripts/build-icons.mjs),
-which draws the pixel fox in [assets/fox-mascot.txt](../assets/fox-mascot.txt) — the same
+which draws the pixel fox in [assets/fox-mascot.txt](../assets/fox-mascot.txt), the same
 sprite [Mascot.tsx](../src/renderer/components/Mascot.tsx) renders in the app:
 
 | Artifact | Usage |
@@ -45,7 +47,13 @@ with 16px (`icp4`) showed a stamp-sized fox in that popup.
 npm run tauri:build
 ```
 
-Build outputs are placed in `src-tauri/target/release/bundle/` (DMG, app bundle, and updater JSON).
+Build outputs are placed in `src-tauri/target/release/bundle/`. The current
+configuration creates the DMG and app bundle only. A release that supports
+updates must also set `bundle.createUpdaterArtifacts` to `true` and supply the
+updater signing key. Tauri then creates the macOS update archive and signature.
+The update endpoint must publish `latest.json` with that archive URL and
+signature. See [Tauri's updater guide](https://v2.tauri.app/plugin/updater/)
+for the artifact and feed contract.
 
 ## Verification
 

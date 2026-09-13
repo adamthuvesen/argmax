@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-09-13",
+  "stage": "phase-4",
+  "assessment": "release-acceptance-withheld",
+  "source": {
+    "runtimeCandidate": "fb716634",
+    "finalGateCandidate": "0459f7b4",
+    "runtimeDifference": "verification harness types and assertions only"
+  },
+  "liveProviders": {
+    "status": "passed-with-boundaries",
+    "providers": {
+      "claude": "2.1.269",
+      "codex": "0.154.0",
+      "cursor": "2026.09.10-fd3934a",
+      "opencode": "1.18.30",
+      "grok": "1.0.30"
+    }
+  },
+  "nativeDesktop": {
+    "chatResume": {
+      "status": "passed",
+      "report": "/private/tmp/argmax-phase4-a08b-chat-resume/report.json"
+    },
+    "codexBlockingQuestion": {
+      "status": "passed-after-independent-foreground-timeout",
+      "report": "/private/tmp/argmax-phase4-fb716634-codex-user-input/report.json"
+    },
+    "b11": "open"
+  },
+  "ios": {
+    "focusedTestsPassed": 68,
+    "transcriptUiTestsPassed": 8,
+    "physicalDevice": "not-mutated-acceptance-open"
+  },
+  "soak": {
+    "status": "short-smoke-passed",
+    "durationSeconds": 391,
+    "dashboardReads": 1550,
+    "samples": 31,
+    "evidence": "/private/tmp/argmax-phase4-soak-a08b.ndjson"
+  },
+  "package": {
+    "status": "unsigned-package-smoke-passed",
+    "source": "fb716634",
+    "executableSha256": "81a4de4b25b3d10c4ee198e97b28661aeff59021e3b4c21e21d00c9f8c1e8d0f",
+    "dmgSha256": "4eb4ecb0176b10e2453cecad111bb23ff939eeeac75f0e97c26004964015e304",
+    "codesignVerify": "passed",
+    "dmgVerify": "passed",
+    "gatekeeper": "expected-rejection-ad-hoc-unnotarized",
+    "installedAppUntouched": true
+  },
+  "updater": {
+    "status": "blocked",
+    "publicKeyConfigured": false,
+    "createUpdaterArtifacts": false,
+    "signedFeedAvailable": false
+  },
+  "cleanup": {
+    "cargoFilesRemoved": 7767,
+    "cargoGiBRemoved": 5.9,
+    "freeDiskGiB": 92,
+    "removed": [
+      "shared Rust dev and release target",
+      "deeper temporary Rust targets of 14 GiB and 1.1 GiB",
+      "renderer and temporary verification dist directories",
+      "repo release directory",
+      "Argmax-only Xcode DerivedData",
+      "temporary Xcode products, indexes, module, SDK and package caches",
+      "disposable frozen checkout"
+    ],
+    "preserved": [
+      "source",
+      "local profiles",
+      "reports",
+      "screenshots",
+      "logs",
+      "installed application",
+      "running argmax mcp processes"
+    ]
+  },
+  "fullGate": {
+    "candidate": "0459f7b4",
+    "status": "passed",
+    "rendererTestsPassed": 3007,
+    "performanceTestsPassed": 9,
+    "rustUnitPassed": 1218,
+    "rustUnitIgnored": 3,
+    "rustIntegrationPassed": 163,
+    "rustIntegrationIgnored": 5,
+    "log": "/private/tmp/argmax-phase4-0459f7b4-precheck.log"
+  },
+  "openPrerequisites": [
+    "B11 native foreground and startup intermittency",
+    "native dirty archive Cancel and OK acceptance deferred by user",
+    "physical-device pairing, APNs, network loss, backgrounding and restart recovery",
+    "signed and notarized updater artifacts, feed and actual upgrade",
+    "hours-long prolonged-use, sleep-wake and concurrent-provider acceptance",
+    "remaining native and external journey boundaries in the Phase 3 register"
+  ]
+}

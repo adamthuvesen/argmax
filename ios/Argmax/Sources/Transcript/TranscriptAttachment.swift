@@ -29,15 +29,21 @@ struct TranscriptAttachment: Decodable, Hashable, Identifiable, Sendable {
 struct TranscriptAttachmentStrip: View {
     let attachments: [TranscriptAttachment]
     let client: BridgeClient
+    /// Which edge the tiles hug when they are narrower than the row. A sent
+    /// message's attachments belong with the prompt, so they end where the
+    /// bubble does; a wider strip still starts at the leading edge.
+    let alignment: UnitPoint
     let onOpenFile: (String) -> Void
 
     init(
         attachments: [TranscriptAttachment],
         client: BridgeClient,
+        alignment: UnitPoint = .leading,
         onOpenFile: @escaping (String) -> Void = { _ in }
     ) {
         self.attachments = attachments
         self.client = client
+        self.alignment = alignment
         self.onOpenFile = onOpenFile
     }
 
@@ -73,6 +79,7 @@ struct TranscriptAttachmentStrip: View {
                 }
             }
             .scrollIndicators(.hidden)
+            .defaultScrollAnchor(alignment, for: .alignment)
             .accessibilityLabel("Attachments")
         }
     }

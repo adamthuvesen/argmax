@@ -465,6 +465,17 @@
   --text-2xl: calc(22px + var(--type-step));
   --text-display: calc(23px + var(--type-step));
   --text-terminal: var(--text-xs);
+  /* Every transcript activity mark draws at this size, and 16px is arithmetic
+     rather than taste. A 4K panel driven at "looks like 2560x1440" renders
+     5120x2880 and resamples it down to 3840x2160, so one CSS pixel is 1.5
+     physical ones. Lucide draws on a 24-unit grid: at 16px one unit is exactly
+     1 physical pixel there and the 2-unit stroke is exactly 2, so the mark
+     lands on the panel's grid. At 14px that stroke is 1.75 physical pixels —
+     it straddles two of them, every repaint re-shades its edges, and a column
+     of marks reads as jittering. Integer-scaled displays are unaffected either
+     way. Pair it with even positions: `--session-inline-padding` and the
+     sidebar width both snap to 2px so the column starts on a physical pixel. */
+  --activity-mark-size: 16px;
 }
 
 /* Dark theme — "Warm Charcoal Editorial".

@@ -291,7 +291,16 @@
      that hides the same hole in portrait. Docking a panel only swaps the
      measure; the formulas below all read this one value. */
   --session-measure: var(--chat-content-width, 780px);
-  --session-inline-padding: clamp(var(--session-inline-padding-min, 22px), calc((100% - var(--session-measure)) / 2), 2000px);
+  /* Snapped to 2px, and the rounding is the point. A 4K panel driven at "looks
+     like 2560x1440" renders 5120x2880 and resamples to 3840x2160, so two CSS
+     pixels are exactly three physical ones: only even positions land on the
+     panel's grid. Centring on a raw half of the leftover width gave an odd
+     gutter at half the window widths, which put the whole reading column — and
+     every activity mark in it — on a half physical pixel. Losing up to a pixel
+     of centring is invisible; the marks straddling the grid was not. The
+     floors below are even for the same reason, as is the sidebar width
+     (hooks/useSidebarResize.ts). */
+  --session-inline-padding: clamp(var(--session-inline-padding-min, 22px), round(down, calc((100% - var(--session-measure)) / 2), 2px), 2000px);
   /* The gutter the workspace card takes over. It only applies while the card
      is on screen: chat-workspace-card.css swaps it in inside the same
      container queries that reveal the card, so the transcript slides left to
@@ -301,9 +310,13 @@
      clamp's floor is where the transcript runs out of room and the card goes. */
   --session-inline-padding-beside-card: clamp(
     var(--session-inline-padding-min, 22px),
-    min(
-      calc((100% - var(--session-measure)) / 2),
-      calc(100% - var(--session-measure) - var(--workspace-card-gutter))
+    round(
+      down,
+      min(
+        calc((100% - var(--session-measure)) / 2),
+        calc(100% - var(--session-measure) - var(--workspace-card-gutter))
+      ),
+      2px
     ),
     2000px
   );

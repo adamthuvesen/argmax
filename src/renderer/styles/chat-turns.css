@@ -466,21 +466,27 @@
    sentence's baseline alignment, so switching activity never moves the mark's
    centre or the label that follows it. */
 .activity-icon-slot {
-  /* Rounded to an even width, which is what keeps the 14px mark on a whole
-     pixel. `--text-base` moves with the type scale, so the raw column is odd
-     at the default step and centring left every mark at x.5. Half a CSS pixel
-     is harmless on an integer-scaled display — it is one backing pixel at 2x —
-     but a 4K panel driven at "looks like 2560x1440" renders 5120x2880 and
-     resamples to 3840x2160, where half a CSS pixel is three quarters of a
-     physical one: the mark straddles the panel grid and shimmers on every
-     repaint. An even column leaves whole free space at every step. */
-  --activity-icon-slot-width: round(up, calc(var(--text-base) + 2px), 2px);
-  flex: 0 0 var(--activity-icon-slot-width);
+  /* The column is exactly the mark, not a type-scale-sized box the mark is
+     centred in. Centring is what put every mark on a half pixel: the box was
+     `--text-base + 2px`, odd at the default step, so 14px of mark left 1.5px
+     of free space on each side. With no free space there is nothing to halve,
+     and the mark's origin is the column's origin. The mark never scaled with
+     the type step anyway — only the air around it did. */
+  flex: 0 0 var(--activity-mark-size);
   display: inline-flex;
   align-self: center;
   align-items: center;
   justify-content: center;
-  width: var(--activity-icon-slot-width);
+  width: var(--activity-mark-size);
+  height: var(--activity-mark-size);
+}
+
+/* One size for every mark that lands in the column — lucide glyphs, brand
+   marks, the working nest — so none of them can reintroduce a residue by
+   arriving a couple of pixels smaller than the box. */
+.activity-icon-slot > svg {
+  width: var(--activity-mark-size);
+  height: var(--activity-mark-size);
 }
 
 .activity-icon-slot > .tool-call-row-server-icon {
@@ -489,17 +495,19 @@
 
 /* An expanded row may unwrap its target onto several lines. Anchor the mark to
    the first line instead of centering it in the taller button, which made the
-   mark jump down when details opened. */
+   mark jump down when details opened. The line box is `1.4em`, a fractional
+   height that centred the mark on a fractional row; four whole pixels of slack
+   keep the same optical position with an even residue. */
 .tool-call-row-button > .activity-icon-slot {
   align-self: flex-start;
-  height: 1.4em;
+  height: calc(var(--activity-mark-size) + 4px);
 }
 
 /* Keep the live mark on the same 14px box as the static activity glyphs.
    `-override` is the stylesheet-owned hook for its inline size custom property;
    see styles/working-nest.css. */
 .thinking-working-nest {
-  --working-nest-size-override: 14px;
+  --working-nest-size-override: var(--activity-mark-size);
 }
 
 /* Sized and weighted like the answer that replaces it, so the label reads as
@@ -1218,8 +1226,8 @@ button.tool-call-row-button {
 .tool-call-row-server-icon {
   flex: 0 0 auto;
   align-self: center;
-  width: 14px;
-  height: 14px;
+  width: var(--activity-mark-size);
+  height: var(--activity-mark-size);
   margin-right: 1px;
   color: var(--muted-strong);
 }

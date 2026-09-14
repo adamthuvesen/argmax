@@ -13,15 +13,27 @@ function normalizedWorkspaceMinWidth(workspaceMinWidth: number): number {
   return Math.max(DEFAULT_WORKSPACE_MIN_WIDTH_PX, Math.ceil(workspaceMinWidth));
 }
 
+/**
+ * Down to the nearest even pixel. The sidebar sets where the chat pane starts,
+ * so an odd width puts the transcript's whole reading column — and every
+ * activity mark in it — on an odd pixel. On a 4K panel driven at "looks like
+ * 2560x1440" two CSS pixels are exactly three physical ones, so odd positions
+ * land mid-pixel and the marks straddle the panel grid. The floors and the
+ * default are already even; this keeps a drag from landing between them.
+ */
+function toEvenPx(width: number): number {
+  return Math.floor(width / 2) * 2;
+}
+
 function sidebarMaxForViewport(workspaceMinWidth: number, viewportWidth: number): number {
   const workspaceMin = normalizedWorkspaceMinWidth(workspaceMinWidth);
-  return Math.max(SIDEBAR_MIN_WIDTH_PX, Math.min(SIDEBAR_MAX, viewportWidth - workspaceMin));
+  return Math.max(SIDEBAR_MIN_WIDTH_PX, toEvenPx(Math.min(SIDEBAR_MAX, viewportWidth - workspaceMin)));
 }
 
 function clampSidebarWidth(width: number, workspaceMinWidth: number, viewportWidth: number): number {
   return Math.max(
     SIDEBAR_MIN_WIDTH_PX,
-    Math.min(sidebarMaxForViewport(workspaceMinWidth, viewportWidth), width)
+    Math.min(sidebarMaxForViewport(workspaceMinWidth, viewportWidth), toEvenPx(width))
   );
 }
 

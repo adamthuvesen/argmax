@@ -101,9 +101,12 @@ struct ReviewScreen: View {
                     body(for: mode)
                 }
             }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if tabs.active == nil { header }
-            }
+            // The header stays whatever the screen is showing. An open file
+            // used to replace it with the tab strip alone, which left the one
+            // screen in the app with no chevron, no task label, and a title
+            // the active tab was already carrying. The strip is the first row
+            // of the stack, so it lands directly under the header.
+            .safeAreaInset(edge: .top, spacing: 0) { header }
         }
         .toolbar(.hidden, for: .navigationBar)
         .interactivePop()

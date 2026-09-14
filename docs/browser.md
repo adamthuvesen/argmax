@@ -174,11 +174,20 @@ Both are async commands with a deadline. WebKit answers on the main queue and th
 - Enter in the address bar: go to the URL. Reloads when it's already the current page — WKWebView does not navigate to the URL it is already showing.
 - `⌘T`: New tab.
 - `⌘⇧T`: Reopen last closed tab.
+- `⌘F`: Find in page on the active tab, from anywhere while the browser is on screen — the Browser page or a review panel. From the app's own DOM it opens the find bar directly; from inside a page the init-script relay carries it, and Rust hands native focus back to the main webview so the find field receives typing. Enter / Shift+Enter walk matches, Escape closes and clears the highlights.
 - `⌘R`: Reload the tab when focused in the page or browser chrome. In development builds, app reload stays available in View → Reload and View → Force Reload, neither with a shortcut: `⌘⇧R` opens the launcher's folder picker.
 - `⌃Tab` / `⌃⇧Tab`: Next / previous tab.
 - `⌥←` / `⌥→` with a tab focused: move that tab one slot, the keyboard's way to reorder.
 - `⌘W`: Closes the active browser tab whenever the browser is mounted. The menu command tries the browser first, then the review panel's file tabs, then the focused pane — `requestCloseActiveBrowserTab()` reports whether a mounted browser consumed it.
 - Mouse thumb buttons: back (button 3) / forward (button 4), both over the browser chrome and inside a page.
+
+## Find in Page
+
+The find bar is a layout row between the toolbar and the surface, not an overlay: the page must stay visible while searching, because the highlights live *inside* the page. WKWebView exposes no find API through wry, so search runs as a page script over the existing `browser:evaluate` channel ([browserFind.ts](../src/renderer/lib/browserFind.ts)). The script installs a runtime guarded by `window.__argmaxFind` — re-evaluated after every navigation, so it re-arms itself — that walks text nodes, wraps each match in a styled custom element (`argmax-find-hl`), and steps through them, scrolling the current one into view. Closing the bar or unmounting the panel unwraps the marks and restores the page's text nodes.
+
+The bar claims `⌘F` for as long as the browser owns the native surface, taking it off the app's search palette — `⌘K` and `⌘⇧F` still reach chat and content search. Scoping the claim to focus inside the panel chrome instead made the shortcut depend on where the last click landed: macOS WebKit leaves focus on `<body>` after a button click, and opening the Browser page leaves it in the rail, so the palette answered until the user clicked into the page. A `[role="dialog"]` on top keeps its own `⌘F`, including the palette's Messages and Contents filters. Keys pressed inside the page arrive as the `find` page-command, which routes through the `focus-address`-style native focus handoff so typing lands in the find field. Typing re-searches on a 200ms debounce; Enter / Shift+Enter step matches; Escape closes.
+
+Per-text-node matching is a known limit: a query spanning an element boundary is not found, and nothing inside `<input>` values (which cannot be highlighted) is searched.
 
 ## 1Password Autofill
 

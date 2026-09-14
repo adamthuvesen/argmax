@@ -44,6 +44,12 @@ const browserStub = {
   fillCredentials: vi.fn(() => Promise.resolve({ ok: true, itemTitle: "GitHub" })),
   chromeProfiles: vi.fn(() => Promise.resolve([{ id: "Default", name: "Personal" }])),
   importChromeHistory: vi.fn(() => Promise.resolve({ entries: [], totalAvailable: 0 })),
+  evaluate: vi.fn((input: { tabId: string; script: string }) => {
+    // The page's find runtime answers with WebKit's JSON encoding.
+    const match = /__argmaxFind\.search\("((?:[^"\\]|\\.)*)"\)/.exec(input.script);
+    const count = match && match[1] ? 2 : 0;
+    return Promise.resolve({ resultJson: JSON.stringify({ count, index: count > 0 ? 1 : 0 }) });
+  }),
   onState: vi.fn((listener: (event: BrowserStateEvent) => void) => {
     stateListener = listener;
     return () => {
@@ -942,6 +948,100 @@ describe("BrowserPanel", () => {
 
     act(() => pageCommandListener?.({ tabId: firstTab, command: "focus-address" }));
     expect(screen.getByRole("textbox", { name: "Address" })).toHaveFocus();
+  });
+
+  it("opens find from the page's ⌘F and searches via evaluate", async () => {
+    vi.useFakeTimers();
+    try {
+      render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+      const tabId = activeTabId();
+      act(() => pageCommandListener?.({ tabId, command: "find" }));
+      const input = screen.getByRole("textbox", { name: "Find in page" });
+      expect(input).toHaveFocus();
+
+      fireEvent.change(input, { target: { value: "install" } });
+      // The debounced search runs on the active tab, with the query embedded.
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+      await act(async () => { await Promise.resolve(); });
+      const calls = browserStub.evaluate.mock.calls.filter(([call]) => call.tabId === tabId);
+      expect(calls.some(([call]) => call.script.includes('__argmaxFind.search("install")'))).toBe(true);
+      expect(screen.getByText("1/2")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("claims ⌘F from outside the panel, and yields it to an open dialog", () => {
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    // The app's own ⌘F palette listens in the bubble phase; the panel's
+    // capture-phase claim has to take the key off it.
+    const appSearch = vi.fn();
+    const appKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "f" && event.metaKey) appSearch();
+    };
+    document.addEventListener("keydown", appKeyDown);
+    try {
+      // Nothing inside the panel has focus — the case a fresh Browser page
+      // lands in, where the palette used to answer instead.
+      fireEvent.keyDown(document.body, { key: "f", metaKey: true });
+      expect(screen.getByRole("textbox", { name: "Find in page" })).toHaveFocus();
+      expect(appSearch).not.toHaveBeenCalled();
+
+      // Still claimed from the chrome itself.
+      fireEvent.keyDown(screen.getByRole("textbox", { name: "Find in page" }), { key: "Escape" });
+      fireEvent.keyDown(screen.getByRole("textbox", { name: "Address" }), { key: "f", metaKey: true });
+      expect(screen.getByRole("search", { name: "Find in page" })).toBeInTheDocument();
+      expect(appSearch).not.toHaveBeenCalled();
+
+      fireEvent.keyDown(screen.getByRole("textbox", { name: "Find in page" }), { key: "Escape" });
+      const dialog = document.createElement("div");
+      dialog.setAttribute("role", "dialog");
+      document.body.appendChild(dialog);
+      try {
+        fireEvent.keyDown(document.body, { key: "f", metaKey: true });
+        expect(screen.queryByRole("textbox", { name: "Find in page" })).not.toBeInTheDocument();
+        expect(appSearch).toHaveBeenCalledOnce();
+      } finally {
+        dialog.remove();
+      }
+    } finally {
+      document.removeEventListener("keydown", appKeyDown);
+    }
+  });
+
+  it("steps through matches with Enter and Escape closes the bar", async () => {
+    vi.useFakeTimers();
+    try {
+      render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+      const tabId = activeTabId();
+      act(() => pageCommandListener?.({ tabId, command: "find" }));
+      const input = screen.getByRole("textbox", { name: "Find in page" });
+      browserStub.evaluate.mockClear();
+
+      fireEvent.change(input, { target: { value: "install" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(
+        browserStub.evaluate.mock.calls.some(([call]) => call.tabId === tabId && call.script.includes('__argmaxFind.step(1, "install")'))
+      ).toBe(true);
+
+      fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(
+        browserStub.evaluate.mock.calls.some(([call]) => call.script.includes('__argmaxFind.step(-1, "install")'))
+      ).toBe(true);
+
+      browserStub.evaluate.mockClear();
+      fireEvent.keyDown(input, { key: "Escape" });
+      expect(screen.queryByRole("search", { name: "Find in page" })).not.toBeInTheDocument();
+      expect(
+        browserStub.evaluate.mock.calls.some(([call]) => call.script.includes("__argmaxFind.clear()"))
+      ).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("navigates history from the page's mouse thumb buttons", () => {

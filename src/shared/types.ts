@@ -760,7 +760,7 @@ export interface BrowserNewTabEvent {
 /** A browser shortcut pressed while the page itself had focus. */
 export interface BrowserPageCommandEvent {
   tabId: string;
-  command: "close-tab" | "new-tab" | "focus-address" | (string & {});
+  command: "close-tab" | "new-tab" | "focus-address" | "find" | (string & {});
 }
 
 /** `width`/`height` are device pixels: twice the captured CSS size on a retina display. */

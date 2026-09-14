@@ -11,6 +11,8 @@ import {
 import {
   ArrowLeft,
   ArrowRight,
+  ChevronDown,
+  ChevronUp,
   ExternalLink,
   History,
   KeyRound,
@@ -22,6 +24,7 @@ import {
 } from "lucide-react";
 import type { BrowserBounds, BrowserContentBlocking } from "../../shared/types.js";
 import { errorMessage } from "../../shared/error.js";
+import { browserFindScript, parseFindResult, type BrowserFindResult } from "../lib/browserFind.js";
 import {
   initializeBrowserHistory,
   recordBrowserVisit,
@@ -175,6 +178,16 @@ export function BrowserPanel({
   const [historyImportOpen, setHistoryImportOpen] = useState(false);
   const [contentBlocking, setContentBlocking] = useState<BrowserContentBlocking | null>(null);
   const [contentBlockingBusy, setContentBlockingBusy] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [findMatches, setFindMatches] = useState<BrowserFindResult | null>(null);
+  const findInputRef = useRef<HTMLInputElement | null>(null);
+  // Refs, not state: read inside handlers that must not churn effect deps —
+  // the debounced search fires from whatever the latest query and open state
+  // are, and a Tauri command re-subscription in the gap loses events.
+  const findQueryRef = useRef("");
+  const findOpenRef = useRef(false);
+  const findTimerRef = useRef<number | null>(null);
   const noticeTimerRef = useRef<number | null>(null);
 
   const showNotice = useCallback((message: string) => {
@@ -466,6 +479,83 @@ export function BrowserPanel({
     [browser, reportError]
   );
 
+  // Find in page. WKWebView exposes no find API through wry, so the search
+  // runs as a page script via browser:evaluate; the result highlights matches
+  // inside the page itself, so the webview must stay visible while the bar is
+  // open (the bar is layout between toolbar and surface, never an overlay).
+  const runFind = useCallback(
+    (action: "search" | "step", delta = 0): void => {
+      const tabId = getActiveBrowserTabId(scopeId);
+      if (!browser || !tabId || !findOpenRef.current) return;
+      void browser
+        .evaluate({ tabId, script: browserFindScript(action, findQueryRef.current, delta) })
+        .then((result) => setFindMatches(parseFindResult(result.resultJson)))
+        // A page mid-navigation answers slowly or not at all; the next
+        // keystroke retries, and a stale counter is quieter than a notice.
+        .catch(() => undefined);
+    },
+    [browser, scopeId]
+  );
+
+  const scheduleFind = useCallback((): void => {
+    if (findTimerRef.current !== null) window.clearTimeout(findTimerRef.current);
+    findTimerRef.current = window.setTimeout(() => {
+      findTimerRef.current = null;
+      runFind("search");
+    }, 200);
+  }, [runFind]);
+
+  const openFind = useCallback((): void => {
+    if (!getActiveBrowserTabId(scopeId)) return;
+    findOpenRef.current = true;
+    setFindOpen(true);
+  }, [scopeId]);
+
+  const closeFind = useCallback((): void => {
+    if (findTimerRef.current !== null) {
+      window.clearTimeout(findTimerRef.current);
+      findTimerRef.current = null;
+    }
+    findOpenRef.current = false;
+    setFindOpen(false);
+    const tabId = getActiveBrowserTabId(scopeId);
+    if (browser && tabId) {
+      void browser
+        .evaluate({ tabId, script: browserFindScript("clear") })
+        .catch(() => undefined);
+    }
+  }, [browser, scopeId]);
+
+  // Focus (and re-select) the find input whenever the bar opens, including
+  // ⌘F pressed again while it is already open.
+  useEffect(() => {
+    if (!findOpen) return;
+    findInputRef.current?.focus();
+    findInputRef.current?.select();
+  }, [findOpen]);
+
+  // Opening the bar on a different tab than it last searched re-runs the
+  // query there — the marks live in each page's DOM, not in the renderer.
+  useEffect(() => {
+    if (findOpen) runFind("search");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a tab switch or the open toggles a re-search
+  }, [findOpen, activeTabId]);
+
+  // The bar's unmount must not leave highlights behind in the page.
+  useEffect(
+    () => () => {
+      const tabId = getActiveBrowserTabId(scopeId);
+      if (findOpenRef.current && tabId) {
+        const cleanup = window.argmax?.browser;
+        void cleanup
+          ?.evaluate({ tabId, script: browserFindScript("clear") })
+          .catch(() => undefined);
+      }
+      if (findTimerRef.current !== null) window.clearTimeout(findTimerRef.current);
+    },
+    [scopeId]
+  );
+
   // Shortcuts pressed while the page itself has focus never reach renderer
   // JS; the webview init script intercepts them and Rust relays them here.
   useEffect(() => {
@@ -494,10 +584,14 @@ export function BrowserPanel({
       if (event.command === "focus-address") {
         addressInputRef.current?.focus();
         addressInputRef.current?.select();
+        return;
+      }
+      if (event.command === "find") {
+        openFind();
       }
     });
     return () => subscription();
-  }, [addTab, browser, closeTab, goBack, goForward, reportError]);
+  }, [addTab, browser, closeTab, goBack, goForward, openFind, reportError]);
 
   // Mouse thumb buttons over the pane chrome (toolbar, tab strip). Clicks
   // landing on the page itself go to the native webview instead and come back
@@ -707,11 +801,11 @@ export function BrowserPanel({
     }
   };
 
-  // Panel-wide shortcuts. ⌘L and ⌘T work from anywhere while the panel is
-  // open (the app claims neither); ⌘W/⌘R only fire while focus is inside the
-  // panel chrome, so typing in a chat does not close or reload a browser tab.
-  // Keys pressed inside a page land in the native webview instead — the
-  // init-script intercept relays those as browser:page-command events.
+  // Panel-wide shortcuts. ⌘L, ⌘T and ⌘F work from anywhere while the panel is
+  // open; ⌘W/⌘R only fire while focus is inside the panel chrome, so typing in
+  // a chat does not close or reload a browser tab. Keys pressed inside a page
+  // land in the native webview instead — the init-script intercept relays
+  // those as browser:page-command events.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.ctrlKey && event.key === "Tab") {
@@ -742,9 +836,22 @@ export function BrowserPanel({
         addTab();
         return;
       }
-      // macOS WebKit leaves focus on <body> after button clicks, so this
-      // guard only passes with focus in the address bar — fine for these
-      // two, which must not shadow the app's own bindings.
+      // ⌘F means "find on this page" for as long as the browser is on screen,
+      // whether that is the Browser page or a review panel. Requiring focus
+      // inside the chrome first made it depend on where the last click landed:
+      // macOS WebKit leaves focus on <body> after a button click, and opening
+      // the Browser page leaves it in the rail, so the app's search palette
+      // answered until the user clicked the page. Capture-phase
+      // stopPropagation is what takes the key off the palette. A dialog on top
+      // keeps its own ⌘F — the palette's Messages/Contents filters included.
+      if (key === "f" && getActiveBrowserTabId(scopeId) && !document.querySelector('[role="dialog"]')) {
+        event.preventDefault();
+        event.stopPropagation();
+        openFind();
+        return;
+      }
+      // ⌘W and ⌘R stay focus-scoped: they must not shadow the app's own
+      // bindings from a chat the browser merely sits beside.
       const panel = panelRef.current;
       if (!panel || !(event.target instanceof Node) || !panel.contains(event.target)) return;
       if (key === "w") {
@@ -759,7 +866,7 @@ export function BrowserPanel({
     };
     document.addEventListener("keydown", onKeyDown, true);
     return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [addTab, browser, closeTab, cycleTab, hideTabWebview, openTabWebview, reportError, scopeId]);
+  }, [addTab, browser, closeTab, cycleTab, hideTabWebview, openFind, openTabWebview, reportError, scopeId]);
 
   const handleFillCredentials = (): void => {
     if (!browser || !activeTabId) return;
@@ -1046,6 +1153,59 @@ export function BrowserPanel({
       {notice ? (
         <div className="browser-panel-notice" role="status">
           {notice}
+        </div>
+      ) : null}
+      {findOpen && activeTabId ? (
+        <div className="browser-find-bar" role="search" aria-label="Find in page">
+          <input
+            ref={findInputRef}
+            type="text"
+            aria-label="Find in page"
+            placeholder="Find in page"
+            spellCheck={false}
+            value={findQuery}
+            onChange={(event) => {
+              setFindQuery(event.target.value);
+              findQueryRef.current = event.target.value;
+              scheduleFind();
+            }}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing) return;
+              if (event.key === "Escape") {
+                event.preventDefault();
+                closeFind();
+                return;
+              }
+              if (event.key === "Enter") {
+                event.preventDefault();
+                runFind("step", event.shiftKey ? -1 : 1);
+              }
+            }}
+          />
+          <span className="browser-find-count" aria-live="polite">
+            {findMatches && findMatches.count > 0 ? `${findMatches.index}/${findMatches.count}` : findQuery ? "0/0" : ""}
+          </span>
+          <button
+            type="button"
+            title="Previous match"
+            aria-label="Previous match"
+            disabled={!findMatches || findMatches.count === 0}
+            onClick={() => runFind("step", -1)}
+          >
+            <ChevronUp size={14} strokeWidth={1.75} />
+          </button>
+          <button
+            type="button"
+            title="Next match"
+            aria-label="Next match"
+            disabled={!findMatches || findMatches.count === 0}
+            onClick={() => runFind("step", 1)}
+          >
+            <ChevronDown size={14} strokeWidth={1.75} />
+          </button>
+          <button type="button" title="Close find" aria-label="Close find" onClick={closeFind}>
+            <X size={14} strokeWidth={1.75} />
+          </button>
         </div>
       ) : null}
       <div ref={surfaceRef} className="browser-panel-surface" />

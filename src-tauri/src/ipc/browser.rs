@@ -59,7 +59,7 @@ pub struct BrowserNewTabEvent {
 
 /// A browser shortcut pressed while the page (not the panel chrome) had
 /// focus. `command` is one of `close-tab`, `new-tab`, `focus-address`,
-/// `reload`, `back`, `forward`.
+/// `reload`, `back`, `forward`, `find`.
 #[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct BrowserPageCommandEvent {
@@ -219,7 +219,8 @@ const BROWSER_INIT_SCRIPT: &str = r#"
         key === "w" ? "close-tab" :
         key === "t" ? "new-tab" :
         key === "r" ? "reload" :
-        key === "l" ? "focus-address" : null;
+        key === "l" ? "focus-address" :
+        key === "f" ? "find" : null;
       if (!command) return;
       event.preventDefault();
       window.location.href = "argmax-newtab://command?c=" + command;
@@ -411,6 +412,7 @@ fn page_command(url: &Url) -> Option<&'static str> {
         "reload" => Some("reload"),
         "back" => Some("back"),
         "forward" => Some("forward"),
+        "find" => Some("find"),
         _ => None,
     }
 }
@@ -687,7 +689,7 @@ fn open_tab_with_url(
                         "browser dialog captured on an agent tab"
                     );
                 } else if let Some(command) = page_command(url) {
-                    if command == "focus-address" {
+                    if command == "focus-address" || command == "find" {
                         // DOM focus in the renderer does not move the native
                         // first responder out of the child WKWebView.
                         if let Some(main) = nav_app.get_webview("main") {
@@ -1511,6 +1513,8 @@ mod tests {
         assert_eq!(page_command(&back), Some("back"));
         let forward = Url::parse("argmax-newtab://command?c=forward").unwrap();
         assert_eq!(page_command(&forward), Some("forward"));
+        let find = Url::parse("argmax-newtab://command?c=find").unwrap();
+        assert_eq!(page_command(&find), Some("find"));
         let unknown = Url::parse("argmax-newtab://command?c=quit-app").unwrap();
         assert_eq!(page_command(&unknown), None);
         // `open` navigations carry URLs, never commands — and vice versa.

@@ -1358,6 +1358,77 @@
   text-overflow: ellipsis;
 }
 
+/* Find-in-page. A layout row between toolbar and surface — never an overlay
+   on the webview's box — so the page stays visible while searching: the
+   highlights live inside the page and scrolling to them happens there. */
+.browser-find-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1_5);
+  padding: var(--space-1_5) var(--space-2_5);
+  border-bottom: 1px solid var(--line);
+  background: var(--sidebar);
+}
+
+.browser-find-bar input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 var(--space-2_5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-sunken);
+  color: var(--text-soft);
+  font: var(--text-sm) / 1 var(--font-ui);
+  transition:
+    background var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease);
+}
+
+.browser-find-bar input:focus {
+  outline: none;
+  border-color: var(--line-strong);
+  background: var(--panel);
+  box-shadow: var(--ring);
+  color: var(--text);
+}
+
+.browser-find-count {
+  flex: none;
+  min-width: 44px;
+  text-align: right;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.browser-find-bar > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted-strong);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.browser-find-bar > button:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--panel) 60%, var(--panel-sunken));
+  color: var(--text);
+}
+
+.browser-find-bar > button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
 .browser-panel-surface {
   flex: 1;
   min-height: 0;

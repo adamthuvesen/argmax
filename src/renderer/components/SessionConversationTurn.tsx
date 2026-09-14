@@ -1,4 +1,5 @@
 import { Fragment, memo, useMemo, useState, type JSX, type MutableRefObject, type ReactNode } from "react";
+import { CornerDownRight } from "lucide-react";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { FORK_CAPABLE_PROVIDERS } from "../../shared/providerModels.js";
 import { splitLinkSegments } from "../lib/messageLinks.js";
@@ -701,6 +702,13 @@ function readMessageOrigin(payload: unknown): UserMessageOrigin | null {
   return { sessionId, label: label.trim() };
 }
 
+/** True when Rust marked this `user.message` as delivered mid-turn (steer)
+ *  rather than queued for the next turn. */
+function readMessageIsSteer(payload: unknown): boolean {
+  if (typeof payload !== "object" || payload === null) return false;
+  return (payload as { delivery?: unknown }).delivery === "steer";
+}
+
 /** User-message row from a render item (not a turn). */
 export function SessionConversationUserMessage({
   event,
@@ -717,6 +725,7 @@ export function SessionConversationUserMessage({
   onOpenSession?: (sessionId: string) => void;
 }): JSX.Element {
   const origin = readMessageOrigin(event.payload);
+  const isSteer = readMessageIsSteer(event.payload);
   let displayMessage = event.message;
   for (const a of attachments) {
     displayMessage = displayMessage.split(`@${a.filePath}`).join("");
@@ -729,24 +738,35 @@ export function SessionConversationUserMessage({
       {...(isTurnAnchor ? { "data-turn-anchor": "true" } : {})}
       {...(origin ? { role: "article", "aria-label": "Message from another chat" } : {})}
     >
-      {origin ? (
+      {origin || isSteer ? (
         <div className="user-message-origin">
-          From{" "}
-          {onOpenSession ? (
-            <button
-              type="button"
-              className="user-message-origin-open"
-              aria-label={`Open chat: ${origin.label}`}
-              title={`Open chat: ${origin.label}`}
-              onClick={() => onOpenSession(origin.sessionId)}
-            >
-              {origin.label}
-            </button>
-          ) : (
-            <span className="user-message-origin-label" title={origin.label}>
-              {origin.label}
+          {origin ? (
+            <>
+              From{" "}
+              {onOpenSession ? (
+                <button
+                  type="button"
+                  className="user-message-origin-open"
+                  aria-label={`Open chat: ${origin.label}`}
+                  title={`Open chat: ${origin.label}`}
+                  onClick={() => onOpenSession(origin.sessionId)}
+                >
+                  {origin.label}
+                </button>
+              ) : (
+                <span className="user-message-origin-label" title={origin.label}>
+                  {origin.label}
+                </span>
+              )}
+            </>
+          ) : null}
+          {origin && isSteer ? " · " : null}
+          {isSteer ? (
+            <span className="user-message-steer">
+              <CornerDownRight size={12} aria-hidden="true" />
+              Sent during the turn
             </span>
-          )}
+          ) : null}
         </div>
       ) : null}
       {attachments.length > 0 ? (

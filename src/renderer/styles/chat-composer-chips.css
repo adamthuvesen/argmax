@@ -850,6 +850,17 @@
   text-decoration-color: currentColor;
 }
 
+/* Sent mid-turn (steer) rather than typed between turns. Same quiet
+   provenance line as .user-message-origin; the icon never truncates even
+   if a preceding "From X" label eats the available width. */
+.user-message-steer {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  color: var(--muted);
+}
+
 .user-message-attachments {
   display: flex;
   flex-wrap: wrap;

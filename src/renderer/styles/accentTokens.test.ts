@@ -320,6 +320,15 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     expect(scope).toContain("left: auto;");
   });
 
+  it("keeps picker rows on the app's compact control type size", () => {
+    const pickerItem = cssRuleBody(
+      readSource("src/renderer/styles/chat-chrome.css"),
+      ".project-picker-item"
+    );
+
+    expect(pickerItem).toContain("font-size: var(--text-xs);");
+  });
+
   it("keeps the pane minimum width aligned with the compact composer breakpoint", () => {
     const chatComposer = readSource("src/renderer/styles/chat-composer-chips.css");
 

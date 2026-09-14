@@ -110,13 +110,6 @@
   font-weight: calc(400 + var(--font-weight-offset));
 }
 
-.session-input-toolbar .composer-footer-chip-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* Approvals banner — soft amber row above the composer that surfaces pending
    approvals when the user is scrolled away from the approval surface below. */
 /* Inline file chip — replaces a plain `<code>` pill when the text matches a

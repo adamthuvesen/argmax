@@ -1,7 +1,3 @@
-@media (prefers-reduced-motion: reduce) {
-  .settings-section { animation: none; }
-}
-
 .chat-bubble {
   position: relative;
 }
@@ -176,31 +172,6 @@
 .launcher-surface .composer:focus-within {
   box-shadow: inset 0 0 0 1px var(--composer-edge),
     0 1px 2px rgba(31, 28, 24, 0.05), 0 10px 28px rgba(31, 28, 24, 0.07);
-}
-
-/* The argmax field — an animated pixel canvas that fills the composer behind
-   the text while the user types a new-session prompt. Clipped to the composer's
-   radius; never intercepts pointer or focus. `color` is the probe the canvas
-   reads --accent from. See ComposerPixelField.tsx. */
-.composer-pixel-field {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  width: 100%;
-  height: 100%;
-  border-radius: inherit;
-  overflow: hidden;
-  pointer-events: none;
-  color: var(--accent);
-}
-
-/* Lift the composer's own rows above the field so the pixels stay a backdrop. */
-.composer > .composer-input,
-.composer > .composer-context,
-.composer > .composer-attachments,
-.composer > .launcher-error {
-  position: relative;
-  z-index: 1;
 }
 
 .composer-input {
@@ -539,7 +510,7 @@
    One primitive under every dropdown in the app: the launcher's model, project
    and branch menus, the settings list pickers, the review scope menu, and the
    action menus (chat actions, git actions, sidebar sort, project actions,
-   identity, right-click). Rows are 28px at `--text-sm`; a 5px inset inside a
+   identity, right-click). Rows are 28px at the app's compact `--text-xs`; a 5px inset inside a
    10px corner keeps the 6px row corner concentric with the panel's. Chosen
    rows carry a check in the 16px lead cell (`.picker-lead`) instead of a fill,
    so every label sits on the same column whether or not its row has a glyph.
@@ -999,7 +970,7 @@
   border-radius: var(--radius-md);
   background: transparent;
   cursor: pointer;
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   line-height: 1.3;
   text-align: left;
   white-space: nowrap;

@@ -288,10 +288,7 @@
   --overlay-panel: var(--panel);
   --overlay-panel-raised: var(--panel-sunken);
   --selection-bg: color-mix(in oklab, var(--accent) 24%, transparent);
-  --selection-bg-on-ink: rgba(255, 255, 255, 0.28);
   --bubble-on-ink: #ffffff;
-  --user-bubble-bg: var(--ink);
-  --user-bubble-fg: var(--bubble-on-ink);
   /* User message bubbles fill with the active accent. Light accents are
      mid-tone, so white ink from --bubble-on-ink is the readable pair. Dark
      overrides the fill on --user-message-bg so chrome --accent can stay
@@ -325,7 +322,6 @@
 
   /* Atmospheric paper highlights. Bright white in light (mimics paper bias);
      suppressed in dark (room with the lights off — no diffuse spotlights). */
-  --paper-highlight-strong: rgba(255, 255, 255, 0.55);
   --paper-highlight-soft: rgba(255, 255, 255, 0.6);
 
   /* Hover wash for sidebar rows, nav items, and other quiet hover surfaces.
@@ -463,7 +459,6 @@
 :root,
 [data-font-size],
 [data-type-scale] {
-  --text-4xs: calc(9px + var(--type-step));
   --text-3xs: calc(9.5px + var(--type-step));
   --text-2xs: calc(10px + var(--type-step));
   --text-2xs-plus: calc(10.5px + var(--type-step));
@@ -619,8 +614,6 @@
   --ink: #f4f2ec;
   --ink-soft: #e5e1d7;
   --bubble-on-ink: #131312;
-  --user-bubble-bg: #2d2c27;
-  --user-bubble-fg: #f4f2ec;
   /* Default dark accent is sage. Mid-deep fill plus white ink, so the
      lifted --accent stays on chrome (rings, selection, nests) and the
      bubble recedes. Orange, blue, and neutral override the fill. Purple
@@ -666,7 +659,6 @@
   --overlay-panel: #171716;
   --overlay-panel-raised: #292926;
   --selection-bg: color-mix(in oklab, var(--accent) 30%, transparent);
-  --selection-bg-on-ink: rgba(127, 180, 148, 0.34);
 
   /* Same two accent hues as light, at higher alpha because charcoal swallows
      chroma. The wash stays low-alpha so the code keeps the focal point, but
@@ -682,7 +674,6 @@
 
   /* Suppress the paper-mimic gradients in dark — they were paper-bias
      hints, not architecture. Dark mode keeps its surfaces flat-with-grain. */
-  --paper-highlight-strong: transparent;
   --paper-highlight-soft: transparent;
 
   /* Low-alpha warm white for hover surfaces in dark — present enough to
@@ -886,11 +877,8 @@
               box-shadow 220ms var(--ease-out, ease-out) !important;
 }
 
-/* Dark-mode polish — the moments that earn the "fabulous" descriptor.
-   The principle: light gets shadows, dark gets *light*. In dark mode every
-   focus state and primary action picks up a soft warm glow instead of a
-   crisp ring. Scoped tight so the effect feels intentional, not noisy. */
-:root[data-theme="dark"] .composer-submit:not(:disabled):hover,
+/* Light gets shadows, dark gets *light*: in dark mode a primary action picks
+   up a soft warm glow instead of a crisp ring. */
 :root[data-theme="dark"] .project-actions-confirm-buttons .project-actions-destructive:hover {
   box-shadow: var(--shadow-1),
               0 0 28px -8px color-mix(in oklab, var(--accent) 55%, transparent);

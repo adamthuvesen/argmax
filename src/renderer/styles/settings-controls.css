@@ -175,24 +175,6 @@
   max-height: min(320px, calc(100dvh - 180px));
 }
 
-/* ---- Hints & captions ---- */
-
-.settings-hint {
-  margin: var(--space-2) 0 0;
-  font-size: var(--text-sm);
-  line-height: 1.55;
-  color: var(--muted);
-}
-
-.settings-hint code {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs-plus);
-  padding: 1px 5px;
-  border-radius: var(--radius-sm);
-  background: var(--panel-sunken);
-  color: var(--text-soft);
-}
-
 /* ---- Accent picker: one circle per tint ---- */
 
 .accent-picker {
@@ -229,22 +211,18 @@
 
 .accent-picker-chip[data-accent-id="green"] {
   --accent-swatch-color: #446c56;
-  --accent-swatch-soft: #e7efe7;
 }
 
 .accent-picker-chip[data-accent-id="purple"] {
   --accent-swatch-color: #70558f;
-  --accent-swatch-soft: #eee9f3;
 }
 
 .accent-picker-chip[data-accent-id="neutral"] {
   --accent-swatch-color: #6c6960;
-  --accent-swatch-soft: #ecebea;
 }
 
 .accent-picker-chip[data-accent-id="black"] {
   --accent-swatch-color: #1c1b18;
-  --accent-swatch-soft: #ecebea;
 }
 
 :root[data-theme="dark"] .accent-picker-chip[data-accent-id="black"] {
@@ -253,22 +231,18 @@
 
 .accent-picker-chip[data-accent-id="orange"] {
   --accent-swatch-color: #af5b00;
-  --accent-swatch-soft: #faece0;
 }
 
 .accent-picker-chip[data-accent-id="teal"] {
   --accent-swatch-color: #207070;
-  --accent-swatch-soft: #e3f0f0;
 }
 
 .accent-picker-chip[data-accent-id="blue"] {
   --accent-swatch-color: #396696;
-  --accent-swatch-soft: #e8eef5;
 }
 
 .accent-picker-chip[data-accent-id="coral"] {
   --accent-swatch-color: #944b3e;
-  --accent-swatch-soft: #f8eae6;
 }
 
 :root[data-theme="dark"] .accent-picker-chip[data-accent-id="purple"] {
@@ -528,8 +502,4 @@
      `.settings-card > *`, but an explicit shorthand keeps these rows aligned
      with the device list above. */
   padding: var(--space-1) 14px 10px;
-}
-
-.settings-hint[data-tone="warn"] {
-  color: var(--amber);
 }

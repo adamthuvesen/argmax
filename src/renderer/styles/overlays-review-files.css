@@ -1128,15 +1128,6 @@
   margin-inline: auto;
 }
 
-.file-preview-body {
-  margin: 0;
-  padding: var(--space-3) 0 var(--space-6);
-  font-family: var(--font-code);
-  font-size: var(--text-sm);
-  white-space: pre;
-  overflow: visible;
-}
-
 /* Image files. Centering is `margin: auto` on the image rather than
    `justify-content`, because a 1:1 image wider than the frame must stay
    scrollable from its left edge — centered flex content clips the start side

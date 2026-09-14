@@ -64,17 +64,6 @@
   background: var(--diff-del-gutter-bg);
 }
 
-@keyframes chips-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 /* One pending action, the reason it stopped, and two buttons. Everything else
    a request carries — the cwd it runs in, the provider that asked, a risk word,
    a "waiting for you" status, a section heading — repeats what the session

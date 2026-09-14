@@ -301,12 +301,6 @@
   opacity: 0.4;
 }
 
-/* The IDE list opens from the row's right-click menu, portaled at the cursor
-   like the menu itself, so it only needs its own comfortable width. */
-.session-ide-popover {
-  min-width: 200px;
-}
-
 .session-archive-btn {
   position: absolute;
   right: var(--sidebar-action-inset);

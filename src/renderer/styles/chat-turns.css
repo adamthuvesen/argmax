@@ -640,49 +640,6 @@
   }
 }
 
-.tool-call-item {
-  display: flex;
-  flex-direction: column;
-  border-radius: var(--radius-sm);
-  border: 1px solid transparent;
-  background: transparent;
-  overflow: hidden;
-  animation: msg-in 200ms var(--ease);
-  position: relative;
-}
-
-/* Running/error tools stay quiet: the row icon and label carry status, while
-   the expanded body keeps the same flush layout as normal tool rows. */
-.tool-call-item[data-status="running"]:not(.tool-call-item--nested) {
-  border-color: var(--line-soft);
-  background: var(--panel-soft);
-}
-
-.tool-call-item[data-status="error"]:not(.tool-call-item--nested) {
-  border-color: var(--line);
-  background: var(--panel-soft);
-}
-
-.tool-call-header {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  width: 100%;
-  padding: var(--space-2) var(--space-2_5);
-  text-align: left;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-  color: var(--muted-strong);
-  font-size: var(--text-sm);
-  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
-}
-
-.tool-call-header:hover {
-  background: var(--row-hover);
-  color: var(--text);
-}
-
 .tool-call-detail {
   display: grid;
   gap: var(--space-2_5);
@@ -878,30 +835,6 @@
   color: color-mix(in oklab, var(--text) 72%, var(--muted-strong) 28%);
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-.tool-call-command-line {
-  min-width: 0;
-  max-width: 100%;
-  overflow-x: auto;
-  padding: 7px 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid color-mix(in oklab, var(--line-soft) 54%, transparent);
-  background: color-mix(in oklab, var(--code-surface) 28%, transparent);
-  color: color-mix(in oklab, var(--text) 72%, var(--muted-strong) 28%);
-  font-family: var(--font-code);
-  font-size: var(--text-xs);
-  font-feature-settings: var(--code-font-features);
-  line-height: 1.55;
-  white-space: pre;
-}
-
-.tool-call-command-line code {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
 }
 
 /* A failure is rose text under its label, not a rose box: the row's verb has

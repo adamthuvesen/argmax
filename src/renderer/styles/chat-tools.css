@@ -242,50 +242,6 @@
   min-width: 0;
 }
 
-.tool-call-item--nested {
-  border-radius: var(--radius-md);
-  border-color: transparent;
-  background: transparent;
-}
-
-.tool-call-item--nested:hover {
-  background: var(--row-hover);
-}
-
-.tool-call-item--nested .tool-call-header {
-  padding: 7px 8px;
-}
-
-.tool-call-item[data-parallel-position] {
-  margin-left: 14px;
-  position: relative;
-  overflow: visible;
-}
-
-.tool-call-item[data-parallel-position]::before {
-  content: "";
-  position: absolute;
-  left: -10px;
-  width: 2px;
-  top: 0;
-  bottom: 0;
-  background: var(--line-strong);
-  border-radius: 999px;
-  transition: background var(--duration-fast) var(--ease);
-}
-
-.tool-call-item[data-parallel-position="start"]::before {
-  top: 8px;
-}
-
-.tool-call-item[data-parallel-position="end"]::before {
-  bottom: 8px;
-}
-
-.tool-call-item[data-parallel-position]:hover::before {
-  background: var(--muted);
-}
-
 /* Sub-agent work — the tool calls a spawned Task made, sit under its
    "Started agent …" row. A short indent carries the nesting; no rail, no
    background, nothing that would compete with the diff hairline. */
@@ -570,10 +526,6 @@
   box-shadow: inset 0 0 0 1px var(--composer-edge);
   overflow-y: auto;
   overscroll-behavior-y: contain;
-}
-
-.session-meta-cards + .multitask-composer-lane {
-  margin-top: var(--space-2_5);
 }
 
 .session-meta-cards + .multitask-composer-lane {

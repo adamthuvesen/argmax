@@ -350,10 +350,25 @@ The first read or search determines a mixed read-only row's identity. Recognized
 in-place substitutions with `sed -i` or `perl -pi -e` use edit activity, even
 when followed by read-only checks.
 `tail`, including live log following with `tail -f`, uses read activity.
+`mv`, `cp`, `rm`, and `touch` with literal operands use edit activity and carry
+the move, create, or delete operation; a glob or brace list is what the shell
+decides, not what we saw, so those stay command activity. `echo`, `printf`, and
+`mkdir` produce no activity of their own and do not void the stages around
+them, since printing a separator between reads is how a compound read is
+written.
 Explicit `cat > file` and `cat >> file` writes with quoted heredoc delimiters
-use edit activity, including when followed by build checks. Heredoc bodies
-remain opaque, so embedded examples cannot invent edits. Other unknown programs,
-script execution, substitutions, and redirects stay command activity.
+use edit activity, including when followed by build checks. A `python3 - <<'PY'`
+body is a program, not data, and an agent editing through a shell writes one:
+a body calling a write reports the paths that are literal at the call or in the
+latest assignment above it, and an edit whose path is computed reports no
+target rather than a guessed one. Every other heredoc body stays opaque —
+another interpreter, a script argument, an unquoted delimiter — so embedded
+examples cannot invent edits. Other unknown programs, script execution,
+substitutions, and redirects stay command activity.
+A stage that cannot be read ends the scan instead of voiding it: it voids a
+read-only claim, because it may have changed the same files, but an edit
+already seen still happened, so `sed -i '' … && xcodegen && xcodebuild` is an
+edit while `test -s file && rm file` is a command.
 Unsupported shell syntax also falls back to command activity, including
 descriptor duplication on a heredoc write and quoted tilde targets.
 A file path alone does not establish an edit or image view,

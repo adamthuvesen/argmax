@@ -497,27 +497,30 @@ fn classify(payload: &Map<String, Value>) -> Option<Activity> {
             if let Some(command) = command_value(input) {
                 let explicit_write = match &command {
                     CommandValue::Text(text) => super::heredoc_activity::file_write_targets(text)
-                        .map(|targets| (ActivityKind::Edit, targets)),
+                        .map(|targets| CommandStageActivity {
+                            kind: ActivityKind::Edit,
+                            targets,
+                            operation: None,
+                        }),
                     _ => None,
                 };
-                if let Some((kind, targets)) =
-                    explicit_write.or_else(|| classify_simple_command(command))
+                if let Some(selected) = explicit_write.or_else(|| classify_simple_command(command))
                 {
-                    if kind != ActivityKind::Edit {
+                    if selected.kind != ActivityKind::Edit {
                         if let Some(mut native) = native {
                             // The full command retains a leading `cd` that
                             // individual native actions can omit.
-                            if native.kind == kind {
-                                native.targets = targets;
+                            if native.kind == selected.kind {
+                                native.targets = selected.targets;
                             }
                             return Some(native);
                         }
                     }
                     return Some(Activity {
-                        kind,
+                        kind: selected.kind,
                         evidence: Evidence::Command,
-                        targets,
-                        operation: None,
+                        targets: selected.targets,
+                        operation: selected.operation,
                         tool_count: None,
                     });
                 }
@@ -909,8 +912,8 @@ fn codex_command_activity(payload: &Map<String, Value>) -> Option<Activity> {
             .get("command")
             .and_then(Value::as_str)
             .and_then(|command| classify_simple_command(CommandValue::Text(command)))
-            .filter(|(parsed_kind, _)| *parsed_kind == kind)
-            .map(|(_, targets)| targets)
+            .filter(|parsed| parsed.kind == kind)
+            .map(|parsed| parsed.targets)
             .unwrap_or_else(|| {
                 action
                     .get("path")
@@ -920,14 +923,18 @@ fn codex_command_activity(payload: &Map<String, Value>) -> Option<Activity> {
                     .into_iter()
                     .collect()
             });
-        activities.push(CommandStageActivity { kind, targets });
+        activities.push(CommandStageActivity {
+            kind,
+            targets,
+            operation: None,
+        });
     }
-    let (kind, targets) = select_command_activity(activities)?;
+    let selected = select_command_activity(activities)?;
     Some(Activity {
-        kind,
+        kind: selected.kind,
         evidence: Evidence::Native,
-        targets,
-        operation: None,
+        targets: selected.targets,
+        operation: selected.operation,
         tool_count: None,
     })
 }
@@ -946,12 +953,13 @@ fn command_value(input: Option<&Value>) -> Option<CommandValue<'_>> {
     }
 }
 
-fn classify_simple_command(command: CommandValue<'_>) -> Option<(ActivityKind, Vec<String>)> {
+fn classify_simple_command(command: CommandValue<'_>) -> Option<CommandStageActivity> {
     let parsed = command_stages(command)?;
     let mut activities = Vec::new();
     let mut working_directory = None;
     let mut directory_is_trustworthy = true;
-    for (pipeline_index, pipeline) in parsed.pipelines.into_iter().enumerate() {
+    let mut saw_unknown_stage = false;
+    'stages: for (pipeline_index, pipeline) in parsed.pipelines.into_iter().enumerate() {
         if pipeline.len() == 1 {
             if let Some(directory) = literal_cd_target(&pipeline[0]) {
                 if pipeline_index == 0 {
@@ -969,43 +977,67 @@ fn classify_simple_command(command: CommandValue<'_>) -> Option<(ActivityKind, V
             }
         }
         for (index, words) in pipeline.into_iter().enumerate() {
-            if let Some(mut activity) = classify_command_stage(&words, index > 0)? {
-                // Git targets are subcommands, not paths under the cwd.
-                if let Some(directory) = working_directory
-                    .as_deref()
-                    .filter(|_| activity.kind != ActivityKind::Git)
-                {
-                    prefix_relative_targets(&mut activity.targets, directory)?;
+            // A stage we cannot read may do anything, so it ends the scan
+            // rather than voiding it. What ran before it still ran, and an
+            // edit that already happened stays true whatever follows; a stage
+            // after this one could be anything, including a `cd`, so nothing
+            // past here is read. Reaching here at all voids a read-only claim,
+            // since the unknown stage may have changed the same files.
+            let Some(stage) = classify_command_stage(&words, index > 0) else {
+                saw_unknown_stage = true;
+                break 'stages;
+            };
+            let Some(mut activity) = stage else { continue };
+            // Git targets are subcommands, not paths under the cwd.
+            if let Some(directory) = working_directory
+                .as_deref()
+                .filter(|_| activity.kind != ActivityKind::Git)
+            {
+                if prefix_relative_targets(&mut activity.targets, directory).is_none() {
+                    saw_unknown_stage = true;
+                    break 'stages;
                 }
-                activities.push(activity);
             }
+            activities.push(activity);
         }
     }
 
-    let (kind, targets) = select_command_activity(activities)?;
+    let selected = select_command_activity(activities)?;
+    if saw_unknown_stage && selected.kind != ActivityKind::Edit {
+        return None;
+    }
     // A `;`-joined `cd` can silently fail and leave the next command running
     // against the wrong directory. That's cosmetically wrong but harmless for
     // a Read/Search label; for Edit it would misreport which file was mutated.
-    if kind == ActivityKind::Edit && !directory_is_trustworthy {
+    if selected.kind == ActivityKind::Edit && !directory_is_trustworthy {
         return None;
     }
-    Some((kind, targets))
+    Some(selected)
 }
 
-fn select_command_activity(
-    activities: Vec<CommandStageActivity>,
-) -> Option<(ActivityKind, Vec<String>)> {
-    if let Some(edit) = activities
+fn select_command_activity(activities: Vec<CommandStageActivity>) -> Option<CommandStageActivity> {
+    let mut edits = activities
         .iter()
-        .find(|activity| activity.kind == ActivityKind::Edit)
-    {
+        .filter(|activity| activity.kind == ActivityKind::Edit)
+        .peekable();
+    if let Some(first) = edits.peek().map(|activity| activity.operation) {
+        // `rm old.rs && sed -i '' … new.rs` changed files two different ways,
+        // so the row keeps the plain edit verb rather than one stage's.
+        let operation = edits
+            .all(|activity| activity.operation == first)
+            .then_some(first)
+            .flatten();
         let mut targets = activities
             .iter()
             .filter(|activity| activity.kind == ActivityKind::Edit)
             .flat_map(|activity| activity.targets.iter().cloned())
             .collect::<Vec<_>>();
         deduplicate(&mut targets);
-        return Some((edit.kind, targets));
+        return Some(CommandStageActivity {
+            kind: ActivityKind::Edit,
+            targets,
+            operation,
+        });
     }
 
     // Keep the first content operation as the row's identity. A search-led
@@ -1026,7 +1058,11 @@ fn select_command_activity(
         .flat_map(|activity| activity.targets)
         .collect::<Vec<_>>();
     deduplicate(&mut targets);
-    Some((winning_kind, targets))
+    Some(CommandStageActivity {
+        kind: winning_kind,
+        targets,
+        operation: None,
+    })
 }
 
 fn is_single_search_command(command: CommandValue<'_>) -> bool {
@@ -1050,6 +1086,7 @@ fn is_single_search_command(command: CommandValue<'_>) -> bool {
 struct CommandStageActivity {
     kind: ActivityKind,
     targets: Vec<String>,
+    operation: Option<&'static str>,
 }
 
 fn classify_command_stage(
@@ -1089,15 +1126,55 @@ fn classify_command_stage(
         "find" => (ActivityKind::List, find_targets(args)?),
         "fd" => (ActivityKind::List, fd_targets(args)?),
         "git" => (ActivityKind::Git, vec![git_subcommand(args)?.to_owned()]),
+        "mv" => {
+            return Some(Some(CommandStageActivity {
+                kind: ActivityKind::Edit,
+                targets: move_targets(args)?,
+                operation: Some("move"),
+            }))
+        }
+        "cp" => {
+            return Some(Some(CommandStageActivity {
+                kind: ActivityKind::Edit,
+                targets: copy_targets(args)?,
+                operation: Some("create"),
+            }))
+        }
+        "rm" => {
+            return Some(Some(CommandStageActivity {
+                kind: ActivityKind::Edit,
+                targets: remove_targets(args)?,
+                operation: Some("delete"),
+            }))
+        }
+        "touch" => {
+            return Some(Some(CommandStageActivity {
+                kind: ActivityKind::Edit,
+                targets: literal_operands(args, &[])?,
+                operation: Some("create"),
+            }))
+        }
         "wc" => {
             wc_targets(args)?;
             return Some(None);
         }
-        "echo" if args.is_empty() => return Some(None),
+        // Stages that produce no file activity of their own. Leaving them
+        // unknown would void the whole command: `sed -n 1,40p a.rs; echo ---;
+        // grep needle b.rs` is the shape a compound read actually takes.
+        "echo" => return Some(None),
+        "printf" => return Some(None),
+        "mkdir" => {
+            literal_operands(args, &["-p"])?;
+            return Some(None);
+        }
         "xcrun" if args == ["simctl", "list", "devices", "available"] => return Some(None),
         _ => return None,
     };
-    Some(Some(CommandStageActivity { kind, targets }))
+    Some(Some(CommandStageActivity {
+        kind,
+        targets,
+        operation: None,
+    }))
 }
 
 const GIT_SUBCOMMANDS: &[&str] = &[
@@ -1787,6 +1864,60 @@ fn fd_targets(args: &[String]) -> Option<Vec<String>> {
     Some(args.iter().skip(1).cloned().collect())
 }
 
+/// Operands of a file-mutating command, rejecting any whose real target the
+/// shell decides. A glob or a brace list names files we never saw expand, and
+/// reporting `build/*` as an edited path is worse than reporting nothing.
+fn literal_operands(args: &[String], allowed: &[&str]) -> Option<Vec<String>> {
+    let operands = operands_after_boolean_flags(args, allowed)?;
+    operands
+        .iter()
+        .all(|operand| {
+            !operand.is_empty()
+                && !operand
+                    .chars()
+                    .any(|character| matches!(character, '*' | '?' | '[' | ']' | '{' | '}'))
+        })
+        .then_some(operands)
+}
+
+const COPY_FLAGS: &[&str] = &[
+    "-r",
+    "-R",
+    "-f",
+    "-i",
+    "-n",
+    "-p",
+    "-a",
+    "-v",
+    "-rf",
+    "-fr",
+    "-Rf",
+    "-fR",
+    "-pr",
+    "-rp",
+    "--recursive",
+    "--force",
+];
+
+/// `mv` reports the paths that left; `cp` reports the one that appeared.
+fn move_targets(args: &[String]) -> Option<Vec<String>> {
+    let mut operands = literal_operands(args, COPY_FLAGS)?;
+    operands.pop()?;
+    (!operands.is_empty()).then_some(operands)
+}
+
+fn copy_targets(args: &[String]) -> Option<Vec<String>> {
+    let operands = literal_operands(args, COPY_FLAGS)?;
+    (operands.len() > 1)
+        .then(|| operands.last().cloned())
+        .flatten()
+        .map(|target| vec![target])
+}
+
+fn remove_targets(args: &[String]) -> Option<Vec<String>> {
+    literal_operands(args, COPY_FLAGS)
+}
+
 fn wc_targets(args: &[String]) -> Option<Vec<String>> {
     let targets = operands_after_boolean_flags(args, &["-l", "-w", "-c", "-m", "-L"])?;
     (!targets.is_empty()).then_some(targets)
@@ -2213,13 +2344,20 @@ mod tests {
     }
 
     #[test]
-    fn explicit_heredoc_writes_override_generic_script_activity() {
+    fn heredoc_writes_override_generic_script_activity() {
         let command = "cd ios/Argmax && python3 - <<'PY'\np='source.swift'\nopen(p, 'w').write('updated')\nPY\ncat > Tests/Scratch.swift <<'EOF'\n// example: cat > unrelated.swift\nEOF\nxcodebuild > /tmp/build.log 2>&1; tail -5 /tmp/build.log";
         let classified = activity(json!({"name":"Bash","input":{"command":command}}));
         assert_eq!(classified["kind"], "edit");
         assert_eq!(
             classified["targets"],
-            json!(["ios/Argmax/Tests/Scratch.swift"])
+            json!(["ios/Argmax/source.swift", "ios/Argmax/Tests/Scratch.swift"])
+        );
+
+        // A body that only reads leaves the row a command.
+        let read_only = "python3 - <<'PY'\nprint(open('source.swift').read())\nPY";
+        assert_eq!(
+            activity(json!({"name":"Bash","input":{"command":read_only}}))["kind"],
+            "command"
         );
     }
 
@@ -2410,7 +2548,6 @@ mod tests {
             "sed -i '' '1w copied.txt' file.txt",
             "sed -i '' 's/a/b/w copied.txt' file.txt",
             "xcrun simctl erase all",
-            "cd ios/Argmax && sed -i '' 's/a/b/' file.txt; unknown-command",
             "cd ios/Argmax; sed -i '' 's/a/b/' file.txt",
             "cd ios/Argmax\nsed -i '' 's/a/b/' file.txt",
             "cd ios/Argmax && sed -i '' 's/a/b/' ~/file.txt",
@@ -2418,6 +2555,88 @@ mod tests {
             let fallback = activity(json!({"name":"Bash","input":{"command":command}}));
             assert_eq!(fallback["kind"], "command", "{command}");
             assert_eq!(fallback["evidence"], "tool", "{command}");
+        }
+
+        // A stage we cannot read sits between most edits and their build, and
+        // it cannot un-write the file the substitution already changed.
+        let with_unknown_stage = activity(json!({"name":"Bash","input":{
+            "command":"cd ios/Argmax && sed -i '' 's/a/b/' file.txt && xcodegen; xcodebuild -scheme Argmax"
+        }}));
+        assert_eq!(with_unknown_stage["kind"], "edit");
+        assert_eq!(
+            with_unknown_stage["targets"],
+            json!(["ios/Argmax/file.txt"])
+        );
+        // The same stage still voids a read-only claim.
+        assert_eq!(
+            activity(json!({"name":"Bash","input":{"command":"cat a.rs && xcodebuild"}}))["kind"],
+            "command"
+        );
+    }
+
+    #[test]
+    fn file_mutating_commands_name_what_they_changed() {
+        for (command, operation, targets) in [
+            ("mv a.rs moved.rs", "move", json!(["a.rs"])),
+            ("cp -r a.rs copy.rs", "create", json!(["copy.rs"])),
+            (
+                "rm -rf build/cache scratch.rs",
+                "delete",
+                json!(["build/cache", "scratch.rs"]),
+            ),
+            ("touch new.rs", "create", json!(["new.rs"])),
+        ] {
+            let mutation = activity(json!({"name":"Bash","input":{"command":command}}));
+            assert_eq!(mutation["kind"], "edit", "{command}");
+            assert_eq!(mutation["operation"], operation, "{command}");
+            assert_eq!(mutation["targets"], targets, "{command}");
+        }
+
+        // Two ways of changing a file keep the plain edit verb.
+        let mixed = activity(json!({
+            "name":"Bash", "input":{"command":"rm old.rs && touch new.rs"}
+        }));
+        assert_eq!(mixed["kind"], "edit");
+        assert_eq!(mixed["operation"], json!(null));
+
+        for command in [
+            // The shell decides what these name, and we never saw it expand.
+            "rm -rf build/*",
+            "mv src/{a,b}.rs dst",
+            // An unrecognized flag could change what the operands mean.
+            "rm --one-file-system -rf build",
+            "mv a.rs",
+        ] {
+            assert_eq!(
+                activity(json!({"name":"Bash","input":{"command":command}}))["kind"],
+                "command",
+                "{command}"
+            );
+        }
+    }
+
+    #[test]
+    fn stages_that_touch_no_file_do_not_void_the_ones_that_do() {
+        // Printing a separator between reads is the shape a compound read has.
+        let read = activity(json!({"name":"Bash","input":{
+            "command":"sed -n 1,40p a.rs; echo ---; grep -n needle b.rs"
+        }}));
+        assert_eq!(read["kind"], "read");
+        assert_eq!(read["targets"], json!(["a.rs"]));
+
+        let prepared = activity(json!({"name":"Bash","input":{
+            "command":"mkdir -p docs/design && touch docs/design/index.html"
+        }}));
+        assert_eq!(prepared["kind"], "edit");
+        assert_eq!(prepared["targets"], json!(["docs/design/index.html"]));
+
+        // On their own they are still just a command.
+        for command in ["mkdir -p docs/design", "echo done", "printf '%s\\n' done"] {
+            assert_eq!(
+                activity(json!({"name":"Bash","input":{"command":command}}))["kind"],
+                "command",
+                "{command}"
+            );
         }
     }
 

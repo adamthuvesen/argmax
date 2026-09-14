@@ -60,6 +60,10 @@ function parseDigitShortcut(event: KeyboardEvent): number | null {
  * session jumping, new session, pane close, cheat sheet, search) that do not
  * conflict with standard text-editing shortcuts in inputs/textareas.
  */
+
+/** The key under Esc: `Backquote` on an ANSI Mac, `IntlBackslash` on an ISO one. */
+const CHAT_CYCLE_CODES = new Set(["Backquote", "IntlBackslash"]);
+
 export function useGlobalKeybindings({
   onMenuCommand,
   onOpenFilePalette,
@@ -118,12 +122,16 @@ export function useGlobalKeybindings({
         onOpenFilePalette();
         return;
       }
-      // Matched on the physical key so it is ⌘§ on a Nordic layout and ⌘` on
-      // a US one: the key under Esc, a thumb away from ⌘Tab. It cycles by
-      // recency the way ⌘Tab does — see lib/chatCycle.ts — with Shift stepping
-      // back up the stack. The native menu carries the same commands as single
-      // steps when focus sits outside this webview.
-      if (event.code === "Backquote" && !event.altKey) {
+      // The key under Esc, a thumb away from ⌘Tab — which is two different
+      // codes depending on the Mac keyboard. An ANSI Mac puts ⌘` there and
+      // sends `Backquote` (kVK_ANSI_Grave). An ISO Mac puts ⌘§ there and sends
+      // `IntlBackslash` (kVK_ISO_Section), with `Backquote` moved beside the
+      // left Shift as ⌘<. Both are accepted, so the chord is the same physical
+      // key on either keyboard. The native menu can only name one code and
+      // names `Backquote`, so on an ISO Mac it reads ⌘< — the alias, not the
+      // shortcut. It cycles by recency the way ⌘Tab does — see
+      // lib/chatCycle.ts — with Shift stepping back up the stack.
+      if (CHAT_CYCLE_CODES.has(event.code) && !event.altKey) {
         if (event.isComposing || event.repeat) return;
         const targetWorkspaceId = stepChatCycle(
           event.shiftKey ? -1 : 1,

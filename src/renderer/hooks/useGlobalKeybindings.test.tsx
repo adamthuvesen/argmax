@@ -51,9 +51,10 @@ describe("useGlobalKeybindings", () => {
   });
 
   // The recency order itself is covered in lib/chatCycle.test.ts. This is the
-  // wiring: that the chord steps at all, that Shift reverses it, and that
-  // releasing Cmd is what ends a held traversal.
-  it("cycles chats on Cmd+Backquote and ends the traversal when Cmd comes up", () => {
+  // wiring: that the chord steps at all on either Mac keyboard — ⌘§ sends
+  // `IntlBackslash` on an ISO one, ⌘` sends `Backquote` on an ANSI one — that
+  // Shift reverses it, and that releasing Cmd ends a held traversal.
+  it("cycles chats on Cmd and the key under Esc, ending the traversal when Cmd comes up", () => {
     const onSelectWorkspace = vi.fn();
     const onCloseSettings = vi.fn();
     renderHook(() =>
@@ -69,9 +70,9 @@ describe("useGlobalKeybindings", () => {
 
     // Nothing selected (launcher) and nothing used yet: forward lands on the
     // first row, back on the last.
-    fireEvent.keyDown(document, { key: "§", code: "Backquote", metaKey: true });
+    fireEvent.keyDown(document, { key: "§", code: "IntlBackslash", metaKey: true });
     expect(onSelectWorkspace).toHaveBeenLastCalledWith("workspace-1");
-    fireEvent.keyDown(document, { key: "°", code: "Backquote", metaKey: true, shiftKey: true });
+    fireEvent.keyDown(document, { key: "°", code: "IntlBackslash", metaKey: true, shiftKey: true });
     expect(onSelectWorkspace).toHaveBeenLastCalledWith("workspace-3");
     expect(onCloseSettings).toHaveBeenCalledTimes(2);
 

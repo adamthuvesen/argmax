@@ -43,6 +43,24 @@ where Item.ID == String {
         activeTurnAnchorID ?? (anchorInitialTurn ? turnAnchorID : nil)
     }
 
+    private var usableViewportHeight: CGFloat {
+        max(0, viewportHeight - topInset - bottomInset)
+    }
+
+    /// Which edge the scroll view holds still when the content resizes under
+    /// it. Rows are eager, so a row above the viewport finishing its Markdown
+    /// changes its height, and with the content's top held still every row
+    /// below walks down the screen until the tail scroll catches up a frame
+    /// later. Opening a long chat prepares a document per prose row, two at a
+    /// time, so that lands as a burst of visible jumps. Holding the bottom
+    /// still while following absorbs them: what is on screen never moves.
+    /// A reader who has scrolled away owns the offset through
+    /// `TranscriptReadingPosition`, and a chat shorter than the viewport has
+    /// no tail to hold, so both keep the top.
+    private var sizeChangeAnchor: UnitPoint {
+        following && naturalContentHeight > usableViewportHeight ? .bottom : .top
+    }
+
     private var turnContext: TranscriptTurnContext {
         TranscriptTurnContext(sessionID: sessionID, anchorID: turnAnchorID, isReady: isReady)
     }
@@ -56,7 +74,6 @@ where Item.ID == String {
         guard viewportHeight > 0,
               let anchor = turnAnchorMeasurement,
               anchor.id == reservedTurnAnchorID else { return 0 }
-        let usableViewportHeight = max(0, viewportHeight - topInset - bottomInset)
         let reservation = anchor.top + usableViewportHeight - naturalContentHeight
         return min(max(0, reservation), usableViewportHeight)
     }
@@ -109,6 +126,7 @@ where Item.ID == String {
         .scrollDismissesKeyboard(.immediately)
         .defaultScrollAnchor(.bottom, for: .initialOffset)
         .defaultScrollAnchor(.top, for: .alignment)
+        .defaultScrollAnchor(sizeChangeAnchor, for: .sizeChanges)
         .scrollPosition($position)
         .accessibilityIdentifier("native-transcript")
         .onScrollGeometryChange(for: TranscriptScrollGeometry.self) { value in

@@ -407,6 +407,40 @@ final class NativeTranscriptListTests: XCTestCase {
         XCTAssertFalse(state.following)
     }
 
+    /// Opening a long chat prepares a Markdown document per prose row, so
+    /// rows above the viewport change height for a second or two after the
+    /// first paint. Each one used to push the visible rows down for the frame
+    /// before the tail scroll pulled them back: the flicker on open.
+    func testHistoryResizingWhileFollowingNeverMovesTheVisibleTail() async {
+        let state = TranscriptListTestState(items: transcriptItems(count: 40))
+        let host = TranscriptListTestHost(state: state, size: CGSize(width: 320, height: 240))
+        defer { host.close() }
+
+        guard let scrollView = await waitForScrollView(in: host, where: {
+            $0.contentSize.height > $0.bounds.height && abs(tailGap(in: $0)) < 1
+        }) else {
+            return XCTFail("The hosted transcript did not finish its initial layout")
+        }
+        for _ in 0..<20 { await settle(host) }
+        guard let settled = state.rowFrames["item-39"]?.frame.minY else {
+            return XCTFail("The transcript did not report its tail row")
+        }
+        let contentHeight = scrollView.contentSize.height
+
+        state.rowTops.removeAll()
+        state.items[3].height += 120
+        for _ in 0..<20 { await settle(host) }
+        state.items[7].height -= 20
+        for _ in 0..<20 { await settle(host) }
+
+        XCTAssertEqual(scrollView.contentSize.height, contentHeight + 100, accuracy: 1,
+                       "The history rows did not actually resize")
+        let moved = (state.rowTops["item-39"] ?? []).filter { abs($0 - settled) > 1 }
+        XCTAssertTrue(moved.isEmpty,
+                      "History resizing moved the visible tail to \(moved) instead of \(settled)")
+        XCTAssertTrue(state.following)
+    }
+
     /// The transcript is an eager stack on purpose: a lazy stack guesses the
     /// height of rows it has not realised, and the tail scroll lands on that
     /// guess, past the real last row. Pin that the tail row is realised and
@@ -485,6 +519,9 @@ private final class TranscriptListTestState: ObservableObject {
     var anchorInitialTurn = false
     @Published var appearedIDs: Set<String> = []
     var rowFrames: [String: TranscriptListTestRowGeometry] = [:]
+    /// Every position a row has been laid out at, so a test can catch a
+    /// single displaced frame that a later pass corrects.
+    var rowTops: [String: [CGFloat]] = [:]
     var headerHeight: CGFloat = 0
     var composerHeight: CGFloat = 0
 
@@ -520,6 +557,7 @@ private struct TranscriptListTestView: View {
                         )
                     } action: { value in
                         state.rowFrames[item.id] = value
+                        state.rowTops[item.id, default: []].append(value.frame.minY)
                     }
             }
         }

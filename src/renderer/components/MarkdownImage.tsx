@@ -2,6 +2,9 @@ import { useEffect, useState, type JSX } from "react";
 import type { WorkspaceSummary } from "../../shared/types.js";
 import { resolveChatImageSrc } from "../lib/chatImageSrc.js";
 import { FileChip, type FileChipOpenOptions } from "./FileChip.js";
+import { WebLink } from "./WebLink.js";
+
+const REMOTE_HOST = /^https?:\/\/([^/?#]+)/i;
 
 export function MarkdownImage({
   src,
@@ -23,16 +26,24 @@ export function MarkdownImage({
 
   if (!src) return null;
   if (!resolved || failed) {
+    const remoteHost = REMOTE_HOST.exec(src)?.[1];
     return (
       <span className="markdown-image-fallback">
         {alt ? <span>{alt}: </span> : null}
-        <FileChip
-          path={src}
-          line={null}
-          workspaceId={workspace?.id ?? null}
-          workspaceCwd={workspace?.path ?? null}
-          onOpen={onOpenFile}
-        />
+        {/* A remote image is a link, never a fetch: see resolveChatImageSrc. */}
+        {remoteHost ? (
+          <WebLink href={src} title={src}>
+            {remoteHost}
+          </WebLink>
+        ) : (
+          <FileChip
+            path={src}
+            line={null}
+            workspaceId={workspace?.id ?? null}
+            workspaceCwd={workspace?.path ?? null}
+            onOpen={onOpenFile}
+          />
+        )}
       </span>
     );
   }

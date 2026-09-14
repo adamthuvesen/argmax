@@ -152,6 +152,22 @@ describe("<StreamingMarkdown />", () => {
     expect(screen.queryByRole("img", { name: "lane" })).not.toBeInTheDocument();
   });
 
+  it("draws a remote image as a link instead of fetching it", () => {
+    const { container } = render(
+      <StreamingMarkdown
+        text="![chart](https://tracker.example.com/p.png?secret=abc)"
+        streaming={false}
+        workspace={workspace}
+      />
+    );
+
+    expect(container.querySelector("img")).toBeNull();
+    expect(screen.getByRole("link", { name: "tracker.example.com" })).toHaveAttribute(
+      "href",
+      "https://tracker.example.com/p.png?secret=abc"
+    );
+  });
+
   it("normalizes absolute workspace file links before opening them", () => {
     const onOpenFile = vi.fn();
     render(

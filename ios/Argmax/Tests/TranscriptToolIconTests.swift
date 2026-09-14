@@ -85,7 +85,7 @@ final class TranscriptToolIconTests: XCTestCase {
         XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .agentWait), style: .dark), [126, 166, 207])
         // Ran a command, in gold.
         XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .command), style: .dark), [233, 195, 56])
-        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .computer), style: .light), [153, 106, 7])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .computer), style: .light), [193, 111, 22])
         // Changed a file.
         XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .edit), style: .light), [167, 57, 36])
         // Nothing named it: the same blue.

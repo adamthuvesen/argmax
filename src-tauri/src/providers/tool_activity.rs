@@ -1160,9 +1160,13 @@ fn classify_command_stage(
         }
         // Stages that produce no file activity of their own. Leaving them
         // unknown would void the whole command: `sed -n 1,40p a.rs; echo ---;
-        // grep needle b.rs` is the shape a compound read actually takes.
-        "echo" => return Some(None),
-        "printf" => return Some(None),
+        // grep needle b.rs` is the shape a compound read actually takes, and
+        // `pwd && ls -1` is a listing that used to report as a bare command.
+        // Each of these prints or waits; none can reach a file, because a
+        // redirection makes the whole command unparseable before we get here.
+        "echo" | "printf" | "pwd" | "date" | "sleep" | "true" | "false" | ":" | "which" => {
+            return Some(None)
+        }
         "mkdir" => {
             literal_operands(args, &["-p"])?;
             return Some(None);
@@ -2630,8 +2634,18 @@ mod tests {
         assert_eq!(prepared["kind"], "edit");
         assert_eq!(prepared["targets"], json!(["docs/design/index.html"]));
 
+        // A stage that only prints or waits keeps the listing beside it.
+        let located = activity(json!({"name":"Bash","input":{"command":"pwd && ls -1 src"}}));
+        assert_eq!(located["kind"], "list");
+        assert_eq!(located["targets"], json!(["src"]));
+
         // On their own they are still just a command.
-        for command in ["mkdir -p docs/design", "echo done", "printf '%s\\n' done"] {
+        for command in [
+            "mkdir -p docs/design",
+            "echo done",
+            "printf '%s\\n' done",
+            "pwd",
+        ] {
             assert_eq!(
                 activity(json!({"name":"Bash","input":{"command":command}}))["kind"],
                 "command",

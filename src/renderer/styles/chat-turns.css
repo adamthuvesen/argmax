@@ -466,12 +466,21 @@
    sentence's baseline alignment, so switching activity never moves the mark's
    centre or the label that follows it. */
 .activity-icon-slot {
-  flex: 0 0 calc(var(--text-base) + 2px);
+  /* Rounded to an even width, which is what keeps the 14px mark on a whole
+     pixel. `--text-base` moves with the type scale, so the raw column is odd
+     at the default step and centring left every mark at x.5. Half a CSS pixel
+     is harmless on an integer-scaled display — it is one backing pixel at 2x —
+     but a 4K panel driven at "looks like 2560x1440" renders 5120x2880 and
+     resamples to 3840x2160, where half a CSS pixel is three quarters of a
+     physical one: the mark straddles the panel grid and shimmers on every
+     repaint. An even column leaves whole free space at every step. */
+  --activity-icon-slot-width: round(up, calc(var(--text-base) + 2px), 2px);
+  flex: 0 0 var(--activity-icon-slot-width);
   display: inline-flex;
   align-self: center;
   align-items: center;
   justify-content: center;
-  width: calc(var(--text-base) + 2px);
+  width: var(--activity-icon-slot-width);
 }
 
 .activity-icon-slot > .tool-call-row-server-icon {

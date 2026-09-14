@@ -666,9 +666,20 @@ fn claude_settings_args(
     // Child completion can precede a stale parent result while its findings
     // are still queued. Foreground Agent/Bash calls deliver results before the
     // parent finishes. Inline settings also override user/project env settings.
+    //
+    // Tool search defers the tool schemas out of the cached prefix and hands
+    // the model a search tool to pull them back on demand. The `argmax` server
+    // is 55 tools and ~52 KB of schema, which every turn pays for whether or
+    // not it calls one: measured against 2.1.270, a launch carrying the server
+    // cost 47,967 prefix tokens with tool search off and 19,062 with it on.
+    // The cost is a search round trip before the first tool call, and a tool
+    // the model never thinks to search for is one it will not find.
     settings.insert(
         "env".to_string(),
-        serde_json::json!({"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1"}),
+        serde_json::json!({
+            "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
+            "ENABLE_TOOL_SEARCH": "true",
+        }),
     );
     if let Some(hooks) = mcp_injection::claude_hook_settings(mcp) {
         settings.insert("hooks".to_string(), hooks);
@@ -770,7 +781,7 @@ mod tests {
                 "--append-system-prompt",
                 CLAUDE_NATIVE_AGENT_GUIDANCE,
                 "--settings",
-                r#"{"env":{"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1"},"fastMode":false}"#,
+                r#"{"env":{"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1","ENABLE_TOOL_SEARCH":"true"},"fastMode":false}"#,
                 "--model",
                 "haiku",
                 "--session-id",
@@ -876,7 +887,7 @@ mod tests {
                 "--append-system-prompt",
                 CLAUDE_NATIVE_AGENT_GUIDANCE,
                 "--settings",
-                r#"{"env":{"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1"},"fastMode":false}"#,
+                r#"{"env":{"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1","ENABLE_TOOL_SEARCH":"true"},"fastMode":false}"#,
                 "--model",
                 "haiku",
                 "--output-format",
@@ -931,7 +942,7 @@ mod tests {
             .expect("settings flag");
         assert_eq!(
             args[index + 1],
-            r#"{"env":{"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1"},"fastMode":true}"#
+            r#"{"env":{"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1","ENABLE_TOOL_SEARCH":"true"},"fastMode":true}"#
         );
     }
 

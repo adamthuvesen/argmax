@@ -711,6 +711,31 @@ user trusted the folder themselves while Argmax held it. The grant is
 ref-counted alongside the config file, and `GROK_FOLDER_TRUST=0` is deliberately
 not used — it would ungate the repo's hooks too.
 
+## What the surface costs
+
+55 tools and ~52 KB of schema and server instructions, and a turn pays for all
+of it whether or not it calls one — tool definitions render ahead of the system
+prompt and the transcript, so they sit at the front of every cached prefix.
+
+Claude launches therefore set
+[`ENABLE_TOOL_SEARCH=true`](https://code.claude.com/docs/en/env-vars) in the
+same inline `--settings` JSON that carries the background-task flag and the
+inbox hook ([adapters.rs](../src-tauri/src/providers/adapters.rs)). Claude Code
+then defers the schemas out of the prefix and gives the model a search tool to
+pull back the ones it wants. Measured against 2.1.270 with a bare launch
+carrying only this server, the prefix went from 47,967 tokens to 19,062 — the
+server's own share from 14,245 tokens per turn to 1,063.
+
+Two costs come with it. The model pays a search round trip before its first
+`argmax` tool call, and a tool it never thinks to search for is one it will not
+find, so a rarely-wanted tool leans harder on its name and description than it
+used to. Inline settings override the user's own `env` for this key, the same
+way they already do for `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`.
+
+The other four providers have no equivalent flag and still carry the full
+surface. Keeping tool descriptions short is the only lever that works for all
+five.
+
 ## The wire underneath
 
 [protocol.rs](../src-tauri/src/session_control/protocol.rs) holds the whole

@@ -26,6 +26,7 @@ const integrations = [
   { key: "linear", aliases: ["linear"] },
   { key: "github", aliases: ["github"] },
   { key: "vercel", aliases: ["vercel"] },
+  { key: "hex", aliases: ["hex"] },
   { key: "engram", aliases: ["engram"] },
   { key: "shunt", aliases: ["shunt"] },
   { key: "trace", aliases: ["trace", "trace hq"] }
@@ -38,7 +39,6 @@ const mcpServersWithoutIcons = [
   "browser use",
   "confidence experiments",
   "context7",
-  "hex",
   "profound"
 ];
 

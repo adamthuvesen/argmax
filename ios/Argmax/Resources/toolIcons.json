@@ -84,6 +84,13 @@
       ]
     },
     {
+      "key": "hex",
+      "title": "Hex",
+      "aliases": [
+        "hex"
+      ]
+    },
+    {
       "key": "engram",
       "title": "Engram",
       "aliases": [
@@ -110,7 +117,6 @@
     "browser use",
     "confidence experiments",
     "context7",
-    "hex",
     "profound"
   ]
 }

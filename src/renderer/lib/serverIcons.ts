@@ -190,6 +190,29 @@ const TRACE: ServerIcon = {
   ]
 };
 
+// Hex ships its mark as a near-black rounded square carrying a chunky pink
+// HEX wordmark. The badge is a circle here on purpose: the tool row already
+// has Linear's rounded square, and a second near-black square beside it reads
+// as the same integration at a glance. The wordmark also sits larger against
+// the badge than Hex draws it — Hex gives it about 61% of the width, which
+// closes the three letters into one pink mass at 14px; 70% keeps them apart.
+// Even at 70% the letters only separate from about 20px up, so this is the
+// whole word on purpose, chosen over the counter-free lettermark the local
+// tools below use: Hex is a brand with a wordmark, and the badge reads as Hex
+// by colour at row size either way. Don't quietly demote it to an H.
+const HEX: ServerIcon = {
+  title: "Hex",
+  viewBox: "0 0 24 24",
+  layers: [
+    { fill: "#030119", path: "M12 0A12 12 0 1 1 12 24 12 12 0 1 1 12 0Z" },
+    {
+      fill: "#EABCBB",
+      // The X's two gaps are reverse-wound subpaths, knocked out by nonzero fill.
+      path: "M3.6 8.53h2.24v6.94h-2.24zM6.47 8.53h2.29v6.94h-2.29zM5.84 10.88h0.63v1.09h-0.63zM9.39 8.53h5.22v1.09h-5.22zM9.39 10.88h5.22v1.09h-5.22zM9.39 14.32h5.22v1.15h-5.22zM9.39 9.62h2.29v4.7h-2.29zM12.32 9.62h2.29v2.35h-2.29zM12.32 12.6h2.29v1.72h-2.29zM15.24 8.53h5.16v1.72l-1.15 1.15 1.15 1.15v2.92h-5.16v-2.92l1.15-1.15-1.15-1.15zM17.48 8.53v2.29h0.63v-2.29h-0.63zM17.48 11.97v3.5h0.63v-3.5h-0.63z"
+    }
+  ]
+};
+
 function fromSimpleIcon(icon: { title: string; path: string; hex: string }): ServerIcon {
   // Notion, GitHub and Vercel are black marks: no tint carries them on
   // charcoal, so they fall back to currentColor like the words beside them.
@@ -216,6 +239,7 @@ const SERVER_ICONS: Record<string, ServerIcon> = {
   linear: LINEAR,
   github: fromSimpleIcon(siGithub),
   vercel: fromSimpleIcon(siVercel),
+  hex: HEX,
   engram: ENGRAM,
   shunt: SHUNT,
   trace: TRACE,

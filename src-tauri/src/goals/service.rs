@@ -57,6 +57,11 @@ const TRANSCRIPT_TAIL_CHARS: usize = 12_000;
 /// that answers three times running without touching anything has stopped
 /// working, and more turns will not change that.
 const MAX_IDLE_TURNS: u32 = 3;
+/// Evaluator calls that fail back to back before the goal hands back. One
+/// failure is a hiccup and the turn is simply judged again; three in a row is a
+/// CLI that is missing, logged out, or too slow for its budget, and pretending
+/// that is a "not yet" only drives the agent through work it has already done.
+const MAX_EVALUATOR_FAILURES: u32 = 3;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -313,6 +318,7 @@ impl GoalService {
     async fn run_driver(self: &Arc<Self>, goal_id: &str) -> ArgmaxResult<()> {
         let mut states = self.providers.subscribe_session_states();
         let mut idle_turns = 0u32;
+        let mut evaluator_failures = 0u32;
         loop {
             let Some(goal) = self.active_goal(goal_id)? else {
                 return Ok(());
@@ -329,17 +335,26 @@ impl GoalService {
                     goal_transcript_tail(&connection, &goal.session_id, TRANSCRIPT_TAIL_CHARS)?;
                 (tail.text, tail.tool_calls_in_last_turn)
             };
-            let judgement = self.judge(&goal, &tail).await;
-            // A failed call is reported as "not yet" so the goal survives it,
-            // but it says nothing about whether the agent is still working, so
-            // it must not push the no-progress counter either way.
-            let evaluator_answered = judgement.is_some();
-            let (verdict, reason) = match judgement {
-                Some((verdict, reason)) => (verdict, (!reason.is_empty()).then_some(reason)),
-                // A CLI hiccup is not a verdict. Keep going, and do not let it
-                // count against the no-progress ceiling either.
-                None => (GoalVerdict::NotYet, None),
+            // A failed call is not a verdict, so the settled turn is judged
+            // again rather than counted: telling the agent its work is "not met
+            // yet" when nothing judged it sends it round the same checks with
+            // no new guidance, which is how a finished goal used to burn its
+            // whole budget. A failure that repeats is not a hiccup, and the
+            // goal hands back rather than loop.
+            let Some((verdict, reason)) = self.judge(&goal, &tail).await else {
+                evaluator_failures += 1;
+                if evaluator_failures >= MAX_EVALUATOR_FAILURES {
+                    self.settle(
+                        &goal.id,
+                        GoalState::Stopped,
+                        Some("Stopped: the evaluator could not be reached to judge the goal."),
+                    )?;
+                    return Ok(());
+                }
+                continue;
             };
+            evaluator_failures = 0;
+            let reason = (!reason.is_empty()).then_some(reason);
 
             let turns = goal.turns + 1;
             let updated = update_goal_progress(
@@ -365,9 +380,7 @@ impl GoalService {
                 GoalVerdict::NotYet => {}
             }
 
-            if evaluator_answered {
-                idle_turns = if tool_calls == 0 { idle_turns + 1 } else { 0 };
-            }
+            idle_turns = if tool_calls == 0 { idle_turns + 1 } else { 0 };
             if idle_turns >= MAX_IDLE_TURNS {
                 self.settle(
                     &goal.id,

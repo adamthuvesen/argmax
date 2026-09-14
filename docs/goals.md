@@ -73,6 +73,18 @@ be something the agent's own output can demonstrate. "Every test in `test/auth`
 passes" works because the agent runs the tests and the result lands in the
 transcript.
 
+What it reads is the tail of the conversation: the prompts, the agent's prose,
+and each tool call with the command it ran and what that printed. The tool rows
+matter — a tool event's `message` is only the tool's *name*, so the evidence a
+verdict turns on lives in the payload, and `goal_transcript_tail`
+([events.rs](../src-tauri/src/persistence/events.rs)) pulls it out across the
+shapes the five providers record it in.
+
+It reads that generously. The evaluator is there to catch a Goal that is *not*
+done, not to re-litigate finished work: an evaluator holding out for proof
+better than the agent's own report sends it round the same checks forever, and
+a wrongly refused Goal costs far more than one that ends a turn early.
+
 A condition that holds up over many turns names one measurable end state and
 how the agent should prove it.
 
@@ -88,9 +100,17 @@ settles the Goal. Three things stop it besides a verdict:
   rather than letting the agent talk to the evaluator in a loop.
 - **`/goal clear`**, or the Clear button on the strip.
 
-An evaluator that fails — CLI missing, timeout, junk output — is treated as "not
-yet met" with no reason and does *not* end the Goal. A transient failure ending
-someone's Goal would be a worse outcome than one wasted turn.
+An evaluator that fails — CLI missing, timeout, junk output — is not a verdict.
+The settled turn is simply judged again, and the agent is never told "not met
+yet" by a call that never happened: that costs it a turn and gives it no
+guidance, so it re-runs the checks it just ran. Three failures in a row is not a
+hiccup, and the Goal settles `stopped` saying the evaluator could not be
+reached.
+
+The evaluator reads a whole turn's transcript rather than a one-line prompt, so
+it gets a longer budget than the title and follow-up helpers that share
+[one_shot.rs](../src-tauri/src/providers/one_shot.rs) — 90 seconds against their
+20. A cold `cursor-agent` judging a 12 KB tail measured 28 seconds.
 
 ## Why it is not deterministic
 

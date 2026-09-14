@@ -14,6 +14,9 @@
 pub mod automation;
 pub mod chrome_history;
 mod chrome_history_snapshot;
+pub mod content_blocking;
+#[cfg(target_os = "macos")]
+pub mod content_blocking_macos;
 pub mod eval;
 pub mod popup;
 pub mod registry;

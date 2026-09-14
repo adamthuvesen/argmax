@@ -687,6 +687,8 @@ export interface ArgmaxApi {
   browser: {
     chromeProfiles: () => Promise<ChromeProfile[]>;
     importChromeHistory: (profileId: string) => Promise<ChromeHistoryImport>;
+    contentBlocking: () => Promise<BrowserContentBlocking>;
+    setSiteBlocking: (input: BrowserSetSiteBlockingInput) => Promise<BrowserContentBlocking>;
     open: (input: {
       url: string;
       bounds: BrowserBounds;
@@ -736,6 +738,8 @@ export interface ArgmaxApi {
 
 /** Logical (CSS-pixel) rect of the browser pane placeholder. */
 export type BrowserBounds = Bindings.BrowserBounds;
+export type BrowserContentBlocking = Bindings.BrowserContentBlocking;
+export type BrowserSetSiteBlockingInput = Bindings.BrowserSetSiteBlockingInput;
 
 export interface BrowserStateEvent {
   tabId: string;

@@ -914,6 +914,22 @@ async browserOpen(input: BrowserOpenInput) : Promise<Result<SystemOk, ArgmaxErro
     else return { status: "error", error: e  as any };
 }
 },
+async browserContentBlocking() : Promise<Result<BrowserContentBlocking, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_content_blocking") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async browserSetSiteBlocking(input: BrowserSetSiteBlockingInput) : Promise<Result<BrowserContentBlocking, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_set_site_blocking", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async browserNavigate(input: BrowserNavigateInput) : Promise<Result<SystemOk, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("browser_navigate", { input }) };
@@ -1361,6 +1377,7 @@ export type BrowserBackInput = { tabId: string }
  */
 export type BrowserBounds = { x: number; y: number; width: number; height: number }
 export type BrowserCloseInput = { tabId: string }
+export type BrowserContentBlocking = { supported: boolean; disabledHosts: string[] }
 export type BrowserEvaluateInput = { tabId: string; script: string;
 /**
  * Defaults to 5000 ms. A page that never answers must not park the
@@ -1447,6 +1464,7 @@ export type BrowserSetBoundsInput = { bounds: BrowserBounds;
  * false for tabs behind the active one.
  */
 visible: boolean; tabId: string }
+export type BrowserSetSiteBlockingInput = { url: string; enabled: boolean }
 export type BrowserSetThemeInput = { mode: ThemeMode }
 export type BrowserSnapshotInput = { tabId?: string | null; sessionId?: string | null;
 /**

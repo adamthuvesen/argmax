@@ -14,6 +14,7 @@
 //! visibility: it hides the pane (`browser:set-bounds` with `visible: false`)
 //! whenever one of its own overlays would be covered.
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -72,6 +73,98 @@ pub struct BrowserFillResult {
     pub ok: bool,
     /// Title of the 1Password item that was filled.
     pub item_title: String,
+}
+
+#[derive(Debug, Clone)]
+struct PendingBrowserOpen {
+    generation: u64,
+    input: BrowserOpenInput,
+    visible: bool,
+    stopped: bool,
+}
+
+/// User-tab opens waiting for native content rules to finish preparing.
+///
+/// Commands arriving during that wait update this state. The eventual
+/// main-thread creator consumes only its own generation, so an older open can
+/// never remove or recreate a newer request for the same tab.
+#[derive(Debug, Default)]
+pub(crate) struct PendingBrowserOpens {
+    next_generation: u64,
+    by_tab: HashMap<String, PendingBrowserOpen>,
+}
+
+impl PendingBrowserOpens {
+    fn begin(&mut self, input: BrowserOpenInput) -> u64 {
+        self.next_generation = self.next_generation.wrapping_add(1).max(1);
+        let generation = self.next_generation;
+        self.by_tab.insert(
+            input.tab_id.clone(),
+            PendingBrowserOpen {
+                generation,
+                input,
+                visible: true,
+                stopped: false,
+            },
+        );
+        generation
+    }
+
+    fn update_navigation(&mut self, tab_id: &str, url: String) -> bool {
+        let Some(pending) = self.by_tab.get_mut(tab_id) else {
+            return false;
+        };
+        pending.input.url = url;
+        pending.stopped = false;
+        true
+    }
+
+    fn update_bounds(&mut self, tab_id: &str, bounds: BrowserBounds, visible: bool) -> bool {
+        let Some(pending) = self.by_tab.get_mut(tab_id) else {
+            return false;
+        };
+        pending.input.bounds = bounds;
+        pending.visible = visible;
+        true
+    }
+
+    fn stop(&mut self, tab_id: &str) -> bool {
+        let Some(pending) = self.by_tab.get_mut(tab_id) else {
+            return false;
+        };
+        pending.stopped = true;
+        true
+    }
+
+    fn contains(&self, tab_id: &str) -> bool {
+        self.by_tab.contains_key(tab_id)
+    }
+
+    fn cancel(&mut self, tab_id: &str) -> bool {
+        self.by_tab.remove(tab_id).is_some()
+    }
+
+    fn cancel_generation(&mut self, tab_id: &str, generation: u64) {
+        if self
+            .by_tab
+            .get(tab_id)
+            .is_some_and(|pending| pending.generation == generation)
+        {
+            self.by_tab.remove(tab_id);
+        }
+    }
+
+    fn take_generation(&mut self, tab_id: &str, generation: u64) -> Option<PendingBrowserOpen> {
+        if self
+            .by_tab
+            .get(tab_id)
+            .is_some_and(|pending| pending.generation == generation)
+        {
+            self.by_tab.remove(tab_id)
+        } else {
+            None
+        }
+    }
 }
 
 /// Route `target="_blank"` anchors through the `argmax-newtab:` scheme,
@@ -324,16 +417,103 @@ fn page_command(url: &Url) -> Option<&'static str> {
 
 #[tauri::command(rename = "browser:open")]
 #[specta::specta]
-pub fn browser_open(app: AppHandle, input: BrowserOpenInput) -> ArgmaxResult<SystemOk> {
-    open_tab(
-        &app,
-        &input.tab_id,
-        &input.url,
-        input.bounds,
-        true,
-        input.owner_session_id,
-    )?;
+pub async fn browser_open(app: AppHandle, input: BrowserOpenInput) -> ArgmaxResult<SystemOk> {
+    validated_browser_url(&input.url)?;
+    tab_label(&input.tab_id)?;
+    let tab_id = input.tab_id.clone();
+    let generation = app
+        .state::<AppState>()
+        .pending_browser_opens
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .begin(input.clone());
+
+    // Compile once before constructing a user webview, so even its first
+    // request goes through the native rules. Agent tabs remain unfiltered.
+    let state = app.state::<AppState>();
+    let mut blocking = state.browser_content_blocking.lock().await;
+    let owned = input.owner_session_id.is_some()
+        || tab_registry(&app)
+            .get(&input.tab_id)
+            .is_some_and(|tab| tab.owner_session_id.is_some());
+    let identifier = if owned {
+        None
+    } else {
+        match crate::browser::content_blocking::ensure(&app, &mut blocking).await {
+            Ok(identifier) => identifier,
+            Err(error) => {
+                state
+                    .pending_browser_opens
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .cancel_generation(&tab_id, generation);
+                return Err(error);
+            }
+        }
+    };
+    let open_tab_id = tab_id.clone();
+    let opened = crate::browser::content_blocking::on_main(&app, move |app| {
+        let pending = app
+            .state::<AppState>()
+            .pending_browser_opens
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take_generation(&open_tab_id, generation);
+        let Some(pending) = pending else {
+            return Ok(());
+        };
+        let (url, raw_url) = if pending.stopped {
+            let raw_url = "about:blank".to_string();
+            (
+                Url::parse(&raw_url).expect("valid internal blank browser URL"),
+                raw_url,
+            )
+        } else {
+            let raw_url = pending.input.url;
+            (validated_browser_url(&raw_url)?, raw_url)
+        };
+        open_tab_with_url(
+            app,
+            &pending.input.tab_id,
+            url,
+            &raw_url,
+            pending.input.bounds,
+            pending.visible,
+            pending.input.owner_session_id,
+            identifier,
+        )
+    })
+    .await;
+    if opened.is_err() {
+        app.state::<AppState>()
+            .pending_browser_opens
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .cancel_generation(&tab_id, generation);
+    }
+    opened?;
     Ok(SystemOk { ok: true })
+}
+
+#[tauri::command(rename = "browser:content-blocking")]
+#[specta::specta]
+pub async fn browser_content_blocking(
+    app: AppHandle,
+) -> ArgmaxResult<crate::browser::content_blocking::BrowserContentBlocking> {
+    let state = app.state::<AppState>();
+    let mut blocking = state.browser_content_blocking.lock().await;
+    crate::browser::content_blocking::status(&app, &mut blocking).await
+}
+
+#[tauri::command(rename = "browser:set-site-blocking")]
+#[specta::specta]
+pub async fn browser_set_site_blocking(
+    app: AppHandle,
+    input: crate::browser::content_blocking::BrowserSetSiteBlockingInput,
+) -> ArgmaxResult<crate::browser::content_blocking::BrowserContentBlocking> {
+    let state = app.state::<AppState>();
+    let mut blocking = state.browser_content_blocking.lock().await;
+    crate::browser::content_blocking::set_site(&app, &mut blocking, input).await
 }
 
 /// Creates the tab's webview, or navigates and re-shows one that exists.
@@ -347,12 +527,38 @@ pub(crate) fn open_tab(
     bounds: BrowserBounds,
     visible: bool,
     owner_session_id: Option<String>,
+    blocking_identifier: Option<String>,
 ) -> ArgmaxResult<()> {
     let url = validated_browser_url(raw_url)?;
+    open_tab_with_url(
+        app,
+        tab_id,
+        url,
+        raw_url,
+        bounds,
+        visible,
+        owner_session_id,
+        blocking_identifier,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn open_tab_with_url(
+    app: &AppHandle,
+    tab_id: &str,
+    url: Url,
+    raw_url: &str,
+    bounds: BrowserBounds,
+    visible: bool,
+    owner_session_id: Option<String>,
+    blocking_identifier: Option<String>,
+) -> ArgmaxResult<()> {
     let label = tab_label(tab_id)?;
     let tabs = tab_registry(app);
 
     if let Some(webview) = app.get_webview(&label) {
+        #[cfg(target_os = "macos")]
+        crate::browser::content_blocking_macos::apply(&webview, blocking_identifier.clone())?;
         if visible {
             webview
                 .set_bounds(bounds_rect(&bounds))
@@ -378,7 +584,18 @@ pub(crate) fn open_tab(
     let load_tab = tab_id.to_string();
     let popup_app = app.clone();
     let popup_owned_by_session = owner_session_id.is_some();
-    let builder = tauri::webview::WebviewBuilder::new(&label, WebviewUrl::External(url))
+    let builder = tauri::webview::WebviewBuilder::new(&label, WebviewUrl::External(url));
+    #[cfg(target_os = "macos")]
+    let builder = if let Some(identifier) = blocking_identifier.as_deref() {
+        builder.with_webview_configuration(crate::browser::content_blocking_macos::configuration(
+            identifier,
+        )?)
+    } else {
+        builder
+    };
+    #[cfg(not(target_os = "macos"))]
+    let _ = blocking_identifier;
+    let builder = builder
         // WKWebView's default UA reads as an embedded webview; Google (and
         // others) then warn "browser no longer supported" and refuse OAuth.
         // Present as desktop Safari, which is what this engine actually is.
@@ -391,13 +608,23 @@ pub(crate) fn open_tab(
             if !matches!(url.scheme(), "http" | "https" | "about" | "blob") {
                 return tauri::webview::NewWindowResponse::Deny;
             }
-            if let Err(error) = crate::browser::popup::prepare_configuration(&features) {
+            if let Err(error) =
+                crate::browser::popup::prepare_configuration(&features, !popup_owned_by_session)
+            {
                 tracing::error!(%error, "could not prepare browser popup configuration");
                 return tauri::webview::NewWindowResponse::Deny;
             }
             let window = tauri::WebviewWindowBuilder::new(
                 &popup_app,
-                format!("browser-popup-{}", uuid::Uuid::new_v4()),
+                format!(
+                    "browser-popup-{}-{}",
+                    if popup_owned_by_session {
+                        "agent"
+                    } else {
+                        "user"
+                    },
+                    uuid::Uuid::new_v4()
+                ),
                 WebviewUrl::External(Url::parse("about:blank").expect("valid blank URL")),
             )
             .title("Browser")
@@ -544,7 +771,17 @@ pub(crate) fn open_tab(
 #[tauri::command(rename = "browser:navigate")]
 #[specta::specta]
 pub fn browser_navigate(app: AppHandle, input: BrowserNavigateInput) -> ArgmaxResult<SystemOk> {
-    navigate_tab(&app, &input.tab_id, &input.url)?;
+    validated_browser_url(&input.url)?;
+    tab_label(&input.tab_id)?;
+    let updated_pending = app
+        .state::<AppState>()
+        .pending_browser_opens
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .update_navigation(&input.tab_id, input.url.clone());
+    if app.get_webview(&tab_label(&input.tab_id)?).is_some() || !updated_pending {
+        navigate_tab(&app, &input.tab_id, &input.url)?;
+    }
     Ok(SystemOk { ok: true })
 }
 
@@ -558,25 +795,36 @@ pub(crate) fn navigate_tab(app: &AppHandle, tab_id: &str, raw_url: &str) -> Argm
 #[tauri::command(rename = "browser:back")]
 #[specta::specta]
 pub fn browser_back(app: AppHandle, input: BrowserBackInput) -> ArgmaxResult<SystemOk> {
-    eval_in_browser(&app, &input.tab_id, "history.back()")
+    eval_in_browser_or_pending(&app, &input.tab_id, "history.back()")
 }
 
 #[tauri::command(rename = "browser:forward")]
 #[specta::specta]
 pub fn browser_forward(app: AppHandle, input: BrowserForwardInput) -> ArgmaxResult<SystemOk> {
-    eval_in_browser(&app, &input.tab_id, "history.forward()")
+    eval_in_browser_or_pending(&app, &input.tab_id, "history.forward()")
 }
 
 #[tauri::command(rename = "browser:reload")]
 #[specta::specta]
 pub fn browser_reload(app: AppHandle, input: BrowserReloadInput) -> ArgmaxResult<SystemOk> {
-    eval_in_browser(&app, &input.tab_id, "location.reload()")
+    eval_in_browser_or_pending(&app, &input.tab_id, "location.reload()")
 }
 
 #[tauri::command(rename = "browser:stop")]
 #[specta::specta]
 pub fn browser_stop(app: AppHandle, input: BrowserStopInput) -> ArgmaxResult<SystemOk> {
-    eval_in_browser(&app, &input.tab_id, "window.stop()")
+    tab_label(&input.tab_id)?;
+    let stopped_pending = app
+        .state::<AppState>()
+        .pending_browser_opens
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .stop(&input.tab_id);
+    if app.get_webview(&tab_label(&input.tab_id)?).is_some() || !stopped_pending {
+        eval_in_browser(&app, &input.tab_id, "window.stop()")
+    } else {
+        Ok(SystemOk { ok: true })
+    }
 }
 
 fn eval_in_browser(app: &AppHandle, tab_id: &str, js: &str) -> ArgmaxResult<SystemOk> {
@@ -586,10 +834,40 @@ fn eval_in_browser(app: &AppHandle, tab_id: &str, js: &str) -> ArgmaxResult<Syst
     Ok(SystemOk { ok: true })
 }
 
+fn eval_in_browser_or_pending(app: &AppHandle, tab_id: &str, js: &str) -> ArgmaxResult<SystemOk> {
+    tab_label(tab_id)?;
+    let pending = app
+        .state::<AppState>()
+        .pending_browser_opens
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .contains(tab_id);
+    if app.get_webview(&tab_label(tab_id)?).is_some() || !pending {
+        eval_in_browser(app, tab_id, js)
+    } else {
+        Ok(SystemOk { ok: true })
+    }
+}
+
 #[tauri::command(rename = "browser:set-bounds")]
 #[specta::specta]
 pub fn browser_set_bounds(app: AppHandle, input: BrowserSetBoundsInput) -> ArgmaxResult<SystemOk> {
-    let webview = browser_webview(&app, &input.tab_id)?;
+    tab_label(&input.tab_id)?;
+    let updated_pending = app
+        .state::<AppState>()
+        .pending_browser_opens
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .update_bounds(&input.tab_id, input.bounds.clone(), input.visible);
+    let Some(webview) = app.get_webview(&tab_label(&input.tab_id)?) else {
+        if updated_pending {
+            return Ok(SystemOk { ok: true });
+        }
+        return Err(ArgmaxError::service(
+            "BROWSER_NOT_OPEN",
+            "browser tab is not open",
+        ));
+    };
     if input.visible {
         webview
             .set_bounds(bounds_rect(&input.bounds))
@@ -620,7 +898,21 @@ pub fn browser_set_theme(
 #[tauri::command(rename = "browser:close")]
 #[specta::specta]
 pub fn browser_close(app: AppHandle, input: BrowserCloseInput) -> ArgmaxResult<SystemOk> {
-    close_tab(&app, &input.tab_id)?;
+    let label = tab_label(&input.tab_id)?;
+    let canceled_pending = app
+        .state::<AppState>()
+        .pending_browser_opens
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .cancel(&input.tab_id);
+    if app.get_webview(&label).is_some() {
+        close_tab(&app, &input.tab_id)?;
+    } else if !canceled_pending {
+        return Err(ArgmaxError::service(
+            "BROWSER_NOT_OPEN",
+            "browser tab is not open",
+        ));
+    }
     Ok(SystemOk { ok: true })
 }
 
@@ -1088,6 +1380,70 @@ pub async fn browser_fill_credentials(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn pending_input(tab_id: &str, url: &str) -> BrowserOpenInput {
+        BrowserOpenInput {
+            url: url.to_string(),
+            bounds: BrowserBounds {
+                x: 1.0,
+                y: 2.0,
+                width: 800.0,
+                height: 600.0,
+            },
+            tab_id: tab_id.to_string(),
+            owner_session_id: None,
+        }
+    }
+
+    #[test]
+    fn pending_open_cancellation_prevents_late_creation() {
+        let mut pending = PendingBrowserOpens::default();
+        let generation = pending.begin(pending_input("tab-1", "https://example.com/first"));
+
+        assert!(pending.cancel("tab-1"));
+        assert!(pending.take_generation("tab-1", generation).is_none());
+    }
+
+    #[test]
+    fn older_pending_open_cannot_remove_a_newer_request() {
+        let mut pending = PendingBrowserOpens::default();
+        let older = pending.begin(pending_input("tab-1", "https://example.com/older"));
+        let newer = pending.begin(pending_input("tab-1", "https://example.com/newer"));
+
+        pending.cancel_generation("tab-1", older);
+        assert_eq!(
+            pending
+                .take_generation("tab-1", newer)
+                .expect("newer request remains")
+                .input
+                .url,
+            "https://example.com/newer"
+        );
+    }
+
+    #[test]
+    fn pending_open_keeps_latest_navigation_bounds_and_visibility() {
+        let mut pending = PendingBrowserOpens::default();
+        let generation = pending.begin(pending_input("tab-1", "https://example.com/first"));
+        let latest_bounds = BrowserBounds {
+            x: 20.0,
+            y: 30.0,
+            width: 1024.0,
+            height: 700.0,
+        };
+
+        assert!(pending.stop("tab-1"));
+        assert!(pending.update_bounds("tab-1", latest_bounds.clone(), false));
+        assert!(pending.update_navigation("tab-1", "https://example.com/latest".to_string()));
+        let latest = pending
+            .take_generation("tab-1", generation)
+            .expect("pending request");
+
+        assert_eq!(latest.input.url, "https://example.com/latest");
+        assert_eq!(latest.input.bounds, latest_bounds);
+        assert!(!latest.visible);
+        assert!(!latest.stopped, "navigation resumes a stopped pending open");
+    }
 
     #[test]
     fn agent_tabs_get_capture_and_user_tabs_do_not() {

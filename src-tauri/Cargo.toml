@@ -211,6 +211,8 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
 ] }
 objc2-web-kit = { version = "0.3", default-features = false, features = [
     "std",
+    "WKContentRuleList",
+    "WKContentRuleListStore",
     "WKSnapshotConfiguration",
     "WKUserContentController",
     "WKWebView",

@@ -12,6 +12,7 @@ import type {
   AttachmentSaveImageInput,
   BrowserActionOutcome,
   BrowserAgentOpenEvent,
+  BrowserContentBlocking,
   BrowserEvaluateResult,
   BrowserFillResult,
   ChromeProfile,
@@ -529,6 +530,9 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       chromeProfiles: () => invokeCommand<ChromeProfile[]>("browser:chrome-profiles"),
       importChromeHistory: (profileId: string) =>
         invokeCommand<ChromeHistoryImport>("browser:import-chrome-history", { profileId }),
+      contentBlocking: () => invokeCommand<BrowserContentBlocking>("browser:content-blocking"),
+      setSiteBlocking: (input) =>
+        invokeCommand<BrowserContentBlocking>("browser:set-site-blocking", input),
       open: (input) => invokeCommand<{ ok: true }>("browser:open", input),
       navigate: (url: string, tabId: string) =>
         invokeCommand<{ ok: true }>("browser:navigate", { url, tabId }),

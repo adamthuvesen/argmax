@@ -52,6 +52,8 @@ pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
     "sync:run-now",
     // The browser pane manipulates the desktop app's native child webview.
     "browser:open",
+    "browser:content-blocking",
+    "browser:set-site-blocking",
     "browser:chrome-profiles",
     "browser:import-chrome-history",
     "browser:navigate",

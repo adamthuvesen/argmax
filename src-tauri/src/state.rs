@@ -121,6 +121,9 @@ pub struct AppState {
     pub browser_tabs: Arc<BrowserTabRegistry>,
     /// Appearance used by website webviews, independent of the app shell.
     pub browser_theme: std::sync::Mutex<ThemeMode>,
+    pub browser_content_blocking:
+        tokio::sync::Mutex<crate::browser::content_blocking::ContentBlockingState>,
+    pub(crate) pending_browser_opens: std::sync::Mutex<crate::ipc::browser::PendingBrowserOpens>,
 }
 
 // Hand-written because `broadcast::Sender` has no `Default`; every other field
@@ -162,6 +165,8 @@ impl Default for AppState {
             keep_awake: Arc::default(),
             browser_tabs: Arc::default(),
             browser_theme: std::sync::Mutex::new(ThemeMode::System),
+            browser_content_blocking: Default::default(),
+            pending_browser_opens: Default::default(),
         }
     }
 }

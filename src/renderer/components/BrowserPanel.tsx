@@ -8,8 +8,19 @@ import {
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
-import { ArrowLeft, ArrowRight, ExternalLink, History, KeyRound, Plus, RotateCw, X } from "lucide-react";
-import type { BrowserBounds } from "../../shared/types.js";
+import {
+  ArrowLeft,
+  ArrowRight,
+  ExternalLink,
+  History,
+  KeyRound,
+  Plus,
+  RotateCw,
+  ShieldCheck,
+  ShieldOff,
+  X
+} from "lucide-react";
+import type { BrowserBounds, BrowserContentBlocking } from "../../shared/types.js";
 import { errorMessage } from "../../shared/error.js";
 import {
   initializeBrowserHistory,
@@ -75,6 +86,25 @@ function tabLabel(tab: BrowserTab): string {
   } catch {
     return tab.url;
   }
+}
+
+function normalizedHostname(url: string): string | null {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/\.$/, "");
+  } catch {
+    return null;
+  }
+}
+
+function isLocalHostname(hostname: string): boolean {
+  const unbracketed = hostname.startsWith("[") && hostname.endsWith("]")
+    ? hostname.slice(1, -1)
+    : hostname;
+  if (unbracketed === "localhost" || unbracketed.endsWith(".localhost") || unbracketed === "::1") {
+    return true;
+  }
+  const firstOctet = Number(unbracketed.split(".", 1)[0]);
+  return /^\d+\.\d+\.\d+\.\d+$/.test(unbracketed) && firstOctet === 127;
 }
 
 /** Site favicon with a first-letter fallback when the host serves none. */
@@ -143,6 +173,8 @@ export function BrowserPanel({
   const [suggestionIndex, setSuggestionIndex] = useState(-1);
   const [notice, setNotice] = useState<string | null>(null);
   const [historyImportOpen, setHistoryImportOpen] = useState(false);
+  const [contentBlocking, setContentBlocking] = useState<BrowserContentBlocking | null>(null);
+  const [contentBlockingBusy, setContentBlockingBusy] = useState(false);
   const noticeTimerRef = useRef<number | null>(null);
 
   const showNotice = useCallback((message: string) => {
@@ -167,6 +199,20 @@ export function BrowserPanel({
       .catch(reportError);
     return () => { mounted = false; };
   }, [reportError]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadContentBlocking = browser?.contentBlocking;
+    if (!loadContentBlocking) return () => { mounted = false; };
+    void loadContentBlocking()
+      .then((state) => {
+        if (mounted) setContentBlocking(state);
+      })
+      .catch((error: unknown) => {
+        if (mounted) reportError(error);
+      });
+    return () => { mounted = false; };
+  }, [browser, reportError]);
 
   const measureBounds = useCallback((): BrowserBounds | null => {
     const surface = surfaceRef.current;
@@ -709,6 +755,51 @@ export function BrowserPanel({
     void window.argmax?.system.openPath({ path: activeTab.url }).catch(() => undefined);
   };
 
+  const activeHostname = activeTab ? normalizedHostname(activeTab.url) : null;
+  const activeTabIsLocal = activeHostname ? isLocalHostname(activeHostname) : false;
+  const activeTabIsAgentOwned = Boolean(activeTab?.ownerSessionId);
+  const contentBlockingEnabled = Boolean(
+    activeHostname &&
+    contentBlocking?.supported &&
+    !activeTabIsAgentOwned &&
+    !activeTabIsLocal &&
+    !contentBlocking.disabledHosts.includes(activeHostname)
+  );
+  const contentBlockingTitle = activeTabIsAgentOwned
+    ? "Blocking off for agent testing"
+    : activeTabIsLocal
+      ? "Blocking off for local testing"
+      : contentBlockingEnabled
+        ? `Disable ad and tracker blocking on ${activeHostname ?? "this site"}`
+        : `Enable ad and tracker blocking on ${activeHostname ?? "this site"}`;
+
+  const handleContentBlockingToggle = (): void => {
+    if (
+      !browser?.setSiteBlocking ||
+      !activeTab ||
+      !activeHostname ||
+      activeTabIsAgentOwned ||
+      activeTabIsLocal ||
+      contentBlockingBusy
+    ) return;
+    const clickedTabId = activeTab.id;
+    const clickedUrl = activeTab.url;
+    const clickedHostname = activeHostname;
+    setContentBlockingBusy(true);
+    void browser
+      .setSiteBlocking({ url: clickedUrl, enabled: !contentBlockingEnabled })
+      .then((state) => {
+        setContentBlocking(state);
+        const clickedTab = findBrowserTab(clickedTabId);
+        if (clickedTab && normalizedHostname(clickedTab.url) === clickedHostname) {
+          return browser.reload(clickedTabId);
+        }
+        return undefined;
+      })
+      .catch(reportError)
+      .finally(() => setContentBlockingBusy(false));
+  };
+
   return (
     <div className="browser-panel" role="group" aria-label="Browser" ref={panelRef}>
       <div
@@ -896,6 +987,22 @@ export function BrowserPanel({
         >
           <History size={14} strokeWidth={1.75} />
         </button>
+        {contentBlocking?.supported ? (
+          <button
+            type="button"
+            title={contentBlockingTitle}
+            aria-label={contentBlockingTitle}
+            aria-pressed={contentBlockingEnabled}
+            disabled={activeTabIsAgentOwned || activeTabIsLocal || !activeHostname || contentBlockingBusy}
+            onClick={handleContentBlockingToggle}
+          >
+            {contentBlockingEnabled ? (
+              <ShieldCheck size={14} strokeWidth={1.75} />
+            ) : (
+              <ShieldOff size={14} strokeWidth={1.75} />
+            )}
+          </button>
+        ) : null}
         <button
           type="button"
           title="Fill login from 1Password"

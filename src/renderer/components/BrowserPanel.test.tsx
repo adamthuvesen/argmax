@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi, BrowserStateEvent } from "../../shared/types.js";
 import {
@@ -35,6 +35,8 @@ const browserStub = {
   back: vi.fn(() => Promise.resolve({ ok: true as const })),
   forward: vi.fn(() => Promise.resolve({ ok: true as const })),
   reload: vi.fn(() => Promise.resolve({ ok: true as const })),
+  contentBlocking: vi.fn(() => Promise.resolve({ supported: true, disabledHosts: [] as string[] })),
+  setSiteBlocking: vi.fn(() => Promise.resolve({ supported: true, disabledHosts: [] as string[] })),
   setBounds: vi.fn(() => Promise.resolve({ ok: true as const })),
   close: vi.fn(() => Promise.resolve({ ok: true as const })),
   stop: vi.fn(() => Promise.resolve({ ok: true as const })),
@@ -152,6 +154,137 @@ afterEach(() => {
 });
 
 describe("BrowserPanel", () => {
+  it("toggles blocking for the current site and reloads that tab", async () => {
+    browserStub.setSiteBlocking.mockResolvedValueOnce({ supported: true, disabledHosts: ["github.com"] });
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+
+    const shield = await screen.findByRole("button", {
+      name: "Disable ad and tracker blocking on github.com"
+    });
+    expect(shield).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(shield);
+
+    expect(browserStub.setSiteBlocking).toHaveBeenCalledWith({
+      url: "https://github.com",
+      enabled: false
+    });
+    await waitFor(() => expect(browserStub.reload).toHaveBeenCalledWith(activeTabId()));
+    expect(screen.getByRole("button", {
+      name: "Enable ad and tracker blocking on github.com"
+    })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("re-enables blocking for an exact bypassed hostname", async () => {
+    browserStub.contentBlocking.mockResolvedValueOnce({
+      supported: true,
+      disabledHosts: ["github.com", "notgithub.com"]
+    });
+    browserStub.setSiteBlocking.mockResolvedValueOnce({
+      supported: true,
+      disabledHosts: ["notgithub.com"]
+    });
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://GitHub.com./" onClose={() => undefined} />);
+
+    const shield = await screen.findByRole("button", {
+      name: "Enable ad and tracker blocking on github.com"
+    });
+    fireEvent.click(shield);
+
+    expect(browserStub.setSiteBlocking).toHaveBeenCalledWith({
+      url: "https://GitHub.com./",
+      enabled: true
+    });
+    await waitFor(() => expect(browserStub.reload).toHaveBeenCalledWith(activeTabId()));
+  });
+
+  it("keeps the current blocking state and reports a toggle failure", async () => {
+    browserStub.setSiteBlocking.mockRejectedValueOnce(new Error("Could not update blocking"));
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+
+    const shield = await screen.findByRole("button", {
+      name: "Disable ad and tracker blocking on github.com"
+    });
+    fireEvent.click(shield);
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Could not update blocking");
+    expect(shield).toHaveAttribute("aria-pressed", "true");
+    expect(browserStub.reload).not.toHaveBeenCalled();
+  });
+
+  it("prevents concurrent toggles and does not reload after the tab changes host", async () => {
+    let resolveUpdate!: (state: { supported: boolean; disabledHosts: string[] }) => void;
+    browserStub.setSiteBlocking.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveUpdate = resolve;
+    }));
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+
+    const shield = await screen.findByRole("button", {
+      name: "Disable ad and tracker blocking on github.com"
+    });
+    fireEvent.click(shield);
+    fireEvent.click(shield);
+    expect(browserStub.setSiteBlocking).toHaveBeenCalledTimes(1);
+
+    act(() => stateListener?.({
+      tabId: activeTabId(),
+      url: "https://example.com",
+      title: "Example",
+      loading: false
+    }));
+    await act(async () => {
+      resolveUpdate({ supported: true, disabledHosts: ["github.com"] });
+      await Promise.resolve();
+    });
+    expect(browserStub.reload).not.toHaveBeenCalled();
+  });
+
+  it("keeps blocking off for agent-owned tabs", async () => {
+    render(<BrowserPanel scopeId="session-a" url="https://github.com" onClose={() => undefined} />);
+    await screen.findByRole("button", { name: "Disable ad and tracker blocking on github.com" });
+    const userTab = activeTabId("session-a");
+    act(() => applyBrowserTabs([
+      {
+        tabId: userTab,
+        ownerSessionId: null,
+        url: "https://github.com",
+        title: null,
+        loading: false,
+        group: null
+      },
+      {
+        tabId: "agent-1",
+        ownerSessionId: "session-a",
+        url: "https://example.com",
+        title: "Example Domain",
+        loading: false,
+        group: null
+      }
+    ]));
+    fireEvent.click(screen.getByRole("button", { name: "Example Domain" }));
+
+    const shield = await screen.findByRole("button", { name: "Blocking off for agent testing" });
+    expect(shield).toBeDisabled();
+    expect(shield).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(shield);
+    expect(browserStub.setSiteBlocking).not.toHaveBeenCalled();
+  });
+
+  it("hides blocking controls when native blocking is unsupported", async () => {
+    browserStub.contentBlocking.mockResolvedValueOnce({ supported: false, disabledHosts: [] });
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+
+    await waitFor(() => expect(browserStub.contentBlocking).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("button", { name: /ad and tracker blocking/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps blocking off for local test sites", async () => {
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="http://app.localhost:3000" onClose={() => undefined} />);
+
+    const shield = await screen.findByRole("button", { name: "Blocking off for local testing" });
+    expect(shield).toBeDisabled();
+    expect(shield).toHaveAttribute("aria-pressed", "false");
+  });
+
   it("creates the first tab's webview for the requested URL", () => {
     render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     expect(browserStub.open).toHaveBeenCalledWith(

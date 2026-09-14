@@ -28,6 +28,18 @@ Focus still routes new open requests: a chat link or the menu item opens Browser
 - **Login popups:** `window.open` creates a native browser window using Tauri's `on_new_window` callback and the opener's webview configuration. This preserves the popup reference, `window.opener`, `postMessage`, and closure checks that popup authentication needs, including opening a blank window before assigning its login URL. Ordinary `target="_blank"` links and modified clicks in panel tabs still open panel tabs. Popups skip the inherited tab-strip shortcuts. On macOS, [popup.rs](../src-tauri/src/browser/popup.rs) adds WebKit's missing close callback to Wry's delegate class before a popup is requested, so JavaScript closure also removes its native window without changing the delegate during WebKit's new-page callback.
 - **Positioning:** The renderer measures `.browser-panel-surface` and calls `browser:set-bounds` for the active tab. Inactive tabs are hidden. ResizeObserver and window-resize notifications share one measurement per animation frame, and unchanged bounds or visibility skip IPC. Tab switches, pane moves, and overlay visibility changes still synchronize immediately. Failed updates remain retryable, and unmounting cancels pending resize work before it can show the old surface again.
 
+## Ad and Tracker Blocking
+
+On macOS, user tabs and their popups use WebKit's compiled content rules to block third-party requests to domains in the bundled HaGeZi Multi LIGHT list. Rules are installed before the first page request. This is domain blocking, without cosmetic filters or a JavaScript request interceptor.
+
+The toolbar shield turns blocking off or on for the current exact hostname, across ports and schemes. Exceptions persist in `browser-content-blocking.json` in the app profile. Changing a preference updates existing user views and reloads the selected tab. Agent-owned tabs and popups stay unfiltered for website testing. Localhost, its subdomains, and loopback addresses also bypass blocking. Other test sites can use the shield.
+
+The first user-tab open prepares the rules asynchronously. Later opens reuse the active compiled list, and WebKit's on-disk cache avoids recompilation across restarts. Close, stop, navigation, and visibility changes during preparation are respected before creating the view. Preparation errors are reported instead of silently opening an unfiltered user tab.
+
+The pinned source, provenance, and separate GPL-3.0 license are in [assets/browser-blocking](../assets/browser-blocking/README.md), bundled together as app resources. Update the list with `node scripts/update-browser-blocklist.mjs <full-upstream-commit-sha>` and commit the resulting source and provenance. There are no runtime list downloads. Native blocking is currently macOS-only.
+
+Run `cargo test --manifest-path src-tauri/Cargo.toml native_browser_content_blocking -- --ignored --nocapture` on macOS to compile the production list in WebKit and check blocked requests, exact-host bypass, iframe bypass, local testing, and unfiltered views. This manual check needs Swift and network access to the probe resource.
+
 ## Importing Chrome History
 
 The browser toolbar's **Import from Chrome** button opens a profile picker.

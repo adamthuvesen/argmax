@@ -27,7 +27,6 @@ const MAIN_THREAD_ALLOWLIST = new Map([
   ["system:test-notification", "fires an in-memory desktop notification toast"],
   ["system:open-path", "hands the path to the system opener"],
   ["system:debug-snapshot", "reads two in-memory ring buffers; no IO"],
-  ["browser:open", "manipulates the native child webview"],
   ["browser:navigate", "manipulates the native child webview"],
   ["browser:back", "manipulates the native child webview"],
   ["browser:forward", "manipulates the native child webview"],

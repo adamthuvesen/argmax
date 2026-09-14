@@ -751,6 +751,8 @@ export function setupAppTestMocks(): void {
     browser: {
       chromeProfiles: () => Promise.resolve([]),
       importChromeHistory: () => Promise.resolve({ entries: [], totalAvailable: 0 }),
+      contentBlocking: () => Promise.resolve({ supported: false, disabledHosts: [] }),
+      setSiteBlocking: () => Promise.resolve({ supported: false, disabledHosts: [] }),
       open: () => Promise.resolve({ ok: true }),
       navigate: () => Promise.resolve({ ok: true }),
       back: () => Promise.resolve({ ok: true }),

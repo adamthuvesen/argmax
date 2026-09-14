@@ -10,6 +10,7 @@ mod macos {
 
     pub(super) fn reset_user_content_controller(
         features: &tauri::webview::NewWindowFeatures,
+        filtered: bool,
     ) -> Result<(), &'static str> {
         let Some(mtm) = MainThreadMarker::new() else {
             return Err("popup callback did not run on the macOS main thread");
@@ -23,6 +24,12 @@ mod macos {
         // but give the new webview its own empty controller for Wry to fill.
         unsafe {
             let controller = WKUserContentController::new(mtm);
+            if filtered {
+                let identifier = super::super::content_blocking_macos::active_identifier()
+                    .ok_or("browser content rules have not been prepared")?;
+                super::super::content_blocking_macos::add_to_controller(&controller, &identifier)
+                    .map_err(|_| "could not attach popup content rules")?;
+            }
             features
                 .opener()
                 .target_configuration
@@ -88,15 +95,16 @@ mod macos {
 /// Removes message handlers inherited through WebKit's popup configuration.
 pub fn prepare_configuration(
     features: &tauri::webview::NewWindowFeatures,
+    filtered: bool,
 ) -> Result<(), &'static str> {
     #[cfg(target_os = "macos")]
     {
-        macos::reset_user_content_controller(features)
+        macos::reset_user_content_controller(features, filtered)
     }
 
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = features;
+        let _ = (features, filtered);
         Ok(())
     }
 }

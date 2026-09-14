@@ -114,6 +114,8 @@ export const IPC_CHANNELS = [
   "sync:set-config",
   "sync:run-now",
   "browser:open",
+  "browser:content-blocking",
+  "browser:set-site-blocking",
   "browser:navigate",
   "browser:back",
   "browser:forward",

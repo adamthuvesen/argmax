@@ -455,6 +455,7 @@ pub fn open_with_options(
         crate::ipc::browser::hidden_tab_bounds(app),
         false,
         session_id.map(str::to_string),
+        None,
     )?;
     if group.is_some() && tabs.set_group(std::slice::from_ref(&tab_id), group) {
         super::registry::publish(app, &tabs);

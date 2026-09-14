@@ -8,7 +8,7 @@ import { SIDEBAR_COLLAPSED_KEY, writeBooleanPreference } from "../lib/uiPreferen
 // the toggle) and the sidebar itself read them, and the peek is ended by the
 // sidebar's own pointer leaving, so neither owns the pair.
 
-export interface SidebarChromeSnapshot {
+interface SidebarChromeSnapshot {
   collapsed: boolean;
   peeking: boolean;
 }

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  isMcpClientTracingTarget,
   isNoisyProviderTracing,
   logBlockLabel,
   matchTracingRecord,
@@ -137,15 +136,6 @@ describe("logBlockLabel", () => {
     const warn = parseLogDump("2026-09-01T07:21:37.004170Z WARN crate::mod: slow");
     expect(logBlockLabel(warn, "auto")).toBe("Warning");
     expect(logBlockLabel(parseLogDump(CORE), "auto")).toBe("Error");
-  });
-});
-
-describe("isMcpClientTracingTarget", () => {
-  it("matches rmcp and codex_rmcp_client crate paths", () => {
-    expect(isMcpClientTracingTarget("rmcp::transport::streamable_http_client")).toBe(true);
-    expect(isMcpClientTracingTarget("codex_rmcp_client::oauth::refresh_transaction")).toBe(true);
-    expect(isMcpClientTracingTarget("codex_core::session")).toBe(false);
-    expect(isMcpClientTracingTarget(null)).toBe(false);
   });
 });
 

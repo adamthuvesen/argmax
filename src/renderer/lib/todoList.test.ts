@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { foldTodoEvents, todoListsByTurn, todoToolUseIds } from "./todoList.js";
+import { foldTodoEvents, todoListsByTurn } from "./todoList.js";
 import type { TimelineEvent } from "../../shared/types.js";
 
 let clock = 0;
@@ -133,17 +133,6 @@ describe("foldTodoEvents", () => {
     const first = todoEvent("snapshot", [{ id: "1", text: "One", status: "pending" }]);
     const second = todoEvent("merge", [{ id: "1", status: "done" }]);
     expect(foldTodoEvents([first, second])?.updatedAt).toBe(second.createdAt);
-  });
-});
-
-describe("todoToolUseIds", () => {
-  it("collects the rows the card speaks for", () => {
-    const ids = todoToolUseIds([
-      todoEvent("snapshot", [{ id: "1", text: "One", status: "pending" }], "call-1"),
-      todoEvent("merge", [{ id: "1", status: "done" }], "call-2"),
-      todoEvent("merge", [{ id: "1", status: "done" }], null)
-    ]);
-    expect([...ids].sort()).toEqual(["call-1", "call-2"]);
   });
 });
 

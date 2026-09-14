@@ -29,7 +29,9 @@ import {
   terminateProvider,
   writeProjectFile,
   workspaceStatus,
-  workspaceStatusSnapshot
+  workspaceStatusSnapshot,
+  workspaceRow,
+  sessionRow
 } from "../test/appTestHarness.js";
 
 describe("App sidebar", () => {
@@ -57,51 +59,24 @@ describe("App sidebar", () => {
     // A fork (or an agent-launched session) lands as a delta with a fresh
     // workspace the user never clicked. Its group must open so the creation
     // is visibly confirmed.
-    const forkedWorkspace: DashboardSnapshot["workspaces"][number] = {
+    const forkedWorkspace = workspaceRow({
       id: "workspace-forked",
-      projectId: "project-1",
       taskLabel: "Morning Status Check (fork)",
       branch: "main",
-      baseRef: "main",
       path: "/tmp/project-1",
-      state: "complete",
       sharedWorkspace: true,
-      kind: "git",
-      dirty: false,
-      changedFiles: 0,
-      lastActivityAt: new Date().toISOString(),
-      pinned: false,
-      priorityDismissedAt: null,
-      priorityAddedAt: null,
-      prState: null,
-      prNumber: null,
-      icon: null,
-      iconColor: null,
-      prCreatedAt: null,
-      prMergedAt: null,
-      prCheckState: null,
-      prActivityAt: null
-    };
-    const forkedSession: DashboardSnapshot["sessions"][number] = {
+      lastActivityAt: new Date().toISOString()
+    });
+    const forkedSession = sessionRow({
       id: "session-forked",
       workspaceId: "workspace-forked",
-      provider: "claude",
-      modelLabel: "Sonnet 5",
-      modelId: "claude-sonnet-5",
-      permissionMode: "auto-approve",
       providerConversationId: "session-1",
       prompt: "Morning status check",
-      state: "complete",
       attention: "normal",
       startedAt: new Date().toISOString(),
       completedAt: new Date().toISOString(),
-      lastActivityAt: new Date().toISOString(),
-      costUsd: 0,
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextTokens: 0,
-      imported: false,
-      launchKind: "agent"
-    };
+      lastActivityAt: new Date().toISOString()
+    });
     await act(async () => {
       dashboardDeltaListener?.({ workspaces: [forkedWorkspace], sessions: [forkedSession] });
       await Promise.resolve();
@@ -187,52 +162,29 @@ describe("App sidebar", () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: /Build dashboard/ }));
     await screen.findByText("Dashboard ready.");
-    const movedWorkspace: DashboardSnapshot["workspaces"][number] = {
+    const movedWorkspace = workspaceRow({
       id: "workspace-moved",
       projectId: "project-2",
       taskLabel: "Build dashboard",
       branch: "main",
-      baseRef: "main",
       path: "/tmp/dotfiles",
-      state: "complete",
       sharedWorkspace: true,
-      kind: "git",
-      dirty: false,
-      changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:00:00.000Z",
-      pinned: false,
-      priorityDismissedAt: null,
-      priorityAddedAt: null,
-      prState: null,
-      prNumber: null,
-      icon: null,
-      iconColor: null,
-      prCreatedAt: null,
-      prMergedAt: null,
-      prCheckState: null,
-      prActivityAt: null
-    };
-    const movedSession: DashboardSnapshot["sessions"][number] = {
+      lastActivityAt: "2026-05-08T16:00:00.000Z"
+    });
+    const movedSession = sessionRow({
       id: "session-moved",
       workspaceId: movedWorkspace.id,
       provider: "codex",
       modelLabel: "GPT-5.6 Terra",
       modelId: "gpt-5.6-terra",
       reasoningEffort: "medium",
-      permissionMode: "auto-approve",
       providerConversationId: null,
       prompt: "Build dashboard",
-      state: "complete",
       attention: "normal",
       startedAt: "2026-05-08T15:30:00.000Z",
       completedAt: "2026-05-08T16:00:00.000Z",
-      lastActivityAt: "2026-05-08T16:00:00.000Z",
-      costUsd: 0,
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextTokens: 0,
-      imported: false,
-      launchKind: "agent"
-    };
+      lastActivityAt: "2026-05-08T16:00:00.000Z"
+    });
     await act(async () => {
       dashboardDeltaListener?.({
         projects: [secondProject()],
@@ -278,51 +230,8 @@ describe("App sidebar", () => {
   });
 
   it("opens a sidebar session", async () => {
-    const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
-      id: "workspace-2",
-      projectId: "project-1",
-      taskLabel: "Second chat",
-      branch: "argmax/second-chat",
-      baseRef: "main",
-      path: "/tmp/worktrees/second-chat",
-      state: "complete",
-      sharedWorkspace: false,
-      kind: "git",
-      dirty: false,
-      changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:04:00.000Z",
-      pinned: false,
-      priorityDismissedAt: null,
-      priorityAddedAt: null,
-      prState: null,
-      prNumber: null,
-      icon: null,
-      iconColor: null,
-      prCreatedAt: null,
-      prMergedAt: null,
-      prCheckState: null,
-      prActivityAt: null
-    };
-    const secondSession: DashboardSnapshot["sessions"][number] = {
-      id: "session-2",
-      workspaceId: "workspace-2",
-      provider: "claude",
-      modelLabel: "Sonnet 5",
-      modelId: "claude-sonnet-5",
-      permissionMode: "auto-approve",
-      providerConversationId: "session-2",
-      prompt: "Second chat",
-      state: "complete",
-      attention: "review-ready",
-      startedAt: "2026-05-08T16:00:00.000Z",
-      completedAt: "2026-05-08T16:04:00.000Z",
-      lastActivityAt: "2026-05-08T16:04:00.000Z",
-      costUsd: 0,
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextTokens: 0,
-      imported: false,
-      launchKind: "agent",
-    };
+    const secondWorkspace = workspaceRow({  });
+    const secondSession = sessionRow({  });
     const secondEvent: DashboardSnapshot["events"][number] = {
       id: "event-2",
       sessionId: "session-2",
@@ -1359,98 +1268,42 @@ describe("App sidebar", () => {
     window.localStorage.setItem("argmax.sidebar.priority.visible", "true");
     // Inside the 30-minute idle window, so the row is triage either way.
     const attentionChangedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    const waitingWorkspace: DashboardSnapshot["workspaces"][number] = {
+    const waitingWorkspace = workspaceRow({
       id: "workspace-wait",
-      projectId: "project-1",
       taskLabel: "Waiting chat",
       branch: "argmax/waiting-chat",
-      baseRef: "main",
       path: "/tmp/worktrees/waiting-chat",
       state: "waiting",
-      sharedWorkspace: false,
-      kind: "git",
-      dirty: false,
-      changedFiles: 0,
-      lastActivityAt: attentionChangedAt,
-      pinned: false,
-      priorityDismissedAt: null,
-      priorityAddedAt: null,
-      prState: null,
-      prNumber: null,
-      icon: null,
-      iconColor: null,
-      prCreatedAt: null,
-      prMergedAt: null,
-      prCheckState: null,
-      prActivityAt: null
-    };
-    const otherWorkspace: DashboardSnapshot["workspaces"][number] = {
+      lastActivityAt: attentionChangedAt
+    });
+    const otherWorkspace = workspaceRow({
       id: "workspace-other",
-      projectId: "project-1",
       taskLabel: "Other chat",
       branch: "argmax/other-chat",
-      baseRef: "main",
       path: "/tmp/worktrees/other-chat",
-      state: "complete",
-      sharedWorkspace: false,
-      kind: "git",
-      dirty: false,
-      changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:00:00.000Z",
-      pinned: false,
-      priorityDismissedAt: null,
-      priorityAddedAt: null,
-      prState: null,
-      prNumber: null,
-      icon: null,
-      iconColor: null,
-      prCreatedAt: null,
-      prMergedAt: null,
-      prCheckState: null,
-      prActivityAt: null
-    };
-    const waitingSession: DashboardSnapshot["sessions"][number] = {
+      lastActivityAt: "2026-05-08T16:00:00.000Z"
+    });
+    const waitingSession = sessionRow({
       id: "session-wait",
       workspaceId: "workspace-wait",
-      provider: "claude",
-      modelLabel: "Sonnet 5",
-      modelId: "claude-sonnet-5",
-      permissionMode: "auto-approve",
       providerConversationId: "session-wait",
       prompt: "Waiting chat",
       state: "waiting",
       attention: "blocked",
       attentionChangedAt,
-      startedAt: "2026-05-08T16:00:00.000Z",
       completedAt: null,
-      lastActivityAt: attentionChangedAt,
-      costUsd: 0,
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextTokens: 0,
-      imported: false,
-      launchKind: "agent"
-    };
-    const otherSession: DashboardSnapshot["sessions"][number] = {
+      lastActivityAt: attentionChangedAt
+    });
+    const otherSession = sessionRow({
       id: "session-other",
       workspaceId: "workspace-other",
-      provider: "claude",
-      modelLabel: "Sonnet 5",
-      modelId: "claude-sonnet-5",
-      permissionMode: "auto-approve",
       providerConversationId: "session-other",
       prompt: "Other chat",
-      state: "complete",
-      attention: "review-ready",
       attentionChangedAt,
       startedAt: "2026-05-08T15:50:00.000Z",
       completedAt: "2026-05-08T16:00:00.000Z",
-      lastActivityAt: "2026-05-08T16:00:00.000Z",
-      costUsd: 0,
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextTokens: 0,
-      imported: false,
-      launchKind: "agent"
-    };
+      lastActivityAt: "2026-05-08T16:00:00.000Z"
+    });
     const demotionSnapshot: DashboardSnapshot = {
       ...snapshot,
       workspaces: [...snapshot.workspaces, waitingWorkspace, otherWorkspace],
@@ -1516,56 +1369,20 @@ describe("App sidebar", () => {
   it("keeps a working session in priority after the user opens it and leaves", async () => {
     window.localStorage.setItem("argmax.sidebar.priority.visible", "true");
     const attentionChangedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    const workingWorkspace: DashboardSnapshot["workspaces"][number] = {
+    const workingWorkspace = workspaceRow({
       id: "workspace-working",
-      projectId: "project-1",
       taskLabel: "Working chat",
       branch: "argmax/working-chat",
-      baseRef: "main",
       path: "/tmp/worktrees/working-chat",
-      state: "running",
-      sharedWorkspace: false,
-      kind: "git",
-      dirty: false,
-      changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:04:00.000Z",
-      pinned: false,
-      priorityDismissedAt: null,
-      priorityAddedAt: null,
-      prState: null,
-      prNumber: null,
-      icon: null,
-      iconColor: null,
-      prCreatedAt: null,
-      prMergedAt: null,
-      prCheckState: null,
-      prActivityAt: null
-    };
-    const otherWorkspace: DashboardSnapshot["workspaces"][number] = {
+      state: "running"
+    });
+    const otherWorkspace = workspaceRow({
       id: "workspace-other",
-      projectId: "project-1",
       taskLabel: "Other chat",
       branch: "argmax/other-chat",
-      baseRef: "main",
       path: "/tmp/worktrees/other-chat",
-      state: "complete",
-      sharedWorkspace: false,
-      kind: "git",
-      dirty: false,
-      changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:00:00.000Z",
-      pinned: false,
-      priorityDismissedAt: null,
-      priorityAddedAt: null,
-      prState: null,
-      prNumber: null,
-      icon: null,
-      iconColor: null,
-      prCreatedAt: null,
-      prMergedAt: null,
-      prCheckState: null,
-      prActivityAt: null
-    };
+      lastActivityAt: "2026-05-08T16:00:00.000Z"
+    });
     const workingSnapshot: DashboardSnapshot = {
       ...snapshot,
       workspaces: [...snapshot.workspaces, workingWorkspace, otherWorkspace],

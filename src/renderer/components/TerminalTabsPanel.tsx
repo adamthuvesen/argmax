@@ -2,7 +2,6 @@ import { Plus, SquareTerminal, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useSyncExternalStore,
   type JSX,
@@ -25,10 +24,11 @@ import {
  * platform. Users primarily care that tabs are distinguishable, not strictly
  * accurate.
  */
-function defaultShellLabel(): string {
-  const raw = typeof navigator !== "undefined" ? navigator.platform : "";
-  return raw.toLowerCase().includes("win") ? "powershell" : "zsh";
-}
+const SHELL_LABEL = (typeof navigator !== "undefined" ? navigator.platform : "")
+  .toLowerCase()
+  .includes("win")
+  ? "powershell"
+  : "zsh";
 
 /**
  * Pick the lowest free label of form `${base}` / `${base} 2` / `${base} 3`
@@ -66,7 +66,6 @@ export function TerminalTabsPanel({
   /** Shown in the status strip: where these shells are running. */
   cwdLabel?: string | null;
 }): JSX.Element {
-  const shellLabel = useMemo(() => defaultShellLabel(), []);
   const { tabs, activeTabId } = useSyncExternalStore(subscribeTerminalTabs, () =>
     getWorkspaceTerminalState(workspaceId)
   );
@@ -89,12 +88,12 @@ export function TerminalTabsPanel({
     if (seededRef.current) return;
     seededRef.current = true;
     if (getWorkspaceTerminalState(workspaceId).tabs.length > 0) return;
-    addTerminalTab(workspaceId, shellLabel);
-  }, [tabs, workspaceId, shellLabel]);
+    addTerminalTab(workspaceId, SHELL_LABEL);
+  }, [tabs, workspaceId]);
 
   const addTab = useCallback(() => {
-    addTerminalTab(workspaceId, nextLabel(getWorkspaceTerminalState(workspaceId).tabs, shellLabel));
-  }, [shellLabel, workspaceId]);
+    addTerminalTab(workspaceId, nextLabel(getWorkspaceTerminalState(workspaceId).tabs, SHELL_LABEL));
+  }, [workspaceId]);
 
   const closeTab = useCallback(
     (tabId: string) => {

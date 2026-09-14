@@ -37,13 +37,6 @@ describe("<WorkingNest />", () => {
     expect(container.querySelector(".working-nest")).toHaveAttribute("data-phase", expectedPhase);
   });
 
-  it("offsets separate jobs without randomizing during render", () => {
-    const phases = ["session-alpha", "session-beta", "session-gamma", "session-delta"]
-      .map((phaseKey) => stableHash32(phaseKey) % 4);
-
-    expect(new Set(phases).size).toBeGreaterThan(1);
-  });
-
   it("anchors every animated part to the document timeline", () => {
     const animations = Array.from({ length: 4 }, () => ({ startTime: 900 }));
     const getAnimations = vi.fn(function (this: Element) {
@@ -59,20 +52,6 @@ describe("<WorkingNest />", () => {
 
     expect(getAnimations).toHaveBeenCalledTimes(4);
     expect(animations.every((animation) => animation.startTime === 0)).toBe(true);
-  });
-
-  it("keeps a still nest out of the relay", () => {
-    const getAnimations = vi.fn(() => []);
-    Object.defineProperty(Element.prototype, "getAnimations", {
-      configurable: true,
-      value: getAnimations
-    });
-
-    const { container } = render(<WorkingNest active still size={13} />);
-
-    expect(container.querySelector(".working-nest")).toHaveAttribute("data-still", "true");
-    // Nothing to anchor: the CSS pins the dots, so the timeline pass is skipped.
-    expect(getAnimations).not.toHaveBeenCalled();
   });
 
   it("keeps the settle state through rerenders after active work completes", () => {

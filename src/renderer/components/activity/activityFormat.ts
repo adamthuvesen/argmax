@@ -1,4 +1,4 @@
-import { formatCount, formatPercent } from "../usage/usageFormat.js";
+import { formatCount, formatDeltaRatio, formatPercent } from "../usage/usageFormat.js";
 import type { ActivityResolution } from "./activityContract.js";
 
 /**
@@ -11,7 +11,7 @@ import type { ActivityResolution } from "./activityContract.js";
  * are chosen to line up down a column rather than to be as short as possible.
  */
 
-export { formatCount, formatPercent };
+export { formatCount, formatDeltaRatio, formatPercent };
 
 /** `48.2k` — the axis tick and the compact line figure. */
 export function formatCompact(value: number): string {
@@ -40,20 +40,6 @@ export function formatAdded(value: number): string {
 
 export function formatRemoved(value: number): string {
   return `−${formatCount(Math.abs(value))}`;
-}
-
-/**
- * `18%`, `2.4%`, `<0.1%`. A delta is a comparison rather than a measurement,
- * so it drops to whole percents as soon as the decimal stops carrying
- * anything. Same shape as the Usage hero's chip.
- */
-export function formatDeltaRatio(ratio: number): string {
-  const magnitude = Math.abs(ratio) * 100;
-  if (!Number.isFinite(magnitude)) return "—";
-  if (magnitude === 0) return "0%";
-  if (magnitude < 0.1) return "<0.1%";
-  if (magnitude >= 10) return `${Math.round(magnitude)}%`;
-  return `${magnitude.toFixed(1)}%`;
 }
 
 /**

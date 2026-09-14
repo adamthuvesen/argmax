@@ -23,7 +23,7 @@ type VisibleRow = {
  *  no title — the panel already names the source — and doubles as the tree's
  *  breathing room under the review toolbar. Omitted by surfaces that supply
  *  their own chrome (the mobile review screen, the command-palette pop-out). */
-export interface WorkspaceTreeToolbar {
+interface WorkspaceTreeToolbar {
   onRefresh: () => void;
 }
 

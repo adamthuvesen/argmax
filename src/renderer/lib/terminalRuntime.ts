@@ -29,7 +29,7 @@ const MAX_TERMINAL_COLS = 400;
 const MIN_TERMINAL_ROWS = 5;
 const MAX_TERMINAL_ROWS = 200;
 
-export function boundedTerminalSize(term: Terminal): { cols: number; rows: number } {
+function boundedTerminalSize(term: Terminal): { cols: number; rows: number } {
   return {
     cols: boundedDimension(term.cols, MIN_TERMINAL_COLS, MAX_TERMINAL_COLS, DEFAULT_TERMINAL_COLS),
     rows: boundedDimension(term.rows, MIN_TERMINAL_ROWS, MAX_TERMINAL_ROWS, DEFAULT_TERMINAL_ROWS)
@@ -264,7 +264,7 @@ export function detachTerminalTab(tabId: string): void {
 }
 
 /** Full teardown: unsubscribe, terminate the PTY, dispose xterm. */
-export function disposeTerminalTab(tabId: string, terminalId?: string): void {
+function disposeTerminalTab(tabId: string, terminalId?: string): void {
   const entry = runtimes.get(tabId);
   if (!entry) {
     if (terminalId) void window.argmax?.terminal.terminate(terminalId);

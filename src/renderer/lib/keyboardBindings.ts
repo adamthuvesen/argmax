@@ -1,6 +1,6 @@
 import { MENU_KEYBINDINGS, RENDERER_ONLY_KEYBINDINGS } from "../../shared/menuKeybindings.js";
 
-export interface KeyBinding {
+interface KeyBinding {
   accelerator: string;
   label: string;
 }

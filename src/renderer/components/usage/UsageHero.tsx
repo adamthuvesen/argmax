@@ -1,11 +1,8 @@
 import { useId, type JSX } from "react";
 import type { ProviderId, UsageCostSource, UsageSummary } from "../../../shared/types.js";
-import { formatCount, formatMetric, formatPricingDate } from "./usageFormat.js";
+import { formatCount, formatDeltaRatio, formatMetric, formatPricingDate } from "./usageFormat.js";
 import { peakBucket, perBucketAverage, type UsageDelta } from "./usageInsights.js";
 import { processedTokens, providerLabel, type UsageMetric } from "./usagePresentation.js";
-
-/** Re-exported so a caller can type the prop without reaching past the card. */
-export type { UsageDelta } from "./usageInsights.js";
 
 /** Where the headline number comes from, said plainly under it. */
 function provenance(costSource: UsageCostSource, metric: UsageMetric): string {
@@ -34,20 +31,6 @@ const DELTA_WORD: Record<UsageDelta["direction"], string> = {
   down: "down",
   flat: "level"
 };
-
-/**
- * `18%`, `2.4%`, `<0.1%`. A delta is a comparison rather than a measurement,
- * so it drops to whole percents as soon as the decimal stops carrying
- * anything.
- */
-function formatDeltaRatio(ratio: number): string {
-  const magnitude = Math.abs(ratio) * 100;
-  if (!Number.isFinite(magnitude)) return "—";
-  if (magnitude === 0) return "0%";
-  if (magnitude < 0.1) return "<0.1%";
-  if (magnitude >= 10) return `${Math.round(magnitude)}%`;
-  return `${magnitude.toFixed(1)}%`;
-}
 
 /**
  * The window against the one before it. Deliberately neutral ink: spending

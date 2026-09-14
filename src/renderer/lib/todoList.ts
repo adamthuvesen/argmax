@@ -102,7 +102,7 @@ export function foldTodoEvents(events: readonly TimelineEvent[]): TodoList | nul
   };
 }
 
-export type TurnBound = {
+type TurnBound = {
   id: string;
   /** When this turn's first content arrived. */
   from: string;
@@ -148,19 +148,4 @@ export function todoListsByTurn(
     if (list) byTurn.set(turn.id, list);
   }
   return byTurn;
-}
-
-/**
- * The `toolUseId` of every tool row that carried a todo update, so the rows can
- * be hidden the way ExitPlanMode's are — the card is the readable version of
- * what they say.
- */
-export function todoToolUseIds(events: readonly TimelineEvent[]): Set<string> {
-  const ids = new Set<string>();
-  for (const event of events) {
-    if (event.type !== "todo.updated" || !isPlainObject(event.payload)) continue;
-    const id = event.payload.toolUseId;
-    if (typeof id === "string" && id !== "") ids.add(id);
-  }
-  return ids;
 }

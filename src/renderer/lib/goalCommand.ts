@@ -11,7 +11,7 @@
  * The active goal is already on screen, so there is nothing a status form would
  * add.
  */
-export type GoalCommand = { kind: "set"; condition: string } | { kind: "clear" };
+type GoalCommand = { kind: "set"; condition: string } | { kind: "clear" };
 
 /** What Claude Code accepts for `/goal clear`, so muscle memory carries over. */
 const CLEAR_WORDS = new Set(["clear", "stop", "off", "reset", "none", "cancel"]);

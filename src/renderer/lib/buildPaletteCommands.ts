@@ -18,7 +18,7 @@ import { buildSettingCommands, type SettingCommandsInput } from "./settingComman
 import { titleFromPrompt } from "./projects.js";
 import { collapseHome } from "./pathDisplay.js";
 
-export type BuildPaletteCommandsInput = {
+type BuildPaletteCommandsInput = {
   snapshot: DashboardSnapshot;
   selectedSession: SessionSummary | null;
   onNewSession: () => void;

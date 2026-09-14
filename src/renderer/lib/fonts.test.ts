@@ -32,8 +32,7 @@ afterEach(() => {
 
 describe("fonts", () => {
   it("defaults to Geist Sans when nothing is stored", () => {
-    expect(readStoredFont()).toBe(DEFAULT_FONT_ID);
-    expect(DEFAULT_FONT_ID).toBe("geist-sans");
+    expect(readStoredFont()).toBe("geist-sans");
   });
 
   it.each(["system", "dm-sans"])("reads a previously stored font id %s", (id) => {
@@ -69,8 +68,7 @@ describe("fonts", () => {
   });
 
   it("defaults font size to level 6 when nothing is stored", () => {
-    expect(readStoredFontSize()).toBe(DEFAULT_FONT_SIZE);
-    expect(DEFAULT_FONT_SIZE).toBe(6);
+    expect(readStoredFontSize()).toBe(6);
   });
 
   it("reads a previously stored level", () => {

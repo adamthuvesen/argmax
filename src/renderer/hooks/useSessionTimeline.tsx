@@ -36,7 +36,7 @@ export function SessionTimelineProvider({
   );
 }
 
-export function useSessionTimelineStore(): SessionTimelines | null {
+function useSessionTimelineStore(): SessionTimelines | null {
   return useContext(SessionTimelineContext);
 }
 

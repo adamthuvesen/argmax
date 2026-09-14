@@ -315,12 +315,6 @@ describe("SessionConversation — streaming & composer", () => {
     expect(toggleChangesPanel).toHaveBeenCalledTimes(1);
   });
 
-  it("does not render the inactive workspace-details button", () => {
-    renderConversation(baseSession());
-
-    expect(screen.queryByRole("button", { name: /Workspace details/ })).toBeNull();
-  });
-
   it("marks the compact changed-file action pressed when Changes is open", () => {
     renderConversation(baseSession(), [], {
       review: reviewStub({

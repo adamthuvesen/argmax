@@ -91,8 +91,6 @@ export function AppearanceSettings({
   onSidebarTranslucencyChange,
   workspaceCardVisible,
   onWorkspaceCardVisibleChange,
-  pixelFieldEnabled,
-  onPixelFieldEnabledChange,
   contextIndicatorEnabled,
   onContextIndicatorEnabledChange,
   prMilestoneCelebrationEnabled,
@@ -140,8 +138,6 @@ export function AppearanceSettings({
   onSidebarTranslucencyChange: (v: number) => void;
   workspaceCardVisible: boolean;
   onWorkspaceCardVisibleChange: (v: boolean) => void;
-  pixelFieldEnabled: boolean;
-  onPixelFieldEnabledChange: (v: boolean) => void;
   contextIndicatorEnabled: boolean;
   onContextIndicatorEnabledChange: (v: boolean) => void;
   prMilestoneCelebrationEnabled: boolean;
@@ -152,9 +148,9 @@ export function AppearanceSettings({
   onReviewPanelSideChange: (side: ReviewPanelSide) => void;
 }): JSX.Element {
   // Chat width rides a 1–5 slider: 1 narrowest, 3 default, 5 widest.
-  const pickChatWidth = (raw: number, apply: (width: ChatWidth) => void): void => {
+  const pickChatWidth = (raw: number): void => {
     const width = toScaleLevel(raw);
-    if (width) apply(width);
+    if (width) onChatWidthChange(width);
   };
   // Font sizes ride a 1–10 slider: each level is 1px of body text, 10px at 1
   // through 19px at 10, with 15px app and 17px agent-window defaults.
@@ -379,7 +375,7 @@ export function AppearanceSettings({
               max={CHAT_WIDTH_MAX}
               value={chatWidth}
               valueLabel={String(chatWidth)}
-              onChange={(v) => pickChatWidth(v, onChatWidthChange)}
+              onChange={pickChatWidth}
             />
           }
         />
@@ -456,17 +452,6 @@ export function AppearanceSettings({
           description="Draw the fox on the launch screen, in the sidebar's Argmax chip, and on the mobile new-chat screen."
           control={
             <Toggle ariaLabel="Fox mascot" checked={mascotVisible} onChange={setMascotVisible} />
-          }
-        />
-        <SettingRow
-          label="Pixel field in composer"
-          description="As you type a new chat, ripple an animated pixel field across the input."
-          control={
-            <Toggle
-              ariaLabel="Pixel field in composer"
-              checked={pixelFieldEnabled}
-              onChange={onPixelFieldEnabledChange}
-            />
           }
         />
         <SettingRow

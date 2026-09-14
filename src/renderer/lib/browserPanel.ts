@@ -610,7 +610,7 @@ export function applyBrowserTabs(incoming: readonly BrowserTabInfo[]): void {
  * the ⌘J terminal request in `terminalTabs.ts`. The pane for that session
  * consumes it on its next render; nobody consuming it is a valid outcome.
  */
-export interface AgentBrowserOpenRequest {
+interface AgentBrowserOpenRequest {
   sessionId: string;
   tabId: string;
   url: string;

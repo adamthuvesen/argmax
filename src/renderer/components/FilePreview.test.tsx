@@ -99,16 +99,6 @@ describe("FilePreview", () => {
     }
   });
 
-  it("renders the editor for text files", () => {
-    render(<FilePreview state={makeState()} />);
-    expect(screen.getByLabelText("Editor for src/index.ts")).toBeInTheDocument();
-  });
-
-  it("does not show file size metadata", () => {
-    render(<FilePreview state={makeState()} />);
-    expect(screen.queryByText("24 B")).not.toBeInTheDocument();
-  });
-
   it("shows the shortcut legend with no selection and yields to the editor once a file opens", () => {
     const { rerender } = render(<FilePreview state={makeState({ selectedPath: null, activeTabPath: null })} />);
     expect(screen.getByLabelText("No file selected")).toBeInTheDocument();

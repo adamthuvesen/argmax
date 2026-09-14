@@ -181,23 +181,20 @@ export function Toggle({
   );
 }
 
-type SegmentedOption = { value: string; label: string; caption?: string; disabled?: boolean };
+type SegmentedOption = { value: string; label: string };
 
 export function SegmentedControl({
   ariaLabel,
   name,
   value,
   onChange,
-  options,
-  disabled = false
+  options
 }: {
   ariaLabel: string;
   name: string;
   value: string;
   onChange: (next: string) => void;
   options: ReadonlyArray<SegmentedOption>;
-  /** Disables the whole control (e.g. a mode that makes this setting moot). */
-  disabled?: boolean;
 }): JSX.Element {
   return (
     <div
@@ -205,7 +202,6 @@ export function SegmentedControl({
       role="radiogroup"
       aria-label={ariaLabel}
       data-count={options.length}
-      data-disabled={disabled ? "true" : undefined}
     >
       {options.map((option) => {
         const checked = option.value === value;
@@ -214,15 +210,12 @@ export function SegmentedControl({
             key={option.value}
             className="settings-segmented-option"
             data-checked={checked ? "true" : "false"}
-            data-disabled={option.disabled || disabled ? "true" : "false"}
-            title={option.caption}
           >
             <input
               type="radio"
               name={name}
               value={option.value}
               checked={checked}
-              disabled={option.disabled || disabled}
               onChange={() => onChange(option.value)}
             />
             <span className="settings-segmented-label">{option.label}</span>

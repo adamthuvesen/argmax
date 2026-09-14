@@ -20,7 +20,7 @@ import type { ProviderId } from "../../shared/types.js";
 export type PermissionMode = "provider-defaults" | "auto-approve" | "ask-each-time";
 
 export const PERMISSION_MODE_KEY = "argmax.permissionMode";
-export const DEFAULT_PERMISSION_MODE: PermissionMode = "provider-defaults";
+const DEFAULT_PERMISSION_MODE: PermissionMode = "provider-defaults";
 
 export function isPermissionMode(value: unknown): value is PermissionMode {
   return value === "provider-defaults" || value === "auto-approve" || value === "ask-each-time";

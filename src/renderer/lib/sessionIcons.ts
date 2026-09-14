@@ -555,9 +555,9 @@ export const SESSION_ICON_COLORS: readonly string[] = [
   "red"
 ];
 
-export const DEFAULT_SESSION_ICON_COLOR = "blue";
+const DEFAULT_SESSION_ICON_COLOR = "blue";
 
-export type SessionIconSelection = {
+type SessionIconSelection = {
   icon: string;
   iconColor: string;
 };

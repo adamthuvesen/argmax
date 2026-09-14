@@ -17,7 +17,7 @@ interface AsyncLoadOptions {
   fallbackMessage?: string;
 }
 
-export interface AsyncLoadState<T> {
+interface AsyncLoadState<T> {
   data: T | null;
   error: string | null;
   isLoading: boolean;

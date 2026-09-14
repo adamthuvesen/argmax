@@ -88,7 +88,7 @@ export function persistLaunchModel(model: ModelPickerSelection): void {
   }
 }
 
-export function persistLaunchModelRecency(model: Pick<ModelPickerSelection, "provider" | "modelId">): void {
+function persistLaunchModelRecency(model: Pick<ModelPickerSelection, "provider" | "modelId">): void {
   touchIdRecency(LAUNCH_MODEL_RECENCY_KEY, providerModelKey(model));
 }
 

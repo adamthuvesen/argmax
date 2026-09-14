@@ -70,7 +70,7 @@ interface TabCarry {
   dropping: boolean;
 }
 
-export interface BrowserTabDrag {
+interface BrowserTabDrag {
   stripRef: RefObject<HTMLDivElement | null>;
   /** True from the moment a press becomes a carry until the drop settles. */
   carrying: boolean;

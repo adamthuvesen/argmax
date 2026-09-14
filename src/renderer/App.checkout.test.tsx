@@ -8,7 +8,9 @@ import {
   listWorkspaceFiles,
   sessionEventsSince,
   setupAppTestMocks,
-  snapshot
+  snapshot,
+  workspaceRow,
+  sessionRow
 } from "../test/appTestHarness.js";
 
 describe("App workspace follow", () => {
@@ -82,52 +84,30 @@ describe("App workspace follow", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Build dashboard/ }));
     await screen.findByText("Dashboard ready.");
 
-    const movedWorkspace: DashboardSnapshot["workspaces"][number] = {
+    const movedWorkspace = workspaceRow({
       id: "workspace-moved",
-      projectId: "project-1",
       taskLabel: "Build dashboard",
       branch: "adam/feature-branch",
-      baseRef: "main",
       path: "/tmp/argmax-attached",
-      state: "complete",
       sharedWorkspace: true,
-      kind: "git",
       dirty: true,
       changedFiles: 1,
-      lastActivityAt: "2026-05-08T16:00:00.000Z",
-      pinned: false,
-      priorityDismissedAt: null,
-      priorityAddedAt: null,
-      prState: null,
-      prNumber: null,
-      icon: null,
-      iconColor: null,
-      prCreatedAt: null,
-      prMergedAt: null,
-      prCheckState: null,
-      prActivityAt: null
-    };
-    const movedSession: DashboardSnapshot["sessions"][number] = {
+      lastActivityAt: "2026-05-08T16:00:00.000Z"
+    });
+    const movedSession = sessionRow({
       id: "session-moved",
       workspaceId: movedWorkspace.id,
       provider: "codex",
       modelLabel: "GPT-5.6 Terra",
       modelId: "gpt-5.6-terra",
       reasoningEffort: "medium",
-      permissionMode: "auto-approve",
       providerConversationId: null,
       prompt: "Build dashboard",
-      state: "complete",
       attention: "normal",
       startedAt: "2026-05-08T15:30:00.000Z",
       completedAt: "2026-05-08T16:00:00.000Z",
-      lastActivityAt: "2026-05-08T16:00:00.000Z",
-      costUsd: 0,
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextTokens: 0,
-      imported: false,
-      launchKind: "agent"
-    };
+      lastActivityAt: "2026-05-08T16:00:00.000Z"
+    });
 
     await act(async () => {
       dashboardDeltaListener?.({

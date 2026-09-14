@@ -1,6 +1,6 @@
 import type { ProviderId } from "../../shared/types.js";
 
-export type EngramSetup = {
+type EngramSetup = {
   kind: "command" | "json";
   content: string;
   instructions: string;

@@ -9,13 +9,11 @@ export const SIDEBAR_TRANSLUCENCY_MAX = 60;
 export const SIDEBAR_TRANSLUCENCY_DEFAULT = 30;
 export const WORKSPACE_CARD_KEY = "argmax.workspaceCard.visible";
 export const CHAT_VERBOSITY_KEY = "argmax.chat.verbosity";
-export const THINKING_EXPANDED_KEY = "argmax.thinking.expanded";
 export const TOOL_CALLS_EXPANDED_KEY = "argmax.toolCalls.expanded";
 export const TOOL_CALLS_DISPLAY_KEY = "argmax.toolCalls.display";
 export const TOOL_CALL_GROUPS_EXPANDED_KEY = "argmax.toolCalls.groups.expanded";
 export const TURN_CHANGES_EXPANDED_KEY = "argmax.turnChanges.expanded";
 export const FAST_MODE_KEY = "argmax.fastMode.enabled";
-export const COMPOSER_PIXEL_FIELD_KEY = "argmax.composer.pixelField.enabled";
 export const COMPOSER_CONTEXT_INDICATOR_KEY = "argmax.composer.contextIndicator.enabled";
 export const PR_MILESTONE_CELEBRATION_KEY = "argmax.prMilestones.celebrate";
 export const RANDOM_SESSION_ICON_KEY = "argmax.sessionIcon.random.enabled";
@@ -30,7 +28,7 @@ export const FOLLOW_UP_DELIVERY_KEY = "argmax.followUp.delivery";
 /** What Send does while an agent is still working. */
 export type FollowUpDelivery = "queue" | "steer";
 
-export function readStoredFollowUpDelivery(): FollowUpDelivery {
+function readStoredFollowUpDelivery(): FollowUpDelivery {
   if (typeof window === "undefined") return "queue";
   return window.localStorage.getItem(FOLLOW_UP_DELIVERY_KEY) === "steer" ? "steer" : "queue";
 }
@@ -131,7 +129,7 @@ export type ThinkingDisplay = "collapsed" | "preview" | "inline";
 /** 1–4 scale governing default tool calls, groups, and thinking detail. */
 export type ChatVerbosity = 1 | 2 | 3 | 4;
 
-export interface ResolvedVerbosity {
+interface ResolvedVerbosity {
   toolCallsDisplay: ToolCallsDisplay;
   toolCallGroupsExpanded: boolean;
   thinkingDisplay: ThinkingDisplay;

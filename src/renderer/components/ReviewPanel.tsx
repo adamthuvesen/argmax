@@ -91,7 +91,7 @@ const TerminalTabsPanel = lazy(() =>
 );
 
 /** What the Agents view needs from the pane that owns the panel. */
-export interface AgentsPanelContext {
+interface AgentsPanelContext {
   events: TimelineEvent[];
   /** Chat verbosity, so a subagent's transcript reads at the same detail as
    *  the chat that launched it. */

@@ -6,7 +6,7 @@ import type { PendingMessage, SessionSummary } from "../../shared/types.js";
  * near the window limit, losing the just-emitted acknowledgement while keeping
  * the steer. The resumed model can then answer the same guidance again.
  */
-export const CODEX_STEER_MAX_CONTEXT_RATIO = 0.85;
+const CODEX_STEER_MAX_CONTEXT_RATIO = 0.85;
 
 export function hasSteeringContextHeadroom(
   session: Pick<SessionSummary, "provider" | "contextTokens" | "contextWindow">

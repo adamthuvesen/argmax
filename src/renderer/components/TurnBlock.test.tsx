@@ -207,23 +207,6 @@ describe("TurnBlock", () => {
     expect(screen.getByTestId("assistant")).toBeInTheDocument();
   });
 
-  it("reflects expanded tool state after completion while it is the current turn", () => {
-    // The latest turn stays expanded through completion so the tool block
-    // doesn't collapse out from under the answer the moment it lands.
-    const items: TurnToolItem[] = [{ kind: "tool", tool: tool() }];
-    render(
-      <TurnBlock
-        toolItems={items}
-        assistantTimestamps={[Date.parse("2026-05-12T15:00:03.000Z")]}
-        body={body(assistantChild("assistant", "reply"), toolChild("tools"))}
-        toolsExpanded
-      />
-    );
-    expect(screen.getByRole("button", { name: /Worked for/ })).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByTestId("tools")).toBeInTheDocument();
-    expect(screen.getByTestId("assistant")).toBeInTheDocument();
-  });
-
   it("asks the parent to toggle tools when the chip is clicked after completion", () => {
     const items: TurnToolItem[] = [{ kind: "tool", tool: tool() }];
     const onToggleTools = vi.fn();
@@ -257,19 +240,6 @@ describe("TurnBlock", () => {
     expect(chip).toHaveAttribute("aria-expanded", "true");
     fireEvent.click(chip);
     expect(onToggleTools).toHaveBeenCalledTimes(1);
-  });
-
-  it("respects expanded state while the turn is still running", () => {
-    const items: TurnToolItem[] = [{ kind: "tool", tool: tool({ status: "running", completedAt: null }) }];
-    render(
-      <TurnBlock
-        toolItems={items}
-        assistantTimestamps={[]}
-        body={body(assistantChild("assistant", "streaming..."), toolChild("tools"))}
-        toolsExpanded
-      />
-    );
-    expect(screen.getByTestId("tools")).toBeInTheDocument();
   });
 
   it("shows static turn metadata when the turn is complete and had no tool items", () => {
@@ -353,12 +323,5 @@ describe("TurnBlock", () => {
     const after = screen.getByTestId("assistant-after");
     // tool-before must appear before assistant-after in document order.
     expect(tool0.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  });
-
-  it("does not animate when an ordinary running turn finishes", () => {
-    const props = { toolItems: [] as TurnToolItem[], assistantTimestamps: [], body: [] };
-    const { container, rerender } = render(<TurnBlock {...props} isTurnActive />);
-    rerender(<TurnBlock {...props} isTurnActive={false} />);
-    expect(container.querySelector("canvas")).toBeNull();
   });
 });

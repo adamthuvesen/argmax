@@ -54,8 +54,6 @@ export function SettingsPanel({
   onSidebarTranslucencyChange,
   workspaceCardVisible,
   onWorkspaceCardVisibleChange,
-  pixelFieldEnabled,
-  onPixelFieldEnabledChange,
   contextIndicatorEnabled,
   onContextIndicatorEnabledChange,
   prMilestoneCelebrationEnabled,
@@ -133,8 +131,6 @@ export function SettingsPanel({
   onSidebarTranslucencyChange: (v: number) => void;
   workspaceCardVisible: boolean;
   onWorkspaceCardVisibleChange: (v: boolean) => void;
-  pixelFieldEnabled: boolean;
-  onPixelFieldEnabledChange: (v: boolean) => void;
   contextIndicatorEnabled: boolean;
   onContextIndicatorEnabledChange: (v: boolean) => void;
   prMilestoneCelebrationEnabled: boolean;
@@ -379,8 +375,6 @@ export function SettingsPanel({
             onSidebarTranslucencyChange={onSidebarTranslucencyChange}
             workspaceCardVisible={workspaceCardVisible}
             onWorkspaceCardVisibleChange={onWorkspaceCardVisibleChange}
-            pixelFieldEnabled={pixelFieldEnabled}
-            onPixelFieldEnabledChange={onPixelFieldEnabledChange}
             contextIndicatorEnabled={contextIndicatorEnabled}
             onContextIndicatorEnabledChange={onContextIndicatorEnabledChange}
             prMilestoneCelebrationEnabled={prMilestoneCelebrationEnabled}

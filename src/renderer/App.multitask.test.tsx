@@ -10,57 +10,38 @@ import {
   mockDashboardSnapshot,
   setupAppTestMocks,
   snapshot,
-  terminateProvider
+  terminateProvider,
+  workspaceRow,
+  sessionRow
 } from "../test/appTestHarness.js";
 
-const childWorkspace: DashboardSnapshot["workspaces"][number] = {
+const childWorkspace = workspaceRow({
   id: "workspace-multitask",
-  projectId: "project-1",
   taskLabel: "Fix the changelog date",
   branch: "argmax/dashboard",
-  baseRef: "main",
   path: "/tmp/worktrees/dashboard",
-  state: "complete",
   sharedWorkspace: true,
-  kind: "git",
   dirty: true,
   changedFiles: 1,
-  lastActivityAt: "2026-05-08T15:56:00.000Z",
-  pinned: false,
-  priorityDismissedAt: null,
-  priorityAddedAt: null,
-  prState: null,
-  prNumber: null,
-  icon: null,
-  iconColor: null,
-  prCreatedAt: null,
-  prMergedAt: null,
-  prCheckState: null,
-  prActivityAt: null
-};
+  lastActivityAt: "2026-05-08T15:56:00.000Z"
+});
 
-const childSession: DashboardSnapshot["sessions"][number] = {
+const childSession = sessionRow({
   id: "session-multitask",
   workspaceId: "workspace-multitask",
   provider: "codex",
   modelLabel: "GPT-5.6 Terra",
   modelId: "gpt-5.6-terra",
   reasoningEffort: "medium",
-  permissionMode: "auto-approve",
   providerConversationId: null,
   prompt: "The changelog says 2025 for the 0.4 entry.",
-  state: "complete",
   attention: "normal",
   startedAt: "2026-05-08T15:55:00.000Z",
   completedAt: "2026-05-08T15:56:00.000Z",
   lastActivityAt: "2026-05-08T15:56:00.000Z",
   launchedBySessionId: "session-1",
-  launchKind: "multitask",
-  costUsd: 0,
-  tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextTokens: 0,
-  imported: false
-};
+  launchKind: "multitask"
+});
 
 const events: DashboardSnapshot["events"] = [
   {

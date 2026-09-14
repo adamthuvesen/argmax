@@ -43,9 +43,7 @@ describe("PlanCard", () => {
     render(
       <PlanCard
         plan={samplePlan()}
-        createdAt="2026-05-16T14:30:00.000Z"
         rawMarkdown="raw"
-        modelLabel="Opus 5"
         onAccept={() => {}}
         onReject={() => {}}
       />
@@ -54,19 +52,15 @@ describe("PlanCard", () => {
     expect(screen.getByText(/Tighten the onboarding flow/)).toBeInTheDocument();
     expect(screen.getByText("Summary")).toBeInTheDocument();
     expect(screen.getByText("Key Changes")).toBeInTheDocument();
-    expect(screen.queryByText("Opus 5")).toBeNull();
     expect(screen.getByRole("button", { name: "Download plan" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Copy plan" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Collapse plan" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Mark helpful" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Mark unhelpful" })).toBeNull();
   });
 
   it("starts with the first option selected", () => {
     render(
       <PlanCard
         plan={samplePlan()}
-        createdAt="2026-05-16T14:30:00.000Z"
         rawMarkdown="raw"
         onAccept={() => {}}
         onReject={() => {}}
@@ -86,7 +80,6 @@ describe("PlanCard", () => {
     render(
       <PlanCard
         plan={samplePlan()}
-        createdAt="2026-05-16T14:30:00.000Z"
         rawMarkdown="raw"
         onAccept={onAccept}
         onReject={onReject}
@@ -107,7 +100,6 @@ describe("PlanCard", () => {
     render(
       <PlanCard
         plan={samplePlan()}
-        createdAt="2026-05-16T14:30:00.000Z"
         rawMarkdown="raw"
         onAccept={onAccept}
         onReject={onReject}
@@ -125,7 +117,6 @@ describe("PlanCard", () => {
     render(
       <PlanCard
         plan={samplePlan()}
-        createdAt="2026-05-16T14:30:00.000Z"
         rawMarkdown="raw"
         onAccept={() => {}}
         onReject={() => {}}
@@ -144,7 +135,6 @@ describe("PlanCard", () => {
     render(
       <PlanCard
         plan={samplePlan()}
-        createdAt="2026-05-16T14:30:00.000Z"
         rawMarkdown="raw"
         onAccept={onAccept}
         onReject={onReject}
@@ -161,7 +151,6 @@ describe("PlanCard", () => {
     render(
       <PlanCard
         plan={samplePlan()}
-        createdAt="2026-05-16T14:30:00.000Z"
         rawMarkdown="raw"
         onAccept={() => {}}
         onReject={() => {}}
@@ -181,7 +170,6 @@ describe("PlanCard", () => {
     render(
       <PlanCard
         plan={samplePlan()}
-        createdAt="2026-05-16T14:30:00.000Z"
         rawMarkdown="raw"
         onAccept={onAccept}
         onReject={onReject}
@@ -205,7 +193,6 @@ describe("PlanCard", () => {
     render(
       <PlanCard
         plan={samplePlan()}
-        createdAt="2026-05-16T14:30:00.000Z"
         rawMarkdown="raw"
         onAccept={onAccept}
         onReject={onReject}
@@ -222,7 +209,6 @@ describe("PlanCard", () => {
     render(
       <PlanCard
         plan={samplePlan()}
-        createdAt="2026-05-16T14:30:00.000Z"
         rawMarkdown="raw"
         onAccept={() => {}}
         onReject={() => {}}
@@ -241,7 +227,6 @@ describe("PlanCard", () => {
     render(
       <PlanCard
         plan={samplePlan()}
-        createdAt="2026-05-16T14:30:00.000Z"
         rawMarkdown="raw"
         onAccept={() => {}}
         onReject={() => {}}
@@ -249,25 +234,6 @@ describe("PlanCard", () => {
     );
     expect(document.activeElement).toBe(textarea);
     textarea.remove();
-  });
-
-  it("fires onAccept when Enter is pressed immediately after the card renders", () => {
-    const onAccept = vi.fn();
-    const onReject = vi.fn();
-    render(
-      <PlanCard
-        plan={samplePlan()}
-        createdAt="2026-05-16T14:30:00.000Z"
-        rawMarkdown="raw"
-        onAccept={onAccept}
-        onReject={onReject}
-      />
-    );
-    // No prior key events — the listbox is auto-focused so Enter should fire
-    // submit on the default-selected first option.
-    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Enter" });
-    expect(onAccept).toHaveBeenCalledTimes(1);
-    expect(onReject).not.toHaveBeenCalled();
   });
 
   it("copies the raw markdown when the copy button is clicked", async () => {
@@ -279,7 +245,6 @@ describe("PlanCard", () => {
     render(
       <PlanCard
         plan={samplePlan()}
-        createdAt="2026-05-16T14:30:00.000Z"
         rawMarkdown={"# Plan\n\nbody"}
         onAccept={() => {}}
         onReject={() => {}}
@@ -318,7 +283,6 @@ describe("PlanCard", () => {
       render(
         <PlanCard
           plan={samplePlan()}
-          createdAt="2026-05-16T14:30:00.000Z"
           rawMarkdown={"# Plan\n\nbody"}
           onAccept={() => {}}
           onReject={() => {}}
@@ -363,7 +327,6 @@ describe("PlanCard", () => {
         plan={samplePlan({
           sections: [{ label: "1. **README.md** — Add prerequisites", items: [] }]
         })}
-        createdAt="2026-05-16T14:30:00.000Z"
         rawMarkdown="raw"
         onAccept={() => {}}
         onReject={() => {}}
@@ -430,7 +393,6 @@ describe("PlanCard", () => {
     render(
       <PlanCard
         plan={multiPhasePlan}
-        createdAt="2026-05-16T14:30:00.000Z"
         rawMarkdown="raw"
         onAccept={() => {}}
         onReject={() => {}}

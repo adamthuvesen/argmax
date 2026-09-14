@@ -17,7 +17,7 @@ export interface CompactionNotice {
   postTokens: number | null;
 }
 
-export function isCompactionEvent(event: TimelineEvent): boolean {
+function isCompactionEvent(event: TimelineEvent): boolean {
   const canonical = decodeTimelineEvent(event);
   return canonical.kind === "lifecycle" &&
     (canonical.name === "compacting" || canonical.name === "compacted");

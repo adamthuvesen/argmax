@@ -6,7 +6,7 @@ import { errorMessage } from "../../shared/error.js";
 import { nextDiffContext } from "../lib/diff.js";
 import type { AsyncState } from "./useReviewState.js";
 
-export interface UseReviewDiffResult {
+interface UseReviewDiffResult {
   files: ChangedFileSummary[];
   filesState: AsyncState;
   filesError: string | null;

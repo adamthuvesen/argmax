@@ -3,9 +3,7 @@ import type {
   AgentMode,
   ComposerAttachment,
   PendingMessage,
-  RawProviderOutput,
   SessionSummary,
-  TimelineEvent,
   WorkspaceSummary
 } from "../../shared/types.js";
 import type { QueuedMessageDelivery } from "../../shared/types.js";
@@ -29,13 +27,11 @@ import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
  */
 export function MultitaskPanel({
   chatFontSize,
-  events = [],
   defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
   thinkingDisplay,
   isFocused = true,
   pendingMessages,
-  rawOutputs = [],
   session,
   taskLabel,
   workspace,
@@ -52,13 +48,11 @@ export function MultitaskPanel({
 }: {
   /** Settings → Appearance: keep the delegated chat and composer in sync. */
   chatFontSize?: FontSize;
-  events?: TimelineEvent[];
   defaultToolCallsDisplay?: ToolCallsDisplay;
   defaultToolCallGroupsExpanded?: boolean;
   thinkingDisplay?: ThinkingDisplay;
   isFocused?: boolean;
   pendingMessages: PendingMessage[];
-  rawOutputs?: RawProviderOutput[];
   session: SessionSummary;
   taskLabel: string;
   workspace: WorkspaceSummary | null;
@@ -93,11 +87,7 @@ export function MultitaskPanel({
     void onLoadSessionEvents?.(session.id);
   }, [onLoadSessionEvents, session.id]);
 
-  const { events: sessionEvents, rawOutputs: sessionRawOutputs } = useSessionTimeline(
-    session.id,
-    events,
-    rawOutputs
-  );
+  const { events: sessionEvents, rawOutputs: sessionRawOutputs } = useSessionTimeline(session.id);
 
   return (
     <div

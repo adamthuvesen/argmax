@@ -7,7 +7,7 @@ const POLL_INTERVAL_MS = 1_000;
  *  a long session's history survive eviction on the main side. */
 const LOG_CAP = 4_000;
 
-export interface DebugSnapshotState {
+interface DebugSnapshotState {
   logs: BackendLogEntry[];
   ipcStats: IpcChannelStats[];
   error: string | null;

@@ -31,8 +31,6 @@ import { WorkingNest } from "./WorkingNest.js";
 import { SlidingTabIndicator } from "./SlidingTabIndicator.js";
 import type { MotionPresenceState } from "../hooks/useMotionPresence.js";
 
-export type { PaletteGroup, PaletteItem } from "../lib/paletteSearch.js";
-
 export type PaletteCommand = PaletteItem;
 
 const MAX_PER_GROUP = 8;
@@ -123,7 +121,7 @@ const GROUP_ICON: Record<PaletteGroup, LucideIcon> = {
   Settings: SlidersHorizontal
 };
 
-export interface PaletteFileSource {
+interface PaletteFileSource {
   kind: "workspace" | "project";
   id: string;
 }
@@ -165,7 +163,7 @@ type PaletteRow =
       group: "Contents";
     };
 
-export interface CommandPaletteProps {
+interface CommandPaletteProps {
   open: boolean;
   motionState?: MotionPresenceState;
   onMotionEnd?: AnimationEventHandler<HTMLDivElement>;

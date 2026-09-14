@@ -12,9 +12,11 @@ import {
   mockDashboardSnapshot,
   openSettings,
   sessionAgentEvents,
+  sessionRow,
   setupAppTestMocks,
   snapshot,
-  terminateProvider
+  terminateProvider,
+  workspaceRow
 } from "../test/appTestHarness.js";
 import { startedAgentName } from "../test/agentRowName.js";
 import {
@@ -52,6 +54,43 @@ function gridSession(index: number, prompt: string): DashboardSnapshot["sessions
     completedAt: `2026-05-08T16:0${index}:00.000Z`,
     lastActivityAt: `2026-05-08T16:0${index}:00.000Z`
   };
+}
+
+/**
+ * A finished chat to open in a pane of its own. Ten tests built this row pair
+ * by hand and differed only in what they called it.
+ */
+function paneWorkspace(
+  index: number,
+  taskLabel: string,
+  slug: string,
+  overrides: Partial<DashboardSnapshot["workspaces"][number]> = {}
+): DashboardSnapshot["workspaces"][number] {
+  return workspaceRow({
+    id: `workspace-${index}`,
+    taskLabel,
+    branch: `argmax/${slug}`,
+    path: `/tmp/worktrees/${slug}`,
+    lastActivityAt: `2026-05-08T16:0${index + 2}:00.000Z`,
+    ...overrides
+  });
+}
+
+function paneSession(
+  index: number,
+  taskLabel: string,
+  overrides: Partial<DashboardSnapshot["sessions"][number]> = {}
+): DashboardSnapshot["sessions"][number] {
+  const finishedAt = `2026-05-08T16:0${index + 2}:00.000Z`;
+  return sessionRow({
+    id: `session-${index}`,
+    workspaceId: `workspace-${index}`,
+    providerConversationId: `session-${index}`,
+    prompt: taskLabel,
+    completedAt: finishedAt,
+    lastActivityAt: finishedAt,
+    ...overrides
+  });
 }
 
 function fireGridDragEvent(
@@ -106,51 +145,8 @@ describe("App grid", () => {
   });
 
   it("⌘-click on a sidebar session splits the focused pane to the right", async () => {
-    const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
-      id: "workspace-2",
-      projectId: "project-1",
-      taskLabel: "Split target",
-      branch: "argmax/split-target",
-      baseRef: "main",
-      path: "/tmp/worktrees/split-target",
-      state: "complete",
-      sharedWorkspace: false,
-      kind: "git",
-      dirty: false,
-      changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:04:00.000Z",
-      pinned: false,
-      priorityDismissedAt: null,
-      priorityAddedAt: null,
-      prState: null,
-      prNumber: null,
-      icon: null,
-      iconColor: null,
-      prCreatedAt: null,
-      prMergedAt: null,
-      prCheckState: null,
-      prActivityAt: null
-    };
-    const secondSession: DashboardSnapshot["sessions"][number] = {
-      id: "session-2",
-      workspaceId: "workspace-2",
-      provider: "claude",
-      modelLabel: "Sonnet 5",
-      modelId: "claude-sonnet-5",
-      permissionMode: "auto-approve",
-      providerConversationId: "session-2",
-      prompt: "Split target",
-      state: "complete",
-      attention: "review-ready",
-      startedAt: "2026-05-08T16:00:00.000Z",
-      completedAt: "2026-05-08T16:04:00.000Z",
-      lastActivityAt: "2026-05-08T16:04:00.000Z",
-      costUsd: 0,
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextTokens: 0,
-      imported: false,
-      launchKind: "agent",
-    };
+    const secondWorkspace = paneWorkspace(2, "Split target", "split-target");
+    const secondSession = paneSession(2, "Split target");
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: [...snapshot.workspaces, secondWorkspace],
@@ -185,51 +181,8 @@ describe("App grid", () => {
   });
 
   it("closes only the archived pane when multiple panes are open", async () => {
-    const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
-      id: "workspace-2",
-      projectId: "project-1",
-      taskLabel: "Split target",
-      branch: "argmax/split-target",
-      baseRef: "main",
-      path: "/tmp/worktrees/split-target",
-      state: "complete",
-      sharedWorkspace: true,
-      kind: "git",
-      dirty: false,
-      changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:04:00.000Z",
-      pinned: false,
-      priorityDismissedAt: null,
-      priorityAddedAt: null,
-      prState: null,
-      prNumber: null,
-      icon: null,
-      iconColor: null,
-      prCreatedAt: null,
-      prMergedAt: null,
-      prCheckState: null,
-      prActivityAt: null
-    };
-    const secondSession: DashboardSnapshot["sessions"][number] = {
-      id: "session-2",
-      workspaceId: "workspace-2",
-      provider: "claude",
-      modelLabel: "Sonnet 5",
-      modelId: "claude-sonnet-5",
-      permissionMode: "auto-approve",
-      providerConversationId: "session-2",
-      prompt: "Split target",
-      state: "complete",
-      attention: "review-ready",
-      startedAt: "2026-05-08T16:00:00.000Z",
-      completedAt: "2026-05-08T16:04:00.000Z",
-      lastActivityAt: "2026-05-08T16:04:00.000Z",
-      costUsd: 0,
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextTokens: 0,
-      imported: false,
-      launchKind: "agent"
-    };
+    const secondWorkspace = paneWorkspace(2, "Split target", "split-target", { sharedWorkspace: true });
+    const secondSession = paneSession(2, "Split target");
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: [...snapshot.workspaces, secondWorkspace],
@@ -272,51 +225,8 @@ describe("App grid", () => {
   });
 
   it("⌥-click on a sidebar session splits below into a new row", async () => {
-    const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
-      id: "workspace-2",
-      projectId: "project-1",
-      taskLabel: "Below target",
-      branch: "argmax/below-target",
-      baseRef: "main",
-      path: "/tmp/worktrees/below-target",
-      state: "complete",
-      sharedWorkspace: false,
-      kind: "git",
-      dirty: false,
-      changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:04:00.000Z",
-      pinned: false,
-      priorityDismissedAt: null,
-      priorityAddedAt: null,
-      prState: null,
-      prNumber: null,
-      icon: null,
-      iconColor: null,
-      prCreatedAt: null,
-      prMergedAt: null,
-      prCheckState: null,
-      prActivityAt: null
-    };
-    const secondSession: DashboardSnapshot["sessions"][number] = {
-      id: "session-2",
-      workspaceId: "workspace-2",
-      provider: "claude",
-      modelLabel: "Sonnet 5",
-      modelId: "claude-sonnet-5",
-      permissionMode: "auto-approve",
-      providerConversationId: "session-2",
-      prompt: "Below target",
-      state: "complete",
-      attention: "review-ready",
-      startedAt: "2026-05-08T16:00:00.000Z",
-      completedAt: "2026-05-08T16:04:00.000Z",
-      lastActivityAt: "2026-05-08T16:04:00.000Z",
-      costUsd: 0,
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextTokens: 0,
-      imported: false,
-      launchKind: "agent",
-    };
+    const secondWorkspace = paneWorkspace(2, "Below target", "below-target");
+    const secondSession = paneSession(2, "Below target");
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: [...snapshot.workspaces, secondWorkspace],
@@ -633,51 +543,8 @@ describe("App grid", () => {
   });
 
   it("dismisses an agent pane when sidebar navigation replaces its parent session", async () => {
-    const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
-      id: "workspace-2",
-      projectId: "project-1",
-      taskLabel: "Follow up task",
-      branch: "argmax/follow-up",
-      baseRef: "main",
-      path: "/tmp/worktrees/follow-up",
-      state: "complete",
-      sharedWorkspace: false,
-      kind: "git",
-      dirty: false,
-      changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:04:00.000Z",
-      pinned: false,
-      priorityDismissedAt: null,
-      priorityAddedAt: null,
-      prState: null,
-      prNumber: null,
-      icon: null,
-      iconColor: null,
-      prCreatedAt: null,
-      prMergedAt: null,
-      prCheckState: null,
-      prActivityAt: null
-    };
-    const secondSession: DashboardSnapshot["sessions"][number] = {
-      id: "session-2",
-      workspaceId: "workspace-2",
-      provider: "claude",
-      modelLabel: "Sonnet 5",
-      modelId: "claude-sonnet-5",
-      permissionMode: "auto-approve",
-      providerConversationId: "session-2",
-      prompt: "Follow up task",
-      state: "complete",
-      attention: "normal",
-      startedAt: "2026-05-08T16:00:00.000Z",
-      completedAt: "2026-05-08T16:04:00.000Z",
-      lastActivityAt: "2026-05-08T16:04:00.000Z",
-      costUsd: 0,
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextTokens: 0,
-      imported: false,
-      launchKind: "agent"
-    };
+    const secondWorkspace = paneWorkspace(2, "Follow up task", "follow-up");
+    const secondSession = paneSession(2, "Follow up task", { attention: "normal" });
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: [...snapshot.workspaces, secondWorkspace],
@@ -1521,51 +1388,28 @@ describe("App grid", () => {
   });
 
   it("clears stale agent panes after launching from the full new-session surface", async () => {
-    const newWorkspace: DashboardSnapshot["workspaces"][number] = {
+    const newWorkspace = workspaceRow({
       id: "workspace-new",
-      projectId: "project-1",
       taskLabel: "Fresh task",
       branch: "argmax/fresh-task",
-      baseRef: "main",
       path: "/tmp/worktrees/fresh-task",
       state: "running",
       sharedWorkspace: true,
-      kind: "git",
-      dirty: false,
-      changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:10:00.000Z",
-      pinned: false,
-      priorityDismissedAt: null,
-      priorityAddedAt: null,
-      prState: null,
-      prNumber: null,
-      icon: null,
-      iconColor: null,
-      prCreatedAt: null,
-      prMergedAt: null,
-      prCheckState: null,
-      prActivityAt: null
-    };
-    const newSession: DashboardSnapshot["sessions"][number] = {
+      lastActivityAt: "2026-05-08T16:10:00.000Z"
+    });
+    const newSession = sessionRow({
       id: "session-new",
       workspaceId: "workspace-new",
-      provider: "claude",
       modelLabel: "Opus 5",
       modelId: "claude-opus-5",
-      permissionMode: "auto-approve",
       providerConversationId: "session-new",
       prompt: "Fresh task",
       state: "running",
       attention: "normal",
       startedAt: "2026-05-08T16:10:00.000Z",
       completedAt: null,
-      lastActivityAt: "2026-05-08T16:10:00.000Z",
-      costUsd: 0,
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextTokens: 0,
-      imported: false,
-      launchKind: "agent"
-    };
+      lastActivityAt: "2026-05-08T16:10:00.000Z"
+    });
     createCurrentWorkspace.mockResolvedValue(newWorkspace);
     launchProvider.mockResolvedValue(newSession);
     mockDashboardSnapshot({
@@ -1679,51 +1523,8 @@ describe("App grid", () => {
   });
 
   it("highlights and drops a sidebar session even when dataTransfer payloads are empty", async () => {
-    const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
-      id: "workspace-2",
-      projectId: "project-1",
-      taskLabel: "Drop target",
-      branch: "argmax/drop-target",
-      baseRef: "main",
-      path: "/tmp/worktrees/drop-target",
-      state: "complete",
-      sharedWorkspace: false,
-      kind: "git",
-      dirty: false,
-      changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:04:00.000Z",
-      pinned: false,
-      priorityDismissedAt: null,
-      priorityAddedAt: null,
-      prState: null,
-      prNumber: null,
-      icon: null,
-      iconColor: null,
-      prCreatedAt: null,
-      prMergedAt: null,
-      prCheckState: null,
-      prActivityAt: null
-    };
-    const secondSession: DashboardSnapshot["sessions"][number] = {
-      id: "session-2",
-      workspaceId: "workspace-2",
-      provider: "claude",
-      modelLabel: "Sonnet 5",
-      modelId: "claude-sonnet-5",
-      permissionMode: "auto-approve",
-      providerConversationId: "session-2",
-      prompt: "Drop target",
-      state: "complete",
-      attention: "review-ready",
-      startedAt: "2026-05-08T16:00:00.000Z",
-      completedAt: "2026-05-08T16:04:00.000Z",
-      lastActivityAt: "2026-05-08T16:04:00.000Z",
-      costUsd: 0,
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextTokens: 0,
-      imported: false,
-      launchKind: "agent",
-    };
+    const secondWorkspace = paneWorkspace(2, "Drop target", "drop-target");
+    const secondSession = paneSession(2, "Drop target");
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: [...snapshot.workspaces, secondWorkspace],
@@ -1897,51 +1698,8 @@ describe("App grid", () => {
   });
 
   it("lets the user drag the divider between side-by-side panes to resize them", async () => {
-    const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
-      id: "workspace-2",
-      projectId: "project-1",
-      taskLabel: "Resize target",
-      branch: "argmax/resize-target",
-      baseRef: "main",
-      path: "/tmp/worktrees/resize-target",
-      state: "complete",
-      sharedWorkspace: false,
-      kind: "git",
-      dirty: false,
-      changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:04:00.000Z",
-      pinned: false,
-      priorityDismissedAt: null,
-      priorityAddedAt: null,
-      prState: null,
-      prNumber: null,
-      icon: null,
-      iconColor: null,
-      prCreatedAt: null,
-      prMergedAt: null,
-      prCheckState: null,
-      prActivityAt: null
-    };
-    const secondSession: DashboardSnapshot["sessions"][number] = {
-      id: "session-2",
-      workspaceId: "workspace-2",
-      provider: "claude",
-      modelLabel: "Sonnet 5",
-      modelId: "claude-sonnet-5",
-      permissionMode: "auto-approve",
-      providerConversationId: "session-2",
-      prompt: "Resize target",
-      state: "complete",
-      attention: "review-ready",
-      startedAt: "2026-05-08T16:00:00.000Z",
-      completedAt: "2026-05-08T16:04:00.000Z",
-      lastActivityAt: "2026-05-08T16:04:00.000Z",
-      costUsd: 0,
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextTokens: 0,
-      imported: false,
-      launchKind: "agent",
-    };
+    const secondWorkspace = paneWorkspace(2, "Resize target", "resize-target");
+    const secondSession = paneSession(2, "Resize target");
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: [...snapshot.workspaces, secondWorkspace],
@@ -1978,96 +1736,10 @@ describe("App grid", () => {
   });
 
   it("keeps the divider aligned across both rows while resizing a four-pane grid", async () => {
-    const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
-      id: "workspace-2",
-      projectId: "project-1",
-      taskLabel: "Wide pane",
-      branch: "argmax/wide-pane",
-      baseRef: "main",
-      path: "/tmp/worktrees/wide-pane",
-      state: "complete",
-      sharedWorkspace: false,
-      kind: "git",
-      dirty: false,
-      changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:04:00.000Z",
-      pinned: false,
-      priorityDismissedAt: null,
-      priorityAddedAt: null,
-      prState: null,
-      prNumber: null,
-      icon: null,
-      iconColor: null,
-      prCreatedAt: null,
-      prMergedAt: null,
-      prCheckState: null,
-      prActivityAt: null
-    };
-    const thirdWorkspace: DashboardSnapshot["workspaces"][number] = {
-      id: "workspace-3",
-      projectId: "project-1",
-      taskLabel: "Dropped pane",
-      branch: "argmax/dropped-pane",
-      baseRef: "main",
-      path: "/tmp/worktrees/dropped-pane",
-      state: "complete",
-      sharedWorkspace: false,
-      kind: "git",
-      dirty: false,
-      changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:05:00.000Z",
-      pinned: false,
-      priorityDismissedAt: null,
-      priorityAddedAt: null,
-      prState: null,
-      prNumber: null,
-      icon: null,
-      iconColor: null,
-      prCreatedAt: null,
-      prMergedAt: null,
-      prCheckState: null,
-      prActivityAt: null
-    };
-    const secondSession: DashboardSnapshot["sessions"][number] = {
-      id: "session-2",
-      workspaceId: "workspace-2",
-      provider: "claude",
-      modelLabel: "Sonnet 5",
-      modelId: "claude-sonnet-5",
-      permissionMode: "auto-approve",
-      providerConversationId: "session-2",
-      prompt: "Wide pane",
-      state: "complete",
-      attention: "review-ready",
-      startedAt: "2026-05-08T16:00:00.000Z",
-      completedAt: "2026-05-08T16:04:00.000Z",
-      lastActivityAt: "2026-05-08T16:04:00.000Z",
-      costUsd: 0,
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextTokens: 0,
-      imported: false,
-      launchKind: "agent",
-    };
-    const thirdSession: DashboardSnapshot["sessions"][number] = {
-      id: "session-3",
-      workspaceId: "workspace-3",
-      provider: "claude",
-      modelLabel: "Sonnet 5",
-      modelId: "claude-sonnet-5",
-      permissionMode: "auto-approve",
-      providerConversationId: "session-3",
-      prompt: "Dropped pane",
-      state: "complete",
-      attention: "review-ready",
-      startedAt: "2026-05-08T16:00:00.000Z",
-      completedAt: "2026-05-08T16:05:00.000Z",
-      lastActivityAt: "2026-05-08T16:05:00.000Z",
-      costUsd: 0,
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextTokens: 0,
-      imported: false,
-      launchKind: "agent",
-    };
+    const secondWorkspace = paneWorkspace(2, "Wide pane", "wide-pane");
+    const thirdWorkspace = paneWorkspace(3, "Dropped pane", "dropped-pane");
+    const secondSession = paneSession(2, "Wide pane");
+    const thirdSession = paneSession(3, "Dropped pane");
     const fourthWorkspace = gridWorkspace(4, "Bottom right");
     const fourthSession = gridSession(4, "Bottom right");
     mockDashboardSnapshot({
@@ -2116,51 +1788,8 @@ describe("App grid", () => {
   });
 
   it("⌘W closes the focused pane", async () => {
-    const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
-      id: "workspace-2",
-      projectId: "project-1",
-      taskLabel: "CmdW target",
-      branch: "argmax/cmd-w",
-      baseRef: "main",
-      path: "/tmp/worktrees/cmd-w",
-      state: "complete",
-      sharedWorkspace: false,
-      kind: "git",
-      dirty: false,
-      changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:04:00.000Z",
-      pinned: false,
-      priorityDismissedAt: null,
-      priorityAddedAt: null,
-      prState: null,
-      prNumber: null,
-      icon: null,
-      iconColor: null,
-      prCreatedAt: null,
-      prMergedAt: null,
-      prCheckState: null,
-      prActivityAt: null
-    };
-    const secondSession: DashboardSnapshot["sessions"][number] = {
-      id: "session-2",
-      workspaceId: "workspace-2",
-      provider: "claude",
-      modelLabel: "Sonnet 5",
-      modelId: "claude-sonnet-5",
-      permissionMode: "auto-approve",
-      providerConversationId: "session-2",
-      prompt: "CmdW target",
-      state: "complete",
-      attention: "review-ready",
-      startedAt: "2026-05-08T16:00:00.000Z",
-      completedAt: "2026-05-08T16:04:00.000Z",
-      lastActivityAt: "2026-05-08T16:04:00.000Z",
-      costUsd: 0,
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextTokens: 0,
-      imported: false,
-      launchKind: "agent",
-    };
+    const secondWorkspace = paneWorkspace(2, "CmdW target", "cmd-w");
+    const secondSession = paneSession(2, "CmdW target");
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: [...snapshot.workspaces, secondWorkspace],
@@ -2203,51 +1832,8 @@ describe("App grid", () => {
     // Panes are keyed by session, so the review panel's mode dies on every
     // switch; the workspace-keyed store is what brings the terminal back. The
     // ⌘J request is consumed once, so the remounted pane must not replay it.
-    const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
-      id: "workspace-2",
-      projectId: "project-1",
-      taskLabel: "Other session",
-      branch: "argmax/other",
-      baseRef: "main",
-      path: "/tmp/worktrees/other",
-      state: "complete",
-      sharedWorkspace: false,
-      kind: "git",
-      dirty: false,
-      changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:04:00.000Z",
-      pinned: false,
-      priorityDismissedAt: null,
-      priorityAddedAt: null,
-      prState: null,
-      prNumber: null,
-      icon: null,
-      iconColor: null,
-      prCreatedAt: null,
-      prMergedAt: null,
-      prCheckState: null,
-      prActivityAt: null
-    };
-    const secondSession: DashboardSnapshot["sessions"][number] = {
-      id: "session-2",
-      workspaceId: "workspace-2",
-      provider: "claude",
-      modelLabel: "Sonnet 5",
-      modelId: "claude-sonnet-5",
-      permissionMode: "auto-approve",
-      providerConversationId: "session-2",
-      prompt: "Other session",
-      state: "complete",
-      attention: "normal",
-      startedAt: "2026-05-08T16:00:00.000Z",
-      completedAt: "2026-05-08T16:04:00.000Z",
-      lastActivityAt: "2026-05-08T16:04:00.000Z",
-      costUsd: 0,
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextTokens: 0,
-      imported: false,
-      launchKind: "agent",
-    };
+    const secondWorkspace = paneWorkspace(2, "Other session", "other");
+    const secondSession = paneSession(2, "Other session", { attention: "normal" });
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: [...snapshot.workspaces, secondWorkspace],

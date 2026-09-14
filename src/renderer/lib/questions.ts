@@ -1,6 +1,6 @@
 import type { ToolCall } from "./toolCalls.js";
 
-export type QuestionOption = {
+type QuestionOption = {
   label: string;
   description?: string;
 };
@@ -33,7 +33,7 @@ export function otherOptionIndex(question: Question): number {
 
 /// The labels the reader picked, in the order the question listed them, with
 /// the typed answer last when "Other" is among the picks.
-export function pickedLabels(question: Question, picks: number[], otherText = ""): string[] {
+function pickedLabels(question: Question, picks: number[], otherText = ""): string[] {
   const labels = picks
     .map((index) => question.options[index]?.label)
     .filter((label): label is string => typeof label === "string" && label.length > 0);

@@ -56,7 +56,7 @@ const PING_FRAME = JSON.stringify({ type: "ping" });
  * it, and the transport reconnects on its own.
  */
 export const REMOTE_CONNECTION_LOST_MESSAGE = "Argmax remote connection lost";
-export const REMOTE_OUTCOME_UNKNOWN_MESSAGE = "The connection was lost before this action's outcome was confirmed. Check the chat or workspace. Retrying the same action will recover its outcome without running it twice.";
+const REMOTE_OUTCOME_UNKNOWN_MESSAGE = "The connection was lost before this action's outcome was confirmed. Check the chat or workspace. Retrying the same action will recover its outcome without running it twice.";
 
 /** The socket handle the transport drives; the browser `WebSocket` is wrapped. */
 export interface RemoteSocket {
@@ -72,7 +72,7 @@ export interface RemoteSocketHandlers {
 
 export type ConnectRemote = (url: string, handlers: RemoteSocketHandlers) => RemoteSocket;
 
-export interface WsTransportOptions {
+interface WsTransportOptions {
   /** Defaults to `ws(s)://<host>/api/ws` for the page's own origin. */
   url?: string;
   /** Seam for tests; defaults to a real `WebSocket`. */
@@ -83,7 +83,7 @@ export interface WsTransportOptions {
   promptForToken?: () => string | null;
 }
 
-export type RemoteConnectionStatus = "connecting" | "connected" | "offline";
+type RemoteConnectionStatus = "connecting" | "connected" | "offline";
 
 export interface RemoteConnectionState {
   status: RemoteConnectionStatus;

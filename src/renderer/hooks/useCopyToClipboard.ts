@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 const DEFAULT_FLASH_MS = 1500;
 
 /** Transient outcome of the last copy attempt, cleared back to idle. */
-export type CopyFlash = "idle" | "copied" | "failed";
+type CopyFlash = "idle" | "copied" | "failed";
 
 /**
  * The pre-async-clipboard path: select a detached textarea and run the copy

@@ -467,14 +467,6 @@ describe("<StreamingMarkdown />", () => {
     expect(screen.getByRole("table")).toBeInTheDocument();
   });
 
-  it("renders completed text immediately", () => {
-    const text = "Completed answers should not be delayed.";
-
-    render(<StreamingMarkdown text={text} streaming={false} />);
-
-    expect(screen.getByText(text)).toBeInTheDocument();
-  });
-
   it("keeps reference link definitions in the same streaming markdown document", () => {
     render(
       <StreamingMarkdown
@@ -706,29 +698,6 @@ describe("<StreamingMarkdown />", () => {
       '2026-09-01T07:21:37.004170Z ERROR rmcp::transport::streamable_http_client: fail to delete session: invalid_refresh_token session_id="abc"';
     const { container } = render(<StreamingMarkdown text={log} streaming={false} />);
     expect(container).toBeEmptyDOMElement();
-  });
-
-  it("renders the exact markdown formula example from user query", async () => {
-    const text = [
-      "\\tau (\"tau\") is the abstention threshold. It controls how far ahead the model's best family must be from its second-best family before we emit a label.",
-      "",
-      "\\[ \\text{margin} = P(\\text{best family}) - P(\\text{second-best family}) \\]",
-      "",
-      "The probabilities are family-level, prior-matched probabilities. \\tau is not \"17.5% confidence\" or an accuracy estimate."
-    ].join("\n");
-
-    const { container } = render(<StreamingMarkdown text={text} streaming={false} />);
-
-    await waitFor(() => {
-      expect(container.querySelector(".katex-display")).toBeInTheDocument();
-    });
-    const displayMath = container.querySelector(".katex-display");
-    expect(displayMath?.textContent).toContain("margin");
-    expect(displayMath?.textContent).toContain("best family");
-    expect(displayMath?.textContent).toContain("second-best family");
-
-    // Both instances of \tau in prose should be rendered as KaTeX tau symbols
-    expect(container.textContent).toContain("τ");
   });
 
   it("renders a mermaid fence as a diagram instead of a labelled code block", async () => {

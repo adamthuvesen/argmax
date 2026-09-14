@@ -694,7 +694,7 @@ const OUTPUT_ENVELOPE_KEYS = new Set([
   "url"
 ]);
 
-export type FormattedToolOutput = { body: string; title: string | null };
+type FormattedToolOutput = { body: string; title: string | null };
 
 /**
  * An MCP result is a JSON envelope carrying its payload in one string field,
@@ -760,7 +760,7 @@ export function isBashLikeTool(name: string): boolean {
   return /bash|shell|exec|terminal|cmd/.test(lower);
 }
 
-export type ToolTypeBucket = "bash" | "edit" | "read" | "search" | "web" | "agent" | "other";
+type ToolTypeBucket = "bash" | "edit" | "read" | "search" | "web" | "agent" | "other";
 
 /**
  * Whether a tool reaches the web. Deliberately not `getToolTypeBucket(name) ===

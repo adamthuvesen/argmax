@@ -115,7 +115,7 @@ export interface NewSessionSeed {
   prompt: string;
 }
 
-export interface ComposerChangeSummary {
+interface ComposerChangeSummary {
   fileCount: number;
   additions: number;
   deletions: number;

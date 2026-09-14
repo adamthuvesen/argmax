@@ -13,35 +13,6 @@ export function ChangedFilesCard({
   checks?: CheckRun[];
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
 }): JSX.Element | null {
-  const showChecks = checkCommands.length > 0;
-
-  if (!showChecks) {
-    return null;
-  }
-
-  return (
-    <section className="changed-files-card" aria-label="Workspace checks">
-      <ChecksList
-        workspaceId={workspaceId ?? null}
-        checkCommands={checkCommands}
-        checks={checks}
-        onRunCheck={onRunCheck}
-      />
-    </section>
-  );
-}
-
-function ChecksList({
-  workspaceId,
-  checkCommands,
-  checks,
-  onRunCheck
-}: {
-  workspaceId: string | null;
-  checkCommands: string[];
-  checks: CheckRun[];
-  onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
-}): JSX.Element {
   // Reduce the workspace-scoped check feed into a "last run per command" map so
   // each registered check renders the most recent outcome regardless of how
   // many historical runs are in the dashboard buffer.
@@ -85,57 +56,61 @@ function ChecksList({
     }
   };
 
+  if (checkCommands.length === 0) return null;
+
   return (
-    <div className="checks-list" aria-label="Workspace checks">
-      <div className="checks-list-title">Checks</div>
-      {checkCommands.map((command) => {
-        const lastRun = lastRunByCommand.get(command) ?? null;
-        const isRunning = pendingCommand === command || lastRun?.status === "running";
-        const isExpanded = expanded.has(command);
-        const summary = lastRun?.summary ?? null;
-        return (
-          <div
-            className="checks-row"
-            key={command}
-            data-status={lastRun?.status ?? "idle"}
-            aria-label={`Check ${command}`}
-          >
-            <div className="checks-row-head">
-              <button
-                type="button"
-                className="checks-row-run"
-                aria-label={`Run check ${command}`}
-                title={`Run ${command}`}
-                disabled={!workspaceId || !onRunCheck || isRunning}
-                onClick={() => {
-                  void handleRun(command);
-                }}
-              >
-                <Play size={12} />
-              </button>
-              <code className="checks-row-command">{command}</code>
-              <span className="checks-row-status">{statusLabelFor(lastRun, isRunning)}</span>
-              <span className="checks-row-duration">{formatDuration(lastRun)}</span>
-              <button
-                type="button"
-                className="checks-row-expand"
-                aria-expanded={isExpanded}
-                aria-label={`Toggle log for ${command}`}
-                onClick={() => toggleExpand(command)}
-                disabled={!summary}
-              >
-                <ChevronRight size={12} className={`checks-row-chevron${isExpanded ? " expanded" : ""}`} />
-              </button>
+    <section className="changed-files-card" aria-label="Workspace checks">
+      <div className="checks-list" aria-label="Workspace checks">
+        <div className="checks-list-title">Checks</div>
+        {checkCommands.map((command) => {
+          const lastRun = lastRunByCommand.get(command) ?? null;
+          const isRunning = pendingCommand === command || lastRun?.status === "running";
+          const isExpanded = expanded.has(command);
+          const summary = lastRun?.summary ?? null;
+          return (
+            <div
+              className="checks-row"
+              key={command}
+              data-status={lastRun?.status ?? "idle"}
+              aria-label={`Check ${command}`}
+            >
+              <div className="checks-row-head">
+                <button
+                  type="button"
+                  className="checks-row-run"
+                  aria-label={`Run check ${command}`}
+                  title={`Run ${command}`}
+                  disabled={!workspaceId || !onRunCheck || isRunning}
+                  onClick={() => {
+                    void handleRun(command);
+                  }}
+                >
+                  <Play size={12} />
+                </button>
+                <code className="checks-row-command">{command}</code>
+                <span className="checks-row-status">{statusLabelFor(lastRun, isRunning)}</span>
+                <span className="checks-row-duration">{formatDuration(lastRun)}</span>
+                <button
+                  type="button"
+                  className="checks-row-expand"
+                  aria-expanded={isExpanded}
+                  aria-label={`Toggle log for ${command}`}
+                  onClick={() => toggleExpand(command)}
+                  disabled={!summary}
+                >
+                  <ChevronRight size={12} className={`checks-row-chevron${isExpanded ? " expanded" : ""}`} />
+                </button>
+              </div>
+              {isExpanded && summary ? (
+                <pre className="checks-row-log" aria-label={`Log for ${command}`}>
+                  {summary}
+                </pre>
+              ) : null}
             </div>
-            {isExpanded && summary ? (
-              <pre className="checks-row-log" aria-label={`Log for ${command}`}>
-                {summary}
-              </pre>
-            ) : null}
-          </div>
-        );
-      })}
-    </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

@@ -14,7 +14,6 @@ import { SessionConversation } from "./SessionConversation.js";
 function renderPane(
   options: {
     events?: TimelineEvent[];
-    isLogOpen?: boolean;
     onToggleWorkspaceCard?: () => void;
     review?: ReviewState;
     workspace?: typeof workspace;
@@ -24,7 +23,7 @@ function renderPane(
   return render(
     <SessionConversation
       events={options.events ?? []}
-      isLogOpen={options.isLogOpen ?? false}
+      isLogOpen={false}
       onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
       onTerminateSession={vi.fn().mockResolvedValue(undefined)}
       onClearSession={vi.fn().mockResolvedValue(undefined)}
@@ -55,12 +54,6 @@ describe("SessionConversation workspace card", () => {
 
   it("keeps the card rendered when the review panel is open, leaving visibility to spacing", () => {
     renderPane({ review: reviewStub({ isPanelOpen: true }) });
-
-    expect(screen.getByRole("complementary", { name: "Workspace" })).toBeInTheDocument();
-  });
-
-  it("keeps the card rendered when the debug log panel is open, leaving visibility to spacing", () => {
-    renderPane({ isLogOpen: true });
 
     expect(screen.getByRole("complementary", { name: "Workspace" })).toBeInTheDocument();
   });

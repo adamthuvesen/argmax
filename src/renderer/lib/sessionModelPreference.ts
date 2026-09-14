@@ -10,7 +10,7 @@ import { allModelOptions, type ModelPickerSelection } from "./models.js";
 const SESSION_MODEL_KEY_PREFIX = "argmax.sessionModel.";
 
 /** The model and effort the composer should use on the next turn in a chat. */
-export function sessionModelKey(sessionId: string): string {
+function sessionModelKey(sessionId: string): string {
   return `${SESSION_MODEL_KEY_PREFIX}${sessionId}`;
 }
 

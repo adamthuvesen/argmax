@@ -37,7 +37,7 @@ function revokeAttachmentPreviewUrl(url: string): void {
   }
 }
 
-export interface ComposerAttachmentsApi {
+interface ComposerAttachmentsApi {
   pendingAttachments: ComposerAttachment[];
   /** Browser-local previews for images attached during this composer mount. */
   pendingAttachmentPreviews: Readonly<Record<string, string>>;
@@ -64,7 +64,7 @@ export interface ComposerAttachmentsApi {
   restoreAttachments: (attachments: ComposerAttachment[]) => void;
 }
 
-export interface ComposerAttachmentsDeps {
+interface ComposerAttachmentsDeps {
   /**
    * Identifies the draft these attachments belong to, either a session id in the
    * session composer, `launcherDraftKey(projectId)` in the launcher. Doubles

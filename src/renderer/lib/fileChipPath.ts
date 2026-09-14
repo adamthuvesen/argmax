@@ -12,7 +12,7 @@
 // `.ts` aren't matched as path=".ts".
 const FILE_PATH_PATTERN = /^([\w/@-][\w./@-]*\.[a-z0-9]{1,5})(?::(\d{1,7}))?$/i;
 
-export interface FileChipMatch {
+interface FileChipMatch {
   path: string;
   line: number | null;
 }

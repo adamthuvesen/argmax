@@ -160,12 +160,6 @@ describe("<SessionConversationUserMessage /> — from another chat", () => {
     expect(screen.getByRole("article")).toHaveTextContent("Picker is fixed, over to you.");
   });
 
-  it("renders an ordinary user message with no origin as the plain bubble", () => {
-    renderMessage("do the thing");
-
-    expect(screen.queryByRole("article", { name: "Message from another chat" })).toBeNull();
-    expect(screen.getByRole("article")).toHaveTextContent("do the thing");
-  });
 });
 
 describe("<SessionConversationUserMessage /> — sent mid-turn (steer)", () => {

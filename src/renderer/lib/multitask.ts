@@ -139,7 +139,7 @@ export function multitaskCommandPrompt(input: string): string | null {
 }
 
 /** `sessions.launch_kind` for a chat dispatched from inside another chat. */
-export const MULTITASK_LAUNCH_KIND = "multitask";
+const MULTITASK_LAUNCH_KIND = "multitask";
 
 export function isMultitaskSession(session: SessionSummary): boolean {
   return session.launchKind === MULTITASK_LAUNCH_KIND;

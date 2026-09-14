@@ -40,7 +40,7 @@ type CanonicalCommon = {
   traceImported: boolean;
 };
 
-export type CanonicalMessageEvent = CanonicalCommon & {
+type CanonicalMessageEvent = CanonicalCommon & {
   kind: "message";
   role: "user" | "assistant";
   /** A mid-turn user message accepted without ending the provider turn. */
@@ -53,7 +53,7 @@ export type CanonicalMessageEvent = CanonicalCommon & {
   readonly cumulativeText: string | null;
 };
 
-export type CanonicalToolEvent = CanonicalCommon & {
+type CanonicalToolEvent = CanonicalCommon & {
   kind: "tool";
   phase: "started" | "output" | "completed";
   toolUseId: string | null;
@@ -70,7 +70,7 @@ export type CanonicalToolEvent = CanonicalCommon & {
   traceSyntheticLaunch: boolean;
 };
 
-export type CanonicalApprovalEvent = CanonicalCommon & {
+type CanonicalApprovalEvent = CanonicalCommon & {
   kind: "approval";
   phase: "requested" | "resolved" | "blocked";
   approvalId: string | null;
@@ -167,7 +167,7 @@ type MovedLifecycleEvent = CanonicalCommon & {
   sourceArchiveState: string | null;
 };
 
-export type CanonicalLifecycleEvent =
+type CanonicalLifecycleEvent =
   | PlainLifecycleEvent
   | CompactionLifecycleEvent
   | ProviderLifecycleEvent
@@ -176,13 +176,13 @@ export type CanonicalLifecycleEvent =
   | MovedLifecycleEvent
   | NoteLifecycleEvent;
 
-export type CanonicalAgentEvent = CanonicalCommon & {
+type CanonicalAgentEvent = CanonicalCommon & {
   kind: "agent";
   phase: "started" | "completed";
   status: string | null;
 };
 
-export type CanonicalMultitaskEvent = CanonicalCommon & {
+type CanonicalMultitaskEvent = CanonicalCommon & {
   kind: "multitask";
   phase: "launched" | "finished";
   childSessionId: string | null;
@@ -193,14 +193,14 @@ export type CanonicalMultitaskEvent = CanonicalCommon & {
   answer: string | null;
 };
 
-export type CanonicalErrorEvent = CanonicalCommon & {
+type CanonicalErrorEvent = CanonicalCommon & {
   kind: "error";
   code: string | null;
   operation: string | null;
   isPayloadTruncation: boolean;
 };
 
-export type CanonicalUnknownEvent = CanonicalCommon & {
+type CanonicalUnknownEvent = CanonicalCommon & {
   kind: "unknown";
   reason: "invalid-payload" | "unsupported-type";
 };

@@ -60,7 +60,7 @@ function persist(next: ViewedMap): void {
   }
 }
 
-export type WorkspaceActivity = {
+type WorkspaceActivity = {
   id: string;
   lastActivityAt: string;
   lastViewedAt?: string | null;

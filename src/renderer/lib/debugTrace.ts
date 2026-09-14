@@ -33,7 +33,7 @@ export type TraceRow = {
 
 export type TraceSource = "all" | "event" | "raw";
 
-export interface TraceFilter {
+interface TraceFilter {
   source: TraceSource;
   /** Event type or raw stream; "all" disables the facet. */
   label: string;

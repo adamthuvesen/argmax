@@ -100,7 +100,7 @@ export function WorkspaceCard({
         : `Copy branch name ${workspace.branch}`;
 
   useEffect(() => {
-    if (!session?.id || workspace.kind !== "git" || !window.argmax?.prs?.refresh) return;
+    if (!session?.id || workspace.kind !== "git") return;
     // The rows land on the actions menu; the card is here for the workspace
     // publish `prs:refresh` performs on its way out, which is why it shares
     // that call rather than making a second one.
@@ -140,6 +140,19 @@ export function WorkspaceCard({
       .catch((error: unknown) => setStatus({ kind: "error", message: errorMessage(error) }))
       .finally(() => setIsPrPending(false));
   };
+
+  // Drawn twice — once for the rows on show, once inside the overflow list —
+  // so the two cannot drift apart as the row gains props.
+  const prRow = (pr: WorkspaceSessionPr): JSX.Element => (
+    <WorkspacePrRow
+      key={pr.prNumber}
+      pr={pr}
+      busy={isPrPending}
+      onDismiss={() => dismissPr(pr.prNumber)}
+      onSetPrimary={() => setPrimaryPr(pr.prNumber)}
+      onUseAutomatic={() => setPrimaryPr(null)}
+    />
+  );
 
   return (
     <aside
@@ -249,16 +262,7 @@ export function WorkspaceCard({
               <span>{prs.length}</span>
             </div>
           ) : null}
-          {visiblePrs.map((pr) => (
-            <WorkspacePrRow
-              key={pr.prNumber}
-              pr={pr}
-              busy={isPrPending}
-              onDismiss={() => dismissPr(pr.prNumber)}
-              onSetPrimary={() => setPrimaryPr(pr.prNumber)}
-              onUseAutomatic={() => setPrimaryPr(null)}
-            />
-          ))}
+          {visiblePrs.map(prRow)}
           {hiddenPrs.length > 0 ? (
             <div className="workspace-card-pr-more">
               <button
@@ -271,16 +275,7 @@ export function WorkspaceCard({
                 {hiddenPrs.length} more
               </button>
               {isPrHistoryOpen ? <div className="workspace-card-pr-more-list">
-                {hiddenPrs.map((pr) => (
-                  <WorkspacePrRow
-                    key={pr.prNumber}
-                    pr={pr}
-                    busy={isPrPending}
-                    onDismiss={() => dismissPr(pr.prNumber)}
-                    onSetPrimary={() => setPrimaryPr(pr.prNumber)}
-                    onUseAutomatic={() => setPrimaryPr(null)}
-                  />
-                ))}
+                {hiddenPrs.map(prRow)}
               </div> : null}
             </div>
           ) : null}

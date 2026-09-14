@@ -19,7 +19,7 @@ import {
   type QuestionAnswers
 } from "../lib/questions.js";
 
-export type QuestionDockProps = {
+type QuestionDockProps = {
   questions: Question[];
   onAnswer: (answerText: string, answers: QuestionAnswers) => void | Promise<boolean>;
   /** Close the legacy dock or dismiss a provider-native blocking request. */

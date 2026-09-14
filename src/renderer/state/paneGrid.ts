@@ -35,7 +35,7 @@ function publish(next: GridState): void {
   for (const listener of listeners) listener();
 }
 
-export function subscribePaneGrid(listener: () => void): () => void {
+function subscribePaneGrid(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);

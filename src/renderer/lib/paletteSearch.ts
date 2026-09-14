@@ -154,7 +154,7 @@ function rankBy(
   return hits;
 }
 
-export type HighlightSegment = { text: string; matched: boolean };
+type HighlightSegment = { text: string; matched: boolean };
 
 /**
  * Parses an FTS5 snippet string that wraps matched tokens in `<b>...</b>` (the

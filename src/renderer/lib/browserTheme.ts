@@ -1,7 +1,7 @@
 import type { ThemeMode } from "./theme.js";
 
 export const BROWSER_THEME_STORAGE_KEY = "argmax.browser.theme.mode";
-export const DEFAULT_BROWSER_THEME_MODE: ThemeMode = "system";
+const DEFAULT_BROWSER_THEME_MODE: ThemeMode = "system";
 
 const BROWSER_THEME_MODES = new Set<string>(["light", "dark", "system"]);
 

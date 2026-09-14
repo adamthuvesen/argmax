@@ -22,7 +22,7 @@ export interface TerminalTabMeta {
   terminalId?: string;
 }
 
-export interface WorkspaceTerminalState {
+interface WorkspaceTerminalState {
   tabs: readonly TerminalTabMeta[];
   activeTabId: string | null;
   /** Whether a review panel was last showing this workspace's terminal. The
@@ -46,13 +46,13 @@ export interface WorkspaceTerminalState {
  * it may be mounting in the same tick, and a relative instruction there would
  * flip the panel the latch just restored.
  */
-export interface TerminalVisibilityRequest {
+interface TerminalVisibilityRequest {
   workspaceId: string;
   visible: boolean;
   seq: number;
 }
 
-export const MAX_TERMINAL_WORKSPACES = 6;
+const MAX_TERMINAL_WORKSPACES = 6;
 
 const EMPTY_STATE: WorkspaceTerminalState = Object.freeze({
   tabs: Object.freeze<TerminalTabMeta[]>([]),

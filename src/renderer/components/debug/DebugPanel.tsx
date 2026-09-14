@@ -23,7 +23,7 @@ import { DebugLogsTab } from "./DebugLogsTab.js";
 import { DebugTraceTab } from "./DebugTraceTab.js";
 import { SlidingTabIndicator } from "../SlidingTabIndicator.js";
 
-export const DEBUG_TAB_KEY = "argmax.debugPanel.tab";
+const DEBUG_TAB_KEY = "argmax.debugPanel.tab";
 
 const TABS = [
   { id: "trace", label: "Trace" },

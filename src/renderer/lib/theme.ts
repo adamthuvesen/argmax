@@ -19,7 +19,7 @@ export type ThemeMode = "light" | "dark" | "system";
 export type ResolvedTheme = "light" | "dark";
 
 export const THEME_STORAGE_KEY = "argmax.theme.mode";
-export const DEFAULT_THEME_MODE: ThemeMode = "dark";
+const DEFAULT_THEME_MODE: ThemeMode = "dark";
 
 const THEME_MODES = new Set<string>(["light", "dark", "system"]);
 
@@ -32,7 +32,7 @@ export function themeAppearance(attr: string | null): "light" | "dark" {
   return attr === "dark" ? "dark" : "light";
 }
 
-export type ThemeOption = {
+type ThemeOption = {
   id: ThemeMode;
   label: string;
   hint: string;

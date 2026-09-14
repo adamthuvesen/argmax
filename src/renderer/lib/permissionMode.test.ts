@@ -2,7 +2,6 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  DEFAULT_PERMISSION_MODE,
   isPermissionMode,
   PERMISSION_MODE_KEY,
   PROVIDER_PERMISSION_MODES_KEY,
@@ -16,7 +15,6 @@ describe("permission mode preferences", () => {
   });
 
   it("defaults new and invalid preferences to provider defaults", () => {
-    expect(DEFAULT_PERMISSION_MODE).toBe("provider-defaults");
     expect(readStoredPermissionMode()).toBe("provider-defaults");
 
     window.localStorage.setItem(PERMISSION_MODE_KEY, "invalid");

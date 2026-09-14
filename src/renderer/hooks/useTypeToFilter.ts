@@ -11,7 +11,7 @@ import { searchFilePaths } from "../lib/paletteSearch.js";
 import { scrollChildIntoNearest } from "../lib/scrollChildIntoNearest.js";
 import { useRestoreFocus } from "./useRestoreFocus.js";
 
-export interface TypeToFilter<T> {
+interface TypeToFilter<T> {
   /** What the user has typed since the popover opened. Empty until they do. */
   query: string;
   /** `items` narrowed to `query`, best match first; all of them while empty. */

@@ -4,10 +4,14 @@ import { isInternalAgentLaunchMetadata } from "./agentLaunch.js";
 import { agentRootToolUseId } from "./agentNames.js";
 import { decodeTimelineEvent } from "./canonicalTimeline.js";
 import { effortLabel } from "./models.js";
-import { buildSessionToolCalls, latestSessionEndAt } from "./sessionConversationModel.js";
+import {
+  buildSessionToolCalls,
+  latestSessionEndAt,
+  receiverThreadIds as toolReceiverThreadIds
+} from "./sessionConversationModel.js";
 import { getToolTypeBucket, type ToolCall } from "./toolCalls.js";
 
-export type AgentActivityItem =
+type AgentActivityItem =
   | { kind: "message"; event: TimelineEvent }
   | { kind: "tool"; tool: ToolCall };
 
@@ -40,20 +44,6 @@ export type AgentActivity = {
  */
 function nonBlankText(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value : null;
-}
-
-function stringArray(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0)
-    : [];
-}
-
-function receiverThreadIdsFromTool(tool: ToolCall | null): string[] {
-  if (!tool) return [];
-  return [
-    ...stringArray(tool.inputFull.receiver_thread_ids),
-    ...stringArray(tool.inputFull.receiverThreadIds)
-  ];
 }
 
 function isChildMessage(
@@ -210,7 +200,7 @@ export function buildAgentActivity(params: {
     ? identityRuns.find((tool) => tool.agentRunId === agentRunId &&
         (!providerInvocationId || tool.providerInvocationId === providerInvocationId))
     : identityRuns.at(-1)) ?? null;
-  const receiverThreadIds = receiverThreadIdsFromTool(parentTool);
+  const receiverThreadIds = parentTool ? toolReceiverThreadIds(parentTool) : [];
   // Native lifecycle and child rows carry both IDs. Legacy callers leave one
   // or both null, so each supplied ID narrows the run independently.
   const matchesRun = (value: Pick<ToolCall, "agentRunId" | "providerInvocationId">): boolean =>
@@ -325,7 +315,7 @@ export function buildAgentActivity(params: {
 
 /** Native run ids in chronological order. Legacy providers return none and
  * retain the established single-run activity pane. */
-export type PersistentAgentRun = { key: string; agentRunId: string; providerInvocationId: string | null };
+type PersistentAgentRun = { key: string; agentRunId: string; providerInvocationId: string | null };
 
 export function persistentAgentRuns(
   events: readonly TimelineEvent[],

@@ -99,7 +99,7 @@ export function droppedFileHasUsablePath(file: File): boolean {
 
 /** Minimal drag payload so tests can feed a plain object instead of a live
  *  DataTransfer. Matches the fields the composer actually reads. */
-export interface ComposerDragPayload {
+interface ComposerDragPayload {
   types?: ArrayLike<string> | string | null;
   files?: ArrayLike<File> | null;
   items?: ArrayLike<{
@@ -247,7 +247,7 @@ export function readBlobAsBase64(blob: Blob): Promise<string> {
  * reason agent browser screenshots rasterise small. 1920 keeps text readable
  * while bringing a typical screenshot under that budget.
  */
-export const MAX_ATTACHMENT_DIMENSION_PX = 1920;
+const MAX_ATTACHMENT_DIMENSION_PX = 1920;
 
 /**
  * Downscales an oversized image so its stored bytes stay comfortably under the

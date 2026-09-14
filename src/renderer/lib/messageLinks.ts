@@ -10,7 +10,7 @@
  * sentence ending in "menti.com." becomes a broken link.
  */
 
-export type MessageLinkSegment = { text: string; link: boolean };
+type MessageLinkSegment = { text: string; link: boolean };
 
 /**
  * A scheme followed by anything that is not whitespace or a quote. Deliberately

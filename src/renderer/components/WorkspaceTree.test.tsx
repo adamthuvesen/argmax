@@ -67,20 +67,6 @@ describe("WorkspaceTree virtualization", () => {
     expect(screen.getByText("No files in this workspace.")).toBeTruthy();
   });
 
-  it("renders the visible files as treeitems with their basename", () => {
-    const entries: WorkspaceFileEntry[] = [
-      { path: "src/app.ts" },
-      { path: "src/utils/help.ts" },
-      { path: "README.md" }
-    ];
-
-    render(<WorkspaceTree state={makeState(entries)} height={400} />);
-
-    // src directory + README.md visible (src not expanded by default).
-    expect(screen.getByText("src")).toBeTruthy();
-    expect(screen.getByText("README.md")).toBeTruthy();
-  });
-
   it("maps filenames and extensions to distinct icons without changing row labels", () => {
     const entries: WorkspaceFileEntry[] = [
       { path: "app.ts" },

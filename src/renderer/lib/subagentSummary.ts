@@ -3,9 +3,9 @@ import type { MultitaskChild } from "./multitask.js";
 import type { Emblem } from "./agentEmblems.js";
 import { buildAgentRoster } from "./agentRoster.js";
 
-export type SubagentClusterStatus = "running" | "done" | "error";
+type SubagentClusterStatus = "running" | "done" | "error";
 
-export type SubagentClusterEntry = {
+type SubagentClusterEntry = {
   toolUseId: string;
   codename: string;
   title: string;

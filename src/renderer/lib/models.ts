@@ -16,7 +16,7 @@ export type ModelPickerSelection = ProviderModelSelection & { provider: Provider
 
 /** A picker row: a {@link ModelPickerSelection} plus whether the model exposes
  *  an editable reasoning effort (fast models don't). */
-export type ModelPickerOption = ModelPickerSelection & { supportsReasoningEffort: boolean };
+type ModelPickerOption = ModelPickerSelection & { supportsReasoningEffort: boolean };
 
 export const allModelOptions: ModelPickerOption[] = (Object.keys(PROVIDER_MODELS) as ProviderId[])
   .flatMap((provider) =>

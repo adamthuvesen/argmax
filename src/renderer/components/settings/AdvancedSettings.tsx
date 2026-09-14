@@ -37,7 +37,7 @@ export function AdvancedSettings({
 }): JSX.Element {
   const [performanceOpen, setPerformanceOpen] = useState(false);
   const stats = diagnostics?.databaseStats;
-  const readyPhase = diagnostics?.startupPhases?.find((phase) => phase.phase === "window.ready-to-show");
+  const readyPhase = diagnostics?.startupPhases.find((phase) => phase.phase === "window.ready-to-show");
 
   return (
     <>
@@ -117,7 +117,7 @@ export function AdvancedSettings({
         <SettingRow
           label="Logs"
           description={
-            diagnostics?.recentLogs?.length
+            diagnostics?.recentLogs.length
               ? `Main-process ring buffer, last ${diagnostics.recentLogs.length} entries.`
               : "Main-process ring buffer."
           }
@@ -190,7 +190,7 @@ export function AdvancedSettings({
             </div>
           ) : null}
 
-          {diagnostics?.startupPhases?.length ? (
+          {diagnostics?.startupPhases.length ? (
             <div className="settings-card">
               <h4 className="settings-card-title">Startup phases</h4>
               <ColdStartSummary phases={diagnostics.startupPhases} />
@@ -227,7 +227,7 @@ export function AdvancedSettings({
             </div>
           ) : null}
 
-          {diagnostics?.ipcStats?.length ? (
+          {diagnostics?.ipcStats.length ? (
             <div className="settings-card">
               <h4 className="settings-card-title">IPC latency</h4>
               <p className="settings-note">
@@ -289,6 +289,6 @@ export function AdvancedSettings({
   );
 }
 
-function totalRows(stats: NonNullable<DiagnosticsReport["databaseStats"]>): number {
+function totalRows(stats: DiagnosticsReport["databaseStats"]): number {
   return Object.values(stats.rowCounts).reduce((sum, count) => sum + count, 0);
 }

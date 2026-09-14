@@ -38,7 +38,6 @@ import { ToolCallRow } from "./ToolCallRow.js";
 import { TurnChangesCard } from "./TurnChangesCard.js";
 import { TurnBlock } from "./TurnBlock.js";
 
-
 /**
  * The run's masthead: what the agent was asked to do as the title, and one
  * muted line under it with everything that says which agent this is — its
@@ -103,7 +102,6 @@ function AgentHeader({
     </header>
   );
 }
-
 
 function renderAssistantGroup({
   group,

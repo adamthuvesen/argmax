@@ -155,3 +155,66 @@ export function missingSession(): never {
 export function missingCheck(): never {
   throw new Error("Test snapshot must include a check");
 }
+
+/**
+ * A full workspace row, so a test spells out only the fields it is about.
+ * Defaults are the padding every hand-written fixture agreed on: a finished,
+ * clean, unpinned isolated worktree in the primary project.
+ */
+export function workspaceRow(
+  overrides: Partial<DashboardSnapshot["workspaces"][number]> = {}
+): DashboardSnapshot["workspaces"][number] {
+  return {
+    id: "workspace-2",
+    projectId: "project-1",
+    taskLabel: "Second chat",
+    branch: "argmax/second-chat",
+    baseRef: "main",
+    path: "/tmp/worktrees/second-chat",
+    state: "complete",
+    sharedWorkspace: false,
+    kind: "git",
+    dirty: false,
+    changedFiles: 0,
+    lastActivityAt: "2026-05-08T16:04:00.000Z",
+    pinned: false,
+    priorityDismissedAt: null,
+    priorityAddedAt: null,
+    prState: null,
+    prNumber: null,
+    icon: null,
+    iconColor: null,
+    prCreatedAt: null,
+    prMergedAt: null,
+    prCheckState: null,
+    prActivityAt: null,
+    ...overrides
+  };
+}
+
+/** The session counterpart of {@link workspaceRow}: a finished Claude turn. */
+export function sessionRow(
+  overrides: Partial<DashboardSnapshot["sessions"][number]> = {}
+): DashboardSnapshot["sessions"][number] {
+  return {
+    id: "session-2",
+    workspaceId: "workspace-2",
+    provider: "claude",
+    modelLabel: "Sonnet 5",
+    modelId: "claude-sonnet-5",
+    permissionMode: "auto-approve",
+    providerConversationId: "session-2",
+    prompt: "Second chat",
+    state: "complete",
+    attention: "review-ready",
+    startedAt: "2026-05-08T16:00:00.000Z",
+    completedAt: "2026-05-08T16:04:00.000Z",
+    lastActivityAt: "2026-05-08T16:04:00.000Z",
+    costUsd: 0,
+    tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextTokens: 0,
+    imported: false,
+    launchKind: "agent",
+    ...overrides
+  };
+}

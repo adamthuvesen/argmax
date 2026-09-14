@@ -243,7 +243,7 @@ function trackDeltaArrival(): void {
   }
 }
 
-export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
+function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
   const invokeCommand = <T>(channel: IpcChannel, input: unknown = {}): Promise<T> =>
     transport.invoke<T>(channel, input);
   const subscribe = <T>(channel: string, listener: (payload: T) => void): EventSubscription =>

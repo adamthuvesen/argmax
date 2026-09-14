@@ -126,7 +126,7 @@ export function consumeWorkspaceDragClick(workspaceId: string): boolean {
   return true;
 }
 
-export function subscribeWorkspaceDrag(listener: () => void): () => void {
+function subscribeWorkspaceDrag(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);

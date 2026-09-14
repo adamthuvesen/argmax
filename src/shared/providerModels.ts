@@ -10,7 +10,7 @@ export type ReasoningEffort = BindingReasoningEffort;
 
 /** One model in a provider's catalog: display label, CLI id, and capabilities
  *  (effort support, context window, badges). */
-export interface ProviderModelOption {
+interface ProviderModelOption {
   label: string;
   modelId: string;
   /**
@@ -38,7 +38,7 @@ export interface ProviderModelOption {
 
 /** A {@link ProviderModelOption} plus a seeded effort. Used for each
  * provider's default model. */
-export interface ProviderModelDefault extends ProviderModelOption {
+interface ProviderModelDefault extends ProviderModelOption {
   reasoningEffort?: ReasoningEffort;
 }
 
@@ -331,7 +331,7 @@ export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> =
 // mirror and the providers' published pricing.
 // ---------------------------------------------------------------------------
 
-export interface ModelPricing {
+interface ModelPricing {
   input: number;
   output: number;
   cacheRead: number;

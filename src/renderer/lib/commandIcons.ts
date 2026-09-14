@@ -1,7 +1,7 @@
 import { serverIconFor } from "./serverIcons.js";
 import { isBashLikeTool, unwrapBashCommand, type ToolCall } from "./toolCalls.js";
 
-export interface CommandIconRule {
+interface CommandIconRule {
   commandPattern: string;
   server: string;
 }

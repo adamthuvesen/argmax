@@ -22,7 +22,7 @@ export type PlanSubSection = {
   kind?: "files" | "deliverable" | "work" | "check" | "note" | "default";
 };
 
-export type PlanSection = {
+type PlanSection = {
   label: string;
   items: PlanItem[];
   /** Paragraph body shown beneath the section label when the section has no list. */
@@ -32,7 +32,7 @@ export type PlanSection = {
   title?: string;
 };
 
-export type PlanAction = {
+type PlanAction = {
   question: string;
   options: { label: string }[];
 };

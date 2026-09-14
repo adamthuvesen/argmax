@@ -20,7 +20,7 @@ import type { MenuCommand } from "./types.js";
  *   `null` means the binding exists in the cheat sheet but not the menu
  *   (e.g. renderer-only chords like `Esc`).
  */
-export interface MenuKeybinding {
+interface MenuKeybinding {
   command: MenuCommand;
   accelerator: string;
   displayAccelerator: string;
@@ -116,7 +116,7 @@ export const MENU_KEYBINDINGS: readonly MenuKeybinding[] = [
  * to make that contract explicit (and prevent a future refactor from
  * silently wiring the wrong command).
  */
-export interface RendererOnlyKeybinding {
+interface RendererOnlyKeybinding {
   displayAccelerator: string;
   label: string;
 }

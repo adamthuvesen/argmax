@@ -13,11 +13,9 @@ const PlanInlineMath = lazy(() =>
   }))
 );
 
-export type PlanCardProps = {
+type PlanCardProps = {
   plan: Plan;
-  createdAt: string;
   rawMarkdown: string;
-  modelLabel?: string | null;
   onAccept: () => void | Promise<boolean>;
   onReject: () => void;
 };

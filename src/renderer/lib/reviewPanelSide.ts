@@ -2,7 +2,7 @@
 export type ReviewPanelSide = "left" | "right";
 
 export const REVIEW_PANEL_SIDE_KEY = "argmax.review.panelSide";
-export const DEFAULT_REVIEW_PANEL_SIDE: ReviewPanelSide = "right";
+const DEFAULT_REVIEW_PANEL_SIDE: ReviewPanelSide = "right";
 
 export function readStoredReviewPanelSide(): ReviewPanelSide {
   if (typeof window === "undefined") return DEFAULT_REVIEW_PANEL_SIDE;

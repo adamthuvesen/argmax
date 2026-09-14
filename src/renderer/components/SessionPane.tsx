@@ -27,9 +27,7 @@ import type {
   PendingMessage,
   ProjectSummary,
   ProviderId,
-  RawProviderOutput,
   SessionSummary,
-  TimelineEvent,
   WorkspaceSummary
 } from "../../shared/types.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
@@ -99,7 +97,6 @@ export function SessionPane({
   goalEnabled,
   goalMaxTurns,
   revertEnabled,
-  events = [],
   fastModeEnabled = false,
   isFocused = true,
   onClose,
@@ -128,7 +125,6 @@ export function SessionPane({
   onClearSession,
   onForkSession,
   project,
-  rawOutputs = [],
   registerPaletteFileContext,
   rightPanelToggleSignal,
   debugLogToggleSignal,
@@ -155,7 +151,6 @@ export function SessionPane({
   goalEnabled?: boolean;
   goalMaxTurns?: number;
   revertEnabled?: boolean;
-  events?: TimelineEvent[];
   fastModeEnabled?: boolean;
   /** When false, the pane skips its document-level keyboard shortcuts so only the focused pane reacts. */
   isFocused?: boolean;
@@ -214,7 +209,6 @@ export function SessionPane({
   onClearSession: (sessionId: string) => Promise<void>;
   onForkSession?: (sessionId: string) => Promise<void>;
   project: ProjectSummary | null;
-  rawOutputs?: RawProviderOutput[];
   rightPanelToggleSignal?: number;
   debugLogToggleSignal?: number;
   session: SessionSummary | null;
@@ -258,11 +252,7 @@ export function SessionPane({
     [workspace]
   );
   const visibleApprovals = useStableFilter(approvals, sessionId, (approval) => approval.sessionId === sessionId);
-  const { events: visibleEvents, rawOutputs: visibleRawOutputs } = useSessionTimeline(
-    sessionId,
-    events,
-    rawOutputs
-  );
+  const { events: visibleEvents, rawOutputs: visibleRawOutputs } = useSessionTimeline(sessionId);
   const cursorBackgroundAgentIds = useMemo(() => {
     if (session?.provider !== "cursor") return [];
     return buildSessionToolCalls(

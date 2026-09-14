@@ -766,11 +766,10 @@ export function SessionConversation({
   // The card floats in the right gutter whenever the conversation column is
   // wide enough to hold it without overlapping the transcript, regardless of
   // whether a right-hand panel is docked.
-  const showWorkspaceCard = workspaceCardEnabled;
   // Only a mounted card earns the right gutter. The attribute says the card is
   // in the tree; the container queries in chat-workspace-card.css decide the
   // widths where it is on screen and the transcript slides left for it.
-  const workspaceCardMounted = showWorkspaceCard && workspace?.kind === "git";
+  const workspaceCardMounted = workspaceCardEnabled && workspace?.kind === "git";
   const conversationScrollRef = useRef<HTMLDivElement | null>(null);
   // The width gate lives in CSS (chat-workspace-card.css keeps the card
   // `display: none` until the pane can hold it beside the transcript), so
@@ -1619,7 +1618,7 @@ export function SessionConversation({
             ) : isThinking ? null : (
               <p className="conversation-empty">Agent replies will appear here.</p>
             )}
-            {terminalTranscript && !hasRenderableContent && conversationItems.length > 0 ? (
+            {terminalTranscript && conversationItems.length > 0 ? (
               <article className="chat-bubble assistant terminal-transcript">
                 <pre>{terminalTranscript}</pre>
               </article>

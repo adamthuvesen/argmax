@@ -8,7 +8,7 @@ export type SettingsGroupId =
 
 type SettingsSectionMeta = { id: string; label: string };
 
-export type SettingsGroupMeta = {
+type SettingsGroupMeta = {
   id: SettingsGroupId;
   label: string;
   /** Renders a hairline above this entry in the rail. Advanced is the only

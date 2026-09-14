@@ -75,7 +75,6 @@ import {
   writeWorkspaceMode,
   type WorkspaceMode
 } from "../lib/workspaceMode.js";
-import { ComposerPixelField } from "./ComposerPixelField.js";
 import { ConnectionDialog } from "./ConnectionDialog.js";
 import { PickerFilterRow } from "./PickerFilterRow.js";
 import { PickerLead } from "./PickerLead.js";
@@ -131,7 +130,6 @@ export function LaunchSurface({
   goalEnabled = true,
   hasRunningSession = false,
   chatFontSize,
-  pixelFieldEnabled = false,
   model,
   onAddProject,
   onBranchSwitch,
@@ -162,7 +160,6 @@ export function LaunchSurface({
   hasRunningSession?: boolean;
   /** Settings → Appearance: keep the launcher's composer on the agent-window scale. */
   chatFontSize?: FontSize;
-  pixelFieldEnabled?: boolean;
   model: ModelPickerSelection;
   onAddProject: () => void;
   onBranchSwitch: (updated: ProjectSummary) => void;
@@ -937,7 +934,6 @@ export function LaunchSurface({
           <span>Drop to attach</span>
           <small>Images and files</small>
         </div>
-        {pixelFieldEnabled ? <ComposerPixelField text={prompt} /> : null}
         <input
           ref={attachmentInputRef}
           type="file"

@@ -1,4 +1,4 @@
-export type SkillHighlightSegment = { text: string; skill: boolean };
+type SkillHighlightSegment = { text: string; skill: boolean };
 
 /**
  * Split text into plain/skill segments for marking the tokens. Every `/name`

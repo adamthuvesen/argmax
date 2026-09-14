@@ -9,6 +9,8 @@ import {
   missingWorkspace,
   primaryProject,
   secondProject,
+  sessionRow,
+  workspaceRow,
   workspaceStatusSnapshot
 } from "./fixtures/dashboardSnapshot.js";
 import { usageRemainingFixture } from "./fixtures/usageRemaining.js";
@@ -59,6 +61,8 @@ export {
   missingWorkspace,
   primaryProject,
   secondProject,
+  sessionRow,
+  workspaceRow,
   workspaceStatusSnapshot
 };
 
@@ -74,99 +78,107 @@ export type SettingsGroup =
 
 export type AppTestMockFn<T extends (...args: never[]) => unknown> = ReturnType<typeof vi.fn<T>>;
 
-export type AppTestMocks = {
-  createCurrentWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["createCurrent"]>;
-  createIsolatedWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["createIsolated"]>;
-  createScratchWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["createScratch"]>;
-  autotitleWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["autoTitle"]>;
-  archiveWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["archive"]>;
-  dashboardList: AppTestMockFn<ArgmaxApi["dashboard"]["list"]>;
-  dashboardDeltaUnsubscribe: AppTestMockFn<() => void>;
-  launchProvider: AppTestMockFn<ArgmaxApi["providers"]["launch"]>;
-  approvalsPending: AppTestMockFn<ArgmaxApi["approvals"]["pending"]>;
-  approvalsResolve: AppTestMockFn<ArgmaxApi["approvals"]["resolve"]>;
-  questionsResolve: AppTestMockFn<ArgmaxApi["questions"]["resolve"]>;
-  pickProjectFolder: AppTestMockFn<ArgmaxApi["projects"]["pickFolder"]>;
-  listBranches: AppTestMockFn<ArgmaxApi["projects"]["listBranches"]>;
-  listChangedFiles: AppTestMockFn<ArgmaxApi["review"]["listChangedFiles"]>;
-  loadDiff: AppTestMockFn<ArgmaxApi["review"]["loadDiff"]>;
-  listWorkspaceFiles: AppTestMockFn<ArgmaxApi["workspace"]["listFiles"]>;
-  readWorkspaceFile: AppTestMockFn<ArgmaxApi["workspace"]["readFile"]>;
-  listProjectFiles: AppTestMockFn<ArgmaxApi["workspace"]["listFiles"]>;
-  readProjectFile: AppTestMockFn<ArgmaxApi["workspace"]["readFile"]>;
-  writeProjectFile: AppTestMockFn<ArgmaxApi["workspace"]["writeFile"]>;
-  sessionEventsSince: AppTestMockFn<ArgmaxApi["session"]["eventsSince"]>;
-  sessionAgentEvents: AppTestMockFn<ArgmaxApi["session"]["agentEvents"]>;
-  sessionCostSummary: AppTestMockFn<ArgmaxApi["session"]["costSummary"]>;
-  sendProviderInput: AppTestMockFn<ArgmaxApi["providers"]["sendInput"]>;
-  steerProviderInput: AppTestMockFn<ArgmaxApi["providers"]["steerInput"]>;
-  terminateProvider: AppTestMockFn<ArgmaxApi["providers"]["terminate"]>;
-  providersDiscover: AppTestMockFn<ArgmaxApi["providers"]["discover"]>;
-  diagnosticsStub: AppTestMockFn<ArgmaxApi["system"]["diagnostics"]>;
-  vacuumDatabaseStub: AppTestMockFn<ArgmaxApi["system"]["vacuumDatabase"]>;
-  setNotificationsEnabledStub: AppTestMockFn<ArgmaxApi["system"]["setNotificationsEnabled"]>;
-  setKeepAwakeStub: AppTestMockFn<ArgmaxApi["system"]["setKeepAwake"]>;
-  multitaskStub: AppTestMockFn<ArgmaxApi["session"]["multitask"]>;
-  testNotificationStub: AppTestMockFn<ArgmaxApi["system"]["testNotification"]>;
-  workspaceStatus: AppTestMockFn<ArgmaxApi["workspaces"]["status"]>;
-  skillsList: AppTestMockFn<ArgmaxApi["skills"]["list"]>;
-  connectionsList: AppTestMockFn<ArgmaxApi["connections"]["list"]>;
-  openInIde: AppTestMockFn<ArgmaxApi["workspaces"]["openInIde"]>;
-  listDetectedIdes: AppTestMockFn<ArgmaxApi["system"]["listDetectedIdes"]>;
-  setWorkspaceIcon: AppTestMockFn<ArgmaxApi["workspaces"]["setIcon"]>;
-  setPriorityDismissed: AppTestMockFn<ArgmaxApi["workspaces"]["setPriorityDismissed"]>;
-  usageSummary: AppTestMockFn<ArgmaxApi["usage"]["summary"]>;
-  usageRemaining: AppTestMockFn<ArgmaxApi["usage"]["remaining"]>;
-  activitySummary: AppTestMockFn<ArgmaxApi["activity"]["summary"]>;
-};
-
-export let createCurrentWorkspace: AppTestMocks["createCurrentWorkspace"];
-export let createIsolatedWorkspace: AppTestMocks["createIsolatedWorkspace"];
-export let createScratchWorkspace: AppTestMocks["createScratchWorkspace"];
-export let autotitleWorkspace: AppTestMocks["autotitleWorkspace"];
-export let archiveWorkspace: AppTestMocks["archiveWorkspace"];
-export let dashboardList: AppTestMocks["dashboardList"];
+export let createCurrentWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["createCurrent"]>;
+export let createIsolatedWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["createIsolated"]>;
+export let createScratchWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["createScratch"]>;
+export let autotitleWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["autoTitle"]>;
+export let archiveWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["archive"]>;
+export let dashboardList: AppTestMockFn<ArgmaxApi["dashboard"]["list"]>;
 export let dashboardDeltaListener: ((delta: DashboardDelta) => void) | null = null;
-export let dashboardDeltaUnsubscribe: AppTestMocks["dashboardDeltaUnsubscribe"];
-export let launchProvider: AppTestMocks["launchProvider"];
-let approvalsPending: AppTestMocks["approvalsPending"];
-let approvalsResolve: AppTestMocks["approvalsResolve"];
-export let questionsResolve: AppTestMocks["questionsResolve"];
-export let pickProjectFolder: AppTestMocks["pickProjectFolder"];
-export let listBranches: AppTestMocks["listBranches"];
-export let listChangedFiles: AppTestMocks["listChangedFiles"];
-export let loadDiff: AppTestMocks["loadDiff"];
-export let listWorkspaceFiles: AppTestMocks["listWorkspaceFiles"];
-export let readWorkspaceFile: AppTestMocks["readWorkspaceFile"];
-export let listProjectFiles: AppTestMocks["listProjectFiles"];
-export let readProjectFile: AppTestMocks["readProjectFile"];
-export let writeProjectFile: AppTestMocks["writeProjectFile"];
-export let sessionEventsSince: AppTestMocks["sessionEventsSince"];
-export let sessionAgentEvents: AppTestMocks["sessionAgentEvents"];
-let sessionCostSummary: AppTestMocks["sessionCostSummary"];
-export let sendProviderInput: AppTestMocks["sendProviderInput"];
-export let steerProviderInput: AppTestMocks["steerProviderInput"];
-export let terminateProvider: AppTestMocks["terminateProvider"];
-export let providersDiscover: AppTestMocks["providersDiscover"];
-export let diagnosticsStub: AppTestMocks["diagnosticsStub"];
-let vacuumDatabaseStub: AppTestMocks["vacuumDatabaseStub"];
-export let setNotificationsEnabledStub: AppTestMocks["setNotificationsEnabledStub"];
-let setKeepAwakeStub: AppTestMocks["setKeepAwakeStub"];
-let multitaskStub: AppTestMocks["multitaskStub"];
-export let testNotificationStub: AppTestMocks["testNotificationStub"];
-export let workspaceStatus: AppTestMocks["workspaceStatus"];
-export let skillsList: AppTestMocks["skillsList"];
-export let connectionsList: AppTestMocks["connectionsList"];
-export let openInIde: AppTestMocks["openInIde"];
-export let listDetectedIdes: AppTestMocks["listDetectedIdes"];
-export let setWorkspaceIcon: AppTestMocks["setWorkspaceIcon"];
-export let setPriorityDismissed: AppTestMocks["setPriorityDismissed"];
+export let dashboardDeltaUnsubscribe: AppTestMockFn<() => void>;
+export let launchProvider: AppTestMockFn<ArgmaxApi["providers"]["launch"]>;
+let approvalsPending: AppTestMockFn<ArgmaxApi["approvals"]["pending"]>;
+let approvalsResolve: AppTestMockFn<ArgmaxApi["approvals"]["resolve"]>;
+export let questionsResolve: AppTestMockFn<ArgmaxApi["questions"]["resolve"]>;
+export let pickProjectFolder: AppTestMockFn<ArgmaxApi["projects"]["pickFolder"]>;
+export let listBranches: AppTestMockFn<ArgmaxApi["projects"]["listBranches"]>;
+export let listChangedFiles: AppTestMockFn<ArgmaxApi["review"]["listChangedFiles"]>;
+export let loadDiff: AppTestMockFn<ArgmaxApi["review"]["loadDiff"]>;
+export let listWorkspaceFiles: AppTestMockFn<ArgmaxApi["workspace"]["listFiles"]>;
+export let readWorkspaceFile: AppTestMockFn<ArgmaxApi["workspace"]["readFile"]>;
+export let listProjectFiles: AppTestMockFn<ArgmaxApi["workspace"]["listFiles"]>;
+export let readProjectFile: AppTestMockFn<ArgmaxApi["workspace"]["readFile"]>;
+export let writeProjectFile: AppTestMockFn<ArgmaxApi["workspace"]["writeFile"]>;
+export let sessionEventsSince: AppTestMockFn<ArgmaxApi["session"]["eventsSince"]>;
+export let sessionAgentEvents: AppTestMockFn<ArgmaxApi["session"]["agentEvents"]>;
+let sessionCostSummary: AppTestMockFn<ArgmaxApi["session"]["costSummary"]>;
+export let sendProviderInput: AppTestMockFn<ArgmaxApi["providers"]["sendInput"]>;
+export let steerProviderInput: AppTestMockFn<ArgmaxApi["providers"]["steerInput"]>;
+export let terminateProvider: AppTestMockFn<ArgmaxApi["providers"]["terminate"]>;
+export let providersDiscover: AppTestMockFn<ArgmaxApi["providers"]["discover"]>;
+export let diagnosticsStub: AppTestMockFn<ArgmaxApi["system"]["diagnostics"]>;
+let vacuumDatabaseStub: AppTestMockFn<ArgmaxApi["system"]["vacuumDatabase"]>;
+export let setNotificationsEnabledStub: AppTestMockFn<ArgmaxApi["system"]["setNotificationsEnabled"]>;
+let setKeepAwakeStub: AppTestMockFn<ArgmaxApi["system"]["setKeepAwake"]>;
+let multitaskStub: AppTestMockFn<ArgmaxApi["session"]["multitask"]>;
+export let testNotificationStub: AppTestMockFn<ArgmaxApi["system"]["testNotification"]>;
+export let workspaceStatus: AppTestMockFn<ArgmaxApi["workspaces"]["status"]>;
+export let skillsList: AppTestMockFn<ArgmaxApi["skills"]["list"]>;
+export let connectionsList: AppTestMockFn<ArgmaxApi["connections"]["list"]>;
+export let openInIde: AppTestMockFn<ArgmaxApi["workspaces"]["openInIde"]>;
+export let listDetectedIdes: AppTestMockFn<ArgmaxApi["system"]["listDetectedIdes"]>;
+export let setWorkspaceIcon: AppTestMockFn<ArgmaxApi["workspaces"]["setIcon"]>;
+export let setPriorityDismissed: AppTestMockFn<ArgmaxApi["workspaces"]["setPriorityDismissed"]>;
 /** Override with `usageSummary.mockResolvedValue(usageSummaryFixture({ … }))`
  *  to put the Usage page into a specific state. */
-export let usageSummary: AppTestMocks["usageSummary"];
-export let usageRemaining: AppTestMocks["usageRemaining"];
-export let activitySummary: AppTestMocks["activitySummary"];
+export let usageSummary: AppTestMockFn<ArgmaxApi["usage"]["summary"]>;
+export let usageRemaining: AppTestMockFn<ArgmaxApi["usage"]["remaining"]>;
+export let activitySummary: AppTestMockFn<ArgmaxApi["activity"]["summary"]>;
 export let menuCommandListener: ((command: MenuCommand) => void) | null = null;
+
+type Routine = Awaited<ReturnType<ArgmaxApi["routines"]["upsert"]>>;
+
+/** A scheduled task with every field filled in. No test reads the padding —
+ *  it is here so the five routine channels return one shape. */
+function routineStub(overrides: Partial<Routine> & { id: string }): Routine {
+  const now = new Date().toISOString();
+  return {
+    name: "",
+    projectId: "",
+    prompt: "",
+    provider: "claude",
+    modelLabel: "",
+    modelId: "",
+    worktree: true,
+    runTarget: "worktree",
+    lastSessionId: null,
+    cronExpr: null,
+    runOnceAt: null,
+    enabled: true,
+    lastRunAt: null,
+    nextRunAt: null,
+    lastError: null,
+    createdBy: "user",
+    createdAt: now,
+    updatedAt: now,
+    ...overrides
+  };
+}
+
+function syncStatusStub(): Awaited<ReturnType<ArgmaxApi["sync"]["getStatus"]>> {
+  return {
+    config: { claude: false, codex: false, cursor: false, opencode: false, grok: false, windowHours: 24 },
+    supportedProviders: ["claude"],
+    lastRunAt: null,
+    importedCount: 0,
+    lastError: null
+  };
+}
+
+/** One whole page of a session's transcript: no cursor to follow, nothing deleted. */
+function eventPageStub(data: DashboardSnapshot): Awaited<ReturnType<ArgmaxApi["session"]["eventsSince"]>> {
+  return {
+    events: data.events,
+    rawOutputs: data.rawOutputs,
+    eventCursor: 0,
+    rawOutputCursor: 0,
+    changeCursor: null,
+    deletedEventIds: [],
+    deletedRawOutputIds: [],
+    resetRequired: false,
+    hasMore: false
+  };
+}
 
 export function setupAppTestMocks(): void {
   window.localStorage.clear();
@@ -240,28 +252,8 @@ export function setupAppTestMocks(): void {
     project: primaryProject()
   });
   listBranches = vi.fn<ArgmaxApi["projects"]["listBranches"]>().mockResolvedValue(["main"]);
-  sessionEventsSince = vi.fn<ArgmaxApi["session"]["eventsSince"]>().mockResolvedValue({
-    events: snapshot.events,
-    rawOutputs: snapshot.rawOutputs,
-    eventCursor: 0,
-    rawOutputCursor: 0,
-    changeCursor: null,
-    deletedEventIds: [],
-    deletedRawOutputIds: [],
-    resetRequired: false,
-    hasMore: false
-  });
-  sessionAgentEvents = vi.fn<ArgmaxApi["session"]["agentEvents"]>().mockResolvedValue({
-    events: snapshot.events,
-    rawOutputs: snapshot.rawOutputs,
-    eventCursor: 0,
-    rawOutputCursor: 0,
-    changeCursor: null,
-    deletedEventIds: [],
-    deletedRawOutputIds: [],
-    resetRequired: false,
-    hasMore: false
-  });
+  sessionEventsSince = vi.fn<ArgmaxApi["session"]["eventsSince"]>().mockResolvedValue(eventPageStub(snapshot));
+  sessionAgentEvents = vi.fn<ArgmaxApi["session"]["agentEvents"]>().mockResolvedValue(eventPageStub(snapshot));
   sessionCostSummary = vi.fn<ArgmaxApi["session"]["costSummary"]>().mockResolvedValue({
     sessionId: "session-1",
     modelId: "gpt-5.5",
@@ -435,94 +427,18 @@ export function setupAppTestMocks(): void {
     routines: {
       list: () => Promise.resolve([]),
       upsert: (input) =>
-        Promise.resolve({
-          id: input.id,
-          name: input.name,
-          projectId: input.projectId,
-          prompt: input.prompt,
-          provider: input.provider,
-          modelLabel: input.modelLabel,
-          modelId: input.modelId,
-          worktree: input.worktree,
-          runTarget: input.runTarget ?? (input.worktree ? "worktree" : "new_session"),
-          lastSessionId: null,
-          cronExpr: input.cronExpr,
-          runOnceAt: input.runOnceAt,
-          enabled: input.enabled ?? true,
-          lastRunAt: null,
-          nextRunAt: null,
-          lastError: null,
-          createdBy: "user",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }),
+        Promise.resolve(
+          routineStub({
+            ...input,
+            runTarget: input.runTarget ?? (input.worktree ? "worktree" : "new_session"),
+            enabled: input.enabled ?? true
+          })
+        ),
       delete: () => Promise.resolve(null),
-      setEnabled: (id, enabled) =>
-        Promise.resolve({
-          id,
-          name: "",
-          projectId: "",
-          prompt: "",
-          provider: "claude",
-          modelLabel: "",
-          modelId: "",
-          worktree: true,
-          runTarget: "worktree",
-          lastSessionId: null,
-          cronExpr: null,
-          runOnceAt: null,
-          enabled,
-          lastRunAt: null,
-          nextRunAt: null,
-          lastError: null,
-          createdBy: "user",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }),
-      runNow: (id) =>
-        Promise.resolve({
-          id,
-          name: "",
-          projectId: "",
-          prompt: "",
-          provider: "claude",
-          modelLabel: "",
-          modelId: "",
-          worktree: true,
-          runTarget: "worktree",
-          lastSessionId: null,
-          cronExpr: null,
-          runOnceAt: null,
-          enabled: false,
-          lastRunAt: null,
-          nextRunAt: null,
-          lastError: null,
-          createdBy: "user",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }),
+      setEnabled: (id, enabled) => Promise.resolve(routineStub({ id, enabled })),
+      runNow: (id) => Promise.resolve(routineStub({ id, enabled: false })),
       resetSession: (id) =>
-        Promise.resolve({
-          id,
-          name: "",
-          projectId: "",
-          prompt: "",
-          provider: "claude",
-          modelLabel: "",
-          modelId: "",
-          worktree: false,
-          runTarget: "same_session",
-          lastSessionId: null,
-          cronExpr: null,
-          runOnceAt: null,
-          enabled: true,
-          lastRunAt: null,
-          nextRunAt: null,
-          lastError: null,
-          createdBy: "user",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        })
+        Promise.resolve(routineStub({ id, worktree: false, runTarget: "same_session" }))
     },
     projects: {
       list: () => Promise.resolve(snapshot.projects),
@@ -720,33 +636,9 @@ export function setupAppTestMocks(): void {
       onAgentOpen: () => () => undefined
     },
     sync: {
-      getStatus: vi.fn(() =>
-        Promise.resolve({
-          config: { claude: false, codex: false, cursor: false, opencode: false, grok: false, windowHours: 24 },
-          supportedProviders: ["claude"],
-          lastRunAt: null,
-          importedCount: 0,
-          lastError: null
-        })
-      ),
-      setConfig: vi.fn(() =>
-        Promise.resolve({
-          config: { claude: false, codex: false, cursor: false, opencode: false, grok: false, windowHours: 24 },
-          supportedProviders: ["claude"],
-          lastRunAt: null,
-          importedCount: 0,
-          lastError: null
-        })
-      ),
-      runNow: vi.fn(() =>
-        Promise.resolve({
-          config: { claude: false, codex: false, cursor: false, opencode: false, grok: false, windowHours: 24 },
-          supportedProviders: ["claude"],
-          lastRunAt: null,
-          importedCount: 0,
-          lastError: null
-        })
-      )
+      getStatus: vi.fn(() => Promise.resolve(syncStatusStub())),
+      setConfig: vi.fn(() => Promise.resolve(syncStatusStub())),
+      runNow: vi.fn(() => Promise.resolve(syncStatusStub()))
     },
     browser: {
       chromeProfiles: () => Promise.resolve([]),
@@ -786,28 +678,8 @@ export function setupAppTestMocks(): void {
 
 export function mockDashboardSnapshot(data: DashboardSnapshot): void {
   dashboardList.mockResolvedValue(dashboardListSnapshot(data));
-  sessionEventsSince.mockResolvedValue({
-    events: data.events,
-    rawOutputs: data.rawOutputs,
-    eventCursor: 0,
-    rawOutputCursor: 0,
-    changeCursor: null,
-    deletedEventIds: [],
-    deletedRawOutputIds: [],
-    resetRequired: false,
-    hasMore: false
-  });
-  sessionAgentEvents.mockResolvedValue({
-    events: data.events,
-    rawOutputs: data.rawOutputs,
-    eventCursor: 0,
-    rawOutputCursor: 0,
-    changeCursor: null,
-    deletedEventIds: [],
-    deletedRawOutputIds: [],
-    resetRequired: false,
-    hasMore: false
-  });
+  sessionEventsSince.mockResolvedValue(eventPageStub(data));
+  sessionAgentEvents.mockResolvedValue(eventPageStub(data));
   approvalsPending.mockResolvedValue(data.approvals);
   workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(data));
 }

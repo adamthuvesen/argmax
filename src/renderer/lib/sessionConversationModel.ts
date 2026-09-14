@@ -1,4 +1,4 @@
-import type { EventType, TimelineEvent } from "../../shared/types.js";
+import type { TimelineEvent } from "../../shared/types.js";
 import { isPlainObject, stringValue } from "../../shared/typeGuards.js";
 import { isInternalAgentLaunchMetadata } from "./agentLaunch.js";
 import { decodeTimelineEvent } from "./canonicalTimeline.js";
@@ -66,7 +66,6 @@ function eventIsAfter(left: TimelineEvent, right: TimelineEvent): boolean {
   return compareEventOrder(left, right) > 0;
 }
 
-export const SESSION_CLEARED: EventType = "session.cleared";
 
 /**
  * Events after the latest `/clear`. The chat surface and the next prompt both
@@ -111,7 +110,7 @@ function stringArray(value: unknown): string[] {
     : [];
 }
 
-function receiverThreadIds(tool: ToolCall): string[] {
+export function receiverThreadIds(tool: ToolCall): string[] {
   return [
     ...stringArray(tool.inputFull.receiver_thread_ids),
     ...stringArray(tool.inputFull.receiverThreadIds)

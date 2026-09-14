@@ -12,7 +12,7 @@ type ViewportAnchor = {
   contentTop: number;
 };
 
-export interface ConversationScrollOptions {
+interface ConversationScrollOptions {
   sessionId: string | null | undefined;
   items: readonly unknown[];
   resetKey?: string | null;

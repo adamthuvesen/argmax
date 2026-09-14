@@ -36,20 +36,6 @@ export function FilePopover({
   if (!state.popoverOpen) {
     return null;
   }
-  if (state.filteredEntries.length === 0) {
-    return (
-      <ul
-        ref={listRef}
-        className="file-popover"
-        id="file-popover"
-        role="listbox"
-        aria-label="File suggestions"
-        onWheel={(event) => event.stopPropagation()}
-      >
-        <li className="file-popover-empty">No matches</li>
-      </ul>
-    );
-  }
   return (
     <ul
       ref={listRef}
@@ -59,6 +45,7 @@ export function FilePopover({
       aria-label="File suggestions"
       onWheel={(event) => event.stopPropagation()}
     >
+      {state.filteredEntries.length === 0 ? <li className="file-popover-empty">No matches</li> : null}
       {state.filteredEntries.map((entry, index) => {
         const { name, folder } = splitEntryPath(entry);
         const label = entry.kind === "dir" ? `${name}/` : name;

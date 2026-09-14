@@ -22,7 +22,7 @@ export type ComposerAnnotation =
 
 /** Which side of the diff the noted line sits on. A `deletion` line's number
  *  belongs to the pre-change file and is not in the file on disk. */
-export type DiffNoteSide = ParsedDiffLine["kind"];
+type DiffNoteSide = ParsedDiffLine["kind"];
 
 /**
  * A note the user wrote on a diff line or range in the review panel. Not a GitHub

@@ -234,6 +234,7 @@ describe("WorkspaceCard", () => {
 
     const prRow = screen.getByRole("button", { name: "PR #762 Alfred Slack status" });
     expect(prRow).toHaveAccessibleDescription("Open pull request #762 on GitHub (open)");
+    expect(screen.getByTitle("Alfred Slack status")).toHaveTextContent(/^#762$/);
     fireEvent.click(prRow);
 
     expect(openPath).toHaveBeenCalledWith({ path: "https://github.com/o/r/pull/762" });

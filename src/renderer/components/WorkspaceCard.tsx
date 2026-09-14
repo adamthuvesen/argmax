@@ -348,8 +348,8 @@ function WorkspacePrRow({
           <PrStateIcon state={pr.prState} />
         </span>
         <span className="workspace-card-pr-copy">
-          <span className="workspace-card-row-label">
-            #{pr.prNumber}{pr.title ? ` ${pr.title}` : ""}
+          <span className="workspace-card-row-label" title={pr.title ?? undefined}>
+            #{pr.prNumber}
           </span>
           {details ? (
             <span

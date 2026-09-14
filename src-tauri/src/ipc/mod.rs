@@ -187,9 +187,6 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "activity:summary",
 ];
 
-/// Resolve the live `Database` Arc from `AppState`. Shared across IPC
-/// handler modules so each ported command does not re-duplicate the
-/// `state.db.get()` boilerplate.
 /// Run a blocking database read off the macOS main thread.
 ///
 /// Tauri resolves a sync `#[tauri::command]` body inline on the main thread, so

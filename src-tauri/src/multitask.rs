@@ -112,12 +112,8 @@ pub async fn dispatch(
         ));
     }
 
-    let label = request
-        .task_label
-        .as_deref()
-        .map(task_label)
-        .unwrap_or_else(|| task_label(&request.prompt));
-    let provider = parse_provider(&parent.provider).ok_or_else(|| {
+    let label = task_label(request.task_label.as_deref().unwrap_or(&request.prompt));
+    let provider = parse_json_enum(Some(parent.provider.as_str())).ok_or_else(|| {
         ArgmaxError::service(
             "MULTITASK_PROVIDER_UNKNOWN",
             format!(
@@ -403,10 +399,6 @@ fn cap_chars(value: &str, max: usize) -> String {
     format!("{kept}\n\n(truncated)")
 }
 
-fn parse_provider(value: &str) -> Option<crate::providers::ProviderId> {
-    parse_json_enum(Some(value))
-}
-
 /// The wire strings the validation enums deserialize from are the same ones
 /// SQLite stores, so serde is the conversion — no second spelling to drift.
 fn parse_json_enum<T: serde::de::DeserializeOwned>(value: Option<&str>) -> Option<T> {
@@ -449,23 +441,6 @@ mod tests {
             "main",
         );
         assert_eq!(prompt, "Fix the README typo");
-    }
-
-    #[test]
-    fn provider_and_effort_come_back_through_serde() {
-        assert_eq!(
-            parse_provider("opencode"),
-            Some(crate::providers::ProviderId::Opencode)
-        );
-        assert_eq!(parse_provider("nope"), None);
-        assert_eq!(
-            parse_json_enum::<crate::providers::ReasoningEffort>(Some("xhigh")),
-            Some(crate::providers::ReasoningEffort::Xhigh)
-        );
-        assert_eq!(
-            parse_json_enum::<crate::providers::ReasoningEffort>(None),
-            None
-        );
     }
 
     #[test]

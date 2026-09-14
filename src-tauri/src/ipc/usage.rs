@@ -65,17 +65,11 @@ pub async fn usage_summary_impl(
 
 #[tauri::command(rename = "usage:remaining")]
 #[specta::specta]
-pub async fn usage_remaining(
-    state: State<'_, AppState>,
-    input: UsageRemainingInput,
-) -> ArgmaxResult<UsageRemaining> {
-    usage_remaining_impl(&state, input).await
+pub async fn usage_remaining(_input: UsageRemainingInput) -> ArgmaxResult<UsageRemaining> {
+    usage_remaining_impl().await
 }
 
-pub async fn usage_remaining_impl(
-    _state: &AppState,
-    _input: UsageRemainingInput,
-) -> ArgmaxResult<UsageRemaining> {
+pub async fn usage_remaining_impl() -> ArgmaxResult<UsageRemaining> {
     read_off_main(|| Ok(fetch_remaining(Arc::new(LiveRemainingSource::new())))).await
 }
 

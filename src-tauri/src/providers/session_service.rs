@@ -659,8 +659,6 @@ impl ProviderSessionService {
         self.handles.lock_or_recover("handles").len()
     }
 
-    /// Whether the session's provider handle has finished spawning (`Resolved`)
-    /// rather than still launching in the background (`Pending`).
     /// Whether this turn's git mark is in place, so a file write the provider
     /// reports without a diff can be measured against it.
     pub fn has_turn_mark(&self, session_id: &str) -> bool {
@@ -957,8 +955,8 @@ impl ProviderSessionService {
                 return;
             };
             for op in pending_ops {
-                if let Err(error) = service.apply_op(&handle, op).await {
-                    tracing::error!(?error, "failed to apply queued op after launch");
+                match op {
+                    PendingOp::Resize { cols, rows } => handle.resize(cols, rows),
                 }
             }
             if provider == ProviderId::Codex {
@@ -1021,7 +1019,6 @@ impl ProviderSessionService {
     /// agent tools and the completion notice pass one, and it rides all the
     /// way to the persisted `user.message` payload — including through the
     /// queue, when the recipient turns out to be mid-turn.
-    #[allow(clippy::unused_async)] // Callers await; the provider spawn is backgrounded.
     pub async fn send_input_with_origin(
         self: &Arc<Self>,
         input: ProvidersSendInput,
@@ -1051,7 +1048,6 @@ impl ProviderSessionService {
             .await
     }
 
-    #[allow(clippy::unused_async)] // Callers await; the provider spawn is backgrounded.
     async fn send_input_scoped(
         self: &Arc<Self>,
         input: ProvidersSendInput,
@@ -1970,7 +1966,7 @@ impl ProviderSessionService {
                     if queue.is_empty() {
                         queues.remove(&session_id);
                     }
-                    Some((index, message))
+                    Some(message)
                 } else {
                     None
                 }
@@ -1978,7 +1974,7 @@ impl ProviderSessionService {
                 None
             }
         };
-        let Some((_queue_index, message)) = queued_message else {
+        let Some(message) = queued_message else {
             self.queue_promotions
                 .lock_or_recover("queue promotions")
                 .remove(&session_id);
@@ -2321,29 +2317,28 @@ impl ProviderSessionService {
     }
 
     pub fn recover_orphaned_sessions(&self) -> ArgmaxResult<usize> {
-        let mut recovered = Vec::new();
-        let mut cleanup_sessions = Vec::new();
-        {
+        let (recovered, cleanup_sessions) = {
             let connection = self.database.connection();
-            let mut statement = connection
-                .prepare(
-                    "SELECT id, provider, provider_conversation_id FROM sessions WHERE state IN ('running', 'waiting', 'blocked')",
-                )
-                .map_err(sqlite_error)?;
-            let rows = statement
-                .query_map([], |row| {
-                    Ok(RecoveredProviderSession {
-                        id: row.get(0)?,
-                        provider: row.get(1)?,
-                        provider_conversation_id: row.get(2)?,
+            let read_sessions = |sql: &str| -> ArgmaxResult<Vec<RecoveredProviderSession>> {
+                let mut statement = connection.prepare(sql).map_err(sqlite_error)?;
+                let rows = statement
+                    .query_map([], |row| {
+                        Ok(RecoveredProviderSession {
+                            id: row.get(0)?,
+                            provider: row.get(1)?,
+                            provider_conversation_id: row.get(2)?,
+                        })
                     })
-                })
-                .map_err(sqlite_error)?;
-            for row in rows {
-                recovered.push(row.map_err(sqlite_error)?);
-            }
-            let mut statement = connection
-                .prepare(
+                    .map_err(sqlite_error)?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(sqlite_error)?;
+                Ok(rows)
+            };
+            (
+                read_sessions(
+                    "SELECT id, provider, provider_conversation_id FROM sessions WHERE state IN ('running', 'waiting', 'blocked')",
+                )?,
+                read_sessions(
                     r#"
                     SELECT DISTINCT s.id, s.provider, s.provider_conversation_id
                     FROM sessions s
@@ -2354,21 +2349,9 @@ impl ProviderSessionService {
                            AND e.type = 'process_did_not_survive_restart'
                        )
                     "#,
-                )
-                .map_err(sqlite_error)?;
-            let rows = statement
-                .query_map([], |row| {
-                    Ok(RecoveredProviderSession {
-                        id: row.get(0)?,
-                        provider: row.get(1)?,
-                        provider_conversation_id: row.get(2)?,
-                    })
-                })
-                .map_err(sqlite_error)?;
-            for row in rows {
-                cleanup_sessions.push(row.map_err(sqlite_error)?);
-            }
-        }
+                )?,
+            )
+        };
         // Off the boot path: the scan shells out to `ps` (~50 ms) and sleeps
         // 250 ms between TERM and KILL when it finds orphans. It only signals
         // provider CLIs already reparented to init (ppid == 1), so nothing it
@@ -3002,17 +2985,6 @@ impl ProviderSessionService {
         Ok(generations)
     }
 
-    async fn apply_op(
-        &self,
-        handle: &Arc<dyn ProviderRuntimeHandle>,
-        op: PendingOp,
-    ) -> ArgmaxResult<()> {
-        match op {
-            PendingOp::Resize { cols, rows } => handle.resize(cols, rows),
-        }
-        Ok(())
-    }
-
     fn persist_user_message(
         &self,
         session_id: &str,
@@ -3148,15 +3120,7 @@ impl ProviderSessionService {
 
     fn clear_queue(&self, session_id: &str) -> ArgmaxResult<()> {
         let connection = self.database.connection();
-        self.clear_queue_with_connection(&connection, session_id)
-    }
-
-    fn clear_queue_with_connection(
-        &self,
-        connection: &rusqlite::Connection,
-        session_id: &str,
-    ) -> ArgmaxResult<()> {
-        clear_session_queue(connection, session_id)?;
+        clear_session_queue(&connection, session_id)?;
         let removed = self
             .queues
             .lock_or_recover("queues")
@@ -3278,7 +3242,7 @@ impl ProviderSessionService {
     }
 
     fn drain_queue_after_complete(self: &Arc<Self>, session_id: String) {
-        let (_queue_index, next) = match self.pop_next_undelivered(&session_id) {
+        let next = match self.pop_next_undelivered(&session_id) {
             Ok(Some(next)) => next,
             Ok(None) => return,
             Err(error) => {
@@ -3417,10 +3381,7 @@ impl ProviderSessionService {
     /// through `inbox_read` is dropped here rather than also arriving as a
     /// turn — and popping continues to the message behind it, since no turn
     /// will start to trigger the next drain.
-    fn pop_next_undelivered(
-        &self,
-        session_id: &str,
-    ) -> ArgmaxResult<Option<(usize, PendingMessage)>> {
+    fn pop_next_undelivered(&self, session_id: &str) -> ArgmaxResult<Option<PendingMessage>> {
         loop {
             let next = {
                 let connection = self.database.connection();
@@ -3449,13 +3410,13 @@ impl ProviderSessionService {
                 if queue.is_empty() {
                     queues.remove(session_id);
                 }
-                next.map(|message| (index, message))
+                next
             };
-            let Some((index, next)) = next else {
+            let Some(next) = next else {
                 return Ok(None);
             };
             if !origin_row_is_delivered(self, &next) {
-                return Ok(Some((index, next)));
+                return Ok(Some(next));
             }
             tracing::info!(
                 session_id,
@@ -3923,10 +3884,6 @@ impl ProviderSessionService {
     }
 }
 
-/// A turn ending, and only that. `error` rows are transient — stderr lines,
-/// tracing-format output, per-item provider errors — and treating them as
-/// terminal ran a synchronous subagent-trace sweep on the PTY reader thread for
-/// every one. The real process-exit path reconciles unconditionally.
 fn checkout_head_branch(workspace_path: &std::path::Path) -> Option<String> {
     let dot_git = workspace_path.join(".git");
     let git_dir = if dot_git.is_dir() {
@@ -4218,6 +4175,24 @@ mod tests {
         database
     }
 
+    fn pending_message(id: &str, session_id: &str, content: &str) -> PendingMessage {
+        PendingMessage {
+            id: id.to_string(),
+            session_id: session_id.to_string(),
+            content: content.to_string(),
+            agent_mode: AgentMode::Auto.as_str().to_string(),
+            model_label: None,
+            model_id: None,
+            reasoning_effort: None,
+            fast_mode: false,
+            attachments: Vec::new(),
+            agent_references: Vec::new(),
+            origin: None,
+            recovery_status: None,
+            queued_at: now_iso(),
+        }
+    }
+
     #[test]
     fn inbox_collection_before_enqueue_does_not_leave_a_pending_copy() {
         use crate::persistence::session_messages::{
@@ -4318,21 +4293,8 @@ mod tests {
             "providerParentConversationId": "parent-1"
         }]))
         .expect("references");
-        let message = PendingMessage {
-            id: "queued-reference".to_string(),
-            session_id: "s1".to_string(),
-            content: "Ask Gauss again".to_string(),
-            agent_mode: "auto".to_string(),
-            model_label: None,
-            model_id: None,
-            reasoning_effort: None,
-            fast_mode: false,
-            attachments: Vec::new(),
-            agent_references: references,
-            origin: None,
-            recovery_status: None,
-            queued_at: now_iso(),
-        };
+        let mut message = pending_message("queued-reference", "s1", "Ask Gauss again");
+        message.agent_references = references;
         let expected = message.agent_references.clone();
         let input = pending_message_to_send_input("s1".to_string(), message).expect("queued input");
         assert_eq!(input.input.as_str(), "Ask Gauss again");
@@ -4341,64 +4303,23 @@ mod tests {
 
     #[tokio::test]
     async fn cursor_composer_reference_is_rejected_before_a_queued_model_update() {
-        use crate::persistence::{
-            projects::{persist_project, PersistProjectInput, ProjectSettings},
-            workspaces::{persist_workspace, PersistWorkspaceInput},
-        };
-
-        let database = Arc::new(Database::open_in_memory().expect("open db"));
+        let database = database_with_running_session();
         {
             let connection = database.connection();
-            persist_project(
+            connection
+                .execute(
+                    "UPDATE sessions SET provider = 'cursor', model_label = 'Safe one-shot', model_id = 'gpt-5' WHERE id = 'session-1'",
+                    [],
+                )
+                .expect("switch the idle session to cursor");
+            update_session_state(
                 &connection,
-                &PersistProjectInput {
-                    id: "project-1".to_string(),
-                    name: "argmax-test".to_string(),
-                    repo_path: "/tmp/repo".to_string(),
-                    current_branch: "main".to_string(),
-                    default_branch: Some("main".to_string()),
-                    settings: ProjectSettings {
-                        archive_on_merge: false,
-                        worktree_location: "/tmp/worktrees".to_string(),
-                        setup_command: String::new(),
-                        check_commands: Vec::new(),
-                    },
-                },
+                "session-1",
+                &SessionStateInput::transition(SessionState::Complete),
             )
-            .expect("persist project");
-            persist_workspace(
-                &connection,
-                &PersistWorkspaceInput {
-                    id: "workspace-1".to_string(),
-                    project_id: "project-1".to_string(),
-                    task_label: "test workspace".to_string(),
-                    branch: "feature/test".to_string(),
-                    base_ref: "main".to_string(),
-                    path: "/tmp/repo".to_string(),
-                    state: "complete".to_string(),
-                    shared_workspace: false,
-                    kind: "git".to_string(),
-                    dirty: false,
-                    changed_files: 0,
-                },
-            )
-            .expect("persist workspace");
-            persist_session(
-                &connection,
-                &PersistSessionInput {
-                    id: "session-1".to_string(),
-                    workspace_id: "workspace-1".to_string(),
-                    provider: "cursor".to_string(),
-                    model_label: "Safe one-shot".to_string(),
-                    model_id: "gpt-5".to_string(),
-                    reasoning_effort: None,
-                    permission_mode: Some("auto-approve".to_string()),
-                    agent_mode: Some("auto".to_string()),
-                    prompt: "hello".to_string(),
-                    state: SessionState::Complete,
-                },
-            )
-            .expect("persist session");
+            .expect("settle session");
+            update_workspace_state(&connection, "workspace-1", "complete")
+                .expect("settle workspace");
         }
         let references = serde_json::from_value(json!([{
             "name": "Gauss",
@@ -4406,21 +4327,10 @@ mod tests {
             "providerParentConversationId": "parent-1"
         }]))
         .expect("references");
-        let queued = PendingMessage {
-            id: "queued-reference".to_string(),
-            session_id: "session-1".to_string(),
-            content: "Ask Gauss again".to_string(),
-            agent_mode: "auto".to_string(),
-            model_label: Some("Composer".to_string()),
-            model_id: Some("composer-2.5".to_string()),
-            reasoning_effort: None,
-            fast_mode: false,
-            attachments: Vec::new(),
-            agent_references: references,
-            origin: None,
-            recovery_status: None,
-            queued_at: now_iso(),
-        };
+        let mut queued = pending_message("queued-reference", "session-1", "Ask Gauss again");
+        queued.model_label = Some("Composer".to_string());
+        queued.model_id = Some("composer-2.5".to_string());
+        queued.agent_references = references;
         let input =
             pending_message_to_send_input("session-1".to_string(), queued).expect("queued input");
         let service = ProviderSessionService::new(Arc::clone(&database));
@@ -4478,83 +4388,17 @@ mod tests {
     /// workspace — the message must come back rather than vanish.
     #[tokio::test]
     async fn send_now_restores_the_follow_up_when_the_send_is_refused() {
-        use crate::persistence::{
-            projects::{persist_project, PersistProjectInput, ProjectSettings},
-            workspaces::{persist_workspace, PersistWorkspaceInput},
-        };
-
-        let database = Arc::new(Database::open_in_memory().expect("open db"));
-        {
-            let connection = database.connection();
-            persist_project(
-                &connection,
-                &PersistProjectInput {
-                    id: "project-1".to_string(),
-                    name: "argmax-test".to_string(),
-                    repo_path: "/tmp/repo".to_string(),
-                    current_branch: "main".to_string(),
-                    default_branch: Some("main".to_string()),
-                    settings: ProjectSettings {
-                        archive_on_merge: false,
-                        worktree_location: "/tmp/worktrees".to_string(),
-                        setup_command: String::new(),
-                        check_commands: Vec::new(),
-                    },
-                },
-            )
-            .expect("persist project");
-            persist_workspace(
-                &connection,
-                &PersistWorkspaceInput {
-                    id: "workspace-1".to_string(),
-                    project_id: "project-1".to_string(),
-                    task_label: "test workspace".to_string(),
-                    branch: "feature/test".to_string(),
-                    base_ref: "main".to_string(),
-                    path: "/tmp/repo".to_string(),
-                    state: "archiving".to_string(),
-                    shared_workspace: false,
-                    kind: "git".to_string(),
-                    dirty: false,
-                    changed_files: 0,
-                },
-            )
-            .expect("persist workspace");
-            persist_session(
-                &connection,
-                &PersistSessionInput {
-                    id: "session-1".to_string(),
-                    workspace_id: "workspace-1".to_string(),
-                    provider: "claude".to_string(),
-                    model_label: "Sonnet 5".to_string(),
-                    model_id: "claude-sonnet-5".to_string(),
-                    reasoning_effort: None,
-                    permission_mode: Some("auto-approve".to_string()),
-                    agent_mode: Some("auto".to_string()),
-                    prompt: "hello".to_string(),
-                    state: SessionState::Running,
-                },
-            )
-            .expect("persist session");
-        }
+        let database = database_with_running_session();
+        update_workspace_state(&database.connection(), "workspace-1", "archiving")
+            .expect("archiving workspace");
 
         let service = ProviderSessionService::new(database);
         let message_id = Uuid::new_v4().to_string();
-        let queued = VecDeque::from([PendingMessage {
-            id: message_id.clone(),
-            session_id: "session-1".to_string(),
-            content: "please keep this".to_string(),
-            agent_mode: AgentMode::Auto.as_str().to_string(),
-            model_label: None,
-            model_id: None,
-            reasoning_effort: None,
-            fast_mode: false,
-            attachments: Vec::new(),
-            agent_references: Vec::new(),
-            origin: None,
-            recovery_status: None,
-            queued_at: now_iso(),
-        }]);
+        let queued = VecDeque::from([pending_message(
+            &message_id,
+            "session-1",
+            "please keep this",
+        )]);
         {
             let mut connection = service.database.connection();
             replace_session_queue(&mut connection, "session-1", &queued).expect("persist queue");
@@ -4668,21 +4512,11 @@ mod tests {
         // path must wait for SQLite before taking `queues`; otherwise a stop
         // path holding SQLite and waiting for `queues` can deadlock it.
         let lock_message_id = Uuid::new_v4().to_string();
-        let lock_queue = VecDeque::from([PendingMessage {
-            id: lock_message_id.clone(),
-            session_id: "session-1".to_string(),
-            content: "lock ordering".to_string(),
-            agent_mode: AgentMode::Auto.as_str().to_string(),
-            model_label: None,
-            model_id: None,
-            reasoning_effort: None,
-            fast_mode: false,
-            attachments: Vec::new(),
-            agent_references: Vec::new(),
-            origin: None,
-            recovery_status: None,
-            queued_at: now_iso(),
-        }]);
+        let lock_queue = VecDeque::from([pending_message(
+            &lock_message_id,
+            "session-1",
+            "lock ordering",
+        )]);
         {
             let mut connection = service.database.connection();
             replace_session_queue(&mut connection, "session-1", &lock_queue)
@@ -4721,83 +4555,13 @@ mod tests {
     /// so it has to come back like it does from every other failure here.
     #[tokio::test]
     async fn send_now_restores_the_follow_up_when_stop_cancels_the_promotion() {
-        use crate::persistence::{
-            projects::{persist_project, PersistProjectInput, ProjectSettings},
-            workspaces::{persist_workspace, PersistWorkspaceInput},
-        };
-
-        let database = Arc::new(Database::open_in_memory().expect("open db"));
-        {
-            let connection = database.connection();
-            persist_project(
-                &connection,
-                &PersistProjectInput {
-                    id: "project-1".to_string(),
-                    name: "argmax-test".to_string(),
-                    repo_path: "/tmp/repo".to_string(),
-                    current_branch: "main".to_string(),
-                    default_branch: Some("main".to_string()),
-                    settings: ProjectSettings {
-                        archive_on_merge: false,
-                        worktree_location: "/tmp/worktrees".to_string(),
-                        setup_command: String::new(),
-                        check_commands: Vec::new(),
-                    },
-                },
-            )
-            .expect("persist project");
-            persist_workspace(
-                &connection,
-                &PersistWorkspaceInput {
-                    id: "workspace-1".to_string(),
-                    project_id: "project-1".to_string(),
-                    task_label: "test workspace".to_string(),
-                    branch: "feature/test".to_string(),
-                    base_ref: "main".to_string(),
-                    path: "/tmp/repo".to_string(),
-                    state: "running".to_string(),
-                    shared_workspace: false,
-                    kind: "git".to_string(),
-                    dirty: false,
-                    changed_files: 0,
-                },
-            )
-            .expect("persist workspace");
-            persist_session(
-                &connection,
-                &PersistSessionInput {
-                    id: "session-1".to_string(),
-                    workspace_id: "workspace-1".to_string(),
-                    provider: "claude".to_string(),
-                    model_label: "Sonnet 5".to_string(),
-                    model_id: "claude-sonnet-5".to_string(),
-                    reasoning_effort: None,
-                    permission_mode: Some("auto-approve".to_string()),
-                    agent_mode: Some("auto".to_string()),
-                    prompt: "hello".to_string(),
-                    state: SessionState::Running,
-                },
-            )
-            .expect("persist session");
-        }
-
-        let service = ProviderSessionService::new(database);
+        let service = ProviderSessionService::new(database_with_running_session());
         let message_id = Uuid::new_v4().to_string();
-        let queued = VecDeque::from([PendingMessage {
-            id: message_id.clone(),
-            session_id: "session-1".to_string(),
-            content: "stopped mid-promotion".to_string(),
-            agent_mode: AgentMode::Auto.as_str().to_string(),
-            model_label: None,
-            model_id: None,
-            reasoning_effort: None,
-            fast_mode: false,
-            attachments: Vec::new(),
-            agent_references: Vec::new(),
-            origin: None,
-            recovery_status: None,
-            queued_at: now_iso(),
-        }]);
+        let queued = VecDeque::from([pending_message(
+            &message_id,
+            "session-1",
+            "stopped mid-promotion",
+        )]);
         {
             let mut connection = service.database.connection();
             replace_session_queue(&mut connection, "session-1", &queued).expect("persist queue");
@@ -4872,24 +4636,9 @@ mod tests {
     fn multitask_claim_blocks_the_turn_end_drain_until_it_is_resolved() {
         let database = database_with_running_session();
         let service = ProviderSessionService::new(database);
-        let pending = |id: &str, content: &str| PendingMessage {
-            id: id.to_string(),
-            session_id: "session-1".to_string(),
-            content: content.to_string(),
-            agent_mode: AgentMode::Auto.as_str().to_string(),
-            model_label: None,
-            model_id: None,
-            reasoning_effort: None,
-            fast_mode: false,
-            attachments: Vec::new(),
-            agent_references: Vec::new(),
-            origin: None,
-            recovery_status: None,
-            queued_at: now_iso(),
-        };
         let queue = VecDeque::from([
-            pending("pending-1", "run alongside"),
-            pending("pending-2", "send after the turn"),
+            pending_message("pending-1", "session-1", "run alongside"),
+            pending_message("pending-2", "session-1", "send after the turn"),
         ]);
         {
             let mut connection = service.database.connection();
@@ -4927,7 +4676,7 @@ mod tests {
         service
             .finish_queued_message_multitask("session-1", &claimed.id)
             .expect("finish multitask");
-        let (_, drained) = service
+        let drained = service
             .pop_next_undelivered("session-1")
             .expect("drain after promotion")
             .expect("second follow-up remains runnable");

@@ -150,7 +150,7 @@ pub fn build_summary(
             .entry(bucket.provider)
             .or_default();
         point.0 += bucket.cost_usd;
-        point.1 += processed(&bucket.tokens);
+        point.1 += bucket.tokens.processed();
         let model = by_model
             .entry((bucket.provider, bucket.model_id.as_str()))
             .or_default();
@@ -362,10 +362,6 @@ fn add_tokens(a: UsageRecordTokens, b: UsageRecordTokens) -> UsageRecordTokens {
         output: a.output + b.output,
         reasoning: a.reasoning + b.reasoning,
     }
-}
-
-fn processed(tokens: &UsageRecordTokens) -> i64 {
-    tokens.input_uncached + tokens.cache_read + tokens.cache_write() + tokens.output
 }
 
 fn totals_of(tokens: UsageRecordTokens) -> UsageTokenTotals {

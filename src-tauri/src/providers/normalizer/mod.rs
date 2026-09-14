@@ -51,7 +51,7 @@ use self::{
         normalize_tool_call as normalize_cursor_tool_call,
     },
     opencode::{
-        extract_session_id as extract_opencode_session_id, extract_usage as extract_opencode_usage,
+        extract_usage as extract_opencode_usage,
         native_agent_lifecycle_events as normalize_opencode_native_agent_lifecycle_events,
         normalize_event as normalize_opencode_event,
     },
@@ -94,12 +94,6 @@ impl ProviderOutputStream {
             Self::Pty => "pty",
             Self::System => "system",
         }
-    }
-}
-
-impl From<&ProviderOutputStream> for String {
-    fn from(value: &ProviderOutputStream) -> Self {
-        value.as_str().to_string()
     }
 }
 
@@ -255,19 +249,15 @@ pub struct NormalizerSessionContext {
 }
 
 impl NormalizerSessionContext {
-    pub fn with_cursor_model(model_id: impl Into<String>) -> Self {
-        Self {
-            cursor_current_model: Some(model_id.into()),
-            ..Self::default()
-        }
-    }
-
     /// Seed per-provider stream state from the session's launched model.
     /// Cursor usage events have no model id of their own, so leaving this
     /// defaulted prices every Cursor turn as `cursor-unknown`.
     pub fn for_provider(provider: ProviderId, model_id: impl Into<String>) -> Self {
         match provider {
-            ProviderId::Cursor => Self::with_cursor_model(model_id),
+            ProviderId::Cursor => Self {
+                cursor_current_model: Some(model_id.into()),
+                ..Self::default()
+            },
             ProviderId::Opencode => Self {
                 opencode_current_model: Some(model_id.into()),
                 ..Self::default()
@@ -379,22 +369,14 @@ impl EventNormalizer for Dispatcher {
         let completed = std::mem::replace(buffer, trailing);
 
         let context = self.context_mut(&event.session_id);
-        let mut result = NormalizedProviderResult::default();
-        for raw_line in completed.lines() {
-            let line = raw_line.trim();
-            if line.is_empty() {
-                continue;
-            }
-            let out = normalize_line(provider, &event, line, context);
-            result.events.extend(out.events);
-            result.usages.extend(out.usages);
-            result.approvals.extend(out.approvals);
-            result.permission_blocked |= out.permission_blocked;
-            if out.provider_conversation_id.is_some() {
-                result.provider_conversation_id = out.provider_conversation_id;
-            }
-        }
-        result
+        normalize_provider_event(
+            provider,
+            &ProviderOutputEvent {
+                message: completed,
+                ..event
+            },
+            context,
+        )
     }
 }
 
@@ -421,6 +403,22 @@ pub fn normalize_provider_event(
     result
 }
 
+/// The shape almost every normalized line takes: some events, whatever usage
+/// the payload reported, and a conversation id when this is the line carrying
+/// one. Only a permission gate needs more than this.
+fn normalized(
+    events: Vec<PersistTimelineEventInput>,
+    usages: Vec<NormalizedUsage>,
+    provider_conversation_id: Option<String>,
+) -> NormalizedProviderResult {
+    NormalizedProviderResult {
+        events,
+        usages,
+        provider_conversation_id,
+        ..NormalizedProviderResult::default()
+    }
+}
+
 fn normalize_line(
     provider: ProviderId,
     event: &ProviderOutputEvent,
@@ -428,8 +426,8 @@ fn normalize_line(
     context: &mut NormalizerSessionContext,
 ) -> NormalizedProviderResult {
     if line.len() > JSON_PARSE_LINE_CAP {
-        return NormalizedProviderResult {
-            events: vec![timeline_event(
+        return normalized(
+            vec![timeline_event(
                 event,
                 "error",
                 format!(
@@ -443,10 +441,9 @@ fn normalize_line(
                     "droppedBytes": line.len(),
                 }),
             )],
-            usages: Vec::new(),
-            provider_conversation_id: None,
-            ..NormalizedProviderResult::default()
-        };
+            Vec::new(),
+            None,
+        );
     }
 
     match serde_json::from_str::<Value>(line) {
@@ -530,8 +527,10 @@ fn normalize_json_payload(
         {
             string_value(payload.get("session_id")).map(str::to_string)
         }
+        // `sessionID` is OpenCode's resume id (`run -s <id>`), and every
+        // envelope carries it, so the first one seeds the conversation.
         ProviderId::Opencode if !context.opencode_conversation_id_emitted => {
-            let session_id = extract_opencode_session_id(&payload);
+            let session_id = string_value(payload.get("sessionID")).map(str::to_string);
             context.opencode_conversation_id_emitted = session_id.is_some();
             session_id
         }
@@ -547,21 +546,11 @@ fn normalize_json_payload(
             provider_type.as_deref(),
             &mut context.opencode_started_agent_runs,
         ));
-        return NormalizedProviderResult {
-            events,
-            usages,
-            provider_conversation_id,
-            ..NormalizedProviderResult::default()
-        };
+        return normalized(events, usages, provider_conversation_id);
     }
 
     if is_lifecycle_event(provider_type.as_deref(), item_type.as_deref()) {
-        return NormalizedProviderResult {
-            events: Vec::new(),
-            usages,
-            provider_conversation_id,
-            ..NormalizedProviderResult::default()
-        };
+        return normalized(Vec::new(), usages, provider_conversation_id);
     }
 
     if provider == ProviderId::Cursor
@@ -573,32 +562,20 @@ fn normalize_json_payload(
         if let Some(thinking_event) =
             normalize_cursor_thinking_delta(event, &payload, provider_type.as_deref())
         {
-            return NormalizedProviderResult {
-                events: vec![thinking_event],
-                usages,
-                provider_conversation_id,
-                ..NormalizedProviderResult::default()
-            };
+            return normalized(vec![thinking_event], usages, provider_conversation_id);
         }
         if provider_type.as_deref() == Some("result")
             && string_value(payload.get("subtype")) == Some("success")
         {
-            return NormalizedProviderResult {
-                events: normalize_cursor_result_success(event, context),
+            return normalized(
+                normalize_cursor_result_success(event, context),
                 usages,
                 provider_conversation_id,
-                ..NormalizedProviderResult::default()
-            };
+            );
         }
-        return NormalizedProviderResult {
-            events: Vec::new(),
-            usages,
-            provider_conversation_id,
-            ..NormalizedProviderResult::default()
-        };
+        return normalized(Vec::new(), usages, provider_conversation_id);
     }
 
-    let mut events = Vec::new();
     if let Some(gate) = detect_permission_gate(provider, &payload) {
         let mut gate_payload = json!({
             "command": gate.command.clone(),
@@ -625,18 +602,17 @@ fn normalize_json_payload(
         // Respondable requests are consumed by the live transport and registered
         // with ApprovalService. A stdout/trace observation has no response channel,
         // even when this provider supports approvals on its native transport.
-        events.push(timeline_event(
-            event,
-            "permission.blocked",
-            gate.command,
-            gate_payload,
-        ));
         return NormalizedProviderResult {
-            events,
+            events: vec![timeline_event(
+                event,
+                "permission.blocked",
+                gate.command,
+                gate_payload,
+            )],
             usages,
-            approvals: Vec::new(),
             permission_blocked: true,
             provider_conversation_id,
+            ..NormalizedProviderResult::default()
         };
     }
 
@@ -644,12 +620,7 @@ fn normalize_json_payload(
         if let Some(marker) =
             normalize_codex_compaction_item(event, provider_type.as_deref(), item_type.as_deref())
         {
-            return NormalizedProviderResult {
-                events: vec![marker],
-                usages,
-                provider_conversation_id,
-                ..NormalizedProviderResult::default()
-            };
+            return normalized(vec![marker], usages, provider_conversation_id);
         }
         if let Some(reasoning_event) = normalize_codex_reasoning_item(
             event,
@@ -658,22 +629,12 @@ fn normalize_json_payload(
             item,
             item_type.as_deref(),
         ) {
-            return NormalizedProviderResult {
-                events: vec![reasoning_event],
-                usages,
-                provider_conversation_id,
-                ..NormalizedProviderResult::default()
-            };
+            return normalized(vec![reasoning_event], usages, provider_conversation_id);
         }
         if let Some(todo) =
             normalize_codex_todo_item(event, provider_type.as_deref(), item, item_type.as_deref())
         {
-            return NormalizedProviderResult {
-                events: vec![todo],
-                usages,
-                provider_conversation_id,
-                ..NormalizedProviderResult::default()
-            };
+            return normalized(vec![todo], usages, provider_conversation_id);
         }
         if let Some(tool_event) = normalize_codex_tool_item(
             event,
@@ -682,42 +643,27 @@ fn normalize_json_payload(
             item,
             item_type.as_deref(),
         ) {
-            let mut normalized_events = vec![tool_event];
-            normalized_events.extend(normalize_codex_native_agent_lifecycle_events(
+            let mut codex_events = vec![tool_event];
+            codex_events.extend(normalize_codex_native_agent_lifecycle_events(
                 event,
                 provider_type.as_deref(),
                 item,
                 item_type.as_deref(),
                 context,
             ));
-            return NormalizedProviderResult {
-                events: normalized_events,
-                usages,
-                provider_conversation_id,
-                ..NormalizedProviderResult::default()
-            };
+            return normalized(codex_events, usages, provider_conversation_id);
         }
         if let Some(error_event) =
             normalize_codex_error_item(event, provider_type.as_deref(), item, item_type.as_deref())
         {
-            return NormalizedProviderResult {
-                events: vec![error_event],
-                usages,
-                provider_conversation_id,
-                ..NormalizedProviderResult::default()
-            };
+            return normalized(vec![error_event], usages, provider_conversation_id);
         }
         if matches!(
             provider_type.as_deref(),
             Some("item.started" | "item.completed")
         ) && item_type.as_deref() != Some("agent_message")
         {
-            return NormalizedProviderResult {
-                events,
-                usages,
-                provider_conversation_id,
-                ..NormalizedProviderResult::default()
-            };
+            return normalized(Vec::new(), usages, provider_conversation_id);
         }
     }
 
@@ -725,23 +671,18 @@ fn normalize_json_payload(
         if let Some(tool_event) =
             normalize_cursor_tool_call(event, &payload, provider_type.as_deref())
         {
-            let mut events = vec![tool_event];
-            events.extend(normalize_cursor_todo_call(
+            let mut cursor_events = vec![tool_event];
+            cursor_events.extend(normalize_cursor_todo_call(
                 event,
                 &payload,
                 provider_type.as_deref(),
             ));
-            events.extend(normalize_cursor_native_agent_lifecycle_events(
+            cursor_events.extend(normalize_cursor_native_agent_lifecycle_events(
                 event,
                 &payload,
                 provider_type.as_deref(),
             ));
-            return NormalizedProviderResult {
-                events,
-                usages,
-                provider_conversation_id,
-                ..NormalizedProviderResult::default()
-            };
+            return normalized(cursor_events, usages, provider_conversation_id);
         }
     }
 
@@ -751,8 +692,8 @@ fn normalize_json_payload(
                 // `source` names where the row came from for the renderer;
                 // an imported prompt was never typed into the composer.
                 TranscriptUserRow::Prompt(text) => {
-                    return NormalizedProviderResult {
-                        events: vec![timeline_event(
+                    return normalized(
+                        vec![timeline_event(
                             event,
                             "user.message",
                             text,
@@ -760,16 +701,10 @@ fn normalize_json_payload(
                         )],
                         usages,
                         provider_conversation_id,
-                        ..NormalizedProviderResult::default()
-                    };
+                    );
                 }
                 TranscriptUserRow::Hidden => {
-                    return NormalizedProviderResult {
-                        events: Vec::new(),
-                        usages,
-                        provider_conversation_id,
-                        ..NormalizedProviderResult::default()
-                    };
+                    return normalized(Vec::new(), usages, provider_conversation_id);
                 }
                 // The same row the live stream sends; the shared path below
                 // turns it into a `command.completed`.
@@ -778,12 +713,7 @@ fn normalize_json_payload(
         }
         if provider == ProviderId::Grok && provider_type.as_deref() == Some("content_block_start") {
             if let Some(tool_events) = claude_streamed_tool_use_block(event, &payload, context) {
-                return NormalizedProviderResult {
-                    events: tool_events,
-                    usages,
-                    provider_conversation_id,
-                    ..NormalizedProviderResult::default()
-                };
+                return normalized(tool_events, usages, provider_conversation_id);
             }
         }
         if provider == ProviderId::Claude {
@@ -792,29 +722,14 @@ fn normalize_json_payload(
                 &payload,
                 &mut context.claude_non_agent_task_ids,
             ) {
-                return NormalizedProviderResult {
-                    events: vec![agent_event],
-                    usages,
-                    provider_conversation_id,
-                    ..NormalizedProviderResult::default()
-                };
+                return normalized(vec![agent_event], usages, provider_conversation_id);
             }
         }
         if let Some(marker) = claude_compaction_marker(event, &payload) {
-            return NormalizedProviderResult {
-                events: vec![marker],
-                usages,
-                provider_conversation_id,
-                ..NormalizedProviderResult::default()
-            };
+            return normalized(vec![marker], usages, provider_conversation_id);
         }
         if is_claude_hidden_synthetic_body(&payload) {
-            return NormalizedProviderResult {
-                events: Vec::new(),
-                usages,
-                provider_conversation_id,
-                ..NormalizedProviderResult::default()
-            };
+            return normalized(Vec::new(), usages, provider_conversation_id);
         }
         if provider_type.as_deref() == Some("assistant") {
             if let Some(content_events) = extract_claude_content_blocks(event, &payload, context) {
@@ -824,12 +739,7 @@ fn normalize_json_payload(
                 {
                     context.claude_turn_answer_emitted = true;
                 }
-                return NormalizedProviderResult {
-                    events: content_events,
-                    usages,
-                    provider_conversation_id,
-                    ..NormalizedProviderResult::default()
-                };
+                return normalized(content_events, usages, provider_conversation_id);
             }
         }
         if provider_type.as_deref() == Some("user") {
@@ -841,12 +751,7 @@ fn normalize_json_payload(
                     .filter(|e| matches!(e.r#type.as_str(), "command.completed" | "todo.updated"))
                     .collect();
                 if !tool_results.is_empty() {
-                    return NormalizedProviderResult {
-                        events: tool_results,
-                        usages,
-                        provider_conversation_id,
-                        ..NormalizedProviderResult::default()
-                    };
+                    return normalized(tool_results, usages, provider_conversation_id);
                 }
             }
         }
@@ -854,21 +759,11 @@ fn normalize_json_payload(
 
     if speaks_claude_stream_json(provider) && provider_type.as_deref() == Some("result") {
         if context.claude_turn_answer_emitted {
-            return NormalizedProviderResult {
-                events: Vec::new(),
-                usages,
-                provider_conversation_id,
-                ..NormalizedProviderResult::default()
-            };
+            return normalized(Vec::new(), usages, provider_conversation_id);
         }
         if let Some(completed) = synthesize_claude_message_completed_from_result(event, &payload) {
             context.claude_turn_answer_emitted = true;
-            return NormalizedProviderResult {
-                events: vec![completed],
-                usages,
-                provider_conversation_id,
-                ..NormalizedProviderResult::default()
-            };
+            return normalized(vec![completed], usages, provider_conversation_id);
         }
     }
 
@@ -885,29 +780,10 @@ fn normalize_json_payload(
         &payload,
     );
 
-    if is_message_event(mapped_type) && text.is_none() {
-        return NormalizedProviderResult {
-            events,
-            usages,
-            provider_conversation_id,
-            ..NormalizedProviderResult::default()
-        };
-    }
-    if mapped_type.is_none() && text.is_none() {
-        return NormalizedProviderResult {
-            events,
-            usages,
-            provider_conversation_id,
-            ..NormalizedProviderResult::default()
-        };
-    }
-    if speaks_claude_stream_json(provider) && is_claude_hidden_synthetic_body(&payload) {
-        return NormalizedProviderResult {
-            events,
-            usages,
-            provider_conversation_id,
-            ..NormalizedProviderResult::default()
-        };
+    // Nothing to render: a message event that carries no text, or a line we can
+    // neither map to a timeline type nor read any text out of.
+    if text.is_none() && (is_message_event(mapped_type) || mapped_type.is_none()) {
+        return normalized(Vec::new(), usages, provider_conversation_id);
     }
 
     // Compute before `payload` is moved into `final_payload` below.
@@ -967,19 +843,16 @@ fn normalize_json_payload(
             }
         }
     }
-    events.push(timeline_event(
-        event,
-        timeline_type,
-        text.unwrap_or_else(|| provider_type.unwrap_or_else(|| "Provider event".to_string())),
-        final_payload,
-    ));
-
-    NormalizedProviderResult {
-        events,
+    normalized(
+        vec![timeline_event(
+            event,
+            timeline_type,
+            text.unwrap_or_else(|| provider_type.unwrap_or_else(|| "Provider event".to_string())),
+            final_payload,
+        )],
         usages,
         provider_conversation_id,
-        ..NormalizedProviderResult::default()
-    }
+    )
 }
 
 fn normalize_raw_line(
@@ -1024,17 +897,16 @@ fn normalize_raw_line(
 }
 
 fn raw_tracing_error(event: &ProviderOutputEvent, cleaned: String) -> NormalizedProviderResult {
-    NormalizedProviderResult {
-        events: vec![timeline_event(
+    normalized(
+        vec![timeline_event(
             event,
             "error",
             cleaned,
             json!({ "stream": event.stream.as_str() }),
         )],
-        usages: Vec::new(),
-        provider_conversation_id: None,
-        ..NormalizedProviderResult::default()
-    }
+        Vec::new(),
+        None,
+    )
 }
 
 /// `is_protocol_json` marks a line that parsed as JSON but not as an object —
@@ -1062,12 +934,11 @@ fn raw_line_event(
     } else {
         json!({ "stream": event.stream.as_str() })
     };
-    NormalizedProviderResult {
-        events: vec![timeline_event(event, event_type, cleaned, payload)],
-        usages: Vec::new(),
-        provider_conversation_id: None,
-        ..NormalizedProviderResult::default()
-    }
+    normalized(
+        vec![timeline_event(event, event_type, cleaned, payload)],
+        Vec::new(),
+        None,
+    )
 }
 
 fn map_provider_type(

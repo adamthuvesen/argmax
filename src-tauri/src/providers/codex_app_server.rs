@@ -1248,8 +1248,6 @@ fn emit(
     });
 }
 
-/// Native child threads share the app-server transport, but not the parent's
-/// transcript or token counters. Keep them alive until their work settles.
 /// How often a turn that has answered but is still holding for its children
 /// looks again. Nothing on the connection reports an unannounced child
 /// finishing, so the answer comes from the rollouts on disk.

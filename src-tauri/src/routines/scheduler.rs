@@ -348,7 +348,7 @@ async fn send_routine_follow_up(
     };
     let input = match Prompt::try_from(fields.prompt.clone()) {
         Ok(input) => input,
-        Err(error) => return FollowUpOutcome::Failed(invalid_input_message(error)),
+        Err(error) => return FollowUpOutcome::Failed(error.message),
     };
     let model_label = match NonEmptyString::try_from(fields.model_label.clone()) {
         Ok(model_label) => model_label,
@@ -389,10 +389,6 @@ async fn send_routine_follow_up(
         }
         Err(error) => FollowUpOutcome::Failed(error.to_string()),
     }
-}
-
-fn invalid_input_message(error: crate::error::InvalidInputIssue) -> String {
-    error.message
 }
 
 /// Books a firing that landed. A one-shot the user wrote is disabled and kept,
@@ -482,22 +478,11 @@ impl StaysScheduled {
     }
 }
 
-fn parse_provider(value: &str) -> Option<ProviderId> {
-    match value {
-        "claude" => Some(ProviderId::Claude),
-        "codex" => Some(ProviderId::Codex),
-        "cursor" => Some(ProviderId::Cursor),
-        "opencode" => Some(ProviderId::Opencode),
-        "grok" => Some(ProviderId::Grok),
-        _ => None,
-    }
-}
-
 fn resolve_routine_permissions(
     provider: &str,
     default_agent: &crate::default_agent::DefaultAgent,
 ) -> Option<(ProviderId, crate::providers::PermissionMode)> {
-    let provider = parse_provider(provider)?;
+    let provider = crate::providers::runtime::parse_provider(provider).ok()?;
     Some((provider, default_agent.permission_mode_for(provider)))
 }
 
@@ -607,13 +592,6 @@ mod tests {
             theirs.last_run_at.as_deref(),
             Some("2026-01-01T09:00:00.000Z")
         );
-    }
-
-    #[test]
-    fn provider_wire_strings_round_trip() {
-        assert_eq!(parse_provider("claude"), Some(ProviderId::Claude));
-        assert_eq!(parse_provider("opencode"), Some(ProviderId::Opencode));
-        assert_eq!(parse_provider("gemini"), None);
     }
 
     #[test]

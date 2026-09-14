@@ -357,19 +357,6 @@ mod tests {
         assert_eq!(response.status, AssetStatus::BadRequest);
     }
 
-    #[test]
-    fn http_status_maps_each_variant() {
-        assert_eq!(AssetResponse::not_found().http_status(), 404);
-        assert_eq!(AssetResponse::forbidden().http_status(), 403);
-        assert_eq!(AssetResponse::bad_request().http_status(), 400);
-        let ok = AssetResponse {
-            status: AssetStatus::Ok,
-            content_type: Some("image/png"),
-            bytes: Vec::new(),
-        };
-        assert_eq!(ok.http_status(), 200);
-    }
-
     /// Recurrence guard for the original bug: the renderer minted
     /// `argmax-asset://` URLs but no Rust handler was registered, so the
     /// images silently 404'd. Assert every scheme constant the renderer

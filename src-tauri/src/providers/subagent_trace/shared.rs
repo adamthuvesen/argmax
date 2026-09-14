@@ -84,6 +84,39 @@ pub(super) fn read_trace_lines(path: &Path) -> Vec<TraceLine> {
         .collect()
 }
 
+/// What a child thread ran on, read from its own transcript. A subagent picks
+/// its own model and effort, and nothing in the parent's stdout reports them,
+/// so the imported rows carry them instead.
+#[derive(Debug, Default)]
+pub(super) struct TraceRunModel {
+    model_id: Option<String>,
+    reasoning_effort: Option<String>,
+}
+
+impl TraceRunModel {
+    pub(super) fn absorb(&mut self, model_id: Option<&str>, reasoning_effort: Option<&str>) {
+        for (slot, value) in [
+            (&mut self.model_id, model_id),
+            (&mut self.reasoning_effort, reasoning_effort),
+        ] {
+            if let Some(value) = value.filter(|value| !value.is_empty()) {
+                *slot = Some(value.to_string());
+            }
+        }
+    }
+
+    pub(super) fn stamp(&self, payload: &mut Map<String, Value>) {
+        for (key, value) in [
+            ("agentModelId", &self.model_id),
+            ("agentReasoningEffort", &self.reasoning_effort),
+        ] {
+            if let Some(value) = value {
+                payload.insert(key.to_string(), Value::String(value.clone()));
+            }
+        }
+    }
+}
+
 pub(super) fn stamp_trace_payload(
     payload: &mut Map<String, Value>,
     context: &AgentTraceContext,

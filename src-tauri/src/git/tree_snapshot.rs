@@ -47,23 +47,13 @@ pub async fn snapshot_worktree(
     base_tree: Option<&str>,
     paths: &[String],
 ) -> ArgmaxResult<String> {
-    let scratch = tempdir().map_err(|error| {
-        ArgmaxError::service(
-            "GIT_TEMP_INDEX_FAILED",
-            format!("could not create temp git index: {error}"),
-        )
-    })?;
+    let scratch = scratch_index_dir()?;
     let index = scratch.path().join("index");
-    let options = || {
-        let mut options = GitExecOptions::default().with_env("GIT_INDEX_FILE", index.as_os_str());
-        options.timeout = SNAPSHOT_TIMEOUT;
-        options
-    };
 
     let seed = base_tree.unwrap_or("HEAD");
     // An unborn HEAD (a repo with no commits) has no tree to read; an empty
     // index plus a full `add` says the same thing there.
-    let seeded = run_git_text_with_options(repo_path, ["read-tree", seed], options())
+    let seeded = run_git_text_with_options(repo_path, ["read-tree", seed], scratch_options(&index))
         .await
         .is_ok();
     if !seeded {
@@ -73,7 +63,8 @@ pub async fn snapshot_worktree(
                 format!("could not read tree {seed}"),
             ));
         }
-        run_git_text_with_options(repo_path, ["read-tree", "--empty"], options()).await?;
+        run_git_text_with_options(repo_path, ["read-tree", "--empty"], scratch_options(&index))
+            .await?;
     }
 
     let mut add = vec![
@@ -84,25 +75,17 @@ pub async fn snapshot_worktree(
     if !seeded {
         // Unborn HEAD: there is no seed to carry paths over from, so the whole
         // worktree has to be staged for the mark to mean anything.
-        run_git_text_with_options(repo_path, add, options()).await?;
+        run_git_text_with_options(repo_path, add, scratch_options(&index)).await?;
     } else if !paths.is_empty() {
         add.push("--".to_string());
         add.extend(paths.iter().cloned());
-        run_git_text_with_options(repo_path, add, options()).await?;
+        run_git_text_with_options(repo_path, add, scratch_options(&index)).await?;
     }
     // An empty pathspec over a seeded index needs no scan at all: the index
     // already mirrors the seed tree, which keeps a no-op mark cheap on a big
     // repo.
 
-    let tree = run_git_text_with_options(repo_path, ["write-tree"], options()).await?;
-    let tree = tree.trim().to_string();
-    if tree.is_empty() {
-        return Err(ArgmaxError::service(
-            "GIT_SNAPSHOT_EMPTY_TREE",
-            "git write-tree returned no object id",
-        ));
-    }
-    Ok(tree)
+    tree_from_index(repo_path, scratch_options(&index)).await
 }
 
 /// Snapshot the complete visible worktree without adding ignored files.
@@ -112,29 +95,20 @@ pub async fn snapshot_worktree(
 /// a later rewind. The returned tree is self-contained and can be pinned by a
 /// ref without touching the user's real index.
 pub async fn snapshot_visible_worktree(repo_path: &Path) -> ArgmaxResult<String> {
-    let scratch = tempdir().map_err(|error| {
-        ArgmaxError::service(
-            "GIT_TEMP_INDEX_FAILED",
-            format!("could not create temp git index: {error}"),
-        )
-    })?;
+    let scratch = scratch_index_dir()?;
     let index = scratch.path().join("index");
-    let options = || {
-        let mut options = GitExecOptions::default().with_env("GIT_INDEX_FILE", index.as_os_str());
-        options.timeout = SNAPSHOT_TIMEOUT;
-        options
-    };
 
-    if run_git_text_with_options(repo_path, ["read-tree", "HEAD"], options())
+    if run_git_text_with_options(repo_path, ["read-tree", "HEAD"], scratch_options(&index))
         .await
         .is_err()
     {
-        run_git_text_with_options(repo_path, ["read-tree", "--empty"], options()).await?;
+        run_git_text_with_options(repo_path, ["read-tree", "--empty"], scratch_options(&index))
+            .await?;
     }
     // `--all` captures tracked deletions and eligible untracked files.  Do not
     // pass `--force`: ignored files belong to the caller, not the checkpoint.
-    run_git_text_with_options(repo_path, ["add", "--all"], options()).await?;
-    tree_from_index(repo_path, options()).await
+    run_git_text_with_options(repo_path, ["add", "--all"], scratch_options(&index)).await?;
+    tree_from_index(repo_path, scratch_options(&index)).await
 }
 
 /// Return the tree represented by the user's current index without changing
@@ -157,27 +131,21 @@ pub async fn index_tree(repo_path: &Path) -> ArgmaxResult<String> {
 
     let mut last_retry = None;
     for _ in 0..INDEX_CAPTURE_ATTEMPTS {
-        let scratch = tempdir().map_err(|error| {
-            ArgmaxError::service(
-                "GIT_TEMP_INDEX_FAILED",
-                format!("could not create temp git index: {error}"),
-            )
-        })?;
+        let scratch = scratch_index_dir()?;
         let scratch_index = scratch.path().join("index");
-        let options = || {
-            let mut options =
-                GitExecOptions::default().with_env("GIT_INDEX_FILE", scratch_index.as_os_str());
-            options.timeout = SNAPSHOT_TIMEOUT;
-            options
-        };
 
         match async_fs::copy(&real_index, &scratch_index).await {
             Ok(_) => {}
             Err(error) if error.kind() == ErrorKind::NotFound => {
-                run_git_text_with_options(repo_path, ["read-tree", "--empty"], options()).await?;
-                return tree_from_index(repo_path, options()).await;
+                run_git_text_with_options(
+                    repo_path,
+                    ["read-tree", "--empty"],
+                    scratch_options(&scratch_index),
+                )
+                .await?;
+                return tree_from_index(repo_path, scratch_options(&scratch_index)).await;
             }
-            Err(error) => return Err(index_copy_error(&real_index, error)),
+            Err(error) => return Err(index_io_error("copy", &real_index, error)),
         }
 
         match finish_index_capture(repo_path, &real_index, scratch.path(), &scratch_index).await? {
@@ -201,19 +169,12 @@ async fn finish_index_capture(
     scratch_dir: &Path,
     scratch_index: &Path,
 ) -> ArgmaxResult<IndexCaptureAttempt> {
-    let options = || {
-        let mut options =
-            GitExecOptions::default().with_env("GIT_INDEX_FILE", scratch_index.as_os_str());
-        options.timeout = SNAPSHOT_TIMEOUT;
-        options
-    };
-
     // Resolve the companion through the copied index. Querying the live index
     // here can pair an old main index with a newly rotated shared index.
     let resolved_shared_index = match run_git_text_with_options(
         repo_path,
         ["rev-parse", "--path-format=absolute", "--shared-index-path"],
-        options(),
+        scratch_options(scratch_index),
     )
     .await
     {
@@ -239,16 +200,17 @@ async fn finish_index_capture(
         })?;
         if let Err(error) = async_fs::copy(&shared_index, scratch_dir.join(file_name)).await {
             if error.kind() == ErrorKind::NotFound {
-                return Ok(IndexCaptureAttempt::Retry(index_copy_error(
+                return Ok(IndexCaptureAttempt::Retry(index_io_error(
+                    "copy",
                     &shared_index,
                     error,
                 )));
             }
-            return Err(index_copy_error(&shared_index, error));
+            return Err(index_io_error("copy", &shared_index, error));
         }
     }
 
-    tree_from_index(repo_path, options())
+    tree_from_index(repo_path, scratch_options(scratch_index))
         .await
         .map(IndexCaptureAttempt::Complete)
 }
@@ -256,25 +218,18 @@ async fn finish_index_capture(
 async fn index_file_changed(real_index: &Path, scratch_index: &Path) -> ArgmaxResult<bool> {
     let copied = async_fs::read(scratch_index)
         .await
-        .map_err(|error| index_read_error(scratch_index, error))?;
+        .map_err(|error| index_io_error("read", scratch_index, error))?;
     match async_fs::read(real_index).await {
         Ok(current) => Ok(current != copied),
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(true),
-        Err(error) => Err(index_read_error(real_index, error)),
+        Err(error) => Err(index_io_error("read", real_index, error)),
     }
 }
 
-fn index_copy_error(source: &Path, error: std::io::Error) -> ArgmaxError {
+fn index_io_error(verb: &str, source: &Path, error: std::io::Error) -> ArgmaxError {
     ArgmaxError::service(
         "GIT_TEMP_INDEX_FAILED",
-        format!("could not copy git index {}: {error}", source.display()),
-    )
-}
-
-fn index_read_error(source: &Path, error: std::io::Error) -> ArgmaxError {
-    ArgmaxError::service(
-        "GIT_TEMP_INDEX_FAILED",
-        format!("could not read git index {}: {error}", source.display()),
+        format!("could not {verb} git index {}: {error}", source.display()),
     )
 }
 
@@ -368,6 +323,24 @@ async fn head_exists(repo_path: &Path) -> bool {
     )
     .await
     .is_ok()
+}
+
+/// A throwaway directory to hold a scratch `GIT_INDEX_FILE`.
+fn scratch_index_dir() -> ArgmaxResult<tempfile::TempDir> {
+    tempdir().map_err(|error| {
+        ArgmaxError::service(
+            "GIT_TEMP_INDEX_FAILED",
+            format!("could not create temp git index: {error}"),
+        )
+    })
+}
+
+/// Snapshot options pointed at a scratch index, so git never touches the
+/// checkout's own.
+fn scratch_options(index: &Path) -> GitExecOptions {
+    let mut options = GitExecOptions::default().with_env("GIT_INDEX_FILE", index.as_os_str());
+    options.timeout = SNAPSHOT_TIMEOUT;
+    options
 }
 
 fn snapshot_options() -> GitExecOptions {

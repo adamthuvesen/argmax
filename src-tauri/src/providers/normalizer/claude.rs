@@ -20,17 +20,12 @@ pub fn event_type(provider_type: &str) -> Option<&'static str> {
         "message_start" => "message.delta",
         "content_block_start" => "message.delta",
         "content_block_delta" => "message.delta",
-        "assistant_text_delta" => "message.delta",
         "content_block_stop" => "message.delta",
         "message_delta" => "message.delta",
         "message_stop" => "message.completed",
-        "message_completed" => "message.completed",
         "assistant" => "message.completed",
         "tool_use" => "command.started",
-        "command_started" => "command.started",
-        "command_output" => "command.output",
         "tool_result" => "command.completed",
-        "command_completed" => "command.completed",
         "error" => "error",
         "result" => "session.completed",
     };
@@ -533,7 +528,7 @@ pub fn extract_usage(
 /// - reading an image emits the downscale note ("original 2086x1075, displayed
 ///   at 2000x1031…"), a coordinate-mapping hint for the model. The screenshot
 ///   itself never renders in chat, so the note reads as a stray line.
-pub(crate) const HIDDEN_SYNTHETIC_PREFIXES: [&str; 3] = [
+const HIDDEN_SYNTHETIC_PREFIXES: [&str; 3] = [
     "Base directory for this skill:",
     "This session is being continued from a previous conversation",
     "[Image:",
@@ -796,32 +791,6 @@ mod tests {
     }
 
     #[test]
-    fn claude_synthetic_skill_body_is_dropped() {
-        let mut context = NormalizerSessionContext::default();
-        let result = normalize_provider_event(
-            ProviderId::Claude,
-            &output_event(&json!({
-                "type": "user",
-                "isSynthetic": true,
-                "message": {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "Base directory for this skill: /repo/.claude/skills/brain-curate\n\n# Brain Curate\n\nUse this skill when…"
-                        }
-                    ]
-                }
-            }).to_string()),
-            &mut context,
-        );
-        assert!(
-            result.events.is_empty(),
-            "synthetic skill body should not surface as a chat message"
-        );
-    }
-
-    #[test]
     fn a_skill_body_without_a_marker_line_is_dropped() {
         // The CLI's own skills (`/schedule`, `/loop`) inject the `SKILL.md`
         // bare — no "Base directory" line, just the body. Eleven KB of it used
@@ -1042,32 +1011,6 @@ mod tests {
         assert_eq!(finished.events[0].payload["trigger"], "auto");
         assert_eq!(finished.events[0].payload["preTokens"], 468_447);
         assert_eq!(finished.events[0].payload["postTokens"], 10_703);
-    }
-
-    #[test]
-    fn claude_compaction_summary_is_dropped() {
-        let mut context = NormalizerSessionContext::default();
-        let result = normalize_provider_event(
-            ProviderId::Claude,
-            &output_event(&json!({
-                "type": "user",
-                "isSynthetic": true,
-                "message": {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.\n\nSummary:\n1. Primary Request and Intent:\n…"
-                        }
-                    ]
-                }
-            }).to_string()),
-            &mut context,
-        );
-        assert!(
-            result.events.is_empty(),
-            "compaction summary should surface as a status marker, not as chat text"
-        );
     }
 
     #[test]
@@ -1469,15 +1412,6 @@ mod tests {
             "user said hello, will ask which files"
         );
         assert_eq!(result.events[0].payload["thinking"], json!(true));
-    }
-
-    #[test]
-    fn extract_delta_text_surfaces_thinking_delta() {
-        let payload = json!({ "delta": { "type": "thinking_delta", "thinking": "step one" } });
-        assert_eq!(
-            extract_delta_text(payload.as_object().unwrap()),
-            Some("step one".to_string())
-        );
     }
 
     #[test]

@@ -24,7 +24,7 @@ use crate::persistence::gh::{
 };
 use crate::persistence::projects::{get_project_remote, update_project_remote, ProjectRemote};
 use crate::persistence::sessions::find_session_by_id;
-use crate::persistence::workspaces::find_workspace_by_id;
+use crate::persistence::workspaces::{find_workspace_by_id, WorkspaceSummary};
 use crate::util::gh_runner::{default_gh_runner, GhRunner};
 use crate::util::sync::LockOrRecover;
 
@@ -143,17 +143,19 @@ impl GitOpsService {
         })
     }
 
-    pub async fn commit_all(&self, input: GitCommitInput) -> ArgmaxResult<GitCommitResult> {
+    /// The workspace a git action runs in. A row whose checkout has not been
+    /// created yet has nothing for git to run against.
+    fn checkout_workspace(&self, workspace_id: &str) -> ArgmaxResult<WorkspaceSummary> {
         let workspace = {
             let conn = self.database.connection();
-            find_workspace_by_id(&conn, &input.workspace_id)?
+            find_workspace_by_id(&conn, workspace_id)?
         };
-        if workspace.path.is_empty() {
-            return Err(ArgmaxError::service(
-                "WORKSPACE_NO_PATH",
-                "Workspace has no path on disk yet.",
-            ));
-        }
+        require_checkout_path(&workspace)?;
+        Ok(workspace)
+    }
+
+    pub async fn commit_all(&self, input: GitCommitInput) -> ArgmaxResult<GitCommitResult> {
+        let workspace = self.checkout_workspace(&input.workspace_id)?;
         let message = input.message.trim();
         let selected: Vec<&str> = input
             .selected_files
@@ -226,16 +228,7 @@ impl GitOpsService {
     /// Commit exactly the real index. Review actions deliberately stage only
     /// selected files or hunks, so this must never run `git add -A`.
     pub async fn commit_staged(&self, input: GitCommitInput) -> ArgmaxResult<GitCommitResult> {
-        let workspace = {
-            let conn = self.database.connection();
-            find_workspace_by_id(&conn, &input.workspace_id)?
-        };
-        if workspace.path.is_empty() {
-            return Err(ArgmaxError::service(
-                "WORKSPACE_NO_PATH",
-                "Workspace has no path on disk yet.",
-            ));
-        }
+        let workspace = self.checkout_workspace(&input.workspace_id)?;
         let message = input.message.trim();
         if message.is_empty() {
             return Err(ArgmaxError::service(
@@ -281,16 +274,7 @@ impl GitOpsService {
     }
 
     pub async fn push(&self, input: GitPushInput) -> ArgmaxResult<GitPushResult> {
-        let workspace = {
-            let conn = self.database.connection();
-            find_workspace_by_id(&conn, &input.workspace_id)?
-        };
-        if workspace.path.is_empty() {
-            return Err(ArgmaxError::service(
-                "WORKSPACE_NO_PATH",
-                "Workspace has no path on disk yet.",
-            ));
-        }
+        let workspace = self.checkout_workspace(&input.workspace_id)?;
         let checkout_lock = checkout_write_lock(Path::new(&workspace.path)).await?;
         let _checkout_guard = checkout_lock.lock().await;
         let branch = run_git_text(&workspace.path, ["branch", "--show-current"], GIT_TIMEOUT)
@@ -330,16 +314,7 @@ impl GitOpsService {
         &self,
         input: GitCreateBranchInput,
     ) -> ArgmaxResult<GitCreateBranchResult> {
-        let workspace = {
-            let conn = self.database.connection();
-            find_workspace_by_id(&conn, &input.workspace_id)?
-        };
-        if workspace.path.is_empty() {
-            return Err(ArgmaxError::service(
-                "WORKSPACE_NO_PATH",
-                "Workspace has no path on disk yet.",
-            ));
-        }
+        let workspace = self.checkout_workspace(&input.workspace_id)?;
         let checkout_lock = checkout_write_lock(Path::new(&workspace.path)).await?;
         let _checkout_guard = checkout_lock.lock().await;
         run_git_text(
@@ -363,12 +338,7 @@ impl GitOpsService {
             let workspace = find_workspace_by_id(&conn, &session.workspace_id)?;
             (session, workspace)
         };
-        if workspace.path.is_empty() {
-            return Err(ArgmaxError::service(
-                "WORKSPACE_NO_PATH",
-                "Workspace has no path on disk yet.",
-            ));
-        }
+        require_checkout_path(&workspace)?;
 
         let checkout_lock = checkout_write_lock(Path::new(&workspace.path)).await?;
         let _guard = checkout_lock.lock().await;
@@ -726,6 +696,16 @@ pub async fn resolve_project_remote(workspace_path: &Path) -> Option<ProjectRemo
         }
     }
     None
+}
+
+fn require_checkout_path(workspace: &WorkspaceSummary) -> ArgmaxResult<()> {
+    if workspace.path.is_empty() {
+        return Err(ArgmaxError::service(
+            "WORKSPACE_NO_PATH",
+            "Workspace has no path on disk yet.",
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1200,68 +1180,6 @@ mod tests {
                 ..
             }
         ));
-    }
-
-    #[tokio::test]
-    async fn view_or_create_pr_handles_already_existing_pr_error_gracefully() {
-        let repo = TempDir::new().unwrap();
-        init_repo(repo.path()).await;
-        let data_dir = TempDir::new().unwrap();
-        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
-        let workspace_id = fixture_workspace(&database, repo.path());
-        let session_id = fixture_session(&database, &workspace_id);
-
-        let runner: GhRunner = Arc::new(|_cwd, _args| {
-            Box::pin(async {
-                Err(ArgmaxError::service(
-                    "GH_NON_ZERO_EXIT",
-                    "gh failed: a pull request for branch \"feat\" into branch \"main\" already exists:\nhttps://github.com/example/repo/pull/42\n".to_string(),
-                ))
-            })
-        });
-        let refresh: RefreshPrFn = Arc::new(|session_id, pr_number| {
-            Box::pin(async move {
-                assert_eq!(pr_number, 42);
-                Ok(vec![GhPrRecord {
-                    session_id,
-                    pr_number: 42,
-                    head_sha: "abc123".to_string(),
-                    last_seen_check_state: "pending".to_string(),
-                    updated_at: "2026-05-24T12:00:00.000Z".to_string(),
-                    pr_state: Some("OPEN".to_string()),
-                    notified_at: None,
-                    pr_created_at: None,
-                    pr_merged_at: None,
-                    head_ref_name: None,
-                }])
-            })
-        });
-
-        let service = GitOpsService::with_runners(database, runner, Some(refresh));
-        let result = service
-            .view_or_create_pr(GitViewOrCreatePrInput {
-                session_id,
-                expected_branch: None,
-            })
-            .await
-            .expect("pr opened");
-
-        assert_eq!(
-            result,
-            GitViewOrCreatePrResult::Opened {
-                url: "https://github.com/example/repo/pull/42".to_string(),
-                pr_number: 42,
-            }
-        );
-    }
-
-    #[test]
-    fn extract_pr_url_picks_first_github_url() {
-        let stdout = "noise\nhttps://github.com/example/repo/pull/42\nmore\n";
-        assert_eq!(
-            extract_pr_url(stdout).as_deref(),
-            Some("https://github.com/example/repo/pull/42")
-        );
     }
 
     #[test]

@@ -496,8 +496,6 @@ impl WorkspaceService {
         &self.database
     }
 
-    // ----- lifecycle -----------------------------------------------------
-
     pub async fn create_isolated(
         self: &Arc<Self>,
         input: WorkspacesCreateIsolatedInput,
@@ -742,40 +740,20 @@ impl WorkspaceService {
         self: &Arc<Self>,
         input: WorkspacesCreateCurrentInput,
     ) -> ArgmaxResult<WorkspaceSummary> {
-        let connection = self.database.connection();
-        let project = require_project(&connection, input.project_id.as_str())?;
-        let workspace = persist_workspace(
-            &connection,
-            &PersistWorkspaceInput {
-                id: Uuid::new_v4().to_string(),
-                project_id: project.id.clone(),
-                task_label: input.task_label.as_str().to_string(),
-                branch: project.current_branch.clone(),
-                // Review compares against this, not HEAD. Using the current
-                // branch made All on branch and Committed empty on a clean
-                // shared checkout.
-                base_ref: project
-                    .default_branch
-                    .clone()
-                    .unwrap_or_else(|| project.current_branch.clone()),
-                path: project.repo_path.clone(),
-                state: "created".to_string(),
-                shared_workspace: true,
-                kind: "git".to_string(),
-                dirty: false,
-                changed_files: 0,
-            },
-        )?;
-        self.publish(DashboardDelta {
-            projects: list_projects(&connection)?,
-            workspaces: vec![workspace.clone()],
-            ..DashboardDelta::default()
-        });
-        drop(connection);
-        if let Err(error) = self.watch(&workspace.id) {
-            tracing::warn!(workspace_id = %workspace.id, ?error, "workspace watcher failed to start");
-        }
-        Ok(workspace)
+        let project = {
+            let connection = self.database.connection();
+            require_project(&connection, input.project_id.as_str())?
+        };
+        self.create_alongside(WorkspacesCreateAlongsideInput {
+            project_id: input.project_id,
+            task_label: input.task_label,
+            path: project.repo_path,
+            branch: project.current_branch.clone(),
+            // Review compares against this, not HEAD. Using the current
+            // branch made All on branch and Committed empty on a clean
+            // shared checkout.
+            base_ref: project.default_branch.unwrap_or(project.current_branch),
+        })
     }
 
     /// A workspace in a checkout that already exists: the one the chat that
@@ -972,7 +950,7 @@ impl WorkspaceService {
         // session rows standing with a truncated transcript.
         let transaction = connection
             .unchecked_transaction()
-            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+            .map_err(crate::persistence::sqlite_error)?;
         let workspace = persist_workspace(
             &transaction,
             &PersistWorkspaceInput {
@@ -1038,7 +1016,7 @@ impl WorkspaceService {
         }
         transaction
             .commit()
-            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+            .map_err(crate::persistence::sqlite_error)?;
         self.publish(DashboardDelta {
             projects: list_projects(&connection)?,
             workspaces: vec![workspace.clone()],
@@ -1063,7 +1041,7 @@ impl WorkspaceService {
                 "SELECT task_label, path FROM workspaces \
                  WHERE shared_workspace = 0 AND state != 'archived'",
             )
-            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+            .map_err(crate::persistence::sqlite_error)?;
         let rows = statement
             .query_map([], |row| {
                 Ok((
@@ -1071,10 +1049,9 @@ impl WorkspaceService {
                     row.get::<_, String>("path")?,
                 ))
             })
-            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+            .map_err(crate::persistence::sqlite_error)?;
         for row in rows {
-            let (task_label, workspace_path) =
-                row.map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+            let (task_label, workspace_path) = row.map_err(crate::persistence::sqlite_error)?;
             if comparable_worktree_path(Path::new(&workspace_path)) == target {
                 return Ok(Some(task_label));
             }
@@ -1227,7 +1204,7 @@ impl WorkspaceService {
             let mut connection = self.database.connection();
             let transaction = connection
                 .transaction()
-                .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+                .map_err(crate::persistence::sqlite_error)?;
             let destination_session = persist_session(
                 &transaction,
                 &PersistSessionInput {
@@ -1327,7 +1304,7 @@ impl WorkspaceService {
                 update_workspace_state(&transaction, &destination_workspace.id, "complete")?;
             transaction
                 .commit()
-                .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+                .map_err(crate::persistence::sqlite_error)?;
             Ok((destination_workspace, destination_session, seam))
         })();
         let (destination_workspace, destination_session, destination_seam) = match copied {
@@ -1643,7 +1620,7 @@ impl WorkspaceService {
             .map_err(|error| ArgmaxError::service("ARCHIVE_RECOVERY_FAILED", error.to_string()))
             .and_then(|result| result);
             if let Err(error) = repaired {
-                self.mark_archive_failed(&workspace_id)?;
+                self.mark_archive_failed(&workspace_id);
                 lease.finish(ArchiveOutcome::Failed);
                 return Err(error);
             }
@@ -1653,9 +1630,7 @@ impl WorkspaceService {
                     Ok(workspace) => workspace,
                     Err(error) => {
                         drop(connection);
-                        if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
-                            tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
-                        }
+                        self.mark_archive_failed(&workspace_id);
                         lease.finish(ArchiveOutcome::Failed);
                         return Err(error);
                     }
@@ -1680,12 +1655,7 @@ impl WorkspaceService {
             )
             .await
         {
-            self.restore_archive_state(&prior)?;
-            lease.finish(if prior.state == "archive-failed" {
-                ArchiveOutcome::Failed
-            } else {
-                ArchiveOutcome::Reopened
-            });
+            self.abandon_archive(&prior, lease)?;
             return Err(ArgmaxError::service(
                 "WORKSPACE_ADMISSION_TIMEOUT",
                 "Timed out waiting for a process admission to finish before archive.",
@@ -1695,12 +1665,7 @@ impl WorkspaceService {
         let workspace = match self.refresh_status(&workspace_id).await {
             Ok(workspace) => workspace,
             Err(error) => {
-                self.restore_archive_state(&prior)?;
-                lease.finish(if prior.state == "archive-failed" {
-                    ArchiveOutcome::Failed
-                } else {
-                    ArchiveOutcome::Reopened
-                });
+                self.abandon_archive(&prior, lease)?;
                 return Err(error);
             }
         };
@@ -1718,12 +1683,7 @@ impl WorkspaceService {
             match require_project(&connection, &workspace.project_id) {
                 Ok(project) => project,
                 Err(error) => {
-                    self.restore_archive_state(&prior)?;
-                    lease.finish(if prior.state == "archive-failed" {
-                        ArchiveOutcome::Failed
-                    } else {
-                        ArchiveOutcome::Reopened
-                    });
+                    self.abandon_archive(&prior, lease)?;
                     return Err(error);
                 }
             }
@@ -1805,9 +1765,7 @@ impl WorkspaceService {
         let (provider_result, check_result, terminal_result) = match quiescence {
             Ok(results) => results,
             Err(_) => {
-                if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
-                    tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
-                }
+                self.mark_archive_failed(&workspace_id);
                 lease.finish(ArchiveOutcome::Failed);
                 return Err(ArgmaxError::service(
                     "WORKSPACE_QUIESCE_TIMEOUT",
@@ -1815,32 +1773,16 @@ impl WorkspaceService {
                 ));
             }
         };
-        if let Err(error) = provider_result {
-            if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
-                tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
+        for result in [provider_result, check_result, terminal_result] {
+            if let Err(error) = result {
+                self.mark_archive_failed(&workspace_id);
+                lease.finish(ArchiveOutcome::Failed);
+                return Err(error);
             }
-            lease.finish(ArchiveOutcome::Failed);
-            return Err(error);
-        }
-        if let Err(error) = check_result {
-            if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
-                tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
-            }
-            lease.finish(ArchiveOutcome::Failed);
-            return Err(error);
-        }
-        if let Err(error) = terminal_result {
-            if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
-                tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
-            }
-            lease.finish(ArchiveOutcome::Failed);
-            return Err(error);
         }
         if let Some(approvals) = self.approvals.as_ref() {
             if let Err(error) = approvals.cancel_workspace_pending(&workspace_id) {
-                if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
-                    tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
-                }
+                self.mark_archive_failed(&workspace_id);
                 lease.finish(ArchiveOutcome::Failed);
                 return Err(error);
             }
@@ -1865,9 +1807,7 @@ impl WorkspaceService {
                 {
                     Ok(output) => output,
                     Err(error) => {
-                        if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
-                            tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
-                        }
+                        self.mark_archive_failed(&workspace_id);
                         lease.finish(ArchiveOutcome::Failed);
                         return Err(ArgmaxError::service(
                             "WORKSPACE_STATUS_FAILED",
@@ -1908,21 +1848,14 @@ impl WorkspaceService {
         let colocated = match self.colocated_workspaces(&workspace_id, &workspace.path) {
             Ok(rows) => rows,
             Err(error) => {
-                if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
-                    tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
-                }
+                self.mark_archive_failed(&workspace_id);
                 lease.finish(ArchiveOutcome::Failed);
                 return Err(error);
             }
         };
         if !force {
             if let Some(busy) = colocated.iter().find(|row| row.has_active_session) {
-                self.restore_archive_state(&prior)?;
-                lease.finish(if prior.state == "archive-failed" {
-                    ArchiveOutcome::Failed
-                } else {
-                    ArchiveOutcome::Reopened
-                });
+                self.abandon_archive(&prior, lease)?;
                 return Err(ArgmaxError::service(
                     "WORKSPACE_COLOCATED_ACTIVE",
                     format!(
@@ -1946,9 +1879,7 @@ impl WorkspaceService {
                 // Moving the tree with this row still open is the stranding
                 // this branch exists to prevent, so the owner's archive fails
                 // instead.
-                if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
-                    tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
-                }
+                self.mark_archive_failed(&workspace_id);
                 lease.finish(ArchiveOutcome::Failed);
                 return Err(error);
             }
@@ -1957,9 +1888,7 @@ impl WorkspaceService {
         let active_path = Path::new(&workspace.path);
         if active_path.exists() {
             if recovery_path.exists() {
-                if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
-                    tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
-                }
+                self.mark_archive_failed(&workspace_id);
                 lease.finish(ArchiveOutcome::Failed);
                 return Err(ArgmaxError::service(
                     "WORKSPACE_RECOVERY_EXISTS",
@@ -1971,9 +1900,7 @@ impl WorkspaceService {
             }
             if let Some(parent) = recovery_path.parent() {
                 if let Err(error) = tokio::fs::create_dir_all(parent).await {
-                    if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
-                        tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
-                    }
+                    self.mark_archive_failed(&workspace_id);
                     lease.finish(ArchiveOutcome::Failed);
                     return Err(ArgmaxError::service(
                         "WORKSPACE_RECOVERY_CREATE_FAILED",
@@ -1994,9 +1921,7 @@ impl WorkspaceService {
             )
             .await
             {
-                if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
-                    tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
-                }
+                self.mark_archive_failed(&workspace_id);
                 lease.finish(ArchiveOutcome::Failed);
                 return Err(invalid_workspace(
                     format!("Could not retain worktree for recovery. {error}"),
@@ -2012,9 +1937,7 @@ impl WorkspaceService {
             let registration =
                 worktree_is_registered(project.repo_path.clone(), active_path.to_path_buf()).await;
             if !matches!(registration, Ok(false)) {
-                if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
-                    tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
-                }
+                self.mark_archive_failed(&workspace_id);
                 lease.finish(ArchiveOutcome::Failed);
                 return Err(registration.err().unwrap_or_else(|| {
                     ArgmaxError::service(
@@ -2031,9 +1954,7 @@ impl WorkspaceService {
                 Ok(workspace) => workspace,
                 Err(error) => {
                     drop(connection);
-                    if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
-                        tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
-                    }
+                    self.mark_archive_failed(&workspace_id);
                     lease.finish(ArchiveOutcome::Failed);
                     return Err(error);
                 }
@@ -2076,7 +1997,7 @@ impl WorkspaceService {
         workspace_id: &str,
         path: &str,
     ) -> ArgmaxResult<Vec<ColocatedWorkspace>> {
-        let sqlite = |error: rusqlite::Error| ArgmaxError::service("SQLITE", error.to_string());
+        let sqlite = crate::persistence::sqlite_error;
         let target = comparable_worktree_path(Path::new(path));
         let connection = self.database.connection();
         let mut statement = connection
@@ -2274,7 +2195,13 @@ impl WorkspaceService {
         }
     }
 
-    fn restore_archive_state(self: &Arc<Self>, prior: &WorkspaceSummary) -> ArgmaxResult<()> {
+    /// Give up on an archive that never touched the tree: put the row back the
+    /// way it was and hand the lifecycle slot back.
+    fn abandon_archive(
+        self: &Arc<Self>,
+        prior: &WorkspaceSummary,
+        lease: WorkspaceArchiveLease,
+    ) -> ArgmaxResult<()> {
         let connection = self.database.connection();
         let restored = update_workspace_state(&connection, &prior.id, &prior.state)?;
         self.publish(DashboardDelta {
@@ -2289,12 +2216,29 @@ impl WorkspaceService {
         } else {
             self.close_watcher(&prior.id);
         }
+        lease.finish(if prior.state == "archive-failed" {
+            ArchiveOutcome::Failed
+        } else {
+            ArchiveOutcome::Reopened
+        });
         Ok(())
     }
 
-    fn mark_archive_failed(self: &Arc<Self>, workspace_id: &str) -> ArgmaxResult<()> {
+    /// Park the row in `archive-failed`. The archive has already failed by the
+    /// time this runs, so a failure to record that is logged, not propagated.
+    fn mark_archive_failed(self: &Arc<Self>, workspace_id: &str) {
         let connection = self.database.connection();
-        let failed = update_workspace_state(&connection, workspace_id, "archive-failed")?;
+        let failed = match update_workspace_state(&connection, workspace_id, "archive-failed") {
+            Ok(failed) => failed,
+            Err(error) => {
+                tracing::error!(
+                    ?error,
+                    workspace_id,
+                    "failed to persist archive-failed state"
+                );
+                return;
+            }
+        };
         self.publish(DashboardDelta {
             workspaces: vec![failed.clone()],
             ..DashboardDelta::default()
@@ -2307,7 +2251,6 @@ impl WorkspaceService {
         } else {
             self.close_watcher(workspace_id);
         }
-        Ok(())
     }
 
     pub async fn refresh_status(
@@ -2720,8 +2663,6 @@ impl WorkspaceService {
         Ok(workspace)
     }
 
-    // ----- watcher control (impls live in `watcher.rs`) ------------------
-
     pub fn watch(self: &Arc<Self>, workspace_id: &str) -> ArgmaxResult<()> {
         super::watcher::watch(self, workspace_id)
     }
@@ -2730,29 +2671,15 @@ impl WorkspaceService {
         super::watcher::close_watcher(self, workspace_id)
     }
 
-    // ----- helpers -------------------------------------------------------
-
     fn latest_session_id_for_workspace(&self, workspace_id: &str) -> ArgmaxResult<Option<String>> {
+        use rusqlite::OptionalExtension;
         let connection = self.database.connection();
-        let mut stmt = connection
-            .prepare(
+        connection
+            .prepare_cached(
                 "SELECT id FROM sessions WHERE workspace_id = ? ORDER BY last_activity_at DESC, id DESC LIMIT 1",
             )
-            .map_err(|e| ArgmaxError::service("SQLITE", e.to_string()))?;
-        let mut rows = stmt
-            .query([workspace_id])
-            .map_err(|e| ArgmaxError::service("SQLITE", e.to_string()))?;
-        if let Some(row) = rows
-            .next()
-            .map_err(|e| ArgmaxError::service("SQLITE", e.to_string()))?
-        {
-            let id: String = row
-                .get(0)
-                .map_err(|e| ArgmaxError::service("SQLITE", e.to_string()))?;
-            Ok(Some(id))
-        } else {
-            Ok(None)
-        }
+            .and_then(|mut statement| statement.query_row([workspace_id], |row| row.get(0)).optional())
+            .map_err(crate::persistence::sqlite_error)
     }
 
     pub(super) fn publish(&self, delta: DashboardDelta) {
@@ -2761,8 +2688,6 @@ impl WorkspaceService {
         }
     }
 }
-
-// ----- free functions ---------------------------------------------------
 
 /// Branch and dirty state for one checkout, from a single git invocation.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -3328,13 +3253,5 @@ mod tests {
         let status = parse_checkout_status("## main\n?? ## odd name.txt\n");
         assert_eq!(status.branch, Some("main".to_owned()));
         assert_eq!(status.changed_files, 1);
-    }
-
-    #[test]
-    fn normalize_drops_dot_and_dotdot_components() {
-        assert_eq!(
-            normalize(Path::new("/repo/./a/b/../c")),
-            PathBuf::from("/repo/a/c"),
-        );
     }
 }

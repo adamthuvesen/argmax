@@ -254,8 +254,6 @@ pub enum BrowserAction {
     },
 }
 
-// --- tab resolution ---------------------------------------------------------
-
 fn registry(app: &AppHandle) -> std::sync::Arc<super::registry::BrowserTabRegistry> {
     std::sync::Arc::clone(&app.state::<AppState>().browser_tabs)
 }
@@ -292,8 +290,6 @@ pub fn resolve_tab(app: &AppHandle, target: &TabTarget) -> ArgmaxResult<String> 
 fn webview(app: &AppHandle, tab_id: &str) -> ArgmaxResult<Webview> {
     crate::ipc::browser::browser_webview(app, tab_id)
 }
-
-// --- script plumbing --------------------------------------------------------
 
 /// Wraps one call to the injected API, installing it first when the page has
 /// not got it (a fresh load, or a version bump after an app update).
@@ -429,8 +425,6 @@ fn string_field(value: &Value, key: &str) -> String {
         .to_string()
 }
 
-// --- tabs -------------------------------------------------------------------
-
 /// Opens a page in a tab owned by `session_id`. The webview is created hidden
 /// at the window's own size: the agent may be working while the user looks at
 /// something else, and a child webview always paints over the DOM. The pane
@@ -549,15 +543,12 @@ pub fn tab_group(app: &AppHandle, tab_id: &str) -> Option<String> {
     registry(app).get(tab_id).and_then(|tab| tab.group)
 }
 
-pub fn group_tabs(app: &AppHandle, tab_ids: &[String], group: Option<String>) -> ArgmaxResult<()> {
+pub fn group_tabs(app: &AppHandle, tab_ids: &[String], group: Option<String>) {
     let tabs = registry(app);
     if tabs.set_group(tab_ids, group) {
         super::registry::publish(app, &tabs);
     }
-    Ok(())
 }
-
-// --- reads ------------------------------------------------------------------
 
 pub async fn snapshot(
     app: &AppHandle,
@@ -696,8 +687,6 @@ pub async fn extract(
     extracted.tab_id = tab_id;
     Ok(extracted)
 }
-
-// --- writes -----------------------------------------------------------------
 
 pub async fn act(
     app: &AppHandle,
@@ -922,8 +911,6 @@ fn wait_id_seed() -> u128 {
         .unwrap_or(0)
 }
 
-// --- capture ----------------------------------------------------------------
-
 /// PNG of the tab, cropped to one element when a ref is given. The crop is in
 /// the page's own CSS pixels, so the element is scrolled into view first.
 pub async fn screenshot(
@@ -959,11 +946,6 @@ pub async fn screenshot(
     snapshot_image::capture(&view, rect, max_width_points, SCREENSHOT_TIMEOUT).await
 }
 
-/// Runs an expression in the page and returns what it evaluated to.
-///
-/// `wrap_for_errors` catches inside the page, because WebKit's completion
-/// handler drops the `NSError` and a script that threw would otherwise be
-/// indistinguishable from one that returned `undefined`.
 /// Which capture buffer a read wants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CaptureKind {
@@ -1028,6 +1010,11 @@ pub async fn read_capture(
     }))
 }
 
+/// Runs an expression in the page and returns what it evaluated to.
+///
+/// `wrap_for_errors` catches inside the page, because WebKit's completion
+/// handler drops the `NSError` and a script that threw would otherwise be
+/// indistinguishable from one that returned `undefined`.
 pub async fn evaluate(
     app: &AppHandle,
     target: &TabTarget,

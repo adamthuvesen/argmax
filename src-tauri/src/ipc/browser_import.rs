@@ -17,9 +17,8 @@ pub struct ImportChromeHistoryInput {
 #[tauri::command(rename = "browser:chrome-profiles")]
 #[specta::specta]
 pub async fn browser_chrome_profiles(
-    input: ChromeProfilesInput,
+    _input: ChromeProfilesInput,
 ) -> ArgmaxResult<Vec<ChromeProfile>> {
-    let _ = input;
     tauri::async_runtime::spawn_blocking(|| {
         let root = chrome_history::default_profile_root()?;
         chrome_history::discover_profiles(&root)

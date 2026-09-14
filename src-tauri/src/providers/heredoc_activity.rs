@@ -539,20 +539,15 @@ npm run dev -- --host 127.0.0.1 | tee /tmp/vite.log
     }
 
     #[test]
-    fn does_not_apply_cd_prefix_to_tilde_target() {
-        let command = "cd workspace && cat > ~/notes.md <<'EOF'\nhello\nEOF";
+    fn a_tilde_target_keeps_its_own_root_and_must_be_unquoted() {
+        let bare = "cd workspace && cat > ~/notes.md <<'EOF'\nhello\nEOF";
+        let quoted = "cd workspace && cat > '~/notes.md' <<'EOF'\nhello\nEOF";
 
         assert_eq!(
-            file_write_targets(command),
+            file_write_targets(bare),
             Some(vec!["~/notes.md".to_owned()])
         );
-    }
-
-    #[test]
-    fn rejects_quoted_tilde_target() {
-        let command = "cd workspace && cat > '~/notes.md' <<'EOF'\nhello\nEOF";
-
-        assert_eq!(file_write_targets(command), None);
+        assert_eq!(file_write_targets(quoted), None);
     }
 
     #[test]

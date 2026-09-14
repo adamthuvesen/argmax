@@ -151,8 +151,6 @@ pub fn build_summary(
     })
 }
 
-// ---------------------------------------------------------------- time bounds
-
 fn local_date(tz: Tz, at: DateTime<Utc>) -> NaiveDate {
     at.with_timezone(&tz).date_naive()
 }
@@ -270,8 +268,6 @@ pub fn previous_range_start(
     }
 }
 
-// -------------------------------------------------------------------- loading
-
 fn load_commits(
     connection: &Connection,
     tz: Tz,
@@ -385,8 +381,6 @@ fn to_review(row: ReviewRow) -> ActivityReview {
         submitted_at: row.submitted_at,
     }
 }
-
-// ------------------------------------------------------------------- counting
 
 fn totals_of(
     commits: &[&Commit],

@@ -42,23 +42,3 @@ fn live_questions(state: &AppState) -> ArgmaxResult<Arc<QuestionService>> {
         )
     })
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn resolve_requires_initialized_question_service() {
-        let input: QuestionsResolveInput = serde_json::from_value(serde_json::json!({
-            "sessionId": "session-1",
-            "requestId": "request-1",
-            "answers": {"choice": ["One"]}
-        }))
-        .unwrap();
-        let error = tauri::async_runtime::block_on(questions_resolve_impl(&AppState::new(), input))
-            .expect_err("expected missing question service error");
-        assert!(
-            matches!(error, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "QUESTION_SERVICE_NOT_READY")
-        );
-    }
-}

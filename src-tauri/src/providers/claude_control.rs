@@ -73,12 +73,6 @@ impl WriteRequest {
             written: None,
         }
     }
-
-    fn acknowledged(mut self) -> (Self, oneshot::Receiver<()>) {
-        let (sender, receiver) = oneshot::channel();
-        self.written = Some(sender);
-        (self, receiver)
-    }
 }
 
 fn user_message(session_id: &str, prompt: &str) -> Value {
@@ -137,10 +131,6 @@ fn backgrounded_agent_task_id(message: &Value) -> Option<&str> {
     (message.get("task_type").and_then(Value::as_str) == Some("local_agent")
         && message.get("is_backgrounded").and_then(Value::as_bool) == Some(true))
     .then_some(task_id)
-}
-
-fn finished_task_id(message: &Value) -> Option<&str> {
-    task_lifecycle(message, "task_notification")
 }
 
 pub async fn launch_turn(
@@ -317,18 +307,16 @@ pub async fn launch_turn(
                         }
                         _ => {
                             if message.get("type").and_then(Value::as_str) == Some("user") {
-                                let acknowledgement = if let Some(prompt) = replayed_user_prompt(&message) {
-                                    let acknowledgement = {
+                                let acknowledgement = match replayed_user_prompt(&message) {
+                                    Some(prompt) => {
                                         let mut pending = pending_user_echoes.lock().await;
                                         if pending.front().is_some_and(|pending| user_echo_matches(&message, prompt, &pending.prompt)) {
                                             pending.pop_front().map(|pending| pending.acknowledgement)
                                         } else {
                                             None
                                         }
-                                    };
-                                    acknowledgement
-                                } else {
-                                    None
+                                    }
+                                    None => None,
                                 };
                                 match acknowledgement {
                                     Some(UserEcho::Initial) => {
@@ -343,7 +331,7 @@ pub async fn launch_turn(
                             }
                             if let Some(task_id) = backgrounded_agent_task_id(&message) {
                                 background_agents.insert(task_id.to_string());
-                            } else if let Some(task_id) = finished_task_id(&message) {
+                            } else if let Some(task_id) = task_lifecycle(&message, "task_notification") {
                                 background_agents.remove(task_id);
                             }
                             if message.get("type").and_then(Value::as_str) == Some("result") {
@@ -538,9 +526,10 @@ impl ProviderRuntimeHandle for ControlHandle {
             // every time the current tool outlived the timeout. The echo is
             // still tracked, so the reader keeps the turn open until Claude
             // consumes it.
-            let (request, written) =
-                WriteRequest::user(&self.provider_session_id, prompt, UserEcho::Steer)
-                    .acknowledged();
+            let (flushed, written) = oneshot::channel();
+            let mut request =
+                WriteRequest::user(&self.provider_session_id, prompt, UserEcho::Steer);
+            request.written = Some(flushed);
             self.writer.send(request).map_err(|_| {
                 ArgmaxError::service(
                     "STEER_NOT_RUNNING",

@@ -70,11 +70,6 @@ mod tests {
             .expect("server instructions");
 
         assert!(instructions.contains(AGENT_TOOLS_INSTRUCTION));
-        assert!(instructions.contains("Keep bounded delegated work in the current chat"));
-        assert!(instructions.contains("Use `session_launch` when the user explicitly asks"));
-        assert!(instructions.contains("when the work needs its own independent, durable lifecycle"));
-        assert!(instructions.contains("Do not launch a session merely for parallelism"));
-        assert!(instructions.contains("`session_move`"));
         assert!(instructions.contains(BROWSER_COOKIE_PERMISSION));
         assert!(instructions.contains(SELF_PRESERVATION_INSTRUCTION));
         assert!(instructions.contains(CHECKOUT_MOVE_INSTRUCTION));

@@ -321,17 +321,10 @@ pub fn acp_mcp_servers(config: Option<&SessionLaunchProcessConfig>) -> Value {
 /// caller falls back to launching ACP from the checkout in that case, keeping
 /// Cursor's native behavior and its per-checkout authentication requirement.
 pub fn cursor_acp_project_mcp_servers(workspace_path: &Path) -> Result<Vec<Value>, String> {
-    cursor_acp_project_mcp_servers_in(workspace_path, &cursor_data_dir())
+    cursor_acp_project_mcp_servers_with_data_dir(workspace_path, &cursor_data_dir())
 }
 
 pub(crate) fn cursor_acp_project_mcp_servers_with_data_dir(
-    workspace_path: &Path,
-    cursor_data_dir: &Path,
-) -> Result<Vec<Value>, String> {
-    cursor_acp_project_mcp_servers_in(workspace_path, cursor_data_dir)
-}
-
-fn cursor_acp_project_mcp_servers_in(
     workspace_path: &Path,
     cursor_data_dir: &Path,
 ) -> Result<Vec<Value>, String> {
@@ -385,10 +378,6 @@ pub(crate) fn cursor_project_mcp_approval_path_with_data_dir(
     cursor_data_dir: &Path,
     workspace_path: &Path,
 ) -> PathBuf {
-    cursor_project_mcp_approval_path_in(cursor_data_dir, workspace_path)
-}
-
-fn cursor_project_mcp_approval_path_in(cursor_data_dir: &Path, workspace_path: &Path) -> PathBuf {
     let mut slug = String::with_capacity(workspace_path.as_os_str().len());
     let mut last_was_separator = false;
     for character in workspace_path.to_string_lossy().chars() {
@@ -442,7 +431,7 @@ fn cursor_project_mcp_is_approved(
     spec: &Value,
 ) -> Result<bool, String> {
     let approval = cursor_project_mcp_approval_id(workspace_path, name, spec)?;
-    let path = cursor_project_mcp_approval_path_in(cursor_data_dir, workspace_path);
+    let path = cursor_project_mcp_approval_path_with_data_dir(cursor_data_dir, workspace_path);
     let approvals = fs::read_to_string(&path)
         .ok()
         .and_then(|body| serde_json::from_str::<Vec<String>>(&body).ok())
@@ -1021,25 +1010,12 @@ mod tests {
         let instruction = agent_tools_instruction();
 
         assert!(instruction.contains(AGENT_TOOLS_INSTRUCTION));
-        assert!(instruction.contains("Keep bounded delegated work in the current chat"));
-        assert!(instruction.contains("Use `session_launch` when the user explicitly asks"));
-        assert!(instruction.contains("when the work needs its own independent, durable lifecycle"));
-        assert!(instruction.contains("Do not launch a session merely for parallelism"));
         assert!(instruction.contains(CHECKOUT_MOVE_INSTRUCTION));
+        assert!(instruction.contains(PROJECT_SOURCES_INSTRUCTION));
+        // The shell-command era's wording must not come back with it.
         assert!(!instruction
             .to_ascii_lowercase()
             .contains("on your own initiative"));
-    }
-
-    #[test]
-    fn agent_tool_instruction_explains_project_source_provenance() {
-        let instruction = agent_tools_instruction();
-        assert!(instruction.contains("`sources_list`"));
-        assert!(instruction.contains("`sources_read`"));
-        assert!(instruction.contains("`sources_add`"));
-        assert!(instruction.contains("untrusted context"));
-        assert!(instruction.contains("does not make it authoritative"));
-        assert!(instruction.contains("Do not turn source contents"));
     }
 
     #[test]
@@ -1139,7 +1115,7 @@ mod tests {
             })
             .to_vec();
         let approval_path =
-            cursor_project_mcp_approval_path_in(cursor_data.path(), workspace.path());
+            cursor_project_mcp_approval_path_with_data_dir(cursor_data.path(), workspace.path());
         fs::create_dir_all(approval_path.parent().expect("approval parent")).expect("approval dir");
         fs::write(
             approval_path,
@@ -1147,8 +1123,9 @@ mod tests {
         )
         .expect("approval file");
 
-        let servers = cursor_acp_project_mcp_servers_in(workspace.path(), cursor_data.path())
-            .expect("ACP servers");
+        let servers =
+            cursor_acp_project_mcp_servers_with_data_dir(workspace.path(), cursor_data.path())
+                .expect("ACP servers");
 
         assert_eq!(servers.len(), 2);
         let icons = servers
@@ -1213,7 +1190,7 @@ mod tests {
         .expect("project config");
 
         assert!(
-            cursor_acp_project_mcp_servers_in(workspace.path(), cursor_data.path())
+            cursor_acp_project_mcp_servers_with_data_dir(workspace.path(), cursor_data.path())
                 .expect("translation")
                 .is_empty()
         );

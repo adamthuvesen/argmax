@@ -183,8 +183,8 @@ async fn dispatch_standard(
             encode(activity::activity_summary_impl(state, input).await?)
         }
         "usage:remaining" => {
-            let input: UsageRemainingInput = parse(channel, input)?;
-            encode(usage::usage_remaining_impl(state, input).await?)
+            let _: UsageRemainingInput = parse(channel, input)?;
+            encode(usage::usage_remaining_impl().await?)
         }
         "workspace:status" => {
             let input: WorkspaceStatusInput = parse(channel, input)?;

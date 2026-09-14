@@ -682,33 +682,25 @@ fn scan_session_pr_evidence(
             .filter(|url| url_matches_project_remote(url, Some(&project_remote)))
             .collect::<Vec<_>>();
         for url in &urls {
-            if url_matches_project_remote(url, Some(&project_remote)) {
-                if let Some(number) = extract_pr_number(url) {
-                    let relationship = classify_pr_relationship(
-                        command.as_deref(),
-                        number,
-                        urls.len(),
-                        &project_remote,
-                    );
-                    store_pr_metadata(connection, session_id, number, Some(url), None)?;
-                    if evidence_needs_update(
+            if let Some(number) = extract_pr_number(url) {
+                let relationship = classify_pr_relationship(
+                    command.as_deref(),
+                    number,
+                    urls.len(),
+                    &project_remote,
+                );
+                store_pr_metadata(connection, session_id, number, Some(url), None)?;
+                if evidence_needs_update(connection, session_id, number, &event_id, relationship)? {
+                    record_session_pr_evidence(
                         connection,
                         session_id,
                         number,
-                        &event_id,
                         relationship,
-                    )? {
-                        record_session_pr_evidence(
-                            connection,
-                            session_id,
-                            number,
-                            relationship,
-                            &event_id,
-                            &occurred_at,
-                        )?;
-                        if !numbers.contains(&number) {
-                            numbers.push(number);
-                        }
+                        &event_id,
+                        &occurred_at,
+                    )?;
+                    if !numbers.contains(&number) {
+                        numbers.push(number);
                     }
                 }
             }
@@ -1332,9 +1324,7 @@ fn tail_str(text: &str, max_bytes: usize) -> &str {
     }
 }
 
-// ---------------------------------------------------------------------------
-// gh JSON shapes — minimal subset we read.
-// ---------------------------------------------------------------------------
+// The subset of `gh` JSON output that Argmax reads.
 
 #[derive(Debug, serde::Deserialize)]
 struct PrViewResponse {
@@ -1368,10 +1358,8 @@ struct RollupEntry {
     conclusion: Option<String>,
 }
 
-// ---------------------------------------------------------------------------
-// Error categorization — distinguishes "no PR" from "transport broke" so the
-// log surface doesn't bury real failures under PR-less branches.
-// ---------------------------------------------------------------------------
+// Error categorization distinguishes "no PR" from "transport broke" so the log
+// surface doesn't bury real failures under PR-less branches.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GhErrorCategory {
@@ -1405,10 +1393,6 @@ fn gh_error_category(error: &ArgmaxError) -> GhErrorCategory {
     }
     GhErrorCategory::Unknown
 }
-
-// ---------------------------------------------------------------------------
-// Status-check rollup collapse. Mirrors `collapseRollup` in ghService.ts.
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GhCheckState {

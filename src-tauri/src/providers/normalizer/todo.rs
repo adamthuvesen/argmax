@@ -29,10 +29,6 @@ use serde_json::{json, Map, Value};
 use super::{array_value, object_value, string_value, timeline_event, ProviderOutputEvent};
 use crate::persistence::events::PersistTimelineEventInput;
 
-/// The payload key every todo-carrying tool row is stamped with, and the value
-/// the renderer hides and buckets on.
-pub const TODO_SURFACE: &str = "todo";
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TodoStatus {
     Pending,
@@ -135,10 +131,7 @@ pub fn is_todo_tool(tool_name: &str) -> bool {
 /// instead of matching names, so a provider renaming its tool costs one line
 /// here rather than a stale card plus an unlabelled row plus a wrong edit count.
 pub fn stamp_todo_surface(payload: &mut Map<String, Value>) {
-    payload.insert(
-        "surface".to_string(),
-        Value::String(TODO_SURFACE.to_string()),
-    );
+    payload.insert("surface".to_string(), Value::String("todo".to_string()));
 }
 
 pub fn todo_event(

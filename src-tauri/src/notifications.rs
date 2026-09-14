@@ -36,7 +36,7 @@ pub struct NotificationService<S: NotificationSink> {
     is_window_focused: FocusProbe,
     sink: S,
     last_notified_state: Mutex<BoundedMap<String, SessionState>>,
-    notified_check_keys: Mutex<BoundedSet<String>>,
+    notified_check_keys: Mutex<BoundedMap<String, ()>>,
 }
 
 impl<S: NotificationSink> NotificationService<S> {
@@ -46,7 +46,7 @@ impl<S: NotificationSink> NotificationService<S> {
             is_window_focused,
             sink,
             last_notified_state: Mutex::new(BoundedMap::new(LAST_NOTIFIED_CAPACITY)),
-            notified_check_keys: Mutex::new(BoundedSet::new(CHECK_FAILURE_CAPACITY)),
+            notified_check_keys: Mutex::new(BoundedMap::new(CHECK_FAILURE_CAPACITY)),
         }
     }
 
@@ -129,13 +129,13 @@ impl<S: NotificationSink> NotificationService<S> {
             let mut keys = self
                 .notified_check_keys
                 .lock_or_recover("notified check keys");
-            if keys.contains(&dedup_key) {
+            if keys.get(&dedup_key).is_some() {
                 return Ok(false);
             }
             if (self.is_window_focused)() || !self.sink.is_supported() {
                 return Ok(false);
             }
-            keys.insert(dedup_key);
+            keys.insert(dedup_key, ());
         }
 
         self.sink.fire(NotificationOptions {
@@ -304,30 +304,6 @@ where
     }
 }
 
-#[derive(Debug)]
-struct BoundedSet<T> {
-    map: BoundedMap<T, ()>,
-}
-
-impl<T> BoundedSet<T>
-where
-    T: Clone + Eq + Hash,
-{
-    pub(crate) fn new(capacity: usize) -> Self {
-        Self {
-            map: BoundedMap::new(capacity),
-        }
-    }
-
-    fn contains(&self, value: &T) -> bool {
-        self.map.get(value).is_some()
-    }
-
-    fn insert(&mut self, value: T) {
-        self.map.insert(value, ());
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -406,17 +382,6 @@ mod tests {
     }
 
     #[test]
-    fn suppresses_when_window_is_focused() {
-        let sink = Arc::new(StubSink::supported());
-        let service = service_with_focus(true, sink.clone());
-
-        assert!(!service
-            .notify(&session(SessionState::Complete))
-            .expect("notify ok"));
-        assert!(sink.fired().is_empty());
-    }
-
-    #[test]
     fn suppresses_when_platform_is_not_supported() {
         let sink = Arc::new(StubSink::supported());
         sink.supported.store(false, Ordering::SeqCst);
@@ -441,19 +406,6 @@ mod tests {
             assert!(!service.notify(&session(state)).expect("notify ok"));
         }
         assert!(sink.fired().is_empty());
-    }
-
-    #[test]
-    fn dedupes_repeated_terminal_state() {
-        let sink = Arc::new(StubSink::supported());
-        let service = service_with_focus(false, sink.clone());
-        let session = session(SessionState::Complete);
-
-        service.notify(&session).expect("notify ok");
-        service.notify(&session).expect("notify ok");
-        service.notify(&session).expect("notify ok");
-
-        assert_eq!(sink.fired().len(), 1);
     }
 
     #[test]

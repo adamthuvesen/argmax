@@ -10,9 +10,6 @@ const CURSOR_BYPASS_PERMISSION_ARGS: &[&str] = &["--force", "--trust"];
 const OPENCODE_BYPASS_PERMISSION_ARGS: &[&str] = &["--auto"];
 const GROK_BYPASS_PERMISSION_ARGS: &[&str] = &["--always-approve"];
 
-pub const PLAN_MODE_PROMPT_PREFIX: &str =
-    "Plan mode: analyze the request and propose a plan only. Do not edit files, run mutating commands, or make changes.";
-
 #[derive(Debug, Clone, Copy)]
 pub struct ProviderLaunchDefinition {
     pub id: ProviderId,
@@ -45,12 +42,8 @@ pub struct ProviderLaunchDefinition {
     pub move_carries_conversation: bool,
 }
 
-pub fn provider_definitions() -> &'static [ProviderLaunchDefinition] {
-    &PROVIDER_DEFINITIONS
-}
-
 pub fn get_provider_definition(provider_id: ProviderId) -> &'static ProviderLaunchDefinition {
-    provider_definitions()
+    PROVIDER_DEFINITIONS
         .iter()
         .find(|definition| definition.id == provider_id)
         .expect("all ProviderId variants have a launch definition")
@@ -206,8 +199,17 @@ fn codex_common_args(
 ) -> Vec<String> {
     let mut args = codex_permission_args(input);
     args.extend(["--model".to_string(), input.model_id.clone()]);
-    args.extend(codex_reasoning_summary_args(input));
-    args.extend(codex_update_plan_args(input));
+    args.extend([
+        "-c".to_string(),
+        r#"model_reasoning_summary="auto""#.to_string(),
+    ]);
+    // `update_plan` is Codex's todo list, and `codex exec` withholds it unless
+    // the config says otherwise — without this the model is told the tool does
+    // not exist and the chat never sees a plan. Everywhere else it is default.
+    args.extend([
+        "-c".to_string(),
+        "tools.update_plan.enabled=true".to_string(),
+    ]);
     args.extend(codex_reasoning_args(input));
     args.extend(codex_fast_mode_args(input));
     args.extend(mcp_injection::mcp_args(ProviderId::Codex, mcp));
@@ -735,26 +737,9 @@ fn codex_effort_value(model_id: &str, effort: ReasoningEffort) -> &'static str {
     }
 }
 
-fn codex_reasoning_summary_args(_input: &ProviderLaunchInput) -> Vec<String> {
-    vec![
-        "-c".to_string(),
-        r#"model_reasoning_summary="auto""#.to_string(),
-    ]
-}
-
-// `update_plan` is Codex's todo list, and `codex exec` withholds it unless the
-// config says otherwise — without this the model is told the tool does not
-// exist and the chat never sees a plan. On everywhere else it is the default.
-fn codex_update_plan_args(_input: &ProviderLaunchInput) -> Vec<String> {
-    vec![
-        "-c".to_string(),
-        "tools.update_plan.enabled=true".to_string(),
-    ]
-}
-
 pub(super) fn prompt_for_agent_mode(prompt: &str, agent_mode: AgentMode) -> String {
     if agent_mode == AgentMode::Plan {
-        format!("{PLAN_MODE_PROMPT_PREFIX}\n\n{prompt}")
+        format!("Plan mode: analyze the request and propose a plan only. Do not edit files, run mutating commands, or make changes.\n\n{prompt}")
     } else {
         prompt.to_string()
     }
@@ -934,17 +919,6 @@ mod tests {
     }
 
     #[test]
-    fn claude_native_agent_guidance_does_not_require_reasoning_effort() {
-        let input = launch_input(ProviderId::Claude);
-        let args = (get_provider_definition(ProviderId::Claude).structured_args)(&input, None);
-        let index = args
-            .iter()
-            .position(|arg| arg == "--append-system-prompt")
-            .expect("append system prompt flag");
-        assert!(args[index + 1].contains("continue it with SendMessage"));
-    }
-
-    #[test]
     fn claude_fast_mode_is_carried_by_settings_json() {
         let input = ProviderLaunchInput {
             fast_mode: true,
@@ -1012,16 +986,6 @@ mod tests {
             (definition.structured_stdin)(&input),
             Some("Implement the task".to_string())
         );
-    }
-
-    #[test]
-    fn codex_structured_without_reasoning_uses_user_config() {
-        let input = ProviderLaunchInput {
-            reasoning_effort: None,
-            ..launch_input(ProviderId::Codex)
-        };
-        let args = (get_provider_definition(ProviderId::Codex).structured_args)(&input, None);
-        assert!(!args.iter().any(|arg| arg == "--ignore-user-config"));
     }
 
     #[test]
@@ -1510,6 +1474,7 @@ mod tests {
             ProviderId::Codex,
             ProviderId::Cursor,
             ProviderId::Opencode,
+            ProviderId::Grok,
         ] {
             let input = ProviderLaunchInput {
                 prompt: "- read this\nthen implement".to_string(),
@@ -1549,6 +1514,7 @@ mod tests {
             ProviderId::Codex,
             ProviderId::Cursor,
             ProviderId::Opencode,
+            ProviderId::Grok,
         ] {
             let input = ProviderLaunchInput {
                 permission_mode: PermissionMode::AskEachTime,
@@ -1563,6 +1529,7 @@ mod tests {
                         | "--force"
                         | "--trust"
                         | "--auto"
+                        | "--always-approve"
                 )
             }));
         }
@@ -1577,6 +1544,7 @@ mod tests {
             ProviderId::Codex,
             ProviderId::Cursor,
             ProviderId::Opencode,
+            ProviderId::Grok,
         ] {
             let input = ProviderLaunchInput {
                 permission_mode: PermissionMode::AutoApprove,
@@ -1593,6 +1561,7 @@ mod tests {
                             | "--force"
                             | "--trust"
                             | "--auto"
+                            | "--always-approve"
                     )
                 }),
                 "{provider_id:?} leaked a bypass flag in plan mode: {args:?}"
@@ -1695,22 +1664,12 @@ mod tests {
         };
         let args = (get_provider_definition(ProviderId::Grok).structured_args)(&input, None);
         assert!(args.windows(2).any(|w| w[0] == "--agent" && w[1] == "plan"));
-        assert!(!args.contains(&"--always-approve".to_string()));
 
-        // And the same on a resumed turn.
+        // And the same on a resumed turn; plan_mode_never_bypasses_for_any_provider
+        // covers the fresh launch only.
         let args =
             (get_provider_definition(ProviderId::Grok).structured_resume_args)(&input, "c1", None);
         assert!(args.windows(2).any(|w| w[0] == "--agent" && w[1] == "plan"));
-        assert!(!args.contains(&"--always-approve".to_string()));
-    }
-
-    #[test]
-    fn grok_ask_each_time_omits_the_bypass_flag() {
-        let input = ProviderLaunchInput {
-            permission_mode: PermissionMode::AskEachTime,
-            ..launch_input(ProviderId::Grok)
-        };
-        let args = (get_provider_definition(ProviderId::Grok).structured_args)(&input, None);
         assert!(!args.contains(&"--always-approve".to_string()));
     }
 

@@ -11,6 +11,17 @@ use specta::Type;
 use super::{json_error, sqlite_error, time::now_iso};
 use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 
+/// Rows before the last `/clear` or provider switch belong to a conversation
+/// the current one cannot see, so agent lifecycle lookups start after it.
+const AGENT_TURN_BOUNDARY: &str = "SELECT MAX(rowid) FROM events boundary
+                WHERE boundary.session_id = events.session_id
+                  AND boundary.type IN ('session.cleared', 'session.provider-changed')";
+
+/// The same cut for reads that only a `/clear` ends.
+const CLEAR_BOUNDARY: &str = "SELECT MAX(rowid) FROM events cleared
+                WHERE cleared.session_id = events.session_id
+                  AND cleared.type = 'session.cleared'";
+
 const INVALID_PAYLOAD_PREVIEW_CHARS: usize = 512;
 const AGENT_CODENAME_HEADLINE_COUNT: usize = 10;
 
@@ -56,7 +67,7 @@ pub struct RawProviderOutput {
     pub row_cursor: Option<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Type)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionEventsSinceResult {
     pub events: Vec<TimelineEvent>,
@@ -116,10 +127,8 @@ pub fn list_session_events_since(
         event_cursor: next_event_cursor,
         raw_output_cursor: next_raw_output_cursor,
         change_cursor: (!has_more).then_some(head),
-        deleted_event_ids: Vec::new(),
-        deleted_raw_output_ids: Vec::new(),
-        reset_required: false,
         has_more,
+        ..SessionEventsSinceResult::default()
     })
 }
 
@@ -136,7 +145,7 @@ pub fn list_session_changes_since(
     raw_output_cursor: Option<i64>,
     change_cursor: Option<i64>,
 ) -> ArgmaxResult<SessionEventsSinceResult> {
-    list_session_changes_since_inner(
+    list_session_changes_since_with_budget(
         connection,
         session_id,
         event_cursor,
@@ -150,24 +159,6 @@ pub fn list_session_changes_since(
 /// and legacy row-cursor reads keep their normal paging because their cursors
 /// already provide a safe continuation point.
 pub fn list_session_changes_since_with_budget(
-    connection: &Connection,
-    session_id: &str,
-    event_cursor: Option<i64>,
-    raw_output_cursor: Option<i64>,
-    change_cursor: Option<i64>,
-    change_page_budget_bytes: usize,
-) -> ArgmaxResult<SessionEventsSinceResult> {
-    list_session_changes_since_inner(
-        connection,
-        session_id,
-        event_cursor,
-        raw_output_cursor,
-        change_cursor,
-        Some(change_page_budget_bytes),
-    )
-}
-
-fn list_session_changes_since_inner(
     connection: &Connection,
     session_id: &str,
     event_cursor: Option<i64>,
@@ -290,14 +281,9 @@ pub fn list_session_agent_events_for_identity(
 
     Ok(SessionEventsSinceResult {
         events,
-        raw_outputs: Vec::new(),
         event_cursor: next_event_cursor,
-        raw_output_cursor: 0,
-        change_cursor: None,
-        deleted_event_ids: Vec::new(),
-        deleted_raw_output_ids: Vec::new(),
-        reset_required: false,
         has_more,
+        ..SessionEventsSinceResult::default()
     })
 }
 
@@ -317,7 +303,8 @@ pub fn has_current_native_agent_identity(
     }
     connection
         .query_row(
-            r#"
+            &format!(
+                r#"
             SELECT EXISTS(
                 SELECT 1
                 FROM events
@@ -326,12 +313,11 @@ pub fn has_current_native_agent_identity(
                   AND json_extract(payload_json, '$.providerParentConversationId') = ?
                   AND json_extract(payload_json, '$.providerChildSessionId') = ?
                   AND rowid > COALESCE((
-                      SELECT MAX(rowid) FROM events boundary
-                      WHERE boundary.session_id = events.session_id
-                        AND boundary.type IN ('session.cleared', 'session.provider-changed')
+                {AGENT_TURN_BOUNDARY}
                   ), 0)
             )
-            "#,
+            "#
+            ),
             (
                 session_id,
                 provider_parent_conversation_id,
@@ -359,7 +345,8 @@ fn append_native_agent_events(
     }
     let initial_lifecycle = connection
         .query_row(
-            r#"
+            &format!(
+                r#"
             SELECT rowid AS row_cursor, id, session_id, type, message, payload_json, created_at
             FROM events
             WHERE session_id = ?1
@@ -368,13 +355,12 @@ fn append_native_agent_events(
               AND json_extract(payload_json, '$.agentRootToolUseId') = ?3
               AND (?4 IS NULL OR json_extract(payload_json, '$.providerChildSessionId') = ?4)
               AND rowid > COALESCE((
-                  SELECT MAX(rowid) FROM events boundary
-                  WHERE boundary.session_id = events.session_id
-                    AND boundary.type IN ('session.cleared', 'session.provider-changed')
+                {AGENT_TURN_BOUNDARY}
               ), 0)
             ORDER BY rowid ASC
             LIMIT 1
-            "#,
+            "#
+            ),
             params![
                 session_id,
                 current_parent,
@@ -703,7 +689,8 @@ fn enrich_native_agent_event(
         .unwrap_or_default();
     let existing_identity = connection
         .query_row(
-            r#"
+            &format!(
+                r#"
             SELECT json_extract(payload_json, '$.agentRunId'),
                    json_extract(payload_json, '$.agentCodename')
             FROM events
@@ -712,13 +699,12 @@ fn enrich_native_agent_event(
               AND json_extract(payload_json, '$.providerParentConversationId') = ?
               AND json_extract(payload_json, '$.providerChildSessionId') = ?
               AND rowid > COALESCE((
-                  SELECT MAX(rowid) FROM events boundary
-                  WHERE boundary.session_id = events.session_id
-                    AND boundary.type IN ('session.cleared', 'session.provider-changed')
+                {AGENT_TURN_BOUNDARY}
               ), 0)
             ORDER BY rowid ASC
             LIMIT 1
-            "#,
+            "#
+            ),
             (input.session_id.as_str(), parent_conversation_id, child_id),
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
         )
@@ -786,7 +772,8 @@ fn enrich_native_agent_child_row(
     }
     let identity = connection
         .query_row(
-            r#"
+            &format!(
+                r#"
             SELECT json_extract(payload_json, '$.providerChildSessionId'),
                    json_extract(payload_json, '$.providerParentConversationId'),
                    json_extract(payload_json, '$.agentRunId'),
@@ -799,13 +786,12 @@ fn enrich_native_agent_child_row(
               AND json_extract(payload_json, '$.agentRootToolUseId') = ?
               AND json_extract(payload_json, '$.providerParentConversationId') = ?
               AND rowid > COALESCE((
-                  SELECT MAX(rowid) FROM events boundary
-                  WHERE boundary.session_id = events.session_id
-                    AND boundary.type IN ('session.cleared', 'session.provider-changed')
+                {AGENT_TURN_BOUNDARY}
               ), 0)
             ORDER BY rowid DESC
             LIMIT 1
-            "#,
+            "#
+            ),
             (
                 input.session_id.as_str(),
                 provider_invocation_id,
@@ -889,7 +875,7 @@ fn assign_native_agent_codename(
         return Ok(None);
     }
     let mut statement = connection
-        .prepare_cached(
+        .prepare_cached(&format!(
             r#"
             SELECT DISTINCT json_extract(payload_json, '$.agentCodename')
             FROM events
@@ -898,12 +884,10 @@ fn assign_native_agent_codename(
               AND json_extract(payload_json, '$.providerParentConversationId') = ?
               AND json_extract(payload_json, '$.agentCodename') IS NOT NULL
               AND rowid > COALESCE((
-                  SELECT MAX(rowid) FROM events boundary
-                  WHERE boundary.session_id = events.session_id
-                    AND boundary.type IN ('session.cleared', 'session.provider-changed')
+                {AGENT_TURN_BOUNDARY}
               ), 0)
-            "#,
-        )
+            "#
+        ))
         .map_err(sqlite_error)?;
     let taken = statement
         .query_map((session_id, parent_conversation_id), |row| {
@@ -1108,20 +1092,18 @@ pub fn list_session_native_agent_events(
     session_id: &str,
 ) -> ArgmaxResult<Vec<TimelineEvent>> {
     let mut statement = connection
-        .prepare_cached(
+        .prepare_cached(&format!(
             r#"
         SELECT rowid AS row_cursor, *
         FROM events
         WHERE session_id = ?
           AND type IN ('agent.started', 'agent.completed')
           AND rowid > COALESCE((
-              SELECT MAX(rowid) FROM events boundary
-              WHERE boundary.session_id = events.session_id
-                AND boundary.type IN ('session.cleared', 'session.provider-changed')
+                {AGENT_TURN_BOUNDARY}
           ), 0)
         ORDER BY rowid ASC
-        "#,
-        )
+        "#
+        ))
         .map_err(sqlite_error)?;
     let rows = statement
         .query_map((session_id,), event_row_to_timeline_event)
@@ -1351,7 +1333,7 @@ pub fn latest_agent_message(
     session_id: &str,
 ) -> ArgmaxResult<Option<String>> {
     let mut statement = connection
-        .prepare_cached(
+        .prepare_cached(&format!(
             r#"
             SELECT substr(message, 1, 4000)
             FROM events
@@ -1359,9 +1341,7 @@ pub fn latest_agent_message(
               AND type = 'message.completed'
               AND trim(message) <> ''
               AND rowid > COALESCE((
-                SELECT MAX(rowid) FROM events cleared
-                WHERE cleared.session_id = events.session_id
-                  AND cleared.type = 'session.cleared'
+                {CLEAR_BOUNDARY}
               ), 0)
               AND json_extract(payload_json, '$.parent_tool_use_id') IS NULL
               AND json_extract(payload_json, '$.traceImported') IS NULL
@@ -1375,8 +1355,8 @@ pub fn latest_agent_message(
               )
             ORDER BY rowid DESC
             LIMIT 1
-            "#,
-        )
+            "#
+        ))
         .map_err(sqlite_error)?;
     let message = statement
         .query_row((session_id,), |row| row.get::<_, String>(0))
@@ -1415,7 +1395,7 @@ pub fn goal_transcript_tail(
     max_chars: usize,
 ) -> ArgmaxResult<GoalTranscriptTail> {
     let mut statement = connection
-        .prepare_cached(
+        .prepare_cached(&format!(
             r#"
             SELECT type, message, payload_json
             FROM events
@@ -1426,16 +1406,14 @@ pub fn goal_transcript_tail(
                 OR type IN ('command.started', 'command.completed')
               )
               AND rowid > COALESCE((
-                SELECT MAX(rowid) FROM events cleared
-                WHERE cleared.session_id = events.session_id
-                  AND cleared.type = 'session.cleared'
+                {CLEAR_BOUNDARY}
               ), 0)
               AND json_extract(payload_json, '$.parent_tool_use_id') IS NULL
               AND json_extract(payload_json, '$.traceImported') IS NULL
             ORDER BY rowid DESC
             LIMIT ?
-            "#,
-        )
+            "#
+        ))
         .map_err(sqlite_error)?;
     let mut rows = statement
         .query(params![session_id, GOAL_TAIL_SCAN_LIMIT])
@@ -1624,67 +1602,49 @@ fn count_tool_calls_since_last_prompt(
 }
 
 /// When the current turn's prompt landed — what `session_status` ages to
-/// report how long a session has been working. Ignores subagent rows and
-/// anything before the last `/clear`, like the transcript itself does.
-/// The id of the turn a before-turn checkpoint belongs to.
-///
-/// Same slice as [`latest_user_message_at`]: the newest top-level user message
-/// since the last clear, ignoring subagent prompts. Recorded on the checkpoint
-/// as its `turn_boundary`, which is what lets a turn in the transcript offer
-/// "Revert to here" — the checkpoint is matched to the message rather than
-/// picked off a list of identical timestamps.
-pub fn latest_user_message_id(
-    connection: &Connection,
-    session_id: &str,
-) -> ArgmaxResult<Option<String>> {
-    let mut statement = connection
-        .prepare_cached(
-            r#"
-            SELECT id
-            FROM events
-            WHERE session_id = ?
-              AND type = 'user.message'
-              AND rowid > COALESCE((
-                SELECT MAX(rowid) FROM events cleared
-                WHERE cleared.session_id = events.session_id
-                  AND cleared.type = 'session.cleared'
-              ), 0)
-              AND json_extract(payload_json, '$.parent_tool_use_id') IS NULL
-            ORDER BY rowid DESC
-            LIMIT 1
-            "#,
-        )
-        .map_err(sqlite_error)?;
-    statement
-        .query_row([session_id], |row| row.get::<_, String>(0))
-        .optional()
-        .map_err(sqlite_error)
-}
-
+/// report how long a session has been working.
 pub fn latest_user_message_at(
     connection: &Connection,
     session_id: &str,
 ) -> ArgmaxResult<Option<String>> {
-    let mut statement = connection
-        .prepare_cached(
+    latest_user_message_column(connection, session_id, "created_at")
+}
+
+/// The id of the turn a before-turn checkpoint belongs to. Recorded on the
+/// checkpoint as its `turn_boundary`, which is what lets a turn in the
+/// transcript offer "Revert to here" — the checkpoint is matched to the
+/// message rather than picked off a list of identical timestamps.
+pub fn latest_user_message_id(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Option<String>> {
+    latest_user_message_column(connection, session_id, "id")
+}
+
+/// One column of the newest top-level user message since the last clear,
+/// ignoring subagent prompts — the same slice the transcript shows.
+fn latest_user_message_column(
+    connection: &Connection,
+    session_id: &str,
+    column: &str,
+) -> ArgmaxResult<Option<String>> {
+    connection
+        .prepare_cached(&format!(
             r#"
-            SELECT created_at
+            SELECT {column}
             FROM events
             WHERE session_id = ?
               AND type = 'user.message'
               AND rowid > COALESCE((
-                SELECT MAX(rowid) FROM events cleared
-                WHERE cleared.session_id = events.session_id
-                  AND cleared.type = 'session.cleared'
+                {CLEAR_BOUNDARY}
               ), 0)
               AND json_extract(payload_json, '$.parent_tool_use_id') IS NULL
             ORDER BY rowid DESC
             LIMIT 1
-            "#,
-        )
-        .map_err(sqlite_error)?;
-    statement
-        .query_row((session_id,), |row| row.get::<_, String>(0))
+            "#
+        ))
+        .map_err(sqlite_error)?
+        .query_row([session_id], |row| row.get::<_, String>(0))
         .optional()
         .map_err(sqlite_error)
 }
@@ -1856,10 +1816,8 @@ fn list_authoritative_tail(
         event_cursor,
         raw_output_cursor,
         change_cursor: Some(change_cursor),
-        deleted_event_ids: Vec::new(),
-        deleted_raw_output_ids: Vec::new(),
         reset_required: true,
-        has_more: false,
+        ..SessionEventsSinceResult::default()
     })
 }
 
@@ -1899,10 +1857,8 @@ fn list_change_page(
             event_cursor,
             raw_output_cursor,
             change_cursor: Some(head),
-            deleted_event_ids: Vec::new(),
-            deleted_raw_output_ids: Vec::new(),
             reset_required: true,
-            has_more: false,
+            ..SessionEventsSinceResult::default()
         });
     }
 
@@ -1974,15 +1930,10 @@ fn list_change_page(
     let mut spent = budget_bytes
         .map(|_| {
             serialized_len(&SessionEventsSinceResult {
-                events: Vec::new(),
-                raw_outputs: Vec::new(),
                 event_cursor: max_row_cursor(&candidate_events, 0),
                 raw_output_cursor: max_raw_row_cursor(&candidate_raw_outputs, 0),
                 change_cursor: Some(head),
-                deleted_event_ids: Vec::new(),
-                deleted_raw_output_ids: Vec::new(),
-                reset_required: false,
-                has_more: false,
+                ..SessionEventsSinceResult::default()
             })
         })
         .transpose()?
@@ -2838,7 +2789,7 @@ mod change_feed_tests {
             None,
             None,
             Some(cursor),
-            budget,
+            Some(budget),
         )
         .expect("first budgeted page");
         assert_eq!(ids(&first.events), vec!["e1"]);
@@ -2853,7 +2804,7 @@ mod change_feed_tests {
             None,
             None,
             first.change_cursor,
-            budget,
+            Some(budget),
         )
         .expect("second budgeted page");
         assert!(second.events.is_empty());
@@ -2898,7 +2849,7 @@ mod change_feed_tests {
             None,
             None,
             Some(cursor),
-            budget,
+            Some(budget),
         )
         .expect("first budgeted page");
 
@@ -2912,7 +2863,7 @@ mod change_feed_tests {
             None,
             None,
             first.change_cursor,
-            budget,
+            Some(budget),
         )
         .expect("second budgeted page");
         assert_eq!(ids(&second.events), vec!["e2"]);
@@ -2944,7 +2895,7 @@ mod change_feed_tests {
             None,
             None,
             Some(cursor),
-            budget,
+            Some(budget),
         )
         .expect("first budgeted page");
 
@@ -2963,9 +2914,15 @@ mod change_feed_tests {
         insert_event(&connection, "huge", "s1", &"answer".repeat(10_000));
         let head = change_feed_head(&connection).expect("head");
 
-        let page =
-            list_session_changes_since_with_budget(&connection, "s1", None, None, Some(cursor), 16)
-                .expect("oversized page");
+        let page = list_session_changes_since_with_budget(
+            &connection,
+            "s1",
+            None,
+            None,
+            Some(cursor),
+            Some(16),
+        )
+        .expect("oversized page");
 
         assert_eq!(ids(&page.events), vec!["huge"]);
         assert_eq!(page.change_cursor, Some(head));
@@ -3110,15 +3067,10 @@ mod change_feed_tests {
 
     fn change_page_overhead(page: &SessionEventsSinceResult) -> usize {
         serialized_len(&SessionEventsSinceResult {
-            events: Vec::new(),
-            raw_outputs: Vec::new(),
             event_cursor: page.event_cursor,
             raw_output_cursor: page.raw_output_cursor,
             change_cursor: page.change_cursor,
-            deleted_event_ids: Vec::new(),
-            deleted_raw_output_ids: Vec::new(),
-            reset_required: false,
-            has_more: false,
+            ..SessionEventsSinceResult::default()
         })
         .expect("page overhead")
     }

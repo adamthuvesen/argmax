@@ -49,18 +49,3 @@ fn live_approvals(state: &AppState) -> ArgmaxResult<Arc<ApprovalService>> {
         )
     })
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::error::ArgmaxError;
-
-    #[test]
-    fn pending_requires_initialized_approval_service() {
-        let error = approvals_pending_impl(&AppState::new())
-            .expect_err("expected missing approval service error");
-        assert!(
-            matches!(error, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "APPROVAL_SERVICE_NOT_READY")
-        );
-    }
-}

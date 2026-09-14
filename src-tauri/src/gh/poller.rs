@@ -23,7 +23,6 @@ use crate::providers::flush_queue::DashboardDelta;
 
 use super::service::GhService;
 
-/// Default polling interval (mirrors `GH_POLL_INTERVAL_MS = 60_000`).
 pub const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(60);
 
 /// Bound on concurrent `gh pr view` calls per tick. Without it, a single
@@ -43,9 +42,8 @@ const TRANSITION_LEDGER_CAPACITY: usize = 500;
 pub type DeltaPublisher = Arc<dyn Fn(DashboardDelta) + Send + Sync>;
 
 /// Optional hook fired after a PR's check state transitions to `failure`
-/// for a head_sha we haven't surfaced before. The TS version uses this to
-/// launch a follow-up session; the Rust port leaves the implementation to
-/// the caller.
+/// for a head_sha we haven't surfaced before. The implementation is the
+/// caller's.
 pub type CheckFailureHook = Arc<dyn Fn(CheckFailureContext) + Send + Sync>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -195,8 +193,8 @@ impl GhPoller {
         let inner = Arc::clone(&self.inner);
         let handle = tauri::async_runtime::spawn(async move {
             let mut ticker = tokio::time::interval(interval);
-            // Skip the immediate tick the first interval fires — match TS
-            // setInterval semantics where the first tick is one interval out.
+            // Skip the immediate tick the first interval fires; the first
+            // poll is one interval out.
             ticker.tick().await;
             loop {
                 ticker.tick().await;

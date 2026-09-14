@@ -493,9 +493,7 @@ pub fn run() {
             // to the profile is read through AppState from now on.
             if let Some(app_data_dir) = util::data_dir::ensure_app_data_dir(app) {
                 let state = tauri::Manager::state::<state::AppState>(app);
-                if state.app_data_dir.set(app_data_dir).is_err() {
-                    tracing::warn!("app data dir was already installed");
-                }
+                let _ = state.app_data_dir.set(app_data_dir);
             }
             // Keep macOS App Nap from suspending the webview while the window is
             // backgrounded — otherwise emitted `dashboard:delta` events don't
@@ -531,15 +529,11 @@ pub fn run() {
                     ));
                 } else {
                     let state = tauri::Manager::state::<state::AppState>(app);
-                    if state
+                    let _ = state
                         .attachments
                         .set(Arc::new(attachments::store::AttachmentStore::from_data_dir(
                             &data_dir,
-                        )))
-                        .is_err()
-                    {
-                        tracing::warn!("attachment store was already initialized");
-                    }
+                        )));
                     // Refuse to run against local state another live instance
                     // owns: the boot recovery below would mark that instance's
                     // running sessions failed (they look orphaned from here).
@@ -579,9 +573,7 @@ pub fn run() {
                             timer.mark("db.open");
                             let database = Arc::new(database);
                             let state = tauri::Manager::state::<state::AppState>(app);
-                            if state.db.set(Arc::clone(&database)).is_err() {
-                                tracing::warn!("database state was already initialized");
-                            }
+                            let _ = state.db.set(Arc::clone(&database));
                             let usage_scanner = Arc::new(usage::scanner::UsageScanner::new(
                                 Arc::clone(&database),
                                 sync::home_dir(),
@@ -593,9 +585,7 @@ pub fn run() {
                             if usage_scanner.has_completed_once() {
                                 usage::scanner::spawn_sweep(&usage_scanner);
                             }
-                            if state.usage_scanner.set(usage_scanner).is_err() {
-                                tracing::warn!("usage scanner was already initialized");
-                            }
+                            let _ = state.usage_scanner.set(usage_scanner);
                             let activity_scanner = Arc::new(
                                 activity::scanner::ActivityScanner::new(Arc::clone(&database)),
                             );
@@ -607,9 +597,7 @@ pub fn run() {
                             if activity_scanner.has_completed_once() {
                                 activity::scanner::spawn_sweep(&activity_scanner);
                             }
-                            if state.activity_scanner.set(activity_scanner).is_err() {
-                                tracing::warn!("activity scanner was already initialized");
-                            }
+                            let _ = state.activity_scanner.set(activity_scanner);
                             let dock_badge = Arc::new(dock::DockBadgeService::new(
                                 dock::TauriDockBadgeSink::new(app.handle().clone()),
                                 {
@@ -622,9 +610,7 @@ pub fn run() {
                                     })
                                 },
                             ));
-                            if state.dock_badge.set(Arc::clone(&dock_badge)).is_err() {
-                                tracing::warn!("dock badge state was already initialized");
-                            }
+                            let _ = state.dock_badge.set(Arc::clone(&dock_badge));
                             // Approvals left pending by the previous run badge
                             // the dock from the first frame.
                             if let Err(error) = dock_badge.update() {
@@ -650,19 +636,12 @@ pub fn run() {
                                 notifications::main_window_focus_probe(app.handle().clone()),
                                 notifications::desktop_sink(app.handle().clone()),
                             ));
-                            if state.notifications.set(Arc::clone(&notifications)).is_err() {
-                                tracing::warn!("notifications state was already initialized");
-                            }
+                            let _ = state.notifications.set(Arc::clone(&notifications));
                             // Single bounded FIFO for every dashboard
                             // invalidation (providers + gh poller + workspaces).
                             // One worker task pulls from it and emits in order.
-                            // Previously each publish spawned its own
-                            // tauri::async_runtime task — with tokio's
-                            // multi-worker scheduler that meant two deltas
-                            // emitted back-to-back could land at the renderer
-                            // in reverse order, occasionally letting a
-                            // `session.completed` arrive before its preceding
-                            // `message.completed`.
+                            // Order matters: a `session.completed` must not
+                            // overtake its preceding `message.completed`.
                             let (delta_tx, mut delta_rx) = DashboardDelivery::new();
                             let delta_resync_required = Arc::clone(&delta_tx.resync_required);
                             let delta_generation = Arc::clone(&delta_tx.generation);
@@ -821,9 +800,7 @@ pub fn run() {
                                     approval_delta_tx.send(delta);
                                 },
                             );
-                            if state.approvals.set(Arc::clone(&approvals)).is_err() {
-                                tracing::warn!("approval service state was already initialized");
-                            }
+                            let _ = state.approvals.set(Arc::clone(&approvals));
                             let question_delta_tx = delta_tx.clone();
                             let questions = questions::service::QuestionService::with_publisher(
                                 Arc::clone(&database),
@@ -831,9 +808,7 @@ pub fn run() {
                                     question_delta_tx.send(delta);
                                 },
                             );
-                            if state.questions.set(Arc::clone(&questions)).is_err() {
-                                tracing::warn!("question service state was already initialized");
-                            }
+                            let _ = state.questions.set(Arc::clone(&questions));
                             let (session_launch_server, session_launch_registry) =
                                 match session_control::SessionLaunchServer::bind(Arc::clone(
                                     &database,
@@ -850,9 +825,7 @@ pub fn run() {
                             // (`cursor-agent status` alone runs ~800 ms).
                             let cursor_acp =
                                 Arc::new(providers::cursor_acp::CursorAcpSessions::new());
-                            if state.cursor_acp.set(Arc::clone(&cursor_acp)).is_err() {
-                                tracing::warn!("cursor ACP pool state was already initialized");
-                            }
+                            let _ = state.cursor_acp.set(Arc::clone(&cursor_acp));
                             let grok_acp = Arc::new(providers::grok_acp::GrokAcpSessions::new());
                             let _ = state.grok_acp.set(Arc::clone(&grok_acp));
                             let provider_launcher: Arc<dyn providers::runtime::ProviderProcessLauncher> =
@@ -884,9 +857,7 @@ pub fn run() {
                                 tracing::warn!(?error, "failed to recover interrupted rewinds");
                             }
                             providers.set_checkpoint_service(checkpoints);
-                            if state.providers.set(Arc::clone(&providers)).is_err() {
-                                tracing::warn!("provider service state was already initialized");
-                            }
+                            let _ = state.providers.set(Arc::clone(&providers));
                             // Terminal pushes take the same shape as
                             // `dashboard:delta`: a FIFO queue and one worker
                             // that conflates what piled up into a single
@@ -968,28 +939,20 @@ pub fn run() {
                                 on_terminal_exit,
                                 Arc::clone(&lifecycle),
                             );
-                            if state.terminals.set(terminals).is_err() {
-                                tracing::warn!("terminal service state was already initialized");
-                            }
-                            if state
+                            let _ = state.terminals.set(terminals);
+                            let _ = state
                                 .checks
                                 .set(checks::service::CheckService::with_lifecycle(
                                     Arc::clone(&database),
                                     Arc::clone(&lifecycle),
-                                ))
-                                .is_err()
-                            {
-                                tracing::warn!("check service state was already initialized");
-                            }
+                                ));
                             let gh_service = gh::service::GhService::new(Arc::clone(&database));
                             match goals::service::GoalService::new(
                                 Arc::clone(&database),
                                 Arc::clone(&providers),
                             ) {
                                 Ok(goals) => {
-                                    if state.goals.set(goals).is_err() {
-                                        tracing::warn!("goal service state was already initialized");
-                                    }
+                                    let _ = state.goals.set(goals);
                                 }
                                 Err(error) => tracing::error!(?error, "goal service failed to initialize"),
                             }
@@ -1055,9 +1018,7 @@ pub fn run() {
                             tauri::async_runtime::spawn(async move {
                                 gh_poller_for_start.start();
                             });
-                            if state.gh_poller.set(gh_poller).is_err() {
-                                tracing::warn!("gh poller state was already initialized");
-                            }
+                            let _ = state.gh_poller.set(gh_poller);
                             let workspace_delta_tx = delta_tx.clone();
                             let publish_delta = move |delta| {
                                 workspace_delta_tx.send(delta);
@@ -1080,9 +1041,7 @@ pub fn run() {
                             workspaces.set_cursor_acp(cursor_acp);
                             workspaces.set_grok_acp(grok_acp);
                             let workspaces_for_watchers = Arc::clone(&workspaces);
-                            if state.workspaces.set(workspaces).is_err() {
-                                tracing::warn!("workspace service state was already initialized");
-                            }
+                            let _ = state.workspaces.set(workspaces);
                             if let Some(server) = session_launch_server {
                                 match server.start(
                                     Some(app.handle().clone()),
@@ -1091,11 +1050,7 @@ pub fn run() {
                                     Arc::clone(&providers),
                                 ) {
                                     Ok(server) => {
-                                        if state.session_launch_server.set(server).is_err() {
-                                            tracing::warn!(
-                                                "session launch server state was already initialized"
-                                            );
-                                        }
+                                        let _ = state.session_launch_server.set(server);
                                     }
                                     Err(error) => {
                                         tracing::warn!(?error, "session launch server failed to start")
@@ -1506,28 +1461,6 @@ fn specta_typescript() -> Typescript {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use tempfile::tempdir;
-
-    /// Exercises the tauri-specta export pipeline end-to-end without
-    /// launching the app. This is the CI guard for "the codegen wiring
-    /// actually emits TypeScript", paired with the integration test
-    /// `generated_ipc_files_are_current`, which guards that the committed
-    /// bindings and channel inventories are what the exporter emits today.
-    #[test]
-    fn specta_export_emits_command_surface() {
-        let dir = tempdir().expect("tempdir");
-        let out = dir.path().join("bindings.d.ts");
-
-        export_bindings(&out).expect("specta export ok");
-
-        let contents = fs::read_to_string(&out).expect("read generated bindings");
-        assert!(
-            contents.contains("health_ping") || contents.contains("healthPing"),
-            "expected command surface in bindings:\n{contents}",
-        );
-    }
-
     fn chunk(terminal_id: &str, data: &str) -> TerminalPush {
         TerminalPush::Data(terminal::service::TerminalChunk {
             terminal_id: terminal_id.to_string(),

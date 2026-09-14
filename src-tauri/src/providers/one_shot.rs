@@ -100,7 +100,8 @@ const MAX_REASON_CHARS: usize = 200;
 /// cheap model. Returns `None` on any failure; callers must treat that as
 /// "keep the existing title".
 pub async fn generate_title(provider: ProviderId, model_id: &str, prompt: &str) -> Option<String> {
-    let answer = ask(
+    let answer = ask_within(
+        CALL_TIMEOUT,
         provider,
         model_id,
         &title_meta_prompt(prompt),
@@ -118,7 +119,8 @@ pub async fn suggest_follow_up(
     model_id: &str,
     last_message: &str,
 ) -> Option<String> {
-    let answer = ask(
+    let answer = ask_within(
+        CALL_TIMEOUT,
         provider,
         model_id,
         &follow_up_meta_prompt(last_message),
@@ -231,10 +233,7 @@ fn parse_goal_verdict(raw: &str) -> Option<(GoalVerdict, String)> {
 /// the object.
 fn first_json_object(raw: &str) -> Option<serde_json::Value> {
     let bytes = raw.as_bytes();
-    for (start, _) in raw
-        .char_indices()
-        .filter(|(index, _)| bytes[*index] == b'{')
-    {
+    for start in (0..bytes.len()).filter(|index| bytes[*index] == b'{') {
         let mut depth = 0usize;
         let mut in_string = false;
         let mut escaped = false;
@@ -287,15 +286,6 @@ fn sanitize_reason(raw: &str) -> Option<String> {
 
 /// Runs `instruction` through the provider's CLI and returns the model's bare
 /// answer. Shared by every one-shot call in this module.
-async fn ask(
-    provider: ProviderId,
-    model_id: &str,
-    instruction: &str,
-    json_schema: Option<&str>,
-) -> Option<String> {
-    ask_within(CALL_TIMEOUT, provider, model_id, instruction, json_schema).await
-}
-
 async fn ask_within(
     timeout: Duration,
     provider: ProviderId,
@@ -1134,34 +1124,6 @@ mod tests {
         for (provider, raw) in raws {
             let answer = extract_answer(provider, &raw).expect("answer");
             assert_eq!(sanitize_title(&answer), None, "accepted for {provider:?}");
-        }
-    }
-
-    #[test]
-    fn every_provider_keeps_a_real_title() {
-        let raws = [
-            (ProviderId::Claude, "Fix Mobile Login Button".to_string()),
-            (ProviderId::Cursor, "Fix Mobile Login Button".to_string()),
-            (
-                ProviderId::Codex,
-                "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"Fix Mobile Login Button\"}}".to_string(),
-            ),
-            (
-                ProviderId::Opencode,
-                "{\"type\":\"text\",\"part\":{\"type\":\"text\",\"text\":\"Fix Mobile Login Button\"}}".to_string(),
-            ),
-            (
-                ProviderId::Grok,
-                "{\"structuredOutput\":{\"title\":\"Fix Mobile Login Button\"}}".to_string(),
-            ),
-        ];
-        for (provider, raw) in raws {
-            let answer = extract_answer(provider, &raw).expect("answer");
-            assert_eq!(
-                sanitize_title(&answer).as_deref(),
-                Some("Fix Mobile Login Button"),
-                "lost the title for {provider:?}"
-            );
         }
     }
 

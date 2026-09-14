@@ -205,20 +205,17 @@ impl ProviderEventFlushQueue {
         provider_invocation_id: &str,
         event: ProviderOutputEvent,
     ) -> ArgmaxResult<QueueOutputResult> {
-        let Some(session) = self.sessions.get_mut(&event.session_id) else {
+        let Some(session) = self
+            .sessions
+            .get_mut(&event.session_id)
+            .filter(|session| session.provider_invocation_id == provider_invocation_id)
+        else {
             return Ok(QueueOutputResult {
                 delta: None,
                 provider_conversation_id: None,
                 has_trailing_fragment: false,
             });
         };
-        if session.provider_invocation_id != provider_invocation_id {
-            return Ok(QueueOutputResult {
-                delta: None,
-                provider_conversation_id: None,
-                has_trailing_fragment: false,
-            });
-        }
 
         session.buffer.queue_raw_output(PersistRawOutputInput {
             id: Uuid::new_v4().to_string(),
@@ -234,11 +231,10 @@ impl ProviderEventFlushQueue {
             .or_default();
         pending.push_str(&event.message);
 
-        let mut provider_conversation_id = None;
         let Some(complete_up_to) = pending.rfind(['\n', '\r']).map(|index| index + 1) else {
             return Ok(QueueOutputResult {
                 delta: None,
-                provider_conversation_id,
+                provider_conversation_id: None,
                 has_trailing_fragment: !pending.trim().is_empty(),
             });
         };
@@ -254,7 +250,7 @@ impl ProviderEventFlushQueue {
             &normalized_event,
             &mut session.normalizer_context,
         );
-        provider_conversation_id =
+        let provider_conversation_id =
             ingest_normalized_result(&mut session.buffer, provider_invocation_id, normalized);
 
         let delta = flush_session_buffer(
@@ -356,7 +352,7 @@ fn ingest_normalized_result(
     normalized.provider_conversation_id
 }
 
-/// True when a newline-less fragment opens a JSON object but does not parse.
+/// True when a newline-less fragment opens a JSON object but does not parse —
 /// a provider JSONL line split across PTY reads, not human-readable output.
 /// The idle flush fires ~16 ms after the last chunk, which is well inside the
 /// time a long line takes to arrive: Claude's compaction summary is a single
@@ -464,16 +460,16 @@ impl DashboardDelta {
             && !self.resync_required
     }
 
-    /// Conflate `other` into `self`. Entity/event vectors are concatenated in
-    /// arrival order (the renderer dedupes by id, keeping the later — i.e. newer
-    /// — row), and `pending_messages` is a per-session snapshot, so `other`'s
-    /// entries overwrite `self`'s for any session it touches. Used by the delta
-    /// emit worker to merge a burst of streamed deltas into a single push.
     /// Exact serialized size used by the bounded live-delivery queue.
     pub fn serialized_payload_bytes(&self) -> Result<usize, serde_json::Error> {
         serde_json::to_vec(self).map(|payload| payload.len())
     }
 
+    /// Conflate `other` into `self`. Entity/event vectors are concatenated in
+    /// arrival order (the renderer dedupes by id, keeping the later — i.e. newer
+    /// — row), and `pending_messages` is a per-session snapshot, so `other`'s
+    /// entries overwrite `self`'s for any session it touches. Used by the delta
+    /// emit worker to merge a burst of streamed deltas into a single push.
     pub fn merge_from(&mut self, other: DashboardDelta) {
         self.projects.extend(other.projects);
         self.workspaces.extend(other.workspaces);

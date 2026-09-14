@@ -949,8 +949,6 @@ pub(crate) fn close_tab(app: &AppHandle, tab_id: &str) -> ArgmaxResult<()> {
     Ok(())
 }
 
-// --- Programmatic capture and evaluation ------------------------------------
-
 /// PNG of one tab, base64 so it can ride the JSON IPC envelope. `width` and
 /// `height` are device pixels: on a retina display they are twice the CSS
 /// size of what was captured.
@@ -1010,11 +1008,9 @@ pub async fn browser_screenshot(
     })
 }
 
-// --- Agent automation -------------------------------------------------------
-//
-// Six channels over `browser::automation`. They exist so the renderer and the
-// verification harness reach the same code an agent's MCP tools will, rather
-// than a parallel implementation that drifts.
+// The agent-automation channels below run through `browser::automation` so the
+// renderer and the verification harness reach the same code an agent's MCP
+// tools will, rather than a parallel implementation that drifts.
 
 /// A tab a session opened. The renderer learns about it through
 /// `browser:agent-open` and `browser:tabs`, not from this reply.
@@ -1106,8 +1102,6 @@ pub async fn browser_evaluate(
     let result_json = eval::eval_json(&webview, &input.script, timeout).await?;
     Ok(BrowserEvaluateResult { result_json })
 }
-
-// --- 1Password fill ---------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
 struct OpAccount {

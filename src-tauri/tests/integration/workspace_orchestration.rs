@@ -47,10 +47,6 @@ use argmax_lib::workspaces::WorkspaceService;
 use crate::support::git_repo::{run_git, run_git_stdout, seed_git_repo, SeededGitRepo};
 use argmax_lib::sessions::state::SessionState;
 
-// ---------------------------------------------------------------------------
-// Fixtures
-// ---------------------------------------------------------------------------
-
 const PROJECT_ID: &str = "p-ws-test";
 
 fn capture_publisher() -> (
@@ -164,10 +160,6 @@ fn ensure_main_branch(repo_path: &std::path::Path) {
     // expectations are stable regardless of the developer's git config.
     run_git(repo_path, &["branch", "-M", "main"]);
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn create_isolated_adds_worktree_and_persists_row() {
@@ -2297,9 +2289,7 @@ async fn archiving_a_popup_workspace_removes_its_scratch_dir() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // Provider teardown must abort the destructive step
-// ---------------------------------------------------------------------------
 
 /// A handle whose `terminate` never succeeds — the shape an ACP turn takes when
 /// its cancel wait times out (`ACP_CANCEL_TIMEOUT`).

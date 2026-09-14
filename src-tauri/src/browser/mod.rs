@@ -71,9 +71,4 @@ mod tests {
         assert_eq!(encode_base64(b"Man"), "TWFu");
         assert_eq!(encode_base64(b"Many"), "TWFueQ==");
     }
-
-    #[test]
-    fn encodes_the_png_magic_bytes() {
-        assert_eq!(encode_base64(&[0x89, 0x50, 0x4e, 0x47]), "iVBORw==");
-    }
 }

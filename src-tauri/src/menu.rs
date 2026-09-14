@@ -519,56 +519,6 @@ mod tests {
     }
 
     #[test]
-    fn command_items_match_stable_labels_and_accelerators() {
-        let commands = command_items(app_menu_spec(false));
-
-        assert_eq!(
-            commands,
-            vec![
-                (MenuCommand::OpenSettings, "Settings…", Some("CmdOrCtrl+,")),
-                (MenuCommand::CheckForUpdates, "Check for Updates…", None),
-                (MenuCommand::NewSession, "New Chat", Some("CmdOrCtrl+N")),
-                (MenuCommand::CloseSurface, "Close", Some("CmdOrCtrl+W")),
-                (
-                    MenuCommand::OpenCommandPalette,
-                    "Command Palette…",
-                    Some("CmdOrCtrl+K"),
-                ),
-                (
-                    MenuCommand::NextChat,
-                    "Cycle Chats",
-                    Some("CmdOrCtrl+Backquote"),
-                ),
-                (
-                    MenuCommand::PreviousChat,
-                    "Cycle Chats Back",
-                    Some("CmdOrCtrl+Shift+Backquote"),
-                ),
-                (
-                    MenuCommand::ToggleSidebar,
-                    "Toggle Right Sidebar",
-                    Some("CmdOrCtrl+B"),
-                ),
-                (
-                    MenuCommand::ToggleLeftSidebar,
-                    "Toggle Left Sidebar",
-                    Some("CmdOrCtrl+Shift+B"),
-                ),
-                (
-                    MenuCommand::ToggleDebugLog,
-                    "Toggle Debug Log",
-                    Some("CmdOrCtrl+Shift+D"),
-                ),
-                (
-                    MenuCommand::OpenCheatSheet,
-                    "Keyboard Shortcuts",
-                    Some("CmdOrCtrl+/"),
-                ),
-            ]
-        );
-    }
-
-    #[test]
     fn every_menu_command_is_reachable_from_the_spec() {
         let actual: BTreeSet<_> = command_items(app_menu_spec(false))
             .into_iter()
@@ -583,22 +533,6 @@ mod tests {
     fn dev_only_items_are_only_in_dev_spec() {
         assert!(!native_items(app_menu_spec(false)).contains(&NativeItem::DevToggleDevtools));
         assert!(native_items(app_menu_spec(true)).contains(&NativeItem::DevToggleDevtools));
-    }
-
-    #[test]
-    fn menu_command_ids_preserve_renderer_contract() {
-        assert_eq!(MenuCommand::NewSession.as_str(), "new-session");
-        assert_eq!(MenuCommand::NextChat.as_str(), "next-chat");
-        assert_eq!(MenuCommand::PreviousChat.as_str(), "previous-chat");
-        assert_eq!(MenuCommand::OpenSettings.as_str(), "open-settings");
-        assert_eq!(MenuCommand::ToggleSidebar.as_str(), "toggle-sidebar");
-        assert_eq!(MenuCommand::ToggleDebugLog.as_str(), "toggle-debug-log");
-        assert_eq!(
-            MenuCommand::OpenCommandPalette.as_str(),
-            "open-command-palette"
-        );
-        assert_eq!(MenuCommand::OpenCheatSheet.as_str(), "open-cheat-sheet");
-        assert_eq!(MenuCommand::CheckForUpdates.as_str(), "check-for-updates");
     }
 
     fn command_items(

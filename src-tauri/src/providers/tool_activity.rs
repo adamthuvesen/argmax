@@ -453,13 +453,12 @@ fn classify(payload: &Map<String, Value>) -> Option<Activity> {
             (ActivityKind::Edit, Evidence::Tool, Some("move"))
         }
         "create" | "createfile" => (ActivityKind::Edit, Evidence::Tool, Some("create")),
-        "grep" | "ripgrep" | "search" | "searchfiles" | "codesearch" => {
+        "grep" | "rg" | "ripgrep" | "search" | "searchfiles" | "codesearch" => {
             (ActivityKind::Search, Evidence::Tool, None)
         }
         "glob" | "find" | "findfiles" | "list" | "listfiles" | "listdir" | "listdirectory" => {
             (ActivityKind::List, Evidence::Tool, None)
         }
-        "rg" => (ActivityKind::Search, Evidence::Tool, None),
         "websearch" | "searchquery" => (ActivityKind::WebSearch, Evidence::Tool, None),
         "webfetch" | "fetchurl" | "openurl" | "fetch" => {
             (ActivityKind::WebFetch, Evidence::Tool, None)
@@ -530,14 +529,8 @@ fn classify(payload: &Map<String, Value>) -> Option<Activity> {
             }
             (ActivityKind::Command, Evidence::Tool, None)
         }
-        // A generic MCP call is still a real tool invocation, but its domain
-        // verb is not evidence that it read or changed a local file.
-        _ if name.starts_with("mcp__") || name.starts_with("mcp.") => {
-            (ActivityKind::Tool, Evidence::Tool, None)
-        }
-        _ if folded == "tool" || folded == "tooluse" || folded == "toolcall" => {
-            (ActivityKind::Tool, Evidence::Tool, None)
-        }
+        // An unrecognized verb is still a real tool invocation, but it is not
+        // evidence that the call read or changed a local file.
         _ => (ActivityKind::Tool, Evidence::Tool, None),
     };
 
@@ -1102,67 +1095,57 @@ fn classify_command_stage(
         return None;
     }
     let args = &words[1..];
-    let (kind, targets) = match executable {
-        "cat" => (ActivityKind::Read, cat_targets(args)?),
+    let (kind, targets, operation) = match executable {
+        "cat" => (ActivityKind::Read, cat_targets(args)?, None),
         "head" | "tail" => {
             let targets = head_tail_targets(args, executable == "tail")?;
             if targets.is_empty() {
                 return accepts_stdin.then_some(None);
             }
-            (ActivityKind::Read, targets)
+            (ActivityKind::Read, targets, None)
         }
         "sed" if args.first().map(String::as_str) == Some("-n") => {
             let targets = sed_targets(args)?;
             if targets.is_empty() {
                 return accepts_stdin.then_some(None);
             }
-            (ActivityKind::Read, targets)
+            (ActivityKind::Read, targets, None)
         }
-        "sed" => (ActivityKind::Edit, sed_in_place_targets(args)?),
-        "perl" => (ActivityKind::Edit, perl_in_place_targets(args)?),
-        "rg" | "ripgrep" => rg_targets(args)?,
-        "grep" => (ActivityKind::Search, grep_targets(args)?),
-        "ls" => (ActivityKind::List, ls_targets(args)?),
-        "find" => (ActivityKind::List, find_targets(args)?),
-        "fd" => (ActivityKind::List, fd_targets(args)?),
-        "git" => (ActivityKind::Git, vec![git_subcommand(args)?.to_owned()]),
-        "mv" => {
-            return Some(Some(CommandStageActivity {
-                kind: ActivityKind::Edit,
-                targets: move_targets(args)?,
-                operation: Some("move"),
-            }))
+        "sed" => (ActivityKind::Edit, sed_in_place_targets(args)?, None),
+        "perl" => (ActivityKind::Edit, perl_in_place_targets(args)?, None),
+        "rg" | "ripgrep" => {
+            let (kind, targets) = rg_targets(args)?;
+            (kind, targets, None)
         }
-        "cp" => {
-            return Some(Some(CommandStageActivity {
-                kind: ActivityKind::Edit,
-                targets: copy_targets(args)?,
-                operation: Some("create"),
-            }))
-        }
-        "rm" => {
-            return Some(Some(CommandStageActivity {
-                kind: ActivityKind::Edit,
-                targets: remove_targets(args)?,
-                operation: Some("delete"),
-            }))
-        }
-        "touch" => {
-            return Some(Some(CommandStageActivity {
-                kind: ActivityKind::Edit,
-                targets: literal_operands(args, &[])?,
-                operation: Some("create"),
-            }))
-        }
+        "grep" => (ActivityKind::Search, grep_targets(args)?, None),
+        "ls" => (ActivityKind::List, ls_targets(args)?, None),
+        "find" => (ActivityKind::List, find_targets(args)?, None),
+        "fd" => (ActivityKind::List, fd_targets(args)?, None),
+        "git" => (
+            ActivityKind::Git,
+            vec![git_subcommand(args)?.to_owned()],
+            None,
+        ),
+        "mv" => (ActivityKind::Edit, move_targets(args)?, Some("move")),
+        "cp" => (ActivityKind::Edit, copy_targets(args)?, Some("create")),
+        "rm" => (
+            ActivityKind::Edit,
+            literal_operands(args, COPY_FLAGS)?,
+            Some("delete"),
+        ),
+        "touch" => (
+            ActivityKind::Edit,
+            literal_operands(args, &[])?,
+            Some("create"),
+        ),
         "wc" => {
             wc_targets(args)?;
             return Some(None);
         }
         // Stages that produce no file activity of their own. Leaving them
         // unknown would void the whole command: `sed -n 1,40p a.rs; echo ---;
-        // grep needle b.rs` is the shape a compound read actually takes, and
-        // `pwd && ls -1` is a listing that used to report as a bare command.
-        // Each of these prints or waits; none can reach a file, because a
+        // grep needle b.rs` is the shape a compound read actually takes. Each
+        // of these prints or waits; none can reach a file, because a
         // redirection makes the whole command unparseable before we get here.
         "echo" | "printf" | "pwd" | "date" | "sleep" | "true" | "false" | ":" | "which" => {
             return Some(None)
@@ -1177,7 +1160,7 @@ fn classify_command_stage(
     Some(Some(CommandStageActivity {
         kind,
         targets,
-        operation: None,
+        operation,
     }))
 }
 
@@ -1918,10 +1901,6 @@ fn copy_targets(args: &[String]) -> Option<Vec<String>> {
         .map(|target| vec![target])
 }
 
-fn remove_targets(args: &[String]) -> Option<Vec<String>> {
-    literal_operands(args, COPY_FLAGS)
-}
-
 fn wc_targets(args: &[String]) -> Option<Vec<String>> {
     let targets = operands_after_boolean_flags(args, &["-l", "-w", "-c", "-m", "-L"])?;
     (!targets.is_empty()).then_some(targets)
@@ -2374,16 +2353,6 @@ mod tests {
             assert_eq!(
                 activity(json!({"name":"Bash","input":{"command":command}}))["kind"],
                 "search"
-            );
-        }
-        for command in [
-            "./cat file.rs",
-            "/tmp/sed -n 1p file.rs",
-            "/tmp/grep needle file.rs",
-        ] {
-            assert_eq!(
-                activity(json!({"name":"Bash","input":{"command":command}}))["kind"],
-                "command"
             );
         }
     }

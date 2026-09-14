@@ -29,15 +29,6 @@ pub use windows::{
     window_label_for_minutes,
 };
 
-/// Providers on the remaining card, matching the Usage page's identity order.
-pub const REMAINING_PROVIDER_ORDER: [ProviderId; 5] = [
-    ProviderId::Claude,
-    ProviderId::Codex,
-    ProviderId::Cursor,
-    ProviderId::Opencode,
-    ProviderId::Grok,
-];
-
 const FETCH_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -220,7 +211,8 @@ pub fn fetch_remaining(source: Arc<dyn RemainingSource>) -> UsageRemaining {
             spawn_row(scope, &source, ProviderId::Opencode, opencode::fetch),
             spawn_row(scope, &source, ProviderId::Grok, grok::fetch),
         ];
-        jobs.map(|job| join_row(job.0, job.1)).to_vec()
+        jobs.map(|(handle, provider)| handle.join().unwrap_or_else(|_| failed_row(provider)))
+            .to_vec()
     });
 
     UsageRemaining {
@@ -249,13 +241,6 @@ where
         }),
         provider,
     )
-}
-
-fn join_row(
-    handle: std::thread::ScopedJoinHandle<'_, UsageProviderRemaining>,
-    provider: ProviderId,
-) -> UsageProviderRemaining {
-    handle.join().unwrap_or_else(|_| failed_row(provider))
 }
 
 fn failed_row(provider: ProviderId) -> UsageProviderRemaining {
@@ -363,7 +348,13 @@ pub mod tests {
                 .iter()
                 .map(|row| row.provider)
                 .collect::<Vec<_>>(),
-            REMAINING_PROVIDER_ORDER.to_vec()
+            vec![
+                ProviderId::Claude,
+                ProviderId::Codex,
+                ProviderId::Cursor,
+                ProviderId::Opencode,
+                ProviderId::Grok,
+            ]
         );
         assert_eq!(snapshot.providers[0].kind, UsagePlanKind::Unavailable);
         assert!(chrono::DateTime::parse_from_rfc3339(&snapshot.fetched_at).is_ok());

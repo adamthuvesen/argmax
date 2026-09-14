@@ -467,11 +467,9 @@ fn synthetic_launch_events(
 ) -> Vec<PersistTimelineEventInput> {
     let child_id = meta.thread_id.as_str();
     let tool_use_id = context.parent_tool_use_id.as_str();
+    let receivers = Value::Array(vec![Value::String(child_id.to_string())]);
     let mut input = Map::new();
-    input.insert(
-        "receiver_thread_ids".to_string(),
-        Value::Array(vec![Value::String(child_id.to_string())]),
-    );
+    input.insert("receiver_thread_ids".to_string(), receivers.clone());
     // A `wait` that timed out reports no receivers, so the sender is the only
     // way the renderer can settle this launch from that wait.
     if let Some(parent_thread_id) = meta.parent_thread_id.as_deref() {
@@ -492,23 +490,22 @@ fn synthetic_launch_events(
         );
     }
 
-    let mut started = Map::new();
-    started.insert("id".to_string(), Value::String(tool_use_id.to_string()));
-    started.insert(
+    let mut identity = Map::new();
+    identity.insert("id".to_string(), Value::String(tool_use_id.to_string()));
+    identity.insert(
         "call_id".to_string(),
         Value::String(tool_use_id.to_string()),
     );
-    started.insert("name".to_string(), Value::String("spawn_agent".to_string()));
-    started.insert("type".to_string(), Value::String("spawn_agent".to_string()));
-    started.insert(SYNTHETIC_LAUNCH_MARKER.to_string(), Value::Bool(true));
-    started.insert(
+    identity.insert("name".to_string(), Value::String("spawn_agent".to_string()));
+    identity.insert(SYNTHETIC_LAUNCH_MARKER.to_string(), Value::Bool(true));
+    identity.insert(
         "providerChildSessionId".to_string(),
         Value::String(child_id.to_string()),
     );
-    started.insert(
-        "receiver_thread_ids".to_string(),
-        Value::Array(vec![Value::String(child_id.to_string())]),
-    );
+
+    let mut started = identity.clone();
+    started.insert("type".to_string(), Value::String("spawn_agent".to_string()));
+    started.insert("receiver_thread_ids".to_string(), receivers);
     started.insert("input".to_string(), Value::Object(input));
     for (key, value) in [
         ("agentNickname", meta.nickname.as_deref()),
@@ -525,25 +522,14 @@ fn synthetic_launch_events(
         session_id: context.session_id.clone(),
         r#type: "command.started".to_string(),
         message: "spawn_agent".to_string(),
-        payload: Value::Object(started.clone()),
+        payload: Value::Object(started),
         created_at: Some(launched_at.to_string()),
     }];
 
     let Some(outcome) = outcome else {
         return events;
     };
-    let mut completed = Map::new();
-    completed.insert("id".to_string(), Value::String(tool_use_id.to_string()));
-    completed.insert(
-        "call_id".to_string(),
-        Value::String(tool_use_id.to_string()),
-    );
-    completed.insert("name".to_string(), Value::String("spawn_agent".to_string()));
-    completed.insert(SYNTHETIC_LAUNCH_MARKER.to_string(), Value::Bool(true));
-    completed.insert(
-        "providerChildSessionId".to_string(),
-        Value::String(child_id.to_string()),
-    );
+    let mut completed = identity;
     if let Some(message) = outcome.final_message {
         completed.insert("output".to_string(), Value::String(message));
     }

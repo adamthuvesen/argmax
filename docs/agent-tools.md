@@ -580,8 +580,11 @@ seconds of slack so a wait that runs the full duration still gets its reply.
 
 Keep bounded delegation in the current chat. Use the provider's native
 subagents for research, review, or implementation whose result you will
-integrate into the current turn. The user-facing multitask flow is for work
-that should run alongside a chat.
+integrate into the current turn. A native subagent only lives as long as the
+turn that spawned it, so its result has to be collected before the answer: an
+answer that reports the work as still running ends the turn and discards it
+unread. The user-facing multitask flow is for work that should run alongside a
+chat.
 
 Use `session_launch` when either of these cases applies:
 

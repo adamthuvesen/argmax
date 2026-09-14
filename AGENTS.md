@@ -50,7 +50,7 @@ npm run tauri:build     # production Tauri bundle
 
 ## Agent Delegation
 
-- Keep bounded delegated work in the current chat. Use provider-native subagents for research, review, and implementation that the launcher will integrate into the current turn.
+- Keep bounded delegated work in the current chat. Use provider-native subagents for research, review, and implementation that the launcher will integrate into the current turn. A native subagent dies with the turn that spawned it: collect its result before answering, never report it as still running.
 - Use `session_launch` when the user explicitly requests a separate session or the work needs its own independent, durable lifecycle that remains visible and steerable after this turn, such as a separate repository investigation or a long-running build. Do not launch a session merely for parallelism, fresh context, model choice, or context relief.
 - The user-facing multitask flow is for work that should run alongside a chat. Keep delegation one hop unless the brief explicitly requires further decomposition. The launcher owns synthesis and verification.
 

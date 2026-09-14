@@ -377,6 +377,7 @@ pub(crate) fn open_tab(
     let load_app = app.clone();
     let load_tab = tab_id.to_string();
     let popup_app = app.clone();
+    let popup_owned_by_session = owner_session_id.is_some();
     let builder = tauri::webview::WebviewBuilder::new(&label, WebviewUrl::External(url))
         // WKWebView's default UA reads as an embedded webview; Google (and
         // others) then warn "browser no longer supported" and refuse OAuth.
@@ -390,6 +391,10 @@ pub(crate) fn open_tab(
             if !matches!(url.scheme(), "http" | "https" | "about" | "blob") {
                 return tauri::webview::NewWindowResponse::Deny;
             }
+            if let Err(error) = crate::browser::popup::prepare_configuration(&features) {
+                tracing::error!(%error, "could not prepare browser popup configuration");
+                return tauri::webview::NewWindowResponse::Deny;
+            }
             let window = tauri::WebviewWindowBuilder::new(
                 &popup_app,
                 format!("browser-popup-{}", uuid::Uuid::new_v4()),
@@ -399,8 +404,12 @@ pub(crate) fn open_tab(
             .inner_size(600.0, 720.0)
             .window_features(features)
             .user_agent(BROWSER_USER_AGENT)
-            // Inherited panel scripts run before this marker. Check it at
-            // event time, since OAuth redirects can sever window.opener.
+            // The popup gets a fresh WKUserContentController on macOS, so
+            // explicitly restore the panel scripts Wry would otherwise see
+            // through the inherited controller.
+            .initialization_script(init_script(popup_owned_by_session))
+            // Check the marker at event time, since OAuth redirects can sever
+            // window.opener.
             .initialization_script("window.__argmaxBrowserPopup = true;")
             .on_navigation(|url| matches!(url.scheme(), "http" | "https" | "about" | "blob"))
             .on_document_title_changed(|window, title| {

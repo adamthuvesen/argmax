@@ -5,7 +5,31 @@ mod macos {
     use std::ffi::CString;
 
     use objc2::runtime::{AnyObject, Imp, Sel};
-    use objc2::{msg_send, sel};
+    use objc2::{msg_send, sel, MainThreadMarker};
+    use objc2_web_kit::WKUserContentController;
+
+    pub(super) fn reset_user_content_controller(
+        features: &tauri::webview::NewWindowFeatures,
+    ) -> Result<(), &'static str> {
+        let Some(mtm) = MainThreadMarker::new() else {
+            return Err("popup callback did not run on the macOS main thread");
+        };
+
+        // WebKit's target configuration inherits the opener's content
+        // controller, including Wry's `ipc` script-message handler. Wry
+        // registers that handler while constructing the popup, and WebKit
+        // raises an Objective-C exception if the name already exists. Keep
+        // the target configuration (required for the opener relationship),
+        // but give the new webview its own empty controller for Wry to fill.
+        unsafe {
+            let controller = WKUserContentController::new(mtm);
+            features
+                .opener()
+                .target_configuration
+                .setUserContentController(&controller);
+        }
+        Ok(())
+    }
 
     extern "C-unwind" fn web_view_did_close(
         _delegate: &AnyObject,
@@ -58,6 +82,22 @@ mod macos {
                 );
             }
         })
+    }
+}
+
+/// Removes message handlers inherited through WebKit's popup configuration.
+pub fn prepare_configuration(
+    features: &tauri::webview::NewWindowFeatures,
+) -> Result<(), &'static str> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::reset_user_content_controller(features)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = features;
+        Ok(())
     }
 }
 

@@ -48,17 +48,27 @@ enum Theme {
     static let amberColor = dynamic(light: 0xB0_80_39, dark: 0xD9_A5_66)
     static let roseColor = dynamic(light: 0xB8_57_63, dark: 0xE0_85_91)
     static let sageColor = dynamic(light: 0x44_6C_56, dark: 0x6D_AB_86)
-    /// Stable tool-kind hues borrowed from the desktop accent palette. They do
-    /// not follow the selected accent, so each activity keeps its meaning:
-    /// blue retrieves information, coral changes files, green marks Git,
-    /// orange executes, purple coordinates, and gold activates skills. Red
-    /// overrides destructive or failed work.
-    static let activityPurpleColor = dynamic(light: 0x70_55_8F, dark: 0xAD_94_D0)
-    static let activityBlueColor = dynamic(light: 0x39_66_96, dark: 0x7E_A6_CF)
-    static let activityGreenColor = dynamic(light: 0x44_6C_56, dark: 0x6D_AB_86)
-    static let activityCoralColor = dynamic(light: 0x94_4B_3E, dark: 0xD1_8E_82)
-    static let activityGoldColor = dynamic(light: 0x87_6F_02, dark: 0xE9_C3_38)
-    static let activityRedColor = dynamic(light: 0xC8_41_51, dark: 0xF0_70_7F)
+    /// Stable tool-kind hues, one legend with the desktop's `--activity-*`.
+    /// They do not follow the selected accent, so each activity keeps its
+    /// meaning: blue retrieves information, coral changes files, green marks
+    /// Git, orange executes, purple coordinates, and gold activates skills.
+    /// Red overrides destructive or failed work.
+    ///
+    /// Light is tuned for paper rather than shared with the accent palette it
+    /// started from. An accent fills a bubble; an activity mark is a thin
+    /// stroke, and antialiasing against a near-white ground pulls a dark one
+    /// back toward grey, so each hue now spends most of the chroma sRGB has
+    /// at its lightness. Gold could not: at hue 94 it was a yellow-green with
+    /// no chroma left below L 0.55, so it moves to hue 78 at the same
+    /// lightness — amber instead of olive. Dark is unchanged, because a light
+    /// tint on charcoal already reads as colour. Stroke weight stays equal in
+    /// both appearances. See `docs/styling.md`.
+    static let activityPurpleColor = dynamic(light: 0x74_49_A8, dark: 0xAD_94_D0)
+    static let activityBlueColor = dynamic(light: 0x1C_65_A9, dark: 0x7E_A6_CF)
+    static let activityGreenColor = dynamic(light: 0x1B_72_49, dark: 0x6D_AB_86)
+    static let activityCoralColor = dynamic(light: 0xA7_39_24, dark: 0xD1_8E_82)
+    static let activityGoldColor = dynamic(light: 0x99_6A_07, dark: 0xE9_C3_38)
+    static let activityRedColor = dynamic(light: 0xC7_2E_43, dark: 0xF0_70_7F)
     /// `--pr-merged`. GitHub's own merged-purple, not a token this app
     /// otherwise uses — a merged PR is the one thing worth a colour no other
     /// row state wears, so it can't be read as attention or as the accent.

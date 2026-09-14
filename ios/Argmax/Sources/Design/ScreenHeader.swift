@@ -60,8 +60,12 @@ struct ScreenHeader<Trailing: View, Center: View>: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                     if let subtitle, !subtitle.isEmpty {
+                        // The app's own second-line role, the same one the
+                        // chat list gives `project · branch`. The header used
+                        // to run two steps under it, which made the one line
+                        // naming where you are the smallest text on screen.
                         Text(subtitle)
-                            .typeSubtitle()
+                            .typeMeta()
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }

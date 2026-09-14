@@ -12,6 +12,7 @@ import {
   claimBrowserSurface,
   ensureBrowserTabSync,
   getAgentBrowserOpen,
+  consumeBrowserRequest,
   getBrowserOwnerId,
   getBrowserRequest,
   lastBrowsedUrl,
@@ -222,6 +223,7 @@ export interface ReviewState {
    *  even when the URL is the one the page is already on. Null until this
    *  panel has been asked for the browser at least once. */
   browserRequest: BrowserOpenRequest | null;
+  handleBrowserRequest: (seq: number) => void;
   openFile: (filePath: string) => void;
   /** Reload the open file's diff with more unchanged context around its hunks. */
   expandDiffContext: () => void;
@@ -435,6 +437,12 @@ export function useReviewState(
   );
   const browserOwner = useSyncExternalStore(subscribeBrowserOwner, getBrowserOwnerId) === panelId;
 
+  const handleBrowserRequest = useCallback((seq: number): void => {
+    setBrowserRequest((current) =>
+      current?.seq === seq ? { url: "", seq } : current
+    );
+  }, []);
+
   const openBrowserAt = useCallback(
     (url: string, tabId?: string, newTab?: boolean): void => {
       // Claim here, not only in the effect below: a demoted panel is already
@@ -482,6 +490,7 @@ export function useReviewState(
       request.tabId,
       request.newTab
     );
+    consumeBrowserRequest(request.seq);
   }), [browserScopeId, openBrowserAt]);
 
   // A tab this panel's session opened: show it here, so the user watches the
@@ -778,6 +787,7 @@ export function useReviewState(
     browserOwner,
     browserScopeId,
     browserRequest,
+    handleBrowserRequest,
     terminalWorkspaceId,
     openTerminal,
     toggleTerminal,

@@ -38,12 +38,13 @@ export interface BrowserOpenRequest {
 }
 
 let openRequest: BrowserOpenRequest | null = null;
+let nextOpenRequestSeq = 1;
 const requestListeners = new Set<() => void>();
 
 export function openInBrowserPanel(url: string, options?: { newTab?: boolean }): void {
   openRequest = {
     url,
-    seq: (openRequest?.seq ?? 0) + 1,
+    seq: nextOpenRequestSeq++,
     ...(options?.newTab ? { newTab: true as const } : {})
   };
   for (const listener of requestListeners) listener();
@@ -51,7 +52,7 @@ export function openInBrowserPanel(url: string, options?: { newTab?: boolean }):
 
 /** Open the browser without a target: the claiming pane restores its own strip. */
 export function openBrowserPanel(): void {
-  openRequest = { url: "", seq: (openRequest?.seq ?? 0) + 1 };
+  openRequest = { url: "", seq: nextOpenRequestSeq++ };
   for (const listener of requestListeners) listener();
 }
 
@@ -72,6 +73,11 @@ export function subscribeBrowserRequest(listener: () => void): () => void {
 /** Stable snapshot for useSyncExternalStore: replaced, never mutated. */
 export function getBrowserRequest(): BrowserOpenRequest | null {
   return openRequest;
+}
+
+/** A claimant has copied this request. Do not replay it on another surface. */
+export function consumeBrowserRequest(seq: number): void {
+  if (openRequest?.seq === seq) openRequest = null;
 }
 
 /** Called on in-page navigation so a reopen lands where the user browsed to. */
@@ -117,6 +123,7 @@ export function releaseBrowserSurface(id: string): void {
 /** Test-only: forgets the pending request, the owner, and the last URL. */
 export function resetBrowserSurfaceForTests(): void {
   openRequest = null;
+  nextOpenRequestSeq = 1;
   ownerId = null;
   for (const listener of requestListeners) listener();
   for (const listener of ownerListeners) listener();

@@ -36,6 +36,7 @@ export function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
     browserOwner: false,
     browserScopeId: "launcher",
     browserRequest: null,
+    handleBrowserRequest: () => {},
     terminalWorkspaceId: null,
     openTerminal: () => {},
     toggleTerminal: () => {},

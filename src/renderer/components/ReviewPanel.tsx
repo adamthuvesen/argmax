@@ -60,7 +60,6 @@ import { buildAgentRoster } from "../lib/agentRoster.js";
 import { AgentsView } from "./AgentsView.js";
 import { BrowserPanel } from "./BrowserPanel.js";
 import { statusLabel, summarizeChangedFiles } from "../lib/changedFiles.js";
-import { DEFAULT_BROWSER_URL } from "../lib/browserPanel.js";
 import { readBoundedNumberPreference } from "../lib/uiPreferences.js";
 import { parseUnifiedDiff } from "../lib/diff.js";
 import { ChangeCount } from "./ChangeCount.js";
@@ -825,10 +824,11 @@ function ReviewPanelPane({
           review.browserOwner ? (
             <BrowserPanel
               scopeId={review.browserScopeId}
-              url={review.browserRequest?.url ?? DEFAULT_BROWSER_URL}
+              url={review.browserRequest?.url ?? ""}
               requestSeq={review.browserRequest?.seq}
               requestTabId={review.browserRequest?.tabId}
               requestNewTab={review.browserRequest?.newTab}
+              onRequestHandled={review.handleBrowserRequest}
               panePosition={panePosition}
               onClose={review.closePanel}
             />

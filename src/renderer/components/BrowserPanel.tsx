@@ -76,6 +76,8 @@ interface BrowserPanelProps {
   requestTabId?: string;
   /** Open a fresh tab for this request instead of navigating the active one. */
   requestNewTab?: boolean;
+  /** Clear a routed request so remounting restores the selected tab. */
+  onRequestHandled?: (seq: number) => void;
   /** A split swap can move the surface without changing its size. */
   panePosition?: "top" | "bottom";
   onClose: () => void;
@@ -153,11 +155,13 @@ export function BrowserPanel({
   requestSeq,
   requestTabId,
   requestNewTab,
+  onRequestHandled,
   panePosition,
   onClose
 }: BrowserPanelProps): JSX.Element {
   const browser = window.argmax?.browser ?? null;
   const surfaceRef = useRef<HTMLDivElement | null>(null);
+  const handledRequestRef = useRef<{ scopeId: string; seq: number } | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const addressInputRef = useRef<HTMLInputElement | null>(null);
   /** What the user typed, before ↑/↓ started swapping in suggestions. */
@@ -394,6 +398,15 @@ export function BrowserPanel({
   // no webview yet; opening it recreates one at the requested URL.
   useEffect(() => {
     if (!browser) return;
+    if (requestSeq !== undefined) {
+      const handled = handledRequestRef.current;
+      if (handled?.scopeId === scopeId && handled.seq === requestSeq) {
+        const active = getBrowserTabs(scopeId).find((tab) => tab.id === getActiveBrowserTabId(scopeId));
+        if (active) showTabWebview(active);
+        return;
+      }
+      handledRequestRef.current = { scopeId, seq: requestSeq };
+    }
     // A tab the app already created (a session's) is switched to, not
     // navigated to: its webview exists and holds the refs the agent is using.
     const requested = requestTabId
@@ -445,6 +458,14 @@ export function BrowserPanel({
     syncBounds,
     url
   ]);
+
+  // The route above has applied the command. Its parent outlives this chrome,
+  // so clear the payload there before an ownership change can replay it.
+  useEffect(() => {
+    if (browser && requestSeq !== undefined && (url || requestTabId || requestNewTab)) {
+      onRequestHandled?.(requestSeq);
+    }
+  }, [browser, onRequestHandled, requestNewTab, requestSeq, requestTabId, url]);
 
   // Popups / target="_blank" inside a page arrive as new-tab events.
   useEffect(() => {

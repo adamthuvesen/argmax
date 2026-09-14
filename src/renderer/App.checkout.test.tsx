@@ -187,9 +187,9 @@ describe("App workspace follow", () => {
       )
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "Create pull request" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Create PR for checkout branch" }));
     await waitFor(() =>
-      expect(viewOrCreatePr).toHaveBeenCalledWith({ sessionId: "session-moved" })
+      expect(viewOrCreatePr).toHaveBeenCalledWith({ sessionId: "session-moved", expectedBranch: "adam/feature-branch" })
     );
   });
 });

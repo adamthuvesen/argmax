@@ -4,8 +4,32 @@ import type { WorkspaceSummary } from "../../shared/types.js";
 import type { AsyncState } from "../hooks/useReviewState.js";
 import { baseSession, workspace } from "../../test/sessionConversationTestHarness.js";
 import { emblemForCodename, emblemForKey } from "../lib/agentEmblems.js";
+import type { WorkspaceSessionPr } from "../lib/sessionPrs.js";
 import type { SubagentCluster } from "../lib/subagentSummary.js";
 import { WorkspaceCard } from "./WorkspaceCard.js";
+
+function sessionPr(overrides: Partial<WorkspaceSessionPr> = {}): WorkspaceSessionPr {
+  return {
+    sessionId: "session-a",
+    prNumber: 762,
+    url: "https://github.com/o/r/pull/762",
+    title: "Alfred Slack status",
+    prState: "OPEN",
+    headRefName: "feat/alfred-slack-status",
+    relationship: "worked",
+    activityAt: "2026-05-12T15:54:00.000Z",
+    updatedAt: "2026-05-12T15:54:00.000Z",
+    checkState: "success",
+    isPrimary: true,
+    isPinned: false,
+    refreshError: null,
+    ...overrides
+  };
+}
+
+function workspaceWithPrs(prs: WorkspaceSessionPr[], overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary {
+  return { ...workspace, ...overrides, prs };
+}
 
 function subagentCluster(overrides: Partial<SubagentCluster> = {}): SubagentCluster {
   return {
@@ -70,6 +94,12 @@ describe("WorkspaceCard", () => {
     const card = screen.getByRole("complementary", { name: "Workspace" });
     expect(card.textContent).toContain("argmax/dashboard");
     expect(card.textContent).toContain("from main");
+  });
+
+  it("labels a shared workspace branch as the checkout branch", () => {
+    renderCard({ workspace: { ...workspace, sharedWorkspace: true } });
+
+    expect(screen.getByRole("complementary", { name: "Workspace" })).toHaveTextContent("Checkout branch");
   });
 
   it("copies the full branch name when its ellipsized label is clicked", async () => {
@@ -176,73 +206,111 @@ describe("WorkspaceCard", () => {
     expect(refresh).toHaveBeenCalledWith({ sessionId: "session-a" });
   });
 
-  it("offers to create a pull request when the workspace has none, and to open the one it has", async () => {
+  it("creates a pull request for the exact checkout branch", async () => {
     const viewOrCreatePr = vi.fn().mockResolvedValue({ action: "created", url: "https://x/1", prNumber: 1 });
     const openPath = vi.fn().mockResolvedValue({ ok: true });
     (window as { argmax?: unknown }).argmax = { git: { viewOrCreatePr }, system: { openPath } };
     const setStatus = vi.fn();
 
-    const { rerender } = renderCard({ setStatus });
-    fireEvent.click(screen.getByRole("button", { name: "Create pull request" }));
-    expect(viewOrCreatePr).toHaveBeenCalledWith({ sessionId: "session-a" });
+    renderCard({ setStatus });
+    fireEvent.click(screen.getByRole("button", { name: "Create PR for checkout branch" }));
+    expect(viewOrCreatePr).toHaveBeenCalledWith({
+      sessionId: "session-a",
+      expectedBranch: "argmax/dashboard"
+    });
     await waitFor(() => expect(openPath).toHaveBeenCalledWith({ path: "https://x/1" }));
     expect(setStatus).toHaveBeenCalledExactlyOnceWith(null);
-
-    viewOrCreatePr.mockResolvedValue({ action: "opened", url: "https://github.com/o/r/pull/1158", prNumber: 1158 });
-    const openStatus = vi.fn();
-    rerender(
-      <WorkspaceCard
-        changeSummary={{ fileCount: 1, additions: 1, deletions: 0 }}
-        changesState="ready"
-        isTerminalOpen={false}
-        onBrowseFiles={vi.fn()}
-        onHide={vi.fn()}
-        onOpenChanges={vi.fn()}
-        onOpenCommitDialog={vi.fn()}
-        onToggleTerminal={vi.fn()}
-        session={baseSession()}
-        setStatus={openStatus}
-        workspace={{ ...workspace, prNumber: 1158, prState: "OPEN" }}
-      />
-    );
-
-    const prRow = screen.getByRole("button", { name: "PR #1158" });
-    expect(prRow).toHaveTextContent(/^PR #1158$/);
-    expect(prRow).toHaveAccessibleDescription("Open pull request #1158 on GitHub (open)");
-
-    fireEvent.click(prRow);
-    await waitFor(() =>
-      expect(openPath).toHaveBeenCalledWith({ path: "https://github.com/o/r/pull/1158" })
-    );
-    expect(openStatus).toHaveBeenCalledExactlyOnceWith(null);
-
-    rerender(
-      <WorkspaceCard
-        changeSummary={{ fileCount: 1, additions: 1, deletions: 0 }}
-        changesState="ready"
-        isTerminalOpen={false}
-        onBrowseFiles={vi.fn()}
-        onHide={vi.fn()}
-        onOpenChanges={vi.fn()}
-        onOpenCommitDialog={vi.fn()}
-        onToggleTerminal={vi.fn()}
-        session={baseSession()}
-        setStatus={vi.fn()}
-        workspace={{ ...workspace, prNumber: 1158, prState: "MERGED" }}
-      />
-    );
-
-    const mergedRow = screen.getByRole("button", { name: "PR #1158" });
-    expect(mergedRow).toHaveTextContent(/^PR #1158$/);
-    expect(mergedRow).toHaveAccessibleDescription("Open pull request #1158 on GitHub (merged)");
   });
 
-  it("states a closed pull request without spending a word on it", () => {
-    renderCard({ workspace: { ...workspace, prNumber: 1158, prState: "CLOSED" } });
+  it("opens an existing pull request by its stored URL without resolving by checkout", () => {
+    const viewOrCreatePr = vi.fn();
+    const openPath = vi.fn().mockResolvedValue({ ok: true });
+    (window as { argmax?: unknown }).argmax = {
+      git: { viewOrCreatePr },
+      system: { openPath }
+    };
+    renderCard({ workspace: workspaceWithPrs([sessionPr()]) });
 
-    const prRow = screen.getByRole("button", { name: "PR #1158" });
-    expect(prRow).toHaveTextContent(/^PR #1158$/);
-    expect(prRow).toHaveAccessibleDescription("Open pull request #1158 on GitHub (closed)");
+    const prRow = screen.getByRole("button", { name: "PR #762 Alfred Slack status" });
+    expect(prRow).toHaveAccessibleDescription("Open pull request #762 on GitHub (open)");
+    fireEvent.click(prRow);
+
+    expect(openPath).toHaveBeenCalledWith({ path: "https://github.com/o/r/pull/762" });
+    expect(viewOrCreatePr).not.toHaveBeenCalled();
+  });
+
+  it("keeps a PR without a stored URL disabled instead of falling back to creation", () => {
+    const viewOrCreatePr = vi.fn();
+    (window as { argmax?: unknown }).argmax = { git: { viewOrCreatePr } };
+    renderCard({ workspace: workspaceWithPrs([sessionPr({ url: null })]) });
+
+    const prRow = screen.getByRole("button", { name: "PR #762 Alfred Slack status" });
+    expect(prRow).toBeDisabled();
+    expect(prRow).toHaveAccessibleDescription(/has no URL/);
+    expect(viewOrCreatePr).not.toHaveBeenCalled();
+  });
+
+  it("shows current PRs first and keeps older associations expandable", () => {
+    const prs = [
+      sessionPr(),
+      sessionPr({ prNumber: 759, url: "https://github.com/o/r/pull/759", title: "Referenced fix", relationship: "referenced", isPrimary: false }),
+      sessionPr({ prNumber: 755, url: "https://github.com/o/r/pull/755", title: "Earlier work", prState: "MERGED", isPrimary: false }),
+      sessionPr({ prNumber: 750, url: "https://github.com/o/r/pull/750", title: "Candidate", prState: "CLOSED", relationship: "unverified", isPrimary: false })
+    ];
+    renderCard({ workspace: workspaceWithPrs(prs) });
+
+    const section = screen.getByRole("region", { name: "Pull requests" });
+    expect(section).toHaveTextContent("Pull requests4");
+    expect(screen.getByRole("button", { name: "PR #759 Referenced fix" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "PR #755 Earlier work" })).toBeNull();
+
+    fireEvent.click(screen.getByText("2 more"));
+    expect(screen.getByRole("button", { name: "PR #755 Earlier work" })).toBeInTheDocument();
+    expect(screen.getByText("Merged · feat/alfred-slack-status")).toBeInTheDocument();
+    expect(screen.getByText(/Closed · feat\/alfred-slack-status · Unverified/)).toBeInTheDocument();
+  });
+
+  it("lets an automatically selected unverified PR be confirmed and pinned", async () => {
+    const setPrimary = vi.fn().mockResolvedValue([]);
+    (window as { argmax?: unknown }).argmax = {
+      prs: { setPrimary, dismiss: vi.fn().mockResolvedValue([]) }
+    };
+    renderCard({
+      workspace: workspaceWithPrs([
+        sessionPr({ relationship: "unverified", isPrimary: true, isPinned: false })
+      ])
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Actions for PR #762" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Confirm and make primary" }));
+
+    await waitFor(() =>
+      expect(setPrimary).toHaveBeenCalledWith({ sessionId: "session-a", prNumber: 762 })
+    );
+  });
+
+  it("pins, returns to automatic selection, and removes PR associations", async () => {
+    const setPrimary = vi.fn().mockResolvedValue([]);
+    const dismiss = vi.fn().mockResolvedValue([]);
+    (window as { argmax?: unknown }).argmax = { prs: { setPrimary, dismiss } };
+    renderCard({
+      workspace: workspaceWithPrs([
+        sessionPr({ isPinned: true }),
+        sessionPr({ prNumber: 759, url: "https://github.com/o/r/pull/759", title: "Candidate", relationship: "unverified", isPrimary: false })
+      ])
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Actions for PR #759" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Confirm and make primary" }));
+    await waitFor(() => expect(setPrimary).toHaveBeenCalledWith({ sessionId: "session-a", prNumber: 759 }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Actions for PR #762" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Automatic selection" }));
+    await waitFor(() => expect(setPrimary).toHaveBeenCalledWith({ sessionId: "session-a", prNumber: null }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Actions for PR #762" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove from this chat" }));
+    await waitFor(() => expect(dismiss).toHaveBeenCalledWith({ sessionId: "session-a", prNumber: 762 }));
   });
 
   it("reports a failed pull-request call through the session status line", async () => {
@@ -253,7 +321,7 @@ describe("WorkspaceCard", () => {
     };
 
     renderCard({ setStatus });
-    fireEvent.click(screen.getByRole("button", { name: "Create pull request" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create PR for checkout branch" }));
 
     await waitFor(() =>
       expect(setStatus).toHaveBeenCalledWith({ kind: "error", message: "gh not authenticated" })

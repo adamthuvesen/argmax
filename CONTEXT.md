@@ -152,6 +152,14 @@ _Avoid_: Test, CI, job
 A GitHub CI check on a pull request, polled through `gh`. A different thing from a check — this one runs on GitHub's machines and can trigger an automatic follow-up session when it fails.
 _Avoid_: Check, CI check
 
+**Session PR association**:
+Evidence connecting a session to a pull request. A session can work on several PRs, and several sessions can work on one PR. Work, references, and unverified discoveries are distinct relationships. Sharing a checkout or opening a browser link does not establish work on a PR.
+_Avoid_: PR ownership, branch ownership
+
+**Primary PR**:
+The pull request foregrounded for a session. The user can pin it, or automatic selection can choose it from the session's meaningful PR activity. Refresh order never changes its identity. Other associated PRs remain visible in the workspace card.
+_Avoid_: Latest PR, current branch PR
+
 **Approval**:
 A single command a provider asked permission to run, with its risk classification and resolution. Compare-and-set from `pending`, so a replayed request cannot create a second row.
 

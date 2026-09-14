@@ -760,6 +760,22 @@ async prsRefresh(input: PrsRefreshInput) : Promise<Result<GhPrRecord[], ArgmaxEr
     else return { status: "error", error: e  as any };
 }
 },
+async prsSetPrimary(input: PrsSetPrimaryInput) : Promise<Result<SessionPrSummary[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("prs_set_primary", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async prsDismiss(input: PrsDismissInput) : Promise<Result<SessionPrSummary[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("prs_dismiss", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async gitCommit(input: GitCommitInput) : Promise<Result<GitCommitResult, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("git_commit", { input }) };
@@ -1545,7 +1561,7 @@ export type GitCreateBranchInput = { workspaceId: WorkspaceId; branch: BranchNam
 export type GitCreateBranchResult = { branch: string }
 export type GitPushInput = { workspaceId: WorkspaceId }
 export type GitPushResult = { branch: string; upstreamSet: boolean }
-export type GitViewOrCreatePrInput = { sessionId: SessionId }
+export type GitViewOrCreatePrInput = { sessionId: SessionId; expectedBranch: BranchName | null }
 export type GitViewOrCreatePrResult = { action: "opened"; url: string; prNumber: number } | { action: "created"; url: string; prNumber: number | null }
 export type Goal = { id: string; workspaceId: string; sessionId: string;
 /**
@@ -1739,8 +1755,10 @@ export type ProvidersSendInput = { sessionId: SessionId; input: Prompt;
 provider?: ProviderId | null; modelLabel: NonEmptyString | null; modelId: NonEmptyString | null; reasoningEffort: ReasoningEffort | null; fastMode?: boolean; agentMode: AgentMode | null; attachments: ComposerAttachmentInput[] | null; agentReferences?: AgentReference[] | null }
 export type ProvidersSendQueuedMessageNowInput = { sessionId: SessionId; messageId: NonEmptyString; delivery?: QueuedMessageDelivery | null }
 export type ProvidersTerminateInput = { sessionId: SessionId }
+export type PrsDismissInput = { sessionId: SessionId; prNumber: number }
 export type PrsListForSessionInput = { sessionId: SessionId }
 export type PrsRefreshInput = { sessionId: SessionId }
+export type PrsSetPrimaryInput = { sessionId: SessionId; prNumber: number | null }
 export type QuestionRequestId = string
 export type QuestionResolveResult = { sessionId: string; requestId: string; status: QuestionResolveStatus }
 export type QuestionResolveStatus = "answered" | "dismissed"
@@ -1915,6 +1933,7 @@ worktree?: boolean;
  * Sidebar label for the new chat. Falls back to the prompt's first line.
  */
 taskLabel: NonEmptyString | null }
+export type SessionPrSummary = { sessionId: string; prNumber: number; url: string | null; title: string | null; prState: string | null; headRefName: string | null; relationship: string; activityAt: string; updatedAt: string; checkState: string; isPrimary: boolean; isPinned: boolean; refreshError: string | null }
 export type SessionSearchInput = { query: SessionSearchQuery; limit: Limit200 | null }
 export type SessionSearchQuery = string
 /**
@@ -2196,8 +2215,8 @@ priorityDismissedAt: string | null;
  */
 priorityAddedAt: string | null;
 /**
- * State of the most-recent PR attributed to this workspace, filled in
- * from `gh_pr` on every read path. The renderer merges
+ * State of the displayed session's primary PR, filled in from canonical
+ * PR state and session evidence on every read path. The renderer merges
  * workspace deltas by whole-object replacement, so a summary published
  * with `None` here would erase the sidebar PR marker.
  */
@@ -2215,7 +2234,7 @@ prCreatedAt: string | null;
  */
 prMergedAt: string | null;
 /**
- * Rollup of the paired PR's checks as the poller last saw them:
+ * Aggregate checks across the displayed session's open worked PRs:
  * 'pending' | 'success' | 'failure'. A red PR is something the person
  * owes the branch, so the Priority section reads this directly.
  */
@@ -2227,6 +2246,16 @@ prCheckState: string | null;
  * does something new.
  */
 prActivityAt: string | null;
+/**
+ * All pull requests associated with the chat displayed for this
+ * workspace. Evidence activity determines their stable order.
+ */
+prs?: SessionPrSummary[];
+/**
+ * Aggregate lifecycle state for the associated pull requests. OPEN wins,
+ * then CLOSED, then MERGED when every terminal PR merged.
+ */
+prSummaryState: string | null;
 /**
  * Curated Lucide icon name the user picked for this row's sidebar glyph.
  * `None` keeps the row on its live status marker.

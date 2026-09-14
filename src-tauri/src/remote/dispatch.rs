@@ -487,6 +487,14 @@ async fn dispatch_standard(
             let input: PrsRefreshInput = parse(channel, input)?;
             encode(prs::prs_refresh_impl(state, input).await?)
         }
+        "prs:set-primary" => {
+            let input: PrsSetPrimaryInput = parse(channel, input)?;
+            encode(prs::prs_set_primary_impl(state, input).await?)
+        }
+        "prs:dismiss" => {
+            let input: PrsDismissInput = parse(channel, input)?;
+            encode(prs::prs_dismiss_impl(state, input).await?)
+        }
 
         "git:commit" => {
             let input: GitCommitInput = parse(channel, input)?;

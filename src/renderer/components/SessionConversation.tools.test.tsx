@@ -891,7 +891,7 @@ describe("SessionConversation — tools & chrome", () => {
     expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
     expect(screen.queryByRole("menuitemcheckbox", { name: "Toggle debug log" })).toBeNull();
     expect(screen.getByRole("menuitem", { name: "Push" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /Create pull request|View pull request/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Create PR for checkout branch" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Create branch" })).toBeInTheDocument();
 
     // Back returns to the main menu.

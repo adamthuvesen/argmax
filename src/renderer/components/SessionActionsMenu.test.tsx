@@ -172,7 +172,7 @@ describe("SessionActionsMenu", () => {
 
     expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
     expect(screen.getByRole("menuitem", { name: "Push" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Create pull request" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Create PR for checkout branch" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Back to chat actions" }));
     expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
@@ -184,9 +184,57 @@ describe("SessionActionsMenu", () => {
       url: "https://github.com/o/r/pull/12",
       prNumber: 12
     });
-    listForSession.mockResolvedValue([{ prNumber: 12 }]);
     installArgmax(listForSession, viewOrCreatePr);
 
+    const workspaceWithPr: WorkspaceSummary = {
+      ...workspace(),
+      prs: [
+        {
+          sessionId: "session-1",
+          prNumber: 12,
+          url: "https://github.com/o/r/pull/12",
+          title: "Tidy chat",
+          prState: "OPEN",
+          headRefName: "feature/tidy-chat",
+          relationship: "worked",
+          activityAt: "2026-05-12T15:00:01.000Z",
+          updatedAt: "2026-05-12T15:00:01.000Z",
+          checkState: "success",
+          isPrimary: true,
+          isPinned: false,
+          refreshError: null
+        }
+      ]
+    };
+
+    render(
+      <SessionActionsMenu
+        isLogOpen={false}
+        onBrowseFiles={vi.fn()}
+        onToggleLog={vi.fn()}
+        session={session()}
+        workspace={workspaceWithPr}
+      />
+    );
+
+    await openMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Git actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open pull request #12" }));
+
+    expect(
+      (window as unknown as { argmax: { system: { openPath: ReturnType<typeof vi.fn> } } }).argmax.system
+        .openPath
+    ).toHaveBeenCalledWith({ path: "https://github.com/o/r/pull/12" });
+    expect(viewOrCreatePr).not.toHaveBeenCalled();
+  });
+
+  it("creates a pull request only for the checkout branch", async () => {
+    const viewOrCreatePr = vi.fn().mockResolvedValue({
+      action: "created",
+      url: "https://github.com/o/r/pull/13",
+      prNumber: 13
+    });
+    installArgmax(listForSession, viewOrCreatePr);
     render(
       <SessionActionsMenu
         isLogOpen={false}
@@ -199,15 +247,14 @@ describe("SessionActionsMenu", () => {
 
     await openMenu();
     fireEvent.click(screen.getByRole("menuitem", { name: "Git actions" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "View pull request" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Create PR for checkout branch" }));
 
     await waitFor(() =>
-      expect(viewOrCreatePr).toHaveBeenCalledWith({ sessionId: "session-1" })
+      expect(viewOrCreatePr).toHaveBeenCalledWith({
+        sessionId: "session-1",
+        expectedBranch: "feature/tidy-chat"
+      })
     );
-    expect(
-      (window as unknown as { argmax: { system: { openPath: ReturnType<typeof vi.fn> } } }).argmax.system
-        .openPath
-    ).toHaveBeenCalledWith({ path: "https://github.com/o/r/pull/12" });
   });
 });
 

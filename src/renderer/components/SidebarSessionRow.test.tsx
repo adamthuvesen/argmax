@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceSummary } from "../../shared/types.js";
+import type { WorkspaceSessionPr } from "../lib/sessionPrs.js";
 import { readBundledCss } from "../styles/readBundledCss.js";
 import { SidebarSessionRow, sidebarSessionRowEqual } from "./SidebarSessionRow.js";
 
@@ -31,6 +32,32 @@ const workspaceBase: WorkspaceSummary = {
   prCheckState: null,
   prActivityAt: null
 };
+
+function pr(overrides: Partial<WorkspaceSessionPr> = {}): WorkspaceSessionPr {
+  return {
+    sessionId: "session-1",
+    prNumber: 7,
+    url: "https://github.com/o/r/pull/7",
+    title: "Current work",
+    prState: "OPEN",
+    headRefName: "argmax/dashboard-abcd1234",
+    relationship: "worked",
+    activityAt: "2026-05-01T00:01:00.000Z",
+    updatedAt: "2026-05-01T00:01:00.000Z",
+    checkState: "success",
+    isPrimary: true,
+    isPinned: false,
+    refreshError: null,
+    ...overrides
+  };
+}
+
+function workspaceWithPrSummary(
+  prs: WorkspaceSessionPr[],
+  prSummaryState: WorkspaceSummary["prSummaryState"]
+): WorkspaceSummary {
+  return { ...workspaceBase, prs, prSummaryState };
+}
 
 const detectedIdes = [
   { id: "vscode" as const, label: "VS Code", appPath: "/Applications/Visual Studio Code.app", hasCli: true },
@@ -551,6 +578,13 @@ describe("SidebarSessionRow", () => {
 
     // Drag affordance toggle → re-render.
     expect(sidebarSessionRowEqual(prev, { ...prev, canDragToGrid: false })).toBe(false);
+
+    expect(
+      sidebarSessionRowEqual(prev, {
+        ...prev,
+        workspace: workspaceWithPrSummary([pr()], "OPEN")
+      })
+    ).toBe(false);
   });
 
   it("shows a merged-PR marker when the workspace has a merged pull request", () => {
@@ -593,6 +627,28 @@ describe("SidebarSessionRow", () => {
     expect(row).toBeInTheDocument();
     expect(row.querySelector('[data-pr="open"]')).not.toBeNull();
     expect(row.querySelector('[data-pr="merged"]')).toBeNull();
+  });
+
+  it("summarizes multiple verified PRs from the dashboard projection", () => {
+    render(
+      <SidebarSessionRow
+        workspace={workspaceWithPrSummary(
+          [pr(), pr({ prNumber: 5, prState: "MERGED", isPrimary: false })],
+          "OPEN"
+        )}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+      />
+    );
+
+    expect(screen.getByTitle(/pull requests: 1 open · 1 merged/)).toBeInTheDocument();
+    expect(screen.getByLabelText("2 pull requests: 1 open · 1 merged")).toHaveTextContent("2");
   });
 
   it("leaves an idle completed row text-only, with the state still in its title", () => {
@@ -733,7 +789,7 @@ describe("SidebarSessionRow", () => {
     expect(row.querySelector(".session-unread-marker")).toBeNull();
   });
 
-  it("shows no PR-specific marker for a closed PR", () => {
+  it("keeps a closed-PR summary visible", () => {
     render(
       <SidebarSessionRow
         workspace={{ ...workspaceBase, prState: "CLOSED", prNumber: 9 }}
@@ -748,10 +804,7 @@ describe("SidebarSessionRow", () => {
       />
     );
 
-    // The title omits any pull-request text, and no PR-colored marker renders.
-    const row = screen.getByRole("button", { name: /Build the dashboard/ });
-    expect(row.getAttribute("title")).not.toMatch(/pull request/);
-    expect(row.querySelector("[data-pr]")).toBeNull();
+    expect(screen.getByTitle(/closed pull request #9/)).toBeInTheDocument();
   });
 
   it("PR marker wins over a failed session state", () => {

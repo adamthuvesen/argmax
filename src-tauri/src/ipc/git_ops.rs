@@ -114,6 +114,7 @@ pub(crate) async fn git_view_or_create_pr_impl(
     let result = service
         .view_or_create_pr(GitViewOrCreatePrOpsInput {
             session_id: session_id.clone(),
+            expected_branch: input.expected_branch.map(|branch| branch.into_string()),
         })
         .await?;
     if let Err(error) = super::publish_pr_workspaces_for_session(state, &session_id) {

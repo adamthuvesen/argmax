@@ -220,6 +220,26 @@ pub static PROJECT_SOURCE_COLUMNS: phf::Map<&'static str, &'static [&'static str
     ] as &'static [&'static str],
 };
 
+pub static SESSION_PR_MODEL_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "gh_pull_requests" => &[
+        "head_ref_name", "head_sha", "last_seen_check_state", "pr_created_at",
+        "pr_merged_at", "pr_number", "pr_state", "project_id", "refresh_error",
+        "refreshed_at", "title", "updated_at", "url",
+    ] as &'static [&'static str],
+    "session_pr_links" => &[
+        "created_at", "dismissed_at", "is_pinned", "pr_number", "project_id",
+        "relationship", "session_id", "activity_at", "notified_at", "notified_head_sha",
+        "updated_at",
+    ] as &'static [&'static str],
+    "session_pr_evidence" => &[
+        "created_at", "occurred_at", "pr_number", "project_id", "relationship",
+        "session_id", "source_id",
+    ] as &'static [&'static str],
+    "session_pr_evidence_scans" => &[
+        "last_change_sequence", "last_event_rowid", "parser_version", "scanned_at", "session_id",
+    ] as &'static [&'static str],
+};
+
 // Post-v16 `sessions` shape: adds the `resume_fork` flag consumed (and
 // cleared) by the next resumed launch of a forked session.
 pub static SESSION_RESUME_FORK_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
@@ -896,7 +916,127 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &PROJECT_SOURCE_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 49,
+        name: "canonical_session_pull_requests",
+        up: SESSION_PR_MODEL,
+        affected_tables: &[
+            "gh_pull_requests",
+            "session_pr_links",
+            "session_pr_evidence",
+            "session_pr_evidence_scans",
+        ],
+        expected_columns: &SESSION_PR_MODEL_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+// GitHub state belongs to a project and PR number. Session links keep the
+// evidence, relationship and user selection separate so a refresh cannot
+// change which PR the workspace foregrounds.
+const SESSION_PR_MODEL: &str = r#"
+CREATE TABLE gh_pull_requests (
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  pr_number INTEGER NOT NULL CHECK (pr_number > 0),
+  url TEXT,
+  title TEXT,
+  head_sha TEXT NOT NULL DEFAULT '',
+  last_seen_check_state TEXT NOT NULL DEFAULT 'unknown',
+  pr_state TEXT,
+  head_ref_name TEXT,
+  pr_created_at TEXT,
+  pr_merged_at TEXT,
+  refreshed_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  refresh_error TEXT,
+  PRIMARY KEY (project_id, pr_number)
+);
+
+CREATE TABLE session_pr_links (
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL,
+  pr_number INTEGER NOT NULL,
+  relationship TEXT NOT NULL CHECK (relationship IN ('worked', 'referenced', 'unverified')),
+  activity_at TEXT NOT NULL,
+  is_pinned INTEGER NOT NULL DEFAULT 0 CHECK (is_pinned IN (0, 1)),
+  dismissed_at TEXT,
+  notified_head_sha TEXT,
+  notified_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (session_id, pr_number),
+  FOREIGN KEY (project_id, pr_number)
+    REFERENCES gh_pull_requests(project_id, pr_number) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX idx_session_pr_one_pin
+  ON session_pr_links(session_id) WHERE is_pinned = 1;
+CREATE INDEX idx_session_pr_links_project_pr
+  ON session_pr_links(project_id, pr_number);
+
+CREATE TABLE session_pr_evidence (
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL,
+  pr_number INTEGER NOT NULL,
+  relationship TEXT NOT NULL CHECK (relationship IN ('worked', 'referenced', 'unverified')),
+  source_id TEXT NOT NULL,
+  occurred_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (session_id, pr_number, source_id),
+  FOREIGN KEY (project_id, pr_number)
+    REFERENCES gh_pull_requests(project_id, pr_number) ON DELETE CASCADE
+);
+
+CREATE TABLE session_pr_evidence_scans (
+  session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+  last_event_rowid INTEGER NOT NULL DEFAULT 0,
+  last_change_sequence INTEGER NOT NULL DEFAULT 0,
+  parser_version INTEGER NOT NULL DEFAULT 0,
+  scanned_at TEXT NOT NULL
+);
+
+WITH ranked AS (
+  SELECT workspaces.project_id,
+         gh_pr.session_id,
+         gh_pr.pr_number,
+         gh_pr.head_sha,
+         gh_pr.last_seen_check_state,
+         gh_pr.updated_at,
+         gh_pr.pr_state,
+         gh_pr.head_ref_name,
+         gh_pr.pr_created_at,
+         gh_pr.pr_merged_at,
+         ROW_NUMBER() OVER (
+           PARTITION BY workspaces.project_id, gh_pr.pr_number
+           ORDER BY (gh_pr.pr_state = 'MERGED') DESC,
+                    gh_pr.updated_at DESC,
+                    gh_pr.session_id DESC
+         ) AS rank
+  FROM gh_pr
+  JOIN sessions ON sessions.id = gh_pr.session_id
+  JOIN workspaces ON workspaces.id = sessions.workspace_id
+)
+INSERT INTO gh_pull_requests (
+  project_id, pr_number, head_sha, last_seen_check_state, pr_state,
+  head_ref_name, pr_created_at, pr_merged_at, refreshed_at, updated_at
+)
+SELECT project_id, pr_number, head_sha, last_seen_check_state, pr_state,
+       head_ref_name, pr_created_at, pr_merged_at, updated_at, updated_at
+FROM ranked
+WHERE rank = 1;
+
+INSERT INTO session_pr_links (
+  session_id, project_id, pr_number, relationship, activity_at,
+  notified_head_sha, notified_at, created_at, updated_at
+)
+SELECT gh_pr.session_id, workspaces.project_id, gh_pr.pr_number, 'unverified',
+       sessions.last_activity_at,
+       CASE WHEN gh_pr.notified_at IS NOT NULL THEN gh_pr.head_sha END,
+       gh_pr.notified_at, gh_pr.updated_at, gh_pr.updated_at
+FROM gh_pr
+JOIN sessions ON sessions.id = gh_pr.session_id
+JOIN workspaces ON workspaces.id = sessions.workspace_id;
+"#;
 
 const WORKSPACE_LAST_VIEWED_AT: &str = r#"
 ALTER TABLE workspaces ADD COLUMN last_viewed_at TEXT;
@@ -2329,6 +2469,7 @@ mod tests {
                     48,
                     compute_migration_checksum(crate::persistence::project_sources::MIGRATION_SQL)
                 ),
+                (49, compute_migration_checksum(SESSION_PR_MODEL)),
             ]
         );
 

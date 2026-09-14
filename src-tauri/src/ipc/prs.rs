@@ -4,6 +4,62 @@ use crate::{
 };
 use tauri::State;
 
+use crate::persistence::gh::{
+    dismiss_session_pr, list_session_prs, set_session_pr_selection, SessionPrSummary,
+};
+
+#[tauri::command(rename = "prs:set-primary")]
+#[specta::specta]
+pub async fn prs_set_primary(
+    state: State<'_, AppState>,
+    input: PrsSetPrimaryInput,
+) -> ArgmaxResult<Vec<SessionPrSummary>> {
+    prs_set_primary_impl(&state, input).await
+}
+
+pub(crate) async fn prs_set_primary_impl(
+    state: &AppState,
+    input: PrsSetPrimaryInput,
+) -> ArgmaxResult<Vec<SessionPrSummary>> {
+    let database = live_database(state)?;
+    let session_id = input.session_id.into_string();
+    let mutation_session = session_id.clone();
+    let rows = super::read_off_main(move || {
+        let conn = database.connection();
+        set_session_pr_selection(&conn, &mutation_session, input.pr_number)?;
+        list_session_prs(&conn, &mutation_session)
+    })
+    .await?;
+    super::publish_pr_workspaces_for_session(state, &session_id)?;
+    Ok(rows)
+}
+
+#[tauri::command(rename = "prs:dismiss")]
+#[specta::specta]
+pub async fn prs_dismiss(
+    state: State<'_, AppState>,
+    input: PrsDismissInput,
+) -> ArgmaxResult<Vec<SessionPrSummary>> {
+    prs_dismiss_impl(&state, input).await
+}
+
+pub(crate) async fn prs_dismiss_impl(
+    state: &AppState,
+    input: PrsDismissInput,
+) -> ArgmaxResult<Vec<SessionPrSummary>> {
+    let database = live_database(state)?;
+    let session_id = input.session_id.into_string();
+    let mutation_session = session_id.clone();
+    let rows = super::read_off_main(move || {
+        let conn = database.connection();
+        dismiss_session_pr(&conn, &mutation_session, input.pr_number)?;
+        list_session_prs(&conn, &mutation_session)
+    })
+    .await?;
+    super::publish_pr_workspaces_for_session(state, &session_id)?;
+    Ok(rows)
+}
+
 #[tauri::command(rename = "prs:list-for-session")]
 #[specta::specta]
 pub fn prs_list_for_session(

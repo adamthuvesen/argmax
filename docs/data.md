@@ -36,6 +36,15 @@ Reads take pooled `SQLITE_OPEN_READ_ONLY` connections through `Database::read_co
 in-app scheduler launches as normal top-level sessions. See
 [scheduled-tasks.md](scheduled-tasks.md).
 
+## Session PR state
+
+Migration v49 adds `gh_pull_requests` for canonical GitHub state and
+`session_pr_links` for session relationships, pins, and durable dismissals.
+`session_pr_evidence` deduplicates original source events, while
+`session_pr_evidence_scans` tracks historical repair. Existing cached state is
+preserved and legacy associations begin unverified. See [gh.md](gh.md) for
+selection, repair, and automation rules.
+
 ## Repositories
 
 `data_migrations` (v46) records one-time upgrades that depend on local paths.

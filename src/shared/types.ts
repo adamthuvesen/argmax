@@ -236,7 +236,7 @@ export type RunCheckInput = Bindings.ChecksRunInput;
 export type GitCommitInput = OptionalNullable<Bindings.GitCommitInput, "selectedFiles">;
 export type GitPushInput = Bindings.GitPushInput;
 export type GitCreateBranchInput = Bindings.GitCreateBranchInput;
-export type GitViewOrCreatePrInput = Bindings.GitViewOrCreatePrInput;
+export type GitViewOrCreatePrInput = OptionalNullable<Bindings.GitViewOrCreatePrInput, "expectedBranch">;
 
 export type GitCommitResult = Bindings.GitCommitResult;
 export type WorkspaceArchiveResult = Retype<Bindings.WorkspaceArchiveResult, { workspace: WorkspaceSummary }>;
@@ -289,9 +289,11 @@ export type WorkspaceSummary = Retype<
   {
     state: WorkspaceState;
     kind: WorkspaceKind;
-    /** State of the most-recent PR across this workspace's sessions. Null when none. */
+    /** State of the displayed session's primary PR. Null when none. */
     prState: GhPrState | null;
-    /** Check rollup for that PR as the poller last saw it. Null when there is no PR. */
+    /** Aggregate lifecycle across verified session PRs. Older snapshots omit it. */
+    prSummaryState?: GhPrState | null;
+    /** Check rollup across the displayed session's open worked PRs. */
     prCheckState: GhCheckState | null;
     /** Absent on snapshots from hosts predating shared read state. */
     lastViewedAt?: string | null;
@@ -664,6 +666,8 @@ export interface ArgmaxApi {
   prs: {
     listForSession: (input: { sessionId: string }) => Promise<GhPrRecord[]>;
     refresh: (input: { sessionId: string }) => Promise<GhPrRecord[]>;
+    setPrimary: (input: Bindings.PrsSetPrimaryInput) => Promise<SessionPrSummary[]>;
+    dismiss: (input: Bindings.PrsDismissInput) => Promise<SessionPrSummary[]>;
   };
   git: {
     commit: (input: GitCommitInput) => Promise<GitCommitResult>;
@@ -876,6 +880,8 @@ export type GhPrRecord = Retype<
 >;
 
 export type GhPrState = "OPEN" | "CLOSED" | "MERGED";
+
+export type SessionPrSummary = Bindings.SessionPrSummary;
 
 export type GhCheckState =
   | "unknown"

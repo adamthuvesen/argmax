@@ -96,6 +96,8 @@ export const IPC_CHANNELS = [
   "workspaces:set-icon",
   "prs:list-for-session",
   "prs:refresh",
+  "prs:set-primary",
+  "prs:dismiss",
   "git:commit",
   "git:push",
   "git:create-branch",

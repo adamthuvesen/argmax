@@ -1,4 +1,6 @@
 import {
+  AlertCircle,
+  ChevronDown,
   FileDiff,
   Files,
   GitBranch,
@@ -8,18 +10,25 @@ import {
   GitPullRequestArrow,
   GitPullRequestClosed,
   Github,
+  MoreHorizontal,
   SquareTerminal,
   X
 } from "lucide-react";
-import { Fragment, useEffect, useState, type JSX, type MouseEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type JSX, type MouseEvent, type ReactNode } from "react";
 import { errorMessage } from "../../shared/error.js";
 import type { AsyncState } from "../hooks/useReviewState.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
+import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { agentStatusLabel } from "../lib/agentLaunch.js";
 import { openWebUrl } from "../lib/openWebUrl.js";
 import type { SubagentCluster } from "../lib/subagentSummary.js";
-import { refreshSessionPrs } from "../lib/sessionPrs.js";
+import {
+  primaryWorkspacePr,
+  refreshSessionPrs,
+  workspaceSessionPrs,
+  type WorkspaceSessionPr
+} from "../lib/sessionPrs.js";
 import { AgentEmblem } from "./AgentEmblem.js";
 import { WorkingNest } from "./WorkingNest.js";
 import { ChangeCount } from "./ChangeCount.js";
@@ -28,6 +37,7 @@ import type { ComposerStatus } from "./SessionComposer.js";
 /** Avatars shown before the stack folds into a +N chip. Matches the reference
  *  density: four or five colored marks read as a team, more read as noise. */
 const SUBAGENT_AVATAR_LIMIT = 5;
+const VISIBLE_PR_LIMIT = 3;
 
 /**
  * Floating summary of the session's worktree, parked in the conversation's
@@ -73,15 +83,15 @@ export function WorkspaceCard({
   workspace: WorkspaceSummary;
 }): JSX.Element {
   const [isPrPending, setIsPrPending] = useState(false);
+  const [isPrHistoryOpen, setIsPrHistoryOpen] = useState(false);
   const [branchCopyFlash, copyBranch] = useCopyToClipboard();
   const hasChanges = changeSummary !== null && changeSummary.fileCount > 0;
   const changesLabel = changesState === "error" ? "unavailable" : changesState === "ready" ? null : "…";
-  const hasPr = typeof workspace.prNumber === "number";
-  const prState = workspace.prState ?? null;
-  const prLabel = hasPr ? `PR #${workspace.prNumber}` : "Create pull request";
-  const prTitle = hasPr
-    ? `Open pull request #${workspace.prNumber} on GitHub${prState ? ` (${prState.toLowerCase()})` : ""}`
-    : "Create a pull request for this branch";
+  const prs = workspaceSessionPrs(workspace);
+  const primaryPr = primaryWorkspacePr(workspace);
+  const visiblePrs = visibleWorkspacePrs(prs, primaryPr);
+  const visiblePrNumbers = new Set(visiblePrs.map((pr) => pr.prNumber));
+  const hiddenPrs = prs.filter((pr) => !visiblePrNumbers.has(pr.prNumber));
   const branchCopyTitle =
     branchCopyFlash === "copied"
       ? "Copied branch name"
@@ -97,18 +107,36 @@ export function WorkspaceCard({
     void refreshSessionPrs(session.id)?.catch(() => undefined);
   }, [session?.id, workspace.kind, workspace.branch]);
 
-  // Same one-call flow as the git actions menu: an existing PR opens in the
-  // browser, and a workspace without one gets a PR created and opened.
-  const openOrCreatePr = (event: MouseEvent<HTMLButtonElement>): void => {
+  const createPr = (event: MouseEvent<HTMLButtonElement>): void => {
     if (!session || !window.argmax) return;
     const flip = event.metaKey || event.ctrlKey;
     setIsPrPending(true);
     setStatus(null);
     void window.argmax.git
-      .viewOrCreatePr({ sessionId: session.id })
+      .viewOrCreatePr({ sessionId: session.id, expectedBranch: workspace.branch })
       .then((result) => {
         openWebUrl(result.url, { flip });
       })
+      .catch((error: unknown) => setStatus({ kind: "error", message: errorMessage(error) }))
+      .finally(() => setIsPrPending(false));
+  };
+
+  const setPrimaryPr = (prNumber: number | null): void => {
+    if (!session || !window.argmax?.prs?.setPrimary) return;
+    setIsPrPending(true);
+    setStatus(null);
+    void window.argmax.prs
+      .setPrimary({ sessionId: session.id, prNumber })
+      .catch((error: unknown) => setStatus({ kind: "error", message: errorMessage(error) }))
+      .finally(() => setIsPrPending(false));
+  };
+
+  const dismissPr = (prNumber: number): void => {
+    if (!session || !window.argmax?.prs?.dismiss) return;
+    setIsPrPending(true);
+    setStatus(null);
+    void window.argmax.prs
+      .dismiss({ sessionId: session.id, prNumber })
       .catch((error: unknown) => setStatus({ kind: "error", message: errorMessage(error) }))
       .finally(() => setIsPrPending(false));
   };
@@ -122,11 +150,17 @@ export function WorkspaceCard({
       data-type-scale="chrome"
       aria-label="Workspace"
     >
-      <div className="workspace-card-branch" title={`Branch ${workspace.branch} · from ${workspace.baseRef}`}>
+      <div
+        className="workspace-card-branch"
+        title={`${workspace.sharedWorkspace ? "Checkout branch" : "Branch"} ${workspace.branch} · from ${workspace.baseRef}`}
+      >
         <span className="workspace-card-row-icon" aria-hidden="true">
           <GitBranch size={13} />
         </span>
         <div className="workspace-card-branch-text">
+          {workspace.sharedWorkspace ? (
+            <span className="workspace-card-branch-kind">Checkout branch</span>
+          ) : null}
           <button
             type="button"
             className="workspace-card-branch-name"
@@ -201,16 +235,200 @@ export function WorkspaceCard({
           onClick={() => onOpenCommitDialog?.()}
         />
         <WorkspaceCardRow
-          icon={hasPr ? <PrStateIcon state={prState} /> : <GitPullRequestArrow size={13} aria-hidden="true" />}
-          label={prLabel}
+          icon={<GitPullRequestArrow size={13} aria-hidden="true" />}
+          ariaLabel="Create PR for checkout branch"
+          label="Create pull request"
           disabled={!session || isPrPending}
-          title={prTitle}
-          onClick={openOrCreatePr}
+          title={`Create a pull request for ${workspace.branch}`}
+          onClick={createPr}
         />
       </div>
 
+      {prs.length > 0 ? (
+        <section className="workspace-card-section workspace-card-prs" aria-label="Pull requests">
+          {prs.length > 1 ? (
+            <div className="workspace-card-section-label workspace-card-prs-label">
+              <span>Pull requests</span>
+              <span>{prs.length}</span>
+            </div>
+          ) : null}
+          {visiblePrs.map((pr) => (
+            <WorkspacePrRow
+              key={pr.prNumber}
+              pr={pr}
+              busy={isPrPending}
+              onDismiss={() => dismissPr(pr.prNumber)}
+              onSetPrimary={() => setPrimaryPr(pr.prNumber)}
+              onUseAutomatic={() => setPrimaryPr(null)}
+            />
+          ))}
+          {hiddenPrs.length > 0 ? (
+            <div className="workspace-card-pr-more">
+              <button
+                type="button"
+                aria-expanded={isPrHistoryOpen}
+                title={`${isPrHistoryOpen ? "Hide" : "Show"} ${hiddenPrs.length} more pull ${hiddenPrs.length === 1 ? "request" : "requests"}`}
+                onClick={() => setIsPrHistoryOpen((open) => !open)}
+              >
+                <ChevronDown size={12} aria-hidden="true" />
+                {hiddenPrs.length} more
+              </button>
+              {isPrHistoryOpen ? <div className="workspace-card-pr-more-list">
+                {hiddenPrs.map((pr) => (
+                  <WorkspacePrRow
+                    key={pr.prNumber}
+                    pr={pr}
+                    busy={isPrPending}
+                    onDismiss={() => dismissPr(pr.prNumber)}
+                    onSetPrimary={() => setPrimaryPr(pr.prNumber)}
+                    onUseAutomatic={() => setPrimaryPr(null)}
+                  />
+                ))}
+              </div> : null}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
       {subagents ? <SubagentsSection cluster={subagents} onOpenAgents={onOpenAgents} /> : null}
     </aside>
+  );
+}
+
+function visibleWorkspacePrs(
+  prs: readonly WorkspaceSessionPr[],
+  primary: WorkspaceSessionPr | null
+): readonly WorkspaceSessionPr[] {
+  const visible: WorkspaceSessionPr[] = [];
+  if (primary) visible.push(primary);
+  for (const pr of prs) {
+    if (visible.length >= VISIBLE_PR_LIMIT) break;
+    if (pr.prNumber === primary?.prNumber || pr.prState !== "OPEN") continue;
+    visible.push(pr);
+  }
+  if (visible.length === 0 && prs[0]) visible.push(prs[0]);
+  return visible;
+}
+
+function WorkspacePrRow({
+  busy,
+  onDismiss,
+  onSetPrimary,
+  onUseAutomatic,
+  pr
+}: {
+  busy: boolean;
+  onDismiss: () => void;
+  onSetPrimary: () => void;
+  onUseAutomatic: () => void;
+  pr: WorkspaceSessionPr;
+}): JSX.Element {
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const actionsRef = useRef<HTMLDivElement | null>(null);
+  useDismissOnOutsideOrEscape(actionsRef, actionsOpen, () => setActionsOpen(false));
+  const state = pr.prState?.toLowerCase() ?? "unknown";
+  const stateLabel = `${state.charAt(0).toUpperCase()}${state.slice(1)}`;
+  const relationship =
+    pr.relationship === "worked"
+      ? "Worked on"
+      : pr.relationship === "referenced"
+        ? "Referenced"
+        : pr.relationship === "unverified"
+          ? "Unverified"
+          : null;
+  const details = [stateLabel, pr.headRefName, relationship === "Worked on" ? null : relationship]
+    .filter(Boolean).join(" · ");
+  const rowTitle = pr.url
+    ? `Open pull request #${pr.prNumber} on GitHub (${state})`
+    : `Pull request #${pr.prNumber} has no URL. Refresh its GitHub state to open it.`;
+
+  return (
+    <div className="workspace-card-pr-row">
+      <button
+        type="button"
+        className="workspace-card-row workspace-card-pr-link"
+        aria-label={`PR #${pr.prNumber}${pr.title ? ` ${pr.title}` : ""}`}
+        disabled={!pr.url}
+        title={rowTitle}
+        onClick={(event) => {
+          if (!pr.url) return;
+          openWebUrl(pr.url, { flip: event.metaKey || event.ctrlKey });
+        }}
+      >
+        <span className="workspace-card-row-icon" aria-hidden="true">
+          <PrStateIcon state={pr.prState} />
+        </span>
+        <span className="workspace-card-pr-copy">
+          <span className="workspace-card-row-label">
+            #{pr.prNumber}{pr.title ? ` ${pr.title}` : ""}
+          </span>
+          {details ? (
+            <span
+              className="workspace-card-pr-relationship"
+              data-relationship={pr.relationship}
+              title={details}
+            >
+              {details}
+            </span>
+          ) : null}
+        </span>
+        {pr.refreshError ? (
+          <span className="workspace-card-pr-warning" title={`Refresh failed: ${pr.refreshError}`}>
+            <AlertCircle size={12} aria-label="PR refresh failed" />
+          </span>
+        ) : null}
+      </button>
+      <div ref={actionsRef} className="workspace-card-pr-actions">
+        <button
+          type="button"
+          aria-label={`Actions for PR #${pr.prNumber}`}
+          aria-expanded={actionsOpen}
+          title={`Actions for PR #${pr.prNumber}`}
+          onClick={() => setActionsOpen((open) => !open)}
+        >
+          <MoreHorizontal size={13} aria-hidden="true" />
+        </button>
+        {actionsOpen ? <div className="workspace-card-pr-actions-menu" role="menu" aria-label={`PR #${pr.prNumber} actions`}>
+          {!pr.isPinned ? (
+            <button
+              type="button"
+              role="menuitem"
+              disabled={busy}
+              onClick={() => {
+                setActionsOpen(false);
+                onSetPrimary();
+              }}
+            >
+              {pr.relationship === "unverified" ? "Confirm and make primary" : "Make primary"}
+            </button>
+          ) : null}
+          {pr.isPinned ? (
+            <button
+              type="button"
+              role="menuitem"
+              disabled={busy}
+              onClick={() => {
+                setActionsOpen(false);
+                onUseAutomatic();
+              }}
+            >
+              Automatic selection
+            </button>
+          ) : null}
+          <button
+            type="button"
+            role="menuitem"
+            disabled={busy}
+            onClick={() => {
+              setActionsOpen(false);
+              onDismiss();
+            }}
+          >
+            Remove from this chat
+          </button>
+        </div> : null}
+      </div>
+    </div>
   );
 }
 
@@ -316,6 +534,7 @@ function PrStateIcon({ state }: { state: string | null }): JSX.Element {
 }
 
 function WorkspaceCardRow({
+  ariaLabel,
   disabled = false,
   icon,
   label,
@@ -324,6 +543,7 @@ function WorkspaceCardRow({
   pressed,
   title
 }: {
+  ariaLabel?: string;
   disabled?: boolean;
   icon: ReactNode;
   label: string;
@@ -336,7 +556,7 @@ function WorkspaceCardRow({
     <button
       type="button"
       className="workspace-card-row"
-      aria-label={label}
+      aria-label={ariaLabel ?? label}
       aria-pressed={pressed}
       disabled={disabled}
       title={title}

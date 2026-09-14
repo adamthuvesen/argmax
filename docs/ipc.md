@@ -107,3 +107,14 @@ database off the main thread. Reads are available to the remote bridge's read
 access mode, while mutations require control access. Agent source content reads
 use session-control tools and record source activity in the session timeline.
 See [memory.md](memory.md).
+
+## Session PR selection
+
+`prs:set-primary` takes `{ sessionId, prNumber }`, with null selecting automatic
+ordering. `prs:dismiss` takes `{ sessionId, prNumber }` and suppresses that
+association even if the transcript is replayed. Both return session PR summaries
+and publish affected workspace metadata. Remote mutations use the same handlers.
+
+Existing PR links open their stored URL. `git:view-or-create-pr` is the separate
+checkout creation action and accepts `expectedBranch` to reject a stale card
+before calling GitHub.

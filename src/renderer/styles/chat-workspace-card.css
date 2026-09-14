@@ -263,6 +263,15 @@
   min-width: 0;
 }
 
+.workspace-card-branch-kind {
+  color: var(--muted);
+  font-size: var(--text-3xs);
+  font-weight: calc(500 + var(--font-weight-offset));
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
 .workspace-card-branch-name {
   display: -webkit-box;
   width: 100%;
@@ -379,6 +388,12 @@
   text-transform: uppercase;
 }
 
+.workspace-card-prs-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .workspace-card-row {
   display: flex;
   align-items: center;
@@ -470,6 +485,153 @@
 
 .workspace-card-pr-state[data-pr-state="CLOSED"] {
   color: var(--muted);
+}
+
+.workspace-card-pr-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px;
+  align-items: center;
+}
+
+.workspace-card-pr-link {
+  min-width: 0;
+}
+
+.workspace-card-pr-copy {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.workspace-card-pr-relationship {
+  display: block;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--text-3xs);
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-card-pr-relationship[data-relationship="unverified"] {
+  color: var(--amber);
+}
+
+.workspace-card-pr-warning {
+  display: grid;
+  flex: none;
+  place-items: center;
+  color: var(--amber);
+}
+
+.workspace-card-pr-actions {
+  position: relative;
+}
+
+.workspace-card-pr-actions > button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 28px;
+  color: var(--muted);
+  border: 0;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.workspace-card-pr-actions > button:hover,
+.workspace-card-pr-actions > button:focus-visible,
+.workspace-card-pr-actions > button[aria-expanded="true"] {
+  color: var(--text);
+  background: var(--panel-soft);
+}
+
+.workspace-card-pr-actions > button:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.workspace-card-pr-actions-menu {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  min-width: 164px;
+  padding: var(--space-1);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+}
+
+.workspace-card-pr-actions-menu button {
+  padding: var(--space-1_5) var(--space-2);
+  color: var(--text-soft);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-xs);
+  text-align: left;
+  cursor: pointer;
+}
+
+.workspace-card-pr-actions-menu button:hover,
+.workspace-card-pr-actions-menu button:focus-visible {
+  color: var(--text);
+  background: var(--panel-soft);
+  outline: none;
+}
+
+.workspace-card-pr-actions-menu button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.workspace-card-pr-more {
+  margin-top: 2px;
+}
+
+.workspace-card-pr-more > button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 28px;
+  padding: var(--space-1) var(--workspace-card-row-inset);
+  color: var(--muted);
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.workspace-card-pr-more > button:hover,
+.workspace-card-pr-more > button:focus-visible {
+  color: var(--text);
+  background: var(--panel-soft);
+  outline: none;
+}
+
+.workspace-card-pr-more > button:focus-visible {
+  box-shadow: var(--ring);
+}
+
+.workspace-card-pr-more > button[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.workspace-card-pr-more-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {

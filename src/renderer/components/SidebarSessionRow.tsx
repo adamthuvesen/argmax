@@ -7,6 +7,7 @@ import {
   ExternalLink,
   GitMerge,
   GitPullRequest,
+  GitPullRequestClosed,
   ListPlus,
   Palette,
   Pencil,
@@ -32,6 +33,11 @@ import { useAnchoredPopover, type AnchorPoint } from "../hooks/useAnchoredPopove
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import type { PriorityReasonKind } from "../lib/priority.js";
+import {
+  verifiedWorkspacePrs,
+  workspacePrCountLabel,
+  workspacePrSummaryState
+} from "../lib/sessionPrs.js";
 import { resolveSessionIcon, resolveSessionIconColor } from "../lib/sessionIcons.js";
 import { stableHash32 } from "../lib/stableHash.js";
 import {
@@ -128,7 +134,7 @@ function StatusMarker({
   phaseKey
 }: {
   working: boolean;
-  prState?: WorkspaceSummary["prState"];
+  prState?: string | null;
   priorityReason?: PriorityReasonKind;
   phaseKey: string;
 }): JSX.Element {
@@ -152,6 +158,9 @@ function StatusMarker({
   if (prState === "OPEN") {
     return <GitPullRequest size={16} aria-hidden className="status-marker" data-pr="open" />;
   }
+  if (prState === "CLOSED") {
+    return <GitPullRequestClosed size={16} aria-hidden className="status-marker" data-pr="closed" />;
+  }
   return <CircleX size={16} aria-hidden className="status-marker" />;
 }
 
@@ -160,7 +169,7 @@ function StatusMarker({
  * StatusMarker uses. `null` means the row is calm: a custom icon stands alone,
  * and a row without one shows no leading glyph at all.
  */
-type StatusOverlay = "awaiting" | "working" | "pr-merged" | "pr-open" | "failed";
+type StatusOverlay = "awaiting" | "working" | "pr-merged" | "pr-open" | "pr-closed" | "failed";
 
 function statusOverlayFor({
   working,
@@ -170,13 +179,14 @@ function statusOverlayFor({
 }: {
   working: boolean;
   state: WorkspaceSummary["state"];
-  prState?: WorkspaceSummary["prState"];
+  prState?: string | null;
   priorityReason?: PriorityReasonKind;
 }): StatusOverlay | null {
   if (isAwaitingReply(priorityReason)) return "awaiting";
   if (working) return "working";
   if (prState === "MERGED") return "pr-merged";
   if (prState === "OPEN") return "pr-open";
+  if (prState === "CLOSED") return "pr-closed";
   // "archive-failed" borrows the failed cross: the row survived an archive
   // attempt (a process refused to terminate) and needs a retry.
   return state === "failed" || state === "archive-failed" ? "failed" : null;
@@ -306,13 +316,27 @@ function SidebarSessionRowInner({
       : null;
 
   const displayLabel = workspace.taskLabel.trim() || workspace.branch || "Untitled chat";
+  const summaryPrState = workspacePrSummaryState(workspace);
+  const verifiedPrs = verifiedWorkspacePrs(workspace);
+  const primaryPr = verifiedPrs.find((pr) => pr.isPrimary) ?? verifiedPrs[0] ?? null;
+  const prCountLabel = workspacePrCountLabel(workspace);
+  const prCountBadge =
+    verifiedPrs.length > 1 && prCountLabel ? (
+      <span
+        className="session-pr-count"
+        aria-label={`${verifiedPrs.length} pull requests: ${prCountLabel}`}
+        title={prCountLabel}
+      >
+        {verifiedPrs.length}
+      </span>
+    ) : null;
   // Surface the PR in the accessible row title so the marker icon has a name —
   // matched on by the sidebar tests and read aloud by screen readers.
   const prTitle =
-    workspace.prState === "MERGED" && workspace.prNumber != null
-      ? ` — merged pull request #${workspace.prNumber}`
-      : workspace.prState === "OPEN" && workspace.prNumber != null
-        ? ` — open pull request #${workspace.prNumber}`
+    verifiedPrs.length > 1 && prCountLabel
+      ? ` — pull requests: ${prCountLabel}`
+      : summaryPrState && (primaryPr?.prNumber ?? workspace.prNumber) != null
+        ? ` — ${summaryPrState.toLowerCase()} pull request #${primaryPr?.prNumber ?? workspace.prNumber}`
         : "";
   const priorityTitle = priorityReason ? ` — ${PRIORITY_TITLE[priorityReason]}` : "";
   // A turn in flight takes the marker cell; unread waits until it ends.
@@ -412,7 +436,7 @@ function SidebarSessionRowInner({
   const statusOverlay = statusOverlayFor({
     working,
     state: workspace.state,
-    prState: workspace.prState,
+    prState: summaryPrState,
     priorityReason
   });
   const hasCustomIcon = workspace.icon ? resolveSessionIcon(workspace.icon) !== null : false;
@@ -428,7 +452,7 @@ function SidebarSessionRowInner({
     ) : statusOverlay ? (
       <StatusMarker
         working={working}
-        prState={workspace.prState}
+        prState={summaryPrState}
         priorityReason={priorityReason}
         phaseKey={workspace.id}
       />
@@ -447,7 +471,7 @@ function SidebarSessionRowInner({
         // swaps for an unboxed input, so renaming edits the label in place
         // instead of replacing the row with a form field.
         <div
-          className={`session-link session-link-renaming${subtitle ? " session-link-stacked" : ""}`}
+          className={`session-link session-link-renaming${subtitle ? " session-link-stacked" : ""}${prCountBadge ? " session-link-has-pr-count" : ""}`}
           data-status={workspace.state}
         >
           {leadingGlyph ?? <span className="session-link-lead-spacer" aria-hidden="true" />}
@@ -464,6 +488,7 @@ function SidebarSessionRowInner({
             />
             {subtitle ? <span className="session-link-subtitle">{subtitle}</span> : null}
           </span>
+          {prCountBadge}
         </div>
       ) : (
         <>
@@ -471,7 +496,7 @@ function SidebarSessionRowInner({
             aria-current={isSelected ? "true" : undefined}
             className={`session-link${isSelected ? " active" : ""}${
               subtitle || importedProvider || launchedByLabel ? " session-link-stacked" : ""
-            }`}
+            }${prCountBadge ? " session-link-has-pr-count" : ""}`}
             data-open={isOpenInGrid ? "true" : undefined}
             data-status={workspace.state}
             type="button"
@@ -534,6 +559,7 @@ function SidebarSessionRowInner({
             ) : (
               <span>{displayLabel}</span>
             )}
+            {prCountBadge}
           </button>
       {onTogglePin ? (
         <button
@@ -760,12 +786,32 @@ export function sidebarSessionRowEqual(
     pw.pinned !== nw.pinned ||
     pw.prState !== nw.prState ||
     pw.prNumber !== nw.prNumber ||
+    workspacePrSummaryState(pw) !== workspacePrSummaryState(nw) ||
+    !sidebarPrsEqual(verifiedWorkspacePrs(pw), verifiedWorkspacePrs(nw)) ||
     pw.icon !== nw.icon ||
     pw.iconColor !== nw.iconColor
   ) {
     return false;
   }
   return true;
+}
+
+function sidebarPrsEqual(
+  prev: ReturnType<typeof verifiedWorkspacePrs>,
+  next: ReturnType<typeof verifiedWorkspacePrs>
+): boolean {
+  if (prev === next) return true;
+  if (prev.length !== next.length) return false;
+  return prev.every((pr, index) => {
+    const candidate = next[index];
+    return Boolean(
+      candidate &&
+        pr.prNumber === candidate.prNumber &&
+        pr.prState === candidate.prState &&
+        pr.relationship === candidate.relationship &&
+        pr.isPrimary === candidate.isPrimary
+    );
+  });
 }
 
 export const SidebarSessionRow = memo(SidebarSessionRowInner, sidebarSessionRowEqual);

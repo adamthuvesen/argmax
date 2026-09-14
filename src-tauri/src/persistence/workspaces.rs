@@ -1,8 +1,8 @@
-use rusqlite::{Connection, Row};
+use rusqlite::{Connection, OptionalExtension, Row};
 use serde::Serialize;
 use specta::Type;
 
-use super::gh::latest_pr_for_workspace;
+use super::gh::{list_session_prs, SessionPrSummary};
 use super::time::now_iso;
 use super::{bool_to_i64, json_error, sqlite_error};
 use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
@@ -70,8 +70,8 @@ pub struct WorkspaceSummary {
     /// Manual entries need no attention and never age out; cleared by an
     /// explicit remove or a dismissal.
     pub priority_added_at: Option<String>,
-    /// State of the most-recent PR attributed to this workspace, filled in
-    /// from `gh_pr` on every read path. The renderer merges
+    /// State of the displayed session's primary PR, filled in from canonical
+    /// PR state and session evidence on every read path. The renderer merges
     /// workspace deltas by whole-object replacement, so a summary published
     /// with `None` here would erase the sidebar PR marker.
     pub pr_state: Option<String>,
@@ -81,7 +81,7 @@ pub struct WorkspaceSummary {
     pub pr_created_at: Option<String>,
     /// GitHub's authoritative merge timestamp for the paired PR.
     pub pr_merged_at: Option<String>,
-    /// Rollup of the paired PR's checks as the poller last saw them:
+    /// Aggregate checks across the displayed session's open worked PRs:
     /// 'pending' | 'success' | 'failure'. A red PR is something the person
     /// owes the branch, so the Priority section reads this directly.
     pub pr_check_state: Option<String>,
@@ -90,6 +90,13 @@ pub struct WorkspaceSummary {
     /// measured against, so that marking a PR done holds until the PR itself
     /// does something new.
     pub pr_activity_at: Option<String>,
+    /// All pull requests associated with the chat displayed for this
+    /// workspace. Evidence activity determines their stable order.
+    #[serde(default)]
+    pub prs: Vec<SessionPrSummary>,
+    /// Aggregate lifecycle state for the associated pull requests. OPEN wins,
+    /// then CLOSED, then MERGED when every terminal PR merged.
+    pub pr_summary_state: Option<String>,
     /// Curated Lucide icon name the user picked for this row's sidebar glyph.
     /// `None` keeps the row on its live status marker.
     pub icon: Option<String>,
@@ -167,20 +174,108 @@ pub fn find_workspace_by_id(
 }
 
 fn attach_latest_pr(connection: &Connection, workspace: &mut WorkspaceSummary) -> ArgmaxResult<()> {
-    if let Some(pr) = latest_pr_for_workspace(
-        connection,
-        &workspace.id,
-        &workspace.project_id,
-        &workspace.branch,
-    )? {
-        workspace.pr_state = pr.pr_state;
-        workspace.pr_number = Some(pr.pr_number);
-        workspace.pr_created_at = pr.pr_created_at;
-        workspace.pr_merged_at = pr.pr_merged_at;
-        workspace.pr_check_state = Some(pr.last_seen_check_state);
-        workspace.pr_activity_at = Some(pr.updated_at);
+    let session_id = connection
+        .prepare_cached(
+            r#"
+            SELECT id FROM sessions
+            WHERE workspace_id = ?1
+            ORDER BY last_activity_at DESC, id DESC
+            LIMIT 1
+            "#,
+        )
+        .map_err(sqlite_error)?
+        .query_row([workspace.id.as_str()], |row| row.get::<_, String>(0))
+        .optional()
+        .map_err(sqlite_error)?;
+    if let Some(session_id) = session_id {
+        workspace.prs = list_session_prs(connection, &session_id)?;
+        workspace.pr_summary_state = aggregate_pr_state(&workspace.prs);
+        if let Some(primary) = workspace.prs.iter().find(|pr| pr.is_primary) {
+            workspace.pr_state = primary.pr_state.clone();
+            workspace.pr_number = Some(primary.pr_number);
+            workspace.pr_check_state = Some(aggregate_open_worked_checks(&workspace.prs));
+            workspace.pr_activity_at = workspace
+                .prs
+                .iter()
+                .filter(|pr| {
+                    pr.relationship == "worked"
+                        && matches!(pr.pr_state.as_deref(), None | Some("OPEN"))
+                })
+                .map(|pr| pr.updated_at.as_str())
+                .max()
+                .map(str::to_owned);
+            let milestones = connection
+                .prepare_cached(
+                    r#"
+                    SELECT pr_created_at, pr_merged_at
+                    FROM gh_pull_requests prs
+                    JOIN sessions ON sessions.id = ?1
+                    JOIN workspaces ON workspaces.id = sessions.workspace_id
+                    WHERE prs.project_id = workspaces.project_id
+                      AND prs.pr_number = ?2
+                    "#,
+                )
+                .map_err(sqlite_error)?
+                .query_row((session_id.as_str(), primary.pr_number), |row| {
+                    Ok((
+                        row.get::<_, Option<String>>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                    ))
+                })
+                .optional()
+                .map_err(sqlite_error)?;
+            if let Some((created_at, merged_at)) = milestones {
+                workspace.pr_created_at = created_at;
+                workspace.pr_merged_at = merged_at;
+            }
+            return Ok(());
+        }
     }
+
     Ok(())
+}
+
+fn aggregate_pr_state(prs: &[SessionPrSummary]) -> Option<String> {
+    let verified = prs.iter().filter(|pr| pr.relationship != "unverified");
+    let prs = verified.collect::<Vec<_>>();
+    if prs.is_empty() {
+        None
+    } else if prs
+        .iter()
+        .any(|pr| matches!(pr.pr_state.as_deref(), None | Some("OPEN")))
+    {
+        Some("OPEN".to_owned())
+    } else if prs
+        .iter()
+        .all(|pr| pr.pr_state.as_deref() == Some("MERGED"))
+    {
+        Some("MERGED".to_owned())
+    } else {
+        Some("CLOSED".to_owned())
+    }
+}
+
+fn aggregate_open_worked_checks(prs: &[SessionPrSummary]) -> String {
+    let states = prs
+        .iter()
+        .filter(|pr| {
+            pr.relationship == "worked" && matches!(pr.pr_state.as_deref(), None | Some("OPEN"))
+        })
+        .map(|pr| pr.check_state.as_str())
+        .collect::<Vec<_>>();
+    if states.contains(&"failure") {
+        "failure"
+    } else if states
+        .iter()
+        .any(|state| matches!(*state, "pending" | "unknown"))
+    {
+        "pending"
+    } else if states.is_empty() {
+        "unknown"
+    } else {
+        "success"
+    }
+    .to_owned()
 }
 
 pub fn persist_workspace(
@@ -523,5 +618,7 @@ pub fn workspace_row_to_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceSumm
         pr_merged_at: None,
         pr_check_state: None,
         pr_activity_at: None,
+        prs: Vec::new(),
+        pr_summary_state: None,
     })
 }

@@ -40,6 +40,7 @@ import type {
   DiagnosticsReport,
   DiscoveredProvider,
   GhPrRecord,
+  SessionPrSummary,
   GitCommitInput,
   Goal,
   GitCommitResult,
@@ -500,7 +501,9 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
     },
     prs: {
       listForSession: (input) => invokeCommand<GhPrRecord[]>("prs:list-for-session", input),
-      refresh: (input) => invokeCommand<GhPrRecord[]>("prs:refresh", input)
+      refresh: (input) => invokeCommand<GhPrRecord[]>("prs:refresh", input),
+      setPrimary: (input) => invokeCommand<SessionPrSummary[]>("prs:set-primary", input),
+      dismiss: (input) => invokeCommand<SessionPrSummary[]>("prs:dismiss", input)
     },
     git: {
       commit: (input: GitCommitInput) => invokeCommand<GitCommitResult>("git:commit", input),

@@ -1,5 +1,6 @@
 import type { AttentionState, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { workspacesWithRunningMultitask } from "./multitask.js";
+import { workspacePrSummaryState } from "./sessionPrs.js";
 
 /** Attention values that earn a workspace a spot in the Priority section. */
 export type PriorityAttention = Exclude<AttentionState, "normal">;
@@ -237,7 +238,7 @@ export function computeWorkspaceReasons(
     // it outlives the turn that opened it. `prActivityAt` is the poller's last
     // observation, which is both what a dismissal is measured against and the
     // proof this PR state is something it actually saw.
-    if (workspace.prState === "OPEN" && workspace.prActivityAt) {
+    if (workspacePrSummaryState(workspace) === "OPEN" && workspace.prActivityAt) {
       if (workspace.prCheckState === "failure") {
         reasons.push({ kind: "ci-red", since: workspace.prActivityAt, idleAt: null });
       }

@@ -1291,7 +1291,7 @@ fn gh_and_learning_repositories_round_trip() {
 }
 
 #[test]
-fn workspace_summaries_carry_latest_pr_on_every_read_path() {
+fn workspace_summaries_carry_session_primary_pr_on_every_read_path() {
     let database = Database::open_in_memory().expect("open db");
     let connection = database.connection();
     persist_project(&connection, &project_input()).expect("persist project");
@@ -1313,6 +1313,16 @@ fn workspace_summaries_carry_latest_pr_on_every_read_path() {
         },
     )
     .expect("upsert gh pr");
+
+    super::gh::record_session_pr_evidence(
+        &connection,
+        "s1",
+        12,
+        "worked",
+        "created-pr-12",
+        "2026-05-24T10:00:00.000Z",
+    )
+    .expect("record session work");
 
     // Regression: delta publishers (state flips, pin toggles, watcher status
     // refreshes) build their WorkspaceSummary from these read paths, and the

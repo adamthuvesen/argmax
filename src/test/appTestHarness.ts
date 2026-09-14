@@ -696,7 +696,9 @@ export function setupAppTestMocks(): void {
     },
     prs: {
       listForSession: () => Promise.resolve([]),
-      refresh: () => Promise.resolve([])
+      refresh: () => Promise.resolve([]),
+      setPrimary: () => Promise.resolve([]),
+      dismiss: () => Promise.resolve([])
     },
     git: {
       commit: () => Promise.resolve({ commitSha: "deadbeef", branch: "main" }),

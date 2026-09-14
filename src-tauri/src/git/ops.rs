@@ -20,7 +20,7 @@ use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::git::exec::{run_git_text, run_git_text_with_options, GitExecOptions};
 use crate::persistence::database::Database;
 use crate::persistence::gh::{
-    latest_pr_for_branch, latest_pr_for_workspace, list_gh_pr_for_session, GhPrRecord,
+    latest_pr_for_branch, record_session_pr_evidence, store_pr_metadata, GhPrRecord,
 };
 use crate::persistence::projects::{get_project_remote, update_project_remote, ProjectRemote};
 use crate::persistence::sessions::find_session_by_id;
@@ -87,6 +87,7 @@ pub struct GitCreateBranchResult {
 #[derive(Debug, Clone, PartialEq)]
 pub struct GitViewOrCreatePrInput {
     pub session_id: String,
+    pub expected_branch: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
@@ -369,62 +370,70 @@ impl GitOpsService {
             ));
         }
 
-        // Resolved by branch, matching what `gh pr create` would do in this
-        // checkout. Keying off this session's own rows would miss a PR opened
-        // from another session on the same branch and fall through to a create
-        // that `gh` then rejects — and, on a workspace whose checkout has since
-        // moved, would open a stale PR from the branch it used to be on.
+        let checkout_lock = checkout_write_lock(Path::new(&workspace.path)).await?;
+        let _guard = checkout_lock.lock().await;
+        let branch = run_git_text(
+            Path::new(&workspace.path),
+            &["branch", "--show-current"],
+            GIT_TIMEOUT,
+        )
+        .await?
+        .trim()
+        .to_owned();
+        let expected_branch = input
+            .expected_branch
+            .as_deref()
+            .unwrap_or(&workspace.branch);
+        if branch.is_empty() || branch != expected_branch {
+            return Err(ArgmaxError::service(
+                "PR_BRANCH_CHANGED",
+                "The checkout branch changed. Refresh the workspace before creating a pull request.",
+            ));
+        }
+
+        // This action creates for the explicitly displayed checkout branch.
+        // Opening a session PR uses its exact URL and never enters this path.
         let existing = {
             let conn = self.database.connection();
-            latest_pr_for_branch(&conn, &workspace.project_id, &workspace.branch)?.or_else(|| {
-                latest_pr_for_workspace(
-                    &conn,
-                    &workspace.id,
-                    &workspace.project_id,
-                    &workspace.branch,
-                )
-                .ok()
-                .flatten()
-            })
+            latest_pr_for_branch(&conn, &workspace.project_id, &branch)?
+                .filter(|pr| pr.pr_state.as_deref() == Some("OPEN"))
         };
-        let known_pr_number = existing
-            .as_ref()
-            .map(|top| top.pr_number)
-            .or(workspace.pr_number);
+        let mut known_pr_number = existing.as_ref().map(|top| top.pr_number);
 
         if let Some(pr_number) = known_pr_number {
             if let Some(refresh) = self.refresh_pr.as_ref() {
                 refresh(session.id.clone(), pr_number).await?;
             }
-            // First check if the project already has its remote owner and name recorded.
+            let conn = self.database.read_connection();
+            let (state, refresh_error): (Option<String>, Option<String>) = conn.query_row(
+                "SELECT pr_state, refresh_error FROM gh_pull_requests WHERE project_id = ?1 AND pr_number = ?2",
+                (&workspace.project_id, pr_number), |row| Ok((row.get(0)?, row.get(1)?)),
+            ).map_err(crate::persistence::sqlite_error)?;
+            if let Some(error) = refresh_error {
+                return Err(ArgmaxError::service("GH_PR_REFRESH_FAILED", error));
+            }
+            if matches!(state.as_deref(), Some("MERGED") | Some("CLOSED")) {
+                known_pr_number = None;
+            }
+        }
+        if let Some(pr_number) = known_pr_number {
             let remote = {
-                let conn = self.database.connection();
+                let conn = self.database.read_connection();
                 get_project_remote(&conn, &workspace.project_id)?
             };
+            let remote = match remote {
+                Some(remote) => Some(remote),
+                None => resolve_project_remote(Path::new(&workspace.path)).await,
+            };
             if let Some(remote) = remote {
-                return Ok(GitViewOrCreatePrResult::Opened {
-                    url: format!(
-                        "https://github.com/{}/{}/pull/{}",
-                        remote.owner, remote.name, pr_number
-                    ),
-                    pr_number,
-                });
-            }
-
-            // Discover the remote from the git workspace if not yet recorded in SQLite.
-            if let Some(remote) = resolve_project_remote(Path::new(&workspace.path)).await {
+                let url = format!(
+                    "https://github.com/{}/{}/pull/{}",
+                    remote.owner, remote.name, pr_number
+                );
                 let conn = self.database.connection();
-                let _ = update_project_remote(&conn, &workspace.project_id, Some(&remote));
-                return Ok(GitViewOrCreatePrResult::Opened {
-                    url: format!(
-                        "https://github.com/{}/{}/pull/{}",
-                        remote.owner, remote.name, pr_number
-                    ),
-                    pr_number,
-                });
+                update_project_remote(&conn, &workspace.project_id, Some(&remote))?;
+                return record_opened_pr(&conn, &session.id, pr_number, url);
             }
-
-            // If git remote inspection failed, query gh for the PR URL directly.
             let view_output = (self.gh_runner)(
                 workspace.path.clone(),
                 vec![
@@ -438,11 +447,11 @@ impl GitOpsService {
             .await;
             if let Ok(stdout) = view_output {
                 if let Some(url) = extract_pr_url(&stdout) {
+                    let conn = self.database.connection();
                     if let Some(remote) = extract_github_remote_from_url(&url) {
-                        let conn = self.database.connection();
-                        let _ = update_project_remote(&conn, &workspace.project_id, Some(&remote));
+                        update_project_remote(&conn, &workspace.project_id, Some(&remote))?;
                     }
-                    return Ok(GitViewOrCreatePrResult::Opened { url, pr_number });
+                    return record_opened_pr(&conn, &session.id, pr_number, url);
                 }
             }
 
@@ -455,7 +464,13 @@ impl GitOpsService {
 
         let create_result = (self.gh_runner)(
             workspace.path.clone(),
-            vec!["pr".into(), "create".into(), "--fill".into()],
+            vec![
+                "pr".into(),
+                "create".into(),
+                "--head".into(),
+                branch,
+                "--fill".into(),
+            ],
         )
         .await;
 
@@ -473,10 +488,8 @@ impl GitOpsService {
                         if let Some(refresh) = self.refresh_pr.as_ref() {
                             let _ = refresh(session.id.clone(), pr_number).await;
                         }
-                        return Ok(GitViewOrCreatePrResult::Opened {
-                            url: existing_url,
-                            pr_number,
-                        });
+                        let conn = self.database.connection();
+                        return record_opened_pr(&conn, &session.id, pr_number, existing_url);
                     }
                 }
                 return Err(error);
@@ -499,24 +512,48 @@ impl GitOpsService {
         }
 
         let pr_number = extract_pr_number(&url);
-        let refreshed =
-            if let (Some(refresh), Some(pr_number)) = (self.refresh_pr.as_ref(), pr_number) {
-                refresh(session.id.clone(), pr_number).await?
-            } else {
-                // No refresh hook wired yet — fall back to whatever is in the
-                // DB (will likely be empty until 8.1 lands).
-                let conn = self.database.connection();
-                list_gh_pr_for_session(&conn, &session.id)?
-            };
-        let created = refreshed
-            .iter()
-            .find(|row| url_matches_pr(&url, row.pr_number))
-            .or_else(|| most_recent(&refreshed));
+        if let Some(pr_number) = pr_number {
+            if let Some(refresh) = self.refresh_pr.as_ref() {
+                // Creation succeeded even if GitHub's follow-up read fails.
+                // Keep the URL actionable and let the next refresh recover it.
+                if let Err(error) = refresh(session.id.clone(), pr_number).await {
+                    tracing::warn!(%error, pr_number, "PR created; state refresh failed");
+                }
+            }
+            let conn = self.database.connection();
+            record_session_pr_evidence(
+                &conn,
+                &session.id,
+                pr_number,
+                "worked",
+                &format!("create-pr:{}:{pr_number}", session.id),
+                &crate::persistence::time::now_iso(),
+            )?;
+            store_pr_metadata(&conn, &session.id, pr_number, Some(&url), None)?;
+        }
         Ok(GitViewOrCreatePrResult::Created {
             url: url.clone(),
-            pr_number: created.map(|row| row.pr_number).or(pr_number),
+            pr_number,
         })
     }
+}
+
+fn record_opened_pr(
+    connection: &rusqlite::Connection,
+    session_id: &str,
+    pr_number: i64,
+    url: String,
+) -> ArgmaxResult<GitViewOrCreatePrResult> {
+    record_session_pr_evidence(
+        connection,
+        session_id,
+        pr_number,
+        "referenced",
+        &format!("create-existing:{session_id}:{pr_number}"),
+        &crate::persistence::time::now_iso(),
+    )?;
+    store_pr_metadata(connection, session_id, pr_number, Some(&url), None)?;
+    Ok(GitViewOrCreatePrResult::Opened { url, pr_number })
 }
 
 async fn commit_selected_files(
@@ -604,29 +641,14 @@ fn is_missing_upstream_error(error: &ArgmaxError) -> bool {
         || message.contains("has no upstream")
 }
 
-fn most_recent(rows: &[GhPrRecord]) -> Option<&GhPrRecord> {
-    rows.iter().max_by(|a, b| a.updated_at.cmp(&b.updated_at))
-}
-
-fn url_matches_pr(url: &str, pr_number: i64) -> bool {
-    // Mirrors the TS regex `/pull/${prNumber}(?:[/?#]|$)`.
-    let pattern = format!(r"/pull/{pr_number}([/?#]|$)");
-    Regex::new(&pattern)
-        .map(|re| re.is_match(url))
-        .unwrap_or(false)
-}
-
 /// gh prints the new PR URL on its own line as the last meaningful line
 /// of stdout. Anchor to `https://github.com/` so a hijacked gh binary
 /// can't print a malicious URL that downstream code would open.
 pub fn extract_pr_url(stdout: &str) -> Option<String> {
-    let re = Regex::new(r"https://github\.com/[^\s/]+/[^\s/]+/pull/\d+\S*").ok()?;
-    re.find(stdout).map(|m| {
-        m.as_str()
-            .trim()
-            .trim_end_matches(['.', ')', '"', '\''])
-            .to_string()
-    })
+    // PR identity ends at the number. JSON punctuation and discussion
+    // fragments belong to the surrounding output, not the stored PR link.
+    let re = Regex::new(r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/[0-9]+").ok()?;
+    re.find(stdout).map(|m| m.as_str().to_owned())
 }
 
 /// Extracts the PR number from a GitHub PR URL (e.g. `https://github.com/o/r/pull/42`).
@@ -1016,7 +1038,10 @@ mod tests {
 
         let service = GitOpsService::with_runners(database, runner, Some(refresh));
         let result = service
-            .view_or_create_pr(GitViewOrCreatePrInput { session_id })
+            .view_or_create_pr(GitViewOrCreatePrInput {
+                session_id,
+                expected_branch: None,
+            })
             .await
             .expect("pr created");
 
@@ -1030,7 +1055,151 @@ mod tests {
         let calls = calls.lock().expect("calls");
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].0, repo.path().to_string_lossy());
-        assert_eq!(calls[0].1, vec!["pr", "create", "--fill"]);
+        assert_eq!(calls[0].1, vec!["pr", "create", "--head", "main", "--fill"]);
+    }
+
+    #[tokio::test]
+    async fn create_pr_rejects_a_checkout_that_moved_since_the_card_rendered() {
+        let repo = TempDir::new().unwrap();
+        init_repo(repo.path()).await;
+        let data_dir = TempDir::new().unwrap();
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
+        let workspace_id = fixture_workspace(&database, repo.path());
+        let session_id = fixture_session(&database, &workspace_id);
+        let runner: GhRunner =
+            Arc::new(|_, _| panic!("a stale branch must be rejected before any GitHub action"));
+        let service = GitOpsService::with_runners(database, runner, None);
+        let error = service
+            .view_or_create_pr(GitViewOrCreatePrInput {
+                session_id,
+                expected_branch: Some("feature/previous".into()),
+            })
+            .await
+            .expect_err("branch changed");
+        assert!(error.to_string().contains("checkout branch changed"));
+    }
+
+    #[tokio::test]
+    async fn creating_a_new_pr_does_not_open_a_merged_session_pr() {
+        let repo = TempDir::new().unwrap();
+        init_repo(repo.path()).await;
+        let data_dir = TempDir::new().unwrap();
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
+        let workspace_id = fixture_workspace(&database, repo.path());
+        let session_id = fixture_session(&database, &workspace_id);
+        {
+            let conn = database.connection();
+            crate::persistence::gh::record_gh_pr_observation(
+                &conn,
+                &GhPrRecord {
+                    session_id: session_id.clone(),
+                    pr_number: 755,
+                    head_sha: "old".into(),
+                    last_seen_check_state: "success".into(),
+                    updated_at: "2026-09-14T06:28:10Z".into(),
+                    pr_state: Some("MERGED".into()),
+                    notified_at: None,
+                    pr_created_at: None,
+                    pr_merged_at: Some("2026-09-14T06:28:10Z".into()),
+                    head_ref_name: Some("main".into()),
+                },
+                crate::persistence::gh::PrAttribution::Explicit,
+            )
+            .unwrap();
+        }
+        let runner: GhRunner = Arc::new(|_, args| {
+            Box::pin(async move {
+                assert_eq!(args, vec!["pr", "create", "--head", "main", "--fill"]);
+                Ok("https://github.com/example/repo/pull/762".into())
+            })
+        });
+        let service = GitOpsService::with_runners(Arc::clone(&database), runner, None);
+        let result = service
+            .view_or_create_pr(GitViewOrCreatePrInput {
+                session_id: session_id.clone(),
+                expected_branch: Some("main".into()),
+            })
+            .await
+            .unwrap();
+        assert!(matches!(
+            result,
+            GitViewOrCreatePrResult::Created {
+                pr_number: Some(762),
+                ..
+            }
+        ));
+        let prs =
+            crate::persistence::gh::list_session_prs(&database.read_connection(), &session_id)
+                .unwrap();
+        let created = prs.iter().find(|pr| pr.pr_number == 762).unwrap();
+        assert_eq!(created.relationship, "worked");
+        assert_eq!(
+            created.url.as_deref(),
+            Some("https://github.com/example/repo/pull/762")
+        );
+    }
+
+    #[tokio::test]
+    async fn create_pr_rechecks_a_cached_open_pr_before_opening_it() {
+        let repo = TempDir::new().unwrap();
+        init_repo(repo.path()).await;
+        let data_dir = TempDir::new().unwrap();
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
+        let workspace_id = fixture_workspace(&database, repo.path());
+        let session_id = fixture_session(&database, &workspace_id);
+        let old = GhPrRecord {
+            session_id: session_id.clone(),
+            pr_number: 755,
+            head_sha: "old".into(),
+            last_seen_check_state: "success".into(),
+            updated_at: "2026-09-14T06:13:00Z".into(),
+            pr_state: Some("OPEN".into()),
+            notified_at: None,
+            pr_created_at: None,
+            pr_merged_at: None,
+            head_ref_name: Some("main".into()),
+        };
+        crate::persistence::gh::record_gh_pr_observation(
+            &database.connection(),
+            &old,
+            crate::persistence::gh::PrAttribution::Explicit,
+        )
+        .unwrap();
+        let refresh_db = Arc::clone(&database);
+        let refresh: RefreshPrFn = Arc::new(move |_, number| {
+            let db = Arc::clone(&refresh_db);
+            let old = old.clone();
+            Box::pin(async move {
+                if number == 755 {
+                    let mut merged = old;
+                    merged.pr_state = Some("MERGED".into());
+                    merged.updated_at = "2026-09-14T06:28:00Z".into();
+                    crate::persistence::gh::store_gh_pr_observation(&db.connection(), &merged)?;
+                }
+                Ok(Vec::new())
+            })
+        });
+        let runner: GhRunner = Arc::new(|_, args| {
+            Box::pin(async move {
+                assert_eq!(args, vec!["pr", "create", "--head", "main", "--fill"]);
+                Ok("https://github.com/example/repo/pull/762".into())
+            })
+        });
+        let service = GitOpsService::with_runners(database, runner, Some(refresh));
+        let result = service
+            .view_or_create_pr(GitViewOrCreatePrInput {
+                session_id,
+                expected_branch: Some("main".into()),
+            })
+            .await
+            .unwrap();
+        assert!(matches!(
+            result,
+            GitViewOrCreatePrResult::Created {
+                pr_number: Some(762),
+                ..
+            }
+        ));
     }
 
     #[tokio::test]
@@ -1070,7 +1239,10 @@ mod tests {
 
         let service = GitOpsService::with_runners(database, runner, Some(refresh));
         let result = service
-            .view_or_create_pr(GitViewOrCreatePrInput { session_id })
+            .view_or_create_pr(GitViewOrCreatePrInput {
+                session_id,
+                expected_branch: None,
+            })
             .await
             .expect("pr opened");
 
@@ -1099,10 +1271,12 @@ mod tests {
     }
 
     #[test]
-    fn url_matches_pr_anchors_pr_number() {
-        assert!(url_matches_pr("https://github.com/o/r/pull/42", 42));
-        assert!(url_matches_pr("https://github.com/o/r/pull/42/files", 42));
-        assert!(!url_matches_pr("https://github.com/o/r/pull/420", 42));
+    fn extract_pr_url_drops_json_and_discussion_suffixes() {
+        let output = r#"{"html_url":"https://github.com/o/r/pull/761#discussion_r123","pull_request_url":"https://api.github.com/repos/o/r/pulls/761"}"#;
+        assert_eq!(
+            extract_pr_url(output).as_deref(),
+            Some("https://github.com/o/r/pull/761")
+        );
     }
 
     #[test]
@@ -1232,7 +1406,10 @@ mod tests {
         });
         let service = GitOpsService::with_runners(database, runner, Some(refresh));
         let result = service
-            .view_or_create_pr(GitViewOrCreatePrInput { session_id })
+            .view_or_create_pr(GitViewOrCreatePrInput {
+                session_id,
+                expected_branch: None,
+            })
             .await
             .expect("pr opened");
 
@@ -1285,7 +1462,10 @@ mod tests {
 
         let service = GitOpsService::with_runners(database.clone(), runner, Some(refresh));
         let result = service
-            .view_or_create_pr(GitViewOrCreatePrInput { session_id })
+            .view_or_create_pr(GitViewOrCreatePrInput {
+                session_id,
+                expected_branch: None,
+            })
             .await
             .expect("opened from error");
 
@@ -1355,7 +1535,10 @@ mod tests {
 
         let service = GitOpsService::with_runners(database.clone(), runner, None);
         let result = service
-            .view_or_create_pr(GitViewOrCreatePrInput { session_id })
+            .view_or_create_pr(GitViewOrCreatePrInput {
+                session_id,
+                expected_branch: None,
+            })
             .await
             .expect("pr opened");
 

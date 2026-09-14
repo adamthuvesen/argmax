@@ -20,6 +20,24 @@
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
 
+.session-link.session-link-has-pr-count {
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+}
+
+.session-pr-count {
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 var(--space-1);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
 .session-link:hover {
   color: var(--text);
   background: var(--row-hover);

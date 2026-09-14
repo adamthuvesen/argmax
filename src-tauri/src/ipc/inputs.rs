@@ -1065,6 +1065,20 @@ pub struct PrsRefreshInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PrsSetPrimaryInput {
+    pub session_id: SessionId,
+    pub pr_number: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PrsDismissInput {
+    pub session_id: SessionId,
+    pub pr_number: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GitCommitInput {
     pub workspace_id: WorkspaceId,
     pub message: GitCommitMessage,
@@ -1088,6 +1102,7 @@ pub struct GitCreateBranchInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GitViewOrCreatePrInput {
     pub session_id: SessionId,
+    pub expected_branch: Option<BranchName>,
 }
 
 #[cfg(test)]

@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-font-size="5" data-accent="green">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Argmax — "Show earlier activity" mockups</title>
+
+    <!-- The real thing: app tokens, the real transcript rules, the real fonts.
+         Surrounding rows use the app's own class names so each candidate is
+         judged in the register it would actually live in. Candidates use
+         private `.se-*` classes so the cascade cannot bleed either way. -->
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-400.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-500.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-700.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource-variable/geist-mono/wght.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/tokens.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/working-nest.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/chat-turns.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/chat-conversation.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/motion.css" />
+
+    <style>
+      html { background: var(--bg); }
+      body {
+        margin: 0; background: var(--bg); color: var(--text);
+        font-family: var(--font-ui); font-weight: var(--weight-ui);
+        -webkit-font-smoothing: antialiased;
+      }
+      svg { display: block; }
+
+      .page-head {
+        position: sticky; top: 0; z-index: 60;
+        display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap;
+        padding: 12px 28px;
+        background: color-mix(in oklab, var(--bg) 92%, transparent);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--line);
+        font-size: 12px; color: var(--muted);
+      }
+      .page-head h1 { margin: 0; font-size: 13px; font-weight: 500; color: var(--text); }
+      .page-head button {
+        font: inherit; color: inherit; cursor: pointer;
+        background: transparent; border: 1px solid var(--line);
+        border-radius: 6px; padding: 3px 9px;
+      }
+      .page-head button[aria-pressed="true"] { color: var(--text); border-color: var(--line-strong); }
+
+      .frames { display: flex; flex-wrap: wrap; gap: 28px; padding: 28px; align-items: flex-start; }
+      .frame { width: 560px; flex: 0 0 auto; }
+      .frame > h2 { margin: 0 0 4px; font-size: 12px; font-weight: 500; color: var(--text); }
+      .frame > p { margin: 0 0 12px; font-size: 11px; line-height: 1.5; color: var(--muted); min-height: 48px; }
+      .stage {
+        border: 1px solid var(--line); border-radius: 12px;
+        padding: 14px 18px; background: var(--bg);
+      }
+
+      /* ---- the transcript fragment from the report, in real classes ---- */
+      .turn-block-body { gap: var(--space-4); }
+      .row {
+        display: flex; align-items: center; gap: 7px;
+        padding: 5px 4px 5px 0;
+        font-size: var(--text-sm); line-height: 1.4; color: var(--muted);
+      }
+      .row .mark { flex: 0 0 var(--activity-mark-size); width: var(--activity-mark-size); height: var(--activity-mark-size); }
+      .row .verb { color: var(--muted-strong); }
+      .row .rest { color: var(--chip-ink); }
+      .row .code { font-family: var(--font-code); }
+      .row .caret { opacity: 0.6; color: var(--muted); }
+      .mark svg { width: 100%; height: 100%; }
+      .mark.cmd { color: var(--amber, #d9a566); }
+      .mark.think { color: #9b8cf0; }
+
+      /* =====================================================================
+         Candidates. Every one of them starts at the same left edge as the rows
+         it sits among; none of them is centred.
+         ===================================================================== */
+
+      /* -- 0 — today ------------------------------------------------------ */
+      .se-now {
+        align-self: center;
+        margin: var(--space-1) 0 var(--space-3);
+        padding: 5px 12px;
+        border: 1px solid var(--line); border-radius: 999px;
+        background: var(--bg); color: var(--muted);
+        font: inherit; font-size: var(--text-xs); cursor: pointer;
+      }
+      .se-now:hover { color: var(--ink); border-color: var(--line-strong); }
+
+      /* -- A — row: one more line in the list ----------------------------- */
+      .se-row {
+        display: flex; align-items: center; gap: 7px; width: 100%;
+        margin: 0; padding: 5px 4px 5px 0;
+        border: 0; background: transparent; text-align: left; cursor: pointer;
+        font-family: inherit; font-size: var(--text-sm); line-height: 1.4;
+        color: var(--muted);
+        transition: color var(--duration-fast) var(--ease);
+      }
+      .se-row:hover { color: var(--muted-strong); }
+      .se-row .mark { flex: 0 0 var(--activity-mark-size); width: var(--activity-mark-size); height: var(--activity-mark-size); opacity: 0.75; }
+      .se-row .n { font-variant-numeric: tabular-nums; color: var(--muted-strong); }
+      .se-row:hover .mark { opacity: 1; }
+
+      /* -- B — quiet link at the label column ----------------------------- */
+      .se-link {
+        align-self: flex-start;
+        margin: 0; padding: 5px 0;
+        margin-left: calc(var(--activity-mark-size) + 7px);
+        border: 0; background: transparent; cursor: pointer;
+        font-family: inherit; font-size: var(--text-sm); line-height: 1.4;
+        color: var(--muted);
+        text-decoration: underline; text-decoration-color: transparent;
+        text-underline-offset: 3px;
+        transition: color var(--duration-fast) var(--ease), text-decoration-color var(--duration-fast) var(--ease);
+      }
+      .se-link:hover { color: var(--muted-strong); text-decoration-color: var(--line-strong); }
+      .se-link .n { font-variant-numeric: tabular-nums; }
+
+      /* -- C — seam: a hairline that says the transcript continues above --- */
+      .se-seam {
+        display: flex; align-items: center; gap: 10px; width: 100%;
+        margin: 0; padding: 7px 4px 7px 0;
+        border: 0; background: transparent; cursor: pointer;
+        font-family: inherit; font-size: var(--text-xs); line-height: 1.4;
+        color: var(--muted);
+        transition: color var(--duration-fast) var(--ease);
+      }
+      .se-seam::after {
+        content: ""; flex: 1 1 auto; height: 1px; background: var(--line);
+        transition: background var(--duration-fast) var(--ease);
+      }
+      .se-seam > span { flex: 0 0 auto; margin-left: calc(var(--activity-mark-size) + 7px); }
+      .se-seam:hover { color: var(--muted-strong); }
+      .se-seam:hover::after { background: var(--line-strong); }
+      .se-seam .n { font-variant-numeric: tabular-nums; }
+
+      /* -- D — ellipsis: smallest possible footprint ---------------------- */
+      .se-dots {
+        display: flex; align-items: center; gap: 7px;
+        align-self: flex-start; margin: 0; padding: 4px 8px 4px 0;
+        border: 0; background: transparent; cursor: pointer;
+        font-family: inherit; font-size: var(--text-sm); line-height: 1.4;
+        color: var(--muted);
+      }
+      .se-dots .dots {
+        flex: 0 0 var(--activity-mark-size); width: var(--activity-mark-size);
+        display: flex; align-items: center; justify-content: center; gap: 2.5px;
+      }
+      .se-dots .dots i { width: 2.5px; height: 2.5px; border-radius: 50%; background: currentColor; }
+      .se-dots .n {
+        opacity: 0; font-variant-numeric: tabular-nums;
+        transition: opacity var(--duration-fast) var(--ease);
+      }
+      .se-dots:hover { color: var(--muted-strong); }
+      .se-dots:hover .n { opacity: 1; }
+
+      /* ---- spacing study ------------------------------------------------ */
+      .rhythm .stage { position: relative; }
+      .measure { position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed color-mix(in oklab, var(--accent) 60%, transparent); }
+      .rhythm-note { margin-top: 8px; font-size: 11px; color: var(--muted); }
+      .rhythm-note b { color: var(--text); font-weight: 500; }
+    </style>
+  </head>
+  <body>
+    <div class="page-head">
+      <h1>“Show earlier activity” — four cleaner answers</h1>
+      <span>theme</span>
+      <button id="theme" aria-pressed="false">dark / light</button>
+      <span>the control sits inside a left-aligned column of tool rows; today it is a centred pill.</span>
+    </div>
+
+    <div class="frames" id="frames"></div>
+
+    <script type="module">
+      const ICON = {
+        cmd: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>`,
+        think: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg>`,
+        up: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>`,
+        caret: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px"><path d="m9 18 6-6-6-6"/></svg>`
+      };
+
+      const header = `
+        <div class="row">
+          <span class="mark cmd">${ICON.cmd}</span>
+          <span><span class="verb">Ran</span><span class="rest"> commands, searched the web, read files, searched files, ran git commands</span></span>
+          <span class="caret">${ICON.caret}</span>
+        </div>`;
+      const after = `
+        <div class="row">
+          <span class="mark think">${ICON.think}</span>
+          <span class="verb">Thought</span><span class="caret">${ICON.caret}</span>
+        </div>
+        <div class="row">
+          <span class="mark cmd">${ICON.cmd}</span>
+          <span><span class="verb">Ran</span> <span class="code rest">"jq -rs '</span></span>
+        </div>
+        <div class="row">
+          <span class="mark think">${ICON.think}</span>
+          <span class="verb">Thought 2s</span><span class="caret">${ICON.caret}</span>
+        </div>`;
+
+      const CANDIDATES = [
+        {
+          id: "now",
+          title: "0 — today",
+          note: "A bordered pill, centred in a column where nothing else is centred, with 4px of air above and 12px below. It reads as a dialog button dropped into a log.",
+          html: `<button class="se-now">Show earlier activity (19 hidden)</button>`
+        },
+        {
+          id: "a",
+          title: "A — row · shipped",
+          note: "It is a list item, so it looks like one: same 16px mark gutter, same 7px gap, same pitch and type as the rows around it. A chevron-up in the gutter says which direction the transcript grows. This frame is the shipped control — real classes, real stylesheet.",
+          // Shipped: the real classes from chat-conversation.css, the real
+          // markup `ShowEarlier` renders. Nothing here is a mock.
+          html: `<button class="conversation-show-earlier"><span class="activity-icon-slot">${ICON.up}</span><span>Show earlier activity <span class="conversation-show-earlier-count">(19)</span></span></button>`
+        },
+        {
+          id: "b",
+          title: "B — quiet link",
+          note: "No gutter mark, no border. The label starts at the text column the row labels start at, so the left edge is shared with every verb above and below it. Hover brings the underline in. The least ink of the four.",
+          html: `<button class="se-link">Show earlier activity <span class="n">(19)</span></button>`
+        },
+        {
+          id: "c",
+          title: "C — seam",
+          note: "The label sits at the text column and a hairline runs out to the right edge. The line carries the meaning the pill was trying to carry — the transcript continues above this point — and gives the control a full-width hit area without a box.",
+          html: `<button class="se-seam"><span>Show earlier activity <span class="n">(19)</span></span></button>`
+        },
+        {
+          id: "d",
+          title: "D — ellipsis",
+          note: "Three dots in the mark gutter, label on hover. Smallest footprint of the four, and the one that scales when several windows are open at once. It asks the most of the reader: nothing on screen says what clicking does until the pointer is on it.",
+          html: `<button class="se-dots"><span class="dots"><i></i><i></i><i></i></span><span class="n">Show earlier activity (19)</span></button>`
+        }
+      ];
+
+      const frames = document.getElementById("frames");
+      frames.innerHTML = CANDIDATES.map((c) => `
+        <section class="frame" id="frame-${c.id}">
+          <h2>${c.title}</h2>
+          <p>${c.note}</p>
+          <div class="stage">
+            <div style="display:flex;flex-direction:column;gap:0">
+              ${header}
+              ${c.html}
+              ${after}
+            </div>
+          </div>
+        </section>`).join("") + `
+        <section class="frame rhythm" id="frame-rhythm">
+          <h2>5 — the margins</h2>
+          <p>Today the control adds <b>margin: 4px 0 12px</b> on top of the parent's own rhythm. In a turn body (<code>gap: 16px</code>) that is 4px above and 28px below; in a group body (<code>gap: 0</code>) it is 4px and 12px. Same control, four different spacings. Every candidate above carries <b>margin: 0</b> and lets the container set the pitch.</p>
+          <div class="stage">
+            <div style="display:flex;flex-direction:column;gap:16px">
+              ${header}
+              <button class="se-now" style="align-self:center">Show earlier activity (19 hidden)</button>
+              ${after}
+            </div>
+          </div>
+          <p class="rhythm-note">above: <b>4 + 16 = 20px</b> &nbsp;·&nbsp; below: <b>12 + 16 = 28px</b></p>
+        </section>`;
+
+      document.getElementById("theme").addEventListener("click", (e) => {
+        const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+        document.documentElement.dataset.theme = next;
+        e.currentTarget.setAttribute("aria-pressed", String(next === "light"));
+      });
+
+      const params = new URLSearchParams(location.search);
+      if (params.get("theme")) document.documentElement.dataset.theme = params.get("theme");
+      const only = params.get("only");
+      if (only) {
+        for (const f of frames.querySelectorAll(".frame")) {
+          if (f.id !== `frame-${only}`) f.remove();
+        }
+      }
+    </script>
+  </body>
+</html>

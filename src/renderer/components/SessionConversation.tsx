@@ -73,6 +73,7 @@ import { multitaskRowStatus, type MultitaskChild } from "../lib/multitask.js";
 import { dismissMultitask, readDismissedMultitasks } from "../lib/multitaskDismissals.js";
 import { ProjectMoveNotice } from "./ProjectMoveNotice.js";
 import { ProviderSwitchNotice } from "./ProviderSwitchNotice.js";
+import { ShowEarlier } from "./ShowEarlier.js";
 import { SessionNote } from "./SessionNote.js";
 import { foldConversationItems, foldRenderItems, type RenderItem } from "../lib/foldConversation.js";
 import { todoListsByTurn } from "../lib/todoList.js";
@@ -1542,9 +1543,7 @@ export function SessionConversation({
         >
           <div className="conversation-content" ref={conversationContentRef}>
             {windowStart > 0 ? (
-              <button type="button" className="conversation-show-earlier" onClick={showEarlierItems}>
-                Show earlier messages ({windowStart} hidden)
-              </button>
+              <ShowEarlier noun="messages" count={windowStart} onClick={showEarlierItems} />
             ) : null}
             {transcriptRenderItems.length > 0 ? (
               windowedItems.map((item, windowIndex) => {

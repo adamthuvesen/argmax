@@ -4,6 +4,7 @@ import { formatElapsedSeconds } from "../formatElapsed.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { registerLiveTimer } from "../lib/liveTimer.js";
 import type { TurnToolItem } from "../lib/toolCalls.js";
+import { ShowEarlier } from "./ShowEarlier.js";
 import { groupToolRuns, type TurnBodyChild } from "../lib/turnChildren.js";
 
 export type { TurnToolItem, TurnBodyChild };
@@ -272,13 +273,11 @@ export function TurnBlock({
           data-just-revealed={justRevealed ? "true" : undefined}
         >
           {hiddenEarlierBodyCount > 0 && onShowEarlierBody ? (
-            <button
-              type="button"
-              className="conversation-show-earlier turn-show-earlier"
+            <ShowEarlier
+              noun="activity"
+              count={hiddenEarlierBodyCount}
               onClick={onShowEarlierBody}
-            >
-              Show earlier activity ({hiddenEarlierBodyCount} hidden)
-            </button>
+            />
           ) : null}
           {groupToolRuns(visibleBody)}
         </div>

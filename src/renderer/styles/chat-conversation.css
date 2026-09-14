@@ -1821,21 +1821,41 @@
 }
 
 /* Reveals the part of a long transcript the render window leaves unmounted.
-   Only appears when something is actually hidden. */
+   Only appears when something is actually hidden.
+
+   Shaped like the rows it pages, not like a button: the chevron takes the same
+   mark gutter, the label starts where a row's verb starts, and the pitch and
+   type are a row's. It was a centred pill — the one centred thing in a
+   left-aligned column — and it carried `margin: var(--space-1) 0
+   var(--space-3)` on top of whatever rhythm its container already set, so the
+   gap above never matched the gap below and both changed with the container.
+   Carrying no margin, it lands identically in a turn body (gap
+   `var(--space-4)`) and a group body (gap 0, each row's padding sets the
+   pitch). See docs/design/show-earlier. */
 .conversation-show-earlier {
-  align-self: center;
-  margin: var(--space-1) 0 var(--space-3);
-  padding: 5px 12px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--bg);
+  display: flex;
+  align-items: center;
+  /* The same gap `.tool-call-group-header` puts between mark and headline. */
+  gap: 7px;
+  width: 100%;
+  margin: 0;
+  padding: 5px 4px 5px 0;
+  border: 0;
+  background: transparent;
   color: var(--muted);
-  font: inherit;
-  font-size: var(--text-xs);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  text-align: left;
   cursor: pointer;
+  transition: color var(--duration-fast) var(--ease);
 }
 
 .conversation-show-earlier:hover {
-  color: var(--ink);
-  border-color: var(--line-strong);
+  color: var(--muted-strong);
+}
+
+.conversation-show-earlier-count {
+  color: var(--muted-strong);
+  font-variant-numeric: tabular-nums;
 }

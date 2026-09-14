@@ -258,9 +258,20 @@ export function BrowserPanel({
       });
   }, [browser, measureBounds, overlaysSurface, scopeId]);
 
+  /** Hand the window's keyboard focus to a page the user just activated. The
+   *  first responder otherwise stays on the app's own webview, which leaves
+   *  the arrow keys and ⌘F belonging to Argmax rather than to the page. */
+  const focusTabWebview = useCallback(
+    (tabId: string): void => {
+      // Best-effort: a tab closed or replaced in the gap has nothing to focus.
+      void browser?.focus(tabId).catch(() => undefined);
+    },
+    [browser]
+  );
+
   /** Create the tab's webview, or navigate + show it when it already exists. */
   const openTabWebview = useCallback(
-    (tab: BrowserTab): void => {
+    (tab: BrowserTab, focus = false): void => {
       if (!browser) return;
       const bounds = measureBounds();
       if (!bounds) return;
@@ -272,6 +283,8 @@ export function BrowserPanel({
         .then(() => {
           lastBoundsRef.current = null;
           syncBounds();
+          // After the webview exists, or there is nothing to focus yet.
+          if (focus) focusTabWebview(tab.id);
         })
         .catch((error: unknown) => {
           // Un-mark, or the tab is a zombie: every later command would hit a
@@ -280,20 +293,21 @@ export function BrowserPanel({
           reportError(error);
         });
     },
-    [browser, measureBounds, reportError, syncBounds]
+    [browser, focusTabWebview, measureBounds, reportError, syncBounds]
   );
 
   /** Show a tab's webview, recreating it first when this app run has not
    *  materialized it yet (tabs restored from a previous run). */
   const showTabWebview = useCallback(
-    (tab: BrowserTab): void => {
+    (tab: BrowserTab, focus = false): void => {
       if (isBrowserTabMaterialized(tab.id)) {
         syncBounds();
+        if (focus) focusTabWebview(tab.id);
       } else {
-        openTabWebview(tab);
+        openTabWebview(tab, focus);
       }
     },
-    [openTabWebview, syncBounds]
+    [focusTabWebview, openTabWebview, syncBounds]
   );
 
   const hideTabWebview = useCallback(
@@ -307,16 +321,22 @@ export function BrowserPanel({
     [browser]
   );
 
+  /** Activate a tab the way a click on it does: its page takes keyboard focus,
+   *  so the next keystroke is the page's. Re-activating the tab that is
+   *  already showing only moves focus back to it. */
   const switchToTab = useCallback(
     (tabId: string): void => {
       const previous = getActiveBrowserTabId(scopeId);
-      if (previous === tabId) return;
+      if (previous === tabId) {
+        focusTabWebview(tabId);
+        return;
+      }
       if (previous) hideTabWebview(previous);
       activateBrowserTab(tabId);
       const tab = getBrowserTabs(scopeId).find((candidate) => candidate.id === tabId);
-      if (tab) showTabWebview(tab);
+      if (tab) showTabWebview(tab, true);
     },
-    [hideTabWebview, showTabWebview, scopeId]
+    [focusTabWebview, hideTabWebview, showTabWebview, scopeId]
   );
 
   const tabDrag = useBrowserTabDrag(scopeId, switchToTab);

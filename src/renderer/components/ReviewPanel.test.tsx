@@ -541,6 +541,7 @@ describe("ReviewPanel browser mode", () => {
     forward: vi.fn(() => Promise.resolve({ ok: true as const })),
     reload: vi.fn(() => Promise.resolve({ ok: true as const })),
     setBounds: vi.fn(() => Promise.resolve({ ok: true as const })),
+    focus: vi.fn(() => Promise.resolve({ ok: true as const })),
     close: vi.fn(() => Promise.resolve({ ok: true as const })),
     stop: vi.fn(() => Promise.resolve({ ok: true as const })),
     fillCredentials: vi.fn(() => Promise.resolve({ ok: true, itemTitle: "GitHub" })),

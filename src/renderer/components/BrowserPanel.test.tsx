@@ -38,6 +38,7 @@ const browserStub = {
   contentBlocking: vi.fn(() => Promise.resolve({ supported: true, disabledHosts: [] as string[] })),
   setSiteBlocking: vi.fn(() => Promise.resolve({ supported: true, disabledHosts: [] as string[] })),
   setBounds: vi.fn(() => Promise.resolve({ ok: true as const })),
+  focus: vi.fn(() => Promise.resolve({ ok: true as const })),
   close: vi.fn(() => Promise.resolve({ ok: true as const })),
   stop: vi.fn(() => Promise.resolve({ ok: true as const })),
   fillCredentials: vi.fn(() => Promise.resolve({ ok: true, itemTitle: "GitHub" })),
@@ -513,6 +514,19 @@ describe("BrowserPanel", () => {
     expect(screen.getByRole("textbox", { name: "Address" })).toHaveValue("https://github.com");
   });
 
+  it("hands the page keyboard focus when its own tab is clicked again", () => {
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    const tabId = activeTabId();
+    browserStub.focus.mockClear();
+    browserStub.setBounds.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "github.com" }));
+    // Clicking the tab that is already showing is a focus request, not a
+    // switch: the webview keeps the bounds it has.
+    expect(browserStub.focus).toHaveBeenCalledWith(tabId);
+    expect(browserStub.setBounds).not.toHaveBeenCalled();
+  });
+
   it("adds a tab, switches back, and closes down to the panel", () => {
     const onClose = vi.fn();
     render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={onClose} />);
@@ -530,6 +544,9 @@ describe("BrowserPanel", () => {
     expect(browserStub.setBounds).toHaveBeenCalledWith(
       expect.objectContaining({ tabId: secondTab, visible: false })
     );
+    // …and the page it switched to takes the keyboard, so ⌘F and the arrow
+    // keys are the page's rather than the app's.
+    expect(browserStub.focus).toHaveBeenCalledWith(firstTab);
 
     // Closing a tab destroys its webview; closing the last one closes the panel.
     fireEvent.click(screen.getByRole("button", { name: /Close tab.*google/i }));

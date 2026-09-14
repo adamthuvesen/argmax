@@ -978,6 +978,21 @@ async browserSetBounds(input: BrowserSetBoundsInput) : Promise<Result<SystemOk, 
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Hands the window's keyboard focus to a tab's page, the way clicking into it
+ * would. Called when the user activates a tab: without it the first responder
+ * stays on the app's own webview, so scrolling keys and `⌘F` are the app's
+ * rather than the page's. A tab whose webview is still being created is
+ * skipped — it takes focus when it opens.
+ */
+async browserFocus(input: BrowserFocusInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_focus", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async browserSetTheme(input: BrowserSetThemeInput) : Promise<Result<SystemOk, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("browser_set_theme", { input }) };
@@ -1406,6 +1421,7 @@ export type BrowserFindInput = { tabId?: string | null; sessionId?: string | nul
  * Case-insensitive substring over role, name, value and text.
  */
 query: string }
+export type BrowserFocusInput = { tabId: string }
 export type BrowserForwardInput = { tabId: string }
 export type BrowserGetTextInput = { tabId?: string | null; sessionId?: string | null;
 /**

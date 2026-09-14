@@ -150,6 +150,7 @@ browser_tab_input!(BrowserForwardInput);
 browser_tab_input!(BrowserReloadInput);
 browser_tab_input!(BrowserStopInput);
 browser_tab_input!(BrowserCloseInput);
+browser_tab_input!(BrowserFocusInput);
 browser_tab_input!(BrowserFillCredentialsInput);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

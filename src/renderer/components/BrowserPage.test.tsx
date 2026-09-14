@@ -24,6 +24,7 @@ describe("BrowserPage", () => {
           forward: vi.fn().mockResolvedValue({ ok: true }),
           reload: vi.fn().mockResolvedValue({ ok: true }),
           setBounds: vi.fn().mockResolvedValue({ ok: true }),
+          focus: vi.fn().mockResolvedValue({ ok: true }),
           close: vi.fn().mockResolvedValue({ ok: true }),
           stop: vi.fn().mockResolvedValue({ ok: true }),
           fillCredentials: vi.fn().mockResolvedValue({ ok: true, itemTitle: "Test" }),

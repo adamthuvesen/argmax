@@ -879,6 +879,23 @@ pub fn browser_set_bounds(app: AppHandle, input: BrowserSetBoundsInput) -> Argma
     Ok(SystemOk { ok: true })
 }
 
+/// Hands the window's keyboard focus to a tab's page, the way clicking into it
+/// would. Called when the user activates a tab: without it the first responder
+/// stays on the app's own webview, so scrolling keys and `⌘F` are the app's
+/// rather than the page's. A tab whose webview is still being created is
+/// skipped — it takes focus when it opens.
+#[tauri::command(rename = "browser:focus")]
+#[specta::specta]
+pub fn browser_focus(app: AppHandle, input: BrowserFocusInput) -> ArgmaxResult<SystemOk> {
+    let label = tab_label(&input.tab_id)?;
+    if let Some(webview) = app.get_webview(&label) {
+        webview
+            .set_focus()
+            .map_err(|error| ArgmaxError::service("BROWSER_FOCUS_FAILED", error.to_string()))?;
+    }
+    Ok(SystemOk { ok: true })
+}
+
 #[tauri::command(rename = "browser:set-theme")]
 #[specta::specta]
 pub fn browser_set_theme(

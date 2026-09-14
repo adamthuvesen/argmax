@@ -33,6 +33,7 @@ const MAIN_THREAD_ALLOWLIST = new Map([
   ["browser:reload", "manipulates the native child webview"],
   ["browser:stop", "manipulates the native child webview"],
   ["browser:set-bounds", "manipulates the native child webview"],
+  ["browser:focus", "moves the window's first responder to the native child webview"],
   ["browser:set-theme", "sets native child webview appearance"],
   ["browser:close", "manipulates the native child webview"],
   ["browser:list-tabs", "reads the in-memory tab registry"],

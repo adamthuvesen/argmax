@@ -21,6 +21,7 @@ function routine(overrides: Partial<Routine> = {}): Routine {
     lastRunAt: null,
     nextRunAt: "2026-09-01T09:00:00.000Z",
     lastError: null,
+    createdBy: "user",
     createdAt: "2026-08-30T08:00:00.000Z",
     updatedAt: "2026-08-30T08:00:00.000Z",
     ...overrides

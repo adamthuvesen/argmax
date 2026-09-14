@@ -40,7 +40,7 @@ Namespace `argmax`; Claude, Codex, and Cursor show them as
 | `terminal_read` | `terminalId?`, `session?`, `maxChars?` | A terminal tail, or the terminals known for a workspace |
 | `project_list` | — | Every registered project, including projects with no open session |
 | `schedule_followup` | `prompt`, `inSeconds?` or `at?`, `name?` | A one-shot scheduled wake for this session |
-| `schedule_list` | `project?` | `{projectId, schedules: [{scheduleId, name, prompt, enabled, cronExpr?, runOnceAt?, runTarget, sessionId?, nextRunAt?, lastRunAt?, lastError?}], truncated}` |
+| `schedule_list` | `project?` | `{projectId, schedules: [{scheduleId, name, prompt, enabled, cronExpr?, runOnceAt?, runTarget, createdBy, sessionId?, nextRunAt?, lastRunAt?, lastError?}], truncated}` |
 | `schedule_cancel` | `scheduleId`, `disable?` | `{scheduleId, name, deleted}` |
 | `schedule_resume` | `scheduleId` | `{scheduleId, name, nextRunAt?}` |
 
@@ -159,16 +159,21 @@ reachable: naming its absolute path as `project` adds it.
 the calling session. Give either a delay in seconds or an RFC 3339 timestamp.
 The scheduler runs every 30 seconds, so earlier times are raised to that floor.
 Follow-ups can be scheduled at most seven days ahead and appear in Scheduled
-Tasks, where the user can disable or delete them.
+Tasks, where the user can disable or delete them. The row is the alarm rather
+than a saved task: firing clears it, so a wake leaves nothing behind.
 
 `schedule_list` returns one project's scheduled tasks — the wakes chats set and
 the recurring routines the user wrote — capped at 50 rows with `truncated`, and
 each prompt capped at 500 characters. `sessionId` is the chat a same-chat task
 fires into: equal to the caller's own id, the row is a wake it set for itself.
+`createdBy` is `agent` for a wake and `user` for a task the person wrote or
+edited, which is what tells an agent which rows are its own to remove.
 
 `schedule_cancel` stops one from firing. It deletes by default and pauses with
 `disable`, which leaves the row in Scheduled Tasks with its prompt and schedule
-intact. `schedule_resume` switches a paused one back on and recomputes its next
+intact. A wake of the caller's own is meant to be deleted the moment it is
+pointless — the PR merged, CI went green — since pausing it only parks a row
+the user has to sweep by hand. `disable` is for the tasks they wrote. `schedule_resume` switches a paused one back on and recomputes its next
 run from now, so a recurring task picks up at its next occurrence rather than
 firing once for every run it slept through. Both are limited to tasks in the
 caller's own project; anything else is refused with `SCHEDULE_OTHER_PROJECT`.

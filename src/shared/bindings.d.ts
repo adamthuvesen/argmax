@@ -1868,7 +1868,14 @@ export type ReviewLoadDiffInput = { kind: WorkspaceTargetKind; id: WorkspaceTarg
 contextLines?: DiffContextLines | null }
 export type RewindFilesResult = { checkpoint: Checkpoint; recoveryCheckpoint: Checkpoint; restoredPaths: string[] }
 export type RewindPreview = { checkpoint: Checkpoint; currentFingerprint: CheckoutFingerprint; changedPaths: string[]; deletedPaths: string[] }
-export type Routine = { id: string; name: string; projectId: string; prompt: string; provider: string; modelLabel: string; modelId: string; worktree: boolean; runTarget: RoutineRunTarget; lastSessionId: string | null; cronExpr: string | null; runOnceAt: string | null; enabled: boolean; lastRunAt: string | null; nextRunAt: string | null; lastError: string | null; createdAt: string; updatedAt: string }
+export type Routine = { id: string; name: string; projectId: string; prompt: string; provider: string; modelLabel: string; modelId: string; worktree: boolean; runTarget: RoutineRunTarget; lastSessionId: string | null; cronExpr: string | null; runOnceAt: string | null; enabled: boolean; lastRunAt: string | null; nextRunAt: string | null; lastError: string | null; createdBy: RoutineAuthor; createdAt: string; updatedAt: string }
+/**
+ * Who put a scheduled task in the list. `Agent` is a wake a chat set for
+ * itself with `schedule_followup` — an alarm clock, not a routine the user
+ * wrote — which is why a spent one is deleted instead of left paused in
+ * their panel forever.
+ */
+export type RoutineAuthor = "user" | "agent"
 /**
  * Where one firing of a scheduled task lands. `NewSession` starts a fresh
  * chat in the shared checkout, `SameSession` sends the prompt as a

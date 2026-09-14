@@ -452,6 +452,7 @@ export function setupAppTestMocks(): void {
           lastRunAt: null,
           nextRunAt: null,
           lastError: null,
+          createdBy: "user",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         }),
@@ -474,6 +475,7 @@ export function setupAppTestMocks(): void {
           lastRunAt: null,
           nextRunAt: null,
           lastError: null,
+          createdBy: "user",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         }),
@@ -495,6 +497,7 @@ export function setupAppTestMocks(): void {
           lastRunAt: null,
           nextRunAt: null,
           lastError: null,
+          createdBy: "user",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         }),
@@ -516,6 +519,7 @@ export function setupAppTestMocks(): void {
           lastRunAt: null,
           nextRunAt: null,
           lastError: null,
+          createdBy: "user",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         })

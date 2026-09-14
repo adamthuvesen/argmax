@@ -2660,6 +2660,7 @@ async fn a_schedule_can_be_listed_paused_resumed_or_deleted() {
                 cron_expr: Some("0 3 * * *".to_string()),
                 run_once_at: None,
                 enabled: true,
+                created_by: argmax_lib::persistence::routines::RoutineAuthor::User,
             },
             Some("2030-01-01T03:00:00.000Z".to_string()),
         )
@@ -2690,6 +2691,10 @@ async fn a_schedule_can_be_listed_paused_resumed_or_deleted() {
     assert_eq!(schedules[0]["sessionId"], "session-agent");
     assert_eq!(schedules[0]["enabled"], true);
     assert_eq!(schedules[0]["prompt"], "Check CI");
+    assert_eq!(
+        schedules[0]["createdBy"], "agent",
+        "a wake reports itself as the chat's own, so it can be deleted outright"
+    );
 
     let paused = harness
         .ask(json!({ "schedule-cancel": { "scheduleId": schedule_id, "disable": true } }))

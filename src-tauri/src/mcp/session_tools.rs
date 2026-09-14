@@ -213,7 +213,9 @@ pub struct ScheduleCancelParams {
     /// Id of the scheduled task, from schedule_list or schedule_followup.
     pub schedule_id: String,
     /// Pause it instead of deleting it. The task keeps its prompt and its
-    /// schedule and stops firing; schedule_resume switches it back on.
+    /// schedule and stops firing; schedule_resume switches it back on. For a
+    /// wake of your own, leave this off: pausing it only parks a row the user
+    /// then has to clear.
     pub disable: Option<bool>,
 }
 
@@ -631,7 +633,9 @@ someone else: a CI run, a deploy, a review. Your turn ends, the user gets their 
 the prompt arrives as a fresh turn with this transcript intact. The scheduler looks every 30 \
 seconds, so a wake is never early, and it never lands in the middle of a turn: a wake whose time \
 passes while this chat is still working waits for it to finish rather than queueing behind what \
-the user has typed. It appears in Scheduled Tasks, where the user can see and cancel it."
+the user has typed. It appears in Scheduled Tasks, where the user can see and cancel it. The row \
+is the alarm, not a saved task: it clears itself when it rings. Cancel it yourself if what you \
+were waiting for lands first, so it never wakes you for nothing."
     )]
     async fn schedule_followup(
         &self,
@@ -653,8 +657,9 @@ the user has typed. It appears in Scheduled Tasks, where the user can see and ca
         description = "Every scheduled task in a project: the wakes chats set with \
 schedule_followup and the recurring routines the user wrote by hand, each with its prompt, cron \
 expression or one-shot time, whether it is switched on, when it next runs, and how its last run \
-went. This is where a schedule_cancel finds its id, and how you tell a task that is failing every \
-night from one nobody turned on."
+went. `createdBy` separates the two: `agent` is a wake a chat set for itself, yours to delete \
+once it is pointless, and `user` is a task the person wrote. This is where a schedule_cancel \
+finds its id, and how you tell a task that is failing every night from one nobody turned on."
     )]
     async fn schedule_list(
         &self,
@@ -669,9 +674,11 @@ night from one nobody turned on."
     #[tool(
         name = "schedule_cancel",
         description = "Stop a scheduled task from firing: deleted by default, or paused with \
-disable so the user can switch it back on. Use it to drop a follow-up you no longer need — a wake \
-you set to watch CI that has already gone green — and to turn off a routine when the user asks. \
-Pause rather than delete anything the user wrote themselves unless they asked for it gone: a \
+disable so the user can switch it back on. Delete a wake of your own — anything schedule_list \
+shows as `createdBy: agent` — the moment it is pointless: the PR merged, CI went green, the \
+question answered itself. Delete it rather than pausing it; a paused wake nobody wrote is a dead \
+row the user has to sweep out of their task list by hand. Pause is for the tasks they wrote \
+themselves: turn one off when they ask, and delete it only when they ask for it gone, since a \
 deleted task takes its prompt and its history with it. Only tasks in this chat's project can be \
 cancelled."
     )]

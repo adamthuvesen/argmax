@@ -383,6 +383,18 @@ pub static ROUTINE_RUN_TARGET_COLUMNS: phf::Map<&'static str, &'static [&'static
     ] as &'static [&'static str],
 };
 
+// Post-v50 `routines` shape: each task records who put it in the list, so a
+// wake a chat set for itself can be cleared when it fires while a task the
+// user wrote is kept.
+pub static ROUTINE_AUTHOR_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "routines" => &[
+        "created_by", "cron_expr", "created_at", "enabled", "id", "last_error",
+        "last_run_at", "last_session_id", "model_id", "model_label", "name",
+        "next_run_at", "project_id", "prompt", "provider", "run_once_at",
+        "run_target", "updated_at", "worktree",
+    ] as &'static [&'static str],
+};
+
 // Post-v9 `approvals` shape: provider-native requests retain the opaque
 // correlation id required to make replay idempotent across terminal states.
 pub static APPROVAL_PROVIDER_REQUEST_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
@@ -929,6 +941,14 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &SESSION_PR_MODEL_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 50,
+        name: "routine_author",
+        up: ROUTINE_AUTHOR,
+        affected_tables: &["routines"],
+        expected_columns: &ROUTINE_AUTHOR_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
 
 // GitHub state belongs to a project and PR number. Session links keep the
@@ -1234,6 +1254,22 @@ ALTER TABLE routines ADD COLUMN run_target TEXT NOT NULL DEFAULT 'worktree'
   CHECK (run_target IN ('new_session', 'same_session', 'worktree'));
 ALTER TABLE routines ADD COLUMN last_session_id TEXT;
 UPDATE routines SET run_target = CASE WHEN worktree = 0 THEN 'new_session' ELSE 'worktree' END;
+"#;
+
+// Who put a scheduled task in the list. A wake a chat sets for itself with
+// `schedule_followup` is an alarm clock: once it rings, the chat it woke holds
+// the record, and the row is only clutter in the user's panel. Existing rows
+// backfill from the shape only a follow-up had — a one-shot that fires into
+// the same chat — and the spent ones among them, which ran without an error
+// and can never fire again, go with it.
+const ROUTINE_AUTHOR: &str = r#"
+ALTER TABLE routines ADD COLUMN created_by TEXT NOT NULL DEFAULT 'user'
+  CHECK (created_by IN ('user', 'agent'));
+UPDATE routines SET created_by = 'agent'
+  WHERE run_once_at IS NOT NULL AND run_target = 'same_session';
+DELETE FROM routines
+  WHERE created_by = 'agent' AND enabled = 0
+    AND last_run_at IS NOT NULL AND last_error IS NULL;
 "#;
 
 // The disposal an agent asked for while its own turn was still running.
@@ -2470,6 +2506,7 @@ mod tests {
                     compute_migration_checksum(crate::persistence::project_sources::MIGRATION_SQL)
                 ),
                 (49, compute_migration_checksum(SESSION_PR_MODEL)),
+                (50, compute_migration_checksum(ROUTINE_AUTHOR)),
             ]
         );
 
@@ -2689,7 +2726,8 @@ mod tests {
                    updated_at TEXT NOT NULL
                  );
                  DELETE FROM schema_migrations WHERE version = 20;
-                 DELETE FROM schema_migrations WHERE version = 36;",
+                 DELETE FROM schema_migrations WHERE version = 36;
+                 DELETE FROM schema_migrations WHERE version = 50;",
             )
             .expect("install draft routines table");
         connection
@@ -2709,7 +2747,7 @@ mod tests {
             .collect::<Result<_, _>>()
             .expect("rows");
         columns.sort();
-        let mut expected = ROUTINE_RUN_TARGET_COLUMNS["routines"].to_vec();
+        let mut expected = ROUTINE_AUTHOR_COLUMNS["routines"].to_vec();
         expected.sort_unstable();
         assert_eq!(columns, expected);
     }

@@ -624,7 +624,9 @@ pub struct ScheduledFollowup {
 
 /// One scheduled task as an agent reads it. `sessionId` is the chat a
 /// same-chat task fires into: equal to the caller's own id, this row is a
-/// wake that chat set for itself.
+/// wake that chat set for itself. `createdBy` says who put it in the list,
+/// which is what separates a wake you may delete outright from a routine the
+/// user wrote.
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ScheduleEntry {
@@ -640,6 +642,8 @@ pub struct ScheduleEntry {
     pub run_once_at: Option<String>,
     /// `new_session`, `same_session`, or `worktree`.
     pub run_target: String,
+    /// `user` or `agent`.
+    pub created_by: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

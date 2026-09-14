@@ -7,7 +7,7 @@ use super::{inputs::*, live_database};
 use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 use crate::persistence::routines::{
     self, find_routine_by_id, list_routines, set_routine_enabled, upsert_routine, Routine,
-    RoutineRunTarget, UpsertRoutineInput,
+    RoutineAuthor, RoutineRunTarget, UpsertRoutineInput,
 };
 use crate::providers::session_service::ProviderSessionService;
 use crate::routines::{schedule, scheduler};
@@ -94,6 +94,9 @@ pub async fn routines_upsert(
             cron_expr,
             run_once_at,
             enabled: input.enabled.unwrap_or(true),
+            // Saved from the panel, so the task is the user's — including one
+            // an agent set for itself that they have since edited.
+            created_by: RoutineAuthor::User,
         },
         next_run_at,
     )

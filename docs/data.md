@@ -33,8 +33,13 @@ Rust manages SQLite storage under [src-tauri/src/persistence](../src-tauri/src/p
 Reads take pooled `SQLITE_OPEN_READ_ONLY` connections through `Database::read_connection`, not the writer `Mutex<Connection>`, so a read never queues behind a write. A write attempted on the read path fails loudly; that is the point. See [performance.md](performance.md).
 
 `routines` (v19) stores scheduled tasks: a prompt plus schedule that the
-in-app scheduler launches as normal top-level sessions. See
-[scheduled-tasks.md](scheduled-tasks.md).
+in-app scheduler launches as normal top-level sessions. `created_by` (v50)
+names who put the task in the list — `user` for anything saved from the panel,
+`agent` for a wake a chat set for itself with `schedule_followup` — and decides
+what a spent one-shot leaves behind: the user's is disabled and kept, an
+agent's is deleted. The migration backfills `agent` for the shape only a wake
+had (a one-shot firing into the same chat) and clears the spent ones among
+them. See [scheduled-tasks.md](scheduled-tasks.md).
 
 ## Session PR state
 

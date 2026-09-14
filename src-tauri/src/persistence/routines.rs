@@ -39,6 +39,35 @@ impl RoutineRunTarget {
     }
 }
 
+/// Who put a scheduled task in the list. `Agent` is a wake a chat set for
+/// itself with `schedule_followup` — an alarm clock, not a routine the user
+/// wrote — which is why a spent one is deleted instead of left paused in
+/// their panel forever.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RoutineAuthor {
+    #[default]
+    User,
+    Agent,
+}
+
+impl RoutineAuthor {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::Agent => "agent",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "user" => Some(Self::User),
+            "agent" => Some(Self::Agent),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct UpsertRoutineInput {
     pub id: String,
@@ -52,6 +81,9 @@ pub struct UpsertRoutineInput {
     pub cron_expr: Option<String>,
     pub run_once_at: Option<String>,
     pub enabled: bool,
+    /// A task the user saves in the panel is theirs, including one an agent
+    /// created and they then edited.
+    pub created_by: RoutineAuthor,
 }
 
 /// The launch- and schedule-facing fields the scheduler copies out of a due
@@ -79,6 +111,9 @@ pub struct RoutineLaunchFields {
     /// Routine mutations advance it monotonically, including a no-op pointer
     /// reset, so a completed run cannot overwrite a user's in-flight edit.
     pub updated_at: String,
+    /// Decides how a spent one-shot settles: an agent's own wake is deleted,
+    /// the user's is kept as a paused record of what ran.
+    pub created_by: RoutineAuthor,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
@@ -100,6 +135,7 @@ pub struct Routine {
     pub last_run_at: Option<String>,
     pub next_run_at: Option<String>,
     pub last_error: Option<String>,
+    pub created_by: RoutineAuthor,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -119,6 +155,7 @@ pub(crate) fn routine_launch_fields(routine: &Routine) -> RoutineLaunchFields {
         run_once_at: routine.run_once_at.clone(),
         enabled: routine.enabled,
         updated_at: routine.updated_at.clone(),
+        created_by: routine.created_by,
     }
 }
 
@@ -155,9 +192,9 @@ pub fn upsert_routine(
         INSERT INTO routines (
             id, name, project_id, prompt, provider, model_label, model_id,
             worktree, run_target, cron_expr, run_once_at,
-            enabled, next_run_at, created_at, updated_at
+            enabled, next_run_at, created_by, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
             name = excluded.name,
             project_id = excluded.project_id,
@@ -171,6 +208,7 @@ pub fn upsert_routine(
             run_once_at = excluded.run_once_at,
             enabled = excluded.enabled,
             next_run_at = excluded.next_run_at,
+            created_by = excluded.created_by,
             last_error = NULL,
             updated_at = excluded.updated_at
         "#,
@@ -191,6 +229,7 @@ pub fn upsert_routine(
             input.run_once_at.as_deref(),
             bool_to_i64(input.enabled),
             next_run_at.as_deref(),
+            input.created_by.as_str(),
             now.as_str(),
             now.as_str(),
         ))
@@ -212,6 +251,22 @@ pub fn delete_routine(connection: &Connection, id: &str) -> ArgmaxResult<()> {
         return Err(ArgmaxError::record_not_found("routine", id));
     }
     Ok(())
+}
+
+/// Removes a routine whose firing spent it, provided nothing changed the row
+/// while the launch was awaiting. It carries the same optimistic token as
+/// `mark_routine_run`, so an edit made during the launch wins and the row
+/// survives; `false` says the delete did not apply.
+pub fn delete_spent_routine(
+    connection: &Connection,
+    id: &str,
+    updated_at: &str,
+) -> ArgmaxResult<bool> {
+    let mut statement = connection
+        .prepare_cached("DELETE FROM routines WHERE id = ? AND updated_at = ?")
+        .map_err(sqlite_error)?;
+    let changes = statement.execute((id, updated_at)).map_err(sqlite_error)?;
+    Ok(changes > 0)
 }
 
 pub fn set_routine_enabled(
@@ -336,6 +391,7 @@ fn row_to_routine(row: &Row<'_>) -> rusqlite::Result<Routine> {
         last_run_at: row.get("last_run_at")?,
         next_run_at: row.get("next_run_at")?,
         last_error: row.get("last_error")?,
+        created_by: created_by(row)?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
     })
@@ -359,7 +415,17 @@ fn row_to_launch_fields(row: &Row<'_>) -> rusqlite::Result<RoutineLaunchFields> 
         run_once_at: row.get("run_once_at")?,
         enabled: row.get::<_, i64>("enabled")? == 1,
         updated_at: row.get("updated_at")?,
+        created_by: created_by(row)?,
     })
+}
+
+/// A row written before the author column existed reads as the user's, which
+/// is the safe side: an unknown task is kept rather than swept.
+fn created_by(row: &Row<'_>) -> rusqlite::Result<RoutineAuthor> {
+    let stored: String = row
+        .get("created_by")
+        .unwrap_or_else(|_| RoutineAuthor::User.as_str().to_string());
+    Ok(RoutineAuthor::parse(&stored).unwrap_or_default())
 }
 
 /// Points a `same_session` routine at the chat its runs share. `None` drops
@@ -443,6 +509,7 @@ mod tests {
             cron_expr: Some("0 0 9 * * *".to_string()),
             run_once_at: None,
             enabled: true,
+            created_by: RoutineAuthor::User,
         }
     }
 
@@ -642,6 +709,50 @@ mod tests {
                 .unwrap()
                 .last_session_id,
             None
+        );
+    }
+
+    /// A spent wake goes away, but only while the row is still the wake that
+    /// fired: an edit made while the launch was awaiting keeps it.
+    #[test]
+    fn deleting_a_spent_routine_yields_to_an_edit_made_during_the_launch() {
+        let database = database_with_project();
+        let connection = database.connection();
+        let mut wake = input("r1");
+        wake.created_by = RoutineAuthor::Agent;
+        wake.cron_expr = None;
+        wake.run_once_at = Some("2026-01-01T09:00:00.000Z".to_string());
+        upsert_routine(&connection, &wake, Some("2026-01-01T09:00:00.000Z".into())).unwrap();
+        let fired = routine_launch_fields(&find_routine_by_id(&connection, "r1").unwrap());
+        assert_eq!(fired.created_by, RoutineAuthor::Agent);
+
+        set_routine_enabled(&connection, "r1", false, None).unwrap();
+        assert!(!delete_spent_routine(&connection, "r1", &fired.updated_at).unwrap());
+        assert!(find_routine_by_id(&connection, "r1").is_ok());
+
+        let current = find_routine_by_id(&connection, "r1").unwrap();
+        assert!(delete_spent_routine(&connection, "r1", &current.updated_at).unwrap());
+        assert!(list_routines(&connection).unwrap().is_empty());
+    }
+
+    /// A task saved from the panel is the user's, even when an agent created
+    /// it: editing one adopts it, so it is no longer swept when it fires.
+    #[test]
+    fn saving_over_a_wake_makes_it_the_users() {
+        let database = database_with_project();
+        let connection = database.connection();
+        let mut wake = input("r1");
+        wake.created_by = RoutineAuthor::Agent;
+        upsert_routine(&connection, &wake, None).unwrap();
+        assert_eq!(
+            find_routine_by_id(&connection, "r1").unwrap().created_by,
+            RoutineAuthor::Agent
+        );
+
+        upsert_routine(&connection, &input("r1"), None).unwrap();
+        assert_eq!(
+            find_routine_by_id(&connection, "r1").unwrap().created_by,
+            RoutineAuthor::User
         );
     }
 

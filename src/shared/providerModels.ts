@@ -241,8 +241,6 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
   // in reasoningEffortsForModel and the Rust adapter in sync with these.
   opencode: [
     { label: "Big Pickle", modelId: "opencode/big-pickle", contextWindow: 200_000 },
-    { label: "Hy3 Free", modelId: "opencode/hy3-free", contextWindow: 190_000 },
-    { label: "MiMo V2.5 Free", modelId: "opencode/mimo-v2.5-free", contextWindow: 200_000 },
     { label: "Nemotron 3.5 Lightning Free", modelId: "opencode/nemotron-3.5-lightning-free", contextWindow: 262_144 },
     { label: "Nemotron 3 Ultra Free", modelId: "opencode/nemotron-3-ultra-free", contextWindow: 1_000_000 },
     {
@@ -371,8 +369,6 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   // OpenCode Zen free tier — $0 across the board. OpenCode Go (opencode-go/*)
   // is billed per-token. Keep in sync with the Rust pricing mirror.
   "opencode/big-pickle":                       { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "opencode/hy3-free":                         { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "opencode/mimo-v2.5-free":                   { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "opencode/nemotron-3.5-lightning-free":      { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "opencode/nemotron-3-ultra-free":            { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "opencode/muse-spark-1.3-contributor-free":  { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },

@@ -5,7 +5,7 @@ use std::{
     sync::{LazyLock, Mutex},
 };
 
-use chrono::{DateTime, Datelike, Duration, Utc};
+use chrono::{DateTime, Datelike, Duration, Local, Utc};
 use serde_json::{Map, Value};
 use walkdir::WalkDir;
 
@@ -637,6 +637,11 @@ pub(super) struct CodexTraceMeta {
     /// One of Codex's own review threads rather than a subagent the agent
     /// spawned. See [`is_codex_review_thread`].
     pub(super) review_thread: bool,
+    /// The rollout names a spawn of its own — `thread_source: "subagent"`, or
+    /// the `thread_spawn` block that carries the nickname and role. A fork or
+    /// a resume also records a `parent_thread_id`, and neither is a child
+    /// anyone is waiting on.
+    pub(super) spawned_subagent: bool,
 }
 
 /// Codex runs review threads of its own: the guardian that judges a pending
@@ -748,9 +753,123 @@ fn read_codex_trace_file_meta(path: &Path) -> Option<CodexTraceMeta> {
                 .filter(|timestamp| !timestamp.is_empty())
                 .map(str::to_string),
             review_thread: is_codex_review_thread(payload),
+            spawned_subagent: thread_spawn.is_some()
+                || payload.get("thread_source").and_then(Value::as_str) == Some("subagent"),
         });
     }
     None
+}
+
+/// How long a child rollout may sit untouched before its parent stops waiting
+/// on it. A child inside a long shell command or a long model call writes
+/// nothing, so the window has to outlast an ordinary quiet stretch; past it the
+/// child is gone — killed, crashed, or wedged — and must not hold the parent's
+/// turn open for the rest of the session.
+const CODEX_CHILD_SILENCE: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// Bytes read from the end of a child rollout when asking whether its turn
+/// already ended. Codex writes the terminal record last, with little after it.
+const CODEX_CHILD_TAIL_BYTES: u64 = 64 * 1024;
+
+/// Records inspected at that end. A child that finished one turn and was sent
+/// input again has an old `task_complete` further back, and that one is spent.
+const CODEX_CHILD_TAIL_LINES: usize = 16;
+
+/// Children of `parent_thread_id` whose rollout is still being written and
+/// carries no terminal record yet.
+///
+/// Codex's app-server can report nothing at all about the children a turn
+/// spawned — no `spawnAgent` item, no `receiverThreadIds`, no `agentsStates`,
+/// no child notification — so the transport cannot learn from the protocol
+/// alone that ending the turn would kill live work. The rollout on disk is the
+/// evidence that survives that silence. Codex's own guardian and `/review`
+/// threads are children by lineage but nobody spawned them and they run inside
+/// the parent's own turn, so they never count as work to wait for.
+pub(crate) fn codex_children_still_working(
+    codex_home: &Path,
+    parent_thread_id: &str,
+    now: std::time::SystemTime,
+) -> Vec<String> {
+    let sessions = codex_home.join("sessions");
+    let today = DateTime::<Local>::from(now);
+    let mut working = Vec::new();
+    for back in 0..=1 {
+        let day = today - Duration::days(back);
+        let directory = sessions
+            .join(format!("{:04}", day.year()))
+            .join(format!("{:02}", day.month()))
+            .join(format!("{:02}", day.day()));
+        let Ok(entries) = fs::read_dir(&directory) else {
+            continue;
+        };
+        for entry in entries.filter_map(Result::ok) {
+            let path = entry.path();
+            if path.extension().and_then(|extension| extension.to_str()) != Some("jsonl") {
+                continue;
+            }
+            let touched_recently = entry
+                .metadata()
+                .and_then(|metadata| metadata.modified())
+                .ok()
+                .and_then(|modified| now.duration_since(modified).ok())
+                .is_none_or(|silence| silence < CODEX_CHILD_SILENCE);
+            if !touched_recently {
+                continue;
+            }
+            let Some(meta) = codex_trace_file_meta(&path) else {
+                continue;
+            };
+            if meta.review_thread
+                || !meta.spawned_subagent
+                || meta.thread_id == parent_thread_id
+                || meta.parent_thread_id.as_deref() != Some(parent_thread_id)
+            {
+                continue;
+            }
+            if codex_trace_ended(&path) {
+                continue;
+            }
+            push_unique(&mut working, meta.thread_id);
+        }
+    }
+    working
+}
+
+/// Whether the last records of a rollout report the thread's turn as over.
+fn codex_trace_ended(path: &Path) -> bool {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let Ok(mut file) = fs::File::open(path) else {
+        return false;
+    };
+    let Ok(length) = file.metadata().map(|metadata| metadata.len()) else {
+        return false;
+    };
+    if length > CODEX_CHILD_TAIL_BYTES
+        && file
+            .seek(SeekFrom::End(-(CODEX_CHILD_TAIL_BYTES as i64)))
+            .is_err()
+    {
+        return false;
+    }
+    let mut tail = Vec::new();
+    if file.read_to_end(&mut tail).is_err() {
+        return false;
+    }
+    // A seek lands mid-character as readily as not, so the tail is decoded
+    // lossily and its first (possibly truncated) line is just another line
+    // that fails to parse.
+    String::from_utf8_lossy(&tail)
+        .lines()
+        .rev()
+        .take(CODEX_CHILD_TAIL_LINES)
+        .filter(|line| line.len() <= JSON_PARSE_LINE_CAP)
+        .any(|line| {
+            matches!(
+                serde_json::from_str::<Value>(line.trim()),
+                Ok(Value::Object(object)) if codex_trace_terminal_status(&object).is_some()
+            )
+        })
 }
 
 #[cfg(test)]
@@ -763,6 +882,7 @@ mod tests {
         sessions::update_session_provider_conversation_id,
     };
     use serde_json::json;
+    use std::time::SystemTime;
     use tempfile::TempDir;
 
     #[test]
@@ -1194,6 +1314,161 @@ mod tests {
                 "2026/09/05",
                 "2026/09/06",
             ]
+        );
+    }
+
+    /// Today's rollout directory, named the way Codex names it: local time.
+    fn today_sessions_dir(codex_home: &Path) -> PathBuf {
+        let today = Local::now();
+        let directory = codex_home
+            .join("sessions")
+            .join(format!("{:04}", today.year()))
+            .join(format!("{:02}", today.month()))
+            .join(format!("{:02}", today.day()));
+        fs::create_dir_all(&directory).unwrap();
+        directory
+    }
+
+    fn write_rollout(directory: &Path, thread_id: &str, header: Value, rest: &[Value]) -> PathBuf {
+        let path = directory.join(format!("rollout-{thread_id}.jsonl"));
+        let mut lines = vec![json!({
+            "timestamp": "2026-09-14T06:45:02.962Z",
+            "type": "session_meta",
+            "payload": header,
+        })
+        .to_string()];
+        lines.extend(rest.iter().map(ToString::to_string));
+        fs::write(&path, format!("{}\n", lines.join("\n"))).unwrap();
+        path
+    }
+
+    fn subagent_header(thread_id: &str, parent_thread_id: &str) -> Value {
+        json!({
+            "id": thread_id,
+            "parent_thread_id": parent_thread_id,
+            "thread_source": "subagent",
+            "source": { "subagent": { "thread_spawn": {
+                "parent_thread_id": parent_thread_id,
+                "agent_nickname": "Beauvoir",
+                "agent_role": "researcher",
+            }}},
+        })
+    }
+
+    fn working_turn() -> Vec<Value> {
+        vec![json!({
+            "type": "event_msg",
+            "payload": { "type": "token_count", "info": {} },
+        })]
+    }
+
+    #[test]
+    fn a_subagent_mid_task_holds_its_parents_turn_open() {
+        let home = TempDir::new().unwrap();
+        let codex_home = home.path().join(".codex");
+        let directory = today_sessions_dir(&codex_home);
+        write_rollout(
+            &directory,
+            "child-1",
+            subagent_header("child-1", "parent-1"),
+            &working_turn(),
+        );
+
+        assert_eq!(
+            codex_children_still_working(&codex_home, "parent-1", SystemTime::now()),
+            vec!["child-1".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_finished_stale_or_unrelated_rollout_holds_nothing() {
+        let home = TempDir::new().unwrap();
+        let codex_home = home.path().join(".codex");
+        let directory = today_sessions_dir(&codex_home);
+
+        // Its turn ended: the parent has its work and nothing to wait for.
+        write_rollout(
+            &directory,
+            "finished",
+            subagent_header("finished", "parent-1"),
+            &[
+                json!({"type": "event_msg", "payload": {"type": "task_complete"}}),
+                json!({"type": "event_msg", "payload": {"type": "token_count", "info": {}}}),
+            ],
+        );
+        // Codex's own guardian review, which runs inside the parent's turn.
+        write_rollout(
+            &directory,
+            "guardian",
+            json!({
+                "id": "guardian",
+                "parent_thread_id": "parent-1",
+                "thread_source": "guardian_review",
+            }),
+            &working_turn(),
+        );
+        // A fork of the parent session records the same lineage and is its own
+        // chat, not a child anyone is waiting on.
+        write_rollout(
+            &directory,
+            "fork",
+            json!({
+                "id": "fork",
+                "parent_thread_id": "parent-1",
+                "forked_from_id": "parent-1",
+            }),
+            &working_turn(),
+        );
+        // Another session's subagent.
+        write_rollout(
+            &directory,
+            "elsewhere",
+            subagent_header("elsewhere", "parent-2"),
+            &working_turn(),
+        );
+        // Killed or wedged: nothing has been written to it in minutes, and a
+        // turn cannot hold for the rest of the session on that.
+        let silent = write_rollout(
+            &directory,
+            "silent",
+            subagent_header("silent", "parent-1"),
+            &working_turn(),
+        );
+        fs::File::options()
+            .write(true)
+            .open(&silent)
+            .unwrap()
+            .set_modified(
+                SystemTime::now() - CODEX_CHILD_SILENCE - std::time::Duration::from_secs(5),
+            )
+            .unwrap();
+
+        assert!(
+            codex_children_still_working(&codex_home, "parent-1", SystemTime::now()).is_empty()
+        );
+    }
+
+    #[test]
+    fn only_the_end_of_a_rollout_settles_a_child() {
+        let home = TempDir::new().unwrap();
+        let codex_home = home.path().join(".codex");
+        let directory = today_sessions_dir(&codex_home);
+        // The child finished one turn and was sent input again: the earlier
+        // `task_complete` is spent, and the child is working now.
+        let mut rest = vec![json!({"type": "event_msg", "payload": {"type": "task_complete"}})];
+        rest.extend((0..CODEX_CHILD_TAIL_LINES + 4).map(|index| {
+            json!({"type": "event_msg", "payload": {"type": "agent_message_delta", "delta": index}})
+        }));
+        write_rollout(
+            &directory,
+            "resumed",
+            subagent_header("resumed", "parent-1"),
+            &rest,
+        );
+
+        assert_eq!(
+            codex_children_still_working(&codex_home, "parent-1", SystemTime::now()),
+            vec!["resumed".to_string()]
         );
     }
 }

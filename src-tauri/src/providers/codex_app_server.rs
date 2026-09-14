@@ -15,12 +15,13 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, Mutex,
 };
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use serde_json::{json, Map, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdin, Command};
 use tokio::sync::{mpsc, oneshot, watch};
+use tokio::time::MissedTickBehavior;
 use uuid::Uuid;
 
 use super::adapters::prompt_for_agent_mode;
@@ -65,6 +66,8 @@ pub async fn launch_turn(
     }
     let provider_environment = build_provider_environment(environment_overrides);
     let computer_use_server = computer_use_server(&provider_environment);
+    // Where this turn's children write their rollouts. See `live_children`.
+    let trace_home = codex_home(&provider_environment).ok();
     let mut command = Command::new(binary_path);
     command
         // `update_plan` is Codex's todo list, and it is off unless the config
@@ -221,65 +224,74 @@ pub async fn launch_turn(
         let mut translation = EventTranslation::default();
         let mut scope = TurnScope::new(&thread_id, &turn_id);
         let mut root_completion: Option<Value> = None;
+        // Children the app-server never mentions stop the turn from ending
+        // too, but nothing on the connection announces them finishing, so a
+        // held turn re-reads them on a tick of its own.
+        let mut recheck_children = tokio::time::interval(CHILD_RECHECK_INTERVAL);
+        recheck_children.set_missed_tick_behavior(MissedTickBehavior::Delay);
         let outcome = loop {
-            let incoming = tokio::select! {
+            let step = tokio::select! {
                 _ = cancel_rx.changed() => {
                     let _ = tokio::time::timeout(Duration::from_secs(2), rpc.request("turn/interrupt", json!({"threadId":thread_id,"turnId":turn_id}))).await;
                     break Ok(true);
                 }
-                incoming = incoming_rx.recv() => incoming,
+                _ = recheck_children.tick(), if root_completion.is_some() => None,
+                incoming = incoming_rx.recv() => match incoming {
+                    Some(Incoming::Message(message)) => Some(message),
+                    Some(Incoming::Closed(reason)) => break Err(reason),
+                    None => break Err("Codex app-server event channel closed".to_string()),
+                },
             };
-            match incoming {
-                Some(Incoming::Message(message)) => {
-                    if message.get("id").is_some() && message.get("method").is_some() {
-                        spawn_server_request(
-                            message,
-                            Arc::clone(&rpc),
-                            Arc::clone(&approvals),
-                            Arc::clone(&questions),
-                            session_id.clone(),
-                            invocation_id.clone(),
-                            (thread_id.clone(), turn_id.clone()),
-                        );
-                        continue;
-                    }
-                    let Some(method) = message.get("method").and_then(Value::as_str) else {
-                        continue;
-                    };
-                    let params = message.get("params").cloned().unwrap_or_else(|| json!({}));
-                    let is_root = scope.observe(method, &params);
-                    if is_root {
-                        if method == "turn/completed" {
-                            root_completion = Some(params);
-                        } else {
-                            for line in translation.translate(method, &params) {
-                                emit_line(&on_event, &session_id, line);
-                            }
-                        }
-                    }
-                    if let Some(completion) = root_completion.as_ref() {
-                        let status = completion
-                            .pointer("/turn/status")
-                            .and_then(Value::as_str)
-                            .unwrap_or("failed");
-                        if status != "completed" || scope.running_children.is_empty() {
-                            for line in translation.translate("turn/completed", completion) {
-                                emit_line(&on_event, &session_id, line);
-                            }
-                            break match status {
-                                "completed" => Ok(false),
-                                "interrupted" => Ok(true),
-                                _ => Err(completion
-                                    .pointer("/turn/error/message")
-                                    .and_then(Value::as_str)
-                                    .unwrap_or("Codex turn failed")
-                                    .to_string()),
-                            };
+            if let Some(message) = step {
+                if message.get("id").is_some() && message.get("method").is_some() {
+                    spawn_server_request(
+                        message,
+                        Arc::clone(&rpc),
+                        Arc::clone(&approvals),
+                        Arc::clone(&questions),
+                        session_id.clone(),
+                        invocation_id.clone(),
+                        (thread_id.clone(), turn_id.clone()),
+                    );
+                    continue;
+                }
+                let Some(method) = message.get("method").and_then(Value::as_str) else {
+                    continue;
+                };
+                let params = message.get("params").cloned().unwrap_or_else(|| json!({}));
+                let is_root = scope.observe(method, &params);
+                if is_root {
+                    if method == "turn/completed" {
+                        root_completion = Some(params);
+                    } else {
+                        for line in translation.translate(method, &params) {
+                            emit_line(&on_event, &session_id, line);
                         }
                     }
                 }
-                Some(Incoming::Closed(reason)) => break Err(reason),
-                None => break Err("Codex app-server event channel closed".to_string()),
+            }
+            if let Some(completion) = root_completion.as_ref() {
+                let status = completion
+                    .pointer("/turn/status")
+                    .and_then(Value::as_str)
+                    .unwrap_or("failed");
+                let waiting = status == "completed"
+                    && (!scope.running_children.is_empty()
+                        || live_children(trace_home.as_deref(), &thread_id).await);
+                if !waiting {
+                    for line in translation.translate("turn/completed", completion) {
+                        emit_line(&on_event, &session_id, line);
+                    }
+                    break match status {
+                        "completed" => Ok(false),
+                        "interrupted" => Ok(true),
+                        _ => Err(completion
+                            .pointer("/turn/error/message")
+                            .and_then(Value::as_str)
+                            .unwrap_or("Codex turn failed")
+                            .to_string()),
+                    };
+                }
             }
         };
 
@@ -1232,6 +1244,35 @@ fn emit(
 
 /// Native child threads share the app-server transport, but not the parent's
 /// transcript or token counters. Keep them alive until their work settles.
+/// How often a turn that has answered but is still holding for its children
+/// looks again. Nothing on the connection reports an unannounced child
+/// finishing, so the answer comes from the rollouts on disk.
+const CHILD_RECHECK_INTERVAL: Duration = Duration::from_secs(2);
+
+/// Whether a child this turn spawned is still working.
+///
+/// Ending the turn terminates the app-server process group, and every child
+/// thread lives inside it, so a turn that ends while a child is mid-task
+/// destroys that work with no record of it. `running_children` covers the
+/// children the app-server declared; this covers the ones it never mentioned.
+async fn live_children(codex_home: Option<&Path>, thread_id: &str) -> bool {
+    let Some(codex_home) = codex_home else {
+        return false;
+    };
+    let codex_home = codex_home.to_path_buf();
+    let thread_id = thread_id.to_string();
+    tokio::task::spawn_blocking(move || {
+        !crate::providers::subagent_trace::codex_children_still_working(
+            &codex_home,
+            &thread_id,
+            SystemTime::now(),
+        )
+        .is_empty()
+    })
+    .await
+    .unwrap_or(false)
+}
+
 struct TurnScope {
     thread_id: String,
     turn_id: String,

@@ -306,10 +306,13 @@
   min-width: 0;
 }
 
+/* A colour step, not an opacity fade — the same choice the row's verb/target
+   pair makes. A fractional opacity puts the mark in a transparency layer of
+   its own, so it blends on a different pass from the glyph beside it; the
+   colour carries the same recession with one flat paint. */
 .thought-block-icon {
   flex: 0 0 auto;
-  color: var(--activity-purple);
-  opacity: 0.78;
+  color: color-mix(in oklab, var(--activity-purple) 78%, transparent);
 }
 
 .thought-block-eyebrow-label {
@@ -353,7 +356,7 @@
 }
 
 .thought-block[data-live="true"] .thought-block-icon {
-  opacity: 1;
+  color: var(--activity-purple);
 }
 
 @keyframes thought-pulse {
@@ -483,10 +486,19 @@
 
 /* One size for every mark that lands in the column — lucide glyphs, brand
    marks, the working nest — so none of them can reintroduce a residue by
-   arriving a couple of pixels smaller than the box. */
+   arriving a couple of pixels smaller than the box. The marks are also held
+   still here rather than one rule per glyph: a transition or a transform on a
+   mark promotes it to a layer of its own, which on a resampled panel puts it
+   on a different pixel phase from the row it sits in. `.tool-activity-icon`
+   carried these three on its own and the Thought brain did not, which is
+   exactly why one of them settled and the other did not. The working nest is a
+   `<span>`, so its dots keep animating. */
 .activity-icon-slot > svg {
   width: var(--activity-mark-size);
   height: var(--activity-mark-size);
+  animation: none;
+  transition: none;
+  transform: none;
 }
 
 .activity-icon-slot > .tool-call-row-server-icon {

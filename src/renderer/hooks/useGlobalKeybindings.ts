@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { commitChatCycle, stepChatCycle } from "../lib/chatCycle.js";
 import { requestCloseActiveReviewFileTab } from "../lib/reviewFilePanel.js";
 import { listVisibleSidebarWorkspaceIds, selectedSidebarWorkspaceId } from "../lib/sidebarOrder.js";
 import type { MenuCommand } from "../../shared/types.js";
@@ -44,7 +45,8 @@ function parseDigitShortcut(event: KeyboardEvent): number | null {
  *
  * Bindings:
  *   Cmd/Ctrl+1..9 → open the nth session row in the sidebar, top to bottom
- *   Cmd/Ctrl+§ (the key under Esc; ` on a US layout) → next chat, Shift for previous
+ *   Cmd/Ctrl+§ (the key under Esc; ` on a US layout) → cycle chats by recency,
+ *     Shift to step back up the stack; hold Cmd to keep going
  *   Cmd/Ctrl+,    → open-settings (menu command)
  *   Cmd/Ctrl+N    → new-session (menu command)
  *   Cmd/Ctrl+K    → open-command-palette (menu command), All filter
@@ -117,22 +119,19 @@ export function useGlobalKeybindings({
         return;
       }
       // Matched on the physical key so it is ⌘§ on a Nordic layout and ⌘` on
-      // a US one: the key under Esc, a thumb away from ⌘Tab. Wraps at both
-      // ends; from the launcher it opens the first (or last) chat. The native
-      // menu carries the same command when focus sits outside this webview.
+      // a US one: the key under Esc, a thumb away from ⌘Tab. It cycles by
+      // recency the way ⌘Tab does — see lib/chatCycle.ts — with Shift stepping
+      // back up the stack. The native menu carries the same commands as single
+      // steps when focus sits outside this webview.
       if (event.code === "Backquote" && !event.altKey) {
         if (event.isComposing || event.repeat) return;
-        const ids = listVisibleSidebarWorkspaceIds();
-        if (ids.length === 0) return;
-        event.preventDefault();
-        const step = event.shiftKey ? -1 : 1;
-        const current = ids.indexOf(selectedSidebarWorkspaceId() ?? "");
-        const next =
-          current === -1
-            ? (step === 1 ? 0 : ids.length - 1)
-            : (current + step + ids.length) % ids.length;
-        const targetWorkspaceId = ids[next];
+        const targetWorkspaceId = stepChatCycle(
+          event.shiftKey ? -1 : 1,
+          listVisibleSidebarWorkspaceIds(),
+          selectedSidebarWorkspaceId()
+        );
         if (!targetWorkspaceId) return;
+        event.preventDefault();
         onCloseSettings();
         onSelectWorkspace(targetWorkspaceId);
         return;
@@ -175,6 +174,21 @@ export function useGlobalKeybindings({
     onCloseSettings,
     onCloseFocusedPane
   ]);
+
+  // ⌘ coming back up ends a ⌘§ traversal and promotes the chat it landed on.
+  // ⌘Tabbing away mid-hold swallows that keyup, so a blur closes the hold too —
+  // otherwise the stale frozen order would still be there on the way back.
+  useEffect(() => {
+    const handleKeyUp = (event: KeyboardEvent): void => {
+      if (event.key === "Meta" || event.key === "Control") commitChatCycle();
+    };
+    document.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", commitChatCycle);
+    return () => {
+      document.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", commitChatCycle);
+    };
+  }, []);
 
   // Bind to the main-process menu-command channel separately so the same
   // shortcut works whether the renderer or the native menu has focus.

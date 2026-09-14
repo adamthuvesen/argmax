@@ -61,14 +61,14 @@ export const MENU_KEYBINDINGS: readonly MenuKeybinding[] = [
     command: "next-chat",
     accelerator: "CmdOrCtrl+Backquote",
     displayAccelerator: "⌘§",
-    label: "Next chat",
+    label: "Cycle chats by recency",
     menuLocation: "view"
   },
   {
     command: "previous-chat",
     accelerator: "CmdOrCtrl+Shift+Backquote",
     displayAccelerator: "⌘⇧§",
-    label: "Previous chat",
+    label: "Cycle chats by recency, back",
     menuLocation: "view"
   },
   {

@@ -47,6 +47,7 @@ import { isEarlySessionStop } from "./lib/earlyStop.js";
 import { getWorkspaceTerminalState, requestTerminalVisible } from "./lib/terminalTabs.js";
 import { requestCloseActiveBrowserTab } from "./lib/browserPanel.js";
 import { requestCloseActiveReviewFileTab } from "./lib/reviewFilePanel.js";
+import { jumpToAdjacentChat, noteChatVisited } from "./lib/chatCycle.js";
 import { listVisibleSidebarWorkspaceIds, selectedSidebarWorkspaceId } from "./lib/sidebarOrder.js";
 // demoSnapshot is dynamic-imported inside `loadDashboardSnapshot` so it stays
 // out of the production renderer bundle. Browser-preview mode (no Tauri
@@ -620,15 +621,11 @@ export function App(): JSX.Element {
           return;
         case "next-chat":
         case "previous-chat": {
-          const workspaceIds = listVisibleSidebarWorkspaceIds();
-          if (workspaceIds.length === 0) return;
-          const step = command === "next-chat" ? 1 : -1;
-          const current = workspaceIds.indexOf(selectedSidebarWorkspaceId() ?? "");
-          const next =
-            current === -1
-              ? (step === 1 ? 0 : workspaceIds.length - 1)
-              : (current + step + workspaceIds.length) % workspaceIds.length;
-          const workspaceId = workspaceIds[next];
+          const workspaceId = jumpToAdjacentChat(
+            command === "next-chat" ? 1 : -1,
+            listVisibleSidebarWorkspaceIds(),
+            selectedSidebarWorkspaceId()
+          );
           if (!workspaceId) return;
           hideStandalonePage();
           hideFullLauncher();
@@ -1336,6 +1333,18 @@ export function App(): JSX.Element {
     snapshot.sessions,
     snapshot.workspaces
   ]);
+
+  // ⌘§ cycles chats by when they were last used, so every route into one has to
+  // count — a sidebar click, ⌘1..9, the palette, a launch, a deeplink. They all
+  // converge on the selected workspace, which makes this one effect the whole
+  // of the bookkeeping. It reads the derived `selectedWorkspace` rather than the
+  // `selectedWorkspaceId` state because opening a chat sets grid focus and lets
+  // the workspace follow from the session; the derived value is also the one the
+  // sidebar marks current, so it matches what the cycle reads back.
+  const currentChatWorkspaceId = selectedWorkspace?.id ?? null;
+  useEffect(() => {
+    if (currentChatWorkspaceId) noteChatVisited(currentChatWorkspaceId);
+  }, [currentChatWorkspaceId]);
 
   useGlobalKeybindings({
     onMenuCommand: handleMenuCommand,

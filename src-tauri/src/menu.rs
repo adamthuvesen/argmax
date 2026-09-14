@@ -117,12 +117,12 @@ pub fn app_menu_spec(is_dev: bool) -> Vec<MenuSpec> {
         ),
         command(
             MenuCommand::NextChat,
-            "Next Chat",
+            "Cycle Chats",
             Some("CmdOrCtrl+Backquote"),
         ),
         command(
             MenuCommand::PreviousChat,
-            "Previous Chat",
+            "Cycle Chats Back",
             Some("CmdOrCtrl+Shift+Backquote"),
         ),
         command(
@@ -536,12 +536,12 @@ mod tests {
                 ),
                 (
                     MenuCommand::NextChat,
-                    "Next Chat",
+                    "Cycle Chats",
                     Some("CmdOrCtrl+Backquote"),
                 ),
                 (
                     MenuCommand::PreviousChat,
-                    "Previous Chat",
+                    "Cycle Chats Back",
                     Some("CmdOrCtrl+Shift+Backquote"),
                 ),
                 (

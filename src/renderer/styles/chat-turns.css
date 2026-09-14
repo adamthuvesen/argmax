@@ -24,6 +24,13 @@
   opacity: 1;
 }
 
+/* The tuck above (-4px) is tuned for prose: it hugs the copy button against
+   the reply's last line. When a changes card ends the turn, that tuck crowds
+   the card's border, so let the footer breathe a bit more instead. */
+.turn-changes + .turn-block-footer {
+  margin-top: var(--space-1);
+}
+
 .turn-block-footer-action {
   display: grid;
   place-items: center;

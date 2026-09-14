@@ -120,6 +120,20 @@ A follow-up that never reached stdin — the turn closed first, or Claude had no
 taken up the turn's first message yet (`STEER_NOT_READY`) — is unsent, not
 uncertain.
 
+**Codex's `turn/steer` ack is not one during a compaction.** Codex decides
+whether to rewrite its context *before* it ingests the turn's own input: the
+thread emits a `context_compaction` item, nothing else for as long as it runs
+(two minutes on a large thread), and only then the `userMessage` item that
+proves the prompt arrived. A steer inside that window is acknowledged and
+dropped — the text appears nowhere in the thread's rollout — so
+[codex_app_server.rs](../src-tauri/src/providers/codex_app_server.rs) refuses it
+with `STEER_CONTEXT_COMPACTION` and the row stays queued. The same window
+swallows a whole turn: a Stop before the `userMessage` item leaves a chat
+showing a message the model never read, so `ProviderRuntimeHandle::input_delivered`
+reports it and the session service writes a `session.note`
+(`turn.input-undelivered`) after the cancellation row. Every other transport
+writes the prompt on the way in and reports delivered.
+
 Steering inherits the running turn's settings. A queued change to model, reasoning
 effort, or agent mode must wait for another turn. Accepted guidance is persisted
 as `user.message` with `payload.delivery: "steer"`, without resetting turn timing

@@ -574,6 +574,49 @@ impl ProviderSessionService {
         }
     }
 
+    /// Says on the chat that the turn ended before its message reached the
+    /// model, so the bubble above it is not a question anyone is answering.
+    ///
+    /// Codex runs a context compaction ahead of ingesting the turn's input and
+    /// emits nothing while it runs; a Stop in that window leaves the thread
+    /// with no user message for the turn at all. Without this line the chat
+    /// shows a sent message, a stop, and no reason the next turn acts as
+    /// though it was never asked.
+    fn note_undelivered_turn_input(&self, session_id: &str) {
+        let written = {
+            let connection = self.database.connection();
+            find_session_by_id(&connection, session_id).and_then(|session| {
+                let event = persist_timeline_event(
+                    &connection,
+                    &PersistTimelineEventInput {
+                        id: Uuid::new_v4().to_string(),
+                        session_id: session_id.to_string(),
+                        r#type: "session.note".to_string(),
+                        message:
+                            "Stopped before the agent read this message — it was compacting its \
+                             context. Send it again."
+                                .to_string(),
+                        payload: json!({ "operation": "turn.input-undelivered" }),
+                        created_at: None,
+                    },
+                )?;
+                Ok((session, event))
+            })
+        };
+        match written {
+            Ok((session, event)) => self.publish(DashboardDelta {
+                sessions: vec![session],
+                events: vec![event],
+                ..DashboardDelta::default()
+            }),
+            Err(error) => tracing::warn!(
+                session_id,
+                ?error,
+                "could not record that a stopped turn never delivered its input"
+            ),
+        }
+    }
+
     /// Says on the chat that the disposal it was promised is off. The turn's
     /// own failure is already an error row, so this line is a notice about the
     /// promise rather than a second failure to act on.
@@ -1688,6 +1731,8 @@ impl ProviderSessionService {
             first_error = Some(error);
         }
 
+        // Read before disposal: the handle owns the answer and is dropped below.
+        let mut input_undelivered = false;
         match entry {
             Some(HandleEntry::Resolved(handle)) => {
                 // User-initiated cancel: flush buffered text but don't
@@ -1696,6 +1741,7 @@ impl ProviderSessionService {
                 if let Err(error) = self.flush_trailing(session_id, false) {
                     first_error = Some(error);
                 }
+                input_undelivered = !handle.input_delivered();
                 if let Err(error) = handle.terminate().await {
                     first_error.get_or_insert(error);
                 }
@@ -1711,6 +1757,12 @@ impl ProviderSessionService {
         }
         if let Err(error) = self.cancel_pending_interactions(session_id) {
             first_error.get_or_insert(error);
+        }
+        if input_undelivered {
+            // After the cancellation row, so the transcript reads in the order
+            // it happened: the message, the stop, then why the message went
+            // unanswered.
+            self.note_undelivered_turn_input(session_id);
         }
         self.terminating
             .lock_or_recover("terminating")

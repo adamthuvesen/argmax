@@ -373,6 +373,41 @@ pub fn normalize_error_item(
     ))
 }
 
+/// Timeline row for Codex's context compaction, or `None` for any other item.
+///
+/// Codex brackets the rewrite with `item.started` / `item.completed` on a
+/// `context_compaction` item and emits nothing at all in between. On a large
+/// thread that is over two minutes of silence, and it runs *before* the turn's
+/// own input is ingested, so not even the prompt echo arrives to prove the
+/// chat is alive. Without a marker the pane reads as dead, which invites a
+/// Stop — and a Stop inside that window throws the submitted message away
+/// (`CodexTurnHandle::steer` refuses for the same reason). The item carries no
+/// token counts, unlike Claude's `compact_boundary`, so the marker is bare.
+pub fn normalize_compaction_item(
+    event: &ProviderOutputEvent,
+    provider_type: Option<&str>,
+    item_type: Option<&str>,
+) -> Option<PersistTimelineEventInput> {
+    if item_type? != "context_compaction" {
+        return None;
+    }
+    match provider_type? {
+        "item.started" => Some(timeline_event(
+            event,
+            "session.compacting",
+            "Compacting context",
+            Value::Object(Map::new()),
+        )),
+        "item.completed" => Some(timeline_event(
+            event,
+            "session.compacted",
+            "Compacted context",
+            Value::Object(Map::new()),
+        )),
+        _ => None,
+    }
+}
+
 pub fn normalize_reasoning_item(
     event: &ProviderOutputEvent,
     payload: &Map<String, Value>,
@@ -862,6 +897,26 @@ mod tests {
                 "multiSelect": false
             }] })
             );
+        }
+    }
+
+    #[test]
+    fn codex_compaction_brackets_become_status_markers() {
+        let mut context = NormalizerSessionContext::default();
+        let item =
+            json!({ "id": "01a0a028-f404-7382-ad32-44902aeca8c6", "type": "context_compaction" });
+        for (provider_type, expected_type, expected_message) in [
+            ("item.started", "session.compacting", "Compacting context"),
+            ("item.completed", "session.compacted", "Compacted context"),
+        ] {
+            let result = normalize_provider_event(
+                ProviderId::Codex,
+                &output_event(&json!({ "type": provider_type, "item": item }).to_string()),
+                &mut context,
+            );
+            assert_eq!(result.events.len(), 1);
+            assert_eq!(result.events[0].r#type, expected_type);
+            assert_eq!(result.events[0].message, expected_message);
         }
     }
 

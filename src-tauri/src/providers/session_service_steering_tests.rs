@@ -4,7 +4,8 @@ use super::super::{
 use super::{database_with_running_session, CountingFailureLauncher};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::ipc::inputs::{
-    ProvidersSendInput, ProvidersSendQueuedMessageNowInput, QueuedMessageDelivery,
+    ProvidersSendInput, ProvidersSendQueuedMessageNowInput, ProvidersTerminateInput,
+    QueuedMessageDelivery,
 };
 use crate::ipc::validation::{NonEmptyString, SessionId};
 use crate::persistence::events::list_session_events_since;
@@ -31,6 +32,10 @@ struct SteerRecordingHandle {
     steer_calls: AtomicUsize,
     terminate_calls: AtomicUsize,
     disposed: AtomicBool,
+    /// What the Codex transport reports: false once a turn is interrupted
+    /// before the model ever read its prompt. True everywhere else, so the
+    /// tests that do not care about it read the ordinary case.
+    input_delivered: AtomicBool,
 }
 
 impl SteerRecordingHandle {
@@ -40,6 +45,7 @@ impl SteerRecordingHandle {
             steer_calls: AtomicUsize::new(0),
             terminate_calls: AtomicUsize::new(0),
             disposed: AtomicBool::new(false),
+            input_delivered: AtomicBool::new(true),
         })
     }
 }
@@ -47,6 +53,10 @@ impl SteerRecordingHandle {
 impl ProviderRuntimeHandle for SteerRecordingHandle {
     fn disposed(&self) -> bool {
         self.disposed.load(Ordering::SeqCst)
+    }
+
+    fn input_delivered(&self) -> bool {
+        self.input_delivered.load(Ordering::SeqCst)
     }
 
     fn accepts_input(&self) -> bool {
@@ -298,6 +308,68 @@ async fn rejected_steer_restores_unsent_without_side_effects() {
             .events
             .iter()
             .any(|event| event.r#type == "user.message")
+    );
+}
+
+#[tokio::test]
+async fn stopping_a_turn_before_the_model_read_it_says_so_on_the_chat() {
+    // Codex compacts its context ahead of ingesting the turn's own prompt and
+    // emits nothing while it runs. A Stop in that window leaves the thread
+    // with no user message for the turn at all, so the next turn behaves as
+    // though it was never asked — the chat has to say why.
+    let (service, handle, _launcher) = steer_service(SteerHandleConfig {
+        supports_steering: true,
+        steer_error: None,
+    });
+    handle.input_delivered.store(false, Ordering::SeqCst);
+    service
+        .terminate(ProvidersTerminateInput {
+            session_id: SessionId::try_from("session-1".to_string()).unwrap(),
+        })
+        .await
+        .unwrap();
+
+    let connection = service.database.connection();
+    let events = list_session_events_since(&connection, "session-1", None, None)
+        .unwrap()
+        .events;
+    let note = events
+        .iter()
+        .find(|event| event.r#type == "session.note")
+        .expect("a stopped turn that delivered nothing explains itself");
+    assert_eq!(note.payload["operation"], "turn.input-undelivered");
+    assert!(note.message.contains("Send it again"));
+    let cancelled = events
+        .iter()
+        .position(|event| event.r#type == "session.cancelled")
+        .expect("the stop is on the chat");
+    let noted = events
+        .iter()
+        .position(|event| event.r#type == "session.note")
+        .unwrap();
+    assert!(noted > cancelled, "the note follows the stop it explains");
+}
+
+#[tokio::test]
+async fn stopping_a_delivered_turn_adds_no_note() {
+    let (service, _handle, _launcher) = steer_service(SteerHandleConfig {
+        supports_steering: true,
+        steer_error: None,
+    });
+    service
+        .terminate(ProvidersTerminateInput {
+            session_id: SessionId::try_from("session-1".to_string()).unwrap(),
+        })
+        .await
+        .unwrap();
+
+    let connection = service.database.connection();
+    assert!(
+        !list_session_events_since(&connection, "session-1", None, None)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.r#type == "session.note")
     );
 }
 

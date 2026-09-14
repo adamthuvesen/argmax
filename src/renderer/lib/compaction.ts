@@ -41,10 +41,16 @@ export function compactionNoticeFor(event: TimelineEvent): CompactionNotice {
 /**
  * True while a compaction is in flight. `events` is newest-first (the order
  * the dashboard merge keeps), so the newest compaction row decides.
+ *
+ * A compaction is total provider silence, so the start row stays newest for as
+ * long as it runs: anything newer means the rewrite is over. That is the only
+ * evidence a compaction cut short by a Stop leaves — it never gets its closing
+ * row, and a start row trusted forever suppresses the progress cue for the
+ * rest of the chat's life.
  */
 export function isCompacting(events: readonly TimelineEvent[]): boolean {
-  const newest = events.find(isCompactionEvent);
-  if (!newest) return false;
+  const [newest] = events;
+  if (!newest || !isCompactionEvent(newest)) return false;
   const canonical = decodeTimelineEvent(newest);
   return canonical.kind === "lifecycle" && canonical.name === "compacting";
 }

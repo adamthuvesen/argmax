@@ -31,7 +31,9 @@ use self::{
     },
     codex::{
         detect_permission_gate as detect_codex_permission_gate, event_type as codex_event_type,
-        extract_usage as extract_codex_usage, normalize_error_item as normalize_codex_error_item,
+        extract_usage as extract_codex_usage,
+        normalize_compaction_item as normalize_codex_compaction_item,
+        normalize_error_item as normalize_codex_error_item,
         normalize_native_agent_lifecycle_events as normalize_codex_native_agent_lifecycle_events,
         normalize_reasoning_item as normalize_codex_reasoning_item,
         normalize_todo_item as normalize_codex_todo_item,
@@ -639,6 +641,16 @@ fn normalize_json_payload(
     }
 
     if provider == ProviderId::Codex {
+        if let Some(marker) =
+            normalize_codex_compaction_item(event, provider_type.as_deref(), item_type.as_deref())
+        {
+            return NormalizedProviderResult {
+                events: vec![marker],
+                usages,
+                provider_conversation_id,
+                ..NormalizedProviderResult::default()
+            };
+        }
         if let Some(reasoning_event) = normalize_codex_reasoning_item(
             event,
             &payload,

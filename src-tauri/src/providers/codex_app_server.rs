@@ -208,9 +208,14 @@ pub async fn launch_turn(
 
     let (done_tx, done_rx) = watch::channel(false);
     let (cancel_tx, mut cancel_rx) = watch::channel(false);
+    let input_state = Arc::new(TurnInputState {
+        compacting: AtomicBool::new(false),
+        ingested: AtomicBool::new(false),
+    });
     let handle = Arc::new(CodexTurnHandle {
         cancel: cancel_tx,
         disposed: AtomicBool::new(false),
+        input: Arc::clone(&input_state),
         done_rx,
         rpc: Arc::clone(&rpc),
         thread_id: thread_id.clone(),
@@ -261,6 +266,7 @@ pub async fn launch_turn(
                 let params = message.get("params").cloned().unwrap_or_else(|| json!({}));
                 let is_root = scope.observe(method, &params);
                 if is_root {
+                    input_state.observe(method, &params);
                     if method == "turn/completed" {
                         root_completion = Some(params);
                     } else {
@@ -1390,9 +1396,42 @@ impl TurnScope {
     }
 }
 
+/// The turn's own input has reached the model once the thread carries it as a
+/// `userMessage` item, and Codex only gets there after any context compaction
+/// it decided to run first. Both flags are written by the turn's event loop
+/// and read by `steer` and the session service, so they are shared rather than
+/// owned by either side.
+struct TurnInputState {
+    compacting: AtomicBool,
+    ingested: AtomicBool,
+}
+
+impl TurnInputState {
+    fn observe(&self, method: &str, params: &Value) {
+        let Some(item_type) = params
+            .pointer("/item/type")
+            .and_then(Value::as_str)
+            .map(snake_case)
+        else {
+            return;
+        };
+        match (method, item_type.as_str()) {
+            ("item/started", "context_compaction") => self.compacting.store(true, Ordering::SeqCst),
+            ("item/completed", "context_compaction") => {
+                self.compacting.store(false, Ordering::SeqCst)
+            }
+            ("item/started" | "item/completed", "user_message") => {
+                self.ingested.store(true, Ordering::SeqCst)
+            }
+            _ => {}
+        }
+    }
+}
+
 struct CodexTurnHandle {
     cancel: watch::Sender<bool>,
     disposed: AtomicBool,
+    input: Arc<TurnInputState>,
     done_rx: watch::Receiver<bool>,
     rpc: Arc<RpcPeer>,
     thread_id: String,
@@ -1412,6 +1451,10 @@ impl ProviderRuntimeHandle for CodexTurnHandle {
         self.disposed.load(Ordering::SeqCst)
     }
 
+    fn input_delivered(&self) -> bool {
+        self.input.ingested.load(Ordering::SeqCst)
+    }
+
     fn send_input(&self, _input: &str) {}
 
     fn steer<'a>(&'a self, prompt: &'a str) -> BoxFuture<'a, ArgmaxResult<()>> {
@@ -1420,6 +1463,17 @@ impl ProviderRuntimeHandle for CodexTurnHandle {
                 return Err(ArgmaxError::service(
                     "STEER_NOT_RUNNING",
                     "The Codex turn is no longer running",
+                ));
+            }
+            // `turn/steer` is acknowledged during a compaction and then
+            // dropped: the rewrite replaces the history the steer was going
+            // into, and the text never appears in the thread. An ack we cannot
+            // believe is worse than a refusal — the follow-up would be shown
+            // as delivered and never answered. Keep it queued instead.
+            if self.input.compacting.load(Ordering::SeqCst) {
+                return Err(ArgmaxError::service(
+                    "STEER_CONTEXT_COMPACTION",
+                    "Codex is compacting its context. This follow-up is still queued for the next turn.",
                 ));
             }
 
@@ -2232,6 +2286,36 @@ done
             events.last().map(|event| (event.r#type, event.exit_code)),
             Some((ProviderRuntimeEventType::Exit, Some(0)))
         );
+    }
+
+    #[test]
+    fn turn_input_state_follows_compaction_and_ingest() {
+        let state = TurnInputState {
+            compacting: AtomicBool::new(false),
+            ingested: AtomicBool::new(false),
+        };
+        // Wire item types are camelCase; the emitted line is snake_case.
+        let item = |item_type: &str| json!({ "item": { "id": "i1", "type": item_type } });
+
+        state.observe("item/started", &item("contextCompaction"));
+        assert!(state.compacting.load(Ordering::SeqCst));
+        // A turn interrupted here delivered nothing: Codex ingests the prompt
+        // only once the rewrite it runs first has finished.
+        assert!(!state.ingested.load(Ordering::SeqCst));
+
+        state.observe("item/completed", &item("contextCompaction"));
+        assert!(!state.compacting.load(Ordering::SeqCst));
+        assert!(!state.ingested.load(Ordering::SeqCst));
+
+        state.observe("item/started", &item("userMessage"));
+        assert!(state.ingested.load(Ordering::SeqCst));
+
+        // Nothing else moves either flag, including a message that merely
+        // mentions a turn.
+        state.observe("item/completed", &item("agentMessage"));
+        state.observe("turn/completed", &json!({ "turn": { "id": "turn-1" } }));
+        assert!(!state.compacting.load(Ordering::SeqCst));
+        assert!(state.ingested.load(Ordering::SeqCst));
     }
 
     #[cfg(unix)]

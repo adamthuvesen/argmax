@@ -105,6 +105,16 @@ pub trait ProviderRuntimeHandle: Send + Sync {
         false
     }
     fn disposed(&self) -> bool;
+    /// Whether the input this turn was launched with reached the model.
+    ///
+    /// Codex compacts its context before ingesting the turn's own input, so a
+    /// turn interrupted inside that window never delivers it — the thread's
+    /// rollout ends up with no user message for it at all, and the chat is
+    /// left showing a bubble the model never read. Every other transport
+    /// writes the prompt on the way in, hence the default.
+    fn input_delivered(&self) -> bool {
+        true
+    }
     fn send_input(&self, input: &str);
     fn steer<'a>(&'a self, _prompt: &'a str) -> BoxFuture<'a, ArgmaxResult<()>> {
         Box::pin(async {

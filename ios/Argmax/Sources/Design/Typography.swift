@@ -416,11 +416,4 @@ extension View {
     func typeChip() -> some View {
         typeStyle(.caption2, weight: .semibold)
     }
-
-    /// The kind line under a file tab's name. Smaller than `typeMeta()`
-    /// because a tab is a fixed 44pt of a horizontal strip rather than a row
-    /// with space to give — a screen header's second line takes `typeMeta()`.
-    func typeSubtitle() -> some View {
-        typeStyle(.caption2, ink: Theme.muted)
-    }
 }

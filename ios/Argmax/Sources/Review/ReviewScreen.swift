@@ -3,9 +3,10 @@ import SwiftUI
 // The review surface: what this chat changed, and what the checkout holds.
 //
 // The desktop puts these side by side in a panel with a tree column and an
-// editor. A phone has one column, so the lists and one active viewer share the
-// screen. Open files stay in a horizontal strip, which keeps comparison close
-// without making the code column any narrower (see `CodeText.swift`).
+// editor. A phone has one column, so the list and one open file take turns on
+// it: opening a file replaces the list and retitles the header, and the back
+// chevron returns to the list. One file at a time, so the code column keeps
+// the full width (see `CodeText.swift`).
 
 struct ReviewScreen: View {
     let workspace: WorkspaceSummary
@@ -17,11 +18,13 @@ struct ReviewScreen: View {
     @StateObject private var store: ReviewStore
     @State private var mode: Mode = .changes
     @State private var scopeSheet = false
-    @State private var tabs: ReviewFileTabsState
+    /// The one file the screen is showing, or nil for the list. A file
+    /// opens in place of the list and the back chevron returns to it.
+    @State private var openDetail: ReviewDetail?
     @State private var fileRevision = 0
     /// The context rung the embedded diff is read at, and whether it has any
-    /// unchanged lines left to give. The control lives on the tab strip, so
-    /// the state it drives lives here rather than inside the viewer.
+    /// unchanged lines left to give. The control lives on the header, so the
+    /// state it drives lives here rather than inside the viewer.
     @State private var diffContext: Int?
     @State private var canExpandDiff = false
     @State private var refreshTask: Task<Void, Never>?
@@ -49,7 +52,7 @@ struct ReviewScreen: View {
         } ?? initialFilePath.map {
             ReviewDetail.file(workspaceID: workspace.id, path: $0)
         }
-        _tabs = State(initialValue: ReviewFileTabsState(initial: initialDetail))
+        _openDetail = State(initialValue: initialDetail)
         // A file reference opens Files behind its viewer. An edit activity
         // opens Changes behind its diff, matching the desktop review panel.
         _mode = State(initialValue: initialFilePath == nil ? .changes : .files)
@@ -64,7 +67,7 @@ struct ReviewScreen: View {
         onBack = {}
         _store = StateObject(wrappedValue: store)
         _mode = State(initialValue: mode)
-        _tabs = State(initialValue: ReviewFileTabsState())
+        _openDetail = State(initialValue: nil)
         canvas = true
     }
     #endif
@@ -73,17 +76,7 @@ struct ReviewScreen: View {
         ZStack {
             Theme.ground.ignoresSafeArea()
             VStack(spacing: 0) {
-                if !tabs.open.isEmpty {
-                    ReviewFileTabs(
-                        details: tabs.open,
-                        active: tabs.active,
-                        onSelect: { tabs.select($0) },
-                        onClose: { tabs.close($0) },
-                        onShowList: { tabs.showList() },
-                        trailing: { expandControl }
-                    )
-                }
-                if let detail = tabs.active {
+                if let detail = openDetail {
                     ReviewDetailScreen(
                         detail: detail,
                         store: dashboard,
@@ -93,7 +86,7 @@ struct ReviewScreen: View {
                         onBack: onBack
                     )
                     // Diff and file viewers own local load and scrolling
-                    // state. A tab switch must construct the selected one.
+                    // state, so opening another file must construct a new one.
                     .id(detail)
                     .onPreferenceChange(DiffCanExpandKey.self) { canExpandDiff = $0 }
                 } else {
@@ -101,11 +94,6 @@ struct ReviewScreen: View {
                     body(for: mode)
                 }
             }
-            // The header stays whatever the screen is showing. An open file
-            // used to replace it with the tab strip alone, which left the one
-            // screen in the app with no chevron, no task label, and a title
-            // the active tab was already carrying. The strip is the first row
-            // of the stack, so it lands directly under the header.
             .safeAreaInset(edge: .top, spacing: 0) { header }
         }
         .toolbar(.hidden, for: .navigationBar)
@@ -130,13 +118,13 @@ struct ReviewScreen: View {
             refreshTask?.cancel()
             refreshTask = nil
         }
-        .onChange(of: tabs.active) { _, _ in
-            // The rung is shared by every tab, so it starts over with each.
+        .onChange(of: openDetail) { _, _ in
+            // The rung belongs to the open file, so it starts over.
             diffContext = nil
             canExpandDiff = false
         }
         .onChange(of: mode) { _, current in
-            tabs.showList()
+            openDetail = nil
             guard !canvas, current == .files else { return }
             Task { await store.loadFileList() }
         }
@@ -167,18 +155,37 @@ struct ReviewScreen: View {
 
     // MARK: - Header
 
+    /// One header, saying where you are. On the list that is the task and its
+    /// branch, with the mode switch; on a file it is the file's own name and
+    /// the directory it came from, and the chevron returns to the list rather
+    /// than leaving Review. A file used to arrive under a tab strip instead,
+    /// which was the only chrome in the app shaped like that and said the
+    /// file's name in a bar the rest of the app spells as a header.
+    @ViewBuilder
     private var header: some View {
-        ScreenHeader(
-            title: workspace.taskLabel,
-            subtitle: workspace.branch,
-            onBack: onBack
-        ) {
-            ReviewModeSwitch(mode: $mode)
+        if let detail = openDetail {
+            ScreenHeader(
+                title: detail.fileName,
+                subtitle: detail.pathAndKind,
+                onBack: { openDetail = nil }
+            ) {
+                expandControl
+            }
+        } else {
+            ScreenHeader(
+                title: workspace.taskLabel,
+                subtitle: workspace.branch,
+                onBack: onBack
+            ) {
+                ReviewModeSwitch(mode: $mode)
+            }
         }
     }
 
     /// The open diff's one control: climb to the next context rung. Only
     /// while there is a rung left, which is the viewer's answer, not ours.
+    /// It rides the header's trailing slot, the only bar an embedded viewer
+    /// has now that the tab strip is gone.
     @ViewBuilder
     private var expandControl: some View {
         if canExpandDiff {
@@ -259,11 +266,11 @@ struct ReviewScreen: View {
                 LazyVStack(spacing: 0) {
                     ForEach(store.files) { file in
                         Button {
-                            tabs.open(ReviewDetail.diff(
+                            openDetail = ReviewDetail.diff(
                                 workspaceID: workspace.id,
                                 path: file.path,
                                 scope: store.scope
-                            ))
+                            )
                         } label: {
                             ChangedFileRow(file: file)
                         }
@@ -298,7 +305,7 @@ struct ReviewScreen: View {
                 reveal: initialFilePath,
                 onRefresh: { await store.loadFileList(force: true) },
                 onOpenFile: {
-                    tabs.open(ReviewDetail.file(workspaceID: workspace.id, path: $0))
+                    openDetail = ReviewDetail.file(workspaceID: workspace.id, path: $0)
                 }
             )
         }
@@ -493,8 +500,8 @@ struct LoadingRows: View {
 }
 
 /// The review surface as a navigation value. A file reference sets `filePath`,
-/// while an edit activity sets `diffPath`. The review screen opens the requested
-/// view directly in its tab strip.
+/// while an edit activity sets `diffPath`. The review screen opens the
+/// requested view directly, with the list behind its back chevron.
 struct ReviewRoute: Hashable {
     let workspaceID: String
     var filePath: String? = nil
@@ -505,7 +512,7 @@ struct ReviewRoute: Hashable {
 ///
 /// Every value here is enough to build the viewer on its own — the scope
 /// travels with the request rather than being read back out of a store. The
-/// review screen also uses it as the stable identity of an open tab.
+/// review screen also uses it as the identity of the file it has open.
 enum ReviewDetail: Hashable {
     case diff(workspaceID: String, path: String, scope: ReviewScope)
     case file(workspaceID: String, path: String)

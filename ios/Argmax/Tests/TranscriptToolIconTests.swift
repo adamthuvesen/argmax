@@ -149,7 +149,7 @@ final class TranscriptToolIconTests: XCTestCase {
 
     func testEveryGeneratedKeyHasARealNamespacedAsset() throws {
         let names = TranscriptToolIcon.generatedAssetNames
-        XCTAssertEqual(names.count, 15)
+        XCTAssertEqual(names.count, 16)
         XCTAssertEqual(Set(names).count, names.count)
         for name in names {
             let image = try XCTUnwrap(UIImage(named: name), "\(name) is missing from Assets.xcassets")

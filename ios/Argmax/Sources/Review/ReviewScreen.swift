@@ -457,8 +457,10 @@ struct ChangeCount: View {
     }
 }
 
-/// File-row counts share the filename's size, while metadata and transcript
-/// counts stay compact enough to remain secondary to the action they describe.
+/// A file row's count sits a step under the filename: digits are all
+/// cap-height and the face is monospace, so at the filename's own 18pt they
+/// out-measure the name they annotate. Metadata and transcript counts stay
+/// compact enough to remain secondary to the action they describe.
 private struct ChangeCountTypeStyle: ViewModifier {
     let style: ChangeCount.Style
 
@@ -467,7 +469,7 @@ private struct ChangeCountTypeStyle: ViewModifier {
         case .compact:
             content.typeStyle(.caption2, mono: true, monospacedDigit: true)
         case .rowTitle:
-            content.typeSize(18, relativeTo: .body, mono: true)
+            content.typeStyle(.subheadline, mono: true, monospacedDigit: true)
         }
     }
 }

@@ -1405,6 +1405,10 @@ const GOAL_TAIL_ROW_CHARS: usize = 2_000;
 /// calls and their outcomes, and the prompts they answered, newest rows first
 /// until `max_chars` is spent, then flipped back into reading order. Subagent
 /// and imported-trace rows are excluded, like the chat surface excludes them.
+///
+/// Rows are read one at a time rather than collected: a tool result can be
+/// megabytes, and once the budget is spent the rest are never pulled out of
+/// SQLite at all.
 pub fn goal_transcript_tail(
     connection: &Connection,
     session_id: &str,
@@ -1413,12 +1417,14 @@ pub fn goal_transcript_tail(
     let mut statement = connection
         .prepare_cached(
             r#"
-            SELECT type, substr(message, 1, ?)
+            SELECT type, message, payload_json
             FROM events
             WHERE session_id = ?
-              AND type IN ('user.message', 'message.completed', 'command.started',
-                           'command.completed', 'error')
-              AND trim(message) <> ''
+              AND (
+                (type IN ('user.message', 'message.completed', 'error')
+                  AND trim(message) <> '')
+                OR type IN ('command.started', 'command.completed')
+              )
               AND rowid > COALESCE((
                 SELECT MAX(rowid) FROM events cleared
                 WHERE cleared.session_id = events.session_id
@@ -1431,26 +1437,19 @@ pub fn goal_transcript_tail(
             "#,
         )
         .map_err(sqlite_error)?;
-    let rows = statement
-        .query_map(
-            params![GOAL_TAIL_ROW_CHARS, session_id, GOAL_TAIL_SCAN_LIMIT],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
-        )
-        .map_err(sqlite_error)?
-        .collect::<Result<Vec<_>, _>>()
+    let mut rows = statement
+        .query(params![session_id, GOAL_TAIL_SCAN_LIMIT])
         .map_err(sqlite_error)?;
 
     let mut lines = Vec::new();
     let mut spent = 0usize;
-    for (kind, message) in rows {
-        let label = match kind.as_str() {
-            "user.message" => "USER",
-            "message.completed" => "AGENT",
-            "command.started" => "TOOL",
-            "command.completed" => "TOOL RESULT",
-            _ => "ERROR",
+    while let Some(row) = rows.next().map_err(sqlite_error)? {
+        let kind = row.get::<_, String>(0).map_err(sqlite_error)?;
+        let message = row.get::<_, String>(1).map_err(sqlite_error)?;
+        let payload = row.get::<_, Option<String>>(2).map_err(sqlite_error)?;
+        let Some(line) = goal_tail_line(&kind, &message, payload.as_deref()) else {
+            continue;
         };
-        let line = format!("{label}: {}", message.trim());
         if spent + line.len() > max_chars && !lines.is_empty() {
             break;
         }
@@ -1463,6 +1462,144 @@ pub fn goal_transcript_tail(
         text: lines.join("\n"),
         tool_calls_in_last_turn: count_tool_calls_since_last_prompt(connection, session_id)?,
     })
+}
+
+/// One labelled line for the evaluator, or `None` for a row that shows it
+/// nothing.
+///
+/// Tool rows are the reason this reads the payload rather than the `message`
+/// column: there a tool call is only its name — `shell`, `read` — so a goal
+/// whose evidence lived in `git rev-parse` output was judged from lines reading
+/// `TOOL RESULT: shell`. The command and what it printed are in the payload,
+/// and that is what a verdict actually turns on.
+fn goal_tail_line(kind: &str, message: &str, payload_json: Option<&str>) -> Option<String> {
+    let payload = payload_json
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+        .unwrap_or(serde_json::Value::Null);
+    match kind {
+        "command.started" => {
+            // Grok names its tool inside the arguments rather than on the row.
+            let name = [
+                payload.get("name").and_then(serde_json::Value::as_str),
+                Some(message),
+                payload
+                    .pointer("/input/variant")
+                    .and_then(serde_json::Value::as_str),
+            ]
+            .into_iter()
+            .flatten()
+            .map(str::trim)
+            .find(|name| !name.is_empty())
+            .unwrap_or_default();
+            let label = if name.is_empty() {
+                "TOOL".to_string()
+            } else {
+                format!("TOOL {name}")
+            };
+            match goal_tail_command_input(&payload) {
+                Some(input) => Some(format!("{label}: {input}")),
+                None if name.is_empty() => None,
+                None => Some(label),
+            }
+        }
+        // A result the provider did not record is dropped rather than printed
+        // as an empty line: the `TOOL` row above it already says the call was
+        // made, and a bare "TOOL RESULT:" reads as a command that printed
+        // nothing.
+        "command.completed" => {
+            let output = goal_tail_command_output(&payload)?;
+            Some(format!("TOOL RESULT: {}", clamp_tail(&output)))
+        }
+        _ => {
+            let label = match kind {
+                "user.message" => "USER",
+                "message.completed" => "AGENT",
+                _ => "ERROR",
+            };
+            Some(format!("{label}: {}", clamp_head(message.trim())))
+        }
+    }
+}
+
+/// What the agent asked the tool to do: the shell command when there is one,
+/// otherwise the compact arguments.
+fn goal_tail_command_input(payload: &serde_json::Value) -> Option<String> {
+    let input = payload.get("input")?;
+    if let Some(command) = input.get("command").and_then(serde_json::Value::as_str) {
+        return Some(clamp_head(command.trim()));
+    }
+    let rendered = serde_json::to_string(input).ok()?;
+    (rendered != "{}" && rendered != "null").then(|| clamp_head(&rendered))
+}
+
+/// What the tool printed, across the shapes the five providers record it in:
+/// Claude's `content`, Cursor's `result` object of `stdout`/`stderr`,
+/// OpenCode's `result` string, and the `aggregated_output` of a streamed
+/// command. A non-zero exit is named, because a failing check that prints
+/// nothing is still evidence.
+fn goal_tail_command_output(payload: &serde_json::Value) -> Option<String> {
+    let mut text = String::new();
+    if let Some(code) = payload
+        .pointer("/result/exitCode")
+        .and_then(serde_json::Value::as_i64)
+        .filter(|code| *code != 0)
+    {
+        text.push_str(&format!("exit {code}"));
+    }
+    for key in ["content", "aggregated_output", "result"] {
+        if let Some(value) = payload.get(key) {
+            push_goal_tail_text(&mut text, value);
+        }
+    }
+    let text = text.trim();
+    (!text.is_empty()).then(|| text.to_string())
+}
+
+fn push_goal_tail_text(into: &mut String, value: &serde_json::Value) {
+    match value {
+        serde_json::Value::String(chunk) if !chunk.trim().is_empty() => {
+            if !into.is_empty() {
+                into.push('\n');
+            }
+            into.push_str(chunk.trim());
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                push_goal_tail_text(into, item);
+            }
+        }
+        // `type` is the block's kind in Claude's content blocks, not output:
+        // without this every text block contributes a stray "text" line.
+        serde_json::Value::Object(fields) => {
+            for (key, field) in fields {
+                if key != "type" {
+                    push_goal_tail_text(into, field);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn clamp_head(text: &str) -> String {
+    match text.char_indices().nth(GOAL_TAIL_ROW_CHARS) {
+        Some((at, _)) => format!("{}…", text[..at].trim_end()),
+        None => text.to_string(),
+    }
+}
+
+/// Keeps the *end* of a long output. A check's verdict — the failure count, the
+/// summary line — is the last thing it prints.
+fn clamp_tail(text: &str) -> String {
+    let count = text.chars().count();
+    if count <= GOAL_TAIL_ROW_CHARS {
+        return text.to_string();
+    }
+    let at = text
+        .char_indices()
+        .nth(count - GOAL_TAIL_ROW_CHARS)
+        .map_or(0, |(at, _)| at);
+    format!("…{}", text[at..].trim_start())
 }
 
 fn count_tool_calls_since_last_prompt(
@@ -2963,7 +3100,7 @@ mod change_feed_tests {
         );
     }
 
-    fn seeded_database() -> Database {
+    pub(super) fn seeded_database() -> Database {
         let database = Database::open_in_memory().expect("open database");
         let connection = database.connection();
         seed_connection(&connection);
@@ -3020,6 +3157,24 @@ mod change_feed_tests {
         r#type: &str,
         message: &str,
     ) {
+        insert_payload_event(
+            connection,
+            id,
+            session_id,
+            r#type,
+            message,
+            serde_json::json!({}),
+        );
+    }
+
+    pub(super) fn insert_payload_event(
+        connection: &Connection,
+        id: &str,
+        session_id: &str,
+        r#type: &str,
+        message: &str,
+        payload: serde_json::Value,
+    ) {
         persist_timeline_event(
             connection,
             &PersistTimelineEventInput {
@@ -3027,7 +3182,7 @@ mod change_feed_tests {
                 session_id: session_id.to_owned(),
                 r#type: r#type.to_owned(),
                 message: message.to_owned(),
-                payload: serde_json::json!({}),
+                payload,
                 created_at: Some(TIME.to_owned()),
             },
         )
@@ -3057,5 +3212,118 @@ mod change_feed_tests {
 
     fn ids(events: &[TimelineEvent]) -> Vec<&str> {
         events.iter().map(|event| event.id.as_str()).collect()
+    }
+}
+
+#[cfg(test)]
+mod goal_tail_tests {
+    use super::change_feed_tests::{insert_payload_event, seeded_database};
+    use super::*;
+
+    /// The bug this guards: a tool row's `message` is only the tool's name, so
+    /// a goal whose evidence was `git rev-parse` output was judged from lines
+    /// reading `TOOL RESULT: shell` and never met.
+    #[test]
+    fn a_tool_call_carries_its_command_and_output() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_payload_event(
+            &connection,
+            "p",
+            "s1",
+            "user.message",
+            "merge it",
+            json!({}),
+        );
+        insert_payload_event(
+            &connection,
+            "start",
+            "s1",
+            "command.started",
+            "shell",
+            json!({"name": "shell", "input": {"command": "gh pr view 780 --json state"}}),
+        );
+        insert_payload_event(
+            &connection,
+            "end",
+            "s1",
+            "command.completed",
+            "shell",
+            json!({"name": "shell", "result": {"exitCode": 0, "stderr": "", "stdout": "pr_state=MERGED"}}),
+        );
+
+        let tail = goal_transcript_tail(&connection, "s1", 4_000).expect("tail");
+
+        assert_eq!(
+            tail.text,
+            "USER: merge it\nTOOL shell: gh pr view 780 --json state\nTOOL RESULT: pr_state=MERGED"
+        );
+        assert_eq!(tail.tool_calls_in_last_turn, 1);
+    }
+
+    /// Claude records a tool result as `content`, Cursor as a `result` object,
+    /// OpenCode as a `result` string. All three have to reach the evaluator.
+    #[test]
+    fn a_tool_result_is_read_in_every_shape_a_provider_records_it() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_payload_event(
+            &connection,
+            "claude",
+            "s1",
+            "command.completed",
+            "Bash",
+            json!({"content": [{"type": "text", "text": "404 pass / 0 fail"}]}),
+        );
+        insert_payload_event(
+            &connection,
+            "opencode",
+            "s1",
+            "command.completed",
+            "bash",
+            json!({"result": "lint clean"}),
+        );
+        insert_payload_event(
+            &connection,
+            "failed",
+            "s1",
+            "command.completed",
+            "shell",
+            json!({"result": {"exitCode": 2, "stdout": "", "stderr": "no such file"}}),
+        );
+
+        let tail = goal_transcript_tail(&connection, "s1", 4_000)
+            .expect("tail")
+            .text;
+
+        assert!(tail.contains("TOOL RESULT: 404 pass / 0 fail"), "{tail}");
+        assert!(tail.contains("TOOL RESULT: lint clean"), "{tail}");
+        assert!(
+            tail.contains("TOOL RESULT: exit 2\nno such file"),
+            "a check that failed with no stdout is still evidence: {tail}"
+        );
+    }
+
+    /// A result the provider recorded nothing for would otherwise print as a
+    /// bare label, which reads as a command that succeeded silently.
+    #[test]
+    fn a_result_with_no_output_is_left_out() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_payload_event(&connection, "p", "s1", "user.message", "go", json!({}));
+        insert_payload_event(
+            &connection,
+            "end",
+            "s1",
+            "command.completed",
+            "mcp__argmax__goal_clear",
+            json!({"name": "mcp__argmax__goal_clear", "result": {"success": true}}),
+        );
+
+        let tail = goal_transcript_tail(&connection, "s1", 4_000)
+            .expect("tail")
+            .text;
+
+        assert_eq!(tail, "USER: go");
     }
 }

@@ -1,7 +1,7 @@
 /* Each colour is one sayable family, so a glance down the transcript reads as
-   a legend rather than as decoration. Blue is the fallback: a row lands there
-   when nothing named it, which is also why it must not carry a family of its
-   own. The iPhone mirrors this in TranscriptToolIcon.uiColor. */
+   a legend rather than as decoration. Blue is the exception and does two jobs:
+   it carries the agent's own machinery and it is where a row lands when
+   nothing named it. The iPhone mirrors this in TranscriptToolIcon.uiColor. */
 .tool-activity-icon {
   flex: 0 0 auto;
   color: var(--activity-blue);
@@ -47,7 +47,9 @@
 }
 
 /* The agent's own machinery: organizing itself rather than touching the repo.
-   Two rows in a typical session, so it reads as punctuation. */
+   It shares blue with the fallback below, so a blue row means either this or
+   a kind nothing named — spelled out here rather than left to fall through,
+   so the family stays visible to a reader and to the parity gate. */
 .tool-activity-icon:is(
   [data-activity="skill"],
   [data-activity="plan"],
@@ -57,7 +59,7 @@
   [data-activity="agent-message"],
   [data-activity="agent-wait"]
 ) {
-  color: var(--activity-orange);
+  color: var(--activity-blue);
 }
 
 .tool-activity-icon[data-tone="danger"] {

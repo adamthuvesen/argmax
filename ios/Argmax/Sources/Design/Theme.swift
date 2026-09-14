@@ -57,7 +57,6 @@ enum Theme {
     static let activityBlueColor = dynamic(light: 0x39_66_96, dark: 0x7E_A6_CF)
     static let activityGreenColor = dynamic(light: 0x44_6C_56, dark: 0x6D_AB_86)
     static let activityCoralColor = dynamic(light: 0x94_4B_3E, dark: 0xD1_8E_82)
-    static let activityOrangeColor = dynamic(light: 0xB6_48_00, dark: 0xFF_8B_44)
     static let activityGoldColor = dynamic(light: 0x87_6F_02, dark: 0xE9_C3_38)
     static let activityRedColor = dynamic(light: 0xC8_41_51, dark: 0xF0_70_7F)
     /// `--pr-merged`. GitHub's own merged-purple, not a token this app
@@ -111,7 +110,6 @@ enum Theme {
     static var activityBlue: Color { Color(activityBlueColor) }
     static var activityGreen: Color { Color(activityGreenColor) }
     static var activityCoral: Color { Color(activityCoralColor) }
-    static var activityOrange: Color { Color(activityOrangeColor) }
     static var activityGold: Color { Color(activityGoldColor) }
     static var activityRed: Color { Color(activityRedColor) }
     static var diffAddInk: Color { Color(diffAddInkColor) }

@@ -79,16 +79,16 @@ final class TranscriptToolIconTests: XCTestCase {
         XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .search), style: .light), [112, 85, 143])
         XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .webSearch), style: .dark), [173, 148, 208])
         XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .browser), style: .dark), [173, 148, 208])
-        // The agent's own machinery, in orange.
-        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .skill), style: .light), [182, 72, 0])
-        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .plan), style: .light), [182, 72, 0])
-        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .agentWait), style: .dark), [255, 139, 68])
+        // The agent's own machinery shares blue with the fallback below.
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .skill), style: .light), [57, 102, 150])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .plan), style: .light), [57, 102, 150])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .agentWait), style: .dark), [126, 166, 207])
         // Ran a command, in gold.
         XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .command), style: .dark), [233, 195, 56])
         XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .computer), style: .light), [135, 111, 2])
         // Changed a file.
         XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .edit), style: .light), [148, 75, 62])
-        // Nothing named it: the fallback.
+        // Nothing named it: the same blue.
         XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .image), style: .dark), [126, 166, 207])
         XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .tool), style: .dark), [126, 166, 207])
         XCTAssertEqual(

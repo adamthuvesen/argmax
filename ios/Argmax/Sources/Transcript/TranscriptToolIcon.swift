@@ -111,8 +111,8 @@ struct TranscriptToolIcon: View {
         if state == .failed || state == .cancelled || kind == .agentStop {
             return Theme.activityRedColor
         }
-        // Mirrors tool-activity.css: one sayable family per colour, with blue
-        // as the fallback for rows nothing else named.
+        // Mirrors tool-activity.css: one sayable family per colour, except
+        // blue, which carries the machinery and the unnamed alike.
         switch kind {
         // Changed a file.
         case .edit: return Theme.activityCoralColor
@@ -123,10 +123,10 @@ struct TranscriptToolIcon: View {
             return Theme.activityPurpleColor
         // Ran a command, including work we could not identify.
         case .command, .computer: return Theme.activityGoldColor
-        // The agent's own machinery rather than the repo.
-        case .skill, .plan, .memoryRecall, .memorySave, .agent, .agentMessage, .agentWait:
-            return Theme.activityOrangeColor
-        case .image, .tool, .imageCapture, .imageGenerate:
+        // Blue does two jobs: the agent's own machinery rather than the repo,
+        // and the fallback for a kind nothing else named.
+        case .skill, .plan, .memoryRecall, .memorySave, .agent, .agentMessage, .agentWait,
+             .image, .tool, .imageCapture, .imageGenerate:
             return Theme.activityBlueColor
         case .agentStop: return Theme.activityRedColor
         }

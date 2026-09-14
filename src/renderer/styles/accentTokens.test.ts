@@ -55,7 +55,7 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     const tokens = readSource("src/renderer/styles/tokens.css");
     for (const theme of ["light", "dark"]) {
       const base = cssRuleBody(tokens, theme === "dark" ? ':root[data-theme="dark"]' : ":root");
-      for (const activity of ["purple", "blue", "green", "coral", "orange", "gold", "red"]) {
+      for (const activity of ["purple", "blue", "green", "coral", "gold", "red"]) {
         for (const surface of ["bg", "panel"]) {
           expect(contrast(readHex(base, `activity-${activity}`), readHex(base, surface))).toBeGreaterThanOrEqual(4.5);
         }
@@ -63,15 +63,16 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     }
   });
 
-  // One family per colour, each sayable in a phrase. Blue is deliberately
-  // absent: it is the fallback for rows nothing named, so a kind landing there
-  // is a gap in the legend rather than a choice.
+  // One family per colour, each sayable in a phrase. Blue is the exception and
+  // does two jobs: the agent's own machinery, and the fallback for a kind
+  // nothing named. Both are asserted, so a kind silently falling through to
+  // the fallback still has to be a choice someone wrote down.
   const ACTIVITY_FAMILIES: Record<string, string[]> = {
     coral: ["edit"],
     green: ["read", "list", "git"],
     purple: ["search", "discovery", "web-search", "web-fetch", "browser"],
     gold: ["command", "computer"],
-    orange: ["skill", "plan", "memory-recall", "memory-save", "agent", "agent-message", "agent-wait"]
+    blue: ["skill", "plan", "memory-recall", "memory-save", "agent", "agent-message", "agent-wait"]
   };
 
   it("maps transcript activities to their stable semantic colors", () => {

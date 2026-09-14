@@ -121,11 +121,11 @@ struct TranscriptToolIcon: View {
         // Went looking for something, in the files or on the web.
         case .search, .discovery, .webSearch, .webFetch, .browser:
             return Theme.activityPurpleColor
+        // Ran a command, including work we could not identify.
+        case .command, .computer: return Theme.activityGoldColor
         // The agent's own machinery rather than the repo.
         case .skill, .plan, .memoryRecall, .memorySave, .agent, .agentMessage, .agentWait:
-            return Theme.activityGoldColor
-        // Ran a command, including work we could not identify.
-        case .command, .computer: return Theme.activityOrangeColor
+            return Theme.activityOrangeColor
         case .image, .tool, .imageCapture, .imageGenerate:
             return Theme.activityBlueColor
         case .agentStop: return Theme.activityRedColor

@@ -39,7 +39,15 @@
   color: var(--activity-purple);
 }
 
-/* The agent's own machinery: organizing itself rather than touching the repo. */
+/* Ran a command, the transcript's most common row. This is also the bucket for
+   work we could not identify, so it stays a colour of its own and shrinks as
+   the classifier improves. */
+.tool-activity-icon:is([data-activity="command"], [data-activity="computer"]) {
+  color: var(--activity-gold);
+}
+
+/* The agent's own machinery: organizing itself rather than touching the repo.
+   Two rows in a typical session, so it reads as punctuation. */
 .tool-activity-icon:is(
   [data-activity="skill"],
   [data-activity="plan"],
@@ -49,12 +57,6 @@
   [data-activity="agent-message"],
   [data-activity="agent-wait"]
 ) {
-  color: var(--activity-gold);
-}
-
-/* Ran a command. This is also the bucket for work we could not identify, so
-   it stays a colour of its own and shrinks as the classifier improves. */
-.tool-activity-icon:is([data-activity="command"], [data-activity="computer"]) {
   color: var(--activity-orange);
 }
 

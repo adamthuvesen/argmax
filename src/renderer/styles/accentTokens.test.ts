@@ -70,8 +70,8 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     coral: ["edit"],
     green: ["read", "list", "git"],
     purple: ["search", "discovery", "web-search", "web-fetch", "browser"],
-    gold: ["skill", "plan", "memory-recall", "memory-save", "agent", "agent-message", "agent-wait"],
-    orange: ["command", "computer"]
+    gold: ["command", "computer"],
+    orange: ["skill", "plan", "memory-recall", "memory-save", "agent", "agent-message", "agent-wait"]
   };
 
   it("maps transcript activities to their stable semantic colors", () => {

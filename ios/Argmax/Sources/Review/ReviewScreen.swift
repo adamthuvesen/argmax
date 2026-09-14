@@ -386,7 +386,7 @@ struct ChangedFileRow: View {
             }
 
             Spacer(minLength: Spacing.snug)
-            ChangeCount(additions: file.additions, deletions: file.deletions)
+            ChangeCount(additions: file.additions, deletions: file.deletions, style: .rowTitle)
             Image(systemName: "chevron.right")
                 .typeSymbol(.caption2, weight: .semibold)
                 .foregroundStyle(Theme.muted.opacity(0.5))
@@ -420,8 +420,14 @@ struct ChangedFileRow: View {
 /// `+12 −3`, in the diff's inks. Zero on either side is left off rather than
 /// drawn as a quiet `+0`, which reads as a number the eye then has to dismiss.
 struct ChangeCount: View {
+    enum Style {
+        case compact
+        case rowTitle
+    }
+
     let additions: Int
     let deletions: Int
+    var style: Style = .compact
 
     var body: some View {
         HStack(spacing: Spacing.tight) {
@@ -436,8 +442,23 @@ struct ChangeCount: View {
                 Text(verbatim: "−\(deletions)").foregroundStyle(Theme.diffDelInk)
             }
         }
-        .typeStyle(.caption2, mono: true, monospacedDigit: true)
+        .modifier(ChangeCountTypeStyle(style: style))
         .accessibilityLabel("\(additions) added, \(deletions) removed")
+    }
+}
+
+/// File-row counts share the filename's size, while metadata and transcript
+/// counts stay compact enough to remain secondary to the action they describe.
+private struct ChangeCountTypeStyle: ViewModifier {
+    let style: ChangeCount.Style
+
+    func body(content: Content) -> some View {
+        switch style {
+        case .compact:
+            content.typeStyle(.caption2, mono: true, monospacedDigit: true)
+        case .rowTitle:
+            content.typeSize(18, relativeTo: .body, mono: true)
+        }
     }
 }
 

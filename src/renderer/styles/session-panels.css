@@ -63,7 +63,7 @@
 }
 
 .session-panel-title {
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   color: var(--muted-strong);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -183,7 +183,7 @@
   color: var(--text-soft);
   font: inherit;
   font-size: var(--text-xs);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   white-space: nowrap;
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease),
@@ -281,7 +281,7 @@
 }
 
 .session-panel-row-text > strong {
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   overflow-wrap: anywhere;
 }
 

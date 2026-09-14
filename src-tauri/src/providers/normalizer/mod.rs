@@ -31,7 +31,9 @@ use self::{
     },
     codex::{
         detect_permission_gate as detect_codex_permission_gate, event_type as codex_event_type,
-        extract_usage as extract_codex_usage, normalize_error_item as normalize_codex_error_item,
+        extract_usage as extract_codex_usage,
+        normalize_compaction_item as normalize_codex_compaction_item,
+        normalize_error_item as normalize_codex_error_item,
         normalize_native_agent_lifecycle_events as normalize_codex_native_agent_lifecycle_events,
         normalize_reasoning_item as normalize_codex_reasoning_item,
         normalize_todo_item as normalize_codex_todo_item,
@@ -241,6 +243,15 @@ pub struct NormalizerSessionContext {
     /// here for the result line a few milliseconds later. Per invocation is
     /// enough: a create and its result never straddle a relaunch.
     pub claude_pending_task_creates: HashMap<String, String>,
+    /// OpenCode call ids that already emitted a `command.started` for this
+    /// invocation. The server transport forwards a native task's running
+    /// state (the launch) and then its terminal state; only the first
+    /// in-flight envelope may open the row, and the terminal one must close
+    /// the row it opened rather than open a second.
+    pub opencode_started_tool_calls: HashSet<String>,
+    /// Same bookkeeping for `agent.started` lifecycle rows, kept separate so
+    /// the command row and the agent row dedupe independently of call order.
+    pub opencode_started_agent_runs: HashSet<String>,
 }
 
 impl NormalizerSessionContext {
@@ -528,11 +539,13 @@ fn normalize_json_payload(
     };
 
     if provider == ProviderId::Opencode {
-        let mut events = normalize_opencode_event(event, &payload, provider_type.as_deref());
+        let mut events =
+            normalize_opencode_event(event, &payload, provider_type.as_deref(), context);
         events.extend(normalize_opencode_native_agent_lifecycle_events(
             event,
             &payload,
             provider_type.as_deref(),
+            &mut context.opencode_started_agent_runs,
         ));
         return NormalizedProviderResult {
             events,
@@ -628,6 +641,16 @@ fn normalize_json_payload(
     }
 
     if provider == ProviderId::Codex {
+        if let Some(marker) =
+            normalize_codex_compaction_item(event, provider_type.as_deref(), item_type.as_deref())
+        {
+            return NormalizedProviderResult {
+                events: vec![marker],
+                usages,
+                provider_conversation_id,
+                ..NormalizedProviderResult::default()
+            };
+        }
         if let Some(reasoning_event) = normalize_codex_reasoning_item(
             event,
             &payload,
@@ -1121,12 +1144,14 @@ pub(crate) fn timeline_event(
     event: &ProviderOutputEvent,
     event_type: impl Into<String>,
     message: impl Into<String>,
-    payload: Value,
+    mut payload: Value,
 ) -> PersistTimelineEventInput {
+    let event_type = event_type.into();
+    crate::providers::tool_activity::enrich_tool_activity(&event_type, &mut payload);
     PersistTimelineEventInput {
         id: Uuid::new_v4().to_string(),
         session_id: event.session_id.clone(),
-        r#type: event_type.into(),
+        r#type: event_type,
         message: message.into(),
         payload,
         created_at: Some(event.created_at.clone()),
@@ -1232,6 +1257,13 @@ const NOISY_CODEX_TRACING_MODULES: &[&str] = &[
 ];
 
 fn is_noisy_provider_tracing(target: &str, message: &str) -> bool {
+    if target_is(target, "codex_app_server::bespoke_event_handling")
+        && message.contains(
+            "Argmax does not support Codex app-server request mcpServer/elicitation/request",
+        )
+    {
+        return true;
+    }
     if target_is(target, "codex_core::util")
         && message.contains("Custom tool call output is missing for call id:")
     {
@@ -1246,6 +1278,7 @@ fn is_noisy_provider_tracing(target: &str, message: &str) -> bool {
 const NOISY_PLAIN_STDERR_PREFIXES: &[&str] = &[
     CODEX_SKILL_BUDGET_NOTICE_PREFIX,
     "failed to parse plugin hooks config",
+    "Reconnecting...",
 ];
 
 const CODEX_SKILL_BUDGET_NOTICE_PREFIX: &str = "Skill descriptions were shortened to fit";
@@ -1522,6 +1555,19 @@ mod tests {
         assert!(result.events.is_empty());
     }
 
+    #[test]
+    fn unsupported_mcp_elicitation_protocol_error_is_dropped() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                "2026-09-13T17:25:56.613064Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32601, data: None, message: \"Argmax does not support Codex app-server request mcpServer/elicitation/request\" }\n",
+            ),
+            &mut context,
+        );
+        assert!(result.events.is_empty());
+    }
+
     // Each line captured from a real Codex session's "Error" card.
     #[test]
     fn codex_housekeeping_tracing_is_dropped() {
@@ -1554,9 +1600,16 @@ mod tests {
         );
         assert!(dropped.events.is_empty());
 
-        let kept = normalize_provider_event(
+        let reconnecting = normalize_provider_event(
             ProviderId::Codex,
             &stderr("Reconnecting... 2/5 (unexpected status 404 Not Found)\n"),
+            &mut context,
+        );
+        assert!(reconnecting.events.is_empty());
+
+        let kept = normalize_provider_event(
+            ProviderId::Codex,
+            &stderr("Authentication failed; run `codex login`\n"),
             &mut context,
         );
         assert_eq!(kept.events.len(), 1);

@@ -1,7 +1,11 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi, BrowserStateEvent } from "../../shared/types.js";
-import { BROWSER_HISTORY_KEY } from "../lib/browserHistory.js";
+import {
+  BROWSER_HISTORY_KEY,
+  setBrowserHistoryStorageForTests,
+  type BrowserHistoryEntry
+} from "../lib/browserHistory.js";
 import { SIDEBAR_COLLAPSED_KEY } from "../lib/uiPreferences.js";
 import {
   resetSidebarChromeForTests,
@@ -11,6 +15,7 @@ import {
 import {
   applyBrowserTabs,
   BROWSER_PAGE_OWNER_ID,
+  createBrowserTab,
   getActiveBrowserTabId,
   getBrowserTabs,
   openInBrowserPanel,
@@ -30,10 +35,21 @@ const browserStub = {
   back: vi.fn(() => Promise.resolve({ ok: true as const })),
   forward: vi.fn(() => Promise.resolve({ ok: true as const })),
   reload: vi.fn(() => Promise.resolve({ ok: true as const })),
+  contentBlocking: vi.fn(() => Promise.resolve({ supported: true, disabledHosts: [] as string[] })),
+  setSiteBlocking: vi.fn(() => Promise.resolve({ supported: true, disabledHosts: [] as string[] })),
   setBounds: vi.fn(() => Promise.resolve({ ok: true as const })),
+  focus: vi.fn(() => Promise.resolve({ ok: true as const })),
   close: vi.fn(() => Promise.resolve({ ok: true as const })),
   stop: vi.fn(() => Promise.resolve({ ok: true as const })),
   fillCredentials: vi.fn(() => Promise.resolve({ ok: true, itemTitle: "GitHub" })),
+  chromeProfiles: vi.fn(() => Promise.resolve([{ id: "Default", name: "Personal" }])),
+  importChromeHistory: vi.fn(() => Promise.resolve({ entries: [], totalAvailable: 0 })),
+  evaluate: vi.fn((input: { tabId: string; script: string }) => {
+    // The page's find runtime answers with WebKit's JSON encoding.
+    const match = /__argmaxFind\.search\("((?:[^"\\]|\\.)*)"\)/.exec(input.script);
+    const count = match && match[1] ? 2 : 0;
+    return Promise.resolve({ resultJson: JSON.stringify({ count, index: count > 0 ? 1 : 0 }) });
+  }),
   onState: vi.fn((listener: (event: BrowserStateEvent) => void) => {
     stateListener = listener;
     return () => {
@@ -123,6 +139,14 @@ beforeEach(() => {
   newTabListener = null;
   pageCommandListener = null;
   resetBrowserTabsForTests();
+  let historyEntries: BrowserHistoryEntry[] | undefined;
+  setBrowserHistoryStorageForTests({
+    load: () => Promise.resolve(historyEntries),
+    save: (nextEntries) => {
+      historyEntries = structuredClone(nextEntries);
+      return Promise.resolve();
+    }
+  });
   window.localStorage.removeItem(SIDEBAR_COLLAPSED_KEY);
   resetSidebarChromeForTests();
   for (const mock of Object.values(browserStub)) mock.mockClear();
@@ -137,6 +161,137 @@ afterEach(() => {
 });
 
 describe("BrowserPanel", () => {
+  it("toggles blocking for the current site and reloads that tab", async () => {
+    browserStub.setSiteBlocking.mockResolvedValueOnce({ supported: true, disabledHosts: ["github.com"] });
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+
+    const shield = await screen.findByRole("button", {
+      name: "Disable ad and tracker blocking on github.com"
+    });
+    expect(shield).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(shield);
+
+    expect(browserStub.setSiteBlocking).toHaveBeenCalledWith({
+      url: "https://github.com",
+      enabled: false
+    });
+    await waitFor(() => expect(browserStub.reload).toHaveBeenCalledWith(activeTabId()));
+    expect(screen.getByRole("button", {
+      name: "Enable ad and tracker blocking on github.com"
+    })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("re-enables blocking for an exact bypassed hostname", async () => {
+    browserStub.contentBlocking.mockResolvedValueOnce({
+      supported: true,
+      disabledHosts: ["github.com", "notgithub.com"]
+    });
+    browserStub.setSiteBlocking.mockResolvedValueOnce({
+      supported: true,
+      disabledHosts: ["notgithub.com"]
+    });
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://GitHub.com./" onClose={() => undefined} />);
+
+    const shield = await screen.findByRole("button", {
+      name: "Enable ad and tracker blocking on github.com"
+    });
+    fireEvent.click(shield);
+
+    expect(browserStub.setSiteBlocking).toHaveBeenCalledWith({
+      url: "https://GitHub.com./",
+      enabled: true
+    });
+    await waitFor(() => expect(browserStub.reload).toHaveBeenCalledWith(activeTabId()));
+  });
+
+  it("keeps the current blocking state and reports a toggle failure", async () => {
+    browserStub.setSiteBlocking.mockRejectedValueOnce(new Error("Could not update blocking"));
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+
+    const shield = await screen.findByRole("button", {
+      name: "Disable ad and tracker blocking on github.com"
+    });
+    fireEvent.click(shield);
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Could not update blocking");
+    expect(shield).toHaveAttribute("aria-pressed", "true");
+    expect(browserStub.reload).not.toHaveBeenCalled();
+  });
+
+  it("prevents concurrent toggles and does not reload after the tab changes host", async () => {
+    let resolveUpdate!: (state: { supported: boolean; disabledHosts: string[] }) => void;
+    browserStub.setSiteBlocking.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveUpdate = resolve;
+    }));
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+
+    const shield = await screen.findByRole("button", {
+      name: "Disable ad and tracker blocking on github.com"
+    });
+    fireEvent.click(shield);
+    fireEvent.click(shield);
+    expect(browserStub.setSiteBlocking).toHaveBeenCalledTimes(1);
+
+    act(() => stateListener?.({
+      tabId: activeTabId(),
+      url: "https://example.com",
+      title: "Example",
+      loading: false
+    }));
+    await act(async () => {
+      resolveUpdate({ supported: true, disabledHosts: ["github.com"] });
+      await Promise.resolve();
+    });
+    expect(browserStub.reload).not.toHaveBeenCalled();
+  });
+
+  it("keeps blocking off for agent-owned tabs", async () => {
+    render(<BrowserPanel scopeId="session-a" url="https://github.com" onClose={() => undefined} />);
+    await screen.findByRole("button", { name: "Disable ad and tracker blocking on github.com" });
+    const userTab = activeTabId("session-a");
+    act(() => applyBrowserTabs([
+      {
+        tabId: userTab,
+        ownerSessionId: null,
+        url: "https://github.com",
+        title: null,
+        loading: false,
+        group: null
+      },
+      {
+        tabId: "agent-1",
+        ownerSessionId: "session-a",
+        url: "https://example.com",
+        title: "Example Domain",
+        loading: false,
+        group: null
+      }
+    ]));
+    fireEvent.click(screen.getByRole("button", { name: "Example Domain" }));
+
+    const shield = await screen.findByRole("button", { name: "Blocking off for agent testing" });
+    expect(shield).toBeDisabled();
+    expect(shield).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(shield);
+    expect(browserStub.setSiteBlocking).not.toHaveBeenCalled();
+  });
+
+  it("hides blocking controls when native blocking is unsupported", async () => {
+    browserStub.contentBlocking.mockResolvedValueOnce({ supported: false, disabledHosts: [] });
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+
+    await waitFor(() => expect(browserStub.contentBlocking).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("button", { name: /ad and tracker blocking/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps blocking off for local test sites", async () => {
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="http://app.localhost:3000" onClose={() => undefined} />);
+
+    const shield = await screen.findByRole("button", { name: "Blocking off for local testing" });
+    expect(shield).toBeDisabled();
+    expect(shield).toHaveAttribute("aria-pressed", "false");
+  });
+
   it("creates the first tab's webview for the requested URL", () => {
     render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     expect(browserStub.open).toHaveBeenCalledWith(
@@ -282,15 +437,16 @@ describe("BrowserPanel", () => {
     expect(browserStub.navigate).not.toHaveBeenCalled();
   });
 
-  it("goes on Enter while history suggestions are open", () => {
+  it("goes on Enter while history suggestions are open", async () => {
     render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     act(() =>
       stateListener?.({ tabId: activeTabId(), url: "https://github.com", title: "GitHub", loading: false })
     );
     // A background tab's visit still feeds the omnibox; the active tab stays on GitHub.
+    const backgroundTab = createBrowserTab(BROWSER_PAGE_OWNER_ID, "https://example.com", false);
     act(() =>
       stateListener?.({
-        tabId: "not-the-active-tab",
+        tabId: backgroundTab.id,
         url: "https://example.com",
         title: "Example",
         loading: false
@@ -300,7 +456,7 @@ describe("BrowserPanel", () => {
     const address = screen.getByRole("textbox", { name: "Address" });
     fireEvent.focus(address);
     fireEvent.change(address, { target: { value: "example.com" } });
-    expect(screen.getByRole("dialog", { name: "History suggestions" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "History suggestions" })).toBeInTheDocument();
 
     fireEvent.keyDown(address, { key: "Enter" });
     expect(browserStub.navigate).toHaveBeenCalledWith("https://example.com", activeTabId());
@@ -364,6 +520,19 @@ describe("BrowserPanel", () => {
     expect(screen.getByRole("textbox", { name: "Address" })).toHaveValue("https://github.com");
   });
 
+  it("hands the page keyboard focus when its own tab is clicked again", () => {
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    const tabId = activeTabId();
+    browserStub.focus.mockClear();
+    browserStub.setBounds.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "github.com" }));
+    // Clicking the tab that is already showing is a focus request, not a
+    // switch: the webview keeps the bounds it has.
+    expect(browserStub.focus).toHaveBeenCalledWith(tabId);
+    expect(browserStub.setBounds).not.toHaveBeenCalled();
+  });
+
   it("adds a tab, switches back, and closes down to the panel", () => {
     const onClose = vi.fn();
     render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={onClose} />);
@@ -381,6 +550,9 @@ describe("BrowserPanel", () => {
     expect(browserStub.setBounds).toHaveBeenCalledWith(
       expect.objectContaining({ tabId: secondTab, visible: false })
     );
+    // …and the page it switched to takes the keyboard, so ⌘F and the arrow
+    // keys are the page's rather than the app's.
+    expect(browserStub.focus).toHaveBeenCalledWith(firstTab);
 
     // Closing a tab destroys its webview; closing the last one closes the panel.
     fireEvent.click(screen.getByRole("button", { name: /Close tab.*google/i }));
@@ -452,7 +624,16 @@ describe("BrowserPanel", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("suggests visited pages while typing and navigates on pick", () => {
+  it("opens Chrome history import from the toolbar", async () => {
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Import from Chrome" }));
+
+    expect(await screen.findByRole("dialog", { name: "Import from Chrome" })).toBeInTheDocument();
+    expect(browserStub.chromeProfiles).toHaveBeenCalledOnce();
+  });
+
+  it("suggests visited pages while typing and navigates on pick", async () => {
     render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     act(() => stateListener?.({ tabId: activeTabId(), url: "https://github.com", title: "GitHub", loading: false }));
     act(() =>
@@ -463,12 +644,38 @@ describe("BrowserPanel", () => {
     fireEvent.focus(address);
     fireEvent.change(address, { target: { value: "git" } });
 
-    const popover = screen.getByRole("dialog", { name: "History suggestions" });
+    const popover = await screen.findByRole("dialog", { name: "History suggestions" });
     expect(popover).toHaveTextContent("GitHub");
     expect(popover).not.toHaveTextContent("Example Docs");
 
     fireEvent.click(screen.getByRole("button", { name: /GitHub/ }));
     expect(browserStub.navigate).toHaveBeenCalledWith("https://github.com", activeTabId());
+  });
+
+  it("records completed visits only for the strip this panel owns", async () => {
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    const foreignTab = createBrowserTab("another-browser-scope", "https://foreign.example.com");
+
+    act(() => stateListener?.({
+      tabId: foreignTab.id,
+      url: "https://foreign.example.com",
+      title: "Foreign page",
+      loading: false
+    }));
+    act(() => stateListener?.({
+      tabId: activeTabId(),
+      url: "https://owned.example.com",
+      title: "Owned page",
+      loading: false
+    }));
+
+    const address = screen.getByRole("textbox", { name: "Address" });
+    fireEvent.focus(address);
+    fireEvent.change(address, { target: { value: "foreign" } });
+    expect(screen.queryByRole("dialog", { name: "History suggestions" })).toBeNull();
+
+    fireEvent.change(address, { target: { value: "owned" } });
+    expect(await screen.findByRole("dialog", { name: "History suggestions" })).toHaveTextContent("Owned page");
   });
 
   it.each([["role", "dialog"], ["data-browser-overlay", "true"]])(
@@ -522,6 +729,83 @@ describe("BrowserPanel", () => {
       }));
     } finally {
       bounds.mockRestore();
+    }
+  });
+
+  it("coalesces a resize burst and skips unchanged native bounds", async () => {
+    vi.useFakeTimers();
+    const bounds = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue(new DOMRect(800, 60, 400, 350));
+    let resized: (() => void) | undefined;
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback: () => void) { resized = callback; }
+      observe(): void {}
+      disconnect(): void {}
+    });
+    try {
+      const { unmount } = render(
+        <BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />
+      );
+      await act(async () => { await Promise.resolve(); });
+      browserStub.setBounds.mockClear();
+      bounds.mockClear();
+
+      for (let index = 0; index < 100; index += 1) {
+        bounds.mockReturnValue(new DOMRect(800, 60, 500 + index, 350));
+        fireEvent.resize(window);
+        resized?.();
+      }
+      expect(browserStub.setBounds).not.toHaveBeenCalled();
+      expect(bounds).not.toHaveBeenCalled();
+      await act(async () => { vi.advanceTimersToNextFrame(); await Promise.resolve(); });
+      expect(browserStub.setBounds).toHaveBeenCalledExactlyOnceWith({
+        tabId: activeTabId(), visible: true,
+        bounds: { x: 800, y: 60, width: 599, height: 350 }
+      });
+      expect(bounds).toHaveBeenCalledTimes(1);
+
+      fireEvent.resize(window);
+      resized?.();
+      await act(async () => { vi.advanceTimersToNextFrame(); await Promise.resolve(); });
+      expect(browserStub.setBounds).toHaveBeenCalledTimes(1);
+
+      // A queued frame must not show the native view after its owner leaves.
+      fireEvent.resize(window);
+      unmount();
+      browserStub.setBounds.mockClear();
+      await act(async () => { vi.advanceTimersToNextFrame(); await Promise.resolve(); });
+      expect(browserStub.setBounds).not.toHaveBeenCalled();
+    } finally {
+      cleanup();
+      bounds.mockRestore();
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+
+  it("retries unchanged bounds after a failed native update", async () => {
+    vi.useFakeTimers();
+    const bounds = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue(new DOMRect(800, 60, 400, 350));
+    try {
+      render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+      await act(async () => { await Promise.resolve(); });
+      browserStub.setBounds.mockClear();
+      browserStub.setBounds.mockRejectedValueOnce(new Error("native view unavailable"));
+      bounds.mockReturnValue(new DOMRect(800, 60, 500, 350));
+      fireEvent.resize(window);
+      await act(async () => { vi.advanceTimersToNextFrame(); await Promise.resolve(); });
+      fireEvent.resize(window);
+      await act(async () => { vi.advanceTimersToNextFrame(); await Promise.resolve(); });
+      expect(browserStub.setBounds).toHaveBeenCalledTimes(2);
+      expect(browserStub.setBounds).toHaveBeenLastCalledWith({
+        tabId: activeTabId(), visible: true,
+        bounds: { x: 800, y: 60, width: 500, height: 350 }
+      });
+    } finally {
+      cleanup();
+      bounds.mockRestore();
+      vi.useRealTimers();
     }
   });
 
@@ -664,6 +948,100 @@ describe("BrowserPanel", () => {
 
     act(() => pageCommandListener?.({ tabId: firstTab, command: "focus-address" }));
     expect(screen.getByRole("textbox", { name: "Address" })).toHaveFocus();
+  });
+
+  it("opens find from the page's ⌘F and searches via evaluate", async () => {
+    vi.useFakeTimers();
+    try {
+      render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+      const tabId = activeTabId();
+      act(() => pageCommandListener?.({ tabId, command: "find" }));
+      const input = screen.getByRole("textbox", { name: "Find in page" });
+      expect(input).toHaveFocus();
+
+      fireEvent.change(input, { target: { value: "install" } });
+      // The debounced search runs on the active tab, with the query embedded.
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+      await act(async () => { await Promise.resolve(); });
+      const calls = browserStub.evaluate.mock.calls.filter(([call]) => call.tabId === tabId);
+      expect(calls.some(([call]) => call.script.includes('__argmaxFind.search("install")'))).toBe(true);
+      expect(screen.getByText("1/2")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("claims ⌘F from outside the panel, and yields it to an open dialog", () => {
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    // The app's own ⌘F palette listens in the bubble phase; the panel's
+    // capture-phase claim has to take the key off it.
+    const appSearch = vi.fn();
+    const appKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "f" && event.metaKey) appSearch();
+    };
+    document.addEventListener("keydown", appKeyDown);
+    try {
+      // Nothing inside the panel has focus — the case a fresh Browser page
+      // lands in, where the palette used to answer instead.
+      fireEvent.keyDown(document.body, { key: "f", metaKey: true });
+      expect(screen.getByRole("textbox", { name: "Find in page" })).toHaveFocus();
+      expect(appSearch).not.toHaveBeenCalled();
+
+      // Still claimed from the chrome itself.
+      fireEvent.keyDown(screen.getByRole("textbox", { name: "Find in page" }), { key: "Escape" });
+      fireEvent.keyDown(screen.getByRole("textbox", { name: "Address" }), { key: "f", metaKey: true });
+      expect(screen.getByRole("search", { name: "Find in page" })).toBeInTheDocument();
+      expect(appSearch).not.toHaveBeenCalled();
+
+      fireEvent.keyDown(screen.getByRole("textbox", { name: "Find in page" }), { key: "Escape" });
+      const dialog = document.createElement("div");
+      dialog.setAttribute("role", "dialog");
+      document.body.appendChild(dialog);
+      try {
+        fireEvent.keyDown(document.body, { key: "f", metaKey: true });
+        expect(screen.queryByRole("textbox", { name: "Find in page" })).not.toBeInTheDocument();
+        expect(appSearch).toHaveBeenCalledOnce();
+      } finally {
+        dialog.remove();
+      }
+    } finally {
+      document.removeEventListener("keydown", appKeyDown);
+    }
+  });
+
+  it("steps through matches with Enter and Escape closes the bar", async () => {
+    vi.useFakeTimers();
+    try {
+      render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+      const tabId = activeTabId();
+      act(() => pageCommandListener?.({ tabId, command: "find" }));
+      const input = screen.getByRole("textbox", { name: "Find in page" });
+      browserStub.evaluate.mockClear();
+
+      fireEvent.change(input, { target: { value: "install" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(
+        browserStub.evaluate.mock.calls.some(([call]) => call.tabId === tabId && call.script.includes('__argmaxFind.step(1, "install")'))
+      ).toBe(true);
+
+      fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(
+        browserStub.evaluate.mock.calls.some(([call]) => call.script.includes('__argmaxFind.step(-1, "install")'))
+      ).toBe(true);
+
+      browserStub.evaluate.mockClear();
+      fireEvent.keyDown(input, { key: "Escape" });
+      expect(screen.queryByRole("search", { name: "Find in page" })).not.toBeInTheDocument();
+      expect(
+        browserStub.evaluate.mock.calls.some(([call]) => call.script.includes("__argmaxFind.clear()"))
+      ).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("navigates history from the page's mouse thumb buttons", () => {

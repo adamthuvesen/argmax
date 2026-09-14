@@ -15,6 +15,7 @@ import { startedAgentName } from "../../test/agentRowName.js";
 describe("SessionConversation — cards", () => {
   afterEach(() => {
     vi.useRealTimers();
+    delete (window as { argmax?: unknown }).argmax;
     cleanup();
   });
   it("hides assistant text emitted AFTER an ExitPlanMode card so the plan isn't duplicated as a chat bubble", () => {
@@ -219,12 +220,43 @@ describe("SessionConversation — cards", () => {
     expect(screen.queryByLabelText("Chat prompt")).not.toBeInTheDocument();
 
     // Closing is not declining: the composer returns so the reader can answer
-    // in their own words.
+    // in their own words, and the question goes with the panel rather than
+    // landing in the scrollback as a second copy.
     fireEvent.click(screen.getByRole("button", { name: "Answer in your own words" }));
+    expect(screen.getByLabelText("Chat prompt")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Question from agent")).not.toBeInTheDocument();
+  });
+
+  it("drops the question from the transcript once it is answered", () => {
+    // The answer is the record. Leaving the card behind re-asked a question the
+    // reader had already settled, complete with a live Send button.
+    renderConversation(baseSession({ provider: "claude", state: "complete" }), [
+      event("u1", "user.message", "what should we do", "2026-05-12T15:00:00.000Z", {}),
+      event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
+        type: "tool_use",
+        id: "tu_q_answered",
+        name: "AskUserQuestion",
+        input: {
+          questions: [
+            {
+              question: "Pick a direction",
+              header: "Direction",
+              multiSelect: false,
+              options: [{ label: "Fix audit findings" }, { label: "General maintenance" }]
+            }
+          ]
+        }
+      }),
+      event("u2", "user.message", "Direction: Fix audit findings", "2026-05-12T15:00:05.000Z", {})
+    ]);
+
+    expect(screen.queryByLabelText("Question from agent")).not.toBeInTheDocument();
+    expect(screen.queryByText("Pick a direction")).not.toBeInTheDocument();
+    // …and the composer is the reader's again.
     expect(screen.getByLabelText("Chat prompt")).toBeInTheDocument();
   });
 
-  it("docks a question that arrives while the composer still holds focus from the last send, and stays inline for a typed draft", () => {
+  it("docks a question that arrives while the composer still holds focus from the last send, and stands down for a typed draft", () => {
     const questionEvents = [
       event("u1", "user.message", "what should we do", "2026-05-12T15:00:00.000Z", {}),
       event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
@@ -255,13 +287,247 @@ describe("SessionConversation — cards", () => {
 
     cleanup();
 
-    // A draft is the one thing the dock would cover, so that question stays
-    // in the transcript and the composer keeps the slot.
+    // A draft is the one thing the dock would cover, so the composer keeps
+    // the slot and the question is not drawn anywhere else.
     const typed = renderConversation(session, [questionEvents[0]]);
     fireEvent.change(screen.getByLabelText("Chat prompt"), { target: { value: "half a thought" } });
     rerenderConversation(typed.rerender, session, questionEvents);
-    expect(screen.getByLabelText("Question from agent")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Question from agent")).not.toBeInTheDocument();
+    expect(screen.queryByText("Pick a direction")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Chat prompt")).toBeInTheDocument();
+  });
+
+  it("answers a blocking Codex question in the same turn and restores a saved draft", async () => {
+    const resolveQuestion = vi.fn().mockResolvedValue({
+      sessionId: "session-a",
+      requestId: "request-1",
+      status: "answered"
+    });
+    window.argmax = { questions: { resolve: resolveQuestion } } as unknown as NonNullable<typeof window.argmax>;
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    const onTerminate = vi.fn().mockResolvedValue(undefined);
+    const session = baseSession({ provider: "codex", state: "waiting" });
+    const questionEvents = [
+      event("u1", "user.message", "ask me", "2026-05-12T15:00:00.000Z"),
+      event("question-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
+        id: "question-item-1",
+        type: "AskUserQuestion",
+        name: "AskUserQuestion",
+        status: "running",
+        input: {
+          delivery: "blocking",
+          requestId: "request-1",
+          questions: [{
+            id: "scope",
+            question: "Which scope?",
+            header: "Scope",
+            options: [{ label: "Focused", description: "Only this flow" }],
+            multiSelect: false,
+            isOther: true,
+            isSecret: false
+          }]
+        }
+      })
+    ];
+    const rendered = renderConversation(session, [questionEvents[0]], {
+      onSendSessionInput: onSend,
+      onTerminateSession: onTerminate
+    });
+    fireEvent.change(screen.getByLabelText("Chat prompt"), { target: { value: "keep this draft" } });
+
+    rerenderConversation(rendered.rerender, session, questionEvents, {
+      onSendSessionInput: onSend,
+      onTerminateSession: onTerminate
+    });
+    expect(screen.getByLabelText("Question from agent")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Chat prompt")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("option", { name: /Focused/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
+
+    await waitFor(() => expect(resolveQuestion).toHaveBeenCalledTimes(1));
+    expect(resolveQuestion).toHaveBeenCalledWith({
+      sessionId: "session-a",
+      requestId: "request-1",
+      answers: { scope: ["Focused"] }
+    });
+    expect(onTerminate).not.toHaveBeenCalled();
+    expect(onSend).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByLabelText("Chat prompt")).toHaveValue("keep this draft"));
+  });
+
+  it("masks a blocking Codex secret and returns it only in the native response", async () => {
+    const resolveQuestion = vi.fn().mockResolvedValue({
+      sessionId: "session-a",
+      requestId: "request-secret",
+      status: "answered"
+    });
+    window.argmax = { questions: { resolve: resolveQuestion } } as unknown as NonNullable<typeof window.argmax>;
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    renderConversation(
+      baseSession({ provider: "codex", state: "running" }),
+      [
+        event("u1", "user.message", "connect", "2026-05-12T15:00:00.000Z"),
+        event("question-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
+          id: "question-secret",
+          name: "AskUserQuestion",
+          status: "running",
+          input: {
+            delivery: "blocking",
+            requestId: "request-secret",
+            questions: [{
+              id: "token",
+              question: "Paste the token",
+              header: "Token",
+              options: [],
+              multiSelect: false,
+              isOther: false,
+              isSecret: true
+            }]
+          }
+        })
+      ],
+      { onSendSessionInput: onSend }
+    );
+
+    fireEvent.click(screen.getByRole("option", { name: "Other" }));
+    const secret = screen.getByLabelText("Your own answer");
+    expect(secret).toHaveAttribute("type", "password");
+    fireEvent.change(secret, { target: { value: "sk-secret" } });
+    fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
+
+    await waitFor(() => expect(resolveQuestion).toHaveBeenCalledWith({
+      sessionId: "session-a",
+      requestId: "request-secret",
+      answers: { token: ["user_note: sk-secret"] }
+    }));
+    expect(onSend).not.toHaveBeenCalled();
+    const storedValues = Array.from({ length: window.localStorage.length }, (_, index) =>
+      window.localStorage.getItem(window.localStorage.key(index) ?? "") ?? ""
+    ).join("\n");
+    expect(storedValues).not.toContain("sk-secret");
+  });
+
+  it("dismisses a blocking Codex question through its open request", async () => {
+    const resolveQuestion = vi.fn().mockResolvedValue({
+      sessionId: "session-a",
+      requestId: "request-dismiss",
+      status: "dismissed"
+    });
+    window.argmax = { questions: { resolve: resolveQuestion } } as unknown as NonNullable<typeof window.argmax>;
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    const onTerminate = vi.fn().mockResolvedValue(undefined);
+    renderConversation(
+      baseSession({ provider: "codex", state: "running" }),
+      [
+        event("u1", "user.message", "ask", "2026-05-12T15:00:00.000Z"),
+        event("question-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
+          id: "question-dismiss",
+          name: "AskUserQuestion",
+          status: "running",
+          input: {
+            delivery: "blocking",
+            requestId: "request-dismiss",
+            questions: [{
+              id: "scope",
+              question: "Which scope?",
+              header: "Scope",
+              options: [{ label: "Focused" }],
+              multiSelect: false,
+              isOther: false,
+              isSecret: false
+            }]
+          }
+        })
+      ],
+      {
+        onSendSessionInput: onSend,
+        onTerminateSession: onTerminate
+      }
+    );
+
+    expect(screen.queryByRole("option", { name: "Other" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss question" }));
+
+    await waitFor(() => expect(resolveQuestion).toHaveBeenCalledWith({
+      sessionId: "session-a",
+      requestId: "request-dismiss",
+      answers: {},
+      dismissed: true
+    }));
+    expect(onTerminate).not.toHaveBeenCalled();
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("takes an answer in the reader's own words through the Other row", () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(
+      <SessionConversation
+        events={[
+          event("u1", "user.message", "what should we do", "2026-05-12T15:00:00.000Z", {}),
+          event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
+            type: "tool_use",
+            id: "tu_q_other",
+            name: "AskUserQuestion",
+            input: {
+              questions: [
+                {
+                  question: "Pick a direction",
+                  header: "Direction",
+                  multiSelect: false,
+                  options: [{ label: "Fix audit findings" }, { label: "General maintenance" }]
+                },
+                {
+                  question: "Which files?",
+                  header: "Files",
+                  multiSelect: true,
+                  options: [{ label: "Renderer" }, { label: "Rust" }]
+                }
+              ]
+            }
+          })
+        ]}
+        isLogOpen={false}
+        onSendSessionInput={onSend}
+        onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onClearSession={vi.fn().mockResolvedValue(undefined)}
+        onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
+        pendingMessages={[]}
+        onToggleLog={vi.fn()}
+        project={project}
+        rawOutputs={[]}
+        review={reviewStub()}
+        session={baseSession({ provider: "claude", state: "complete" })}
+        workspace={workspace}
+      />
+    );
+
+    // Every question ends in an Other row, numbered after the listed options.
+    fireEvent.click(screen.getByRole("option", { name: "Other" }));
+    // Picking it does not advance: the pick is a promise to type, and the
+    // question is settled by the text, not the row.
+    expect(screen.getByText("Pick a direction")).toBeInTheDocument();
+    const line = screen.getByRole("textbox", { name: "Your own answer" });
+    expect(line).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Submit answer" })).toBeDisabled();
+
+    // Enter on an empty line goes nowhere; with text it settles the question.
+    fireEvent.keyDown(line, { key: "Enter" });
+    expect(screen.getByText("Pick a direction")).toBeInTheDocument();
+    fireEvent.change(line, { target: { value: "Ship the iOS review first" } });
+    fireEvent.keyDown(line, { key: "Enter" });
+    expect(screen.getByText("Which files?")).toBeInTheDocument();
+
+    // On a multi-select the typed answer joins the listed picks.
+    fireEvent.click(screen.getByRole("option", { name: /Renderer/ }));
+    fireEvent.click(screen.getByRole("option", { name: "Other" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Your own answer" }), {
+      target: { value: "the Swift bridge" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
+
+    const call = onSend.mock.calls[0] as [string, string, unknown, string] | undefined;
+    expect(call?.[1]).toBe("Direction: Ship the iOS review first\nFiles: Renderer, the Swift bridge");
   });
 
   it("pages through several questions instead of stacking them, and sends every answer at once", () => {
@@ -320,10 +586,10 @@ describe("SessionConversation — cards", () => {
     fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
 
     const call = onSend.mock.calls[0] as [string, string, unknown, string] | undefined;
-    expect(call?.[1]).toBe("**Direction**: Fix audit findings\n\n**Depth**: Just the blockers");
+    expect(call?.[1]).toBe("Direction: Fix audit findings\nDepth: Just the blockers");
   });
 
-  it("renders a failed AskUserQuestion tool call as a QuestionCard and submits the chosen answer", () => {
+  it("renders a failed AskUserQuestion tool call in the question dock and submits the chosen answer", () => {
     const onSend = vi.fn().mockResolvedValue(undefined);
     render(
       <SessionConversation
@@ -380,7 +646,7 @@ describe("SessionConversation — cards", () => {
 
     expect(onSend).toHaveBeenCalledTimes(1);
     const call = onSend.mock.calls[0] as [string, string, unknown, string] | undefined;
-    expect(call?.[1]).toContain("**Direction**: Fix audit findings");
+    expect(call?.[1]).toContain("Direction: Fix audit findings");
     expect(call?.[3]).toBe("plan");
   });
 
@@ -441,7 +707,7 @@ describe("SessionConversation — cards", () => {
         })
       }
     }
-  ])("renders AskUserQuestion as a QuestionCard for $provider payloads", ({ provider, toolMessage, payload }) => {
+  ])("renders AskUserQuestion in the question dock for $provider payloads", ({ provider, toolMessage, payload }) => {
     const onSend = vi.fn().mockResolvedValue(undefined);
     render(
       <SessionConversation
@@ -475,11 +741,59 @@ describe("SessionConversation — cards", () => {
 
     expect(onSend).toHaveBeenCalledTimes(1);
     const call = onSend.mock.calls[0] as [string, string, unknown, string] | undefined;
-    expect(call?.[1]).toContain("**Path**: Fast fix");
+    expect(call?.[1]).toContain("Path: Fast fix");
     expect(call?.[3]).toBe("plan");
   });
 
-  it("terminates the in-flight probe before sending the QuestionCard answer (no queue wait)", async () => {
+  it("shows one completed async Codex question and submits its answer", () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    const payload = {
+      type: "AskUserQuestion",
+      name: "AskUserQuestion",
+      id: "ask-1",
+      delivery: "async",
+      phase: "final_answer",
+      text: "Which surface?\n- iOS\n- Both",
+      input: { delivery: "async", questions: [{
+        question: "Which surface?",
+        header: "",
+        options: [{ label: "iOS" }, { label: "Both" }],
+        multiSelect: false
+      }] }
+    };
+    render(
+      <SessionConversation
+        events={[
+          event("u1", "user.message", "pick a surface", "2026-05-12T15:00:00.000Z"),
+          event("ask-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", payload),
+          event("ask-end", "command.completed", "AskUserQuestion", "2026-05-12T15:00:02.000Z", payload),
+          event("later", "message.completed", "I found the existing iPhone app.", "2026-05-12T15:00:03.000Z")
+        ]}
+        isLogOpen={false}
+        onSendSessionInput={onSend}
+        onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onClearSession={vi.fn().mockResolvedValue(undefined)}
+        onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
+        pendingMessages={[]}
+        onToggleLog={vi.fn()}
+        project={project}
+        rawOutputs={[]}
+        review={reviewStub()}
+        session={baseSession({ provider: "codex", state: "complete" })}
+        workspace={workspace}
+      />
+    );
+
+    expect(screen.getAllByLabelText("Question from agent")).toHaveLength(1);
+    expect(screen.getByText("I found the existing iPhone app.")).toBeInTheDocument();
+    expect(screen.queryByText("AskUserQuestion")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: /iOS/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(onSend.mock.calls[0]?.[1]).toBe("Which surface?: iOS");
+  });
+
+  it("terminates the in-flight probe before sending the question dock answer (no queue wait)", async () => {
     // While Haiku is still emitting fallback narration after a denied
     // AskUserQuestion, session.state === "running". A naive send would queue
     // the answer behind that narration. Instead we terminate first, then
@@ -890,7 +1204,7 @@ describe("SessionConversation — cards", () => {
     expect(screen.getByRole("button", { name: "Ran echo ok" })).toBeInTheDocument();
   });
 
-  it("still renders the QuestionCard when AskUserQuestion retries are adjacent", () => {
+  it("still docks the question when AskUserQuestion retries are adjacent", () => {
     render(
       <SessionConversation
         events={[
@@ -1014,6 +1328,27 @@ describe("SessionConversation — cards", () => {
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
   });
 
+
+  it("keeps Thinking visible while Codex works after an async question", () => {
+    vi.useFakeTimers();
+    renderConversation(
+      baseSession({ provider: "codex", state: "running" }),
+      [
+        event("u1", "user.message", "ask me", "2026-05-12T15:00:00.000Z"),
+        event("ask-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
+          id: "async-ask",
+          name: "AskUserQuestion",
+          delivery: "async",
+          input: { delivery: "async", questions: [{
+            question: "Which surface?", header: "", options: [{ label: "iOS" }]
+          }] }
+        })
+      ]
+    );
+    act(() => { vi.advanceTimersByTime(2000); });
+    expect(screen.getByLabelText("Question from agent")).toBeInTheDocument();
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+  });
 
   it("restores Thinking once the user submits and a new user.message arrives", () => {
     // After the user submits the card, a new user.message lands.

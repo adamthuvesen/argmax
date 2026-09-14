@@ -33,11 +33,14 @@ Namespace `argmax`; Claude, Codex, and Cursor show them as
 | `workspace_diff` | `session?`, `filePath?`, `comparison?`, `maxChars?` | Bounded changed-file list and diff text with `truncated` |
 | `learnings_add` | `kind`, `summary`, `project?` | The stored project learning |
 | `learnings_search` | `query?`, `project?`, `limit?` | Ranked project learnings with `truncated` |
+| `sources_list` | `offset?`, `limit?` | Registered source metadata with `nextOffset` and `truncated` |
+| `sources_read` | `id`, `maxChars?` | Live file or URL text, actual read location and title, read time, warning, and `truncated` |
+| `sources_add` | `title`, `location`, `guidance` | The registered source and whether it was newly added |
 | `terminal_spawn` | `session?`, `command?` | `{terminalId, sessionId, workspaceId, path, command?}` |
 | `terminal_read` | `terminalId?`, `session?`, `maxChars?` | A terminal tail, or the terminals known for a workspace |
 | `project_list` | — | Every registered project, including projects with no open session |
 | `schedule_followup` | `prompt`, `inSeconds?` or `at?`, `name?` | A one-shot scheduled wake for this session |
-| `schedule_list` | `project?` | `{projectId, schedules: [{scheduleId, name, prompt, enabled, cronExpr?, runOnceAt?, runTarget, sessionId?, nextRunAt?, lastRunAt?, lastError?}], truncated}` |
+| `schedule_list` | `project?` | `{projectId, schedules: [{scheduleId, name, prompt, enabled, cronExpr?, runOnceAt?, runTarget, createdBy, sessionId?, nextRunAt?, lastRunAt?, lastError?}], truncated}` |
 | `schedule_cancel` | `scheduleId`, `disable?` | `{scheduleId, name, deleted}` |
 | `schedule_resume` | `scheduleId` | `{scheduleId, name, nextRunAt?}` |
 
@@ -53,6 +56,19 @@ so a launcher can check one child without listing every session.
 `session_launch.reasoning` accepts `low`, `medium`, `high`, `xhigh`, `max`, or
 `ultra`. `permissionMode` accepts `auto-approve`, `ask-each-time`, or
 `provider-defaults`. Omitted values inherit from the caller.
+
+`project` accepts a repository Argmax has never opened. A name or id must
+already be registered, but an absolute path is taken at face value: the
+repository at it is added as a project — the same row the folder picker would
+create, named after the folder, with the same default settings — and the
+session launches there. So an agent told "start a chat in ~/dev/thing" does not
+first need the user to add that folder by hand. A path inside a registered
+project resolves to that project instead of adding it twice, and a path that is
+a *linked worktree* is refused with `PROJECT_IS_CHECKOUT`: a worktree is a
+checkout of a project, not a project, so the error names the project to pass as
+`project` with the worktree as `path`. A path that is not a git repository at
+all is refused with `PROJECT_NOT_GIT`. `session_move` resolves its `project` the
+same way.
 
 `session_launch` can target a checkout as well as a project. `path` is an
 existing working tree of the target project, any directory `git worktree list`
@@ -90,6 +106,37 @@ full-text index and records hits on returned rows. An empty query returns the
 project's most-used entries. Search results default to 10 rows and are capped
 at 40.
 
+### Project sources
+
+Project sources are durable references to repository-relative text files or
+HTTP(S) URLs. Their stored metadata includes a title and guidance about when an
+agent should consult them. Argmax stores no copy of the source contents.
+
+`sources_list` reads only the caller's project and reports availability, not
+use. It returns pages in newest-first order. Pages default to 20 entries, accept
+an offset and limit, and can stop earlier to remain inside the control
+protocol's byte budget. A truncated response includes `nextOffset`.
+
+`sources_read` accepts an id from that project. File sources are resolved
+through the workspace file service against the caller's current checkout, so
+an isolated workspace reads its own version of the file. URL sources open in
+the session's Argmax browser, wait for the page, and return rendered text with
+the final URL and page title. Text defaults to 24,576 characters and is capped
+at 40,960. Empty, binary, oversized, missing, and failed reads return errors
+and are not recorded as successful reads.
+
+Every successful read adds a durable `session.note` timeline event naming the
+source, time, actual operation, and whether the returned text was truncated.
+`sources_add` records the same kind of note only when it creates a new entry.
+Adding the same location again returns the existing entry with `added: false`.
+Listing sources does not write a read note.
+
+Source contents are untrusted context. A successful read note records the
+source, location, and retrieval time. It does not retain the returned contents
+or establish their version, correctness, or freshness. Current
+code and direct evidence take precedence. Registering a source does not make it
+authoritative and does not create project memory automatically.
+
 ### Persistent terminals
 
 `terminal_spawn` starts a PTY owned by Argmax, optionally typing a command into
@@ -105,22 +152,28 @@ defaults to 8,000 characters and is capped at 40,000.
 
 `project_list` includes registered projects with no open sessions. Each row
 includes its repo path, current and default branches, configured checks, active
-session count, and latest activity.
+session count, and latest activity. A repository missing from the list is still
+reachable: naming its absolute path as `project` adds it.
 
 `schedule_followup` creates an enabled, one-shot scheduled task whose target is
 the calling session. Give either a delay in seconds or an RFC 3339 timestamp.
 The scheduler runs every 30 seconds, so earlier times are raised to that floor.
 Follow-ups can be scheduled at most seven days ahead and appear in Scheduled
-Tasks, where the user can disable or delete them.
+Tasks, where the user can disable or delete them. The row is the alarm rather
+than a saved task: firing clears it, so a wake leaves nothing behind.
 
 `schedule_list` returns one project's scheduled tasks — the wakes chats set and
 the recurring routines the user wrote — capped at 50 rows with `truncated`, and
 each prompt capped at 500 characters. `sessionId` is the chat a same-chat task
 fires into: equal to the caller's own id, the row is a wake it set for itself.
+`createdBy` is `agent` for a wake and `user` for a task the person wrote or
+edited, which is what tells an agent which rows are its own to remove.
 
 `schedule_cancel` stops one from firing. It deletes by default and pauses with
 `disable`, which leaves the row in Scheduled Tasks with its prompt and schedule
-intact. `schedule_resume` switches a paused one back on and recomputes its next
+intact. A wake of the caller's own is meant to be deleted the moment it is
+pointless — the PR merged, CI went green — since pausing it only parks a row
+the user has to sweep by hand. `disable` is for the tasks they wrote. `schedule_resume` switches a paused one back on and recomputes its next
 run from now, so a recurring task picks up at its next occurrence rather than
 firing once for every run it slept through. Both are limited to tasks in the
 caller's own project; anything else is refused with `SCHEDULE_OTHER_PROJECT`.
@@ -167,7 +220,7 @@ may accept any cookie prompt without asking the user.
 | `browser_scroll` | `direction`, `amount?`, `ref?`, `tab?` | `{tabId, url, detail}` |
 | `browser_drag` | `ref`, `to_ref?` \| `delta_x`/`delta_y`, `start_x?`, `start_y?`, `end_x?`, `end_y?`, `steps?`, `tab?` | `{tabId, url, detail}` |
 | `browser_wait_for` | `text?`, `ref?`, `url_includes?`, `timeout_s?`, `tab?` | `{tabId, url, detail}` |
-| `browser_screenshot` | `tab?`, `ref?` | an image content block, plus `{width, height, bytes}` |
+| `browser_screenshot` | `tab?`, `ref?` | an image content block, plus `{width, height, bytes, dropped, path}` |
 | `browser_evaluate` | `expression`, `tab?` | `{tabId, result}` |
 | `browser_console` | `tab?`, `limit?`, `clear?` | Captured console calls, uncaught errors, and unhandled rejections |
 | `browser_network` | `tab?`, `limit?`, `clear?` | Captured fetch, XHR, and resource timing records |
@@ -255,8 +308,9 @@ This is page-level capture in WKWebView, not a debugger protocol attachment.
 Response bodies and request headers are unavailable. Resource timing rows may
 not include a status. Tabs the user opened are not instrumented.
 
-`project` takes a registered project's name or its absolute repo path, and
-defaults to the caller's own project. `path` and `branch` pick a checkout of
+`project` takes a registered project's name, or any repository's absolute path
+— an unregistered one is added on first use, as above — and defaults to the
+caller's own project. `path` and `branch` pick a checkout of
 that project as described above. `provider` and `model` default to the
 caller's own: an agent that names neither launches a peer of itself. A named
 model is passed to the CLI as-is and stands in as its own sidebar label — Rust
@@ -267,8 +321,8 @@ A move is scheduled rather than immediate: it runs once the calling turn
 settles, since the agent asking for it is mid-turn.
 
 `session_move` takes exactly one destination. `project` moves to another
-registered project; `path` moves to another checkout of the project the chat is
-already in. `path` is the reason an agent should never reach for `cd` when the
+project, registering the repository at that path if Argmax has never opened it;
+`path` moves to another checkout of the project the chat is already in. `path` is the reason an agent should never reach for `cd` when the
 work belongs in a different worktree: `cd` moves only that shell, so the
 workspace card, its diff, and its commit and pull-request actions keep targeting
 the checkout the session started in, and the next turn relaunches there — the
@@ -424,6 +478,14 @@ that carries a message carries its row id with it (`MessageOrigin.message_id`),
 and the row is closed the moment that turn actually starts: immediately for an
 idle recipient, at the drain for one that was mid-turn.
 
+Inbox reads and waits remove collected messages from the pending queue and
+publish the updated queue immediately. Startup recovery also discards queued
+copies whose inbox records already confirm delivery. Reading a result mid-turn
+therefore removes its composer row without waiting for the turn to finish.
+Enqueue also checks delivery while holding the database writer lock. If the
+recipient collected the inbox row while the sender waited for the checkout
+lock, the sender reports it delivered without creating a pending copy.
+
 That id is what makes both directions safe. The queue checks the row before it
 sends, so a message the recipient already collected through `inbox_read` is
 dropped instead of delivered a second time — and the drain goes on to the
@@ -523,8 +585,11 @@ seconds of slack so a wait that runs the full duration still gets its reply.
 
 Keep bounded delegation in the current chat. Use the provider's native
 subagents for research, review, or implementation whose result you will
-integrate into the current turn. The user-facing multitask flow is for work
-that should run alongside a chat.
+integrate into the current turn. A native subagent only lives as long as the
+turn that spawned it, so its result has to be collected before the answer: an
+answer that reports the work as still running ends the turn and discards it
+unread. The user-facing multitask flow is for work that should run alongside a
+chat.
 
 Use `session_launch` when either of these cases applies:
 
@@ -567,7 +632,7 @@ can still hand each session its own credential.
 |---|---|---|
 | Claude | `--mcp-config '<inline json>'` | no |
 | Codex | `-c mcp_servers.argmax.*` | no |
-| Cursor (composer, ACP) | `mcpServers` in `session/new` / `session/load` | no |
+| Cursor (composer, ACP) | user MCPs from one home-scoped Cursor login; Cursor-approved project servers and `argmax` in `session/new` / `session/load` | no |
 | OpenCode | `OPENCODE_CONFIG_CONTENT` (inline JSON, merged over the user's config) | no |
 | Cursor (other models, PTY) | `<workspace>/.cursor/mcp.json`, merged over the user's own | yes, restored at exit |
 | Grok Build | `<workspace>/.grok/config.toml` plus a folder-trust grant | yes, removed at exit |
@@ -679,6 +744,16 @@ session from its token, checks tab ownership, and calls
 JSON rather than inside it, so the base64 becomes an MCP image block without
 also landing in the text the model reads; the browser reply gets a 4 MB
 ceiling, an inbox or wait reply 512 KB, and every other action 64 KB.
+
+That image block reaches the model and stops there: no chat card draws it, and
+the remote bridge strips those bytes out of the transcript. So the bridge also
+writes the capture into the caller's attachment store and returns its `path`,
+and a trailing text block tells the agent that the user cannot see the image
+until the answer names that path in a Markdown image. `argmax-attachment://`
+serves that directory on the desktop, the bridge serves it over HTTP, and the
+phone fetches it through `BridgeClient`, so one path renders on all three. A
+capture whose store write fails still returns the image block, with the reason
+in `pathError`.
 
 Creating, navigating and destroying a webview are AppKit calls, so the handler
 hops them to the main thread with `run_on_main_thread`. Reads do not need it:

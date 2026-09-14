@@ -9,6 +9,7 @@ mod test_support;
 
 use std::path::{Path, PathBuf};
 
+pub(crate) use cursor::cursor_project_slug;
 use rusqlite::Connection;
 use serde_json::Value;
 
@@ -30,6 +31,7 @@ use crate::{
 use self::cache::{
     remember_imported_trace_files, with_trace_session_lock, TraceFileKey, TraceFileStamp,
 };
+pub(crate) use self::codex::codex_children_still_working;
 use self::codex::{codex_trace_events, CodexNativeRun};
 use self::cursor::{cursor_child_agent_ids, cursor_task_prompt, cursor_trace_events};
 use self::grok::{grok_child_ids, grok_trace_events};

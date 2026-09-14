@@ -817,7 +817,9 @@ mod tests {
         fs::create_dir_all(&directory).unwrap();
         let transcript = directory
             .join("rollout-2026-06-15T07-49-15-019ec9d3-b501-7370-8f2e-46d4d7a504c4.jsonl");
-        let fixture = include_str!("../../tests/fixtures/usage/codex-duplicate-token-count.jsonl");
+        let fixture_date = Utc::now().format("%Y-%m-%d").to_string();
+        let fixture = include_str!("../../tests/fixtures/usage/codex-duplicate-token-count.jsonl")
+            .replace("2026-06-15", &fixture_date);
         let lines: Vec<_> = fixture.lines().collect();
         fs::write(
             &transcript,

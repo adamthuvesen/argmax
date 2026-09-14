@@ -86,7 +86,7 @@ describe("chat verbosity preference", () => {
     },
     {
       verbosity: 3,
-      expected: { toolCallsDisplay: "collapsed", toolCallGroupsExpanded: false, thinkingDisplay: "inline" }
+      expected: { toolCallsDisplay: "collapsed", toolCallGroupsExpanded: false, thinkingDisplay: "preview" }
     },
     {
       verbosity: 4,

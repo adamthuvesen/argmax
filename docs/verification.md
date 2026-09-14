@@ -10,12 +10,16 @@ ladder as the definition of "verified".
 ```bash
 npm run doctor
 npm run verify -- --scenario chat-resume
+npm run verify -- --scenario queued-restart
 npm run verify -- --scenario persistent-subagent --native off
 npm run verify -- --scenario persistent-codex-subagent --native off
+npm run verify -- --scenario codex-user-input
 npm run verify -- --scenario persistent-opencode-subagent --native off
 npm run verify -- --scenario persistent-cursor-subagent --native off
 npm run verify -- --scenario cancellation
 npm run verify -- --scenario provider-error
+npm run verify -- --scenario session-move
+npm run verify -- --scenario staged-revert
 ```
 
 The scenario runner builds a verification binary and renderer from the current
@@ -24,10 +28,41 @@ backend with a scripted provider. Native UI verification is required by
 default. The fixture exercises the production launcher and normalizer without
 calling a paid provider. Other providers remain unavailable in this profile.
 
+`codex-user-input` checks a synchronous Codex question through the production
+app-server adapter, its visible question dock, and `questions:resolve`. The
+fixture completes only after receiving the expected structured answer on the
+original JSON-RPC request.
+
 `chat-resume` checks streaming and a follow-up turn. `cancellation` checks that
 a running provider can be stopped. `provider-error` checks that a provider
 failure becomes a failed session. These commands are local checks and are not
 part of CI or the pre-push gate.
+
+`queued-restart` holds a first turn mid-stream, queues a follow-up through the
+native composer, then restarts the app on the same isolated profile. It checks
+that the dashboard and SQLite each contain only that pending-message id and
+text, the persisted first-turn delta sequence stays unchanged, startup does
+not replay the follow-up, and the composer labels it paused or
+delivery-uncertain with one explicit Send action. Sending that recovered row
+must record and complete the follow-up exactly once, then leave the session's
+dashboard and SQLite pending-message queues empty.
+
+`staged-revert` launches the failed provider fixture to leave an idle native
+session, then creates one staged file and one file with unstaged edits in its
+disposable workspace. A backend-bridge subcase proves an obsolete diff
+revision fails with `REVIEW_STALE_REVISION` without changing the newer file
+bytes or index. The native Review action then reverts the fresh unstaged file,
+records its recovery checkpoint, refreshes the UI, and preserves the cached
+diff and index tree exactly.
+
+`session-move` creates a sibling worktree and has the Claude fixture call the
+production `argmax session move --path` CLI from an active turn. It checks the
+scheduled request, keeps the source workspace, carries the provider
+conversation as a fork, and completes the continuation in the sibling
+checkout. The native window must follow the move without another click and
+show the destination seam, branch, and response. Its evidence also records
+both checkout paths, provider invocations, timeline seams, and unchanged
+fixture files. This scenario requires native verification.
 
 `persistent-subagent --native off` checks the Claude native child identity,
 separate lifecycle runs for the initial launch and a `SendMessage` continuation,
@@ -78,6 +113,15 @@ do not include the driver. A verification request sent to an ordinary binary
 fails before app startup instead of falling back to installed providers.
 Before native interaction, the runner brings its isolated app window to the
 foreground and fails if that window remains hidden.
+Foreground activation timeouts are classified as
+`foreground-activation-timeout`. Their evidence includes the console lock
+state, activation request result, candidate activation and window state, and
+the frontmost process identity. A diagnostic probe failure remains explicit.
+
+Native `cancellation` waits beyond the ten-second early-stop window, checks
+that the session is still running, then clicks Stop. This verifies a retained
+cancelled session. The renderer tests separately cover early stop restoring
+the draft and archiving the workspace.
 
 Run `doctor` from the same host that will run verification. It reports the
 capabilities available to that process. OS permission checks it cannot prove

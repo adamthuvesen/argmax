@@ -1,10 +1,7 @@
 import type { ToolCall } from "./toolCalls.js";
-import { isAgentToolName } from "./toolCalls.js";
-import { multitaskRowStatus, type MultitaskChild } from "./multitask.js";
-import { activityTitle } from "./agentActivity.js";
-import { agentCodenameKey, codenameForTool } from "./agentNames.js";
-import { agentTabId } from "./agentTabs.js";
-import { emblemForCodename, emblemForKey, type Emblem } from "./agentEmblems.js";
+import type { MultitaskChild } from "./multitask.js";
+import type { Emblem } from "./agentEmblems.js";
+import { buildAgentRoster } from "./agentRoster.js";
 
 export type SubagentClusterStatus = "running" | "done" | "error";
 
@@ -45,52 +42,20 @@ export function buildSubagentCluster(
   codenames: Map<string, string>,
   multitasks: readonly MultitaskChild[] = []
 ): SubagentCluster | null {
-  const spawnsByIdentity = new Map<string, { first: ToolCall; latest: ToolCall }>();
-  for (const tool of tools) {
-    if (!isAgentToolName(tool.name)) continue;
-    const identityKey = agentCodenameKey(tool);
-    const existing = spawnsByIdentity.get(identityKey);
-    if (existing) existing.latest = tool;
-    else spawnsByIdentity.set(identityKey, { first: tool, latest: tool });
-  }
-  const spawns = [...spawnsByIdentity.entries()];
-  if (spawns.length === 0 && multitasks.length === 0) return null;
-  const entries: SubagentClusterEntry[] = [
-    ...spawns.map(([, { first, latest }]) => {
-      const codename = codenameForTool(first, codenames) ?? "Agent";
-      const emblem = emblemForCodename(codename);
-      return {
-        toolUseId: agentTabId(first),
-        codename,
-        title: activityTitle(first, first.toolUseId),
-        status: latest.status,
-        // The ring wears the emblem's hue, not a second hash: a teal mark on a
-        // red chip would read as two identities for one agent.
-        iconColor: emblem.hue,
-        emblem,
-        multitask: false
-      };
-    }),
-    ...multitasks.map((child) => {
-      // Hashed off the session id, not the task label: a chat that gets renamed
-      // keeps the mark the user has already learned to recognise.
-      const emblem = emblemForKey(child.session.id);
-      return {
-        toolUseId: child.session.id,
-        codename: child.workspace?.taskLabel ?? "Multitask",
-        title: child.workspace?.taskLabel ?? "Multitask",
-        status: multitaskRowStatus(child.session.state),
-        // Same rule the subagents follow: the ring wears the emblem's hue
-        // rather than a second hash of its own.
-        iconColor: emblem.hue,
-        emblem,
-        multitask: true
-      };
-    })
-  ];
+  const roster = buildAgentRoster(tools, codenames, multitasks);
+  if (roster.entries.length === 0) return null;
+  const entries: SubagentClusterEntry[] = roster.entries.map((entry) => ({
+    toolUseId: entry.multitask ? entry.multitask.session.id : entry.id,
+    codename: entry.codename,
+    title: entry.title,
+    status: entry.status,
+    iconColor: entry.emblem.hue,
+    emblem: entry.emblem,
+    multitask: entry.multitask !== null
+  }));
   return {
     entries,
-    running: entries.filter((entry) => entry.status === "running").length,
+    running: roster.running,
     hasMultitask: entries.some((entry) => entry.multitask)
   };
 }

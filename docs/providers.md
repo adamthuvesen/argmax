@@ -62,11 +62,37 @@ Spawned sessions run in the workspace worktree. Project-scoped `.mcp.json` or `.
 
 Argmax adds one server of its own per launch — `argmax`, the agent tools — through each provider's per-launch mechanism, without disturbing the user's configured servers. For Cursor's one-shot path and for Grok that mechanism is a config file written into the workspace and put back when the child exits; a `.cursor/mcp.json` the user keeps is merged, never replaced ([agent-tools.md](agent-tools.md)).
 
+Codex sessions also receive ChatGPT's app-managed `cua_repl` server when the
+`computer-use@openai-bundled` plugin is enabled and its
+`unified-computer-use` runtime is present in the Codex plugin cache. This makes
+the Computer Use tools available in Argmax without replacing the user's Codex
+MCP configuration. ChatGPT installs and updates that runtime, so Argmax leaves
+Codex unchanged when the plugin is disabled or the runtime is unavailable.
+
 Customize → Integrations → Connections calls `connections:list` for a provider. `/mcp` opens the same inventory for the selected or active provider. The inventory includes MCP servers, installed plugins, and provider connectors when the provider reports them. Claude and OpenCode health-check their servers, so Argmax can show **Connected** or **Needs login**. Other providers often expose configuration without token validity, which Argmax shows as **Unknown**. A local stdio server is **Available** because it does not use a separate MCP OAuth login.
 
 Authentication stays with the provider. A connection row can copy the provider's login command or settings route when one exists. Argmax does not read, store, or broker provider OAuth tokens.
 
 *Codex connectors note:* `codex exec` runs without ChatGPT desktop app connectors (Notion, Linear, Google Drive). Use direct remote MCP URLs via `codex mcp add --url <url>` instead.
+
+### Optional Engram setup
+
+Settings → Integrations → Engram guides users through connecting an existing
+[Engram installation](https://github.com/adamthuvesen/engram#run-it). Enter its
+absolute installation path and choose a provider to generate a native MCP
+command or configuration snippet. Run the command in a terminal, or merge the
+snippet into the provider's existing configuration. Refresh Connections and
+start a new chat with that provider to use its memory tools.
+
+Engram is optional and separately installed. Argmax does not install it, store
+its credentials, or write provider configuration through this guide. The setup
+uses user-scoped connections, so it applies to the provider outside Argmax too.
+Remove or disable the connection through the provider's own MCP settings.
+
+Agents retrieve Engram memories through tool calls. Connecting it does not
+automatically inject memories into every chat. Use project-scoped recall and
+verify changeable claims against current code or sources. Argmax's built-in
+project learnings remain separate (see [memory.md](memory.md)).
 
 ## Session Lifecycle and Follow-ups
 
@@ -93,6 +119,20 @@ text leaves commands such as `/review` unacknowledged and discards their final
 A follow-up that never reached stdin — the turn closed first, or Claude had not
 taken up the turn's first message yet (`STEER_NOT_READY`) — is unsent, not
 uncertain.
+
+**Codex's `turn/steer` ack is not one during a compaction.** Codex decides
+whether to rewrite its context *before* it ingests the turn's own input: the
+thread emits a `context_compaction` item, nothing else for as long as it runs
+(two minutes on a large thread), and only then the `userMessage` item that
+proves the prompt arrived. A steer inside that window is acknowledged and
+dropped — the text appears nowhere in the thread's rollout — so
+[codex_app_server.rs](../src-tauri/src/providers/codex_app_server.rs) refuses it
+with `STEER_CONTEXT_COMPACTION` and the row stays queued. The same window
+swallows a whole turn: a Stop before the `userMessage` item leaves a chat
+showing a message the model never read, so `ProviderRuntimeHandle::input_delivered`
+reports it and the session service writes a `session.note`
+(`turn.input-undelivered`) after the cancellation row. Every other transport
+writes the prompt on the way in and reports delivered.
 
 Steering inherits the running turn's settings. A queued change to model, reasoning
 effort, or agent mode must wait for another turn. Accepted guidance is persisted
@@ -140,29 +180,42 @@ projection throws away.
 
 ### Questions the agent asks the user
 
-The question card is documented in [chat-cards.md](chat-cards.md). Two of the
-five providers reach it, and the two that do not are both blocked provider-side:
+The question card is documented in [chat-cards.md](chat-cards.md). Claude,
+Cursor, and Codex's async questions reach it.
 
-**Codex asks through `request_user_input`, and Argmax does not enable it.** The
-tool is off unless the launch passes
-`-c tools.experimental_request_user_input.enabled=true`, so today the model is
-told it does not exist and writes the question as prose instead. Turning it on
-is not enough on its own: the question arrives as an app-server *server
-request*, `item/tool/requestUserInput`, not as a tool call, and
-`server_request_response` in
-[codex_app_server.rs](../src-tauri/src/providers/codex_app_server.rs)
-allow-lists only the three approval methods and answers anything else with
-`-32601`. Codex then follows its own instruction to continue with best
-judgment. Unlike Claude's card — which is answered by terminating the turn and
-sending a new message — Codex parks the turn on `waitingOnUserInput` and waits
-for the answer to be written back onto the open request, so the same turn
-resumes; a probe that held the response for 45 seconds got a turn that waited
-and then used the late answer. Wiring it up therefore needs a broker like
-`ApprovalService`, not the `sendAfterTerminate` path. Left unbuilt on purpose:
-the flag is marked experimental, as are the protocol types. An unrecognised
-`tools.*` key is ignored silently, so a future rename degrades back to prose
-rather than failing the turn; a *type* change on a known key does fail config
-parse outright.
+**Codex's `request_user_input_async` reaches the question dock.** Codex 0.154.0
+delivers it as an `agent_message` item with `delivery: "async"` and structured
+`questions`. The normalizer converts titles and string options to the existing
+`AskUserQuestion` card format. Start and completion keep the same item ID, so
+the immediate tool acknowledgement leaves one answerable card. The answer uses
+the existing next-user-message flow. Question shapes outside the card's one to
+four options remain visible as prose.
+
+**Native `request_user_input` follows Codex's delivery mode.** The app-server
+launch enables `tools.experimental_request_user_input.enabled=true`.
+`item/tool/requestUserInput` is a server request with an `isBlocking` flag.
+Plan-mode requests block. Argmax keeps their JSON-RPC response open and
+publishes a question card with the request and question IDs. Desktop and iPhone
+submit structured answers through `questions:resolve`, which resumes the same
+turn. Dismissing sends an empty answer map.
+
+Default-mode requests are nonblocking. Argmax publishes them as async question
+cards and immediately returns an empty answer map, so Codex can keep working.
+Answering one uses the next-user-message flow shared with
+`request_user_input_async`.
+
+Pending blocking cards are stored in the timeline and return after a UI
+reconnect. Answered, dismissed, and cancelled requests settle the card, and
+duplicate or stale answers fail. Answer values are not persisted in the
+question events, including answers to secret questions. The launch flag and
+protocol remain experimental, so verify their schema when upgrading Codex.
+
+**MCP elicitations are declined until Argmax has a general form surface.** An
+app or MCP server can send `mcpServer/elicitation/request` for structured input
+or a URL flow such as connector reauthentication. Argmax returns the protocol's
+`decline` response instead of a method-not-found error. The associated tool
+result remains visible with its actionable failure, while the redundant
+app-server diagnostic is suppressed in current and historical transcripts.
 
 **Grok's `ask_user_question` is not exposed over ACP.** The binary carries the
 tool and documents it, and `features.ask_user_question` defaults to true, but
@@ -229,7 +282,7 @@ Chat launches run over Agent Client Protocol (ACP) against a pooled `cursor-agen
 - **A tool row waits for the update that names it.** Cursor opens *every* tool call nameless — `{"title":"Edit File","kind":"edit","rawInput":{}}` — and fills in `rawInput` and `locations` one `tool_call_update` later. Drawing the row from the opening line froze those empty arguments onto the transcript, which is why an edit read as "Edited file" with no path, no diff, and no place in the changed-files card. A bare `status: in_progress` still draws nothing, since it says nothing about what the tool is; a completion draws the row regardless, because after it nothing more is coming.
 - **A write's diff is computed from the pair Cursor sends.** ACP reports a completed write as `content: [{type:"diff", path, oldText, newText}]`, and both sides are the file's *whole* text. A one-line change to a 60-line file arrives as 60 lines each way. `unified_diff` in [unified_diff.rs](../src-tauri/src/providers/unified_diff.rs) reduces the pair to hunks with git's own three lines of context, and the result rides the tool's arguments as `unified_diff`, where the chat's file-change card reads it. Passing the pair through instead would have reported every line of the file as rewritten, `+60 −60` included. Two of Cursor's own markers are decoded on the way: a create arrives as unified-diff header lines with one marker character eaten (`oldText` is the literal `-- /dev/null`, `newText` opens with `++ b/<path>`), and a delete reports the removed path as its own `oldText` with an empty `newText`. These rows also carry an explicit create or delete operation, so an empty-file create and a contentless delete still reach the changed-files card. A diff past 128 KiB is a rewrite and is dropped, leaving the path without a stat.
 - **Permissions:** Provider defaults preserves native permission rules. Full access launches a separate forced ACP pool and allows requests. Ask for approval forwards native requests to the chat, but Cursor actions already allowed by its rules may still run without prompting. A request whose options carry more than one `allow_once` is Cursor's question tool rather than a permission, and is declined instead of shown — see [approvals-checks.md](approvals-checks.md). Pools are isolated by permission mode.
-- **Agent tools:** The `argmax` MCP server rides in `session/new` and `session/load` as an `mcpServers` entry, so the warm shared process still hands each session its own credential ([agent-tools.md](agent-tools.md)).
+- **MCP servers:** Cursor stores user-MCP OAuth grants against the ACP process's launch directory rather than `session/new.cwd`. Argmax therefore starts every Cursor ACP process from the user's home directory, giving all Argmax Cursor chats one Cursor-owned authentication scope; authenticate a user MCP once with `cd ~ && cursor-agent mcp login <name>`. The session still works in its checkout. Argmax passes Cursor-approved entries from the checkout's `.cursor/mcp.json` through `session/new` / `session/load` beside its per-session `argmax` server, and starts project stdio servers in that checkout so relative paths retain their meaning. Approve a project server with `cursor-agent mcp enable <name>` from the checkout, and authenticate a project-only remote server there too. Unapproved project servers remain unavailable, matching Cursor's trust gate. If a project server uses configuration ACP cannot represent exactly, Argmax keeps Cursor's native per-checkout launch and logs that the separate checkout login is still required rather than silently dropping fields. The pool fingerprints global and project config, project approvals, and the names holding grants in the active scope, so configuration, approval, or completed login reaches the next chat while token refresh alone does not churn a warm process.
 - **Cancellation & cleanup:** `terminate` cancels in-flight prompts. Workspace pool entries are evicted when isolated workspaces archive or are removed. The server runs in its own process group and teardown signals the group, so the MCP servers it started die with it.
 
 ## OpenCode
@@ -256,19 +309,27 @@ Grok Build chats use a pooled `grok agent stdio` ACP process, isolated by worksp
 ## Subagent Activity
 
 Subagent tool calls (`Task`, `spawn_agent`, `task`) open an activity pane:
-- **Claude:** Emits child events directly in the stdout stream with `parent_tool_use_id`. Tool calls are forwarded by default; a subagent's text and thinking blocks arrive only with `--forward-subagent-text` (Claude Code 2.1.258+), which the adapter passes on launch and resume, so a subagent that only writes still streams into the pane. Native Claude child identity is scoped by both the parent native conversation and child session id. A later `SendMessage` continuation is a separate run in the same dock, with lifecycle `task_started` and `task_notification` events kept separate from the delivery message. Claude also emits those lifecycle subtypes for background Bash jobs, so Argmax ignores starts explicitly typed as non-agent tasks and remembers their ids to reject the untyped notifications. Print mode runs with `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0`. This removes Claude's ten-minute wait ceiling for background children, while the user's Stop action still terminates the provider process and its process group. On the stream-json control channel stdin stays open for steering, so the CLI never winds down by itself; Argmax ends the turn at the first `result` unless a `task_started` with `is_backgrounded: true` is still without its `task_notification`, in which case the answer is a checkpoint and the turn holds until the CLI has delivered every completion and answered again.
-- **Codex:** Reads child JSONL traces from `~/.codex/sessions/YYYY/MM/DD` or `~/.codex/archived_sessions`. A child `session_meta.parent_thread_id` can recover a launch omitted from structured stdout.
+- **Claude:** Emits child events directly in the stdout stream with `parent_tool_use_id`. Tool calls are forwarded by default; a subagent's text and thinking blocks arrive only with `--forward-subagent-text` (Claude Code 2.1.258+), which the adapter passes on launch and resume, so a subagent that only writes still streams into the pane. Native Claude child identity is scoped by both the parent native conversation and child session id. A later `SendMessage` continuation is a separate run in the same dock, with lifecycle `task_started` and `task_notification` events kept separate from the delivery message. Claude also emits those lifecycle subtypes for background Bash jobs, so Argmax ignores starts explicitly typed as non-agent tasks and remembers their ids to reject the untyped notifications. Claude launch and resume arguments set [`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`](https://code.claude.com/docs/en/env-vars) in the existing inline `--settings` JSON, which overrides user and project settings for this key. Native subagents return their findings through foreground tool results before the parent can finish. This also disables native background Bash and automatic backgrounding. Use Argmax's `terminal_spawn` tool for commands that need to outlive the provider turn (see [terminal.md](terminal.md)). Claude 2.1.269 can emit a child's `task_notification` before an already-running parent answer ends, while the findings are still queued. Its `queued_turn_count` excludes those notifications, and the stream does not consistently expose their delivery to the parent. Keeping tools foreground avoids that premature-completion race while preserving stdin for steering and permission responses. The regression fixture checks the launch setting and child-result ordering. A live 2.1.269 check confirmed that the parent receives the foreground child's answer before its final `result`.
+- **Codex:** Reads child JSONL traces from `~/.codex/sessions/YYYY/MM/DD` or `~/.codex/archived_sessions`. A child `session_meta.parent_thread_id` can recover a launch omitted from structured stdout. A successful `close_agent` settles the child's active run even when its receipt still reports the last-known `running` state. That stale snapshot must not hold the parent's completion open. Trace imports also recognize `turn_aborted` as a cancelled child run.
 - **Cursor:** Reads transcripts from `~/.cursor/projects/*/agent-transcripts/<agentId>/`. Cursor ACP supports persistent native task references. The `composer-2.5` model remains explicitly excluded from native reference forwarding. Cursor's task result carries the authoritative child `agentId`; initial task arguments can contain a different id. A backgrounded `task` is answered instead with a dispatch receipt — `result: { durationMs, isBackground: true }`, no `success`, no `agentId` — about a hundred milliseconds after the launch, and that call never completes again. The launch row therefore stays Running independently of the parent turn while the session pane polls the matching child transcript. Its authoritative `{"type":"turn_ended","status":"success"}` marker produces `agent.completed`, so the row settles when the child actually finishes whether that happens before or after the parent.
-- **OpenCode:** Emits the `task` launch through structured stdout. Argmax has no separate OpenCode child-trace source.
+- **OpenCode:** Emits the `task` launch through structured stdout. The server transport forwards a task's running state alongside its terminal state, so the launch opens its `command.started` and `agent.started` rows (with the child session id in `state.metadata`) while the subagent works, and the terminal envelope closes the rows that launch opened rather than opening a second one. Argmax has no separate OpenCode child-trace source.
 - **Grok:** Does not stream child events on the parent PTY. `spawn_subagent` returns a launch receipt (`Subagent started in background` wrapped as `{"type":"Text","text":"..."}`); the child writes its own session under `~/.grok/sessions/<percent-encoded cwd>/<child-id>/chat_history.jsonl` (or under `$GROK_HOME` when set; Argmax resolves both the trust store and the session store through the same `grok_home`), linked from the parent's `subagents/<id>/meta.json`. Argmax imports that transcript on demand the same way it imports Codex and Cursor traces. The receipt is launch metadata, not the agent's answer.
 
 `session:agent-events` fetches and parses trace files on demand. Parsed rows are saved with deterministic IDs (`trace:<provider>:<sessionId>:<parentToolUseId>:<childId>:<seq>:<kind>`) and hidden from the main chat view.
 
 Trace recovery requires authoritative lineage. Argmax does not attach a transcript to a parent by time or repository alone. Claude and OpenCode stay stream-native. Cursor uses its streamed launch plus an agent ID or the existing prompt match. Codex may synthesize a launch from the child trace because the trace names its parent conversation directly. If the real Codex launch arrives later, reconciliation keeps the real row, reparents the imported child rows, and emits hidden tombstones that remove the synthetic row from open chats.
 
+Codex synthetic launches follow the latest turn in the child trace. Forked
+history can include completed parent turns, so `task_started` clears any earlier
+completion. Reconciliation removes a saved completion when the latest turn is
+running and replaces outdated results when that turn finishes. The deletion
+travels through the session mutation feed so open chats correct their status.
+
 Lineage alone is not enough for Codex, because Codex runs review threads of its own: the guardian that judges a pending action before it runs, and the reviewer behind `/review`. Both are child rollouts naming the parent thread, and neither is a subagent — nobody spawned them and they carry no task. Reconciliation reads them from the rollout header (`thread_source: "guardian_review"`, or a `source.subagent` of `guardian`/`review`) and skips them, and deletes any placeholder launch an earlier sweep invented for one.
 
-Initial session backfill and open agent panes run reconciliation off the main thread. Live agent-control events queue one serialized scan per session. A terminal provider event waits for the final serialized scan and includes its new launch or tombstone rows in the same dashboard delta, so completion cannot stop the renderer poll before recovery arrives.
+A Codex turn ends when its root `turn/completed` arrives and nothing it spawned is still working. The app-server declares children through a collab tool call's `receiverThreadIds` and `agentsStates`, and a turn holds for those. It can also send none of that — Codex 0.154.0 delivered no `spawnAgent` item at all and every `wait` row with both fields empty — and ending the turn kills the app-server process group and each child thread inside it. A turn that has answered therefore also asks the rollouts on disk, every two seconds, whether a child of its thread is still writing: a rollout that names this thread as its parent, carries a `thread_source: "subagent"` spawn (a fork or a guardian review names a parent too, and neither is work anyone is waiting on), has no `task_complete` or `turn_aborted` in its last records, and has been touched in the last two minutes. The silence window is what stops a killed or wedged child from holding the session forever.
+
+Initial session backfill and open agent panes run reconciliation off the main thread. Live agent-control events queue one serialized scan per session. Active Codex invocations also request a scan every two seconds, because the provider can omit both spawn and wait events while its children work. The watcher stops when its invocation is replaced or its handle ends or is removed. Unchanged trace files stay cached. Background scans and agent-pane reads publish a session-change hint after writing or deleting rows, so recovery reaches an open chat even when the parent is silent. A terminal provider event waits for the final serialized scan and includes its new launch or tombstone rows in the same dashboard delta.
 
 ## Measured File-Change Diffs
 
@@ -287,6 +348,92 @@ The provider stream can't be made to supply it either. Timed against a real run,
 - Blobs and trees land in the repo's object database unreferenced, which `git gc` collects.
 
 ## Tool Event Identity
+
+Tool events carry optional versioned `payload.activity` metadata from
+`providers/tool_activity.rs`. The same Rust classifier enriches historical
+timeline reads without rewriting SQLite. Desktop and iPhone consume its kind,
+targets, evidence source, and optional file operation or discovered-tool count.
+Native fields and exact known tool identities take precedence over narrowly
+recognized commands. Codex `command_actions` (or `commandActions`) supplies
+read, search, and file-listing identity when every action is recognized.
+Targets come from each action's command operands when available, since native
+search paths can be shortened display names. Unknown actions fall back to
+command parsing. Literal `sh`, `bash`, and `zsh` wrappers with `-c` or `-lc`
+are parsed as their command body, including argv-form commands.
+Safe sequences of reads, searches, and listings also
+qualify, including `cat file | head` and `sed -n 1,40p file; grep pattern file`.
+The first read or search determines a mixed read-only row's identity. Recognized
+in-place substitutions with `sed -i` or `perl -pi -e` use edit activity, even
+when followed by read-only checks.
+`tail`, including live log following with `tail -f`, uses read activity.
+`mv`, `cp`, `rm`, and `touch` with literal operands use edit activity and carry
+the move, create, or delete operation; a glob or brace list is what the shell
+decides, not what we saw, so those stay command activity. `echo`, `printf`, and
+`mkdir` produce no activity of their own and do not void the stages around
+them, since printing a separator between reads is how a compound read is
+written.
+Explicit `cat > file` and `cat >> file` writes with quoted heredoc delimiters
+use edit activity, including when followed by build checks. A `python3 - <<'PY'`
+body is a program, not data, and an agent editing through a shell writes one:
+a body calling a write reports the paths that are literal at the call or in the
+latest assignment above it, and an edit whose path is computed reports no
+target rather than a guessed one. Every other heredoc body stays opaque —
+another interpreter, a script argument, an unquoted delimiter — so embedded
+examples cannot invent edits. Other unknown programs, script execution,
+substitutions, and redirects stay command activity.
+A stage that cannot be read ends the scan instead of voiding it: it voids a
+read-only claim, because it may have changed the same files, but an edit
+already seen still happened, so `sed -i '' … && xcodegen && xcodebuild` is an
+edit while `test -s file && rm file` is a command.
+Unsupported shell syntax also falls back to command activity, including
+descriptor duplication on a heredoc write and quoted tilde targets.
+A file path alone does not establish an edit or image view,
+and workspace diffs do not attribute opaque commands in a shared checkout.
+`git <subcommand>` sequences use git activity with the subcommands as targets
+(`Ran git diff`), ranked with reads and searches, so an in-place edit in the
+same sequence still wins.
+An exit code of 1 from a single recognized search means no matches, including
+wrapped searches. Compound commands and explicit failures retain their failure
+outcome because later steps may not have run.
+
+Beyond files and shell, five identities cover what used to be the generic
+"Used a tool" row: subagent coordination (`agent-message`, `agent-wait`,
+`agent-stop`, from Codex `send_message`/`wait_agent`/`close_agent`, Claude
+`SendMessage`/`TaskStop`, and the Argmax `session_*` tools under any namespace
+shape), memory (`memory-recall`, `memory-save`, from engram under
+`mcp__engram__`, `engram_` or bare Codex names, plus Argmax `learnings_*`),
+the Argmax browser (`browser`, which keeps its identity when a screenshot
+result arrives), and the agent's own plan (`plan`, from `TodoWrite`,
+`todo_write`, `updateTodos` and plan-mode switches). Namespaced MCP tools
+outside those servers stay generic: a Linear `create` is not a file write and a
+memory server's `read` is not a file read. Historical rows classified `tool`
+are refreshed on read like `image` and `command` rows, so old transcripts pick
+up the new identities without a migration.
+Grok's `use_tool` wrapper exposes the invoked tool's name and input to both
+clients, preserving the original wrapper in `toolWrapper` so integration
+artwork and call details survive discovery.
+Computer activity recognizes Codex's `cua_repl` server. Bare `js` and the
+`node_repl` server remain generic tools. Argmax browser calls retain their
+mascot and integration identity. A screenshot result does not replace a known
+computer interaction or Argmax browser call with an image-view activity.
+Image detection inspects returned content blocks, excluding server icons and
+structured domain data. Historical v1 image and generic command classifications
+are refreshed on read so recognition fixes reach old events without rewriting SQLite.
+
+The clients pair starts with results before describing success. An unpaired
+start that settles when a session stops remains unconfirmed. Failure and
+cancellation status survive provider transport translation. Raw input, output,
+and existing diff evidence remain available behind the activity disclosure.
+
+For a bounded, read-only coverage report against real history:
+
+```bash
+cargo run --manifest-path src-tauri/Cargo.toml --bin audit-tool-activity -- /path/to/argmax.sqlite 1000
+```
+
+The sample limit is per provider. Counts describe recorded tool starts, not
+unique operations or successful file accesses. The report includes generic
+fallback names and never prints command arguments or result bodies.
 
 Provider tool IDs are local to a provider invocation and may repeat in a long session. The renderer pairs `command.started` and `command.completed` by the provider-native ID scoped with `payload.providerInvocationId`:
 - Claude: `id` on `tool_use`, then `tool_use_id` on `tool_result`.

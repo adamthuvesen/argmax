@@ -1,9 +1,8 @@
-/* Composer chip grouping — model picker, agent mode, and workspace context
-   are three separate concepts. Sibling chip groups are set apart by a wider
-   gap alone, so the user reads "who" (model), "how" (mode), "where" (context)
-   instead of one undifferentiated row of pills. The hairline that used to draw
-   the seam went out with the control shelf: the shelf's own top border already
-   frames the row, and a rule inside a framed strip reads as clutter. */
+/* Composer chip grouping. A group is a layout wrapper, not a visual one: model,
+   mode, and workspace context used to be set apart by a wider gap between
+   groups, and the chip floor below replaced that with one distance between
+   every control. What still holds a pair together is the chip around it (model
+   + effort), not the space around the pair. */
 .composer-chips-group {
   display: inline-flex;
   align-items: center;
@@ -13,37 +12,91 @@
   position: relative;
 }
 
-.composer-chips-group + .composer-chips-group {
-  padding-left: var(--space-3);
-  margin-left: var(--space-1);
+/* ---- One chip floor ----
+   Every control on a composer's bottom row wears the same quiet fill: pills
+   for labels, circles for glyphs, one gap between all of them. That is the
+   phone's composer, where `composerChipSurface` and `composerGlyphSurface`
+   share a fill so "the floor reads as one row of controls rather than as icons
+   and a pill" (ios/Argmax/Sources/Design/Controls.swift). The fill is also what
+   retired the carets — a filled control already reads as a control, and four
+   chevrons in a row only repeat the point.
+
+   Two exemptions: a pressed behavior toggle keeps its accent fill, which is the
+   one state in the row worth shouting, and the halves of the model pill stay
+   bare because the cluster around them carries their fill. */
+:is(.composer-context, .session-input-toolbar) {
+  --composer-chip-height: 28px;
 }
 
-/* The session toolbar sets its rhythm once, here: every item carries the same
-   8px of inline padding and nothing adds a gap on top, so the distance from
-   one label to the next is 16px wherever you measure it. Before this, each
-   control brought its own padding and its own margin — model, ring, counts and
-   the "…" sat at three different distances from their neighbours. The single
-   deliberate exception is the model/effort seam above, which is tight because
-   "Opus 5 High" is one phrase. */
-.session-input-toolbar .composer-chips-group + .composer-chips-group {
-  padding-left: 0;
-  margin-left: 0;
+.session-input-toolbar {
+  --composer-chip-height: 26px;
+}
+
+:is(.composer-context, .session-input-toolbar)
+  :is(.composer-context-chip, .composer-footer-chip):not(.model-picker-cluster--chip *) {
+  height: var(--composer-chip-height);
+  border-radius: 999px;
+}
+
+:is(.composer-context, .session-input-toolbar)
+  :is(.composer-context-chip, .composer-footer-chip):not(
+    [aria-pressed="true"],
+    .model-picker-cluster--chip *
+  ) {
+  background: var(--composer-chip);
+}
+
+:is(.composer-context, .session-input-toolbar)
+  :is(.composer-context-chip, .composer-footer-chip):not(
+    [aria-pressed="true"],
+    .model-picker-cluster--chip *
+  ):hover {
+  background: var(--composer-chip-hover);
+  color: var(--muted-strong);
+}
+
+/* The model pill is the same height as the chips beside it, measured on the
+   cluster rather than on its two halves — they sit inside it. */
+:is(.composer-context, .session-input-toolbar) .model-picker-cluster--chip {
+  height: var(--composer-chip-height);
+}
+
+/* Glyph buttons — attach (+), the "…" details trigger, the context ring, the
+   docked chat's expand — take the fill as a circle, the way the phone's plus
+   and mic do. */
+:is(.composer-context, .session-input-toolbar)
+  :is(
+    .composer-tool,
+    .composer-compact-context-trigger,
+    .context-ring-trigger,
+    .composer-expand-button
+  ) {
+  width: var(--composer-chip-height);
+  height: var(--composer-chip-height);
+  border-radius: 999px;
+  background: var(--composer-chip);
+}
+
+:is(.composer-context, .session-input-toolbar)
+  :is(
+    .composer-tool,
+    .composer-compact-context-trigger,
+    .context-ring-trigger,
+    .composer-expand-button
+  ):hover {
+  background: var(--composer-chip-hover);
+  color: var(--text);
 }
 
 .session-input-toolbar .composer-context-chip,
 .session-input-toolbar .composer-footer-chip {
   padding-inline: var(--space-2);
-  /* One height for both chip families: they hover into a filled pill, and a
-     1px difference between two pills sitting side by side is visible. */
-  height: 26px;
 }
 
-/* The ring's own trigger already carries 4px, so the anchor adds the other 4
-   to land on the row's 8. Setting 8 here would put the gauge 12px off its
-   neighbours — the kind of off-by-a-padding that made the row read as
-   arbitrary in the first place. */
+/* The ring is a chip like the rest now, so its anchor adds nothing: the row's
+   gap is the only distance between one control and the next. */
 .session-input-toolbar > .context-ring-anchor {
-  padding-inline: var(--space-1);
+  padding-inline: 0;
   margin: 0;
 }
 
@@ -86,7 +139,14 @@
    stronger color rather than extra weight. */
 .composer-chips-model .composer-context-chip {
   color: var(--muted-strong);
-  font-weight: 400;
+  font-weight: calc(400 + var(--font-weight-offset));
+}
+
+/* Inside the filled pill the model takes full ink — it is the headline of the
+   only filled control in the row, and --muted-strong on a fill reads recessed
+   where on the bare toolbar it read quiet. */
+.model-picker-cluster--chip .model-picker-anchor > .composer-context-chip {
+  color: var(--text);
 }
 
 /* Model + effort are one unit, so sit the effort chip tight to the model — much
@@ -162,18 +222,19 @@
   overflow: hidden;
 }
 
-/* The "…" trigger is not a compact-only fallback any more: it is where every
-   secondary workspace action lives at every width — open worktree, attach a
-   file, jump to changes, read the full branch name. That is what lets the
-   toolbar itself stay at model / workspace / mode / send. */
-.composer-compact-context {
-  position: relative;
-  display: inline-flex;
-  flex: 0 0 auto;
+/* Branch and changed-file count share a wrapper so the compact layout has one
+   thing to fold. At full width the wrapper is not a box at all: its children
+   are the flex items, exactly as they were before the "…" existed. */
+.session-input-toolbar .composer-chips-context-group {
+  display: contents;
 }
 
-/* The launcher uses the same compact-details trigger as the chat composer.
-   At normal widths the original project and branch pickers stay inline. */
+.session-input-toolbar .composer-chips-context-group > .composer-compact-context-trigger {
+  display: none;
+}
+
+/* At normal widths the launcher's original project and branch pickers stay
+   inline. */
 .composer-context-group--workspace > .composer-compact-context-trigger {
   display: none;
 }
@@ -181,7 +242,7 @@
 .launch-workspace-pickers {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-1_5);
   min-width: 0;
 }
 
@@ -204,6 +265,19 @@
   color: var(--muted-strong);
 }
 
+/* Folded, an uncommitted tree has nothing left on the row to say so — the
+   trigger carries a dot instead, and the panel behind it carries the counts. */
+.session-input-toolbar .composer-compact-context-trigger[data-dirty="true"]::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
 /* A docked chat's way back to the pane: the same 28px quiet square as the
    context trigger, sitting beside Send where the other per-chat actions are. */
 .composer-expand-button {
@@ -224,114 +298,26 @@
   color: var(--muted-strong);
 }
 
-.composer-compact-context-dot {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 2px var(--panel);
-}
-
-.composer-compact-context-popover {
-  z-index: 40;
-  width: 244px;
-  max-width: calc(100cqw - 24px);
-  padding: var(--space-1_5);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-xl);
-  background: var(--panel);
-  box-shadow: var(--shadow-2);
-}
-
-.composer-compact-context-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  min-height: 30px;
-  padding: var(--space-1_5) var(--space-2);
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--muted-strong);
-  font-family: var(--font-prose);
-  font-size: var(--text-xs);
-  line-height: 1.2;
-  text-align: left;
-}
-
-button.composer-compact-context-row {
-  cursor: pointer;
-}
-
-button.composer-compact-context-row:hover,
-.composer-compact-context-row--changes[aria-pressed="true"] {
-  background: var(--panel-soft);
-  color: var(--text);
-}
-
-.composer-compact-context-row svg {
-  flex: 0 0 auto;
-  color: currentColor;
-  opacity: 0.72;
-}
-
-/* The toolbar has no "+" of its own — files arrive by drop or paste — so the
-   details popover carries the explicit picker wherever it renders. */
-.composer-compact-context-row--attach {
-  display: flex;
-}
-
-.composer-compact-context-branch {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.composer-compact-context-row--context {
-  justify-content: space-between;
-}
-
-.composer-compact-context-row--context .context-ring-anchor {
-  margin: 0;
-  padding: 0;
-}
-
-.composer-compact-context-row--changes {
-  justify-content: space-between;
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-}
-
-/* The popover carries what the row cannot show, never a second copy of what it
-   already does. Above the compact tier the context ring and the diff counts are
-   both inline, so their rows fold away here and the popover is left with the
-   two facts the row deliberately omits: the full branch name and the file
-   picker. Below the tier the inline pair folds instead and these come back. */
-@container (min-width: 721px) {
-  .composer-compact-context-dot,
-  .composer-compact-context-row--context,
-  .composer-compact-context-row--changes {
-    display: none;
-  }
-}
-
-/* Start the compact layout before side-by-side panes feel cramped. CSS
+/* The session composer folds its branch and changed-file count behind "…"
+   only once the unfolded row would run out of room. The container is
+   .session-input itself, so this is the composer's own content width (its
+   border box less 30px of padding). Worst case the
+   row holds attach, a long model + effort (~190px), the branch at its 180px
+   cap, the changed-file count, a Plan/Chat chip, the context ring and send:
+   about 630px, and the branch is the only thing that gives, so at 600px it
+   still shows a dozen characters. Above that the toolbar's spacer collapses
+   first and the branch ellipsizes, which reads better than the fold. CSS
    container queries do not reliably accept var() in the condition, so
    accentTokens.test.ts pins this literal. */
-@container (max-width: 720px) {
+@container (max-width: 600px) {
   .session-input {
     padding: var(--space-2) var(--space-2_5);
   }
 
   .session-input-toolbar {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 30px auto auto;
-    grid-template-areas: "model details mode send";
+    grid-template-columns: 30px minmax(0, 1fr) auto auto auto;
+    grid-template-areas: "attach model details mode send";
     align-items: center;
     column-gap: var(--space-1_5);
     row-gap: 0;
@@ -342,16 +328,17 @@ button.composer-compact-context-row:hover,
     flex-basis: 128px;
   }
 
-  /* The ring folds into the details popover here — the row has no column to
-     spare, and the popover already carries the same gauge. */
-  .session-input-toolbar > .context-ring-anchor {
-    display: none;
+  .session-input-toolbar .composer-tool {
+    grid-area: attach;
   }
 
-  .session-input-toolbar .composer-compact-context {
-    display: block;
-    grid-area: details;
-    justify-self: end;
+  .session-input-toolbar:has(> .context-ring-anchor) {
+    grid-template-columns: 30px minmax(0, 1fr) 30px auto auto auto;
+    grid-template-areas: "attach model context details mode send";
+  }
+
+  .session-input-toolbar > .context-ring-anchor {
+    grid-area: context;
   }
 
   .session-input-toolbar .composer-chips-mode {
@@ -364,8 +351,76 @@ button.composer-compact-context-row:hover,
     padding-inline: var(--space-2);
   }
 
+  /* The branch and the change count leave the row rather than squeeze the
+     model beside them — but they leave into the "…", not into nothing: the
+     count is the way into the review panel, and a folded control the user
+     cannot reach is a feature deleted by a media query. */
+  .session-input-toolbar .composer-chips-context-group {
+    position: relative;
+    display: block;
+    grid-area: details;
+  }
+
+  .session-input-toolbar .composer-chips-context-group > .composer-compact-context-trigger {
+    display: grid;
+  }
+
   .session-input-toolbar .composer-chips-context {
     display: none;
+  }
+
+  .session-input-toolbar
+    .composer-chips-context-group[data-compact-open="true"]
+    > .composer-chips-context {
+    position: absolute;
+    /* Upward, unlike the launcher's: this composer is docked to the bottom of
+       the pane, so a panel hung below it opens off-screen. */
+    bottom: calc(100% + 8px);
+    right: 0;
+    z-index: 40;
+    display: flex;
+    width: 208px;
+    max-width: calc(100cqw - 24px);
+    padding: var(--space-1_5);
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-xl);
+    background: var(--panel);
+    box-shadow: var(--shadow-2);
+    overflow: visible;
+  }
+
+  /* Folded, the chips are menu rows: the panel is the surface, so they give
+     back the fill and the capsule the way the launcher's pickers do. */
+  .session-input-toolbar
+    .composer-chips-context-group[data-compact-open="true"]
+    > .composer-chips-context
+    > :is(.composer-context-chip, .composer-footer-chip) {
+    width: 100%;
+    height: auto;
+    min-height: 30px;
+    max-width: none;
+    padding: var(--space-1_5) var(--space-2);
+    justify-content: flex-start;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--muted-strong);
+  }
+
+  .session-input-toolbar
+    .composer-chips-context-group[data-compact-open="true"]
+    .composer-context-chip-label {
+    max-width: none;
+  }
+
+  /* Only the count is clickable — the branch is a label here as it is on the
+     row, so it takes no hover. */
+  .session-input-toolbar
+    .composer-chips-context-group[data-compact-open="true"]
+    .composer-footer-chip--changes:hover {
+    background: var(--row-hover);
   }
 
   .session-input-toolbar .session-toolbar-spacer {
@@ -377,7 +432,13 @@ button.composer-compact-context-row:hover,
     grid-area: send;
     justify-self: end;
   }
+}
 
+/* The launcher folds earlier than the session composer: its row also carries
+   the project and branch pickers, whose labels ellipsize to nothing useful
+   before 600px. Its container is .launcher-scroll, whose content width is
+   the launcher shell's, so this is the launcher composer's own width too. */
+@container (max-width: 720px) {
   .launcher-surface .composer-context {
     display: grid;
     grid-template-columns: 30px minmax(0, 1fr) 30px auto;
@@ -441,11 +502,20 @@ button.composer-compact-context-row:hover,
     width: 100%;
   }
 
+  /* Folded into the "…" popover the pickers are menu rows, not chips: the panel
+     around them is the surface, so they give the fill and the capsule back. */
   .launcher-surface .launch-workspace-pickers > .project-picker-anchor > .composer-context-chip {
     width: 100%;
+    height: auto;
     min-height: 30px;
     padding: var(--space-1_5) var(--space-2);
+    border-radius: var(--radius-md);
+    background: transparent;
     color: var(--muted-strong);
+  }
+
+  .launcher-surface .launch-workspace-pickers > .project-picker-anchor > .composer-context-chip:hover {
+    background: var(--row-hover);
   }
 
   .launcher-surface .launch-workspace-pickers .composer-context-chip-label {
@@ -780,6 +850,17 @@ button.composer-compact-context-row:hover,
   text-decoration-color: currentColor;
 }
 
+/* Sent mid-turn (steer) rather than typed between turns. Same quiet
+   provenance line as .user-message-origin; the icon never truncates even
+   if a preceding "From X" label eats the available width. */
+.user-message-steer {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  color: var(--muted);
+}
+
 .user-message-attachments {
   display: flex;
   flex-wrap: wrap;
@@ -1014,7 +1095,7 @@ button.composer-compact-context-row:hover,
 .slash-menu-label,
 .file-popover-name {
   flex: 0 0 auto;
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
 }
 
 /* The hint yields when the row runs out of room; the skill or command name
@@ -1044,7 +1125,7 @@ button.composer-compact-context-row:hover,
   padding: var(--space-2_5) var(--space-3) var(--space-1) 34px;
   color: var(--muted);
   font-size: var(--text-2xs);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   line-height: 1.2;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1091,6 +1172,10 @@ button.composer-compact-context-row:hover,
 .session-input input::placeholder,
 .session-input textarea::placeholder {
   color: var(--muted);
+}
+
+.session-input textarea[data-placeholder-kind="suggested-follow-up"]::placeholder {
+  color: var(--composer-suggestion);
 }
 
 /* Holds the running turn's controls — Stop, and on touch the queue button —

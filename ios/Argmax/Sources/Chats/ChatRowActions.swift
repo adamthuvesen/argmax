@@ -7,13 +7,19 @@ import SwiftUI
 // one the design brief asks for. The same set the web's chat-actions sheet
 // carries (`src/renderer/mobile/MobileApp.tsx`), behind the same gates.
 //
-// The row only *asks*. Every dialog, alert and in-flight mutation lives in one
+// The row only *asks*. Every alert and in-flight mutation lives in one
 // `ChatRowActionCenter` owned by the screen, presented once from the list, not
-// from the row: a `confirmationDialog` bound inside a swipe action is presented
-// from a row that is re-rendering as the swipe closes, and on a device that
-// tore the app down (on the simulator it merely dropped the dialog). A hundred
-// rows each carrying three presentation modifiers was also a hundred places
-// for the platform to get that wrong.
+// from the row: a presentation bound inside a swipe action is presented from a
+// row that is re-rendering as the swipe closes, and on a device that tore the
+// app down (on the simulator it merely dropped the dialog). A hundred rows each
+// carrying presentation modifiers was also a hundred places for the platform to
+// get that wrong.
+//
+// Archive doesn't confirm. The worktree is moved whole into recovery storage
+// with no expiry (`docs/workspaces.md`), and the branch and its commits stay,
+// so there is nothing for a dialog to protect — and a sheet presented from a
+// closing swipe was landing far from the row it belonged to, and sometimes
+// stayed on screen after the tap.
 //
 // Nothing here paints an optimistic row. Each call is a mutation the host
 // records and answers with a `dashboard:delta`, so the list corrects itself;
@@ -23,8 +29,6 @@ import SwiftUI
 /// The screen's single owner of row-action state and mutations.
 @MainActor
 final class ChatRowActionCenter: ObservableObject {
-    /// The row a confirmation is open for. Nil closes the dialog.
-    @Published var archiving: ChatRow?
     /// The row a rename is open for, and the field's text.
     @Published var renaming: ChatRow?
     @Published var draftLabel = ""
@@ -51,7 +55,17 @@ final class ChatRowActionCenter: ObservableObject {
         }
     }
 
-    func requestArchive(_ row: ChatRow) { archiving = row }
+    func archive(_ row: ChatRow) {
+        run(row) { [client, weak self] in
+            // Dirty and unshared is the case the host refuses without `force`;
+            // the worktree keeps every file in recovery storage either way.
+            let force = row.workspace.dirty && !row.workspace.sharedWorkspace
+            let result = try await client.archiveWorkspace(workspaceID: row.workspace.id, force: force)
+            if result.workspace.state != .archived {
+                self?.failure = "Uncommitted changes turned up, so the worktree is kept. Commit or discard, then archive again."
+            }
+        }
+    }
 
     func requestRename(_ row: ChatRow) {
         draftLabel = row.workspace.taskLabel
@@ -64,38 +78,6 @@ final class ChatRowActionCenter: ObservableObject {
         }
     }
 
-    // MARK: - Confirmed actions
-
-    /// The same gate `fork_session` applies host-side: a provider whose CLI
-    /// can resume a copied conversation, and never mid-turn — forking a
-    /// half-written transcript is what the backend refuses.
-    static func isForkable(_ row: ChatRow) -> Bool {
-        let capable = ProviderCatalog.bundled.provider(row.session.provider)?.forkCapable ?? false
-        return capable && row.session.state != .running && row.session.state != .waiting
-    }
-
-    /// What archiving this row does, for the dialog's message.
-    static func archiveMessage(_ row: ChatRow) -> String {
-        guard row.workspace.dirty, !row.workspace.sharedWorkspace else {
-            return "Its worktree is removed. The branch and its commits stay."
-        }
-        let files = row.workspace.changedFiles
-        let count = files == 1 ? "1 uncommitted change" : "\(files) uncommitted changes"
-        return "This worktree has \(count). Archiving moves the files to recovery storage."
-    }
-
-    func archive(_ row: ChatRow) {
-        run(row) { [client, weak self] in
-            // Dirty and unshared is the case the host refuses without `force`,
-            // and the dialog has already asked about exactly that.
-            let force = row.workspace.dirty && !row.workspace.sharedWorkspace
-            let result = try await client.archiveWorkspace(workspaceID: row.workspace.id, force: force)
-            if result.workspace.state != .archived {
-                self?.failure = "Uncommitted changes turned up, so the worktree is kept. Commit or discard, then archive again."
-            }
-        }
-    }
-
     func saveRename() {
         guard let row = renaming else { return }
         let next = draftLabel.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -103,6 +85,16 @@ final class ChatRowActionCenter: ObservableObject {
         run(row) { [client] in
             _ = try await client.setLabel(workspaceID: row.workspace.id, taskLabel: next)
         }
+    }
+
+    // MARK: - Gates
+
+    /// The same gate `fork_session` applies host-side: a provider whose CLI
+    /// can resume a copied conversation, and never mid-turn — forking a
+    /// half-written transcript is what the backend refuses.
+    static func isForkable(_ row: ChatRow) -> Bool {
+        let capable = ProviderCatalog.bundled.provider(row.session.provider)?.forkCapable ?? false
+        return capable && row.session.state != .running && row.session.state != .waiting
     }
 
     /// Run one mutation, keeping the row's controls off until it answers and
@@ -141,7 +133,7 @@ extension View {
         modifier(ChatRowActions(row: row, center: center, onFork: onFork, onNewChatHere: onNewChatHere))
     }
 
-    /// The dialog and alerts every row's actions resolve into. Attached once,
+    /// The alerts every row's actions resolve into. Attached once,
     /// to the list, never to a row.
     func chatRowActionPresentations(_ center: ChatRowActionCenter) -> some View {
         modifier(ChatRowActionPresentations(center: center))
@@ -172,35 +164,43 @@ private struct ChatRowActions: ViewModifier {
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 Button(role: .destructive) {
-                    center.requestArchive(row)
+                    center.archive(row)
                 } label: {
                     Label("Archive", systemImage: "archivebox")
                 }
                 .disabled(busy)
             }
             .contextMenu {
-                Button(pinTitle, systemImage: row.workspace.pinned ? "pin.slash" : "pin") {
-                    center.togglePin(row)
+                // The menu is the platform's own surface, drawn in its own
+                // materials and label colours, so its icons read as label
+                // colour like every other iOS menu rather than carrying the
+                // app tint through. Archive keeps the destructive red the
+                // role gives it.
+                Group {
+                    Button(pinTitle, systemImage: row.workspace.pinned ? "pin.slash" : "pin") {
+                        center.togglePin(row)
+                    }
+                    .disabled(busy)
+                    Button("Rename", systemImage: "pencil") {
+                        center.requestRename(row)
+                    }
+                    .disabled(busy)
+                    Button("Fork chat", systemImage: "arrow.triangle.branch") {
+                        center.fork(row, then: onFork)
+                    }
+                    .disabled(busy || !ChatRowActionCenter.isForkable(row))
+                    Button("New chat here", systemImage: "plus.bubble") {
+                        onNewChatHere(row)
+                    }
+                    Divider()
+                    Button(role: .destructive) {
+                        center.archive(row)
+                    } label: {
+                        Label("Archive", systemImage: "archivebox")
+                    }
+                    .disabled(busy)
                 }
-                .disabled(busy)
-                Button("Rename", systemImage: "pencil") {
-                    center.requestRename(row)
-                }
-                .disabled(busy)
-                Button("Fork chat", systemImage: "arrow.triangle.branch") {
-                    center.fork(row, then: onFork)
-                }
-                .disabled(busy || !ChatRowActionCenter.isForkable(row))
-                Button("New chat here", systemImage: "plus.bubble") {
-                    onNewChatHere(row)
-                }
-                Divider()
-                Button(role: .destructive) {
-                    center.requestArchive(row)
-                } label: {
-                    Label("Archive", systemImage: "archivebox")
-                }
-                .disabled(busy)
+                .tint(Color.primary)
             }
     }
 }
@@ -210,25 +210,11 @@ private struct ChatRowActionPresentations: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            // The system dialog, alert and rename field stay stock on
-            // purpose: each one is a modal decision the platform already
-            // draws over the keyboard and the swipe that opened it, and
-            // rebuilding them would mean rebuilding that too. They take our
-            // tint through the app's `.tint`.
-            .confirmationDialog(
-                "Archive \(center.archiving?.workspace.taskLabel ?? "")?",
-                isPresented: Binding(
-                    get: { center.archiving != nil },
-                    set: { if !$0 { center.archiving = nil } }
-                ),
-                titleVisibility: .visible,
-                presenting: center.archiving
-            ) { row in
-                Button("Archive", role: .destructive) { center.archive(row) }
-                Button("Cancel", role: .cancel) {}
-            } message: { row in
-                Text(ChatRowActionCenter.archiveMessage(row))
-            }
+            // The alerts and the rename field stay stock on purpose: each one
+            // is a modal decision the platform already draws over the keyboard
+            // and the swipe that opened it, and rebuilding them would mean
+            // rebuilding that too. They take our tint through the app's
+            // `.tint`.
             .alert(
                 "Rename chat",
                 isPresented: Binding(
@@ -254,6 +240,7 @@ private struct ChatRowActionPresentations: ViewModifier {
     }
 }
 
+#if DEBUG
 #Preview("Row actions") {
     // A list, because the swipe actions only exist inside one.
     let center = ChatRowActionCenter(store: previewStore(), client: previewClient())
@@ -263,3 +250,4 @@ private struct ChatRowActionPresentations: ViewModifier {
     }
     .chatRowActionPresentations(center)
 }
+#endif

@@ -74,6 +74,11 @@ pub const SESSION_EVENT_PAGE_LIMIT: usize = 500;
 // Durable rows (everything but `message.delta`) the cursorless tail keeps in
 // addition to the newest page. Same size as the renderer's protected budget.
 pub const SESSION_TAIL_DURABLE_LIMIT: usize = 2000;
+// How far past the newest page the cursorless tail may reach back to finish
+// the delta run it landed in. One Codex answer streams ~1000 word-sized
+// deltas (5 KB of prose measured 2026-09-12), so a 500-row page opened
+// mid-answer began the bubble mid-sentence until `message.completed` landed.
+pub const SESSION_TAIL_OPEN_RUN_LIMIT: usize = 5000;
 pub const SESSION_RAW_OUTPUT_PAGE_LIMIT: usize = 100;
 pub const SESSION_CHANGE_PAGE_LIMIT: usize = 500;
 // `session:agent-events` scans the session tail on every pane poll, so the
@@ -87,22 +92,34 @@ pub fn list_session_events_since(
     event_cursor: Option<i64>,
     raw_output_cursor: Option<i64>,
 ) -> ArgmaxResult<SessionEventsSinceResult> {
-    let event_rows = list_event_rows(connection, session_id, event_cursor)?;
-    let raw_output_rows = list_raw_output_rows(connection, session_id, raw_output_cursor)?;
+    // The continuation of a backfill the bridge cut to fit one socket
+    // message. Row pages carry no change cursor until the last one: a client
+    // that has a change cursor reads the mutation feed instead, which would
+    // skip the rows still owed here. The last page's cursor is the head from
+    // this read, so a mutation landing between two pages to a row an earlier
+    // page already delivered is not replayed until the next authoritative
+    // read; the window is one backfill, seconds long.
+    let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+    let event_rows = list_event_rows(&transaction, session_id, event_cursor)?;
+    let raw_output_rows = list_raw_output_rows(&transaction, session_id, raw_output_cursor)?;
+    let head = change_feed_head(&transaction)?;
+    transaction.commit().map_err(sqlite_error)?;
     let next_event_cursor = max_row_cursor(&event_rows, event_cursor.unwrap_or(0));
     let next_raw_output_cursor =
         max_raw_row_cursor(&raw_output_rows, raw_output_cursor.unwrap_or(0));
+    let has_more = event_rows.len() >= SESSION_EVENT_PAGE_LIMIT
+        || raw_output_rows.len() >= SESSION_RAW_OUTPUT_PAGE_LIMIT;
 
     Ok(SessionEventsSinceResult {
         events: event_rows,
         raw_outputs: raw_output_rows,
         event_cursor: next_event_cursor,
         raw_output_cursor: next_raw_output_cursor,
-        change_cursor: None,
+        change_cursor: (!has_more).then_some(head),
         deleted_event_ids: Vec::new(),
         deleted_raw_output_ids: Vec::new(),
         reset_required: false,
-        has_more: false,
+        has_more,
     })
 }
 
@@ -119,8 +136,47 @@ pub fn list_session_changes_since(
     raw_output_cursor: Option<i64>,
     change_cursor: Option<i64>,
 ) -> ArgmaxResult<SessionEventsSinceResult> {
+    list_session_changes_since_inner(
+        connection,
+        session_id,
+        event_cursor,
+        raw_output_cursor,
+        change_cursor,
+        None,
+    )
+}
+
+/// Applies a serialized-byte budget when reading the mutation feed. Initial
+/// and legacy row-cursor reads keep their normal paging because their cursors
+/// already provide a safe continuation point.
+pub fn list_session_changes_since_with_budget(
+    connection: &Connection,
+    session_id: &str,
+    event_cursor: Option<i64>,
+    raw_output_cursor: Option<i64>,
+    change_cursor: Option<i64>,
+    change_page_budget_bytes: usize,
+) -> ArgmaxResult<SessionEventsSinceResult> {
+    list_session_changes_since_inner(
+        connection,
+        session_id,
+        event_cursor,
+        raw_output_cursor,
+        change_cursor,
+        Some(change_page_budget_bytes),
+    )
+}
+
+fn list_session_changes_since_inner(
+    connection: &Connection,
+    session_id: &str,
+    event_cursor: Option<i64>,
+    raw_output_cursor: Option<i64>,
+    change_cursor: Option<i64>,
+    change_page_budget_bytes: Option<usize>,
+) -> ArgmaxResult<SessionEventsSinceResult> {
     match change_cursor {
-        Some(cursor) => list_change_page(connection, session_id, cursor),
+        Some(cursor) => list_change_page(connection, session_id, cursor, change_page_budget_bytes),
         None if event_cursor.is_some() || raw_output_cursor.is_some() => {
             list_session_events_since(connection, session_id, event_cursor, raw_output_cursor)
         }
@@ -1576,6 +1632,18 @@ pub fn has_outstanding_card_ask(connection: &Connection, session_id: &str) -> Ar
                   AND cleared.type = 'session.cleared'
               ), 0)
               AND created_at > ?2
+              AND NOT (
+                json_extract(payload_json, '$.input.delivery') = 'blocking'
+                AND EXISTS (
+                  SELECT 1
+                  FROM events completed
+                  WHERE completed.session_id = events.session_id
+                    AND completed.type = 'command.completed'
+                    AND json_extract(completed.payload_json, '$.id') = json_extract(events.payload_json, '$.id')
+                    AND json_extract(completed.payload_json, '$.providerInvocationId') = json_extract(events.payload_json, '$.providerInvocationId')
+                    AND json_extract(completed.payload_json, '$.providerRequestId') = json_extract(events.payload_json, '$.providerRequestId')
+                )
+              )
               AND (
                 payload_json LIKE '%skUserQuestion%'
                 OR payload_json LIKE '%skQuestionToolCall%'
@@ -1662,6 +1730,7 @@ fn list_change_page(
     connection: &Connection,
     session_id: &str,
     cursor: i64,
+    budget_bytes: Option<usize>,
 ) -> ArgmaxResult<SessionEventsSinceResult> {
     if cursor < 0 {
         return Err(ArgmaxError::invalid(InvalidInputIssue::at(
@@ -1733,32 +1802,124 @@ fn list_change_page(
             .map_err(sqlite_error)?;
         rows
     };
-    let has_more = changes.len() > SESSION_CHANGE_PAGE_LIMIT;
-    let consumed = &changes[..changes.len().min(SESSION_CHANGE_PAGE_LIMIT)];
-    let next_cursor = if has_more {
-        consumed.last().map(|change| change.0).unwrap_or(cursor)
-    } else {
-        head
-    };
-
-    let mut event_ids = Vec::new();
-    let mut raw_output_ids = Vec::new();
+    let candidates = &changes[..changes.len().min(SESSION_CHANGE_PAGE_LIMIT)];
+    let mut candidate_event_ids = Vec::new();
+    let mut candidate_raw_output_ids = Vec::new();
     let mut seen_event_ids = HashSet::new();
     let mut seen_raw_output_ids = HashSet::new();
-    for (_, entity_kind, entity_id) in consumed {
+    for (_, entity_kind, entity_id) in candidates {
         match entity_kind.as_str() {
             "event" if seen_event_ids.insert(entity_id.as_str()) => {
-                event_ids.push(entity_id.clone());
+                candidate_event_ids.push(entity_id.clone());
             }
             "raw_output" if seen_raw_output_ids.insert(entity_id.as_str()) => {
-                raw_output_ids.push(entity_id.clone());
+                candidate_raw_output_ids.push(entity_id.clone());
             }
             _ => {}
         }
     }
 
-    let events = list_events_by_ids(&transaction, session_id, &event_ids)?;
-    let raw_outputs = list_raw_outputs_by_ids(&transaction, session_id, &raw_output_ids)?;
+    let candidate_events = list_events_by_ids(&transaction, session_id, &candidate_event_ids)?;
+    let candidate_raw_outputs =
+        list_raw_outputs_by_ids(&transaction, session_id, &candidate_raw_output_ids)?;
+    let events_by_id = candidate_events
+        .iter()
+        .map(|event| (event.id.as_str(), event))
+        .collect::<HashMap<_, _>>();
+    let raw_outputs_by_id = candidate_raw_outputs
+        .iter()
+        .map(|output| (output.id.as_str(), output))
+        .collect::<HashMap<_, _>>();
+
+    // Use the largest cursor values and the longer `false` spelling so the
+    // empty result envelope is an upper bound for every prefix below. The
+    // entity bytes are the persisted representation, before remote trimming.
+    let mut spent = budget_bytes
+        .map(|_| {
+            serialized_len(&SessionEventsSinceResult {
+                events: Vec::new(),
+                raw_outputs: Vec::new(),
+                event_cursor: max_row_cursor(&candidate_events, 0),
+                raw_output_cursor: max_raw_row_cursor(&candidate_raw_outputs, 0),
+                change_cursor: Some(head),
+                deleted_event_ids: Vec::new(),
+                deleted_raw_output_ids: Vec::new(),
+                reset_required: false,
+                has_more: false,
+            })
+        })
+        .transpose()?
+        .unwrap_or(0);
+    let mut event_ids = Vec::new();
+    let mut raw_output_ids = Vec::new();
+    let mut included_event_ids = HashSet::new();
+    let mut included_raw_output_ids = HashSet::new();
+    let mut included_entity_count = 0usize;
+    let mut consumed_count = 0usize;
+    let mut last_consumed_sequence = cursor;
+
+    for (sequence, entity_kind, entity_id) in candidates {
+        let is_new_event =
+            entity_kind == "event" && !included_event_ids.contains(entity_id.as_str());
+        let is_new_raw_output =
+            entity_kind == "raw_output" && !included_raw_output_ids.contains(entity_id.as_str());
+        let contribution = if budget_bytes.is_none() {
+            0
+        } else {
+            // One byte conservatively covers the comma before every array
+            // member, including the first member where JSON needs none.
+            match entity_kind.as_str() {
+                "event" if is_new_event => events_by_id
+                    .get(entity_id.as_str())
+                    .map_or_else(|| serialized_len(entity_id), |event| serialized_len(*event))?
+                    .saturating_add(1),
+                "raw_output" if is_new_raw_output => raw_outputs_by_id
+                    .get(entity_id.as_str())
+                    .map_or_else(
+                        || serialized_len(entity_id),
+                        |output| serialized_len(*output),
+                    )?
+                    .saturating_add(1),
+                _ => 0,
+            }
+        };
+
+        if budget_bytes.is_some_and(|budget| {
+            contribution > 0
+                && included_entity_count > 0
+                && spent.saturating_add(contribution) > budget
+        }) {
+            break;
+        }
+
+        if is_new_event {
+            included_event_ids.insert(entity_id.as_str());
+            event_ids.push(entity_id.clone());
+            included_entity_count += 1;
+        } else if is_new_raw_output {
+            included_raw_output_ids.insert(entity_id.as_str());
+            raw_output_ids.push(entity_id.clone());
+            included_entity_count += 1;
+        }
+        spent = spent.saturating_add(contribution);
+        consumed_count += 1;
+        last_consumed_sequence = *sequence;
+    }
+
+    let has_more = consumed_count < changes.len();
+    let next_cursor = if has_more {
+        last_consumed_sequence
+    } else {
+        head
+    };
+    let events = candidate_events
+        .into_iter()
+        .filter(|event| included_event_ids.contains(event.id.as_str()))
+        .collect::<Vec<_>>();
+    let raw_outputs = candidate_raw_outputs
+        .into_iter()
+        .filter(|output| included_raw_output_ids.contains(output.id.as_str()))
+        .collect::<Vec<_>>();
     let current_event_ids = events
         .iter()
         .map(|event| event.id.as_str())
@@ -1790,6 +1951,12 @@ fn list_change_page(
         reset_required: false,
         has_more,
     })
+}
+
+fn serialized_len<T: Serialize>(value: &T) -> ArgmaxResult<usize> {
+    serde_json::to_vec(value)
+        .map(|json| json.len())
+        .map_err(json_error)
 }
 
 fn change_feed_head(connection: &Connection) -> ArgmaxResult<i64> {
@@ -1886,22 +2053,43 @@ fn list_event_rows(
             // answer, so keeping them restores the earlier turns at the cost
             // of their thinking blocks. The cap mirrors the renderer's
             // protected-row budget in snapshot.ts.
+            //
+            // The newest page must not begin inside a delta run: the clients
+            // rebuild a streaming bubble by concatenating the deltas they hold,
+            // so a page cut mid-answer paints the answer from its cut point
+            // until the completion lands. The floor therefore steps back from
+            // the page's oldest row to the durable row before it, bounded by
+            // SESSION_TAIL_OPEN_RUN_LIMIT rows in total.
             let mut statement = connection
                 .prepare_cached(
-                    "SELECT * FROM (
-                    SELECT rowid AS row_cursor, * FROM events WHERE rowid IN (
-                        SELECT rowid FROM (
-                            SELECT rowid FROM events WHERE session_id = ?1
-                            ORDER BY rowid DESC LIMIT ?2
-                        )
-                        UNION
-                        SELECT rowid FROM (
-                            SELECT rowid FROM events
-                            WHERE session_id = ?1 AND type <> 'message.delta'
-                            ORDER BY rowid DESC LIMIT ?3
-                        )
+                    "WITH page AS (
+                        SELECT rowid FROM events WHERE session_id = ?1
+                        ORDER BY rowid DESC LIMIT ?2
+                    ),
+                    durable AS (
+                        SELECT rowid FROM events
+                        WHERE session_id = ?1 AND type <> 'message.delta'
+                        ORDER BY rowid DESC LIMIT ?3
+                    ),
+                    run_floor AS (
+                        SELECT MAX(
+                            COALESCE((
+                                SELECT MAX(rowid) FROM events
+                                WHERE session_id = ?1 AND type <> 'message.delta'
+                                  AND rowid < (SELECT MIN(rowid) FROM page)
+                            ), 0),
+                            COALESCE((
+                                SELECT rowid FROM events WHERE session_id = ?1
+                                ORDER BY rowid DESC LIMIT 1 OFFSET ?4
+                            ), 0)
+                        ) AS rowid
                     )
-                ) ORDER BY row_cursor ASC",
+                    SELECT rowid AS row_cursor, * FROM events
+                    WHERE session_id = ?1 AND (
+                        rowid > (SELECT rowid FROM run_floor)
+                        OR rowid IN (SELECT rowid FROM durable)
+                    )
+                    ORDER BY row_cursor ASC",
                 )
                 .map_err(sqlite_error)?;
             let rows = statement
@@ -1910,6 +2098,7 @@ fn list_event_rows(
                         session_id,
                         SESSION_EVENT_PAGE_LIMIT as i64,
                         SESSION_TAIL_DURABLE_LIMIT as i64,
+                        SESSION_TAIL_OPEN_RUN_LIMIT as i64,
                     ),
                     event_row_to_timeline_event,
                 )
@@ -1976,12 +2165,15 @@ fn list_raw_output_rows(
 
 fn event_row_to_timeline_event(row: &Row<'_>) -> rusqlite::Result<TimelineEvent> {
     let payload_json: String = row.get("payload_json")?;
+    let event_type: String = row.get("type")?;
+    let mut payload = parse_event_payload(&payload_json);
+    crate::providers::tool_activity::enrich_tool_activity(&event_type, &mut payload);
     Ok(TimelineEvent {
         id: row.get("id")?,
         session_id: row.get("session_id")?,
-        r#type: row.get("type")?,
+        r#type: event_type,
         message: row.get("message")?,
-        payload: parse_event_payload(&payload_json),
+        payload,
         created_at: row.get("created_at")?,
         row_cursor: Some(row.get("row_cursor")?),
     })
@@ -2155,7 +2347,8 @@ mod change_feed_tests {
         let connection = database.connection();
         insert_typed_event(&connection, "prompt", "s1", "user.message", "fix it");
         insert_typed_event(&connection, "tool", "s1", "command.started", "read");
-        for index in 0..(SESSION_EVENT_PAGE_LIMIT + 10) {
+        let flood = SESSION_TAIL_OPEN_RUN_LIMIT + 10;
+        for index in 0..flood {
             insert_typed_event(
                 &connection,
                 &format!("delta-{index}"),
@@ -2177,13 +2370,13 @@ mod change_feed_tests {
         assert_eq!(ids.last(), Some(&"answer"));
         assert!(
             !ids.contains(&"delta-10"),
-            "the oldest deltas still fall out"
+            "deltas beyond the open-run cap still fall out"
         );
         assert!(
             ids.contains(&"delta-11"),
-            "the newest page of deltas is kept"
+            "the newest deltas up to the cap are kept"
         );
-        assert_eq!(ids.len(), SESSION_EVENT_PAGE_LIMIT + 2);
+        assert_eq!(ids.len(), SESSION_TAIL_OPEN_RUN_LIMIT + 2);
         assert_eq!(
             initial.event_cursor,
             initial
@@ -2192,6 +2385,44 @@ mod change_feed_tests {
                 .and_then(|event| event.row_cursor)
                 .unwrap()
         );
+    }
+
+    // Opening a chat while an answer longer than one page is still streaming
+    // used to paint the bubble from the page's cut point. The tail now steps
+    // back to the durable row before the page so the whole open run arrives.
+    #[test]
+    fn initial_tail_does_not_cut_an_open_answer_mid_stream() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_typed_event(&connection, "prompt", "s1", "user.message", "explain");
+        insert_event(&connection, "first-answer", "s1", "On it.");
+        insert_typed_event(
+            &connection,
+            "search",
+            "s1",
+            "command.completed",
+            "web_search",
+        );
+        let run = SESSION_EVENT_PAGE_LIMIT + 200;
+        for index in 0..run {
+            insert_typed_event(
+                &connection,
+                &format!("delta-{index}"),
+                "s1",
+                "message.delta",
+                "word",
+            );
+        }
+
+        let initial =
+            list_session_changes_since(&connection, "s1", None, None, None).expect("initial");
+        let ids = ids(&initial.events);
+        assert_eq!(
+            &ids[..4],
+            ["prompt", "first-answer", "search", "delta-0"],
+            "the open run starts at its first delta"
+        );
+        assert_eq!(ids.len(), run + 3);
     }
 
     #[test]
@@ -2372,6 +2603,36 @@ mod change_feed_tests {
     }
 
     #[test]
+    fn row_pages_withhold_the_change_cursor_until_the_last_page() {
+        let database = seeded_database();
+        let connection = database.connection();
+        for index in 0..=SESSION_EVENT_PAGE_LIMIT {
+            insert_event(&connection, &format!("e{index}"), "s1", "row");
+        }
+
+        let first = list_session_changes_since(&connection, "s1", Some(0), Some(0), None)
+            .expect("first row page");
+        assert_eq!(first.events.len(), SESSION_EVENT_PAGE_LIMIT);
+        assert!(first.has_more);
+        assert_eq!(first.change_cursor, None);
+
+        let second = list_session_changes_since(
+            &connection,
+            "s1",
+            Some(first.event_cursor),
+            Some(first.raw_output_cursor),
+            None,
+        )
+        .expect("last row page");
+        assert_eq!(ids(&second.events), vec!["e500"]);
+        assert!(!second.has_more);
+        assert_eq!(
+            second.change_cursor,
+            Some(change_feed_head(&connection).expect("feed head"))
+        );
+    }
+
+    #[test]
     fn revision_pages_do_not_skip_a_busy_session() {
         let database = seeded_database();
         let connection = database.connection();
@@ -2403,6 +2664,176 @@ mod change_feed_tests {
             Some("message 500")
         );
         assert!(second.change_cursor.expect("second cursor") > first_cursor);
+    }
+
+    #[test]
+    fn budgeted_revision_pages_continue_after_updates_and_deletes() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_event(&connection, "e1", "s1", "one");
+        insert_event(&connection, "e2", "s1", "two");
+        let cursor = initial_cursor(&connection, "s1");
+
+        connection
+            .execute(
+                "UPDATE events SET message = ? WHERE id = 'e1'",
+                ("updated".repeat(100),),
+            )
+            .expect("update event");
+        let update_sequence = connection
+            .query_row(
+                "SELECT MAX(sequence) FROM session_changes WHERE session_id = 's1' AND entity_id = 'e1'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("update sequence");
+        connection
+            .execute("DELETE FROM events WHERE id = 'e2'", [])
+            .expect("delete event");
+
+        let full = list_session_changes_since(&connection, "s1", None, None, Some(cursor))
+            .expect("full page");
+        let budget = change_page_overhead(&full)
+            + serialized_len(full.events.first().expect("updated event")).expect("event bytes");
+        let first = list_session_changes_since_with_budget(
+            &connection,
+            "s1",
+            None,
+            None,
+            Some(cursor),
+            budget,
+        )
+        .expect("first budgeted page");
+        assert_eq!(ids(&first.events), vec!["e1"]);
+        assert!(first.deleted_event_ids.is_empty());
+        assert!(first.has_more);
+        assert_eq!(first.change_cursor, Some(update_sequence));
+        assert!(serialized_len(&first).expect("page bytes") <= budget);
+
+        let second = list_session_changes_since_with_budget(
+            &connection,
+            "s1",
+            None,
+            None,
+            first.change_cursor,
+            budget,
+        )
+        .expect("second budgeted page");
+        assert!(second.events.is_empty());
+        assert_eq!(second.deleted_event_ids, vec!["e2"]);
+        assert!(!second.has_more);
+        assert_eq!(second.change_cursor, full.change_cursor);
+    }
+
+    #[test]
+    fn duplicate_revisions_cost_one_entity_and_advance_the_cursor() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_event(&connection, "e1", "s1", "zero");
+        let cursor = initial_cursor(&connection, "s1");
+        connection
+            .execute("UPDATE events SET message = 'one' WHERE id = 'e1'", [])
+            .expect("first update");
+        connection
+            .execute("UPDATE events SET message = 'two' WHERE id = 'e1'", [])
+            .expect("second update");
+        let duplicate_sequence = connection
+            .query_row(
+                "SELECT MAX(sequence) FROM session_changes WHERE session_id = 's1' AND entity_id = 'e1'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("duplicate sequence");
+        insert_event(&connection, "e2", "s1", "next");
+
+        let full = list_session_changes_since(&connection, "s1", None, None, Some(cursor))
+            .expect("full page");
+        let first_event = full
+            .events
+            .iter()
+            .find(|event| event.id == "e1")
+            .expect("first event");
+        let budget =
+            change_page_overhead(&full) + serialized_len(first_event).expect("first event bytes");
+        let first = list_session_changes_since_with_budget(
+            &connection,
+            "s1",
+            None,
+            None,
+            Some(cursor),
+            budget,
+        )
+        .expect("first budgeted page");
+
+        assert_eq!(ids(&first.events), vec!["e1"]);
+        assert_eq!(first.events[0].message, "two");
+        assert_eq!(first.change_cursor, Some(duplicate_sequence));
+        assert!(first.has_more);
+        let second = list_session_changes_since_with_budget(
+            &connection,
+            "s1",
+            None,
+            None,
+            first.change_cursor,
+            budget,
+        )
+        .expect("second budgeted page");
+        assert_eq!(ids(&second.events), vec!["e2"]);
+        assert!(!second.has_more);
+    }
+
+    #[test]
+    fn budgeted_revision_pages_count_raw_output_bytes() {
+        let database = seeded_database();
+        let connection = database.connection();
+        let cursor = initial_cursor(&connection, "s1");
+        insert_raw(&connection, "r1", "s1", &"raw".repeat(100));
+        let raw_sequence = connection
+            .query_row(
+                "SELECT MAX(sequence) FROM session_changes WHERE session_id = 's1' AND entity_id = 'r1'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("raw sequence");
+        insert_event(&connection, "e1", "s1", "after raw");
+
+        let full = list_session_changes_since(&connection, "s1", None, None, Some(cursor))
+            .expect("full page");
+        let budget = change_page_overhead(&full)
+            + serialized_len(full.raw_outputs.first().expect("raw output")).expect("raw bytes");
+        let first = list_session_changes_since_with_budget(
+            &connection,
+            "s1",
+            None,
+            None,
+            Some(cursor),
+            budget,
+        )
+        .expect("first budgeted page");
+
+        assert_eq!(first.raw_outputs.len(), 1);
+        assert!(first.events.is_empty());
+        assert_eq!(first.change_cursor, Some(raw_sequence));
+        assert!(first.has_more);
+        assert!(serialized_len(&first).expect("page bytes") <= budget);
+    }
+
+    #[test]
+    fn oversized_first_revision_still_advances() {
+        let database = seeded_database();
+        let connection = database.connection();
+        let cursor = initial_cursor(&connection, "s1");
+        insert_event(&connection, "huge", "s1", &"answer".repeat(10_000));
+        let head = change_feed_head(&connection).expect("head");
+
+        let page =
+            list_session_changes_since_with_budget(&connection, "s1", None, None, Some(cursor), 16)
+                .expect("oversized page");
+
+        assert_eq!(ids(&page.events), vec!["huge"]);
+        assert_eq!(page.change_cursor, Some(head));
+        assert!(!page.has_more);
+        assert!(serialized_len(&page).expect("page bytes") > 16);
     }
 
     #[test]
@@ -2490,12 +2921,69 @@ mod change_feed_tests {
         assert!(matches!(error, ArgmaxError::InvalidInput { .. }));
     }
 
+    #[test]
+    fn historical_activity_is_enriched_without_rewriting_the_event() {
+        let database = seeded_database();
+        let connection = database.connection();
+        let original = serde_json::json!({"id": "read-1", "name": "Read", "input": {"file_path": "/repo/a.ts"}});
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: "read-event".into(),
+                session_id: "s1".into(),
+                r#type: "command.started".into(),
+                message: "Read".into(),
+                payload: original.clone(),
+                created_at: Some(TIME.into()),
+            },
+        )
+        .expect("insert old tool event");
+        let page =
+            list_session_changes_since(&connection, "s1", None, None, None).expect("read tail");
+        let event = page
+            .events
+            .iter()
+            .find(|event| event.id == "read-event")
+            .expect("tool event");
+        assert_eq!(event.payload["activity"]["kind"], "read");
+        assert_eq!(
+            event.payload["activity"]["targets"],
+            serde_json::json!(["/repo/a.ts"])
+        );
+        let stored: String = connection
+            .query_row(
+                "SELECT payload_json FROM events WHERE id = ?",
+                ["read-event"],
+                |row| row.get(0),
+            )
+            .expect("stored event");
+        assert_eq!(
+            serde_json::from_str::<Value>(&stored).expect("stored JSON"),
+            original
+        );
+    }
+
     fn seeded_database() -> Database {
         let database = Database::open_in_memory().expect("open database");
         let connection = database.connection();
         seed_connection(&connection);
         drop(connection);
         database
+    }
+
+    fn change_page_overhead(page: &SessionEventsSinceResult) -> usize {
+        serialized_len(&SessionEventsSinceResult {
+            events: Vec::new(),
+            raw_outputs: Vec::new(),
+            event_cursor: page.event_cursor,
+            raw_output_cursor: page.raw_output_cursor,
+            change_cursor: page.change_cursor,
+            deleted_event_ids: Vec::new(),
+            deleted_raw_output_ids: Vec::new(),
+            reset_required: false,
+            has_more: false,
+        })
+        .expect("page overhead")
     }
 
     fn seed_connection(connection: &Connection) {

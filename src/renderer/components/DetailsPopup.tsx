@@ -14,9 +14,14 @@ import type {
 import type { QueuedMessageDelivery } from "../../shared/types.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { decodeTimelineEvent } from "../lib/canonicalTimeline.js";
-import { readBoundedNumberPreference } from "../lib/uiPreferences.js";
+import {
+  readBoundedNumberPreference,
+  type ThinkingDisplay,
+  type ToolCallsDisplay
+} from "../lib/uiPreferences.js";
 import { useReviewState } from "../hooks/useReviewState.js";
 import { useSessionTimeline } from "../hooks/useSessionTimeline.js";
+import type { FontSize } from "../lib/fonts.js";
 import { ApprovalSurface } from "./ApprovalSurface.js";
 import { SessionConversation } from "./SessionConversation.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
@@ -39,8 +44,12 @@ const DEFAULT_HEIGHT = 520;
  */
 export function DetailsPopup({
   approvals = [],
+  chatFontSize,
   onResolveApproval,
   events = [],
+  defaultToolCallsDisplay,
+  defaultToolCallGroupsExpanded,
+  thinkingDisplay,
   onAttachToChat,
   onCancelQueuedMessage,
   onClose,
@@ -58,8 +67,13 @@ export function DetailsPopup({
   workspace
 }: {
   approvals?: ApprovalRequest[];
+  /** Settings → Appearance: keep the floating composer on the agent-window scale. */
+  chatFontSize?: FontSize;
   onResolveApproval?: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
   events?: TimelineEvent[];
+  defaultToolCallsDisplay?: ToolCallsDisplay;
+  defaultToolCallGroupsExpanded?: boolean;
+  thinkingDisplay?: ThinkingDisplay;
   /** Adds the explained excerpt to the originating session's composer. */
   onAttachToChat?: () => void;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
@@ -194,6 +208,7 @@ export function DetailsPopup({
       className="details-popup"
       role="dialog"
       aria-label="More details"
+      data-font-size={chatFontSize === undefined ? undefined : String(chatFontSize)}
       style={{ width: `${size.width}px`, height: `${size.height}px` }}
     >
       <div
@@ -203,6 +218,10 @@ export function DetailsPopup({
         onPointerDown={startResize}
       />
       <SessionConversation
+        chatFontSize={chatFontSize}
+        defaultToolCallsDisplay={defaultToolCallsDisplay}
+        defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
+        thinkingDisplay={thinkingDisplay}
         events={visibleEvents}
         floating
         headingLabel="More details"

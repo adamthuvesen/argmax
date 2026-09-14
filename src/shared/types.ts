@@ -98,6 +98,7 @@ export type CreateWorkspaceInput = Bindings.WorkspacesCreateIsolatedInput;
 export type CreateCurrentWorkspaceInput = Bindings.WorkspacesCreateCurrentInput;
 export type CreateScratchWorkspaceInput = Bindings.WorkspacesCreateScratchInput;
 export type AutotitleWorkspaceInput = Bindings.WorkspacesAutotitleInput;
+export type WorkspacesMarkViewedInput = Bindings.WorkspacesMarkViewedInput;
 type OptionalNullable<T, K extends keyof T> = Omit<T, K> & {
   [P in K]?: T[P];
 };
@@ -144,6 +145,8 @@ export type ComposerAttachment = Bindings.ComposerAttachmentInput;
 export type AttachmentSaveImageInput = Bindings.AttachmentsSaveImageInput;
 export type AttachmentSaveImageResult = Bindings.SaveImageResult;
 export type ResolveApprovalInput = Bindings.ApprovalsResolveInput;
+export type QuestionsResolveInput = Bindings.QuestionsResolveInput;
+export type QuestionResolveResult = Bindings.QuestionResolveResult;
 export type SessionEventsSinceInput = OptionalNullable<
   Bindings.SessionEventsSinceInput,
   "eventCursor" | "rawOutputCursor" | "changeCursor"
@@ -233,7 +236,7 @@ export type RunCheckInput = Bindings.ChecksRunInput;
 export type GitCommitInput = OptionalNullable<Bindings.GitCommitInput, "selectedFiles">;
 export type GitPushInput = Bindings.GitPushInput;
 export type GitCreateBranchInput = Bindings.GitCreateBranchInput;
-export type GitViewOrCreatePrInput = Bindings.GitViewOrCreatePrInput;
+export type GitViewOrCreatePrInput = OptionalNullable<Bindings.GitViewOrCreatePrInput, "expectedBranch">;
 
 export type GitCommitResult = Bindings.GitCommitResult;
 export type WorkspaceArchiveResult = Retype<Bindings.WorkspaceArchiveResult, { workspace: WorkspaceSummary }>;
@@ -286,10 +289,14 @@ export type WorkspaceSummary = Retype<
   {
     state: WorkspaceState;
     kind: WorkspaceKind;
-    /** State of the most-recent PR across this workspace's sessions. Null when none. */
+    /** State of the displayed session's primary PR. Null when none. */
     prState: GhPrState | null;
-    /** Check rollup for that PR as the poller last saw it. Null when there is no PR. */
+    /** Aggregate lifecycle across verified session PRs. Older snapshots omit it. */
+    prSummaryState?: GhPrState | null;
+    /** Check rollup across the displayed session's open worked PRs. */
     prCheckState: GhCheckState | null;
+    /** Absent on snapshots from hosts predating shared read state. */
+    lastViewedAt?: string | null;
   }
 >;
 
@@ -442,6 +449,7 @@ export type DashboardDelta = {
 };
 
 export interface ArgmaxApi {
+  markWorkspacesViewed?: (input: WorkspacesMarkViewedInput) => Promise<WorkspaceSummary[]>;
   dashboard: {
     list: () => Promise<DashboardListSnapshot>;
     onDelta: (listener: (delta: DashboardDelta) => void) => () => void;
@@ -480,6 +488,7 @@ export interface ArgmaxApi {
     discover: (refresh?: boolean) => Promise<DiscoveredProvider[]>;
     launch: (input: LaunchProviderSessionInput) => Promise<SessionSummary>;
     sendInput: (input: ProviderSessionInput) => Promise<{ ok: true; queued: boolean }>;
+    steerInput: (input: ProviderSessionInput) => Promise<{ ok: true; queued: boolean }>;
     resize: (input: ProviderSessionResizeInput) => Promise<{ ok: true }>;
     terminate: (sessionId: string) => Promise<{ ok: true }>;
     cancelQueuedMessage: (input: ProvidersCancelQueuedMessageInput) => Promise<{ ok: true }>;
@@ -493,6 +502,9 @@ export interface ArgmaxApi {
   approvals: {
     pending: () => Promise<ApprovalRequest[]>;
     resolve: (input: ResolveApprovalInput) => Promise<ApprovalRequest>;
+  };
+  questions: {
+    resolve: (input: QuestionsResolveInput) => Promise<QuestionResolveResult>;
   };
   session: {
     eventsSince: (input: SessionEventsSinceInput) => Promise<SessionEventsSinceResult>;
@@ -582,6 +594,7 @@ export interface ArgmaxApi {
     deleteOldChats: (input: DeleteOldChatsInput) => Promise<DeleteOldChatsResult>;
   };
   system: {
+    confirm: (message: string) => Promise<boolean>;
     openPath: (input: { path: string; cwd?: string }) => Promise<{ ok: true }>;
     listDetectedIdes: () => Promise<DetectedIde[]>;
     diagnostics: () => Promise<DiagnosticsReport>;
@@ -644,9 +657,17 @@ export interface ArgmaxApi {
     update: (input: { id: string; summary?: string; verified?: boolean }) => Promise<Learning>;
     delete: (id: string) => Promise<{ ok: true }>;
   };
+  sources: {
+    list: (input: Bindings.SourcesListInput) => Promise<ProjectSource[]>;
+    add: (input: Bindings.SourcesAddInput) => Promise<ProjectSource>;
+    update: (input: Bindings.SourcesUpdateInput) => Promise<ProjectSource>;
+    delete: (input: Bindings.SourcesDeleteInput) => Promise<void>;
+  };
   prs: {
     listForSession: (input: { sessionId: string }) => Promise<GhPrRecord[]>;
     refresh: (input: { sessionId: string }) => Promise<GhPrRecord[]>;
+    setPrimary: (input: Bindings.PrsSetPrimaryInput) => Promise<SessionPrSummary[]>;
+    dismiss: (input: Bindings.PrsDismissInput) => Promise<SessionPrSummary[]>;
   };
   git: {
     commit: (input: GitCommitInput) => Promise<GitCommitResult>;
@@ -664,6 +685,10 @@ export interface ArgmaxApi {
     onAgentOpen: (listener: (event: TerminalAgentOpenEvent) => void) => EventSubscription;
   };
   browser: {
+    chromeProfiles: () => Promise<ChromeProfile[]>;
+    importChromeHistory: (profileId: string) => Promise<ChromeHistoryImport>;
+    contentBlocking: () => Promise<BrowserContentBlocking>;
+    setSiteBlocking: (input: BrowserSetSiteBlockingInput) => Promise<BrowserContentBlocking>;
     open: (input: {
       url: string;
       bounds: BrowserBounds;
@@ -678,7 +703,10 @@ export interface ArgmaxApi {
     forward: (tabId: string) => Promise<{ ok: true }>;
     reload: (tabId: string) => Promise<{ ok: true }>;
     stop: (tabId: string) => Promise<{ ok: true }>;
+    setTheme: (mode: Bindings.ThemeMode) => Promise<{ ok: true }>;
     setBounds: (input: { bounds: BrowserBounds; visible: boolean; tabId: string }) => Promise<{ ok: true }>;
+    /** Gives the page the window's keyboard focus, the way clicking into it would. */
+    focus: (tabId: string) => Promise<{ ok: true }>;
     /** Destroys the tab's webview (history and session included). */
     close: (tabId: string) => Promise<{ ok: true }>;
     fillCredentials: (tabId: string) => Promise<BrowserFillResult>;
@@ -712,6 +740,8 @@ export interface ArgmaxApi {
 
 /** Logical (CSS-pixel) rect of the browser pane placeholder. */
 export type BrowserBounds = Bindings.BrowserBounds;
+export type BrowserContentBlocking = Bindings.BrowserContentBlocking;
+export type BrowserSetSiteBlockingInput = Bindings.BrowserSetSiteBlockingInput;
 
 export interface BrowserStateEvent {
   tabId: string;
@@ -730,7 +760,7 @@ export interface BrowserNewTabEvent {
 /** A browser shortcut pressed while the page itself had focus. */
 export interface BrowserPageCommandEvent {
   tabId: string;
-  command: "close-tab" | "new-tab" | "focus-address" | (string & {});
+  command: "close-tab" | "new-tab" | "focus-address" | "find" | (string & {});
 }
 
 /** `width`/`height` are device pixels: twice the captured CSS size on a retina display. */
@@ -738,6 +768,8 @@ export type BrowserScreenshot = Bindings.BrowserScreenshot;
 /** `resultJson` is WebKit's JSON encoding of the value; empty when the script returned `undefined` — or threw. */
 export type BrowserEvaluateResult = Bindings.BrowserEvaluateResult;
 export type BrowserFillResult = Bindings.BrowserFillResult;
+export type ChromeProfile = Bindings.ChromeProfile;
+export type ChromeHistoryImport = Bindings.ChromeHistoryImport;
 /** One live browser tab, as the app (not the renderer) knows it. */
 export type BrowserTabInfo = Bindings.BrowserTabInfo;
 
@@ -855,6 +887,8 @@ export type GhPrRecord = Retype<
 
 export type GhPrState = "OPEN" | "CLOSED" | "MERGED";
 
+export type SessionPrSummary = Bindings.SessionPrSummary;
+
 export type GhCheckState =
   | "unknown"
   | "pending"
@@ -865,11 +899,15 @@ export type GhCheckState =
   | "skipped";
 
 export type LearningKind = "pitfall" | "convention" | "command";
+export type ProjectSource = Bindings.ProjectSource;
+export type SourceInput = Bindings.SourceInput;
 
 export type Learning = Retype<Bindings.Learning, { kind: LearningKind }>;
 
 export type MenuCommand =
   | "new-session"
+  | "next-chat"
+  | "previous-chat"
   | "open-settings"
   | "toggle-sidebar"
   | "toggle-left-sidebar"

@@ -58,6 +58,20 @@ export const MENU_KEYBINDINGS: readonly MenuKeybinding[] = [
     menuLocation: "file"
   },
   {
+    command: "next-chat",
+    accelerator: "CmdOrCtrl+Backquote",
+    displayAccelerator: "⌘§",
+    label: "Cycle chats by recency",
+    menuLocation: "view"
+  },
+  {
+    command: "previous-chat",
+    accelerator: "CmdOrCtrl+Shift+Backquote",
+    displayAccelerator: "⌘⇧§",
+    label: "Cycle chats by recency, back",
+    menuLocation: "view"
+  },
+  {
     command: "close-surface",
     accelerator: "CmdOrCtrl+W",
     displayAccelerator: "⌘W",
@@ -116,5 +130,10 @@ export const RENDERER_ONLY_KEYBINDINGS: readonly RendererOnlyKeybinding[] = [
   { displayAccelerator: "⌘F", label: "Open command palette on Messages" },
   { displayAccelerator: "⌘⇧F", label: "Open command palette on File Contents" },
   { displayAccelerator: "⌘J", label: "Toggle integrated terminal" },
+  { displayAccelerator: "⌘⇧M", label: "Open the model picker" },
+  { displayAccelerator: "⌘⇧E", label: "Open the effort picker" },
+  { displayAccelerator: "⌘⇧R", label: "Open the folder picker (new chat)" },
+  { displayAccelerator: "⌘⇧I", label: "Toggle browser panel" },
+  { displayAccelerator: "⌘↑", label: "Recall the last sent message into an empty draft" },
   { displayAccelerator: "Esc", label: "Close the topmost overlay" }
 ] as const;

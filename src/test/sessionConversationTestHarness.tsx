@@ -1,4 +1,4 @@
-import type { ThinkingDisplay } from "../renderer/lib/uiPreferences.js";
+import type { FollowUpDelivery, ThinkingDisplay } from "../renderer/lib/uiPreferences.js";
 import { render, type RenderResult } from "@testing-library/react";
 import type { JSX } from "react";
 import { vi } from "vitest";
@@ -116,8 +116,11 @@ type ConversationOptions = {
   thinkingDisplay?: ThinkingDisplay;
   defaultToolCallsDisplay?: "expanded" | "collapsed" | "single-line";
   defaultToolCallGroupsExpanded?: boolean;
+  defaultFollowUpDelivery?: FollowUpDelivery;
   pendingMessages?: PendingMessage[];
   goalEnabled?: boolean;
+  /** Stands in for the phone shell drawing the composer card itself. */
+  nativeComposerFloor?: boolean;
   // The conversation's own prop types, not `ReturnType<typeof vi.fn>`:
   // Vitest 4 types a bare `vi.fn()` as `Mock<Procedure | Constructable>`,
   // which no longer widens to a call signature, so a loose option type here
@@ -139,6 +142,7 @@ type ConversationOptions = {
   review?: ReviewState;
   /** Defaults to the shared `workspace` fixture. */
   workspace?: ConversationProps["workspace"];
+  contextIndicatorEnabled?: ConversationProps["contextIndicatorEnabled"];
   /** Defaults to true (events already present). Pass false to reproduce a real
       reopen, where the pane mounts empty and the backfill lands later. */
   eventsBackfilled?: boolean;
@@ -153,6 +157,7 @@ function conversationElement(
     <SessionConversation
       isFocused={options.isFocused ?? true}
       goalEnabled={options.goalEnabled ?? true}
+      nativeComposerFloor={options.nativeComposerFloor ?? false}
       events={events}
       eventsBackfilled={options.eventsBackfilled ?? true}
       isLogOpen={false}
@@ -166,6 +171,7 @@ function conversationElement(
       {...(options.thinkingDisplay !== undefined ? { thinkingDisplay: options.thinkingDisplay } : {})}
       {...(options.defaultToolCallsDisplay !== undefined ? { defaultToolCallsDisplay: options.defaultToolCallsDisplay } : {})}
       {...(options.defaultToolCallGroupsExpanded !== undefined ? { defaultToolCallGroupsExpanded: options.defaultToolCallGroupsExpanded } : {})}
+      {...(options.defaultFollowUpDelivery !== undefined ? { defaultFollowUpDelivery: options.defaultFollowUpDelivery } : {})}
       {...(options.onMultitask ? { onMultitask: options.onMultitask } : {})}
       {...(options.onNewSession ? { onNewSession: options.onNewSession } : {})}
       {...(options.onOpenFile ? { onOpenFile: options.onOpenFile } : {})}
@@ -182,6 +188,7 @@ function conversationElement(
       review={options.review ?? reviewStub()}
       session={session}
       workspace={options.workspace ?? workspace}
+      contextIndicatorEnabled={options.contextIndicatorEnabled ?? false}
     />
   );
 }

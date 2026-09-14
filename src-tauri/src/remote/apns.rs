@@ -306,8 +306,8 @@ impl ApnsPublisher {
 
     /// Called for every session row in a dashboard delta, next to the ntfy
     /// publisher and off the same trigger table.
-    pub fn observe(&self, session: &SessionSummary) {
-        let Some(signal) = signal_for(session) else {
+    pub fn observe(&self, session: &SessionSummary, latest_answer: Option<&str>) {
+        let Some(signal) = signal_for(session, latest_answer) else {
             return;
         };
         if !self.dedupe.admit(session) {
@@ -554,15 +554,18 @@ mod tests {
             let _ = tx.send(signal);
         }));
 
-        publisher.observe(&session(SessionState::Running, AttentionState::Normal));
-        publisher.observe(&session(
-            SessionState::Running,
-            AttentionState::ApprovalNeeded,
-        ));
-        publisher.observe(&session(
-            SessionState::Running,
-            AttentionState::ApprovalNeeded,
-        ));
+        publisher.observe(
+            &session(SessionState::Running, AttentionState::Normal),
+            None,
+        );
+        publisher.observe(
+            &session(SessionState::Running, AttentionState::ApprovalNeeded),
+            None,
+        );
+        publisher.observe(
+            &session(SessionState::Running, AttentionState::ApprovalNeeded),
+            None,
+        );
 
         let signal = rx.try_recv().expect("approval push");
         assert_eq!(signal.title, "Argmax: Needs approval");

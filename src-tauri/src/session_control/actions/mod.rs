@@ -2,6 +2,7 @@ mod label;
 mod launch;
 mod messaging;
 mod move_archive;
+mod project_sources;
 mod project_tools;
 mod resume;
 mod wait;
@@ -10,7 +11,7 @@ mod workspace_tools;
 pub(crate) use launch::{launch_with_spec, AlongsideCheckout, LaunchSpec};
 pub use resume::resume_after_turn_actions;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use self::{
@@ -21,6 +22,7 @@ use self::{
         stop_session,
     },
     move_archive::{schedule_session_move, schedule_workspace_archive},
+    project_sources::{add_project_source, list_project_sources, read_project_source},
     project_tools::{
         add_learning, cancel_schedule, list_projects_action, list_schedules, resume_schedule,
         schedule_followup, search_learnings_action,
@@ -31,6 +33,7 @@ use self::{
     },
 };
 use super::{
+    argmax_protocol_error,
     protocol::{
         GoalOutcome, GoalSetAction, SessionControlAction, SessionControlError,
         SessionControlRequest, SessionControlResponse, SessionControlResult,
@@ -41,9 +44,12 @@ use super::{
     TASK_LABEL_ELLIPSIS,
 };
 use crate::{
+    git::exec::{run_git_text, GIT_DEFAULT_TIMEOUT},
     ipc::inputs::{TerminalCols, TerminalRows},
     persistence::{
-        database::Database, projects::ProjectSummary, session_messages::count_undelivered_messages,
+        database::Database,
+        projects::{list_projects, ProjectSummary},
+        session_messages::count_undelivered_messages,
     },
     providers::session_service::ProviderSessionService,
     workspaces::WorkspaceService,
@@ -89,7 +95,7 @@ pub(super) async fn handle_session_control(
         SessionControlAction::Stop(action) => {
             stop_session(action, parent, database, providers).await
         }
-        SessionControlAction::Inbox(_) => inbox_read(parent, database),
+        SessionControlAction::Inbox(_) => inbox_read(parent, database, providers),
         SessionControlAction::Wait(action) => {
             wait_for_sessions(action, parent, database, providers, registry).await
         }
@@ -110,6 +116,13 @@ pub(super) async fn handle_session_control(
         SessionControlAction::LearningsAdd(action) => add_learning(action, parent, database),
         SessionControlAction::LearningsSearch(action) => {
             search_learnings_action(action, parent, database)
+        }
+        SessionControlAction::SourcesList(action) => list_project_sources(action, parent, database),
+        SessionControlAction::SourcesRead(action) => {
+            read_project_source(action, parent, database, workspaces, app.as_ref()).await
+        }
+        SessionControlAction::SourcesAdd(action) => {
+            add_project_source(action, parent, database, workspaces)
         }
         SessionControlAction::TerminalSpawn(action) => {
             // Spawning opens a PTY and forks a shell. Keep that work off the
@@ -244,6 +257,111 @@ pub(super) fn resolve_project(
         "PROJECT_NOT_FOUND",
         format!("No registered project matches '{selector}'."),
     ))
+}
+
+/// Resolve the selector against the registered projects, adding the repository
+/// at that path the first time an agent names one Argmax has not seen. An
+/// absolute path is how an agent says "that repo" for a folder the user has
+/// never opened here, and making the user add it by hand first is exactly the
+/// detour the tool exists to remove.
+pub(super) async fn resolve_or_register_project(
+    database: &Database,
+    selector: Option<&str>,
+    parent_project_id: &str,
+) -> Result<ProjectSummary, SessionControlError> {
+    let projects = {
+        let connection = database.connection();
+        list_projects(&connection).map_err(argmax_protocol_error)?
+    };
+    let unresolved = match resolve_project(&projects, selector, parent_project_id) {
+        Ok(project) => return Ok(project),
+        Err(error) => error,
+    };
+    let Some(selector) = selector.map(str::trim) else {
+        return Err(unresolved);
+    };
+    // Only an absolute path can name a repository Argmax has never recorded.
+    // An unknown name or id stays the caller's mistake.
+    if unresolved.code != "PROJECT_NOT_FOUND" || !Path::new(selector).is_absolute() {
+        return Err(unresolved);
+    }
+
+    let (toplevel, main_checkout) = repository_roots(selector).await?;
+    let registered = resolve_project(&projects, Some(&main_checkout), parent_project_id).ok();
+    // A linked worktree is a checkout of a project, not a project of its own.
+    // Registering one would give Argmax a second row for the same repository
+    // and hang new worktrees off a tree git may retire under it.
+    if toplevel != main_checkout {
+        let destination = registered
+            .as_ref()
+            .map_or(main_checkout.as_str(), |project| project.name.as_str());
+        return Err(protocol_error(
+            "PROJECT_IS_CHECKOUT",
+            format!(
+                "{selector} is a checkout of {destination}, not a repository of its own. \
+Pass project: \"{destination}\" with path: \"{selector}\"."
+            ),
+        ));
+    }
+    // A path inside a registered project resolves to that project rather than
+    // registering the same repository twice.
+    match registered {
+        Some(project) => Ok(project),
+        None => crate::ipc::projects::register_repo_path(database, PathBuf::from(main_checkout))
+            .await
+            .map_err(argmax_protocol_error),
+    }
+}
+
+/// The top of the checkout at `path` and the top of its main worktree, both
+/// canonical. They differ exactly when `path` sits in a linked worktree.
+async fn repository_roots(path: &str) -> Result<(String, String), SessionControlError> {
+    let not_a_repository = |error: crate::error::ArgmaxError| {
+        protocol_error(
+            "PROJECT_NOT_GIT",
+            format!("{path} is not a git repository Argmax can add: {error}"),
+        )
+    };
+    let toplevel = run_git_text(
+        Path::new(path),
+        ["rev-parse", "--show-toplevel"],
+        GIT_DEFAULT_TIMEOUT,
+    )
+    .await
+    .map_err(not_a_repository)?;
+    let common_dir = run_git_text(
+        Path::new(path),
+        ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+        GIT_DEFAULT_TIMEOUT,
+    )
+    .await
+    .map_err(not_a_repository)?;
+    // The main worktree is the parent of the shared git directory. A bare
+    // repository has no working tree to run an agent in.
+    let common_dir = PathBuf::from(common_dir.trim());
+    let main_checkout = common_dir
+        .parent()
+        .filter(|_| common_dir.file_name().and_then(|name| name.to_str()) == Some(".git"))
+        .ok_or_else(|| {
+            protocol_error(
+                "PROJECT_NOT_GIT",
+                format!("{path} has no working tree Argmax can open a chat in."),
+            )
+        })?;
+    Ok((
+        canonical_string(Path::new(toplevel.trim())).await,
+        canonical_string(main_checkout).await,
+    ))
+}
+
+/// Canonical form when the path resolves, and the path itself when it does
+/// not — the two roots only ever get compared with each other.
+async fn canonical_string(path: &Path) -> String {
+    tokio::fs::canonicalize(path)
+        .await
+        .unwrap_or_else(|_| path.to_path_buf())
+        .to_string_lossy()
+        .into_owned()
 }
 
 pub(crate) fn task_label(prompt: &str) -> String {
@@ -421,6 +539,116 @@ mod tests {
                 .unwrap()
                 .id,
             "one"
+        );
+    }
+
+    async fn git(path: &std::path::Path, args: &[&str]) {
+        run_git_text(path, args, GIT_DEFAULT_TIMEOUT)
+            .await
+            .unwrap_or_else(|error| panic!("git {args:?} failed: {error}"));
+    }
+
+    /// A repository with one commit, so it has a branch a worktree can fork.
+    async fn repository() -> tempfile::TempDir {
+        let repo = tempfile::tempdir().expect("temp repo");
+        let path = repo.path();
+        git(path, &["init", "--initial-branch=main"]).await;
+        git(path, &["config", "user.email", "test@example.com"]).await;
+        git(path, &["config", "user.name", "Test User"]).await;
+        std::fs::write(path.join("README.md"), "repo\n").expect("write");
+        git(path, &["add", "README.md"]).await;
+        git(path, &["commit", "-m", "init"]).await;
+        repo
+    }
+
+    fn database() -> Arc<Database> {
+        Arc::new(Database::open_in_memory().expect("open database"))
+    }
+
+    #[tokio::test]
+    async fn launching_at_an_unregistered_repository_adds_it_once() {
+        let database = database();
+        let repo = repository().await;
+        let selector = repo.path().to_string_lossy().into_owned();
+
+        let project = resolve_or_register_project(&database, Some(&selector), "none")
+            .await
+            .expect("register");
+        assert_eq!(
+            project.name,
+            repo.path().file_name().unwrap().to_str().unwrap()
+        );
+
+        // A second launch, and one naming a directory inside the repository,
+        // both land on the project that was just added.
+        let again = resolve_or_register_project(&database, Some(&selector), "none")
+            .await
+            .expect("resolve");
+        assert_eq!(again.id, project.id);
+        let inside = repo.path().join("inside");
+        std::fs::create_dir(&inside).expect("subdirectory");
+        let nested =
+            resolve_or_register_project(&database, Some(&inside.to_string_lossy()), "none")
+                .await
+                .expect("resolve nested");
+        assert_eq!(nested.id, project.id);
+        assert_eq!(
+            list_projects(&database.read_connection())
+                .expect("list")
+                .len(),
+            1
+        );
+    }
+
+    /// Registering a linked worktree would give the same repository a second
+    /// project row, and hang new worktrees off a tree git can retire.
+    #[tokio::test]
+    async fn a_linked_worktree_names_its_project_instead_of_becoming_one() {
+        let database = database();
+        let repo = repository().await;
+        let checkout = repo.path().join("linked");
+        git(
+            repo.path(),
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "side",
+                checkout.to_str().expect("path"),
+            ],
+        )
+        .await;
+        let project =
+            resolve_or_register_project(&database, Some(&repo.path().to_string_lossy()), "none")
+                .await
+                .expect("register");
+
+        let error =
+            resolve_or_register_project(&database, Some(&checkout.to_string_lossy()), "none")
+                .await
+                .expect_err("worktree refused");
+
+        assert_eq!(error.code, "PROJECT_IS_CHECKOUT");
+        assert!(error.message.contains(&project.name), "{}", error.message);
+    }
+
+    #[tokio::test]
+    async fn only_a_path_can_name_a_repository_argmax_has_never_seen() {
+        let database = database();
+
+        assert_eq!(
+            resolve_or_register_project(&database, Some("some-project"), "none")
+                .await
+                .expect_err("unknown name")
+                .code,
+            "PROJECT_NOT_FOUND"
+        );
+        assert_eq!(
+            resolve_or_register_project(&database, Some("/tmp/argmax-not-a-repository"), "none")
+                .await
+                .expect_err("not a repository")
+                .code,
+            "PROJECT_NOT_GIT"
         );
     }
 

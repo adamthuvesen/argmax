@@ -652,8 +652,8 @@ fn claude_reasoning_args(input: &ProviderLaunchInput) -> Vec<String> {
     vec!["--append-system-prompt".to_string(), prompt.to_string()]
 }
 
-// One inline `--settings` carries everything Argmax sets per launch: fast mode,
-// and the inbox hook whenever the launch has the argmax server to deliver for.
+// One inline `--settings` carries fast mode, foreground tools, and the inbox hook
+// whenever the launch has the argmax server to deliver for.
 // The flag merges over the user's settings files, so only these keys move.
 fn claude_settings_args(
     input: &ProviderLaunchInput,
@@ -661,6 +661,13 @@ fn claude_settings_args(
 ) -> Vec<String> {
     let mut settings = serde_json::Map::new();
     settings.insert("fastMode".to_string(), input.fast_mode.into());
+    // Child completion can precede a stale parent result while its findings
+    // are still queued. Foreground Agent/Bash calls deliver results before the
+    // parent finishes. Inline settings also override user/project env settings.
+    settings.insert(
+        "env".to_string(),
+        serde_json::json!({"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1"}),
+    );
     if let Some(hooks) = mcp_injection::claude_hook_settings(mcp) {
         settings.insert("hooks".to_string(), hooks);
     }
@@ -778,7 +785,7 @@ mod tests {
                 "--append-system-prompt",
                 CLAUDE_NATIVE_AGENT_GUIDANCE,
                 "--settings",
-                r#"{"fastMode":false}"#,
+                r#"{"env":{"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1"},"fastMode":false}"#,
                 "--model",
                 "haiku",
                 "--session-id",
@@ -884,7 +891,7 @@ mod tests {
                 "--append-system-prompt",
                 CLAUDE_NATIVE_AGENT_GUIDANCE,
                 "--settings",
-                r#"{"fastMode":false}"#,
+                r#"{"env":{"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1"},"fastMode":false}"#,
                 "--model",
                 "haiku",
                 "--output-format",
@@ -948,7 +955,10 @@ mod tests {
             .iter()
             .position(|arg| arg == "--settings")
             .expect("settings flag");
-        assert_eq!(args[index + 1], r#"{"fastMode":true}"#);
+        assert_eq!(
+            args[index + 1],
+            r#"{"env":{"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1"},"fastMode":true}"#
+        );
     }
 
     #[test]

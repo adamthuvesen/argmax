@@ -1,4 +1,3 @@
-import { Split, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type {
   AgentMode,
@@ -13,11 +12,12 @@ import { buildAgentActivity } from "../lib/agentActivity.js";
 import { emblemForCodename, emblemForKey, type Emblem } from "../lib/agentEmblems.js";
 import { agentTabId, multitaskTabId, readAgentTab } from "../lib/agentTabs.js";
 import { agentRootToolUseId, assignAgentCodenames, codenameForTool, fallbackCodename } from "../lib/agentNames.js";
+import type { FontSize } from "../lib/fonts.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { multitaskRowStatus, type MultitaskChild } from "../lib/multitask.js";
 import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 import { buildSessionToolCalls } from "../lib/sessionConversationModel.js";
-import { buildSubagentCluster } from "../lib/subagentSummary.js";
+import { buildAgentRoster, newestAgentFirst, type AgentRosterEntry } from "../lib/agentRoster.js";
 import { decodeTimelineEvent } from "../lib/canonicalTimeline.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { AgentActivity } from "./AgentActivity.js";
@@ -27,8 +27,17 @@ import type { FileChipOpenOptions } from "./FileChip.js";
 import { MultitaskPanel } from "./MultitaskPanel.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import { WorkingNest } from "./WorkingNest.js";
+import { AgentRosterPopover } from "./AgentRosterPopover.js";
 
 type AgentStatus = "running" | "done" | "error" | "missing";
+
+const ACTIVE_STRIP_LIMIT = 4;
+
+function stripPriority(entry: AgentRosterEntry, activeId: string | null): number {
+  if (entry.id === activeId) return 0;
+  if (entry.status === "error") return 1;
+  return 2;
+}
 
 /** The dock only opens a multitask tab on a surface that wired the session
  *  commands; these keep the optional props honest without a crash if one is
@@ -56,6 +65,7 @@ interface DockTab {
  * CSS) so each keeps loading and polling in the background.
  */
 export function AgentsView({
+  chatFontSize,
   events,
   defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
@@ -65,6 +75,7 @@ export function AgentsView({
   parentSession,
   agentTabs,
   pendingMessages,
+  stripLimit = ACTIVE_STRIP_LIMIT,
   workspace,
   onCancelQueuedMessage,
   onClearSession,
@@ -81,6 +92,8 @@ export function AgentsView({
   onTerminateSession
 }: {
   events: TimelineEvent[];
+  /** Settings → Appearance: the agent-window scale shared by delegated chats. */
+  chatFontSize?: FontSize;
   /** Chat verbosity, forwarded so a subagent's transcript is as quiet or as
    *  detailed as the chat that launched it. */
   defaultToolCallsDisplay?: ToolCallsDisplay;
@@ -93,6 +106,8 @@ export function AgentsView({
   parentSession: SessionSummary | null;
   agentTabs: AgentTabsState;
   pendingMessages?: Record<string, PendingMessage[]>;
+  /** Mobile keeps fewer live identities ahead of the fixed roster control. */
+  stripLimit?: number;
   workspace: WorkspaceSummary | null;
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
   onClearSession?: (sessionId: string) => Promise<void>;
@@ -124,15 +139,27 @@ export function AgentsView({
   // render still has to resolve to something to show.
   const activeId = activeTabId ?? tabIds[0] ?? null;
 
+  const tools = useMemo(() => buildSessionToolCalls(
+    events,
+    parentSession?.state === "running",
+    parentSession?.state === "failed" || parentSession?.state === "cancelled"
+  ), [events, parentSession?.state]);
+  const codenames = useMemo(() => assignAgentCodenames(tools), [tools]);
+  const roster = useMemo(
+    () => buildAgentRoster(tools, codenames, multitasks),
+    [codenames, multitasks, tools]
+  );
+  const orderedRoster = useMemo(() => [...roster.entries].sort((a, b) => {
+    const statusOrder = { running: 0, error: 1, done: 2 } as const;
+    const status = statusOrder[a.status] - statusOrder[b.status];
+    return status || newestAgentFirst(a, b);
+  }), [roster.entries]);
+
   const discoveredTabs = useRef(new Set<string>());
   const provisionalDiscoveries = useRef(new Set<string>());
   useEffect(() => {
     if (!onDiscoverTabs) return;
-    const tools = buildSessionToolCalls(events, parentSession?.state === "running",
-      parentSession?.state === "failed" || parentSession?.state === "cancelled");
-    const cluster = buildSubagentCluster(tools, assignAgentCodenames(tools), multitasks);
-    const ids = (cluster?.entries ?? []).map((entry) =>
-      entry.multitask ? multitaskTabId(entry.toolUseId) : entry.toolUseId);
+    const ids = orderedRoster.map((entry) => entry.id);
     // Remember discoveries for this visit so live updates respect closed tabs.
     // Remounting the dock discovers all available work again.
     const newIds: string[] = [];
@@ -152,20 +179,14 @@ export function AgentsView({
       newIds.push(id);
     }
     if (newIds.length > 0) onDiscoverTabs(newIds);
-  }, [events, multitasks, onDiscoverTabs, parentSession?.state]);
+  }, [onDiscoverTabs, orderedRoster]);
 
   const tabs = useMemo((): DockTab[] => {
     const sessionRunning = parentSession?.state === "running";
-    const tools = buildSessionToolCalls(
-      events,
-      sessionRunning,
-      parentSession?.state === "failed" || parentSession?.state === "cancelled"
-    );
-    const codenames = assignAgentCodenames(tools);
     const childrenByTabId = new Map(
       (multitasks ?? []).map((child) => [multitaskTabId(child.session.id), child])
     );
-    return tabIds.map((id) => {
+    const openOrder = tabIds.map((id): DockTab => {
       const tab = readAgentTab(id);
       if (tab.kind === "multitask") {
         const child = childrenByTabId.get(id) ?? null;
@@ -226,7 +247,32 @@ export function AgentsView({
         rootToolUseId: tab.toolUseId
       };
     });
-  }, [events, multitasks, parentSession?.provider, parentSession?.state, tabIds]);
+    // Newest launch leftmost, with everything still running ahead of the rest,
+    // so what is active is visible without scrolling the strip once it fills.
+    // `tabIds` is discovery order, oldest first; sorting is stable so ties keep it.
+    const launchIndex = new Map(openOrder.map((tab, index) => [tab.id, index]));
+    return [...openOrder].sort((a, b) => {
+      const activeFirst = Number(b.status === "running") - Number(a.status === "running");
+      if (activeFirst !== 0) return activeFirst;
+      return (launchIndex.get(b.id) ?? 0) - (launchIndex.get(a.id) ?? 0);
+    });
+  }, [codenames, events, multitasks, parentSession?.provider, parentSession?.state, tabIds, tools]);
+  const stripEntries = useMemo(() => roster.entries
+    .filter((entry) => entry.status !== "done" || entry.id === activeId)
+    .sort((a, b) => {
+      const priority = stripPriority(a, activeId) - stripPriority(b, activeId);
+      return priority || newestAgentFirst(a, b);
+    }), [activeId, roster.entries]);
+  const visibleStripEntries = stripEntries.slice(0, stripLimit);
+  // Keyboard navigation walks only the tabs that are actually drawn. The full
+  // roster has its own vertical listbox navigation.
+  const orderedTabIds = visibleStripEntries.map((entry) => entry.id);
+  const visibleStripIds = new Set(visibleStripEntries.map((entry) => entry.id));
+  const activeOverflow = Math.max(0, stripEntries.length - visibleStripEntries.length);
+  const selectRosterEntry = useCallback((id: string): void => {
+    agentTabs.openTabs?.([id]);
+    agentTabs.selectTab(id);
+  }, [agentTabs]);
 
   // Drop a tab whose launch row left the timeline: Codex supersedes a synthetic
   // spawn with the real one, and the tab that pointed at the old id would sit
@@ -274,7 +320,7 @@ export function AgentsView({
   const handleTabKeyDown = useCallback(
     (tabId: string) =>
       (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
-        const currentIndex = tabIds.indexOf(tabId);
+        const currentIndex = orderedTabIds.indexOf(tabId);
         if (currentIndex === -1) return;
         const focusTab = (next: string | undefined): void => {
           if (!next) return;
@@ -284,23 +330,19 @@ export function AgentsView({
         };
         if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
           const delta = event.key === "ArrowLeft" ? -1 : 1;
-          focusTab(tabIds[(currentIndex + delta + tabIds.length) % tabIds.length]);
+          focusTab(orderedTabIds[(currentIndex + delta + orderedTabIds.length) % orderedTabIds.length]);
           return;
         }
         if (event.key === "Home") {
-          focusTab(tabIds[0]);
+          focusTab(orderedTabIds[0]);
           return;
         }
         if (event.key === "End") {
-          focusTab(tabIds[tabIds.length - 1]);
+          focusTab(orderedTabIds[orderedTabIds.length - 1]);
           return;
         }
-        if (event.key === "Delete" || event.key === "Backspace") {
-          event.preventDefault();
-          agentTabs.closeTab(tabId);
-        }
       },
-    [agentTabs, tabIds]
+    [agentTabs, orderedTabIds]
   );
 
   if (tabIds.length === 0) {
@@ -316,61 +358,53 @@ export function AgentsView({
 
   return (
     <div className="review-agents">
-      <div className="file-tabs-shell">
-        <div className="file-tabs" role="tablist" aria-label="Subagents and multitasks">
-          {tabs.map((tab) => {
-            const isActive = tab.id === activeId;
+      <div className="file-tabs-shell agent-tabs-shell">
+        <div className="file-tabs agent-active-tabs" role="tablist" aria-label="Subagents and multitasks">
+          {visibleStripEntries.map((entry) => {
+            const isActive = entry.id === activeId;
             return (
-              <div className="file-tab" data-active={isActive ? "true" : "false"} key={tab.id}>
+              <div className="file-tab" data-active={isActive ? "true" : "false"} key={entry.id}>
                 <button
-                  ref={setTabButtonRef(tab.id)}
+                  ref={setTabButtonRef(entry.id)}
                   type="button"
                   role="tab"
                   aria-selected={isActive}
-                  aria-controls={`review-agent-${tab.id}`}
-                  id={`review-agent-tab-${tab.id}`}
+                  aria-controls={`review-agent-${entry.id}`}
+                  id={`review-agent-tab-${entry.id}`}
                   tabIndex={isActive ? 0 : -1}
-                  title={tab.title}
-                  onClick={() => agentTabs.selectTab(tab.id)}
-                  onKeyDown={handleTabKeyDown(tab.id)}
+                  title={entry.title}
+                  onClick={() => selectRosterEntry(entry.id)}
+                  onKeyDown={handleTabKeyDown(entry.id)}
                 >
                   <span
-                    className={tab.emblem ? "file-tab-icon agent-emblem-tint" : "file-tab-icon"}
-                    data-status={tab.status}
-                    data-hue={tab.emblem?.hue}
+                    className="file-tab-icon agent-emblem-tint"
+                    data-status={entry.status}
+                    data-hue={entry.emblem.hue}
                     aria-hidden="true"
                   >
-                    {tab.status === "running" ? (
-                      <WorkingNest active size={11} phaseKey={tab.id} />
-                    ) : tab.emblem ? (
-                      <AgentEmblem
-                        shape={tab.emblem.shape}
-                        hue={tab.emblem.hue}
-                        size={13}
-                        status={tab.status === "error" ? "error" : "done"}
-                      />
+                    {entry.status === "running" ? (
+                      <WorkingNest active size={11} phaseKey={entry.id} />
                     ) : (
-                      <Split size={13} />
+                      <AgentEmblem
+                        shape={entry.emblem.shape}
+                        hue={entry.emblem.hue}
+                        size={13}
+                        status={entry.status === "error" ? "error" : "done"}
+                      />
                     )}
                   </span>
-                  <span className="file-tab-name">{tab.name}</span>
-                </button>
-                <button
-                  type="button"
-                  className="file-tab-close"
-                  aria-label={`Close ${tab.name}`}
-                  title={`Close ${tab.name}`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    agentTabs.closeTab(tab.id);
-                  }}
-                >
-                  <X size={12} aria-hidden="true" />
+                  <span className="file-tab-name">{entry.codename}</span>
                 </button>
               </div>
             );
           })}
         </div>
+        <AgentRosterPopover
+          activeOverflow={activeOverflow}
+          activeTabId={activeId}
+          entries={roster.entries}
+          onSelect={selectRosterEntry}
+        />
       </div>
 
       <div className="review-agents-body">
@@ -383,11 +417,16 @@ export function AgentsView({
               data-active={isActive ? "true" : "false"}
               role="tabpanel"
               id={`review-agent-${tab.id}`}
-              aria-labelledby={`review-agent-tab-${tab.id}`}
+              aria-labelledby={visibleStripIds.has(tab.id) ? `review-agent-tab-${tab.id}` : undefined}
+              aria-label={visibleStripIds.has(tab.id) ? undefined : tab.title}
               aria-hidden={isActive ? undefined : true}
             >
               {tab.multitask ? (
                 <MultitaskPanel
+                  chatFontSize={chatFontSize}
+                  defaultToolCallsDisplay={defaultToolCallsDisplay}
+                  defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
+                  thinkingDisplay={thinkingDisplay}
                   isFocused={Boolean(isFocused && isActive)}
                   pendingMessages={pendingMessages?.[tab.multitask.session.id] ?? []}
                   session={tab.multitask.session}

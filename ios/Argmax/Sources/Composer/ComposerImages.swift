@@ -1,5 +1,6 @@
 import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The images waiting to go out with a draft, and the picker that adds them.
 ///
@@ -28,33 +29,78 @@ final class ComposerImages: ObservableObject {
         defer { attaching = false }
         var failure: String?
         for pick in picks {
-            do {
-                guard let data = try await pick.loadTransferable(type: Data.self),
-                      let image = PickedImage.encoded(from: data)
-                else {
-                    failure = "That image could not be attached."
-                    continue
-                }
-                let saved = try await client.saveAttachmentImage(
-                    SaveAttachmentImageInput(
-                        sessionId: storeKey,
-                        mimeType: image.mimeType,
-                        dataBase64: image.data.base64EncodedString()
-                    )
-                )
-                attachments.append(
-                    ComposerAttachment(
-                        filePath: saved.filePath,
-                        mimeType: image.mimeType,
-                        sizeBytes: saved.sizeBytes
-                    )
-                )
-                previews[saved.filePath] = UIImage(data: image.data)
-            } catch {
-                failure = hostFailureMessage(error)
+            let data = try? await pick.loadTransferable(type: Data.self)
+            guard let data else {
+                failure = "That image could not be attached."
+                continue
+            }
+            if let reported = await store(data, storeKey: storeKey, client: client) {
+                failure = reported
             }
         }
         return failure
+    }
+
+    /// The same road in from the clipboard: a screenshot taken with Copy and
+    /// Save is a PNG sitting on the pasteboard, and the composer's standard
+    /// edit-menu Paste action hands it over as item providers.
+    func attach(
+        pasted providers: [NSItemProvider],
+        storeKey: String,
+        client: BridgeClient
+    ) async -> String? {
+        attaching = true
+        defer { attaching = false }
+        var failure: String?
+        for provider in providers {
+            guard let data = await Self.imageData(from: provider) else {
+                failure = "That image could not be pasted."
+                continue
+            }
+            if let reported = await store(data, storeKey: storeKey, client: client) {
+                failure = reported
+            }
+        }
+        return failure
+    }
+
+    /// Encode to something the store takes, put it on the Mac, and hold the
+    /// preview. Answers with what went wrong, or nil.
+    private func store(_ data: Data, storeKey: String, client: BridgeClient) async -> String? {
+        guard let image = PickedImage.encoded(from: data) else {
+            return "That image could not be attached."
+        }
+        do {
+            let saved = try await client.saveAttachmentImage(
+                SaveAttachmentImageInput(
+                    sessionId: storeKey,
+                    mimeType: image.mimeType,
+                    dataBase64: image.data.base64EncodedString()
+                )
+            )
+            attachments.append(
+                ComposerAttachment(
+                    filePath: saved.filePath,
+                    mimeType: image.mimeType,
+                    sizeBytes: saved.sizeBytes
+                )
+            )
+            previews[saved.filePath] = UIImage(data: image.data)
+            return nil
+        } catch {
+            return hostFailureMessage(error)
+        }
+    }
+
+    /// The provider's bytes as they were registered — a pasted PNG stays a
+    /// PNG, which `PickedImage` needs to tell the store what it is holding.
+    /// `NSItemProvider` predates concurrency and answers on a callback.
+    private static func imageData(from provider: NSItemProvider) async -> Data? {
+        await withCheckedContinuation { continuation in
+            _ = provider.loadDataRepresentation(for: .image) { data, _ in
+                continuation.resume(returning: data)
+            }
+        }
     }
 
     /// Drops the image from this draft. The file stays in the host's store,
@@ -99,7 +145,7 @@ struct AttachImageButton: View {
                     ProgressView().controlSize(.small)
                 } else {
                     Image(systemName: "plus")
-                        .font(.body.weight(.medium))
+                        .typeSymbol(.body, weight: .medium)
                         .foregroundStyle(Theme.ink)
                 }
             }
@@ -124,7 +170,7 @@ struct ComposerImageStrip: View {
                             images.remove(attachment)
                         } label: {
                             Image(systemName: "xmark")
-                                .font(.caption2.weight(.bold))
+                                .typeSymbol(.caption2, weight: .bold)
                                 .foregroundStyle(Theme.ground)
                                 .frame(width: 18, height: 18)
                                 .background(Theme.ink.opacity(0.75), in: .circle)

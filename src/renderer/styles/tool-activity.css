@@ -1,0 +1,124 @@
+/* Each colour is one sayable family, so a glance down the transcript reads as
+   a legend rather than as decoration. Blue is the exception and does two jobs:
+   it carries the agent's own machinery and it is where a row lands when
+   nothing named it. The iPhone mirrors this in TranscriptToolIcon.uiColor. */
+.tool-activity-icon {
+  flex: 0 0 auto;
+  color: var(--activity-blue);
+  animation: none;
+  transition: none;
+  transform: none;
+}
+
+/* Changed a file. A delete is a file change, not a failure, so it keeps this
+   colour and leaves red to failed and cancelled work. */
+.tool-activity-icon[data-activity="edit"] {
+  color: var(--activity-coral);
+}
+
+/* Looked at the project. Reading a file and running `git diff` are the same
+   act — inspecting without changing — and the classifier already ranks git
+   alongside reads when it picks a mixed row's identity. */
+.tool-activity-icon:is(
+  [data-activity="read"],
+  [data-activity="list"],
+  [data-activity="git"]
+) {
+  color: var(--activity-green);
+}
+
+/* Went looking for something. `grep` and a web search are one verb, so the
+   browser and web kinds sit here instead of needing a colour for "internet". */
+.tool-activity-icon:is(
+  [data-activity="search"],
+  [data-activity="discovery"],
+  [data-activity="web-search"],
+  [data-activity="web-fetch"],
+  [data-activity="browser"]
+) {
+  color: var(--activity-purple);
+}
+
+/* Ran a command, the transcript's most common row. This is also the bucket for
+   work we could not identify, so it stays a colour of its own and shrinks as
+   the classifier improves. */
+.tool-activity-icon:is([data-activity="command"], [data-activity="computer"]) {
+  color: var(--activity-gold);
+}
+
+/* The agent's own machinery: organizing itself rather than touching the repo.
+   It shares blue with the fallback below, so a blue row means either this or
+   a kind nothing named — spelled out here rather than left to fall through,
+   so the family stays visible to a reader and to the parity gate. */
+.tool-activity-icon:is(
+  [data-activity="skill"],
+  [data-activity="plan"],
+  [data-activity="memory-recall"],
+  [data-activity="memory-save"],
+  [data-activity="agent"],
+  [data-activity="agent-message"],
+  [data-activity="agent-wait"]
+) {
+  color: var(--activity-blue);
+}
+
+.tool-activity-icon[data-tone="danger"] {
+  color: var(--activity-red);
+}
+
+/* Monochrome is intentionally scoped to transcript activity. Navigation and
+   status icons keep their existing roles, while tool kinds, thoughts, and
+   brand marks recede into the activity ledger's muted ink. Brand paths use
+   inline fills, so the path override is the one deliberate !important here. */
+:root[data-activity-icon-color="monochrome"] :is(
+  .tool-activity-icon,
+  .tool-call-row-server-icon,
+  .thought-block-icon
+) {
+  color: var(--muted);
+}
+
+:root[data-activity-icon-color="monochrome"] .tool-call-row-server-icon path {
+  fill: currentColor !important;
+}
+
+/* One ink turns the mascot's head into a solid lump, so the sprite's palette
+   roles come back as depths of that ink: the outline and nose at full strength
+   hold the ears and muzzle, fur sits back from them, cream separates the
+   muzzle and inner ears the way its colour does, and the eye drops to the row
+   behind it. Opacity, not fill, so the override above still lands. */
+:root[data-activity-icon-color="monochrome"] .tool-call-row-server-icon {
+  --fox-mono-line: 1;
+  --fox-mono-fur: 0.62;
+  --fox-mono-cream: 0.26;
+  --fox-mono-eye: 0;
+}
+
+/* The ramp follows the ink, not the sprite, so the dark row inverts it. There
+   the ink is the light end and the row is the dark one, which puts a near-black
+   outline at the brightest point on screen and sinks the cream muzzle into the
+   background — a bright mask instead of a fox. Reading it upward from the row
+   restores the order the colour artwork has: outline a hair off the background,
+   fur above it, muzzle and inner ears bright, eyes brightest. */
+:root[data-theme="dark"][data-activity-icon-color="monochrome"] .tool-call-row-server-icon {
+  --fox-mono-line: 0.1;
+  --fox-mono-fur: 0.58;
+  --fox-mono-cream: 0.92;
+  --fox-mono-eye: 1;
+}
+
+:root[data-activity-icon-color="monochrome"] .tool-call-row-server-icon path[data-tone="line"] {
+  fill-opacity: var(--fox-mono-line);
+}
+
+:root[data-activity-icon-color="monochrome"] .tool-call-row-server-icon path[data-tone="fur"] {
+  fill-opacity: var(--fox-mono-fur);
+}
+
+:root[data-activity-icon-color="monochrome"] .tool-call-row-server-icon path[data-tone="cream"] {
+  fill-opacity: var(--fox-mono-cream);
+}
+
+:root[data-activity-icon-color="monochrome"] .tool-call-row-server-icon path[data-tone="eye"] {
+  fill-opacity: var(--fox-mono-eye);
+}

@@ -2,7 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { chmod, copyFile, mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -12,6 +12,8 @@ import { buildScratchApp, freePort, scratchBinaryPath, startScratchApp } from ".
 import { verifyBrowserSession } from "./verification/browser.mjs";
 import { checkoutFingerprint, delay, fileSha256, runChecked, terminateRunningCommands, uniqueRunId } from "./verification/common.mjs";
 import { copyIfPresent, listEvidenceFiles, redact, redactEvidenceTextFiles, writeJson, writeNdjson } from "./verification/evidence.mjs";
+import { verifySessionMove } from "./verification/session-move.mjs";
+import { verifyStagedPreservingRevert } from "./verification/workspace-recovery.mjs";
 import {
   VERIFICATION_BARRIERS,
   VERIFICATION_CONVERSATION_ID,
@@ -22,6 +24,7 @@ import {
   VERIFICATION_OPENCODE_PROVIDER,
   VERIFICATION_OPENCODE_SUBAGENT,
   VERIFICATION_PROVIDER,
+  VERIFICATION_MOVED_CONVERSATION_ID,
   VERIFICATION_SCENARIOS,
   VERIFICATION_SUBAGENT,
 } from "./verification/provider-fixture.mjs";
@@ -31,16 +34,20 @@ const terminalStates = new Set(["complete", "failed", "cancelled"]);
 const persistentSubagentScenarios = new Set(["persistent-subagent", "persistent-codex-subagent", "persistent-opencode-subagent", "persistent-cursor-subagent"]);
 const scenarioDefinitionKeys = Object.freeze({
   "chat-resume": "chatResumeFirst",
+  "queued-restart": "chatResumeFirst",
   "persistent-subagent": "persistentSubagentFirst",
   "persistent-codex-subagent": "persistentCodexSubagentFirst",
+  "codex-user-input": "codexUserInput",
   "persistent-opencode-subagent": "persistentOpencodeSubagentFirst",
   "persistent-cursor-subagent": "persistentCursorSubagentFirst",
   cancellation: "cancellation",
   "provider-error": "providerError",
+  "session-move": "sessionMoveFirst",
+  "staged-revert": "providerError",
 });
 
 function providerForScenario(scenario) {
-  if (scenario === "persistent-codex-subagent") return VERIFICATION_CODEX_PROVIDER;
+  if (scenario === "persistent-codex-subagent" || scenario === "codex-user-input") return VERIFICATION_CODEX_PROVIDER;
   if (scenario === "persistent-opencode-subagent") return VERIFICATION_OPENCODE_PROVIDER;
   if (scenario === "persistent-cursor-subagent") return VERIFICATION_CURSOR_PROVIDER;
   return VERIFICATION_PROVIDER;
@@ -75,10 +82,14 @@ export function parseVerifyArgs(argv) {
     else throw new Error(`unknown argument: ${arg}`);
   }
   if (!Object.hasOwn(scenarioDefinitionKeys, options.scenario)) {
-    throw new Error("--scenario must be chat-resume, persistent-subagent, persistent-codex-subagent, persistent-opencode-subagent, persistent-cursor-subagent, cancellation, or provider-error");
+    throw new Error(`--scenario must be one of: ${Object.keys(scenarioDefinitionKeys).join(", ")}`);
   }
   if (!['required', 'auto', 'off'].includes(options.native)) {
     throw new Error("--native must be required, auto, or off");
+  }
+  if (["session-move", "staged-revert"].includes(options.scenario)
+      && options.native !== "required") {
+    throw new Error(`${options.scenario} requires native verification`);
   }
   if (!Number.isFinite(options.timeoutMs) || options.timeoutMs < 5000) throw new Error("--timeout must be at least 5 seconds");
   return options;
@@ -92,6 +103,39 @@ async function prepareEvidenceDirectory(outputDir) {
     if (error.code !== "ENOENT") throw error;
   }
   await mkdir(outputDir, { recursive: true });
+}
+
+async function prepareNativeAppBinary(binaryDirectory, sourceBinary) {
+  if (process.platform !== "darwin") return sourceBinary;
+
+  // A raw executable has no macOS app identity and can lose activation to the
+  // installed Argmax process. WebDriver still launches the executable itself.
+  const contentsDirectory = path.join(binaryDirectory, "Argmax Verification.app", "Contents");
+  const macosDirectory = path.join(contentsDirectory, "MacOS");
+  const nativeBinary = path.join(macosDirectory, "argmax");
+  await mkdir(macosDirectory, { recursive: true });
+  await copyFile(sourceBinary, nativeBinary);
+  await chmod(nativeBinary, (await stat(sourceBinary)).mode);
+  await writeFile(path.join(contentsDirectory, "Info.plist"), `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key>
+  <string>argmax</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.argmax.verification</string>
+  <key>CFBundleName</key>
+  <string>Argmax Verification</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+</dict>
+</plist>
+`);
+  return nativeBinary;
 }
 
 function isolatedEnvironment(home, fixturePath, controlDir, invocationLog, provider) {
@@ -255,11 +299,89 @@ function assertRecordIncludes(records, expected, label) {
   }
 }
 
-async function runScenario({ bridge, scenario, provider, repoPath, controlDir, verifyUi, sendInput, terminate, restartBackend, timeoutMs, timeline }) {
+function assertOnlyPendingMessage(entries, expected, label) {
+  if (
+    entries.length !== 1
+    || entries[0].id !== expected.id
+    || entries[0].content !== expected.content
+  ) {
+    throw new Error(`${label} must contain exactly queued follow-up ${expected.id}`);
+  }
+  return entries[0];
+}
+
+async function runScenario({
+  bridge,
+  scenario,
+  provider,
+  repoPath,
+  movePath,
+  controlDir,
+  invocationLog,
+  databasePath,
+  outputDir,
+  browser,
+  verifyUi,
+  sendInput,
+  queueInput,
+  sendQueuedInput,
+  terminate,
+  restartBackend,
+  timeoutMs,
+  timeline
+}) {
   const definition = definitionForScenario(scenario);
   const { workspace } = await resolveProjectAndWorkspace(bridge, repoPath, definition.prompt);
   const launched = await launchFixture(bridge, workspace.id, definition.prompt, provider);
   timeline.push({ at: new Date().toISOString(), type: "session-launched", sessionId: launched.id, workspaceId: workspace.id });
+
+  if (scenario === "session-move") {
+    return verifySessionMove({
+      bridge,
+      browser,
+      sourceSession: launched,
+      sourceWorkspace: workspace,
+      repoPath,
+      movePath,
+      controlDir,
+      outputDir: path.join(outputDir, "native"),
+      timeoutMs,
+      invocationLog,
+    });
+  }
+
+  if (scenario === "codex-user-input") {
+    const deadline = Date.now() + timeoutMs;
+    let requestId = null;
+    while (Date.now() < deadline) {
+      const batch = await bridge.call("session:events-since", { sessionId: launched.id });
+      const question = batch.events.find((event) => event.type === "command.started"
+        && event.payload?.input?.questions?.some((entry) => entry.id === definition.questionId));
+      if (question) {
+        requestId = question.payload.input.requestId;
+        if (!requestId) throw new Error("Codex question omitted its response request ID");
+        timeline.push({ at: new Date().toISOString(), type: "pending-question", event: question });
+        break;
+      }
+      await delay(100);
+    }
+    if (!requestId) throw new Error("Codex did not publish its pending question");
+    const dashboard = await bridge.call("dashboard:list", {});
+    const waiting = dashboard.sessions.find((session) => session.id === launched.id);
+    if (waiting?.state !== "waiting" || waiting.attention !== "question-asked") {
+      throw new Error(`Pending question has incorrect session state: ${waiting?.state}/${waiting?.attention}`);
+    }
+    const waitingUi = await verifyUi({ name: "question-waiting", expectedTexts: [definition.questionText], expectIdle: false });
+    await bridge.call("questions:resolve", {
+      sessionId: launched.id, requestId,
+      answers: { [definition.questionId]: [definition.expectedAnswer] },
+    });
+    const result = await collectUntilTerminal(bridge, launched.id, timeoutMs);
+    if (result.session.state !== "complete") throw new Error(`question turn ended in ${result.session.state}`);
+    assertIncludes(result.records, definition.visibleText, "same-turn answer");
+    const ui = await verifyUi({ name: "question-answered", expectedTexts: [definition.visibleText], expectIdle: true });
+    return { session: result.session, workspace, records: result.records, browser: [waitingUi, ui] };
+  }
 
   if (scenario === "chat-resume") {
     await waitForFile(path.join(controlDir, `${VERIFICATION_BARRIERS.chatResumeStream}.ready`), timeoutMs);
@@ -293,6 +415,148 @@ async function runScenario({ bridge, scenario, provider, repoPath, controlDir, v
       expectIdle: true
     });
     return { session: second.session, workspace, records: combined, browser: [streamingUi, toolUi, ui] };
+  }
+
+  if (scenario === "queued-restart") {
+    const secondPrompt = VERIFICATION_SCENARIOS.chatResumeSecond.prompt;
+    await waitForFile(path.join(controlDir, `${VERIFICATION_BARRIERS.chatResumeStream}.ready`), timeoutMs);
+    const streamingUi = await verifyUi({
+      name: "queued-running",
+      expectedTexts: [VERIFICATION_SCENARIOS.chatResumeFirst.visibleText],
+      expectIdle: false
+    });
+    const queuedAction = await queueInput(launched.id, secondPrompt);
+    const pendingMessage = queuedAction.queuedMessage;
+    if (!pendingMessage?.id || pendingMessage.content !== secondPrompt) {
+      throw new Error("native composer did not return the persisted queued follow-up");
+    }
+    const expectedQueuedMessage = { id: pendingMessage.id, content: secondPrompt };
+    const queuedDashboard = await bridge.call("dashboard:list", {});
+    assertOnlyPendingMessage(
+      queuedDashboard.pendingMessages[launched.id] ?? [],
+      expectedQueuedMessage,
+      "dashboard queue before restart"
+    );
+    const beforeRestart = await sqliteSnapshot(databasePath, launched.id);
+    await writeJson(path.join(outputDir, "queued-before-restart.json"), beforeRestart);
+    const firstTurnDeltaSequence = beforeRestart.events
+      .filter((event) => event.type === "message.delta" && typeof event.message === "string" && event.message.length > 0)
+      .map((event) => ({ id: event.id, message: event.message }));
+    if (firstTurnDeltaSequence.length === 0) {
+      throw new Error("held first turn did not persist any streamed content before restart");
+    }
+    const durableBefore = assertOnlyPendingMessage(
+      beforeRestart.pendingMessages,
+      expectedQueuedMessage,
+      "SQLite queue before restart"
+    );
+    if (durableBefore.deliveryState !== "pending") {
+      throw new Error("SQLite queued follow-up was not pending before restart");
+    }
+    if (beforeRestart.events.some((event) => event.type === "user.message" && event.message === secondPrompt)) {
+      throw new Error("queued follow-up was recorded as a user turn before delivery");
+    }
+
+    const resumedBridge = await restartBackend();
+    timeline.push({ at: new Date().toISOString(), type: "backend-restarted", sessionId: launched.id });
+    await delay(1_000);
+    const recoveredDashboard = await resumedBridge.call("dashboard:list", {});
+    const recoveredDashboardMessage = assertOnlyPendingMessage(
+      recoveredDashboard.pendingMessages[launched.id] ?? [],
+      expectedQueuedMessage,
+      "dashboard queue after restart"
+    );
+    if (!["unsent", "delivery-unknown"].includes(recoveredDashboardMessage.recoveryStatus)) {
+      throw new Error("restart did not recover the queued follow-up as paused or delivery-uncertain");
+    }
+    const recovered = await sqliteSnapshot(databasePath, launched.id);
+    await writeJson(path.join(outputDir, "queued-after-restart.json"), recovered);
+    const recoveredFirstTurnDeltaSequence = recovered.events
+      .filter((event) => event.type === "message.delta" && typeof event.message === "string" && event.message.length > 0)
+      .map((event) => ({ id: event.id, message: event.message }));
+    if (JSON.stringify(recoveredFirstTurnDeltaSequence) !== JSON.stringify(firstTurnDeltaSequence)) {
+      throw new Error("restart changed the persisted first-turn stream fragments");
+    }
+    const durableRecovered = assertOnlyPendingMessage(
+      recovered.pendingMessages,
+      expectedQueuedMessage,
+      "SQLite queue after restart"
+    );
+    if (!["recovered", "delivery_unknown"].includes(durableRecovered.deliveryState)) {
+      throw new Error("SQLite did not mark the queued follow-up as recovered");
+    }
+    if (recovered.events.some((event) => event.type === "user.message" && event.message === secondPrompt)) {
+      throw new Error("recovered queued follow-up replayed without an explicit send");
+    }
+    const recoveryLabel = recoveredDashboardMessage.recoveryStatus === "delivery-unknown"
+      ? "Delivery uncertain • check the chat before sending again"
+      : "Paused • not sent";
+    const recoveredUi = await verifyUi({
+      name: "queued-recovered",
+      expectedTexts: [secondPrompt, recoveryLabel],
+      expectIdle: true
+    });
+
+    const beforeSend = await resumedBridge.call("session:events-since", {
+      sessionId: launched.id,
+      eventCursor: null,
+      rawOutputCursor: null,
+      changeCursor: null
+    });
+    const recoveredRecords = [
+      ...beforeSend.events.map((event) => ({ kind: "event", ...event })),
+      ...beforeSend.rawOutputs.map((output) => ({ kind: "rawOutput", ...output }))
+    ];
+    const beforeExplicitSend = await sqliteSnapshot(databasePath, launched.id);
+    assertOnlyPendingMessage(
+      beforeExplicitSend.pendingMessages,
+      expectedQueuedMessage,
+      "SQLite queue before explicit Send"
+    );
+    const userMessagesBeforeExplicitSend = beforeExplicitSend.events
+      .filter((event) => event.type === "user.message" && event.message === secondPrompt);
+    if (userMessagesBeforeExplicitSend.length !== 0) {
+      throw new Error("recovered queued follow-up replayed before explicit Send");
+    }
+    await sendQueuedInput(launched.id, pendingMessage.id, secondPrompt);
+    const second = await collectUntilTerminal(resumedBridge, launched.id, timeoutMs, beforeSend);
+    if (second.session.state !== "complete") throw new Error(`recovered follow-up ended in ${second.session.state}`);
+    assertIncludes(second.records, VERIFICATION_SCENARIOS.chatResumeSecond.visibleText, "recovered follow-up");
+    const finalSnapshot = await sqliteSnapshot(databasePath, launched.id);
+    const deliveredUserMessages = finalSnapshot.events
+      .filter((event) => event.type === "user.message" && event.message === secondPrompt);
+    if (deliveredUserMessages.length !== 1) {
+      throw new Error(`recovered follow-up persisted ${deliveredUserMessages.length} user turns instead of one`);
+    }
+    if (finalSnapshot.pendingMessages.length !== 0) {
+      throw new Error("SQLite session queue was not empty after delivering the follow-up");
+    }
+    const finalDashboard = await resumedBridge.call("dashboard:list", {});
+    if ((finalDashboard.pendingMessages[launched.id] ?? []).length !== 0) {
+      throw new Error("dashboard session queue was not empty after delivering the follow-up");
+    }
+    const completeUi = await verifyUi({
+      name: "queued-complete",
+      expectedTexts: [
+        VERIFICATION_SCENARIOS.chatResumeFirst.visibleText,
+        VERIFICATION_SCENARIOS.chatResumeSecond.visibleText
+      ],
+      expectIdle: true
+    });
+    return {
+      session: second.session,
+      workspace,
+      records: [...recoveredRecords, ...second.records],
+      browser: [streamingUi, recoveredUi, completeUi],
+      bridge: resumedBridge,
+      assertions: [
+        { name: "held-first-turn-fragments-preserved", ok: true, value: firstTurnDeltaSequence.length },
+        { name: "queued-follow-up-persisted-before-restart", ok: true, value: pendingMessage.id },
+        { name: "recovered-follow-up-requires-explicit-send", ok: true, value: recoveredDashboardMessage.recoveryStatus },
+        { name: "recovered-follow-up-delivered-exactly-once", ok: true, value: deliveredUserMessages[0].id },
+        { name: "delivered-follow-up-cleared-from-pending-journal", ok: true }
+      ]
+    };
   }
 
   if (persistentSubagentScenarios.has(scenario)) {
@@ -441,26 +705,32 @@ async function runScenario({ bridge, scenario, provider, repoPath, controlDir, v
   }
 
   const result = await collectUntilTerminal(bridge, launched.id, timeoutMs);
-  if (result.session.state !== "failed") throw new Error(`provider-error scenario ended in ${result.session.state}`);
-  assertIncludes(result.records, definition.diagnostic, "provider error diagnostic");
-  const ui = await verifyUi({ name: "provider-error", expectedTexts: [definition.diagnostic], expectIdle: true });
+  if (result.session.state !== "failed") throw new Error(`${scenario} scenario ended in ${result.session.state}`);
+  assertIncludes(result.records, definition.diagnostic, `${scenario} diagnostic`);
+  const ui = await verifyUi({ name: scenario, expectedTexts: [definition.diagnostic], expectIdle: true });
   return { session: result.session, workspace, records: result.records, browser: [ui] };
 }
 
 async function sqliteSnapshot(databasePath, sessionId) {
-  const sql = "SELECT json_object('sessions',(SELECT json_group_array(json_object('id',id,'state',state,'provider',provider,'providerConversationId',provider_conversation_id)) FROM sessions),'events',(SELECT json_group_array(json_object('sessionId',session_id,'type',type,'message',message,'createdAt',created_at)) FROM events ORDER BY created_at),'rawOutputs',(SELECT json_group_array(json_object('sessionId',session_id,'stream',stream,'content',content,'createdAt',created_at)) FROM raw_outputs ORDER BY created_at));";
+  const sql = "SELECT json_object('sessions',(SELECT json_group_array(json_object('id',id,'state',state,'provider',provider,'providerConversationId',provider_conversation_id)) FROM sessions),'events',(SELECT json_group_array(json_object('id',id,'sessionId',session_id,'type',type,'message',message,'createdAt',created_at)) FROM events ORDER BY created_at),'rawOutputs',(SELECT json_group_array(json_object('sessionId',session_id,'stream',stream,'content',content,'createdAt',created_at)) FROM raw_outputs ORDER BY created_at),'pendingMessages',(SELECT json_group_array(json_object('id',id,'sessionId',session_id,'content',content,'position',position,'deliveryState',delivery_state,'queuedAt',queued_at)) FROM pending_messages ORDER BY position));";
   const result = await runChecked("sqlite3", [databasePath, sql], { timeoutMs: 20_000 });
   const all = JSON.parse(result.stdout.trim());
   return {
     sessions: all.sessions.filter((entry) => entry.id === sessionId),
     events: all.events.filter((entry) => entry.sessionId === sessionId),
-    rawOutputs: all.rawOutputs.filter((entry) => entry.sessionId === sessionId)
+    rawOutputs: all.rawOutputs.filter((entry) => entry.sessionId === sessionId),
+    pendingMessages: all.pendingMessages.filter((entry) => entry.sessionId === sessionId)
   };
 }
 
 function expectedPersistenceTexts(scenario) {
+  if (scenario === "codex-user-input") return [VERIFICATION_SCENARIOS.codexUserInput.visibleText];
   if (scenario === "chat-resume") {
     return [VERIFICATION_SCENARIOS.chatResumeFirst.visibleText, VERIFICATION_SCENARIOS.chatResumeSecond.visibleText];
+  }
+  if (scenario === "queued-restart") return [VERIFICATION_SCENARIOS.chatResumeSecond.visibleText];
+  if (scenario === "session-move") {
+    return [VERIFICATION_SCENARIOS.sessionMoveFirst.visibleText, VERIFICATION_SCENARIOS.sessionMoveSecond.visibleText];
   }
   if (scenario === "persistent-subagent") {
     return [
@@ -530,10 +800,23 @@ export async function runVerification(options) {
   await Promise.all([mkdir(profile, { recursive: true }), mkdir(home, { recursive: true }), mkdir(controlDir, { recursive: true })]);
   await writeFile(path.join(profile, "sync.json"), `${JSON.stringify({ claude: false, codex: false, cursor: false, opencode: false, grok: false, windowHours: 24 })}\n`);
   await initializeRepo(repoPath);
+  let movePath = null;
+  if (options.scenario === "session-move") {
+    const siblingPath = path.join(runRoot, "sibling");
+    await runChecked(
+      "git",
+      ["worktree", "add", "-q", "-b", "verification-session-move-target", siblingPath],
+      { cwd: repoPath, timeoutMs: 10_000 },
+    );
+    movePath = await realpath(siblingPath);
+  }
 
   const fixturePath = path.join(repoRoot, "scripts", "verification", "provider-fixture.mjs");
   const provider = providerForScenario(options.scenario);
-  const env = isolatedEnvironment(home, fixturePath, controlDir, invocationLog, provider);
+  const env = {
+    ...isolatedEnvironment(home, fixturePath, controlDir, invocationLog, provider),
+    ...(movePath ? { ARGMAX_VERIFICATION_MOVE_PATH: movePath } : {}),
+  };
   const report = {
     schemaVersion: 1,
     runId,
@@ -665,6 +948,10 @@ export async function runVerification(options) {
     if (persistentSubagentScenarios.has(options.scenario) && options.native !== "off") {
       throw new Error(`${options.scenario} requires --native off because it verifies a scratch backend restart`);
     }
+    if (["queued-restart", "session-move", "staged-revert"].includes(options.scenario)
+        && options.native !== "required") {
+      throw new Error(`${options.scenario} requires native verification`);
+    }
     report.source.beforeBuild = await checkoutFingerprint(repoRoot);
     const targetDir = path.join(repoRoot, "src-tauri", "target", "verification");
     const rendererOutDir = path.join(repoRoot, "dist", "verification");
@@ -689,10 +976,16 @@ export async function runVerification(options) {
     await mkdir(binaryDirectory, { recursive: true });
     await copyFile(builtBinary, binary);
     await chmod(binary, (await stat(builtBinary)).mode);
+    const nativeBinary = options.native === "off"
+      ? binary
+      : await prepareNativeAppBinary(binaryDirectory, builtBinary);
     const binarySha256 = await fileSha256(binary);
+    const nativeBinarySha256 = await fileSha256(nativeBinary);
     report.build = {
       sourceBinary: builtBinary,
-      launchedBinary: binary,
+      launchedBinary: options.native === "off" ? binary : nativeBinary,
+      backendBinary: binary,
+      nativeBinary,
       binarySha256,
       release: options.release,
       rendererDiagnostics: true,
@@ -706,14 +999,14 @@ export async function runVerification(options) {
     await writeFile(path.join(profile, "remote.json"), `${JSON.stringify({ enabled: true, port: remotePort, token: remoteToken }, null, 2)}\n`, { mode: 0o600 });
     if (options.native !== "off") {
       desktopModule = await import("./verification/desktop.mjs");
-      const prerequisites = await desktopModule.inspectDesktopPrerequisites({ appBinaryPath: binary });
+      const prerequisites = await desktopModule.inspectDesktopPrerequisites({ appBinaryPath: nativeBinary });
       report.native = { prerequisites };
       if (prerequisites.available) {
         const desktopPort = await freePort();
         if (interrupting) throw new Error("verification interrupted before native startup");
         restoreDriverOutput = silenceDriverOutput();
         const desktopConnection = desktopModule.connectDesktop({
-          appBinaryPath: binary,
+          appBinaryPath: nativeBinary,
           outputDir: path.join(outputDir, "native"),
           env: { ...env, ARGMAX_DATA_DIR: profile },
           port: desktopPort,
@@ -734,6 +1027,7 @@ export async function runVerification(options) {
     }
     if (!desktopHandle) {
       if (interrupting) throw new Error("verification interrupted before scratch startup");
+      report.build.launchedBinary = binary;
       const scratchStart = startScratchApp({
         dataDir: profile,
         binary,
@@ -786,6 +1080,7 @@ export async function runVerification(options) {
       report.native.actions ??= [];
       report.native.actions.push(result);
       if (!result.ok) throw new Error(`native UI action failed: ${result.errors.join("; ")}`);
+      return result;
     };
     const sendInput = desktopHandle
       ? async (_sessionId, input) => recordNativeAction(await desktopModule.sendDesktopMessage({ browser: desktopHandle.browser, input }))
@@ -798,43 +1093,121 @@ export async function runVerification(options) {
           reasoningEffort: null,
           fastMode: false
         });
+    const queueInput = desktopHandle
+      ? async (sessionId, input) => recordNativeAction(await desktopModule.sendDesktopMessage({
+          browser: desktopHandle.browser,
+          input,
+          sessionId,
+          expectQueued: true
+        }))
+      : () => { throw new Error("queued-restart requires the native composer"); };
+    const sendQueuedInput = desktopHandle
+      ? async (sessionId, messageId, input) => recordNativeAction(await desktopModule.sendDesktopQueuedMessage({
+          browser: desktopHandle.browser,
+          sessionId,
+          messageId,
+          input
+        }))
+      : () => { throw new Error("queued-restart requires the native queued-message action"); };
     const terminate = desktopHandle
-      ? async () => recordNativeAction(await desktopModule.stopDesktopSession({ browser: desktopHandle.browser }))
+      ? async (sessionId) => recordNativeAction(await desktopModule.stopDesktopSession({ browser: desktopHandle.browser, sessionId }))
       : (sessionId) => bridge.call("providers:terminate", { sessionId });
     const restartBackend = async () => {
-      if (desktopHandle || !app) throw new Error("scratch backend restart is unavailable");
       bridge?.close();
       bridge = null;
-      report.process.scratch.restart = await app.stop();
-      app = await startScratchApp({
-        dataDir: profile,
-        binary,
-        env,
-        port: remotePort,
-        readyTimeoutMs: Math.min(options.timeoutMs, 60_000),
-      });
-      report.process.scratch.restarted = { pid: app.pid, port: app.port };
+      if (desktopHandle) {
+        const cleanup = await desktopHandle.close();
+        desktopHandle = null;
+        restoreDriverOutput?.();
+        report.process.desktop.restart = { closed: true, cleanup };
+        if (interrupting) throw new Error("verification interrupted before native restart");
+        const desktopPort = await freePort();
+        restoreDriverOutput = silenceDriverOutput();
+        const desktopConnection = desktopModule.connectDesktop({
+          appBinaryPath: nativeBinary,
+          outputDir: path.join(outputDir, "native"),
+          env: { ...env, ARGMAX_DATA_DIR: profile },
+          port: desktopPort,
+          startTimeoutMs: Math.min(options.timeoutMs, 60_000)
+        });
+        pendingDesktopConnection = desktopConnection;
+        try {
+          desktopHandle = await desktopConnection;
+        } finally {
+          if (pendingDesktopConnection === desktopConnection) pendingDesktopConnection = null;
+        }
+        if (interrupting) throw new Error("verification interrupted during native restart");
+        report.process.desktop.restarted = { driverOwned: true, remotePort, embeddedPort: desktopHandle.port };
+      } else {
+        if (!app) throw new Error("scratch backend restart is unavailable");
+        report.process.scratch.restart = await app.stop();
+        app = await startScratchApp({
+          dataDir: profile,
+          binary,
+          env,
+          port: remotePort,
+          readyTimeoutMs: Math.min(options.timeoutMs, 60_000),
+        });
+        report.process.scratch.restarted = { pid: app.pid, port: app.port };
+      }
       bridge = await connectBridgeWhenReady({ port: remotePort, token: remoteToken }, options.timeoutMs);
       const health = await bridge.call("health:ping", {});
       if (!health) throw new Error("scratch backend did not become healthy after restart");
       return bridge;
     };
-    scenarioResult = await runScenario({
-      bridge,
-      scenario: options.scenario,
-      provider,
-      repoPath,
-      controlDir,
-      timeoutMs: options.timeoutMs,
-      timeline: report.timeline,
-      verifyUi,
-      sendInput,
-      terminate,
-      restartBackend,
-    });
+    try {
+      scenarioResult = await runScenario({
+        bridge,
+        scenario: options.scenario,
+        provider,
+        repoPath,
+        movePath,
+        controlDir,
+        invocationLog,
+        databasePath,
+        outputDir,
+        browser: desktopHandle?.browser ?? null,
+        timeoutMs: options.timeoutMs,
+        timeline: report.timeline,
+        verifyUi,
+        sendInput,
+        queueInput,
+        sendQueuedInput,
+        terminate,
+        restartBackend,
+      });
+    } catch (error) {
+      if (options.scenario === "session-move") {
+        const nativeOutput = path.join(outputDir, "native");
+        const failurePath = path.join(nativeOutput, "session-move-failure.json");
+        const artifacts = ["session-move-source.png", "session-move-destination.png", "session-move.json"]
+          .filter((name) => existsSync(path.join(nativeOutput, name)));
+        await writeJson(failurePath, { message: error.message, repoPath, movePath, artifacts });
+        report.native.sessionMove = { failure: failurePath, artifacts };
+      }
+      throw error;
+    }
     bridge = scenarioResult.bridge ?? bridge;
+    if (options.scenario === "session-move") {
+      report.native.sessionMove = {
+        proof: path.join(outputDir, "native", "session-move.json"),
+        phases: scenarioResult.browser,
+      };
+    }
+    if (options.scenario === "staged-revert") {
+      const recovery = await verifyStagedPreservingRevert({
+        bridge,
+        browser: desktopHandle.browser,
+        workspace: scenarioResult.workspace,
+        outputDir: path.join(outputDir, "native"),
+        timeoutMs: options.timeoutMs
+      });
+      report.workspaceRecovery = recovery;
+      report.assertions.push(...recovery.assertions);
+    }
     report.session = { id: scenarioResult.session.id, workspaceId: scenarioResult.workspace.id, state: scenarioResult.session.state };
     report.assertions.push({ name: "scenario-state", ok: true, value: scenarioResult.session.state });
+    report.assertions.push(...(scenarioResult.assertions ?? []));
     if (persistentSubagentScenarios.has(options.scenario)) {
       report.assertions.push(
         { name: "persistent-child-stable-id", ok: true, value: scenarioResult.nativeChildId },
@@ -854,10 +1227,11 @@ export async function runVerification(options) {
     bridge.close();
     bridge = null;
     if (desktopHandle) {
-      await desktopHandle.close();
+      const cleanup = await desktopHandle.close();
       desktopHandle = null;
       restoreDriverOutput?.();
       report.process.desktop.closed = true;
+      report.process.desktop.cleanup = cleanup;
     } else {
       report.process.scratch.exit = await app.stop();
       app = null;
@@ -875,10 +1249,12 @@ export async function runVerification(options) {
         ok: persistedMessages.some((message) => message.includes(text))
       }))
     ];
-    if (options.scenario === "chat-resume") {
+    if (options.scenario === "chat-resume" || options.scenario === "queued-restart" || options.scenario === "session-move") {
       persistenceAssertions.push({
         name: "sqlite-provider-conversation-persisted",
-        ok: persistedSession?.providerConversationId === VERIFICATION_CONVERSATION_ID,
+        ok: persistedSession?.providerConversationId === (options.scenario === "session-move"
+          ? VERIFICATION_MOVED_CONVERSATION_ID
+          : VERIFICATION_CONVERSATION_ID),
         value: persistedSession?.providerConversationId
       });
     }
@@ -889,6 +1265,7 @@ export async function runVerification(options) {
     report.source.afterRun = await checkoutFingerprint(repoRoot);
     if (report.source.afterBuild.sha256 !== report.source.afterRun.sha256) throw new Error("checkout changed during verification; evidence does not describe one source state");
     if (await fileSha256(binary) !== binarySha256) throw new Error("verification binary changed during the run");
+    if (await fileSha256(nativeBinary) !== nativeBinarySha256) throw new Error("native verification binary changed during the run");
     report.assertions.push({ name: "checkout-stable", ok: true });
     report.status = "passed";
   } catch (error) {
@@ -944,9 +1321,9 @@ export async function runVerification(options) {
         }
       }
       try {
-        await desktopHandle.close();
+        const cleanup = await desktopHandle.close();
         restoreDriverOutput?.();
-        report.process.desktop = { ...report.process.desktop, closed: true };
+        report.process.desktop = { ...report.process.desktop, closed: true, cleanup };
       } catch (error) {
         report.status = "failed";
         report.errors.push({ message: `desktop cleanup failed: ${error.message}` });

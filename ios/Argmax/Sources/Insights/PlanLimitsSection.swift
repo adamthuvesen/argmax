@@ -82,7 +82,7 @@ private struct WindowMeter: View {
                 Text(window.label).typeMeta()
                 Spacer(minLength: Spacing.tight)
                 Text(LimitCopy.left(window.remainingPercent))
-                    .font(.footnote.weight(.semibold))
+                    .typeStyle(.footnote, weight: .semibold)
                     .foregroundStyle(Theme.ink)
                 if let reset = LimitCopy.reset(window.resetsAt) {
                     Text(reset).typeMeta()

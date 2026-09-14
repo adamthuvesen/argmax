@@ -174,7 +174,9 @@ export function ThinkingLabel({
       aria-label="Thinking"
     >
       <div className="thinking-label-stream" data-testid="thinking-label" aria-hidden="true">
-        <WorkingNest active size={12} className="thinking-working-nest" phaseKey={phaseKey} />
+        <span className="activity-icon-slot">
+          <WorkingNest active size={14} className="thinking-working-nest" phaseKey={phaseKey} />
+        </span>
         <span className="thinking-label">{word}</span>
         <span className="thinking-elapsed" ref={elapsedRef} />
       </div>

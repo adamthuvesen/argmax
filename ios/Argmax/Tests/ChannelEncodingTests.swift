@@ -12,15 +12,17 @@ final class ChannelEncodingTests: XCTestCase {
     /// A defaults suite of its own: `RemoteOperation.mint` writes an install
     /// id, and a test must not adopt or clobber the app's.
     private var defaults: UserDefaults!
+    private var suiteName: String!
 
     override func setUpWithError() throws {
-        let suite = "argmax.tests.\(UUID().uuidString)"
-        defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        suiteName = "argmax.tests.\(UUID().uuidString)"
+        defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
     }
 
     override func tearDown() {
-        defaults.removePersistentDomain(forName: defaults.description)
+        defaults.removePersistentDomain(forName: suiteName)
         defaults = nil
+        suiteName = nil
     }
 
     /// One request, as a dictionary.
@@ -65,10 +67,12 @@ final class ChannelEncodingTests: XCTestCase {
             "workspaces:set-label",
             "workspaces:archive",
             "session:fork",
+            "git:view-or-create-pr",
             "remote:register-push-device",
             "remote:unregister-push-device",
             "remote:push-test",
             "providers:send-input",
+            "questions:resolve",
             "providers:terminate",
             "providers:cancel-queued-message",
             "providers:send-queued-message-now"
@@ -304,9 +308,56 @@ final class ChannelEncodingTests: XCTestCase {
         XCTAssertTrue(body["reasoningEffort"] is NSNull)
     }
 
+    func testResolveQuestionKeepsProviderQuestionIDs() throws {
+        let body = try input(
+            "questions:resolve",
+            ResolveTranscriptQuestionInput(
+                sessionId: "s-1",
+                requestId: "request-1",
+                answers: [
+                    "scope": ["Current checkout"],
+                    "context": ["user_note: Keep the draft"]
+                ],
+                dismissed: nil
+            )
+        )
+        XCTAssertEqual(Set(body.keys), ["sessionId", "requestId", "answers"])
+        XCTAssertEqual(body["sessionId"] as? String, "s-1")
+        XCTAssertEqual(body["requestId"] as? String, "request-1")
+        let answers = try XCTUnwrap(body["answers"] as? [String: [String]])
+        XCTAssertEqual(answers["scope"], ["Current checkout"])
+        XCTAssertEqual(answers["context"], ["user_note: Keep the draft"])
+    }
+
+    func testDismissQuestionSendsAnExplicitEmptyResolution() throws {
+        let body = try input(
+            "questions:resolve",
+            ResolveTranscriptQuestionInput(
+                sessionId: "s-1",
+                requestId: "request-1",
+                answers: [:],
+                dismissed: true
+            )
+        )
+        XCTAssertEqual(Set(body.keys), ["sessionId", "requestId", "answers", "dismissed"])
+        XCTAssertEqual(body["dismissed"] as? Bool, true)
+        XCTAssertEqual((body["answers"] as? [String: [String]])?.count, 0)
+    }
+
     func testTerminateSession() throws {
         let body = try input("providers:terminate", TerminateSessionInput(sessionId: "s-1"))
         XCTAssertEqual(Set(body.keys), ["sessionId"])
+    }
+
+    func testViewPullRequest() throws {
+        let sent = try frame(
+            "git:view-or-create-pr",
+            ViewPullRequestInput(sessionId: "s-1")
+        )
+        XCTAssertNotNil(operation(sent))
+        let body = try XCTUnwrap(sent["input"] as? [String: Any])
+        XCTAssertEqual(Set(body.keys), ["sessionId"])
+        XCTAssertEqual(body["sessionId"] as? String, "s-1")
     }
 
     func testCancelQueuedMessage() throws {

@@ -37,9 +37,11 @@ npm run tauri:build     # production Tauri bundle
 - **All IPC** flows through `window.argmax.*`. Request/response channels are Rust `#[tauri::command]` handlers in [src-tauri/src/ipc](src-tauri/src/ipc), collected by `tauri-specta`, and exposed in [src/renderer/lib/tauriBridge.ts](src/renderer/lib/tauriBridge.ts). `src-tauri/tests/fixtures/channels.txt` and `npm run check:tauri-bridge` enforce channel parity.
 - **No native Node rebuild dance.** SQLite and PTYs live in Rust (`rusqlite`, `portable-pty`). Do not reintroduce `better-sqlite3`, `node-pty`, or native builder scripts.
 - **Renderer tests** query by **role / aria-label / title**, never by `className`.
+- **iPhone type goes through the roles in [Typography.swift](ios/Argmax/Sources/Design/Typography.swift).** A `.font(...)` at a call site is a surface Settings → Typeface cannot reach; `npm run check:ios-fonts` enforces it, and `npm run build:ios-fonts` regenerates the bundled Geist faces.
 - **Three themes: Light / Dark / System.** Tokens live in [src/renderer/styles/tokens.css](src/renderer/styles/tokens.css); see [docs/styling.md](docs/styling.md).
 - **Shared values, not duplicates.** Model labels, ids, reasoning levels, and pricing live in [src/shared/providerModels.ts](src/shared/providerModels.ts).
 - **Provider protocol output is not chat.** Visible chat comes from normalized timeline events; raw transcript fallback is only for human-readable stdout/stderr.
+- **An image reaches the user only through Markdown.** `![what it shows](path)` on its own line, pointing inside the checkout or at a path Argmax handed you (a `browser_screenshot`'s `path`). An image a tool returned lands in the model's context, not the chat, and a remote `http(s)` image is drawn as a link rather than fetched. See [docs/chat-cards.md](docs/chat-cards.md).
 - **Dashboard state is SQLite-first and delta-driven.** Focused reads plus `dashboard:delta`; no recurring renderer poll.
 - **Thinking state yields to content.** Hide the pre-answer Thinking bubble as soon as any visible assistant event arrives.
 - **Auto-approve is the default permission mode.** Keep provider bypass flags centralized in [src-tauri/src/providers/adapters.rs](src-tauri/src/providers/adapters.rs).
@@ -49,7 +51,7 @@ npm run tauri:build     # production Tauri bundle
 
 ## Agent Delegation
 
-- Keep bounded delegated work in the current chat. Use provider-native subagents for research, review, and implementation that the launcher will integrate into the current turn.
+- Keep bounded delegated work in the current chat. Use provider-native subagents for research, review, and implementation that the launcher will integrate into the current turn. A native subagent dies with the turn that spawned it: collect its result before answering, never report it as still running.
 - Use `session_launch` when the user explicitly requests a separate session or the work needs its own independent, durable lifecycle that remains visible and steerable after this turn, such as a separate repository investigation or a long-running build. Do not launch a session merely for parallelism, fresh context, model choice, or context relief.
 - The user-facing multitask flow is for work that should run alongside a chat. Keep delegation one hop unless the brief explicitly requires further decomposition. The launcher owns synthesis and verification.
 

@@ -32,7 +32,7 @@ struct ScreenHeader<Trailing: View, Center: View>: View {
             if let onBack {
                 Button(action: onBack) {
                     Image(systemName: "chevron.left")
-                        .font(.body.weight(.semibold))
+                        .typeSymbol(.body, weight: .semibold)
                         .foregroundStyle(Theme.ink)
                         // A thumb-sized target around a small glyph, pulled
                         // back into the gutter so the chevron itself sits on
@@ -126,7 +126,7 @@ struct HeaderGlyphButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.body.weight(weight))
+                .typeSymbol(.body, weight: weight)
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(tint ?? accent.color)
                 .frame(width: filled ? 40 : 32, height: filled ? 40 : 32)
@@ -149,8 +149,9 @@ extension View {
     /// whenever the bar is hidden, on the reasoning that a screen with no
     /// bar may have drawn its own back affordance somewhere the swipe would
     /// fight. Ours has, and it does not fight — so the recogniser is turned
-    /// back on with a delegate that begins only when there is something to
-    /// pop and no transition already running.
+    /// back on with a delegate that begins whenever there is something to
+    /// pop. Fluid transitions can be grabbed and reversed while they run, so
+    /// transition state must not gate the gesture.
     func interactivePop() -> some View {
         background(InteractivePopEnabler().frame(width: 0, height: 0))
     }
@@ -204,14 +205,13 @@ private final class PopGestureDelegate: NSObject, UIGestureRecognizerDelegate {
 
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         guard let stack else { return false }
-        // At the root there is nothing behind the screen; mid-transition the
-        // stack is already moving and a second pop corrupts it.
-        return stack.viewControllers.count > 1 && stack.transitionCoordinator == nil
+        // At the root there is nothing behind the screen. Otherwise UIKit
+        // coordinates a new pop with any transition already in flight.
+        return stack.viewControllers.count > 1
     }
 
-    /// The transcript is a full-screen web view whose own scroller starts at
-    /// the left edge. The pop has to win there, or the chat becomes the one
-    /// screen you cannot swipe out of.
+    /// The transcript's scroller starts at the left edge. The pop has to win
+    /// there so a horizontal swipe can still leave the chat.
     func gestureRecognizer(
         _ gestureRecognizer: UIGestureRecognizer,
         shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer

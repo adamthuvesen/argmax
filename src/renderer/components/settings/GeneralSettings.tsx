@@ -8,6 +8,7 @@ import {
   type LinkTarget
 } from "../../lib/linkTarget.js";
 import type { NewSessionMode } from "../../lib/newSessionMode.js";
+import type { FollowUpDelivery } from "../../lib/uiPreferences.js";
 import {
   SegmentedControl,
   SettingGroup,
@@ -20,6 +21,8 @@ import {
 export function GeneralSettings({
   newSessionMode,
   onNewSessionModeChange,
+  followUpDelivery,
+  onFollowUpDeliveryChange,
   randomSessionIconEnabled,
   onRandomSessionIconEnabledChange,
   desktopNotificationsEnabled,
@@ -33,6 +36,8 @@ export function GeneralSettings({
 }: {
   newSessionMode: NewSessionMode;
   onNewSessionModeChange: (mode: NewSessionMode) => void;
+  followUpDelivery: FollowUpDelivery;
+  onFollowUpDeliveryChange: (delivery: FollowUpDelivery) => void;
   randomSessionIconEnabled: boolean;
   onRandomSessionIconEnabledChange: (v: boolean) => void;
   desktopNotificationsEnabled: boolean;
@@ -92,6 +97,22 @@ export function GeneralSettings({
               options={[
                 { value: "embedded", label: "In grid" },
                 { value: "full", label: "Full view" }
+              ]}
+            />
+          }
+        />
+        <SettingRow
+          label="Follow-up while agent works"
+          description="Queue waits for the current turn. Steer sends guidance into it."
+          control={
+            <SegmentedControl
+              ariaLabel="Follow-up while agent works"
+              name="follow-up-delivery"
+              value={followUpDelivery}
+              onChange={(value) => onFollowUpDeliveryChange(value as FollowUpDelivery)}
+              options={[
+                { value: "queue", label: "Queue" },
+                { value: "steer", label: "Steer" }
               ]}
             />
           }

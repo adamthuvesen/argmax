@@ -79,7 +79,7 @@ describe("TurnBlock", () => {
     expect(screen.getByText("Done.")).toBeInTheDocument();
   });
 
-  it("keeps activity visible when the reader inspects it during settling", async () => {
+  it("hides activity after settling even when the reader inspects it", async () => {
     vi.useFakeTimers();
     const props = {
       toolItems: [{ kind: "tool" as const, tool: tool() }],
@@ -92,7 +92,7 @@ describe("TurnBlock", () => {
     rerender(<TurnBlock {...props} isTurnActive={false} />);
     fireEvent.click(screen.getByRole("button", { name: "Read files" }));
     await act(() => vi.advanceTimersByTime(600));
-    expect(screen.getByRole("button", { name: "Read files" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Read files" })).toBeNull();
   });
 
   it("labels the chip 'Working' while a tool is running and renders assistant + tool nodes", () => {

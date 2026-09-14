@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// The paired app: the navigation stack, the data under it, and the one web
-/// view the transcript screen adopts.
+/// The paired app: native navigation and transcript sharing one bridge connection.
 struct RootView: View {
     let paired: PairedHost
     /// The app delegate, which owns the device token and the tap. Passed
@@ -12,9 +11,8 @@ struct RootView: View {
 
     @StateObject private var store: DashboardStore
     @StateObject private var rowActions: ChatRowActionCenter
-    /// One per pairing, outliving every push and pop. Its web view is built
-    /// on first need and its page is loaded once.
-    @StateObject private var transcript: TranscriptHost
+    /// One timeline owner per pairing, retaining the active chat across navigation.
+    @StateObject private var transcript: TranscriptStore
     /// Also one per pairing: a device token is registered with *this* Mac,
     /// and re-pairing has to take it off the old one.
     @StateObject private var registration: PushRegistration
@@ -39,7 +37,11 @@ struct RootView: View {
         // One owner for every row action's dialog and mutation, for the
         // screen's lifetime — see ChatRowActions.swift for why not per row.
         _rowActions = StateObject(wrappedValue: ChatRowActionCenter(store: store, client: paired.client))
-        _transcript = StateObject(wrappedValue: TranscriptHost(pairingURL: paired.url))
+        let transcript = TranscriptStore(client: paired.client)
+        _transcript = StateObject(wrappedValue: transcript)
+        store.onTranscriptEvent = { [weak transcript] in transcript?.receive(event: $0) }
+        store.onTranscriptConnection = { [weak transcript] in transcript?.receive(connection: $0) }
+        store.onTranscriptSnapshot = { [weak transcript] in transcript?.receive(snapshot: $0) }
         _registration = StateObject(
             wrappedValue: PushRegistration(client: paired.client, delegate: push)
         )
@@ -66,30 +68,12 @@ struct RootView: View {
                 // socket is still connecting — the requests simply wait for
                 // auth, then run. Fire-and-forget; nothing awaits them.
                 insights.prefetch()
-                // Warmed while the list is still fetching its first
-                // snapshot, so the first push lands on a page that has
-                // already authenticated rather than on a spinner.
-                transcript.setAccent(appearance.tint.rawValue)
-                transcript.setUserBubble(appearance.bubbleTint)
-                transcript.loadIfNeeded()
                 // Every launch, because Apple rotates device tokens and only
                 // this phone learns the new one.
                 await registration.refresh()
                 // Last, and only after the list has what it needs: nothing on
                 // screen is waiting for these numbers.
                 await planLimits.refreshIfStale()
-            }
-            // The page inside the shell wears the shell's accent. Sent on
-            // change rather than read by the page, because the phone's
-            // appearance is the app's setting and not the Mac's.
-            .onChange(of: appearance.tint) { transcript.setAccent(appearance.tint.rawValue) }
-            .onChange(of: appearance.accentBubbles) { transcript.setUserBubble(appearance.bubbleTint) }
-            .onChange(of: store.connection) { previous, current in
-                // The bridge coming back is the moment the Mac may have
-                // changed under the warm transcript page.
-                if case .reconnecting = previous, case .live = current {
-                    Task { await transcript.reloadIfHostChanged() }
-                }
             }
             .onChange(of: scenePhase) {
                 // Backgrounding kills the socket without closing it, so a

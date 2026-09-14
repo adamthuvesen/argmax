@@ -1,7 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    path::Component,
     path::{Path, PathBuf},
 };
 
@@ -449,17 +448,23 @@ fn cursor_project_roots(home: &Path, workspace_path: Option<&str>) -> Vec<PathBu
     roots
 }
 
-fn cursor_project_slug(workspace_path: &str) -> Option<String> {
-    let slug = Path::new(workspace_path)
-        .components()
-        .filter_map(|component| match component {
-            Component::Normal(value) => value.to_str(),
-            _ => None,
+/// Cursor's directory name for a workspace under `~/.cursor/projects`: every
+/// character that is not an ASCII letter or digit becomes `-`, so
+/// `/Users/me/Library/Application Support/com.argmax.rs` is stored as
+/// `Users-me-Library-Application-Support-com-argmax-rs`.
+pub(crate) fn cursor_project_slug(workspace_path: &str) -> Option<String> {
+    let slug = workspace_path
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character
+            } else {
+                '-'
+            }
         })
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>()
-        .join("-");
-    (!slug.is_empty()).then_some(slug)
+        .collect::<String>();
+    let slug = slug.trim_matches('-');
+    (!slug.is_empty()).then(|| slug.to_string())
 }
 
 fn cursor_trace_file_prompt_matches(path: &Path, prompt: &str) -> bool {

@@ -1,11 +1,35 @@
 import { siGithub, siLinear, siNotion, siSnowflake, siSpotify, siVercel } from "simple-icons";
 import sprite from "../../../assets/fox-mascot.txt?raw";
 
+/** Sprite roles the mascot keeps apart once monochrome puts every fill on one
+ *  ink: the outline holds the silhouette, fur and cream stay separate masses,
+ *  and the eye is knocked out to the row behind it. */
+export type ServerIconTone = "line" | "fur" | "cream" | "eye";
+
+/**
+ * How much of the one ink each tone keeps under monochrome, per theme.
+ *
+ * Depth reads away from the row, so the ramp inverts between themes: the ink is
+ * the dark end on a light row and the light end on a dark one, and a shared
+ * ramp would put the near-black outline at the brightest point of a dark row
+ * while sinking the cream muzzle into it. Both consumers restate these numbers
+ * rather than read them — tool-activity.css as `--fox-mono-*`, and
+ * scripts/export-ios-tool-icons.mjs as baked alpha, since iPhone tints the
+ * mark by its alpha channel. A test pins the CSS to this table.
+ */
+export const SERVER_ICON_TONE_DEPTH: Record<"light" | "dark", Record<ServerIconTone, number>> = {
+  light: { line: 1, fur: 0.62, cream: 0.26, eye: 0 },
+  dark: { line: 0.1, fur: 0.58, cream: 0.92, eye: 1 }
+};
+
 export interface ServerIconLayer {
   path: string;
   /** Fill colour, or null for a black mark that takes the row's text colour
    *  instead of vanishing on the dark theme. */
   fill: string | null;
+  /** Depth to hold under monochrome. Only the mascot sets it; a brand mark is
+   *  either a single path already or stays legible flattened. */
+  tone?: ServerIconTone;
 }
 
 export interface ServerIcon {
@@ -90,19 +114,22 @@ const LINEAR: ServerIcon = {
 // columns and rows that hold the ears, eyes and muzzle, in the mascot's own
 // colour tokens so it follows the theme like the launcher fox does.
 const FOX_HEAD = { left: 24, top: 0, width: 28, height: 24 };
-const FOX_FILL: Record<string, string> = {
-  K: "var(--fox-line)",
-  o: "var(--fox-fur)",
-  d: "var(--fox-fur-shade)",
-  c: "var(--fox-cream)",
-  t: "var(--fox-cream-shade)",
-  x: "var(--fox-nose)",
-  w: "#ffffff"
+// The sprite's two shade colours ride with the colour they shade: at 12px the
+// shading is below a pixel, and a fifth tone would only muddy the split that
+// carries the head.
+const FOX_CELLS: Record<string, { fill: string; tone: ServerIconTone }> = {
+  K: { fill: "var(--fox-line)", tone: "line" },
+  o: { fill: "var(--fox-fur)", tone: "fur" },
+  d: { fill: "var(--fox-fur-shade)", tone: "fur" },
+  c: { fill: "var(--fox-cream)", tone: "cream" },
+  t: { fill: "var(--fox-cream-shade)", tone: "cream" },
+  x: { fill: "var(--fox-nose)", tone: "line" },
+  w: { fill: "#ffffff", tone: "eye" }
 };
 
 function foxHeadIcon(): ServerIcon {
   const grid = sprite.split("\n").filter((row) => row !== "" && !row.startsWith("#"));
-  const layers = Object.entries(FOX_FILL).map(([cell, fill]) => {
+  const layers = Object.entries(FOX_CELLS).map(([cell, { fill, tone }]) => {
     // One unit square per cell, merged along the row: at 12px the geometry
     // count is what matters, not the byte count.
     const runs: string[] = [];
@@ -120,7 +147,7 @@ function foxHeadIcon(): ServerIcon {
         x = end + 1;
       }
     }
-    return { fill, path: runs.join("") };
+    return { fill, tone, path: runs.join("") };
   });
   return {
     title: "Argmax",
@@ -163,6 +190,29 @@ const TRACE: ServerIcon = {
   ]
 };
 
+// Hex ships its mark as a near-black rounded square carrying a chunky pink
+// HEX wordmark. The badge is a circle here on purpose: the tool row already
+// has Linear's rounded square, and a second near-black square beside it reads
+// as the same integration at a glance. The wordmark also sits larger against
+// the badge than Hex draws it — Hex gives it about 61% of the width, which
+// closes the three letters into one pink mass at 14px; 70% keeps them apart.
+// Even at 70% the letters only separate from about 20px up, so this is the
+// whole word on purpose, chosen over the counter-free lettermark the local
+// tools below use: Hex is a brand with a wordmark, and the badge reads as Hex
+// by colour at row size either way. Don't quietly demote it to an H.
+const HEX: ServerIcon = {
+  title: "Hex",
+  viewBox: "0 0 24 24",
+  layers: [
+    { fill: "#030119", path: "M12 0A12 12 0 1 1 12 24 12 12 0 1 1 12 0Z" },
+    {
+      fill: "#EABCBB",
+      // The X's two gaps are reverse-wound subpaths, knocked out by nonzero fill.
+      path: "M3.6 8.53h2.24v6.94h-2.24zM6.47 8.53h2.29v6.94h-2.29zM5.84 10.88h0.63v1.09h-0.63zM9.39 8.53h5.22v1.09h-5.22zM9.39 10.88h5.22v1.09h-5.22zM9.39 14.32h5.22v1.15h-5.22zM9.39 9.62h2.29v4.7h-2.29zM12.32 9.62h2.29v2.35h-2.29zM12.32 12.6h2.29v1.72h-2.29zM15.24 8.53h5.16v1.72l-1.15 1.15 1.15 1.15v2.92h-5.16v-2.92l1.15-1.15-1.15-1.15zM17.48 8.53v2.29h0.63v-2.29h-0.63zM17.48 11.97v3.5h0.63v-3.5h-0.63z"
+    }
+  ]
+};
+
 function fromSimpleIcon(icon: { title: string; path: string; hex: string }): ServerIcon {
   // Notion, GitHub and Vercel are black marks: no tint carries them on
   // charcoal, so they fall back to currentColor like the words beside them.
@@ -189,6 +239,7 @@ const SERVER_ICONS: Record<string, ServerIcon> = {
   linear: LINEAR,
   github: fromSimpleIcon(siGithub),
   vercel: fromSimpleIcon(siVercel),
+  hex: HEX,
   engram: ENGRAM,
   shunt: SHUNT,
   trace: TRACE,

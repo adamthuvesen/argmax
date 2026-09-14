@@ -85,6 +85,7 @@ export type AppTestMocks = {
   launchProvider: AppTestMockFn<ArgmaxApi["providers"]["launch"]>;
   approvalsPending: AppTestMockFn<ArgmaxApi["approvals"]["pending"]>;
   approvalsResolve: AppTestMockFn<ArgmaxApi["approvals"]["resolve"]>;
+  questionsResolve: AppTestMockFn<ArgmaxApi["questions"]["resolve"]>;
   pickProjectFolder: AppTestMockFn<ArgmaxApi["projects"]["pickFolder"]>;
   listBranches: AppTestMockFn<ArgmaxApi["projects"]["listBranches"]>;
   listChangedFiles: AppTestMockFn<ArgmaxApi["review"]["listChangedFiles"]>;
@@ -98,6 +99,7 @@ export type AppTestMocks = {
   sessionAgentEvents: AppTestMockFn<ArgmaxApi["session"]["agentEvents"]>;
   sessionCostSummary: AppTestMockFn<ArgmaxApi["session"]["costSummary"]>;
   sendProviderInput: AppTestMockFn<ArgmaxApi["providers"]["sendInput"]>;
+  steerProviderInput: AppTestMockFn<ArgmaxApi["providers"]["steerInput"]>;
   terminateProvider: AppTestMockFn<ArgmaxApi["providers"]["terminate"]>;
   providersDiscover: AppTestMockFn<ArgmaxApi["providers"]["discover"]>;
   diagnosticsStub: AppTestMockFn<ArgmaxApi["system"]["diagnostics"]>;
@@ -129,6 +131,7 @@ export let dashboardDeltaUnsubscribe: AppTestMocks["dashboardDeltaUnsubscribe"];
 export let launchProvider: AppTestMocks["launchProvider"];
 let approvalsPending: AppTestMocks["approvalsPending"];
 let approvalsResolve: AppTestMocks["approvalsResolve"];
+export let questionsResolve: AppTestMocks["questionsResolve"];
 export let pickProjectFolder: AppTestMocks["pickProjectFolder"];
 export let listBranches: AppTestMocks["listBranches"];
 export let listChangedFiles: AppTestMocks["listChangedFiles"];
@@ -142,6 +145,7 @@ export let sessionEventsSince: AppTestMocks["sessionEventsSince"];
 export let sessionAgentEvents: AppTestMocks["sessionAgentEvents"];
 let sessionCostSummary: AppTestMocks["sessionCostSummary"];
 export let sendProviderInput: AppTestMocks["sendProviderInput"];
+export let steerProviderInput: AppTestMocks["steerProviderInput"];
 export let terminateProvider: AppTestMocks["terminateProvider"];
 export let providersDiscover: AppTestMocks["providersDiscover"];
 export let diagnosticsStub: AppTestMocks["diagnosticsStub"];
@@ -228,6 +232,9 @@ export function setupAppTestMocks(): void {
       resolvedAt: new Date().toISOString()
     })
   );
+  questionsResolve = vi.fn<ArgmaxApi["questions"]["resolve"]>().mockImplementation(({ sessionId, requestId, dismissed }) =>
+    Promise.resolve({ sessionId, requestId, status: dismissed ? "dismissed" : "answered" })
+  );
   pickProjectFolder = vi.fn<ArgmaxApi["projects"]["pickFolder"]>().mockResolvedValue({
     cancelled: false,
     project: primaryProject()
@@ -262,6 +269,7 @@ export function setupAppTestMocks(): void {
     costUsd: 0.012
   });
   sendProviderInput = vi.fn<ArgmaxApi["providers"]["sendInput"]>().mockResolvedValue({ ok: true, queued: false });
+  steerProviderInput = vi.fn<ArgmaxApi["providers"]["steerInput"]>().mockResolvedValue({ ok: true, queued: false });
   terminateProvider = vi.fn<ArgmaxApi["providers"]["terminate"]>().mockResolvedValue({ ok: true });
   providersDiscover = vi.fn<ArgmaxApi["providers"]["discover"]>().mockResolvedValue([]);
   diagnosticsStub = vi.fn<ArgmaxApi["system"]["diagnostics"]>().mockResolvedValue({
@@ -444,6 +452,7 @@ export function setupAppTestMocks(): void {
           lastRunAt: null,
           nextRunAt: null,
           lastError: null,
+          createdBy: "user",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         }),
@@ -466,6 +475,7 @@ export function setupAppTestMocks(): void {
           lastRunAt: null,
           nextRunAt: null,
           lastError: null,
+          createdBy: "user",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         }),
@@ -487,6 +497,7 @@ export function setupAppTestMocks(): void {
           lastRunAt: null,
           nextRunAt: null,
           lastError: null,
+          createdBy: "user",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         }),
@@ -508,6 +519,7 @@ export function setupAppTestMocks(): void {
           lastRunAt: null,
           nextRunAt: null,
           lastError: null,
+          createdBy: "user",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         })
@@ -558,6 +570,7 @@ export function setupAppTestMocks(): void {
       discover: providersDiscover,
       launch: launchProvider,
       sendInput: sendProviderInput,
+      steerInput: steerProviderInput,
       resize: () => Promise.resolve({ ok: true }),
       terminate: terminateProvider,
       cancelQueuedMessage: () => Promise.resolve({ ok: true }),
@@ -569,6 +582,9 @@ export function setupAppTestMocks(): void {
     approvals: {
       pending: approvalsPending,
       resolve: approvalsResolve
+    },
+    questions: {
+      resolve: questionsResolve
     },
     session: {
       eventsSince: sessionEventsSince,
@@ -628,6 +644,7 @@ export function setupAppTestMocks(): void {
       deleteOldChats: () => Promise.reject(new Error("Chat cleanup not stubbed"))
     },
     system: {
+      confirm: (message) => Promise.resolve(window.confirm(message)),
       openPath: () => Promise.resolve({ ok: true }),
       listDetectedIdes: listDetectedIdes,
       diagnostics: diagnosticsStub,
@@ -658,6 +675,12 @@ export function setupAppTestMocks(): void {
         };
       }
     },
+    sources: {
+      list: () => Promise.resolve([]),
+      add: () => Promise.reject(new Error("source writes not configured in this test")),
+      update: () => Promise.reject(new Error("source writes not configured in this test")),
+      delete: () => Promise.resolve()
+    },
     learnings: {
       list: () => Promise.resolve([]),
       update: (input) =>
@@ -677,7 +700,9 @@ export function setupAppTestMocks(): void {
     },
     prs: {
       listForSession: () => Promise.resolve([]),
-      refresh: () => Promise.resolve([])
+      refresh: () => Promise.resolve([]),
+      setPrimary: () => Promise.resolve([]),
+      dismiss: () => Promise.resolve([])
     },
     git: {
       commit: () => Promise.resolve({ commitSha: "deadbeef", branch: "main" }),
@@ -724,15 +749,21 @@ export function setupAppTestMocks(): void {
       )
     },
     browser: {
+      chromeProfiles: () => Promise.resolve([]),
+      importChromeHistory: () => Promise.resolve({ entries: [], totalAvailable: 0 }),
+      contentBlocking: () => Promise.resolve({ supported: false, disabledHosts: [] }),
+      setSiteBlocking: () => Promise.resolve({ supported: false, disabledHosts: [] }),
       open: () => Promise.resolve({ ok: true }),
       navigate: () => Promise.resolve({ ok: true }),
       back: () => Promise.resolve({ ok: true }),
       forward: () => Promise.resolve({ ok: true }),
       reload: () => Promise.resolve({ ok: true }),
       setBounds: () => Promise.resolve({ ok: true }),
+      focus: () => Promise.resolve({ ok: true }),
       extract: () => Promise.reject(new Error("browser.extract is not stubbed")),
       close: () => Promise.resolve({ ok: true }),
       stop: () => Promise.resolve({ ok: true }),
+      setTheme: () => Promise.resolve({ ok: true }),
       fillCredentials: () => Promise.resolve({ ok: true, itemTitle: "Test Login" }),
       screenshot: () => Promise.resolve({ pngBase64: "", width: 0, height: 0 }),
       evaluate: () => Promise.resolve({ resultJson: "" }),

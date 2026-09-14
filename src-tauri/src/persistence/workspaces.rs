@@ -1,11 +1,17 @@
-use rusqlite::{Connection, Row};
+use rusqlite::{Connection, OptionalExtension, Row};
 use serde::Serialize;
 use specta::Type;
 
-use super::gh::latest_pr_for_workspace;
+use super::gh::{list_session_prs, SessionPrSummary};
 use super::time::now_iso;
 use super::{bool_to_i64, json_error, sqlite_error};
-use crate::error::{ArgmaxError, ArgmaxResult};
+use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct WorkspaceViewedObservation {
+    pub workspace_id: String,
+    pub observed_activity_at: String,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PersistWorkspaceInput {
@@ -50,6 +56,10 @@ pub struct WorkspaceSummary {
     pub dirty: bool,
     pub changed_files: i64,
     pub last_activity_at: String,
+    /// Latest workspace activity timestamp a client actually displayed. This
+    /// is advanced from an observed snapshot, never from the acknowledgement
+    /// request's wall clock, so activity racing the request stays unread.
+    pub last_viewed_at: Option<String>,
     pub pinned: bool,
     /// When the user marked this workspace done in the sidebar's Priority
     /// section. The dismissal is spent (ignored by the renderer) once the
@@ -60,8 +70,8 @@ pub struct WorkspaceSummary {
     /// Manual entries need no attention and never age out; cleared by an
     /// explicit remove or a dismissal.
     pub priority_added_at: Option<String>,
-    /// State of the most-recent PR attributed to this workspace, filled in
-    /// from `gh_pr` on every read path. The renderer merges
+    /// State of the displayed session's primary PR, filled in from canonical
+    /// PR state and session evidence on every read path. The renderer merges
     /// workspace deltas by whole-object replacement, so a summary published
     /// with `None` here would erase the sidebar PR marker.
     pub pr_state: Option<String>,
@@ -71,7 +81,7 @@ pub struct WorkspaceSummary {
     pub pr_created_at: Option<String>,
     /// GitHub's authoritative merge timestamp for the paired PR.
     pub pr_merged_at: Option<String>,
-    /// Rollup of the paired PR's checks as the poller last saw them:
+    /// Aggregate checks across the displayed session's open worked PRs:
     /// 'pending' | 'success' | 'failure'. A red PR is something the person
     /// owes the branch, so the Priority section reads this directly.
     pub pr_check_state: Option<String>,
@@ -80,6 +90,13 @@ pub struct WorkspaceSummary {
     /// measured against, so that marking a PR done holds until the PR itself
     /// does something new.
     pub pr_activity_at: Option<String>,
+    /// All pull requests associated with the chat displayed for this
+    /// workspace. Evidence activity determines their stable order.
+    #[serde(default)]
+    pub prs: Vec<SessionPrSummary>,
+    /// Aggregate lifecycle state for the associated pull requests. OPEN wins,
+    /// then CLOSED, then MERGED when every terminal PR merged.
+    pub pr_summary_state: Option<String>,
     /// Curated Lucide icon name the user picked for this row's sidebar glyph.
     /// `None` keeps the row on its live status marker.
     pub icon: Option<String>,
@@ -157,20 +174,108 @@ pub fn find_workspace_by_id(
 }
 
 fn attach_latest_pr(connection: &Connection, workspace: &mut WorkspaceSummary) -> ArgmaxResult<()> {
-    if let Some(pr) = latest_pr_for_workspace(
-        connection,
-        &workspace.id,
-        &workspace.project_id,
-        &workspace.branch,
-    )? {
-        workspace.pr_state = pr.pr_state;
-        workspace.pr_number = Some(pr.pr_number);
-        workspace.pr_created_at = pr.pr_created_at;
-        workspace.pr_merged_at = pr.pr_merged_at;
-        workspace.pr_check_state = Some(pr.last_seen_check_state);
-        workspace.pr_activity_at = Some(pr.updated_at);
+    let session_id = connection
+        .prepare_cached(
+            r#"
+            SELECT id FROM sessions
+            WHERE workspace_id = ?1
+            ORDER BY last_activity_at DESC, id DESC
+            LIMIT 1
+            "#,
+        )
+        .map_err(sqlite_error)?
+        .query_row([workspace.id.as_str()], |row| row.get::<_, String>(0))
+        .optional()
+        .map_err(sqlite_error)?;
+    if let Some(session_id) = session_id {
+        workspace.prs = list_session_prs(connection, &session_id)?;
+        workspace.pr_summary_state = aggregate_pr_state(&workspace.prs);
+        if let Some(primary) = workspace.prs.iter().find(|pr| pr.is_primary) {
+            workspace.pr_state = primary.pr_state.clone();
+            workspace.pr_number = Some(primary.pr_number);
+            workspace.pr_check_state = Some(aggregate_open_worked_checks(&workspace.prs));
+            workspace.pr_activity_at = workspace
+                .prs
+                .iter()
+                .filter(|pr| {
+                    pr.relationship == "worked"
+                        && matches!(pr.pr_state.as_deref(), None | Some("OPEN"))
+                })
+                .map(|pr| pr.updated_at.as_str())
+                .max()
+                .map(str::to_owned);
+            let milestones = connection
+                .prepare_cached(
+                    r#"
+                    SELECT pr_created_at, pr_merged_at
+                    FROM gh_pull_requests prs
+                    JOIN sessions ON sessions.id = ?1
+                    JOIN workspaces ON workspaces.id = sessions.workspace_id
+                    WHERE prs.project_id = workspaces.project_id
+                      AND prs.pr_number = ?2
+                    "#,
+                )
+                .map_err(sqlite_error)?
+                .query_row((session_id.as_str(), primary.pr_number), |row| {
+                    Ok((
+                        row.get::<_, Option<String>>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                    ))
+                })
+                .optional()
+                .map_err(sqlite_error)?;
+            if let Some((created_at, merged_at)) = milestones {
+                workspace.pr_created_at = created_at;
+                workspace.pr_merged_at = merged_at;
+            }
+            return Ok(());
+        }
     }
+
     Ok(())
+}
+
+fn aggregate_pr_state(prs: &[SessionPrSummary]) -> Option<String> {
+    let verified = prs.iter().filter(|pr| pr.relationship != "unverified");
+    let prs = verified.collect::<Vec<_>>();
+    if prs.is_empty() {
+        None
+    } else if prs
+        .iter()
+        .any(|pr| matches!(pr.pr_state.as_deref(), None | Some("OPEN")))
+    {
+        Some("OPEN".to_owned())
+    } else if prs
+        .iter()
+        .all(|pr| pr.pr_state.as_deref() == Some("MERGED"))
+    {
+        Some("MERGED".to_owned())
+    } else {
+        Some("CLOSED".to_owned())
+    }
+}
+
+fn aggregate_open_worked_checks(prs: &[SessionPrSummary]) -> String {
+    let states = prs
+        .iter()
+        .filter(|pr| {
+            pr.relationship == "worked" && matches!(pr.pr_state.as_deref(), None | Some("OPEN"))
+        })
+        .map(|pr| pr.check_state.as_str())
+        .collect::<Vec<_>>();
+    if states.contains(&"failure") {
+        "failure"
+    } else if states
+        .iter()
+        .any(|state| matches!(*state, "pending" | "unknown"))
+    {
+        "pending"
+    } else if states.is_empty() {
+        "unknown"
+    } else {
+        "success"
+    }
+    .to_owned()
 }
 
 pub fn persist_workspace(
@@ -183,9 +288,9 @@ pub fn persist_workspace(
             r#"
         INSERT INTO workspaces (
           id, project_id, task_label, branch, base_ref, path, state, shared_workspace,
-          kind, dirty, changed_files, last_activity_at, created_at, updated_at
+          kind, dirty, changed_files, last_activity_at, last_viewed_at, created_at, updated_at
         ) VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
         "#,
         )
@@ -206,9 +311,68 @@ pub fn persist_workspace(
             timestamp.as_str(),
             timestamp.as_str(),
             timestamp.as_str(),
+            timestamp.as_str(),
         ))
         .map_err(sqlite_error)?;
     find_workspace_by_id(connection, &input.id)
+}
+
+/// Advances read state to activity timestamps the client actually observed.
+/// The transaction makes the comparison and update atomic with concurrent
+/// provider activity. It returns only rows whose read state moved.
+pub fn mark_workspaces_viewed(
+    connection: &Connection,
+    observations: &[WorkspaceViewedObservation],
+) -> ArgmaxResult<Vec<WorkspaceSummary>> {
+    if observations.is_empty() {
+        return Ok(Vec::new());
+    }
+    let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+    let mut changed_ids = Vec::new();
+
+    for observation in observations {
+        let current_activity: Option<String> = transaction
+            .prepare_cached("SELECT last_activity_at FROM workspaces WHERE id = ?")
+            .map_err(sqlite_error)?
+            .query_row([observation.workspace_id.as_str()], |row| row.get(0))
+            .ok();
+        // A workspace deleted between the client's snapshot and this call is
+        // not an error: skipping it keeps the other observations in the
+        // batch, and read state for a row that no longer exists is moot.
+        let Some(current_activity) = current_activity else {
+            continue;
+        };
+
+        if observation.observed_activity_at > current_activity {
+            return Err(ArgmaxError::invalid(InvalidInputIssue::at(
+                vec!["workspaces".to_owned(), "observedActivityAt".to_owned()],
+                "WORKSPACE_ACTIVITY_NOT_OBSERVED",
+                "observed activity timestamp is newer than the workspace activity",
+            )));
+        }
+
+        let changes = transaction
+            .prepare_cached(
+                r#"
+                UPDATE workspaces
+                SET last_viewed_at = ?1, updated_at = ?2
+                WHERE id = ?3 AND (last_viewed_at IS NULL OR last_viewed_at < ?1)
+                "#,
+            )
+            .map_err(sqlite_error)?
+            .execute((
+                observation.observed_activity_at.as_str(),
+                now_iso(),
+                observation.workspace_id.as_str(),
+            ))
+            .map_err(sqlite_error)?;
+        if changes > 0 && !changed_ids.contains(&observation.workspace_id) {
+            changed_ids.push(observation.workspace_id.clone());
+        }
+    }
+
+    transaction.commit().map_err(sqlite_error)?;
+    list_workspaces(connection, Some(&changed_ids), changed_ids.len())
 }
 
 pub fn update_workspace_state(
@@ -440,6 +604,7 @@ pub fn workspace_row_to_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceSumm
         dirty: row.get::<_, i64>("dirty")? == 1,
         changed_files: row.get("changed_files")?,
         last_activity_at: row.get("last_activity_at")?,
+        last_viewed_at: row.get("last_viewed_at")?,
         pinned: row.get::<_, i64>("pinned")? == 1,
         priority_dismissed_at: row.get("priority_dismissed_at")?,
         priority_added_at: row.get("priority_added_at")?,
@@ -453,5 +618,7 @@ pub fn workspace_row_to_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceSumm
         pr_merged_at: None,
         pr_check_state: None,
         pr_activity_at: None,
+        prs: Vec::new(),
+        pr_summary_state: None,
     })
 }

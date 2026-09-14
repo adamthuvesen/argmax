@@ -10,6 +10,7 @@ describe("useSessionCommands", () => {
   const terminateMock = vi.fn().mockResolvedValue({ ok: true });
   const archiveMock = vi.fn().mockResolvedValue({ state: "archived" });
   const sendInputMock = vi.fn().mockResolvedValue({ ok: true, queued: false });
+  const steerInputMock = vi.fn().mockResolvedValue({ ok: true, queued: false });
   const sendQueuedMessageNowMock = vi.fn().mockResolvedValue({ ok: true, queued: false });
 
   beforeEach(() => {
@@ -18,11 +19,13 @@ describe("useSessionCommands", () => {
     terminateMock.mockResolvedValue({ ok: true });
     archiveMock.mockResolvedValue({ state: "archived" });
     sendInputMock.mockResolvedValue({ ok: true, queued: false });
+    steerInputMock.mockResolvedValue({ ok: true, queued: false });
     sendQueuedMessageNowMock.mockResolvedValue({ ok: true, queued: false });
     (window as unknown as { argmax: unknown }).argmax = {
       providers: {
         terminate: terminateMock,
         sendInput: sendInputMock,
+        steerInput: steerInputMock,
         sendQueuedMessageNow: sendQueuedMessageNowMock
       },
       workspaces: {
@@ -186,6 +189,29 @@ describe("useSessionCommands", () => {
     resolveRefresh?.();
   });
 
+  it("uses the steer channel for a configured in-turn follow-up", async () => {
+    const { result } = renderHook(() =>
+      useSessionCommands({ refreshDashboardStatus, loadSessionEvents, setToast, fastMode: false })
+    );
+
+    await act(async () => {
+      await result.current.sendSessionInput(
+        "session-1",
+        "Keep the API compatible",
+        { provider: "codex", label: "GPT-5.6 Terra", modelId: "gpt-5.6-terra" },
+        "auto",
+        undefined,
+        undefined,
+        "steer"
+      );
+    });
+
+    expect(steerInputMock).toHaveBeenCalledWith(
+      expect.objectContaining({ input: "Keep the API compatible" })
+    );
+    expect(sendInputMock).not.toHaveBeenCalled();
+  });
+
   it("passes steering delivery through to the queued-message IPC", async () => {
     refreshDashboardStatus.mockResolvedValue(undefined);
     loadSessionEvents.mockResolvedValue(undefined);
@@ -208,6 +234,24 @@ describe("useSessionCommands", () => {
       messageId: "message-1",
       delivery: "steer"
     });
+  });
+
+  it("shows structured queue errors and refreshes after a rejected send", async () => {
+    refreshDashboardStatus.mockResolvedValue(undefined);
+    loadSessionEvents.mockResolvedValue(undefined);
+    sendQueuedMessageNowMock.mockRejectedValueOnce({
+      code: "SERVICE_ERROR",
+      sub_code: "QUEUED_MESSAGE_ALREADY_DELIVERED",
+      message: "This follow-up was already collected from the chat inbox."
+    });
+    const { result } = renderHook(() =>
+      useSessionCommands({ refreshDashboardStatus, loadSessionEvents, setToast, fastMode: false })
+    );
+
+    await expect(result.current.sendQueuedMessageNow("session-1", "message-1"))
+      .rejects.toThrow("This follow-up was already collected from the chat inbox.");
+    expect(refreshDashboardStatus).toHaveBeenCalled();
+    expect(loadSessionEvents).toHaveBeenCalledWith("session-1");
   });
 
   it("does not wait on dashboard catch-up for a queued follow-up", async () => {

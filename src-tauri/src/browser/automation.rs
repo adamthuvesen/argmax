@@ -37,6 +37,7 @@ const READ_TIMEOUT: Duration = Duration::from_secs(15);
 const ACTION_TIMEOUT: Duration = Duration::from_secs(10);
 const SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(5);
 const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
+const LOAD_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const WAIT_POLL_INTERVAL: Duration = Duration::from_millis(150);
 const WAIT_TIMEOUT_DEFAULT_MS: u32 = 10_000;
 const WAIT_TIMEOUT_MAX_MS: u32 = 120_000;
@@ -315,7 +316,7 @@ fn call_script(call: &str) -> String {
 /// double decode.
 async fn call(app: &AppHandle, tab_id: &str, call: &str, timeout: Duration) -> ArgmaxResult<Value> {
     let webview = webview(app, tab_id)?;
-    let raw = eval::eval_json(&webview, &call_script(call), timeout).await?;
+    let raw = eval_page(app, tab_id, &webview, &call_script(call), timeout).await?;
     let encoded: String = serde_json::from_str(&raw).map_err(|_| {
         ArgmaxError::service(
             "BROWSER_ACTION_FAILED",
@@ -332,6 +333,92 @@ async fn call(app: &AppHandle, tab_id: &str, call: &str, timeout: Duration) -> A
         return Err(ArgmaxError::service("BROWSER_ACTION_FAILED", message));
     }
     Ok(value)
+}
+
+/// WebKit drops the callback for an eval queued before the first page load.
+/// Probe readiness with a side-effect-free expression so pages with slow
+/// subresources can answer early, then run the requested script exactly once.
+async fn eval_page(
+    app: &AppHandle,
+    tab_id: &str,
+    webview: &Webview,
+    script: &str,
+    timeout: Duration,
+) -> ArgmaxResult<String> {
+    let initial_tab = registry(app).get(tab_id).ok_or_else(|| {
+        ArgmaxError::service(
+            "BROWSER_NOT_OPEN",
+            format!("browser tab {tab_id} is not open"),
+        )
+    })?;
+    if !initial_tab.loading {
+        return eval::eval_json(webview, script, timeout).await;
+    }
+
+    let started = Instant::now();
+    let mut readiness_probe = Box::pin(eval::eval_json(webview, "true", timeout));
+    loop {
+        tokio::select! {
+            result = &mut readiness_probe => {
+                if let Err(error) = result {
+                    let tab = registry(app).get(tab_id).ok_or_else(|| {
+                        ArgmaxError::service(
+                            "BROWSER_NOT_OPEN",
+                            format!("browser tab {tab_id} is not open"),
+                        )
+                    })?;
+                    if tab.loading {
+                        if matches!(
+                            &error,
+                            ArgmaxError::ServiceError { sub_code, .. }
+                                if sub_code == "BROWSER_EVAL_TIMEOUT"
+                        ) {
+                            return Err(page_load_timeout(&tab, timeout));
+                        }
+                        return Err(error);
+                    }
+                }
+                let remaining = timeout.saturating_sub(started.elapsed());
+                return eval::eval_json(
+                    webview,
+                    script,
+                    remaining.max(Duration::from_millis(1)),
+                )
+                .await;
+            }
+            _ = tokio::time::sleep(LOAD_POLL_INTERVAL) => {
+                let tab = registry(app).get(tab_id).ok_or_else(|| {
+                    ArgmaxError::service(
+                        "BROWSER_NOT_OPEN",
+                        format!("browser tab {tab_id} is not open"),
+                    )
+                })?;
+                if !tab.loading {
+                    let remaining = timeout.saturating_sub(started.elapsed());
+                    return eval::eval_json(
+                        webview,
+                        script,
+                        remaining.max(Duration::from_millis(1)),
+                    )
+                    .await;
+                }
+                if started.elapsed() >= timeout {
+                    return Err(page_load_timeout(&tab, timeout));
+                }
+            }
+        }
+    }
+}
+
+fn page_load_timeout(tab: &BrowserTabInfo, timeout: Duration) -> ArgmaxError {
+    ArgmaxError::service(
+        "BROWSER_PAGE_LOAD_TIMEOUT",
+        format!(
+            "{} did not finish loading or answer within {} ms; the address may be unavailable",
+            tab.url,
+            timeout.as_millis()
+        ),
+    )
 }
 
 fn string_field(value: &Value, key: &str) -> String {
@@ -368,6 +455,7 @@ pub fn open_with_options(
         crate::ipc::browser::hidden_tab_bounds(app),
         false,
         session_id.map(str::to_string),
+        None,
     )?;
     if group.is_some() && tabs.set_group(std::slice::from_ref(&tab_id), group) {
         super::registry::publish(app, &tabs);
@@ -947,7 +1035,14 @@ pub async fn evaluate(
 ) -> ArgmaxResult<Value> {
     let tab_id = resolve_tab(app, target)?;
     let view = webview(app, &tab_id)?;
-    let raw = eval::eval_json(&view, &eval::wrap_for_errors(expression), EVAL_TIMEOUT).await?;
+    let raw = eval_page(
+        app,
+        &tab_id,
+        &view,
+        &eval::wrap_for_errors(expression),
+        EVAL_TIMEOUT,
+    )
+    .await?;
     let encoded: String = serde_json::from_str(&raw).map_err(|_| {
         ArgmaxError::service(
             "BROWSER_EVAL_FAILED",

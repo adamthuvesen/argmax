@@ -1,5 +1,5 @@
 import type { SessionSummary, TimelineEvent } from "../../shared/types.js";
-import { decodeTimelineEvent } from "./canonicalTimeline.js";
+import { decodeTimelineEvent, type ProjectSourceActivity } from "./canonicalTimeline.js";
 import { compactionNoticeFor, type CompactionNotice } from "./compaction.js";
 import {
   mergeMultitaskNotice,
@@ -26,7 +26,7 @@ export type RenderItem =
   | { kind: "compaction"; id: string; notice: CompactionNotice }
   | { kind: "project-move"; id: string; notice: ProjectMoveNotice }
   | { kind: "provider-switch"; id: string; notice: ProviderSwitchNotice }
-  | { kind: "session-note"; id: string; message: string }
+  | { kind: "session-note"; id: string; message: string; sourceActivity?: ProjectSourceActivity }
   | {
       kind: "turn";
       id: string;
@@ -177,10 +177,13 @@ export function foldRenderItems(
   // waits for that turn to close and then follows it.
   let deferredNotes: RenderItem[] = [];
   const pushSessionNote = (event: TimelineEvent): void => {
+    const canonical = decodeTimelineEvent(event);
+    const activity = canonical.kind === "lifecycle" && canonical.name === "note" ? canonical.sourceActivity : null;
     const item: RenderItem = {
       kind: "session-note",
       id: `session-note-${event.id}`,
-      message: event.message
+      message: event.message,
+      ...(activity ? { sourceActivity: activity } : {})
     };
     if (pending) deferredNotes.push(item);
     else out.push(item);

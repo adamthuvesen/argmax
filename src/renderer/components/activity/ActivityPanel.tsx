@@ -4,7 +4,7 @@ import {
   getActivityUiState,
   getCachedActivitySummary,
   patchActivityUiState,
-  setCachedActivitySummary
+  requestActivitySummary
 } from "../../lib/ledgerPageState.js";
 import { SegmentedControl, SettingsListPicker } from "../settings/settingsPrimitives.js";
 import type { ActivitySummary, ActivityWindow } from "./activityContract.js";
@@ -76,6 +76,8 @@ export function ActivityPanel({ visible = true }: { visible?: boolean } = {}): J
   const [metric, setMetric] = useState<ActivityMetric>(cachedUi.metric);
   /** The repository the page is narrowed to; null is every repository. */
   const [projectId, setProjectId] = useState<string | null>(cachedUi.projectId);
+  const projectIdRef = useRef(projectId);
+  projectIdRef.current = projectId;
   const [summary, setSummary] = useState<ActivitySummary | null>(() =>
     getCachedActivitySummary(cachedUi.activityWindow, cachedUi.projectId, timeZoneRef.current)
   );
@@ -89,9 +91,10 @@ export function ActivityPanel({ visible = true }: { visible?: boolean } = {}): J
       const request = requestRef.current + 1;
       requestRef.current = request;
       try {
-        const next = await fetchSummary(target, scope, timeZoneRef.current);
+        const next = await requestActivitySummary(target, scope, timeZoneRef.current, () =>
+          fetchSummary(target, scope, timeZoneRef.current)
+        );
         if (requestRef.current !== request) return;
-        setCachedActivitySummary(target, scope, timeZoneRef.current, next);
         setSummary(next);
         setError(null);
       } catch (cause) {
@@ -111,7 +114,7 @@ export function ActivityPanel({ visible = true }: { visible?: boolean } = {}): J
   // a warm read is sub-second, and a skeleton flash on every row press would
   // make the filter feel like navigation.
   useEffect(() => {
-    setSummary(getCachedActivitySummary(activityWindow, projectId, timeZoneRef.current));
+    setSummary(getCachedActivitySummary(activityWindow, projectIdRef.current, timeZoneRef.current));
   }, [activityWindow]);
 
   useEffect(() => {

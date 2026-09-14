@@ -175,6 +175,22 @@ describe("coalesceAssistantGroups", () => {
     expect(groups[0]?.text).toBe("I need to read.");
   });
 
+  it.each([true, false])("replays saved Codex summary parts once (streamed=%s)", (streamed) => {
+    const summary = ["**Planning auto-merge activation**", "**Deciding on polling strategy for checks**"];
+    const groups = coalesceAssistantGroups([
+      assistantEvent("prior", "message.delta", "Earlier reasoning.\n\n", "2026-09-13T07:49:23.000Z", { thinking: true }),
+      ...(streamed ? summary.map((part, index) => assistantEvent(
+        `delta-${index}`, "message.delta", part, `2026-09-13T07:49:${24 + index}.000Z`, { thinking: true }
+      )) : []),
+      assistantEvent("completed", "message.delta", summary.join("\n"), "2026-09-13T07:49:30.213Z", {
+        thinking: true, type: "reasoning", providerEventType: "item.completed", summary
+      })
+    ]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.text).toBe(`Earlier reasoning.\n\n${summary.join("\n")}`);
+  });
+
   it("anchors a streamed answer group's lastActivityAt to its FINAL delta", () => {
     // The first delta can predate the turn's tool calls (Cursor streams from
     // the turn start). Ordering keys off lastActivityAt so the answer settles
@@ -304,6 +320,33 @@ describe("coalesceAssistantGroups", () => {
     expect(groups).toHaveLength(1);
     expect(groups[0]?.text).toBe("Done.");
     expect(groups[0]?.error).toBeFalsy();
+  });
+
+  it("drops the legacy unsupported MCP elicitation diagnostic", () => {
+    const log =
+      '2026-09-13T17:25:56.613064Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32601, data: None, message: "Argmax does not support Codex app-server request mcpServer/elicitation/request" }';
+    const groups = coalesceAssistantGroups([
+      assistantEvent("a1", "message.completed", "Continuing.", "2026-09-13T17:25:55.000Z"),
+      assistantEvent("e1", "error", log, "2026-09-13T17:25:56.617Z")
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.text).toBe("Continuing.");
+  });
+
+  it.each([
+    "Reconnecting... waiting for network",
+    "Reconnecting... 5/5",
+    "Skill descriptions were shortened to fit the skills context budget."
+  ])("drops stale provider advisory error rows: %s", (message) => {
+    expect(coalesceAssistantGroups([
+      assistantEvent("e1", "error", message, "2026-09-13T17:25:56.617Z")
+    ])).toHaveLength(0);
+  });
+
+  it("keeps a real plain provider error", () => {
+    expect(coalesceAssistantGroups([
+      assistantEvent("e1", "error", "Authentication failed; run `codex login`", "2026-09-13T17:25:56.617Z")
+    ])).toHaveLength(1);
   });
 
   it("drops Codex apply_patch tracing that leaked in as stdout deltas, including context lines", () => {
@@ -445,5 +488,41 @@ describe("reasoning bursts", () => {
     ]);
 
     expect(groups[0].text).toBe("I need to checkthe normalizer.");
+  });
+
+  // Codex sends each summary as its own `**Header**` fragment. Glued end to
+  // end the delimiters collapse into `****` and the titles read as one line.
+  it("opens a paragraph between Codex reasoning titles", () => {
+    const groups = coalesceAssistantGroups([
+      think("t1", "**Adding missing session default**", "2026-05-12T15:00:01.000Z"),
+      think("t2", "**Searching session completion events**", "2026-05-12T15:00:02.000Z")
+    ]);
+
+    expect(groups[0].text).toBe(
+      "**Adding missing session default**\n\n**Searching session completion events**"
+    );
+  });
+
+  it("splits Codex titles that already arrived glued as ****", () => {
+    const groups = coalesceAssistantGroups([
+      think(
+        "t1",
+        "**Designing test with fake client for failure****Exploring test seam placement**",
+        "2026-05-12T15:00:01.000Z"
+      )
+    ]);
+
+    expect(groups[0].text).toBe(
+      "**Designing test with fake client for failure**\n\n**Exploring test seam placement**"
+    );
+  });
+
+  it("does not treat a mid-word ** split as a new title", () => {
+    const groups = coalesceAssistantGroups([
+      think("t1", "**Plan", "2026-05-12T15:00:01.000Z"),
+      think("t2", "ning the patch**", "2026-05-12T15:00:02.000Z")
+    ]);
+
+    expect(groups[0].text).toBe("**Planning the patch**");
   });
 });

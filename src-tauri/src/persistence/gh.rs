@@ -3,7 +3,10 @@ use serde::Serialize;
 use specta::Type;
 
 use super::sqlite_error;
+use super::time::now_iso;
 use crate::error::{ArgmaxError, ArgmaxResult};
+
+pub const SESSION_PR_EVIDENCE_PARSER_VERSION: i64 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrAttribution {
@@ -40,6 +43,393 @@ pub struct GhPrRecord {
     pub head_ref_name: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionPrSummary {
+    pub session_id: String,
+    pub pr_number: i64,
+    pub url: Option<String>,
+    pub title: Option<String>,
+    pub pr_state: Option<String>,
+    pub head_ref_name: Option<String>,
+    pub relationship: String,
+    pub activity_at: String,
+    pub updated_at: String,
+    pub check_state: String,
+    pub is_primary: bool,
+    pub is_pinned: bool,
+    pub refresh_error: Option<String>,
+}
+
+/// All non-dismissed PRs linked to a session. The first row is the stable
+/// primary: a user pin wins, then open worked PRs, then terminal worked PRs,
+/// and finally referenced or unverified history. Refresh timestamps never
+/// participate in this order.
+pub fn list_session_prs(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Vec<SessionPrSummary>> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+            SELECT links.session_id,
+                   links.pr_number,
+                   prs.url,
+                   prs.title,
+                   prs.pr_state,
+                   prs.head_ref_name,
+                   links.relationship,
+                   links.activity_at,
+                   prs.updated_at,
+                   prs.last_seen_check_state,
+                   links.is_pinned,
+                   prs.refresh_error
+            FROM session_pr_links links
+            JOIN gh_pull_requests prs
+              ON prs.project_id = links.project_id
+             AND prs.pr_number = links.pr_number
+            WHERE links.session_id = ?1
+              AND links.dismissed_at IS NULL
+            ORDER BY
+              links.is_pinned DESC,
+              CASE
+                WHEN links.relationship = 'worked'
+                  AND (prs.pr_state IS NULL OR prs.pr_state = 'OPEN') THEN 0
+                WHEN links.relationship = 'worked' THEN 1
+                WHEN links.relationship = 'referenced' THEN 2
+                ELSE 3
+              END,
+              links.activity_at DESC,
+              links.pr_number DESC
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let mut rows = statement
+        .query_map([session_id], |row| {
+            Ok(SessionPrSummary {
+                session_id: row.get(0)?,
+                pr_number: row.get(1)?,
+                url: row.get(2)?,
+                title: row.get(3)?,
+                pr_state: row.get(4)?,
+                head_ref_name: row.get(5)?,
+                relationship: row.get(6)?,
+                activity_at: row.get(7)?,
+                updated_at: row.get(8)?,
+                check_state: row.get(9)?,
+                is_primary: false,
+                is_pinned: row.get::<_, i64>(10)? != 0,
+                refresh_error: row.get(11)?,
+            })
+        })
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    if let Some(primary) = rows
+        .iter_mut()
+        .find(|row| row.is_pinned || row.relationship != "unverified")
+    {
+        primary.is_primary = true;
+    }
+    Ok(rows)
+}
+
+pub fn set_session_pr_selection(
+    connection: &Connection,
+    session_id: &str,
+    pr_number: Option<i64>,
+) -> ArgmaxResult<()> {
+    if pr_number.is_some_and(|number| number <= 0) {
+        return Err(ArgmaxError::service(
+            "GH_PR_NUMBER_INVALID",
+            "pull request number must be positive",
+        ));
+    }
+    project_for_session(connection, session_id)?;
+    let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+    transaction
+        .prepare_cached("UPDATE session_pr_links SET is_pinned = 0 WHERE session_id = ?1")
+        .map_err(sqlite_error)?
+        .execute([session_id])
+        .map_err(sqlite_error)?;
+    if let Some(pr_number) = pr_number {
+        let timestamp = now_iso();
+        let changed = transaction
+            .prepare_cached(
+                r#"
+                UPDATE session_pr_links
+                SET is_pinned = 1, updated_at = ?3
+                WHERE session_id = ?1 AND pr_number = ?2 AND dismissed_at IS NULL
+                "#,
+            )
+            .map_err(sqlite_error)?
+            .execute((session_id, pr_number, timestamp.as_str()))
+            .map_err(sqlite_error)?;
+        if changed == 0 {
+            return Err(ArgmaxError::record_not_found(
+                "session pull request",
+                format!("{session_id}:{pr_number}"),
+            ));
+        }
+        // Choosing an imported/legacy candidate confirms that it belongs in
+        // this session's history, but it does not prove the session worked on
+        // it. Keep automation gated on separate `worked` evidence.
+        let project_id: String = transaction
+            .prepare_cached(
+                "SELECT project_id FROM session_pr_links WHERE session_id = ?1 AND pr_number = ?2",
+            )
+            .map_err(sqlite_error)?
+            .query_row((session_id, pr_number), |row| row.get(0))
+            .map_err(sqlite_error)?;
+        let source_id = format!("user-select:{session_id}:{pr_number}");
+        transaction
+            .prepare_cached(
+                r#"
+                INSERT OR IGNORE INTO session_pr_evidence (
+                  session_id, project_id, pr_number, relationship, source_id,
+                  occurred_at, created_at
+                ) VALUES (?1, ?2, ?3, 'referenced', ?4, ?5, ?5)
+                "#,
+            )
+            .map_err(sqlite_error)?
+            .execute((
+                session_id,
+                project_id,
+                pr_number,
+                source_id,
+                timestamp.as_str(),
+            ))
+            .map_err(sqlite_error)?;
+        transaction
+            .prepare_cached(
+                r#"
+                UPDATE session_pr_links
+                SET relationship = 'referenced', activity_at = MAX(activity_at, ?3)
+                WHERE session_id = ?1 AND pr_number = ?2
+                  AND relationship = 'unverified'
+                "#,
+            )
+            .map_err(sqlite_error)?
+            .execute((session_id, pr_number, timestamp))
+            .map_err(sqlite_error)?;
+    }
+    transaction.commit().map_err(sqlite_error)
+}
+
+pub fn dismiss_session_pr(
+    connection: &Connection,
+    session_id: &str,
+    pr_number: i64,
+) -> ArgmaxResult<()> {
+    if pr_number <= 0 {
+        return Err(ArgmaxError::service(
+            "GH_PR_NUMBER_INVALID",
+            "pull request number must be positive",
+        ));
+    }
+    let timestamp = now_iso();
+    let changed = connection
+        .prepare_cached(
+            r#"
+            UPDATE session_pr_links
+            SET dismissed_at = ?3, is_pinned = 0, updated_at = ?3
+            WHERE session_id = ?1 AND pr_number = ?2
+            "#,
+        )
+        .map_err(sqlite_error)?
+        .execute((session_id, pr_number, timestamp))
+        .map_err(sqlite_error)?;
+    if changed == 0 {
+        return Err(ArgmaxError::record_not_found(
+            "session pull request",
+            format!("{session_id}:{pr_number}"),
+        ));
+    }
+    Ok(())
+}
+
+pub fn record_session_pr_evidence(
+    connection: &Connection,
+    session_id: &str,
+    pr_number: i64,
+    relationship: &str,
+    source_id: &str,
+    occurred_at: &str,
+) -> ArgmaxResult<()> {
+    if !matches!(relationship, "worked" | "referenced" | "unverified") {
+        return Err(ArgmaxError::service(
+            "GH_PR_RELATIONSHIP_INVALID",
+            format!("invalid PR relationship: {relationship}"),
+        ));
+    }
+    if source_id.is_empty() || occurred_at.is_empty() || pr_number <= 0 {
+        return Err(ArgmaxError::service(
+            "GH_PR_EVIDENCE_INVALID",
+            "PR evidence requires a positive number, source id, and timestamp",
+        ));
+    }
+    let project_id = project_for_session(connection, session_id)?;
+    let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+    ensure_canonical_pr(&transaction, &project_id, pr_number, occurred_at)?;
+    record_session_pr_evidence_inner(
+        &transaction,
+        session_id,
+        &project_id,
+        pr_number,
+        relationship,
+        source_id,
+        occurred_at,
+    )?;
+    transaction.commit().map_err(sqlite_error)
+}
+
+fn record_session_pr_evidence_inner(
+    connection: &Connection,
+    session_id: &str,
+    project_id: &str,
+    pr_number: i64,
+    relationship: &str,
+    source_id: &str,
+    occurred_at: &str,
+) -> ArgmaxResult<()> {
+    let recorded_at = now_iso();
+    let inserted = connection
+        .prepare_cached(
+            r#"
+            INSERT INTO session_pr_evidence (
+              session_id, project_id, pr_number, relationship, source_id,
+              occurred_at, created_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            ON CONFLICT(session_id, pr_number, source_id) DO UPDATE SET
+              relationship = excluded.relationship
+            WHERE CASE excluded.relationship
+                    WHEN 'worked' THEN 2 WHEN 'referenced' THEN 1 ELSE 0 END
+                  > CASE session_pr_evidence.relationship
+                    WHEN 'worked' THEN 2 WHEN 'referenced' THEN 1 ELSE 0 END
+            "#,
+        )
+        .map_err(sqlite_error)?
+        .execute((
+            session_id,
+            project_id,
+            pr_number,
+            relationship,
+            source_id,
+            occurred_at,
+            &recorded_at,
+        ))
+        .map_err(sqlite_error)?;
+    if inserted != 0 {
+        connection
+            .prepare_cached(
+                r#"
+                INSERT INTO session_pr_links (
+                  session_id, project_id, pr_number, relationship, activity_at,
+                  created_at, updated_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+                ON CONFLICT(session_id, pr_number) DO UPDATE SET
+                  relationship = CASE
+                    WHEN session_pr_links.relationship = 'worked' THEN 'worked'
+                    WHEN excluded.relationship = 'worked' THEN 'worked'
+                    WHEN session_pr_links.relationship = 'referenced' THEN 'referenced'
+                    ELSE excluded.relationship
+                  END,
+                  activity_at = CASE
+                    WHEN session_pr_links.relationship = 'worked'
+                      AND excluded.relationship != 'worked'
+                    THEN session_pr_links.activity_at
+                    WHEN session_pr_links.relationship != 'worked'
+                      AND excluded.relationship = 'worked'
+                    THEN excluded.activity_at
+                    WHEN session_pr_links.relationship = 'referenced'
+                      AND excluded.relationship = 'unverified'
+                    THEN session_pr_links.activity_at
+                    WHEN session_pr_links.relationship = 'unverified'
+                      AND excluded.relationship = 'referenced'
+                    THEN excluded.activity_at
+                    ELSE MAX(session_pr_links.activity_at, excluded.activity_at)
+                  END,
+                  updated_at = excluded.updated_at
+                "#,
+            )
+            .map_err(sqlite_error)?
+            .execute((
+                session_id,
+                project_id,
+                pr_number,
+                relationship,
+                occurred_at,
+                recorded_at,
+            ))
+            .map_err(sqlite_error)?;
+    }
+    Ok(())
+}
+
+pub fn store_pr_metadata(
+    connection: &Connection,
+    session_id: &str,
+    pr_number: i64,
+    url: Option<&str>,
+    title: Option<&str>,
+) -> ArgmaxResult<()> {
+    let project_id = project_for_session(connection, session_id)?;
+    ensure_canonical_pr(connection, &project_id, pr_number, &now_iso())?;
+    connection
+        .prepare_cached(
+            r#"
+            UPDATE gh_pull_requests
+            SET url = COALESCE(?3, url),
+                title = COALESCE(?4, title)
+            WHERE project_id = ?1 AND pr_number = ?2
+            "#,
+        )
+        .map_err(sqlite_error)?
+        .execute((project_id, pr_number, url, title))
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
+fn project_for_session(connection: &Connection, session_id: &str) -> ArgmaxResult<String> {
+    connection
+        .prepare_cached(
+            r#"
+            SELECT workspaces.project_id
+            FROM sessions
+            JOIN workspaces ON workspaces.id = sessions.workspace_id
+            WHERE sessions.id = ?1
+            "#,
+        )
+        .map_err(sqlite_error)?
+        .query_row([session_id], |row| row.get(0))
+        .map_err(|error| match error {
+            rusqlite::Error::QueryReturnedNoRows => {
+                ArgmaxError::record_not_found("session", session_id)
+            }
+            other => sqlite_error(other),
+        })
+}
+
+fn ensure_canonical_pr(
+    connection: &Connection,
+    project_id: &str,
+    pr_number: i64,
+    timestamp: &str,
+) -> ArgmaxResult<()> {
+    connection
+        .prepare_cached(
+            r#"
+            INSERT OR IGNORE INTO gh_pull_requests (
+              project_id, pr_number, refreshed_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?3)
+            "#,
+        )
+        .map_err(sqlite_error)?
+        .execute((project_id, pr_number, timestamp))
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
 /// Record one GitHub observation and, when its provenance is trustworthy,
 /// associate it with the observing session. GitHub-owned fields fan out to
 /// every existing row for this PR in the same project, even when a new
@@ -54,6 +444,7 @@ pub fn record_gh_pr_observation(
     let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
     let effective_input = effective_project_pr_record(&transaction, &context.project_id, input)?;
 
+    upsert_canonical_pr(&transaction, &context.project_id, &effective_input)?;
     sync_project_pr_rows(&transaction, &context.project_id, &effective_input)?;
 
     let existing_attribution = transaction
@@ -71,6 +462,12 @@ pub fn record_gh_pr_observation(
         (PrAttribution::Inferred, Some("inferred")) => Some("inferred"),
         // A cached refresh carries no new attribution evidence. In particular,
         // it must not launder a pre-v37 shared row into a trusted association.
+        (PrAttribution::Inferred, Some("legacy"))
+            if !context.shared_workspace
+                && inferred_association_is_eligible(&transaction, &context, &effective_input)? =>
+        {
+            Some("inferred")
+        }
         (PrAttribution::Inferred, Some("legacy")) => None,
         (PrAttribution::Inferred, None)
             if inferred_association_is_eligible(&transaction, &context, &effective_input)? =>
@@ -83,12 +480,42 @@ pub fn record_gh_pr_observation(
 
     let result = if let Some(stored_attribution) = accepted_attribution {
         upsert_gh_pr_with_attribution(&transaction, &effective_input, stored_attribution)?;
+        let relationship = match (context.shared_workspace, attribution) {
+            (false, PrAttribution::Inferred) => "worked",
+            (true, PrAttribution::Inferred) => "unverified",
+            (_, PrAttribution::Explicit) => "referenced",
+        };
+        let source_id = format!(
+            "observation:{}:{}:{}",
+            input.session_id, input.pr_number, relationship
+        );
+        record_session_pr_evidence_inner(
+            &transaction,
+            &input.session_id,
+            &context.project_id,
+            input.pr_number,
+            relationship,
+            &source_id,
+            &input.updated_at,
+        )?;
         find_gh_pr(&transaction, &input.session_id, input.pr_number)?
     } else {
         None
     };
     transaction.commit().map_err(sqlite_error)?;
     Ok(result)
+}
+
+/// Update canonical GitHub state without creating or promoting a session
+/// association. Number-based refreshes use this path because seeing a PR is
+/// metadata, not evidence that the session worked on it.
+pub fn store_gh_pr_observation(connection: &Connection, input: &GhPrRecord) -> ArgmaxResult<()> {
+    let context = session_pr_context(connection, &input.session_id)?;
+    let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+    let effective_input = effective_project_pr_record(&transaction, &context.project_id, input)?;
+    upsert_canonical_pr(&transaction, &context.project_id, &effective_input)?;
+    sync_project_pr_rows(&transaction, &context.project_id, &effective_input)?;
+    transaction.commit().map_err(sqlite_error)
 }
 
 fn effective_project_pr_record(
@@ -101,6 +528,12 @@ fn effective_project_pr_record(
             r#"
             SELECT EXISTS (
               SELECT 1
+              FROM gh_pull_requests
+              WHERE project_id = ?1
+                AND pr_number = ?2
+                AND pr_state = 'MERGED'
+              UNION ALL
+              SELECT 1
               FROM gh_pr
               JOIN sessions ON sessions.id = gh_pr.session_id
               JOIN workspaces ON workspaces.id = sessions.workspace_id
@@ -108,13 +541,19 @@ fn effective_project_pr_record(
                 AND gh_pr.pr_number = ?2
                 AND gh_pr.pr_state = 'MERGED'
             ), (
-              SELECT MAX(gh_pr.pr_merged_at)
-              FROM gh_pr
-              JOIN sessions ON sessions.id = gh_pr.session_id
-              JOIN workspaces ON workspaces.id = sessions.workspace_id
-              WHERE workspaces.project_id = ?1
-                AND gh_pr.pr_number = ?2
-                AND gh_pr.pr_state = 'MERGED'
+              SELECT MAX(pr_merged_at) FROM (
+                SELECT pr_merged_at
+                FROM gh_pull_requests
+                WHERE project_id = ?1 AND pr_number = ?2 AND pr_state = 'MERGED'
+                UNION ALL
+                SELECT gh_pr.pr_merged_at
+                FROM gh_pr
+                JOIN sessions ON sessions.id = gh_pr.session_id
+                JOIN workspaces ON workspaces.id = sessions.workspace_id
+                WHERE workspaces.project_id = ?1
+                  AND gh_pr.pr_number = ?2
+                  AND gh_pr.pr_state = 'MERGED'
+              )
             )
             "#,
         )
@@ -133,6 +572,83 @@ fn effective_project_pr_record(
     Ok(effective)
 }
 
+fn upsert_canonical_pr(
+    connection: &Connection,
+    project_id: &str,
+    input: &GhPrRecord,
+) -> ArgmaxResult<()> {
+    connection
+        .prepare_cached(
+            r#"
+            INSERT INTO gh_pull_requests (
+              project_id, pr_number, head_sha, last_seen_check_state, pr_state,
+              head_ref_name, pr_created_at, pr_merged_at, refreshed_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)
+            ON CONFLICT(project_id, pr_number) DO UPDATE SET
+              updated_at = CASE WHEN
+                gh_pull_requests.head_sha IS NOT excluded.head_sha
+                OR gh_pull_requests.last_seen_check_state IS NOT excluded.last_seen_check_state
+                OR gh_pull_requests.pr_state IS NOT
+                   CASE WHEN gh_pull_requests.pr_state = 'MERGED' THEN 'MERGED' ELSE excluded.pr_state END
+                OR (excluded.head_ref_name IS NOT NULL
+                    AND gh_pull_requests.head_ref_name IS NOT excluded.head_ref_name)
+                OR (excluded.pr_created_at IS NOT NULL
+                    AND gh_pull_requests.pr_created_at IS NOT excluded.pr_created_at)
+                OR (excluded.pr_merged_at IS NOT NULL
+                    AND gh_pull_requests.pr_merged_at IS NOT excluded.pr_merged_at)
+              THEN excluded.refreshed_at ELSE gh_pull_requests.updated_at END,
+              head_sha = excluded.head_sha,
+              last_seen_check_state = excluded.last_seen_check_state,
+              pr_state = CASE
+                WHEN gh_pull_requests.pr_state = 'MERGED' THEN 'MERGED'
+                ELSE excluded.pr_state
+              END,
+              head_ref_name = COALESCE(excluded.head_ref_name, gh_pull_requests.head_ref_name),
+              pr_created_at = COALESCE(excluded.pr_created_at, gh_pull_requests.pr_created_at),
+              pr_merged_at = COALESCE(excluded.pr_merged_at, gh_pull_requests.pr_merged_at),
+              refreshed_at = excluded.refreshed_at,
+              refresh_error = NULL
+            "#,
+        )
+        .map_err(sqlite_error)?
+        .execute((
+            project_id,
+            input.pr_number,
+            input.head_sha.as_str(),
+            input.last_seen_check_state.as_str(),
+            input.pr_state.as_deref(),
+            input.head_ref_name.as_deref(),
+            input.pr_created_at.as_deref(),
+            input.pr_merged_at.as_deref(),
+            input.updated_at.as_str(),
+        ))
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
+pub fn record_pr_refresh_error(
+    connection: &Connection,
+    session_id: &str,
+    pr_number: i64,
+    error: &str,
+) -> ArgmaxResult<()> {
+    let project_id = project_for_session(connection, session_id)?;
+    let timestamp = now_iso();
+    ensure_canonical_pr(connection, &project_id, pr_number, &timestamp)?;
+    connection
+        .prepare_cached(
+            r#"
+            UPDATE gh_pull_requests
+            SET refreshed_at = ?3, refresh_error = ?4
+            WHERE project_id = ?1 AND pr_number = ?2
+            "#,
+        )
+        .map_err(sqlite_error)?
+        .execute((project_id, pr_number, timestamp, error))
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
 /// The branch trusted for attributing a new inferred PR observation.
 /// Isolated workspaces own their branch, so their current branch is reliable.
 /// Shared checkouts use only the branch captured while this session was active.
@@ -145,6 +661,7 @@ pub fn pr_branch_for_session(
 }
 
 pub fn upsert_gh_pr(connection: &Connection, input: &GhPrRecord) -> ArgmaxResult<GhPrRecord> {
+    store_gh_pr_observation(connection, input)?;
     upsert_gh_pr_with_attribution(connection, input, "legacy")?;
     find_gh_pr(connection, &input.session_id, input.pr_number)
         .map(|row| row.unwrap_or(input.clone()))
@@ -341,6 +858,149 @@ pub fn list_gh_pr_for_session(
     let mut statement = connection
         .prepare_cached(
             r#"
+            SELECT links.session_id,
+                   links.pr_number,
+                   prs.head_sha,
+                   prs.last_seen_check_state,
+                   prs.updated_at,
+                   prs.pr_state,
+                   COALESCE(
+                     CASE WHEN links.notified_head_sha = prs.head_sha THEN links.notified_at END,
+                     legacy.notified_at
+                   ),
+                   prs.pr_created_at,
+                   prs.pr_merged_at,
+                   prs.head_ref_name
+            FROM session_pr_links links
+            JOIN gh_pull_requests prs
+              ON prs.project_id = links.project_id
+             AND prs.pr_number = links.pr_number
+            LEFT JOIN gh_pr legacy
+              ON legacy.session_id = links.session_id
+             AND legacy.pr_number = links.pr_number
+            WHERE links.session_id = ?1
+              AND links.dismissed_at IS NULL
+            ORDER BY links.pr_number ASC
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map([session_id], |row| {
+            Ok(GhPrRecord {
+                session_id: row.get(0)?,
+                pr_number: row.get(1)?,
+                head_sha: row.get(2)?,
+                last_seen_check_state: row.get(3)?,
+                updated_at: row.get(4)?,
+                pr_state: row.get(5)?,
+                notified_at: row.get(6)?,
+                pr_created_at: row.get(7)?,
+                pr_merged_at: row.get(8)?,
+                head_ref_name: row.get(9)?,
+            })
+        })
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    if !rows.is_empty() {
+        return Ok(rows);
+    }
+    list_legacy_gh_pr_for_session(connection, session_id)
+}
+
+/// Read canonical GitHub state by session project and PR number, independent
+/// of whether that session currently displays or has dismissed the PR.
+pub fn find_canonical_pr_for_session(
+    connection: &Connection,
+    session_id: &str,
+    pr_number: i64,
+) -> ArgmaxResult<Option<GhPrRecord>> {
+    let project_id = project_for_session(connection, session_id)?;
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+            SELECT ?1 AS session_id,
+                   prs.pr_number,
+                   prs.head_sha,
+                   prs.last_seen_check_state,
+                   prs.updated_at,
+                   prs.pr_state,
+                   COALESCE(
+                     CASE WHEN links.notified_head_sha = prs.head_sha THEN links.notified_at END,
+                     legacy.notified_at
+                   ),
+                   prs.pr_created_at,
+                   prs.pr_merged_at,
+                   prs.head_ref_name
+            FROM gh_pull_requests prs
+            LEFT JOIN session_pr_links links
+              ON links.session_id = ?1
+             AND links.project_id = prs.project_id
+             AND links.pr_number = prs.pr_number
+            LEFT JOIN gh_pr legacy
+              ON legacy.session_id = ?1 AND legacy.pr_number = prs.pr_number
+            WHERE prs.project_id = ?2 AND prs.pr_number = ?3
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    match statement.query_row((session_id, project_id, pr_number), |row| {
+        Ok(GhPrRecord {
+            session_id: row.get(0)?,
+            pr_number: row.get(1)?,
+            head_sha: row.get(2)?,
+            last_seen_check_state: row.get(3)?,
+            updated_at: row.get(4)?,
+            pr_state: row.get(5)?,
+            notified_at: row.get(6)?,
+            pr_created_at: row.get(7)?,
+            pr_merged_at: row.get(8)?,
+            head_ref_name: row.get(9)?,
+        })
+    }) {
+        Ok(record) => Ok(Some(record)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(error) => Err(sqlite_error(error)),
+    }
+}
+
+/// Refreshable PRs for a session, oldest attempted refresh first. Both
+/// successful and failed attempts update `refreshed_at`, so a bounded caller
+/// eventually rotates through every association instead of retrying the same
+/// first page forever.
+pub fn list_refreshable_pr_numbers_for_session(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Vec<i64>> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+            SELECT links.pr_number
+            FROM session_pr_links links
+            JOIN gh_pull_requests prs
+              ON prs.project_id = links.project_id
+             AND prs.pr_number = links.pr_number
+            WHERE links.session_id = ?1
+              AND links.dismissed_at IS NULL
+              AND (prs.pr_state IS NULL OR prs.pr_state != 'MERGED')
+            ORDER BY prs.refreshed_at ASC, links.pr_number ASC
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map([session_id], |row| row.get(0))
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(rows)
+}
+
+fn list_legacy_gh_pr_for_session(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Vec<GhPrRecord>> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
             SELECT gh_pr.*
             FROM gh_pr
             JOIN sessions ON sessions.id = gh_pr.session_id
@@ -383,6 +1043,17 @@ pub fn list_open_gh_pr_session_ids(connection: &Connection) -> ArgmaxResult<Vec<
     let mut statement = connection
         .prepare_cached(
             r#"
+        SELECT DISTINCT links.session_id AS id
+        FROM session_pr_links links
+        JOIN gh_pull_requests prs
+          ON prs.project_id = links.project_id AND prs.pr_number = links.pr_number
+        JOIN sessions ON sessions.id = links.session_id
+        JOIN workspaces ON workspaces.id = sessions.workspace_id
+        WHERE (prs.pr_state IS NULL OR prs.pr_state != 'MERGED')
+          AND links.relationship != 'unverified'
+          AND links.dismissed_at IS NULL
+          AND workspaces.state NOT IN ('archiving', 'archive-failed', 'archived')
+        UNION
         SELECT DISTINCT gh_pr.session_id AS id
         FROM gh_pr
         JOIN sessions ON sessions.id = gh_pr.session_id
@@ -406,6 +1077,11 @@ pub fn list_open_gh_pr_session_ids(connection: &Connection) -> ArgmaxResult<Vec<
             )
           )
           AND workspaces.state NOT IN ('archiving', 'archive-failed', 'archived')
+          AND NOT EXISTS (
+            SELECT 1 FROM session_pr_links links
+            WHERE links.session_id = gh_pr.session_id
+              AND links.pr_number = gh_pr.pr_number
+          )
         "#,
         )
         .map_err(sqlite_error)?;
@@ -415,6 +1091,43 @@ pub fn list_open_gh_pr_session_ids(connection: &Connection) -> ArgmaxResult<Vec<
         .collect::<Result<Vec<_>, _>>()
         .map_err(sqlite_error)?;
     Ok(rows)
+}
+
+/// Legacy associations need one evidence replay after v49. The scan ledger
+/// keeps the poller from retrying sessions whose historical events contain no
+/// stronger evidence.
+pub fn list_session_ids_needing_pr_evidence_repair(
+    connection: &Connection,
+    limit: usize,
+) -> ArgmaxResult<Vec<String>> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+            SELECT DISTINCT links.session_id
+            FROM session_pr_links links
+            JOIN sessions ON sessions.id = links.session_id
+            JOIN workspaces ON workspaces.id = sessions.workspace_id
+            JOIN projects ON projects.id = workspaces.project_id
+            LEFT JOIN session_pr_evidence_scans scans ON scans.session_id = links.session_id
+            WHERE links.relationship = 'unverified'
+              AND links.dismissed_at IS NULL
+              AND (scans.session_id IS NULL OR scans.parser_version < ?2)
+              AND projects.repo_remote_owner IS NOT NULL
+              AND projects.repo_remote_name IS NOT NULL
+              AND workspaces.state NOT IN ('archiving', 'archived')
+            ORDER BY sessions.last_activity_at DESC, links.session_id DESC
+            LIMIT ?1
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let session_ids = statement
+        .query_map((limit as i64, SESSION_PR_EVIDENCE_PARSER_VERSION), |row| {
+            row.get::<_, String>(0)
+        })
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(session_ids)
 }
 
 /// Whether any session in this workspace has already fired the check-failure
@@ -434,31 +1147,50 @@ pub fn check_failure_launched_in_workspace(
     let mut statement = connection
         .prepare_cached(
             r#"
-        SELECT 1
-        FROM gh_pr
-        JOIN sessions ON sessions.id = gh_pr.session_id
-        JOIN workspaces ON workspaces.id = sessions.workspace_id
-        WHERE sessions.workspace_id = ?1
-          AND gh_pr.pr_number = ?2
-          AND gh_pr.head_sha = ?3
-          AND gh_pr.notified_at IS NOT NULL
-          AND (
-            workspaces.shared_workspace = 0
-            OR gh_pr.attribution = 'explicit'
-            OR (
-              gh_pr.attribution = 'inferred'
-              AND (
-                sessions.state IN ('running', 'waiting', 'blocked')
-                OR (
-                  sessions.completed_at IS NOT NULL
-                  AND gh_pr.pr_created_at IS NOT NULL
-                  AND julianday(sessions.completed_at) IS NOT NULL
-                  AND julianday(gh_pr.pr_created_at) IS NOT NULL
-                  AND julianday(gh_pr.pr_created_at) <= julianday(sessions.completed_at)
+        SELECT 1 FROM (
+          SELECT links.session_id
+          FROM session_pr_links links
+          JOIN sessions ON sessions.id = links.session_id
+          JOIN gh_pull_requests prs
+            ON prs.project_id = links.project_id
+           AND prs.pr_number = links.pr_number
+          WHERE sessions.workspace_id = ?1
+            AND links.pr_number = ?2
+            AND prs.head_sha = ?3
+            AND links.notified_head_sha = ?3
+            AND links.notified_at IS NOT NULL
+          UNION ALL
+          SELECT gh_pr.session_id
+          FROM gh_pr
+          JOIN sessions ON sessions.id = gh_pr.session_id
+          JOIN workspaces ON workspaces.id = sessions.workspace_id
+          WHERE sessions.workspace_id = ?1
+            AND gh_pr.pr_number = ?2
+            AND gh_pr.head_sha = ?3
+            AND gh_pr.notified_at IS NOT NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM session_pr_links links
+              WHERE links.session_id = gh_pr.session_id
+                AND links.pr_number = gh_pr.pr_number
+            )
+            AND (
+              workspaces.shared_workspace = 0
+              OR gh_pr.attribution = 'explicit'
+              OR (
+                gh_pr.attribution = 'inferred'
+                AND (
+                  sessions.state IN ('running', 'waiting', 'blocked')
+                  OR (
+                    sessions.completed_at IS NOT NULL
+                    AND gh_pr.pr_created_at IS NOT NULL
+                    AND julianday(sessions.completed_at) IS NOT NULL
+                    AND julianday(gh_pr.pr_created_at) IS NOT NULL
+                    AND julianday(gh_pr.pr_created_at) <= julianday(sessions.completed_at)
+                  )
                 )
               )
             )
-          )
+        ) notified
         LIMIT 1
         "#,
         )
@@ -602,19 +1334,37 @@ pub fn mark_gh_pr_notified(
     head_sha: &str,
     notified_at: &str,
 ) -> ArgmaxResult<()> {
-    let mut statement = connection
+    let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+    let link_changes = transaction
         .prepare_cached(
             r#"
-        UPDATE gh_pr
-        SET notified_at = ?
-        WHERE session_id = ? AND pr_number = ? AND head_sha = ?
+        UPDATE session_pr_links
+        SET notified_head_sha = ?4,
+            notified_at = ?5
+        WHERE session_id = ?1 AND pr_number = ?2
+          AND EXISTS (
+            SELECT 1 FROM gh_pull_requests prs
+            WHERE prs.project_id = session_pr_links.project_id
+              AND prs.pr_number = session_pr_links.pr_number
+              AND prs.head_sha = ?3
+          )
         "#,
         )
+        .map_err(sqlite_error)?
+        .execute((session_id, pr_number, head_sha, head_sha, notified_at))
         .map_err(sqlite_error)?;
-    let changes = statement
+    let legacy_changes = transaction
+        .prepare_cached(
+            r#"
+            UPDATE gh_pr
+            SET notified_at = ?1
+            WHERE session_id = ?2 AND pr_number = ?3 AND head_sha = ?4
+            "#,
+        )
+        .map_err(sqlite_error)?
         .execute((notified_at, session_id, pr_number, head_sha))
         .map_err(sqlite_error)?;
-    if changes == 0 {
+    if link_changes == 0 && legacy_changes == 0 {
         // The head_sha rotated between read and mark — the notification
         // belongs to a stale commit. Surface it so the caller can decide
         // whether to retry against the new sha or drop the notification.
@@ -625,6 +1375,7 @@ pub fn mark_gh_pr_notified(
             ),
         ));
     }
+    transaction.commit().map_err(sqlite_error)?;
     Ok(())
 }
 
@@ -847,6 +1598,64 @@ mod tests {
     }
 
     #[test]
+    fn canonical_only_notification_deduplicates_workspace_and_resets_for_new_head() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        add_project(&connection, "p1");
+        add_session(&connection, "p1", "w1", "s1", "feature/pr", true);
+        persist_session(
+            &connection,
+            &PersistSessionInput {
+                id: "s2".to_owned(),
+                workspace_id: "w1".to_owned(),
+                provider: "codex".to_owned(),
+                model_label: "Default".to_owned(),
+                model_id: "default".to_owned(),
+                reasoning_effort: None,
+                permission_mode: None,
+                agent_mode: None,
+                prompt: "test".to_owned(),
+                state: SessionState::Running,
+            },
+        )
+        .expect("persist peer session");
+        for session_id in ["s1", "s2"] {
+            record_session_pr_evidence(
+                &connection,
+                session_id,
+                7,
+                "worked",
+                &format!("work:{session_id}"),
+                "2026-09-07T09:00:00.000Z",
+            )
+            .expect("record canonical-only work");
+        }
+        store_gh_pr_observation(&connection, &pr("s1", "OPEN", "old"))
+            .expect("store canonical observation");
+        assert!(find_gh_pr(&connection, "s1", 7).unwrap().is_none());
+        assert!(find_gh_pr(&connection, "s2", 7).unwrap().is_none());
+
+        mark_gh_pr_notified(&connection, "s1", 7, "old", "notified").expect("mark canonical link");
+        assert!(check_failure_launched_in_workspace(&connection, "w1", 7, "old").unwrap());
+        assert_eq!(
+            list_gh_pr_for_session(&connection, "s1").unwrap()[0]
+                .notified_at
+                .as_deref(),
+            Some("notified")
+        );
+
+        store_gh_pr_observation(&connection, &pr("s2", "OPEN", "new"))
+            .expect("rotate canonical head");
+        assert!(!check_failure_launched_in_workspace(&connection, "w1", 7, "old").unwrap());
+        assert!(!check_failure_launched_in_workspace(&connection, "w1", 7, "new").unwrap());
+        assert!(mark_gh_pr_notified(&connection, "s1", 7, "old", "stale").is_err());
+
+        mark_gh_pr_notified(&connection, "s2", 7, "new", "new-notification")
+            .expect("mark new canonical head through peer session");
+        assert!(check_failure_launched_in_workspace(&connection, "w1", 7, "new").unwrap());
+    }
+
+    #[test]
     fn merged_without_timestamp_is_irreversible_for_every_peer() {
         let database = Database::open_in_memory().expect("open db");
         let connection = database.connection();
@@ -982,5 +1791,164 @@ mod tests {
         .expect("explicit refresh")
         .expect("promoted row");
         assert_eq!(list_gh_pr_for_session(&connection, "s1").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn primary_selection_uses_evidence_activity_not_refresh_order() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        add_project(&connection, "p1");
+        add_session(&connection, "p1", "w1", "s1", "feature/pr", false);
+        record_session_pr_evidence(
+            &connection,
+            "s1",
+            10,
+            "worked",
+            "event-old",
+            "2026-09-07T10:00:00.000Z",
+        )
+        .unwrap();
+        record_session_pr_evidence(
+            &connection,
+            "s1",
+            11,
+            "worked",
+            "event-new",
+            "2026-09-07T11:00:00.000Z",
+        )
+        .unwrap();
+
+        let mut older = pr("s1", "OPEN", "old");
+        older.pr_number = 10;
+        older.updated_at = "2026-09-07T13:00:00.000Z".to_owned();
+        store_gh_pr_observation(&connection, &older).unwrap();
+        let mut newer = pr("s1", "OPEN", "new");
+        newer.pr_number = 11;
+        newer.updated_at = "2026-09-07T12:00:00.000Z".to_owned();
+        store_gh_pr_observation(&connection, &newer).unwrap();
+
+        let rows = list_session_prs(&connection, "s1").unwrap();
+        assert_eq!(rows[0].pr_number, 11);
+        assert!(rows[0].is_primary);
+
+        newer.updated_at = "2026-09-07T14:00:00.000Z".to_owned();
+        store_gh_pr_observation(&connection, &newer).unwrap();
+        older.updated_at = "2026-09-07T15:00:00.000Z".to_owned();
+        store_gh_pr_observation(&connection, &older).unwrap();
+        assert_eq!(
+            list_session_prs(&connection, "s1").unwrap()[0].pr_number,
+            11
+        );
+    }
+
+    #[test]
+    fn evidence_replay_is_idempotent_and_dismissal_survives_it() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        add_project(&connection, "p1");
+        add_session(&connection, "p1", "w1", "s1", "feature/pr", true);
+        for _ in 0..2 {
+            record_session_pr_evidence(
+                &connection,
+                "s1",
+                48,
+                "worked",
+                "event-48",
+                "2026-09-07T10:00:00.000Z",
+            )
+            .unwrap();
+        }
+        let evidence_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM session_pr_evidence WHERE session_id = 's1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(evidence_count, 1);
+        assert_eq!(list_session_prs(&connection, "s1").unwrap().len(), 1);
+
+        dismiss_session_pr(&connection, "s1", 48).unwrap();
+        dismiss_session_pr(&connection, "s1", 48).expect("repeat dismissal is idempotent");
+        assert!(dismiss_session_pr(&connection, "s1", 0).is_err());
+        assert!(dismiss_session_pr(&connection, "s1", 49).is_err());
+        record_session_pr_evidence(
+            &connection,
+            "s1",
+            48,
+            "worked",
+            "event-later",
+            "2026-09-07T12:00:00.000Z",
+        )
+        .unwrap();
+        assert!(list_session_prs(&connection, "s1").unwrap().is_empty());
+    }
+
+    #[test]
+    fn pin_is_stable_and_user_selection_only_confirms_reference() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        add_project(&connection, "p1");
+        add_session(&connection, "p1", "w1", "s1", "feature/pr", true);
+        record_session_pr_evidence(
+            &connection,
+            "s1",
+            7,
+            "unverified",
+            "legacy-7",
+            "2026-09-07T10:00:00.000Z",
+        )
+        .unwrap();
+        record_session_pr_evidence(
+            &connection,
+            "s1",
+            8,
+            "worked",
+            "create-8",
+            "2026-09-07T11:00:00.000Z",
+        )
+        .unwrap();
+        set_session_pr_selection(&connection, "s1", Some(7)).unwrap();
+        let rows = list_session_prs(&connection, "s1").unwrap();
+        assert_eq!(rows[0].pr_number, 7);
+        assert_eq!(rows[0].relationship, "referenced");
+        assert!(rows[0].is_primary);
+        assert!(rows[0].is_pinned);
+        assert!(set_session_pr_selection(&connection, "missing", None).is_err());
+    }
+
+    #[test]
+    fn shared_checkout_sessions_keep_separate_associations() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        add_project(&connection, "p1");
+        add_session(&connection, "p1", "w1", "s1", "feature/one", true);
+        add_session(&connection, "p1", "w2", "s2", "feature/two", true);
+        record_session_pr_evidence(
+            &connection,
+            "s1",
+            101,
+            "worked",
+            "create-101",
+            "2026-09-07T10:00:00.000Z",
+        )
+        .unwrap();
+        record_session_pr_evidence(
+            &connection,
+            "s2",
+            102,
+            "worked",
+            "create-102",
+            "2026-09-07T11:00:00.000Z",
+        )
+        .unwrap();
+        assert_eq!(
+            list_session_prs(&connection, "s1").unwrap()[0].pr_number,
+            101
+        );
+        assert_eq!(
+            list_session_prs(&connection, "s2").unwrap()[0].pr_number,
+            102
+        );
     }
 }

@@ -269,6 +269,23 @@ struct SendInputResult: Decodable, Sendable {
     var queued: Bool
 }
 
+/// `QuestionsResolveInput`. A live Codex request stays inside its original
+/// turn, so the phone returns the provider's question ids and selected labels
+/// instead of sending a new prose message.
+struct ResolveTranscriptQuestionInput: Encodable, Sendable {
+    var sessionId: String
+    var requestId: String
+    var answers: [String: [String]]
+    var dismissed: Bool?
+}
+
+/// The broker's terminal state for one live question request.
+struct TranscriptQuestionResolution: Decodable, Sendable {
+    var sessionId: String
+    var requestId: String
+    var status: String
+}
+
 /// `ProvidersTerminateInput`.
 struct TerminateSessionInput: Encodable, Sendable {
     var sessionId: String
@@ -359,6 +376,22 @@ struct ForkSessionInput: Encodable, Sendable {
 struct SessionForkResult: Decodable, Sendable {
     var workspace: WorkspaceSummary
     var session: SessionSummary
+}
+
+/// `GitViewOrCreatePrInput`. The chat only calls this when its live workspace
+/// summary already carries a PR number, so the host takes the view path and
+/// never falls through to creation.
+struct ViewPullRequestInput: Encodable, Sendable {
+    var sessionId: String
+}
+
+/// `GitViewOrCreatePrResult`. Both host outcomes carry a URL; the native chat
+/// deliberately reaches only the `opened` outcome, but decoding the complete
+/// wire shape keeps an unexpected response explicit rather than malformed.
+struct ViewPullRequestResult: Decodable, Sendable {
+    var action: String
+    var url: String
+    var prNumber: Int?
 }
 
 /// `SystemOk`, the host's answer to a call with nothing to return.
@@ -461,6 +494,57 @@ extension BridgeClient {
         try await request("activity:summary", input: input, as: ActivitySummary.self)
     }
 
+    // The review surface. Four reads against one workspace's checkout; their
+    // shapes are in `Bridge/ReviewModels.swift`.
+
+    func listChangedFiles(
+        workspaceID: String,
+        comparison: ReviewComparison
+    ) async throws -> [ChangedFileSummary] {
+        try await request(
+            "review:list-changed-files",
+            input: ListChangedFilesInput(id: workspaceID, comparison: comparison),
+            as: [ChangedFileSummary].self
+        )
+    }
+
+    func loadDiff(
+        workspaceID: String,
+        filePath: String,
+        comparison: ReviewComparison,
+        contextLines: Int?
+    ) async throws -> WorkspaceDiff {
+        try await request(
+            "review:load-diff",
+            input: LoadDiffInput(
+                id: workspaceID,
+                filePath: filePath,
+                comparison: comparison,
+                contextLines: contextLines
+            ),
+            as: WorkspaceDiff.self
+        )
+    }
+
+    func listWorkspaceFiles(workspaceID: String) async throws -> [WorkspaceFileEntry] {
+        try await request(
+            "workspace:list-files",
+            input: ListWorkspaceFilesInput(id: workspaceID),
+            as: [WorkspaceFileEntry].self
+        )
+    }
+
+    func readWorkspaceFile(
+        workspaceID: String,
+        filePath: String
+    ) async throws -> WorkspaceFilePreview {
+        try await request(
+            "workspace:read-file",
+            input: ReadWorkspaceFileInput(id: workspaceID, filePath: filePath),
+            as: WorkspaceFilePreview.self
+        )
+    }
+
     // Mutations. Each carries a fresh `operation`, and none is retried.
 
     func createWorkspace(_ creation: WorkspaceCreation) async throws -> WorkspaceSummary {
@@ -517,11 +601,25 @@ extension BridgeClient {
         )
     }
 
+    func viewPullRequest(sessionID: String) async throws -> ViewPullRequestResult {
+        try await request(
+            "git:view-or-create-pr",
+            input: ViewPullRequestInput(sessionId: sessionID),
+            as: ViewPullRequestResult.self
+        )
+    }
+
     /// Send (or queue, if the turn is running) a follow-up from the native
     /// composer.
     @discardableResult
     func sendInput(_ input: SendInputInput) async throws -> SendInputResult {
         try await request("providers:send-input", input: input, as: SendInputResult.self)
+    }
+
+    func resolveTranscriptQuestion(
+        _ input: ResolveTranscriptQuestionInput
+    ) async throws -> TranscriptQuestionResolution {
+        try await request("questions:resolve", input: input, as: TranscriptQuestionResolution.self)
     }
 
     /// Store one picked image on the Mac, answering with the path the send

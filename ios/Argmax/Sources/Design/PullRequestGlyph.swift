@@ -19,6 +19,89 @@ import SwiftUI
 
 private let bezierKappa: CGFloat = 0.5522847498
 
+/// Lucide's GitBranch mark, which is also the desktop activity icon.
+///
+/// SF Symbols' branching arrows read as traffic directions at transcript
+/// size. The two nodes and one curved branch keep the Git meaning without
+/// adding a logo asset or a heavier filled shape.
+struct GitBranchGlyph: Shape {
+    func path(in rect: CGRect) -> Path {
+        let scale = min(rect.width, rect.height) / 24
+        let xOffset = rect.minX + (rect.width - 24 * scale) / 2
+        let yOffset = rect.minY + (rect.height - 24 * scale) / 2
+        func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(x: xOffset + x * scale, y: yOffset + y * scale)
+        }
+
+        var path = Path()
+        path.move(to: point(6, 3))
+        path.addLine(to: point(6, 15))
+        path.addEllipse(in: CGRect(
+            x: xOffset + 15 * scale,
+            y: yOffset + 3 * scale,
+            width: 6 * scale,
+            height: 6 * scale
+        ))
+        path.addEllipse(in: CGRect(
+            x: xOffset + 3 * scale,
+            y: yOffset + 15 * scale,
+            width: 6 * scale,
+            height: 6 * scale
+        ))
+        path.move(to: point(18, 9))
+        path.addCurve(
+            to: point(9, 18),
+            control1: point(18, 9 + 9 * bezierKappa),
+            control2: point(9 + 9 * bezierKappa, 18)
+        )
+        return path
+    }
+}
+
+/// The two PR states worth keeping beside an active chat's composer. A closed
+/// PR is no longer actionable status, and a state without a number cannot
+/// open a useful destination.
+enum ChatPullRequest: Equatable {
+    case open(number: Int)
+    case merged(number: Int)
+
+    init?(workspace: WorkspaceSummary) {
+        guard let number = workspace.prNumber else { return nil }
+        switch workspace.prState {
+        case "OPEN": self = .open(number: number)
+        case "MERGED": self = .merged(number: number)
+        default: return nil
+        }
+    }
+
+    var number: Int {
+        switch self {
+        case .open(let number), .merged(let number): return number
+        }
+    }
+
+    var kind: GitPullRequestStatusMark.Kind {
+        switch self {
+        case .open: return .open
+        case .merged: return .merged
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .open: return Theme.sage
+        case .merged: return Theme.violet
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .open(let number): return "Open pull request #\(number) on GitHub"
+        case .merged(let number): return "Open merged pull request #\(number) on GitHub"
+        }
+    }
+}
+
 /// `--pr-merged`: a smooth quarter-turn from the top-left circle's stem down
 /// into the bottom-right circle, arcing around (6, 18).
 struct GitMergeGlyph: Shape {

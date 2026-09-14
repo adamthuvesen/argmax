@@ -167,3 +167,51 @@ describe("<SessionConversationUserMessage /> — from another chat", () => {
     expect(screen.getByRole("article")).toHaveTextContent("do the thing");
   });
 });
+
+describe("<SessionConversationUserMessage /> — sent mid-turn (steer)", () => {
+  it("marks a message delivered while the agent was running", () => {
+    render(
+      <SessionConversationUserMessage
+        event={{
+          id: "evt-steer",
+          message: "actually use the other endpoint",
+          createdAt: 0,
+          payload: { source: "composer", agentMode: "auto", delivery: "steer" }
+        } as never}
+        attachments={[]}
+      />
+    );
+
+    expect(screen.getByText("Sent during the turn")).toBeInTheDocument();
+  });
+
+  it("stacks the steer note after the origin header when a message is both forwarded and steered", () => {
+    render(
+      <SessionConversationUserMessage
+        event={{
+          id: "evt-origin-steer",
+          message: "Picker is fixed, over to you.",
+          createdAt: 0,
+          payload: {
+            source: "composer",
+            agentMode: "auto",
+            delivery: "steer",
+            origin: { sessionId: "session-9", label: "Fix the model picker", kind: "message" }
+          }
+        } as never}
+        attachments={[]}
+      />
+    );
+
+    expect(screen.getByText("Sent during the turn")).toBeInTheDocument();
+    expect(screen.getByRole("article", { name: "Message from another chat" })).toHaveTextContent(
+      "From Fix the model picker · Sent during the turn"
+    );
+  });
+
+  it("leaves a normally-queued message without the steer note", () => {
+    renderMessage("queued for the next turn");
+
+    expect(screen.queryByText("Sent during the turn")).toBeNull();
+  });
+});

@@ -61,7 +61,7 @@ A coding-agent CLI Argmax drives — Claude Code, Codex, Cursor, or OpenCode. A 
 _Avoid_: Agent, CLI, tool, backend
 
 **Session**:
-One agent run inside one workspace: its provider, model, prompt, lifecycle state, token usage, and cost. The unit users think of as "a chat". A workspace holds exactly one — forking, importing, and agent-launched sessions all create a fresh workspace rather than a second session. The schema permits more, but nothing may rely on that. This bounds identity, not parallelism: any number of sessions may run at once, each in its own workspace, including many against the same checkout and branch.
+One agent run inside one workspace: its provider, model, prompt, lifecycle state, token usage, and cost. The unit users think of as "a chat". A workspace holds exactly one — forking, importing, and agent-launched sessions all create a fresh workspace rather than a second session. The schema permits more, and peers launched into the same checkout do produce them, but nothing may rely on that: a workspace's chat is its most recently active session (`chatSessionByWorkspace`), and every surface must name the same one. This bounds identity, not parallelism: any number of sessions may run at once, each in its own workspace, including many against the same checkout and branch.
 _Avoid_: Conversation, chat, run, thread, agent
 
 The display name for a session is **chat**: the sidebar, menus, and mobile say chat; code and docs say session.
@@ -151,6 +151,14 @@ _Avoid_: Test, CI, job
 **PR check**:
 A GitHub CI check on a pull request, polled through `gh`. A different thing from a check — this one runs on GitHub's machines and can trigger an automatic follow-up session when it fails.
 _Avoid_: Check, CI check
+
+**Session PR association**:
+Evidence connecting a session to a pull request. A session can work on several PRs, and several sessions can work on one PR. Work, references, and unverified discoveries are distinct relationships. Sharing a checkout or opening a browser link does not establish work on a PR.
+_Avoid_: PR ownership, branch ownership
+
+**Primary PR**:
+The pull request foregrounded for a session. The user can pin it, or automatic selection can choose it from the session's meaningful PR activity. Refresh order never changes its identity. Other associated PRs remain visible in the workspace card.
+_Avoid_: Latest PR, current branch PR
 
 **Approval**:
 A single command a provider asked permission to run, with its risk classification and resolution. Compare-and-set from `pending`, so a replayed request cannot create a second row.

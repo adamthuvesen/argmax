@@ -16,7 +16,9 @@
 @import url("./styles/usage.css");
 @import url("./styles/activity.css");
 @import url("./styles/chat.css");
+@import url("./styles/tool-activity.css");
 @import url("./styles/connections.css");
+@import url("./styles/project-sources.css");
 @import url("./styles/overlays.css");
 @import url("./styles/motion.css");
 

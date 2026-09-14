@@ -6,6 +6,9 @@ tile per provider), a full-width chart, a token-flow band, and a breakdown by
 model or day. It reads every provider transcript on disk, not only the sessions
 Argmax launched, so it is the same number a terminal-only user would get.
 
+The iPhone model breakdown shows the top 12 models in descending order of the
+selected metric (tokens or cost). Its bars use that same metric.
+
 Below that ledger is **Remaining on your plans**: live included usage left on
 each provider login (plan name, remaining percent, next reset). Those figures
 come from the provider account, including use outside Argmax, and are not the
@@ -165,8 +168,11 @@ zone the renderer resolves too. Hour buckets are UTC hours.
 ## Checking the numbers
 
 `argmax usage --days 7 --json` prints the ledger as per-day, per-model token
-totals. `node scripts/check-usage-oracle.mjs --days 7` compares those with
-`ccusage daily --json` and `codexbar cost --format json` for Claude and Codex.
+totals from `<app-data>/local-state/argmax.sqlite`, the same database the
+running app uses. Setting `ARGMAX_DATA_DIR` changes `<app-data>` for both the
+app and this command. `node scripts/check-usage-oracle.mjs --days 7` compares
+those with `ccusage daily --json` and `codexbar cost --format json` for Claude
+and Codex.
 A row where all three agree is `ok`; a row where Argmax matches one oracle
 and the other differs is `oracles-differ` and is reported, not failed; a row
 where Argmax matches neither is a `MISMATCH` and fails the script. On

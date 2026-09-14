@@ -12,6 +12,7 @@ import {
   claimBrowserSurface,
   ensureBrowserTabSync,
   getAgentBrowserOpen,
+  consumeBrowserRequest,
   getBrowserOwnerId,
   getBrowserRequest,
   lastBrowsedUrl,
@@ -222,6 +223,7 @@ export interface ReviewState {
    *  even when the URL is the one the page is already on. Null until this
    *  panel has been asked for the browser at least once. */
   browserRequest: BrowserOpenRequest | null;
+  handleBrowserRequest: (seq: number) => void;
   openFile: (filePath: string) => void;
   /** Reload the open file's diff with more unchanged context around its hunks. */
   expandDiffContext: () => void;
@@ -251,6 +253,8 @@ export function useReviewState(
      *  and with it the external-change polling that only matters for a live
      *  editor buffer. Defaults to editable. */
     editable?: boolean;
+    /** Warm the focused pane while closed. Background panes load when opened. */
+    preloadChanges?: boolean;
     /** Full-screen surfaces where the panel IS the screen start open, so the
      *  data hooks load on the first render instead of after a mount effect —
      *  an effect-driven open races useReviewDiff's auto-select of the first
@@ -433,6 +437,12 @@ export function useReviewState(
   );
   const browserOwner = useSyncExternalStore(subscribeBrowserOwner, getBrowserOwnerId) === panelId;
 
+  const handleBrowserRequest = useCallback((seq: number): void => {
+    setBrowserRequest((current) =>
+      current?.seq === seq ? { url: "", seq } : current
+    );
+  }, []);
+
   const openBrowserAt = useCallback(
     (url: string, tabId?: string, newTab?: boolean): void => {
       // Claim here, not only in the effect below: a demoted panel is already
@@ -461,30 +471,27 @@ export function useReviewState(
     return () => releaseBrowserSurface(panelId);
   }, [panelId, showsBrowser]);
 
-  // Open-in-browser requests (chat links, the actions menu). Every panel
-  // tracks the sequence, so one that was unfocused when a request landed does
-  // not act on it later when focus arrives; only the panel taking requests
-  // right now switches itself to Browser mode.
+  // Handle chat links in the click's batch, without rendering the closed
+  // panel first and opening it in a later effect. Only the panel taking
+  // requests right now responds; later focus changes never replay a request.
   // The tab list is pushed by the app, and a session can open a tab with no
   // browser chrome on screen — so the subscription has to exist wherever a
   // review panel does, not only where one is showing the browser.
   useEffect(() => ensureBrowserTabSync(), []);
   useEffect(() => ensureAgentTerminalSync(), []);
 
-  const pendingBrowserRequest = useSyncExternalStore(subscribeBrowserRequest, getBrowserRequest);
   const claimsBrowserRequests = useRef(options?.claimsBrowserRequests ?? false);
   claimsBrowserRequests.current = options?.claimsBrowserRequests ?? false;
-  const handledBrowserSeq = useRef(pendingBrowserRequest?.seq ?? 0);
-  useEffect(() => {
-    if (!pendingBrowserRequest || pendingBrowserRequest.seq === handledBrowserSeq.current) return;
-    handledBrowserSeq.current = pendingBrowserRequest.seq;
-    if (!claimsBrowserRequests.current) return;
+  useEffect(() => subscribeBrowserRequest(() => {
+    const request = getBrowserRequest();
+    if (!request || !claimsBrowserRequests.current) return;
     openBrowserAt(
-      pendingBrowserRequest.url || lastBrowsedUrl(browserScopeId),
-      pendingBrowserRequest.tabId,
-      pendingBrowserRequest.newTab
+      request.url || lastBrowsedUrl(browserScopeId),
+      request.tabId,
+      request.newTab
     );
-  }, [browserScopeId, openBrowserAt, pendingBrowserRequest]);
+    consumeBrowserRequest(request.seq);
+  }), [browserScopeId, openBrowserAt]);
 
   // A tab this panel's session opened: show it here, so the user watches the
   // agent browse. Every panel sees the request; only the one whose session
@@ -527,6 +534,8 @@ export function useReviewState(
     changedFilesKey,
     comparison,
     dispatch,
+    enabled: isPanelOpen || (options?.preloadChanges ?? true),
+    preloadFirstFile: options?.preloadChanges === true,
     autoSelectFirstFile: isPanelOpen && layout.modes.includes("changes"),
     onOpenChanges: openChangesMode
   });
@@ -778,6 +787,7 @@ export function useReviewState(
     browserOwner,
     browserScopeId,
     browserRequest,
+    handleBrowserRequest,
     terminalWorkspaceId,
     openTerminal,
     toggleTerminal,

@@ -183,7 +183,7 @@ private func isInPlay(_ workspace: WorkspaceSummary) -> Bool {
 
 /// Every live, undismissed reason per workspace, strongest first.
 ///
-/// `unreadWorkspaceIDs` is this phone's own reading state and nil means "not
+/// `unreadWorkspaceIDs` comes from shared host read stamps and nil means "not
 /// tracked yet", which reads every row as unread — the same default the
 /// renderer's optional parameter has.
 func computeWorkspaceReasons(
@@ -367,15 +367,40 @@ struct ChatSections: Hashable, Sendable {
     var isEmpty: Bool { pinned.isEmpty && priority.isEmpty && chats.isEmpty }
 }
 
+/// The one session a workspace shows as its chat.
+///
+/// A workspace holds exactly one session by design (`CONTEXT.md`), but the
+/// schema permits more and reality produces them — two peers launched into
+/// the same checkout, an import landing beside a live chat. When that happens
+/// every reader has to name the *same* one, or a row describes one chat and
+/// opens another. That one is the most recently active, ties broken the way
+/// the dashboard query breaks them (`last_activity_at DESC, id DESC`).
+///
+/// Port of `src/renderer/lib/workspaceChat.ts`; a change to one is a change
+/// to both.
+func chatSessionByWorkspace(_ sessions: [SessionSummary]) -> [String: SessionSummary] {
+    var byWorkspace: [String: SessionSummary] = [:]
+    for session in sessions {
+        guard let held = byWorkspace[session.workspaceId] else {
+            byWorkspace[session.workspaceId] = session
+            continue
+        }
+        if session.lastActivityAt == held.lastActivityAt
+            ? session.id > held.id
+            : session.lastActivityAt > held.lastActivityAt
+        {
+            byWorkspace[session.workspaceId] = session
+        }
+    }
+    return byWorkspace
+}
+
 func groupChatRows(
     snapshot: DashboardSnapshot,
     now: Date,
     unreadWorkspaceIDs: Set<String>? = nil
 ) -> ChatSections {
-    // Last writer wins, the same as the renderer's `new Map(...)`: one
-    // workspace holds at most one chat in the list.
-    var sessionByWorkspace: [String: SessionSummary] = [:]
-    for session in snapshot.sessions { sessionByWorkspace[session.workspaceId] = session }
+    let sessionByWorkspace = chatSessionByWorkspace(snapshot.sessions)
     var projectNameByID: [String: String] = [:]
     for project in snapshot.projects { projectNameByID[project.id] = project.name }
 

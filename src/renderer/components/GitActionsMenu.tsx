@@ -11,6 +11,7 @@ import {
 import { useCallback, useState, type FormEvent, type JSX, type MouseEvent } from "react";
 import type { GhPrRecord, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { openWebUrl } from "../lib/openWebUrl.js";
+import { primaryWorkspacePr } from "../lib/sessionPrs.js";
 
 const BRANCH_NAME_PATTERN = /^[A-Za-z0-9._/-]+$/;
 
@@ -26,7 +27,7 @@ function errorFeedback(error: unknown, fallback: string): Feedback {
 }
 
 /**
- * Body of the git actions menu: Commit / Push / View-or-create PR /
+ * Body of the git actions menu: Commit / Push / open primary PR / create PR /
  * Create branch (with inline form). Renders without an anchor or popover
  * wrapper — embed inside any container that already provides menu chrome.
  *
@@ -35,7 +36,6 @@ function errorFeedback(error: unknown, fallback: string): Feedback {
  * the menu open to surface feedback.
  */
 export function GitActionsMenu({
-  prs,
   session,
   workspace,
   onPrsRefresh,
@@ -53,8 +53,7 @@ export function GitActionsMenu({
   const [branchName, setBranchName] = useState("");
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
-
-  const hasPr = prs.length > 0;
+  const primaryPr = primaryWorkspacePr(workspace);
 
   const runPush = useCallback(async (): Promise<void> => {
     if (!workspace || !window.argmax) return;
@@ -75,14 +74,17 @@ export function GitActionsMenu({
     }
   }, [workspace]);
 
-  const runViewOrCreatePr = useCallback(
+  const runCreatePr = useCallback(
     async (event: MouseEvent<HTMLButtonElement>): Promise<void> => {
-      if (!session || !window.argmax) return;
+      if (!session || !workspace || !window.argmax) return;
       const flip = event.metaKey || event.ctrlKey;
       setBusy(true);
       setFeedback(null);
       try {
-        const result = await window.argmax.git.viewOrCreatePr({ sessionId: session.id });
+        const result = await window.argmax.git.viewOrCreatePr({
+          sessionId: session.id,
+          expectedBranch: workspace.branch
+        });
         openWebUrl(result.url, { flip });
         setFeedback({
           kind: "success",
@@ -93,12 +95,21 @@ export function GitActionsMenu({
         });
         onPrsRefresh?.();
       } catch (error) {
-        setFeedback(errorFeedback(error, "Could not open PR."));
+        setFeedback(errorFeedback(error, "Could not create PR."));
       } finally {
         setBusy(false);
       }
     },
-    [session, onPrsRefresh]
+    [session, workspace, onPrsRefresh]
+  );
+
+  const openPrimaryPr = useCallback(
+    (event: MouseEvent<HTMLButtonElement>): void => {
+      if (!primaryPr?.url) return;
+      openWebUrl(primaryPr.url, { flip: event.metaKey || event.ctrlKey });
+      setFeedback({ kind: "success", message: `Opening pull request #${primaryPr.prNumber}.` });
+    },
+    [primaryPr]
   );
 
   const runCreateBranch = useCallback(
@@ -167,20 +178,35 @@ export function GitActionsMenu({
               Push
             </button>
           </li>
+          {primaryPr ? (
+            <li role="none">
+              <button
+                type="button"
+                role="menuitem"
+                className="project-picker-item"
+                disabled={busy || !primaryPr.url}
+                title={
+                  primaryPr.url
+                    ? `Open pull request #${primaryPr.prNumber} on GitHub`
+                    : `Pull request #${primaryPr.prNumber} has no URL. Refresh its GitHub state to open it.`
+                }
+                onClick={openPrimaryPr}
+              >
+                <Github size={14} aria-hidden="true" />
+                Open pull request #{primaryPr.prNumber}
+              </button>
+            </li>
+          ) : null}
           <li role="none">
             <button
               type="button"
               role="menuitem"
               className="project-picker-item"
-              disabled={busy || !session}
-              onClick={(event) => void runViewOrCreatePr(event)}
+              disabled={busy || !session || !workspace}
+              onClick={(event) => void runCreatePr(event)}
             >
-              {hasPr ? (
-                <Github size={14} aria-hidden="true" />
-              ) : (
-                <GitPullRequestArrow size={14} aria-hidden="true" />
-              )}
-              {hasPr ? "View pull request" : "Create pull request"}
+              <GitPullRequestArrow size={14} aria-hidden="true" />
+              Create PR for checkout branch
             </button>
           </li>
           <li role="none">

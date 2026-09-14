@@ -140,6 +140,41 @@ describe("turnToolItems", () => {
     expect(invalid).toBeNull();
   });
 
+  it("preserves blocking Codex question identity and free-form metadata", () => {
+    const parsed = parseQuestionsFromToolInput(
+      tool({
+        id: "ask-blocking",
+        name: "AskUserQuestion",
+        inputFull: {
+          delivery: "blocking",
+          requestId: "request-1",
+          questions: [
+            {
+              id: "token",
+              question: "Paste the token",
+              header: "Token",
+              options: [],
+              isOther: true,
+              isSecret: true
+            }
+          ]
+        }
+      })
+    );
+
+    expect(parsed).toEqual([
+      {
+        id: "token",
+        question: "Paste the token",
+        header: "Token",
+        multiSelect: false,
+        options: [],
+        isOther: true,
+        isSecret: true
+      }
+    ]);
+  });
+
   it("filters hidden tools and children", () => {
     const hidden = tool({ id: "hidden", name: "AskUserQuestion" });
     const visible = tool({ id: "visible", name: "Read" });

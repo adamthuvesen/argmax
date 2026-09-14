@@ -114,6 +114,20 @@ describe("useReviewState — browser mode", () => {
     expect(panel.result.current.mode).toBe("changes");
   });
 
+  it("opens browser on the first render after an open request", () => {
+    const snapshots: Array<{ isPanelOpen: boolean; mode: string }> = [];
+    renderHook(() => {
+      const state = useReviewState(null, null, { claimsBrowserRequests: true });
+      snapshots.push({ isPanelOpen: state.isPanelOpen, mode: state.mode });
+      return state;
+    });
+    snapshots.length = 0;
+
+    act(() => openInBrowserPanel("https://argmax.dev"));
+
+    expect(snapshots[0]).toEqual({ isPanelOpen: true, mode: "browser" });
+  });
+
   it("hands the surface to the second panel that enters Browser mode", () => {
     const first = renderPanel(true);
     const second = renderPanel(false);

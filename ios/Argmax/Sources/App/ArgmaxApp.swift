@@ -23,11 +23,12 @@ struct ArgmaxApp: App {
     /// A link in the keychain has been through `PairingLink.validate`, but
     /// re-validating costs nothing and an older build's entry may predate a
     /// rule.
-    @State private var paired = ArgmaxApp.startsUnpaired
-        ? nil
-        : HostCredential.load()
-            .flatMap { PairingLink.validate($0.absoluteString) }
-            .flatMap(PairedHost.init)
+    @State private var paired = ArgmaxApp.launchPairing
+        ?? (ArgmaxApp.startsUnpaired
+            ? nil
+            : HostCredential.load()
+                .flatMap { PairingLink.validate($0.absoluteString) }
+                .flatMap(PairedHost.init))
 
     /// Theme and accent, read once at launch and handed down.
     @StateObject private var appearance = Appearance()
@@ -44,24 +45,61 @@ struct ArgmaxApp: App {
     static var startsUnpaired: Bool {
         #if DEBUG
         return ProcessInfo.processInfo.arguments.contains("-argmax-unpaired")
+            || ProcessInfo.processInfo.arguments.contains("-argmax-transcript-scenario")
         #else
         return false
+        #endif
+    }
+
+    /// `-argmax-pair <link>` pairs at launch, without the keychain and
+    /// without a hand on the phone.
+    ///
+    /// This is how the app is driven on a simulator: `argmax://pair` raises
+    /// an "Open in Argmax?" alert that only a tap can answer, so a run
+    /// started from a script could never get past the pairing screen. Debug
+    /// builds only — the same gate `-argmax-unpaired` is behind, and for the
+    /// same reason.
+    static var launchPairing: PairedHost? {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let flag = arguments.firstIndex(of: "-argmax-pair"),
+              arguments.index(after: flag) < arguments.endIndex,
+              let url = PairingLink.validate(arguments[arguments.index(after: flag)])
+        else { return nil }
+        return PairedHost(url)
+        #else
+        return nil
         #endif
     }
 
     var body: some Scene {
         WindowGroup {
             Group {
-                if let paired {
-                    RootView(paired: paired, push: push, onUnpair: unpair).id(paired.id)
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("-argmax-transcript-scenario") {
+                    TranscriptScenario()
                 } else {
-                    PairingScreen { pair(with: $0) }
+                    pairedContent
                 }
+                #else
+                pairedContent
+                #endif
             }
             .environmentObject(appearance)
-            .appearance(appearance)
             .onOpenURL(perform: openPairingLink)
         }
+    }
+
+    @ViewBuilder
+    private var pairedContent: some View {
+        Group {
+            if let paired {
+                RootView(paired: paired, push: push, onUnpair: unpair).id(paired.id)
+            } else {
+                PairingScreen { pair(with: $0) }
+            }
+        }
+        .appearance(appearance)
     }
 
     /// `argmax://pair?url=<pairing link>` pairs without touching the phone.

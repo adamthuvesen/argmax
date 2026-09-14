@@ -1,26 +1,27 @@
 # Release and Signing
 
-Argmax releases target macOS using Tauri bundler and the Tauri updater (`latest.json`).
+Argmax releases target macOS as manually distributed app and DMG bundles.
+Automatic self-update is deferred and is not part of the current release scope.
 
-## Environment Variables
+## Optional Distribution Signing
 
-Load signing credentials from 1Password:
+For a public macOS distribution, load Apple signing and notarization credentials
+from 1Password:
 
 ```bash
 export APPLE_ID="$(op read 'op://<vault>/Apple ID/username')"
 export APPLE_APP_SPECIFIC_PASSWORD="$(op read 'op://<vault>/Argmax notarization/password')"
 export APPLE_TEAM_ID="$(op read 'op://<vault>/Argmax notarization/team id')"
 export APPLE_SIGNING_IDENTITY="$(op read 'op://<vault>/Argmax signing/signing identity')"
-export TAURI_SIGNING_PRIVATE_KEY="$(op read 'op://<vault>/Argmax Tauri updater/private key')"
-export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(op read 'op://<vault>/Argmax Tauri updater/private key password')"
 ```
 
-The updater public key is committed to `src-tauri/tauri.conf.json` under `plugins.updater.pubkey`.
+Local and personal builds can remain ad hoc signed. They will not pass public
+Gatekeeper assessment.
 
 ## App Icons
 
 `npm run build:icons` generates icon files from [scripts/build-icons.mjs](../scripts/build-icons.mjs),
-which draws the pixel fox in [assets/fox-mascot.txt](../assets/fox-mascot.txt) — the same
+which draws the pixel fox in [assets/fox-mascot.txt](../assets/fox-mascot.txt), the same
 sprite [Mascot.tsx](../src/renderer/components/Mascot.tsx) renders in the app:
 
 | Artifact | Usage |
@@ -45,15 +46,22 @@ with 16px (`icp4`) showed a stamp-sized fox in that popup.
 npm run tauri:build
 ```
 
-Build outputs are placed in `src-tauri/target/release/bundle/` (DMG, app bundle, and updater JSON).
+Build outputs are placed in `src-tauri/target/release/bundle/`. The current
+configuration creates the DMG and app bundle required for manual distribution.
+
+The checked-in updater configuration is incomplete and is not an active release
+channel. If automatic self-update becomes a requirement later, it needs a
+dedicated signing key, updater artifacts and a published feed. See
+[Tauri's updater guide](https://v2.tauri.app/plugin/updater/) for that optional
+artifact and feed contract.
 
 ## Verification
 
-1. Build with signing and notarization keys set.
-2. Verify Gatekeeper validation:
+1. Build the app and DMG.
+2. For a public signed release, verify Gatekeeper validation:
 
 ```bash
 spctl --assess --type execute /Applications/Argmax.app
 ```
 
-3. Verify app launch, provider execution, chat resume, terminal PTY, diff rendering, and updater check.
+3. Verify app launch, provider execution, chat resume, terminal PTY and diff rendering.

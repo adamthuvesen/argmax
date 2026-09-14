@@ -11,7 +11,9 @@ import type {
 import type { QueuedMessageDelivery } from "../../shared/types.js";
 import { useReviewState } from "../hooks/useReviewState.js";
 import { useSessionTimeline } from "../hooks/useSessionTimeline.js";
+import type { FontSize } from "../lib/fonts.js";
 import type { ModelPickerSelection } from "../lib/models.js";
+import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { SessionConversation } from "./SessionConversation.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
@@ -26,7 +28,11 @@ import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
  * that owns the checkout already runs the checks.
  */
 export function MultitaskPanel({
+  chatFontSize,
   events = [],
+  defaultToolCallsDisplay,
+  defaultToolCallGroupsExpanded,
+  thinkingDisplay,
   isFocused = true,
   pendingMessages,
   rawOutputs = [],
@@ -44,7 +50,12 @@ export function MultitaskPanel({
   onSendSessionInput,
   onTerminateSession
 }: {
+  /** Settings → Appearance: keep the delegated chat and composer in sync. */
+  chatFontSize?: FontSize;
   events?: TimelineEvent[];
+  defaultToolCallsDisplay?: ToolCallsDisplay;
+  defaultToolCallGroupsExpanded?: boolean;
+  thinkingDisplay?: ThinkingDisplay;
   isFocused?: boolean;
   pendingMessages: PendingMessage[];
   rawOutputs?: RawProviderOutput[];
@@ -89,9 +100,16 @@ export function MultitaskPanel({
   );
 
   return (
-    <div className="multitask-panel">
+    <div
+      className="multitask-panel"
+      data-font-size={chatFontSize === undefined ? undefined : String(chatFontSize)}
+    >
       <SessionConversation
+        chatFontSize={chatFontSize}
         isFocused={isFocused}
+        defaultToolCallsDisplay={defaultToolCallsDisplay}
+        defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
+        thinkingDisplay={thinkingDisplay}
         events={sessionEvents}
         floating
         headingLabel={taskLabel}

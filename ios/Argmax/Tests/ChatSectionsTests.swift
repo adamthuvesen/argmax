@@ -15,6 +15,45 @@ final class ChatSectionsTests: XCTestCase {
         XCTAssertTrue(sections.isEmpty)
     }
 
+    /// Two top-level sessions land in one checkout more often than the
+    /// domain model admits (a repeated prompt, an import beside a live chat).
+    /// The row has to name the same one the page opens — the most recently
+    /// active — or it describes one chat and opens another.
+    func testAWorkspaceWithTwoChatsShowsTheMostRecentlyActive() {
+        let snapshot = DashboardSnapshot(
+            workspaces: [makeWorkspace(id: "w-1")],
+            // Newest first, the order the host sends and `mergeDashboardDelta`
+            // keeps — which is exactly the order last-writer-wins got wrong.
+            sessions: [
+                makeSession(id: "s-new", workspaceId: "w-1", lastActivityAt: "2026-09-11T16:58:58.256Z"),
+                makeSession(id: "s-old", workspaceId: "w-1", lastActivityAt: "2026-09-11T16:42:39.181Z")
+            ]
+        )
+        XCTAssertEqual(groupChatRows(snapshot: snapshot, now: testNow).chats.first?.session.id, "s-new")
+    }
+
+    /// Order in the array is not the rule: a delta can hand the rows back in
+    /// any order, and the newest is still the chat.
+    func testTheNewestChatWinsWhateverOrderTheRowsArriveIn() {
+        let sessions = [
+            makeSession(id: "s-new", workspaceId: "w-1", lastActivityAt: "2026-09-11T16:58:58.256Z"),
+            makeSession(id: "s-old", workspaceId: "w-1", lastActivityAt: "2026-09-11T16:42:39.181Z")
+        ]
+        XCTAssertEqual(chatSessionByWorkspace(sessions)["w-1"]?.id, "s-new")
+        XCTAssertEqual(chatSessionByWorkspace(sessions.reversed())["w-1"]?.id, "s-new")
+    }
+
+    /// Two rows minted in the same millisecond still resolve the same way
+    /// every time — the dashboard query's `last_activity_at DESC, id DESC`.
+    func testATieIsBrokenById() {
+        let sessions = [
+            makeSession(id: "s-a", workspaceId: "w-1"),
+            makeSession(id: "s-b", workspaceId: "w-1")
+        ]
+        XCTAssertEqual(chatSessionByWorkspace(sessions)["w-1"]?.id, "s-b")
+        XCTAssertEqual(chatSessionByWorkspace(sessions.reversed())["w-1"]?.id, "s-b")
+    }
+
     func testArchivedAndPopupWorkspacesStayOut() {
         let snapshot = DashboardSnapshot(
             workspaces: [
@@ -136,6 +175,45 @@ final class ChatSectionsTests: XCTestCase {
         let sections = groupChatRows(snapshot: snapshot, now: testNow, unreadWorkspaceIDs: [])
         XCTAssertEqual(sections.priority.map(\.id), ["w-asking"])
         XCTAssertEqual(sections.chats.map(\.id), ["w-read"])
+    }
+
+    /// Desktop and phone must feed the same read state into the shared
+    /// Priority rules. Recent completed chats belong in Chats after they have
+    /// been opened, while work in flight and open pull requests still float.
+    func testReadStateKeepsRecentCompletedChatsOutOfPriorityOnBothClients() {
+        let snapshot = DashboardSnapshot(
+            workspaces: [
+                makeWorkspace(id: "w-running-a", state: .running),
+                makeWorkspace(id: "w-running-b", state: .running),
+                makeWorkspace(id: "w-read-a"),
+                makeWorkspace(id: "w-read-b"),
+                makeWorkspace(id: "w-read-c"),
+                makeWorkspace(id: "w-pr-a", prState: "OPEN", prActivityAt: "2026-09-10T12:00:00.000Z"),
+                makeWorkspace(id: "w-pr-b", prState: "OPEN", prActivityAt: "2026-09-10T12:00:00.000Z")
+            ],
+            sessions: [
+                makeSession(id: "s-running-a", workspaceId: "w-running-a", state: .running),
+                makeSession(id: "s-running-b", workspaceId: "w-running-b", state: .running),
+                makeSession(id: "s-read-a", workspaceId: "w-read-a", attention: .reviewReady),
+                makeSession(id: "s-read-b", workspaceId: "w-read-b", attention: .reviewReady),
+                makeSession(id: "s-read-c", workspaceId: "w-read-c", attention: .reviewReady),
+                makeSession(id: "s-pr-a", workspaceId: "w-pr-a"),
+                makeSession(id: "s-pr-b", workspaceId: "w-pr-b")
+            ]
+        )
+
+        let read = groupChatRows(snapshot: snapshot, now: testNow, unreadWorkspaceIDs: [])
+        XCTAssertEqual(read.priority.count, 4)
+        XCTAssertEqual(Set(read.priority.map(\.id)), ["w-running-a", "w-running-b", "w-pr-a", "w-pr-b"])
+        XCTAssertEqual(Set(read.chats.map(\.id)), ["w-read-a", "w-read-b", "w-read-c"])
+
+        let oneNewReply = groupChatRows(
+            snapshot: snapshot,
+            now: testNow,
+            unreadWorkspaceIDs: ["w-read-b"]
+        )
+        XCTAssertEqual(oneNewReply.priority.count, 5)
+        XCTAssertTrue(oneNewReply.priority.contains { $0.id == "w-read-b" })
     }
 
     /// A row from before the attention-changed column existed stays out,

@@ -36,14 +36,41 @@ const BASE_SESSION: SessionSummary = {
 
 describe("modelSelectionFromSession", () => {
   it("preserves the stored session model", () => {
-    expect(modelSelectionFromSession(BASE_SESSION)).toEqual({
+    const session: SessionSummary = { ...BASE_SESSION, reasoningEffort: "high" };
+    expect(modelSelectionFromSession(session)).toEqual({
       label: "GPT-5.6 Sol",
       modelId: "gpt-5.6-sol",
+      reasoningEffort: "high"
     });
-    expect(modelPickerSelectionFromSession(BASE_SESSION)).toEqual({
+    expect(modelPickerSelectionFromSession(session)).toEqual({
       provider: "codex",
       label: "GPT-5.6 Sol",
       modelId: "gpt-5.6-sol",
+      reasoningEffort: "high"
+    });
+  });
+
+  it("names the default effort when the session row carries none", () => {
+    // Imported sessions and older rows have no effort, but the model runs at
+    // one — the composer chip reads "GPT-5.6 Sol Medium", not the model alone.
+    expect(modelSelectionFromSession(BASE_SESSION)).toEqual({
+      label: "GPT-5.6 Sol",
+      modelId: "gpt-5.6-sol",
+      reasoningEffort: "medium"
+    });
+  });
+
+  it("leaves a fast model's selection effort-free", () => {
+    const fast: SessionSummary = {
+      ...BASE_SESSION,
+      provider: "claude",
+      modelLabel: "Haiku 4.5",
+      modelId: "claude-haiku-4-5-20251001"
+    };
+
+    expect(modelSelectionFromSession(fast)).toEqual({
+      label: "Haiku 4.5",
+      modelId: "claude-haiku-4-5-20251001"
     });
   });
 
@@ -59,7 +86,8 @@ describe("modelSelectionFromSession", () => {
 
     expect(modelSelectionFromSession(imported)).toEqual({
       label: "Opus 5",
-      modelId: "claude-opus-5"
+      modelId: "claude-opus-5",
+      reasoningEffort: "medium"
     });
   });
 

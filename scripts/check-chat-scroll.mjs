@@ -202,10 +202,12 @@ function ScrollFixture({ surface, initialLiveHeight, sameTurnScenario = false, i
       },
       scrollUpThenGrowWithoutWheel: async (pixels, growth) => {
         const scroller = api.scrollRef.current;
+        scroller.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
         scroller.scrollBy({ top: -pixels, behavior: "instant" });
         setLiveHeight((height) => height + growth);
         setItemVersion((version) => version + 1);
         await nextFrame();
+        document.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
         return measure();
       },
       growBelow: async (pixels) => {

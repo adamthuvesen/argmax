@@ -7,8 +7,19 @@ const session = {
   provider: "claude",
   modelId: "claude-opus-5",
   reasoningEffort: "medium",
-  agentMode: "auto"
-} as Pick<SessionSummary, "state" | "provider" | "modelId" | "reasoningEffort" | "agentMode">;
+  agentMode: "auto",
+  contextTokens: 0,
+  contextWindow: 258_400
+} as Pick<
+  SessionSummary,
+  | "state"
+  | "provider"
+  | "modelId"
+  | "reasoningEffort"
+  | "agentMode"
+  | "contextTokens"
+  | "contextWindow"
+>;
 
 const entry = {
   modelId: "claude-opus-5",
@@ -27,6 +38,16 @@ describe("canSteerQueuedMessage", () => {
   it.each([
     ["the turn has ended", { ...session, state: "complete" as const }, entry],
     ["the CLI takes no text mid-turn", { ...session, provider: "cursor" as const }, entry],
+    [
+      "Codex is close enough to compaction to lose the steering boundary",
+      {
+        ...session,
+        provider: "codex" as const,
+        contextTokens: 226_235,
+        contextWindow: 258_400
+      },
+      entry
+    ],
     ["the row names another model", session, { ...entry, modelId: "claude-sonnet-5" }],
     ["the row names another effort", session, { ...entry, reasoningEffort: "high" as const }],
     ["the row names another agent mode", session, { ...entry, agentMode: "plan" as const }]

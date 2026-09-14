@@ -62,13 +62,14 @@ export function ConnectionDialog({
 
   const overlay = (
     <div
-      className="connection-dialog-overlay"
+      className="connection-dialog-overlay motion-modal-overlay"
+      data-motion-state="open"
       ref={overlayRef}
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
     >
-      <div className="connection-dialog" ref={dialogRef}>
+      <div className="connection-dialog motion-modal-surface" ref={dialogRef}>
         <header className="connection-dialog-header">
           <span className="connection-dialog-mark" aria-hidden="true">
             <PlugZap size={17} />

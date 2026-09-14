@@ -115,6 +115,26 @@ final class DeltaMergeTests: XCTestCase {
         XCTAssertTrue(store.sections.isEmpty)
     }
 
+    @MainActor
+    func testReadOnAnotherDeviceClearsPriorityAndANewReplyRestoresIt() throws {
+        let url = try XCTUnwrap(URL(string: "https://mac.tail.ts.net/mobile.html#token=t"))
+        let now = try XCTUnwrap(parseWireTimestamp("2026-09-11T17:00:00.000Z"))
+        let store = DashboardStore(client: try BridgeClient(pairingURL: url), now: now)
+        var workspace = makeWorkspace(id: "read-sync", lastActivityAt: "2026-09-11T16:59:00.000Z")
+        workspace.lastViewedAt = "2026-09-11T16:58:00.000Z"
+        let session = makeSession(id: "read-session", workspaceId: workspace.id, attention: .reviewReady,
+                                  attentionChangedAt: workspace.lastActivityAt, lastActivityAt: workspace.lastActivityAt)
+        store.ingest(snapshot: DashboardSnapshot(workspaces: [workspace], sessions: [session]))
+        XCTAssertEqual(store.sections.priority.map(\.id), [workspace.id])
+        workspace.lastViewedAt = workspace.lastActivityAt
+        store.ingest(delta: DashboardDelta(workspaces: [workspace]))
+        XCTAssertTrue(store.sections.priority.isEmpty)
+        XCTAssertEqual(store.sections.chats.map(\.id), [workspace.id])
+        workspace.lastActivityAt = "2026-09-11T16:59:30.000Z"
+        store.ingest(delta: DashboardDelta(workspaces: [workspace]))
+        XCTAssertEqual(store.sections.priority.map(\.id), [workspace.id])
+    }
+
     /// What a launch relies on: seeding the rows it was answered with makes
     /// the chat's row available in the same call, so the New chat screen can
     /// be replaced by the transcript without a trip back to the list.
@@ -135,5 +155,38 @@ final class DeltaMergeTests: XCTestCase {
         let row = try XCTUnwrap(store.row(forSessionID: "s-new"))
         XCTAssertEqual(row.workspace.id, "w-new")
         XCTAssertEqual(row.workspace.taskLabel, "Fresh chat")
+    }
+
+    /// A dashboard read can start before `providers:launch` commits and answer
+    /// after the launch response has seeded the new rows locally. That older
+    /// full snapshot must not erase the chat the phone has already opened.
+    @MainActor
+    func testReloadStartedBeforeLaunchDoesNotEraseLaunchedChat() async throws {
+        let socket = TestBridgeSocket()
+        let pairingURL = try XCTUnwrap(URL(string: "https://mac.tail.ts.net/mobile.html#token=t"))
+        let client = try BridgeClient(
+            pairingURL: pairingURL,
+            monitorNetwork: false,
+            socketFactory: { _ in socket }
+        )
+        let store = DashboardStore(client: client, now: testNow)
+        store.ingest(snapshot: base)
+
+        let reload = Task { await store.reload() }
+        for _ in 0..<500 where socket.requests.isEmpty {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let request = try XCTUnwrap(socket.requests.first)
+
+        store.ingest(delta: DashboardDelta(
+            workspaces: [makeWorkspace(id: "w-new", taskLabel: "Fresh chat")],
+            sessions: [makeSession(id: "s-new", workspaceId: "w-new", state: .running)]
+        ))
+        let staleSnapshot = try JSONSerialization.jsonObject(with: JSONEncoder().encode(base))
+        socket.reply(to: request, ok: staleSnapshot)
+        await reload.value
+
+        XCTAssertNotNil(store.row(forSessionID: "s-new"))
+        await client.disconnect()
     }
 }

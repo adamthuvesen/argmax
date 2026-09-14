@@ -20,6 +20,16 @@ pub(crate) fn workspaces_for_pr_refresh(
             WHERE source.id = ?1 AND (
                 candidate.id = origin.id
                 OR EXISTS (
+                    SELECT 1 FROM session_pr_links refreshed
+                    JOIN session_pr_links peer
+                      ON peer.project_id = refreshed.project_id
+                     AND peer.pr_number = refreshed.pr_number
+                    JOIN sessions observer ON observer.id = peer.session_id
+                    WHERE refreshed.session_id = source.id
+                      AND observer.workspace_id = candidate.id
+                      AND peer.dismissed_at IS NULL
+                )
+                OR EXISTS (
                     SELECT 1 FROM gh_pr refreshed
                     WHERE refreshed.session_id = source.id AND (
                         (candidate.shared_workspace = 0

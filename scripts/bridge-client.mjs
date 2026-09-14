@@ -51,6 +51,20 @@ export function connectBridge({ port, token, timeoutMs = 5000, callTimeoutMs = n
     let nextId = 1;
     let settled = false;
 
+    function finishResponse(id, frame) {
+      const entry = pending.get(id);
+      if (!entry) return;
+      pending.delete(id);
+      if ("error" in frame) {
+        const detail = typeof frame.error === "object" ? JSON.stringify(frame.error) : String(frame.error);
+        entry.reject(new Error(detail));
+      } else if ("ok" in frame) {
+        entry.resolve(frame.ok);
+      } else {
+        entry.reject(new Error("Malformed transcript response"));
+      }
+    }
+
     const timer = setTimeout(() => {
       if (!settled) {
         settled = true;
@@ -95,19 +109,27 @@ export function connectBridge({ port, token, timeoutMs = 5000, callTimeoutMs = n
             call(channel, input = {}) {
               return new Promise((resolveCall, rejectCall) => {
                 const id = nextId++;
+                const abort = new AbortController();
                 const timer = callTimeoutMs === null
                   ? null
                   : setTimeout(() => {
                       pending.delete(id);
+                      abort.abort();
                       rejectCall(new Error(`bridge call ${channel} timed out after ${callTimeoutMs}ms`));
                     }, callTimeoutMs);
                 pending.set(id, {
+                  channel,
+                  input: JSON.stringify({ channel, input }),
+                  abort,
+                  fetchingTranscript: false,
                   resolve: (value) => {
                     clearTimeout(timer);
+                    abort.abort();
                     resolveCall(value);
                   },
                   reject: (error) => {
                     clearTimeout(timer);
+                    abort.abort();
                     rejectCall(error);
                   }
                 });
@@ -138,13 +160,28 @@ export function connectBridge({ port, token, timeoutMs = 5000, callTimeoutMs = n
         case "response": {
           const entry = pending.get(frame.id);
           if (!entry) return;
-          pending.delete(frame.id);
-          if ("error" in frame) {
-            const detail = typeof frame.error === "object" ? JSON.stringify(frame.error) : String(frame.error);
-            entry.reject(new Error(`${detail}`));
-          } else {
-            entry.resolve(frame.ok);
+          if (entry.fetchingTranscript) return;
+          if (frame.error?.sub_code === "REMOTE_RESPONSE_TOO_LARGE"
+            && ["session:events-since", "session:agent-events"].includes(entry.channel)) {
+            entry.fetchingTranscript = true;
+            fetch(`http://127.0.0.1:${port}/api/transcript`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+              body: entry.input,
+              signal: entry.abort.signal
+            }).then(async (response) => {
+              if (!response.ok) throw new Error(`Transcript read failed (HTTP ${response.status})`);
+              const reply = await response.json();
+              if (!reply || typeof reply !== "object" || Array.isArray(reply)) {
+                throw new Error("Malformed transcript response");
+              }
+              finishResponse(frame.id, reply);
+            }).catch((error) => {
+              if (pending.delete(frame.id)) entry.reject(error);
+            });
+            return;
           }
+          finishResponse(frame.id, frame);
           return;
         }
         case "event": {

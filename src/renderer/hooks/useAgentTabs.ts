@@ -1,7 +1,8 @@
 import { useCallback, useState } from "react";
 
 /**
- * What is open in the review panel's Agents dock, in the order it was opened:
+ * What is open in the review panel's Agents dock, in the order it was opened
+ * (the view sorts the strip itself; this list is the launch order it sorts by):
  * subagents of this pane's session and multitasks dispatched from it, sharing
  * one tab strip. Ids are encoded by `lib/agentTabs.ts`. One list per pane,
  * because everything in it belongs to that pane's session.

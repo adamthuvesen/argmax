@@ -291,10 +291,12 @@ pub async fn launch_turn(
                             let task = requests.spawn(async move {
                                 let tool_input = message.pointer("/request/input").cloned().unwrap_or(json!({}));
                                 let command = tool_input.get("command").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| format!("{}\n{}", message.pointer("/request/tool_name").and_then(Value::as_str).unwrap_or("Tool request"), tool_input));
-                                if answers_itself(
-                                    &request_input,
-                                    message.pointer("/request/tool_name").and_then(Value::as_str),
-                                ) {
+                                let tool_name = message.pointer("/request/tool_name").and_then(Value::as_str);
+                                if let Some(message) = tool_name.and_then(card_shown_message) {
+                                    let _ = writer.send(WriteRequest::control(card_shown_response(&request_id, message)));
+                                    return;
+                                }
+                                if answers_itself(&request_input, tool_name) {
                                     let _ = writer.send(WriteRequest::control(permission_response(&request_id, true, tool_input)));
                                     return;
                                 }
@@ -401,6 +403,43 @@ fn answers_itself(input: &ProviderLaunchInput, tool_name: Option<&str>) -> bool 
     }
     input.permission_mode == PermissionMode::AutoApprove
         && input.agent_mode == super::AgentMode::Auto
+}
+
+/// What the model reads back from a card tool. The chat draws the question
+/// in the composer's dock and the plan as a card, and the user's answer
+/// arrives as the next user message, so the CLI never sees it. Allowing the
+/// call makes it report an outcome before the user has seen the card:
+/// "The user did not answer the questions." for `AskUserQuestion`, which
+/// models read as a dismissal and fall back to asking in prose, and "User has
+/// approved your plan. You can now start coding." for `ExitPlanMode`, which
+/// starts the implementation before the plan card is pressed. Denying lets
+/// the message carry the contract instead.
+const QUESTION_SHOWN_MESSAGE: &str = "The question is now in front of the user in the chat. \
+Their answer arrives as your next user message, so end this turn now: no further questions, \
+no prose restatement of the options, and no work that depends on the answer. \
+This is not a dismissal, so do not call AskUserQuestion again until the user has replied.";
+
+const PLAN_SHOWN_MESSAGE: &str = "The plan is now in front of the user as a card in the chat. \
+Their decision arrives as your next user message, so end this turn now: do not start \
+implementing, do not restate the plan, and do not call ExitPlanMode again until the user has replied. \
+This is not a rejection.";
+
+fn card_shown_message(tool_name: &str) -> Option<&'static str> {
+    if super::asks_the_user_a_question(tool_name) {
+        Some(QUESTION_SHOWN_MESSAGE)
+    } else if super::exits_plan_mode(tool_name) {
+        Some(PLAN_SHOWN_MESSAGE)
+    } else {
+        None
+    }
+}
+
+fn card_shown_response(id: &str, message: &str) -> Value {
+    json!({"type":"control_response","response":{"subtype":"success","request_id":id,"response":{
+        "behavior":"deny",
+        "message":message,
+        "decisionReason":{"type":"other","reason":"card shown in the Argmax chat"}
+    }}})
 }
 
 fn permission_response(id: &str, allowed: bool, input: Value) -> Value {
@@ -593,6 +632,23 @@ mod tests {
         let plan = launch_input(PermissionMode::AutoApprove, AgentMode::Plan);
         assert!(!answers_itself(&plan, Some("Bash")));
         assert!(answers_itself(&plan, Some("AskUserQuestion")));
+    }
+
+    #[test]
+    fn card_tools_are_denied_with_their_contract_not_allowed_unanswered() {
+        let question = card_shown_message("AskUserQuestion").unwrap();
+        assert!(question.contains("next user message"), "{question}");
+        assert!(question.contains("not a dismissal"), "{question}");
+        let plan = card_shown_message("ExitPlanMode").unwrap();
+        assert!(plan.contains("do not start"), "{plan}");
+        assert!(plan.contains("not a rejection"), "{plan}");
+        assert!(card_shown_message("SendUserMessage").is_none());
+        assert!(card_shown_message("Bash").is_none());
+
+        let response = card_shown_response("req-1", question);
+        assert_eq!(response["response"]["request_id"], "req-1");
+        assert_eq!(response["response"]["response"]["behavior"], "deny");
+        assert_eq!(response["response"]["response"]["message"], question);
     }
 
     #[test]
@@ -927,6 +983,96 @@ done
             .position(|event| event.r#type == ProviderRuntimeEventType::Exit)
             .expect("one exit event");
         assert!(position("dispatched, waiting") < position("\"subtype\":\"task_notification\""));
+        assert!(position("integrated the agent work") < exit);
+        assert_eq!(events.last().and_then(|event| event.exit_code), Some(0));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn claude_delegation_returns_findings_before_the_parent_finishes() {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+        use std::sync::Mutex;
+
+        let temp = tempfile::tempdir().unwrap();
+        let server = temp.path().join("fake-claude");
+        // Replay the installed CLI's foreground path when the launch setting
+        // is present, and the reported premature-completion race without it.
+        fs::write(
+            &server,
+            r#"#!/bin/sh
+for arg in "$@"; do
+  case "$arg" in
+    *'"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1"'*) CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 ;;
+  esac
+done
+while IFS= read -r line; do
+  case "$line" in
+    *'"subtype":"initialize"'*)
+      printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"argmax-initialize","response":{}}}'
+      ;;
+    *'"type":"user"'*)
+      printf '%s\n' "$line"
+      if [ "$CLAUDE_CODE_DISABLE_BACKGROUND_TASKS" != 1 ]; then
+        printf '%s\n' '{"type":"system","subtype":"task_started","task_id":"agent-1","tool_use_id":"toolu_agent","task_type":"local_agent","is_backgrounded":true}'
+        printf '%s\n' '{"type":"system","subtype":"task_notification","task_id":"agent-1","status":"completed"}'
+        printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"dispatched, waiting","queued_turn_count":0}'
+        sleep 0.3
+      else
+        printf '%s\n' '{"type":"system","subtype":"task_started","task_id":"agent-1","tool_use_id":"toolu_agent","task_type":"local_agent","is_backgrounded":false}'
+        printf '%s\n' '{"type":"system","subtype":"task_notification","task_id":"agent-1","status":"completed"}'
+      fi
+      printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_agent","content":"research findings"}]}}'
+      printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"integrated the agent work"}]}}'
+      printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"integrated the agent work"}'
+      ;;
+  esac
+done
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&server, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let database = Arc::new(Database::open_in_memory().unwrap());
+        let approvals = ApprovalService::new(database);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let captured = Arc::clone(&events);
+        let callback: EventCallback = Arc::new(move |event| {
+            captured.lock().unwrap().push(event);
+        });
+        let mut input = launch_input(
+            PermissionMode::ProviderDefaults,
+            super::super::AgentMode::Auto,
+        );
+        input.workspace_path = temp.path().to_path_buf();
+        input.prompt = "implement with a background agent".into();
+
+        let handle = launch_turn(server.to_str().unwrap(), &input, None, approvals, callback)
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !handle.disposed() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the turn ends once the agent has reported and the model answered again");
+
+        let events = events.lock().unwrap();
+        let position = |needle: &str| {
+            events
+                .iter()
+                .position(|event| event.message.contains(needle))
+                .unwrap_or_else(|| panic!("no event containing {needle:?}"))
+        };
+        let exit = events
+            .iter()
+            .position(|event| event.r#type == ProviderRuntimeEventType::Exit)
+            .expect("one exit event");
+        assert!(position("research findings") < position("integrated the agent work"));
+        assert!(!events
+            .iter()
+            .any(|event| event.message.contains("dispatched, waiting")));
         assert!(position("integrated the agent work") < exit);
         assert_eq!(events.last().and_then(|event| event.exit_code), Some(0));
     }

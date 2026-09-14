@@ -14,6 +14,7 @@
 //! visibility: it hides the pane (`browser:set-bounds` with `visible: false`)
 //! whenever one of its own overlays would be covered.
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -32,6 +33,8 @@ use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::state::AppState;
 
 pub const BROWSER_WEBVIEW_LABEL_PREFIX: &str = "browser-";
+const BROWSER_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
+    AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Safari/605.1.15";
 
 /// Event pushed to the main webview whenever a tab navigates, starts loading,
 /// or finishes loading. `title` is only present on load-finish.
@@ -44,19 +47,19 @@ pub struct BrowserStateEvent {
     pub loading: bool,
 }
 
-/// Pushed when a page asks for a popup or `target="_blank"` — the renderer
+/// Pushed when a page asks for a `target="_blank"` link — the renderer
 /// answers by creating a new tab at `url`.
 #[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct BrowserNewTabEvent {
-    /// Tab whose page requested the popup.
+    /// Tab whose page requested the link.
     pub tab_id: String,
     pub url: String,
 }
 
 /// A browser shortcut pressed while the page (not the panel chrome) had
 /// focus. `command` is one of `close-tab`, `new-tab`, `focus-address`,
-/// `reload`, `back`, `forward`.
+/// `reload`, `back`, `forward`, `find`.
 #[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct BrowserPageCommandEvent {
@@ -72,27 +75,121 @@ pub struct BrowserFillResult {
     pub item_title: String,
 }
 
-/// `window.open` popups and `target="_blank"` anchors would be dead ends in a
-/// child webview — route them through the `argmax-newtab:` scheme instead,
+#[derive(Debug, Clone)]
+struct PendingBrowserOpen {
+    generation: u64,
+    input: BrowserOpenInput,
+    visible: bool,
+    stopped: bool,
+}
+
+/// User-tab opens waiting for native content rules to finish preparing.
+///
+/// Commands arriving during that wait update this state. The eventual
+/// main-thread creator consumes only its own generation, so an older open can
+/// never remove or recreate a newer request for the same tab.
+#[derive(Debug, Default)]
+pub(crate) struct PendingBrowserOpens {
+    next_generation: u64,
+    by_tab: HashMap<String, PendingBrowserOpen>,
+}
+
+impl PendingBrowserOpens {
+    fn begin(&mut self, input: BrowserOpenInput) -> u64 {
+        self.next_generation = self.next_generation.wrapping_add(1).max(1);
+        let generation = self.next_generation;
+        self.by_tab.insert(
+            input.tab_id.clone(),
+            PendingBrowserOpen {
+                generation,
+                input,
+                visible: true,
+                stopped: false,
+            },
+        );
+        generation
+    }
+
+    fn update_navigation(&mut self, tab_id: &str, url: String) -> bool {
+        let Some(pending) = self.by_tab.get_mut(tab_id) else {
+            return false;
+        };
+        pending.input.url = url;
+        pending.stopped = false;
+        true
+    }
+
+    fn update_bounds(&mut self, tab_id: &str, bounds: BrowserBounds, visible: bool) -> bool {
+        let Some(pending) = self.by_tab.get_mut(tab_id) else {
+            return false;
+        };
+        pending.input.bounds = bounds;
+        pending.visible = visible;
+        true
+    }
+
+    fn stop(&mut self, tab_id: &str) -> bool {
+        let Some(pending) = self.by_tab.get_mut(tab_id) else {
+            return false;
+        };
+        pending.stopped = true;
+        true
+    }
+
+    fn contains(&self, tab_id: &str) -> bool {
+        self.by_tab.contains_key(tab_id)
+    }
+
+    fn cancel(&mut self, tab_id: &str) -> bool {
+        self.by_tab.remove(tab_id).is_some()
+    }
+
+    fn cancel_generation(&mut self, tab_id: &str, generation: u64) {
+        if self
+            .by_tab
+            .get(tab_id)
+            .is_some_and(|pending| pending.generation == generation)
+        {
+            self.by_tab.remove(tab_id);
+        }
+    }
+
+    fn take_generation(&mut self, tab_id: &str, generation: u64) -> Option<PendingBrowserOpen> {
+        if self
+            .by_tab
+            .get(tab_id)
+            .is_some_and(|pending| pending.generation == generation)
+        {
+            self.by_tab.remove(tab_id)
+        } else {
+            None
+        }
+    }
+}
+
+/// Route `target="_blank"` anchors through the `argmax-newtab:` scheme,
 /// which `on_navigation` intercepts and turns into a real new tab. The same
 /// scheme carries browser shortcuts pressed while the page has focus: without
 /// interception those fall through to the app menu, where ⌘W is Close Window
 /// and would take the whole app with it.
 const BROWSER_INIT_SCRIPT: &str = r#"
 (function () {
+  // Tauri rejects WebKit's empty popup URL before its new-window callback.
+  // Keep the real WindowProxy, including for blank-then-navigate auth flows.
+  var openWindow = window.open;
+  window.open = function (url, target, features) {
+    return openWindow.call(window, url === undefined || url === "" ? "about:blank" : url, target, features);
+  };
   var requestTab = function (url) {
     try {
       var absolute = new URL(url, window.location.href).href;
       window.location.href = "argmax-newtab://open?u=" + encodeURIComponent(absolute);
     } catch (e) {}
   };
-  window.open = function (url) {
-    if (url) requestTab(url);
-    return null;
-  };
   document.addEventListener(
     "click",
     function (event) {
+      if (window.__argmaxBrowserPopup) return;
       var target = event.target;
       if (!target || !target.closest) return;
       // Cmd/Ctrl-click on any link opens a new tab, like every browser.
@@ -115,13 +212,15 @@ const BROWSER_INIT_SCRIPT: &str = r#"
   window.addEventListener(
     "keydown",
     function (event) {
+      if (window.__argmaxBrowserPopup) return;
       if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
       var key = event.key.toLowerCase();
       var command =
         key === "w" ? "close-tab" :
         key === "t" ? "new-tab" :
         key === "r" ? "reload" :
-        key === "l" ? "focus-address" : null;
+        key === "l" ? "focus-address" :
+        key === "f" ? "find" : null;
       if (!command) return;
       event.preventDefault();
       window.location.href = "argmax-newtab://command?c=" + command;
@@ -132,6 +231,7 @@ const BROWSER_INIT_SCRIPT: &str = r#"
   // webview's, so relay them as commands and let the pane drive navigation —
   // history.back() inside the page would skip the pane's toolbar state.
   var historyCommand = function (button) {
+    if (window.__argmaxBrowserPopup) return null;
     return button === 3 ? "back" : button === 4 ? "forward" : null;
   };
   window.addEventListener(
@@ -312,22 +412,110 @@ fn page_command(url: &Url) -> Option<&'static str> {
         "reload" => Some("reload"),
         "back" => Some("back"),
         "forward" => Some("forward"),
+        "find" => Some("find"),
         _ => None,
     }
 }
 
 #[tauri::command(rename = "browser:open")]
 #[specta::specta]
-pub fn browser_open(app: AppHandle, input: BrowserOpenInput) -> ArgmaxResult<SystemOk> {
-    open_tab(
-        &app,
-        &input.tab_id,
-        &input.url,
-        input.bounds,
-        true,
-        input.owner_session_id,
-    )?;
+pub async fn browser_open(app: AppHandle, input: BrowserOpenInput) -> ArgmaxResult<SystemOk> {
+    validated_browser_url(&input.url)?;
+    tab_label(&input.tab_id)?;
+    let tab_id = input.tab_id.clone();
+    let generation = app
+        .state::<AppState>()
+        .pending_browser_opens
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .begin(input.clone());
+
+    // Compile once before constructing a user webview, so even its first
+    // request goes through the native rules. Agent tabs remain unfiltered.
+    let state = app.state::<AppState>();
+    let mut blocking = state.browser_content_blocking.lock().await;
+    let owned = input.owner_session_id.is_some()
+        || tab_registry(&app)
+            .get(&input.tab_id)
+            .is_some_and(|tab| tab.owner_session_id.is_some());
+    let identifier = if owned {
+        None
+    } else {
+        match crate::browser::content_blocking::ensure(&app, &mut blocking).await {
+            Ok(identifier) => identifier,
+            Err(error) => {
+                state
+                    .pending_browser_opens
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .cancel_generation(&tab_id, generation);
+                return Err(error);
+            }
+        }
+    };
+    let open_tab_id = tab_id.clone();
+    let opened = crate::browser::content_blocking::on_main(&app, move |app| {
+        let pending = app
+            .state::<AppState>()
+            .pending_browser_opens
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take_generation(&open_tab_id, generation);
+        let Some(pending) = pending else {
+            return Ok(());
+        };
+        let (url, raw_url) = if pending.stopped {
+            let raw_url = "about:blank".to_string();
+            (
+                Url::parse(&raw_url).expect("valid internal blank browser URL"),
+                raw_url,
+            )
+        } else {
+            let raw_url = pending.input.url;
+            (validated_browser_url(&raw_url)?, raw_url)
+        };
+        open_tab_with_url(
+            app,
+            &pending.input.tab_id,
+            url,
+            &raw_url,
+            pending.input.bounds,
+            pending.visible,
+            pending.input.owner_session_id,
+            identifier,
+        )
+    })
+    .await;
+    if opened.is_err() {
+        app.state::<AppState>()
+            .pending_browser_opens
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .cancel_generation(&tab_id, generation);
+    }
+    opened?;
     Ok(SystemOk { ok: true })
+}
+
+#[tauri::command(rename = "browser:content-blocking")]
+#[specta::specta]
+pub async fn browser_content_blocking(
+    app: AppHandle,
+) -> ArgmaxResult<crate::browser::content_blocking::BrowserContentBlocking> {
+    let state = app.state::<AppState>();
+    let mut blocking = state.browser_content_blocking.lock().await;
+    crate::browser::content_blocking::status(&app, &mut blocking).await
+}
+
+#[tauri::command(rename = "browser:set-site-blocking")]
+#[specta::specta]
+pub async fn browser_set_site_blocking(
+    app: AppHandle,
+    input: crate::browser::content_blocking::BrowserSetSiteBlockingInput,
+) -> ArgmaxResult<crate::browser::content_blocking::BrowserContentBlocking> {
+    let state = app.state::<AppState>();
+    let mut blocking = state.browser_content_blocking.lock().await;
+    crate::browser::content_blocking::set_site(&app, &mut blocking, input).await
 }
 
 /// Creates the tab's webview, or navigates and re-shows one that exists.
@@ -341,12 +529,38 @@ pub(crate) fn open_tab(
     bounds: BrowserBounds,
     visible: bool,
     owner_session_id: Option<String>,
+    blocking_identifier: Option<String>,
 ) -> ArgmaxResult<()> {
     let url = validated_browser_url(raw_url)?;
+    open_tab_with_url(
+        app,
+        tab_id,
+        url,
+        raw_url,
+        bounds,
+        visible,
+        owner_session_id,
+        blocking_identifier,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn open_tab_with_url(
+    app: &AppHandle,
+    tab_id: &str,
+    url: Url,
+    raw_url: &str,
+    bounds: BrowserBounds,
+    visible: bool,
+    owner_session_id: Option<String>,
+    blocking_identifier: Option<String>,
+) -> ArgmaxResult<()> {
     let label = tab_label(tab_id)?;
     let tabs = tab_registry(app);
 
     if let Some(webview) = app.get_webview(&label) {
+        #[cfg(target_os = "macos")]
+        crate::browser::content_blocking_macos::apply(&webview, blocking_identifier.clone())?;
         if visible {
             webview
                 .set_bounds(bounds_rect(&bounds))
@@ -370,15 +584,88 @@ pub(crate) fn open_tab(
     let nav_tab = tab_id.to_string();
     let load_app = app.clone();
     let load_tab = tab_id.to_string();
-    let builder = tauri::webview::WebviewBuilder::new(&label, WebviewUrl::External(url))
+    let popup_app = app.clone();
+    let popup_owned_by_session = owner_session_id.is_some();
+    let builder = tauri::webview::WebviewBuilder::new(&label, WebviewUrl::External(url));
+    #[cfg(target_os = "macos")]
+    let builder = if let Some(identifier) = blocking_identifier.as_deref() {
+        builder.with_webview_configuration(crate::browser::content_blocking_macos::configuration(
+            identifier,
+        )?)
+    } else {
+        builder
+    };
+    #[cfg(not(target_os = "macos"))]
+    let _ = blocking_identifier;
+    let builder = builder
         // WKWebView's default UA reads as an embedded webview; Google (and
         // others) then warn "browser no longer supported" and refuse OAuth.
         // Present as desktop Safari, which is what this engine actually is.
-        .user_agent(
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 \
-             (KHTML, like Gecko) Version/18.5 Safari/605.1.15",
-        )
+        .user_agent(BROWSER_USER_AGENT)
         .initialization_script(init_script(owner_session_id.is_some()))
+        .on_new_window(move |url, features| {
+            // Auth SDKs open a blank window, then navigate it and wait for
+            // postMessage or closure. A separate tab loses that opener link.
+            // window_features carries WebKit's required opener configuration.
+            if !matches!(url.scheme(), "http" | "https" | "about" | "blob") {
+                return tauri::webview::NewWindowResponse::Deny;
+            }
+            if let Err(error) =
+                crate::browser::popup::prepare_configuration(&features, !popup_owned_by_session)
+            {
+                tracing::error!(%error, "could not prepare browser popup configuration");
+                return tauri::webview::NewWindowResponse::Deny;
+            }
+            let window = tauri::WebviewWindowBuilder::new(
+                &popup_app,
+                format!(
+                    "browser-popup-{}-{}",
+                    if popup_owned_by_session {
+                        "agent"
+                    } else {
+                        "user"
+                    },
+                    uuid::Uuid::new_v4()
+                ),
+                WebviewUrl::External(Url::parse("about:blank").expect("valid blank URL")),
+            )
+            .title("Browser")
+            .inner_size(600.0, 720.0)
+            .window_features(features)
+            .user_agent(BROWSER_USER_AGENT)
+            // The popup gets a fresh WKUserContentController on macOS, so
+            // explicitly restore the panel scripts Wry would otherwise see
+            // through the inherited controller.
+            .initialization_script(init_script(popup_owned_by_session))
+            // Check the marker at event time, since OAuth redirects can sever
+            // window.opener.
+            .initialization_script("window.__argmaxBrowserPopup = true;")
+            .on_navigation(|url| matches!(url.scheme(), "http" | "https" | "about" | "blob"))
+            .on_document_title_changed(|window, title| {
+                let _ = window.set_title(&title);
+            })
+            .build();
+            match window {
+                Ok(window) => {
+                    let browser_theme = *popup_app
+                        .state::<AppState>()
+                        .browser_theme
+                        .lock()
+                        .unwrap_or_else(|error| error.into_inner());
+                    if let Err(error) = crate::browser::theme::apply(window.as_ref(), browser_theme)
+                    {
+                        tracing::error!(%error, "could not apply browser popup theme");
+                        let _ = window.close();
+                        return tauri::webview::NewWindowResponse::Deny;
+                    }
+                    tauri::webview::NewWindowResponse::Create { window }
+                }
+                Err(error) => {
+                    tracing::error!(%error, "could not create browser popup");
+                    tauri::webview::NewWindowResponse::Deny
+                }
+            }
+        })
         .on_navigation(move |url| {
             if url.scheme() == "argmax-newtab" {
                 if let Some(target) = new_tab_request_url(url) {
@@ -402,7 +689,7 @@ pub(crate) fn open_tab(
                         "browser dialog captured on an agent tab"
                     );
                 } else if let Some(command) = page_command(url) {
-                    if command == "focus-address" {
+                    if command == "focus-address" || command == "find" {
                         // DOM focus in the renderer does not move the native
                         // first responder out of the child WKWebView.
                         if let Some(main) = nav_app.get_webview("main") {
@@ -436,10 +723,14 @@ pub(crate) fn open_tab(
                 return;
             }
             tracing::debug!(%url, tab = %load_tab, "browser tab page loaded");
+            // Loading is a navigation fact, not a title-eval fact. WebKit can
+            // drop a callback queued around the first load, which used to
+            // leave a fully rendered tab spinning forever.
+            emit_state(&load_app, load_tab.clone(), url.clone(), None, false);
             let title_app = load_app.clone();
             let title_tab = load_tab.clone();
             let title_url = url.clone();
-            let eval_result = webview.eval_with_callback("document.title", move |value| {
+            let _ = webview.eval_with_callback("document.title", move |value| {
                 let title = serde_json::from_str::<String>(&value).unwrap_or_default();
                 emit_state(
                     &title_app,
@@ -449,9 +740,6 @@ pub(crate) fn open_tab(
                     false,
                 );
             });
-            if eval_result.is_err() {
-                emit_state(&load_app, load_tab.clone(), url, None, false);
-            }
         });
 
     let created = window
@@ -461,6 +749,18 @@ pub(crate) fn open_tab(
             LogicalSize::new(bounds.width.max(1.0), bounds.height.max(1.0)),
         )
         .map_err(|error| ArgmaxError::service("BROWSER_CREATE_FAILED", error.to_string()))?;
+    let browser_theme = *app
+        .state::<AppState>()
+        .browser_theme
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    crate::browser::theme::apply(&created, browser_theme)?;
+    crate::browser::popup::install_close_handler(&created).map_err(|error| {
+        ArgmaxError::service(
+            "BROWSER_CREATE_FAILED",
+            format!("install popup close callback: {error}"),
+        )
+    })?;
     if !visible {
         let _ = created.hide();
     }
@@ -473,7 +773,17 @@ pub(crate) fn open_tab(
 #[tauri::command(rename = "browser:navigate")]
 #[specta::specta]
 pub fn browser_navigate(app: AppHandle, input: BrowserNavigateInput) -> ArgmaxResult<SystemOk> {
-    navigate_tab(&app, &input.tab_id, &input.url)?;
+    validated_browser_url(&input.url)?;
+    tab_label(&input.tab_id)?;
+    let updated_pending = app
+        .state::<AppState>()
+        .pending_browser_opens
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .update_navigation(&input.tab_id, input.url.clone());
+    if app.get_webview(&tab_label(&input.tab_id)?).is_some() || !updated_pending {
+        navigate_tab(&app, &input.tab_id, &input.url)?;
+    }
     Ok(SystemOk { ok: true })
 }
 
@@ -487,25 +797,36 @@ pub(crate) fn navigate_tab(app: &AppHandle, tab_id: &str, raw_url: &str) -> Argm
 #[tauri::command(rename = "browser:back")]
 #[specta::specta]
 pub fn browser_back(app: AppHandle, input: BrowserBackInput) -> ArgmaxResult<SystemOk> {
-    eval_in_browser(&app, &input.tab_id, "history.back()")
+    eval_in_browser_or_pending(&app, &input.tab_id, "history.back()")
 }
 
 #[tauri::command(rename = "browser:forward")]
 #[specta::specta]
 pub fn browser_forward(app: AppHandle, input: BrowserForwardInput) -> ArgmaxResult<SystemOk> {
-    eval_in_browser(&app, &input.tab_id, "history.forward()")
+    eval_in_browser_or_pending(&app, &input.tab_id, "history.forward()")
 }
 
 #[tauri::command(rename = "browser:reload")]
 #[specta::specta]
 pub fn browser_reload(app: AppHandle, input: BrowserReloadInput) -> ArgmaxResult<SystemOk> {
-    eval_in_browser(&app, &input.tab_id, "location.reload()")
+    eval_in_browser_or_pending(&app, &input.tab_id, "location.reload()")
 }
 
 #[tauri::command(rename = "browser:stop")]
 #[specta::specta]
 pub fn browser_stop(app: AppHandle, input: BrowserStopInput) -> ArgmaxResult<SystemOk> {
-    eval_in_browser(&app, &input.tab_id, "window.stop()")
+    tab_label(&input.tab_id)?;
+    let stopped_pending = app
+        .state::<AppState>()
+        .pending_browser_opens
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .stop(&input.tab_id);
+    if app.get_webview(&tab_label(&input.tab_id)?).is_some() || !stopped_pending {
+        eval_in_browser(&app, &input.tab_id, "window.stop()")
+    } else {
+        Ok(SystemOk { ok: true })
+    }
 }
 
 fn eval_in_browser(app: &AppHandle, tab_id: &str, js: &str) -> ArgmaxResult<SystemOk> {
@@ -515,10 +836,40 @@ fn eval_in_browser(app: &AppHandle, tab_id: &str, js: &str) -> ArgmaxResult<Syst
     Ok(SystemOk { ok: true })
 }
 
+fn eval_in_browser_or_pending(app: &AppHandle, tab_id: &str, js: &str) -> ArgmaxResult<SystemOk> {
+    tab_label(tab_id)?;
+    let pending = app
+        .state::<AppState>()
+        .pending_browser_opens
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .contains(tab_id);
+    if app.get_webview(&tab_label(tab_id)?).is_some() || !pending {
+        eval_in_browser(app, tab_id, js)
+    } else {
+        Ok(SystemOk { ok: true })
+    }
+}
+
 #[tauri::command(rename = "browser:set-bounds")]
 #[specta::specta]
 pub fn browser_set_bounds(app: AppHandle, input: BrowserSetBoundsInput) -> ArgmaxResult<SystemOk> {
-    let webview = browser_webview(&app, &input.tab_id)?;
+    tab_label(&input.tab_id)?;
+    let updated_pending = app
+        .state::<AppState>()
+        .pending_browser_opens
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .update_bounds(&input.tab_id, input.bounds.clone(), input.visible);
+    let Some(webview) = app.get_webview(&tab_label(&input.tab_id)?) else {
+        if updated_pending {
+            return Ok(SystemOk { ok: true });
+        }
+        return Err(ArgmaxError::service(
+            "BROWSER_NOT_OPEN",
+            "browser tab is not open",
+        ));
+    };
     if input.visible {
         webview
             .set_bounds(bounds_rect(&input.bounds))
@@ -530,10 +881,57 @@ pub fn browser_set_bounds(app: AppHandle, input: BrowserSetBoundsInput) -> Argma
     Ok(SystemOk { ok: true })
 }
 
+/// Hands the window's keyboard focus to a tab's page, the way clicking into it
+/// would. Called when the user activates a tab: without it the first responder
+/// stays on the app's own webview, so scrolling keys and `⌘F` are the app's
+/// rather than the page's. A tab whose webview is still being created is
+/// skipped — it takes focus when it opens.
+#[tauri::command(rename = "browser:focus")]
+#[specta::specta]
+pub fn browser_focus(app: AppHandle, input: BrowserFocusInput) -> ArgmaxResult<SystemOk> {
+    let label = tab_label(&input.tab_id)?;
+    if let Some(webview) = app.get_webview(&label) {
+        webview
+            .set_focus()
+            .map_err(|error| ArgmaxError::service("BROWSER_FOCUS_FAILED", error.to_string()))?;
+    }
+    Ok(SystemOk { ok: true })
+}
+
+#[tauri::command(rename = "browser:set-theme")]
+#[specta::specta]
+pub fn browser_set_theme(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    input: BrowserSetThemeInput,
+) -> ArgmaxResult<SystemOk> {
+    *state
+        .browser_theme
+        .lock()
+        .unwrap_or_else(|error| error.into_inner()) = input.mode;
+    crate::browser::theme::observe_system_changes(&app);
+    crate::browser::theme::apply_all(&app, input.mode)?;
+    Ok(SystemOk { ok: true })
+}
+
 #[tauri::command(rename = "browser:close")]
 #[specta::specta]
 pub fn browser_close(app: AppHandle, input: BrowserCloseInput) -> ArgmaxResult<SystemOk> {
-    close_tab(&app, &input.tab_id)?;
+    let label = tab_label(&input.tab_id)?;
+    let canceled_pending = app
+        .state::<AppState>()
+        .pending_browser_opens
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .cancel(&input.tab_id);
+    if app.get_webview(&label).is_some() {
+        close_tab(&app, &input.tab_id)?;
+    } else if !canceled_pending {
+        return Err(ArgmaxError::service(
+            "BROWSER_NOT_OPEN",
+            "browser tab is not open",
+        ));
+    }
     Ok(SystemOk { ok: true })
 }
 
@@ -1002,6 +1400,70 @@ pub async fn browser_fill_credentials(
 mod tests {
     use super::*;
 
+    fn pending_input(tab_id: &str, url: &str) -> BrowserOpenInput {
+        BrowserOpenInput {
+            url: url.to_string(),
+            bounds: BrowserBounds {
+                x: 1.0,
+                y: 2.0,
+                width: 800.0,
+                height: 600.0,
+            },
+            tab_id: tab_id.to_string(),
+            owner_session_id: None,
+        }
+    }
+
+    #[test]
+    fn pending_open_cancellation_prevents_late_creation() {
+        let mut pending = PendingBrowserOpens::default();
+        let generation = pending.begin(pending_input("tab-1", "https://example.com/first"));
+
+        assert!(pending.cancel("tab-1"));
+        assert!(pending.take_generation("tab-1", generation).is_none());
+    }
+
+    #[test]
+    fn older_pending_open_cannot_remove_a_newer_request() {
+        let mut pending = PendingBrowserOpens::default();
+        let older = pending.begin(pending_input("tab-1", "https://example.com/older"));
+        let newer = pending.begin(pending_input("tab-1", "https://example.com/newer"));
+
+        pending.cancel_generation("tab-1", older);
+        assert_eq!(
+            pending
+                .take_generation("tab-1", newer)
+                .expect("newer request remains")
+                .input
+                .url,
+            "https://example.com/newer"
+        );
+    }
+
+    #[test]
+    fn pending_open_keeps_latest_navigation_bounds_and_visibility() {
+        let mut pending = PendingBrowserOpens::default();
+        let generation = pending.begin(pending_input("tab-1", "https://example.com/first"));
+        let latest_bounds = BrowserBounds {
+            x: 20.0,
+            y: 30.0,
+            width: 1024.0,
+            height: 700.0,
+        };
+
+        assert!(pending.stop("tab-1"));
+        assert!(pending.update_bounds("tab-1", latest_bounds.clone(), false));
+        assert!(pending.update_navigation("tab-1", "https://example.com/latest".to_string()));
+        let latest = pending
+            .take_generation("tab-1", generation)
+            .expect("pending request");
+
+        assert_eq!(latest.input.url, "https://example.com/latest");
+        assert_eq!(latest.input.bounds, latest_bounds);
+        assert!(!latest.visible);
+        assert!(!latest.stopped, "navigation resumes a stopped pending open");
+    }
+
     #[test]
     fn agent_tabs_get_capture_and_user_tabs_do_not() {
         let agent = init_script(true);
@@ -1051,6 +1513,8 @@ mod tests {
         assert_eq!(page_command(&back), Some("back"));
         let forward = Url::parse("argmax-newtab://command?c=forward").unwrap();
         assert_eq!(page_command(&forward), Some("forward"));
+        let find = Url::parse("argmax-newtab://command?c=find").unwrap();
+        assert_eq!(page_command(&find), Some("find"));
         let unknown = Url::parse("argmax-newtab://command?c=quit-app").unwrap();
         assert_eq!(page_command(&unknown), None);
         // `open` navigations carry URLs, never commands — and vice versa.

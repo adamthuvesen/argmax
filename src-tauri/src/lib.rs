@@ -31,6 +31,7 @@ pub mod multitask;
 pub mod notifications;
 pub mod persistence;
 pub mod providers;
+pub mod questions;
 pub mod remote;
 pub mod review;
 pub mod routines;
@@ -748,6 +749,7 @@ pub fn run() {
                                 }
                             });
                             let notifications_for_delta = Arc::clone(&notifications);
+                            let push_database = Arc::clone(&database);
                             let ntfy_app = app.handle().clone();
                             let provider_delta_tx = delta_tx.clone();
                             let publish_delta = move |delta: providers::flush_queue::DashboardDelta| {
@@ -772,11 +774,34 @@ pub fn run() {
                                             "failed to fire terminal-state notification"
                                         );
                                     }
+                                    // The push body leads with what the agent
+                                    // last said, so read it once for both sinks
+                                    // — and only for a row that will actually
+                                    // push, since a streaming turn walks
+                                    // through here on every chunk.
+                                    let pushes = (ntfy.is_some() || apns.is_some())
+                                        && remote::signal::signals(session);
+                                    let latest_answer = pushes
+                                        .then(|| {
+                                            persistence::events::latest_agent_message(
+                                                &push_database.read_connection(),
+                                                &session.id,
+                                            )
+                                            .unwrap_or_else(|error| {
+                                                tracing::warn!(
+                                                    ?error,
+                                                    session_id = %session.id,
+                                                    "failed to read the latest agent message for a push"
+                                                );
+                                                None
+                                            })
+                                        })
+                                        .flatten();
                                     if let Some(ntfy) = ntfy.as_ref() {
-                                        ntfy.observe(session);
+                                        ntfy.observe(session, latest_answer.as_deref());
                                     }
                                     if let Some(apns) = apns.as_ref() {
-                                        apns.observe(session);
+                                        apns.observe(session, latest_answer.as_deref());
                                     }
                                     keep_awake.observe(&session.id, session.state.is_active());
                                 }
@@ -798,6 +823,16 @@ pub fn run() {
                             );
                             if state.approvals.set(Arc::clone(&approvals)).is_err() {
                                 tracing::warn!("approval service state was already initialized");
+                            }
+                            let question_delta_tx = delta_tx.clone();
+                            let questions = questions::service::QuestionService::with_publisher(
+                                Arc::clone(&database),
+                                move |delta| {
+                                    question_delta_tx.send(delta);
+                                },
+                            );
+                            if state.questions.set(Arc::clone(&questions)).is_err() {
+                                tracing::warn!("question service state was already initialized");
                             }
                             let (session_launch_server, session_launch_registry) =
                                 match session_control::SessionLaunchServer::bind(Arc::clone(
@@ -825,7 +860,7 @@ pub fn run() {
                                     (*state.provider_discovery).clone(),
                                     session_launch_registry.clone(),
                                     Arc::clone(&cursor_acp),
-                                ).with_approvals(Arc::clone(&approvals)).with_grok_acp(Arc::clone(&grok_acp)));
+                                ).with_approvals(Arc::clone(&approvals)).with_questions(Arc::clone(&questions)).with_grok_acp(Arc::clone(&grok_acp)));
                             let providers = providers::session_service::ProviderSessionService::with_launcher_and_lifecycle_and_approvals(
                                 Arc::clone(&database),
                                 provider_launcher,
@@ -833,6 +868,7 @@ pub fn run() {
                                 Arc::clone(&lifecycle),
                                 Some(Arc::clone(&approvals)),
                             );
+                            providers.set_question_service(Arc::clone(&questions));
                             // Kept for the boot-recovery pass below, which needs
                             // the same registry the socket hands out.
                             let after_turn_registry = session_launch_registry.clone();

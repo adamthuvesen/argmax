@@ -1,13 +1,19 @@
-//! OpenCode `run --format json` events.
+//! OpenCode `run --format json` events, replayed from the server's SSE bus.
 //!
-//! Each stdout line is a typed envelope: `{"type": ..., "timestamp": ...,
+//! Each line is a typed envelope: `{"type": ..., "timestamp": ...,
 //! "sessionID": "ses_...", "part": {...}}`. Parts arrive whole (no token
 //! streaming): `text` is a complete assistant message, `reasoning` a complete
 //! thinking block, and `tool_use` a single event whose `state` already carries
 //! input and output. `step_finish` closes each model step with token counts
 //! and a `reason` ("stop" ends the turn, "tool-calls" continues it).
+//!
+//! Native `task` calls are the one exception to "arrives once": the server
+//! transport forwards a task's running state (with the child session id in
+//! `state.metadata`) so the launch surfaces while the subagent works, and its
+//! terminal state later closes the rows that launch opened.
 
 use serde_json::{json, Map, Value};
+use std::collections::HashSet;
 
 use super::todo::{is_todo_tool, stamp_todo_surface, todo_event, todos_array_update};
 use super::{
@@ -23,12 +29,17 @@ pub fn extract_session_id(payload: &Map<String, Value>) -> Option<String> {
 }
 
 /// OpenCode only puts native `task` lifecycle information in the parent's
-/// completed tool row. The child body never reaches parent stdout, but the row
-/// carries both native session ids and a distinct call id for this invocation.
+/// tool row. The child body never reaches the parent's event stream, but the
+/// row carries both native session ids and a distinct call id for this
+/// invocation. The server transport forwards the running state as well as the
+/// terminal one, so a launch can open its rows while the subagent works and
+/// the terminal envelope later closes them; one call id may therefore open
+/// its rows once, and only a terminal envelope closes them.
 pub fn native_agent_lifecycle_events(
     event: &ProviderOutputEvent,
     payload: &Map<String, Value>,
     provider_type: Option<&str>,
+    started_agent_runs: &mut HashSet<String>,
 ) -> Vec<PersistTimelineEventInput> {
     if provider_type != Some("tool_use") {
         return Vec::new();
@@ -46,6 +57,8 @@ pub fn native_agent_lifecycle_events(
         return Vec::new();
     };
     let state = object_value(part.get("state"));
+    let status = state.and_then(|state| string_value(state.get("status")));
+    let in_flight = matches!(status, Some("running" | "pending"));
     let metadata = state.and_then(|state| object_value(state.get("metadata")));
     let Some(child_id) = metadata.and_then(|metadata| string_value(metadata.get("sessionId")))
     else {
@@ -56,6 +69,9 @@ pub fn native_agent_lifecycle_events(
     {
         return Vec::new();
     }
+    // Only an envelope that produces rows may claim the call id, so a shape
+    // we cannot use never suppresses the launch that follows it.
+    let first_sighting = started_agent_runs.insert(call_id.to_string());
 
     let mut lifecycle_payload = part.clone();
     lifecycle_payload.insert(
@@ -91,26 +107,40 @@ pub fn native_agent_lifecycle_events(
                 .and_then(|state| object_value(state.get("input")))
                 .and_then(|input| string_value(input.get("description")))
         })
-        .unwrap_or("Agent started");
-    let completed_message = state
-        .and_then(|state| string_value(state.get("output")))
-        .map(|output| native_task_result_body(output).unwrap_or(output))
-        .filter(|output| !output.trim().is_empty())
-        .unwrap_or("Agent completed");
-    vec![
-        timeline_event(
-            event,
-            "agent.started",
-            started_message,
-            Value::Object(lifecycle_payload.clone()),
-        ),
+        .unwrap_or("Agent started")
+        .to_string();
+    let started = timeline_event(
+        event,
+        "agent.started",
+        started_message,
+        Value::Object(lifecycle_payload.clone()),
+    );
+    let completed = || {
+        let completed_message = state
+            .and_then(|state| string_value(state.get("output")))
+            .map(|output| native_task_result_body(output).unwrap_or(output))
+            .filter(|output| !output.trim().is_empty())
+            .unwrap_or("Agent completed")
+            .to_string();
         timeline_event(
             event,
             "agent.completed",
             completed_message,
-            Value::Object(lifecycle_payload),
-        ),
-    ]
+            Value::Object(lifecycle_payload.clone()),
+        )
+    };
+    if in_flight {
+        // The launch opens its rows; the terminal envelope closes them.
+        if first_sighting {
+            vec![started]
+        } else {
+            Vec::new()
+        }
+    } else if first_sighting {
+        vec![started, completed()]
+    } else {
+        vec![completed()]
+    }
 }
 
 /// OpenCode 1.18.29 wraps a completed native task result in this exact outer
@@ -131,6 +161,7 @@ pub fn normalize_event(
     event: &ProviderOutputEvent,
     payload: &Map<String, Value>,
     provider_type: Option<&str>,
+    context: &mut NormalizerSessionContext,
 ) -> Vec<PersistTimelineEventInput> {
     let part = object_value(payload.get("part"));
     match provider_type {
@@ -138,7 +169,9 @@ pub fn normalize_event(
         Some("reasoning") => normalize_reasoning(event, payload, part)
             .into_iter()
             .collect(),
-        Some("tool_use") => normalize_tool_use(event, part),
+        Some("tool_use") => {
+            normalize_tool_use(event, part, &mut context.opencode_started_tool_calls)
+        }
         Some("step_finish") => normalize_step_finish(event, part).into_iter().collect(),
         Some("error") => normalize_error(event, payload).into_iter().collect(),
         _ => Vec::new(),
@@ -186,17 +219,30 @@ fn normalize_reasoning(
 }
 
 /// A `tool_use` envelope arrives once, already completed, with input and
-/// output in `part.state`. Emit a started/completed pair so the chat's
-/// command row goes through its normal lifecycle.
+/// output in `part.state` — so the chat's command row goes through its normal
+/// lifecycle. A native `task` call additionally arrives in its running state
+/// first: that first in-flight envelope opens the `command.started` row, and
+/// the terminal envelope closes the row it opened instead of opening another.
 fn normalize_tool_use(
     event: &ProviderOutputEvent,
     part: Option<&Map<String, Value>>,
+    started_tool_calls: &mut HashSet<String>,
 ) -> Vec<PersistTimelineEventInput> {
     let Some(part) = part else {
         return Vec::new();
     };
     let tool_name = string_value(part.get("tool")).unwrap_or("tool_use");
     let state = object_value(part.get("state"));
+    let status = state.and_then(|state| string_value(state.get("status")));
+    let in_flight = matches!(status, Some("running" | "pending"));
+    let call_id = string_value(part.get("callID"));
+    let first_sighting = match call_id {
+        Some(call_id) => started_tool_calls.insert(call_id.to_string()),
+        None => true,
+    };
+    if in_flight && !first_sighting {
+        return Vec::new();
+    }
     let input = state
         .and_then(|state| object_value(state.get("input")))
         .cloned()
@@ -209,6 +255,9 @@ fn normalize_tool_use(
         flattened.insert("call_id".to_string(), Value::String(call_id.to_string()));
     }
     flattened.insert("raw".to_string(), Value::Object(part.clone()));
+    if let Some(status) = state.and_then(|state| string_value(state.get("status"))) {
+        flattened.insert("status".to_string(), Value::String(status.to_string()));
+    }
 
     // OpenCode's `todowrite` sends the whole list every time, so the update
     // rides alongside the row that carries it and the row itself is hidden.
@@ -241,9 +290,19 @@ fn normalize_tool_use(
         Value::Object(completed_payload),
     );
 
-    match todo {
-        Some(todo) => vec![started, completed, todo],
-        None => vec![started, completed],
+    if in_flight {
+        // The launch opens the row; the terminal envelope later closes it.
+        match todo {
+            Some(todo) => vec![started, todo],
+            None => vec![started],
+        }
+    } else if first_sighting {
+        match todo {
+            Some(todo) => vec![started, completed, todo],
+            None => vec![started, completed],
+        }
+    } else {
+        vec![completed]
     }
 }
 
@@ -394,8 +453,10 @@ mod tests {
         assert_eq!(result.events[0].message, "bash");
         assert_eq!(result.events[0].payload["input"]["command"], "npm test");
         assert_eq!(result.events[0].payload["call_id"], "call_1");
+        assert_eq!(result.events[0].payload["status"], "completed");
         assert_eq!(result.events[1].r#type, "command.completed");
         assert_eq!(result.events[1].payload["result"], "42 passing");
+        assert_eq!(result.events[1].payload["status"], "completed");
     }
 
     #[test]
@@ -433,6 +494,116 @@ mod tests {
             "child-1"
         );
         assert_eq!(second.events[2].payload["agentRunId"], "call-second");
+    }
+
+    #[test]
+    fn opencode_running_task_opens_its_rows_and_the_terminal_envelope_closes_them() {
+        let mut context = NormalizerSessionContext::default();
+        let running = normalize_provider_event(
+            ProviderId::Opencode,
+            &output_event(
+                &json!({
+                    "type": "tool_use",
+                    "sessionID": "parent-1",
+                    "part": {
+                        "type": "tool",
+                        "tool": "task",
+                        "callID": "call-run",
+                        "state": {
+                            "title": "Review iOS transcript/scrolling",
+                            "status": "running",
+                            "input": {"description": "Review iOS transcript/scrolling"},
+                            "metadata": {
+                                "parentSessionId": "parent-1",
+                                "sessionId": "child-1",
+                                "model": {"providerID": "opencode-go", "modelID": "glm-5.3-flash"}
+                            }
+                        }
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(running.events.len(), 2);
+        assert_eq!(running.events[0].r#type, "command.started");
+        assert_eq!(running.events[0].payload["name"], "task");
+        assert_eq!(running.events[0].payload["status"], "running");
+        assert_eq!(running.events[0].payload["call_id"], "call-run");
+        let lifecycle = &running.events[1];
+        assert_eq!(lifecycle.r#type, "agent.started");
+        assert_eq!(lifecycle.message, "Review iOS transcript/scrolling");
+        assert_eq!(lifecycle.payload["providerChildSessionId"], "child-1");
+        assert_eq!(
+            lifecycle.payload["agentModelId"],
+            "opencode-go/glm-5.3-flash"
+        );
+
+        // OpenCode re-sends the part on every state update; a repeat with the
+        // full shape must still open nothing.
+        let repeat = normalize_provider_event(
+            ProviderId::Opencode,
+            &output_event(
+                &json!({
+                    "type": "tool_use",
+                    "sessionID": "parent-1",
+                    "part": {
+                        "type": "tool",
+                        "tool": "task",
+                        "callID": "call-run",
+                        "state": {
+                            "title": "Review iOS transcript/scrolling",
+                            "status": "running",
+                            "input": {"description": "Review iOS transcript/scrolling"},
+                            "metadata": {"parentSessionId": "parent-1", "sessionId": "child-1"}
+                        }
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert!(repeat.events.is_empty());
+
+        let completed = normalize_provider_event(
+            ProviderId::Opencode,
+            &output_event(
+                &json!({
+                    "type": "tool_use",
+                    "sessionID": "parent-1",
+                    "part": {
+                        "type": "tool",
+                        "tool": "task",
+                        "callID": "call-run",
+                        "state": {
+                            "status": "completed",
+                            "output": "<task id=\"child-1\" state=\"completed\">\n<task_result>\nFindings.\n</task_result>\n</task>",
+                            "metadata": {"parentSessionId": "parent-1", "sessionId": "child-1"}
+                        }
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(completed.events.len(), 2);
+        assert_eq!(completed.events[0].r#type, "command.completed");
+        assert_eq!(completed.events[0].payload["call_id"], "call-run");
+        assert_eq!(completed.events[1].r#type, "agent.completed");
+        assert_eq!(completed.events[1].message, "Findings.");
+    }
+
+    #[test]
+    fn opencode_repeated_terminal_envelopes_do_not_open_a_second_row() {
+        let mut context = NormalizerSessionContext::default();
+        let envelope = r#"{"type":"tool_use","sessionID":"ses_1","part":{"type":"tool","tool":"bash","callID":"call_1","state":{"status":"completed","input":{"command":"npm test"},"output":"42 passing"}}}"#;
+        let first =
+            normalize_provider_event(ProviderId::Opencode, &output_event(envelope), &mut context);
+        assert_eq!(first.events.len(), 2);
+        let second =
+            normalize_provider_event(ProviderId::Opencode, &output_event(envelope), &mut context);
+        assert_eq!(second.events.len(), 1);
+        assert_eq!(second.events[0].r#type, "command.completed");
     }
 
     #[test]

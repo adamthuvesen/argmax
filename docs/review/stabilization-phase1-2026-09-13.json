@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-09-13",
+  "assessment": "phase1-functional-acceptance-passed-startup-intermittency-open",
+  "source": {
+    "candidate": "/private/tmp/argmax-phase1-final-20260913",
+    "head": "50a5c471d9ff3ccc29e865487793e5530e0f5235",
+    "trackedDiffSha256": "ab0070dbc184a31adfecbf41eebcca2868f079cdf9992dee0939e862cb53ca10",
+    "checkoutFingerprintSha256": "0ace09cbfc09a69b2c41a619a4cf04d39a87a2248b96d373a2b5d344d13f8145"
+  },
+  "finalV2": {
+    "candidate": "/private/tmp/argmax-phase1-final-v2-20260913",
+    "head": "50a5c471d9ff3ccc29e865487793e5530e0f5235",
+    "checkoutFingerprintSha256": "1b6c4b789c3fe3a200ed3fca9858d8b183ac8dd45108c5f846b10e61b55bb61a",
+    "runs": [
+      {
+        "scenario": "cancellation",
+        "status": "passed",
+        "assertionsPassed": 6,
+        "errors": [],
+        "report": "/private/tmp/argmax-phase1-final-v2-20260913-cancellation-native/report.json",
+        "reportSha256": "4d6c13f900d4b63d18741adbc9fb750abf031ef21549fc43da27c6e646d50bc0"
+      },
+      {
+        "scenario": "codex-user-input",
+        "status": "passed",
+        "assertionsPassed": 6,
+        "errors": [],
+        "report": "/private/tmp/argmax-phase1-final-v2-20260913-codex-user-input-native/report.json",
+        "reportSha256": "c2c6b5e698db10327e346aff750a78bf29361172986b32277010ae4059c60e32"
+      },
+      {
+        "scenario": "provider-error",
+        "status": "passed",
+        "assertionsPassed": 6,
+        "errors": [],
+        "report": "/private/tmp/argmax-phase1-final-v2-20260913-provider-error-native/report.json",
+        "reportSha256": "6119321445629a0d1e550719287c8b334c1b5c02a534c270d22bb4a870fd9d1c"
+      }
+    ],
+    "testFiles": {
+      "passed": 11,
+      "failed": 0,
+      "log": "/private/tmp/argmax-phase1-verification-tests-final.log",
+      "logSha256": "227267f4c43c248e5c4b6cffa43624bcd3e49b71781e776837d2539ad4886cb7"
+    },
+    "scopeNote": "Final shared failure-error guard and fsmonitor fixture isolation were narrowly checked only and excluded from v2."
+  },
+  "checks": {
+    "ipc": { "passed": true, "requestChannels": 138, "pushChannels": 9 },
+    "mainThread": { "passed": true, "offThreadHandlers": 97, "allowlistedHandlers": 40 },
+    "eslint": { "passed": true, "errors": 0, "warnings": 10 },
+    "typescript": { "passed": true },
+    "vitest": { "files": 252, "passed": 2981, "failed": 0 },
+    "performance": { "passed": 9, "failed": 0 },
+    "cargoFmt": { "passed": true },
+    "rustLibrary": { "passed": 1209, "failed": 0, "ignored": 3 },
+    "rustIntegration": { "passed": 163, "failed": 0, "ignored": 5 },
+    "rustDoc": { "passed": 0, "failed": 0 },
+    "clippy": { "passed": true },
+    "iosTypography": { "passed": true },
+    "rendererBuild": { "passed": true },
+    "bundleBudget": {
+      "passed": true,
+      "desktopBytes": 1705308,
+      "desktopBudgetBytes": 1845493,
+      "desktopChunks": 9,
+      "mobileBytes": 1543532,
+      "mobileBudgetBytes": 1688207,
+      "mobileChunks": 8
+    }
+  },
+  "openIssues": [
+    { "id": "B11", "status": "unresolved", "note": "Native desktop startup intermittency remains a release prerequisite and is not fixed by v2." }
+  ],
+  "iosFocused": {
+    "scenario": "testActivityUsesSemanticColoursAndKeepsIntegrationArtwork",
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "simulator": "iPhone 17 Pro, iOS 26.5",
+    "resultBundle": "/private/tmp/argmax-phase1-b12-dd/Logs/Test/Test-Argmax-2026.09.13_12-29-14-+0200.xcresult"
+  },
+  "runs": [
+    {
+      "scenario": "chat-resume",
+      "run": "chat-resume-native",
+      "status": "passed",
+      "coverage": { "backend": "real", "provider": "fixture-through-production-adapter", "ui": "native-webview" },
+      "assertionsPassed": 8,
+      "errors": [],
+      "report": "/private/tmp/argmax-phase1-final-20260913-chat-resume-native/report.json",
+      "reportSha256": "83b2998d9d4a239f9aefc88933bec87a6f084901340bee25a2db00ac7d26c1b6"
+    },
+    {
+      "scenario": "persistent-subagent",
+      "run": "persistent-subagent-browser",
+      "status": "passed",
+      "coverage": { "backend": "real", "provider": "fixture-through-production-adapter", "ui": "remote-browser" },
+      "assertionsPassed": 9,
+      "errors": [],
+      "report": "/private/tmp/argmax-phase1-final-20260913-persistent-subagent-browser/report.json",
+      "reportSha256": "5c0d034445890e9bc0e9ea85012f0bee8b76f2adadd0573402551a19c597a0e1"
+    },
+    {
+      "scenario": "cancellation",
+      "run": "cancellation-native",
+      "status": "failed",
+      "coverage": { "backend": "real", "provider": "fixture-through-production-adapter", "ui": "native-webview" },
+      "assertionsPassed": 2,
+      "errors": ["native UI verification failed: session row containing [argmax-verification:cancellation] was not visible"],
+      "report": "/private/tmp/argmax-phase1-final-20260913-cancellation-native/report.json",
+      "reportSha256": "fbc0dec98d0435738db930f0f0aa212c3d7ed4d8f26f71eb82b470173d5685bb"
+    },
+    {
+      "scenario": "provider-error",
+      "run": "provider-error-native",
+      "status": "failed",
+      "coverage": null,
+      "assertionsPassed": 0,
+      "errors": ["verification app process did not become visible"],
+      "report": "/private/tmp/argmax-phase1-final-20260913-provider-error-native/report.json",
+      "reportSha256": "9d1680676fdd1a2bd400cbb467f86475dade13609c8b87f1d64c8d9c7f74f581"
+    }
+  ],
+  "logs": [
+    {
+      "file": "/private/tmp/argmax-phase1-final-20260913-precheck.log",
+      "sha256": "7720454fc4855f5560f10bf226331c5a4ca0738c6cf959f92cab90dfd08b2372"
+    }
+  ]
+}

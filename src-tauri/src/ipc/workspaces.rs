@@ -169,6 +169,25 @@ pub(crate) fn workspaces_set_pinned_impl(
     live_workspaces(state)?.set_pinned(input)
 }
 
+#[tauri::command(rename = "workspaces:mark-viewed")]
+#[specta::specta]
+pub async fn workspaces_mark_viewed(
+    state: State<'_, AppState>,
+    input: WorkspacesMarkViewedInput,
+) -> ArgmaxResult<Vec<WorkspaceSummary>> {
+    workspaces_mark_viewed_impl(&state, input).await
+}
+
+pub(crate) async fn workspaces_mark_viewed_impl(
+    state: &AppState,
+    input: WorkspacesMarkViewedInput,
+) -> ArgmaxResult<Vec<WorkspaceSummary>> {
+    let workspaces = live_workspaces(state)?;
+    tauri::async_runtime::spawn_blocking(move || workspaces.mark_viewed(input))
+        .await
+        .map_err(|error| ArgmaxError::service("WORKSPACES_MARK_VIEWED_JOIN", error.to_string()))?
+}
+
 #[tauri::command(rename = "workspaces:set-priority-added")]
 #[specta::specta]
 pub fn workspaces_set_priority_added(

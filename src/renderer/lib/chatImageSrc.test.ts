@@ -35,10 +35,12 @@ describe("resolveChatImageSrc", () => {
     );
   });
 
-  it("keeps web images and rejects relative traversal", () => {
-    expect(resolveChatImageSrc("https://example.com/shot.png", "/repo")).toBe(
-      "https://example.com/shot.png"
-    );
+  it("refuses remote images so the webview never makes an unasked request", () => {
+    expect(resolveChatImageSrc("https://example.com/shot.png", "/repo")).toBeNull();
+    expect(resolveChatImageSrc("http://host/x.png?secret=abc", "/repo")).toBeNull();
+  });
+
+  it("rejects relative traversal", () => {
     expect(resolveChatImageSrc("../secret.png", "/repo")).toBeNull();
   });
 });

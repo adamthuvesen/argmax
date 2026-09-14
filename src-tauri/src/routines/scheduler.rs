@@ -5,9 +5,10 @@
 //! dead, and macOS sleeps pause them, so an overdue routine fires once on
 //! the first tick after wake — the next occurrence is computed strictly
 //! after the fire time, collapsing any backlog into a single late run.
-//! A one-shot that fired is disabled; a recurring launch failure backs off
-//! by [`crate::routines::schedule::retry_after`] so a broken routine can
-//! never retry on every future tick.
+//! A one-shot the user wrote is disabled once it fires, while a wake a chat
+//! set for itself is deleted: the chat holds the record. A recurring launch
+//! failure backs off by [`crate::routines::schedule::retry_after`] so a
+//! broken routine can never retry on every future tick.
 
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
@@ -20,7 +21,7 @@ use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::ipc::inputs::ProvidersSendInput;
 use crate::ipc::validation::{NonEmptyString, Prompt, SessionId};
 use crate::persistence::database::Database;
-use crate::persistence::routines::{self, RoutineLaunchFields, RoutineRunTarget};
+use crate::persistence::routines::{self, RoutineAuthor, RoutineLaunchFields, RoutineRunTarget};
 use crate::persistence::time::now_iso;
 use crate::providers::session_service::{self, ProviderSessionService};
 use crate::providers::{AgentMode, ProviderId, ReasoningEffort};
@@ -207,13 +208,12 @@ pub(crate) async fn fire_routine(
         if let Some(session_id) = fields.last_session_id.clone() {
             match send_routine_follow_up(providers, &fields, provider, &session_id).await {
                 FollowUpOutcome::Sent => {
-                    let _ = mark(
+                    settle_success(
                         database,
                         &fields,
                         &last_run,
-                        stays_scheduled.next_run_at(next.as_ref()).as_deref(),
-                        None,
-                        stays_scheduled.enabled(),
+                        stays_scheduled,
+                        next.as_ref(),
                         None,
                     );
                     return FireOutcome::Recorded;
@@ -296,15 +296,12 @@ pub(crate) async fn fire_routine(
                 workspace_id = %launched.workspace_id,
                 "scheduled task fired"
             );
-            // A one-shot is spent once it launches: disable the row so the
-            // task list keeps showing what ran rather than silently deleting.
-            let _ = mark(
+            settle_success(
                 database,
                 &fields,
                 &last_run,
-                stays_scheduled.next_run_at(next.as_ref()).as_deref(),
-                None,
-                stays_scheduled.enabled(),
+                stays_scheduled,
+                next.as_ref(),
                 matches!(fields.run_target, RoutineRunTarget::SameSession)
                     .then_some(launched.session_id.as_str()),
             );
@@ -396,6 +393,41 @@ async fn send_routine_follow_up(
 
 fn invalid_input_message(error: crate::error::InvalidInputIssue) -> String {
     error.message
+}
+
+/// Books a firing that landed. A one-shot the user wrote is disabled and kept,
+/// so their task list still shows what ran; a wake a chat set for itself is
+/// spent the moment it lands and is deleted, because the chat it woke holds
+/// the record and a paused row nobody wrote only piles up. Failures never come
+/// through here: those stay on the list with their `last_error`.
+fn settle_success(
+    database: &Arc<Database>,
+    fields: &RoutineLaunchFields,
+    last_run: &str,
+    stays_scheduled: StaysScheduled,
+    next: Option<&chrono::DateTime<chrono::Utc>>,
+    launched_session_id: Option<&str>,
+) {
+    if fields.run_once_at.is_some() && fields.created_by == RoutineAuthor::Agent {
+        match routines::delete_spent_routine(&database.connection(), &fields.id, &fields.updated_at)
+        {
+            // `false` is an edit made while the launch was awaiting: the row
+            // is no longer the wake that fired, so leave it as the user left it.
+            Ok(_) => return,
+            Err(error) => {
+                tracing::warn!(routine_id = %fields.id, ?error, "spent wake could not be deleted; disabling instead");
+            }
+        }
+    }
+    let _ = mark(
+        database,
+        fields,
+        last_run,
+        stays_scheduled.next_run_at(next).as_deref(),
+        None,
+        stays_scheduled.enabled(),
+        launched_session_id,
+    );
 }
 
 fn mark(
@@ -494,6 +526,87 @@ mod tests {
         handle.abort();
         assert!(handle.await.unwrap_err().is_cancelled());
         assert!(runs.try_start("same").is_some());
+    }
+
+    fn database_with_project() -> Arc<Database> {
+        let database = Arc::new(Database::open_in_memory().expect("open db"));
+        {
+            let connection = database.connection();
+            connection
+                .execute(
+                    r#"
+                INSERT INTO projects (
+                    id, name, repo_path, current_branch,
+                    worktree_location, created_at, updated_at
+                )
+                VALUES ('p1', 'Demo', '/tmp/demo', 'main', '/tmp/worktrees',
+                        '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')
+                "#,
+                    [],
+                )
+                .expect("insert project");
+        }
+        database
+    }
+
+    fn once_routine(database: &Arc<Database>, id: &str, created_by: RoutineAuthor) {
+        let connection = database.connection();
+        routines::upsert_routine(
+            &connection,
+            &routines::UpsertRoutineInput {
+                id: id.to_string(),
+                name: "Check CI".to_string(),
+                project_id: "p1".to_string(),
+                prompt: "Check CI".to_string(),
+                provider: "claude".to_string(),
+                model_label: "Opus 5".to_string(),
+                model_id: "claude-opus-5".to_string(),
+                run_target: RoutineRunTarget::SameSession,
+                cron_expr: None,
+                run_once_at: Some("2026-01-01T09:00:00.000Z".to_string()),
+                enabled: true,
+                created_by,
+            },
+            Some("2026-01-01T09:00:00.000Z".to_string()),
+        )
+        .expect("insert routine");
+    }
+
+    /// The point of the whole author column: a wake a chat set for itself
+    /// leaves nothing behind, while a one-shot the user wrote stays on their
+    /// list as a paused record of what ran.
+    #[test]
+    fn a_spent_wake_is_deleted_while_the_users_one_shot_is_kept() {
+        let database = database_with_project();
+        once_routine(&database, "wake", RoutineAuthor::Agent);
+        once_routine(&database, "theirs", RoutineAuthor::User);
+
+        for id in ["wake", "theirs"] {
+            let fields = {
+                let connection = database.connection();
+                routines::routine_launch_fields(
+                    &routines::find_routine_by_id(&connection, id).expect("row"),
+                )
+            };
+            settle_success(
+                &database,
+                &fields,
+                "2026-01-01T09:00:00.000Z",
+                StaysScheduled(false),
+                None,
+                Some("session-1"),
+            );
+        }
+
+        let connection = database.connection();
+        assert!(routines::find_routine_by_id(&connection, "wake").is_err());
+        let theirs = routines::find_routine_by_id(&connection, "theirs").expect("kept");
+        assert!(!theirs.enabled);
+        assert_eq!(theirs.next_run_at, None);
+        assert_eq!(
+            theirs.last_run_at.as_deref(),
+            Some("2026-01-01T09:00:00.000Z")
+        );
     }
 
     #[test]

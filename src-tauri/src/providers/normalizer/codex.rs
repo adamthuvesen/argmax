@@ -118,26 +118,38 @@ pub fn normalize_tool_item(
 ) -> Option<PersistTimelineEventInput> {
     let item = item?;
     let item_type = item_type?;
-    if item_type == "agent_message"
-        || !matches!(provider_type, Some("item.started" | "item.completed"))
-    {
+    if !matches!(provider_type, Some("item.started" | "item.completed")) {
         return None;
     }
 
+    // Async questions are delivered as messages, but answered through the same
+    // next-user-message flow as the other providers' question cards.
+    let async_questions = if item_type == "agent_message" {
+        Some(async_question_input(item)?)
+    } else {
+        None
+    };
     let action = object_value(item.get("action"));
-    if !is_tool_like_item(item, action, item_type) {
+    if async_questions.is_none() && !is_tool_like_item(item, action, item_type) {
         return None;
     }
     // Codex collab items (`collab_tool_call`: spawn_agent / send_message_to_thread /
     // wait / close_agent) carry the tool under `tool`, not `name` — surface that
     // as the tool name so the renderer's agent bucket sees `spawn_agent`.
-    let tool_name = string_value(item.get("name"))
-        .or_else(|| string_value(item.get("tool")))
-        .unwrap_or(item_type);
+    let tool_name = if async_questions.is_some() {
+        "AskUserQuestion"
+    } else {
+        string_value(item.get("name"))
+            .or_else(|| string_value(item.get("tool")))
+            .unwrap_or(item_type)
+    };
     let mut tool_payload = item.clone();
     tool_payload.insert("type".to_string(), Value::String(tool_name.to_string()));
     tool_payload.insert("name".to_string(), Value::String(tool_name.to_string()));
-    tool_payload.insert("input".to_string(), extract_tool_input(item, action));
+    tool_payload.insert(
+        "input".to_string(),
+        async_questions.unwrap_or_else(|| extract_tool_input(item, action)),
+    );
     if let Some(provider_type) = provider_type {
         tool_payload.insert(
             "providerEventType".to_string(),
@@ -158,10 +170,46 @@ pub fn normalize_tool_item(
     ))
 }
 
+fn async_question_input(item: &Map<String, Value>) -> Option<Value> {
+    if string_value(item.get("delivery")) != Some("async") {
+        return None;
+    }
+    let raw_questions = item.get("questions")?.as_array()?;
+    if raw_questions.is_empty() {
+        return None;
+    }
+    let mut questions = Vec::with_capacity(raw_questions.len());
+    for raw in raw_questions {
+        let title = raw.get("title")?.as_str()?;
+        let options = raw.get("options")?.as_array()?;
+        // Leave unsupported shapes as visible prose instead of creating a card
+        // that the clients cannot draw or silently dropping part of a question.
+        if title.trim().is_empty() || options.is_empty() || options.len() > 4 {
+            return None;
+        }
+        let mut labels = Vec::with_capacity(options.len());
+        for option in options {
+            let label = option.as_str()?;
+            if label.trim().is_empty() {
+                return None;
+            }
+            labels.push(serde_json::json!({ "label": label }));
+        }
+        questions.push(serde_json::json!({
+            "question": title,
+            "header": "",
+            "options": labels,
+            "multiSelect": false
+        }));
+    }
+    Some(serde_json::json!({ "questions": questions, "delivery": "async" }))
+}
+
 /// Codex reports native child work through collab tool rows. `spawn_agent` and
 /// an idle child's `send_input` open a logical run; input delivered while the
 /// child is still active stays inside that run. Transport completions only
-/// close the tracked run when `agents_states` reports a terminal child state.
+/// close the tracked run when `agents_states` reports a terminal child state
+/// or a close succeeds, even if its last-known child state is still running.
 pub fn normalize_native_agent_lifecycle_events(
     event: &ProviderOutputEvent,
     provider_type: Option<&str>,
@@ -222,6 +270,12 @@ pub fn normalize_native_agent_lifecycle_events(
                 status,
             ));
         }
+        let closed = tool_name == "close_agent" && delivery_succeeded;
+        let status = if closed && !status.is_some_and(is_terminal_agent_status) {
+            Some("cancelled")
+        } else {
+            status
+        };
         if !status.is_some_and(is_terminal_agent_status) {
             continue;
         }
@@ -232,7 +286,11 @@ pub fn normalize_native_agent_lifecycle_events(
         let message = state
             .and_then(|state| string_value(state.get("message")))
             .filter(|message| !message.trim().is_empty())
-            .unwrap_or("Agent completed");
+            .unwrap_or(if closed {
+                "Agent stopped"
+            } else {
+                "Agent completed"
+            });
         events.push(codex_agent_lifecycle_event(
             event,
             item,
@@ -315,6 +373,41 @@ pub fn normalize_error_item(
     ))
 }
 
+/// Timeline row for Codex's context compaction, or `None` for any other item.
+///
+/// Codex brackets the rewrite with `item.started` / `item.completed` on a
+/// `context_compaction` item and emits nothing at all in between. On a large
+/// thread that is over two minutes of silence, and it runs *before* the turn's
+/// own input is ingested, so not even the prompt echo arrives to prove the
+/// chat is alive. Without a marker the pane reads as dead, which invites a
+/// Stop — and a Stop inside that window throws the submitted message away
+/// (`CodexTurnHandle::steer` refuses for the same reason). The item carries no
+/// token counts, unlike Claude's `compact_boundary`, so the marker is bare.
+pub fn normalize_compaction_item(
+    event: &ProviderOutputEvent,
+    provider_type: Option<&str>,
+    item_type: Option<&str>,
+) -> Option<PersistTimelineEventInput> {
+    if item_type? != "context_compaction" {
+        return None;
+    }
+    match provider_type? {
+        "item.started" => Some(timeline_event(
+            event,
+            "session.compacting",
+            "Compacting context",
+            Value::Object(Map::new()),
+        )),
+        "item.completed" => Some(timeline_event(
+            event,
+            "session.compacted",
+            "Compacted context",
+            Value::Object(Map::new()),
+        )),
+        _ => None,
+    }
+}
+
 pub fn normalize_reasoning_item(
     event: &ProviderOutputEvent,
     payload: &Map<String, Value>,
@@ -379,6 +472,13 @@ fn is_tool_like_item(
     // `todo.updated` event rather than a tool row.
     if matches!(item_type, "reasoning" | "todo_list" | "error") {
         return false;
+    }
+    // Codex opens a built-in web search as `{"type":"web_search","query":"",
+    // "action":null}` and only fills the query on `item.completed`. Without
+    // this the start is dropped, the completion has no start to join, and
+    // a 40 s search phase renders nothing on either surface.
+    if item_type == "web_search" {
+        return true;
     }
     if string_value(item.get("name")).is_some()
         || string_value(item.get("tool")).is_some()
@@ -763,6 +863,91 @@ mod tests {
     use crate::providers::ProviderId;
 
     #[test]
+    fn codex_async_questions_become_question_cards() {
+        let mut context = NormalizerSessionContext::default();
+        let item = json!({
+            "id": "ask-1",
+            "type": "agent_message",
+            "delivery": "async",
+            "phase": "final_answer",
+            "text": "Which surface?\n- iOS\n- Both",
+            "questions": [{ "title": "Which surface?", "options": ["iOS", "Both"] }]
+        });
+        for (provider_type, expected_type) in [
+            ("item.started", "command.started"),
+            ("item.completed", "command.completed"),
+        ] {
+            let result = normalize_provider_event(
+                ProviderId::Codex,
+                &output_event(&json!({ "type": provider_type, "item": item }).to_string()),
+                &mut context,
+            );
+            assert_eq!(result.events.len(), 1);
+            let event = &result.events[0];
+            assert_eq!(event.r#type, expected_type);
+            assert_eq!(event.message, "AskUserQuestion");
+            assert_eq!(event.payload["name"], "AskUserQuestion");
+            assert_eq!(event.payload["id"], "ask-1");
+            assert_eq!(event.payload["delivery"], "async");
+            assert_eq!(
+                event.payload["input"],
+                json!({ "delivery": "async", "questions": [{
+                "question": "Which surface?", "header": "",
+                "options": [{ "label": "iOS" }, { "label": "Both" }],
+                "multiSelect": false
+            }] })
+            );
+        }
+    }
+
+    #[test]
+    fn codex_compaction_brackets_become_status_markers() {
+        let mut context = NormalizerSessionContext::default();
+        let item =
+            json!({ "id": "01a0a028-f404-7382-ad32-44902aeca8c6", "type": "context_compaction" });
+        for (provider_type, expected_type, expected_message) in [
+            ("item.started", "session.compacting", "Compacting context"),
+            ("item.completed", "session.compacted", "Compacted context"),
+        ] {
+            let result = normalize_provider_event(
+                ProviderId::Codex,
+                &output_event(&json!({ "type": provider_type, "item": item }).to_string()),
+                &mut context,
+            );
+            assert_eq!(result.events.len(), 1);
+            assert_eq!(result.events[0].r#type, expected_type);
+            assert_eq!(result.events[0].message, expected_message);
+        }
+    }
+
+    #[test]
+    fn codex_unsupported_async_questions_remain_visible_prose() {
+        for questions in [
+            json!([]),
+            json!([{ "title": "", "options": ["A"] }]),
+            json!([{ "title": "Which?", "options": ["A", 42] }]),
+            json!([{ "title": "Which?", "options": ["A", "B", "C", "D", "E"] }]),
+            json!([{ "title": "Which?" }]),
+        ] {
+            let result = normalize_provider_event(
+                ProviderId::Codex,
+                &output_event(
+                    &json!({
+                        "type": "item.completed",
+                        "item": { "id": "ask-1", "type": "agent_message", "delivery": "async",
+                            "text": "Which surface?", "questions": questions }
+                    })
+                    .to_string(),
+                ),
+                &mut NormalizerSessionContext::default(),
+            );
+            assert_eq!(result.events.len(), 1);
+            assert_eq!(result.events[0].r#type, "message.completed");
+            assert_eq!(result.events[0].message, "Which surface?");
+        }
+    }
+
+    #[test]
     fn codex_item_events_become_command_events() {
         let mut context = NormalizerSessionContext::default();
         let result = normalize_provider_event(
@@ -778,6 +963,35 @@ mod tests {
         );
         assert_eq!(result.events[0].r#type, "command.started");
         assert_eq!(result.events[0].payload["input"]["command"], "npm test");
+    }
+
+    // A built-in web search starts with an empty query and a null action; the
+    // query only lands on `item.completed`. The start must still open a card
+    // or the completion has nothing to join and the search phase is invisible.
+    #[test]
+    fn codex_web_search_start_with_empty_query_opens_a_tool() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                &json!({
+                    "type": "item.started",
+                    "item": {
+                        "id": "exec-1",
+                        "type": "web_search",
+                        "query": "",
+                        "action": null,
+                        "results": null
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(result.events[0].r#type, "command.started");
+        assert_eq!(result.events[0].message, "web_search");
+        assert_eq!(result.events[0].payload["id"], "exec-1");
     }
 
     // `arguments` arrives as a JSON string, and `paths` is not one of the keys
@@ -915,6 +1129,70 @@ mod tests {
             lifecycle.payload["providerChildSessionId"],
             "019f2214-c736-7f60-bb78-75b6ecff57a3"
         );
+    }
+
+    #[test]
+    fn codex_collab_close_agent_settles_only_after_success() {
+        let mut context = NormalizerSessionContext::default();
+        let completed = |id: &str, tool: &str, item_status: &str| {
+            output_event(
+                &json!({
+                    "type": "item.completed",
+                    "item": {
+                        "id": id, "type": "collab_tool_call", "tool": tool,
+                        "sender_thread_id": "parent", "receiver_thread_ids": ["child"],
+                        "agents_states": { "child": { "status": "running", "message": null } },
+                        "status": item_status
+                    }
+                })
+                .to_string(),
+            )
+        };
+        normalize_provider_event(
+            ProviderId::Codex,
+            &completed("spawn", "spawn_agent", "completed"),
+            &mut context,
+        );
+        for status in ["in_progress", "failed", "interrupted"] {
+            let result = normalize_provider_event(
+                ProviderId::Codex,
+                &completed("close", "close_agent", status),
+                &mut context,
+            );
+            assert!(!result
+                .events
+                .iter()
+                .any(|event| event.r#type == "agent.completed"));
+            assert_eq!(
+                context
+                    .codex_active_agent_runs
+                    .get("child")
+                    .map(String::as_str),
+                Some("spawn")
+            );
+        }
+        let closed = normalize_provider_event(
+            ProviderId::Codex,
+            &completed("close", "close_agent", "completed"),
+            &mut context,
+        );
+        let terminal = closed
+            .events
+            .iter()
+            .find(|event| event.r#type == "agent.completed")
+            .unwrap();
+        assert_eq!(terminal.payload["agentRunId"], "spawn");
+        assert_eq!(terminal.payload["status"], "cancelled");
+        assert_eq!(terminal.message, "Agent stopped");
+        let repeated = normalize_provider_event(
+            ProviderId::Codex,
+            &completed("close-again", "close_agent", "completed"),
+            &mut context,
+        );
+        assert!(!repeated
+            .events
+            .iter()
+            .any(|event| event.r#type == "agent.completed"));
     }
 
     #[test]

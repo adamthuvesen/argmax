@@ -32,8 +32,20 @@ describe("serverIconFor", () => {
     expect(icon?.layers.find((layer) => layer.fill === "var(--fox-nose)")?.path).toMatch(/^M4[0-9] 2[0-9]h/);
   });
 
+  it("gives every mascot layer a tone so monochrome keeps the head off one ink", () => {
+    const layers = serverIconFor("argmax")?.layers ?? [];
+    expect(layers.every((layer) => layer.tone !== undefined)).toBe(true);
+    expect(new Set(layers.map((layer) => layer.tone))).toEqual(new Set(["line", "fur", "cream", "eye"]));
+  });
+
+  it("draws Hex as its wordmark on a circular badge", () => {
+    const layers = serverIconFor("Hex")?.layers;
+    expect(layers?.map((layer) => layer.fill)).toEqual(["#030119", "#EABCBB"]);
+    expect(layers?.[0]?.path).toMatch(/^M12 0A12 12 /);
+  });
+
   it("returns null for a server with no mark wired up", () => {
-    expect(serverIconFor("hex")).toBeNull();
+    expect(serverIconFor("context7")).toBeNull();
     expect(serverIconFor("browser use")).toBeNull();
   });
 });

@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 
-import { access, appendFile, mkdir, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { access, appendFile, mkdir, realpath, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 export const VERIFICATION_PROVIDER = Object.freeze({
   provider: "claude",
@@ -44,6 +48,8 @@ export const VERIFICATION_CURSOR_PROVIDER = Object.freeze({
 
 export const VERIFICATION_CONVERSATION_ID =
   "argmax-verification-conversation";
+export const VERIFICATION_MOVED_CONVERSATION_ID =
+  "argmax-verification-moved-conversation";
 
 export const VERIFICATION_SUBAGENT = Object.freeze({
   id: "verification-persistent-agent",
@@ -78,6 +84,7 @@ export const VERIFICATION_CURSOR_SUBAGENT = Object.freeze({
 export const VERIFICATION_BARRIERS = Object.freeze({
   chatResumeStream: "chat-resume-stream",
   chatResumeTool: "chat-resume-tool",
+  sessionMoveScheduled: "session-move-scheduled",
 });
 
 export const VERIFICATION_SCENARIOS = Object.freeze({
@@ -90,6 +97,16 @@ export const VERIFICATION_SCENARIOS = Object.freeze({
     prompt: "[argmax-verification:chat-resume:second]",
     visibleText: "Verification resumed turn complete.",
     resumeConversationId: VERIFICATION_CONVERSATION_ID,
+  },
+  sessionMoveFirst: {
+    prompt: "[argmax-verification:session-move:first]",
+    visibleText: "Verification session move source turn complete.",
+  },
+  sessionMoveSecond: {
+    prompt: "[argmax-verification:session-move:continuation]",
+    visibleText: "Verification session move destination turn complete.",
+    resumeConversationId: VERIFICATION_CONVERSATION_ID,
+    conversationId: VERIFICATION_MOVED_CONVERSATION_ID,
   },
   persistentSubagentFirst: {
     prompt: "[argmax-verification:persistent-subagent:first]",
@@ -108,6 +125,14 @@ export const VERIFICATION_SCENARIOS = Object.freeze({
     prompt: "[argmax-verification:persistent-codex-subagent:second]",
     visibleText: "Verification persistent Codex child follow-up response.",
     resumeConversationId: VERIFICATION_CONVERSATION_ID,
+  },
+  codexUserInput: {
+    prompt: "[argmax-verification:codex-user-input]",
+    questionText: "Which verification route should I use?",
+    questionId: "verification-route",
+    requestId: "verification-user-input",
+    expectedAnswer: "API route",
+    visibleText: "Verification Codex received API route in the same turn.",
   },
   persistentOpencodeSubagentFirst: {
     prompt: "[argmax-verification:persistent-opencode-subagent:first]",
@@ -191,6 +216,7 @@ async function promptFrom(args) {
             response: { subtype: "success", request_id: message.request_id, response: {} },
           });
         } else if (message.type === "user" && typeof message.message?.content === "string") {
+          await emit(message);
           return message.message.content;
         } else {
           throw new Error("verification fixture received an unsupported control input");
@@ -208,16 +234,16 @@ async function promptFrom(args) {
   return prompt;
 }
 
-async function emitInit() {
+async function emitInit(conversationId = VERIFICATION_CONVERSATION_ID) {
   await emit({
     type: "system",
     subtype: "init",
-    session_id: VERIFICATION_CONVERSATION_ID,
+    session_id: conversationId,
     model: VERIFICATION_PROVIDER.modelId,
   });
 }
 
-async function emitTextDelta(text) {
+async function emitTextDelta(text, conversationId = VERIFICATION_CONVERSATION_ID) {
   await emit({
     type: "stream_event",
     event: {
@@ -225,11 +251,11 @@ async function emitTextDelta(text) {
       index: 0,
       delta: { type: "text_delta", text },
     },
-    session_id: VERIFICATION_CONVERSATION_ID,
+    session_id: conversationId,
   });
 }
 
-async function emitAssistant(content, id) {
+async function emitAssistant(content, id, conversationId = VERIFICATION_CONVERSATION_ID) {
   await emit({
     type: "assistant",
     message: {
@@ -245,17 +271,17 @@ async function emitAssistant(content, id) {
         cache_creation_input_tokens: 0,
       },
     },
-    session_id: VERIFICATION_CONVERSATION_ID,
+    session_id: conversationId,
   });
 }
 
-async function emitSuccess(result) {
+async function emitSuccess(result, conversationId = VERIFICATION_CONVERSATION_ID) {
   await emit({
     type: "result",
     subtype: "success",
     is_error: false,
     result,
-    session_id: VERIFICATION_CONVERSATION_ID,
+    session_id: conversationId,
   });
 }
 
@@ -560,11 +586,19 @@ function emitCodexTurn(prompt, turnId, resumed) {
 }
 
 async function runCodexAppServer(args) {
-  if (args.join(" ") !== "app-server --stdio") {
+  const config = args.slice(2);
+  const allowedConfig = new Set([
+    "tools.update_plan.enabled=true",
+    "tools.experimental_request_user_input.enabled=true",
+  ]);
+  if (args[0] !== "app-server" || args[1] !== "--stdio"
+      || config.length % 2 !== 0
+      || config.some((value, index) => index % 2 === 0 ? value !== "-c" : !allowedConfig.has(value))) {
     throw new Error(`unsupported Codex app-server arguments: ${args.join(" ")}`);
   }
   const lines = createInterface({ input: process.stdin });
   let resumed = false;
+  let questionTurnId = null;
   for await (const line of lines) {
     let request;
     try {
@@ -573,6 +607,25 @@ async function runCodexAppServer(args) {
       throw new Error("Codex app-server fixture received malformed JSON-RPC");
     }
     const { id, method, params = {} } = request;
+    if (method === undefined && id === VERIFICATION_SCENARIOS.codexUserInput.requestId) {
+      const definition = VERIFICATION_SCENARIOS.codexUserInput;
+      const answers = request.result?.answers?.[definition.questionId]?.answers;
+      if (!questionTurnId || request.error || !Array.isArray(answers)
+          || answers.length !== 1 || answers[0] !== definition.expectedAnswer) {
+        throw new Error("Codex question did not receive the expected structured answer");
+      }
+      codexNotification("item/completed", {
+        threadId: VERIFICATION_CONVERSATION_ID,
+        turnId: questionTurnId,
+        item: { id: "verification-question-answer", type: "agentMessage", text: definition.visibleText },
+      });
+      codexNotification("turn/completed", {
+        threadId: VERIFICATION_CONVERSATION_ID,
+        turn: { id: questionTurnId, status: "completed", items: [] },
+      });
+      questionTurnId = null;
+      continue;
+    }
     if (method === "initialized" && id === undefined) continue;
     if (id === undefined) {
       throw new Error(`Codex app-server fixture received unsupported notification ${method ?? "<missing>"}`);
@@ -600,7 +653,8 @@ async function runCodexAppServer(args) {
       const turnId = `argmax-verification-turn-${resumed ? "follow-up" : "first"}`;
       const first = prompt.includes(VERIFICATION_SCENARIOS.persistentCodexSubagentFirst.prompt);
       const second = prompt.includes(VERIFICATION_SCENARIOS.persistentCodexSubagentSecond.prompt);
-      if ((!first && !second) || first === resumed) {
+      const question = prompt.includes(VERIFICATION_SCENARIOS.codexUserInput.prompt);
+      if ((!first && !second && !question) || (question ? resumed : first === resumed)) {
         writeJsonRpc({
           jsonrpc: "2.0",
           id,
@@ -609,7 +663,34 @@ async function runCodexAppServer(args) {
         continue;
       }
       writeJsonRpc({ jsonrpc: "2.0", id, result: { turn: { id: turnId, status: "inProgress", items: [] } } });
-      emitCodexTurn(prompt, turnId, resumed);
+      if (question) {
+        if (!config.includes("tools.experimental_request_user_input.enabled=true")) {
+          throw new Error("Codex question tool was not enabled at launch");
+        }
+        const definition = VERIFICATION_SCENARIOS.codexUserInput;
+        questionTurnId = turnId;
+        codexNotification("turn/started", {
+          threadId: VERIFICATION_CONVERSATION_ID,
+          turn: { id: turnId, status: "inProgress", items: [] },
+        });
+        writeJsonRpc({
+          jsonrpc: "2.0", id: definition.requestId, method: "item/tool/requestUserInput",
+          params: {
+            threadId: VERIFICATION_CONVERSATION_ID, turnId, itemId: "verification-question",
+            isBlocking: true,
+            questions: [{
+              id: definition.questionId, header: "Route", question: definition.questionText,
+              isOther: true, isSecret: false,
+              options: [
+                { label: definition.expectedAnswer, description: "Resume the waiting request." },
+                { label: "Alternative", description: "Choose another route." },
+              ],
+            }],
+          },
+        });
+      } else {
+        emitCodexTurn(prompt, turnId, resumed);
+      }
     } else {
       writeJsonRpc({ jsonrpc: "2.0", id, error: { code: -32601, message: `unsupported method ${method}` } });
     }
@@ -989,6 +1070,98 @@ async function runSecondTurn(args) {
   await emitSuccess(VERIFICATION_SCENARIOS.chatResumeSecond.visibleText);
 }
 
+function requiredEnvironmentValue(name) {
+  const value = process.env[name];
+  if (!value) throw new Error(`session-move fixture requires ${name}`);
+  return value;
+}
+
+async function runSessionMoveFirst(args) {
+  if (args.includes("--resume")) {
+    throw new Error("fresh session-move fixture unexpectedly received --resume");
+  }
+  const argmaxBinary = requiredEnvironmentValue("ARGMAX_BIN");
+  requiredEnvironmentValue("ARGMAX_SESSION_LAUNCH_SOCKET");
+  requiredEnvironmentValue("ARGMAX_SESSION_LAUNCH_TOKEN");
+  const movePath = requiredEnvironmentValue("ARGMAX_VERIFICATION_MOVE_PATH");
+  const controlDirectory = requiredEnvironmentValue("ARGMAX_VERIFICATION_CONTROL_DIR");
+  const canonicalMovePath = await realpath(movePath);
+  const moveArgs = [
+    "session",
+    "move",
+    "--path",
+    movePath,
+    "--prompt",
+    VERIFICATION_SCENARIOS.sessionMoveSecond.prompt,
+    "--keep-source",
+  ];
+
+  await emitInit();
+  await emitTextDelta(VERIFICATION_SCENARIOS.sessionMoveFirst.visibleText);
+  const { stdout } = await execFileAsync(argmaxBinary, moveArgs, {
+    encoding: "utf8",
+    timeout: 10_000,
+  });
+  let response;
+  try {
+    response = JSON.parse(stdout);
+  } catch {
+    throw new Error("session move CLI did not return JSON");
+  }
+  const scheduled = response?.scheduled;
+  if (scheduled?.scheduled !== true) {
+    throw new Error("session move CLI did not schedule the move");
+  }
+  if (typeof scheduled.sourceSessionId !== "string" || !scheduled.sourceSessionId) {
+    throw new Error("session move CLI did not return a source session id");
+  }
+  if (typeof scheduled.path !== "string"
+      || await realpath(scheduled.path) !== canonicalMovePath) {
+    throw new Error("session move CLI returned the wrong destination path");
+  }
+  await writeFile(
+    join(controlDirectory, "session-move-cli-result.json"),
+    `${JSON.stringify({ command: argmaxBinary, args: moveArgs, response, canonicalMovePath }, null, 2)}\n`,
+    "utf8",
+  );
+  await waitAtBarrier(VERIFICATION_BARRIERS.sessionMoveScheduled);
+  await emitAssistant(
+    [{ type: "text", text: VERIFICATION_SCENARIOS.sessionMoveFirst.visibleText }],
+    "verification-message-session-move-source",
+  );
+  await emitSuccess(VERIFICATION_SCENARIOS.sessionMoveFirst.visibleText);
+}
+
+async function runSessionMoveSecond(args) {
+  const resumeId = optionValue(args, "--resume");
+  if (resumeId !== VERIFICATION_CONVERSATION_ID) {
+    throw new Error(
+      `session-move continuation expected --resume ${VERIFICATION_CONVERSATION_ID}, received ${resumeId ?? "nothing"}`,
+    );
+  }
+  if (!args.includes("--fork-session")) {
+    throw new Error("session-move continuation expected --fork-session");
+  }
+  const movePath = requiredEnvironmentValue("ARGMAX_VERIFICATION_MOVE_PATH");
+  if (await realpath(process.cwd()) !== await realpath(movePath)) {
+    throw new Error("session-move continuation started outside the destination checkout");
+  }
+  await emitInit(VERIFICATION_MOVED_CONVERSATION_ID);
+  await emitTextDelta(
+    VERIFICATION_SCENARIOS.sessionMoveSecond.visibleText,
+    VERIFICATION_MOVED_CONVERSATION_ID,
+  );
+  await emitAssistant(
+    [{ type: "text", text: VERIFICATION_SCENARIOS.sessionMoveSecond.visibleText }],
+    "verification-message-session-move-destination",
+    VERIFICATION_MOVED_CONVERSATION_ID,
+  );
+  await emitSuccess(
+    VERIFICATION_SCENARIOS.sessionMoveSecond.visibleText,
+    VERIFICATION_MOVED_CONVERSATION_ID,
+  );
+}
+
 async function runCancellation() {
   await emitInit();
   await emitTextDelta(VERIFICATION_SCENARIOS.cancellation.visibleText);
@@ -1046,6 +1219,14 @@ export async function runProviderFixture(args = process.argv.slice(2)) {
   }
   if (prompt.includes(VERIFICATION_SCENARIOS.chatResumeSecond.prompt)) {
     await runSecondTurn(args);
+    return;
+  }
+  if (prompt.includes(VERIFICATION_SCENARIOS.sessionMoveFirst.prompt)) {
+    await runSessionMoveFirst(args);
+    return;
+  }
+  if (prompt.includes(VERIFICATION_SCENARIOS.sessionMoveSecond.prompt)) {
+    await runSessionMoveSecond(args);
     return;
   }
   if (prompt.includes(VERIFICATION_SCENARIOS.persistentSubagentFirst.prompt)) {

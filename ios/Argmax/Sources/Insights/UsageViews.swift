@@ -3,8 +3,8 @@ import SwiftUI
 
 // The Usage page: hero totals, provider cards, daily cost chart, token flow,
 // and model breakdown — the desktop `UsagePanel` sections, stacked for a
-// phone. All narrowing is client-side in `InsightsStore`; the cards always
-// read the global summary.
+// phone. The provider filter narrows on the host; the cards always
+// list every provider, so the picker keeps offering the others.
 
 // MARK: - Hero
 
@@ -21,7 +21,8 @@ struct UsageHero: View {
             InsightsHeroNumber(
                 text: useTokens
                     ? InsightsFormat.compact(summary.tokens.processed)
-                    : InsightsFormat.usdFull(summary.costUsd)
+                    : InsightsFormat.usdFull(summary.costUsd),
+                value: useTokens ? summary.tokens.processed : summary.costUsd
             )
             .accessibilityLabel(
                 useTokens
@@ -112,7 +113,7 @@ struct UsageProviderCards: View {
             ? provider.tokens.processed : provider.costUsd
         let share = total > 0 ? value / total : 0
         return Button {
-            Haptics.light()
+            Haptics.selection()
             withAnimation(.easeOut(duration: 0.2)) {
                 store.providerFilter = chosen ? nil : provider.provider
             }
@@ -132,7 +133,7 @@ struct UsageProviderCards: View {
                     store.usageMode == .tokens
                         ? InsightsFormat.compact(value) : InsightsFormat.usdFull(value)
                 )
-                .font(.title3.weight(.bold)).monospacedDigit()
+                .typeStyle(.title3, weight: .bold).monospacedDigit()
                 .foregroundStyle(Theme.ink).lineLimit(1).minimumScaleFactor(0.7)
                 if provider.available {
                     Text(
@@ -177,7 +178,7 @@ struct UsageDailyChart: View {
     /// Dense: every provider has a value on every day. A stacked area with
     /// days missing interpolates across the gap and draws stray curves.
     private var buckets: [Bucket] {
-        let points = store.usageSeries()
+        let points = store.usage?.series ?? []
         let useTokens = store.usageMode == .tokens
         let providers = Array(Set(points.flatMap { $0.values.map(\.provider) })).sorted()
         return points.flatMap { point -> [Bucket] in
@@ -231,7 +232,7 @@ struct UsageDailyChart: View {
                         if let date = value.as(Date.self) {
                             AxisValueLabel {
                                 Text(DateFormatter.cachedAxis.string(from: date))
-                                    .font(.caption2).foregroundStyle(Theme.muted)
+                                    .typeStyle(.caption2).foregroundStyle(Theme.muted)
                             }
                         }
                         AxisGridLine(stroke: .init(lineWidth: 0.5))
@@ -247,7 +248,7 @@ struct UsageDailyChart: View {
                                         ? InsightsFormat.compact(number)
                                         : InsightsFormat.usdCompact(number)
                                 )
-                                .font(.caption2).foregroundStyle(Theme.muted)
+                                .typeStyle(.caption2).foregroundStyle(Theme.muted)
                             }
                         }
                         AxisGridLine(stroke: .init(lineWidth: 0.5))
@@ -262,7 +263,7 @@ struct UsageDailyChart: View {
     }
 
     private var daySpan: Int {
-        max(1, store.usageSeries().count)
+        max(1, store.usage?.series.count ?? 0)
     }
 
     private var legendTrailing: String? {
@@ -359,7 +360,7 @@ struct UsageTokenFlow: View {
                     Text("Cache savings").typeMeta().foregroundStyle(Theme.muted)
                     Spacer()
                     Text(InsightsFormat.usdFull(summary.cacheSavingsUsd))
-                        .font(.title3.weight(.bold)).monospacedDigit()
+                        .typeStyle(.title3, weight: .bold).monospacedDigit()
                         .foregroundStyle(Theme.sage)
                 }
                 .padding(.top, Spacing.snug)
@@ -402,8 +403,13 @@ struct UsageBreakdown: View {
     }
 
     private var modelRows: some View {
-        let rows = Array(store.usageModels().prefix(12))
-        let peak = rows.map(\.costUsd).max() ?? 1
+        let metric: KeyPath<UsageModelRow, Double> = store.usageMode == .tokens ? \.tokens.processed : \.costUsd
+        let rows = Array((store.usage?.models ?? []).sorted {
+            let left = $0[keyPath: metric]
+            let right = $1[keyPath: metric]
+            return left == right ? $0.modelId < $1.modelId : left > right
+        }.prefix(12))
+        let peak = rows.map { $0[keyPath: metric] }.max() ?? 1
         return VStack(spacing: 0) {
             ForEach(rows, id: \.modelId) { row in
                 VStack(alignment: .leading, spacing: 4) {
@@ -412,7 +418,7 @@ struct UsageBreakdown: View {
                             .fill(InsightsPalette.provider(row.provider))
                             .frame(width: 7, height: 7)
                         Text(row.modelId)
-                            .font(.argmaxMono(.callout)).foregroundStyle(Theme.ink)
+                            .typeStyle(.callout, mono: true).foregroundStyle(Theme.ink)
                             .lineLimit(1).truncationMode(.middle)
                         Spacer(minLength: 4)
                         Text(
@@ -429,7 +435,7 @@ struct UsageBreakdown: View {
                         .typeMeta().foregroundStyle(Theme.muted).lineLimit(1)
                         Spacer(minLength: 4)
                         InsightsShareBar(
-                            fraction: row.costUsd / max(peak, 0.01),
+                            fraction: row[keyPath: metric] / max(peak, 0.01),
                             color: InsightsPalette.provider(row.provider)
                         )
                         .frame(width: 72)

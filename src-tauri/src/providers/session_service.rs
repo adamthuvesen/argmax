@@ -68,8 +68,9 @@ use crate::{
         },
         pending_messages::{
             clear_session_queue, delete_message as delete_pending_message,
-            list_session_pending_messages, mark_message_launching, recover_pending_messages,
-            replace_session_queue, restore_launching_message,
+            delete_messages_for_collected_origins, list_session_pending_messages,
+            mark_message_launching, recover_pending_messages, replace_session_queue,
+            restore_launching_message,
         },
         projects::list_projects,
         session_messages::{
@@ -91,6 +92,12 @@ use crate::{
 };
 
 const MAX_PENDING_QUEUE: usize = 64;
+/// Codex may auto-compact between the first response to a steer and the tool
+/// continuation that follows it. Its replacement history keeps the user steer
+/// but can omit that first response, causing the model to answer it again.
+/// Queue near-full contexts for the next turn instead, with room for the first
+/// post-steer tool result.
+const CODEX_STEER_MAX_CONTEXT_PERCENT: i64 = 85;
 /// How many state changes a `session_wait` subscriber may fall behind before
 /// it is told to re-read the rows instead. A blocked waiter wakes on every
 /// message, so this only ever fills during a burst.
@@ -128,6 +135,17 @@ fn ensure_permission_mode_supported(
         ));
     }
     Ok(())
+}
+
+fn has_steering_context_headroom(session: &SessionSummary) -> bool {
+    if session.provider != ProviderId::Codex.as_str() {
+        return true;
+    }
+    let Some(context_window) = session.context_window.filter(|window| *window > 0) else {
+        return true;
+    };
+    session.context_tokens.saturating_mul(100)
+        < context_window.saturating_mul(CODEX_STEER_MAX_CONTEXT_PERCENT)
 }
 
 fn cap_notice_answer(answer: &str) -> String {
@@ -273,6 +291,7 @@ pub struct ProviderSessionService {
     termination_jobs: Arc<Mutex<HashMap<String, TerminationJob>>>,
     lifecycle: Arc<WorkspaceLifecycle>,
     approvals: Option<Arc<ApprovalService>>,
+    questions: OnceLock<Arc<crate::questions::service::QuestionService>>,
     session_control: OnceLock<Arc<SessionLaunchRegistry>>,
     /// Installed after database startup. A provider turn must capture code
     /// state before the first possible write, while scratch chats skip it.
@@ -391,6 +410,7 @@ impl ProviderSessionService {
             termination_jobs: Arc::new(Mutex::new(HashMap::new())),
             lifecycle,
             approvals,
+            questions: OnceLock::new(),
             session_control: OnceLock::new(),
             checkpoints: OnceLock::new(),
             goals: OnceLock::new(),
@@ -404,6 +424,12 @@ impl ProviderSessionService {
     pub fn set_session_control(&self, registry: Arc<SessionLaunchRegistry>) {
         if self.session_control.set(registry).is_err() {
             tracing::warn!("session control registry was already installed");
+        }
+    }
+
+    pub fn set_question_service(&self, questions: Arc<crate::questions::service::QuestionService>) {
+        if self.questions.set(questions).is_err() {
+            tracing::warn!("question service was already installed");
         }
     }
 
@@ -545,6 +571,49 @@ impl ProviderSessionService {
     fn settle_session_after_turn(&self, session_id: &str) {
         if let Some(registry) = self.session_control.get() {
             registry.signal_turn_settled(session_id);
+        }
+    }
+
+    /// Says on the chat that the turn ended before its message reached the
+    /// model, so the bubble above it is not a question anyone is answering.
+    ///
+    /// Codex runs a context compaction ahead of ingesting the turn's input and
+    /// emits nothing while it runs; a Stop in that window leaves the thread
+    /// with no user message for the turn at all. Without this line the chat
+    /// shows a sent message, a stop, and no reason the next turn acts as
+    /// though it was never asked.
+    fn note_undelivered_turn_input(&self, session_id: &str) {
+        let written = {
+            let connection = self.database.connection();
+            find_session_by_id(&connection, session_id).and_then(|session| {
+                let event = persist_timeline_event(
+                    &connection,
+                    &PersistTimelineEventInput {
+                        id: Uuid::new_v4().to_string(),
+                        session_id: session_id.to_string(),
+                        r#type: "session.note".to_string(),
+                        message:
+                            "Stopped before the agent read this message — it was compacting its \
+                             context. Send it again."
+                                .to_string(),
+                        payload: json!({ "operation": "turn.input-undelivered" }),
+                        created_at: None,
+                    },
+                )?;
+                Ok((session, event))
+            })
+        };
+        match written {
+            Ok((session, event)) => self.publish(DashboardDelta {
+                sessions: vec![session],
+                events: vec![event],
+                ..DashboardDelta::default()
+            }),
+            Err(error) => tracing::warn!(
+                session_id,
+                ?error,
+                "could not record that a stopped turn never delivered its input"
+            ),
         }
     }
 
@@ -812,7 +881,7 @@ impl ProviderSessionService {
             // while a cold launcher still owns its current directory.
             let _admission = admission;
             let event_service = Arc::clone(&service);
-            let callback_invocation_id = provider_invocation_id;
+            let callback_invocation_id = provider_invocation_id.clone();
             let launch_result = async {
                 service.capture_before_provider_turn(&session_id).await?;
                 if !matches!(
@@ -892,6 +961,38 @@ impl ProviderSessionService {
                     tracing::error!(?error, "failed to apply queued op after launch");
                 }
             }
+            if provider == ProviderId::Codex {
+                service.watch_codex_subagent_traces(session_id, provider_invocation_id, handle);
+            }
+        });
+    }
+
+    fn watch_codex_subagent_traces(
+        self: &Arc<Self>,
+        session_id: String,
+        provider_invocation_id: String,
+        handle: Arc<dyn ProviderRuntimeHandle>,
+    ) {
+        let service = Arc::downgrade(self);
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                let Some(service) = service.upgrade() else {
+                    break;
+                };
+                if handle.disposed()
+                    || !service.is_current_provider_invocation(&session_id, &provider_invocation_id)
+                    || !service
+                        .handles
+                        .lock_or_recover("handles")
+                        .contains_key(&session_id)
+                {
+                    break;
+                }
+                // Codex can omit every spawn and wait notification. Discover
+                // disk-backed children even while the parent emits no output.
+                service.schedule_subagent_trace_reconciliation(&session_id);
+            }
         });
     }
 
@@ -899,7 +1000,19 @@ impl ProviderSessionService {
         self: &Arc<Self>,
         input: ProvidersSendInput,
     ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(input, None, None, Queueing::Allowed)
+        self.send_input_scoped(input, None, None, Queueing::Allowed, false)
+            .await
+    }
+
+    /// Deliver a composer follow-up as guidance inside an active turn. This
+    /// uses the durable pending-message machinery first, then promotes that
+    /// exact row to a steer, so a failed native delivery remains visible for
+    /// retry rather than silently losing the user's text.
+    pub async fn steer_input(
+        self: &Arc<Self>,
+        input: ProvidersSendInput,
+    ) -> ArgmaxResult<SendInputResult> {
+        self.send_input_scoped(input, None, None, Queueing::Allowed, true)
             .await
     }
 
@@ -914,7 +1027,7 @@ impl ProviderSessionService {
         input: ProvidersSendInput,
         origin: Option<MessageOrigin>,
     ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(input, origin, None, Queueing::Allowed)
+        self.send_input_scoped(input, origin, None, Queueing::Allowed, false)
             .await
     }
 
@@ -923,7 +1036,7 @@ impl ProviderSessionService {
         input: ProvidersSendInput,
         identity: GoalTurnIdentity,
     ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(input, None, Some(identity), Queueing::Refused)
+        self.send_input_scoped(input, None, Some(identity), Queueing::Refused, false)
             .await
     }
 
@@ -934,7 +1047,7 @@ impl ProviderSessionService {
         self: &Arc<Self>,
         input: ProvidersSendInput,
     ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(input, None, None, Queueing::Refused)
+        self.send_input_scoped(input, None, None, Queueing::Refused, false)
             .await
     }
 
@@ -945,6 +1058,7 @@ impl ProviderSessionService {
         origin: Option<MessageOrigin>,
         goal_turn: Option<GoalTurnIdentity>,
         queueing: Queueing,
+        steer_when_queued: bool,
     ) -> ArgmaxResult<SendInputResult> {
         let session_id = input.session_id.as_str().to_string();
         let message = input.input.as_str().trim().to_string();
@@ -962,7 +1076,7 @@ impl ProviderSessionService {
             .unwrap_or(0);
         self.ensure_no_pending_after_turn(&session_id)?;
 
-        let (workspace_id, session_provider, session_permission_mode) = {
+        let (workspace_id, session_provider, session_permission_mode, steering_context_headroom) = {
             let _send_generation = self.lock_send_generation(&session_id, send_generation)?;
             let connection = self.database.connection();
             let session = find_session_by_id(&connection, &session_id)?;
@@ -991,10 +1105,12 @@ impl ProviderSessionService {
                     tracing::info!(session_id = %session_id, "imported session adopted");
                 }
             }
+            let steering_context_headroom = has_steering_context_headroom(&session);
             (
                 session.workspace_id,
                 parse_provider(&session.provider)?,
                 parse_permission_mode(&session.permission_mode)?,
+                steering_context_headroom,
             )
         };
         if self
@@ -1054,15 +1170,33 @@ impl ProviderSessionService {
                 if queueing == Queueing::Refused {
                     return Err(turn_in_flight_error());
                 }
-                self.enqueue_pending_message(
+                let Some(pending) = self.enqueue_pending_message(
                     &session_id,
                     &message,
                     input.agent_mode.unwrap_or(AgentMode::Auto),
                     &input,
                     origin,
-                )?;
+                )?
+                else {
+                    return Ok(SendInputResult {
+                        ok: true,
+                        queued: false,
+                    });
+                };
                 drop(send_generation_guard);
                 drop(admission);
+                if steer_when_queued && steering_context_headroom {
+                    return Box::pin(
+                        self.send_queued_message_now(ProvidersSendQueuedMessageNowInput {
+                            session_id: SessionId::try_from(session_id)
+                                .map_err(ArgmaxError::invalid)?,
+                            message_id: NonEmptyString::try_from(pending.id)
+                                .map_err(ArgmaxError::invalid)?,
+                            delivery: Some(QueuedMessageDelivery::Steer),
+                        }),
+                    )
+                    .await;
+                }
                 self.drain_queue_if_turn_ended(&session_id);
                 return Ok(SendInputResult {
                     ok: true,
@@ -1111,15 +1245,33 @@ impl ProviderSessionService {
             self.handles.lock_or_recover("handles").get(&session_id),
             Some(HandleEntry::Pending(_)) | Some(HandleEntry::Resolved(_))
         ) {
-            self.enqueue_pending_message(
+            let Some(pending) = self.enqueue_pending_message(
                 &session_id,
                 &message,
                 input.agent_mode.unwrap_or(AgentMode::Auto),
                 &input,
                 origin,
-            )?;
+            )?
+            else {
+                return Ok(SendInputResult {
+                    ok: true,
+                    queued: false,
+                });
+            };
             drop(send_generation_guard);
             drop(admission);
+            if steer_when_queued && steering_context_headroom {
+                return Box::pin(self.send_queued_message_now(
+                    ProvidersSendQueuedMessageNowInput {
+                        session_id:
+                            SessionId::try_from(session_id).map_err(ArgmaxError::invalid)?,
+                        message_id:
+                            NonEmptyString::try_from(pending.id).map_err(ArgmaxError::invalid)?,
+                        delivery: Some(QueuedMessageDelivery::Steer),
+                    },
+                ))
+                .await;
+            }
             self.drain_queue_if_turn_ended(&session_id);
             return Ok(SendInputResult {
                 ok: true,
@@ -1448,19 +1600,25 @@ impl ProviderSessionService {
             self.clear_queue(&session_id)?;
         }
 
-        let connection = self.database.connection();
-        let session = clear_session_conversation(&connection, &session_id)?;
-        let event = persist_timeline_event(
-            &connection,
-            &PersistTimelineEventInput {
-                id: Uuid::new_v4().to_string(),
-                session_id: session_id.clone(),
-                r#type: "session.cleared".to_string(),
-                message: "Cleared conversation.".to_string(),
-                payload: json!({}),
-                created_at: None,
-            },
-        )?;
+        let (session, event) = {
+            let connection = self.database.connection();
+            let session = clear_session_conversation(&connection, &session_id)?;
+            let event = persist_timeline_event(
+                &connection,
+                &PersistTimelineEventInput {
+                    id: Uuid::new_v4().to_string(),
+                    session_id: session_id.clone(),
+                    r#type: "session.cleared".to_string(),
+                    message: "Cleared conversation.".to_string(),
+                    payload: json!({}),
+                    created_at: None,
+                },
+            )?;
+            (session, event)
+        };
+        // The writer connection is dropped before publishing: the delta's
+        // push body reads through `read_connection`, whose fallback would
+        // re-lock the writer this thread may still be holding.
         self.publish(DashboardDelta {
             sessions: vec![session.clone()],
             events: vec![event],
@@ -1569,12 +1727,12 @@ impl ProviderSessionService {
         let mut first_error = None;
         // Release native permission waiters before waiting for provider cancel.
         // ACP cannot finish session/cancel until pending requests are answered.
-        if let Some(approvals) = self.approvals.as_ref() {
-            if let Err(error) = approvals.cancel_session_pending(session_id) {
-                first_error = Some(error);
-            }
+        if let Err(error) = self.cancel_pending_interactions(session_id) {
+            first_error = Some(error);
         }
 
+        // Read before disposal: the handle owns the answer and is dropped below.
+        let mut input_undelivered = false;
         match entry {
             Some(HandleEntry::Resolved(handle)) => {
                 // User-initiated cancel: flush buffered text but don't
@@ -1583,6 +1741,7 @@ impl ProviderSessionService {
                 if let Err(error) = self.flush_trailing(session_id, false) {
                     first_error = Some(error);
                 }
+                input_undelivered = !handle.input_delivered();
                 if let Err(error) = handle.terminate().await {
                     first_error.get_or_insert(error);
                 }
@@ -1596,10 +1755,14 @@ impl ProviderSessionService {
         if let Err(error) = self.cancel_session(session_id) {
             first_error.get_or_insert(error);
         }
-        if let Some(approvals) = self.approvals.as_ref() {
-            if let Err(error) = approvals.cancel_session_pending(session_id) {
-                first_error.get_or_insert(error);
-            }
+        if let Err(error) = self.cancel_pending_interactions(session_id) {
+            first_error.get_or_insert(error);
+        }
+        if input_undelivered {
+            // After the cancellation row, so the transcript reads in the order
+            // it happened: the message, the stop, then why the message went
+            // unanswered.
+            self.note_undelivered_turn_input(session_id);
         }
         self.terminating
             .lock_or_recover("terminating")
@@ -2004,6 +2167,12 @@ impl ProviderSessionService {
                     "The turn has finished. This follow-up is still queued.",
                 ));
             }
+            if !has_steering_context_headroom(&session) {
+                return Err(ArgmaxError::service(
+                    "STEER_CONTEXT_COMPACTION",
+                    "Codex is close to compacting its context. This follow-up is still queued for the next turn.",
+                ));
+            }
             let handle = self.live_handle(session_id).ok_or_else(|| {
                 ArgmaxError::service("STEER_NOT_RUNNING", "The agent is not ready for steering.")
             })?;
@@ -2210,41 +2379,47 @@ impl ProviderSessionService {
         }
         for recovered_session in &recovered {
             let session_id = &recovered_session.id;
-            let connection = self.database.connection();
-            let session = update_session_state(
-                &connection,
-                session_id,
-                &SessionStateInput::transition(SessionState::Failed).finished_at(now_iso()),
-            )?;
-            // Mirror the session terminal-state onto the workspace so the
-            // dashboard doesn't keep showing a `running` workspace whose
-            // session was just marked `failed`.
-            let workspace = update_workspace_state_for_session_state(
-                &connection,
-                &session.workspace_id,
-                SessionState::Failed,
-            )?;
-            let event = persist_timeline_event(
-                &connection,
-                &PersistTimelineEventInput {
-                    id: Uuid::new_v4().to_string(),
-                    session_id: session_id.clone(),
-                    r#type: "process_did_not_survive_restart".to_string(),
-                    message: "Provider process did not survive restart.".to_string(),
-                    payload: json!({}),
-                    created_at: None,
-                },
-            )?;
+            // The writer connection is dropped before publishing: the delta's
+            // push body reads through `read_connection`, whose fallback would
+            // re-lock the writer this thread may still be holding.
+            let (session, workspace, event, is_multitask, projects) = {
+                let connection = self.database.connection();
+                let session = update_session_state(
+                    &connection,
+                    session_id,
+                    &SessionStateInput::transition(SessionState::Failed).finished_at(now_iso()),
+                )?;
+                // Mirror the session terminal-state onto the workspace so the
+                // dashboard doesn't keep showing a `running` workspace whose
+                // session was just marked `failed`.
+                let workspace = update_workspace_state_for_session_state(
+                    &connection,
+                    &session.workspace_id,
+                    SessionState::Failed,
+                )?;
+                let event = persist_timeline_event(
+                    &connection,
+                    &PersistTimelineEventInput {
+                        id: Uuid::new_v4().to_string(),
+                        session_id: session_id.clone(),
+                        r#type: "process_did_not_survive_restart".to_string(),
+                        message: "Provider process did not survive restart.".to_string(),
+                        payload: json!({}),
+                        created_at: None,
+                    },
+                )?;
+                let is_multitask = session_launch_kind(&connection, session_id)
+                    .is_ok_and(|kind| kind == LAUNCH_KIND_MULTITASK);
+                let projects = list_projects(&connection)?;
+                (session, workspace, event, is_multitask, projects)
+            };
             self.publish(DashboardDelta {
-                projects: list_projects(&connection)?,
+                projects,
                 workspaces: vec![workspace],
                 sessions: vec![session],
                 events: vec![event],
                 ..DashboardDelta::default()
             });
-            let is_multitask = session_launch_kind(&connection, session_id)
-                .is_ok_and(|kind| kind == LAUNCH_KIND_MULTITASK);
-            drop(connection);
             // A multitask that was mid-turn when the app went down never wrote
             // its finish row, so the chat that dispatched it would keep saying
             // "running alongside" for a process that died with the app. Boot is
@@ -2253,9 +2428,7 @@ impl ProviderSessionService {
             if is_multitask {
                 self.record_multitask_finish(session_id, SessionState::Failed, &now_iso());
             }
-            if let Some(approvals) = self.approvals.as_ref() {
-                approvals.cancel_session_pending(session_id)?;
-            }
+            self.cancel_pending_interactions(session_id)?;
         }
         Ok(recovered.len())
     }
@@ -2440,9 +2613,7 @@ impl ProviderSessionService {
             self.flush_queue
                 .lock_or_recover("flush queue")
                 .delete_session(&event.session_id);
-            if let Some(approvals) = self.approvals.as_ref() {
-                approvals.cancel_session_pending(&event.session_id)?;
-            }
+            self.cancel_pending_interactions(&event.session_id)?;
             return Ok(());
         }
         self.capture_pr_branch(&event.session_id);
@@ -2517,16 +2688,13 @@ impl ProviderSessionService {
         // The drain is what sends a follow-up the user queued during the turn.
         // It must not depend on the approvals cleanup succeeding: an error
         // there used to return early and strand the queue until the next turn.
-        let approvals_cancelled = match self.approvals.as_ref() {
-            Some(approvals) => approvals.cancel_session_pending(&event.session_id),
-            None => Ok(()),
-        };
+        let interactions_cancelled = self.cancel_pending_interactions(&event.session_id);
         self.settle_session_after_turn(&event.session_id);
         self.notify_launcher_of_turn_end(&event.session_id, state, &completed_at);
         if succeeded {
             self.drain_queue_after_complete(event.session_id);
         }
-        approvals_cancelled
+        interactions_cancelled
     }
 
     /// One completion notice per turn end, addressed to whoever launched this
@@ -2902,7 +3070,7 @@ impl ProviderSessionService {
         agent_mode: AgentMode,
         input: &ProvidersSendInput,
         origin: Option<MessageOrigin>,
-    ) -> ArgmaxResult<()> {
+    ) -> ArgmaxResult<Option<PendingMessage>> {
         // A drained follow-up always keeps the session's current provider (see
         // pending_message_to_send_input), so when this send asked for a
         // different provider its model metadata belongs to that switch and
@@ -2910,6 +3078,18 @@ impl ProviderSessionService {
         // Codex model id onto a Claude session and relaunch with a foreign
         // --model flag.
         let mut connection = self.database.connection();
+        // The inbox is visible before send_input can acquire the checkout lock.
+        // Collection may therefore finish before there is a queue copy to remove.
+        // Keep this check under the writer lock through the queue insertion so
+        // collection either wins here or removes the inserted copy afterward.
+        if let Some(message_id) = origin
+            .as_ref()
+            .and_then(|origin| origin.message_id.as_deref())
+        {
+            if is_message_delivered(&connection, message_id)? {
+                return Ok(None);
+            }
+        }
         let switches_provider = match input.provider {
             Some(requested) => {
                 find_session_by_id(&connection, session_id)?.provider != requested.as_str()
@@ -2943,7 +3123,7 @@ impl ProviderSessionService {
                 format!("Pending follow-up queue is full ({MAX_PENDING_QUEUE})."),
             ));
         }
-        queue.push_back(PendingMessage {
+        let pending = PendingMessage {
             id: Uuid::new_v4().to_string(),
             session_id: session_id.to_string(),
             content: content.to_string(),
@@ -2957,12 +3137,13 @@ impl ProviderSessionService {
             origin,
             recovery_status: None,
             queued_at: now_iso(),
-        });
+        };
+        queue.push_back(pending.clone());
         replace_session_queue(&mut connection, session_id, &queue)?;
         queues.insert(session_id.to_string(), queue);
         drop(queues);
         self.publish_pending_messages(session_id);
-        Ok(())
+        Ok(Some(pending))
     }
 
     fn clear_queue(&self, session_id: &str) -> ArgmaxResult<()> {
@@ -3020,6 +3201,39 @@ impl ProviderSessionService {
             .iter()
             .map(|(session_id, queue)| (session_id.clone(), queue.iter().cloned().collect()))
             .collect()
+    }
+
+    /// Remove the queue copies of inbox messages the agent just collected.
+    ///
+    /// The persistence helper skips `launching` rows because their sender owns
+    /// the in-flight hand-off. Holding the writer until the in-memory queue is
+    /// updated keeps a concurrent drain from claiming a row between the two.
+    pub fn reconcile_collected_messages(
+        &self,
+        session_id: &str,
+        collected_message_ids: &[String],
+    ) -> ArgmaxResult<()> {
+        let mut connection = self.database.connection();
+        let removed = delete_messages_for_collected_origins(
+            &mut connection,
+            session_id,
+            collected_message_ids,
+        )?;
+        if removed.is_empty() {
+            return Ok(());
+        }
+        let removed: HashSet<&str> = removed.iter().map(String::as_str).collect();
+        let mut queues = self.queues.lock_or_recover("queues");
+        if let Some(queue) = queues.get_mut(session_id) {
+            queue.retain(|message| !removed.contains(message.id.as_str()));
+            if queue.is_empty() {
+                queues.remove(session_id);
+            }
+        }
+        drop(queues);
+        drop(connection);
+        self.publish_pending_messages(session_id);
+        Ok(())
     }
 
     fn publish_pending_messages(&self, session_id: &str) {
@@ -3351,11 +3565,7 @@ impl ProviderSessionService {
         // clears them at this same point. Like there, a failure must not return
         // early: the queue drain below is what sends a follow-up the user typed
         // during the turn.
-        let approvals_cancelled = match self.approvals.as_ref() {
-            Some(approvals) => approvals.cancel_session_pending(session_id),
-            None => Ok(()),
-        };
-        let mut first_error = approvals_cancelled.err();
+        let mut first_error = self.cancel_pending_interactions(session_id).err();
         if let Some(HandleEntry::Resolved(handle)) = entry {
             if let Err(error) = handle.terminate().await {
                 let _ = self.abort_session_after_turn(
@@ -3454,6 +3664,24 @@ impl ProviderSessionService {
         }
         if !delta.is_empty() {
             (self.publish_delta)(delta);
+        }
+    }
+
+    fn cancel_pending_interactions(&self, session_id: &str) -> ArgmaxResult<()> {
+        let mut first_error = None;
+        if let Some(approvals) = self.approvals.as_ref() {
+            if let Err(error) = approvals.cancel_session_pending(session_id) {
+                first_error = Some(error);
+            }
+        }
+        if let Some(questions) = self.questions.get() {
+            if let Err(error) = questions.cancel_session_pending(session_id) {
+                first_error.get_or_insert(error);
+            }
+        }
+        match first_error {
+            Some(error) => Err(error),
+            None => Ok(()),
         }
     }
 
@@ -3610,6 +3838,17 @@ impl ProviderSessionService {
         Ok(Some(event))
     }
 
+    pub(crate) fn reconcile_subagent_traces(&self, session_id: &str) -> ArgmaxResult<usize> {
+        let written = reconcile_session_subagent_traces(&self.database, session_id)?;
+        if written > 0 {
+            self.publish(DashboardDelta {
+                changed_session_ids: vec![session_id.to_string()],
+                ..DashboardDelta::default()
+            });
+        }
+        Ok(written)
+    }
+
     fn schedule_subagent_trace_reconciliation(&self, session_id: &str) {
         let session_id = session_id.to_string();
         {
@@ -3623,14 +3862,20 @@ impl ProviderSessionService {
             reconciliations.insert(session_id.clone(), false);
         }
         let database = Arc::clone(&self.database);
+        let publish_delta = Arc::clone(&self.publish_delta);
         let in_flight = Arc::clone(&self.subagent_reconciliations);
         tauri::async_runtime::spawn_blocking(move || loop {
-            if let Err(error) = reconcile_session_subagent_traces(&database, &session_id) {
-                tracing::warn!(
+            match reconcile_session_subagent_traces(&database, &session_id) {
+                Ok(written) if written > 0 => publish_delta(DashboardDelta {
+                    changed_session_ids: vec![session_id.clone()],
+                    ..DashboardDelta::default()
+                }),
+                Ok(_) => {}
+                Err(error) => tracing::warn!(
                     error = %error,
                     session_id,
                     "failed to reconcile live subagent trace events"
-                );
+                ),
             }
             let should_rescan = {
                 let mut reconciliations = in_flight.lock_or_recover("subagent reconciliations");
@@ -3971,6 +4216,74 @@ mod tests {
             .expect("persist session");
         }
         database
+    }
+
+    #[test]
+    fn inbox_collection_before_enqueue_does_not_leave_a_pending_copy() {
+        use crate::persistence::session_messages::{
+            insert_session_message, take_undelivered_messages, NewSessionMessage,
+        };
+
+        let database = database_with_running_session();
+        let service = ProviderSessionService::with_launcher(
+            Arc::clone(&database),
+            Arc::new(CountingFailureLauncher::default()),
+            |_| {},
+        );
+        {
+            let mut connection = database.connection();
+            insert_session_message(
+                &connection,
+                &NewSessionMessage {
+                    id: "inbox-1".to_string(),
+                    from_session_id: None,
+                    to_session_id: "session-1".to_string(),
+                    body: "Peer guidance".to_string(),
+                    kind: "message".to_string(),
+                },
+            )
+            .unwrap();
+            assert_eq!(
+                take_undelivered_messages(&mut connection, "session-1", 10, 1000)
+                    .unwrap()
+                    .len(),
+                1
+            );
+        }
+        service
+            .reconcile_collected_messages("session-1", &["inbox-1".to_string()])
+            .unwrap();
+        let input = serde_json::from_value(json!({
+            "sessionId": "session-1", "input": "Peer guidance", "fastMode": false
+        }))
+        .unwrap();
+        service
+            .enqueue_pending_message(
+                "session-1",
+                "Peer guidance",
+                AgentMode::Auto,
+                &input,
+                Some(MessageOrigin {
+                    session_id: "peer".to_string(),
+                    label: "Peer".to_string(),
+                    kind: "message".to_string(),
+                    message_id: Some("inbox-1".to_string()),
+                }),
+            )
+            .unwrap();
+        assert!(service
+            .queues
+            .lock_or_recover("queues")
+            .get("session-1")
+            .is_none_or(VecDeque::is_empty));
+        assert!(
+            crate::persistence::pending_messages::list_session_pending_messages(
+                &database.connection(),
+                "session-1"
+            )
+            .unwrap()
+            .is_empty()
+        );
     }
 
     #[test]

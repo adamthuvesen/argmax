@@ -28,6 +28,7 @@ use crate::persistence::checks::{
 use crate::persistence::database::Database;
 use crate::persistence::time::now_iso;
 use crate::persistence::workspaces::find_workspace_by_id;
+use crate::util::login_shell;
 use crate::util::process_control::terminate_process_group_with_escalation;
 use crate::workspaces::lifecycle::WorkspaceLifecycle;
 
@@ -227,6 +228,11 @@ impl CheckService {
         for (key, value) in filtered_env() {
             command.env(key, value);
         }
+        // Setup commands and replayed git hooks call the tools the user's own
+        // terminal finds; launched from Finder, Argmax's PATH is launchd's
+        // stripped one. Same hydration git's children get.
+        #[cfg(unix)]
+        command.env("PATH", login_shell::path());
         // detach so we can SIGTERM/SIGKILL the entire process group;
         // tokio doesn't expose process-group control directly so we use
         // the std Command extension below.
@@ -511,6 +517,28 @@ mod tests {
         assert_eq!(result.exit_code, Some(0));
         assert!(result.completed_at.is_some());
         assert_eq!(svc.pending_cancel_count("w1"), 0);
+    }
+
+    /// A setup command or replayed git hook calls `yarn`, `lefthook` and
+    /// friends; under launchd's stripped PATH it would exit 127.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn checks_run_with_the_hydrated_path() {
+        let (database, workspace_id, _db, cwd) = setup();
+        let svc = CheckService::new(database);
+        svc.run_workspace_check(
+            RunWorkspaceCheckInput {
+                workspace_id,
+                command: "printf '%s' \"$PATH\" > check-path.txt".to_string(),
+                timeout_ms: Some(5_000),
+            },
+            None,
+        )
+        .await
+        .unwrap();
+        let check_path =
+            std::fs::read_to_string(cwd.path().join("check-path.txt")).expect("recorded PATH");
+        assert_eq!(check_path, login_shell::path());
     }
 
     #[tokio::test]

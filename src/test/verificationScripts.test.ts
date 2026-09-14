@@ -11,8 +11,15 @@ import { afterEach, describe, expect, it } from "vitest";
 import { parseDoctorArgs } from "../../scripts/doctor.mjs";
 import { parseScratchArgs } from "../../scripts/scratch-app.mjs";
 import { parseVerifyArgs } from "../../scripts/verify.mjs";
+import {
+  foregroundActivationTimeoutDetails,
+  matchingProcessIdentities,
+  NATIVE_STOP_MINIMUM_SESSION_AGE_MS,
+  parseMacosConsoleLockState,
+} from "../../scripts/verification/desktop.mjs";
 import { checkoutFingerprint, runChecked } from "../../scripts/verification/common.mjs";
 import { redact } from "../../scripts/verification/evidence.mjs";
+import { EARLY_STOP_WINDOW_MS } from "../renderer/lib/earlyStop.js";
 
 const temporaryDirectories: string[] = [];
 const fixture = fileURLToPath(new URL("../../scripts/verification/provider-fixture.mjs", import.meta.url));
@@ -47,6 +54,7 @@ it("initializes the Claude fixture and reads its prompt without waiting for stdi
   const lines = createInterface({ input: child.stdout });
   let stderr = "";
   let initialized = false;
+  let replayedUserPrompt = false;
   let emittedSystemInit = false;
   child.stderr.setEncoding("utf8").on("data", (chunk: string) => { stderr += chunk; });
   try {
@@ -59,10 +67,16 @@ it("initializes the Claude fixture and reads its prompt without waiting for stdi
         child.stdin.write(`${JSON.stringify({ type: "user", message: { role: "user", content: "[argmax-verification:provider-error]" } })}\n`);
       } else if (message.type === "system" && message.subtype === "init") {
         emittedSystemInit = true;
+      } else if (
+        message.type === "user"
+        && (message.message as { content?: unknown } | undefined)?.content === "[argmax-verification:provider-error]"
+      ) {
+        replayedUserPrompt = true;
       }
     }
     const code = await exited;
     expect(initialized).toBe(true);
+    expect(replayedUserPrompt).toBe(true);
     expect(emittedSystemInit).toBe(true);
     expect(code).toBe(42);
     expect(stderr).toContain("Verification provider failed as requested.");
@@ -74,8 +88,36 @@ it("initializes the Claude fixture and reads its prompt without waiting for stdi
   }
 }, 3000);
 
-it("serves Codex app-server events while stdin remains open", async () => {
-  const child = spawn(process.execPath, [fixture, "app-server", "--stdio"], {
+it("rejects the session-move fixture before calling the CLI when controls are missing", async () => {
+  const child = spawn(
+    process.execPath,
+    [fixture, "-p", "--", "[argmax-verification:session-move:first]"],
+    {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...fixtureEnvironment,
+        ARGMAX_BIN: "",
+        ARGMAX_SESSION_LAUNCH_SOCKET: "",
+        ARGMAX_SESSION_LAUNCH_TOKEN: "",
+        ARGMAX_VERIFICATION_MOVE_PATH: "",
+      },
+    },
+  );
+  let stdout = "";
+  let stderr = "";
+  child.stdout.setEncoding("utf8").on("data", (chunk: string) => { stdout += chunk; });
+  child.stderr.setEncoding("utf8").on("data", (chunk: string) => { stderr += chunk; });
+  const code = await new Promise<number | null>((resolve, reject) => {
+    child.once("close", resolve);
+    child.once("error", reject);
+  });
+  expect(code).toBe(64);
+  expect(stdout).toBe("");
+  expect(stderr).toContain("session-move fixture requires ARGMAX_BIN");
+});
+
+it.each(["persistent-codex-subagent:first", "codex-user-input"])("serves Codex %s while stdin remains open", async (scenario) => {
+  const child = spawn(process.execPath, [fixture, "app-server", "--stdio", "-c", "tools.experimental_request_user_input.enabled=true"], {
     stdio: ["pipe", "pipe", "pipe"],
     env: fixtureEnvironment,
   });
@@ -95,22 +137,34 @@ it("serves Codex app-server events while stdin remains open", async () => {
       method: "turn/start",
       params: {
         threadId: "argmax-verification-conversation",
-        input: [{ type: "text", text: "[argmax-verification:persistent-codex-subagent:first]" }],
+        input: [{ type: "text", text: `[argmax-verification:${scenario}]` }],
       },
     })}\n`);
     for await (const line of lines) {
       const message = JSON.parse(line) as Record<string, unknown>;
       messages.push(message);
+      if (message.method === "item/tool/requestUserInput") {
+        expect(messages.some((entry) => entry.method === "turn/completed")).toBe(false);
+        child.stdin.write(`${JSON.stringify({
+          jsonrpc: "2.0", id: message.id,
+          result: { answers: { "verification-route": { answers: ["API route"] } } },
+        })}\n`);
+      }
       if (message.method === "turn/completed") break;
     }
     expect(child.exitCode).toBeNull();
     const payload = JSON.stringify(messages);
     expect(payload).toContain('"id":1,"result"');
-    expect(payload).toContain('"tool":"spawnAgent"');
-    expect(payload).toContain('"tool":"wait"');
-    expect(payload).toContain('"status":"pendingInit"');
-    expect(payload).toContain('"019f2214-c736-7f60-bb78-75b6ecff57a3":{"status":"completed"');
-    expect(payload).toContain("Verification persistent Codex child first response.");
+    if (scenario === "codex-user-input") {
+      expect(payload).toContain('"method":"item/tool/requestUserInput"');
+      expect(payload).toContain("Verification Codex received API route in the same turn.");
+    } else {
+      expect(payload).toContain('"tool":"spawnAgent"');
+      expect(payload).toContain('"tool":"wait"');
+      expect(payload).toContain('"status":"pendingInit"');
+      expect(payload).toContain('"019f2214-c736-7f60-bb78-75b6ecff57a3":{"status":"completed"');
+      expect(payload).toContain("Verification persistent Codex child first response.");
+    }
   } finally {
     clearTimeout(timeout);
     lines.close();
@@ -236,6 +290,66 @@ afterEach(async () => {
 });
 
 describe("verification script arguments", () => {
+  it("classifies foreground activation timeouts with native process and lock evidence", () => {
+    const activationRequest = {
+      activated: true,
+      before: { active: false, frontmost: { pid: 418, localizedName: "loginwindow" } },
+      after: { active: false, frontmost: { pid: 418, localizedName: "loginwindow" } },
+    };
+    const failureState = {
+      activated: null,
+      before: { active: false },
+      after: {
+        pid: 123,
+        localizedName: "Argmax Verification",
+        bundleIdentifier: "com.argmax.verification",
+        launchDate: "2026-09-13T12:00:00Z",
+        active: false,
+        hidden: false,
+        windowCount: 1,
+        onScreenWindowCount: 1,
+        frontmost: { pid: 418, localizedName: "loginwindow", bundleIdentifier: "com.apple.loginwindow" },
+      },
+    };
+
+    const details = foregroundActivationTimeoutDetails({
+      pid: 123,
+      visibilityError: new Error("document stayed hidden"),
+      activationRequest,
+      failureState,
+      consoleLock: { ioConsoleLocked: true, screenIsLocked: true },
+    });
+
+    expect(details.classification).toBe("foreground-activation-timeout");
+    expect(details.pid).toBe(123);
+    expect(details.visibilityError).toContain("document stayed hidden");
+    expect(details.consoleLock).toEqual({ ioConsoleLocked: true, screenIsLocked: true });
+    expect(details.frontmostProcess?.pid).toBe(418);
+    expect(details.frontmostProcess?.localizedName).toBe("loginwindow");
+    expect(details.frontmostProcess?.bundleIdentifier).toBe("com.apple.loginwindow");
+    expect(details.candidateState?.pid).toBe(123);
+    expect(details.candidateState?.localizedName).toBe("Argmax Verification");
+    expect(details.candidateState?.active).toBe(false);
+    expect(details.candidateState?.windowCount).toBe(1);
+    expect(details.candidateState?.onScreenWindowCount).toBe(1);
+    expect(details.activationRequest.result).toBe(true);
+  });
+
+  it("parses explicit macOS console lock states without guessing an absent session key", () => {
+    expect(parseMacosConsoleLockState('"IOConsoleLocked" = No')).toEqual({
+      ioConsoleLocked: false,
+      screenIsLocked: null,
+    });
+    expect(parseMacosConsoleLockState('"IOConsoleLocked" = Yes, "CGSSessionScreenIsLocked" = Yes')).toEqual({
+      ioConsoleLocked: true,
+      screenIsLocked: true,
+    });
+  });
+
+  it("waits beyond the renderer early-stop restore window before native cancellation", () => {
+    expect(NATIVE_STOP_MINIMUM_SESSION_AGE_MS).toBeGreaterThan(EARLY_STOP_WINDOW_MS);
+  });
+
   it("defaults to the deterministic resume scenario with required native verification", () => {
     expect(parseVerifyArgs([])).toMatchObject({
       scenario: "chat-resume",
@@ -262,6 +376,24 @@ describe("verification script arguments", () => {
       scenario: "persistent-cursor-subagent",
       native: "off",
     });
+    expect(parseVerifyArgs(["--scenario", "queued-restart"])).toMatchObject({
+      scenario: "queued-restart",
+      native: "required",
+    });
+    expect(parseVerifyArgs(["--scenario", "session-move"])).toMatchObject({
+      scenario: "session-move",
+      native: "required",
+    });
+    expect(() => parseVerifyArgs(["--scenario", "session-move", "--native", "off"])).toThrow(
+      /requires native verification/,
+    );
+    expect(parseVerifyArgs(["--scenario", "staged-revert"])).toMatchObject({
+      scenario: "staged-revert",
+      native: "required",
+    });
+    expect(() => parseVerifyArgs(["--scenario", "staged-revert", "--native", "off"])).toThrow(
+      /requires native verification/,
+    );
     expect(() => parseVerifyArgs(["--out"])).toThrow(/requires a value/);
     expect(() => parseScratchArgs(["--port", "70000"])).toThrow(/between 1 and 65535/);
     expect(() => parseScratchArgs(["--data-dir"])).toThrow(/requires a value/);
@@ -274,6 +406,13 @@ describe("verification script arguments", () => {
 });
 
 describe("verification evidence", () => {
+  it("rejects a reused process id when the start time changed", () => {
+    const expected = [{ pid: 42, parentPid: 1, startedAt: "Sun Sep 13 10:00:00 2026" }];
+    const reused = [{ pid: 42, parentPid: 1, startedAt: "Sun Sep 13 10:01:00 2026" }];
+
+    expect(matchingProcessIdentities(reused, expected)).toEqual([]);
+  });
+
   it("redacts nested credentials, bearer values, and pairing tokens", () => {
     expect(
       redact({
@@ -292,6 +431,8 @@ describe("verification evidence", () => {
     const repository = await mkdtemp(path.join(tmpdir(), "argmax-fingerprint-test-"));
     temporaryDirectories.push(repository);
     await runChecked("git", ["init", "-q"], { cwd: repository });
+    // A globally enabled fsmonitor can write into .git while cleanup removes it.
+    await runChecked("git", ["config", "core.fsmonitor", "false"], { cwd: repository });
     await writeFile(path.join(repository, "tracked.txt"), "one\n");
     await runChecked("git", ["add", "tracked.txt"], { cwd: repository });
     await runChecked("git", ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-q", "-m", "fixture"], {

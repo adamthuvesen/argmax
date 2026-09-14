@@ -2,6 +2,12 @@
 
 Renderer IPC talks to Rust through `window.argmax`. Commands use explicit names (`"providers:launch"`, `"session:events-since"`, etc.). Window drag and zoom controls use Tauri's window API directly via [windowChrome.ts](../src/renderer/lib/windowChrome.ts).
 
+`window.argmax.system.confirm(message)` resolves to a boolean. The desktop
+bridge uses the official dialog plugin's message command with OK and Cancel
+buttons. The remote browser shows its own confirmation locally. Callers await
+the result and treat dialog errors as failed actions. The plugin's injected
+`window.confirm` is asynchronous and must not be used as a synchronous guard.
+
 ## Files
 
 | File | Role |
@@ -21,6 +27,12 @@ File and review operations use a `{ kind: "workspace" | "project", id }` target 
 
 `session:agent-events` fetches subagent activity for `{ sessionId, parentToolUseId }`. It imports trace events for the parent tool call and returns rows scoped to the subagent lifecycle. Main chat views use `session:events-since` to avoid trace disk scans.
 
+`questions:resolve` answers a pending Codex question with
+`{ sessionId, requestId, answers, dismissed? }`. `answers` maps question IDs to
+arrays of answer strings. Dismissal uses `dismissed: true` with no answers.
+The response resumes the original provider request. Pending and settled cards
+arrive through the session timeline, including after a UI reconnect.
+
 `session:events-since` accepts a `changeCursor` for mutation-aware recovery.
 The first response pairs an authoritative bounded tail with a cursor from the
 same SQLite read transaction. `resetRequired` replaces retained history,
@@ -28,6 +40,12 @@ same SQLite read transaction. `resetRequired` replaces retained history,
 client to continue paging. Legacy event/raw row cursors remain supported.
 
 `session:multitask` dispatches a sibling chat from a session that may still be mid-turn, and returns the new session and workspace ids so the composer can draw the card without waiting for the dashboard delta. See [multitask.md](multitask.md).
+
+`workspaces:mark-viewed` acknowledges a batch of `{ workspaceId, observedActivityAt }`
+entries under `workspaces`. Read stamps only advance to activity the client
+observed, so a newer reply remains unread. Updated workspace rows carry
+`lastViewedAt` through `dashboard:delta` so desktop and mobile agree on unread
+completed replies.
 
 `settings:preview-chat-cleanup` returns a fixed seven-day cutoff, a confirmation id, and the number of eligible chats. `settings:delete-old-chats` accepts that id and applies only the previewed candidate set. The deletion transaction rechecks activity and active work, and reports chats skipped because they changed after the preview.
 
@@ -80,3 +98,23 @@ A synchronous handler resolves on the macOS main thread. Make the handler
 `async` (or `spawn_blocking` for genuinely blocking work) unless it does no IO,
 in which case add it to the allowlist in `scripts/check-main-thread-handlers.mjs`
 with the reason.
+
+## Project sources
+
+`sources:list`, `sources:add`, `sources:update`, and `sources:delete` manage
+project-scoped source references through `ipc/sources.rs`. They use the live
+database off the main thread. Reads are available to the remote bridge's read
+access mode, while mutations require control access. Agent source content reads
+use session-control tools and record source activity in the session timeline.
+See [memory.md](memory.md).
+
+## Session PR selection
+
+`prs:set-primary` takes `{ sessionId, prNumber }`, with null selecting automatic
+ordering. `prs:dismiss` takes `{ sessionId, prNumber }` and suppresses that
+association even if the transcript is replayed. Both return session PR summaries
+and publish affected workspace metadata. Remote mutations use the same handlers.
+
+Existing PR links open their stored URL. `git:view-or-create-pr` is the separate
+checkout creation action and accepts `expectedBranch` to reject a stale card
+before calling GitHub.

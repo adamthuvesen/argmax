@@ -1,4 +1,5 @@
 import { Fragment, memo, useMemo, useState, type JSX, type MutableRefObject, type ReactNode } from "react";
+import { CornerDownRight } from "lucide-react";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { FORK_CAPABLE_PROVIDERS } from "../../shared/providerModels.js";
 import { splitLinkSegments } from "../lib/messageLinks.js";
@@ -16,7 +17,11 @@ import {
   liveThoughtOwnsProgress,
   preToolNarrationGroupIds
 } from "../lib/sessionTurnView.js";
-import { foldToolRunsToSummaries } from "../lib/turnChildren.js";
+import {
+  foldActivityRunsToSummaries,
+  foldToolRunsToSummaries,
+  type ActivityRun
+} from "../lib/turnChildren.js";
 import { buildToolCallGroup, isAgentToolName, type ToolCall, type TurnToolItem } from "../lib/toolCalls.js";
 import type { TodoList } from "../lib/todoList.js";
 import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
@@ -31,7 +36,6 @@ import { ChatBubble } from "./ChatBubble.js";
 import { LogBlock } from "./LogBlock.js";
 import { PlanCard } from "./PlanCard.js";
 import { TodoCard } from "./TodoCard.js";
-import { QuestionCard } from "./QuestionCard.js";
 import { ThoughtBlock } from "./ThoughtBlock.js";
 import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
 import { ToolCallRow } from "./ToolCallRow.js";
@@ -49,8 +53,15 @@ import {
 import type { FileChipOpenOptions } from "./FileChip.js";
 import type { ComposerStatus } from "./SessionComposer.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
+import { useStableTailWindow } from "../hooks/useStableTailWindow.js";
 
 type TurnRenderItem = Extract<RenderItem, { kind: "turn" }>;
+
+// The conversation-level window counts turns. A provider can keep one turn
+// open for hours, so that outer bound alone does not bound the DOM. Keep each
+// turn's rendered body small as well. Explicit reveals may grow it by design.
+const TURN_BODY_WINDOW = 16;
+const TURN_BODY_WINDOW_STEP = 32;
 
 function SessionConversationTurnInner({
   item,
@@ -79,8 +90,8 @@ function SessionConversationTurnInner({
   defaultToolCallGroupsExpanded,
   thinkingDisplay,
   defaultTurnChangesExpanded,
+  transcriptDetached = false,
   restoringTranscript = false,
-  questionIsDocked = false,
   todo = null
 }: {
   item: TurnRenderItem;
@@ -114,9 +125,9 @@ function SessionConversationTurnInner({
   defaultToolCallGroupsExpanded?: boolean;
   thinkingDisplay?: ThinkingDisplay;
   defaultTurnChangesExpanded?: boolean;
+  /** Freeze this turn's mounted row ids while the reader is away from latest. */
+  transcriptDetached?: boolean;
   restoringTranscript?: boolean;
-  /** The live question owns the composer slot, so this turn must not draw it too. */
-  questionIsDocked?: boolean;
   /** The agent's plan as it stood when this turn ended, or null if it never
    *  touched one. */
   todo?: TodoList | null;
@@ -164,7 +175,6 @@ function SessionConversationTurnInner({
     visibleAssistantGroups,
     turnAgentMode,
     exitPlanTool,
-    askUserQuestionTool,
     hiddenToolIds,
     turnStartedAtMs,
     isPausedOnUserInput
@@ -175,8 +185,8 @@ function SessionConversationTurnInner({
   // the body stays open (`holdOpen`) for as long as this is the newest turn:
   // folding it right then would drop the whole reasoning out of a transcript
   // pinned to the bottom at the exact moment the answer starts arriving. An
-  // explicit fold from the turn chip still wins in Compact. Balanced and
-  // Detailed keep thoughts inline regardless of tool disclosure or turn age.
+  // explicit fold from the turn chip still wins in Compact. Balanced previews
+  // only live reasoning. Detailed keeps labelled thoughts inline.
   //
   // The beat belongs to the turn's newest reasoning burst, never to every burst
   // in it: tool boundaries flush a fresh thinking group, so this flag read
@@ -203,7 +213,11 @@ function SessionConversationTurnInner({
   // self-updating line while the turn is live, then the finished turn hides
   // those working rows behind the chip so only the answer remains.
   const minimalActivity = defaultToolCallsDisplay === "single-line";
-  const compactActivity = defaultToolCallsDisplay === "collapsed" && defaultToolCallGroupsExpanded !== true;
+  const compactThinkingDisplay = thinkingDisplay ?? "collapsed";
+  const compactToolSummaries =
+    defaultToolCallsDisplay === "collapsed" &&
+    defaultToolCallGroupsExpanded !== true;
+  const compactActivity = compactToolSummaries && compactThinkingDisplay === "collapsed";
   const toolsExpandedDefault =
     isLatestTurn && !minimalActivity
       ? (defaultToolCallGroupsExpanded ?? defaultToolCallsDisplay === "expanded")
@@ -234,28 +248,6 @@ function SessionConversationTurnInner({
   const handlePlanReject = (): void => {
     inputRef.current?.focus();
   };
-  const handleQuestionAnswer = (answerMarkdown: string): Promise<boolean> => {
-    if (!session) return Promise.resolve(false);
-    shouldRefocusInput.current = true;
-    const sessionId = session.id;
-    const nextAgentMode = turnAgentMode === "plan" ? "plan" : "auto";
-    return sendAfterTerminate(
-      sessionId,
-      session.state === "running",
-      onTerminateSession,
-      () => onSendSessionInput(sessionId, answerMarkdown, selectedModel, nextAgentMode),
-      reportSendError
-    );
-  };
-  const questionCard: JSX.Element | null = askUserQuestionTool && !questionIsDocked
-    ? (
-        <QuestionCard
-          key={`question-${askUserQuestionTool.id}`}
-          questions={askUserQuestionTool.questions}
-          onAnswer={handleQuestionAnswer}
-        />
-      )
-    : null;
   const exitPlanCard: JSX.Element | null = exitPlanTool
     ? (() => {
         const plan = parsePlan(exitPlanTool.markdown);
@@ -332,7 +324,9 @@ function SessionConversationTurnInner({
           <ThoughtBlock
             key={group.id}
             display={thinkingDisplay}
+            previewText={group.text}
             defaultExpanded={toolsExpandOverride ?? false}
+            autoExpandWhileLive={!compactActivity}
             live={groupLive}
             holdOpen={
               isLatestTurn && toolsExpandOverride !== false && group.id === liveThoughtGroupId
@@ -354,7 +348,23 @@ function SessionConversationTurnInner({
             />
           </ThoughtBlock>
         );
-        return { kind: "assistant", id: group.id, node, createdAt: group.createdAt, sortAt: group.lastActivityAt };
+        return {
+          kind: "assistant",
+          id: group.id,
+          node,
+          ...(compactActivity
+            ? {
+                activityMember: {
+                  kind: "thought" as const,
+                  id: group.id,
+                  node,
+                  live: groupLive
+                }
+              }
+            : {}),
+          createdAt: group.createdAt,
+          sortAt: group.lastActivityAt
+        };
       }
       if (group.error) {
         if (!assistantGroupHasVisibleChat(group)) return null;
@@ -397,15 +407,6 @@ function SessionConversationTurnInner({
       node: exitPlanCard,
       createdAt: exitPlanTool.createdAt,
       sortAt: exitPlanTool.createdAt
-    });
-  }
-  if (questionCard && askUserQuestionTool) {
-    assistantChildren.push({
-      kind: "assistant",
-      id: `question-${askUserQuestionTool.id}`,
-      node: questionCard,
-      createdAt: askUserQuestionTool.createdAt,
-      sortAt: askUserQuestionTool.createdAt
     });
   }
   if (todo) {
@@ -498,18 +499,27 @@ function SessionConversationTurnInner({
       child.agentTools ? { ...child, agentTools: [...child.agentTools] } : child
     );
   }
-  const bodySource = foldToolRunsToSummaries(coalescedChildren, (tools) => (
+  const renderActivityGroup = ({ tools, members }: ActivityRun): ReactNode => (
     <ToolCallGroupBubble
       group={buildToolCallGroup(tools)}
-      compact={compactActivity}
+      activityMembers={members}
+      disclosureId={`session-${session?.id ?? "unknown"}-${item.id}`}
+      compact={compactToolSummaries}
       defaultExpanded={!minimalActivity && toolsExpanded}
       defaultToolsExpanded={toolRowsExpanded}
+      transcriptDetached={transcriptDetached}
       workspaceCwd={workspace?.path ?? null}
       agentCodenames={agentCodenames}
       onOpenFile={onOpenFile}
       onOpenAgent={onOpenAgent}
     />
-  )).filter((child) => child.agentTools || child.node !== null);
+  );
+  const bodySource = (compactActivity
+    ? foldActivityRunsToSummaries(coalescedChildren, renderActivityGroup)
+    : foldToolRunsToSummaries(coalescedChildren, (tools) =>
+        renderActivityGroup({ tools, members: [] })
+      )
+  ).filter((child) => child.agentTools || child.node !== null);
   const bodyChildren: TurnBodyChild[] = bodySource.map((child) => {
     if (child.agentTools) {
       const first = child.agentTools[0];
@@ -517,7 +527,6 @@ function SessionConversationTurnInner({
       return {
         kind: "tool" as const,
         id,
-        hasErrors: child.agentTools.some((tool) => tool.status === "error"),
         node: (
           <AgentLaunchList
             key={id}
@@ -531,7 +540,17 @@ function SessionConversationTurnInner({
         )
       };
     }
-    return { kind: child.kind, id: child.id, node: child.node, hasErrors: child.hasErrors };
+    return { kind: child.kind, id: child.id, node: child.node };
+  });
+  const {
+    visibleItems: mountedBodyChildren,
+    hiddenEarlierCount: hiddenEarlierBodyCount,
+    showEarlier: showEarlierBody
+  } = useStableTailWindow(bodyChildren, {
+    initialCount: TURN_BODY_WINDOW,
+    pageSize: TURN_BODY_WINDOW_STEP,
+    detached: transcriptDetached,
+    getId: (child) => child.id
   });
   const earliestCreatedAt = [...assistantChildren, ...toolChildren]
     .map((c) => c.createdAt)
@@ -609,8 +628,11 @@ function SessionConversationTurnInner({
       isTurnActive={isTurnLiveTicking}
       toolsExpanded={toolsExpanded}
       onToggleTools={() => setToolsExpandOverride(!toolsExpanded)}
+      hasCollapsibleActivity={compactActivity && bodyChildren.some((child) => child.kind === "tool")}
       hideWorkingWhenCollapsed={minimalActivity}
-      body={bodyChildren}
+      body={mountedBodyChildren}
+      hiddenEarlierBodyCount={hiddenEarlierBodyCount}
+      onShowEarlierBody={showEarlierBody}
       {...(earliestCreatedAt ? { headerTimestampIso: earliestCreatedAt } : {})}
       {...(turnMarkdown ? { turnMarkdown } : {})}
       {...(changesCard ? { changes: changesCard } : {})}
@@ -680,6 +702,13 @@ function readMessageOrigin(payload: unknown): UserMessageOrigin | null {
   return { sessionId, label: label.trim() };
 }
 
+/** True when Rust marked this `user.message` as delivered mid-turn (steer)
+ *  rather than queued for the next turn. */
+function readMessageIsSteer(payload: unknown): boolean {
+  if (typeof payload !== "object" || payload === null) return false;
+  return (payload as { delivery?: unknown }).delivery === "steer";
+}
+
 /** User-message row from a render item (not a turn). */
 export function SessionConversationUserMessage({
   event,
@@ -696,6 +725,7 @@ export function SessionConversationUserMessage({
   onOpenSession?: (sessionId: string) => void;
 }): JSX.Element {
   const origin = readMessageOrigin(event.payload);
+  const isSteer = readMessageIsSteer(event.payload);
   let displayMessage = event.message;
   for (const a of attachments) {
     displayMessage = displayMessage.split(`@${a.filePath}`).join("");
@@ -708,24 +738,35 @@ export function SessionConversationUserMessage({
       {...(isTurnAnchor ? { "data-turn-anchor": "true" } : {})}
       {...(origin ? { role: "article", "aria-label": "Message from another chat" } : {})}
     >
-      {origin ? (
+      {origin || isSteer ? (
         <div className="user-message-origin">
-          From{" "}
-          {onOpenSession ? (
-            <button
-              type="button"
-              className="user-message-origin-open"
-              aria-label={`Open chat: ${origin.label}`}
-              title={`Open chat: ${origin.label}`}
-              onClick={() => onOpenSession(origin.sessionId)}
-            >
-              {origin.label}
-            </button>
-          ) : (
-            <span className="user-message-origin-label" title={origin.label}>
-              {origin.label}
+          {origin ? (
+            <>
+              From{" "}
+              {onOpenSession ? (
+                <button
+                  type="button"
+                  className="user-message-origin-open"
+                  aria-label={`Open chat: ${origin.label}`}
+                  title={`Open chat: ${origin.label}`}
+                  onClick={() => onOpenSession(origin.sessionId)}
+                >
+                  {origin.label}
+                </button>
+              ) : (
+                <span className="user-message-origin-label" title={origin.label}>
+                  {origin.label}
+                </span>
+              )}
+            </>
+          ) : null}
+          {origin && isSteer ? " · " : null}
+          {isSteer ? (
+            <span className="user-message-steer">
+              <CornerDownRight size={12} aria-hidden="true" />
+              Sent during the turn
             </span>
-          )}
+          ) : null}
         </div>
       ) : null}
       {attachments.length > 0 ? (

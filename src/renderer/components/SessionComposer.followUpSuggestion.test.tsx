@@ -52,9 +52,8 @@ describe("SessionComposer follow-up suggestion", () => {
 
     renderConversation(baseSession(finishedTurn()));
 
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText("Add a test for the empty case")).toBeTruthy();
-    });
+    const input = await screen.findByPlaceholderText("Add a test for the empty case");
+    expect(input).toHaveAttribute("data-placeholder-kind", "suggested-follow-up");
     expect(suggestFollowUp).toHaveBeenCalledWith({
       sessionId: "session-a",
       provider: "codex",

@@ -4,7 +4,7 @@ import SwiftUI
 /// The chat list: the app's root screen and the only place a chat is opened
 /// from.
 ///
-/// Three sections in a fixed order — Pinned, Priority, Chats — grouped by
+/// Pinned, Priority, then the desktop's recency buckets, grouped by
 /// `ChatSections.swift`, which ports the desktop's rules rather than
 /// inventing phone ones. The rows are the web list redrawn: the same
 /// information, our own type and surfaces, and none of `List`'s stock cell
@@ -30,6 +30,9 @@ struct ChatListView: View {
     /// The one-time row settle. False for exactly one frame after the first
     /// rows arrive.
     @State private var settled = false
+    /// Stable session ids connect each visible row to the transcript it
+    /// opens. The system owns the animation and its interactive reversal.
+    @Namespace private var chatTransitions
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -67,7 +70,10 @@ struct ChatListView: View {
             .animation(.easeOut(duration: 0.2), value: store.connection)
             .overlay(alignment: .bottomTrailing) { newChatButton }
             .toolbar(.hidden, for: .navigationBar)
-            .navigationDestination(for: ChatRow.self) { TranscriptScreen(row: $0) }
+            .navigationDestination(for: ChatRow.self) { row in
+                TranscriptScreen(row: row)
+                    .navigationTransition(.zoom(sourceID: row.session.id, in: chatTransitions))
+            }
             .navigationDestination(for: NewChatRequest.self) { request in
                 NewChatSheet(
                     store: store,
@@ -75,6 +81,7 @@ struct ChatListView: View {
                     preselectedProjectID: request.projectID,
                     branchFromWorkspaceID: request.workspaceID,
                     onLaunched: { workspace, session in
+                        navigator.launchedSessionID = session.id
                         // The launch answered with the rows themselves, so
                         // the chat takes the form's place in one update:
                         // seeding them means the row exists now, and
@@ -104,6 +111,7 @@ struct ChatListView: View {
             .navigationDestination(for: InsightsRoute.self) { _ in
                 InsightsScreen(onBack: { path.removeLast() })
             }
+            .reviewDestinations(store: store, onPop: { path.removeLast() })
         }
         .environmentObject(navigator)
         .onReceive(clock) { _ in store.refreshClock() }
@@ -116,6 +124,12 @@ struct ChatListView: View {
             navigator.newChat = nil
             path.append(request)
         }
+        // Review owns the selected file tab and its return to the file list.
+        .onChange(of: navigator.review) { _, route in
+            guard let route else { return }
+            navigator.review = nil
+            path.append(route)
+        }
         .onChange(of: store.sections) { openWhenReady() }
         .onChange(of: navigator.awaitingSessionID) { openWhenReady() }
         .onChange(of: push.tappedSessionID) { openTappedNotification() }
@@ -123,6 +137,7 @@ struct ChatListView: View {
         // any of this exists, so the value is read once on the way in as
         // well as watched.
         .task { openTappedNotification() }
+        .task { await openReviewFromLaunch() }
         .task {
             guard !reduceMotion else {
                 settled = true
@@ -151,10 +166,9 @@ struct ChatListView: View {
 
     private var header: some View {
         VStack(spacing: 0) {
-            ScreenHeader(title: "", showsMark: true, trailing: {
+            ScreenHeader(title: "", trailing: {
                 HStack(spacing: Spacing.tight) {
                     HeaderGlyphButton(systemName: "chart.bar", label: "Insights", tint: Theme.ink, weight: .semibold, filled: true) {
-                        Haptics.light()
                         path.append(InsightsRoute.root)
                     }
                     HeaderGlyphButton(systemName: "ellipsis", label: "Settings", tint: Theme.ink, weight: .semibold, filled: true) {
@@ -166,16 +180,16 @@ struct ChatListView: View {
                 // what you are looking at, then whether the line to it is up.
                 VStack(spacing: 2) {
                     Text("Remote")
-                        .font(.headline)
+                        .typeStyle(.headline)
                         .foregroundStyle(Theme.ink)
                     HStack(spacing: 5) {
                         Circle()
                             .fill(connectionTint)
                             .frame(width: 6, height: 6)
                         Image(systemName: "laptopcomputer")
-                            .font(.caption.weight(.medium))
+                            .typeSymbol(.caption, weight: .medium)
                         Text(MacName.from(host: store.client.socketURL.host()))
-                            .font(.caption)
+                            .typeStyle(.caption)
                     }
                     .foregroundStyle(Theme.muted)
                     .animation(.easeOut(duration: 0.2), value: store.connection)
@@ -194,11 +208,10 @@ struct ChatListView: View {
     /// thing to a list, and this opens a sheet you write in.
     private var newChatButton: some View {
         Button {
-            Haptics.light()
             navigator.newChat = NewChatRequest()
         } label: {
             Image(systemName: "square.and.pencil")
-                .font(.system(size: 22, weight: .medium))
+                .typeSymbol(size: 22, weight: .medium)
                 .foregroundStyle(Theme.ground)
                 .frame(width: 56, height: 56)
                 .background(Theme.ink, in: Circle())
@@ -221,7 +234,9 @@ struct ChatListView: View {
         List {
             section("Pinned", rows: store.sections.pinned, from: 0)
             section("Priority", rows: store.sections.priority, from: store.sections.pinned.count)
-            section("Chats", rows: store.sections.chats, from: store.sections.pinned.count + store.sections.priority.count)
+            ForEach(groupChatsByDate(store.sections.chats, now: store.now)) { group in
+                section(group.label, rows: group.rows, from: store.sections.pinned.count + store.sections.priority.count)
+            }
             // The last row needs somewhere to end, and the home indicator is
             // not it.
             Color.clear.frame(height: Spacing.section).plainRow()
@@ -259,7 +274,6 @@ struct ChatListView: View {
                         // seconds of a list assembling itself.
                         stagger: min(offset + index, 10)
                     ) {
-                        Haptics.light()
                         path.append(row)
                     }
                     .chatRowActions(
@@ -268,6 +282,7 @@ struct ChatListView: View {
                         onFork: { navigator.awaitingSessionID = $0 },
                         onNewChatHere: { navigator.newChat = NewChatRequest(workspaceID: $0.workspace.id) }
                     )
+                    .matchedTransitionSource(id: row.session.id, in: chatTransitions)
                     .plainRow()
                 }
             }
@@ -284,18 +299,63 @@ struct ChatListView: View {
         guard let wanted = navigator.awaitingSessionID else { return }
         guard let row = store.row(forSessionID: wanted) else { return }
         navigator.awaitingSessionID = nil
-        Task {
-            // The New chat page is still popping; a push that starts during
-            // that transition is dropped, so the row's push waits it out.
-            try? await Task.sleep(for: .milliseconds(320))
-            path.append(row)
-        }
+        // Already reading it — the deferred push below is slow enough that
+        // the row can be tapped by hand while it sleeps, and a second copy
+        // of the screen you are looking at is not what either intent asked
+        // for. Same rule as `openTappedNotification`.
+        guard push.openSessionID != wanted else { return }
+        // Do not wait for an in-flight pop. Fluid navigation coordinates a
+        // new push with the transition already running.
+        path.append(row)
     }
 
     /// A tapped notification names a chat (`sessionId` in the payload). It
     /// opens the way a fork does — the id waits in the navigator until the
     /// row for it is in the snapshot — so a cold launch from the lock screen
     /// lands on the chat rather than on the list.
+    /// `-argmax-open-review <workspace id>`, optionally with
+    /// `-argmax-open-file <path>` or `-argmax-open-diff <path>`, opens the
+    /// review surface at launch.
+    ///
+    /// Debug builds only, and the same family as `-argmax-unpaired` and
+    /// `-argmax-pair`. A simulator cannot be tapped from a script — a custom
+    /// URL raises a system alert that only a hand can answer — so without a
+    /// way in, the screens that need a real checkout behind them could only
+    /// ever be reviewed from fixtures. See ios/Argmax/README.md.
+    private func openReviewFromLaunch() async {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        func value(_ flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag),
+                  arguments.index(after: index) < arguments.endIndex
+            else { return nil }
+            return arguments[arguments.index(after: index)]
+        }
+        if let sessionID = value("-argmax-open-session") {
+            navigator.awaitingSessionID = sessionID
+            openWhenReady()
+            return
+        }
+        guard let workspaceID = value("-argmax-open-review") else { return }
+        // The snapshot is a round trip behind the first paint, and the route
+        // resolves against it.
+        for _ in 0..<40 where !store.snapshot.workspaces.contains(where: { $0.id == workspaceID }) {
+            try? await Task.sleep(for: .milliseconds(250))
+        }
+        guard path.isEmpty else { return }
+        path.append(ReviewRoute(workspaceID: workspaceID, filePath: value("-argmax-open-file")))
+        if value("-argmax-open-file") == nil, let filePath = value("-argmax-open-diff") {
+            path.append(ReviewDetail.diff(
+                workspaceID: workspaceID,
+                path: filePath,
+                scope: ReviewScope(
+                    rawValue: UserDefaults.standard.string(forKey: "argmax.review.scope") ?? ""
+                ) ?? .branch
+            ))
+        }
+        #endif
+    }
+
     private func openTappedNotification() {
         guard let sessionID = push.tappedSessionID else { return }
         push.tappedSessionID = nil
@@ -359,7 +419,11 @@ final class ChatNavigator: ObservableObject {
     /// A chat that has just been launched or forked, waiting for the row the
     /// host will send back so the stack has something to push.
     @Published var awaitingSessionID: String?
+    @Published var launchedSessionID: String?
     @Published var newChat: NewChatRequest?
+    /// The review surface a transcript asked for: its Changes button, a file
+    /// reference, or an edit activity that opens a diff.
+    @Published var review: ReviewRoute?
 }
 
 /// What "+" and "New chat here" open, as one value so there is one sheet.
@@ -501,30 +565,39 @@ struct ChatListRow: View {
     var stagger = 0
     let open: () -> Void
 
-    /// Settings → Appearance. It hides the provider's mark and nothing else:
-    /// a running chat still shows its nest and a chat with an icon still
-    /// shows that, so the column stays and the titles keep their column.
+    /// Settings → Appearance. With icons off the meta line leads with only a
+    /// running chat's nest; with marks off it drops the bare CLI badge.
+    @Environment(\.chatIcons) private var chatIcons
     @Environment(\.providerMarks) private var providerMarks
+    /// The branch is drawn inside a concatenated `Text`, which takes a `Font`
+    /// rather than a view modifier — so this row resolves the face itself.
+    @Environment(\.typeScale) private var typeScale
 
     var body: some View {
         Button(action: open) {
             HStack(alignment: .top, spacing: 0) {
-                ChatRowGlyphView(glyph: ChatRowGlyph(row: row, providerMarks: providerMarks))
-                    // Optically on the title's line rather than on the row's
-                    // top edge.
-                    .padding(.top, 2)
-                    .frame(width: Spacing.glyphColumn, alignment: .leading)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(row.workspace.taskLabel)
                         .typeRowTitle()
                         .lineLimit(1)
                         .truncationMode(.tail)
-                    subtitle
+                    // The glyph leads the second line rather than owning a
+                    // column of its own: a chat with nothing to show is then
+                    // missing a word, not indented past a hole, and the
+                    // title sits on the gutter whether or not a turn is in
+                    // flight. See docs/design/chat-list-glyphs.
+                    HStack(spacing: Spacing.snug - Spacing.hair) {
+                        let glyph = ChatRowGlyph(row: row, chatIcons: chatIcons, providerMarks: providerMarks)
+                        if glyph != .empty {
+                            ChatRowGlyphView(glyph: glyph)
+                        }
+                        subtitle
+                    }
                 }
                 Spacer(minLength: Spacing.row)
                 VStack(alignment: .trailing, spacing: Spacing.tight) {
                     Text(compactElapsed(since: lastActivity, now: now))
-                        .font(.caption2)
+                        .typeStyle(.caption2)
                         .foregroundStyle(Theme.muted)
                         .monospacedDigit()
                         // "2h" is a glance, not a sentence; VoiceOver gets
@@ -544,7 +617,7 @@ struct ChatListRow: View {
         .buttonStyle(RowPress())
         .overlay(alignment: .bottomLeading) {
             if separated {
-                HairlineDivider(inset: Spacing.gutter + Spacing.glyphColumn)
+                HairlineDivider(inset: Spacing.gutter)
                     .padding(.trailing, Spacing.gutter)
             }
         }
@@ -566,7 +639,7 @@ struct ChatListRow: View {
         var text = Text(row.projectName ?? "")
         if showsBranch {
             let separator = row.projectName == nil ? "" : " · "
-            text = text + Text(separator) + Text(row.workspace.branch).font(.argmaxMono(.caption))
+            text = text + Text(separator) + Text(row.workspace.branch).font(typeScale.font(.caption, mono: true))
         }
         return text
             .typeMeta()

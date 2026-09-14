@@ -1,19 +1,41 @@
 import {
+  FONT_HEAVINESS_HINTS,
+  FONT_HEAVINESS_MIN,
+  FONT_HEAVINESS_MAX,
+  type FontHeaviness
+} from "./fontHeaviness.js";
+import {
   AArrowDown,
   AArrowUp,
+  Bell,
+  BellOff,
   Check,
   Contrast,
+  Columns2,
+  Files,
   ListTree,
   Monitor,
+  MoonStar,
   Moon,
   Palette,
+  PanelLeft,
+  PanelRight,
   Sun,
-  Type
+  Type,
+  Zap,
+  ZapOff
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { PaletteItem } from "./paletteSearch.js";
 import { ACCENT_OPTIONS, type AccentId } from "./accent.js";
-import { FONT_SIZE_MAX, FONT_SIZE_MIN, fontSizeBasePx, type FontSize } from "./fonts.js";
+import {
+  FONT_OPTIONS,
+  FONT_SIZE_MAX,
+  FONT_SIZE_MIN,
+  fontSizeBasePx,
+  type FontFamilyId,
+  type FontSize
+} from "./fonts.js";
 import {
   INK_STRENGTH_HINTS,
   INK_STRENGTH_MAX,
@@ -27,6 +49,8 @@ import {
   type BackgroundIntensity
 } from "./backgroundIntensity.js";
 import { THEME_OPTIONS, type ThemeMode } from "./theme.js";
+import { CHAT_WIDTH_HINTS, CHAT_WIDTH_MIN, CHAT_WIDTH_MAX, type ChatWidth } from "./chatWidth.js";
+import type { ReviewPanelSide } from "./reviewPanelSide.js";
 import { CHAT_VERBOSITY_HINTS, CHAT_VERBOSITY_LABELS, type ChatVerbosity } from "./uiPreferences.js";
 
 /**
@@ -47,10 +71,28 @@ export type SettingCommandsInput = {
   onChatFontSizeChange: (size: FontSize) => void;
   chatVerbosity: ChatVerbosity;
   onChatVerbosityChange: (verbosity: ChatVerbosity) => void;
+  chatWidth: ChatWidth;
+  onChatWidthChange: (width: ChatWidth) => void;
+  reviewPanelSide: ReviewPanelSide;
+  onReviewPanelSideChange: (side: ReviewPanelSide) => void;
+  fontFamily: FontFamilyId;
+  onFontFamilyChange: (font: FontFamilyId) => void;
+  fontHeaviness: FontHeaviness;
+  onFontHeavinessChange: (heaviness: FontHeaviness) => void;
   inkStrength: InkStrength;
   onInkStrengthChange: (strength: InkStrength) => void;
   backgroundIntensity: BackgroundIntensity;
   onBackgroundIntensityChange: (intensity: BackgroundIntensity) => void;
+  desktopNotificationsEnabled: boolean;
+  onDesktopNotificationsEnabledChange: (enabled: boolean) => void;
+  keepAwakeEnabled: boolean;
+  onKeepAwakeEnabledChange: (enabled: boolean) => void;
+  fastModeEnabled: boolean;
+  onFastModeEnabledChange: (enabled: boolean) => void;
+  turnChangesExpanded: boolean;
+  onTurnChangesExpandedChange: (expanded: boolean) => void;
+  contextIndicatorEnabled: boolean;
+  onContextIndicatorEnabledChange: (enabled: boolean) => void;
 };
 
 const THEME_ICON: Record<ThemeMode, LucideIcon> = { light: Sun, dark: Moon, system: Monitor };
@@ -61,6 +103,16 @@ const FONT_SIZE_LEVELS: FontSize[] = Array.from(
 );
 
 const CHAT_VERBOSITY_LEVELS: ChatVerbosity[] = [1, 2, 3, 4];
+
+const CHAT_WIDTH_LEVELS: ChatWidth[] = Array.from(
+  { length: CHAT_WIDTH_MAX - CHAT_WIDTH_MIN + 1 },
+  (_, index) => (CHAT_WIDTH_MIN + index) as ChatWidth
+);
+
+const FONT_HEAVINESS_LEVELS: FontHeaviness[] = Array.from(
+  { length: FONT_HEAVINESS_MAX - FONT_HEAVINESS_MIN + 1 },
+  (_, index) => (FONT_HEAVINESS_MIN + index) as FontHeaviness
+);
 
 const INK_STRENGTH_LEVELS: InkStrength[] = Array.from(
   { length: INK_STRENGTH_MAX - INK_STRENGTH_MIN + 1 },
@@ -94,7 +146,7 @@ function fontSizeCommands(
       subtitle: inRange
         ? `${scope} · now ${fontSizeBasePx(current)}px`
         : `${scope} · already the ${direction === "larger" ? "largest" : "smallest"} size`,
-      group: "Settings",
+      group: "Actions",
       icon: direction === "larger" ? AArrowUp : AArrowDown,
       keepOpen: true,
       run: () => {
@@ -106,7 +158,7 @@ function fontSizeCommands(
     id: `${idPrefix}:${level}`,
     label: `${label} ${level}`,
     subtitle: `${scope} · ${fontSizeBasePx(level)}px body text`,
-    group: "Settings",
+    group: "Actions",
     icon: level === current ? Check : Type,
     run: () => onChange(level)
   }));
@@ -131,7 +183,7 @@ function inkStrengthCommands(
       subtitle: inRange
         ? `Text contrast · now level ${current}`
         : `Text contrast · already the ${direction === "stronger" ? "strongest" : "softest"} ink`,
-      group: "Settings",
+      group: "Actions",
       icon: Contrast,
       keepOpen: true,
       run: () => {
@@ -143,11 +195,43 @@ function inkStrengthCommands(
     id: `setting:ink-strength:${level}`,
     label: `Ink strength ${level}`,
     subtitle: `Text contrast · ${INK_STRENGTH_HINTS[level]}`,
-    group: "Settings",
+    group: "Actions",
     icon: level === current ? Check : Contrast,
     run: () => onChange(level)
   }));
   return [stepRow("stronger"), stepRow("softer"), ...levels];
+}
+
+function fontHeavinessCommands(
+  current: FontHeaviness,
+  onChange: (strength: FontHeaviness) => void
+): PaletteItem[] {
+  const stepRow = (direction: "heavier" | "lighter"): PaletteItem => {
+    const next = direction === "heavier" ? current + 1 : current - 1;
+    const inRange = next >= FONT_HEAVINESS_MIN && next <= FONT_HEAVINESS_MAX;
+    return {
+      id: `setting:font-heaviness:${direction}`,
+      label: `Font heaviness: ${direction}`,
+      subtitle: inRange
+        ? `Font weight · now level ${current}`
+        : `Font weight · already the ${direction === "heavier" ? "heaviest" : "lightest"} weight`,
+      group: "Actions",
+      icon: Type,
+      keepOpen: true,
+      run: () => {
+        if (inRange) onChange(next as FontHeaviness);
+      }
+    };
+  };
+  const levels: PaletteItem[] = FONT_HEAVINESS_LEVELS.map((level) => ({
+    id: `setting:font-heaviness:${level}`,
+    label: `Font heaviness ${level}`,
+    subtitle: `Font weight · ${FONT_HEAVINESS_HINTS[level]}`,
+    group: "Actions",
+    icon: level === current ? Check : Type,
+    run: () => onChange(level)
+  }));
+  return [stepRow("heavier"), stepRow("lighter"), ...levels];
 }
 
 function backgroundIntensityCommands(
@@ -163,7 +247,7 @@ function backgroundIntensityCommands(
       subtitle: inRange
         ? `Page color · now level ${current}`
         : `Page color · already the ${direction === "stronger" ? "strongest" : "softest"} background`,
-      group: "Settings",
+      group: "Actions",
       icon: Contrast,
       keepOpen: true,
       run: () => {
@@ -175,7 +259,7 @@ function backgroundIntensityCommands(
     id: `setting:background-intensity:${level}`,
     label: `Background intensity ${level}`,
     subtitle: `Page color · ${BACKGROUND_INTENSITY_HINTS[level]}`,
-    group: "Settings",
+    group: "Actions",
     icon: level === current ? Check : Contrast,
     run: () => onChange(level)
   }));
@@ -187,7 +271,7 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
     id: `setting:theme:${option.id}`,
     label: `${option.label} theme`,
     subtitle: option.hint,
-    group: "Settings",
+    group: "Actions",
     icon: option.id === input.themeMode ? Check : THEME_ICON[option.id],
     run: () => input.onThemeModeChange(option.id)
   }));
@@ -196,7 +280,7 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
     id: `setting:accent:${option.id}`,
     label: `${option.label} accent`,
     subtitle: "Accent color for selection, focus, and chrome",
-    group: "Settings",
+    group: "Actions",
     icon: option.id === input.accentId ? Check : Palette,
     run: () => input.onAccentChange(option.id)
   }));
@@ -207,15 +291,88 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
     // The panel calls this "Chat detail & verbosity"; the label carries one
     // word and the subtitle the other, so either finds the row.
     subtitle: `Verbosity ${level} of 4 · ${CHAT_VERBOSITY_HINTS[level]}`,
-    group: "Settings",
+    group: "Actions",
     icon: level === input.chatVerbosity ? Check : ListTree,
     run: () => input.onChatVerbosityChange(level)
   }));
+
+  const fonts: PaletteItem[] = FONT_OPTIONS.map((option) => ({
+    id: `setting:font-family:${option.id}`,
+    label: `Font family: ${option.label}`,
+    subtitle: `Interface and code · ${option.hint}`,
+    group: "Actions",
+    icon: option.id === input.fontFamily ? Check : Type,
+    run: () => input.onFontFamilyChange(option.id)
+  }));
+
+  const reviewPanelSides: PaletteItem[] = (["left", "right"] as const).map((side) => ({
+    id: `setting:files-panel-side:${side}`,
+    label: `Files panel: ${side}`,
+    subtitle: side === "left"
+      ? "Changes and files dock to the left of the conversation"
+      : "Changes and files dock to the right of the conversation",
+    group: "Actions",
+    icon: side === input.reviewPanelSide ? Check : side === "left" ? PanelLeft : PanelRight,
+    run: () => input.onReviewPanelSideChange(side)
+  }));
+
+  const toggleCommands: PaletteItem[] = [
+    {
+      id: `setting:notifications:${input.desktopNotificationsEnabled ? "disable" : "enable"}`,
+      label: `${input.desktopNotificationsEnabled ? "Disable" : "Enable"} desktop notifications`,
+      subtitle: "Show a desktop notice when an agent finishes or fails in the background",
+      group: "Actions",
+      icon: input.desktopNotificationsEnabled ? BellOff : Bell,
+      run: () => input.onDesktopNotificationsEnabledChange(!input.desktopNotificationsEnabled)
+    },
+    {
+      id: `setting:keep-awake:${input.keepAwakeEnabled ? "disable" : "enable"}`,
+      label: `${input.keepAwakeEnabled ? "Disable" : "Enable"} keep computer awake`,
+      subtitle: "Prevent the Mac from sleeping while any chat has a working agent",
+      group: "Actions",
+      icon: input.keepAwakeEnabled ? Moon : MoonStar,
+      run: () => input.onKeepAwakeEnabledChange(!input.keepAwakeEnabled)
+    },
+    {
+      id: `setting:fast-mode:${input.fastModeEnabled ? "disable" : "enable"}`,
+      label: `${input.fastModeEnabled ? "Disable" : "Enable"} fast mode`,
+      subtitle: "Request faster responses for supported models, with increased usage",
+      group: "Actions",
+      icon: input.fastModeEnabled ? ZapOff : Zap,
+      run: () => input.onFastModeEnabledChange(!input.fastModeEnabled)
+    },
+    {
+      id: `setting:changed-files:${input.turnChangesExpanded ? "collapse" : "expand"}`,
+      label: `${input.turnChangesExpanded ? "Collapse" : "Expand"} changed files`,
+      subtitle: "Show or hide the file list under each finished turn",
+      group: "Actions",
+      icon: Files,
+      run: () => input.onTurnChangesExpandedChange(!input.turnChangesExpanded)
+    },
+    {
+      id: `setting:context-indicator:${input.contextIndicatorEnabled ? "hide" : "show"}`,
+      label: `${input.contextIndicatorEnabled ? "Hide" : "Show"} context indicator`,
+      subtitle: "Show or hide context-window usage beside the model in active chats",
+      group: "Actions",
+      icon: input.contextIndicatorEnabled ? Moon : MoonStar,
+      run: () => input.onContextIndicatorEnabledChange(!input.contextIndicatorEnabled)
+    }
+  ];
 
   return [
     ...themes,
     ...accents,
     ...verbosity,
+    ...fonts,
+    ...reviewPanelSides,
+    ...CHAT_WIDTH_LEVELS.map((level): PaletteItem => ({
+      id: `setting:chat-width:${level}`,
+      label: `Chat width ${level}`,
+      subtitle: `Agent window content width · ${CHAT_WIDTH_HINTS[level]}`,
+      group: "Actions",
+      icon: level === input.chatWidth ? Check : Columns2,
+      run: () => input.onChatWidthChange(level)
+    })),
     ...fontSizeCommands(
       "setting:font-size",
       "App font size",
@@ -232,10 +389,12 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
       input.chatFontSize,
       input.onChatFontSizeChange
     ),
+    ...fontHeavinessCommands(input.fontHeaviness, input.onFontHeavinessChange),
     ...inkStrengthCommands(input.inkStrength, input.onInkStrengthChange),
     ...backgroundIntensityCommands(
       input.backgroundIntensity,
       input.onBackgroundIntensityChange
-    )
+    ),
+    ...toggleCommands
   ];
 }

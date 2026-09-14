@@ -1,15 +1,12 @@
 export type FontFamilyId =
+  | "dm-sans"
+  | "system"
   | "system-mono"
-  | "menlo"
-  | "monaco"
-  | "jetbrains-mono"
-  | "fira-code"
   | "geist-mono"
   | "ibm-plex-mono"
   | "inter"
   | "geist-sans"
-  | "ibm-plex-sans"
-  | "manrope";
+  | "ibm-plex-sans";
 
 export type FontOption = {
   id: FontFamilyId;
@@ -45,40 +42,40 @@ const SYSTEM_MONO_FALLBACK = 'ui-monospace, "SFMono-Regular", Consolas, monospac
 
 export const FONT_OPTIONS: readonly FontOption[] = [
   {
+    id: "system",
+    label: "System Sans (SF Pro)",
+    hint: "The native system font: San Francisco on macOS, with system mono for the terminal.",
+    stack: '-apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif'
+  },
+  {
     id: "system-mono",
     label: "System Mono",
     hint: "Your OS's default mono — SF Mono on macOS, Cascadia on Windows. Zero bundle, fully native.",
     stack: `ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", monospace`
   },
   {
-    id: "menlo",
-    label: "Menlo",
-    hint: "macOS-bundled mono — clean grotesque sans with subtly humanist details.",
-    stack: `Menlo, ui-monospace, Consolas, monospace`
+    id: "dm-sans",
+    label: "DM Sans",
+    hint: "A clean geometric sans with a warm, open feel, designed for small text.",
+    stack: `"DM Sans Variable", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`
   },
   {
-    id: "monaco",
-    label: "Monaco",
-    hint: "The classic Mac coding font — distinctive curves on g, 0, 1. Unmistakable.",
-    stack: `Monaco, Menlo, ui-monospace, Consolas, monospace`
-  },
-  {
-    id: "jetbrains-mono",
-    label: "JetBrains Mono",
-    hint: "The IDE-standard mono used in JetBrains products and a popular Cursor choice.",
-    stack: `"JetBrains Mono Variable", "JetBrains Mono", ${SYSTEM_MONO_FALLBACK}`
-  },
-  {
-    id: "fira-code",
-    label: "Fira Code",
-    hint: "Ligature-rich coding font; long a favorite in VS Code and Cursor.",
-    stack: `"Fira Code Variable", "Fira Code", ${SYSTEM_MONO_FALLBACK}`
+    id: "geist-sans",
+    label: "Geist Sans",
+    hint: "Vercel's modern UI sans, paired with Geist Mono for code. Clean, slightly geometric, neutral.",
+    stack: `"Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`
   },
   {
     id: "geist-mono",
     label: "Geist Mono",
     hint: "Vercel's modern mono; clean and rounded, used across v0 and similar AI tools.",
     stack: `"Geist Mono Variable", "Geist Mono", ${SYSTEM_MONO_FALLBACK}`
+  },
+  {
+    id: "ibm-plex-sans",
+    label: "IBM Plex Sans",
+    hint: "Warm humanist sans — slightly bookish, pairs well with the paper-grain background.",
+    stack: `"IBM Plex Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`
   },
   {
     id: "ibm-plex-mono",
@@ -91,31 +88,13 @@ export const FONT_OPTIONS: readonly FontOption[] = [
     label: "Inter",
     hint: "Proportional humanist sans — book-like, less editor-y. Code blocks stay mono.",
     stack: `"Inter Variable", Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`
-  },
-  {
-    id: "geist-sans",
-    label: "Geist Sans",
-    hint: "Vercel's modern UI sans, paired with Geist Mono for code. Clean, slightly geometric, neutral.",
-    stack: `"Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`
-  },
-  {
-    id: "ibm-plex-sans",
-    label: "IBM Plex Sans",
-    hint: "Warm humanist sans — slightly bookish, pairs well with the paper-grain background.",
-    stack: `"IBM Plex Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`
-  },
-  {
-    id: "manrope",
-    label: "Manrope",
-    hint: "Friendly humanist sans — slightly rounded, softer than Inter.",
-    stack: `"Manrope Variable", Manrope, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`
   }
 ] as const;
 
 export const DEFAULT_FONT_ID: FontFamilyId = "geist-sans";
 export const FONT_STORAGE_KEY = "argmax.font.family";
 export const DEFAULT_FONT_SIZE: FontSize = 6;
-export const DEFAULT_CHAT_FONT_SIZE: FontSize = 8;
+export const DEFAULT_CHAT_FONT_SIZE: FontSize = 6;
 /** App-chrome size: sidebar, titlebar, settings, global overlays. */
 export const FONT_SIZE_STORAGE_KEY = "argmax.font.scale";
 /** Agent-window size: conversations, composers, and agent activity panes. */
@@ -168,7 +147,7 @@ export function readStoredFontSize(): FontSize {
 }
 
 /**
- * Agent windows carry their own size. A first run uses the larger chat
+ * Agent windows carry their own size. A first run uses the chat
  * default, while an existing install with no chat key inherits its app value
  * so an upgrade does not change the user's layout unexpectedly.
  */
@@ -220,20 +199,20 @@ export function resolveCssPxVariable(name: string, fallback: number): number {
 }
 
 export function resolveTerminalFontSize(): number {
-  return resolveCssPxVariable("--text-terminal", 13);
+  return resolveCssPxVariable("--text-terminal", 11);
 }
 
-// Per-font CSS loaders. The system fonts (system-mono, menlo, monaco)
+// Per-font CSS loaders. The system fonts (system, system-mono)
 // need no JS-loaded assets; the rest pull in @fontsource bundles only when
 // actually applied (ralph B6 — defers CSS-embedded font URLs from cold
 // launch). Geist Sans is the default, so its bundle loads on cold launch;
 // it pairs with Geist Mono, so both load together.
 const FONT_CSS_LOADERS: Partial<Record<FontFamilyId, () => Promise<unknown>>> = {
-  "jetbrains-mono": () => import("@fontsource-variable/jetbrains-mono/wght.css"),
-  "fira-code": () => import("@fontsource-variable/fira-code/wght.css"),
+  "dm-sans": () => import("@fontsource-variable/dm-sans/wght.css"),
   "geist-mono": () => import("@fontsource-variable/geist-mono/wght.css"),
   "ibm-plex-mono": () =>
     Promise.all([
+      import("@fontsource/ibm-plex-mono/latin-300.css"),
       import("@fontsource/ibm-plex-mono/latin-400.css"),
       import("@fontsource/ibm-plex-mono/latin-500.css"),
       import("@fontsource/ibm-plex-mono/latin-700.css")
@@ -241,6 +220,7 @@ const FONT_CSS_LOADERS: Partial<Record<FontFamilyId, () => Promise<unknown>>> = 
   inter: () => import("@fontsource-variable/inter/wght.css"),
   "geist-sans": () =>
     Promise.all([
+      import("@fontsource/geist-sans/latin-300.css"),
       import("@fontsource/geist-sans/latin-400.css"),
       import("@fontsource/geist-sans/latin-500.css"),
       import("@fontsource/geist-sans/latin-700.css"),
@@ -248,11 +228,11 @@ const FONT_CSS_LOADERS: Partial<Record<FontFamilyId, () => Promise<unknown>>> = 
     ]),
   "ibm-plex-sans": () =>
     Promise.all([
+      import("@fontsource/ibm-plex-sans/latin-300.css"),
       import("@fontsource/ibm-plex-sans/latin-400.css"),
       import("@fontsource/ibm-plex-sans/latin-500.css"),
       import("@fontsource/ibm-plex-sans/latin-700.css")
-    ]),
-  manrope: () => import("@fontsource-variable/manrope/wght.css")
+    ])
 };
 
 const loadedFonts = new Set<FontFamilyId>();

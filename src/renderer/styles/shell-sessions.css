@@ -16,8 +16,26 @@
   background: transparent;
   cursor: pointer;
   font-size: var(--text-sm);
-  font-weight: 400;
+  font-weight: calc(400 + var(--font-weight-offset));
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.session-link.session-link-has-pr-count {
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+}
+
+.session-pr-count {
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 var(--space-1);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 .session-link:hover {
@@ -231,7 +249,8 @@
 
 /* The pin / archive actions are hidden until hover or focus. A single action
    fits inside the base padding (which already clears the tokens badge);
-   reserve the wider clearance only when both are on screen. */
+   PR counts reserve both action slots at rest so the badge never shifts. */
+.session-row:has(.session-pin-btn):has(.session-archive-btn) .session-link-has-pr-count,
 .session-row:hover:has(.session-pin-btn):has(.session-archive-btn) .session-link,
 .session-row:focus-within:has(.session-pin-btn):has(.session-archive-btn) .session-link {
   padding-right: 70px;
@@ -443,7 +462,7 @@
   font-family: var(--font-mono);
   color: var(--text);
   font-size: var(--text-sm);
-  font-weight: 400;
+  font-weight: calc(400 + var(--font-weight-offset));
   letter-spacing: -0.003em;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -588,7 +607,12 @@
   display: grid;
   container-type: inline-size;
   place-items: center;
-  padding: 48px 36px;
+  /* The gutter gives way before the shell does: 36px while the pane has more
+     than the shell's 760px plus both gutters, shrinking to 16px by the time
+     the pane is 792px, so the shell's width is continuous as the window
+     narrows. A viewport-keyed padding step here made the shell jump wider
+     when the sidebar was still open beside it. */
+  padding: 48px clamp(16px, calc((100% - 760px) / 2), 36px);
 }
 
 .launcher-scroll:has(.launcher-shell[data-review-open="true"]) {
@@ -599,6 +623,14 @@
 
 .launcher-shell {
   width: min(100%, 760px);
+}
+
+/* Same breakpoint as the composer chip fold (chat-composer-chips.css), keyed
+   on the launcher's own width rather than the window's. */
+@container (max-width: 720px) {
+  .launcher-surface h1 {
+    font-size: var(--text-2xl);
+  }
 }
 
 .launcher-surface {

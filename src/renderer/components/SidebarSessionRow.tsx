@@ -7,6 +7,7 @@ import {
   ExternalLink,
   GitMerge,
   GitPullRequest,
+  GitPullRequestClosed,
   ListPlus,
   Palette,
   Pencil,
@@ -22,7 +23,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type DragEvent as ReactDragEvent,
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent
@@ -32,10 +32,18 @@ import type { DetectedIde, IdeId, WorkspaceSummary } from "../../shared/types.js
 import { useAnchoredPopover, type AnchorPoint } from "../hooks/useAnchoredPopover.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
-import { WORKSPACE_DRAG_MIME } from "../lib/gridState.js";
 import type { PriorityReasonKind } from "../lib/priority.js";
+import {
+  verifiedWorkspacePrs,
+  workspacePrCountLabel,
+  workspacePrSummaryState
+} from "../lib/sessionPrs.js";
 import { resolveSessionIcon, resolveSessionIconColor } from "../lib/sessionIcons.js";
 import { stableHash32 } from "../lib/stableHash.js";
+import {
+  beginWorkspacePointerDrag,
+  consumeWorkspaceDragClick
+} from "../state/workspaceDrag.js";
 import { SessionIconPicker } from "./SessionIconPicker.js";
 import { WorkingNest } from "./WorkingNest.js";
 
@@ -73,8 +81,6 @@ type SidebarSessionRowProps = {
   onOpenInIde: (workspaceId: string, ide: IdeId, options?: { pinAsDefault?: boolean }) => void;
   onTogglePin?: (workspaceId: string, pinned: boolean) => void;
   onRename?: (workspaceId: string, taskLabel: string) => void;
-  onWorkspaceDragStart?: (workspaceId: string) => void;
-  onWorkspaceDragEnd?: () => void;
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
   /**
@@ -128,7 +134,7 @@ function StatusMarker({
   phaseKey
 }: {
   working: boolean;
-  prState?: WorkspaceSummary["prState"];
+  prState?: string | null;
   priorityReason?: PriorityReasonKind;
   phaseKey: string;
 }): JSX.Element {
@@ -152,6 +158,9 @@ function StatusMarker({
   if (prState === "OPEN") {
     return <GitPullRequest size={16} aria-hidden className="status-marker" data-pr="open" />;
   }
+  if (prState === "CLOSED") {
+    return <GitPullRequestClosed size={16} aria-hidden className="status-marker" data-pr="closed" />;
+  }
   return <CircleX size={16} aria-hidden className="status-marker" />;
 }
 
@@ -160,7 +169,7 @@ function StatusMarker({
  * StatusMarker uses. `null` means the row is calm: a custom icon stands alone,
  * and a row without one shows no leading glyph at all.
  */
-type StatusOverlay = "awaiting" | "working" | "pr-merged" | "pr-open" | "failed";
+type StatusOverlay = "awaiting" | "working" | "pr-merged" | "pr-open" | "pr-closed" | "failed";
 
 function statusOverlayFor({
   working,
@@ -170,13 +179,14 @@ function statusOverlayFor({
 }: {
   working: boolean;
   state: WorkspaceSummary["state"];
-  prState?: WorkspaceSummary["prState"];
+  prState?: string | null;
   priorityReason?: PriorityReasonKind;
 }): StatusOverlay | null {
   if (isAwaitingReply(priorityReason)) return "awaiting";
   if (working) return "working";
   if (prState === "MERGED") return "pr-merged";
   if (prState === "OPEN") return "pr-open";
+  if (prState === "CLOSED") return "pr-closed";
   // "archive-failed" borrows the failed cross: the row survived an archive
   // attempt (a process refused to terminate) and needs a retry.
   return state === "failed" || state === "archive-failed" ? "failed" : null;
@@ -224,8 +234,6 @@ function SidebarSessionRowInner({
   onOpenInIde,
   onTogglePin,
   onRename,
-  onWorkspaceDragStart,
-  onWorkspaceDragEnd,
   detectedIdes,
   defaultIde,
   subtitle,
@@ -308,13 +316,27 @@ function SidebarSessionRowInner({
       : null;
 
   const displayLabel = workspace.taskLabel.trim() || workspace.branch || "Untitled chat";
+  const summaryPrState = workspacePrSummaryState(workspace);
+  const verifiedPrs = verifiedWorkspacePrs(workspace);
+  const primaryPr = verifiedPrs.find((pr) => pr.isPrimary) ?? verifiedPrs[0] ?? null;
+  const prCountLabel = workspacePrCountLabel(workspace);
+  const prCountBadge =
+    verifiedPrs.length > 1 && prCountLabel ? (
+      <span
+        className="session-pr-count"
+        aria-label={`${verifiedPrs.length} pull requests: ${prCountLabel}`}
+        title={prCountLabel}
+      >
+        {verifiedPrs.length}
+      </span>
+    ) : null;
   // Surface the PR in the accessible row title so the marker icon has a name —
   // matched on by the sidebar tests and read aloud by screen readers.
   const prTitle =
-    workspace.prState === "MERGED" && workspace.prNumber != null
-      ? ` — merged pull request #${workspace.prNumber}`
-      : workspace.prState === "OPEN" && workspace.prNumber != null
-        ? ` — open pull request #${workspace.prNumber}`
+    verifiedPrs.length > 1 && prCountLabel
+      ? ` — pull requests: ${prCountLabel}`
+      : summaryPrState && (primaryPr?.prNumber ?? workspace.prNumber) != null
+        ? ` — ${summaryPrState.toLowerCase()} pull request #${primaryPr?.prNumber ?? workspace.prNumber}`
         : "";
   const priorityTitle = priorityReason ? ` — ${PRIORITY_TITLE[priorityReason]}` : "";
   // A turn in flight takes the marker cell; unread waits until it ends.
@@ -376,33 +398,6 @@ function SidebarSessionRowInner({
     }
   };
 
-  const handleWorkspaceDragStart = (event: ReactDragEvent<HTMLButtonElement>): void => {
-    event.stopPropagation();
-    if (!canDragToGrid) {
-      event.preventDefault();
-      return;
-    }
-    event.dataTransfer.setData(WORKSPACE_DRAG_MIME, workspace.id);
-    event.dataTransfer.effectAllowed = "copyMove";
-    // Use the row button itself as the drag image so the OS preview shows
-    // the workspace label instead of the default button rendering with
-    // its sibling action chrome stripped.
-    if (event.currentTarget instanceof HTMLElement) {
-      const rect = event.currentTarget.getBoundingClientRect();
-      event.dataTransfer.setDragImage(
-        event.currentTarget,
-        Math.max(0, event.clientX - rect.left),
-        Math.max(0, event.clientY - rect.top)
-      );
-    }
-    onWorkspaceDragStart?.(workspace.id);
-  };
-
-  const handleWorkspaceDragEnd = (event: ReactDragEvent<HTMLButtonElement>): void => {
-    event.stopPropagation();
-    onWorkspaceDragEnd?.();
-  };
-
   const handleSessionLinkKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") {
       return;
@@ -441,7 +436,7 @@ function SidebarSessionRowInner({
   const statusOverlay = statusOverlayFor({
     working,
     state: workspace.state,
-    prState: workspace.prState,
+    prState: summaryPrState,
     priorityReason
   });
   const hasCustomIcon = workspace.icon ? resolveSessionIcon(workspace.icon) !== null : false;
@@ -457,7 +452,7 @@ function SidebarSessionRowInner({
     ) : statusOverlay ? (
       <StatusMarker
         working={working}
-        prState={workspace.prState}
+        prState={summaryPrState}
         priorityReason={priorityReason}
         phaseKey={workspace.id}
       />
@@ -476,7 +471,7 @@ function SidebarSessionRowInner({
         // swaps for an unboxed input, so renaming edits the label in place
         // instead of replacing the row with a form field.
         <div
-          className={`session-link session-link-renaming${subtitle ? " session-link-stacked" : ""}`}
+          className={`session-link session-link-renaming${subtitle ? " session-link-stacked" : ""}${prCountBadge ? " session-link-has-pr-count" : ""}`}
           data-status={workspace.state}
         >
           {leadingGlyph ?? <span className="session-link-lead-spacer" aria-hidden="true" />}
@@ -493,6 +488,7 @@ function SidebarSessionRowInner({
             />
             {subtitle ? <span className="session-link-subtitle">{subtitle}</span> : null}
           </span>
+          {prCountBadge}
         </div>
       ) : (
         <>
@@ -500,7 +496,7 @@ function SidebarSessionRowInner({
             aria-current={isSelected ? "true" : undefined}
             className={`session-link${isSelected ? " active" : ""}${
               subtitle || importedProvider || launchedByLabel ? " session-link-stacked" : ""
-            }`}
+            }${prCountBadge ? " session-link-has-pr-count" : ""}`}
             data-open={isOpenInGrid ? "true" : undefined}
             data-status={workspace.state}
             type="button"
@@ -511,17 +507,36 @@ function SidebarSessionRowInner({
             // apart. A pseudo-element cannot inherit `animation-delay`, so it
             // travels as a custom property (styles/shell-sessions.css).
             style={{ "--row-phase": `-${stableHash32(workspace.id) % 1800}ms` } as CSSProperties}
-            draggable={canDragToGrid}
             onKeyDown={handleSessionLinkKeyDown}
             onContextMenu={handleContextMenu}
-            onClick={(event) =>
+            onClick={(event) => {
+              if (consumeWorkspaceDragClick(workspace.id)) return;
               onOpenWorkspaceChat(workspace.id, {
                 ctrlOrMeta: event.metaKey || event.ctrlKey,
                 alt: event.altKey
-              })
-            }
-            onDragStart={handleWorkspaceDragStart}
-            onDragEnd={handleWorkspaceDragEnd}
+              });
+            }}
+            onPointerDown={(event) => {
+              if (!canDragToGrid || event.button !== 0) return;
+              // In project view the surrounding wrapper remains natively
+              // draggable for sidebar reordering. Disable it for this pointer
+              // session so the chat-title gesture cannot open WebKit's HTML
+              // drag machinery before the grid path takes over.
+              const wrapper = event.currentTarget.closest<HTMLElement>(".session-row-wrap");
+              const restoreWrapperDrag = wrapper?.draggable
+                ? () => {
+                    wrapper.draggable = true;
+                  }
+                : undefined;
+              if (wrapper) wrapper.draggable = false;
+              beginWorkspacePointerDrag(workspace.id, {
+                pointerId: event.pointerId,
+                button: event.button,
+                clientX: event.clientX,
+                clientY: event.clientY,
+                onFinish: restoreWrapperDrag
+              });
+            }}
           >
             {leadingGlyph ?? <span className="session-link-lead-spacer" aria-hidden="true" />}
             {subtitle || importedProvider || launchedByLabel ? (
@@ -544,6 +559,7 @@ function SidebarSessionRowInner({
             ) : (
               <span>{displayLabel}</span>
             )}
+            {prCountBadge}
           </button>
       {onTogglePin ? (
         <button
@@ -744,8 +760,6 @@ export function sidebarSessionRowEqual(
   if (prev.onOpenInIde !== next.onOpenInIde) return false;
   if (prev.onTogglePin !== next.onTogglePin) return false;
   if (prev.onRename !== next.onRename) return false;
-  if (prev.onWorkspaceDragStart !== next.onWorkspaceDragStart) return false;
-  if (prev.onWorkspaceDragEnd !== next.onWorkspaceDragEnd) return false;
   if (prev.subtitle !== next.subtitle) return false;
   if (prev.importedProvider !== next.importedProvider) return false;
   if (prev.launchedByLabel !== next.launchedByLabel) return false;
@@ -772,12 +786,32 @@ export function sidebarSessionRowEqual(
     pw.pinned !== nw.pinned ||
     pw.prState !== nw.prState ||
     pw.prNumber !== nw.prNumber ||
+    workspacePrSummaryState(pw) !== workspacePrSummaryState(nw) ||
+    !sidebarPrsEqual(verifiedWorkspacePrs(pw), verifiedWorkspacePrs(nw)) ||
     pw.icon !== nw.icon ||
     pw.iconColor !== nw.iconColor
   ) {
     return false;
   }
   return true;
+}
+
+function sidebarPrsEqual(
+  prev: ReturnType<typeof verifiedWorkspacePrs>,
+  next: ReturnType<typeof verifiedWorkspacePrs>
+): boolean {
+  if (prev === next) return true;
+  if (prev.length !== next.length) return false;
+  return prev.every((pr, index) => {
+    const candidate = next[index];
+    return Boolean(
+      candidate &&
+        pr.prNumber === candidate.prNumber &&
+        pr.prState === candidate.prState &&
+        pr.relationship === candidate.relationship &&
+        pr.isPrimary === candidate.isPrimary
+    );
+  });
 }
 
 export const SidebarSessionRow = memo(SidebarSessionRowInner, sidebarSessionRowEqual);

@@ -17,8 +17,8 @@ use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 use crate::ipc::inputs::*;
 use crate::ipc::{
     activity, approvals, attachments, checkpoints, checks, connections, dashboard, git_ops, goals,
-    health, learnings, projects, providers, prs, remote, review, session, skills, system, terminal,
-    usage, workspace_files, workspaces,
+    health, learnings, projects, providers, prs, questions, remote, review, session, skills,
+    sources, system, terminal, usage, workspace_files, workspaces,
 };
 use crate::state::AppState;
 
@@ -52,12 +52,18 @@ pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
     "sync:run-now",
     // The browser pane manipulates the desktop app's native child webview.
     "browser:open",
+    "browser:content-blocking",
+    "browser:set-site-blocking",
+    "browser:chrome-profiles",
+    "browser:import-chrome-history",
     "browser:navigate",
     "browser:back",
     "browser:forward",
     "browser:reload",
     "browser:stop",
     "browser:set-bounds",
+    "browser:focus",
+    "browser:set-theme",
     "browser:close",
     "browser:fill-credentials",
     "browser:screenshot",
@@ -232,6 +238,10 @@ async fn dispatch_standard(
             let input: WorkspacesSetPinnedInput = parse(channel, input)?;
             encode(workspaces::workspaces_set_pinned_impl(state, input)?)
         }
+        "workspaces:mark-viewed" => {
+            let input: WorkspacesMarkViewedInput = parse(channel, input)?;
+            encode(workspaces::workspaces_mark_viewed_impl(state, input).await?)
+        }
         "workspaces:set-priority-added" => {
             let input: WorkspacesSetPriorityAddedInput = parse(channel, input)?;
             encode(workspaces::workspaces_set_priority_added_impl(
@@ -264,6 +274,10 @@ async fn dispatch_standard(
         "providers:send-input" => {
             let input: ProvidersSendInput = parse(channel, input)?;
             encode(providers::providers_send_input_impl(state, input).await?)
+        }
+        "providers:steer-input" => {
+            let input: ProvidersSendInput = parse(channel, input)?;
+            encode(providers::providers_steer_input_impl(state, input).await?)
         }
         "providers:resize" => {
             let input: ProvidersResizeInput = parse(channel, input)?;
@@ -309,14 +323,35 @@ async fn dispatch_standard(
             let _input: ApprovalsPendingInput = parse(channel, input)?;
             encode(approvals::approvals_pending_impl(state)?)
         }
+        "questions:resolve" => {
+            let input: QuestionsResolveInput = parse(channel, input)?;
+            encode(questions::questions_resolve_impl(state, input).await?)
+        }
 
         "session:events-since" => {
             let input: SessionEventsSinceInput = parse(channel, input)?;
-            encode(session::session_events_since_impl(state, input).await?)
+            let row_paged = input.change_cursor.is_none();
+            let mut page = session::session_events_since_remote_impl(
+                state,
+                input,
+                // Reserve the RPC envelope outside SessionEventsSinceResult.
+                super::transcript_trim::REMOTE_PAGE_BUDGET_BYTES - 128,
+            )
+            .await?;
+            super::transcript_trim::trim_for_remote(&mut page);
+            if row_paged || page.reset_required {
+                super::transcript_trim::fit_to_budget(
+                    &mut page,
+                    super::transcript_trim::REMOTE_PAGE_BUDGET_BYTES,
+                );
+            }
+            encode(page)
         }
         "session:agent-events" => {
             let input: SessionAgentEventsInput = parse(channel, input)?;
-            encode(session::session_agent_events_impl(state, input).await?)
+            let mut page = session::session_agent_events_impl(state, input).await?;
+            super::transcript_trim::trim_payloads_for_remote(&mut page);
+            encode(page)
         }
         "session:suggest-follow-up" => {
             let input: SessionSuggestFollowUpInput = parse(channel, input)?;
@@ -418,6 +453,22 @@ async fn dispatch_standard(
             encode(remote::remote_push_capability_impl(state)?)
         }
 
+        "sources:list" => {
+            let input = parse(channel, input)?;
+            encode(sources::sources_list_impl(state, input).await?)
+        }
+        "sources:add" => {
+            let input = parse(channel, input)?;
+            encode(sources::sources_add_impl(state, input).await?)
+        }
+        "sources:update" => {
+            let input = parse(channel, input)?;
+            encode(sources::sources_update_impl(state, input).await?)
+        }
+        "sources:delete" => {
+            let input = parse(channel, input)?;
+            encode(sources::sources_delete_impl(state, input).await?)
+        }
         "learnings:list" => {
             let input: LearningsListInput = parse(channel, input)?;
             encode(learnings::learnings_list_impl(state, input).await?)
@@ -438,6 +489,14 @@ async fn dispatch_standard(
         "prs:refresh" => {
             let input: PrsRefreshInput = parse(channel, input)?;
             encode(prs::prs_refresh_impl(state, input).await?)
+        }
+        "prs:set-primary" => {
+            let input: PrsSetPrimaryInput = parse(channel, input)?;
+            encode(prs::prs_set_primary_impl(state, input).await?)
+        }
+        "prs:dismiss" => {
+            let input: PrsDismissInput = parse(channel, input)?;
+            encode(prs::prs_dismiss_impl(state, input).await?)
         }
 
         "git:commit" => {

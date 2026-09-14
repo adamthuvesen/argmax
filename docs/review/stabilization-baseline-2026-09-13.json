@@ -1,0 +1,651 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-09-13",
+  "assessment": "working-tree-baseline-not-release-acceptance",
+  "initialHead": "63a36d460175ce017299e8b508cee7b34201a529",
+  "laterHead": "cb188f320a65ed858b9f7e1f0776d20f52339418",
+  "unit": {
+    "files": 252,
+    "passed": 2981,
+    "failed": 0
+  },
+  "performance": {
+    "passed": 9,
+    "failed": 0
+  },
+  "rustUnit": {
+    "passed": 1206,
+    "failed": 1,
+    "ignored": 3
+  },
+  "rustIntegration": {
+    "passed": 163,
+    "failed": 0,
+    "ignored": 5
+  },
+  "rustDoc": {
+    "passed": 0,
+    "failed": 0
+  },
+  "scroll": {
+    "passed": 52,
+    "failed": 0
+  },
+  "bundle": {
+    "desktopBytes": 1848662,
+    "desktopBudgetMiB": 1.76,
+    "mobileBytes": 1686900,
+    "mobileBudgetMiB": 1.61
+  },
+  "logs": [
+    {
+      "file": "/private/tmp/argmax-baseline-20260913/precheck.log",
+      "sha256": "e3d4049e61740e2479d5b6ed1f3ab29ded173728ba3910afc3c3ce0bff240e6d"
+    },
+    {
+      "file": "/private/tmp/argmax-baseline-20260913/cargo-test-unsandboxed.log",
+      "sha256": "68b9562159254d37d4ba90f4a5a5847e8b71816fc447f78b1d6daeb3147b248d"
+    },
+    {
+      "file": "/private/tmp/argmax-baseline-20260913/cargo-integration.log",
+      "sha256": "b8275764d1f7fc90c49da880697a99027d79984541ed067828c494309351f135"
+    },
+    {
+      "file": "/private/tmp/argmax-baseline-20260913/cargo-doc.log",
+      "sha256": "041a7e0232430f3d4b9902fca2f248acfac4d2aa488f7c2abe5175d5ad9d2833"
+    },
+    {
+      "file": "/private/tmp/argmax-baseline-20260913/clippy.log",
+      "sha256": "092abe394e7414ceed4274a270202e7fd7f51fbb58691dd16062581851da4f68"
+    },
+    {
+      "file": "/private/tmp/argmax-baseline-20260913/ios-fonts.log",
+      "sha256": "e0d962e88b636f90672d89b59751326c7b6dafb1bde51bff009550a827d82354"
+    },
+    {
+      "file": "/private/tmp/argmax-baseline-20260913/renderer-build.log",
+      "sha256": "094e1687be58872f85012fb54c69c9b39b0405525347c07a2fa249a955807b1b"
+    },
+    {
+      "file": "/private/tmp/argmax-baseline-20260913/bundle.log",
+      "sha256": "fcc46d7faf108c950ecb5b2080bf29b8a97b4aee7ab4378ad3d67639341f7911"
+    },
+    {
+      "file": "/private/tmp/argmax-baseline-20260913/chat-scroll-unsandboxed.log",
+      "sha256": "4c300d725c3a73c02ba3a18ca2af129a54b5bd9bef34a86b7653f87810c5a330"
+    },
+    {
+      "file": "/private/tmp/argmax-baseline-20260913/cargo-bins.log",
+      "sha256": "f5d84259c02c4dd8a90a5dc010267e7df0939b31ee470a2fd38a5a23b2994f25"
+    },
+    {
+      "file": "/private/tmp/argmax-baseline-20260913-ios/xcodebuild-test-frozen2.log",
+      "sha256": "6dc92d78cccff50a07f5ca16af7d8f1bda0bbd1186802683aa5f58fdc6288e9b"
+    }
+  ],
+  "scenarios": [
+    {
+      "scenario": "cancellation",
+      "run": "cancellation-browser",
+      "status": "passed",
+      "startedAt": "2026-09-13T09:46:23.878Z",
+      "finishedAt": "2026-09-13T09:46:36.447Z",
+      "coverage": {
+        "backend": "real",
+        "provider": "fixture-through-production-adapter",
+        "ui": "remote-browser"
+      },
+      "source": {
+        "beforeBuild": {
+          "head": "63a36d460175ce017299e8b508cee7b34201a529",
+          "dirty": true,
+          "fileCount": 1438,
+          "sha256": "7ff0cf05c92fe86843690c16add6c7a765f35a4df575c1928c90eabea57d2732"
+        },
+        "afterBuild": {
+          "head": "63a36d460175ce017299e8b508cee7b34201a529",
+          "dirty": true,
+          "fileCount": 1438,
+          "sha256": "7ff0cf05c92fe86843690c16add6c7a765f35a4df575c1928c90eabea57d2732"
+        },
+        "afterRun": {
+          "head": "63a36d460175ce017299e8b508cee7b34201a529",
+          "dirty": true,
+          "fileCount": 1438,
+          "sha256": "7ff0cf05c92fe86843690c16add6c7a765f35a4df575c1928c90eabea57d2732"
+        }
+      },
+      "assertions": [
+        {
+          "name": "backend-ready",
+          "ok": true
+        },
+        {
+          "name": "scenario-state",
+          "ok": true,
+          "value": "cancelled"
+        },
+        {
+          "name": "sqlite-session-persisted",
+          "ok": true
+        },
+        {
+          "name": "sqlite-terminal-state-persisted",
+          "ok": true,
+          "value": "cancelled"
+        },
+        {
+          "name": "sqlite-event-persisted:Verification cancellation stream started.",
+          "ok": true
+        },
+        {
+          "name": "checkout-stable",
+          "ok": true
+        }
+      ],
+      "errors": [],
+      "report": "/private/tmp/argmax-baseline-20260913-native/cancellation-browser/report.json"
+    },
+    {
+      "scenario": "chat-resume",
+      "run": "chat-resume-browser",
+      "status": "failed",
+      "startedAt": "2026-09-13T09:45:00.200Z",
+      "finishedAt": "2026-09-13T09:45:16.158Z",
+      "coverage": {
+        "backend": "real",
+        "provider": "fixture-through-production-adapter",
+        "ui": "remote-browser"
+      },
+      "source": {
+        "beforeBuild": {
+          "head": "63a36d460175ce017299e8b508cee7b34201a529",
+          "dirty": true,
+          "fileCount": 1438,
+          "sha256": "7ff0cf05c92fe86843690c16add6c7a765f35a4df575c1928c90eabea57d2732"
+        },
+        "afterBuild": {
+          "head": "63a36d460175ce017299e8b508cee7b34201a529",
+          "dirty": true,
+          "fileCount": 1438,
+          "sha256": "7ff0cf05c92fe86843690c16add6c7a765f35a4df575c1928c90eabea57d2732"
+        }
+      },
+      "assertions": [
+        {
+          "name": "backend-ready",
+          "ok": true
+        },
+        {
+          "name": "provider-stopped:failed-run",
+          "ok": true
+        }
+      ],
+      "errors": [
+        "first turn ended in failed"
+      ],
+      "report": "/private/tmp/argmax-baseline-20260913-native/chat-resume-browser/report.json"
+    },
+    {
+      "scenario": "chat-resume",
+      "run": "chat-resume-native",
+      "status": "failed",
+      "startedAt": "2026-09-13T09:42:53.959Z",
+      "finishedAt": "2026-09-13T09:44:26.804Z",
+      "coverage": null,
+      "source": {
+        "beforeBuild": {
+          "head": "63a36d460175ce017299e8b508cee7b34201a529",
+          "dirty": true,
+          "fileCount": 1438,
+          "sha256": "7ff0cf05c92fe86843690c16add6c7a765f35a4df575c1928c90eabea57d2732"
+        },
+        "afterBuild": {
+          "head": "63a36d460175ce017299e8b508cee7b34201a529",
+          "dirty": true,
+          "fileCount": 1438,
+          "sha256": "7ff0cf05c92fe86843690c16add6c7a765f35a4df575c1928c90eabea57d2732"
+        }
+      },
+      "assertions": [],
+      "errors": [
+        "Verification app process 92162 did not become visible"
+      ],
+      "report": "/private/tmp/argmax-baseline-20260913-native/chat-resume-native/report.json"
+    },
+    {
+      "scenario": "codex-user-input",
+      "run": "codex-user-input-browser",
+      "status": "passed",
+      "startedAt": "2026-09-13T09:45:42.333Z",
+      "finishedAt": "2026-09-13T09:45:55.244Z",
+      "coverage": {
+        "backend": "real",
+        "provider": "fixture-through-production-adapter",
+        "ui": "remote-browser"
+      },
+      "source": {
+        "beforeBuild": {
+          "head": "63a36d460175ce017299e8b508cee7b34201a529",
+          "dirty": true,
+          "fileCount": 1438,
+          "sha256": "7ff0cf05c92fe86843690c16add6c7a765f35a4df575c1928c90eabea57d2732"
+        },
+        "afterBuild": {
+          "head": "63a36d460175ce017299e8b508cee7b34201a529",
+          "dirty": true,
+          "fileCount": 1438,
+          "sha256": "7ff0cf05c92fe86843690c16add6c7a765f35a4df575c1928c90eabea57d2732"
+        },
+        "afterRun": {
+          "head": "63a36d460175ce017299e8b508cee7b34201a529",
+          "dirty": true,
+          "fileCount": 1438,
+          "sha256": "7ff0cf05c92fe86843690c16add6c7a765f35a4df575c1928c90eabea57d2732"
+        }
+      },
+      "assertions": [
+        {
+          "name": "backend-ready",
+          "ok": true
+        },
+        {
+          "name": "scenario-state",
+          "ok": true,
+          "value": "complete"
+        },
+        {
+          "name": "sqlite-session-persisted",
+          "ok": true
+        },
+        {
+          "name": "sqlite-terminal-state-persisted",
+          "ok": true,
+          "value": "complete"
+        },
+        {
+          "name": "sqlite-event-persisted:Verification Codex received API route in the same turn.",
+          "ok": true
+        },
+        {
+          "name": "checkout-stable",
+          "ok": true
+        }
+      ],
+      "errors": [],
+      "report": "/private/tmp/argmax-baseline-20260913-native/codex-user-input-browser/report.json"
+    },
+    {
+      "scenario": "persistent-codex-subagent",
+      "run": "persistent-codex-subagent-browser",
+      "status": "passed",
+      "startedAt": "2026-09-13T09:45:27.535Z",
+      "finishedAt": "2026-09-13T09:45:42.061Z",
+      "coverage": {
+        "backend": "real",
+        "provider": "fixture-through-production-adapter",
+        "ui": "remote-browser"
+      },
+      "source": {
+        "beforeBuild": {
+          "head": "63a36d460175ce017299e8b508cee7b34201a529",
+          "dirty": true,
+          "fileCount": 1438,
+          "sha256": "7ff0cf05c92fe86843690c16add6c7a765f35a4df575c1928c90eabea57d2732"
+        },
+        "afterBuild": {
+          "head": "63a36d460175ce017299e8b508cee7b34201a529",
+          "dirty": true,
+          "fileCount": 1438,
+          "sha256": "7ff0cf05c92fe86843690c16add6c7a765f35a4df575c1928c90eabea57d2732"
+        },
+        "afterRun": {
+          "head": "63a36d460175ce017299e8b508cee7b34201a529",
+          "dirty": true,
+          "fileCount": 1438,
+          "sha256": "7ff0cf05c92fe86843690c16add6c7a765f35a4df575c1928c90eabea57d2732"
+        }
+      },
+      "assertions": [
+        {
+          "name": "backend-ready",
+          "ok": true
+        },
+        {
+          "name": "scenario-state",
+          "ok": true,
+          "value": "complete"
+        },
+        {
+          "name": "persistent-child-stable-id",
+          "ok": true,
+          "value": "019f2214-c736-7f60-bb78-75b6ecff57a3"
+        },
+        {
+          "name": "persistent-child-queryable-after-restart",
+          "ok": true,
+          "value": 8
+        },
+        {
+          "name": "sqlite-session-persisted",
+          "ok": true
+        },
+        {
+          "name": "sqlite-terminal-state-persisted",
+          "ok": true,
+          "value": "complete"
+        },
+        {
+          "name": "sqlite-event-persisted:Verification persistent Codex child first response.",
+          "ok": true
+        },
+        {
+          "name": "sqlite-event-persisted:Verification persistent Codex child follow-up response.",
+          "ok": true
+        },
+        {
+          "name": "checkout-stable",
+          "ok": true
+        }
+      ],
+      "errors": [],
+      "report": "/private/tmp/argmax-baseline-20260913-native/persistent-codex-subagent-browser/report.json"
+    },
+    {
+      "scenario": "persistent-cursor-subagent",
+      "run": "persistent-cursor-subagent-browser",
+      "status": "passed",
+      "startedAt": "2026-09-13T09:46:10.251Z",
+      "finishedAt": "2026-09-13T09:46:23.628Z",
+      "coverage": {
+        "backend": "real",
+        "provider": "fixture-through-production-adapter",
+        "ui": "remote-browser"
+      },
+      "source": {
+        "beforeBuild": {
+          "head": "63a36d460175ce017299e8b508cee7b34201a529",
+          "dirty": true,
+          "fileCount": 1438,
+          "sha256": "7ff0cf05c92fe86843690c16add6c7a765f35a4df575c1928c90eabea57d2732"
+        },
+        "afterBuild": {
+          "head": "63a36d460175ce017299e8b508cee7b34201a529",
+          "dirty": true,
+          "fileCount": 1438,
+          "sha256": "7ff0cf05c92fe86843690c16add6c7a765f35a4df575c1928c90eabea57d2732"
+        },
+        "afterRun": {
+          "head": "63a36d460175ce017299e8b508cee7b34201a529",
+          "dirty": true,
+          "fileCount": 1438,
+          "sha256": "7ff0cf05c92fe86843690c16add6c7a765f35a4df575c1928c90eabea57d2732"
+        }
+      },
+      "assertions": [
+        {
+          "name": "backend-ready",
+          "ok": true
+        },
+        {
+          "name": "scenario-state",
+          "ok": true,
+          "value": "complete"
+        },
+        {
+          "name": "persistent-child-stable-id",
+          "ok": true,
+          "value": "077b8dfb-bb6b-4603-b718-b0ffa9808ef2"
+        },
+        {
+          "name": "persistent-child-queryable-after-restart",
+          "ok": true,
+          "value": 8
+        },
+        {
+          "name": "sqlite-session-persisted",
+          "ok": true
+        },
+        {
+          "name": "sqlite-terminal-state-persisted",
+          "ok": true,
+          "value": "complete"
+        },
+        {
+          "name": "sqlite-event-persisted:Verification persistent Cursor child first response.",
+          "ok": true
+        },
+        {
+          "name": "sqlite-event-persisted:Verification persistent Cursor child follow-up response.",
+          "ok": true
+        },
+        {
+          "name": "checkout-stable",
+          "ok": true
+        }
+      ],
+      "errors": [],
+      "report": "/private/tmp/argmax-baseline-20260913-native/persistent-cursor-subagent-browser/report.json"
+    },
+    {
+      "scenario": "persistent-opencode-subagent",
+      "run": "persistent-opencode-subagent-browser",
+      "status": "passed",
+      "startedAt": "2026-09-13T09:45:55.513Z",
+      "finishedAt": "2026-09-13T09:46:10.002Z",
+      "coverage": {
+        "backend": "real",
+        "provider": "fixture-through-production-adapter",
+        "ui": "remote-browser"
+      },
+      "source": {
+        "beforeBuild": {
+          "head": "63a36d460175ce017299e8b508cee7b34201a529",
+          "dirty": true,
+          "fileCount": 1438,
+          "sha256": "7ff0cf05c92fe86843690c16add6c7a765f35a4df575c1928c90eabea57d2732"
+        },
+        "afterBuild": {
+          "head": "63a36d460175ce017299e8b508cee7b34201a529",
+          "dirty": true,
+          "fileCount": 1438,
+          "sha256": "7ff0cf05c92fe86843690c16add6c7a765f35a4df575c1928c90eabea57d2732"
+        },
+        "afterRun": {
+          "head": "63a36d460175ce017299e8b508cee7b34201a529",
+          "dirty": true,
+          "fileCount": 1438,
+          "sha256": "7ff0cf05c92fe86843690c16add6c7a765f35a4df575c1928c90eabea57d2732"
+        }
+      },
+      "assertions": [
+        {
+          "name": "backend-ready",
+          "ok": true
+        },
+        {
+          "name": "scenario-state",
+          "ok": true,
+          "value": "complete"
+        },
+        {
+          "name": "persistent-child-stable-id",
+          "ok": true,
+          "value": "ses_argmax_verification_child"
+        },
+        {
+          "name": "persistent-child-queryable-after-restart",
+          "ok": true,
+          "value": 8
+        },
+        {
+          "name": "sqlite-session-persisted",
+          "ok": true
+        },
+        {
+          "name": "sqlite-terminal-state-persisted",
+          "ok": true,
+          "value": "complete"
+        },
+        {
+          "name": "sqlite-event-persisted:Verification persistent OpenCode child first response.",
+          "ok": true
+        },
+        {
+          "name": "sqlite-event-persisted:Verification persistent OpenCode child follow-up response.",
+          "ok": true
+        },
+        {
+          "name": "checkout-stable",
+          "ok": true
+        }
+      ],
+      "errors": [],
+      "report": "/private/tmp/argmax-baseline-20260913-native/persistent-opencode-subagent-browser/report.json"
+    },
+    {
+      "scenario": "persistent-subagent",
+      "run": "persistent-subagent-browser",
+      "status": "failed",
+      "startedAt": "2026-09-13T09:45:16.443Z",
+      "finishedAt": "2026-09-13T09:45:27.272Z",
+      "coverage": {
+        "backend": "real",
+        "provider": "fixture-through-production-adapter",
+        "ui": "remote-browser"
+      },
+      "source": {
+        "beforeBuild": {
+          "head": "63a36d460175ce017299e8b508cee7b34201a529",
+          "dirty": true,
+          "fileCount": 1438,
+          "sha256": "7ff0cf05c92fe86843690c16add6c7a765f35a4df575c1928c90eabea57d2732"
+        },
+        "afterBuild": {
+          "head": "63a36d460175ce017299e8b508cee7b34201a529",
+          "dirty": true,
+          "fileCount": 1438,
+          "sha256": "7ff0cf05c92fe86843690c16add6c7a765f35a4df575c1928c90eabea57d2732"
+        }
+      },
+      "assertions": [
+        {
+          "name": "backend-ready",
+          "ok": true
+        },
+        {
+          "name": "provider-stopped:failed-run",
+          "ok": true
+        }
+      ],
+      "errors": [
+        "persistent child first turn ended in failed"
+      ],
+      "report": "/private/tmp/argmax-baseline-20260913-native/persistent-subagent-browser/report.json"
+    },
+    {
+      "scenario": "provider-error",
+      "run": "provider-error-browser",
+      "status": "passed",
+      "startedAt": "2026-09-13T09:46:36.719Z",
+      "finishedAt": "2026-09-13T09:46:47.953Z",
+      "coverage": {
+        "backend": "real",
+        "provider": "fixture-through-production-adapter",
+        "ui": "remote-browser"
+      },
+      "source": {
+        "beforeBuild": {
+          "head": "63a36d460175ce017299e8b508cee7b34201a529",
+          "dirty": true,
+          "fileCount": 1438,
+          "sha256": "7ff0cf05c92fe86843690c16add6c7a765f35a4df575c1928c90eabea57d2732"
+        },
+        "afterBuild": {
+          "head": "63a36d460175ce017299e8b508cee7b34201a529",
+          "dirty": true,
+          "fileCount": 1438,
+          "sha256": "7ff0cf05c92fe86843690c16add6c7a765f35a4df575c1928c90eabea57d2732"
+        },
+        "afterRun": {
+          "head": "63a36d460175ce017299e8b508cee7b34201a529",
+          "dirty": true,
+          "fileCount": 1438,
+          "sha256": "7ff0cf05c92fe86843690c16add6c7a765f35a4df575c1928c90eabea57d2732"
+        }
+      },
+      "assertions": [
+        {
+          "name": "backend-ready",
+          "ok": true
+        },
+        {
+          "name": "scenario-state",
+          "ok": true,
+          "value": "failed"
+        },
+        {
+          "name": "sqlite-session-persisted",
+          "ok": true
+        },
+        {
+          "name": "sqlite-terminal-state-persisted",
+          "ok": true,
+          "value": "failed"
+        },
+        {
+          "name": "sqlite-event-persisted:Verification provider failed as requested.",
+          "ok": true
+        },
+        {
+          "name": "checkout-stable",
+          "ok": true
+        }
+      ],
+      "errors": [],
+      "report": "/private/tmp/argmax-baseline-20260913-native/provider-error-browser/report.json"
+    }
+  ],
+  "rustBins": {
+    "passed": 0,
+    "failed": 0
+  },
+  "environment": {
+    "platform": {
+      "os": "darwin",
+      "arch": "arm64"
+    },
+    "tools": {
+      "node": "v26.7.0",
+      "npm": "11.19.0",
+      "git": "git version 2.50.1 (Apple Git-155)",
+      "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+      "rustc": "rustc 1.95.0 (59807616e 2026-04-14)"
+    },
+    "permissions": {
+      "screenRecording": {
+        "status": "missing",
+        "remediation": "Grant Screen Recording to the app that runs Codex, then restart it."
+      },
+      "accessibility": {
+        "status": "missing",
+        "remediation": "Grant Accessibility to the app that runs Codex, then restart it."
+      }
+    }
+  },
+  "ios": {
+    "unit": {
+      "passed": 355,
+      "failed": 0
+    },
+    "ui": {
+      "passed": 8,
+      "failed": 1
+    },
+    "failedTest": "TranscriptUITests.testActivityUsesSemanticColoursAndKeepsIntegrationArtwork",
+    "simulator": "iPhone 17 Pro, iOS 26.5",
+    "xcode": "26.6 (17F113)",
+    "sourceSnapshot": "/private/tmp/argmax-baseline-20260913-native/source-snapshot",
+    "resultBundle": "/private/tmp/argmax-baseline-20260913-ios/DerivedData-frozen2/Logs/Test/Test-Argmax-2026.09.13_11-50-12-+0200.xcresult"
+  }
+}

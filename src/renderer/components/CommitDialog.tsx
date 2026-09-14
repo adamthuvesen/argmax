@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
+import { useMotionPresence } from "../hooks/useMotionPresence.js";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
 import type { ChangedFileSummary, GitCommitResult } from "../../shared/types.js";
 
@@ -33,6 +34,7 @@ export function CommitDialog({
   const isOpenRef = useRef(open);
   const isSubmittingRef = useRef(submitting);
   const latestDefaults = useRef({ allPaths, defaultMessage });
+  const motion = useMotionPresence(open);
   latestDefaults.current = { allPaths, defaultMessage };
   isOpenRef.current = open;
   isSubmittingRef.current = submitting;
@@ -90,7 +92,7 @@ export function CommitDialog({
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose, submitting]);
 
-  if (!open) return null;
+  if (!motion.present) return null;
 
   const allSelected = allPaths.length > 0 && selected.size === allPaths.length;
   const submitDisabled =
@@ -169,18 +171,21 @@ export function CommitDialog({
   // clip it. The Esc/Tab handlers are document-level, so the move costs nothing.
   return createPortal(
     <div
-      className="commit-dialog-overlay"
+      className="commit-dialog-overlay motion-modal-overlay"
+      data-motion-state={motion.motionState}
       role="dialog"
       aria-label="Commit selected changes"
       aria-modal="true"
+      aria-hidden={open ? undefined : true}
       ref={dialogRef}
+      onAnimationEnd={motion.onMotionEnd}
       onMouseDown={(event) => {
         if (!submitting && event.target === event.currentTarget) onClose();
       }}
       onKeyDown={handleKeyDown}
       tabIndex={-1}
     >
-      <div className="commit-dialog">
+      <div className="commit-dialog motion-modal-surface">
         <header className="commit-dialog-header">
           <h2>Commit selected</h2>
           <button type="button" aria-label="Close commit dialog" onClick={onClose} disabled={submitting}>

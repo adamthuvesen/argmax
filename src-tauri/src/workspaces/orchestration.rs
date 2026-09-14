@@ -40,8 +40,9 @@ use crate::git::exec::{run_git_text, run_git_text_blocking, GIT_DEFAULT_TIMEOUT}
 use crate::ipc::inputs::{
     OpenIdeChoice, ScratchWorkspaceKind, WorkspacesArchiveInput, WorkspacesAutotitleInput,
     WorkspacesCreateCurrentInput, WorkspacesCreateIsolatedInput, WorkspacesCreateScratchInput,
-    WorkspacesKeepInput, WorkspacesOpenInIdeInput, WorkspacesSetIconInput, WorkspacesSetLabelInput,
-    WorkspacesSetPinnedInput, WorkspacesSetPriorityAddedInput, WorkspacesSetPriorityDismissedInput,
+    WorkspacesKeepInput, WorkspacesMarkViewedInput, WorkspacesOpenInIdeInput,
+    WorkspacesSetIconInput, WorkspacesSetLabelInput, WorkspacesSetPinnedInput,
+    WorkspacesSetPriorityAddedInput, WorkspacesSetPriorityDismissedInput,
 };
 use crate::persistence::database::Database;
 use crate::persistence::events::{
@@ -57,10 +58,11 @@ use crate::persistence::sessions::{
     SessionSummary,
 };
 use crate::persistence::workspaces::{
-    find_workspace_by_id, persist_workspace, set_workspace_icon, set_workspace_label,
-    set_workspace_label_auto, set_workspace_pinned, set_workspace_priority_added,
-    set_workspace_priority_dismissed, update_workspace_state, update_workspace_status,
-    PersistWorkspaceInput, WorkspaceStatusInput, WorkspaceSummary,
+    find_workspace_by_id, mark_workspaces_viewed, persist_workspace, set_workspace_icon,
+    set_workspace_label, set_workspace_label_auto, set_workspace_pinned,
+    set_workspace_priority_added, set_workspace_priority_dismissed, update_workspace_state,
+    update_workspace_status, PersistWorkspaceInput, WorkspaceStatusInput, WorkspaceSummary,
+    WorkspaceViewedObservation,
 };
 use crate::providers::cursor_acp::CursorAcpSessions;
 use crate::providers::flush_queue::DashboardDelta;
@@ -137,8 +139,18 @@ pub(super) const WATCH_MAX_DEBOUNCE_MS: u64 = 1_000;
 /// short enough that a hung shell-out doesn't strand the UI".
 const GIT_TIMEOUT_MS: u64 = 60_000;
 
-const BRANCH_SLUG_LEN: usize = 16;
-const SLUG_MAX_LEN: usize = 42;
+const WORKTREE_NAMES: &[&str] = &[
+    "alder", "aspen", "birch", "cedar", "clover", "cypress", "elm", "fern", "fir", "grove",
+    "hazel", "heather", "holly", "iris", "ivy", "juniper", "laurel", "linden", "maple", "meadow",
+    "moss", "oak", "olive", "pine", "reed", "rowan", "sage", "spruce", "thyme", "violet", "willow",
+    "yew",
+];
+
+/// `core.hooksPath` pointed where no hook can live, so `git worktree add` runs
+/// only the checkout. `post_checkout_replay_command` runs the skipped hook.
+const HOOKS_DISABLED: &str = "core.hooksPath=/dev/null";
+/// What git passes a post-checkout hook as the previous HEAD of a new branch.
+const NULL_SHA: &str = "0000000000000000000000000000000000000000";
 
 /// Stable id of the hidden singleton project that owns every scratch
 /// workspace (repo-less side chats and "More details" popups). Mirrored in
@@ -510,22 +522,18 @@ impl WorkspaceService {
         assert_valid_ref(&project.repo_path, &base_ref).await?;
 
         let task_label = input.task_label.as_str();
-        let slug = slugify(task_label);
-        let suffix = Uuid::new_v4().simple().to_string();
-        let suffix = &suffix[..BRANCH_SLUG_LEN];
-        let branch = format!("argmax/{slug}-{suffix}");
+        // Naming stays local so chat startup never waits for title generation.
+        let name_id = Uuid::new_v4();
+        let name = WORKTREE_NAMES[usize::from(name_id.as_bytes()[15]) % WORKTREE_NAMES.len()];
+        let branch = format!("argmax/{name}-{}", &name_id.simple().to_string()[..8]);
 
         let worktree_location = project.settings.worktree_location.clone();
-        let worktree_path = PathBuf::from(&worktree_location).join(branch.replace('/', "-"));
-
-        // String-only containment check before mkdir — a bad persisted
-        // setting (e.g. `/tmp/argmax-oops`) must not side-effect a directory
-        // on disk that the post-mkdir realpath check then rejects.
-        assert_worktree_location_contained(
-            Path::new(&project.repo_path),
-            Path::new(&worktree_location),
-            false,
-        )?;
+        if !Path::new(&worktree_location).is_absolute() {
+            return Err(invalid_workspace(
+                format!("Worktree location must be absolute: {worktree_location}"),
+                "Choose an absolute worktree location in project settings.",
+            ));
+        }
         tokio::fs::create_dir_all(&worktree_location)
             .await
             .map_err(|e| {
@@ -534,23 +542,53 @@ impl WorkspaceService {
                     "Check the project's worktree location setting.",
                 )
             })?;
-        assert_worktree_location_contained(
-            Path::new(&project.repo_path),
-            Path::new(&worktree_location),
-            true,
-        )?;
+        // The configured root is the boundary, including for external roots.
+        // Resolve it once, then append our generated single-component name.
+        let worktree_root = tokio::fs::canonicalize(&worktree_location)
+            .await
+            .map_err(|error| {
+                invalid_workspace(
+                    format!("Could not resolve worktree location {worktree_location}: {error}"),
+                    "Confirm the configured worktree location is accessible.",
+                )
+            })?;
+        let worktree_path = worktree_root.join(branch.replace('/', "-"));
+        match tokio::fs::symlink_metadata(&worktree_path).await {
+            Ok(_) => {
+                return Err(invalid_workspace(
+                    format!(
+                        "Worktree destination already exists: {}",
+                        worktree_path.display()
+                    ),
+                    "Retry to generate a new worktree name.",
+                ))
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(invalid_workspace(
+                    format!("Could not inspect worktree destination: {error}"),
+                    "Confirm the configured worktree location is accessible.",
+                ))
+            }
+        }
 
         // Pre-flight branch-collision check so the error names what to retry.
         if branch_exists(&project.repo_path, &branch).await? {
             return Err(invalid_workspace(
                 format!("Branch {branch} already exists"),
-                "Retry with a different task label.",
+                "Retry to generate a new worktree name.",
             ));
         }
 
+        // Only the checkout runs here. The repository's post-checkout hook is
+        // replayed by `finish_worktree_in_background` once the row exists:
+        // one that clones `node_modules` held this call, and with it the chat
+        // opening, for as long as the copy took.
         let add_result = run_git_text(
             Path::new(&project.repo_path),
             &[
+                "-c",
+                HOOKS_DISABLED,
                 "worktree",
                 "add",
                 "-b",
@@ -574,7 +612,7 @@ impl WorkspaceService {
         }
 
         // Block scope, not drop(): the async Send analysis must see the
-        // non-Send connection guard end before the setup-command await below.
+        // non-Send connection guard end before the discard await below.
         let persisted = (|| {
             let connection = self.database.connection();
             let workspace = persist_workspace(
@@ -613,27 +651,66 @@ impl WorkspaceService {
         if let Err(error) = self.watch(&workspace.id) {
             tracing::warn!(workspace_id = %workspace.id, ?error, "workspace watcher failed to start");
         }
-        self.run_setup_command(&workspace.id, &project.settings.setup_command)
-            .await;
+        self.finish_worktree_in_background(
+            workspace.id.clone(),
+            worktree_path,
+            project.settings.setup_command.clone(),
+        );
         Ok(workspace)
     }
 
-    /// Run the project's setup command in a freshly created worktree, before
-    /// the caller launches an agent into it (dependencies install once per
-    /// worktree). Runs through CheckService so the command gets the standard
-    /// risk gate, timeout, output capture, and a persisted check row the
-    /// review surface can show. Failure never blocks the workspace — the
-    /// agent can usually repair a broken setup itself — so this only warns.
-    async fn run_setup_command(self: &Arc<Self>, workspace_id: &str, setup_command: &str) {
+    /// What a fresh worktree needs beyond the checkout: the repository's
+    /// `post-checkout` hook, then the project's setup command. Both run after
+    /// the caller has its workspace back, so the chat opens as soon as the
+    /// files are there and dependency installs land in the checks lane while
+    /// the agent reads. Failure never fails the workspace — the agent can
+    /// usually repair a broken setup itself — so each only warns.
+    fn finish_worktree_in_background(
+        self: &Arc<Self>,
+        workspace_id: String,
+        worktree_path: PathBuf,
+        setup_command: String,
+    ) {
+        let service = Arc::clone(self);
+        tokio::spawn(async move {
+            service
+                .replay_post_checkout_hook(&workspace_id, &worktree_path)
+                .await;
+            service
+                .run_setup_command(&workspace_id, &setup_command)
+                .await;
+        });
+    }
+
+    /// Run the hook `git worktree add` skipped, with the arguments git gives
+    /// it for a new-branch checkout. A repository without one runs nothing
+    /// and grows no check row.
+    async fn replay_post_checkout_hook(&self, workspace_id: &str, worktree_path: &Path) {
+        let Some(command) = post_checkout_replay_command(worktree_path).await else {
+            return;
+        };
+        self.run_worktree_setup_check(workspace_id, &command, "post-checkout hook")
+            .await;
+    }
+
+    async fn run_setup_command(&self, workspace_id: &str, setup_command: &str) {
         let command = setup_command.trim();
         if command.is_empty() {
             return;
         }
+        self.run_worktree_setup_check(workspace_id, command, "setup command")
+            .await;
+    }
+
+    /// Runs through CheckService so the command gets the standard risk gate,
+    /// timeout, output capture, and a persisted check row the review surface
+    /// can show.
+    async fn run_worktree_setup_check(&self, workspace_id: &str, command: &str, what: &str) {
         let Some(checks) = self.checks.as_ref() else {
             tracing::warn!(
                 workspace_id,
                 command,
-                "setup command configured but check service is unavailable"
+                "{what} configured but check service is unavailable"
             );
             return;
         };
@@ -653,10 +730,10 @@ impl WorkspaceService {
                 workspace_id,
                 command,
                 status = %run.status,
-                "setup command did not pass"
+                "{what} did not pass"
             ),
             Err(error) => {
-                tracing::warn!(workspace_id, command, ?error, "setup command could not run")
+                tracing::warn!(workspace_id, command, ?error, "{what} could not run")
             }
         }
     }
@@ -2514,6 +2591,69 @@ impl WorkspaceService {
         Ok(workspace)
     }
 
+    pub fn mark_viewed(
+        self: &Arc<Self>,
+        input: WorkspacesMarkViewedInput,
+    ) -> ArgmaxResult<Vec<WorkspaceSummary>> {
+        const MAX_BATCH_SIZE: usize = 100;
+        if input.workspaces.len() > MAX_BATCH_SIZE {
+            return Err(ArgmaxError::invalid(crate::error::InvalidInputIssue::at(
+                vec!["workspaces".to_owned()],
+                "WORKSPACE_VIEW_BATCH_TOO_LARGE",
+                format!("at most {MAX_BATCH_SIZE} workspaces may be marked viewed at once"),
+            )));
+        }
+
+        let now = chrono::Utc::now();
+        let observations = input
+            .workspaces
+            .into_iter()
+            .enumerate()
+            .map(|(index, observation)| {
+                let parsed =
+                    chrono::DateTime::parse_from_rfc3339(&observation.observed_activity_at)
+                        .map_err(|_| {
+                            ArgmaxError::invalid(crate::error::InvalidInputIssue::at(
+                                vec![
+                                    "workspaces".to_owned(),
+                                    index.to_string(),
+                                    "observedActivityAt".to_owned(),
+                                ],
+                                "TIMESTAMP_INVALID",
+                                "observed activity timestamp must be RFC 3339",
+                            ))
+                        })?;
+                if parsed > now {
+                    return Err(ArgmaxError::invalid(crate::error::InvalidInputIssue::at(
+                        vec![
+                            "workspaces".to_owned(),
+                            index.to_string(),
+                            "observedActivityAt".to_owned(),
+                        ],
+                        "TIMESTAMP_FUTURE",
+                        "observed activity timestamp must not be in the future",
+                    )));
+                }
+                Ok(WorkspaceViewedObservation {
+                    workspace_id: observation.workspace_id.to_string(),
+                    observed_activity_at: parsed
+                        .with_timezone(&chrono::Utc)
+                        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+                })
+            })
+            .collect::<ArgmaxResult<Vec<_>>>()?;
+
+        let connection = self.database.connection();
+        let changed = mark_workspaces_viewed(&connection, &observations)?;
+        if !changed.is_empty() {
+            self.publish(DashboardDelta {
+                workspaces: changed.clone(),
+                ..DashboardDelta::default()
+            });
+        }
+        Ok(changed)
+    }
+
     pub fn set_priority_added(
         self: &Arc<Self>,
         input: WorkspacesSetPriorityAddedInput,
@@ -3038,6 +3178,42 @@ async fn assert_valid_ref(repo_path: &str, reference: &str) -> ArgmaxResult<()> 
     Ok(())
 }
 
+/// The `git hook run` invocation that replays a repository's `post-checkout`
+/// hook in a fresh worktree, or `None` when it has none. `--git-path hooks`
+/// honours `core.hooksPath`, and `git hook run` gives the hook the cwd and
+/// environment git itself would.
+async fn post_checkout_replay_command(worktree_path: &Path) -> Option<String> {
+    let timeout = Duration::from_millis(GIT_TIMEOUT_MS);
+    let hooks_dir = run_git_text(worktree_path, ["rev-parse", "--git-path", "hooks"], timeout)
+        .await
+        .ok()?;
+    let hook = worktree_path.join(hooks_dir.trim()).join("post-checkout");
+    if !is_executable_file(&hook) {
+        return None;
+    }
+    let head = run_git_text(worktree_path, ["rev-parse", "HEAD"], timeout)
+        .await
+        .ok()?;
+    Some(format!(
+        "git hook run post-checkout -- {NULL_SHA} {} 1",
+        head.trim()
+    ))
+}
+
+fn is_executable_file(path: &Path) -> bool {
+    let Ok(metadata) = std::fs::metadata(path) else {
+        return false;
+    };
+    #[cfg(unix)]
+    let executable = {
+        use std::os::unix::fs::PermissionsExt;
+        metadata.permissions().mode() & 0o111 != 0
+    };
+    #[cfg(not(unix))]
+    let executable = true;
+    metadata.is_file() && executable
+}
+
 /// True when `reference` resolves to a commit we can fork a worktree from
 /// (local/remote branch, tag, or sha) — not merely a well-formed name.
 async fn ref_resolves(repo_path: &str, reference: &str) -> bool {
@@ -3053,77 +3229,6 @@ async fn ref_resolves(repo_path: &str, reference: &str) -> bool {
     )
     .await
     .is_ok()
-}
-
-fn assert_worktree_location_contained(
-    repo_path: &Path,
-    worktree_location: &Path,
-    use_realpath: bool,
-) -> ArgmaxResult<()> {
-    if !worktree_location.is_absolute() {
-        return Err(invalid_workspace(
-            format!(
-                "worktreeLocation must be absolute, got {}",
-                worktree_location.display()
-            ),
-            "Configure project.worktreeLocation to an absolute path inside the repo.",
-        ));
-    }
-    let (repo_norm, worktree_norm) = if use_realpath {
-        let repo = repo_path.canonicalize().map_err(|e| {
-            invalid_workspace(
-                format!("Could not resolve repoPath {}: {e}", repo_path.display()),
-                "Confirm the project's repoPath exists.",
-            )
-        })?;
-        let worktree = worktree_location.canonicalize().map_err(|e| {
-            invalid_workspace(
-                format!(
-                    "Could not resolve worktreeLocation {}: {e}",
-                    worktree_location.display()
-                ),
-                "Confirm the worktree location exists.",
-            )
-        })?;
-        (repo, worktree)
-    } else {
-        (normalize(repo_path), normalize(worktree_location))
-    };
-    if worktree_norm == repo_norm || worktree_norm.starts_with(&repo_norm) {
-        Ok(())
-    } else {
-        Err(invalid_workspace(
-            format!(
-                "worktreeLocation {} must be inside repoPath {}",
-                worktree_norm.display(),
-                repo_norm.display()
-            ),
-            "Choose a worktree location inside the project's repo and retry.",
-        ))
-    }
-}
-
-fn slugify(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    let mut prev_dash = false;
-    for ch in value.chars() {
-        let lowered = ch.to_ascii_lowercase();
-        let allowed = lowered.is_ascii_alphanumeric();
-        if allowed {
-            out.push(lowered);
-            prev_dash = false;
-        } else if !prev_dash {
-            out.push('-');
-            prev_dash = true;
-        }
-    }
-    let trimmed = out.trim_matches('-');
-    let sliced: String = trimmed.chars().take(SLUG_MAX_LEN).collect();
-    if sliced.is_empty() {
-        "task".to_string()
-    } else {
-        sliced
-    }
 }
 
 #[cfg(test)]
@@ -3223,20 +3328,6 @@ mod tests {
         let status = parse_checkout_status("## main\n?? ## odd name.txt\n");
         assert_eq!(status.branch, Some("main".to_owned()));
         assert_eq!(status.changed_files, 1);
-    }
-
-    #[test]
-    fn slugify_collapses_runs_and_lowercases() {
-        assert_eq!(slugify("Hello World!!"), "hello-world");
-        assert_eq!(slugify("   "), "task");
-        assert_eq!(slugify("__leading-trailing__"), "leading-trailing");
-    }
-
-    #[test]
-    fn slugify_caps_at_42_chars() {
-        let long = "a".repeat(100);
-        let slug = slugify(&long);
-        assert_eq!(slug.len(), SLUG_MAX_LEN);
     }
 
     #[test]

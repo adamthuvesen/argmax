@@ -1,3 +1,9 @@
+import {
+  applyFontHeavinessToDocument,
+  FONT_HEAVINESS_STORAGE_KEY,
+  readStoredFontHeaviness,
+  type FontHeaviness
+} from "../lib/fontHeaviness.js";
 import { useEffect, useRef, useState } from "react";
 import {
   applyFontSizeToDocument,
@@ -49,9 +55,12 @@ import {
   resolveTheme,
   writeStoredTheme
 } from "../lib/theme.js";
+import { readStoredBrowserTheme, writeStoredBrowserTheme } from "../lib/browserTheme.js";
 export function useLauncherAppearance(): {
   themeMode: ThemeMode;
   setThemeMode: (mode: ThemeMode) => void;
+  browserThemeMode: ThemeMode;
+  setBrowserThemeMode: (mode: ThemeMode) => void;
   accentId: AccentId;
   setAccentId: (accentId: AccentId) => void;
   userBubbleTint: UserBubbleTint;
@@ -62,6 +71,8 @@ export function useLauncherAppearance(): {
   setFontSize: (fontSize: FontSize) => void;
   chatFontSize: FontSize;
   setChatFontSize: (fontSize: FontSize) => void;
+  fontHeaviness: FontHeaviness;
+  setFontHeaviness: (heaviness: FontHeaviness) => void;
   inkStrength: InkStrength;
   setInkStrength: (strength: InkStrength) => void;
   backgroundIntensity: BackgroundIntensity;
@@ -71,6 +82,9 @@ export function useLauncherAppearance(): {
   detectedIdes: DetectedIde[];
 } {
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => readStoredTheme());
+  const [browserThemeMode, setBrowserThemeMode] = useState<ThemeMode>(() =>
+    readStoredBrowserTheme()
+  );
   const [accentId, setAccentId] = useState<AccentId>(() => readStoredAccent());
   const [userBubbleTint, setUserBubbleTint] = useState<UserBubbleTint>(() =>
     readStoredUserBubbleTint()
@@ -78,6 +92,7 @@ export function useLauncherAppearance(): {
   const [fontFamily, setFontFamily] = useState<FontFamilyId>(() => readStoredFont());
   const [fontSize, setFontSize] = useState<FontSize>(() => readStoredFontSize());
   const [chatFontSize, setChatFontSize] = useState<FontSize>(() => readStoredChatFontSize());
+  const [fontHeaviness, setFontHeaviness] = useState<FontHeaviness>(readStoredFontHeaviness);
   const [inkStrength, setInkStrength] = useState<InkStrength>(() => readStoredInkStrength());
   const [backgroundIntensity, setBackgroundIntensity] = useState<BackgroundIntensity>(() =>
     readStoredBackgroundIntensity()
@@ -103,6 +118,11 @@ export function useLauncherAppearance(): {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(CHAT_FONT_SIZE_STORAGE_KEY, String(chatFontSize));
   }, [chatFontSize]);
+
+  useEffect(() => {
+    window.localStorage.setItem(FONT_HEAVINESS_STORAGE_KEY, String(fontHeaviness));
+    applyFontHeavinessToDocument(fontHeaviness);
+  }, [fontHeaviness]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -152,6 +172,18 @@ export function useLauncherAppearance(): {
   }, [themeMode]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    writeStoredBrowserTheme(browserThemeMode);
+    if (window.argmax?.browser) {
+      void window.argmax.browser.setTheme(browserThemeMode).catch((error: unknown) => {
+        logger.warn("renderer.launcher", "browser theme update failed", {
+          error: errorMessage(error)
+        });
+      });
+    }
+  }, [browserThemeMode]);
+
+  useEffect(() => {
     if (ideListLoadedRef.current) return;
     if (!window.argmax) return;
     ideListLoadedRef.current = true;
@@ -177,6 +209,8 @@ export function useLauncherAppearance(): {
   return {
     themeMode,
     setThemeMode,
+    browserThemeMode,
+    setBrowserThemeMode,
     accentId,
     setAccentId,
     userBubbleTint,
@@ -187,6 +221,8 @@ export function useLauncherAppearance(): {
     setFontSize,
     chatFontSize,
     setChatFontSize,
+    fontHeaviness,
+    setFontHeaviness,
     inkStrength,
     setInkStrength,
     backgroundIntensity,

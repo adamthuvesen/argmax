@@ -7,6 +7,11 @@ import { splitLogSegments } from "../lib/logDump.js";
 import { isMermaidFenceClass } from "../lib/mermaidFence.js";
 import { needsMath } from "../lib/needsMath.js";
 import { importChunk } from "../lib/importChunk.js";
+import {
+  codePointLength,
+  sliceCodePointPrefix,
+  type CodePointSliceCursor
+} from "../lib/streamingText.js";
 import { CodeBlock } from "./CodeBlock.js";
 import { FileChip, type FileChipOpenOptions } from "./FileChip.js";
 import { LogBlock } from "./LogBlock.js";
@@ -115,18 +120,6 @@ function initialVisibleLength(
   return 0;
 }
 
-/** Code points in `text`, without materialising the character array. */
-function codePointLength(text: string): number {
-  let length = 0;
-  for (let index = 0; index < text.length; index += 1) {
-    const code = text.charCodeAt(index);
-    // A high surrogate and its low surrogate are one code point.
-    if (code >= 0xd800 && code <= 0xdbff) index += 1;
-    length += 1;
-  }
-  return length;
-}
-
 type RevealState = {
   /** Code points shown so far. */
   visible: number;
@@ -157,11 +150,12 @@ function useSmoothStreamingText(
     finishing: false
   }));
   const revealing = paced || reveal.finishing;
-  // Settled answers and unpaced reasoning never slice by code point. Keeping
-  // their character arrays retained one array slot per character in history.
-  const textCharacters = useMemo(() => (revealing ? Array.from(text) : null), [revealing, text]);
-  const targetLength = textCharacters?.length ?? text.length;
+  const targetLength = useMemo(
+    () => (revealing ? codePointLength(text) : text.length),
+    [revealing, text]
+  );
   const targetLengthRef = useRef(targetLength);
+  const sliceCursorRef = useRef<CodePointSliceCursor | null>(null);
   const paceRef = useRef<RevealPace>({
     forTarget: -1,
     finishing: false,
@@ -260,10 +254,23 @@ function useSmoothStreamingText(
     return () => window.clearInterval(interval);
   }, [revealing]);
 
-  if (!textCharacters || reveal.visible >= targetLength) {
+  const visiblePrefix = useMemo(
+    () =>
+      revealing && reveal.visible < targetLength
+        ? sliceCodePointPrefix(text, reveal.visible, sliceCursorRef.current)
+        : null,
+    [revealing, reveal.visible, targetLength, text]
+  );
+  useLayoutEffect(() => {
+    // Do not retain completed answers in the cursor. History renders the full
+    // string directly and should not grow this optimization's memory use.
+    sliceCursorRef.current = visiblePrefix?.cursor ?? null;
+  }, [visiblePrefix]);
+
+  if (!visiblePrefix) {
     return { text, revealing };
   }
-  return { text: textCharacters.slice(0, reveal.visible).join(""), revealing };
+  return { text: visiblePrefix.text, revealing };
 }
 
 function MermaidDiagramFallback(): JSX.Element {

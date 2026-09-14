@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 vi.mock("../lib/highlighter.js", () => ({
   highlightLine: vi.fn((content: string) => [{ content }]),
   useHighlighterReady: vi.fn(() => true),
+  useHighlightThemeAppearance: vi.fn(() => "light"),
   langFromPath: vi.fn(() => null)
 }));
 
@@ -53,6 +54,15 @@ function setReviewMode(review: ReviewState, mode: ReviewState["mode"]): void {
 }
 
 describe("ReviewPanel changes layout", () => {
+  it("shows changed-file loading failures instead of an empty panel", () => {
+    const review = reviewStub();
+    review.files = [];
+    review.filesState = "error";
+    review.filesError = "Git is temporarily unavailable.";
+    render(<ReviewPanel review={review} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Git is temporarily unavailable.");
+  });
+
   beforeEach(() => {
     window.localStorage.clear();
   });
@@ -531,6 +541,7 @@ describe("ReviewPanel browser mode", () => {
     forward: vi.fn(() => Promise.resolve({ ok: true as const })),
     reload: vi.fn(() => Promise.resolve({ ok: true as const })),
     setBounds: vi.fn(() => Promise.resolve({ ok: true as const })),
+    focus: vi.fn(() => Promise.resolve({ ok: true as const })),
     close: vi.fn(() => Promise.resolve({ ok: true as const })),
     stop: vi.fn(() => Promise.resolve({ ok: true as const })),
     fillCredentials: vi.fn(() => Promise.resolve({ ok: true, itemTitle: "GitHub" })),

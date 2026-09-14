@@ -2,7 +2,13 @@ import type { TimelineEvent } from "../../shared/types.js";
 import { stringValue } from "../../shared/typeGuards.js";
 import { decodeTimelineEvent } from "./canonicalTimeline.js";
 import type { RenderItem } from "./foldConversation.js";
-import { isNoisyProviderTracing, matchTracingRecord, parseLogDump, splitLogSegments } from "./logDump.js";
+import {
+  isNoisyPlainProviderLine,
+  isNoisyProviderTracing,
+  matchTracingRecord,
+  parseLogDump,
+  splitLogSegments
+} from "./logDump.js";
 import { parsePlan } from "./parsePlan.js";
 import {
   collectAskUserQuestionState,
@@ -108,31 +114,84 @@ function deltaTextForBuffer(event: TimelineEvent, currentText: string): string {
  * `startsWith` is then true and the slice is empty, so it dedups to a no-op
  * instead of doubling the text. If increments never arrived (no partial
  * streaming) the buffer is empty and the complete block appends in full.
- */
-/**
- * A reasoning burst ends where the provider stops thinking and starts working;
- * the next burst arrives as another delta with nothing marking the seam. Grok
- * makes this visible because its bursts end on a full stop with no trailing
- * space, so raw concatenation reads "make a todo list firstThe files don't
- * exist".
  *
- * The break is only inserted at that exact seam — a finished sentence meeting a
- * capital with no whitespace between them, which a token stream never produces
- * on its own. Whitespace on either side already separates the two, so a normal
- * stream is left byte for byte as it arrived.
+ * A reasoning burst ends where the provider stops thinking and starts working;
+ * the next burst arrives as another delta with nothing marking the seam. Two
+ * seams are visible:
+ *
+ * - Grok ends a burst on a full stop with no trailing space, so raw
+ *   concatenation reads "make a todo list firstThe files don't exist".
+ * - Codex sends each reasoning summary as its own `**Header**` fragment. Glued
+ *   end to end the delimiters collapse into `****` and markdown renders the
+ *   titles as one run-on line ("debuggingInspecting", or a leftover `****`).
+ *
+ * Those breaks are only inserted at those exact seams — a token stream never
+ * produces them on its own. Whitespace on either side already separates the
+ * two, so a normal stream is left byte for byte as it arrived.
  */
-function appendThinking(current: string, incoming: string): string {
-  if (incoming.startsWith(current)) return current + incoming.slice(current.length);
-  if (isBurstSeam(current, incoming)) return `${current}\n\n${incoming}`;
-  return current + incoming;
+function appendThinking(current: string, incoming: string, payload: TimelineEvent["payload"]): string {
+  // Older Codex streams lost summary-part separators, then replayed the whole
+  // item. Match that saved suffix even after live fragments already gained
+  // paragraph breaks, and restore the completed item's own spacing.
+  const summary = payload.summary;
+  if (payload.type === "reasoning" && payload.providerEventType === "item.completed" &&
+      Array.isArray(summary) && summary.every((part): part is string => typeof part === "string") &&
+      incoming === summary.join("\n")) {
+    const streamed = summary.join("");
+    for (const suffix of [streamed, incoming]) {
+      const prefix = dropTrailingThought(current, suffix);
+      if (prefix !== null) return joinThoughtParagraphs(prefix, incoming);
+    }
+  }
+  if (incoming.startsWith(current)) {
+    return splitCollapsedThoughtTitles(current + incoming.slice(current.length));
+  }
+  if (current.endsWith(incoming)) return current;
+  if (isBurstSeam(current, incoming)) return joinThoughtParagraphs(current, incoming);
+  return splitCollapsedThoughtTitles(current + incoming);
 }
 
 function isBurstSeam(current: string, incoming: string): boolean {
   if (current.length === 0 || incoming.length === 0) return false;
   if (/\s$/.test(current) || /^\s/.test(incoming)) return false;
+  if (current.endsWith("**") && incoming.startsWith("**")) return true;
   if (!".!?…".includes(current.charAt(current.length - 1))) return false;
   const first = incoming.charAt(0);
   return first !== first.toLowerCase();
+}
+
+function joinThoughtParagraphs(current: string, incoming: string): string {
+  if (current.length === 0) return splitCollapsedThoughtTitles(incoming);
+  if (current.endsWith("\n\n")) return splitCollapsedThoughtTitles(current + incoming);
+  if (current.endsWith("\n")) return splitCollapsedThoughtTitles(`${current}\n${incoming}`);
+  return splitCollapsedThoughtTitles(`${current}\n\n${incoming}`);
+}
+
+/** `**A****B**` is two Codex titles, not four asterisks of prose. */
+function splitCollapsedThoughtTitles(text: string): string {
+  return text.replaceAll("****", "**\n\n**");
+}
+
+/**
+ * How much of `current` to keep if it already ends with `suffix`, ignoring
+ * whitespace either side inserted as paragraph breaks. Null when it does not.
+ */
+function dropTrailingThought(current: string, suffix: string): string | null {
+  const compact = suffix.replace(/\s+/g, "");
+  if (compact.length === 0) return null;
+  let i = current.length;
+  let j = compact.length;
+  while (i > 0 && j > 0) {
+    const ch = current.charAt(i - 1);
+    if (/\s/.test(ch)) {
+      i -= 1;
+      continue;
+    }
+    j -= 1;
+    if (ch !== compact.charAt(j)) return null;
+    i -= 1;
+  }
+  return j > 0 ? null : current.slice(0, i);
 }
 
 /**
@@ -277,7 +336,10 @@ export function coalesceAssistantGroups(
     ) {
       flushThinking();
       flushAnswer();
-      if (tracing && isNoisyProviderTracing(tracing.target, tracing.message)) {
+      if (
+        (tracing && isNoisyProviderTracing(tracing.target, tracing.message)) ||
+        (!tracing && canonical.kind === "error" && isNoisyPlainProviderLine(event.message))
+      ) {
         dropRawContinuations = true;
         previousEventCreatedAt = event.createdAt;
         continue;
@@ -328,7 +390,7 @@ export function coalesceAssistantGroups(
       }
       thinkingBuffer.lastCreatedAt = event.createdAt;
       thinkingBuffer.lastEventId = event.id;
-      thinkingBuffer.text = appendThinking(thinkingBuffer.text, event.message);
+      thinkingBuffer.text = appendThinking(thinkingBuffer.text, event.message, event.payload);
       previousEventCreatedAt = event.createdAt;
       continue;
     }
@@ -555,9 +617,10 @@ export function buildTurnRenderState(params: {
     collectAskUserQuestionState(params.toolItems);
   const exitPlanHasPlan = exitPlanTool !== null && parsePlan(exitPlanTool.markdown) !== null;
   const hasQuestionCard = askUserQuestionTool !== null;
+  const hasBlockingQuestion = hasQuestionCard && askUserQuestionTool.delivery !== "async";
   const cardCutoff = cardCutoffForTurn({
     exitPlanCreatedAt: exitPlanHasPlan && exitPlanTool ? exitPlanTool.createdAt : null,
-    questionCreatedAt: hasQuestionCard && askUserQuestionTool ? askUserQuestionTool.createdAt : null
+    questionCreatedAt: hasBlockingQuestion ? askUserQuestionTool.createdAt : null
   });
   const visibleAssistantGroups = (cardCutoff
     ? assistantGroups.filter((g) => g.createdAt < cardCutoff)
@@ -573,7 +636,7 @@ export function buildTurnRenderState(params: {
   // (via hiddenToolIds and the question-anchored cardCutoff).
   const planPrecededByQuestion =
     exitPlanHasPlan &&
-    hasQuestionCard &&
+    hasBlockingQuestion &&
     exitPlanTool !== null &&
     askUserQuestionTool !== null &&
     askUserQuestionTool.createdAt <= exitPlanTool.createdAt;
@@ -596,6 +659,6 @@ export function buildTurnRenderState(params: {
       assistantTimestamps: params.assistantTimestamps,
       toolItems: params.toolItems
     }),
-    isPausedOnUserInput: askUserQuestionTool !== null || exitPlanTool !== null
+    isPausedOnUserInput: hasBlockingQuestion || exitPlanTool !== null
   };
 }

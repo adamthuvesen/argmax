@@ -4,7 +4,7 @@
    the text scrolling under it. */
 
 .workspace-card {
-  --workspace-card-width: 224px;
+  --workspace-card-width: 256px;
   --workspace-card-inset: 10px;
   --workspace-card-row-gap: 10px;
   /* One fixed icon column, sized to the widest mark in it (the 18px subagent
@@ -32,16 +32,16 @@
   animation: surface-in var(--motion-base) var(--ease-out);
 }
 
-/* The gutter the card claims: its 224px width, the 20px inset it sits at, and
+/* The gutter the card claims: its 256px width, the 20px inset it sits at, and
    14px of clearance from the transcript. It restates the width on purpose —
    --workspace-card-width lives on the card, and an ancestor cannot read it —
    so keep the two in step. The column's gutter formulas read this. */
 .session-main-column {
-  --workspace-card-gutter: 258px;
+  --workspace-card-gutter: 290px;
 }
 
 /* The card lives in the right gutter, never on top of the transcript. While
-   the centered gutter can hold it (224px card + 20px inset + 14px clearance =
+   the centered gutter can hold it (256px card + 20px inset + 14px clearance =
    --workspace-card-gutter) nothing moves. Below that the transcript gives the
    gutter up and slides left instead of losing the card, one pixel per pixel,
    until its own left gutter is down to --session-inline-padding-min. That is
@@ -59,7 +59,7 @@
    read as "the default width", but it matches every shell, so widths 4 and 5
    would also take width 3's lower threshold and the card would land on the
    transcript. */
-@container (min-width: 806px) {
+@container (min-width: 838px) {
   .app-shell[data-chat-width="1"] .workspace-card {
     display: flex;
   }
@@ -70,7 +70,7 @@
   }
 }
 
-@container (min-width: 926px) {
+@container (min-width: 958px) {
   .app-shell[data-chat-width="2"] .workspace-card {
     display: flex;
   }
@@ -81,7 +81,7 @@
   }
 }
 
-@container (min-width: 1066px) {
+@container (min-width: 1098px) {
   .app-shell[data-chat-width="3"] .workspace-card {
     display: flex;
   }
@@ -92,7 +92,7 @@
   }
 }
 
-@container (min-width: 1226px) {
+@container (min-width: 1258px) {
   .app-shell[data-chat-width="4"] .workspace-card {
     display: flex;
   }
@@ -103,7 +103,7 @@
   }
 }
 
-@container (min-width: 1386px) {
+@container (min-width: 1418px) {
   .app-shell[data-chat-width="5"] .workspace-card {
     display: flex;
   }
@@ -117,7 +117,7 @@
 /* Docked: one side panel open (review or log). The measure is 40px narrower
    (--chat-content-width-docked) and the minimum gutter 6px tighter, so the
    card holds on to a 46px narrower pane. */
-@container (min-width: 760px) {
+@container (min-width: 792px) {
   .app-shell[data-chat-width="1"] :is(.session-grid.review-open, .session-grid.log-open) .workspace-card {
     display: flex;
   }
@@ -128,7 +128,7 @@
   }
 }
 
-@container (min-width: 880px) {
+@container (min-width: 912px) {
   .app-shell[data-chat-width="2"] :is(.session-grid.review-open, .session-grid.log-open) .workspace-card {
     display: flex;
   }
@@ -139,7 +139,7 @@
   }
 }
 
-@container (min-width: 1020px) {
+@container (min-width: 1052px) {
   .app-shell[data-chat-width="3"] :is(.session-grid.review-open, .session-grid.log-open) .workspace-card {
     display: flex;
   }
@@ -150,7 +150,7 @@
   }
 }
 
-@container (min-width: 1180px) {
+@container (min-width: 1212px) {
   .app-shell[data-chat-width="4"] :is(.session-grid.review-open, .session-grid.log-open) .workspace-card {
     display: flex;
   }
@@ -161,7 +161,7 @@
   }
 }
 
-@container (min-width: 1340px) {
+@container (min-width: 1372px) {
   .app-shell[data-chat-width="5"] :is(.session-grid.review-open, .session-grid.log-open) .workspace-card {
     display: flex;
   }
@@ -175,7 +175,7 @@
 /* Tight: both review and log panels open. The measure is 80px to 100px
    narrower (--chat-content-width-tight, per width level) and the minimum
    gutter 8px tighter again. */
-@container (min-width: 718px) {
+@container (min-width: 750px) {
   .app-shell[data-chat-width="1"] .session-grid.review-open.log-open .workspace-card {
     display: flex;
   }
@@ -186,7 +186,7 @@
   }
 }
 
-@container (min-width: 838px) {
+@container (min-width: 870px) {
   .app-shell[data-chat-width="2"] .session-grid.review-open.log-open .workspace-card {
     display: flex;
   }
@@ -197,7 +197,7 @@
   }
 }
 
-@container (min-width: 958px) {
+@container (min-width: 990px) {
   .app-shell[data-chat-width="3"] .session-grid.review-open.log-open .workspace-card {
     display: flex;
   }
@@ -208,7 +208,7 @@
   }
 }
 
-@container (min-width: 1118px) {
+@container (min-width: 1150px) {
   .app-shell[data-chat-width="4"] .session-grid.review-open.log-open .workspace-card {
     display: flex;
   }
@@ -219,7 +219,7 @@
   }
 }
 
-@container (min-width: 1278px) {
+@container (min-width: 1310px) {
   .app-shell[data-chat-width="5"] .session-grid.review-open.log-open .workspace-card {
     display: flex;
   }
@@ -275,7 +275,7 @@
   background: transparent;
   font-family: var(--font-code);
   font-size: inherit;
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   line-height: inherit;
   text-align: left;
   overflow-wrap: anywhere;
@@ -374,9 +374,15 @@
   padding: var(--space-1) var(--workspace-card-row-inset) 0;
   color: var(--muted);
   font-size: var(--text-3xs);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.workspace-card-prs-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .workspace-card-row {
@@ -451,7 +457,7 @@
 
 .workspace-card-row-meta .change-count {
   gap: var(--space-1);
-  font-weight: 400;
+  font-weight: calc(400 + var(--font-weight-offset));
 }
 
 .workspace-card-quiet {
@@ -470,6 +476,153 @@
 
 .workspace-card-pr-state[data-pr-state="CLOSED"] {
   color: var(--muted);
+}
+
+.workspace-card-pr-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px;
+  align-items: center;
+}
+
+.workspace-card-pr-link {
+  min-width: 0;
+}
+
+.workspace-card-pr-copy {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.workspace-card-pr-relationship {
+  display: block;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--text-3xs);
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-card-pr-relationship[data-relationship="unverified"] {
+  color: var(--amber);
+}
+
+.workspace-card-pr-warning {
+  display: grid;
+  flex: none;
+  place-items: center;
+  color: var(--amber);
+}
+
+.workspace-card-pr-actions {
+  position: relative;
+}
+
+.workspace-card-pr-actions > button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 28px;
+  color: var(--muted);
+  border: 0;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.workspace-card-pr-actions > button:hover,
+.workspace-card-pr-actions > button:focus-visible,
+.workspace-card-pr-actions > button[aria-expanded="true"] {
+  color: var(--text);
+  background: var(--panel-soft);
+}
+
+.workspace-card-pr-actions > button:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.workspace-card-pr-actions-menu {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  min-width: 164px;
+  padding: var(--space-1);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+}
+
+.workspace-card-pr-actions-menu button {
+  padding: var(--space-1_5) var(--space-2);
+  color: var(--text-soft);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-xs);
+  text-align: left;
+  cursor: pointer;
+}
+
+.workspace-card-pr-actions-menu button:hover,
+.workspace-card-pr-actions-menu button:focus-visible {
+  color: var(--text);
+  background: var(--panel-soft);
+  outline: none;
+}
+
+.workspace-card-pr-actions-menu button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.workspace-card-pr-more {
+  margin-top: 2px;
+}
+
+.workspace-card-pr-more > button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 28px;
+  padding: var(--space-1) var(--workspace-card-row-inset);
+  color: var(--muted);
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.workspace-card-pr-more > button:hover,
+.workspace-card-pr-more > button:focus-visible {
+  color: var(--text);
+  background: var(--panel-soft);
+  outline: none;
+}
+
+.workspace-card-pr-more > button:focus-visible {
+  box-shadow: var(--ring);
+}
+
+.workspace-card-pr-more > button[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.workspace-card-pr-more-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {

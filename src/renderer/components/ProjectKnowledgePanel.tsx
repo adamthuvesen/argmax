@@ -116,7 +116,7 @@ export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[]
     <div className="settings-card project-knowledge">
       <SettingRow
         label="Project"
-        description="Learnings from this project are injected as a preamble on every new chat."
+        description="Project learnings are available when an agent searches with the Argmax learning tools. Current code and docs take precedence."
         htmlFor="settings-project-knowledge-picker"
         control={
           <SettingsListPicker

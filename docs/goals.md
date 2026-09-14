@@ -53,6 +53,15 @@ Click the condition to expand its full text. Expanded text scrolls within a
 height cap of 150 px or 25% of the viewport, whichever is smaller. A settled
 Goal stays there until dismissed so its outcome remains visible.
 
+The phone draws that same bar. In the native app the composer card is native
+chrome and the page hides its own composer stack, so the bar rides in a stack
+of its own above the card (`nativeComposerFloor` on
+[SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx),
+exempt from the hiding rule in
+[mobile.css](../src/renderer/styles/mobile.css) the way a docked question is).
+Tucking it inside the composer instead left a running Goal with no clear
+button anywhere on the phone. See [remote.md](remote.md).
+
 Settings → Agents → Conversation turns Goals off entirely and sets the turn
 budget (5–50, default 20).
 

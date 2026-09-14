@@ -1,0 +1,8 @@
+{
+  "name": "HaGeZi Multi LIGHT",
+  "revision": "e29670278987ea0241c41ef479b3c968fd68e8b5",
+  "source": "https://raw.githubusercontent.com/hagezi/dns-blocklists/e29670278987ea0241c41ef479b3c968fd68e8b5/adblock/light.txt",
+  "license": "GPL-3.0",
+  "domains": 34819,
+  "sha256": "f6d085748935b3c80273638fee3cd21d2a4a77efccb71a26a79bd0e6d49d98d0"
+}

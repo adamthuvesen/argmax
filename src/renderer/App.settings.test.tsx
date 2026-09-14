@@ -1,18 +1,23 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 import type { DashboardSnapshot } from "../shared/types.js";
 import { ACCENT_STORAGE_KEY } from "./lib/accent.js";
 import { CHAT_WIDTH_KEY } from "./lib/chatWidth.js";
+import { BROWSER_THEME_STORAGE_KEY } from "./lib/browserTheme.js";
 import { LAUNCH_MODEL_KEY } from "./lib/launchModelPreference.js";
 import {
   CHAT_VERBOSITY_KEY,
+  FOLLOW_UP_DELIVERY_KEY,
+  COMPOSER_CONTEXT_INDICATOR_KEY,
   TURN_REVERT_ENABLED_KEY,
   DESKTOP_NOTIFICATIONS_KEY,
   FAST_MODE_KEY,
   GOAL_ENABLED_KEY,
   PR_MILESTONE_CELEBRATION_KEY,
-  RANDOM_SESSION_ICON_KEY
+  RANDOM_SESSION_ICON_KEY,
+  SIDEBAR_TRANSLUCENT_KEY,
+  SIDEBAR_TRANSLUCENCY_KEY
 } from "./lib/uiPreferences.js";
 import { USER_BUBBLE_TINT_STORAGE_KEY } from "./lib/userBubbleTint.js";
 import * as tauriBridge from "./lib/tauriBridge.js";
@@ -25,6 +30,7 @@ import {
   openInIde,
   providersDiscover,
   closeSettings,
+  dashboardDeltaListener,
   openSettings,
   setNotificationsEnabledStub,
   setupAppTestMocks,
@@ -219,6 +225,20 @@ describe("App settings", () => {
     );
   });
 
+  it("defaults working follow-ups to Queue and persists Steer when selected", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+    await openSettings("General");
+
+    const setting = await screen.findByRole("radiogroup", { name: "Follow-up while agent works" });
+    expect(within(setting).getByRole("radio", { name: "Queue" })).toBeChecked();
+    fireEvent.click(within(setting).getByRole("radio", { name: "Steer" }));
+
+    await waitFor(() =>
+      expect(window.localStorage.getItem(FOLLOW_UP_DELIVERY_KEY)).toBe("steer")
+    );
+  });
+
   it("disables the composer pixel field by default and persists turning it on", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
@@ -233,6 +253,75 @@ describe("App settings", () => {
     await waitFor(() =>
       expect(window.localStorage.getItem("argmax.composer.pixelField.enabled")).toBe("true")
     );
+  });
+
+  it("disables the composer context indicator by default and persists turning it on", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings("Appearance");
+    await screen.findByRole("heading", { name: "Layout" });
+
+    const toggle = screen.getByRole("checkbox", { name: "Context indicator in composer" });
+    expect(toggle).not.toBeChecked();
+
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(window.localStorage.getItem(COMPOSER_CONTEXT_INDICATOR_KEY)).toBe("true")
+    );
+
+    await closeSettings();
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    await screen.findByText("Dashboard ready.");
+    await act(async () => {
+      dashboardDeltaListener?.({
+        sessions: [{ ...snapshot.sessions[0], contextTokens: 10_000, contextWindow: 100_000 }]
+      });
+      await Promise.resolve();
+    });
+    expect(
+      await screen.findByRole("button", {
+        name: "Context window 10% full — 10,000 of 100,000 tokens"
+      })
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the sidebar opaque by default and persists its translucent surface settings", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    const shell = document.querySelector<HTMLElement>(".app-shell");
+    expect(shell).not.toHaveAttribute("data-sidebar-translucent");
+
+    await openSettings("Appearance");
+    const toggle = screen.getByRole("checkbox", { name: "Translucent sidebar" });
+    const slider = screen.getByRole("slider", { name: "Sidebar translucency" });
+    expect(toggle).not.toBeChecked();
+    expect(slider).toBeDisabled();
+    expect(slider).toHaveValue("30");
+
+    fireEvent.click(toggle);
+    expect(shell).toHaveAttribute("data-sidebar-translucent", "true");
+    expect(slider).toBeEnabled();
+
+    fireEvent.change(slider, { target: { value: "50" } });
+    await waitFor(() => {
+      expect(window.localStorage.getItem(SIDEBAR_TRANSLUCENT_KEY)).toBe("true");
+      expect(window.localStorage.getItem(SIDEBAR_TRANSLUCENCY_KEY)).toBe("50");
+      expect(shell?.style.getPropertyValue("--sidebar-translucency")).toBe("50%");
+    });
+
+    await closeSettings();
+    expect(shell).toHaveAttribute("data-sidebar-translucent", "true");
+    // The sidebar stays in the grid: the desktop shows through its column, so
+    // the workspace never has to make room for an overlay.
+    expect(shell?.style.gridTemplateColumns).toBe("272px minmax(0, 1fr)");
+
+    await openSettings("Appearance");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Translucent sidebar" }));
+    await closeSettings();
+    expect(shell).not.toHaveAttribute("data-sidebar-translucent");
+    expect(shell?.style.getPropertyValue("--sidebar-translucency")).toBe("0%");
   });
 
   it("shows the fox by default and hides every mascot when turned off", async () => {
@@ -568,7 +657,10 @@ describe("App settings", () => {
     );
   });
 
-  it("settings Appearance page switches the font family and persists it", async () => {
+  it.each([
+    ["System Sans (SF Pro)", "system"],
+    ["DM Sans", "dm-sans"]
+  ])("settings Appearance page switches to %s and persists it", async (label, id) => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
@@ -576,14 +668,51 @@ describe("App settings", () => {
     await screen.findByRole("heading", { name: "Theme" });
 
     fireEvent.click(screen.getByRole("button", { name: "Font family" }));
-    fireEvent.click(screen.getByRole("button", { name: "JetBrains Mono" }));
+    fireEvent.click(screen.getByRole("button", { name: label }));
 
     await waitFor(() =>
-      expect(window.localStorage.getItem("argmax.font.family")).toBe("jetbrains-mono")
+      expect(window.localStorage.getItem("argmax.font.family")).toBe(id)
     );
-    expect(document.documentElement.getAttribute("data-font")).toBe("jetbrains-mono");
+    expect(document.documentElement.getAttribute("data-font")).toBe(id);
     expect(window.localStorage.getItem("argmax.font.scale")).toBe("6");
     expect(document.documentElement.getAttribute("data-font-size")).toBe("6");
+  });
+
+  it("changes the browser theme without changing the app theme", async () => {
+    window.localStorage.setItem("argmax.theme.mode", "dark");
+    const setBrowserTheme = vi.spyOn(window.argmax!.browser, "setTheme");
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings("Appearance");
+    const browserTheme = screen.getByRole("radiogroup", { name: "Browser theme" });
+    fireEvent.click(within(browserTheme).getByRole("radio", { name: "Light" }));
+
+    await waitFor(() => expect(setBrowserTheme).toHaveBeenLastCalledWith("light"));
+    expect(window.localStorage.getItem(BROWSER_THEME_STORAGE_KEY)).toBe("light");
+    expect(window.localStorage.getItem("argmax.theme.mode")).toBe("dark");
+    expect(document.documentElement.dataset.theme).toBe("dark");
+  });
+
+  it("persists font heaviness independently of ink and restores it on remount", async () => {
+    const view = render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+    await openSettings("Appearance");
+    const slider = screen.getByRole("slider", { name: "Font heaviness" });
+    expect(slider).toHaveValue("5");
+    const ink = document.documentElement.getAttribute("data-ink-strength");
+    fireEvent.change(slider, { target: { value: "10" } });
+    expect(window.localStorage.getItem("argmax.font.heaviness")).toBe("10");
+    expect(document.documentElement.style.getPropertyValue("--font-weight-offset")).toBe("125");
+    expect(document.documentElement.getAttribute("data-ink-strength")).toBe(ink);
+    view.unmount();
+    document.documentElement.style.removeProperty("--font-weight-offset");
+    render(<App />);
+    await openSettings("Appearance");
+    expect(screen.getByRole("slider", { name: "Font heaviness" })).toHaveValue("10");
+    expect(document.documentElement.style.getPropertyValue("--font-weight-offset")).toBe("125");
+    fireEvent.change(screen.getByRole("slider", { name: "Font heaviness" }), { target: { value: "5" } });
+    expect(document.documentElement.style.getPropertyValue("--font-weight-offset")).toBe("0");
   });
 
   it("settings Appearance page switches the app font size and persists it", async () => {
@@ -615,7 +744,7 @@ describe("App settings", () => {
 
     const appFontSize = screen.getByRole("slider", { name: "App font size" });
     const chatFontSize = screen.getByRole("slider", { name: "Agent window font size" });
-    expect(chatFontSize).toHaveValue("8");
+    expect(chatFontSize).toHaveValue("6");
 
     fireEvent.change(chatFontSize, { target: { value: "7" } });
     await waitFor(() => expect(window.localStorage.getItem("argmax.font.scale.chat")).toBe("7"));
@@ -638,6 +767,10 @@ describe("App settings", () => {
 
     const grid = await screen.findByRole("group", { name: "Chat panes" });
     expect(grid).toHaveAttribute("data-font-size", "5");
+    expect((await screen.findByLabelText("Chat prompt")).closest("form")).toHaveAttribute(
+      "data-font-size",
+      "5"
+    );
     expect(document.documentElement.getAttribute("data-font-size")).toBe("6");
   });
 
@@ -769,8 +902,7 @@ describe("App settings", () => {
 
     for (const [label, id] of [
       ["System Mono", "system-mono"],
-      ["Menlo", "menlo"],
-      ["Monaco", "monaco"]
+      ["System Sans (SF Pro)", "system"]
     ] as const) {
       fireEvent.click(screen.getByRole("button", { name: "Font family" }));
       fireEvent.click(screen.getByRole("button", { name: label }));

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore
 import {
   BROWSER_PAGE_OWNER_ID,
   claimBrowserSurface,
-  DEFAULT_BROWSER_URL,
+  consumeBrowserRequest,
   ensureBrowserTabSync,
   getBrowserOwnerId,
   getBrowserRequest,
@@ -24,6 +24,7 @@ export function BrowserPage({ onClose }: { onClose: () => void }): JSX.Element {
   const [request, setRequest] = useState(() => {
     const pending = getBrowserRequest();
     return {
+      sourceSeq: pending?.seq,
       url: pending?.url || lastBrowsedUrl(BROWSER_PAGE_OWNER_ID),
       seq: pending?.seq ?? 1,
       tabId: pending?.tabId,
@@ -37,6 +38,15 @@ export function BrowserPage({ onClose }: { onClose: () => void }): JSX.Element {
   }, []);
 
   useEffect(() => ensureBrowserTabSync(), []);
+  useEffect(() => {
+    if (request.sourceSeq !== undefined) consumeBrowserRequest(request.sourceSeq);
+  }, [request.sourceSeq]);
+
+  const handleRequest = useCallback((seq: number): void => {
+    setRequest((current) => current.seq === seq
+      ? { ...current, url: "", seq, tabId: undefined, newTab: undefined }
+      : current);
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -53,6 +63,7 @@ export function BrowserPage({ onClose }: { onClose: () => void }): JSX.Element {
   const showHere = useCallback((): void => {
     claimBrowserSurface(BROWSER_PAGE_OWNER_ID);
     setRequest((current) => ({
+      ...current,
       url: lastBrowsedUrl(BROWSER_PAGE_OWNER_ID),
       seq: current.seq + 1,
       tabId: undefined,
@@ -65,10 +76,11 @@ export function BrowserPage({ onClose }: { onClose: () => void }): JSX.Element {
       {browserOwner ? (
         <BrowserPanel
           scopeId={BROWSER_PAGE_OWNER_ID}
-          url={request.url || DEFAULT_BROWSER_URL}
+          url={request.url}
           requestSeq={request.seq}
           requestTabId={request.tabId}
           requestNewTab={request.newTab}
+          onRequestHandled={handleRequest}
           onClose={onClose}
         />
       ) : (

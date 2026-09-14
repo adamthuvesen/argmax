@@ -190,8 +190,7 @@ function PlanCardInner({
         submit(selectedIndex);
       }
       // Cards are not dismissable — the answer is the dismiss. Escape stays
-      // a no-op so it doesn't accidentally collapse an in-progress decision,
-      // matching QuestionCard.
+      // a no-op so it doesn't accidentally collapse an in-progress decision.
     },
     [optionCount, selectedIndex, submit, submitted]
   );

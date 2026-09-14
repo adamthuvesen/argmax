@@ -50,14 +50,19 @@ struct InsightsEyebrow: View {
 /// The hero number itself: big, tight, tabular so a refresh never reflows it.
 struct InsightsHeroNumber: View {
     let text: String
+    let value: Double
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Text(text)
-            .font(.system(size: 44, weight: .bold, design: .rounded))
+            .typeSize(44, relativeTo: .largeTitle, weight: .bold, design: .rounded)
             .monospacedDigit()
             .foregroundStyle(Theme.ink)
             .minimumScaleFactor(0.6)
             .lineLimit(1)
+            .contentTransition(.numericText(value: value))
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: value)
     }
 }
 
@@ -79,6 +84,8 @@ struct InsightsShareBar: View {
     var fraction: Double
     var color: Color
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         GeometryReader { proxy in
             Capsule()
@@ -87,6 +94,7 @@ struct InsightsShareBar: View {
                     Capsule()
                         .fill(color)
                         .frame(width: proxy.size.width * max(0.02, min(1, fraction)))
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: fraction)
                 }
         }
         .frame(height: 4)

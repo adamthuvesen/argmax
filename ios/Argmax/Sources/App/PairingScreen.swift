@@ -32,11 +32,11 @@ struct PairingScreen: View {
 
                 if rejected {
                     // Plain http is the trap: App Transport Security refuses
-                    // it before WebKit ever connects, so refuse it here with
+                    // it before the bridge connects, so refuse it here with
                     // a reason instead of letting the load fail silently
                     // later. Under the field in attention red, not an alert.
                     Text("That is not a pairing link. It has to be https:// and carry the #token= fragment.")
-                        .font(.footnote)
+                        .typeStyle(.footnote)
                         .foregroundStyle(Theme.rose)
                         .padding(.top, Spacing.snug)
                         .transition(.opacity)
@@ -57,7 +57,7 @@ struct PairingScreen: View {
 
     private var field: some View {
         TextField("", text: $link, axis: .vertical)
-            .font(.argmaxMono(.footnote))
+            .typeStyle(.footnote, mono: true)
             .foregroundStyle(Theme.ink)
             .tint(Theme.ink)
             .textInputAutocapitalization(.never)
@@ -72,7 +72,7 @@ struct PairingScreen: View {
                 // muted ink at mono, and has to survive the vertical axis.
                 if link.isEmpty {
                     Text(verbatim: "https://your-mac.ts.net/mobile.html#token=…")
-                        .font(.argmaxMono(.footnote))
+                        .typeStyle(.footnote, mono: true)
                         .foregroundStyle(Theme.muted)
                         .lineLimit(1)
                         .allowsHitTesting(false)
@@ -109,7 +109,7 @@ struct PairingScreen: View {
     private func connect() {
         guard let url = PairingLink.validate(link) else {
             rejected = true
-            Haptics.warning()
+            Haptics.error()
             return
         }
         editing = false

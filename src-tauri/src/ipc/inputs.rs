@@ -11,9 +11,9 @@ use crate::{
 use super::validation::{
     AgentMode, AttachmentMimeType, AttachmentPath, Base64ImageData, BaseRef, BranchName,
     CommandText, DiffContextLines, FileContent, GitCommitMessage, NonEmptyString, OpenPath,
-    PermissionMode, ProjectId, Prompt, ProviderId, ReasoningEffort, RelativePath, RepoPath,
-    SearchQuery, SessionId, StreamChunk, TaskLabel, TerminalId, ThemeMode, WorkspaceId,
-    ATTACHMENT_BYTE_CAP,
+    PermissionMode, ProjectId, Prompt, ProviderId, QuestionRequestId, ReasoningEffort,
+    RelativePath, RepoPath, SearchQuery, SessionId, StreamChunk, TaskLabel, TerminalId, ThemeMode,
+    WorkspaceId, ATTACHMENT_BYTE_CAP,
 };
 
 macro_rules! empty_input {
@@ -150,6 +150,7 @@ browser_tab_input!(BrowserForwardInput);
 browser_tab_input!(BrowserReloadInput);
 browser_tab_input!(BrowserStopInput);
 browser_tab_input!(BrowserCloseInput);
+browser_tab_input!(BrowserFocusInput);
 browser_tab_input!(BrowserFillCredentialsInput);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -170,6 +171,12 @@ pub struct BrowserOpenInput {
 pub struct BrowserNavigateInput {
     pub url: String,
     pub tab_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserSetThemeInput {
+    pub mode: ThemeMode,
 }
 
 /// Logical (CSS-pixel) rect of the renderer placeholder the browser webview
@@ -733,6 +740,16 @@ pub enum ApprovalResolution {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct QuestionsResolveInput {
+    pub session_id: SessionId,
+    pub request_id: QuestionRequestId,
+    pub answers: std::collections::BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    pub dismissed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SessionEventsSinceInput {
     pub session_id: SessionId,
     pub event_cursor: Option<u64>,
@@ -960,6 +977,19 @@ pub struct WorkspacesSetPinnedInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceViewedObservationInput {
+    pub workspace_id: WorkspaceId,
+    pub observed_activity_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspacesMarkViewedInput {
+    pub workspaces: Vec<WorkspaceViewedObservationInput>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspacesSetPriorityDismissedInput {
     pub workspace_id: WorkspaceId,
     pub dismissed: bool,
@@ -1036,6 +1066,20 @@ pub struct PrsRefreshInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PrsSetPrimaryInput {
+    pub session_id: SessionId,
+    pub pr_number: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PrsDismissInput {
+    pub session_id: SessionId,
+    pub pr_number: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GitCommitInput {
     pub workspace_id: WorkspaceId,
     pub message: GitCommitMessage,
@@ -1059,6 +1103,7 @@ pub struct GitCreateBranchInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GitViewOrCreatePrInput {
     pub session_id: SessionId,
+    pub expected_branch: Option<BranchName>,
 }
 
 #[cfg(test)]

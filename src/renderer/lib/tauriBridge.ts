@@ -1,5 +1,6 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen as tauriListen } from "@tauri-apps/api/event";
+import { confirm as confirmDialog } from "@tauri-apps/plugin-dialog";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import type { IpcChannel } from "../../shared/ipcSchemas.js";
 import type {
@@ -11,8 +12,11 @@ import type {
   AttachmentSaveImageInput,
   BrowserActionOutcome,
   BrowserAgentOpenEvent,
+  BrowserContentBlocking,
   BrowserEvaluateResult,
   BrowserFillResult,
+  ChromeProfile,
+  ChromeHistoryImport,
   BrowserFindResult,
   BrowserNewTabEvent,
   BrowserPageCommandEvent,
@@ -37,6 +41,7 @@ import type {
   DiagnosticsReport,
   DiscoveredProvider,
   GhPrRecord,
+  SessionPrSummary,
   GitCommitInput,
   Goal,
   GitCommitResult,
@@ -47,6 +52,7 @@ import type {
   GitViewOrCreatePrInput,
   GitViewOrCreatePrResult,
   Learning,
+  ProjectSource,
   LaunchProviderSessionInput,
   MenuCommand,
   OpenInIdeInput,
@@ -56,6 +62,8 @@ import type {
   ProviderSessionResizeInput,
   ProvidersCancelQueuedMessageInput,
   ProvidersSendQueuedMessageNowInput,
+  QuestionResolveResult,
+  QuestionsResolveInput,
   RegisterProjectInput,
   RemotePushCapability,
   RemotePushDevice,
@@ -100,7 +108,8 @@ import type {
   WorkspaceStatusInput,
   WorkspaceTarget,
   WorkspaceStatusSnapshot,
-  WorkspaceSummary
+  WorkspaceSummary,
+  WorkspacesMarkViewedInput
 } from "../../shared/types.js";
 import { errorMessage } from "../../shared/error.js";
 import { logger } from "../../shared/logger.js";
@@ -269,6 +278,8 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
   };
 
   return {
+    markWorkspacesViewed: (input: WorkspacesMarkViewedInput) =>
+      invokeCommand<WorkspaceSummary[]>("workspaces:mark-viewed", input),
     dashboard: {
       list: () => invokeCommand<DashboardListSnapshot>("dashboard:list"),
       onDelta
@@ -313,6 +324,8 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       launch: (input: LaunchProviderSessionInput) => invokeCommand<SessionSummary>("providers:launch", input),
       sendInput: (input: ProviderSessionInput) =>
         invokeCommand<{ ok: true; queued: boolean }>("providers:send-input", input),
+      steerInput: (input: ProviderSessionInput) =>
+        invokeCommand<{ ok: true; queued: boolean }>("providers:steer-input", input),
       resize: (input: ProviderSessionResizeInput) => invokeCommand<{ ok: true }>("providers:resize", input),
       terminate: (sessionId: string) => invokeCommand<{ ok: true }>("providers:terminate", { sessionId }),
       cancelQueuedMessage: (input: ProvidersCancelQueuedMessageInput) =>
@@ -328,6 +341,10 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       pending: () => invokeCommand<DashboardSnapshot["approvals"]>("approvals:pending"),
       resolve: (input: ResolveApprovalInput) =>
         invokeCommand<DashboardSnapshot["approvals"][number]>("approvals:resolve", input)
+    },
+    questions: {
+      resolve: (input: QuestionsResolveInput) =>
+        invokeCommand<QuestionResolveResult>("questions:resolve", input)
     },
     session: {
       eventsSince: (input: SessionEventsSinceInput) =>
@@ -416,6 +433,9 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       deleteOldChats: (input) => invokeCommand<DeleteOldChatsResult>("settings:delete-old-chats", input)
     },
     system: {
+      confirm: (message) => isTauriRuntime()
+        ? confirmDialog(message, { title: "Argmax", kind: "warning" })
+        : Promise.resolve(window.confirm(message)),
       openPath: (input) => invokeCommand<{ ok: true }>("system:open-path", input),
       listDetectedIdes: () => invokeCommand<DetectedIde[]>("system:list-detected-ides"),
       diagnostics: () => invokeCommand<DiagnosticsReport>("system:diagnostics"),
@@ -469,6 +489,12 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
     menu: {
       onCommand: (listener) => subscribe<MenuCommand>("menu:command", listener)
     },
+    sources: {
+      list: (input) => invokeCommand<ProjectSource[]>("sources:list", input),
+      add: (input) => invokeCommand<ProjectSource>("sources:add", input),
+      update: (input) => invokeCommand<ProjectSource>("sources:update", input),
+      delete: (input) => invokeCommand<void>("sources:delete", input)
+    },
     learnings: {
       list: (input) => invokeCommand<Learning[]>("learnings:list", input),
       update: (input) => invokeCommand<Learning>("learnings:update", input),
@@ -476,7 +502,9 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
     },
     prs: {
       listForSession: (input) => invokeCommand<GhPrRecord[]>("prs:list-for-session", input),
-      refresh: (input) => invokeCommand<GhPrRecord[]>("prs:refresh", input)
+      refresh: (input) => invokeCommand<GhPrRecord[]>("prs:refresh", input),
+      setPrimary: (input) => invokeCommand<SessionPrSummary[]>("prs:set-primary", input),
+      dismiss: (input) => invokeCommand<SessionPrSummary[]>("prs:dismiss", input)
     },
     git: {
       commit: (input: GitCommitInput) => invokeCommand<GitCommitResult>("git:commit", input),
@@ -499,6 +527,12 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
         subscribe<TerminalAgentOpenEvent>("terminal:agent-open", listener)
     },
     browser: {
+      chromeProfiles: () => invokeCommand<ChromeProfile[]>("browser:chrome-profiles"),
+      importChromeHistory: (profileId: string) =>
+        invokeCommand<ChromeHistoryImport>("browser:import-chrome-history", { profileId }),
+      contentBlocking: () => invokeCommand<BrowserContentBlocking>("browser:content-blocking"),
+      setSiteBlocking: (input) =>
+        invokeCommand<BrowserContentBlocking>("browser:set-site-blocking", input),
       open: (input) => invokeCommand<{ ok: true }>("browser:open", input),
       navigate: (url: string, tabId: string) =>
         invokeCommand<{ ok: true }>("browser:navigate", { url, tabId }),
@@ -506,7 +540,9 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       forward: (tabId: string) => invokeCommand<{ ok: true }>("browser:forward", { tabId }),
       reload: (tabId: string) => invokeCommand<{ ok: true }>("browser:reload", { tabId }),
       stop: (tabId: string) => invokeCommand<{ ok: true }>("browser:stop", { tabId }),
+      setTheme: (mode) => invokeCommand<{ ok: true }>("browser:set-theme", { mode }),
       setBounds: (input) => invokeCommand<{ ok: true }>("browser:set-bounds", input),
+      focus: (tabId: string) => invokeCommand<{ ok: true }>("browser:focus", { tabId }),
       close: (tabId: string) => invokeCommand<{ ok: true }>("browser:close", { tabId }),
       fillCredentials: (tabId: string) =>
         invokeCommand<BrowserFillResult>("browser:fill-credentials", { tabId }),

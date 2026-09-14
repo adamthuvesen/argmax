@@ -1,31 +1,23 @@
 import PhotosUI
 import SwiftUI
 
-/// The composer for the chat on screen, drawn under the shared web view once
-/// it hides its own (`setComposer(true)`; `docs/plan/hybrid-native-phone.md`).
-///
-/// The same card `NewChatSheet`'s composer draws — field, model chip opening
-/// `PickerSheet`, effort chip opening `EffortDial`, round send button — plus
-/// the running-state controls the web composer carries and a phone has no
-/// other way to offer: Stop in place of send, a queue button beside it, and a
-/// compact stack of queued follow-ups above the card (`docs/chat-cards.md`).
-///
-/// Bound to `TranscriptHost.composer`, the wire state the page posts, so this
-/// view never has to re-derive the composer's own rules — which efforts a
-/// model offers, queue vs send while running — for whichever model the
-/// session is actually running. Picking a *different* model before sending is
-/// the one thing that state cannot describe yet, so that candidate reads its
-/// own effort ladder from the bundled catalogue instead, the same source
-/// `NewChatSheet` uses.
+/// The native chat composer, sharing live session and queue state with the
+/// transcript store. Model choices use the bundled provider catalogue.
 struct TranscriptComposer: View {
-    @EnvironmentObject private var transcript: TranscriptHost
+    let workspaceID: String
+    @Binding var input: String
+    var focusRequest = 0
+    var isObscured = false
+
+    @EnvironmentObject private var transcript: TranscriptStore
     @EnvironmentObject private var store: DashboardStore
     @Environment(\.accentTint) private var accent
+    @Environment(\.openURL) private var openURL
 
-    @State private var input = ""
-    @FocusState private var focused: Bool
+    @State private var focused = false
     @State private var sending = false
     @State private var stopping = false
+    @State private var openingPullRequest = false
     @State private var sendingQueuedID: String?
     @State private var failure: String?
     @State private var picking: Picking?
@@ -42,9 +34,10 @@ struct TranscriptComposer: View {
     @StateObject private var images = ComposerImages()
     @State private var photoPicks: [PhotosPickerItem] = []
     @StateObject private var dictation = Dictation()
-    /// The draft as it stood when the mic was opened. Partial results rewrite
-    /// the tail after it rather than stacking on each other.
-    @State private var draftBeforeDictation = ""
+    /// The dictated tail as it was last written into the field. Each update
+    /// replaces it rather than rebuilding the whole draft, so typing and
+    /// editing while the mic is open survive the next partial result.
+    @State private var dictatedTail = ""
 
     private let catalog = ProviderCatalog.bundled
 
@@ -61,7 +54,14 @@ struct TranscriptComposer: View {
 
     var body: some View {
         if let composer = transcript.composer {
+            // One column, one width: the gutter is applied here so the PR
+            // pill, the queued lane and the card all share the card's edges.
+            // The pill sits on top, above the queue, so a stack of queued
+            // follow-ups grows down toward the card and leaves it in place.
             VStack(alignment: .leading, spacing: Spacing.snug) {
+                if let pullRequest {
+                    pullRequestPill(pullRequest, sessionID: composer.sessionId)
+                }
                 if !composer.queued.isEmpty {
                     queue(composer)
                 }
@@ -70,6 +70,8 @@ struct TranscriptComposer: View {
             .screenGutter()
             .padding(.bottom, Spacing.snug)
             .task { await loadDiscovered() }
+            .onChange(of: focusRequest) { focused = true }
+            .onChange(of: isObscured) { if isObscured { focused = false } }
             .sheet(item: $picking) { picker($0, composer) }
             .sheet(item: $pendingProviderSwitch) { pending in
                 ProviderSwitchConfirmation(
@@ -87,26 +89,65 @@ struct TranscriptComposer: View {
 
     // MARK: - The card
 
+    /// The live workspace, so an OPEN → MERGED dashboard delta repaints the
+    /// pill while this chat stays on screen.
+    private var pullRequest: ChatPullRequest? {
+        guard let workspace = store.snapshot.workspaces.first(where: { $0.id == workspaceID }) else {
+            return nil
+        }
+        return ChatPullRequest(workspace: workspace)
+    }
+
+    private func pullRequestPill(_ pullRequest: ChatPullRequest, sessionID: String) -> some View {
+        Button {
+            openPullRequest(sessionID: sessionID)
+        } label: {
+            HStack(spacing: Spacing.tight) {
+                GitPullRequestStatusMark(kind: pullRequest.kind, size: 14)
+                Text("PR #\(pullRequest.number)")
+                    .typeStyle(.caption2, weight: .semibold, monospacedDigit: true)
+                    .foregroundStyle(pullRequest.tint)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(pullRequest.tint.opacity(0.14), in: .capsule)
+            .frame(minHeight: 44, alignment: .leading)
+            .contentShape(.rect)
+        }
+        .buttonStyle(PressDim())
+        .disabled(openingPullRequest)
+        .opacity(openingPullRequest ? 0.65 : 1)
+        .accessibilityLabel(pullRequest.accessibilityLabel)
+    }
+
     private func card(_ composer: NativeComposerState) -> some View {
         let model = activeModel(for: composer)
         return VStack(alignment: .leading, spacing: Spacing.row) {
             if let failure {
                 Text(failure)
-                    .font(.footnote)
+                    .typeStyle(.footnote)
                     .foregroundStyle(Theme.rose)
             }
             if !images.isEmpty {
                 ComposerImageStrip(images: images)
             }
-            TextField("Message", text: $input, axis: .vertical)
-                .font(.body)
-                .foregroundStyle(Theme.ink)
-                .tint(accent.color)
-                .lineLimit(1...6)
-                .focused($focused)
-                .submitLabel(.send)
-                .onSubmit { send(composer) }
-                .accessibilityLabel("Message")
+            ComposerTextInput(
+                "Message",
+                text: $input,
+                accessibilityLabel: "Message",
+                lineLimits: 1...6,
+                submitsOnReturn: true,
+                focused: $focused,
+                onSubmit: { send(composer) }
+            ) { providers in
+                Task {
+                    failure = await images.attach(
+                        pasted: providers,
+                        storeKey: composer.sessionId,
+                        client: store.client
+                    )
+                }
+            }
             HStack(alignment: .center, spacing: Spacing.snug) {
                 AttachImageButton(picks: $photoPicks, busy: images.attaching)
                 HStack(spacing: Spacing.snug) {
@@ -115,8 +156,8 @@ struct TranscriptComposer: View {
                 .composerChipSurface()
                 Spacer(minLength: Spacing.tight)
                 if dictation.available {
-                    DictateButton(dictation: dictation, draft: { input }) { draft in
-                        draftBeforeDictation = draft
+                    DictateButton(dictation: dictation) {
+                        dictatedTail = ""
                         failure = nil
                     }
                 }
@@ -128,7 +169,7 @@ struct TranscriptComposer: View {
                         send(composer)
                     } label: {
                         Image(systemName: "arrow.up")
-                            .font(.body.weight(.semibold))
+                            .typeSymbol(.body, weight: .semibold)
                             .foregroundStyle(Theme.ink)
                             .frame(width: Spacing.composerControl, height: Spacing.composerControl)
                             .background(Theme.raised, in: .circle)
@@ -153,12 +194,33 @@ struct TranscriptComposer: View {
             }
         }
         .onChange(of: dictation.heard) { _, heard in
-            input = draftWithDictation(draftBeforeDictation, heard: heard)
+            input = draftWithDictation(input, heard: heard, replacing: dictatedTail)
+            dictatedTail = heard
         }
         .onChange(of: dictation.failure) { _, reported in
             if let reported { failure = reported }
         }
-        .onDisappear { dictation.stop() }
+        .onDisappear { dictation.discard() }
+    }
+
+    private func openPullRequest(sessionID: String) {
+        guard !openingPullRequest else { return }
+        openingPullRequest = true
+        failure = nil
+        Task {
+            do {
+                let result = try await store.client.viewPullRequest(sessionID: sessionID)
+                guard let url = URL(string: result.url) else {
+                    failure = "Your Mac sent an invalid pull request link."
+                    openingPullRequest = false
+                    return
+                }
+                openURL(url)
+            } catch {
+                failure = hostFailureMessage(error)
+            }
+            openingPullRequest = false
+        }
     }
 
     /// Model and effort inside one chip: two decisions, two tap targets, one
@@ -169,14 +231,14 @@ struct TranscriptComposer: View {
     private func modelEffortControl(_ composer: NativeComposerState, model: ModelSelection) -> some View {
         ComposerChipButton { picking = .model } content: {
             Text(model.label)
-                .font(.subheadline)
+                .typeStyle(.footnote)
                 .foregroundStyle(Theme.ink)
         }
         .accessibilityLabel("Model, \(model.label)")
         if supportsEffort(composer) {
             ComposerChipButton { picking = .effort } content: {
                 Text(catalog.label(for: effortBinding(composer).wrappedValue))
-                    .font(.subheadline)
+                    .typeStyle(.footnote)
                     .foregroundStyle(Theme.muted)
             }
             .accessibilityLabel("Effort, \(catalog.label(for: effortBinding(composer).wrappedValue))")
@@ -203,7 +265,7 @@ struct TranscriptComposer: View {
                         .frame(width: 11, height: 11)
                 } else {
                     Image(systemName: "arrow.up")
-                        .font(.body.weight(.semibold))
+                        .typeSymbol(.body, weight: .semibold)
                         .foregroundStyle(Theme.ground)
                 }
             }
@@ -240,11 +302,11 @@ struct TranscriptComposer: View {
             ForEach(composer.queued, id: \.id) { message in
                 HStack(spacing: Spacing.tight) {
                     Image(systemName: "arrow.turn.down.right")
-                        .font(.caption2)
+                        .typeSymbol(.caption2)
                         .foregroundStyle(Theme.muted)
                         .accessibilityHidden(true)
                     Text(message.text)
-                        .font(.footnote)
+                        .typeStyle(.footnote)
                         .foregroundStyle(Theme.ink)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -281,7 +343,6 @@ struct TranscriptComposer: View {
                 .background(Theme.raised, in: .rect(cornerRadius: Radius.control, style: .continuous))
             }
         }
-        .screenGutter()
     }
 
     /// One glyph in the queued row. 30pt of hit area around a caption-sized
@@ -296,7 +357,7 @@ struct TranscriptComposer: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.caption.weight(.semibold))
+                .typeSymbol(.caption, weight: .semibold)
                 .foregroundStyle(tint)
                 .frame(width: 30, height: 30)
                 .contentShape(.rect)
@@ -445,11 +506,14 @@ struct TranscriptComposer: View {
         // same files listed for the host to record with the message.
         let prompt = images.prompt(from: trimmed)
         sending = true
+        let thinkingStart = composer.running ? nil : transcript.beginThinking()
         failure = nil
-        dictation.stop()
+        dictation.discard()
         input = ""
         images.clear()
-        Haptics.light()
+        // The keyboard leaves with the message so the reply has the screen;
+        // a follow-up taps the composer to bring it back.
+        focused = false
         Task {
             do {
                 _ = try await store.client.sendInput(
@@ -467,9 +531,11 @@ struct TranscriptComposer: View {
             } catch {
                 // The draft is not lost: text and images go back the same way
                 // a failed desktop send restores them.
+                if let thinkingStart { transcript.cancelThinking(thinkingStart) }
                 input = trimmed
                 images.restore(sent)
                 failure = hostFailureMessage(error)
+                focused = true
             }
             sending = false
         }
@@ -518,6 +584,9 @@ struct TranscriptComposer: View {
             } catch {
                 failure = hostFailureMessage(error)
             }
+            // A rejection can mean another client already consumed this
+            // inbox row. Re-read the authoritative queue even when it fails.
+            await transcript.refreshMetadata()
             sendingQueuedID = nil
         }
     }
@@ -549,7 +618,7 @@ struct TranscriptComposer: View {
                     Task { try? await store.client.autoTitleWorkspace(autoTitle) }
                 }
             } catch {
-                Haptics.warning()
+                Haptics.error()
                 failure = hostFailureMessage(error)
             }
             sendingQueuedID = nil
@@ -599,10 +668,10 @@ private struct ProviderSwitchConfirmation: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.row) {
             Text("Switch to \(toName)?")
-                .font(.body.weight(.semibold))
+                .typeStyle(.body, weight: .semibold)
                 .foregroundStyle(Theme.ink)
             Text("\(toName) can't resume this chat. It starts fresh from a short summary of it.")
-                .font(.subheadline)
+                .typeStyle(.subheadline)  // type-exception: a sheet's explanatory copy, sized like every other sheet in the app rather than like transcript chrome
                 .foregroundStyle(Theme.muted)
             HStack(spacing: Spacing.snug) {
                 QuietButton(title: "Cancel", action: onCancel)

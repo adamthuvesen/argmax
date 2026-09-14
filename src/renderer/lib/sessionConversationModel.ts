@@ -2,6 +2,7 @@ import type { EventType, TimelineEvent } from "../../shared/types.js";
 import { isPlainObject, stringValue } from "../../shared/typeGuards.js";
 import { isInternalAgentLaunchMetadata } from "./agentLaunch.js";
 import { decodeTimelineEvent } from "./canonicalTimeline.js";
+import { mergeToolActivity } from "./toolActivity.js";
 import {
   cleanToolInput,
   extractToolError,
@@ -636,6 +637,13 @@ export function buildSessionToolCalls(
       // Use the persisted boundary so resuming the parent cannot revive old runs.
       const nativeRunEnded = nativeLifecycle?.phase === "started" &&
         sessionEndAt >= nativeLifecycle.createdAt;
+      // The same boundary settles a row with no lifecycle pair at all — a Codex
+      // launch read back from the on-disk rollout trace, or any start whose
+      // `command.completed` was lost. The process that owed the completion is
+      // gone, so the row cannot still be in flight. A start after the last end
+      // belongs to the live turn, and an empty boundary means never ended.
+      const endedWithoutCompletion = completion === null && !inferredDone &&
+        sessionEndAt !== "" && sessionEndAt >= event.createdAt;
       const renderedStatus: ToolCall["status"] = nativeLifecycle
         ? nativeLifecycle.phase === "started"
           ? sessionInterrupted || nativeRunEnded ? "error" : "running"
@@ -644,6 +652,8 @@ export function buildSessionToolCalls(
             : "error"
         : isBackgroundLaunch
             ? "running"
+          : endedWithoutCompletion
+            ? "error"
             : status;
       const parentToolUseId = canonicalStart.parentToolUseId;
       return {
@@ -655,13 +665,15 @@ export function buildSessionToolCalls(
         output,
         status: renderedStatus,
         completionObserved: completion !== null,
+        cancelled: canonicalCompletion?.kind === "tool" && canonicalCompletion.outcome === "cancelled",
+        activity: mergeToolActivity(canonicalStart.activity, canonicalCompletion?.kind === "tool" ? canonicalCompletion.activity : null),
         createdAt: event.createdAt,
         // No real completion timestamp exists for a dropped completion; anchor
         // the inferred-done case at the start so the chip shows a check instead
         // of a stale, ever-climbing timer.
         completedAt: renderedStatus === "running"
           ? null
-          : nativeRunEnded
+          : nativeRunEnded || endedWithoutCompletion
             ? sessionEndAt
           : nativeLifecycle?.phase === "completed"
             ? nativeLifecycle.createdAt
@@ -672,6 +684,8 @@ export function buildSessionToolCalls(
               : null,
         error: nativeRunEnded
           ? "Session ended before the agent reported completion."
+          : endedWithoutCompletion
+            ? "Session ended before the tool reported completion."
           : completion && isError ? extractToolError(completion.payload) : null,
         backgroundLaunch: isBackgroundLaunch,
         parentToolUseId,

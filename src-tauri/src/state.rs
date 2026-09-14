@@ -15,11 +15,13 @@ use crate::browser::registry::BrowserTabRegistry;
 use crate::checks::service::CheckService;
 use crate::dock::{DockBadgeService, TauriDockBadgeSink};
 use crate::gh::poller::GhPoller;
+use crate::ipc::validation::ThemeMode;
 use crate::notifications::{NotificationService, NotificationSink};
 use crate::persistence::Database;
 use crate::providers::cursor_acp::CursorAcpSessions;
 use crate::providers::discovery::ProviderDiscovery;
 use crate::providers::session_service::ProviderSessionService;
+use crate::questions::service::QuestionService;
 use crate::remote::{RemoteEvent, REMOTE_EVENT_CAPACITY, REMOTE_TERMINAL_EVENT_CAPACITY};
 use crate::session_control::SessionLaunchServer;
 use crate::skills::registry::SkillRegistry;
@@ -44,6 +46,7 @@ pub struct AppState {
     /// renderer — otherwise the only actionable text is buried in the logs.
     pub db_open_error: OnceLock<String>,
     pub approvals: OnceLock<Arc<ApprovalService>>,
+    pub questions: OnceLock<Arc<QuestionService>>,
     pub providers: OnceLock<Arc<ProviderSessionService>>,
     pub session_launch_server: OnceLock<SessionLaunchServer>,
     pub provider_discovery: Arc<ProviderDiscovery>,
@@ -116,6 +119,11 @@ pub struct AppState {
     /// this list; an agent opening a page has no renderer to ask, so the app
     /// keeps it and pushes `browser:tabs` for the strip to mirror.
     pub browser_tabs: Arc<BrowserTabRegistry>,
+    /// Appearance used by website webviews, independent of the app shell.
+    pub browser_theme: std::sync::Mutex<ThemeMode>,
+    pub browser_content_blocking:
+        tokio::sync::Mutex<crate::browser::content_blocking::ContentBlockingState>,
+    pub(crate) pending_browser_opens: std::sync::Mutex<crate::ipc::browser::PendingBrowserOpens>,
 }
 
 // Hand-written because `broadcast::Sender` has no `Default`; every other field
@@ -128,6 +136,7 @@ impl Default for AppState {
             db: OnceLock::new(),
             db_open_error: OnceLock::new(),
             approvals: OnceLock::new(),
+            questions: OnceLock::new(),
             providers: OnceLock::new(),
             session_launch_server: OnceLock::new(),
             provider_discovery: Arc::default(),
@@ -155,6 +164,9 @@ impl Default for AppState {
             skills: Arc::new(SkillRegistry::from_env()),
             keep_awake: Arc::default(),
             browser_tabs: Arc::default(),
+            browser_theme: std::sync::Mutex::new(ThemeMode::System),
+            browser_content_blocking: Default::default(),
+            pending_browser_opens: Default::default(),
         }
     }
 }

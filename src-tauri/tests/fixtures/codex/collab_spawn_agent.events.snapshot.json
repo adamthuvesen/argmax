@@ -3,6 +3,7 @@
     "createdAt": "2026-05-24T12:00:00.000Z",
     "message": "spawn_agent",
     "payload": {
+      "activity": { "version": 1, "kind": "agent", "evidence": "tool", "targets": [] },
       "agents_states": {},
       "id": "item_2",
       "input": {
@@ -39,6 +40,7 @@
     "createdAt": "2026-05-24T12:00:00.000Z",
     "message": "spawn_agent",
     "payload": {
+      "activity": { "version": 1, "kind": "agent", "evidence": "tool", "targets": [] },
       "agents_states": {},
       "id": "item_2",
       "input": {

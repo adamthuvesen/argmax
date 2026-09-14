@@ -3,6 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BROWSER_PAGE_OWNER_ID,
   getBrowserOwnerId,
+  getActiveBrowserTabId,
+  getBrowserTabs,
+  openInBrowserPanel,
   resetBrowserSurfaceForTests,
   resetBrowserTabsForTests
 } from "../lib/browserPanel.js";
@@ -24,6 +27,7 @@ describe("BrowserPage", () => {
           forward: vi.fn().mockResolvedValue({ ok: true }),
           reload: vi.fn().mockResolvedValue({ ok: true }),
           setBounds: vi.fn().mockResolvedValue({ ok: true }),
+          focus: vi.fn().mockResolvedValue({ ok: true }),
           close: vi.fn().mockResolvedValue({ ok: true }),
           stop: vi.fn().mockResolvedValue({ ok: true }),
           fillCredentials: vi.fn().mockResolvedValue({ ok: true, itemTitle: "Test" }),
@@ -53,6 +57,22 @@ describe("BrowserPage", () => {
     expect(getBrowserOwnerId()).toBe(BROWSER_PAGE_OWNER_ID);
     expect(screen.queryByRole("tab", { name: "Files" })).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "Changes" })).not.toBeInTheDocument();
+  });
+
+  it("restores the selected tab without replaying the link that opened the page", () => {
+    openInBrowserPanel("https://first.example", { newTab: true });
+    const first = render(<BrowserPage onClose={() => undefined} />);
+    const selected = getActiveBrowserTabId(BROWSER_PAGE_OWNER_ID);
+    fireEvent.click(screen.getByRole("button", { name: "New tab" }));
+    fireEvent.click(screen.getByRole("button", { name: "first.example" }));
+    const count = getBrowserTabs(BROWSER_PAGE_OWNER_ID).length;
+    first.unmount();
+
+    render(<BrowserPage onClose={() => undefined} />);
+
+    expect(getActiveBrowserTabId(BROWSER_PAGE_OWNER_ID)).toBe(selected);
+    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID)).toHaveLength(count);
+    expect(screen.getByRole("tab", { name: /first.example/ })).toHaveAttribute("aria-selected", "true");
   });
 
   it("Esc closes the page when no overlay is open", () => {

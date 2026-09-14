@@ -1,4 +1,10 @@
 .connection-provider-tabs {
+  --sliding-tab-background: var(--accent-soft);
+  --sliding-tab-radius: var(--radius-md);
+  --sliding-tab-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 24%, transparent);
+  --sliding-tab-top: var(--space-2);
+  --sliding-tab-height: 28px;
+  position: relative;
   display: flex;
   gap: var(--space-1);
   overflow-x: auto;
@@ -25,8 +31,8 @@
 
 .connection-provider-tabs button[aria-selected="true"] {
   color: var(--text);
-  background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 24%, transparent);
+  background: transparent;
+  box-shadow: none;
 }
 
 .connection-catalog {
@@ -143,7 +149,7 @@
   overflow: hidden;
   color: var(--text);
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   text-overflow: ellipsis;
   white-space: nowrap;
 }

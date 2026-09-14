@@ -34,6 +34,135 @@ html[data-document-hidden="true"] {
   }
 }
 
+/* Shared product motion. These patterns borrow the spatial cues from
+   transitions.dev, retuned to Argmax's compact desktop timing. Surfaces keep
+   their own color, radius and layout; this file only says how state travels. */
+
+@keyframes modal-backdrop-in {
+  from { opacity: 0; }
+}
+
+@keyframes modal-backdrop-out {
+  to { opacity: 0; }
+}
+
+@keyframes modal-surface-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+
+@keyframes modal-surface-out {
+  to {
+    opacity: 0;
+    transform: translateY(3px) scale(0.985);
+  }
+}
+
+.motion-modal-overlay[data-motion-state="open"] {
+  animation: modal-backdrop-in var(--motion-fast) var(--ease-out);
+}
+
+.motion-modal-overlay[data-motion-state="open"] > .motion-modal-surface {
+  animation: modal-surface-in var(--motion-base) var(--ease-out);
+}
+
+.motion-modal-overlay[data-motion-state="closing"] {
+  pointer-events: none;
+  animation: modal-backdrop-out var(--motion-fast) var(--ease-in-out) forwards;
+}
+
+.motion-modal-overlay[data-motion-state="closing"] > .motion-modal-surface {
+  animation: modal-surface-out var(--motion-fast) var(--ease-in-out) forwards;
+}
+
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    scale: 0.97;
+  }
+}
+
+.project-picker-popover,
+.slash-menu,
+.file-popover,
+.context-ring-popover,
+.effort-slider-popover,
+.file-preview-popover {
+  transform-origin: var(--popover-transform-origin, bottom left);
+  animation: popover-in var(--motion-base) var(--ease-out);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+    filter: blur(2px);
+  }
+}
+
+@keyframes toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.99);
+    filter: blur(1px);
+  }
+}
+
+.toast[data-motion-state="open"] {
+  animation: toast-in var(--motion-base) var(--ease-out);
+}
+
+.toast[data-motion-state="closing"] {
+  pointer-events: none;
+  animation: toast-out var(--motion-fast) var(--ease-in-out) forwards;
+}
+
+/* One indicator sits below each tablist's buttons. Surfaces provide its shape
+   through variables, while the measured x/width keep unequal labels honest. */
+.sliding-tab-indicator {
+  position: absolute;
+  left: 0;
+  top: var(--sliding-tab-top, 0);
+  z-index: 0;
+  width: var(--sliding-tab-width);
+  height: var(--sliding-tab-height, 100%);
+  border-radius: var(--sliding-tab-radius, var(--radius-md));
+  background: var(--sliding-tab-background, var(--panel-soft));
+  box-shadow: var(--sliding-tab-shadow, none);
+  pointer-events: none;
+  transform: translateX(var(--sliding-tab-x));
+  transition:
+    transform var(--motion-base) var(--ease-out),
+    width var(--motion-base) var(--ease-out);
+}
+
+.sliding-tab-indicator[data-ready="false"] {
+  transition: none;
+}
+
+:is(.command-palette-tabs, .review-mode-tabs, .debug-tabs, .connection-provider-tabs) {
+  position: relative;
+}
+
+:is(.command-palette-tabs, .review-mode-tabs, .debug-tabs, .connection-provider-tabs) > [role="tab"] {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes unread-response-in {
+  from {
+    opacity: 0;
+    transform: translate(-3px, 4px) scale(0.4);
+  }
+  70% { transform: translate(0, 0) scale(1.12); }
+}
+
+.session-unread-marker::before {
+  animation: unread-response-in var(--motion-slow) var(--ease-out);
+}
+
 /* Entrance animations add motion to something already visible. They never
    bring it into existence.
 
@@ -54,4 +183,3 @@ html[data-document-hidden="true"] {
    place the invisible state lives, and a stalled timeline costs a fade rather
    than the content. Motion that starts partly visible (`hl-token-in`,
    `working-nest-land`) keeps its fill — it has nothing to hide. */
-

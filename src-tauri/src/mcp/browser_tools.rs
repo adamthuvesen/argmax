@@ -16,6 +16,7 @@ use rmcp::{
     schemars, tool, tool_router, ErrorData,
 };
 use serde::Deserialize;
+use serde_json::Value;
 
 use crate::browser::automation::BrowserAction;
 use crate::session_control::{SessionControlAction, SessionControlResult};
@@ -658,7 +659,9 @@ after a click or a search that navigates, instead of snapshotting a page that ha
         description = "Capture the page as a PNG, cropped to one element when you name its ref. \
 Only reach for this when the question is visual — how something looks, whether a layout is broken, \
 what an image shows. For reading and acting, browser_snapshot is cheaper and more precise. The \
-reply carries the image and a line with its pixel size."
+reply carries the image, its pixel size, and the path it was saved to. The image itself reaches \
+you, not the user: to put it on their screen, write a Markdown image for that path on its own \
+line in your reply."
     )]
     async fn browser_screenshot(
         &self,
@@ -797,13 +800,27 @@ async fn call(request: BrowserRequest) -> Result<CallToolResult, ErrorData> {
 fn blocks(outcome: BrowserOutcome) -> Vec<ContentBlock> {
     let text = serde_json::to_string(&outcome.result)
         .unwrap_or_else(|error| format!("{{\"error\":\"could not encode the result: {error}\"}}"));
-    match outcome.png_base64 {
+    let mut blocks = match outcome.png_base64 {
         Some(png) => vec![
             ContentBlock::image(png, "image/png"),
             ContentBlock::text(text),
         ],
         None => vec![ContentBlock::text(text)],
+    };
+    // An agent reads tool results mid-turn, so this is where the reminder
+    // lands: a captured image is not on the user's screen until the answer
+    // names its path. The tool description says the same at planning time.
+    if let Some(path) = outcome.result.get("path").and_then(Value::as_str) {
+        blocks.push(ContentBlock::text(show_notice(path)));
     }
+    blocks
+}
+
+fn show_notice(path: &str) -> String {
+    format!(
+        "The user cannot see this image — it went to you, not to the chat. To show it, put \
+`![what it shows]({path})` on its own line in your reply."
+    )
 }
 
 #[cfg(not(unix))]
@@ -812,4 +829,40 @@ async fn call(_request: BrowserRequest) -> Result<CallToolResult, ErrorData> {
         "the Argmax browser is not available on this platform".to_string(),
         None,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{blocks, BrowserOutcome};
+    use serde_json::json;
+
+    fn texts(blocks: Vec<rmcp::model::ContentBlock>) -> Vec<String> {
+        blocks
+            .iter()
+            .filter_map(|block| block.as_text().map(|text| text.text.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn a_saved_screenshot_tells_the_agent_how_to_put_it_on_screen() {
+        let blocks = blocks(BrowserOutcome {
+            result: json!({ "width": 720, "path": "/data/attachments/s/shot.png" }),
+            png_base64: Some("AAAA".into()),
+        });
+
+        assert!(blocks.iter().any(|block| block.as_image().is_some()));
+        let notice = texts(blocks).pop().expect("a trailing text block");
+        assert!(notice.contains("![what it shows](/data/attachments/s/shot.png)"));
+        assert!(notice.contains("cannot see this image"));
+    }
+
+    #[test]
+    fn an_unsaved_capture_leaves_the_result_speaking_for_itself() {
+        let blocks = blocks(BrowserOutcome {
+            result: json!({ "dropped": true, "pathError": "attachment storage is not initialized" }),
+            png_base64: None,
+        });
+
+        assert_eq!(texts(blocks).len(), 1);
+    }
 }

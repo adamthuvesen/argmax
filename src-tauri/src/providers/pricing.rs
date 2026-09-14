@@ -52,8 +52,6 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
     // OpenCode Zen free tier — ids keep the `opencode/` provider prefix the
     // CLI's `-m` flag expects. All bill $0.
     "opencode/big-pickle" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
-    "opencode/hy3-free" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
-    "opencode/mimo-v2.5-free" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "opencode/nemotron-3.5-lightning-free" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "opencode/nemotron-3-ultra-free" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "opencode/muse-spark-1.3-contributor-free" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },

@@ -83,9 +83,13 @@ pub(super) async fn wait_for_sessions(
 
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
-        if let Some(outcome) =
-            collect_wait_outcome(&database, &parent.session_id, &watched, report_once)?
-        {
+        if let Some(outcome) = collect_wait_outcome(
+            &database,
+            &providers,
+            &parent.session_id,
+            &watched,
+            report_once,
+        )? {
             return Ok(SessionControlResponse::new(SessionControlResult::Waited(
                 outcome,
             )));
@@ -119,6 +123,7 @@ pub(super) async fn wait_for_sessions(
 /// second child is not answered with its first one forever.
 fn collect_wait_outcome(
     database: &Database,
+    providers: &ProviderSessionService,
     caller_session_id: &str,
     watched: &[String],
     report_once: bool,
@@ -157,7 +162,7 @@ fn collect_wait_outcome(
     // Both writes need the writer, so they happen only once the wait is
     // actually returning, and on the one connection: a crash cannot mark a
     // finish reported without also having handed the messages over.
-    let messages = {
+    let (messages, collected_message_ids) = {
         let mut connection = database.connection();
         let taken = take_undelivered_messages(
             &mut connection,
@@ -174,8 +179,23 @@ fn collect_wait_outcome(
             mark_wait_reported(&connection, &reported, &now_iso())
                 .map_err(argmax_protocol_error)?;
         }
-        to_inbox_messages(&connection, taken)
+        let collected_message_ids = taken
+            .iter()
+            .map(|message| message.id.clone())
+            .collect::<Vec<_>>();
+        (to_inbox_messages(&connection, taken), collected_message_ids)
     };
+    // The inbox hand-over is already committed. Queue reconciliation is best
+    // effort so a cleanup failure cannot turn a delivered reply into an error.
+    if let Err(error) =
+        providers.reconcile_collected_messages(caller_session_id, &collected_message_ids)
+    {
+        tracing::warn!(
+            session_id = caller_session_id,
+            ?error,
+            "failed to remove waited messages from the pending queue"
+        );
+    }
     Ok(Some(WaitOutcome {
         timed_out: false,
         sessions: settled,

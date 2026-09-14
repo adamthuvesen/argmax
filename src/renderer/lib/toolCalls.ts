@@ -1,6 +1,8 @@
 import { safeJsonParse, safeJsonParseRecord } from "../../shared/safeJson.js";
 import type { TimelineEvent } from "../../shared/types.js";
 import { interpretFileChange, summarizeFileChanges, type ChangeCounts } from "./fileChange.js";
+import { isOpaqueCiphertext } from "./toolArguments.js";
+import { describeActivity, summarizeActivities, type ToolActivity, type ToolActivityKind } from "./toolActivity.js";
 
 export type ToolCall = {
   id: string;
@@ -14,6 +16,8 @@ export type ToolCall = {
   completedAt: string | null;
   /** False when the renderer settled an unmatched start without a tool result. */
   completionObserved?: boolean;
+  cancelled?: boolean;
+  activity?: ToolActivity;
   /** The chat surface that owns this row, stamped by the normalizer. A row
    *  belonging to one is shown by that surface's card, never as a tool row. */
   surface?: string | null;
@@ -225,10 +229,6 @@ export function mcpToolLabel(name: string): string | null {
 }
 
 const HIDDEN_TOOL_NAMES = new Set([
-  // Provider-side discovery before the actual MCP call. The subsequent call
-  // names the external action; showing both is protocol leakage.
-  "getmcptoolstoolcall",
-  "toolsearch",
   // Todo bookkeeping. Rows normalized since the todo surface shipped carry
   // `surface: "todo"` and are hidden by that instead — these names only still
   // catch sessions persisted before the stamp existed. Without them a Grok
@@ -346,7 +346,7 @@ export function summarizeToolChangeCounts(tools: ToolCall[]): ChangeCounts | nul
   let adds = 0;
   let dels = 0;
   for (const tool of tools) {
-    if (tool.status !== "done" || tool.completionObserved === false || seen.has(tool.id)) continue;
+    if (tool.status !== "done" || tool.cancelled || tool.completionObserved === false || seen.has(tool.id)) continue;
     seen.add(tool.id);
     const changes = interpretFileChange(tool.name, tool.inputFull);
     if (!changes) continue;
@@ -359,13 +359,14 @@ export function summarizeToolChangeCounts(tools: ToolCall[]): ChangeCounts | nul
 }
 
 export function describeToolAction(tool: ToolCall): string {
-  // Claude's Skill tool fires when the agent activates a skill. The skill's
-  // full body streams separately (and is dropped upstream as noise), so the
-  // row is the one durable marker — make it name the skill outright instead of
-  // a bare "Skill".
-  if (tool.name.toLowerCase() === "skill") {
-    return tool.inputPreview ? `Activated skill ${tool.inputPreview}` : "Activated skill";
+  const activity = describeActivity(tool);
+  if (activity && tool.activity?.kind === "command" && tool.inputPreview) {
+    const command = displayBashCommand(tool.inputPreview);
+    if (tool.status === "running" && !tool.cancelled) return `Running ${command}`;
+    if (tool.status === "done" && tool.completionObserved && !tool.cancelled) return `Ran ${command}`;
+    return `${activity}: ${command}`;
   }
+  if (activity && tool.activity?.kind !== "tool") return activity;
   const mcpLabel = mcpToolLabel(tool.name);
   if (mcpLabel) return tool.inputPreview ? `${mcpLabel} ${tool.inputPreview}` : mcpLabel;
   const bucket = getFineBucket(tool.name);
@@ -433,6 +434,7 @@ export function summarizeToolGroup(tools: ToolCall[]): {
   headline: string;
   currentAction: string | null;
   status: ToolCall["status"];
+  iconKind?: ToolActivityKind;
 } {
   const counts = new Map<FineBucket, number>();
   for (const tool of tools) {
@@ -462,6 +464,9 @@ export function summarizeToolGroup(tools: ToolCall[]): {
   // action so the collapsed header shows what the agent is doing right now.
   const currentAction = latestRunning ? describeToolAction(latestRunning) : null;
 
+  if (tools.some((tool) => tool.activity)) {
+    return { ...summarizeActivities(tools), currentAction, status };
+  }
   return { headline, currentAction, status };
 }
 
@@ -574,13 +579,22 @@ export function cleanToolInput(
   return args;
 }
 
+/** Codex passes an attached image to a subagent as a `[local_image:/abs/path]`
+ *  marker at the head of the prompt. In a one-line title that path is all the
+ *  reader sees, so drop the markers and keep the instruction. */
+function withoutImageMarkers(text: string): string {
+  return text.replace(/\[local_image:[^\]]*\]/g, " ").replace(/\s+/g, " ").trim();
+}
+
 export function extractToolInputPreview(name: string, input: Record<string, unknown>): string {
   const lower = name.toLowerCase();
   if (lower === "skill") {
     // Claude's Skill tool input is `{ skill: "<name>" }`; surface that name so
     // the row reads "Activated skill <name>".
     const skill = input.skill ?? input.name ?? input.command;
-    if (typeof skill === "string" && skill.trim().length > 0) return skill.slice(0, 72);
+    if (typeof skill === "string" && skill.trim().length > 0 && !isOpaqueCiphertext(skill)) {
+      return skill.slice(0, 72);
+    }
     return "";
   }
   if (isAgentToolName(name)) {
@@ -596,8 +610,9 @@ export function extractToolInputPreview(name: string, input: Record<string, unkn
       return subagentType.slice(0, 72);
     }
     const prompt = input.prompt;
-    if (typeof prompt === "string" && prompt.trim().length > 0) {
-      return prompt.slice(0, 72);
+    if (typeof prompt === "string") {
+      const text = withoutImageMarkers(prompt);
+      if (text.length > 0) return text.slice(0, 72);
     }
     return "";
   }

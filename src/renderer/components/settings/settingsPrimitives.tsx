@@ -239,7 +239,8 @@ export function Slider({
   max,
   value,
   valueLabel,
-  onChange
+  onChange,
+  disabled = false
 }: {
   ariaLabel: string;
   min: number;
@@ -248,9 +249,10 @@ export function Slider({
   /** Readout beside the slider, e.g. the resulting size in px. */
   valueLabel: string;
   onChange: (next: number) => void;
+  disabled?: boolean;
 }): JSX.Element {
   return (
-    <div className="settings-slider">
+    <div className="settings-slider" data-disabled={disabled ? "true" : undefined}>
       <input
         type="range"
         aria-label={ariaLabel}
@@ -261,6 +263,7 @@ export function Slider({
         max={max}
         step={1}
         value={value}
+        disabled={disabled}
         onChange={(event) => onChange(Number(event.target.value))}
       />
       <span className="settings-slider-value">{valueLabel}</span>
@@ -398,15 +401,19 @@ export function FontFamilyPicker({
  *  three-way choice on the page uses. */
 export function ThemePicker({
   value,
-  onChange
+  onChange,
+  ariaLabel = "Theme",
+  name = "theme-mode"
 }: {
   value: ThemeMode;
   onChange: (mode: ThemeMode) => void;
+  ariaLabel?: string;
+  name?: string;
 }): JSX.Element {
   return (
     <SegmentedControl
-      ariaLabel="Theme"
-      name="theme-mode"
+      ariaLabel={ariaLabel}
+      name={name}
       value={value}
       onChange={(next) => {
         const picked = THEME_OPTIONS.find((option) => option.id === next);

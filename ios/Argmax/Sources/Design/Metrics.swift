@@ -13,6 +13,10 @@ enum Spacing {
     static let row: CGFloat = 12
     static let gutter: CGFloat = 20
     static let section: CGFloat = 28
+    /// Extra breathing room between wrapped lines of agent prose. Keeping it
+    /// separate from block spacing lets paragraphs read more openly without
+    /// loosening tool rows, controls, or the composer.
+    static let proseLine: CGFloat = 4
 
     /// The leading column a row's glyph sits in, and what its separator and
     /// its second line line up against.

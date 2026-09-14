@@ -11,6 +11,7 @@ use super::inputs::*;
 use super::{live_database, read_off_main};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::git::exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
+use crate::persistence::database::Database;
 use crate::persistence::projects::{
     delete_project, list_projects, parse_github_remote, persist_project, require_project,
     update_project_branch, update_project_settings, PersistProjectInput, ProjectRemote,
@@ -137,10 +138,21 @@ pub(crate) async fn projects_list_branches_impl(
         let project = require_project(&connection, input.project_id.as_str())?;
         (project.repo_path, project.default_branch)
     };
-    let raw = run_git_text(&repo_path, ["branch"], GIT_DEFAULT_TIMEOUT).await?;
+    // Display output adds `+` for linked worktrees and can contain colors or
+    // columns from user config. Request only ref names for the picker.
+    let raw = run_git_text(
+        &repo_path,
+        [
+            "for-each-ref",
+            "--format=%(refname:lstrip=2)",
+            "refs/heads/",
+        ],
+        GIT_DEFAULT_TIMEOUT,
+    )
+    .await?;
     let branches = raw
         .lines()
-        .map(|line| line.trim_start_matches('*').trim().to_owned())
+        .map(str::to_owned)
         .filter(|name| !name.is_empty());
     Ok(order_branches_default_first(
         branches,
@@ -281,14 +293,28 @@ pub(crate) async fn register_project_path(
     state: &AppState,
     candidate_path: PathBuf,
 ) -> ArgmaxResult<ProjectSummary> {
+    let database = live_database(state)?;
+    register_repo_path(&database, candidate_path).await
+}
+
+/// Add the repository at `candidate_path`, or return the project already
+/// registered for it. Takes the database rather than the app state so the
+/// session-control socket, which has no `AppState`, can register a repository
+/// an agent named for the first time.
+pub(crate) async fn register_repo_path(
+    database: &Database,
+    candidate_path: PathBuf,
+) -> ArgmaxResult<ProjectSummary> {
     let canonical_path = canonicalize_repo_path(&candidate_path).await?;
     let metadata = read_git_metadata(&canonical_path).await?;
     if let Some(default_branch) = metadata.default_branch.as_deref() {
         assert_valid_ref_name(&metadata.repo_path, default_branch).await?;
     }
 
+    let project_id = Uuid::new_v4().to_string();
+    let settings = default_settings(&project_id)?;
     let project = PersistProjectInput {
-        id: Uuid::new_v4().to_string(),
+        id: project_id,
         name: metadata
             .repo_path
             .file_name()
@@ -298,11 +324,10 @@ pub(crate) async fn register_project_path(
         repo_path: metadata.repo_path.to_string_lossy().to_string(),
         current_branch: metadata.current_branch,
         default_branch: metadata.default_branch,
-        settings: default_settings(&metadata.repo_path),
+        settings,
     };
 
     let project = {
-        let database = live_database(state)?;
         let connection = database.connection();
         persist_project(&connection, &project)?
     };
@@ -311,7 +336,6 @@ pub(crate) async fn register_project_path(
         None => crate::git::ops::resolve_project_remote(&canonical_path).await,
     };
     if let Some(remote) = remote.as_ref() {
-        let database = live_database(state)?;
         let connection = database.connection();
         let _ = crate::persistence::projects::update_project_remote(
             &connection,
@@ -461,17 +485,16 @@ async fn assert_valid_ref_name(repo_path: &Path, reference: &str) -> ArgmaxResul
     })
 }
 
-fn default_settings(repo_path: &Path) -> ProjectSettings {
-    ProjectSettings {
-        worktree_location: repo_path
-            .join(".argmax")
-            .join("worktrees")
+fn default_settings(project_id: &str) -> ArgmaxResult<ProjectSettings> {
+    Ok(ProjectSettings {
+        worktree_location: crate::util::data_dir::worktree_root()?
+            .join(project_id)
             .to_string_lossy()
             .to_string(),
         setup_command: String::new(),
         check_commands: Vec::new(),
         archive_on_merge: false,
-    }
+    })
 }
 
 fn project_git_error(error: ArgmaxError) -> ArgmaxError {
@@ -484,6 +507,79 @@ fn project_git_error(error: ArgmaxError) -> ArgmaxError {
 #[cfg(test)]
 mod tests {
     use super::order_branches_default_first;
+
+    #[tokio::test]
+    async fn branch_picker_returns_refs_without_worktree_or_display_markers() {
+        use super::*;
+        use std::sync::Arc;
+
+        let root = tempfile::tempdir().expect("repo directory");
+        let repo = root.path().join("repo");
+        std::fs::create_dir(&repo).expect("create repo");
+        let worktree = root.path().join("worktree");
+        let setup: &[&[&str]] = &[
+            &["init", "-q", "-b", "main"],
+            &["config", "user.email", "test@example.com"],
+            &["config", "user.name", "Test"],
+            &["config", "commit.gpgsign", "false"],
+            &["config", "core.hooksPath", "/dev/null"],
+            &["config", "branch.sort", "refname"],
+            &["commit", "--allow-empty", "-qm", "initial"],
+            &["branch", "zeta"],
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "adam/topic",
+                worktree.to_str().unwrap(),
+            ],
+        ];
+        for args in setup {
+            run_git_text(&repo, *args, GIT_DEFAULT_TIMEOUT)
+                .await
+                .unwrap();
+        }
+
+        let state = AppState::new();
+        let database = Arc::new(Database::open_in_memory().expect("database"));
+        let project = register_repo_path(&database, repo.clone()).await.unwrap();
+        assert_eq!(
+            PathBuf::from(&project.settings.worktree_location),
+            crate::util::data_dir::worktree_root()
+                .unwrap()
+                .join(&project.id)
+        );
+        assert!(state.db.set(database).is_ok());
+
+        let phases: &[&[&[&str]]] = &[
+            &[],
+            &[
+                &["config", "color.branch", "always"],
+                &["config", "column.branch", "always"],
+            ],
+            &[&["checkout", "--detach", "HEAD"]],
+        ];
+        for commands in phases {
+            for args in *commands {
+                run_git_text(&repo, *args, GIT_DEFAULT_TIMEOUT)
+                    .await
+                    .unwrap();
+            }
+            let input = serde_json::from_value(serde_json::json!({
+                "projectId": project.id,
+            }))
+            .unwrap();
+            let branches = projects_list_branches_impl(&state, input).await.unwrap();
+            assert_eq!(branches, owned(&["main", "adam/topic", "zeta"]));
+            for branch in branches {
+                serde_json::from_value::<ProjectsSwitchBranchInput>(serde_json::json!({
+                    "projectId": project.id,
+                    "branch": branch,
+                }))
+                .expect("listed branch passes switch validation");
+            }
+        }
+    }
 
     fn owned(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| (*value).to_owned()).collect()

@@ -21,6 +21,8 @@ enum Theme {
     /// A raised surface is the ground plus 4% ink — never a grey card with a
     /// shadow. Sheets, fields, the reconnecting strip, chip fills.
     static let raisedColor = blend(groundColor, toward: inkColor, 0.04)
+    /// Desktop `--user-message-bg` when accent bubbles are disabled.
+    static let userMessageNeutralColor = dynamic(light: 0xEE_F0_F1, dark: 0x21_21_21)
     /// What a row looks like under the thumb. Same recipe, one step up.
     static let pressedColor = blend(groundColor, toward: inkColor, 0.06)
     /// Primary text. Warm off-white on charcoal, warm near-black on paper —
@@ -32,6 +34,11 @@ enum Theme {
     /// it a third of the way toward `--muted-strong` (`--chip-ink`). Dark
     /// keeps the value, which already clears 4.5:1 on charcoal.
     static let mutedColor = dynamic(light: 0x7A_76_6C, dark: 0x8A_85_7B)
+    /// `--muted-strong`: a token step above muted, for the verb of an
+    /// activity row and for narration folded inside a group — text the
+    /// transcript reports rather than says, one notch under the ink. A
+    /// step rather than an opacity fade, so it keeps its contrast on paper.
+    static let mutedStrongColor = dynamic(light: 0x5D_59_4F, dark: 0xAE_AA_A1)
     /// Hairline separators, inset to the text column by their callers.
     static let lineColor = dynamic(light: 0xE3_E6_E8, dark: 0x2B_2B_29)
 
@@ -41,6 +48,17 @@ enum Theme {
     static let amberColor = dynamic(light: 0xB0_80_39, dark: 0xD9_A5_66)
     static let roseColor = dynamic(light: 0xB8_57_63, dark: 0xE0_85_91)
     static let sageColor = dynamic(light: 0x44_6C_56, dark: 0x6D_AB_86)
+    /// Stable tool-kind hues borrowed from the desktop accent palette. They do
+    /// not follow the selected accent, so each activity keeps its meaning:
+    /// blue retrieves information, coral changes files, green marks Git,
+    /// orange executes, purple coordinates, and gold activates skills. Red
+    /// overrides destructive or failed work.
+    static let activityPurpleColor = dynamic(light: 0x70_55_8F, dark: 0xAD_94_D0)
+    static let activityBlueColor = dynamic(light: 0x39_66_96, dark: 0x7E_A6_CF)
+    static let activityGreenColor = dynamic(light: 0x44_6C_56, dark: 0x6D_AB_86)
+    static let activityCoralColor = dynamic(light: 0x94_4B_3E, dark: 0xD1_8E_82)
+    static let activityGoldColor = dynamic(light: 0x87_6F_02, dark: 0xE9_C3_38)
+    static let activityRedColor = dynamic(light: 0xC8_41_51, dark: 0xF0_70_7F)
     /// `--pr-merged`. GitHub's own merged-purple, not a token this app
     /// otherwise uses — a merged PR is the one thing worth a colour no other
     /// row state wears, so it can't be read as attention or as the accent.
@@ -51,17 +69,60 @@ enum Theme {
     /// never rides `--accent` either.
     static let stopColor = dynamic(light: 0xC4_72_6C, dark: 0xC8_58_50)
 
+    // The diff washes, `tokens.css` verbatim (`--diff-*`). These are the one
+    // place the phone takes a desktop colour rather than re-deriving it from
+    // the ground: both appearances already run the same two hues there and
+    // vary only the alpha, so an added line reads as the same green on the
+    // Mac and in a pocket. The gutter wash stacks on the line wash, which is
+    // why its alpha is the higher of the two.
+    //
+    // Deliberately the *only* colour in a diff. There is no syntax
+    // highlighting on the phone: at this size the information is what
+    // changed, the wash already carries it, and token colours painted over a
+    // 16% wash on the light ground land back in the contrast hole that
+    // `--muted` did. Revisit only if reading diffs here grates after a week
+    // of daily use, and then as a two-class dimmer (comments and strings
+    // muted), never a grammar library.
+    static let diffAddLineColor = wash(0x3F_BE_78, light: 0.18, dark: 0.16)
+    static let diffDelLineColor = wash(0xE3_4A_52, light: 0.16, dark: 0.16)
+    static let diffAddGutterColor = wash(0x3F_BE_78, light: 0.20, dark: 0.30)
+    static let diffDelGutterColor = wash(0xE3_4A_52, light: 0.20, dark: 0.30)
+    /// `--diff-add-gutter-fg` / `--diff-del-gutter-fg`: the line number's own
+    /// ink, which is the only place a diff says "added" in text rather than
+    /// in a fill.
+    static let diffAddInkColor = dynamic(light: 0x00_7A_35, dark: 0x5F_D0_95)
+    static let diffDelInkColor = dynamic(light: 0xC9_18_22, dark: 0xF4_73_7E)
+
     static var ground: Color { Color(groundColor) }
     static var raised: Color { Color(raisedColor) }
+    static var userMessageNeutral: Color { Color(userMessageNeutralColor) }
     static var pressed: Color { Color(pressedColor) }
     static var ink: Color { Color(inkColor) }
     static var muted: Color { Color(mutedColor) }
+    static var mutedStrong: Color { Color(mutedStrongColor) }
     static var line: Color { Color(lineColor) }
     static var stop: Color { Color(stopColor) }
     static var amber: Color { Color(amberColor) }
     static var rose: Color { Color(roseColor) }
     static var sage: Color { Color(sageColor) }
     static var violet: Color { Color(violetColor) }
+    static var activityPurple: Color { Color(activityPurpleColor) }
+    static var activityBlue: Color { Color(activityBlueColor) }
+    static var activityGreen: Color { Color(activityGreenColor) }
+    static var activityCoral: Color { Color(activityCoralColor) }
+    static var activityGold: Color { Color(activityGoldColor) }
+    static var activityRed: Color { Color(activityRedColor) }
+    static var diffAddInk: Color { Color(diffAddInkColor) }
+    static var diffDelInk: Color { Color(diffDelInkColor) }
+
+    /// One hue at two alphas — the shape every `--diff-*` token has. Kept
+    /// separate from `dynamic` because the colour is the same in both
+    /// appearances and only its weight moves.
+    static func wash(_ rgb: UInt32, light: CGFloat, dark: CGFloat) -> UIColor {
+        UIColor { traits in
+            UIColor(rgb: rgb).withAlphaComponent(traits.userInterfaceStyle == .dark ? dark : light)
+        }
+    }
 
     /// A colour that changes with the appearance the view is resolved in.
     static func dynamic(light: UInt32, dark: UInt32) -> UIColor {
@@ -105,7 +166,7 @@ extension UIColor {
 
 // MARK: - Accent
 
-/// The desktop's seven tints, in the order Settings → Appearance lists them
+/// The desktop's eight tints, in the order Settings → Appearance lists them
 /// (`src/renderer/lib/accent.ts`). One accent is live at a time and it marks
 /// exactly two things: the running work, and the primary action.
 ///
@@ -113,6 +174,7 @@ extension UIColor {
 /// orange, and it is the phone's whole identity on the pairing screen.
 enum AccentTint: String, CaseIterable, Identifiable, Sendable {
     case green
+    case teal
     case purple
     case neutral
     case black
@@ -127,6 +189,7 @@ enum AccentTint: String, CaseIterable, Identifiable, Sendable {
     var label: String {
         switch self {
         case .green: return "Green"
+        case .teal: return "Teal"
         case .purple: return "Purple"
         case .neutral: return "Neutral"
         case .black: return "Black"
@@ -140,27 +203,29 @@ enum AccentTint: String, CaseIterable, Identifiable, Sendable {
     /// pixels lean toward, so the flat mosaic has depth.
     var crestColor: UIColor {
         switch self {
-        case .green: return Theme.dynamic(light: 0x2E_50_3E, dark: 0x55_88_6C)
-        case .purple: return Theme.dynamic(light: 0x46_28_7B, dark: 0x83_66_B3)
+        case .green: return Theme.dynamic(light: 0x2E_50_3E, dark: 0x8C_C3_A1)
+        case .teal: return Theme.dynamic(light: 0x00_56_56, dark: 0x85_C5_C4)
+        case .purple: return Theme.dynamic(light: 0x55_3B_73, dark: 0xC1_AC_E1)
         case .neutral: return Theme.dynamic(light: 0x4A_47_3E, dark: 0xC2_BE_B4)
         case .black: return Theme.dynamic(light: 0x0F_0E_0C, dark: 0xFB_F9_F5)
-        case .orange: return Theme.dynamic(light: 0x9C_45_0B, dark: 0xF2_A5_6C)
-        case .blue: return Theme.dynamic(light: 0x22_48_78, dark: 0x8F_AC_D8)
-        case .coral: return Theme.dynamic(light: 0x86_2B_3C, dark: 0xF3_8A_97)
+        case .orange: return Theme.dynamic(light: 0x8B_45_00, dark: 0xFA_B3_6D)
+        case .blue: return Theme.dynamic(light: 0x24_4C_77, dark: 0x9A_BB_DE)
+        case .coral: return Theme.dynamic(light: 0x75_34_28, dark: 0xE2_A7_9C)
         }
     }
 
     var uiColor: UIColor {
         switch self {
         case .green: return Theme.dynamic(light: 0x44_6C_56, dark: 0x6D_AB_86)
-        case .purple: return Theme.dynamic(light: 0x61_3E_9A, dark: 0x71_4F_B0)
+        case .teal: return Theme.dynamic(light: 0x20_70_70, dark: 0x65_B0_B0)
+        case .purple: return Theme.dynamic(light: 0x70_55_8F, dark: 0xAD_94_D0)
         case .neutral: return Theme.dynamic(light: 0x6C_69_60, dark: 0xA8_A4_9B)
         case .black: return Theme.dynamic(light: 0x1C_1B_18, dark: 0xF4_F2_EC)
         // The asset catalogue already carries this pair, because it is also
         // the icon's global tint. Reading it back keeps one copy.
-        case .orange: return UIColor(named: "Accent") ?? Theme.dynamic(light: 0xBD_58_0F, dark: 0xE8_88_45)
-        case .blue: return Theme.dynamic(light: 0x30_60_9A, dark: 0x66_93_C9)
-        case .coral: return Theme.dynamic(light: 0xA6_43_54, dark: 0xE9_6C_7F)
+        case .orange: return UIColor(named: "Accent") ?? Theme.dynamic(light: 0xAF_5B_00, dark: 0xE7_96_47)
+        case .blue: return Theme.dynamic(light: 0x39_66_96, dark: 0x7E_A6_CF)
+        case .coral: return Theme.dynamic(light: 0x94_4B_3E, dark: 0xD1_8E_82)
         }
     }
 

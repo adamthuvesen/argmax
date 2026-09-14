@@ -76,6 +76,22 @@ pub(crate) async fn providers_send_input_impl(
     live_providers(state)?.send_input(input).await
 }
 
+#[tauri::command(rename = "providers:steer-input")]
+#[specta::specta]
+pub async fn providers_steer_input(
+    state: State<'_, AppState>,
+    input: ProvidersSendInput,
+) -> ArgmaxResult<SendInputResult> {
+    providers_steer_input_impl(&state, input).await
+}
+
+pub(crate) async fn providers_steer_input_impl(
+    state: &AppState,
+    input: ProvidersSendInput,
+) -> ArgmaxResult<SendInputResult> {
+    live_providers(state)?.steer_input(input).await
+}
+
 #[tauri::command(rename = "providers:resize")]
 #[specta::specta]
 pub fn providers_resize(

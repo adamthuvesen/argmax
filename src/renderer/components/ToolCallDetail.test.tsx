@@ -331,4 +331,51 @@ describe("ToolCallDetail", () => {
 
     expect(container).toBeEmptyDOMElement();
   });
+
+  it("does not expand a Codex send_message whose body is encrypted", () => {
+    const ciphertext =
+      "gAAAAABqpr4RdQiuoPbbS8PNeXuPtwfMGzgdXSHeWlWEyxGKhoB8JNw93a0oEyUkXVys9_wfawjMwX2QyWz8Ld6BwXbK_iZ0zfaCj5BZ5d038NLnbMX1rp3M00FqlwAaKycytD6E";
+    const { container } = render(
+      <ToolCallDetail
+        tool={tool({
+          name: "send_message",
+          inputPreview: "",
+          inputFull: {
+            message: ciphertext,
+            receiver_thread_ids: ["thread-child"],
+            sender_thread_id: "thread-parent"
+          },
+          output: ciphertext
+        })}
+      />
+    );
+
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByText(/gAAAAA/)).toBeNull();
+  });
+
+  it("keeps Fernet-shaped output from an unrelated tool", () => {
+    const ciphertext =
+      "gAAAAABqpr4RdQiuoPbbS8PNeXuPtwfMGzgdXSHeWlWEyxGKhoB8JNw93a0oEyUkXVys9_wfawjMwX2QyWz8Ld6BwXbK_iZ0zfaCj5BZ5d038NLnbMX1rp3M00FqlwAaKycytD6E";
+    render(<ToolCallDetail tool={tool({ name: "Bash", output: ciphertext })} />);
+
+    expect(screen.getByText(ciphertext)).toBeInTheDocument();
+  });
+
+  it("still expands a readable SendMessage body and hides the resume receipt", () => {
+    render(
+      <ToolCallDetail
+        tool={tool({
+          name: "SendMessage",
+          inputFull: { to: "a5c5b27a1557fa19e", message: "Please also check the iOS path." },
+          output:
+            '{"success":true,"message":"Resuming agent a5c5b27","resumedAgentId":"a5c5b27a1557fa19e","pin":{"id":"a5c5b27a1557fa19e"}}'
+        })}
+      />
+    );
+
+    expect(screen.getByText(/Please also check the iOS path/)).toBeInTheDocument();
+    expect(screen.queryByText("to")).toBeNull();
+    expect(screen.queryByText(/resumedAgentId/)).toBeNull();
+  });
 });

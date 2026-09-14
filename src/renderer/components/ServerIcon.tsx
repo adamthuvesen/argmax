@@ -17,7 +17,7 @@ export function ServerIcon({
   web?: boolean;
 }): JSX.Element | null {
   if (server === "cua repl") {
-    return <Monitor size={12} className="tool-call-row-server-icon" role="img" aria-label="Computer use" />;
+    return <Monitor size={14} className="tool-call-row-server-icon" role="img" aria-label="Computer use" />;
   }
   const icon = server ? serverIconFor(server) : null;
   if (!icon) {
@@ -29,17 +29,17 @@ export function ServerIcon({
     // browser-MCP row that says "the web" when the server name does not.
     if (web)
       return (
-        <Globe size={12} className="tool-call-row-server-icon" role="img" aria-label="Web" />
+        <Globe size={14} className="tool-call-row-server-icon" role="img" aria-label="Web" />
       );
     if (!server) return null;
-    return <Plug size={12} className="tool-call-row-server-icon" aria-hidden="true" />;
+    return <Plug size={14} className="tool-call-row-server-icon" aria-hidden="true" />;
   }
   return (
     <svg
       className="tool-call-row-server-icon"
       viewBox={icon.viewBox}
-      width={12}
-      height={12}
+      width={14}
+      height={14}
       role="img"
       aria-label={icon.title}
       shapeRendering={icon.title === "Argmax" ? "crispEdges" : undefined}
@@ -47,7 +47,12 @@ export function ServerIcon({
       {/* A style fill, not the attribute: the mascot's layers are theme tokens,
           and a presentation attribute cannot hold a var(). */}
       {icon.layers.map((layer, index) => (
-        <path key={index} d={layer.path} style={{ fill: layer.fill ?? "currentColor" }} />
+        <path
+          key={index}
+          d={layer.path}
+          data-tone={layer.tone}
+          style={{ fill: layer.fill ?? "currentColor" }}
+        />
       ))}
     </svg>
   );

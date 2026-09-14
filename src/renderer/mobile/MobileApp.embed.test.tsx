@@ -4,11 +4,12 @@ import type { RemoteConnectionState } from "../lib/wsTransport.js";
 import { ACCENT_STORAGE_KEY, DEFAULT_ACCENT_ID } from "../lib/accent.js";
 import { CHAT_FONT_SIZE_STORAGE_KEY, FONT_SIZE_STORAGE_KEY } from "../lib/fonts.js";
 import { THEME_STORAGE_KEY } from "../lib/theme.js";
+import { CHAT_VERBOSITY_KEY } from "../lib/uiPreferences.js";
 import {
   DEFAULT_USER_BUBBLE_TINT,
   USER_BUBBLE_TINT_STORAGE_KEY
 } from "../lib/userBubbleTint.js";
-import { mockDashboardSnapshot, setupAppTestMocks, snapshot } from "../../test/appTestHarness.js";
+import { listChangedFiles, loadDiff, mockDashboardSnapshot, setupAppTestMocks, snapshot } from "../../test/appTestHarness.js";
 import { startedAgentName } from "../../test/agentRowName.js";
 import { MobileApp } from "./MobileApp.js";
 import type { NativeMessage } from "./nativeHost.js";
@@ -90,6 +91,17 @@ describe("MobileApp embed mode", () => {
     expect(screen.queryByRole("button", { name: "New chat" })).not.toBeInTheDocument();
     // Parked until native says which chat to show.
     expect(screen.queryByRole("region", { name: "Conversation" })).not.toBeInTheDocument();
+  });
+
+  it("does not preload a desktop diff when native owns review navigation", async () => {
+    listChangedFiles.mockResolvedValue([
+      { path: "src/a.ts", status: "modified", additions: 1, deletions: 1, staged: false }
+    ]);
+    await renderEmbedded();
+    act(() => window.argmaxNative?.openSession("session-1"));
+    await screen.findByRole("region", { name: "Conversation" });
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalled());
+    expect(loadDiff).not.toHaveBeenCalled();
   });
 
   it("posts ready once the bridge authenticates, and only once", async () => {
@@ -215,16 +227,62 @@ describe("MobileApp embed mode", () => {
     );
   });
 
-  it("opens the review screen on openReview", async () => {
+  it("asks native for the review surface when a file reference is tapped", async () => {
+    // The review surface is native in the shell, so the page's own screen
+    // never mounts here — which also keeps its lazy chunk (CodeMirror, shiki,
+    // KaTeX) off the tailnet. What the page still owns is the transcript, so
+    // a file the agent wrote is where a request for review comes from, and it
+    // carries both the chat it is about and the file it named.
+    mockDashboardSnapshot({
+      ...snapshot,
+      events: [
+        ...snapshot.events,
+        {
+          id: "event-write",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "Write",
+          payload: {
+            id: "tu_write",
+            name: "Write",
+            input: { file_path: "/tmp/worktrees/dashboard/src/panel.ts", content: "a\nb" }
+          },
+          createdAt: "2026-05-08T15:54:03.000Z"
+        }
+      ]
+    });
+    // This interaction intentionally inspects the individual Write row. The
+    // mobile shell now honors the shared verbosity setting, so use Compact for
+    // this test instead of relying on the old undefined default.
+    window.localStorage.setItem(CHAT_VERBOSITY_KEY, "2");
     await renderEmbedded();
     act(() => window.argmaxNative?.openSession("session-1"));
     await screen.findByRole("region", { name: "Conversation" });
 
-    // The native trailing menu's "Changes": the shell has no review screen
-    // of its own, so it asks the page for the one it already has.
-    act(() => window.argmaxNative?.openReview());
+    // Compact first opens the grouped activity. The individual Write row then
+    // opens the file change card, whose "Open" action is the file itself.
+    fireEvent.click(await screen.findByRole("button", { name: "Edited a file" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Edited panel.ts" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open /tmp/worktrees/dashboard/src/panel.ts" })
+    );
 
-    await waitFor(() => expect(posted("review")).toEqual([{ type: "review", open: true }]));
+    await waitFor(() =>
+      expect(posted("openReview")).toEqual([
+        { type: "openReview", sessionId: "session-1", filePath: "src/panel.ts" }
+      ])
+    );
+    // And nothing of the page's own review screen came up behind it.
+    expect(screen.queryByRole("tab", { name: "Changes" })).not.toBeInTheDocument();
+  });
+
+  it("never installs an openReview call for native to make", async () => {
+    // The direction is inverted from the first build of this contract: the
+    // shell used to ask the page to draw review. Leaving the old call
+    // installed would let a shell one build behind open a screen that is no
+    // longer there.
+    await renderEmbedded();
+    expect(window.argmaxNative).not.toHaveProperty("openReview");
   });
 
   it("asks native to stand its composer down while the peek is up", async () => {
@@ -269,10 +327,75 @@ describe("MobileApp embed mode", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Close Delegated work" }));
 
+    // Once the sheet has gone, not the moment it starts to leave: the card's
+    // return resizes the web view, and a sheet riding out over that resize
+    // hopped back up mid-ride. So the floor stays clear for the whole trip.
+    expect(screen.getByRole("dialog", { name: "Delegated work" })).toBeInTheDocument();
+    expect(posted("agents")).toEqual([{ type: "agents", open: true }]);
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Delegated work" })).not.toBeInTheDocument()
+    );
+    // Waited for, not asserted outright: the sheet leaving the DOM and the
+    // page reporting it are two renders — the overlay unmounts, then it hands
+    // its dismiss back and the effect posts. The "not before it has gone"
+    // half of this rule is the bare assertion above.
     await waitFor(() =>
       expect(posted("agents")).toEqual([
         { type: "agents", open: true },
         { type: "agents", open: false }
+      ])
+    );
+  });
+
+  // The native card has the page's composer stack hidden, and the live
+  // question docks in that stack — so the page keeps the panel and asks the
+  // card to stand down instead, the way the agents peek does.
+  it("asks native to drop its composer card while a question is docked, and to bring it back on dismiss", async () => {
+    mockDashboardSnapshot({
+      ...snapshot,
+      events: [
+        ...snapshot.events,
+        {
+          id: "event-question",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "AskUserQuestion",
+          payload: {
+            type: "tool_use",
+            id: "tu_q",
+            name: "AskUserQuestion",
+            input: {
+              questions: [
+                {
+                  question: "Pick a direction",
+                  header: "Direction",
+                  multiSelect: false,
+                  options: [{ label: "Fix audit findings" }, { label: "General maintenance" }]
+                }
+              ]
+            }
+          },
+          createdAt: "2026-05-08T15:54:01.000Z"
+        }
+      ]
+    });
+    await renderEmbedded();
+    act(() => window.argmaxNative?.setComposer(true));
+    act(() => window.argmaxNative?.openSession("session-1"));
+    await screen.findByRole("region", { name: "Conversation" });
+
+    const dock = await screen.findByLabelText("Question from agent");
+    // Exempt from the hidden composer stack: the panel is the page's to draw.
+    expect(dock.closest(".session-composer-stack")).toHaveAttribute("data-question");
+    await waitFor(() => expect(posted("question")).toEqual([{ type: "question", open: true }]));
+
+    fireEvent.click(screen.getByRole("button", { name: "Answer in your own words" }));
+
+    await waitFor(() =>
+      expect(posted("question")).toEqual([
+        { type: "question", open: true },
+        { type: "question", open: false }
       ])
     );
   });

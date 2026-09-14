@@ -34,6 +34,7 @@ function tool(overrides: Partial<ToolCall> & Pick<ToolCall, "name">): ToolCall {
     createdAt: overrides.createdAt ?? "2026-05-12T15:00:00.000Z",
     completedAt: overrides.completedAt ?? "2026-05-12T15:00:01.000Z",
     completionObserved: overrides.completionObserved,
+    activity: overrides.activity,
     error: overrides.error ?? null,
     parentToolUseId: overrides.parentToolUseId ?? null
   };
@@ -187,10 +188,8 @@ describe("MCP tool names", () => {
     expect(mcpToolLabel("trace_get_document")).toBe("Trace get document");
   });
 
-  it("marks discovery and task bookkeeping as hidden transport", () => {
+  it("keeps discovery visible while hiding task bookkeeping", () => {
     for (const name of [
-      "ToolSearch",
-      "getMcpToolsToolCall",
       "TodoWrite",
       "TaskCreate",
       "TaskUpdate",
@@ -199,6 +198,8 @@ describe("MCP tool names", () => {
       expect(isHiddenToolName(name)).toBe(true);
     }
     expect(isHiddenToolName("mcpToolCall")).toBe(false);
+    expect(isHiddenToolName("ToolSearch")).toBe(false);
+    expect(isHiddenToolName("getMcpToolsToolCall")).toBe(false);
     expect(isHiddenToolName("task")).toBe(false);
   });
 });
@@ -355,6 +356,14 @@ describe("Task / sub-agent tools", () => {
         prompt: "Explore the repo quickly and report the key files."
       })
     ).toBe("Explore the repo quickly and report the key files.");
+  });
+
+  it("drops Codex's `[local_image:…]` marker so the instruction leads the preview", () => {
+    expect(
+      extractToolInputPreview("collab_tool_call", {
+        prompt: "[local_image:/Users/a/Library/Application Support/com.argmax.rs/x.png]\nReview the screenshot."
+      })
+    ).toBe("Review the screenshot.");
   });
 
   it("previews from the `description` field, not the long prompt body", () => {
@@ -567,10 +576,17 @@ describe("describeToolAction", () => {
     );
   });
 
-  it("skill → 'Activated skill <name>'", () => {
-    expect(describeToolAction(tool({ name: "Skill", inputPreview: "brain-curate" }))).toBe(
-      "Activated skill brain-curate"
-    );
+  it("skill → 'Activated <name> skill'", () => {
+    expect(
+      describeToolAction(
+        tool({
+          name: "Skill",
+          inputPreview: "brain-curate",
+          completionObserved: true,
+          activity: { version: 1, kind: "skill", evidence: "tool", targets: ["brain-curate"] }
+        })
+      )
+    ).toBe("Activated brain-curate skill");
     expect(extractToolInputPreview("Skill", { skill: "brain-curate" })).toBe("brain-curate");
   });
 

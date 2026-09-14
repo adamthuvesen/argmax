@@ -24,7 +24,58 @@ Focus still routes new open requests: a chat link or the menu item opens Browser
 
 - **Renderer UI:** [BrowserPanel.tsx](../src/renderer/components/BrowserPanel.tsx) fills the review panel's body with a tab strip on top and, under it, navigation controls, the address bar with search fallback, and the 1Password autofill button. Tabs share the strip evenly up to a cap and ellipsize past it; only the active one lifts to a ringed pill, matching the Files strip. Dragging a tab moves it (below). The strip in [browserPanel.ts](../src/renderer/lib/browserPanel.ts) *mirrors* the app's registry (below) rather than owning it, scoped to the chat, launcher, or Browser page that is showing. Its `localStorage` copy only remembers URLs across a restart. Browsing history persists separately via [browserHistory.ts](../src/renderer/lib/browserHistory.ts).
 - **Native WebViews:** [src-tauri/src/ipc/browser.rs](../src-tauri/src/ipc/browser.rs) creates one child webview per tab (`browser-<tabId>`) on the main window using Tauri's `Window::add_child` API (`unstable` cargo feature).
-- **Positioning:** The renderer measures `.browser-panel-surface` and calls `browser:set-bounds` for the active tab. Inactive tabs are hidden. The review panel's own resizer and side preference need no browser-specific handling — a ResizeObserver on the surface re-glues the webview whenever the panel's width changes.
+- **Appearance:** Settings → Appearance → Browser theme stores `argmax.browser.theme.mode` separately from the app theme. `browser:set-theme` updates every live tab, and new tabs read the current process setting before their first paint. On macOS, [theme.rs](../src-tauri/src/browser/theme.rs) sets the child `WKWebView` appearance directly, so Light and Dark can differ from the surrounding Argmax window. System resolves the global macOS appearance instead of inheriting the app's override, then reapplies it to live tabs and popups when macOS appearance changes.
+- **Login popups:** `window.open` creates a native browser window using Tauri's `on_new_window` callback and the opener's webview configuration. This preserves the popup reference, `window.opener`, `postMessage`, and closure checks that popup authentication needs, including opening a blank window before assigning its login URL. Ordinary `target="_blank"` links and modified clicks in panel tabs still open panel tabs. Popups skip the inherited tab-strip shortcuts. On macOS, [popup.rs](../src-tauri/src/browser/popup.rs) adds WebKit's missing close callback to Wry's delegate class before a popup is requested, so JavaScript closure also removes its native window without changing the delegate during WebKit's new-page callback.
+- **Keyboard focus:** Activating a tab hands the window's first responder to that tab's page through `browser:focus`, the way clicking into it would — the arrow keys scroll the page, and `⌘F` reaches it as a page command. Without it, first responder stays on the app's own webview, where the same keys are Argmax's. Only an explicit activation focuses: a tab click (including a re-click of the tab already showing), a carry that lands, and `⌃Tab`. Restoring a panel, routing an open request, or an agent opening a tab must not focus, or a chat's composer would lose keystrokes to a page nobody asked for.
+- **Positioning:** The renderer measures `.browser-panel-surface` and calls `browser:set-bounds` for the active tab. Inactive tabs are hidden. ResizeObserver and window-resize notifications share one measurement per animation frame, and unchanged bounds or visibility skip IPC. Tab switches, pane moves, and overlay visibility changes still synchronize immediately. Failed updates remain retryable, and unmounting cancels pending resize work before it can show the old surface again.
+
+## Ad and Tracker Blocking
+
+On macOS, user tabs and their popups use WebKit's compiled content rules to block third-party requests to domains in the bundled HaGeZi Multi LIGHT list. Rules are installed before the first page request. This is domain blocking, without cosmetic filters or a JavaScript request interceptor.
+
+The toolbar shield turns blocking off or on for the current exact hostname, across ports and schemes. Exceptions persist in `browser-content-blocking.json` in the app profile. Changing a preference updates existing user views and reloads the selected tab. Agent-owned tabs and popups stay unfiltered for website testing. Localhost, its subdomains, and loopback addresses also bypass blocking. Other test sites can use the shield.
+
+The first user-tab open prepares the rules asynchronously. Later opens reuse the active compiled list, and WebKit's on-disk cache avoids recompilation across restarts. Close, stop, navigation, and visibility changes during preparation are respected before creating the view. Preparation errors are reported instead of silently opening an unfiltered user tab.
+
+The pinned source, provenance, and separate GPL-3.0 license are in [assets/browser-blocking](../assets/browser-blocking/README.md), bundled together as app resources. Update the list with `node scripts/update-browser-blocklist.mjs <full-upstream-commit-sha>` and commit the resulting source and provenance. There are no runtime list downloads. Native blocking is currently macOS-only.
+
+Run `cargo test --manifest-path src-tauri/Cargo.toml native_browser_content_blocking -- --ignored --nocapture` on macOS to compile the production list in WebKit and check blocked requests, exact-host bypass, iframe bypass, local testing, and unfiltered views. This manual check needs Swift and network access to the probe resource.
+
+## Importing Chrome History
+
+The browser toolbar's **Import from Chrome** button opens a profile picker.
+Choose a profile and click **Import history** to merge its recent pages into
+Argmax's address suggestions. The result reports how many pages were read and
+how many were new. Cookies and saved logins are not imported.
+
+The desktop-only `browser:chrome-profiles` and `browser:import-chrome-history`
+commands read Chrome's default data directory on macOS, Windows, and Linux.
+History is normally read through a read-only SQLite transaction, including
+committed WAL rows. If SQLite requires rollback-journal recovery, the importer
+recovers a private temporary copy of the database and journal. It checks source
+file identity and timestamps around the copy, retries changed copies, and rejects
+a WAL appearing during the copy. These checks detect ordinary concurrent writes
+but are not a transactional snapshot guarantee. Close Chrome and retry if the
+copy cannot stabilize. Only visible HTTP(S) pages with a visit timestamp are
+included, up to the 10,000 most recent.
+Profile paths must remain inside Chrome's data directory.
+
+Argmax retains up to 10,000 pages in IndexedDB, with an in-memory copy for
+address suggestions. Existing `argmax.browser.history` localStorage data migrates
+after a successful save. Repeating an import refreshes existing entries without
+adding duplicate URLs or inflating visit counts. Address suggestions favor URL
+prefixes, frequent visits, and recent visits. An empty address field shows the
+most recent pages. Storage failures are shown in the import dialog instead of
+reporting success.
+
+For a local source check, run:
+
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml imports_local_chrome_history_without_exposing_entries -- --ignored --nocapture
+```
+
+It reads installed Chrome profiles and prints counts and payload sizes without
+printing URLs or titles.
 
 ## Z-Order and Overlays
 
@@ -45,6 +96,15 @@ Nothing reorders until the drop lands. The press measures every tab's slot once,
 The drop rides the last stretch into the slot, then commits at the end of that ride — where the list's own layout already puts the tab, so the commit is invisible. Its length is the strip's own `--duration-fast`, read off the element: the CSS transition and the settle cannot drift, and "reduce motion", which zeroes that token, drops the tab into place at once. The transform transition hangs off the strip's `[data-dragging]` rather than off `.browser-tab`, so the render that commits takes the transitions away in the same breath as the transforms — left in the after-change style, every tab would animate from the slot it just left to the layout it is already sitting in.
 
 Order is the user's and it persists: `browserPanel.ts` writes each scope's strip to `localStorage`, so a carried tab keeps its place across a restart.
+
+Tab changes notify the UI immediately, but persistence waits for one idle callback
+(with a one-second timeout and a zero-delay timer fallback). The callback serializes
+the latest state once and skips the write if it matches the last saved snapshot.
+Loading, ownership, and group changes do not schedule a save because those fields
+are not persisted. Pending changes flush when the document becomes hidden or
+receives `pagehide`. This removes full-strip serialization from tab switching
+while preserving the existing restart format. An abrupt process termination can
+still lose changes queued since the last save.
 
 ## Agent Automation
 
@@ -76,7 +136,7 @@ Three scripts do the work inside the page, embedded with `include_str!`:
   since WKWebView has no Chrome DevTools Protocol connection. Response bodies,
   request headers, and native navigation response details are unavailable.
 
-Refs live in the DOM as `data-argmax-ref`, so a re-snapshot reuses the attribute a node already carries and a ref stays valid for as long as its element does. A ref that no longer resolves fails with a message saying a fresh snapshot is needed. Both scripts are re-sent with every call, guarded by `window.__argmax.v` — the install costs one property read on a warm page and re-arms itself automatically after a navigation.
+Refs live in the DOM as `data-argmax-ref`, so a re-snapshot reuses the attribute a node already carries and a ref stays valid for as long as its element does. A ref that no longer resolves fails with a message saying a fresh snapshot is needed. Both scripts are re-sent with every call, guarded by `window.__argmax.v` — the install costs one property read on a warm page and re-arms itself automatically after a navigation. Before a DOM call during the first navigation, a side-effect-free probe waits until WebKit can return an evaluation result. The requested script then runs exactly once. A page that neither finishes nor answers fails as `BROWSER_PAGE_LOAD_TIMEOUT` with its URL instead of reporting an unrelated script timeout.
 
 A fourth script, [dialog.js](../src-tauri/src/browser/dialog.js), is different: it is an *initialization* script, fixed when the webview is created, and it is installed **only on tabs a session opened**. A page's `alert` / `confirm` / `prompt` is synchronous — it must return a value before the page's next statement runs — so it cannot wait for an answer from an agent in another process. On an agent's tab the three are therefore overridden, answered on the spot from whatever `browser_handle_dialog` armed (dismissively when nothing did: `confirm` → false, `prompt` → null), and recorded. `snapshot.js` prints the record for 30 seconds as a `dialog:` header line, so the agent whose click hit a confirm box learns that it did. The page also pings Rust through the `argmax-newtab://dialog` scheme, which `on_navigation` intercepts, logs and blocks — there is no push event for it, because the snapshot header is where the agent reads it and the user's own tabs never raise one. Tabs the user opened keep the engine's native dialogs: silently answering a person's confirm box would misreport what they clicked.
 
@@ -86,7 +146,7 @@ The tools an agent calls are `mcp__argmax__browser_*`, defined in [browser_tools
 
 Two rules live in that bridge. **Ownership:** a session may only drive tabs it opened — the user's tabs and other sessions' tabs are refused with `BROWSER_TAB_NOT_OWNED`, and naming no tab resolves to the caller's own most recently used one. **Threading:** the socket handler runs on Tauri's async runtime, so creating, navigating and destroying a webview (AppKit calls, main-thread only) go through `run_on_main_thread`, while reads do not need it — WebKit's `evaluateJavaScript:` and `takeSnapshot` callbacks hop the queue themselves.
 
-A screenshot taken through a tool is rasterised at 720 CSS pixels wide and dropped past 900 KB of base64, because it has to survive the provider's JSON stream: the normalizer refuses lines over 4 MiB, and a dropped line takes the tool's completion with it.
+A screenshot taken through a tool starts at about 720 device pixels wide on Retina displays and is rasterised again at a narrower width when its encoded PNG would exceed 900 KB. It has to survive the provider's JSON stream: the normalizer refuses lines over 4 MiB, and a dropped line takes the tool's completion with it. The same capture is written into the caller's attachment store and its `path` returned, which is the only way the user gets to see it — the image block itself is the model's copy. An oversized capture that the reply had to drop is still saved, so the agent can put a screenshot on screen that it cannot see itself.
 
 ## IPC Channels
 
@@ -109,15 +169,25 @@ Both are async commands with a deadline. WebKit answers on the main queue and th
 
 ## Shortcuts
 
+- `⌘⇧I`: Toggle the browser in the focused pane's review panel, from a chat or the launcher. Closes only the browser half of a split, like `⌘G` for Files.
 - `⌘L`: Focus address bar.
 - Enter in the address bar: go to the URL. Reloads when it's already the current page — WKWebView does not navigate to the URL it is already showing.
 - `⌘T`: New tab.
 - `⌘⇧T`: Reopen last closed tab.
-- `⌘R`: Reload the tab when focused in the page or browser chrome. In development builds, app reload stays available in View → Reload and via `⌘⇧R`.
+- `⌘F`: Find in page on the active tab, from anywhere while the browser is on screen — the Browser page or a review panel. From the app's own DOM it opens the find bar directly; from inside a page the init-script relay carries it, and Rust hands native focus back to the main webview so the find field receives typing. Enter / Shift+Enter walk matches, Escape closes and clears the highlights.
+- `⌘R`: Reload the tab when focused in the page or browser chrome. In development builds, app reload stays available in View → Reload and View → Force Reload, neither with a shortcut: `⌘⇧R` opens the launcher's folder picker.
 - `⌃Tab` / `⌃⇧Tab`: Next / previous tab.
 - `⌥←` / `⌥→` with a tab focused: move that tab one slot, the keyboard's way to reorder.
 - `⌘W`: Closes the active browser tab whenever the browser is mounted. The menu command tries the browser first, then the review panel's file tabs, then the focused pane — `requestCloseActiveBrowserTab()` reports whether a mounted browser consumed it.
 - Mouse thumb buttons: back (button 3) / forward (button 4), both over the browser chrome and inside a page.
+
+## Find in Page
+
+The find bar is a layout row between the toolbar and the surface, not an overlay: the page must stay visible while searching, because the highlights live *inside* the page. WKWebView exposes no find API through wry, so search runs as a page script over the existing `browser:evaluate` channel ([browserFind.ts](../src/renderer/lib/browserFind.ts)). The script installs a runtime guarded by `window.__argmaxFind` — re-evaluated after every navigation, so it re-arms itself — that walks text nodes, wraps each match in a styled custom element (`argmax-find-hl`), and steps through them, scrolling the current one into view. Closing the bar or unmounting the panel unwraps the marks and restores the page's text nodes.
+
+The bar claims `⌘F` for as long as the browser owns the native surface, taking it off the app's search palette — `⌘K` and `⌘⇧F` still reach chat and content search. Scoping the claim to focus inside the panel chrome instead made the shortcut depend on where the last click landed: macOS WebKit leaves focus on `<body>` after a button click, and opening the Browser page leaves it in the rail, so the palette answered until the user clicked into the page. A `[role="dialog"]` on top keeps its own `⌘F`, including the palette's Messages and Contents filters. Keys pressed inside the page arrive as the `find` page-command, which routes through the `focus-address`-style native focus handoff so typing lands in the find field. Typing re-searches on a 200ms debounce; Enter / Shift+Enter step matches; Escape closes.
+
+Per-text-node matching is a known limit: a query spanning an element boundary is not found, and nothing inside `<input>` values (which cannot be highlighted) is searched.
 
 ## 1Password Autofill
 

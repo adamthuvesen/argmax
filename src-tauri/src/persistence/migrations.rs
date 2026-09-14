@@ -201,6 +201,45 @@ pub static WORKSPACE_KIND_COLUMNS: phf::Map<&'static str, &'static [&'static str
     ] as &'static [&'static str],
 };
 
+// Post-v47 `workspaces` shape: records the latest activity timestamp the user
+// actually viewed. Existing rows start read so an upgrade does not promote the
+// entire history into Priority; new rows receive their creation timestamp.
+pub static WORKSPACE_LAST_VIEWED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "workspaces" => &[
+        "base_ref", "branch", "changed_files", "created_at", "dirty", "icon",
+        "icon_color", "id", "kind", "last_activity_at", "last_viewed_at", "path",
+        "pinned", "priority_added_at", "priority_dismissed_at", "project_id",
+        "shared_workspace", "state", "task_label", "task_label_auto", "updated_at",
+    ] as &'static [&'static str],
+};
+
+pub static PROJECT_SOURCE_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "project_sources" => &[
+        "added_by", "added_by_session_id", "created_at", "guidance", "id", "kind",
+        "location", "project_id", "title", "updated_at",
+    ] as &'static [&'static str],
+};
+
+pub static SESSION_PR_MODEL_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "gh_pull_requests" => &[
+        "head_ref_name", "head_sha", "last_seen_check_state", "pr_created_at",
+        "pr_merged_at", "pr_number", "pr_state", "project_id", "refresh_error",
+        "refreshed_at", "title", "updated_at", "url",
+    ] as &'static [&'static str],
+    "session_pr_links" => &[
+        "created_at", "dismissed_at", "is_pinned", "pr_number", "project_id",
+        "relationship", "session_id", "activity_at", "notified_at", "notified_head_sha",
+        "updated_at",
+    ] as &'static [&'static str],
+    "session_pr_evidence" => &[
+        "created_at", "occurred_at", "pr_number", "project_id", "relationship",
+        "session_id", "source_id",
+    ] as &'static [&'static str],
+    "session_pr_evidence_scans" => &[
+        "last_change_sequence", "last_event_rowid", "parser_version", "scanned_at", "session_id",
+    ] as &'static [&'static str],
+};
+
 // Post-v16 `sessions` shape: adds the `resume_fork` flag consumed (and
 // cleared) by the next resumed launch of a forked session.
 pub static SESSION_RESUME_FORK_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
@@ -338,6 +377,18 @@ pub static ROUTINES_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = p
 pub static ROUTINE_RUN_TARGET_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "routines" => &[
         "cron_expr", "created_at", "enabled", "id", "last_error",
+        "last_run_at", "last_session_id", "model_id", "model_label", "name",
+        "next_run_at", "project_id", "prompt", "provider", "run_once_at",
+        "run_target", "updated_at", "worktree",
+    ] as &'static [&'static str],
+};
+
+// Post-v50 `routines` shape: each task records who put it in the list, so a
+// wake a chat set for itself can be cleared when it fires while a task the
+// user wrote is kept.
+pub static ROUTINE_AUTHOR_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "routines" => &[
+        "created_by", "cron_expr", "created_at", "enabled", "id", "last_error",
         "last_run_at", "last_session_id", "model_id", "model_label", "name",
         "next_run_at", "project_id", "prompt", "provider", "run_once_at",
         "run_target", "updated_at", "worktree",
@@ -851,7 +902,175 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &SYNC_TOMBSTONE_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 46,
+        name: "data_migrations",
+        up: DATA_MIGRATIONS,
+        affected_tables: &["data_migrations"],
+        expected_columns: &phf_map! {
+            "data_migrations" => &["name", "applied_at"],
+        },
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 47,
+        name: "workspace_last_viewed_at",
+        up: WORKSPACE_LAST_VIEWED_AT,
+        affected_tables: &["workspaces"],
+        expected_columns: &WORKSPACE_LAST_VIEWED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 48,
+        name: "project_sources",
+        up: crate::persistence::project_sources::MIGRATION_SQL,
+        affected_tables: &["project_sources"],
+        expected_columns: &PROJECT_SOURCE_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 49,
+        name: "canonical_session_pull_requests",
+        up: SESSION_PR_MODEL,
+        affected_tables: &[
+            "gh_pull_requests",
+            "session_pr_links",
+            "session_pr_evidence",
+            "session_pr_evidence_scans",
+        ],
+        expected_columns: &SESSION_PR_MODEL_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 50,
+        name: "routine_author",
+        up: ROUTINE_AUTHOR,
+        affected_tables: &["routines"],
+        expected_columns: &ROUTINE_AUTHOR_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+// GitHub state belongs to a project and PR number. Session links keep the
+// evidence, relationship and user selection separate so a refresh cannot
+// change which PR the workspace foregrounds.
+const SESSION_PR_MODEL: &str = r#"
+CREATE TABLE gh_pull_requests (
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  pr_number INTEGER NOT NULL CHECK (pr_number > 0),
+  url TEXT,
+  title TEXT,
+  head_sha TEXT NOT NULL DEFAULT '',
+  last_seen_check_state TEXT NOT NULL DEFAULT 'unknown',
+  pr_state TEXT,
+  head_ref_name TEXT,
+  pr_created_at TEXT,
+  pr_merged_at TEXT,
+  refreshed_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  refresh_error TEXT,
+  PRIMARY KEY (project_id, pr_number)
+);
+
+CREATE TABLE session_pr_links (
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL,
+  pr_number INTEGER NOT NULL,
+  relationship TEXT NOT NULL CHECK (relationship IN ('worked', 'referenced', 'unverified')),
+  activity_at TEXT NOT NULL,
+  is_pinned INTEGER NOT NULL DEFAULT 0 CHECK (is_pinned IN (0, 1)),
+  dismissed_at TEXT,
+  notified_head_sha TEXT,
+  notified_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (session_id, pr_number),
+  FOREIGN KEY (project_id, pr_number)
+    REFERENCES gh_pull_requests(project_id, pr_number) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX idx_session_pr_one_pin
+  ON session_pr_links(session_id) WHERE is_pinned = 1;
+CREATE INDEX idx_session_pr_links_project_pr
+  ON session_pr_links(project_id, pr_number);
+
+CREATE TABLE session_pr_evidence (
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL,
+  pr_number INTEGER NOT NULL,
+  relationship TEXT NOT NULL CHECK (relationship IN ('worked', 'referenced', 'unverified')),
+  source_id TEXT NOT NULL,
+  occurred_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (session_id, pr_number, source_id),
+  FOREIGN KEY (project_id, pr_number)
+    REFERENCES gh_pull_requests(project_id, pr_number) ON DELETE CASCADE
+);
+
+CREATE TABLE session_pr_evidence_scans (
+  session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+  last_event_rowid INTEGER NOT NULL DEFAULT 0,
+  last_change_sequence INTEGER NOT NULL DEFAULT 0,
+  parser_version INTEGER NOT NULL DEFAULT 0,
+  scanned_at TEXT NOT NULL
+);
+
+WITH ranked AS (
+  SELECT workspaces.project_id,
+         gh_pr.session_id,
+         gh_pr.pr_number,
+         gh_pr.head_sha,
+         gh_pr.last_seen_check_state,
+         gh_pr.updated_at,
+         gh_pr.pr_state,
+         gh_pr.head_ref_name,
+         gh_pr.pr_created_at,
+         gh_pr.pr_merged_at,
+         ROW_NUMBER() OVER (
+           PARTITION BY workspaces.project_id, gh_pr.pr_number
+           ORDER BY (gh_pr.pr_state = 'MERGED') DESC,
+                    gh_pr.updated_at DESC,
+                    gh_pr.session_id DESC
+         ) AS rank
+  FROM gh_pr
+  JOIN sessions ON sessions.id = gh_pr.session_id
+  JOIN workspaces ON workspaces.id = sessions.workspace_id
+)
+INSERT INTO gh_pull_requests (
+  project_id, pr_number, head_sha, last_seen_check_state, pr_state,
+  head_ref_name, pr_created_at, pr_merged_at, refreshed_at, updated_at
+)
+SELECT project_id, pr_number, head_sha, last_seen_check_state, pr_state,
+       head_ref_name, pr_created_at, pr_merged_at, updated_at, updated_at
+FROM ranked
+WHERE rank = 1;
+
+INSERT INTO session_pr_links (
+  session_id, project_id, pr_number, relationship, activity_at,
+  notified_head_sha, notified_at, created_at, updated_at
+)
+SELECT gh_pr.session_id, workspaces.project_id, gh_pr.pr_number, 'unverified',
+       sessions.last_activity_at,
+       CASE WHEN gh_pr.notified_at IS NOT NULL THEN gh_pr.head_sha END,
+       gh_pr.notified_at, gh_pr.updated_at, gh_pr.updated_at
+FROM gh_pr
+JOIN sessions ON sessions.id = gh_pr.session_id
+JOIN workspaces ON workspaces.id = sessions.workspace_id;
+"#;
+
+const WORKSPACE_LAST_VIEWED_AT: &str = r#"
+ALTER TABLE workspaces ADD COLUMN last_viewed_at TEXT;
+UPDATE workspaces SET last_viewed_at = last_activity_at;
+"#;
+
+// Machine-specific settings upgrades cannot embed local paths in schema SQL.
+// Record their completion atomically with the corresponding data update.
+const DATA_MIGRATIONS: &str = r#"
+CREATE TABLE data_migrations (
+  name TEXT PRIMARY KEY NOT NULL,
+  applied_at TEXT NOT NULL
+);
+"#;
 
 // A provider transcript remains on disk when Settings deletes the projected
 // Argmax chat. Keep the provider conversation id independently of `sessions`
@@ -1035,6 +1254,22 @@ ALTER TABLE routines ADD COLUMN run_target TEXT NOT NULL DEFAULT 'worktree'
   CHECK (run_target IN ('new_session', 'same_session', 'worktree'));
 ALTER TABLE routines ADD COLUMN last_session_id TEXT;
 UPDATE routines SET run_target = CASE WHEN worktree = 0 THEN 'new_session' ELSE 'worktree' END;
+"#;
+
+// Who put a scheduled task in the list. A wake a chat sets for itself with
+// `schedule_followup` is an alarm clock: once it rings, the chat it woke holds
+// the record, and the row is only clutter in the user's panel. Existing rows
+// backfill from the shape only a follow-up had — a one-shot that fires into
+// the same chat — and the spent ones among them, which ran without an error
+// and can never fire again, go with it.
+const ROUTINE_AUTHOR: &str = r#"
+ALTER TABLE routines ADD COLUMN created_by TEXT NOT NULL DEFAULT 'user'
+  CHECK (created_by IN ('user', 'agent'));
+UPDATE routines SET created_by = 'agent'
+  WHERE run_once_at IS NOT NULL AND run_target = 'same_session';
+DELETE FROM routines
+  WHERE created_by = 'agent' AND enabled = 0
+    AND last_run_at IS NOT NULL AND last_error IS NULL;
 "#;
 
 // The disposal an agent asked for while its own turn was still running.
@@ -2157,7 +2392,7 @@ mod tests {
             .expect("projects");
         verify_table_columns(&connection, &SESSION_PR_ATTRIBUTION_COLUMNS, "sessions")
             .expect("sessions");
-        verify_table_columns(&connection, &WORKSPACE_KIND_COLUMNS, "workspaces")
+        verify_table_columns(&connection, &WORKSPACE_LAST_VIEWED_COLUMNS, "workspaces")
             .expect("workspaces");
         verify_table_columns(
             &connection,
@@ -2264,6 +2499,14 @@ mod tests {
                     compute_migration_checksum(crate::persistence::activity::MIGRATION_SQL)
                 ),
                 (45, compute_migration_checksum(SYNCED_SESSION_TOMBSTONES)),
+                (46, compute_migration_checksum(DATA_MIGRATIONS)),
+                (47, compute_migration_checksum(WORKSPACE_LAST_VIEWED_AT)),
+                (
+                    48,
+                    compute_migration_checksum(crate::persistence::project_sources::MIGRATION_SQL)
+                ),
+                (49, compute_migration_checksum(SESSION_PR_MODEL)),
+                (50, compute_migration_checksum(ROUTINE_AUTHOR)),
             ]
         );
 
@@ -2360,8 +2603,32 @@ mod tests {
         run_migrations(&mut connection).expect("first migrate");
         run_migrations(&mut connection).expect("second migrate");
 
-        verify_table_columns(&connection, &WORKSPACE_KIND_COLUMNS, "workspaces")
+        verify_table_columns(&connection, &WORKSPACE_LAST_VIEWED_COLUMNS, "workspaces")
             .expect("head workspace shape");
+    }
+
+    #[test]
+    fn workspace_read_state_migration_starts_existing_rows_as_viewed() {
+        let mut connection = Connection::open_in_memory().expect("open db");
+        run_migrations_with(&mut connection, &MIGRATIONS[..46]).expect("migrate through v46");
+        seed_minimal_session(&connection);
+        connection
+            .execute(
+                "UPDATE workspaces SET last_activity_at = '2026-09-12T10:15:00.000Z' WHERE id = 'w1'",
+                [],
+            )
+            .expect("seed workspace activity");
+
+        run_migrations(&mut connection).expect("apply read-state migration");
+
+        let (activity, viewed): (String, String) = connection
+            .query_row(
+                "SELECT last_activity_at, last_viewed_at FROM workspaces WHERE id = 'w1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read migrated workspace");
+        assert_eq!(viewed, activity);
     }
 
     #[test]
@@ -2459,7 +2726,8 @@ mod tests {
                    updated_at TEXT NOT NULL
                  );
                  DELETE FROM schema_migrations WHERE version = 20;
-                 DELETE FROM schema_migrations WHERE version = 36;",
+                 DELETE FROM schema_migrations WHERE version = 36;
+                 DELETE FROM schema_migrations WHERE version = 50;",
             )
             .expect("install draft routines table");
         connection
@@ -2479,7 +2747,7 @@ mod tests {
             .collect::<Result<_, _>>()
             .expect("rows");
         columns.sort();
-        let mut expected = ROUTINE_RUN_TARGET_COLUMNS["routines"].to_vec();
+        let mut expected = ROUTINE_AUTHOR_COLUMNS["routines"].to_vec();
         expected.sort_unstable();
         assert_eq!(columns, expected);
     }

@@ -45,7 +45,7 @@
 .launcher-hero-title {
   margin: 0;
   font-size: calc(var(--text-display) + 2px);
-  font-weight: 400;
+  font-weight: calc(400 + var(--font-weight-offset));
   letter-spacing: -0.01em;
   color: var(--muted-strong);
 }
@@ -70,7 +70,7 @@
 .welcome-pane h1 {
   margin: 0;
   font-size: var(--text-display);
-  font-weight: 600;
+  font-weight: calc(600 + var(--font-weight-offset));
   letter-spacing: -0.015em;
   color: var(--text);
 }
@@ -108,7 +108,7 @@
 .welcome-pane h2 {
   margin: 0;
   font-size: var(--text-md-tight);
-  font-weight: 600;
+  font-weight: calc(600 + var(--font-weight-offset));
   letter-spacing: -0.005em;
   color: var(--text);
 }
@@ -123,7 +123,7 @@
   border: 1px solid var(--line-strong);
   background: var(--panel-soft);
   font-size: var(--text-2xs-plus);
-  font-weight: 600;
+  font-weight: calc(600 + var(--font-weight-offset));
   font-feature-settings: "tnum";
   color: var(--muted-strong);
 }
@@ -215,7 +215,7 @@
 
 .welcome-provider-name {
   font-size: var(--text-base);
-  font-weight: 550;
+  font-weight: calc(550 + var(--font-weight-offset));
   color: var(--text);
 }
 
@@ -228,7 +228,7 @@
 .welcome-provider-state {
   margin-left: auto;
   font-size: var(--text-2xs-plus);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
@@ -346,7 +346,7 @@
 
 .welcome-optional {
   font-size: var(--text-2xs-plus);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
@@ -371,7 +371,7 @@
 
 .welcome-mcp-name {
   font-size: var(--text-sm-plus);
-  font-weight: 550;
+  font-weight: calc(550 + var(--font-weight-offset));
   color: var(--text);
 }
 

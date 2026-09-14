@@ -10,6 +10,9 @@ struct WorkingNest: View {
     static let cycle: TimeInterval = 0.9
 
     var size: CGFloat = 18
+    /// Live work moves; a settled mark holds the still frame. The desktop
+    /// nest does the same with `active`.
+    var active: Bool = true
     /// The chat's own icon colour when it has one. Nil takes the accent,
     /// which is what "the running thing" is marked with everywhere else.
     var tint: Color?
@@ -18,13 +21,13 @@ struct WorkingNest: View {
     @Environment(\.accentTint) private var accent
 
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion)) { context in
+        TimelineView(.animation(paused: reduceMotion || !active)) { context in
             let elapsed = context.date.timeIntervalSinceReferenceDate
             Canvas { canvas, canvasSize in
                 for dot in 0..<4 {
                     // A quarter-cycle apart, top-left → top-right →
                     // bottom-right → bottom-left.
-                    let phase = reduceMotion
+                    let phase = reduceMotion || !active
                         ? (dot == 0 ? 0 : 0.5)
                         : (elapsed / Self.cycle - Double(dot) * 0.25)
                             .truncatingRemainder(dividingBy: 1)

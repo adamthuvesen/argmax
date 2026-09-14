@@ -34,6 +34,7 @@ struct InsightsScreen: View {
         .refreshable { await store.reloadCurrent() }
         .onChange(of: store.tab) { _, tab in Task { await store.ensure(tab) } }
         .onChange(of: store.usageWindow) { Task { await store.reloadUsage() } }
+        .onChange(of: store.providerFilter) { Task { await store.reloadUsage() } }
         .onChange(of: store.activityWindow) { Task { await store.reloadActivity() } }
         .navigationTitle("")
     }
@@ -90,7 +91,8 @@ struct InsightsScreen: View {
         return Menu {
             ForEach(windows, id: \.self) { window in
                 Button(windowTitle(window)) {
-                    Haptics.light()
+                    guard window != selection else { return }
+                    Haptics.selection()
                     if store.tab == .usage {
                         store.usageWindow = window
                     } else {
@@ -108,12 +110,14 @@ struct InsightsScreen: View {
         let providers = store.usage?.providers ?? []
         return Menu {
             Button("All providers") {
-                Haptics.light()
+                guard store.providerFilter != nil else { return }
+                Haptics.selection()
                 withAnimation(.easeOut(duration: 0.2)) { store.providerFilter = nil }
             }
             ForEach(providers) { provider in
                 Button(ProviderMark.displayName(provider.provider)) {
-                    Haptics.light()
+                    guard store.providerFilter != provider.provider else { return }
+                    Haptics.selection()
                     withAnimation(.easeOut(duration: 0.2)) {
                         store.providerFilter = provider.provider
                     }
@@ -134,12 +138,14 @@ struct InsightsScreen: View {
         let repos = store.activity?.repositories ?? []
         return Menu {
             Button("All repositories") {
-                Haptics.light()
+                guard store.projectFilter != nil else { return }
+                Haptics.selection()
                 withAnimation(.easeOut(duration: 0.2)) { store.projectFilter = nil }
             }
             ForEach(repos.prefix(12)) { repo in
                 Button(repo.name) {
-                    Haptics.light()
+                    guard store.projectFilter != repo.projectId else { return }
+                    Haptics.selection()
                     withAnimation(.easeOut(duration: 0.2)) {
                         store.projectFilter = repo.projectId
                     }
@@ -160,14 +166,14 @@ struct InsightsScreen: View {
     private func filterPill(icon: String, text: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
-                .font(.caption.weight(.semibold))
+                .typeSymbol(.caption, weight: .semibold)
                 .foregroundStyle(Theme.muted)
             Text(text)
-                .font(.footnote.weight(.semibold))
+                .typeStyle(.footnote, weight: .semibold)
                 .foregroundStyle(Theme.ink)
                 .lineLimit(1)
             Image(systemName: "chevron.down")
-                .font(.caption2.weight(.semibold))
+                .typeSymbol(.caption2, weight: .semibold)
                 .foregroundStyle(Theme.muted)
         }
         .padding(.horizontal, Spacing.row)
@@ -206,11 +212,13 @@ struct InsightsScreen: View {
 
     private var showingSkeleton: Bool {
         // Bones only when there is nothing truthful to show: no data at all,
-        // or data for a different window than the picker names. Same-window
-        // stale numbers stay up behind a refresh — the "Updating…" line says
-        // so — because a blank page is never faster than an old one.
+        // or data for a different window or provider than the pickers name.
+        // Same-picker stale numbers stay up behind a refresh — the "Updating…"
+        // line says so — because a blank page is never faster than an old one.
         if store.tab == .usage {
-            return store.usage == nil || store.usage?.window != store.usageWindow
+            guard let usage = store.usage else { return true }
+            return usage.window != store.usageWindow
+                || usage.provider != store.providerFilter
         }
         return store.activity == nil || store.activity?.window != store.activityWindow
     }

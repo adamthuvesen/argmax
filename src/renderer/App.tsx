@@ -28,6 +28,7 @@ import { effortForModel, PROVIDER_TITLE_MODEL, type ReasoningEffort } from "../s
 import type { MessageHit as PaletteMessageHit } from "./components/CommandPalette.js";
 import { parseFtsSnippet } from "./lib/paletteSearch.js";
 import { usePersistedSetting } from "./hooks/usePersistedSetting.js";
+import { useMotionPresence } from "./hooks/useMotionPresence.js";
 import { EmptyState } from "./components/EmptyState.js";
 import { KeyboardCheatSheet } from "./components/KeyboardCheatSheet.js";
 import { LaunchSurface } from "./components/LaunchSurface.js";
@@ -46,6 +47,8 @@ import { isEarlySessionStop } from "./lib/earlyStop.js";
 import { getWorkspaceTerminalState, requestTerminalVisible } from "./lib/terminalTabs.js";
 import { requestCloseActiveBrowserTab } from "./lib/browserPanel.js";
 import { requestCloseActiveReviewFileTab } from "./lib/reviewFilePanel.js";
+import { jumpToAdjacentChat, noteChatVisited } from "./lib/chatCycle.js";
+import { listVisibleSidebarWorkspaceIds, selectedSidebarWorkspaceId } from "./lib/sidebarOrder.js";
 // demoSnapshot is dynamic-imported inside `loadDashboardSnapshot` so it stays
 // out of the production renderer bundle. Browser-preview mode (no Tauri
 // bridge) is the only consumer; packaged builds always have window.argmax.
@@ -63,7 +66,11 @@ import {
 } from "./hooks/useLazyOverlayPrefetch.js";
 import { useLedgerPrefetch } from "./hooks/useLedgerPrefetch.js";
 import { useGlobalKeybindings } from "./hooks/useGlobalKeybindings.js";
-import { DEFAULT_WORKSPACE_MIN_WIDTH_PX, useSidebarResize } from "./hooks/useSidebarResize.js";
+import {
+  DEFAULT_WORKSPACE_MIN_WIDTH_PX,
+  SIDEBAR_MIN_WIDTH_PX,
+  useSidebarResize
+} from "./hooks/useSidebarResize.js";
 import {
   hideCommandPalette,
   hideKeyboardCheatSheet,
@@ -95,6 +102,7 @@ import {
 } from "./state/paneGrid.js";
 import { setSidebarPeek, toggleSidebarCollapsed, useSidebarChrome } from "./state/sidebarChrome.js";
 import { dismissToast, showErrorToast, showInfoToast, showToast, toastSnapshot, useToast } from "./state/toast.js";
+import { subscribeWorkspacePointerDrag } from "./state/workspaceDrag.js";
 import { isBrowserPreview } from "./lib/env.js";
 import { animateThemeChange, type ThemeMode } from "./lib/theme.js";
 import type { AccentId } from "./lib/accent.js";
@@ -133,6 +141,7 @@ import {
   BROWSER_PAGE_OPEN_KEY,
   TURN_REVERT_ENABLED_KEY,
   COMPOSER_PIXEL_FIELD_KEY,
+  COMPOSER_CONTEXT_INDICATOR_KEY,
   DESKTOP_NOTIFICATIONS_KEY,
   FAST_MODE_KEY,
   GOAL_ENABLED_KEY,
@@ -145,12 +154,18 @@ import {
   TURN_CHANGES_EXPANDED_KEY,
   RANDOM_SESSION_ICON_KEY,
   SIDEBAR_PRIORITY_KEY,
+  SIDEBAR_TRANSLUCENT_KEY,
+  SIDEBAR_TRANSLUCENCY_DEFAULT,
+  SIDEBAR_TRANSLUCENCY_KEY,
+  SIDEBAR_TRANSLUCENCY_MAX,
+  SIDEBAR_TRANSLUCENCY_MIN,
   WORKSPACE_CARD_KEY,
   PrMilestoneCelebrationContext,
   resolveChatVerbosity,
   useBooleanUiPreference,
   useBoundedNumberPreference,
-  useChatVerbosityPreference
+  useChatVerbosityPreference,
+  useFollowUpDeliveryPreference
 } from "./lib/uiPreferences.js";
 import { randomSessionIcon } from "./lib/sessionIcons.js";
 import { isMultitaskSession, multitasksByParentSession } from "./lib/multitask.js";
@@ -165,7 +180,7 @@ import { isRemoteBridge, isTauriRuntime } from "./lib/tauriBridge.js";
 import { withToast } from "./lib/withToast.js";
 
 const APP_MIN_HEIGHT_PX = 640;
-const STATIC_APP_MIN_WIDTH_PX = 1024;
+const STATIC_APP_MIN_WIDTH_PX = 600;
 
 function widestGridRowColumnCount(rows: unknown[][]): number {
   return rows.reduce((max, row) => Math.max(max, row.length), 0);
@@ -200,15 +215,31 @@ export function App(): JSX.Element {
   };
   const standalonePageOpen = standalonePage !== null;
   const toast = useToast();
+  const paletteMotion = useMotionPresence(paletteOpen);
+  const toastMotion = useMotionPresence(toast !== null);
+  const retainedToastRef = useRef(toast);
+  if (toast !== null) retainedToastRef.current = toast;
+  const paintedToast = toast ?? retainedToastRef.current;
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.argmax);
   const workspaceRef = useRef<HTMLElement | null>(null);
+  const workspaceDropOverlayRef = useRef<HTMLDivElement | null>(null);
   const [workspaceWidth, setWorkspaceWidth] = useState(0);
   const [chatVerbosity, setChatVerbosity] = useChatVerbosityPreference();
+  const [followUpDelivery, setFollowUpDelivery] = useFollowUpDeliveryPreference();
   const { toolCallsDisplay, toolCallGroupsExpanded, thinkingDisplay } = useMemo(
     () => resolveChatVerbosity(chatVerbosity),
     [chatVerbosity]
   );
   const [sidebarPriorityVisible, setSidebarPriorityVisible] = useBooleanUiPreference(SIDEBAR_PRIORITY_KEY, true);
+  const [sidebarTranslucent, setSidebarTranslucent] = useBooleanUiPreference(SIDEBAR_TRANSLUCENT_KEY, false);
+  const [sidebarTranslucency, setSidebarTranslucency] = useBoundedNumberPreference(
+    SIDEBAR_TRANSLUCENCY_KEY,
+    {
+      min: SIDEBAR_TRANSLUCENCY_MIN,
+      max: SIDEBAR_TRANSLUCENCY_MAX,
+      fallback: SIDEBAR_TRANSLUCENCY_DEFAULT
+    }
+  );
   const { collapsed: sidebarCollapsed, peeking: sidebarPeek } = useSidebarChrome();
   const [isBrowserPageOpen, setIsBrowserPageOpen] = useBooleanUiPreference(BROWSER_PAGE_OPEN_KEY, false);
   const [workspaceCardVisible, setWorkspaceCardVisible] = useBooleanUiPreference(WORKSPACE_CARD_KEY, true);
@@ -225,6 +256,10 @@ export function App(): JSX.Element {
     fallback: GOAL_MAX_TURNS_DEFAULT
   });
   const [pixelFieldEnabled, setPixelFieldEnabled] = useBooleanUiPreference(COMPOSER_PIXEL_FIELD_KEY, false);
+  const [contextIndicatorEnabled, setContextIndicatorEnabled] = useBooleanUiPreference(
+    COMPOSER_CONTEXT_INDICATOR_KEY,
+    false
+  );
   const [prMilestoneCelebrationEnabled, setPrMilestoneCelebrationEnabled] = useBooleanUiPreference(
     PR_MILESTONE_CELEBRATION_KEY,
     false
@@ -274,6 +309,8 @@ export function App(): JSX.Element {
   const {
     themeMode,
     setThemeMode,
+    browserThemeMode,
+    setBrowserThemeMode,
     accentId,
     setAccentId,
     userBubbleTint,
@@ -284,6 +321,8 @@ export function App(): JSX.Element {
     setFontSize,
     chatFontSize,
     setChatFontSize,
+    fontHeaviness,
+    setFontHeaviness,
     inkStrength,
     setInkStrength,
     backgroundIntensity,
@@ -419,6 +458,7 @@ export function App(): JSX.Element {
     loadAgentEvents,
     openProjectLauncher,
     resolveApproval,
+    registerLaunchedSession,
     pendingSelectionRef
   } = useDashboardSession(loadDashboardSnapshot, {
     onErrorToast: showErrorToast,
@@ -473,11 +513,19 @@ export function App(): JSX.Element {
       : DEFAULT_WORKSPACE_MIN_WIDTH_PX;
     return Math.max(DEFAULT_WORKSPACE_MIN_WIDTH_PX, gridColumnWidth, sessionGridRequiredWorkspaceMinWidth);
   }, [requiredGridColumns, sessionGridRequiredWorkspaceMinWidth]);
-  const { sidebarWidth, isResizing, onResizeMouseDown } = useSidebarResize(requiredWorkspaceMinWidth);
+  const {
+    sidebarWidth,
+    responsiveCollapsed: sidebarResponsiveCollapsed,
+    isResizing,
+    onResizeMouseDown
+  } = useSidebarResize(requiredWorkspaceMinWidth);
+  const effectiveSidebarCollapsed = !standalonePageOpen && (sidebarCollapsed || sidebarResponsiveCollapsed);
   const requiredWindowMinWidth = useMemo(() => {
-    const sidebarPart = sidebarCollapsed ? 0 : sidebarWidth;
-    return Math.max(STATIC_APP_MIN_WIDTH_PX, requiredWorkspaceMinWidth + sidebarPart);
-  }, [requiredWorkspaceMinWidth, sidebarCollapsed, sidebarWidth]);
+    // The native floor must leave room for the folded layout. If it includes
+    // the current sidebar width, the window stops before the sidebar can
+    // shrink or fold and the composer absorbs the squeeze instead.
+    return Math.max(STATIC_APP_MIN_WIDTH_PX, requiredWorkspaceMinWidth, SIDEBAR_MIN_WIDTH_PX);
+  }, [requiredWorkspaceMinWidth]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -571,6 +619,20 @@ export function App(): JSX.Element {
           setIsBrowserPageOpen(false);
           openNewSessionPane();
           return;
+        case "next-chat":
+        case "previous-chat": {
+          const workspaceId = jumpToAdjacentChat(
+            command === "next-chat" ? 1 : -1,
+            listVisibleSidebarWorkspaceIds(),
+            selectedSidebarWorkspaceId()
+          );
+          if (!workspaceId) return;
+          hideStandalonePage();
+          hideFullLauncher();
+          setIsBrowserPageOpen(false);
+          openWorkspaceChat(workspaceId, { ctrlOrMeta: false, alt: false });
+          return;
+        }
         case "open-command-palette":
           showCommandPalette("all");
           return;
@@ -598,7 +660,7 @@ export function App(): JSX.Element {
           return;
       }
     },
-    [closeFocusedPane, isSettingsOpen, openNewSessionPane]
+    [closeFocusedPane, isSettingsOpen, openNewSessionPane, openWorkspaceChat, setIsBrowserPageOpen]
   );
 
   // ⌘P / ⌘F / ⌘⇧F are all the ⌘K overlay; only the pre-selected filter differs.
@@ -665,16 +727,16 @@ export function App(): JSX.Element {
     // an archive-failed retry cannot silently act on newer changes.
     const workspace = workspacesById.get(workspaceId);
     let force = false;
-    if (workspace?.dirty && !workspace.sharedWorkspace) {
-      const fileLabel = workspace.changedFiles === 1 ? "1 uncommitted change" : `${workspace.changedFiles} uncommitted changes`;
-      const confirmed = window.confirm(
-        `${workspace.taskLabel} has ${fileLabel}. Archive this worktree and keep its files in recovery storage?`
-      );
-      if (!confirmed) return;
-      force = true;
-    }
     let result: Awaited<ReturnType<typeof window.argmax.workspaces.archive>>;
     try {
+      if (workspace?.dirty && !workspace.sharedWorkspace) {
+        const fileLabel = workspace.changedFiles === 1 ? "1 uncommitted change" : `${workspace.changedFiles} uncommitted changes`;
+        const confirmed = await window.argmax.system.confirm(
+          `${workspace.taskLabel} has ${fileLabel}. Archive this worktree and keep its files in recovery storage?`
+        );
+        if (!confirmed) return;
+        force = true;
+      }
       result = await window.argmax.workspaces.archive({ workspaceId, force });
     } catch (error) {
       showErrorToast(error instanceof Error ? error.message : "Workspace archive failed.");
@@ -685,15 +747,15 @@ export function App(): JSX.Element {
     // confirm dialog above never showed. Re-prompt once with the real count
     // and retry with force; declining leaves the row kept, as intended.
     if (result.workspace.state === "kept" && !force && !result.workspace.sharedWorkspace) {
-      const fileLabel = result.workspace.changedFiles === 1 ? "1 uncommitted change" : `${result.workspace.changedFiles} uncommitted changes`;
-      const confirmed = window.confirm(
-        `${result.workspace.taskLabel} has ${fileLabel}. Archive this worktree and keep its files in recovery storage?`
-      );
-      if (!confirmed) {
-        setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [result.workspace] }));
-        return;
-      }
       try {
+        const fileLabel = result.workspace.changedFiles === 1 ? "1 uncommitted change" : `${result.workspace.changedFiles} uncommitted changes`;
+        const confirmed = await window.argmax.system.confirm(
+          `${result.workspace.taskLabel} has ${fileLabel}. Archive this worktree and keep its files in recovery storage?`
+        );
+        if (!confirmed) {
+          setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [result.workspace] }));
+          return;
+        }
         result = await window.argmax.workspaces.archive({ workspaceId, force: true });
       } catch (error) {
         showErrorToast(error instanceof Error ? error.message : "Workspace archive failed.");
@@ -1039,7 +1101,7 @@ export function App(): JSX.Element {
       clearPaneGrid();
       openRepoProjectLauncher(projectId);
     },
-    [openRepoProjectLauncher]
+    [openRepoProjectLauncher, setIsBrowserPageOpen]
   );
   const onOpenWorkspaceChatRow = useCallback(
     (workspaceId: string, modifiers: Parameters<typeof openWorkspaceChat>[1]): void => {
@@ -1077,7 +1139,7 @@ export function App(): JSX.Element {
       setIsBrowserPageOpen(false);
       openWorkspaceChat(target.workspaceId, { ctrlOrMeta: false, alt: false });
     },
-    [snapshot.sessions, openWorkspaceChat]
+    [snapshot.sessions, openWorkspaceChat, setIsBrowserPageOpen]
   );
   const onOpenLauncherRow = useCallback((): void => {
     hideStandalonePage();
@@ -1263,6 +1325,7 @@ export function App(): JSX.Element {
     launcherProject,
     launcherSideChatMode,
     openWorkspaceChat,
+    setIsBrowserPageOpen,
     selectedSession?.workspaceId,
     selectedWorkspace?.id,
     setSnapshot,
@@ -1270,6 +1333,18 @@ export function App(): JSX.Element {
     snapshot.sessions,
     snapshot.workspaces
   ]);
+
+  // ⌘§ cycles chats by when they were last used, so every route into one has to
+  // count — a sidebar click, ⌘1..9, the palette, a launch, a deeplink. They all
+  // converge on the selected workspace, which makes this one effect the whole
+  // of the bookkeeping. It reads the derived `selectedWorkspace` rather than the
+  // `selectedWorkspaceId` state because opening a chat sets grid focus and lets
+  // the workspace follow from the session; the derived value is also the one the
+  // sidebar marks current, so it matches what the cycle reads back.
+  const currentChatWorkspaceId = selectedWorkspace?.id ?? null;
+  useEffect(() => {
+    if (currentChatWorkspaceId) noteChatVisited(currentChatWorkspaceId);
+  }, [currentChatWorkspaceId]);
 
   useGlobalKeybindings({
     onMenuCommand: handleMenuCommand,
@@ -1358,18 +1433,7 @@ export function App(): JSX.Element {
         throw error;
       }
 
-      pendingSelectionRef.current = {
-        sessionId: launchedSession.id,
-        workspaceId: workspace.id
-      };
-      // Seed the snapshot immediately so the grid-reconcile effect doesn't
-      // drop the just-opened pane while refresh/status is still in flight.
-      setSnapshot((current) =>
-        mergeDashboardDelta(current, {
-          workspaces: [workspace],
-          sessions: [launchedSession]
-        })
-      );
+      registerLaunchedSession(workspace, launchedSession);
       // Full-launcher mode is a hard context switch: the old grid was hidden
       // while composing, so stale split panes (especially agent activity panes)
       // should not reappear beside the fresh session after launch.
@@ -1395,12 +1459,11 @@ export function App(): JSX.Element {
       isFullLauncherOpen,
       snapshot.projects,
       maxGridColumnsPerRow,
-      pendingSelectionRef,
+      registerLaunchedSession,
       permissionModes,
       fastModeEnabled,
       randomSessionIconEnabled,
-      goalMaxTurns,
-      setSnapshot
+      goalMaxTurns
     ]
   );
 
@@ -1458,16 +1521,7 @@ export function App(): JSX.Element {
           .catch(() => undefined);
         throw error;
       }
-      pendingSelectionRef.current = {
-        sessionId: launchedSession.id,
-        workspaceId: workspace.id
-      };
-      setSnapshot((current) =>
-        mergeDashboardDelta(current, {
-          workspaces: [workspace],
-          sessions: [launchedSession]
-        })
-      );
+      registerLaunchedSession(workspace, launchedSession);
       // Same hard context switch as launchTask: a full-launcher launch
       // replaces the hidden grid instead of splitting into it.
       const launchedFromFullLauncher = isFullLauncherOpen;
@@ -1495,11 +1549,10 @@ export function App(): JSX.Element {
       isFullLauncherOpen,
       launchModel,
       maxGridColumnsPerRow,
-      pendingSelectionRef,
+      registerLaunchedSession,
       permissionModes,
       randomSessionIconEnabled,
-      goalMaxTurns,
-      setSnapshot
+      goalMaxTurns
     ]
   );
 
@@ -1695,12 +1748,30 @@ export function App(): JSX.Element {
           onFontSizeChange: setFontSize,
           chatFontSize,
           onChatFontSizeChange: setChatFontSize,
+          fontHeaviness,
+          onFontHeavinessChange: setFontHeaviness,
           inkStrength,
           onInkStrengthChange: setInkStrength,
           backgroundIntensity,
           onBackgroundIntensityChange: setBackgroundIntensity,
           chatVerbosity,
-          onChatVerbosityChange: setChatVerbosity
+          onChatVerbosityChange: setChatVerbosity,
+          chatWidth,
+          onChatWidthChange: setChatWidth,
+          reviewPanelSide,
+          onReviewPanelSideChange: setReviewPanelSide,
+          fontFamily,
+          onFontFamilyChange: setFontFamily,
+          desktopNotificationsEnabled,
+          onDesktopNotificationsEnabledChange: setDesktopNotificationsEnabled,
+          keepAwakeEnabled,
+          onKeepAwakeEnabledChange: setKeepAwakeEnabled,
+          fastModeEnabled,
+          onFastModeEnabledChange: setFastModeEnabled,
+          turnChangesExpanded,
+          onTurnChangesExpandedChange: setTurnChangesExpanded,
+          contextIndicatorEnabled,
+          onContextIndicatorEnabledChange: setContextIndicatorEnabled
         },
         onStopSession: (sessionId) => void terminateSession(sessionId),
         onOpenWorkspace: openWorkspaceChat,
@@ -1723,6 +1794,7 @@ export function App(): JSX.Element {
       openWorkspaceChat,
       openMessagePalette,
       onOpenBrowserRow,
+      setIsBrowserPageOpen,
       setSelectedProjectId,
       themeMode,
       handleThemeModeChange,
@@ -1732,12 +1804,29 @@ export function App(): JSX.Element {
       setFontSize,
       chatFontSize,
       setChatFontSize,
+      fontHeaviness,
+      setFontHeaviness,
       inkStrength,
       setInkStrength,
       backgroundIntensity,
       setBackgroundIntensity,
       chatVerbosity,
-      setChatVerbosity
+      setChatVerbosity,
+      chatWidth,
+      reviewPanelSide,
+      setReviewPanelSide,
+      fontFamily,
+      setFontFamily,
+      desktopNotificationsEnabled,
+      setDesktopNotificationsEnabled,
+      keepAwakeEnabled,
+      setKeepAwakeEnabled,
+      fastModeEnabled,
+      setFastModeEnabled,
+      turnChangesExpanded,
+      setTurnChangesExpanded,
+      contextIndicatorEnabled,
+      setContextIndicatorEnabled
     ]
   );
 
@@ -1773,7 +1862,7 @@ export function App(): JSX.Element {
         }
       }));
     },
-    [sessionLabelById, snapshot.sessions, openWorkspaceChat]
+    [sessionLabelById, snapshot.sessions, openWorkspaceChat, setIsBrowserPageOpen]
   );
 
   // `git grep` over the active surface's checkout, backing the palette's
@@ -1843,6 +1932,7 @@ export function App(): JSX.Element {
       <LaunchSurface
         isFocused={options.isFocused ?? true}
         claimsBrowserRequests={!options.embedded}
+        chatFontSize={chatFontSize}
         fastModeEnabled={fastModeEnabled}
         hasRunningSession={projectIdsWithRunningSession.has((project ?? launcherProject)?.id ?? "")}
         pixelFieldEnabled={pixelFieldEnabled}
@@ -1881,6 +1971,7 @@ export function App(): JSX.Element {
       handleCheckoutWorkspaceCreated,
       handleProjectUpdated,
       handleLaunchModelChange,
+      chatFontSize,
       launcherResetSignal,
       launcherSideChatMode,
       launchModel,
@@ -1929,6 +2020,29 @@ export function App(): JSX.Element {
     handleDropWorkspace(draggingWorkspaceId, { row: 0, col: 0, position: "replace" });
   }, [draggingWorkspaceId, handleDropWorkspace, showWorkspaceDropTarget]);
 
+  useEffect(() => {
+    if (!showWorkspaceDropTarget || !draggingWorkspaceId) return undefined;
+    const contains = (clientX: number, clientY: number): boolean => {
+      const overlay = workspaceDropOverlayRef.current;
+      if (!overlay) return false;
+      const rect = overlay.getBoundingClientRect();
+      return clientX >= rect.left && clientX <= rect.right &&
+        clientY >= rect.top && clientY <= rect.bottom;
+    };
+    return subscribeWorkspacePointerDrag({
+      move: ({ clientX, clientY }) => {
+        setIsWorkspaceDropPreviewVisible(contains(clientX, clientY));
+      },
+      drop: ({ clientX, clientY }) => {
+        setIsWorkspaceDropPreviewVisible(false);
+        if (!contains(clientX, clientY)) return;
+        hideFullLauncher();
+        handleDropWorkspace(draggingWorkspaceId, { row: 0, col: 0, position: "replace" });
+      },
+      cancel: () => setIsWorkspaceDropPreviewVisible(false)
+    });
+  }, [draggingWorkspaceId, handleDropWorkspace, showWorkspaceDropTarget]);
+
   return (
     <PrMilestoneCelebrationContext.Provider value={prMilestoneCelebrationEnabled}>
     <SessionTimelineProvider store={timelines}>
@@ -1941,10 +2055,11 @@ export function App(): JSX.Element {
           // and is shown even when the app sidebar is collapsed.
           standalonePageOpen
             ? "var(--settings-rail-width) minmax(0, 1fr)"
-            : sidebarCollapsed
+            : effectiveSidebarCollapsed
               ? "minmax(0, 1fr)"
               : `${sidebarWidth}px minmax(0, 1fr)`,
-        ["--sidebar-width" as string]: `${sidebarWidth}px`
+        ["--sidebar-width" as string]: `${sidebarWidth}px`,
+        ["--sidebar-translucency" as string]: sidebarTranslucent ? `${sidebarTranslucency}%` : "0%"
       }}
       data-resizing={isResizing ? "true" : undefined}
       data-chat-width={String(chatWidth)}
@@ -1954,21 +2069,32 @@ export function App(): JSX.Element {
       data-usage-open={isUsageOpen ? "true" : undefined}
       data-activity-open={isActivityOpen ? "true" : undefined}
       data-browser-page-open={isBrowserPageOpen && !standalonePageOpen ? "true" : undefined}
-      data-sidebar-collapsed={sidebarCollapsed && !standalonePageOpen ? "true" : undefined}
-      data-sidebar-peek={sidebarCollapsed && sidebarPeek ? "true" : undefined}
+      data-sidebar-collapsed={effectiveSidebarCollapsed ? "true" : undefined}
+      data-sidebar-peek={effectiveSidebarCollapsed && sidebarPeek ? "true" : undefined}
+      data-sidebar-translucent={sidebarTranslucent ? "true" : undefined}
     >
       {standalonePageOpen ? null : (
         <button
           type="button"
           className="sidebar-toggle"
-          title={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
-          aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
-          onClick={toggleSidebarCollapsed}
+          title={effectiveSidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+          aria-label={effectiveSidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+          onClick={() => {
+            // An automatic fold is governed by window width. The existing
+            // toggle remains the manual preference and is intentionally not
+            // allowed to persist a responsive fold. A click at that width
+            // opens the existing hover-peek overlay instead.
+            if (sidebarResponsiveCollapsed && !sidebarCollapsed) {
+              setSidebarPeek(true);
+              return;
+            }
+            toggleSidebarCollapsed();
+          }}
         >
           <PanelLeft size={16} strokeWidth={1.75} />
         </button>
       )}
-      {sidebarCollapsed && !standalonePageOpen ? (
+      {effectiveSidebarCollapsed ? (
         <div
           className="sidebar-peek-zone"
           aria-hidden="true"
@@ -1987,10 +2113,12 @@ export function App(): JSX.Element {
         are full-screen modals and a loading spinner would flash worse
         than a 1-frame delay on the cold-open path.
       */}
-      {paletteOpen ? (
+      {paletteMotion.present ? (
         <Suspense fallback={null}>
           <CommandPalette
             open={paletteOpen}
+            motionState={paletteMotion.motionState}
+            onMotionEnd={paletteMotion.onMotionEnd}
             commands={paletteCommands}
             initialScope={paletteScope}
             onClose={() => hideCommandPalette()}
@@ -2003,9 +2131,15 @@ export function App(): JSX.Element {
         </Suspense>
       ) : null}
       <KeyboardCheatSheet open={cheatSheetOpen} onClose={() => hideKeyboardCheatSheet()} />
-      {toast ? (
-        <div className={`toast toast-${toast.kind}`} role="status">
-          <span>{toast.message}</span>
+      {toastMotion.present && paintedToast ? (
+        <div
+          className={`toast toast-${paintedToast.kind}`}
+          data-motion-state={toastMotion.motionState}
+          role="status"
+          aria-hidden={toast === null ? true : undefined}
+          onAnimationEnd={toastMotion.onMotionEnd}
+        >
+          <span>{paintedToast.message}</span>
           <button type="button" onClick={() => dismissToast()} aria-label="Dismiss">
             ×
           </button>
@@ -2015,6 +2149,10 @@ export function App(): JSX.Element {
       {detailsPopupWorkspace && detailsPopupSession ? (
         <DetailsPopup
           approvals={snapshot.approvals}
+          chatFontSize={chatFontSize}
+          defaultToolCallsDisplay={toolCallsDisplay}
+          defaultToolCallGroupsExpanded={toolCallGroupsExpanded}
+          thinkingDisplay={thinkingDisplay}
           onResolveApproval={resolveApproval}
           onAttachToChat={detailsPopup?.attachToChat}
           onCancelQueuedMessage={cancelQueuedMessage}
@@ -2109,10 +2247,16 @@ export function App(): JSX.Element {
                 onChatVerbosityChange={setChatVerbosity}
                 sidebarPriorityVisible={sidebarPriorityVisible}
                 onSidebarPriorityVisibleChange={setSidebarPriorityVisible}
+                sidebarTranslucent={sidebarTranslucent}
+                onSidebarTranslucentChange={setSidebarTranslucent}
+                sidebarTranslucency={sidebarTranslucency}
+                onSidebarTranslucencyChange={setSidebarTranslucency}
                 workspaceCardVisible={workspaceCardVisible}
                 onWorkspaceCardVisibleChange={setWorkspaceCardVisible}
                 pixelFieldEnabled={pixelFieldEnabled}
                 onPixelFieldEnabledChange={setPixelFieldEnabled}
+                contextIndicatorEnabled={contextIndicatorEnabled}
+                onContextIndicatorEnabledChange={setContextIndicatorEnabled}
                 prMilestoneCelebrationEnabled={prMilestoneCelebrationEnabled}
                 onPrMilestoneCelebrationEnabledChange={setPrMilestoneCelebrationEnabled}
                 chatWidth={chatWidth}
@@ -2135,12 +2279,16 @@ export function App(): JSX.Element {
                 onFontSizeChange={setFontSize}
                 chatFontSize={chatFontSize}
                 onChatFontSizeChange={setChatFontSize}
+                fontHeaviness={fontHeaviness}
+                onFontHeavinessChange={setFontHeaviness}
                 inkStrength={inkStrength}
                 onInkStrengthChange={setInkStrength}
                 backgroundIntensity={backgroundIntensity}
                 onBackgroundIntensityChange={setBackgroundIntensity}
                 themeMode={themeMode}
                 onThemeModeChange={handleThemeModeChange}
+                browserThemeMode={browserThemeMode}
+                onBrowserThemeModeChange={setBrowserThemeMode}
                 accentId={accentId}
                 onAccentChange={handleAccentChange}
                 userBubbleTint={userBubbleTint}
@@ -2158,6 +2306,8 @@ export function App(): JSX.Element {
                 onPermissionModeChange={(provider, mode) => setPermissionModes((current) => ({ ...current, [provider]: mode }))}
                 newSessionMode={newSessionMode}
                 onNewSessionModeChange={setNewSessionMode}
+                followUpDelivery={followUpDelivery}
+                onFollowUpDeliveryChange={setFollowUpDelivery}
                 randomSessionIconEnabled={randomSessionIconEnabled}
                 onRandomSessionIconEnabledChange={setRandomSessionIconEnabled}
                 desktopNotificationsEnabled={desktopNotificationsEnabled}
@@ -2205,12 +2355,14 @@ export function App(): JSX.Element {
               defaultToolCallGroupsExpanded={toolCallGroupsExpanded}
               thinkingDisplay={thinkingDisplay}
               defaultTurnChangesExpanded={turnChangesExpanded}
+              defaultFollowUpDelivery={followUpDelivery}
               goalEnabled={goalEnabled}
               goalMaxTurns={goalMaxTurns}
               revertEnabled={revertEnabled}
               fastModeEnabled={fastModeEnabled}
               workspaceCardVisible={workspaceCardVisible}
               onWorkspaceCardVisibleChange={setWorkspaceCardVisible}
+              contextIndicatorEnabled={contextIndicatorEnabled}
               rightPanelToggleSignal={rightPanelToggleSignal}
               debugLogToggleSignal={debugLogToggleSignal}
               maxColumnsPerRow={maxGridColumnsPerRow}
@@ -2248,6 +2400,7 @@ export function App(): JSX.Element {
         </div>
         {showWorkspaceDropTarget ? (
           <div
+            ref={workspaceDropOverlayRef}
             className="workspace-drop-overlay"
             aria-hidden="true"
             onDragOver={handleWorkspaceSurfaceDragOver}

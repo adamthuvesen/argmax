@@ -8,8 +8,9 @@ import {
   getUsageUiState,
   markUsageRemainingHoldOver,
   patchUsageUiState,
+  requestUsageRemaining,
+  requestUsageSummary,
   setCachedUsageRemaining,
-  setCachedUsageSummary,
   usageRemainingHasSettled
 } from "../../lib/ledgerPageState.js";
 import { SegmentedControl, SettingsListPicker } from "../settings/settingsPrimitives.js";
@@ -118,6 +119,8 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
   const [metric, setMetric] = useState<UsageMetric>(cachedUi.metric);
   /** The provider the page is narrowed to; null is every provider. */
   const [provider, setProvider] = useState<ProviderId | null>(cachedUi.provider);
+  const providerRef = useRef(provider);
+  providerRef.current = provider;
   const [summary, setSummary] = useState<UsageSummary | null>(() =>
     getCachedUsageSummary(cachedUi.usageWindow, cachedUi.provider, timeZoneRef.current)
   );
@@ -139,9 +142,10 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
       const request = requestRef.current + 1;
       requestRef.current = request;
       try {
-        const next = await fetchSummary(target, scope, timeZoneRef.current);
+        const next = await requestUsageSummary(target, scope, timeZoneRef.current, () =>
+          fetchSummary(target, scope, timeZoneRef.current)
+        );
         if (requestRef.current !== request) return;
-        setCachedUsageSummary(target, scope, timeZoneRef.current, next);
         setSummary(next);
         setError(null);
       } catch (cause) {
@@ -156,9 +160,8 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
     const request = remainingRequestRef.current + 1;
     remainingRequestRef.current = request;
     try {
-      const next = await fetchRemaining();
+      const next = await requestUsageRemaining(fetchRemaining);
       if (remainingRequestRef.current !== request) return;
-      setCachedUsageRemaining(next, null);
       setRemaining(next);
       setRemainingError(null);
     } catch (cause) {
@@ -179,7 +182,7 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
   // a warm sweep is sub-second, and a skeleton flash on every row press would
   // make the filter feel like navigation.
   useEffect(() => {
-    setSummary(getCachedUsageSummary(usageWindow, provider, timeZoneRef.current));
+    setSummary(getCachedUsageSummary(usageWindow, providerRef.current, timeZoneRef.current));
   }, [usageWindow]);
 
   useEffect(() => {
@@ -300,7 +303,6 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
               <UsageRemainingCard
                 remaining={remaining}
                 error={remainingError}
-                timeZone={timeZoneRef.current}
                 onRefresh={() => void loadRemaining()}
               />
             ) : null}

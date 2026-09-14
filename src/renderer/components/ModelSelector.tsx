@@ -4,6 +4,7 @@ import {
   clampEffort,
   DEFAULT_REASONING_EFFORT,
   PROVIDER_MODELS,
+  REASONING_EFFORTS,
   reasoningEffortsForModel,
   type ProviderModelSelection,
   type ReasoningEffort
@@ -141,16 +142,24 @@ export function ModelSelector({
   fastModeEnabled = false,
   onFastModeEnabledChange,
   onChange,
+  onOpenChange,
+  open,
   provider,
   withEffortSlider = false,
+  effortOpen,
+  onEffortOpenChange,
   value
 }: {
   ariaLabel: string;
   fastModeEnabled?: boolean;
   onFastModeEnabledChange?: (enabled: boolean) => void;
   onChange: (model: ProviderModelSelection) => void;
+  onOpenChange?: (open: boolean) => void;
+  open?: boolean;
   provider: ProviderId;
   withEffortSlider?: boolean;
+  effortOpen?: boolean;
+  onEffortOpenChange?: (open: boolean) => void;
   value: ProviderModelSelection;
 }): JSX.Element {
   const options: Array<ChipModelOption<ProviderModelSelection>> = PROVIDER_MODELS[provider].map((model) => ({
@@ -176,9 +185,13 @@ export function ModelSelector({
       isSelected={(model) => model.modelId === value.modelId}
       onChange={onChange}
       onFastModeEnabledChange={onFastModeEnabledChange}
+      onOpenChange={onOpenChange}
+      open={open}
       options={options}
       reasoningEffortsForValue={(model) => reasoningEffortsForModel(provider, model.modelId)}
       withEffortSlider={withEffortSlider}
+      effortOpen={effortOpen}
+      onEffortOpenChange={onEffortOpenChange}
       supportsFastModeForValue={(model) => modelSupportsFastMode({ provider, modelId: model.modelId })}
       value={value}
     />
@@ -264,6 +277,30 @@ type EffortPosStyle = CSSProperties & { "--effort-pos"?: string };
 
 // Stop labels under the rail. Short so six of them fit the popover width;
 // the head above carries the full name of the live draft.
+// Heat tiers the popover exposes to CSS (cursor glow, surge pulse, the ultra
+// shake and label glitch). The canvas ramps continuously; these are the
+// discrete cues around it.
+const EFFORT_HEAT_TIER: Partial<Record<ReasoningEffort, "high" | "xhigh" | "max" | "ultra">> = {
+  high: "high",
+  xhigh: "xhigh",
+  max: "max",
+  ultra: "ultra"
+};
+
+// Heat of a continuous thumb position over a provider's `efforts`, on the
+// canonical low→ultra scale (0..1). A provider that stops at Max puts Max at
+// the right end of its rail, but the field burns like Max, not like Ultra —
+// the same effort looks the same on every provider.
+function canonicalHeat(pos: number, efforts: readonly ReasoningEffort[]): number {
+  const top = REASONING_EFFORTS.length - 1;
+  const lower = efforts[Math.floor(pos)];
+  const upper = efforts[Math.ceil(pos)];
+  if (!lower || !upper) return 0;
+  const from = REASONING_EFFORTS.indexOf(lower) / top;
+  const to = REASONING_EFFORTS.indexOf(upper) / top;
+  return from + (to - from) * (pos - Math.floor(pos));
+}
+
 const SHORT_EFFORT_LABELS: Record<ReasoningEffort, string> = {
   low: "Low",
   medium: "Med",
@@ -334,6 +371,23 @@ function EffortSlider({
     if (!dragging) setPos(index);
   }, [index, dragging]);
 
+  // The track takes focus on open so the arrow keys move the effort at once,
+  // whether the slider was opened by a click or by ⌘⇧E from the composer.
+  useEffect(() => {
+    if (open) trackRef.current?.focus({ preventScroll: true });
+  }, [open]);
+
+  // A host can open the picker without the chip's click, which is where the
+  // draft is reset — a shortcut that reopens it would otherwise show, and a
+  // later dismiss commit, a value the user had already discarded. Reopening
+  // mid-drag also never runs the drag cleanup, so clear that here too.
+  useEffect(() => {
+    if (open) {
+      setDraft(value);
+      setDragging(false);
+    }
+  }, [open, value]);
+
   // Suppress page-wide text selection for the duration of a drag — otherwise a
   // drag past the track edge selects the composer text behind the popover.
   useEffect(() => {
@@ -347,6 +401,7 @@ function EffortSlider({
   }, [dragging]);
 
   const fraction = maxIndex === 0 ? 0 : pos / maxIndex;
+  const heat = canonicalHeat(pos, efforts);
 
   const selectIndex = (next: number): void => {
     const clamped = Math.min(maxIndex, Math.max(0, next));
@@ -386,8 +441,9 @@ function EffortSlider({
           }
         }}
       >
+        {/* No caret: the effort label sits inside the shared model pill, and two
+            carets in one pill only ask which half is the control. */}
         <span className="model-picker-label">{effortLabel(value)}</span>
-        <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />
       </button>
       {open && (
         <div
@@ -395,6 +451,7 @@ function EffortSlider({
           data-type-scale="chrome"
           role="dialog"
           aria-label={ariaLabel}
+          data-heat={EFFORT_HEAT_TIER[draft]}
           ref={flyout.setPopover}
           style={flyout.floatingStyles}
         >
@@ -446,7 +503,7 @@ function EffortSlider({
             onPointerCancel={() => setDragging(false)}
           >
             <div className="effort-slider-fieldclip">
-              <EffortPixelField level={fraction} flowRate={fraction} />
+              <EffortPixelField level={fraction} heat={heat} />
             </div>
             <div
               className="effort-slider-cursor"
@@ -610,7 +667,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   };
 
   return (
-    <div className="model-picker-cluster">
+    <div className={`model-picker-cluster${withEffortSlider ? " model-picker-cluster--chip" : ""}`}>
     <div
       className={`project-picker-anchor model-picker-anchor${anchorClassName ? ` ${anchorClassName}` : ""}`}
       ref={flyout.setAnchor}
@@ -629,9 +686,10 @@ function ChipModelPicker<T extends ProviderModelSelection>({
           <Zap size={14} aria-hidden="true" className="model-picker-speed-icon" />
         ) : null}
         <span className="model-picker-label">{value.label}</span>
-        {/* Without the standalone effort chip beside it, the model chip is the
-            end of the control and carries the caret itself. */}
-        {showEffortSlider ? null : (
+        {/* In a composer the pill around model + effort is the affordance, the
+            way the phone draws it — no caret on either half. Settings has no
+            pill and no effort chip, so the model chip carries the caret. */}
+        {withEffortSlider ? null : (
           <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />
         )}
       </button>

@@ -16,6 +16,7 @@ pub mod ntfy;
 pub mod operations;
 pub mod server;
 pub mod signal;
+pub mod transcript_trim;
 pub mod ws;
 
 use std::path::Path;

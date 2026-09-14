@@ -40,10 +40,11 @@ struct NewChatSheet: View {
     @StateObject private var images = ComposerImages()
     @State private var photoPicks: [PhotosPickerItem] = []
     @StateObject private var dictation = Dictation()
-    /// The draft as it stood when the mic was opened. Partial results rewrite
-    /// the tail after it rather than stacking on each other.
-    @State private var draftBeforeDictation = ""
-    @FocusState private var promptFocused: Bool
+    /// The dictated tail as it was last written into the field. Each update
+    /// replaces it rather than rebuilding the whole draft, so typing and
+    /// editing while the mic is open survive the next partial result.
+    @State private var dictatedTail = ""
+    @State private var promptFocused = false
     @Environment(\.accentTint) private var accent
     @Environment(\.mascotVisible) private var mascotVisible
 
@@ -98,7 +99,7 @@ struct NewChatSheet: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             if let failure {
                 Text(failure)
-                    .font(.footnote)
+                    .typeStyle(.footnote)
                     .foregroundStyle(Theme.rose)
                     .screenGutter()
                     .padding(.bottom, Spacing.snug)
@@ -129,12 +130,31 @@ struct NewChatSheet: View {
 
     /// One line a day, so it reads as the app's voice rather than a slot
     /// machine. A side chat has no checkout to speak of, so it gets its own.
-    static func greeting(for mode: NewChatMode) -> String {
-        let lines = mode == .sideChat
-            ? ["Ask away.", "No checkout, no ceremony.", "A quiet corner to think in."]
-            : ["Clean slate.", "What are we building?", "Say the word.", "Fresh worktree, no history yet.", "Ready when you are."]
-        let day = Calendar.current.ordinality(of: .day, in: .era, for: Date()) ?? 0
-        return lines[day % lines.count]
+    /// Two worktree lines are time-of-day instead: Stockholm's clock, not the
+    /// device's, since the fleet the app manages runs on that clock.
+    static func greeting(for mode: NewChatMode, now: Date = Date()) -> String {
+        guard mode != .sideChat else {
+            let lines = ["Ask away.", "No checkout, no ceremony.", "A quiet corner to think in.", "Scratch paper.", "No branch, no strings."]
+            let day = Calendar.current.ordinality(of: .day, in: .era, for: now) ?? 0
+            return lines[day % lines.count]
+        }
+
+        var stockholm = Calendar(identifier: .gregorian)
+        stockholm.timeZone = TimeZone(identifier: "Europe/Stockholm") ?? .current
+        let hour = stockholm.component(.hour, from: now)
+
+        switch hour {
+        case 5..<10:
+            return "Good morning, coffee and code?"
+        case 12..<14:
+            return "Midday, back at it?"
+        case 21..<23:
+            return "Evening, night owl?"
+        default:
+            let lines = ["What's on your mind today?", "What are we building?", "Clean slate.", "Go on, then.", "The ticket nobody wants.", "Ready to go."]
+            let day = stockholm.ordinality(of: .day, in: .era, for: now) ?? 0
+            return lines[day % lines.count]
+        }
     }
 
     // MARK: - The choices, and the one action
@@ -148,7 +168,7 @@ struct NewChatSheet: View {
         VStack(spacing: Spacing.row) {
             if mascotVisible { FoxMark(size: 72) }
             Text(Self.greeting(for: mode))
-                .font(.body.weight(.medium))
+                .typeStyle(.body, weight: .medium)
                 .foregroundStyle(Theme.ink.opacity(0.85))
         }
         .allowsHitTesting(false)
@@ -162,18 +182,21 @@ struct NewChatSheet: View {
             if !images.isEmpty {
                 ComposerImageStrip(images: images)
             }
-            TextField(
+            ComposerTextInput(
                 mode == .sideChat ? "Ask anything" : "Describe the task",
                 text: $prompt,
-                axis: .vertical
-            )
-            .font(.body)
-            .foregroundStyle(Theme.ink)
-            .tint(accent.color)
-            .lineLimit(2...6)
-            .focused($promptFocused)
-            .submitLabel(.return)
-            .accessibilityLabel("Task")
+                accessibilityLabel: "Task",
+                lineLimits: 2...6,
+                focused: $promptFocused
+            ) { providers in
+                Task {
+                    failure = await images.attach(
+                        pasted: providers,
+                        storeKey: attachmentStoreKey,
+                        client: client
+                    )
+                }
+            }
             HStack(alignment: .center, spacing: Spacing.snug) {
                 AttachImageButton(picks: $photoPicks, busy: images.attaching)
                 HStack(spacing: Spacing.snug) {
@@ -182,8 +205,8 @@ struct NewChatSheet: View {
                 .composerChipSurface()
                 Spacer(minLength: Spacing.tight)
                 if dictation.available {
-                    DictateButton(dictation: dictation, draft: { prompt }) { draft in
-                        draftBeforeDictation = draft
+                    DictateButton(dictation: dictation) {
+                        dictatedTail = ""
                         failure = nil
                     }
                 }
@@ -199,12 +222,13 @@ struct NewChatSheet: View {
             }
         }
         .onChange(of: dictation.heard) { _, heard in
-            prompt = draftWithDictation(draftBeforeDictation, heard: heard)
+            prompt = draftWithDictation(prompt, heard: heard, replacing: dictatedTail)
+            dictatedTail = heard
         }
         .onChange(of: dictation.failure) { _, reported in
             if let reported { failure = reported }
         }
-        .onDisappear { dictation.stop() }
+        .onDisappear { dictation.discard() }
     }
 
     /// Where pre-launch images are stored: there is no session yet, so they
@@ -241,14 +265,14 @@ struct NewChatSheet: View {
     private var modelEffortControl: some View {
         ComposerChipButton { picking = .model } content: {
             Text(model.label)
-                .font(.subheadline)
+                .typeStyle(.subheadline)
                 .foregroundStyle(Theme.ink)
         }
         .accessibilityLabel("Model, \(model.label)")
         if selectedModel?.supportsReasoningEffort == true {
             ComposerChipButton { picking = .effort } content: {
                 Text(catalog.label(for: effortBinding.wrappedValue))
-                    .font(.subheadline)
+                    .typeStyle(.subheadline)
                     .foregroundStyle(Theme.muted)
             }
             .accessibilityLabel("Effort, \(catalog.label(for: effortBinding.wrappedValue))")
@@ -264,7 +288,7 @@ struct NewChatSheet: View {
                     ProgressView().tint(Theme.ground)
                 } else {
                     Image(systemName: "arrow.up")
-                        .font(.body.weight(.semibold))
+                        .typeSymbol(.body, weight: .semibold)
                         .foregroundStyle(Theme.ground)
                 }
             }
@@ -447,13 +471,27 @@ struct NewChatSheet: View {
 
     // MARK: - Starting
 
+    /// A lost socket or a reply the host never confirmed leaves the launch's
+    /// outcome unknown; archiving on one would terminate a chat that may be
+    /// running. Only a definite host-side failure says no session started.
+    private static func outcomeIsAmbiguous(_ error: Error) -> Bool {
+        guard case .host(_, let subCode, _)? = error as? BridgeError else { return false }
+        return subCode == "REMOTE_OUTCOME_UNKNOWN" || subCode == "REMOTE_RESPONSE_TIMEOUT"
+    }
+
     private func start() async {
         guard let plan, !launching else { return }
         launching = true
         failure = nil
         // The words are already in the prompt; leaving the mic open past the
         // launch would keep dictating into a sheet that is closing.
-        dictation.stop()
+        dictation.discard()
+        // Drop the keyboard here rather than letting the push carry it: the
+        // transcript this lands on avoids the keyboard, so a field that is
+        // still first responder when the screen swaps opens the chat with the
+        // web view already shrunk and the composer lifted over it. Resigning
+        // before the round trip gives the keyboard the whole launch to leave.
+        promptFocused = false
 
         do {
             let workspace = try await client.createWorkspace(plan.creation)
@@ -462,11 +500,12 @@ struct NewChatSheet: View {
                 session = try await client.launchSession(plan.launchInput(workspaceID: workspace.id))
             } catch {
                 // No session started, so the workspace and its worktree would
-                // sit stranded with no explanation. A lost socket is the
-                // exception: the host may have launched fine and only the
-                // reply went missing, and archiving there would kill a live
-                // chat and delete its worktree.
-                if (error as? BridgeError) != .disconnected {
+                // sit stranded with no explanation. An ambiguous outcome is
+                // the exception: a lost socket or a timed-out reply means the
+                // host may have launched fine, and archiving there would kill
+                // a live chat and delete its worktree. Leave it for the
+                // recovery screen to judge.
+                if !Self.outcomeIsAmbiguous(error) {
                     _ = try? await client.archiveWorkspace(workspaceID: workspace.id, force: true)
                 }
                 throw error
@@ -479,7 +518,7 @@ struct NewChatSheet: View {
             Haptics.success()
             onLaunched(workspace, session)
         } catch {
-            Haptics.warning()
+            Haptics.error()
             failure = hostFailureMessage(error)
             launching = false
         }
@@ -512,15 +551,15 @@ private struct ChoiceRow: View {
         Button(action: action) {
             HStack(spacing: Spacing.row) {
                 Image(systemName: systemImage)
-                    .font(.body.weight(.medium))
+                    .typeSymbol(.body, weight: .medium)
                     .foregroundStyle(Theme.muted)
                     .frame(width: 22, alignment: .center)
                 Text(value)
-                    .font(mono ? .body.monospaced() : .body)
+                    .typeStyle(.body, mono: mono)
                     .foregroundStyle(Theme.ink)
                     .lineLimit(1)
                 Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption.weight(.semibold))
+                    .typeSymbol(.caption, weight: .semibold)
                     .foregroundStyle(Theme.muted)
                 Spacer(minLength: 0)
             }

@@ -1,0 +1,44 @@
+[
+  {
+    "additions": 29,
+    "deletions": 0,
+    "path": "ios/Argmax/Sources/Bridge/BridgeClient.swift",
+    "staged": false,
+    "status": "M"
+  },
+  {
+    "additions": 51,
+    "deletions": 0,
+    "path": "ios/Argmax/Sources/Bridge/Channels.swift",
+    "staged": false,
+    "status": "M"
+  },
+  {
+    "additions": 15,
+    "deletions": 0,
+    "path": "ios/Argmax/Sources/Chats/ChatListView.swift",
+    "staged": false,
+    "status": "M"
+  },
+  {
+    "additions": 35,
+    "deletions": 0,
+    "path": "ios/Argmax/Sources/Design/Theme.swift",
+    "staged": false,
+    "status": "M"
+  },
+  {
+    "additions": 167,
+    "deletions": 0,
+    "path": "ios/Argmax/Sources/Bridge/ReviewModels.swift",
+    "staged": false,
+    "status": "??"
+  },
+  {
+    "additions": 117,
+    "deletions": 0,
+    "path": "ios/Argmax/Tests/DiffParserTests.swift",
+    "staged": false,
+    "status": "??"
+  }
+]

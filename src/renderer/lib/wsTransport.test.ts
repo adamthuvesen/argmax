@@ -14,9 +14,11 @@ const MAX_BACKOFF_MS = 8_000;
 /** Heartbeat cadence and pong deadline, mirroring the transport's constants. */
 const HEARTBEAT_MS = 20_000;
 const PONG_TIMEOUT_MS = 8_000;
+const TRANSCRIPT_HTTP_TIMEOUT_MS = 60_000;
 /** Offline-queue deadline and ceiling, mirroring the transport's constants. */
 const QUEUE_TIMEOUT_MS = 15_000;
 const MAX_QUEUED_REQUESTS = 64;
+type TestFetch = (target: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 class FakeSocket implements RemoteSocket {
   readonly sent: string[] = [];
@@ -245,6 +247,139 @@ describe("wsTransport", () => {
 
     await expect(pending).rejects.toThrow("worktree is dirty");
     await expect(pending).rejects.toMatchObject({ code: "SERVICE_ERROR", sub_code: "GIT_FAILED" });
+  });
+
+  it("retries an oversized transcript response over authenticated HTTP without changing its input", async () => {
+    const { connect, sockets } = fakeTransportSeam();
+    const answer = "x".repeat(4 * 1024 * 1024 + 1);
+    const responseBody = JSON.stringify({ ok: { events: [{ message: answer }] } });
+    const fetch = vi.fn<TestFetch>(() => Promise.resolve({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(JSON.parse(responseBody) as unknown)
+    } as Response));
+    const transport = createWsTransport({
+      connect,
+      fetch,
+      url: "wss://mac.example:8790/api/ws?ignored=true"
+    });
+    const socket = sockets[0];
+    socket.authenticate();
+    const input = { sessionId: "s-1", changeCursor: 42, limit: 500 };
+
+    const pending = transport.invoke<{ events: Array<{ message: string }> }>("session:events-since", input);
+    socket.deliver({
+      type: "response",
+      id: 1,
+      error: {
+        code: "SERVICE_ERROR",
+        sub_code: "REMOTE_RESPONSE_TOO_LARGE",
+        message: "fetch this transcript over HTTP"
+      }
+    });
+
+    await expect(pending).resolves.toEqual({ events: [{ message: answer }] });
+    expect(responseBody.length).toBeGreaterThan(4 * 1024 * 1024);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [target, init] = fetch.mock.calls[0];
+    expect(target).toBe("https://mac.example:8790/api/transcript");
+    expect(init).toMatchObject({
+      method: "POST",
+      headers: {
+        Authorization: "Bearer secret-token",
+        "Content-Type": "application/json"
+      }
+    });
+    expect(typeof init?.body).toBe("string");
+    if (typeof init?.body !== "string") throw new Error("expected a JSON request body");
+    expect(JSON.parse(init.body)).toEqual({ channel: "session:events-since", input });
+  });
+
+  it("returns HTTP transcript errors and never falls back for a mutation", async () => {
+    const first = fakeTransportSeam();
+    const fetch = vi.fn<TestFetch>(() => Promise.resolve({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({
+        error: { code: "SERVICE_ERROR", sub_code: "TRANSCRIPT_FAILED", message: "transcript failed" }
+      })
+    } as Response));
+    const reads = createWsTransport({ connect: first.connect, fetch });
+    first.sockets[0].authenticate();
+    const read = reads.invoke("session:agent-events", { sessionId: "s-1", agentId: "a-1" });
+    first.sockets[0].deliver({
+      type: "response", id: 1,
+      error: { code: "SERVICE_ERROR", sub_code: "REMOTE_RESPONSE_TOO_LARGE", message: "too large" }
+    });
+    await expect(read).rejects.toMatchObject({
+      code: "SERVICE_ERROR", sub_code: "TRANSCRIPT_FAILED", message: "transcript failed"
+    });
+
+    const second = fakeTransportSeam();
+    const mutations = createWsTransport({ connect: second.connect, fetch });
+    second.sockets[0].authenticate();
+    const mutation = mutations.invoke("workspaces:archive", { workspaceId: "w-1" });
+    second.sockets[0].deliver({
+      type: "response", id: 1, operationSettled: true,
+      error: { code: "SERVICE_ERROR", sub_code: "REMOTE_RESPONSE_TOO_LARGE", message: "too large" }
+    });
+    await expect(mutation).rejects.toMatchObject({ sub_code: "REMOTE_RESPONSE_TOO_LARGE" });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels an in-flight transcript fallback when its socket reconnects", async () => {
+    vi.useFakeTimers();
+    const { connect, sockets } = fakeTransportSeam();
+    let signal: AbortSignal | undefined;
+    const fetch = vi.fn((_target: RequestInfo | URL, init?: RequestInit) => {
+      signal = init?.signal ?? undefined;
+      return new Promise<Response>(() => undefined);
+    });
+    const transport = createWsTransport({ connect, fetch });
+    sockets[0].authenticate();
+    const read = transport.invoke("session:events-since", { sessionId: "s-1" });
+    sockets[0].deliver({
+      type: "response", id: 1,
+      error: { code: "SERVICE_ERROR", sub_code: "REMOTE_RESPONSE_TOO_LARGE", message: "too large" }
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    sockets[0].close();
+
+    await expect(read).rejects.toThrow("Argmax remote connection lost");
+    expect(signal?.aborted).toBe(true);
+  });
+
+  it("times out a stalled transcript fallback with a response timeout error", async () => {
+    vi.useFakeTimers();
+    const { connect, sockets } = fakeTransportSeam();
+    const fetch = vi.fn<TestFetch>((target, init) => {
+      void target;
+      return new Promise<Response>((resolve, reject) => {
+        void resolve;
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+      });
+    });
+    const transport = createWsTransport({ connect, fetch });
+    sockets[0].authenticate();
+    const read = transport.invoke("session:events-since", { sessionId: "s-1", changeCursor: 42 });
+    sockets[0].deliver({
+      type: "response", id: 1,
+      error: { code: "SERVICE_ERROR", sub_code: "REMOTE_RESPONSE_TOO_LARGE", message: "too large" }
+    });
+
+    const rejected = expect(read).rejects.toMatchObject({
+      code: "SERVICE_ERROR",
+      sub_code: "REMOTE_RESPONSE_TIMEOUT",
+      message: "The Mac did not confirm this request in time."
+    });
+    for (let elapsed = 0; elapsed < TRANSCRIPT_HTTP_TIMEOUT_MS; elapsed += HEARTBEAT_MS) {
+      await vi.advanceTimersByTimeAsync(HEARTBEAT_MS);
+      sockets[0].deliver({ type: "pong" });
+    }
+
+    await rejected;
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it("fans event frames out to channel subscribers until they unsubscribe", () => {

@@ -462,9 +462,9 @@ const editorHighlightStyle = HighlightStyle.define([
   { tag: [t.name, t.variableName, t.deleted, t.propertyName, t.namespace], color: "var(--text)" },
   { tag: [t.operator, t.punctuation, t.separator, t.derefOperator], color: "var(--muted-strong)" },
   { tag: t.tagName, color: "var(--syntax-keyword)" },
-  { tag: t.heading, fontWeight: "600", color: "var(--text)" },
+  { tag: t.heading, fontWeight: "calc(600 + var(--font-weight-offset))", color: "var(--text)" },
   { tag: t.invalid, color: "var(--syntax-keyword)" },
-  { tag: t.strong, fontWeight: "600" },
+  { tag: t.strong, fontWeight: "calc(600 + var(--font-weight-offset))" },
   { tag: t.emphasis, fontStyle: "italic" },
   { tag: t.strikethrough, textDecoration: "line-through" }
 ]);

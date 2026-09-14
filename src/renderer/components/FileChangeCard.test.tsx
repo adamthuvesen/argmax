@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("../lib/highlighter.js", () => ({
   highlightLine: (content: string) => [{ content }],
   useHighlighterReady: () => true,
+  useHighlightThemeAppearance: () => "light",
   langFromPath: (path: string | null | undefined) => (path?.endsWith(".ts") ? "typescript" : null)
 }));
 

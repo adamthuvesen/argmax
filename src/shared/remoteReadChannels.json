@@ -28,5 +28,7 @@
   "system:debug-snapshot",
   "system:list-detected-ides",
   "learnings:list",
-  "prs:list-for-session"
+  "sources:list",
+  "prs:list-for-session",
+  "browser:chrome-profiles"
 ]

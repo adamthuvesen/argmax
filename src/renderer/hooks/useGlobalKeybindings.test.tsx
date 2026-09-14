@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetChatCycle } from "../lib/chatCycle.js";
 import { useGlobalKeybindings } from "./useGlobalKeybindings.js";
 
 describe("useGlobalKeybindings", () => {
@@ -9,6 +10,8 @@ describe("useGlobalKeybindings", () => {
   });
 
   beforeEach(() => {
+    // Chat recency is module state; without this it leaks between cases.
+    resetChatCycle();
     document.body.innerHTML = `
       <div class="project-list">
         <div class="session-row" data-workspace-id="workspace-1"></div>
@@ -45,6 +48,67 @@ describe("useGlobalKeybindings", () => {
     fireEvent.keyDown(textarea, { key: "1", metaKey: true });
     expect(onCloseSettings).toHaveBeenCalledTimes(2);
     expect(onSelectWorkspace).toHaveBeenCalledWith("workspace-1");
+  });
+
+  // The recency order itself is covered in lib/chatCycle.test.ts. This is the
+  // wiring: that the chord steps at all on either Mac keyboard — ⌘§ sends
+  // `IntlBackslash` on an ISO one, ⌘` sends `Backquote` on an ANSI one — that
+  // Shift reverses it, and that releasing Cmd ends a held traversal.
+  it("cycles chats on Cmd and the key under Esc, ending the traversal when Cmd comes up", () => {
+    const onSelectWorkspace = vi.fn();
+    const onCloseSettings = vi.fn();
+    renderHook(() =>
+      useGlobalKeybindings({
+        onMenuCommand: vi.fn(),
+        onOpenFilePalette: vi.fn(),
+        onOpenSearch: vi.fn(),
+        onOpenContentSearch: vi.fn(),
+        onSelectWorkspace,
+        onCloseSettings
+      })
+    );
+
+    // Nothing selected (launcher) and nothing used yet: forward lands on the
+    // first row, back on the last.
+    fireEvent.keyDown(document, { key: "§", code: "IntlBackslash", metaKey: true });
+    expect(onSelectWorkspace).toHaveBeenLastCalledWith("workspace-1");
+    fireEvent.keyDown(document, { key: "°", code: "IntlBackslash", metaKey: true, shiftKey: true });
+    expect(onSelectWorkspace).toHaveBeenLastCalledWith("workspace-3");
+    expect(onCloseSettings).toHaveBeenCalledTimes(2);
+
+    // Releasing Cmd promotes workspace-3, so the next press toggles back to
+    // the row the traversal started from rather than stepping on to the next.
+    fireEvent.keyUp(document, { key: "Meta" });
+    const rows = document.querySelectorAll(".session-row");
+    rows[2].innerHTML = '<a aria-current="true"></a>';
+    fireEvent.keyDown(document, { key: "`", code: "Backquote", metaKey: true });
+    expect(onSelectWorkspace).toHaveBeenLastCalledWith("workspace-1");
+  });
+
+  it("leaves Cmd+Backquote to the native menu when the sidebar is empty", () => {
+    const onSelectWorkspace = vi.fn();
+    document.body.innerHTML = '<div class="project-list"></div>';
+    renderHook(() =>
+      useGlobalKeybindings({
+        onMenuCommand: vi.fn(),
+        onOpenFilePalette: vi.fn(),
+        onOpenSearch: vi.fn(),
+        onOpenContentSearch: vi.fn(),
+        onSelectWorkspace,
+        onCloseSettings: vi.fn()
+      })
+    );
+
+    const event = new KeyboardEvent("keydown", {
+      key: "§",
+      code: "Backquote",
+      metaKey: true,
+      cancelable: true,
+      bubbles: true
+    });
+    document.dispatchEvent(event);
+    expect(onSelectWorkspace).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
   });
 
   it("resolves digit shortcuts from event.code fallback (Digit1..9 / Numpad1..9)", () => {

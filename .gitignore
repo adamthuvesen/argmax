@@ -8,6 +8,7 @@ release/
 *.sqlite-wal
 .DS_Store
 argmax-icons.local.json
+NOTES.local.md
 .claude/
 maestro/
 COMPETITIVE_ANALYSIS.md

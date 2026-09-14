@@ -5,20 +5,24 @@ import type { ProviderId } from "../../../shared/types.js";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard.js";
 import { PROVIDER_SETUP, PROVIDER_SETUP_ORDER } from "../../lib/providerSetup.js";
 import { ConnectionCatalog } from "../ConnectionCatalog.js";
+import { EngramSettings } from "./EngramSettings.js";
 import { RemoteSettings } from "./RemoteSettings.js";
 import { SettingGroup, SettingNote, SettingRow } from "./settingsPrimitives.js";
+import { SlidingTabIndicator } from "../SlidingTabIndicator.js";
 
 export function IntegrationsSettings(): JSX.Element {
   const [provider, setProvider] = useState<ProviderId>("claude");
   const setup = PROVIDER_SETUP[provider];
   return (
     <>
+      <EngramSettings provider={provider} onProviderChange={setProvider} />
       <SettingGroup id="settings-mcp" label="Connections">
         <SettingNote>
           MCP servers, plugins, and provider connectors available to each agent. Authentication is
           checked by the provider when it exposes that status.
         </SettingNote>
         <div className="connection-provider-tabs" role="tablist" aria-label="Connection provider">
+          <SlidingTabIndicator activeKey={provider} />
           {PROVIDER_SETUP_ORDER.map((providerId) => (
             <button
               type="button"

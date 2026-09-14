@@ -32,7 +32,8 @@ use crate::{
         projects::list_projects,
         routines::{
             delete_routine, find_routine_by_id, list_routines, set_routine_enabled,
-            set_routine_last_session, upsert_routine, RoutineRunTarget, UpsertRoutineInput,
+            set_routine_last_session, upsert_routine, RoutineAuthor, RoutineRunTarget,
+            UpsertRoutineInput,
         },
     },
     routines::schedule,
@@ -195,6 +196,9 @@ pub(super) fn schedule_followup(
             cron_expr: None,
             run_once_at: Some(run_at.clone()),
             enabled: true,
+            // A wake, not a routine: once it fires, the scheduler clears the
+            // row instead of leaving it paused in the user's task list.
+            created_by: RoutineAuthor::Agent,
         },
         Some(run_at.clone()),
     )
@@ -238,6 +242,7 @@ pub(super) fn list_schedules(
                     cron_expr: routine.cron_expr,
                     run_once_at: routine.run_once_at,
                     run_target: routine.run_target.as_str().to_string(),
+                    created_by: routine.created_by.as_str().to_string(),
                     session_id: routine.last_session_id,
                     next_run_at: routine.next_run_at,
                     last_run_at: routine.last_run_at,

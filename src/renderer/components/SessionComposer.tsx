@@ -5,7 +5,6 @@ import {
   CornerUpRight,
   Eraser,
   FileDiff,
-  Folder,
   FolderOpen,
   GitBranch,
   ListChecks,
@@ -40,6 +39,7 @@ import {
 } from "react";
 import type {
   AgentMode,
+  AgentReference,
   ComposerAttachment,
   PendingMessage,
   ProviderId,
@@ -48,15 +48,14 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
-import { canSteerQueuedMessage } from "../lib/queuedSteer.js";
+import { canSteerQueuedMessage, hasSteeringContextHeadroom } from "../lib/queuedSteer.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
 import { useComposerDraft } from "../hooks/useComposerDraft.js";
-import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
-import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
 import { useFollowUpSuggestion } from "../hooks/useFollowUpSuggestion.js";
+import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import {
   appendReferencesToPrompt,
@@ -93,6 +92,8 @@ import { LaunchModelSelector, ModelSelector } from "./ModelSelector.js";
 import { ProviderSwitchDialog } from "./ProviderSwitchDialog.js";
 import { SlashCommandMenu } from "./SlashCommandMenu.js";
 import { useProviderAvailability } from "../hooks/useProviderAvailability.js";
+import type { FontSize } from "../lib/fonts.js";
+import type { FollowUpDelivery } from "../lib/uiPreferences.js";
 
 const PROMPT_MAX_HEIGHT_PX = 168;
 
@@ -125,12 +126,15 @@ export interface ComposerChangeSummary {
 export function SessionComposer({
   agentMode,
   canSend,
+  chatFontSize,
   changeSummary = null,
   fastModeEnabled = false,
   floating = false,
   inputRef,
   isFocused = true,
   isQueueing,
+  defaultFollowUpDelivery = "queue",
+  lastSentPrompt = null,
   onFastModeEnabledChange,
   onDraftPresentChange,
   onCancelQueuedMessage,
@@ -155,12 +159,15 @@ export function SessionComposer({
   shouldRefocusInput,
   status,
   workspace,
+  contextIndicatorEnabled = false,
   goalEnabled = true,
   goalMaxTurns,
   goalStatus
 }: {
   agentMode: AgentMode;
   canSend: boolean;
+  /** Settings → Appearance: keep this composer on the agent-window scale. */
+  chatFontSize?: FontSize;
   changeSummary?: ComposerChangeSummary | null;
   fastModeEnabled?: boolean;
   /** The "More details" popup: too narrow for the workspace-context cluster
@@ -168,7 +175,11 @@ export function SessionComposer({
   floating?: boolean;
   inputRef: MutableRefObject<HTMLTextAreaElement | null>;
   isFocused?: boolean;
+  /** The user's most recent message in this chat; ⌘↑ in an empty draft recalls it. */
+  lastSentPrompt?: string | null;
   isQueueing: boolean;
+  /** Settings → General: the first action for a mid-turn follow-up. */
+  defaultFollowUpDelivery?: FollowUpDelivery;
   onFastModeEnabledChange?: (enabled: boolean) => void;
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow?: (
@@ -194,7 +205,9 @@ export function SessionComposer({
     input: string,
     model: ModelPickerSelection,
     agentMode: AgentMode,
-    attachments?: ComposerAttachment[]
+    attachments?: ComposerAttachment[],
+    agentReferences?: AgentReference[],
+    delivery?: FollowUpDelivery
   ) => Promise<void>;
   /** Reports whether the composer is holding a draft. The question dock takes
    *  this slot, so it waits while there is typing here to preserve. */
@@ -217,11 +230,13 @@ export function SessionComposer({
   selectedModel: ModelPickerSelection;
   session: SessionSummary | null;
   setAgentMode: Dispatch<SetStateAction<AgentMode>>;
-  setSelectedModel: Dispatch<SetStateAction<ModelPickerSelection>>;
+  setSelectedModel: (model: ModelPickerSelection) => void;
   setStatus: (status: ComposerStatus | null) => void;
   shouldRefocusInput: MutableRefObject<boolean>;
   status: ComposerStatus | null;
   workspace: WorkspaceSummary | null;
+  /** Settings → Appearance: show context-window usage in the active composer. */
+  contextIndicatorEnabled?: boolean;
   /** Settings → Agents → Conversation. Off removes `/goal` from the menu. */
   goalEnabled?: boolean;
   goalMaxTurns?: number;
@@ -243,7 +258,6 @@ export function SessionComposer({
     () => window.matchMedia?.("(pointer: coarse)").matches ?? false
   );
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
-  const [workspaceDetailsOpen, setWorkspaceDetailsOpen] = useState(false);
   // A pick that changes provider is held here until the user confirms: the new
   // agent can't resume this one's conversation, so the swap is worth a beat.
   // Cancelling drops the pick and the composer keeps the current provider. The
@@ -252,6 +266,8 @@ export function SessionComposer({
   const [pendingProviderSwitch, setPendingProviderSwitch] = useState<
     { sessionId: string; model: ModelPickerSelection } | null
   >(null);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [effortPickerOpen, setEffortPickerOpen] = useState(false);
   const { availability: providerAvailability } = useProviderAvailability();
   // The placeholder answers the agent's last message instead of repeating the
   // same generic hint at every turn. Not gated on an empty draft: the
@@ -262,18 +278,14 @@ export function SessionComposer({
   // tabs changes, at which point the new set rides along again.
   const [dismissedOpenFilesKey, setDismissedOpenFilesKey] = useState<string | null>(null);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
+  // Below the toolbar's compact breakpoint the branch and the changed-file
+  // count fold behind a "…" instead of vanishing: the count is the way into
+  // the review panel, and model + effort keep the width it gives up.
+  const [compactContextOpen, setCompactContextOpen] = useState(false);
+  const compactContextRef = useRef<HTMLDivElement | null>(null);
   const openFilesKey = openFilePaths.join("\n");
   const openFilesAttached = openFilePaths.length > 0 && dismissedOpenFilesKey !== openFilesKey;
   const inputFormRef = useRef<HTMLFormElement | null>(null);
-  // The "…" panel sits nearest the composer's right edge, so it is the one that
-  // most often flips to end-alignment. That flip is now derived from the space
-  // available rather than hardcoded as `right: 0`, which was right only for as
-  // long as the trigger stayed at the edge.
-  const workspaceDetails = useAnchoredPopover({
-    open: workspaceDetailsOpen,
-    placement: "bottom-start",
-    strategy: "absolute"
-  });
   const {
     pendingAttachments,
     isDraggingFiles,
@@ -301,6 +313,33 @@ export function SessionComposer({
   useEffect(() => {
     onDraftPresentChange?.(input.trim() !== "" || pendingAttachments.length > 0);
   }, [input, pendingAttachments, onDraftPresentChange]);
+
+  // ⌘⇧M and ⌘⇧E open the model and effort pickers. Document-level like the
+  // pane's ⌘B / ⌘G, and gated on focus the same way, so the chord works while
+  // the draft has the caret and only the focused pane answers it.
+  const hasSession = Boolean(session);
+  const supportsEffort = selectedModel.reasoningEffort != null;
+  useEffect(() => {
+    if (!isFocused || !hasSession) return undefined;
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.altKey) return;
+      if (event.isComposing || event.repeat) return;
+      const key = event.key.toLowerCase();
+      if (key === "m") {
+        event.preventDefault();
+        setEffortPickerOpen(false);
+        setModelPickerOpen((open) => !open);
+        return;
+      }
+      if (key === "e" && supportsEffort) {
+        event.preventDefault();
+        setModelPickerOpen(false);
+        setEffortPickerOpen((open) => !open);
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [hasSession, isFocused, supportsEffort]);
 
   const toggleMode = useCallback((): void => {
     setAgentMode((mode) => toggleAgentMode(mode));
@@ -466,15 +505,16 @@ export function SessionComposer({
       `${changeSummary.additions === 1 ? "addition" : "additions"}, ${changeSummary.deletions} ` +
       `${changeSummary.deletions === 1 ? "deletion" : "deletions"}`
     : undefined;
-  const workspaceDetailsLabel = workspace
-    ? `Workspace details: branch ${workspace.branch}${
-        changeSummaryText ? `, ${changeSummaryText}` : ""
-      }`
-    : "Workspace details";
-  useDismissOnOutsideOrEscape(workspaceDetails.anchorRef, workspaceDetailsOpen, () =>
-    setWorkspaceDetailsOpen(false)
+  const branchLabel = workspace?.kind === "git" ? workspace.branch : null;
+  // Nothing to fold means no trigger: a non-git workspace with a clean tree
+  // would otherwise put a "…" on the row that opens an empty panel.
+  const hasWorkspaceContext = !floating && (branchLabel !== null || changeSummary !== null);
+  const workspaceContextSummary = `Workspace context: ${[branchLabel, changeSummaryText]
+    .filter((part) => part !== null)
+    .join(" · ")}`;
+  useDismissOnOutsideOrEscape(compactContextRef, compactContextOpen, () =>
+    setCompactContextOpen(false)
   );
-
   // Where the caret goes once text is put into the prompt for the user to
   // work on — set by the queued chip's Edit action. It has to wait for the
   // render that carries the new text: seeking on the old value would land in
@@ -538,13 +578,30 @@ export function SessionComposer({
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       inputFormRef.current?.requestSubmit();
+      return;
+    }
+    // ⌘↑ in an empty draft recalls the last sent message for editing, the
+    // chat-app reflex for a typo or an afterthought. A draft in progress
+    // keeps the key's native meaning: jump to the start of the text.
+    if (
+      event.key === "ArrowUp" &&
+      event.metaKey &&
+      !event.shiftKey &&
+      !event.altKey &&
+      !event.ctrlKey &&
+      input.length === 0 &&
+      lastSentPrompt
+    ) {
+      event.preventDefault();
+      caretAfterInput.current = lastSentPrompt.length;
+      setInput(lastSentPrompt);
     }
   };
 
-  // An annotation is a message on its own: "Add to chat" and diff notes
-  // already name what the agent should look at, so send stays available with
-  // an empty draft once a chip is attached.
-  const hasSendableContent = input.trim().length > 0 || pendingAnnotations.length > 0;
+  // Images, conversation excerpts, and diff notes can be the whole message.
+  // Their references or quoted context become the prompt at delivery time.
+  const hasSendableContent =
+    input.trim().length > 0 || pendingAttachments.length > 0 || pendingAnnotations.length > 0;
 
   /**
    * Build the prompt from the draft plus attachments and hand it to `deliver`.
@@ -681,21 +738,35 @@ export function SessionComposer({
 
   const submitInput = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
-    // Mid-turn this reaches the backend queue: Enter always means "line up the
-    // follow-up", never "cut the current turn short".
+    // Queue is the default, but a user may choose to send immediate guidance
+    // into the active turn. A near-full Codex context stays queued because an
+    // automatic compaction can otherwise forget the first response to the
+    // steer and answer it again. Idle sends retain the ordinary follow-up path.
+    const delivery =
+      isQueueing &&
+      defaultFollowUpDelivery === "steer" &&
+      session &&
+      hasSteeringContextHeadroom(session)
+        ? "steer"
+        : "queue";
     await deliverDraft((sessionId, prompt, attachments) =>
-      onSendSessionInput(sessionId, prompt, selectedModel, agentMode, attachments)
+      onSendSessionInput(
+        sessionId,
+        prompt,
+        selectedModel,
+        agentMode,
+        attachments,
+        undefined,
+        delivery
+      )
     );
   };
 
   return (
     <form
       className="session-composer-stack"
-      // The agent window carries its own type scale (Settings → chat font
-      // size), which is about reading the transcript. The composer is chrome —
-      // model chip, repo, branch, changed files — so it holds the composer
-      // scale instead, matching the launcher's composer. See tokens.css.
-      data-type-scale="composer"
+      data-font-size={chatFontSize === undefined ? undefined : String(chatFontSize)}
+      data-type-scale={chatFontSize === undefined ? "composer" : undefined}
       ref={inputFormRef}
       onSubmit={(event) => void submitInput(event)}
       onDragEnter={onComposerDragEnter}
@@ -991,6 +1062,9 @@ export function SessionComposer({
         <textarea
           className={skillHighlight ? "composer-input--highlighting" : undefined}
           aria-label="Chat prompt"
+          data-placeholder-kind={
+            followUpSuggestion !== null && !isQueueing ? "suggested-follow-up" : undefined
+          }
           aria-autocomplete="list"
           aria-expanded={slashAutocomplete.popoverOpen || fileAutocomplete.popoverOpen}
           aria-controls={
@@ -1025,6 +1099,18 @@ export function SessionComposer({
         <FilePopover state={fileAutocomplete} inputRef={inputRef} />
       </div>
       <div className="session-input-toolbar">
+        {isRemoteBridge() || floating ? null : (
+          <button
+            type="button"
+            className="composer-tool"
+            title="Attach file"
+            aria-label="Attach file"
+            disabled={!canSend || isSending}
+            onClick={openFilePicker}
+          >
+            <Plus size={14} />
+          </button>
+        )}
         {session ? (
           <div className="composer-chips-group composer-chips-model">
             {session.state === "running" ? (
@@ -1036,7 +1122,11 @@ export function SessionComposer({
                 onChange={(model) => setSelectedModel({ provider: session.provider, ...model })}
                 fastModeEnabled={fastModeEnabled}
                 onFastModeEnabledChange={onFastModeEnabledChange}
+                open={modelPickerOpen}
+                onOpenChange={setModelPickerOpen}
                 withEffortSlider
+                effortOpen={effortPickerOpen}
+                onEffortOpenChange={setEffortPickerOpen}
                 ariaLabel="Chat model"
               />
             ) : (
@@ -1064,27 +1154,66 @@ export function SessionComposer({
                 }}
                 fastModeEnabled={fastModeEnabled}
                 onFastModeEnabledChange={onFastModeEnabledChange}
+                open={modelPickerOpen}
+                onOpenChange={setModelPickerOpen}
                 withEffortSlider
+                effortOpen={effortPickerOpen}
+                onEffortOpenChange={setEffortPickerOpen}
                 ariaLabel="Chat model"
               />
             )}
           </div>
         ) : null}
-        {session && !floating ? <ContextRing session={session} /> : null}
-        {workspace && !floating ? (
-          <div className="composer-footer composer-chips-group composer-chips-context" aria-label="Workspace context">
-            {changeSummary ? (
-              <button
-                type="button"
-                className="composer-footer-chip composer-footer-chip--changes"
-                title={changeSummaryText ?? undefined}
-                aria-label={changeSummaryAriaLabel}
-                aria-pressed={changeSummary.isOpen}
-                onClick={changeSummary.onOpen}
-              >
-                <ChangeCount additions={changeSummary.additions} deletions={changeSummary.deletions} />
-              </button>
-            ) : null}
+        {session && !floating && contextIndicatorEnabled ? <ContextRing session={session} /> : null}
+        {hasWorkspaceContext ? (
+          // Wide, the wrapper is `display: contents` and both chips sit on the
+          // chip floor directly; compact, it becomes the anchor for the "…".
+          <div
+            className="composer-chips-context-group"
+            data-compact-open={compactContextOpen ? "true" : undefined}
+            ref={compactContextRef}
+          >
+            <button
+              type="button"
+              className="composer-compact-context-trigger"
+              // The dot is the only trace a folded dirty tree leaves on the
+              // row, so the trigger carries it rather than the panel inside.
+              data-dirty={changeSummary ? "true" : undefined}
+              title={workspaceContextSummary}
+              aria-label={workspaceContextSummary}
+              aria-haspopup="dialog"
+              aria-expanded={compactContextOpen}
+              onClick={() => setCompactContextOpen((open) => !open)}
+            >
+              <MoreHorizontal size={14} aria-hidden="true" />
+            </button>
+            <div
+              className="composer-footer composer-chips-group composer-chips-context"
+              role={compactContextOpen ? "dialog" : undefined}
+              aria-label="Workspace context"
+            >
+              {branchLabel !== null ? (
+                <span className="composer-context-chip branch-chip" title={`Branch: ${branchLabel}`}>
+                  <GitBranch size={14} aria-hidden="true" />
+                  <span className="composer-context-chip-label">{branchLabel}</span>
+                </span>
+              ) : null}
+              {changeSummary ? (
+                <button
+                  type="button"
+                  className="composer-footer-chip composer-footer-chip--changes"
+                  title={changeSummaryText ?? undefined}
+                  aria-label={changeSummaryAriaLabel}
+                  aria-pressed={changeSummary.isOpen}
+                  onClick={() => {
+                    setCompactContextOpen(false);
+                    changeSummary.onOpen();
+                  }}
+                >
+                  <ChangeCount additions={changeSummary.additions} deletions={changeSummary.deletions} />
+                </button>
+              ) : null}
+            </div>
           </div>
         ) : null}
         {isRemoteBridge() && !floating ? (
@@ -1102,93 +1231,6 @@ export function SessionComposer({
           >
             <Paperclip size={15} aria-hidden="true" />
           </button>
-        ) : null}
-        {workspace && !floating ? (
-          <div className="composer-compact-context" ref={workspaceDetails.setAnchor}>
-            <button
-              type="button"
-              className="composer-compact-context-trigger"
-              title={workspaceDetailsLabel}
-              aria-label={workspaceDetailsLabel}
-              aria-haspopup="dialog"
-              aria-expanded={workspaceDetailsOpen}
-              onClick={() => setWorkspaceDetailsOpen((open) => !open)}
-            >
-              <MoreHorizontal size={14} aria-hidden="true" />
-              {changeSummary ? <span className="composer-compact-context-dot" aria-hidden="true" /> : null}
-            </button>
-            {workspaceDetailsOpen ? (
-              <div
-                className="composer-compact-context-popover"
-                role="dialog"
-                aria-label="Workspace details"
-                ref={workspaceDetails.setPopover}
-                style={workspaceDetails.floatingStyles}
-              >
-                {session && !isRemoteBridge() ? (
-                  <div className="composer-compact-context-row composer-compact-context-row--context">
-                    <span>Context</span>
-                    <ContextRing session={session} />
-                  </div>
-                ) : null}
-                {/* `system:open-path` is desktop-only (REMOTE_UNSUPPORTED), so
-                    over the bridge this row could only ever fail. */}
-                {workspace.sharedWorkspace || isRemoteBridge() ? null : (
-                  <button
-                    type="button"
-                    className="composer-compact-context-row"
-                    title={`Open worktree: ${workspace.path}`}
-                    aria-label={`Open worktree at ${workspace.path}`}
-                    onClick={() => {
-                      setWorkspaceDetailsOpen(false);
-                      if (!window.argmax) return;
-                      void window.argmax.system.openPath({ path: workspace.path }).catch(() => undefined);
-                    }}
-                  >
-                    <Folder size={12} aria-hidden="true" />
-                    <span>Worktree</span>
-                  </button>
-                )}
-                {changeSummary ? (
-                  <button
-                    type="button"
-                    className="composer-compact-context-row composer-compact-context-row--changes"
-                    aria-label={changeSummaryAriaLabel}
-                    aria-pressed={changeSummary.isOpen}
-                    onClick={() => {
-                      setWorkspaceDetailsOpen(false);
-                      changeSummary.onOpen();
-                    }}
-                  >
-                    <span>Changes</span>
-                    <ChangeCount additions={changeSummary.additions} deletions={changeSummary.deletions} />
-                  </button>
-                ) : null}
-                {workspace.kind === "git" ? (
-                  <div className="composer-compact-context-row" title={`Branch: ${workspace.branch}`}>
-                    <GitBranch size={12} aria-hidden="true" />
-                    <span className="composer-compact-context-branch">{workspace.branch}</span>
-                  </div>
-                ) : null}
-                {isRemoteBridge() ? null : (
-                <button
-                  type="button"
-                  className="composer-compact-context-row composer-compact-context-row--attach"
-                  title="Attach file"
-                  aria-label="Attach file"
-                  disabled={!canSend || isSending}
-                  onClick={() => {
-                    setWorkspaceDetailsOpen(false);
-                    openFilePicker();
-                  }}
-                >
-                  <Plus size={12} aria-hidden="true" />
-                  <span>Attach file</span>
-                </button>
-                )}
-              </div>
-            ) : null}
-          </div>
         ) : null}
         <span className="session-toolbar-spacer" />
         {onExpandToFullChat ? (

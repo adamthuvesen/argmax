@@ -346,16 +346,37 @@ pub(super) async fn stop_session(
 pub(super) fn inbox_read(
     parent: ParentLaunchSettings,
     database: Arc<Database>,
+    providers: Arc<ProviderSessionService>,
 ) -> Result<SessionControlResponse, SessionControlError> {
-    let mut connection = database.connection();
-    let messages = take_undelivered_messages(
-        &mut connection,
-        &parent.session_id,
-        INBOX_READ_LIMIT,
-        INBOX_READ_BYTE_BUDGET,
-    )
-    .map_err(argmax_protocol_error)?;
-    let messages = to_inbox_messages(&connection, messages);
+    let (messages, collected_message_ids) = {
+        let mut connection = database.connection();
+        let messages = take_undelivered_messages(
+            &mut connection,
+            &parent.session_id,
+            INBOX_READ_LIMIT,
+            INBOX_READ_BYTE_BUDGET,
+        )
+        .map_err(argmax_protocol_error)?;
+        let collected_message_ids = messages
+            .iter()
+            .map(|message| message.id.clone())
+            .collect::<Vec<_>>();
+        (
+            to_inbox_messages(&connection, messages),
+            collected_message_ids,
+        )
+    };
+    // Collection already committed, so cleanup must not replace a valid
+    // reply with an error and strand messages the agent was never shown.
+    if let Err(error) =
+        providers.reconcile_collected_messages(&parent.session_id, &collected_message_ids)
+    {
+        tracing::warn!(
+            session_id = %parent.session_id,
+            ?error,
+            "failed to remove collected messages from the pending queue"
+        );
+    }
     Ok(SessionControlResponse::new(SessionControlResult::Inbox(
         InboxDelivery { messages },
     )))

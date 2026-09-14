@@ -782,12 +782,18 @@ fn classify_event(
                 return EventAction::Ignore;
             }
             let part_type = part.get("type").and_then(Value::as_str);
+            let status = part.pointer("/state/status").and_then(Value::as_str);
+            let is_native_task = part.get("tool").and_then(Value::as_str) == Some("task");
             let output_type = match part_type {
+                // A native `task` call also reports through its running state,
+                // which carries the child session identity, so the launch can
+                // surface while the subagent works. The terminal envelope
+                // arrives later and closes the row; everything between is
+                // normalizer bookkeeping. Quick tools keep arriving once,
+                // completed.
                 Some("tool")
-                    if matches!(
-                        part.pointer("/state/status").and_then(Value::as_str),
-                        Some("completed" | "error")
-                    ) =>
+                    if matches!(status, Some("completed" | "error"))
+                        || (is_native_task && status == Some("running")) =>
                 {
                     Some("tool_use")
                 }
@@ -1308,6 +1314,71 @@ mod tests {
         });
         assert_eq!(
             classify_event(&unfinished, &mut sessions, "ses_root"),
+            EventAction::Ignore
+        );
+    }
+
+    #[test]
+    fn running_native_task_parts_are_forwarded_and_other_running_tools_are_not() {
+        let mut sessions = HashSet::from(["ses_root".to_string()]);
+        let running_task = json!({
+            "type": "message.part.updated",
+            "properties": { "part": {
+                "id": "prt_1", "sessionID": "ses_root", "messageID": "msg_1",
+                "type": "tool", "tool": "task", "callID": "call_1",
+                "state": {
+                    "title": "Review iOS transcript/scrolling",
+                    "status": "running",
+                    "input": {"description": "Review iOS transcript/scrolling"},
+                    "metadata": {"parentSessionId": "ses_root", "sessionId": "ses_child"}
+                }
+            }}
+        });
+        let EventAction::Output(output) = classify_event(&running_task, &mut sessions, "ses_root")
+        else {
+            panic!("expected the running task launch to be forwarded");
+        };
+        assert_eq!(output["type"], "tool_use");
+        assert_eq!(output["sessionID"], "ses_root");
+        assert_eq!(output["part"]["tool"], "task");
+        assert_eq!(output["part"]["state"]["status"], "running");
+
+        // A pending task launch carries no input yet; the running state is
+        // the first sighting worth surfacing.
+        let pending_task = json!({
+            "type": "message.part.updated",
+            "properties": { "part": {
+                "sessionID": "ses_root", "type": "tool", "tool": "task",
+                "state": { "status": "pending" }
+            }}
+        });
+        assert_eq!(
+            classify_event(&pending_task, &mut sessions, "ses_root"),
+            EventAction::Ignore
+        );
+
+        let running_bash = json!({
+            "type": "message.part.updated",
+            "properties": { "part": {
+                "sessionID": "ses_root", "type": "tool", "tool": "bash",
+                "state": { "status": "running", "input": {"command": "sleep 30"} }
+            }}
+        });
+        assert_eq!(
+            classify_event(&running_bash, &mut sessions, "ses_root"),
+            EventAction::Ignore
+        );
+
+        // A task running in a child session stays with that child.
+        let child_task = json!({
+            "type": "message.part.updated",
+            "properties": { "part": {
+                "sessionID": "ses_child", "type": "tool", "tool": "task",
+                "state": { "status": "running" }
+            }}
+        });
+        assert_eq!(
+            classify_event(&child_task, &mut sessions, "ses_root"),
             EventAction::Ignore
         );
     }

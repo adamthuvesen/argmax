@@ -1,0 +1,92 @@
+[
+  {
+    "path": "docs/plan/agent-tools.md"
+  },
+  {
+    "path": "docs/plan/hybrid-native-phone.md"
+  },
+  {
+    "path": "docs/plan/subagent-emblems.md"
+  },
+  {
+    "path": "docs/plan/todo-list-surface.md"
+  },
+  {
+    "path": "docs/plan/usage-dashboard.md"
+  },
+  {
+    "path": "ios/Argmax/Sources/Review/CodeDocument.swift"
+  },
+  {
+    "path": "ios/Argmax/Sources/Review/CodeText.swift"
+  },
+  {
+    "path": "ios/Argmax/Sources/Review/DiffParser.swift"
+  },
+  {
+    "path": "ios/Argmax/Sources/Review/DiffScreen.swift"
+  },
+  {
+    "path": "ios/Argmax/Sources/Review/FileTree.swift"
+  },
+  {
+    "path": "ios/Argmax/Sources/Review/FileTreeView.swift"
+  },
+  {
+    "path": "ios/Argmax/Sources/Review/FileViewerScreen.swift"
+  },
+  {
+    "path": "ios/Argmax/Sources/Review/ReviewPreviews.swift"
+  },
+  {
+    "path": "ios/Argmax/Sources/Review/ReviewScreen.swift"
+  },
+  {
+    "path": "ios/Argmax/Sources/Review/ReviewStore.swift"
+  },
+  {
+    "path": "ios/Argmax/Sources/Review/WorkspaceImageView.swift"
+  },
+  {
+    "path": "src/renderer/mobile/AgentOverlay.tsx"
+  },
+  {
+    "path": "src/renderer/mobile/BottomSheet.tsx"
+  },
+  {
+    "path": "src/renderer/mobile/MobileApp.embed.test.tsx"
+  },
+  {
+    "path": "src/renderer/mobile/MobileApp.test.tsx"
+  },
+  {
+    "path": "src/renderer/mobile/MobileApp.tsx"
+  },
+  {
+    "path": "src/renderer/mobile/MobileReviewScreen.tsx"
+  },
+  {
+    "path": "src/renderer/mobile/MobileScreenHeader.tsx"
+  },
+  {
+    "path": "src/renderer/mobile/NewSessionScreen.tsx"
+  },
+  {
+    "path": "src/renderer/mobile/deepLink.test.ts"
+  },
+  {
+    "path": "src/renderer/mobile/deepLink.ts"
+  },
+  {
+    "path": "src/renderer/mobile/main.tsx"
+  },
+  {
+    "path": "src/renderer/mobile/nativeHost.ts"
+  },
+  {
+    "path": "src/renderer/mobile/registerServiceWorker.test.ts"
+  },
+  {
+    "path": "src/renderer/mobile/registerServiceWorker.ts"
+  }
+]

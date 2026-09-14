@@ -1,12 +1,31 @@
 import { Fragment, type ReactNode } from "react";
 import type { ToolCall } from "./toolCalls.js";
 
+/** A reasoning block folded into Compact's ordered activity disclosure. */
+export type ActivityThought = {
+  kind: "thought";
+  id: string;
+  node: ReactNode;
+  live?: boolean;
+};
+
+/** One ordered member of a Compact activity run. */
+export type ActivityMember =
+  | ActivityThought
+  | { kind: "tools"; id: string; tools: ToolCall[] };
+
+export type ActivityRun = {
+  tools: ToolCall[];
+  members: ActivityMember[];
+};
+
 /** One rendered row of a turn body: assistant prose, or a tool call. */
 export type TurnBodyChild = {
   kind: "assistant" | "tool";
   id: string;
   node: ReactNode;
-  hasErrors?: boolean;
+  /** Present only when Compact folds this child into an ordered activity run. */
+  activityMember?: ActivityThought;
 };
 
 /**
@@ -75,7 +94,6 @@ export function foldToolRunsToSummaries<T extends TurnBodyChild & { runTools?: T
       kind: "tool",
       id: first ? `activity-${first.id}` : anchor.id,
       runTools: tools,
-      hasErrors: tools.some((tool) => tool.status === "error"),
       node: renderRun(tools)
     });
   };
@@ -83,6 +101,55 @@ export function foldToolRunsToSummaries<T extends TurnBodyChild & { runTools?: T
     if (child.kind === "tool" && child.runTools && child.runTools.length > 0) {
       if (run) run.tools.push(...child.runTools);
       else run = { tools: [...child.runTools], anchor: child };
+      continue;
+    }
+    flushRun();
+    folded.push(child);
+  }
+  flushRun();
+  return folded;
+}
+
+/**
+ * Collapse Compact activity made of routine tools and provider reasoning into
+ * one ordered disclosure. Visible assistant prose, cards, errors, steering,
+ * and agent launches do not carry an activity member, so they end the run.
+ *
+ * The first member anchors the returned child. That keeps a live disclosure's
+ * React identity stable when its first thought later gains tool calls.
+ */
+export function foldActivityRunsToSummaries<T extends TurnBodyChild & { runTools?: ToolCall[] }>(
+  children: readonly T[],
+  renderRun: (run: ActivityRun) => ReactNode
+): T[] {
+  const folded: T[] = [];
+  let run: { tools: ToolCall[]; members: ActivityMember[]; anchor: T } | null = null;
+
+  const flushRun = (): void => {
+    if (!run) return;
+    const { tools, members, anchor } = run;
+    run = null;
+    const firstMember = members[0];
+    folded.push({
+      ...anchor,
+      kind: "tool",
+      id: firstMember ? `activity-${firstMember.id}` : anchor.id,
+      runTools: tools,
+      node: renderRun({ tools, members })
+    });
+  };
+
+  for (const child of children) {
+    const thought = child.activityMember;
+    const member: ActivityMember | null = thought
+      ? thought
+      : child.kind === "tool" && child.runTools && child.runTools.length > 0
+        ? { kind: "tools", id: child.id, tools: [...child.runTools] }
+        : null;
+    if (member) {
+      if (!run) run = { tools: [], members: [], anchor: child };
+      run.members.push(member);
+      if (member.kind === "tools") run.tools.push(...member.tools);
       continue;
     }
     flushRun();

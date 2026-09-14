@@ -46,7 +46,7 @@
   overflow: auto;
   padding: var(--space-1_5);
   font-family: var(--font-ui);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
 }
 
 /* Under the strip the scroller needs less of its own top gap; surfaces with no
@@ -141,7 +141,7 @@
 .workspace-tree-file[aria-pressed="true"] {
   color: var(--text);
   background-color: color-mix(in oklab, var(--review-sidebar) 86%, var(--text));
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
 }
 
 .workspace-tree-file[aria-pressed="true"]::before {
@@ -203,6 +203,143 @@
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-gutter: stable;
+}
+
+/* Agents are a live workload, not file history. The strip keeps only the
+   selected, running, and failed entries while the fixed controls open the full
+   status-grouped roster. It never becomes a second horizontal scroller. */
+.agent-tabs-shell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.agent-active-tabs {
+  flex: 1 1 auto;
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+
+.agent-active-tabs .file-tab {
+  flex: 0 1 auto;
+}
+
+.agent-active-tabs .file-tab > button[role="tab"] {
+  padding-right: 10px;
+}
+
+.agent-roster-controls {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+
+.agent-roster-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--muted-strong);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.agent-roster-trigger:hover,
+.agent-roster-trigger[aria-expanded="true"] {
+  color: var(--text);
+  background: color-mix(in oklab, var(--panel) 60%, var(--panel-sunken));
+}
+
+.agent-roster-overflow {
+  color: var(--accent-deep);
+}
+
+.agent-roster-popover {
+  width: min(360px, calc(100vw - 16px));
+  min-width: min(320px, calc(100vw - 16px));
+  padding: var(--space-1);
+  overflow-y: auto;
+  z-index: 1000;
+}
+
+.agent-roster-group {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 8px 9px 4px;
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  font-weight: calc(650 + var(--font-weight-offset));
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.agent-roster-item {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  width: 100%;
+  min-height: 42px;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--text-soft);
+  text-align: left;
+  cursor: pointer;
+}
+
+.agent-roster-popover li[data-active="true"] .agent-roster-item,
+.agent-roster-item:hover,
+.agent-roster-popover li[aria-selected="true"] .agent-roster-item {
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+.agent-roster-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.agent-roster-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.agent-roster-title,
+.agent-roster-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-roster-title {
+  font-size: var(--text-sm);
+  font-weight: calc(520 + var(--font-weight-offset));
+}
+
+.agent-roster-meta {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.agent-roster-empty {
+  padding: var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  text-align: center;
 }
 
 /* A strip that can grow tabs on demand (Terminal) puts the + on the shell,
@@ -305,7 +442,7 @@
 .file-tab-dirty {
   flex: 0 0 auto;
   color: var(--sage-deep);
-  font-weight: 700;
+  font-weight: calc(700 + var(--font-weight-offset));
 }
 
 .file-tab-close {
@@ -349,7 +486,7 @@
 
 .file-tab-close-prompt strong {
   color: var(--text);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
 }
 
 .file-tab-close-prompt-error {
@@ -516,7 +653,7 @@
   min-width: 0;
   font-family: var(--font-ui);
   font-size: var(--text-xs);
-  font-weight: 400;
+  font-weight: calc(400 + var(--font-weight-offset));
   color: var(--muted);
 }
 
@@ -528,7 +665,7 @@
 
 .file-preview-path-leaf {
   color: var(--text);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
 }
 
 .file-preview-heading-meta {
@@ -539,7 +676,7 @@
 
 .file-preview-dirty {
   color: var(--sage-deep);
-  font-weight: 700;
+  font-weight: calc(700 + var(--font-weight-offset));
 }
 
 /* Stale-buffer banner — fires when fs.watch / focus polling spots an external
@@ -769,7 +906,7 @@
 .file-preview-editor .cm-panel.cm-search button[name="select"]::before {
   content: "All";
   font-size: var(--text-2xs-plus);
-  font-weight: 600;
+  font-weight: calc(600 + var(--font-weight-offset));
 }
 
 .file-preview-editor .cm-panel.cm-search label {
@@ -807,7 +944,7 @@
 
 .file-preview-editor .cm-panel.cm-search label::after {
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: calc(600 + var(--font-weight-offset));
   line-height: 1;
 }
 
@@ -942,7 +1079,7 @@
   .file-preview-editor .cm-panel.cm-search button[name="replaceAll"]::before {
     content: "All";
     font-size: var(--text-2xs-plus);
-    font-weight: 600;
+    font-weight: calc(600 + var(--font-weight-offset));
   }
 
   .file-preview-editor .cm-panel.cm-search button[name="close"] {
@@ -1106,6 +1243,13 @@
   border-bottom: 1px solid var(--line-soft);
 }
 
+.diff-hunk-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 /* The unchanged lines git left out between two hunks. A plain band in chat
    cards; in the review panel it is a full-width button that reloads the file
    with more context. */
@@ -1212,7 +1356,7 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted-strong);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
 }
 
 .project-knowledge-summary {
@@ -1386,7 +1530,7 @@
   background: var(--accent-soft);
   border-color: transparent;
   color: var(--accent-deep);
-  font-weight: 600;
+  font-weight: calc(600 + var(--font-weight-offset));
 }
 
 .diff-comment-submit:hover:not(:disabled) {

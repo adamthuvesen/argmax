@@ -18,6 +18,7 @@ use std::sync::Mutex;
 use serde::Serialize;
 use specta::Type;
 use tauri::{AppHandle, Emitter};
+use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -194,12 +195,16 @@ impl BrowserTabRegistry {
             .map(|entry| entry.info.clone())
     }
 
-    /// Free tab id for a session-opened tab. Ids become native webview labels
-    /// (`browser-<id>`), and a destroyed label must not come back, so the
-    /// counter only ever moves forward.
+    /// Free tab id for a session-opened tab. The renderer persists tab ids and
+    /// URLs across app restarts, so an id must not repeat after the registry's
+    /// in-memory clock resets. A repeated id can make a restored URL navigate
+    /// a newly created agent tab.
     pub fn allocate_tab_id(&self) -> String {
         loop {
-            let candidate = format!("agent-{}", self.tick());
+            // 26 hex digits plus the prefix stays inside the 32-character
+            // webview-label limit. UUID v4 leaves 98 of those bits random.
+            let random = Uuid::new_v4().simple().to_string();
+            let candidate = format!("agent-{}", &random[..26]);
             if !self.contains(&candidate) {
                 return candidate;
             }
@@ -241,6 +246,21 @@ mod tests {
         );
         assert_eq!(registry.for_session("s1").len(), 2);
         assert!(registry.latest_for_session("s2").is_none());
+    }
+
+    #[test]
+    fn allocated_agent_tab_ids_do_not_reset_with_the_registry() {
+        let first = BrowserTabRegistry::default().allocate_tab_id();
+        let after_restart = BrowserTabRegistry::default().allocate_tab_id();
+
+        assert_ne!(first, after_restart);
+        for id in [first, after_restart] {
+            assert_eq!(id.len(), 32);
+            assert!(id.starts_with("agent-"));
+            assert!(id[6..]
+                .chars()
+                .all(|character| character.is_ascii_hexdigit()));
+        }
     }
 
     #[test]

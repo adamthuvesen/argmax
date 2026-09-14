@@ -21,6 +21,7 @@ import {
 import { DebugIpcTab } from "./DebugIpcTab.js";
 import { DebugLogsTab } from "./DebugLogsTab.js";
 import { DebugTraceTab } from "./DebugTraceTab.js";
+import { SlidingTabIndicator } from "../SlidingTabIndicator.js";
 
 export const DEBUG_TAB_KEY = "argmax.debugPanel.tab";
 
@@ -106,6 +107,7 @@ export function DebugPanel({
       ) : null}
       <div className="debug-header">
         <div className="debug-tabs" role="tablist" aria-label="Debug views">
+          <SlidingTabIndicator activeKey={tab} />
           {TABS.map((entry) => (
             <button
               key={entry.id}

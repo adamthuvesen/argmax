@@ -25,6 +25,7 @@ import {
   resetBrowserSurfaceForTests,
   resetBrowserTabsForTests,
   resolveBrowserInput,
+  setBrowserTabLoading,
   subscribeAgentBrowserOpen,
   subscribeBrowserOwner,
   subscribeBrowserRequest,
@@ -159,6 +160,12 @@ describe("close active tab requests", () => {
 });
 
 describe("tab persistence", () => {
+  afterEach(() => {
+    resetBrowserTabsForTests();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
   it("migrates a pre-scope snapshot onto the Browser page", async () => {
     window.localStorage.setItem(
       "argmax.browser.tabs",
@@ -223,6 +230,100 @@ describe("tab persistence", () => {
 
     fresh.resetBrowserTabsForTests();
     window.localStorage.removeItem("argmax.browser.tabs");
+  });
+
+  it("coalesces durable changes and persists the latest state off the interaction path", async () => {
+    vi.useFakeTimers();
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+
+    const first = createBrowserTab("session-a", "https://one.example");
+    createBrowserTab("session-a", "https://two.example");
+    activateBrowserTab(first.id);
+    rememberBrowserUrl("https://latest.example", "session-a");
+
+    expect(setItem).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(setItem).toHaveBeenCalledTimes(1);
+
+    const persisted = JSON.parse(window.localStorage.getItem("argmax.browser.tabs") ?? "null") as {
+      nextTabSeq: number;
+      scopes: Record<string, unknown>;
+    };
+    expect(persisted).toMatchObject({
+      nextTabSeq: 3,
+      scopes: {
+        "session-a": {
+          activeTabId: first.id,
+          lastUrl: "https://latest.example",
+          tabs: [
+            { id: first.id, url: "https://one.example", title: null },
+            { id: "tab-2", url: "https://two.example", title: null }
+          ]
+        }
+      }
+    });
+  });
+
+  it("does not write snapshots for loading-only updates", async () => {
+    vi.useFakeTimers();
+    const tab = createBrowserTab("session-a", "https://example.com");
+    await vi.advanceTimersByTimeAsync(0);
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+
+    for (let index = 0; index < 20; index += 1) {
+      setBrowserTabLoading(tab.id, index % 2 === 0);
+    }
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(setItem).not.toHaveBeenCalled();
+  });
+
+  it("skips the write when coalesced changes return to the persisted state", async () => {
+    vi.useFakeTimers();
+    const first = createBrowserTab("session-a", "https://one.example");
+    const second = createBrowserTab("session-a", "https://two.example");
+    await vi.advanceTimersByTimeAsync(0);
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+
+    activateBrowserTab(first.id);
+    activateBrowserTab(second.id);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(setItem).not.toHaveBeenCalled();
+  });
+
+  it("flushes the latest pending snapshot when the page is hidden", () => {
+    vi.useFakeTimers();
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+
+    createBrowserTab("session-a", "https://one.example");
+    const latest = createBrowserTab("session-a", "https://latest.example");
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    expect(setItem).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(window.localStorage.getItem("argmax.browser.tabs") ?? "null")).toMatchObject({
+      scopes: {
+        "session-a": {
+          activeTabId: latest.id,
+          lastUrl: "https://latest.example"
+        }
+      }
+    });
+    vi.runOnlyPendingTimers();
+    expect(setItem).toHaveBeenCalledTimes(1);
+  });
+
+  it("flushes pending persistence on pagehide", () => {
+    vi.useFakeTimers();
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+
+    createBrowserTab("session-a", "https://latest.example");
+    window.dispatchEvent(new Event("pagehide"));
+
+    expect(setItem).toHaveBeenCalledTimes(1);
+    vi.runOnlyPendingTimers();
+    expect(setItem).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -347,6 +448,16 @@ describe("mirroring the app's tab registry", () => {
     ]);
     expect(getBrowserTabs("session-b").map((tab) => tab.url)).toEqual(["https://b.example"]);
     expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID)).toEqual([]);
+  });
+
+  it("keeps an untouched scope's external-store snapshot stable", () => {
+    const first = createBrowserTab("session-a", "https://a.example");
+    createBrowserTab("session-b", "https://b.example");
+    const untouched = getBrowserTabs("session-b");
+
+    setBrowserTabLoading(first.id, false);
+
+    expect(getBrowserTabs("session-b")).toBe(untouched);
   });
 });
 

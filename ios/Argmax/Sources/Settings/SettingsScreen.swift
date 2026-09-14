@@ -15,17 +15,19 @@ struct SettingsScreen: View {
     let onPairAgain: () -> Void
     let onBack: () -> Void
 
+    @EnvironmentObject private var dashboard: DashboardStore
+    @State private var showingRecovery = false
     @EnvironmentObject private var appearance: Appearance
     @EnvironmentObject private var push: PushRegistration
     @State private var confirmingRepair = false
+    /// Read by `Dictation` as each recognition task opens, so a flick here
+    /// reaches the next phrase without restarting anything.
+    @AppStorage(Dictation.onDeviceKey) private var dictateOnDevice = true
+    @AppStorage(Haptics.enabledKey) private var hapticsEnabled = true
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.section) {
-                SettingGroup("Notifications") {
-                    NotificationsSetting(push: push)
-                }
-
                 SettingGroup("Appearance") {
                     VStack(alignment: .leading, spacing: Spacing.row) {
                         Text("Theme").typeContent()
@@ -34,6 +36,28 @@ struct SettingsScreen: View {
                             selection: $appearance.theme,
                             label: \.label
                         )
+                    }
+                    .padding(Spacing.row)
+                    HairlineDivider(inset: Spacing.row)
+                    VStack(alignment: .leading, spacing: Spacing.row) {
+                        Text("Typeface").typeContent()
+                        Segmented(
+                            options: AppTypeface.allCases,
+                            selection: $appearance.typeface,
+                            label: \.label
+                        )
+                        Text(appearance.typeface.hint).typeMeta()
+                    }
+                    .padding(Spacing.row)
+                    HairlineDivider(inset: Spacing.row)
+                    VStack(alignment: .leading, spacing: Spacing.row) {
+                        Text("Text size").typeContent()
+                        Segmented(
+                            options: AppFontScale.allCases,
+                            selection: $appearance.fontScale,
+                            label: \.label
+                        )
+                        Text("1 is smallest, 3 is the current size, and 5 is largest.").typeMeta()
                     }
                     .padding(Spacing.row)
                     HairlineDivider(inset: Spacing.row)
@@ -49,9 +73,43 @@ struct SettingsScreen: View {
                         isOn: $appearance.accentBubbles
                     )
                     HairlineDivider(inset: Spacing.row)
+                    VStack(alignment: .leading, spacing: Spacing.row) {
+                        Text("Chat detail").typeContent()
+                        Segmented(
+                            options: MobileChatDetail.allCases,
+                            selection: $appearance.chatDetail,
+                            label: \.label
+                        )
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(appearance.chatDetail.hint)
+                            Text("This setting applies only to this iPhone.")
+                        }
+                        .typeMeta()
+                    }
+                    .padding(Spacing.row)
+                    HairlineDivider(inset: Spacing.row)
+                    VStack(alignment: .leading, spacing: Spacing.row) {
+                        Text("Activity icons").typeContent()
+                        Segmented(
+                            options: ActivityIconColorMode.allCases,
+                            selection: $appearance.activityIconColorMode,
+                            label: \.label
+                        )
+                        Text("Color distinguishes kinds of work. Monochrome keeps every transcript icon muted.")
+                            .typeMeta()
+                    }
+                    .padding(Spacing.row)
+                    HairlineDivider(inset: Spacing.row)
+                    SettingToggle(
+                        label: "Chat icons",
+                        detail: "The icon, pull request, or CLI mark under a chat's title. Off, only a running chat is marked.",
+                        isOn: $appearance.chatIcons
+                    )
+                    HairlineDivider(inset: Spacing.row)
                     SettingToggle(
                         label: "Provider marks",
                         detail: "The CLI's mark on chats with no icon of their own.",
+                        enabled: appearance.chatIcons,
                         isOn: $appearance.providerMarks
                     )
                     HairlineDivider(inset: Spacing.row)
@@ -62,8 +120,34 @@ struct SettingsScreen: View {
                     )
                 }
 
+                SettingGroup("Dictation") {
+                    SettingToggle(
+                        label: "Keep audio on this phone",
+                        detail: Dictation.canReadOnDevice
+                            ? "This phone's own model reads what you say, so a prompt never leaves it. Off, Apple's service reads it — more accurate."
+                            : "This phone has no model for your language, so dictation goes to Apple's service.",
+                        enabled: Dictation.canReadOnDevice,
+                        isOn: $dictateOnDevice
+                    )
+                }
+
+                SettingGroup("Feedback") {
+                    SettingToggle(
+                        label: "Haptics",
+                        detail: "Short taps for selections and important outcomes. Standard iOS controls keep their system feedback.",
+                        isOn: $hapticsEnabled
+                    )
+                }
+
+                SettingGroup("Notifications") {
+                    NotificationsSetting(push: push)
+                }
+
                 SettingGroup("Your Mac") {
                     SettingRow(label: "Paired with", detail: host, mono: true)
+                    HairlineDivider(inset: Spacing.row)
+                    SettingRow(label: "Unconfirmed actions", detail: "Review actions interrupted by a connection loss.",
+                        action: { showingRecovery = true })
                     HairlineDivider(inset: Spacing.row)
                     SettingRow(
                         label: "Re-pair",
@@ -82,6 +166,7 @@ struct SettingsScreen: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .interactivePop()
+        .sheet(isPresented: $showingRecovery) { RemoteRecoveryScreen(client: dashboard.client) }
         .confirmationDialog(
             "Pair with another Mac?",
             isPresented: $confirmingRepair,
@@ -155,13 +240,13 @@ struct SettingRow: View {
             Spacer(minLength: Spacing.snug)
             if let detail, mono {
                 Text(detail)
-                    .font(.argmaxMono(.footnote))
+                    .typeStyle(.footnote, mono: true)
                     .foregroundStyle(Theme.muted)
                     .lineLimit(1)
                     .truncationMode(.head)
             } else if action != nil {
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .typeSymbol(.caption, weight: .semibold)
                     .foregroundStyle(Theme.muted)
             }
         }
@@ -180,19 +265,24 @@ struct SettingRow: View {
 struct SettingToggle: View {
     let label: String
     var detail: String?
+    /// A switch its own parent setting has taken out of play: it still reads,
+    /// so the hierarchy is legible, but it cannot be flicked.
+    var enabled = true
     @Binding var isOn: Bool
 
     var body: some View {
         Toggle(isOn: $isOn) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(label).typeContent()
+                Text(label)
+                    .typeContent()
+                    .foregroundStyle(enabled ? Theme.ink : Theme.muted)
                 if let detail {
                     Text(detail).typeMeta()
                 }
             }
         }
+        .disabled(!enabled)
         .padding(Spacing.row)
-        .onChange(of: isOn) { _, _ in Haptics.light() }
     }
 }
 
@@ -214,11 +304,12 @@ struct Segmented<Option: Hashable & Identifiable>: View {
             ForEach(options) { option in
                 let chosen = option == selection
                 Button {
-                    Haptics.light()
+                    guard !chosen else { return }
+                    Haptics.selection()
                     selection = option
                 } label: {
                     Text(label(option))
-                        .font(.footnote.weight(.semibold))
+                        .typeStyle(.footnote, weight: .semibold)
                         .lineLimit(1)
                         // Six efforts across a phone: "Extra High" gives a
                         // little rather than breaking the row's height.
@@ -236,13 +327,14 @@ struct Segmented<Option: Hashable & Identifiable>: View {
             }
         }
         .padding(3)
+        .animation(.easeOut(duration: 0.15), value: selection)
         // A step *down* from the card it sits in, so the track reads as a
         // groove rather than a second card.
         .background(Theme.ground, in: .rect(cornerRadius: Radius.control, style: .continuous))
     }
 }
 
-/// The desktop's seven tints as swatches. A colour is the only honest label
+/// The desktop's eight tints as swatches. A colour is the only honest label
 /// for a colour, so the chips carry no text — the name goes to VoiceOver.
 struct AccentChips: View {
     @Binding var selection: AccentTint
@@ -252,7 +344,8 @@ struct AccentChips: View {
             ForEach(AccentTint.allCases) { tint in
                 let chosen = tint == selection
                 Button {
-                    Haptics.light()
+                    guard !chosen else { return }
+                    Haptics.selection()
                     selection = tint
                 } label: {
                     ZStack {
@@ -272,6 +365,7 @@ struct AccentChips: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(.easeOut(duration: 0.15), value: selection)
     }
 }
 
@@ -293,7 +387,7 @@ struct NotificationsSetting: View {
                 // Amber, the needs-you colour: a gap someone has to close,
                 // and not one on this device.
                 Text(leadLine)
-                    .font(.footnote)
+                    .typeStyle(.footnote)
                     .foregroundStyle(Theme.amber)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(Spacing.row)

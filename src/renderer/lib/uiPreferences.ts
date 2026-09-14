@@ -2,6 +2,11 @@ import { createContext, useCallback, useState } from "react";
 
 export const SIDEBAR_PRIORITY_KEY = "argmax.sidebar.priority.visible";
 export const SIDEBAR_COLLAPSED_KEY = "argmax.sidebar.collapsed";
+export const SIDEBAR_TRANSLUCENT_KEY = "argmax.sidebar.translucent";
+export const SIDEBAR_TRANSLUCENCY_KEY = "argmax.sidebar.translucency";
+export const SIDEBAR_TRANSLUCENCY_MIN = 10;
+export const SIDEBAR_TRANSLUCENCY_MAX = 60;
+export const SIDEBAR_TRANSLUCENCY_DEFAULT = 30;
 export const WORKSPACE_CARD_KEY = "argmax.workspaceCard.visible";
 export const CHAT_VERBOSITY_KEY = "argmax.chat.verbosity";
 export const THINKING_EXPANDED_KEY = "argmax.thinking.expanded";
@@ -11,6 +16,7 @@ export const TOOL_CALL_GROUPS_EXPANDED_KEY = "argmax.toolCalls.groups.expanded";
 export const TURN_CHANGES_EXPANDED_KEY = "argmax.turnChanges.expanded";
 export const FAST_MODE_KEY = "argmax.fastMode.enabled";
 export const COMPOSER_PIXEL_FIELD_KEY = "argmax.composer.pixelField.enabled";
+export const COMPOSER_CONTEXT_INDICATOR_KEY = "argmax.composer.contextIndicator.enabled";
 export const PR_MILESTONE_CELEBRATION_KEY = "argmax.prMilestones.celebrate";
 export const RANDOM_SESSION_ICON_KEY = "argmax.sessionIcon.random.enabled";
 export const DESKTOP_NOTIFICATIONS_KEY = "argmax.desktopNotifications.enabled";
@@ -19,6 +25,28 @@ export const BROWSER_PAGE_OPEN_KEY = "argmax.browser.pageOpen";
 export const GOAL_ENABLED_KEY = "argmax.goal.enabled";
 export const TURN_REVERT_ENABLED_KEY = "argmax.turnRevert.enabled";
 export const GOAL_MAX_TURNS_KEY = "argmax.goal.maxTurns";
+export const FOLLOW_UP_DELIVERY_KEY = "argmax.followUp.delivery";
+
+/** What Send does while an agent is still working. */
+export type FollowUpDelivery = "queue" | "steer";
+
+export function readStoredFollowUpDelivery(): FollowUpDelivery {
+  if (typeof window === "undefined") return "queue";
+  return window.localStorage.getItem(FOLLOW_UP_DELIVERY_KEY) === "steer" ? "steer" : "queue";
+}
+
+export function useFollowUpDeliveryPreference(): [FollowUpDelivery, (value: FollowUpDelivery) => void] {
+  const [value, setValue] = useState<FollowUpDelivery>(readStoredFollowUpDelivery);
+  const setPreference = useCallback((next: FollowUpDelivery) => {
+    setValue(next);
+    try {
+      window.localStorage.setItem(FOLLOW_UP_DELIVERY_KEY, next);
+    } catch {
+      // Storage failures leave the in-memory preference usable for this session.
+    }
+  }, []);
+  return [value, setPreference];
+}
 
 /** Turn budget a goal may spend before it stops and hands back. */
 export const GOAL_MAX_TURNS_MIN = 5;
@@ -97,8 +125,8 @@ export type ToolCallsDisplay = "expanded" | "collapsed" | "single-line";
 
 const TOOL_CALLS_DISPLAY_VALUES: readonly ToolCallsDisplay[] = ["expanded", "collapsed", "single-line"];
 
-/** Whether thought content uses a disclosure row or stays visible inline. */
-export type ThinkingDisplay = "collapsed" | "inline";
+/** Whether thoughts collapse, preview live reasoning, or stay visible in full. */
+export type ThinkingDisplay = "collapsed" | "preview" | "inline";
 
 /** 1–4 scale governing default tool calls, groups, and thinking detail. */
 export type ChatVerbosity = 1 | 2 | 3 | 4;
@@ -117,10 +145,10 @@ export const CHAT_VERBOSITY_LABELS: Record<ChatVerbosity, string> = {
 };
 
 export const CHAT_VERBOSITY_HINTS: Record<ChatVerbosity, string> = {
-  1: "Activity summaries while working. Finished turns keep the answer and failures. Click Worked for to inspect the work.",
+  1: "Activity summaries while working. Finished turns keep the answer. Expand Worked to inspect all tool activity, including failed attempts.",
   2: "One short activity summary between messages. Expand to see commands, files, and agent activity.",
-  3: "One short activity summary between messages, with thoughts always shown inline.",
-  4: "Tool calls and groups open on the latest turn, with thoughts always shown inline."
+  3: "Activity summaries with a short preview of current thinking. Expand thoughts to read more.",
+  4: "Tool calls and groups open on the latest turn, with full, labelled thoughts."
 };
 
 export function resolveChatVerbosity(verbosity: ChatVerbosity): ResolvedVerbosity {
@@ -130,7 +158,7 @@ export function resolveChatVerbosity(verbosity: ChatVerbosity): ResolvedVerbosit
     case 2:
       return { toolCallsDisplay: "collapsed", toolCallGroupsExpanded: false, thinkingDisplay: "collapsed" };
     case 3:
-      return { toolCallsDisplay: "collapsed", toolCallGroupsExpanded: false, thinkingDisplay: "inline" };
+      return { toolCallsDisplay: "collapsed", toolCallGroupsExpanded: false, thinkingDisplay: "preview" };
     case 4:
       return { toolCallsDisplay: "expanded", toolCallGroupsExpanded: true, thinkingDisplay: "inline" };
   }

@@ -4,7 +4,7 @@ use super::{inputs::*, live_database, read_off_main};
 use crate::{
     error::{ArgmaxError, ArgmaxResult, InvalidInputIssue},
     persistence::{
-        dashboard::{list_session_agent_tail, list_session_tail},
+        dashboard::{list_session_agent_tail, list_session_tail, list_session_tail_for_remote},
         events::{latest_agent_message, SessionEventsSinceResult},
         learnings::{search_events, EventSearchResult},
         sessions::SessionSummary,
@@ -68,6 +68,22 @@ pub(crate) async fn session_events_since_impl(
     state: &AppState,
     input: SessionEventsSinceInput,
 ) -> ArgmaxResult<SessionEventsSinceResult> {
+    session_events_since_with_budget_impl(state, input, None).await
+}
+
+pub(crate) async fn session_events_since_remote_impl(
+    state: &AppState,
+    input: SessionEventsSinceInput,
+    change_page_budget_bytes: usize,
+) -> ArgmaxResult<SessionEventsSinceResult> {
+    session_events_since_with_budget_impl(state, input, Some(change_page_budget_bytes)).await
+}
+
+async fn session_events_since_with_budget_impl(
+    state: &AppState,
+    input: SessionEventsSinceInput,
+    change_page_budget_bytes: Option<usize>,
+) -> ArgmaxResult<SessionEventsSinceResult> {
     let database = live_database(state)?;
     let session_id = input.session_id.into_string();
     let event_cursor = input.event_cursor.map(|cursor| cursor as i64);
@@ -90,13 +106,24 @@ pub(crate) async fn session_events_since_impl(
         if change_cursor.is_none() && event_cursor.is_none() {
             reconcile_subagent_traces_with_warning(&database, &session_id);
         }
-        list_session_tail(
-            &database.read_connection(),
-            &session_id,
-            event_cursor,
-            raw_output_cursor,
-            change_cursor,
-        )
+        let connection = database.read_connection();
+        match change_page_budget_bytes {
+            Some(budget) => list_session_tail_for_remote(
+                &connection,
+                &session_id,
+                event_cursor,
+                raw_output_cursor,
+                change_cursor,
+                budget,
+            ),
+            None => list_session_tail(
+                &connection,
+                &session_id,
+                event_cursor,
+                raw_output_cursor,
+                change_cursor,
+            ),
+        }
     })
     .await
 }
@@ -115,6 +142,7 @@ pub(crate) async fn session_agent_events_impl(
     input: SessionAgentEventsInput,
 ) -> ArgmaxResult<SessionEventsSinceResult> {
     let database = live_database(state)?;
+    let providers = state.providers.get().cloned();
     let session_id = input.session_id.into_string();
     let parent_tool_use_id = input.parent_tool_use_id.into_string();
     let provider_parent_conversation_id = input
@@ -124,7 +152,13 @@ pub(crate) async fn session_agent_events_impl(
         .provider_child_session_id
         .map(|value| value.into_string());
     tauri::async_runtime::spawn_blocking(move || {
-        reconcile_subagent_traces_with_warning(&database, &session_id);
+        if let Some(providers) = providers {
+            if let Err(error) = providers.reconcile_subagent_traces(&session_id) {
+                tracing::warn!(error = %error, session_id, "failed to reconcile subagent trace events");
+            }
+        } else {
+            reconcile_subagent_traces_with_warning(&database, &session_id);
+        }
         if let Err(error) =
             import_subagent_trace_events(&database, &session_id, &parent_tool_use_id)
         {

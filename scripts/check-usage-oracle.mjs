@@ -99,8 +99,8 @@ for (const key of [...keys].sort()) {
   const within = (value) => Math.abs(value - ours) <= tolerance * Math.max(ours, 1);
   const agreeing = theirs.filter(within).length;
   // Matching one oracle while the other differs means the oracles disagree
-  // with each other; that is reported, not failed. Matching neither is a bug
-  // on our side until proven otherwise.
+  // with each other; that is reported, not failed. Matching neither requires
+  // reconciliation and does not establish which reader is correct.
   const status =
     theirs.length === 0 ? "no-oracle" : agreeing === theirs.length ? "ok" : agreeing > 0 ? "oracles-differ" : "MISMATCH";
   if (status === "MISMATCH") mismatches += 1;

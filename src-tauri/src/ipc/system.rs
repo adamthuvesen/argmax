@@ -19,9 +19,6 @@ use crate::persistence::database::vacuum_database;
 use crate::state::AppState;
 use crate::util::log_buffer::LogEntry;
 
-const LIGHT_BG: tauri::utils::config::Color = tauri::utils::config::Color(251, 251, 250, 255);
-const DARK_BG: tauri::utils::config::Color = tauri::utils::config::Color(20, 20, 20, 255);
-
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SystemOk {
@@ -393,25 +390,15 @@ fn apply_theme<R: Runtime>(app: &AppHandle<R>, mode: ThemeMode) -> ArgmaxResult<
     };
     app.set_theme(theme);
     if let Some(window) = app.get_window("main") {
+        // No window background colour: the window is transparent so the
+        // translucent sidebar can show macOS's sidebar vibrancy through it
+        // (tauri.conf.json `windowEffects`), and an opaque NSWindow background
+        // would sit in front of that material. The page paints its own ground.
         window
             .set_theme(theme)
             .map_err(|error| ArgmaxError::service("THEME_APPLY", error.to_string()))?;
-        let background = match mode {
-            ThemeMode::System if matches!(window.theme().ok(), Some(tauri::Theme::Dark)) => DARK_BG,
-            _ => background_for_mode(mode),
-        };
-        window
-            .set_background_color(Some(background))
-            .map_err(|error| ArgmaxError::service("THEME_BACKGROUND", error.to_string()))?;
     }
     Ok(())
-}
-
-fn background_for_mode(mode: ThemeMode) -> tauri::utils::config::Color {
-    match mode {
-        ThemeMode::Dark => DARK_BG,
-        ThemeMode::Light | ThemeMode::System => LIGHT_BG,
-    }
 }
 
 fn theme_mode_str(mode: ThemeMode) -> &'static str {

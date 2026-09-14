@@ -52,6 +52,19 @@ describe("LaunchSurface focus ownership", () => {
     expect(neighbor).toHaveFocus();
   });
 
+  it("applies the agent-window font size to its composer", async () => {
+    render(launcher({ chatFontSize: 4 }));
+    await act(async () => {});
+
+    expect(screen.getByRole("textbox", { name: "Task prompt" }).closest("form")).toHaveAttribute(
+      "data-font-size",
+      "4"
+    );
+    expect(screen.getByRole("textbox", { name: "Task prompt" }).closest("form")).not.toHaveAttribute(
+      "data-type-scale"
+    );
+  });
+
   it("focuses its prompt when the launcher becomes active", async () => {
     const neighbor = focusedNeighbor();
     const view = render(launcher());

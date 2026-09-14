@@ -1,8 +1,12 @@
 // @vitest-environment jsdom
 
+import { cleanup, render, waitFor } from "@testing-library/react";
+import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi } from "../../shared/types.js";
 import { usageSummaryFixture } from "../../test/fixtures/usageSummary.js";
+import { ActivityPanel } from "../components/activity/ActivityPanel.js";
+import { UsagePanel } from "../components/usage/UsagePanel.js";
 import { demoActivitySummary } from "../demoActivity.js";
 import {
   getCachedActivitySummary,
@@ -24,6 +28,9 @@ describe("ledgerPrefetch", () => {
   beforeEach(() => {
     resetLedgerPageStateForTests();
     resetLedgerPrefetchForTests();
+    usageSummary.mockReset();
+    activitySummary.mockReset();
+    usageRemaining.mockReset();
     usageSummary.mockResolvedValue(usageSummaryFixture());
     activitySummary.mockImplementation((input) =>
       Promise.resolve(demoActivitySummary(input))
@@ -36,6 +43,8 @@ describe("ledgerPrefetch", () => {
   });
 
   afterEach(() => {
+    cleanup();
+    delete window.argmax;
     vi.useRealTimers();
   });
 
@@ -81,6 +90,52 @@ describe("ledgerPrefetch", () => {
     const pending = prefetchLedgerPages(api);
     expect(remainingStarted).toBe(true);
     await pending;
+  });
+
+  it("lets visible panels join the boot prefetch instead of duplicating reads", async () => {
+    let resolveUsage!: (summary: ReturnType<typeof usageSummaryFixture>) => void;
+    let resolveActivity!: (summary: ReturnType<typeof demoActivitySummary>) => void;
+    let resolveRemaining!: (remaining: Awaited<ReturnType<typeof usageRemaining>>) => void;
+    usageSummary.mockImplementation(
+      () => new Promise((resolve) => { resolveUsage = resolve; })
+    );
+    activitySummary.mockImplementation(
+      () => new Promise((resolve) => { resolveActivity = resolve; })
+    );
+    usageRemaining.mockImplementation(
+      () => new Promise((resolve) => { resolveRemaining = resolve; })
+    );
+    window.argmax = api;
+
+    const prefetch = prefetchLedgerPages(api);
+    render(createElement(UsagePanel));
+    render(createElement(ActivityPanel));
+
+    await waitFor(() => {
+      expect(usageSummary).toHaveBeenCalledTimes(1);
+      expect(activitySummary).toHaveBeenCalledTimes(1);
+      expect(usageRemaining).toHaveBeenCalledTimes(1);
+    });
+
+    resolveUsage(usageSummaryFixture());
+    resolveActivity(
+      demoActivitySummary({ window: "30d", projectId: null, timeZone: "UTC" })
+    );
+    resolveRemaining({ fetchedAt: "2026-09-06T12:00:00Z", providers: [] });
+    await prefetch;
+  });
+
+  it("retries after a shared request fails", async () => {
+    usageSummary
+      .mockRejectedValueOnce(new Error("usage scan failed"))
+      .mockResolvedValueOnce(usageSummaryFixture());
+
+    await expect(prefetchLedgerPages(api)).rejects.toThrow("usage scan failed");
+    await prefetchLedgerPages(api);
+
+    expect(usageSummary).toHaveBeenCalledTimes(2);
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    expect(getCachedUsageSummary("30d", null, timeZone)).not.toBeNull();
   });
 
   it("schedules at most once per session", async () => {

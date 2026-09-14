@@ -15,6 +15,7 @@ import {
   type SplitPosition
 } from "../lib/gridState.js";
 import { launchProjectIdFrom } from "../lib/launchProjectPreference.js";
+import { chatSessionFor } from "../lib/workspaceChat.js";
 import {
   closePane,
   dropWorkspacePane,
@@ -144,7 +145,7 @@ export function useAppGridSelection({
     (workspaceId: string, modifiers: WorkspaceClickModifiers = { ctrlOrMeta: false, alt: false }): void => {
       const workspace = workspacesById.get(workspaceId);
       if (!workspace || workspace.state === "archived") return;
-      const sessionForWorkspace = snapshot.sessions.find((s) => s.workspaceId === workspaceId);
+      const sessionForWorkspace = chatSessionFor(snapshot.sessions, workspaceId);
       if (!sessionForWorkspace) {
         showErrorToast("This chat isn't loaded — try refreshing the dashboard.");
         return;
@@ -170,7 +171,7 @@ export function useAppGridSelection({
     (workspaceId: string, target: GridCoord & { position: SplitPosition }): void => {
       const workspace = workspacesById.get(workspaceId);
       if (!workspace || workspace.state === "archived") return;
-      const sessionForWorkspace = snapshot.sessions.find((s) => s.workspaceId === workspaceId);
+      const sessionForWorkspace = chatSessionFor(snapshot.sessions, workspaceId);
       if (!sessionForWorkspace) {
         showErrorToast("This chat isn't loaded — try refreshing the dashboard.");
         return;

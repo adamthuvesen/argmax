@@ -240,6 +240,8 @@ struct WorkspaceSummary: Codable, Hashable, Sendable, Identifiable {
     /// colour: the value is a token both clients resolve against their own
     /// theme, which is how one pick reads right on paper and on charcoal.
     var iconColor: String?
+    /// Shared host acknowledgement of the activity actually shown on a device.
+    var lastViewedAt: String? = nil
 }
 
 /// `SessionSummary` — one chat with one provider.
@@ -269,6 +271,9 @@ struct SessionSummary: Codable, Hashable, Sendable, Identifiable {
     /// New chat's picker grid does — so a row from before the column existed
     /// falls back to "auto" the same way the renderer's `?? "auto"` does.
     var agentMode: String?
+    /// Read on open so the composer's effort chip starts right instead of
+    /// showing the first option until the metadata read lands.
+    var reasoningEffort: String?
 }
 
 /// The three slices of `DashboardSnapshot` the phone keeps.

@@ -13,6 +13,7 @@ pub mod activity;
 pub mod approvals;
 pub mod attachments;
 pub mod browser;
+pub mod browser_import;
 pub mod checkpoints;
 pub mod checks;
 pub mod connections;
@@ -24,12 +25,14 @@ pub mod learnings;
 pub mod projects;
 pub mod providers;
 pub mod prs;
+pub mod questions;
 pub mod remote;
 pub mod review;
 pub mod routines;
 pub mod session;
 pub mod settings;
 pub mod skills;
+pub mod sources;
 pub mod sync;
 pub mod system;
 pub mod terminal;
@@ -60,6 +63,7 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "providers:discover",
     "providers:launch",
     "providers:send-input",
+    "providers:steer-input",
     "providers:resize",
     "providers:terminate",
     "providers:cancel-queued-message",
@@ -71,6 +75,7 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "terminal:terminate",
     "approvals:resolve",
     "approvals:pending",
+    "questions:resolve",
     "session:events-since",
     "session:agent-events",
     "session:fork",
@@ -102,6 +107,10 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "workspace:grep-content",
     "checks:run",
     "skills:list",
+    "sources:list",
+    "sources:add",
+    "sources:update",
+    "sources:delete",
     "connections:list",
     "system:open-path",
     "system:list-detected-ides",
@@ -119,12 +128,15 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "learnings:delete",
     "session:search",
     "workspaces:set-pinned",
+    "workspaces:mark-viewed",
     "workspaces:set-priority-added",
     "workspaces:set-priority-dismissed",
     "workspaces:set-label",
     "workspaces:set-icon",
     "prs:list-for-session",
     "prs:refresh",
+    "prs:set-primary",
+    "prs:dismiss",
     "git:commit",
     "git:push",
     "git:create-branch",
@@ -141,12 +153,16 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "sync:set-config",
     "sync:run-now",
     "browser:open",
+    "browser:content-blocking",
+    "browser:set-site-blocking",
     "browser:navigate",
     "browser:back",
     "browser:forward",
     "browser:reload",
     "browser:stop",
     "browser:set-bounds",
+    "browser:focus",
+    "browser:set-theme",
     "browser:close",
     "browser:fill-credentials",
     "browser:screenshot",
@@ -158,6 +174,8 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "browser:get-text",
     "browser:extract",
     "browser:act",
+    "browser:chrome-profiles",
+    "browser:import-chrome-history",
     "routines:list",
     "routines:upsert",
     "routines:delete",
@@ -245,6 +263,7 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         providers::providers_discover,
         providers::providers_launch,
         providers::providers_send_input,
+        providers::providers_steer_input,
         providers::providers_resize,
         providers::providers_terminate,
         providers::providers_cancel_queued_message,
@@ -256,6 +275,7 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         terminal::terminal_terminate,
         approvals::approvals_resolve,
         approvals::approvals_pending,
+        questions::questions_resolve,
         session::session_events_since,
         session::session_agent_events,
         session::session_fork,
@@ -287,6 +307,10 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         workspace_files::workspace_grep_content,
         checks::checks_run,
         skills::skills_list,
+        sources::sources_list,
+        sources::sources_add,
+        sources::sources_update,
+        sources::sources_delete,
         connections::connections_list,
         system::system_open_path,
         system::system_list_detected_ides,
@@ -304,12 +328,15 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         learnings::learnings_delete,
         session::session_search,
         workspaces::workspaces_set_pinned,
+        workspaces::workspaces_mark_viewed,
         workspaces::workspaces_set_priority_added,
         workspaces::workspaces_set_priority_dismissed,
         workspaces::workspaces_set_label,
         workspaces::workspaces_set_icon,
         prs::prs_list_for_session,
         prs::prs_refresh,
+        prs::prs_set_primary,
+        prs::prs_dismiss,
         git_ops::git_commit,
         git_ops::git_push,
         git_ops::git_create_branch,
@@ -326,12 +353,16 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         sync::sync_set_config,
         sync::sync_run_now,
         browser::browser_open,
+        browser::browser_content_blocking,
+        browser::browser_set_site_blocking,
         browser::browser_navigate,
         browser::browser_back,
         browser::browser_forward,
         browser::browser_reload,
         browser::browser_stop,
         browser::browser_set_bounds,
+        browser::browser_focus,
+        browser::browser_set_theme,
         browser::browser_close,
         browser::browser_fill_credentials,
         browser::browser_screenshot,
@@ -343,6 +374,8 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         browser::browser_get_text,
         browser::browser_extract,
         browser::browser_act,
+        browser_import::browser_chrome_profiles,
+        browser_import::browser_import_chrome_history,
         routines::routines_list,
         routines::routines_upsert,
         routines::routines_delete,

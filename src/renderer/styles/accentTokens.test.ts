@@ -2,8 +2,13 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_BACKGROUND_INTENSITY } from "../lib/backgroundIntensity.js";
-import { CHAT_PANE_MIN_WIDTH_PX, SESSION_CELL_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
+import {
+  CHAT_PANE_MIN_WIDTH_PX,
+  COMPOSER_MIN_WIDTH_PX,
+  SESSION_CELL_MIN_WIDTH_PX
+} from "../lib/layoutConstants.js";
 import { DEFAULT_INK_STRENGTH } from "../lib/inkStrength.js";
+import { SERVER_ICON_TONE_DEPTH } from "../lib/serverIcons.js";
 
 function readSource(path: string): string {
   return readFileSync(resolve(process.cwd(), path), "utf8");
@@ -40,12 +45,97 @@ function contrast(foreground: string, background: string): number {
 }
 
 function fontWeight(rule: string): number {
-  const match = /font-weight:\s*(?<weight>\d+);/.exec(rule);
+  const match = /font-weight:\s*(?:calc\()?(?<weight>\d+)/.exec(rule);
   expect(match?.groups?.weight).toBeDefined();
   return Number(match?.groups?.weight ?? 0);
 }
 
 describe("CSS contracts that cannot be exercised in jsdom", () => {
+  it("keeps the stable activity palette readable on transcript surfaces", () => {
+    const tokens = readSource("src/renderer/styles/tokens.css");
+    for (const theme of ["light", "dark"]) {
+      const base = cssRuleBody(tokens, theme === "dark" ? ':root[data-theme="dark"]' : ":root");
+      for (const activity of ["purple", "blue", "green", "coral", "gold", "red"]) {
+        for (const surface of ["bg", "panel"]) {
+          expect(contrast(readHex(base, `activity-${activity}`), readHex(base, surface))).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    }
+  });
+
+  // One family per colour, each sayable in a phrase. Blue is the exception and
+  // does two jobs: the agent's own machinery, and the fallback for a kind
+  // nothing named. Both are asserted, so a kind silently falling through to
+  // the fallback still has to be a choice someone wrote down.
+  const ACTIVITY_FAMILIES: Record<string, string[]> = {
+    coral: ["edit"],
+    green: ["read", "list", "git"],
+    purple: ["search", "discovery", "web-search", "web-fetch", "browser"],
+    gold: ["command", "computer"],
+    blue: ["skill", "plan", "memory-recall", "memory-save", "agent", "agent-message", "agent-wait"]
+  };
+
+  it("maps transcript activities to their stable semantic colors", () => {
+    const styles = readSource("src/renderer/styles/tool-activity.css");
+    const colorFor = (activity: string): string => {
+      const rule = styles.split("}").find((block) => block.includes(`[data-activity="${activity}"]`));
+      const match = /color:\s*var\(--activity-(?<color>[a-z]+)\)/.exec(rule ?? "");
+      expect(match?.groups?.color, activity).toBeDefined();
+      return match?.groups?.color ?? "";
+    };
+
+    for (const [color, activities] of Object.entries(ACTIVITY_FAMILIES)) {
+      for (const activity of activities) expect(colorFor(activity), activity).toBe(color);
+    }
+
+    const fallback = /\.tool-activity-icon\s*\{[^}]*color:\s*var\(--activity-(?<color>[a-z]+)\)/.exec(styles);
+    expect(fallback?.groups?.color).toBe("blue");
+  });
+
+  // The two surfaces are one legend, and nothing else makes them move together.
+  it("gives the iPhone the same activity colors as the desktop", () => {
+    const swift = readSource("ios/Argmax/Sources/Transcript/TranscriptToolIcon.swift");
+    // Anchored on the colour function: the file switches over the same kinds
+    // earlier to pick each icon's SF Symbol.
+    const body = /guard colorMode == \.color.*?switch kind \{(?<cases>.*?)\n {4}\}/s
+      .exec(swift)?.groups?.cases ?? "";
+    expect(body).not.toBe("");
+
+    const colors = new Map<string, string>();
+    for (const match of body.matchAll(/case (?<kinds>[^:]+):\s*(?:\n\s*)?return Theme\.activity(?<color>\w+)Color/g)) {
+      const color = (match.groups?.color ?? "").toLowerCase();
+      for (const kind of (match.groups?.kinds ?? "").split(",")) {
+        colors.set(kind.trim().replace(/^\./, ""), color);
+      }
+    }
+
+    const camel = (activity: string): string =>
+      activity.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
+    for (const [color, activities] of Object.entries(ACTIVITY_FAMILIES)) {
+      for (const activity of activities) expect(colors.get(camel(activity)), activity).toBe(color);
+    }
+    expect(colors.get("image")).toBe("blue");
+    expect(colors.get("tool")).toBe("blue");
+    expect(colors.get("agentStop")).toBe("red");
+  });
+
+  it.each(["teal", "purple", "orange", "blue", "coral"])("keeps %s highlights and bubbles readable in both themes", (accent) => {
+    const tokens = readSource("src/renderer/styles/tokens.css");
+    for (const theme of ["light", "dark"]) {
+      const base = cssRuleBody(tokens, theme === "dark" ? ':root[data-theme="dark"]' : ":root");
+      const palette = cssRuleBody(tokens, `${theme === "dark" ? ':root[data-theme="dark"]' : ":root"}[data-accent="${accent}"]`);
+      for (const surface of ["bg", "sidebar", "panel"]) {
+        expect(contrast(readHex(palette, "accent"), readHex(base, surface))).toBeGreaterThanOrEqual(4.5);
+        expect(contrast(readHex(palette, "accent-deep"), readHex(base, surface))).toBeGreaterThanOrEqual(4.5);
+      }
+      const bubble = readHex(palette, theme === "dark" ? "user-message-bg" : "accent");
+      expect(contrast("#ffffff", bubble)).toBeGreaterThanOrEqual(4.5);
+      if (theme === "dark") {
+        expect(luminance(bubble)).toBeLessThan(luminance(readHex(palette, "accent")));
+      }
+    }
+  });
+
   it("registers the terminal length token consumed by the canvas renderer", () => {
     const tokens = readSource("src/renderer/styles/tokens.css");
     const registration = /@property\s+--text-terminal\s*\{(?<body>[^}]+)\}/.exec(tokens);
@@ -226,8 +316,10 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
   it("keeps the pane minimum width aligned with the compact composer breakpoint", () => {
     const chatComposer = readSource("src/renderer/styles/chat-composer-chips.css");
 
-    expect(SESSION_CELL_MIN_WIDTH_PX).toBeLessThan(720);
-    expect(CHAT_PANE_MIN_WIDTH_PX).toBeLessThan(SESSION_CELL_MIN_WIDTH_PX);
+    expect(COMPOSER_MIN_WIDTH_PX).toBe(400);
+    expect(SESSION_CELL_MIN_WIDTH_PX).toBe(COMPOSER_MIN_WIDTH_PX);
+    expect(CHAT_PANE_MIN_WIDTH_PX).toBe(COMPOSER_MIN_WIDTH_PX);
+    expect(chatComposer).toContain("@container (max-width: 600px)");
     expect(chatComposer).toContain("@container (max-width: 720px)");
   });
 
@@ -273,6 +365,25 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     const settings = cssRuleBody(readSource("src/renderer/styles/settings-layout.css"), ".standalone-page-fade");
     expect(settings).toContain("--scroll-edge-fade-color: var(--bg);");
     expect(settings).toContain("pointer-events: none;");
+  });
+
+  it("keeps the centered transcript fixed when its vertical scrollbar appears", () => {
+    const conversation = cssRuleBody(
+      readSource("src/renderer/styles/chat-conversation.css"),
+      ".conversation-list"
+    );
+    // `auto` is the bug: WebKit only applies `scrollbar-gutter` once the
+    // scrollbar exists, so the reservation arrives one state too late and the
+    // column jumps every time a disclosure crosses the overflow boundary.
+    expect(conversation).toContain("overflow-y: scroll;");
+    expect(conversation).toContain("scrollbar-gutter: stable both-edges;");
+
+    const agents = cssRuleBody(
+      readSource("src/renderer/styles/chat-conversation.css"),
+      ".agent-activity-scroll"
+    );
+    expect(agents).toContain("overflow-y: scroll;");
+    expect(agents).toContain("scrollbar-gutter: stable both-edges;");
   });
 
   it("gates the workspace card on a gutter that actually fits it, per chat width", () => {
@@ -336,6 +447,23 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
       expect(rule.groups?.block, selector).toContain(
         "--session-inline-padding: var(--session-inline-padding-beside-card);"
       );
+    }
+  });
+
+  it("restates the monochrome mascot ramp that the iPhone export also bakes", () => {
+    const activity = readSource("src/renderer/styles/tool-activity.css");
+    const selectors = {
+      light: ':root[data-activity-icon-color="monochrome"] .tool-call-row-server-icon',
+      dark: ':root[data-theme="dark"][data-activity-icon-color="monochrome"] .tool-call-row-server-icon'
+    };
+
+    // CSS cannot import the table, and the iPhone export bakes the same numbers
+    // into alpha, so drift here would split the two surfaces apart silently.
+    for (const [theme, depths] of Object.entries(SERVER_ICON_TONE_DEPTH)) {
+      const body = cssRuleBody(activity, selectors[theme as "light" | "dark"]);
+      for (const [tone, depth] of Object.entries(depths)) {
+        expect(body, `${theme} ${tone}`).toContain(`--fox-mono-${tone}: ${depth};`);
+      }
     }
   });
 });

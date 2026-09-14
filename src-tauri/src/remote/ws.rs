@@ -229,7 +229,7 @@ async fn serve_client(socket: WebSocket, bridge: Arc<RemoteBridge>) {
                     }
                     reply["type"] = json!("response");
                     reply["id"] = json!(id);
-                    let frame = reply.to_string();
+                    let frame = transcript_response_frame(id, &channel, reply);
                     let _ = responses.send(frame).await;
                 });
             }
@@ -422,6 +422,24 @@ pub fn response_error_frame(id: i64, error: &ArgmaxError) -> String {
     json!({ "type": "response", "id": id, "error": error }).to_string()
 }
 
+fn transcript_response_frame(id: i64, channel: &str, reply: Value) -> String {
+    let frame = reply.to_string();
+    // Include raw output, JSON escaping, and the response envelope. Row
+    // pagination cannot bound one oversized entity, which travels over HTTP.
+    if super::server::is_transcript_channel(channel)
+        && frame.len() > super::transcript_trim::REMOTE_PAGE_BUDGET_BYTES
+    {
+        return response_error_frame(
+            id,
+            &ArgmaxError::service(
+                "REMOTE_RESPONSE_TOO_LARGE",
+                "Fetch this transcript page over the authenticated HTTP bridge.",
+            ),
+        );
+    }
+    frame
+}
+
 pub fn event_frame(event: &RemoteEvent) -> String {
     json!({ "type": "event", "channel": event.channel, "payload": event.payload }).to_string()
 }
@@ -437,6 +455,54 @@ fn malformed_frame_error(detail: String) -> ArgmaxError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn oversized_transcript_replies_use_http_without_sending_the_body_on_the_socket() {
+        for channel in ["session:events-since", "session:agent-events"] {
+            let reply = json!({
+                "type": "response", "id": 42,
+                "ok": {"events": [{"type": "message.completed", "message": "x".repeat(5 * 1024 * 1024)}]}
+            });
+            let frame = transcript_response_frame(42, channel, reply);
+            assert!(frame.len() < 1024);
+            let frame: Value = serde_json::from_str(&frame).unwrap();
+            assert_eq!(frame["id"], 42);
+            assert_eq!(frame["error"]["sub_code"], "REMOTE_RESPONSE_TOO_LARGE");
+            assert!(frame.get("ok").is_none());
+        }
+    }
+
+    #[test]
+    fn transcript_budget_counts_raw_output_escaping_and_the_envelope() {
+        let budget = super::super::transcript_trim::REMOTE_PAGE_BUDGET_BYTES;
+        let mut reply =
+            json!({"type": "response", "id": 1, "ok": {"rawOutputs": [{"content": ""}]}});
+        let overhead = reply.to_string().len();
+        reply["ok"]["rawOutputs"][0]["content"] = json!("x".repeat(budget - overhead));
+        assert_eq!(
+            transcript_response_frame(1, "session:events-since", reply.clone()).len(),
+            budget
+        );
+        reply["ok"]["rawOutputs"][0]["content"] = json!("\n".repeat(budget / 2));
+        let frame: Value =
+            serde_json::from_str(&transcript_response_frame(1, "session:events-since", reply))
+                .unwrap();
+        assert_eq!(frame["error"]["sub_code"], "REMOTE_RESPONSE_TOO_LARGE");
+    }
+
+    #[test]
+    fn transcript_budget_does_not_redirect_mutations_or_change_small_replies() {
+        let small = json!({"type": "response", "id": 3, "ok": {"events": [], "changeCursor": 9}});
+        assert_eq!(
+            transcript_response_frame(3, "session:events-since", small.clone()),
+            small.to_string()
+        );
+        let mutation = json!({"type": "response", "id": 4, "operationSettled": true, "ok": "x".repeat(1024 * 1024)});
+        assert_eq!(
+            transcript_response_frame(4, "providers:launch", mutation.clone()),
+            mutation.to_string()
+        );
+    }
 
     #[test]
     fn request_admission_is_bounded_and_recovers_capacity() {

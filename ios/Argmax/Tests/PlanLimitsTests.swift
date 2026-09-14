@@ -62,7 +62,7 @@ final class PlanLimitsTests: XCTestCase {
         XCTAssertEqual(LimitCopy.left(0), "0.0% left")
     }
 
-    func testResetCountsDownThenBecomesADate() {
+    func testResetAlwaysCountsDown() {
         let now = try! XCTUnwrap(parseWireTimestamp("2026-09-11T10:00:00.000Z"))
         // Six fractional digits and none at all: both shapes are on the wire.
         XCTAssertEqual(LimitCopy.reset("2026-09-11T10:45:00.554190+00:00", now: now), "resets in 45m")
@@ -70,7 +70,6 @@ final class PlanLimitsTests: XCTestCase {
         XCTAssertEqual(LimitCopy.reset("2026-09-13T10:00:00+00:00", now: now), "resets in 2d")
         XCTAssertEqual(LimitCopy.reset("2026-09-11T09:00:00+00:00", now: now), "resets now")
         XCTAssertNil(LimitCopy.reset(nil, now: now))
-        // Past five days the countdown says nothing a date does not.
-        XCTAssertEqual(LimitCopy.reset("2026-09-28T12:46:05.845+00:00", now: now)?.hasPrefix("resets Sep 28"), true)
+        XCTAssertEqual(LimitCopy.reset("2026-09-28T12:46:05.845+00:00", now: now), "resets in 17d")
     }
 }

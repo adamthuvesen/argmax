@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const highlightLineMock = vi.hoisted(() =>
@@ -22,6 +22,7 @@ const highlightLineMock = vi.hoisted(() =>
   })
 );
 const useHighlighterReadyMock = vi.hoisted(() => vi.fn<() => boolean>(() => true));
+const useHighlightThemeAppearanceMock = vi.hoisted(() => vi.fn<() => "light" | "dark">(() => "light"));
 const langFromPathMock = vi.hoisted(() =>
   vi.fn((filePath: string | null | undefined): string | null => {
     if (!filePath) return null;
@@ -33,6 +34,7 @@ const langFromPathMock = vi.hoisted(() =>
 vi.mock("../lib/highlighter.js", () => ({
   highlightLine: highlightLineMock,
   useHighlighterReady: useHighlighterReadyMock,
+  useHighlightThemeAppearance: useHighlightThemeAppearanceMock,
   langFromPath: langFromPathMock
 }));
 
@@ -90,6 +92,7 @@ describe("DiffBlocks", () => {
   beforeEach(() => {
     highlightLineMock.mockClear();
     useHighlighterReadyMock.mockReturnValue(true);
+    useHighlightThemeAppearanceMock.mockReturnValue("light");
   });
 
   afterEach(() => {
@@ -130,12 +133,12 @@ describe("DiffBlocks", () => {
     expect(highlightLineMock).not.toHaveBeenCalled();
   });
 
-  it("refreshes memoized highlighting when the theme changes", async () => {
-    document.documentElement.setAttribute("data-theme", "light");
-    render(<DiffBlocks blocks={[TS_HUNK]} filePath="src/x.ts" />);
+  it("refreshes memoized highlighting when the theme changes", () => {
+    const { rerender } = render(<DiffBlocks blocks={[TS_HUNK]} filePath="src/x.ts" />);
     highlightLineMock.mockClear();
-    document.documentElement.setAttribute("data-theme", "dark");
-    await waitFor(() => expect(highlightLineMock).toHaveBeenCalled());
+    useHighlightThemeAppearanceMock.mockReturnValue("dark");
+    rerender(<DiffBlocks blocks={[TS_HUNK]} filePath="src/x.ts" />);
+    expect(highlightLineMock).toHaveBeenCalled();
   });
 
   it("offers no comment affordance without an onAddComment handler", () => {

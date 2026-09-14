@@ -9,9 +9,11 @@
 #
 # Two things the sprite cannot do, both tried and rejected. It does not reduce
 # to one colour — the fox reads as a fox because cream separates from orange,
-# and flattening it to a single accent gives an indistinct cat. And at the 16pt
-# icon rendition 56 sprite pixels land on 16 device pixels, so the body turns to
-# mush; it is clean from 32px up.
+# and flattening it to a single accent gives an indistinct cat. The monochrome
+# tool row keeps that separation as depths of one ink instead of one flat fill;
+# serverIcons.ts maps each colour here to the tone that carries it. And at the
+# 16pt icon rendition 56 sprite pixels land on 16 device pixels, so the body
+# turns to mush; it is clean from 32px up.
 ..........................KKKK................KKKK......
 ..........................KKKK................KKKK......
 ........................KKddddKK............KKddddKK....

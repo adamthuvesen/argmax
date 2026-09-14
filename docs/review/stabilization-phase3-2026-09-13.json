@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-09-13",
+  "stage": "phase-3",
+  "assessment": "complete-with-explicit-boundaries",
+  "defects": [
+    {
+      "id": "usage-cli-database-path",
+      "status": "fixed",
+      "commit": "a08b36f5",
+      "evidence": [
+        "focused Rust path test passed",
+        "cargo build --bin argmax passed",
+        "live one-day usage command read the runtime ledger"
+      ]
+    }
+  ],
+  "checks": {
+    "renderer": {
+      "files": 45,
+      "tests": 707,
+      "groups": [
+        { "journeys": "J01-J07", "files": 16, "tests": 276 },
+        { "journeys": "J08-J11", "files": 14, "tests": 264 },
+        { "journeys": "J12-J19", "files": 15, "tests": 167 }
+      ]
+    },
+    "chatScroll": { "status": "passed", "checks": 52 },
+    "rustBeforeUsageFix": {
+      "unitPassed": 1217,
+      "unitIgnored": 3,
+      "integrationPassed": 163,
+      "integrationIgnored": 5
+    },
+    "ios": { "focusedTestsPassed": 68, "transcriptUiTestsPassed": 8 },
+    "visual": {
+      "status": "inspected",
+      "surfaces": ["dark", "light", "narrow-620", "settings", "schedule", "activity", "search"]
+    }
+  },
+  "journeys": {
+    "J01": "automated-pass-native-open",
+    "J02": "provisional",
+    "J03": "passed-provisional-b11",
+    "J04": "passed-provisional",
+    "J05": "provisional-dirty-archive-deferred",
+    "J06": "automated-pass-native-open",
+    "J07": "passed-provisional-live-approval-open",
+    "J08": "automated-pass-native-open",
+    "J09": "passed-provisional-native-stage-commit-open",
+    "J10": "automated-pass-native-open",
+    "J11": "automated-pass-native-open",
+    "J12": "automated-pass-real-tick-open",
+    "J13": "automated-pass-native-open",
+    "J14": "automated-pass-live-open",
+    "J15": "automated-pass-native-open",
+    "J16": "passed-provisional-oracle-policies-incompatible",
+    "J17": "automated-pass-real-github-open",
+    "J18": "simulator-pass-device-installed-recovery-open",
+    "J19": "provisional-see-phase-4"
+  },
+  "commits": [
+    { "sha": "a08b36f5", "subject": "fix(usage): read the runtime ledger database" },
+    { "sha": "fb716634", "subject": "docs(usage): qualify oracle mismatches" }
+  ],
+  "deferredByUser": ["native dirty archive Cancel and OK acceptance"]
+}

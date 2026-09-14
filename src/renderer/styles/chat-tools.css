@@ -7,7 +7,7 @@
 .file-change-card {
   position: relative;
   border: 1px solid color-mix(in oklab, var(--line-soft) 88%, transparent);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   overflow: hidden;
   background: transparent;
   margin-top: var(--space-2);
@@ -417,7 +417,7 @@
 }
 
 .checks-list-title {
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   color: var(--muted-strong);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -534,7 +534,7 @@
   gap: var(--space-1_5);
   align-items: center;
   white-space: nowrap;
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   /* Ticking digits hold their width mid-count so the row doesn't jitter. */
   font-variant-numeric: tabular-nums;
 }
@@ -648,7 +648,7 @@
 .session-input-toolbar {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-1_5);
   min-height: 34px;
   color: var(--muted);
   font-size: var(--text-sm-plus);

@@ -305,20 +305,6 @@
           "defaultEffort": null
         },
         {
-          "label": "Hy3 Free",
-          "modelId": "opencode/hy3-free",
-          "contextWindow": 190000,
-          "reasoningEfforts": [],
-          "defaultEffort": null
-        },
-        {
-          "label": "MiMo V2.5 Free",
-          "modelId": "opencode/mimo-v2.5-free",
-          "contextWindow": 200000,
-          "reasoningEfforts": [],
-          "defaultEffort": null
-        },
-        {
           "label": "Nemotron 3.5 Lightning Free",
           "modelId": "opencode/nemotron-3.5-lightning-free",
           "contextWindow": 262144,

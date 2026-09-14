@@ -1,6 +1,7 @@
 import { useEffect } from "react";
+import { commitChatCycle, stepChatCycle } from "../lib/chatCycle.js";
 import { requestCloseActiveReviewFileTab } from "../lib/reviewFilePanel.js";
-import { listVisibleSidebarWorkspaceIds } from "../lib/sidebarOrder.js";
+import { listVisibleSidebarWorkspaceIds, selectedSidebarWorkspaceId } from "../lib/sidebarOrder.js";
 import type { MenuCommand } from "../../shared/types.js";
 
 interface GlobalKeybindingArgs {
@@ -44,6 +45,8 @@ function parseDigitShortcut(event: KeyboardEvent): number | null {
  *
  * Bindings:
  *   Cmd/Ctrl+1..9 → open the nth session row in the sidebar, top to bottom
+ *   Cmd/Ctrl+§ (the key under Esc; ` on a US layout) → cycle chats by recency,
+ *     Shift to step back up the stack; hold Cmd to keep going
  *   Cmd/Ctrl+,    → open-settings (menu command)
  *   Cmd/Ctrl+N    → new-session (menu command)
  *   Cmd/Ctrl+K    → open-command-palette (menu command), All filter
@@ -57,6 +60,10 @@ function parseDigitShortcut(event: KeyboardEvent): number | null {
  * session jumping, new session, pane close, cheat sheet, search) that do not
  * conflict with standard text-editing shortcuts in inputs/textareas.
  */
+
+/** The key under Esc: `Backquote` on an ANSI Mac, `IntlBackslash` on an ISO one. */
+const CHAT_CYCLE_CODES = new Set(["Backquote", "IntlBackslash"]);
+
 export function useGlobalKeybindings({
   onMenuCommand,
   onOpenFilePalette,
@@ -115,6 +122,28 @@ export function useGlobalKeybindings({
         onOpenFilePalette();
         return;
       }
+      // The key under Esc, a thumb away from ⌘Tab — which is two different
+      // codes depending on the Mac keyboard. An ANSI Mac puts ⌘` there and
+      // sends `Backquote` (kVK_ANSI_Grave). An ISO Mac puts ⌘§ there and sends
+      // `IntlBackslash` (kVK_ISO_Section), with `Backquote` moved beside the
+      // left Shift as ⌘<. Both are accepted, so the chord is the same physical
+      // key on either keyboard. The native menu can only name one code and
+      // names `Backquote`, so on an ISO Mac it reads ⌘< — the alias, not the
+      // shortcut. It cycles by recency the way ⌘Tab does — see
+      // lib/chatCycle.ts — with Shift stepping back up the stack.
+      if (CHAT_CYCLE_CODES.has(event.code) && !event.altKey) {
+        if (event.isComposing || event.repeat) return;
+        const targetWorkspaceId = stepChatCycle(
+          event.shiftKey ? -1 : 1,
+          listVisibleSidebarWorkspaceIds(),
+          selectedSidebarWorkspaceId()
+        );
+        if (!targetWorkspaceId) return;
+        event.preventDefault();
+        onCloseSettings();
+        onSelectWorkspace(targetWorkspaceId);
+        return;
+      }
       if (!event.altKey) {
         const digit = parseDigitShortcut(event);
         if (digit !== null) {
@@ -153,6 +182,21 @@ export function useGlobalKeybindings({
     onCloseSettings,
     onCloseFocusedPane
   ]);
+
+  // ⌘ coming back up ends a ⌘§ traversal and promotes the chat it landed on.
+  // ⌘Tabbing away mid-hold swallows that keyup, so a blur closes the hold too —
+  // otherwise the stale frozen order would still be there on the way back.
+  useEffect(() => {
+    const handleKeyUp = (event: KeyboardEvent): void => {
+      if (event.key === "Meta" || event.key === "Control") commitChatCycle();
+    };
+    document.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", commitChatCycle);
+    return () => {
+      document.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", commitChatCycle);
+    };
+  }, []);
 
   // Bind to the main-process menu-command channel separately so the same
   // shortcut works whether the renderer or the native menu has focus.

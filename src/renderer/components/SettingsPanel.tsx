@@ -1,3 +1,4 @@
+import type { FontHeaviness } from "../lib/fontHeaviness.js";
 import type { ProviderId } from "../../shared/types.js";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
 import type {
@@ -20,7 +21,7 @@ import type { NewSessionMode } from "../lib/newSessionMode.js";
 import type { PermissionMode, ProviderPermissionModes } from "../lib/permissionMode.js";
 import type { ChatWidth } from "../lib/chatWidth.js";
 import type { ReviewPanelSide } from "../lib/reviewPanelSide.js";
-import type { ChatVerbosity } from "../lib/uiPreferences.js";
+import type { ChatVerbosity, FollowUpDelivery } from "../lib/uiPreferences.js";
 import { AdvancedSettings } from "./settings/AdvancedSettings.js";
 import { AgentsSettings } from "./settings/AgentsSettings.js";
 import { AppearanceSettings } from "./settings/AppearanceSettings.js";
@@ -47,10 +48,16 @@ export function SettingsPanel({
   onChatVerbosityChange,
   sidebarPriorityVisible,
   onSidebarPriorityVisibleChange,
+  sidebarTranslucent,
+  onSidebarTranslucentChange,
+  sidebarTranslucency,
+  onSidebarTranslucencyChange,
   workspaceCardVisible,
   onWorkspaceCardVisibleChange,
   pixelFieldEnabled,
   onPixelFieldEnabledChange,
+  contextIndicatorEnabled,
+  onContextIndicatorEnabledChange,
   prMilestoneCelebrationEnabled,
   onPrMilestoneCelebrationEnabledChange,
   chatWidth,
@@ -73,12 +80,16 @@ export function SettingsPanel({
   onFontSizeChange,
   chatFontSize,
   onChatFontSizeChange,
+  fontHeaviness,
+  onFontHeavinessChange,
   inkStrength,
   onInkStrengthChange,
   backgroundIntensity,
   onBackgroundIntensityChange,
   themeMode,
   onThemeModeChange,
+  browserThemeMode,
+  onBrowserThemeModeChange,
   accentId,
   onAccentChange,
   userBubbleTint,
@@ -93,6 +104,8 @@ export function SettingsPanel({
   onPermissionModeChange,
   newSessionMode,
   onNewSessionModeChange,
+  followUpDelivery,
+  onFollowUpDeliveryChange,
   randomSessionIconEnabled,
   onRandomSessionIconEnabledChange,
   desktopNotificationsEnabled,
@@ -114,10 +127,16 @@ export function SettingsPanel({
   onChatVerbosityChange: (verbosity: ChatVerbosity) => void;
   sidebarPriorityVisible: boolean;
   onSidebarPriorityVisibleChange: (v: boolean) => void;
+  sidebarTranslucent: boolean;
+  onSidebarTranslucentChange: (v: boolean) => void;
+  sidebarTranslucency: number;
+  onSidebarTranslucencyChange: (v: number) => void;
   workspaceCardVisible: boolean;
   onWorkspaceCardVisibleChange: (v: boolean) => void;
   pixelFieldEnabled: boolean;
   onPixelFieldEnabledChange: (v: boolean) => void;
+  contextIndicatorEnabled: boolean;
+  onContextIndicatorEnabledChange: (v: boolean) => void;
   prMilestoneCelebrationEnabled: boolean;
   onPrMilestoneCelebrationEnabledChange: (v: boolean) => void;
   chatWidth: ChatWidth;
@@ -140,12 +159,16 @@ export function SettingsPanel({
   onFontSizeChange: (id: FontSize) => void;
   chatFontSize: FontSize;
   onChatFontSizeChange: (id: FontSize) => void;
+  fontHeaviness: FontHeaviness;
+  onFontHeavinessChange: (heaviness: FontHeaviness) => void;
   inkStrength: InkStrength;
   onInkStrengthChange: (strength: InkStrength) => void;
   backgroundIntensity: BackgroundIntensity;
   onBackgroundIntensityChange: (intensity: BackgroundIntensity) => void;
   themeMode: ThemeMode;
   onThemeModeChange: (mode: ThemeMode) => void;
+  browserThemeMode: ThemeMode;
+  onBrowserThemeModeChange: (mode: ThemeMode) => void;
   accentId: AccentId;
   onAccentChange: (accentId: AccentId) => void;
   userBubbleTint: UserBubbleTint;
@@ -160,6 +183,8 @@ export function SettingsPanel({
   onPermissionModeChange: (provider: ProviderId, mode: PermissionMode) => void;
   newSessionMode: NewSessionMode;
   onNewSessionModeChange: (mode: NewSessionMode) => void;
+  followUpDelivery: FollowUpDelivery;
+  onFollowUpDeliveryChange: (delivery: FollowUpDelivery) => void;
   randomSessionIconEnabled: boolean;
   onRandomSessionIconEnabledChange: (v: boolean) => void;
   desktopNotificationsEnabled: boolean;
@@ -309,6 +334,8 @@ export function SettingsPanel({
           <GeneralSettings
             newSessionMode={newSessionMode}
             onNewSessionModeChange={onNewSessionModeChange}
+            followUpDelivery={followUpDelivery}
+            onFollowUpDeliveryChange={onFollowUpDeliveryChange}
             randomSessionIconEnabled={randomSessionIconEnabled}
             onRandomSessionIconEnabledChange={onRandomSessionIconEnabledChange}
             desktopNotificationsEnabled={desktopNotificationsEnabled}
@@ -330,22 +357,32 @@ export function SettingsPanel({
             onFontSizeChange={onFontSizeChange}
             chatFontSize={chatFontSize}
             onChatFontSizeChange={onChatFontSizeChange}
+            fontHeaviness={fontHeaviness}
+            onFontHeavinessChange={onFontHeavinessChange}
             inkStrength={inkStrength}
             onInkStrengthChange={onInkStrengthChange}
             backgroundIntensity={backgroundIntensity}
             onBackgroundIntensityChange={onBackgroundIntensityChange}
             themeMode={themeMode}
             onThemeModeChange={onThemeModeChange}
+            browserThemeMode={browserThemeMode}
+            onBrowserThemeModeChange={onBrowserThemeModeChange}
             accentId={accentId}
             onAccentChange={onAccentChange}
             userBubbleTint={userBubbleTint}
             onUserBubbleTintChange={onUserBubbleTintChange}
             sidebarPriorityVisible={sidebarPriorityVisible}
             onSidebarPriorityVisibleChange={onSidebarPriorityVisibleChange}
+            sidebarTranslucent={sidebarTranslucent}
+            onSidebarTranslucentChange={onSidebarTranslucentChange}
+            sidebarTranslucency={sidebarTranslucency}
+            onSidebarTranslucencyChange={onSidebarTranslucencyChange}
             workspaceCardVisible={workspaceCardVisible}
             onWorkspaceCardVisibleChange={onWorkspaceCardVisibleChange}
             pixelFieldEnabled={pixelFieldEnabled}
             onPixelFieldEnabledChange={onPixelFieldEnabledChange}
+            contextIndicatorEnabled={contextIndicatorEnabled}
+            onContextIndicatorEnabledChange={onContextIndicatorEnabledChange}
             prMilestoneCelebrationEnabled={prMilestoneCelebrationEnabled}
             onPrMilestoneCelebrationEnabledChange={onPrMilestoneCelebrationEnabledChange}
             chatWidth={chatWidth}

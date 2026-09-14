@@ -1,115 +1,219 @@
+import Combine
 import SwiftUI
+import UIKit
 
-/// One chat, pushed from the list.
-///
-/// The screen itself is a frame: our header, a trailing menu, and the shared
-/// web view filling everything under it. Everything inside the transcript —
-/// streaming, cards, approvals, the composer, the review screen — is the
-/// page's, which is the whole point of the seam.
+/// A native conversation, opened from the chat list.
 struct TranscriptScreen: View {
-    /// The row this was pushed from. A snapshot from the moment of the push,
-    /// so it is the fallback title and the source of everything the page
-    /// does not report: which project, whether there is a diff to open,
-    /// whether the chat can be forked.
     let row: ChatRow
 
-    @EnvironmentObject private var transcript: TranscriptHost
+    @EnvironmentObject private var transcript: TranscriptStore
     @EnvironmentObject private var navigator: ChatNavigator
     @EnvironmentObject private var store: DashboardStore
-    /// Told which chat is on screen, so a push about this one does not draw
-    /// a banner over the transcript it is announcing.
     @EnvironmentObject private var push: PushDelegate
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accentTint) private var accent
     @State private var forking = false
+    @State private var screenID = UUID()
+    @State private var draft = ""
+    @State private var draftEdited = false
+    @State private var draftFailure: String?
+    @State private var draftWrite: Task<Void, Never>?
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var focusRequest = 0
+    @State private var screenHeight: CGFloat = 0
+    @State private var keyboardInset: CGFloat = 0
 
     var body: some View {
-        ZStack(alignment: .top) {
-            // Painted under a web view that is transparent until the page
-            // draws, so the load never flashes white.
-            Theme.ground.ignoresSafeArea()
-            TranscriptWebView(host: transcript)
-                .opacity(transcript.ready ? 1 : 0)
-                .safeAreaInset(edge: .top, spacing: 0) { header }
-                // The native composer's own bottom edge — the web page hid
-                // its own, so nothing under this needs the home-indicator
-                // inset twice. Standard keyboard avoidance (no
-                // `.ignoresSafeArea(.keyboard)` here) is what shrinks the web
-                // view and lifts the card together when the composer's field
-                // takes focus.
-                .safeAreaInset(edge: .bottom, spacing: 0) { composerFloor }
-            if let failure = transcript.failure {
-                fallback(failure)
-                    .padding(.top, Spacing.headerHeight + Spacing.section)
+        GeometryReader { geometry in
+            NativeTranscriptView(
+                client: store.client,
+                onOpenFile: { openReview(filePath: $0) },
+                onOpenDiff: { openReview(diffPath: $0) }
+            ) {
+                draft = "Please revise the plan: "
+                focusRequest += 1
+            }
+            .environment(\.transcriptWorkspacePath,
+                         store.snapshot.workspaces.first { $0.id == row.workspace.id }?.path ?? row.workspace.path)
+            .background(Theme.ground.ignoresSafeArea())
+            .safeAreaInset(edge: .top, spacing: 0) { header }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                TranscriptComposerFloor(
+                    workspaceID: row.workspace.id,
+                    client: store.client,
+                    screenHeight: screenHeight,
+                    draft: $draft,
+                    focusRequest: $focusRequest
+                )
+                .id(row.session.id)
+                .padding(.bottom, keyboardInset)
+                .background(Theme.ground)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) {
+                keyboardInset = transcriptKeyboardInset(
+                    notification: $0,
+                    containerBottom: geometry.frame(in: .global).maxY + geometry.safeAreaInsets.bottom
+                )
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                keyboardInset = 0
             }
         }
+        // SwiftUI can retain its keyboard safe area after the keyboard has
+        // left, pinning a safe-area inset at the old keyboard top. UIKit's
+        // frame notifications above are the single source of keyboard space.
+        .ignoresSafeArea(.keyboard)
+        // Measured outside the insets, so the question dock's own growth
+        // cannot feed back into the height it is allowed to grow to.
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { screenHeight = $0 }
         .toolbar(.hidden, for: .navigationBar)
         .interactivePop()
         .onAppear {
-            transcript.onBack = { dismiss() }
-            transcript.onHaptic = Haptics.play(_:)
-            transcript.setTheme(colorScheme == .dark ? .dark : .light)
-            transcript.loadIfNeeded()
-            transcript.openSession(row.session.id)
-            transcript.setComposerHidden(true)
+            transcript.claim(screenID, sessionID: row.session.id)
+            transcript.receive(snapshot: store.snapshot, authoritative: !store.isCachedSnapshot)
             push.openSessionID = row.session.id
         }
+        .task(id: row.session.id) {
+            do {
+                let saved = try await ComposerDrafts.shared.read(scope: store.client.cacheNamespace, sessionID: row.session.id)
+                guard !Task.isCancelled, !draftEdited else { return }
+                draft = saved
+            } catch { draftFailure = "The saved draft could not be restored." }
+        }
+        .onChange(of: draft) {
+            draftEdited = true
+            saveDraft(debounce: true)
+        }
+        .onChange(of: scenePhase) {
+            if scenePhase != .active { saveDraft(debounce: false) }
+        }
         .onDisappear {
-            transcript.onBack = nil
-            transcript.onHaptic = nil
-            transcript.closeSession()
+            saveDraft(debounce: false)
+            if navigator.launchedSessionID == row.session.id { navigator.launchedSessionID = nil }
+            guard transcript.relinquish(screenID) else { return }
             if push.openSessionID == row.session.id { push.openSessionID = nil }
         }
-        .onChange(of: colorScheme) {
-            transcript.setTheme(colorScheme == .dark ? .dark : .light)
+        .task(id: viewedActivityKey) {
+            guard transcript.phase == .ready, store.connection == .live,
+                  let workspace = store.snapshot.workspaces.first(where: { $0.id == row.workspace.id }) else { return }
+            await store.markViewed(workspace)
         }
     }
 
-    /// The composer card, unless the page has raised its peek at delegated
-    /// work: that sheet is drawn to cover the composer, and it can only reach
-    /// the bottom of the screen if the native card gives the room up. Reading
-    /// delegated work and replying to the chat that spawned it are two acts;
-    /// the card comes back the moment the peek closes.
-    @ViewBuilder
-    private var composerFloor: some View {
-        if !transcript.agentsOpen {
-            TranscriptComposer()
+    private func saveDraft(debounce: Bool) {
+        guard draftEdited else { return }
+        draftWrite?.cancel()
+        let text = draft
+        let id = row.session.id
+        let scope = store.client.cacheNamespace
+        draftWrite = Task {
+            if debounce {
+                do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+            }
+            do {
+                try await ComposerDrafts.shared.write(text, scope: scope, sessionID: id)
+                draftFailure = nil
+            } catch { draftFailure = "This draft could not be saved on the iPhone." }
         }
+    }
+
+    private var viewedActivityKey: String {
+        let workspace = store.snapshot.workspaces.first { $0.id == row.workspace.id }
+        return "\(workspace?.lastActivityAt ?? "")|\(transcript.phase)|\(store.connection)"
     }
 
     // MARK: - Header
 
-    @ViewBuilder
     private var header: some View {
-        // The review screen draws its own bar. Two would be one too many.
-        if !transcript.reviewOpen {
-            VStack(spacing: 0) {
-                ScreenHeader(title: title, subtitle: subtitle, onBack: { dismiss() }) {
+        VStack(spacing: 0) {
+            ScreenHeader(title: title, subtitle: subtitle, onBack: { dismiss() }) {
+                HStack(spacing: Spacing.tight) {
+                    changesButton
                     menu
                 }
-                // Until the page names the chat: one thin line under the
-                // header rather than a spinner in the middle of an empty
-                // screen, which reads as "nothing is here" instead of
-                // "something is coming". It runs past `ready` on purpose —
-                // a warm page still has to find a chat started a moment ago,
-                // and that wait is the blank one worth explaining.
-                if transcript.session == nil && transcript.failure == nil {
-                    IndeterminateLine()
-                }
             }
+            if let draftFailure { Text(draftFailure).typeMeta().foregroundStyle(Theme.rose) }
+        }
+        .background(Theme.ground)
+    }
+
+    /// Changes, one tap from the transcript, carrying its own count.
+    ///
+    /// A side chat runs in an app-owned scratch directory with one empty
+    /// commit, so this would open a permanently empty diff and an empty tree.
+    /// A file reference tapped in the transcript still opens the review
+    /// screen there — only the standing entry point is dropped.
+    @ViewBuilder
+    private var changesButton: some View {
+        if row.workspace.kind == .git {
+            Button {
+                openReview(filePath: nil)
+            } label: {
+                GitBranchGlyph()
+                    .stroke(
+                        Theme.muted,
+                        style: StrokeStyle(lineWidth: 17 / 12, lineCap: .round, lineJoin: .round)
+                    )
+                    .frame(width: 17, height: 17)
+                    .frame(width: 32, height: 32)
+                    .overlay(alignment: .topTrailing) { changedBadge }
+                    .contentShape(.rect)
+            }
+            .buttonStyle(PressDim())
+            .accessibilityLabel(
+                changedFiles > 0
+                    ? "Files and changes, \(changedFiles) changed"
+                    : "Files and changes"
+            )
         }
     }
 
-    /// What the page says the chat is called, until it has said anything.
+    /// The count the desktop's own button carries. Drawn only when there is
+    /// one: a standing "0" is a number the eye has to dismiss on every glance.
+    @ViewBuilder
+    private var changedBadge: some View {
+        if changedFiles > 0 {
+            Text(verbatim: changedFiles > 99 ? "99+" : "\(changedFiles)")
+                // A badge numeral, below every text style: caption2 is the
+                // nearest step, so it scales with the smallest type.
+                .typeSize(10, relativeTo: .caption2, weight: .semibold)
+                .monospacedDigit()
+                .foregroundStyle(Theme.ground)
+                .padding(.horizontal, 4)
+                .frame(minWidth: 15, minHeight: 15)
+                .background(accent.color, in: .capsule)
+                .offset(x: 3, y: -1)
+                .accessibilityHidden(true)
+        }
+    }
+
+    /// The live count, not the one this screen was pushed with: an agent
+    /// writing mid-turn moves it on the dashboard delta.
+    private var changedFiles: Int {
+        store.snapshot.workspaces.first { $0.id == row.workspace.id }?.changedFiles
+            ?? row.workspace.changedFiles
+    }
+
+    private func openReview(filePath: String?) {
+        navigator.review = ReviewRoute(workspaceID: row.workspace.id, filePath: filePath)
+    }
+
+    private func openReview(diffPath: String) {
+        navigator.review = ReviewRoute(workspaceID: row.workspace.id, diffPath: diffPath)
+    }
+
+    /// Live metadata takes precedence over the row used to open this screen.
     private var title: String {
         let reported = transcript.session?.title
         if let reported, !reported.isEmpty { return reported }
         return row.workspace.taskLabel
     }
 
-    /// Project · state. The project never changes under a chat; the state is
-    /// whatever the page last reported, and falls back to the row's.
+    /// Project and current session state, with the opening row as fallback.
     private var subtitle: String {
+        // Refresh status must not change the transcript's safe-area height.
+        if case .reconnecting = store.connection { return "Reconnecting to your Mac…" }
+        if transcript.showingCachedContent { return "Saved on this iPhone · Waiting for your Mac" }
         let state = stateLabel(transcript.session?.state ?? row.session.state)
         guard let project = row.projectName, !project.isEmpty else { return state }
         return "\(project) · \(state)"
@@ -131,30 +235,28 @@ struct TranscriptScreen: View {
     @ViewBuilder
     private var menu: some View {
         // A `Menu` rather than a sheet of our own: the long-press lift, the
-        // dismissal and the placement are the platform's, and the rows take
-        // our tint.
+        // dismissal and the placement are the platform's, and so are its
+        // materials and label colours — so the icons read as label colour
+        // like every other iOS menu rather than carrying the app tint
+        // through, the same as the chat row's context menu.
         Menu {
-            // A side chat runs in an app-owned scratch directory with one
-            // empty commit, so this would open a permanently empty diff.
-            if row.workspace.kind == .git {
-                Button("Changes", systemImage: "arrow.triangle.branch") {
-                    transcript.openReview()
+            Group {
+                Button("Fork chat", systemImage: "arrow.triangle.pull") { fork() }
+                    .disabled(!isForkable || forking)
+                Button("New chat here", systemImage: "plus.bubble") {
+                    navigator.newChat = NewChatRequest(workspaceID: row.workspace.id)
                 }
+                Divider()
+                // Phase 5 hands this to the Mac over the bridge; until then it
+                // is visible so the menu's shape is honest, and off so it cannot
+                // lie.
+                Button("Open on Mac", systemImage: "laptopcomputer") {}
+                    .disabled(true)
             }
-            Button("Fork chat", systemImage: "arrow.triangle.pull") { fork() }
-                .disabled(!isForkable || forking)
-            Button("New chat here", systemImage: "plus.bubble") {
-                navigator.newChat = NewChatRequest(workspaceID: row.workspace.id)
-            }
-            Divider()
-            // Phase 5 hands this to the Mac over the bridge; until then it
-            // is visible so the menu's shape is honest, and off so it cannot
-            // lie.
-            Button("Open on Mac", systemImage: "laptopcomputer") {}
-                .disabled(true)
+            .tint(Color.primary)
         } label: {
             Image(systemName: "ellipsis")
-                .font(.body.weight(.semibold))
+                .typeSymbol(.body, weight: .semibold)
                 .foregroundStyle(Theme.muted)
                 .frame(width: 32, height: 32)
                 .contentShape(.rect)
@@ -178,23 +280,36 @@ struct TranscriptScreen: View {
             if let forked = try? await store.client.forkSession(sessionID: row.session.id) {
                 navigator.awaitingSessionID = forked.session.id
             } else {
-                Haptics.warning()
+                Haptics.error()
             }
             forking = false
         }
     }
 
-    /// One line of copy, one action.
-    private func fallback(_ message: String) -> some View {
-        EmptyState(
-            mark: .glyph("exclamationmark.triangle"),
-            message: message,
-            action: ("Retry", { transcript.reload() })
-        )
-    }
+
 }
 
-/// The wait before the page speaks: a 2pt line that sweeps under the header.
+func transcriptKeyboardInset(
+    notification: Notification,
+    containerBottom: CGFloat
+) -> CGFloat {
+    guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else {
+        return 0
+    }
+    return transcriptKeyboardInset(
+        keyboardTop: frame.minY,
+        containerBottom: containerBottom
+    )
+}
+
+func transcriptKeyboardInset(
+    keyboardTop: CGFloat,
+    containerBottom: CGFloat
+) -> CGFloat {
+    max(0, containerBottom - keyboardTop)
+}
+
+/// Loading feedback that keeps the header and navigation available.
 ///
 /// Not a `ProgressView`. A spinner centred in an empty screen is the shape of
 /// "there is nothing here"; a line under the header is the shape of "the

@@ -72,7 +72,10 @@ export function TurnBlock({
   isTurnActive,
   toolsExpanded,
   onToggleTools,
+  hasCollapsibleActivity = false,
   hideWorkingWhenCollapsed,
+  hiddenEarlierBodyCount = 0,
+  onShowEarlierBody,
   headerTimestampIso,
   turnMarkdown,
   changes,
@@ -88,7 +91,7 @@ export function TurnBlock({
   // including the thinking phase before any tools fire.
   turnStartedAtMs?: number;
   // Authoritative "agent is still working" signal from the parent. The parent
-  // knows about session state and user-input pauses (PlanCard, QuestionCard),
+  // knows about session state and user-input pauses (PlanCard, QuestionDock),
   // including thinking-only phases without active tools.
   isTurnActive?: boolean;
   // Whether this turn's tool groups are expanded. Owned by the parent (which
@@ -99,7 +102,13 @@ export function TurnBlock({
   // entirely, leaving the chip and the answer.
   toolsExpanded?: boolean;
   onToggleTools?: () => void;
+  /** True when a Compact thought-only activity run still has a disclosure. */
+  hasCollapsibleActivity?: boolean;
   hideWorkingWhenCollapsed?: boolean;
+  /** Rows kept out of the DOM by the turn's render window. */
+  hiddenEarlierBodyCount?: number;
+  /** Reveal the next page of older rows without changing the logical turn. */
+  onShowEarlierBody?: () => void;
   // The canonical timestamp shown in the turn header (typically the earliest
   // assistant event in the turn). Per-paragraph timestamps inside the body
   // are visually suppressed once a turn-level one is available.
@@ -119,12 +128,11 @@ export function TurnBlock({
   const toolRunning = useMemo(() => toolItems.some(isToolRunning), [toolItems]);
   // `running` controls the chip's "Working" label and live ticker —
   // the parent's isTurnActive flag is authoritative because it also knows
-  // about thinking phases and user-input pauses (PlanCard / QuestionCard).
+  // about thinking phases and user-input pauses (PlanCard / QuestionDock).
   // Fall back to tool status for isolated component tests and narrow callers.
   const running = isTurnActive ?? toolRunning;
   const wasRunning = useRef(running);
   const [settling, setSettling] = useState(false);
-  const [inspectingActivity, setInspectingActivity] = useState(false);
   // Minimal keeps freshly finished activity readable for one brief beat.
   // Restored history starts collapsed, and the status settles immediately.
   useLayoutEffect(() => {
@@ -132,7 +140,6 @@ export function TurnBlock({
     wasRunning.current = running;
     if (!hideWorkingWhenCollapsed || running) {
       setSettling(false);
-      setInspectingActivity(false);
       return;
     }
     if (!justFinished) return;
@@ -159,8 +166,8 @@ export function TurnBlock({
   // verbosity where a finished turn drops the working rows from the body.
   const toolsAreExpanded = toolsExpanded ?? true;
   const visibleBody =
-    hideWorkingWhenCollapsed && !running && !toolsAreExpanded && !settling && !inspectingActivity
-      ? body.filter((child) => child.kind !== "tool" || child.hasErrors)
+    hideWorkingWhenCollapsed && !running && !toolsAreExpanded && !settling
+      ? body.filter((child) => child.kind !== "tool")
       : body;
 
   const elapsedLabel = formatElapsedSeconds(elapsedMs);
@@ -185,7 +192,8 @@ export function TurnBlock({
   // same visual reset as Codex. Tool turns remain clickable/collapsible; pure
   // text turns render static metadata.
   const showChip = running || hasTools || body.length > 0;
-  const interactiveChip = running || hasTools;
+  const hasDisclosure = hasTools || hasCollapsibleActivity;
+  const interactiveChip = running || hasDisclosure;
 
   const liveStartMs = running && startedAtMs > 0 ? startedAtMs : null;
   const liveRef = useRef<HTMLSpanElement | null>(null);
@@ -242,9 +250,8 @@ export function TurnBlock({
             className="turn-block-chip"
             aria-label={staticChipLabel}
             title={staticChipLabel}
-            {...(hasTools ? { "aria-expanded": toolsAreExpanded } : {})}
-            {...(hasTools && onToggleTools ? { onClick: () => {
-              setInspectingActivity(false);
+            {...(hasDisclosure ? { "aria-expanded": toolsAreExpanded } : {})}
+            {...(hasDisclosure && onToggleTools ? { onClick: () => {
               onToggleTools();
             } } : {})}
           >
@@ -255,7 +262,7 @@ export function TurnBlock({
             ) : (
               <span>{staticChipLabel}</span>
             )}
-            {hasTools ? (
+            {hasDisclosure ? (
               <ChevronRight
                 size={11}
                 className={`turn-block-chevron${toolsAreExpanded ? " expanded" : ""}`}
@@ -271,17 +278,16 @@ export function TurnBlock({
         <div
           className="turn-block-body"
           data-just-revealed={justRevealed ? "true" : undefined}
-          onClickCapture={(event) => {
-            if (settling && event.target instanceof Element && event.target.closest(".turn-block-tools")) {
-              setInspectingActivity(true);
-            }
-          }}
-          onFocusCapture={(event) => {
-            if (settling && event.target.closest(".turn-block-tools")) {
-              setInspectingActivity(true);
-            }
-          }}
         >
+          {hiddenEarlierBodyCount > 0 && onShowEarlierBody ? (
+            <button
+              type="button"
+              className="conversation-show-earlier turn-show-earlier"
+              onClick={onShowEarlierBody}
+            >
+              Show earlier activity ({hiddenEarlierBodyCount} hidden)
+            </button>
+          ) : null}
           {groupToolRuns(visibleBody)}
         </div>
       ) : null}

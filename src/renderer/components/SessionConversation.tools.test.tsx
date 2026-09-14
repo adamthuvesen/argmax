@@ -891,7 +891,7 @@ describe("SessionConversation — tools & chrome", () => {
     expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
     expect(screen.queryByRole("menuitemcheckbox", { name: "Toggle debug log" })).toBeNull();
     expect(screen.getByRole("menuitem", { name: "Push" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /Create pull request|View pull request/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Create PR for checkout branch" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Create branch" })).toBeInTheDocument();
 
     // Back returns to the main menu.
@@ -1002,7 +1002,7 @@ describe("SessionConversation — single-line activity mode", () => {
     expect(screen.getByRole("button", { name: /^Read a file, searched/ })).toBeInTheDocument();
   });
 
-  it("keeps a failed mixed run visible after a Minimal turn finishes", () => {
+  it("hides failed attempts with successful tools after a Minimal turn finishes", () => {
     renderConversation(
       baseSession({ state: "complete" }),
       [
@@ -1024,22 +1024,25 @@ describe("SessionConversation — single-line activity mode", () => {
         event("bash-end", "command.completed", "tool_result", "2026-05-12T15:00:04.000Z", {
           tool_use_id: "bash",
           content: "exit 1",
-          is_error: true
+          status: "failed"
         }),
         event("answer", "message.completed", "The test failed.", "2026-05-12T15:00:05.000Z")
       ],
       { defaultToolCallsDisplay: "single-line" }
     );
 
+    expect(screen.queryByRole("button", { name: "Read a file, ran a command" })).toBeNull();
+    expect(screen.getByText("The test failed.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
     expect(screen.getByRole("button", { name: "Read a file, ran a command" }))
       .toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByText("The test failed.")).toBeInTheDocument();
   });
 
   it.each([
     ["Minimal", "single-line"],
     ["Compact", "collapsed"]
-  ] as const)("keeps a failed agent launch visible after a %s turn finishes", (_label, defaultToolCallsDisplay) => {
+  ] as const)("keeps a failed agent launch inspectable after a %s turn finishes", (_label, defaultToolCallsDisplay) => {
     renderConversation(
       baseSession({ state: "complete" }),
       [
@@ -1059,6 +1062,10 @@ describe("SessionConversation — single-line activity mode", () => {
       { defaultToolCallsDisplay, defaultToolCallGroupsExpanded: false }
     );
 
+    if (defaultToolCallsDisplay === "single-line") {
+      expect(screen.queryByRole("button", { name: startedAgentName("Audit renderer tools") })).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
+    }
     const agentRow = screen.getByRole("button", { name: startedAgentName("Audit renderer tools") });
     expect(agentRow).toHaveTextContent("Failed");
     expect(screen.getByText("The delegated audit failed.")).toBeInTheDocument();

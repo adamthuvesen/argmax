@@ -31,6 +31,8 @@ export function useReviewDiff(args: {
   changedFilesKey: string | null;
   comparison: ReviewComparison;
   dispatch: ReviewIpcDispatch | null;
+  enabled?: boolean;
+  preloadFirstFile?: boolean;
   autoSelectFirstFile: boolean;
   onOpenChanges: () => void;
 }): UseReviewDiffResult {
@@ -40,6 +42,8 @@ export function useReviewDiff(args: {
     changedFilesKey,
     comparison,
     dispatch,
+    enabled = true,
+    preloadFirstFile = false,
     autoSelectFirstFile,
     onOpenChanges
   } = args;
@@ -70,6 +74,7 @@ export function useReviewDiff(args: {
   // flashing "loading", so the changed-files card doesn't flicker on every
   // refresh. Only a new source/comparison (or the first load) shows loading.
   const filesContextRef = useRef<string | null>(null);
+  const loadedFilesKey = useRef<string | null>(null);
 
   // Cache loaded diffs by file path *and* context level so re-selecting a file
   // you've already viewed is instant, and so expanding context can't be served
@@ -88,6 +93,7 @@ export function useReviewDiff(args: {
   // agent edited the open file mid-turn — keeps the current diff on screen
   // instead of flashing the skeleton. Only a new file/source/comparison loads.
   const diffContextRef = useRef<string | null>(null);
+  const loadedDiffKey = useRef<string | null>(null);
 
   const resetForSourceChange = useCallback((): void => {
     setSelectedFilePath(null);
@@ -101,11 +107,17 @@ export function useReviewDiff(args: {
 
     if (!sourceId || !sourceKind || !dispatch || !window.argmax) {
       filesContextRef.current = null;
+      loadedFilesKey.current = null;
       setFiles([]);
       setFilesState("idle");
       setFilesError(null);
       return;
     }
+
+    if (!enabled) return;
+    const requestKey = JSON.stringify([sourceKind, sourceId, comparison, changedFilesKey, actionRevision]);
+    if (loadedFilesKey.current === requestKey) return;
+    loadedFilesKey.current = null;
 
     // Show "loading" only for a genuinely new source/comparison (or the first
     // load). A re-fetch within the same context keeps the current list on
@@ -126,6 +138,7 @@ export function useReviewDiff(args: {
         if (token !== fileLoadToken.current) {
           return;
         }
+        loadedFilesKey.current = requestKey;
         const sorted = [...result].sort((left, right) => left.path.localeCompare(right.path));
         setFiles(sorted);
         setFilesState("ready");
@@ -143,7 +156,9 @@ export function useReviewDiff(args: {
         setFilesState("error");
         setFilesError(errorMessage(error) || "Could not load changed files.");
       });
-  }, [sourceId, sourceKind, changedFilesKey, comparison, dispatch, actionRevision]);
+    // Opening Changes retries a failed speculative load. A completed request
+    // is reused above, so a successful preload never causes a second Git read.
+  }, [enabled, autoSelectFirstFile, sourceId, sourceKind, changedFilesKey, comparison, dispatch, actionRevision]);
 
   useEffect(() => {
     const firstFile = files[0];
@@ -151,26 +166,38 @@ export function useReviewDiff(args: {
     setSelectedFilePath(firstFile.path);
   }, [autoSelectFirstFile, files, selectedFilePath]);
 
+  const requestedFilePath = selectedFilePath ?? (preloadFirstFile ? files[0]?.path ?? null : null);
   useEffect(() => {
     const token = ++diffLoadToken.current;
-    if (!sourceId || !sourceKind || !selectedFilePath || !dispatch || !window.argmax) {
+    if (!sourceId || !sourceKind || !requestedFilePath || !dispatch || !window.argmax) {
       diffContextRef.current = null;
+      loadedDiffKey.current = null;
       setDiff(null);
       setDiffState("idle");
       setDiffError(null);
       return;
     }
 
-    const cacheKey = `${selectedFilePath}@${contextLines ?? "default"}`;
+    if (!enabled) return;
+
+    const requestKey = JSON.stringify([sourceKind, sourceId, comparison, changedFilesKey,
+      actionRevision, requestedFilePath, contextLines]);
+    if (loadedDiffKey.current === requestKey) return;
+    loadedDiffKey.current = null;
+
+    const cacheKey = `${requestedFilePath}@${contextLines ?? "default"}`;
     // The context level is deliberately absent here: widening context is a
     // revalidation of the same file, so the diff being read stays on screen
     // until the wider one lands instead of blinking through the skeleton.
-    const context = `${sourceKind}:${sourceId}:${comparison}:${selectedFilePath}`;
+    const context = `${sourceKind}:${sourceId}:${comparison}:${requestedFilePath}`;
     const isNewContext = diffContextRef.current !== context;
     diffContextRef.current = context;
 
     const cached = diffCache.current.get(cacheKey);
     if (cached) {
+      loadedDiffKey.current = requestKey;
+      diffCache.current.delete(cacheKey);
+      diffCache.current.set(cacheKey, cached);
       setDiff(cached);
       setDiffState("ready");
       setDiffError(null);
@@ -186,12 +213,24 @@ export function useReviewDiff(args: {
     } else {
       setDiffState((prev) => (prev === "ready" ? prev : "loading"));
     }
-    void dispatch.loadDiff(selectedFilePath, comparison, contextLines ?? undefined)
+    void dispatch.loadDiff(requestedFilePath, comparison, contextLines ?? undefined)
       .then((result) => {
         if (token !== diffLoadToken.current) {
           return;
         }
-        diffCache.current.set(cacheKey, result);
+        // Bound closed previews without changing the current displayed diff.
+        loadedDiffKey.current = requestKey;
+        // UTF-16 character counts avoid serializing large source strings.
+        diffCache.current.delete(cacheKey);
+        if (result && result.content.length <= 4 * 1_024 * 1_024) {
+          diffCache.current.set(cacheKey, result);
+        }
+        while (diffCache.current.size > 12 ||
+          [...diffCache.current.values()].reduce((size, entry) => size + entry.content.length * 2, 0) > 8 * 1_024 * 1_024) {
+          const oldest = diffCache.current.keys().next().value;
+          if (oldest === undefined) break;
+          diffCache.current.delete(oldest);
+        }
         setDiff(result);
         setDiffState("ready");
       })
@@ -203,7 +242,7 @@ export function useReviewDiff(args: {
         setDiffState("error");
         setDiffError(errorMessage(error) || "Could not load diff.");
       });
-  }, [sourceId, sourceKind, selectedFilePath, changedFilesKey, comparison, contextLines, dispatch, actionRevision]);
+  }, [enabled, autoSelectFirstFile, sourceId, sourceKind, requestedFilePath, changedFilesKey, comparison, contextLines, dispatch, actionRevision]);
 
   const openFile = useCallback(
     (filePath: string): void => {

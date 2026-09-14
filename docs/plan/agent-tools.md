@@ -111,7 +111,7 @@ Browser (tabs are owned by the calling session)
 - `src-tauri/src/ipc/browser.rs` — dialog handling (`alert/confirm/prompt` overridden in the init script to post to Rust; a `browser_handle_dialog` tool answers).
 - `src-tauri/src/mcp/browser_tools.rs` — remaining tools; screenshot returned as an MCP image content block.
 - `docs/browser.md` — agent section; `docs/agent-tools.md` — full tool reference.
-**Success check:** scenario: "search DuckDuckGo for 'tauri wry', open the first result, screenshot it". Tool rows show snapshot → type → press Enter → wait_for → click → screenshot, and the chat shows the image.
+**Success check:** scenario: "search DuckDuckGo for 'tauri wry', open the first result, screenshot it". Tool rows show snapshot → type → press Enter → wait_for → click → screenshot, and the chat shows the image once the answer names the screenshot's saved `path` (the image block alone never drew — see `docs/agent-tools.md`).
 
 ## Phase 5: Providers without an ephemeral injection path, docs, ADR — done, 1855368f (review fixes in d56b1a1b)
 

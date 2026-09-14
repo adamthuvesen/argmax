@@ -176,6 +176,14 @@ async providersSendInput(input: ProvidersSendInput) : Promise<Result<SendInputRe
     else return { status: "error", error: e  as any };
 }
 },
+async providersSteerInput(input: ProvidersSendInput) : Promise<Result<SendInputResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("providers_steer_input", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async providersResize(input: ProvidersResizeInput) : Promise<Result<SystemOk, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("providers_resize", { input }) };
@@ -259,6 +267,14 @@ async approvalsResolve(input: ApprovalsResolveInput) : Promise<Result<ApprovalRe
 async approvalsPending(input: ApprovalsPendingInput) : Promise<Result<ApprovalRequest[], ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("approvals_pending", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async questionsResolve(input: QuestionsResolveInput) : Promise<Result<QuestionResolveResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("questions_resolve", { input }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -512,6 +528,38 @@ async skillsList(input: SkillsListInput) : Promise<Result<SkillSummary[], Argmax
     else return { status: "error", error: e  as any };
 }
 },
+async sourcesList(input: SourcesListInput) : Promise<Result<ProjectSource[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("sources_list", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async sourcesAdd(input: SourcesAddInput) : Promise<Result<ProjectSource, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("sources_add", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async sourcesUpdate(input: SourcesUpdateInput) : Promise<Result<ProjectSource, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("sources_update", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async sourcesDelete(input: SourcesDeleteInput) : Promise<Result<null, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("sources_delete", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async connectionsList(input: ConnectionsListInput) : Promise<Result<ConnectionSummary[], ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("connections_list", { input }) };
@@ -656,6 +704,14 @@ async workspacesSetPinned(input: WorkspacesSetPinnedInput) : Promise<Result<Work
     else return { status: "error", error: e  as any };
 }
 },
+async workspacesMarkViewed(input: WorkspacesMarkViewedInput) : Promise<Result<WorkspaceSummary[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspaces_mark_viewed", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async workspacesSetPriorityAdded(input: WorkspacesSetPriorityAddedInput) : Promise<Result<WorkspaceSummary, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("workspaces_set_priority_added", { input }) };
@@ -699,6 +755,22 @@ async prsListForSession(input: PrsListForSessionInput) : Promise<Result<GhPrReco
 async prsRefresh(input: PrsRefreshInput) : Promise<Result<GhPrRecord[], ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("prs_refresh", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async prsSetPrimary(input: PrsSetPrimaryInput) : Promise<Result<SessionPrSummary[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("prs_set_primary", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async prsDismiss(input: PrsDismissInput) : Promise<Result<SessionPrSummary[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("prs_dismiss", { input }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -842,6 +914,22 @@ async browserOpen(input: BrowserOpenInput) : Promise<Result<SystemOk, ArgmaxErro
     else return { status: "error", error: e  as any };
 }
 },
+async browserContentBlocking() : Promise<Result<BrowserContentBlocking, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_content_blocking") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async browserSetSiteBlocking(input: BrowserSetSiteBlockingInput) : Promise<Result<BrowserContentBlocking, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_set_site_blocking", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async browserNavigate(input: BrowserNavigateInput) : Promise<Result<SystemOk, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("browser_navigate", { input }) };
@@ -885,6 +973,29 @@ async browserStop(input: BrowserStopInput) : Promise<Result<SystemOk, ArgmaxErro
 async browserSetBounds(input: BrowserSetBoundsInput) : Promise<Result<SystemOk, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("browser_set_bounds", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Hands the window's keyboard focus to a tab's page, the way clicking into it
+ * would. Called when the user activates a tab: without it the first responder
+ * stays on the app's own webview, so scrolling keys and `⌘F` are the app's
+ * rather than the page's. A tab whose webview is still being created is
+ * skipped — it takes focus when it opens.
+ */
+async browserFocus(input: BrowserFocusInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_focus", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async browserSetTheme(input: BrowserSetThemeInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_set_theme", { input }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -973,6 +1084,22 @@ async browserExtract(input: BrowserExtractInput) : Promise<Result<PageExtraction
 async browserAct(input: BrowserActInput) : Promise<Result<ActionOutcome, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("browser_act", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async browserChromeProfiles(input: ChromeProfilesInput) : Promise<Result<ChromeProfile[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_chrome_profiles", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async browserImportChromeHistory(input: ImportChromeHistoryInput) : Promise<Result<ChromeHistoryImport, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_import_chrome_history", { input }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -1265,6 +1392,7 @@ export type BrowserBackInput = { tabId: string }
  */
 export type BrowserBounds = { x: number; y: number; width: number; height: number }
 export type BrowserCloseInput = { tabId: string }
+export type BrowserContentBlocking = { supported: boolean; disabledHosts: string[] }
 export type BrowserEvaluateInput = { tabId: string; script: string;
 /**
  * Defaults to 5000 ms. A page that never answers must not park the
@@ -1293,6 +1421,7 @@ export type BrowserFindInput = { tabId?: string | null; sessionId?: string | nul
  * Case-insensitive substring over role, name, value and text.
  */
 query: string }
+export type BrowserFocusInput = { tabId: string }
 export type BrowserForwardInput = { tabId: string }
 export type BrowserGetTextInput = { tabId?: string | null; sessionId?: string | null;
 /**
@@ -1351,6 +1480,8 @@ export type BrowserSetBoundsInput = { bounds: BrowserBounds;
  * false for tabs behind the active one.
  */
 visible: boolean; tabId: string }
+export type BrowserSetSiteBlockingInput = { url: string; enabled: boolean }
+export type BrowserSetThemeInput = { mode: ThemeMode }
 export type BrowserSnapshotInput = { tabId?: string | null; sessionId?: string | null;
 /**
  * Drops plain text and non-heading structure, leaving only what can be
@@ -1388,6 +1519,10 @@ export type CheckpointsListInput = { workspaceId: string; limit?: number }
 export type CheckpointsPreviewRewindInput = { workspaceId: string; checkpointId: string }
 export type CheckpointsRewindFilesInput = { workspaceId: string; checkpointId: string; expectedFingerprint: CheckoutFingerprint }
 export type ChecksRunInput = { workspaceId: WorkspaceId; command: CommandText }
+export type ChromeHistoryEntry = { url: string; title: string | null; visitedAt: number; visitCount: number }
+export type ChromeHistoryImport = { entries: ChromeHistoryEntry[]; totalAvailable: number }
+export type ChromeProfile = { id: string; name: string }
+export type ChromeProfilesInput = Record<string, never>
 export type CommandText = string
 export type ComposerAttachmentInput = { filePath: AttachmentPath; mimeType: AttachmentMimeType; sizeBytes: AttachmentSizeBytes }
 export type ConnectionAuthentication = "authenticated" | "required" | "not-applicable" | "unknown"
@@ -1460,7 +1595,7 @@ export type GitCreateBranchInput = { workspaceId: WorkspaceId; branch: BranchNam
 export type GitCreateBranchResult = { branch: string }
 export type GitPushInput = { workspaceId: WorkspaceId }
 export type GitPushResult = { branch: string; upstreamSet: boolean }
-export type GitViewOrCreatePrInput = { sessionId: SessionId }
+export type GitViewOrCreatePrInput = { sessionId: SessionId; expectedBranch: BranchName | null }
 export type GitViewOrCreatePrResult = { action: "opened"; url: string; prNumber: number } | { action: "created"; url: string; prNumber: number | null }
 export type Goal = { id: string; workspaceId: string; sessionId: string;
 /**
@@ -1486,6 +1621,7 @@ export type GoalState = "active" | "achieved" | "impossible" | "stopped"
 export type HealthPingInput = Record<string, never>
 export type HealthPingOutput = { ok: boolean; timestamp: string }
 export type IdeId = "vscode" | "cursor" | "windsurf" | "zed" | "iterm" | "terminal"
+export type ImportChromeHistoryInput = { profileId: string }
 /**
  * A single boundary-validation failure. Mirrors today's Zod
  * `InvalidInputIssue { path, code, message }` shape.
@@ -1582,6 +1718,9 @@ export type ProjectSettingsInput = { worktreeLocation: NonEmptyString; setupComm
  * setting off on every other save.
  */
 archiveOnMerge: boolean }
+export type ProjectSource = { id: string; projectId: string; title: string; kind: ProjectSourceKind; location: string; guidance: string; addedBy: ProjectSourceAddedBy; addedBySessionId: string | null; createdAt: string; updatedAt: string }
+export type ProjectSourceAddedBy = "user" | "agent"
+export type ProjectSourceKind = "file" | "url"
 export type ProjectSummary = { id: string; name: string; repoPath: string; currentBranch: string; defaultBranch: string | null; settings: ProjectSettings; counts: ProjectCounts; latestActivityAt: string | null }
 export type ProjectsListBranchesInput = { projectId: ProjectId }
 export type ProjectsListInput = Record<string, never>
@@ -1650,8 +1789,14 @@ export type ProvidersSendInput = { sessionId: SessionId; input: Prompt;
 provider?: ProviderId | null; modelLabel: NonEmptyString | null; modelId: NonEmptyString | null; reasoningEffort: ReasoningEffort | null; fastMode?: boolean; agentMode: AgentMode | null; attachments: ComposerAttachmentInput[] | null; agentReferences?: AgentReference[] | null }
 export type ProvidersSendQueuedMessageNowInput = { sessionId: SessionId; messageId: NonEmptyString; delivery?: QueuedMessageDelivery | null }
 export type ProvidersTerminateInput = { sessionId: SessionId }
+export type PrsDismissInput = { sessionId: SessionId; prNumber: number }
 export type PrsListForSessionInput = { sessionId: SessionId }
 export type PrsRefreshInput = { sessionId: SessionId }
+export type PrsSetPrimaryInput = { sessionId: SessionId; prNumber: number | null }
+export type QuestionRequestId = string
+export type QuestionResolveResult = { sessionId: string; requestId: string; status: QuestionResolveStatus }
+export type QuestionResolveStatus = "answered" | "dismissed"
+export type QuestionsResolveInput = { sessionId: SessionId; requestId: QuestionRequestId; answers: Partial<{ [key in string]: string[] }>; dismissed?: boolean }
 export type QueuedMessageDelivery = "interrupt" | "steer"
 export type RawProviderOutput = { id: string; sessionId: string; stream: string; content: string; createdAt: string; rowCursor: number | null }
 export type ReasoningEffort = "low" | "medium" | "high" | "xhigh" | "max" | "ultra"
@@ -1757,7 +1902,14 @@ export type ReviewLoadDiffInput = { kind: WorkspaceTargetKind; id: WorkspaceTarg
 contextLines?: DiffContextLines | null }
 export type RewindFilesResult = { checkpoint: Checkpoint; recoveryCheckpoint: Checkpoint; restoredPaths: string[] }
 export type RewindPreview = { checkpoint: Checkpoint; currentFingerprint: CheckoutFingerprint; changedPaths: string[]; deletedPaths: string[] }
-export type Routine = { id: string; name: string; projectId: string; prompt: string; provider: string; modelLabel: string; modelId: string; worktree: boolean; runTarget: RoutineRunTarget; lastSessionId: string | null; cronExpr: string | null; runOnceAt: string | null; enabled: boolean; lastRunAt: string | null; nextRunAt: string | null; lastError: string | null; createdAt: string; updatedAt: string }
+export type Routine = { id: string; name: string; projectId: string; prompt: string; provider: string; modelLabel: string; modelId: string; worktree: boolean; runTarget: RoutineRunTarget; lastSessionId: string | null; cronExpr: string | null; runOnceAt: string | null; enabled: boolean; lastRunAt: string | null; nextRunAt: string | null; lastError: string | null; createdBy: RoutineAuthor; createdAt: string; updatedAt: string }
+/**
+ * Who put a scheduled task in the list. `Agent` is a wake a chat set for
+ * itself with `schedule_followup` — an alarm clock, not a routine the user
+ * wrote — which is why a spent one is deleted instead of left paused in
+ * their panel forever.
+ */
+export type RoutineAuthor = "user" | "agent"
 /**
  * Where one firing of a scheduled task lands. `NewSession` starts a fresh
  * chat in the shared checkout, `SameSession` sends the prompt as a
@@ -1822,6 +1974,7 @@ worktree?: boolean;
  * Sidebar label for the new chat. Falls back to the prompt's first line.
  */
 taskLabel: NonEmptyString | null }
+export type SessionPrSummary = { sessionId: string; prNumber: number; url: string | null; title: string | null; prState: string | null; headRefName: string | null; relationship: string; activityAt: string; updatedAt: string; checkState: string; isPrimary: boolean; isPinned: boolean; refreshError: string | null }
 export type SessionSearchInput = { query: SessionSearchQuery; limit: Limit200 | null }
 export type SessionSearchQuery = string
 /**
@@ -1874,6 +2027,11 @@ export type SkillSource = "user" | "workspace" | "codex-prompt" | "plugin" | "sy
 export type SkillSummary = { name: string; description: string; source: SkillSource }
 export type SkillsListInput = { provider: ProviderId; workspaceId: WorkspaceId | null }
 export type SkippedReason = "not-a-file" | "too-large" | "binary"
+export type SourceInput = { title: string; location: string; guidance: string }
+export type SourcesAddInput = { projectId: ProjectId; source: SourceInput }
+export type SourcesDeleteInput = { projectId: ProjectId; id: NonEmptyString }
+export type SourcesListInput = { projectId: ProjectId }
+export type SourcesUpdateInput = { projectId: ProjectId; id: NonEmptyString; source: SourceInput }
 export type SqlitePragmas = { journalMode: string; foreignKeys: number; synchronous: number; busyTimeout: number; walAutocheckpoint: number }
 export type StartupPhaseRecord = { phase: string; elapsedMs: number; deltaMs: number }
 export type StreamChunk = string
@@ -2077,7 +2235,13 @@ export type WorkspaceSummary = { id: string; projectId: string; taskLabel: strin
  * repo-coupled surface (review, gh, branch chips, sidebar grouping) gates
  * on this rather than on which UI created the workspace.
  */
-kind: string; dirty: boolean; changedFiles: number; lastActivityAt: string; pinned: boolean;
+kind: string; dirty: boolean; changedFiles: number; lastActivityAt: string;
+/**
+ * Latest workspace activity timestamp a client actually displayed. This
+ * is advanced from an observed snapshot, never from the acknowledgement
+ * request's wall clock, so activity racing the request stays unread.
+ */
+lastViewedAt: string | null; pinned: boolean;
 /**
  * When the user marked this workspace done in the sidebar's Priority
  * section. The dismissal is spent (ignored by the renderer) once the
@@ -2092,8 +2256,8 @@ priorityDismissedAt: string | null;
  */
 priorityAddedAt: string | null;
 /**
- * State of the most-recent PR attributed to this workspace, filled in
- * from `gh_pr` on every read path. The renderer merges
+ * State of the displayed session's primary PR, filled in from canonical
+ * PR state and session evidence on every read path. The renderer merges
  * workspace deltas by whole-object replacement, so a summary published
  * with `None` here would erase the sidebar PR marker.
  */
@@ -2111,7 +2275,7 @@ prCreatedAt: string | null;
  */
 prMergedAt: string | null;
 /**
- * Rollup of the paired PR's checks as the poller last saw them:
+ * Aggregate checks across the displayed session's open worked PRs:
  * 'pending' | 'success' | 'failure'. A red PR is something the person
  * owes the branch, so the Priority section reads this directly.
  */
@@ -2124,6 +2288,16 @@ prCheckState: string | null;
  */
 prActivityAt: string | null;
 /**
+ * All pull requests associated with the chat displayed for this
+ * workspace. Evidence activity determines their stable order.
+ */
+prs?: SessionPrSummary[];
+/**
+ * Aggregate lifecycle state for the associated pull requests. OPEN wins,
+ * then CLOSED, then MERGED when every terminal PR merged.
+ */
+prSummaryState: string | null;
+/**
  * Curated Lucide icon name the user picked for this row's sidebar glyph.
  * `None` keeps the row on its live status marker.
  */
@@ -2134,6 +2308,7 @@ icon: string | null;
 iconColor: string | null }
 export type WorkspaceTargetId = string
 export type WorkspaceTargetKind = "workspace" | "project"
+export type WorkspaceViewedObservationInput = { workspaceId: WorkspaceId; observedActivityAt: string }
 export type WorkspaceWriteFileInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath; content: FileContent; expectedMtimeMs: NullableExpectedMtimeMs }
 export type WorkspacesArchiveInput = { workspaceId: WorkspaceId; force: boolean | null }
 export type WorkspacesAutotitleInput = { workspaceId: WorkspaceId; provider: ProviderId; modelId: NonEmptyString; prompt: Prompt }
@@ -2141,6 +2316,7 @@ export type WorkspacesCreateCurrentInput = { projectId: ProjectId; taskLabel: Ta
 export type WorkspacesCreateIsolatedInput = { projectId: ProjectId; taskLabel: TaskLabel; baseRef: BaseRef | null }
 export type WorkspacesCreateScratchInput = { taskLabel: TaskLabel; kind: ScratchWorkspaceKind | null }
 export type WorkspacesKeepInput = { workspaceId: WorkspaceId }
+export type WorkspacesMarkViewedInput = { workspaces: WorkspaceViewedObservationInput[] }
 export type WorkspacesOpenInIdeInput = { workspaceId: WorkspaceId; ide: OpenIdeChoice }
 export type WorkspacesRefreshStatusInput = { workspaceId: WorkspaceId }
 /**

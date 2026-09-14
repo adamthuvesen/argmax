@@ -1,6 +1,5 @@
 import {
   Bot,
-  ChevronDown,
   Folder,
   FolderGit2,
   GitBranch,
@@ -56,6 +55,7 @@ import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
 import { LAUNCHER_TITLE, SIDE_CHAT_PLACEHOLDER, SIDE_CHAT_TITLE } from "../lib/launcherTitle.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
+import type { FontSize } from "../lib/fonts.js";
 import {
   persistLaunchProjectId,
   sortProjectsByLaunchRecency
@@ -130,6 +130,7 @@ export function LaunchSurface({
   fastModeEnabled = false,
   goalEnabled = true,
   hasRunningSession = false,
+  chatFontSize,
   pixelFieldEnabled = false,
   model,
   onAddProject,
@@ -159,6 +160,8 @@ export function LaunchSurface({
   /** True while an agent is running in this launcher's project. The hero fox
    *  stays awake rather than dozing. */
   hasRunningSession?: boolean;
+  /** Settings → Appearance: keep the launcher's composer on the agent-window scale. */
+  chatFontSize?: FontSize;
   pixelFieldEnabled?: boolean;
   model: ModelPickerSelection;
   onAddProject: () => void;
@@ -253,6 +256,7 @@ export function LaunchSurface({
   const [branches, setBranches] = useState<string[]>([]);
   const branchPickerRef = useRef<HTMLDivElement | null>(null);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [effortPickerOpen, setEffortPickerOpen] = useState(false);
   const [compactContextOpen, setCompactContextOpen] = useState(false);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const compactContextRef = useRef<HTMLDivElement | null>(null);
@@ -313,6 +317,7 @@ export function LaunchSurface({
   const reviewIsPanelOpen = reviewState.isPanelOpen;
   const reviewModes = reviewState.layout.modes;
   const reviewClosePane = reviewState.closePane;
+  const reviewOpenBrowser = reviewState.openBrowser;
   const lastResetSignal = useRef(resetSignal);
   const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
 
@@ -367,6 +372,60 @@ export function LaunchSurface({
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [activeProject, reviewClosePane, reviewIsPanelOpen, reviewModes, reviewOpenPanelInFilesMode, toggleReviewPanel]);
+
+  // ⌘⇧M, ⌘⇧E and ⌘⇧R open the model, effort and folder pickers and ⌘⇧I
+  // toggles the browser. Only the focused launcher answers, and the folder
+  // picker exists only on the task launcher: a side chat has no project to
+  // switch.
+  const supportsEffort = model.reasoningEffort != null;
+  useEffect(() => {
+    if (!isFocused) return undefined;
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.altKey) return;
+      if (event.isComposing || event.repeat) return;
+      const key = event.key.toLowerCase();
+      if (key === "m") {
+        event.preventDefault();
+        setProjectPickerOpen(false);
+        setBranchPickerOpen(false);
+        setEffortPickerOpen(false);
+        setModelPickerOpen((open) => !open);
+        return;
+      }
+      if (key === "e" && supportsEffort) {
+        event.preventDefault();
+        setProjectPickerOpen(false);
+        setBranchPickerOpen(false);
+        setModelPickerOpen(false);
+        setEffortPickerOpen((open) => !open);
+        return;
+      }
+      if (key === "r" && !chatMode) {
+        event.preventDefault();
+        setBranchPickerOpen(false);
+        setModelPickerOpen(false);
+        setEffortPickerOpen(false);
+        // Narrow, the folder chip folds behind the "…" and its list only
+        // shows inside the open compact panel, so unfold first.
+        const compactTrigger = compactContextRef.current?.querySelector<HTMLElement>(
+          ".composer-compact-context-trigger"
+        );
+        if (compactTrigger?.offsetParent) setCompactContextOpen(true);
+        setProjectPickerOpen((open) => !open);
+        return;
+      }
+      if (key === "i" && window.argmax?.browser) {
+        event.preventDefault();
+        if (reviewIsPanelOpen && reviewModes.includes("browser")) {
+          reviewClosePane(reviewModes[0] === "browser" ? 0 : 1);
+        } else {
+          reviewOpenBrowser();
+        }
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [chatMode, isFocused, reviewClosePane, reviewIsPanelOpen, reviewModes, reviewOpenBrowser, supportsEffort]);
 
   useEffect(() => {
     if (resetSignal === lastResetSignal.current) return;
@@ -764,10 +823,12 @@ export function LaunchSurface({
     }
   };
 
+  const hasSendableContent = prompt.trim().length > 0 || pendingAttachments.length > 0;
+
   const submitPrompt = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     const trimmedPrompt = prompt.trim();
-    if (!trimmedPrompt || isSubmitting) {
+    if (!hasSendableContent || isSubmitting) {
       return;
     }
     if (isMcpCommand(trimmedPrompt)) {
@@ -862,8 +923,8 @@ export function LaunchSurface({
       <form
         className="composer"
         data-drag-active={isDraggingFiles ? "true" : undefined}
-        // One step above app chrome, same as the session composer. See tokens.css.
-        data-type-scale="composer"
+        data-font-size={chatFontSize === undefined ? undefined : String(chatFontSize)}
+        data-type-scale={chatFontSize === undefined ? "composer" : undefined}
         ref={formRef}
         onSubmit={(event) => void submitPrompt(event)}
         onDragEnter={onComposerDragEnter}
@@ -962,7 +1023,7 @@ export function LaunchSurface({
           <button
             className="send-button"
             type="submit"
-            disabled={isSubmitting || !prompt.trim()}
+            disabled={isSubmitting || !hasSendableContent}
             title="Start agent"
             aria-label="Start agent"
           >
@@ -970,6 +1031,15 @@ export function LaunchSurface({
           </button>
         </div>
         <div className="composer-context">
+          <button
+            className="composer-tool"
+            type="button"
+            title="Attach file"
+            aria-label="Attach file"
+            onClick={openFilePicker}
+          >
+            <Plus size={14} />
+          </button>
           <div className="composer-context-group composer-context-group--model">
             <LaunchModelSelector
               ariaLabel="Switch model"
@@ -978,6 +1048,8 @@ export function LaunchSurface({
               open={modelPickerOpen}
               onOpenChange={setModelPickerOpen}
               withEffortSlider
+              effortOpen={effortPickerOpen}
+              onEffortOpenChange={setEffortPickerOpen}
               value={model}
               onChange={onModelChange}
               onFastModeEnabledChange={onFastModeEnabledChange}
@@ -1024,7 +1096,6 @@ export function LaunchSurface({
             >
               <Folder size={14} aria-hidden="true" />
               <span className="composer-context-chip-label">{contextChipLabel}</span>
-              <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />
             </button>
             {projectPickerOpen && (
               <ul
@@ -1109,7 +1180,6 @@ export function LaunchSurface({
             >
               <GitBranch size={14} aria-hidden="true" />
               <span className="composer-context-chip-label">{project.currentBranch}</span>
-              <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />
             </button>
             {branchPickerOpen && (
               <ul
@@ -1166,15 +1236,6 @@ export function LaunchSurface({
             </div>
           </div>
           )}
-          <button
-            className="composer-tool"
-            type="button"
-            title="Attach file"
-            aria-label="Attach file"
-            onClick={openFilePicker}
-          >
-            <Plus size={14} />
-          </button>
           <div className="composer-context-group composer-context-group--behavior">
             {/* Auto is the resting mode and carries no flags, so it stays unlabelled;
                 the chip appears only once Tab or the palette picks Plan or Chat. */}

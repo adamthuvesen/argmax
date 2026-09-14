@@ -1,3 +1,10 @@
+import {
+  FONT_HEAVINESS_HINTS,
+  FONT_HEAVINESS_MIN,
+  FONT_HEAVINESS_MAX,
+  toFontHeaviness,
+  type FontHeaviness
+} from "../../lib/fontHeaviness.js";
 import type { JSX } from "react";
 import { ACCENT_OPTIONS, type AccentId } from "../../lib/accent.js";
 import {
@@ -8,6 +15,12 @@ import {
   useActivityMark,
   useSessionUnderline
 } from "../../lib/activityMark.js";
+import {
+  ACTIVITY_ICON_COLOR_MODE_OPTIONS,
+  isActivityIconColorMode,
+  setActivityIconColorMode,
+  useActivityIconColorMode
+} from "../../lib/activityIconColorMode.js";
 import {
   CHAT_WIDTH_HINTS,
   CHAT_WIDTH_MAX,
@@ -43,6 +56,10 @@ import type { ReviewPanelSide } from "../../lib/reviewPanelSide.js";
 import { THEME_OPTIONS, type ThemeMode } from "../../lib/theme.js";
 import { isUserBubbleTint, type UserBubbleTint } from "../../lib/userBubbleTint.js";
 import {
+  SIDEBAR_TRANSLUCENCY_MAX,
+  SIDEBAR_TRANSLUCENCY_MIN
+} from "../../lib/uiPreferences.js";
+import {
   AccentPicker,
   ActivityMarkPicker,
   FontFamilyPicker,
@@ -60,16 +77,24 @@ export function AppearanceSettings({
   onFontFamilyChange,
   themeMode,
   onThemeModeChange,
+  browserThemeMode,
+  onBrowserThemeModeChange,
   accentId,
   onAccentChange,
   userBubbleTint,
   onUserBubbleTintChange,
   sidebarPriorityVisible,
   onSidebarPriorityVisibleChange,
+  sidebarTranslucent,
+  onSidebarTranslucentChange,
+  sidebarTranslucency,
+  onSidebarTranslucencyChange,
   workspaceCardVisible,
   onWorkspaceCardVisibleChange,
   pixelFieldEnabled,
   onPixelFieldEnabledChange,
+  contextIndicatorEnabled,
+  onContextIndicatorEnabledChange,
   prMilestoneCelebrationEnabled,
   onPrMilestoneCelebrationEnabledChange,
   chatWidth,
@@ -80,6 +105,8 @@ export function AppearanceSettings({
   onFontSizeChange,
   chatFontSize,
   onChatFontSizeChange,
+  fontHeaviness,
+  onFontHeavinessChange,
   inkStrength,
   onInkStrengthChange,
   backgroundIntensity,
@@ -91,22 +118,32 @@ export function AppearanceSettings({
   onFontSizeChange: (size: FontSize) => void;
   chatFontSize: FontSize;
   onChatFontSizeChange: (size: FontSize) => void;
+  fontHeaviness: FontHeaviness;
+  onFontHeavinessChange: (heaviness: FontHeaviness) => void;
   inkStrength: InkStrength;
   onInkStrengthChange: (strength: InkStrength) => void;
   backgroundIntensity: BackgroundIntensity;
   onBackgroundIntensityChange: (intensity: BackgroundIntensity) => void;
   themeMode: ThemeMode;
   onThemeModeChange: (mode: ThemeMode) => void;
+  browserThemeMode: ThemeMode;
+  onBrowserThemeModeChange: (mode: ThemeMode) => void;
   accentId: AccentId;
   onAccentChange: (accentId: AccentId) => void;
   userBubbleTint: UserBubbleTint;
   onUserBubbleTintChange: (tint: UserBubbleTint) => void;
   sidebarPriorityVisible: boolean;
   onSidebarPriorityVisibleChange: (v: boolean) => void;
+  sidebarTranslucent: boolean;
+  onSidebarTranslucentChange: (v: boolean) => void;
+  sidebarTranslucency: number;
+  onSidebarTranslucencyChange: (v: number) => void;
   workspaceCardVisible: boolean;
   onWorkspaceCardVisibleChange: (v: boolean) => void;
   pixelFieldEnabled: boolean;
   onPixelFieldEnabledChange: (v: boolean) => void;
+  contextIndicatorEnabled: boolean;
+  onContextIndicatorEnabledChange: (v: boolean) => void;
   prMilestoneCelebrationEnabled: boolean;
   onPrMilestoneCelebrationEnabledChange: (v: boolean) => void;
   chatWidth: ChatWidth;
@@ -141,6 +178,7 @@ export function AppearanceSettings({
   // source of truth. See lib/activityMark.ts.
   const activityMark = useActivityMark();
   const sessionUnderline = useSessionUnderline();
+  const activityIconColorMode = useActivityIconColorMode();
   // Same reason as the activity mark: the fox renders from four unrelated
   // places, so it reads its own store rather than a prop. See lib/mascotVisibility.ts.
   const mascotVisible = useMascotVisible();
@@ -152,6 +190,18 @@ export function AppearanceSettings({
           label="Theme"
           description={THEME_OPTIONS.find((option) => option.id === themeMode)?.hint}
           control={<ThemePicker value={themeMode} onChange={onThemeModeChange} />}
+        />
+        <SettingRow
+          label="Browser theme"
+          description="Controls websites independently of the Argmax interface. System follows macOS."
+          control={
+            <ThemePicker
+              ariaLabel="Browser theme"
+              name="browser-theme-mode"
+              value={browserThemeMode}
+              onChange={onBrowserThemeModeChange}
+            />
+          }
         />
         <SettingRow
           label="Background intensity"
@@ -171,6 +221,28 @@ export function AppearanceSettings({
           label="Accent"
           description={ACCENT_OPTIONS.find((option) => option.id === accentId)?.hint}
           control={<AccentPicker value={accentId} onChange={onAccentChange} />}
+        />
+        <SettingRow
+          label="Activity icons"
+          description={
+            ACTIVITY_ICON_COLOR_MODE_OPTIONS.find(
+              (option) => option.id === activityIconColorMode
+            )?.hint
+          }
+          control={
+            <SegmentedControl
+              ariaLabel="Activity icons"
+              name="activity-icon-color"
+              value={activityIconColorMode}
+              onChange={(value) => {
+                if (isActivityIconColorMode(value)) setActivityIconColorMode(value);
+              }}
+              options={ACTIVITY_ICON_COLOR_MODE_OPTIONS.map((option) => ({
+                value: option.id,
+                label: option.label
+              }))}
+            />
+          }
         />
         <SettingRow
           label="Activity mark"
@@ -264,6 +336,23 @@ export function AppearanceSettings({
           }
         />
         <SettingRow
+          label="Font heaviness"
+          description={`Lighter or heavier text throughout the app. ${FONT_HEAVINESS_HINTS[fontHeaviness]} Some fonts change in larger steps.`}
+          control={
+            <Slider
+              ariaLabel="Font heaviness"
+              min={FONT_HEAVINESS_MIN}
+              max={FONT_HEAVINESS_MAX}
+              value={fontHeaviness}
+              valueLabel={String(fontHeaviness)}
+              onChange={(raw) => {
+                const heaviness = toFontHeaviness(raw);
+                if (heaviness) onFontHeavinessChange(heaviness);
+              }}
+            />
+          }
+        />
+        <SettingRow
           label="Ink strength"
           description={`How hard text sits against the page, everywhere in the app. ${INK_STRENGTH_HINTS[inkStrength]}`}
           control={
@@ -326,6 +415,32 @@ export function AppearanceSettings({
           }
         />
         <SettingRow
+          label="Translucent sidebar"
+          description="Let the desktop show through the left sidebar, the way Finder's does."
+          control={
+            <Toggle
+              ariaLabel="Translucent sidebar"
+              checked={sidebarTranslucent}
+              onChange={onSidebarTranslucentChange}
+            />
+          }
+        />
+        <SettingRow
+          label="Sidebar translucency"
+          description="How much of the desktop shows through when the translucent sidebar is on."
+          control={
+            <Slider
+              ariaLabel="Sidebar translucency"
+              min={SIDEBAR_TRANSLUCENCY_MIN}
+              max={SIDEBAR_TRANSLUCENCY_MAX}
+              value={sidebarTranslucency}
+              valueLabel={`${sidebarTranslucency}%`}
+              disabled={!sidebarTranslucent}
+              onChange={onSidebarTranslucencyChange}
+            />
+          }
+        />
+        <SettingRow
           label="Workspace card in agent view"
           description="Branch, changed lines, and one click into changes, files, terminal, commit, and the pull request. Needs a pane wide enough to sit beside the conversation."
           control={
@@ -351,6 +466,17 @@ export function AppearanceSettings({
               ariaLabel="Pixel field in composer"
               checked={pixelFieldEnabled}
               onChange={onPixelFieldEnabledChange}
+            />
+          }
+        />
+        <SettingRow
+          label="Context indicator in composer"
+          description="Show the session's context-window usage beside the model in active chats."
+          control={
+            <Toggle
+              ariaLabel="Context indicator in composer"
+              checked={contextIndicatorEnabled}
+              onChange={onContextIndicatorEnabledChange}
             />
           }
         />

@@ -8,10 +8,25 @@ import {
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
-import { ArrowLeft, ArrowRight, ExternalLink, KeyRound, Plus, RotateCw, X } from "lucide-react";
-import type { BrowserBounds } from "../../shared/types.js";
-import { errorMessage } from "../../shared/error.js";
 import {
+  ArrowLeft,
+  ArrowRight,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  History,
+  KeyRound,
+  Plus,
+  RotateCw,
+  ShieldCheck,
+  ShieldOff,
+  X
+} from "lucide-react";
+import type { BrowserBounds, BrowserContentBlocking } from "../../shared/types.js";
+import { errorMessage } from "../../shared/error.js";
+import { browserFindScript, parseFindResult, type BrowserFindResult } from "../lib/browserFind.js";
+import {
+  initializeBrowserHistory,
   recordBrowserVisit,
   suggestBrowserHistory,
   type BrowserHistoryEntry
@@ -39,6 +54,7 @@ import {
   type BrowserTab
 } from "../lib/browserPanel.js";
 import { WorkingNest } from "./WorkingNest.js";
+import { BrowserHistoryImport } from "./BrowserHistoryImport.js";
 import { sidebarChromeSnapshot, subscribeSidebarChrome } from "../state/sidebarChrome.js";
 
 interface BrowserPanelProps {
@@ -60,6 +76,8 @@ interface BrowserPanelProps {
   requestTabId?: string;
   /** Open a fresh tab for this request instead of navigating the active one. */
   requestNewTab?: boolean;
+  /** Clear a routed request so remounting restores the selected tab. */
+  onRequestHandled?: (seq: number) => void;
   /** A split swap can move the surface without changing its size. */
   panePosition?: "top" | "bottom";
   onClose: () => void;
@@ -73,6 +91,25 @@ function tabLabel(tab: BrowserTab): string {
   } catch {
     return tab.url;
   }
+}
+
+function normalizedHostname(url: string): string | null {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/\.$/, "");
+  } catch {
+    return null;
+  }
+}
+
+function isLocalHostname(hostname: string): boolean {
+  const unbracketed = hostname.startsWith("[") && hostname.endsWith("]")
+    ? hostname.slice(1, -1)
+    : hostname;
+  if (unbracketed === "localhost" || unbracketed.endsWith(".localhost") || unbracketed === "::1") {
+    return true;
+  }
+  const firstOctet = Number(unbracketed.split(".", 1)[0]);
+  return /^\d+\.\d+\.\d+\.\d+$/.test(unbracketed) && firstOctet === 127;
 }
 
 /** Site favicon with a first-letter fallback when the host serves none. */
@@ -118,16 +155,19 @@ export function BrowserPanel({
   requestSeq,
   requestTabId,
   requestNewTab,
+  onRequestHandled,
   panePosition,
   onClose
 }: BrowserPanelProps): JSX.Element {
   const browser = window.argmax?.browser ?? null;
   const surfaceRef = useRef<HTMLDivElement | null>(null);
+  const handledRequestRef = useRef<{ scopeId: string; seq: number } | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const addressInputRef = useRef<HTMLInputElement | null>(null);
   /** What the user typed, before ↑/↓ started swapping in suggestions. */
   const typedValueRef = useRef("");
   const overlayOpenRef = useRef(false);
+  const lastBoundsRef = useRef<{ tabId: string; bounds: BrowserBounds; visible: boolean } | null>(null);
   const tabs = useSyncExternalStore(subscribeBrowserTabs, () => getBrowserTabs(scopeId));
   const activeTabId = useSyncExternalStore(subscribeBrowserTabs, () => getActiveBrowserTabId(scopeId));
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
@@ -139,6 +179,19 @@ export function BrowserPanel({
   const [suggestions, setSuggestions] = useState<BrowserHistoryEntry[]>([]);
   const [suggestionIndex, setSuggestionIndex] = useState(-1);
   const [notice, setNotice] = useState<string | null>(null);
+  const [historyImportOpen, setHistoryImportOpen] = useState(false);
+  const [contentBlocking, setContentBlocking] = useState<BrowserContentBlocking | null>(null);
+  const [contentBlockingBusy, setContentBlockingBusy] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [findMatches, setFindMatches] = useState<BrowserFindResult | null>(null);
+  const findInputRef = useRef<HTMLInputElement | null>(null);
+  // Refs, not state: read inside handlers that must not churn effect deps —
+  // the debounced search fires from whatever the latest query and open state
+  // are, and a Tauri command re-subscription in the gap loses events.
+  const findQueryRef = useRef("");
+  const findOpenRef = useRef(false);
+  const findTimerRef = useRef<number | null>(null);
   const noticeTimerRef = useRef<number | null>(null);
 
   const showNotice = useCallback((message: string) => {
@@ -151,6 +204,32 @@ export function BrowserPanel({
     (error: unknown): void => showNotice(errorMessage(error)),
     [showNotice]
   );
+
+  useEffect(() => {
+    let mounted = true;
+    void initializeBrowserHistory()
+      .then(() => {
+        if (mounted && addressEditingRef.current) {
+          setSuggestions(suggestBrowserHistory(addressInputRef.current?.value ?? ""));
+        }
+      })
+      .catch(reportError);
+    return () => { mounted = false; };
+  }, [reportError]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadContentBlocking = browser?.contentBlocking;
+    if (!loadContentBlocking) return () => { mounted = false; };
+    void loadContentBlocking()
+      .then((state) => {
+        if (mounted) setContentBlocking(state);
+      })
+      .catch((error: unknown) => {
+        if (mounted) reportError(error);
+      });
+    return () => { mounted = false; };
+  }, [browser, reportError]);
 
   const measureBounds = useCallback((): BrowserBounds | null => {
     const surface = surfaceRef.current;
@@ -181,14 +260,35 @@ export function BrowserPanel({
     const bounds = measureBounds();
     if (!bounds) return;
     overlayOpenRef.current = overlaysSurface(bounds);
+    const visible = !overlayOpenRef.current;
+    const previous = lastBoundsRef.current;
+    if (previous?.tabId === tabId && previous.visible === visible &&
+      (!visible || (previous.bounds.x === bounds.x && previous.bounds.y === bounds.y &&
+        previous.bounds.width === bounds.width && previous.bounds.height === bounds.height))) return;
+    const next = { tabId, bounds, visible };
+    lastBoundsRef.current = next;
     void browser
-      .setBounds({ bounds, visible: !overlayOpenRef.current, tabId })
-      .catch(() => undefined);
+      .setBounds(next)
+      .catch(() => {
+        // A failed update must not prevent a later resize from trying again.
+        if (lastBoundsRef.current === next) lastBoundsRef.current = null;
+      });
   }, [browser, measureBounds, overlaysSurface, scopeId]);
+
+  /** Hand the window's keyboard focus to a page the user just activated. The
+   *  first responder otherwise stays on the app's own webview, which leaves
+   *  the arrow keys and ⌘F belonging to Argmax rather than to the page. */
+  const focusTabWebview = useCallback(
+    (tabId: string): void => {
+      // Best-effort: a tab closed or replaced in the gap has nothing to focus.
+      void browser?.focus(tabId).catch(() => undefined);
+    },
+    [browser]
+  );
 
   /** Create the tab's webview, or navigate + show it when it already exists. */
   const openTabWebview = useCallback(
-    (tab: BrowserTab): void => {
+    (tab: BrowserTab, focus = false): void => {
       if (!browser) return;
       const bounds = measureBounds();
       if (!bounds) return;
@@ -197,7 +297,12 @@ export function BrowserPanel({
         .open({ url: tab.url, bounds, tabId: tab.id })
         // browser:open always shows the webview; re-sync so an overlay that
         // is open right now (palette, dialog) stays on top of it.
-        .then(() => syncBounds())
+        .then(() => {
+          lastBoundsRef.current = null;
+          syncBounds();
+          // After the webview exists, or there is nothing to focus yet.
+          if (focus) focusTabWebview(tab.id);
+        })
         .catch((error: unknown) => {
           // Un-mark, or the tab is a zombie: every later command would hit a
           // webview label that was never created.
@@ -205,25 +310,27 @@ export function BrowserPanel({
           reportError(error);
         });
     },
-    [browser, measureBounds, reportError, syncBounds]
+    [browser, focusTabWebview, measureBounds, reportError, syncBounds]
   );
 
   /** Show a tab's webview, recreating it first when this app run has not
    *  materialized it yet (tabs restored from a previous run). */
   const showTabWebview = useCallback(
-    (tab: BrowserTab): void => {
+    (tab: BrowserTab, focus = false): void => {
       if (isBrowserTabMaterialized(tab.id)) {
         syncBounds();
+        if (focus) focusTabWebview(tab.id);
       } else {
-        openTabWebview(tab);
+        openTabWebview(tab, focus);
       }
     },
-    [openTabWebview, syncBounds]
+    [focusTabWebview, openTabWebview, syncBounds]
   );
 
   const hideTabWebview = useCallback(
     (tabId: string): void => {
       if (!browser) return;
+      lastBoundsRef.current = null;
       void browser
         .setBounds({ bounds: { x: 0, y: 0, width: 1, height: 1 }, visible: false, tabId })
         .catch(() => undefined);
@@ -231,16 +338,22 @@ export function BrowserPanel({
     [browser]
   );
 
+  /** Activate a tab the way a click on it does: its page takes keyboard focus,
+   *  so the next keystroke is the page's. Re-activating the tab that is
+   *  already showing only moves focus back to it. */
   const switchToTab = useCallback(
     (tabId: string): void => {
       const previous = getActiveBrowserTabId(scopeId);
-      if (previous === tabId) return;
+      if (previous === tabId) {
+        focusTabWebview(tabId);
+        return;
+      }
       if (previous) hideTabWebview(previous);
       activateBrowserTab(tabId);
       const tab = getBrowserTabs(scopeId).find((candidate) => candidate.id === tabId);
-      if (tab) showTabWebview(tab);
+      if (tab) showTabWebview(tab, true);
     },
-    [hideTabWebview, showTabWebview, scopeId]
+    [focusTabWebview, hideTabWebview, showTabWebview, scopeId]
   );
 
   const tabDrag = useBrowserTabDrag(scopeId, switchToTab);
@@ -260,6 +373,8 @@ export function BrowserPanel({
     const previous = getActiveBrowserTabId(scopeId);
     if (previous) hideTabWebview(previous);
     openTabWebview(createBrowserTab(scopeId, DEFAULT_BROWSER_URL));
+    addressInputRef.current?.focus();
+    addressInputRef.current?.select();
   }, [hideTabWebview, openTabWebview, scopeId]);
 
   const closeTab = useCallback(
@@ -283,6 +398,15 @@ export function BrowserPanel({
   // no webview yet; opening it recreates one at the requested URL.
   useEffect(() => {
     if (!browser) return;
+    if (requestSeq !== undefined) {
+      const handled = handledRequestRef.current;
+      if (handled?.scopeId === scopeId && handled.seq === requestSeq) {
+        const active = getBrowserTabs(scopeId).find((tab) => tab.id === getActiveBrowserTabId(scopeId));
+        if (active) showTabWebview(active);
+        return;
+      }
+      handledRequestRef.current = { scopeId, seq: requestSeq };
+    }
     // A tab the app already created (a session's) is switched to, not
     // navigated to: its webview exists and holds the refs the agent is using.
     const requested = requestTabId
@@ -335,6 +459,14 @@ export function BrowserPanel({
     url
   ]);
 
+  // The route above has applied the command. Its parent outlives this chrome,
+  // so clear the payload there before an ownership change can replay it.
+  useEffect(() => {
+    if (browser && requestSeq !== undefined && (url || requestTabId || requestNewTab)) {
+      onRequestHandled?.(requestSeq);
+    }
+  }, [browser, onRequestHandled, requestNewTab, requestSeq, requestTabId, url]);
+
   // Popups / target="_blank" inside a page arrive as new-tab events.
   useEffect(() => {
     if (!browser) return;
@@ -368,6 +500,83 @@ export function BrowserPanel({
     [browser, reportError]
   );
 
+  // Find in page. WKWebView exposes no find API through wry, so the search
+  // runs as a page script via browser:evaluate; the result highlights matches
+  // inside the page itself, so the webview must stay visible while the bar is
+  // open (the bar is layout between toolbar and surface, never an overlay).
+  const runFind = useCallback(
+    (action: "search" | "step", delta = 0): void => {
+      const tabId = getActiveBrowserTabId(scopeId);
+      if (!browser || !tabId || !findOpenRef.current) return;
+      void browser
+        .evaluate({ tabId, script: browserFindScript(action, findQueryRef.current, delta) })
+        .then((result) => setFindMatches(parseFindResult(result.resultJson)))
+        // A page mid-navigation answers slowly or not at all; the next
+        // keystroke retries, and a stale counter is quieter than a notice.
+        .catch(() => undefined);
+    },
+    [browser, scopeId]
+  );
+
+  const scheduleFind = useCallback((): void => {
+    if (findTimerRef.current !== null) window.clearTimeout(findTimerRef.current);
+    findTimerRef.current = window.setTimeout(() => {
+      findTimerRef.current = null;
+      runFind("search");
+    }, 200);
+  }, [runFind]);
+
+  const openFind = useCallback((): void => {
+    if (!getActiveBrowserTabId(scopeId)) return;
+    findOpenRef.current = true;
+    setFindOpen(true);
+  }, [scopeId]);
+
+  const closeFind = useCallback((): void => {
+    if (findTimerRef.current !== null) {
+      window.clearTimeout(findTimerRef.current);
+      findTimerRef.current = null;
+    }
+    findOpenRef.current = false;
+    setFindOpen(false);
+    const tabId = getActiveBrowserTabId(scopeId);
+    if (browser && tabId) {
+      void browser
+        .evaluate({ tabId, script: browserFindScript("clear") })
+        .catch(() => undefined);
+    }
+  }, [browser, scopeId]);
+
+  // Focus (and re-select) the find input whenever the bar opens, including
+  // ⌘F pressed again while it is already open.
+  useEffect(() => {
+    if (!findOpen) return;
+    findInputRef.current?.focus();
+    findInputRef.current?.select();
+  }, [findOpen]);
+
+  // Opening the bar on a different tab than it last searched re-runs the
+  // query there — the marks live in each page's DOM, not in the renderer.
+  useEffect(() => {
+    if (findOpen) runFind("search");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a tab switch or the open toggles a re-search
+  }, [findOpen, activeTabId]);
+
+  // The bar's unmount must not leave highlights behind in the page.
+  useEffect(
+    () => () => {
+      const tabId = getActiveBrowserTabId(scopeId);
+      if (findOpenRef.current && tabId) {
+        const cleanup = window.argmax?.browser;
+        void cleanup
+          ?.evaluate({ tabId, script: browserFindScript("clear") })
+          .catch(() => undefined);
+      }
+      if (findTimerRef.current !== null) window.clearTimeout(findTimerRef.current);
+    },
+    [scopeId]
+  );
+
   // Shortcuts pressed while the page itself has focus never reach renderer
   // JS; the webview init script intercepts them and Rust relays them here.
   useEffect(() => {
@@ -396,10 +605,14 @@ export function BrowserPanel({
       if (event.command === "focus-address") {
         addressInputRef.current?.focus();
         addressInputRef.current?.select();
+        return;
+      }
+      if (event.command === "find") {
+        openFind();
       }
     });
     return () => subscription();
-  }, [addTab, browser, closeTab, goBack, goForward, reportError]);
+  }, [addTab, browser, closeTab, goBack, goForward, openFind, reportError]);
 
   // Mouse thumb buttons over the pane chrome (toolbar, tab strip). Clicks
   // landing on the page itself go to the native webview instead and come back
@@ -436,12 +649,10 @@ export function BrowserPanel({
     () => () => {
       const tabId = getActiveBrowserTabId(scopeId);
       if (tabId) {
-        void window.argmax?.browser
-          .setBounds({ bounds: { x: 0, y: 0, width: 1, height: 1 }, visible: false, tabId })
-          .catch(() => undefined);
+        hideTabWebview(tabId);
       }
     },
-    [scopeId]
+    [hideTabWebview, scopeId]
   );
 
   // Keep the active native view glued to the placeholder.
@@ -449,12 +660,23 @@ export function BrowserPanel({
     const surface = surfaceRef.current;
     if (!surface) return;
     syncBounds();
-    const observer = new ResizeObserver(() => syncBounds());
+    // Window resize and ResizeObserver often report the same geometry. Read
+    // it once per frame, while tab switches and overlay changes stay immediate.
+    let frame: number | null = null;
+    const scheduleBounds = (): void => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        syncBounds();
+      });
+    };
+    const observer = new ResizeObserver(scheduleBounds);
     observer.observe(surface);
-    window.addEventListener("resize", syncBounds);
+    window.addEventListener("resize", scheduleBounds);
     return () => {
       observer.disconnect();
-      window.removeEventListener("resize", syncBounds);
+      window.removeEventListener("resize", scheduleBounds);
+      if (frame !== null) window.cancelAnimationFrame(frame);
     };
   }, [syncBounds, panePosition]);
 
@@ -503,7 +725,15 @@ export function BrowserPanel({
       }
       const scope = findBrowserTab(event.tabId)?.scopeId;
       if (scope) rememberBrowserUrl(event.url, scope);
-      if (!event.loading) recordBrowserVisit(event.url, event.title);
+      if (!event.loading && scope === scopeId) {
+        void recordBrowserVisit(event.url, event.title)
+          .then(() => {
+            if (addressEditingRef.current) {
+              setSuggestions(suggestBrowserHistory(addressInputRef.current?.value ?? ""));
+            }
+          })
+          .catch(reportError);
+      }
       if (event.tabId === getActiveBrowserTabId(scopeId) && !addressEditingRef.current) {
         setAddressValue(event.url);
       }
@@ -523,7 +753,7 @@ export function BrowserPanel({
       for (const timer of timers.values()) window.clearTimeout(timer);
       timers.clear();
     };
-  }, [browser, scopeId]);
+  }, [browser, reportError, scopeId]);
 
   // Switching tabs swaps the address bar to the new tab's URL.
   useEffect(() => {
@@ -560,7 +790,7 @@ export function BrowserPanel({
       }
       void browser.navigate(destination, activeTabId).catch(reportError);
     },
-    [activeTabId, browser, closeSuggestions, reportError]
+    [activeTabId, browser, closeSuggestions, reportError, scopeId]
   );
 
   const handleAddressSubmit = (event: FormEvent): void => {
@@ -592,11 +822,11 @@ export function BrowserPanel({
     }
   };
 
-  // Panel-wide shortcuts. ⌘L and ⌘T work from anywhere while the panel is
-  // open (the app claims neither); ⌘W/⌘R only fire while focus is inside the
-  // panel chrome, so typing in a chat does not close or reload a browser tab.
-  // Keys pressed inside a page land in the native webview instead — the
-  // init-script intercept relays those as browser:page-command events.
+  // Panel-wide shortcuts. ⌘L, ⌘T and ⌘F work from anywhere while the panel is
+  // open; ⌘W/⌘R only fire while focus is inside the panel chrome, so typing in
+  // a chat does not close or reload a browser tab. Keys pressed inside a page
+  // land in the native webview instead — the init-script intercept relays
+  // those as browser:page-command events.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.ctrlKey && event.key === "Tab") {
@@ -627,9 +857,22 @@ export function BrowserPanel({
         addTab();
         return;
       }
-      // macOS WebKit leaves focus on <body> after button clicks, so this
-      // guard only passes with focus in the address bar — fine for these
-      // two, which must not shadow the app's own bindings.
+      // ⌘F means "find on this page" for as long as the browser is on screen,
+      // whether that is the Browser page or a review panel. Requiring focus
+      // inside the chrome first made it depend on where the last click landed:
+      // macOS WebKit leaves focus on <body> after a button click, and opening
+      // the Browser page leaves it in the rail, so the app's search palette
+      // answered until the user clicked the page. Capture-phase
+      // stopPropagation is what takes the key off the palette. A dialog on top
+      // keeps its own ⌘F — the palette's Messages/Contents filters included.
+      if (key === "f" && getActiveBrowserTabId(scopeId) && !document.querySelector('[role="dialog"]')) {
+        event.preventDefault();
+        event.stopPropagation();
+        openFind();
+        return;
+      }
+      // ⌘W and ⌘R stay focus-scoped: they must not shadow the app's own
+      // bindings from a chat the browser merely sits beside.
       const panel = panelRef.current;
       if (!panel || !(event.target instanceof Node) || !panel.contains(event.target)) return;
       if (key === "w") {
@@ -644,7 +887,7 @@ export function BrowserPanel({
     };
     document.addEventListener("keydown", onKeyDown, true);
     return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [addTab, browser, closeTab, cycleTab, hideTabWebview, openTabWebview, reportError, scopeId]);
+  }, [addTab, browser, closeTab, cycleTab, hideTabWebview, openFind, openTabWebview, reportError, scopeId]);
 
   const handleFillCredentials = (): void => {
     if (!browser || !activeTabId) return;
@@ -658,6 +901,51 @@ export function BrowserPanel({
   const handleOpenExternal = (): void => {
     if (!activeTab) return;
     void window.argmax?.system.openPath({ path: activeTab.url }).catch(() => undefined);
+  };
+
+  const activeHostname = activeTab ? normalizedHostname(activeTab.url) : null;
+  const activeTabIsLocal = activeHostname ? isLocalHostname(activeHostname) : false;
+  const activeTabIsAgentOwned = Boolean(activeTab?.ownerSessionId);
+  const contentBlockingEnabled = Boolean(
+    activeHostname &&
+    contentBlocking?.supported &&
+    !activeTabIsAgentOwned &&
+    !activeTabIsLocal &&
+    !contentBlocking.disabledHosts.includes(activeHostname)
+  );
+  const contentBlockingTitle = activeTabIsAgentOwned
+    ? "Blocking off for agent testing"
+    : activeTabIsLocal
+      ? "Blocking off for local testing"
+      : contentBlockingEnabled
+        ? `Disable ad and tracker blocking on ${activeHostname ?? "this site"}`
+        : `Enable ad and tracker blocking on ${activeHostname ?? "this site"}`;
+
+  const handleContentBlockingToggle = (): void => {
+    if (
+      !browser?.setSiteBlocking ||
+      !activeTab ||
+      !activeHostname ||
+      activeTabIsAgentOwned ||
+      activeTabIsLocal ||
+      contentBlockingBusy
+    ) return;
+    const clickedTabId = activeTab.id;
+    const clickedUrl = activeTab.url;
+    const clickedHostname = activeHostname;
+    setContentBlockingBusy(true);
+    void browser
+      .setSiteBlocking({ url: clickedUrl, enabled: !contentBlockingEnabled })
+      .then((state) => {
+        setContentBlocking(state);
+        const clickedTab = findBrowserTab(clickedTabId);
+        if (clickedTab && normalizedHostname(clickedTab.url) === clickedHostname) {
+          return browser.reload(clickedTabId);
+        }
+        return undefined;
+      })
+      .catch(reportError)
+      .finally(() => setContentBlockingBusy(false));
   };
 
   return (
@@ -841,6 +1129,30 @@ export function BrowserPanel({
         </form>
         <button
           type="button"
+          title="Import from Chrome"
+          aria-label="Import from Chrome"
+          onClick={() => setHistoryImportOpen(true)}
+        >
+          <History size={14} strokeWidth={1.75} />
+        </button>
+        {contentBlocking?.supported ? (
+          <button
+            type="button"
+            title={contentBlockingTitle}
+            aria-label={contentBlockingTitle}
+            aria-pressed={contentBlockingEnabled}
+            disabled={activeTabIsAgentOwned || activeTabIsLocal || !activeHostname || contentBlockingBusy}
+            onClick={handleContentBlockingToggle}
+          >
+            {contentBlockingEnabled ? (
+              <ShieldCheck size={14} strokeWidth={1.75} />
+            ) : (
+              <ShieldOff size={14} strokeWidth={1.75} />
+            )}
+          </button>
+        ) : null}
+        <button
+          type="button"
           title="Fill login from 1Password"
           aria-label="Fill login from 1Password"
           onClick={handleFillCredentials}
@@ -864,7 +1176,63 @@ export function BrowserPanel({
           {notice}
         </div>
       ) : null}
+      {findOpen && activeTabId ? (
+        <div className="browser-find-bar" role="search" aria-label="Find in page">
+          <input
+            ref={findInputRef}
+            type="text"
+            aria-label="Find in page"
+            placeholder="Find in page"
+            spellCheck={false}
+            value={findQuery}
+            onChange={(event) => {
+              setFindQuery(event.target.value);
+              findQueryRef.current = event.target.value;
+              scheduleFind();
+            }}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing) return;
+              if (event.key === "Escape") {
+                event.preventDefault();
+                closeFind();
+                return;
+              }
+              if (event.key === "Enter") {
+                event.preventDefault();
+                runFind("step", event.shiftKey ? -1 : 1);
+              }
+            }}
+          />
+          <span className="browser-find-count" aria-live="polite">
+            {findMatches && findMatches.count > 0 ? `${findMatches.index}/${findMatches.count}` : findQuery ? "0/0" : ""}
+          </span>
+          <button
+            type="button"
+            title="Previous match"
+            aria-label="Previous match"
+            disabled={!findMatches || findMatches.count === 0}
+            onClick={() => runFind("step", -1)}
+          >
+            <ChevronUp size={14} strokeWidth={1.75} />
+          </button>
+          <button
+            type="button"
+            title="Next match"
+            aria-label="Next match"
+            disabled={!findMatches || findMatches.count === 0}
+            onClick={() => runFind("step", 1)}
+          >
+            <ChevronDown size={14} strokeWidth={1.75} />
+          </button>
+          <button type="button" title="Close find" aria-label="Close find" onClick={closeFind}>
+            <X size={14} strokeWidth={1.75} />
+          </button>
+        </div>
+      ) : null}
       <div ref={surfaceRef} className="browser-panel-surface" />
+      {historyImportOpen ? (
+        <BrowserHistoryImport onClose={() => setHistoryImportOpen(false)} />
+      ) : null}
     </div>
   );
 }

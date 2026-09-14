@@ -77,9 +77,10 @@ impl NtfyPublisher {
 
     /// Called for every session row in a dashboard delta. Fires at most once
     /// per (state, attention) value per session, and only for the transitions
-    /// `signal_for` admits.
-    pub fn observe(&self, session: &SessionSummary) {
-        let Some(signal) = signal_for(session) else {
+    /// `signal_for` admits. `latest_answer` is the agent's most recent visible
+    /// message, which the push body leads with.
+    pub fn observe(&self, session: &SessionSummary, latest_answer: Option<&str>) {
+        let Some(signal) = signal_for(session, latest_answer) else {
             return;
         };
         if !self.dedupe.admit(session) {
@@ -164,15 +165,18 @@ mod tests {
     #[test]
     fn fires_once_per_transition_and_again_on_change() {
         let (publisher, rx) = capture_publisher();
-        publisher.observe(&session(
-            SessionState::Running,
-            AttentionState::ApprovalNeeded,
-        ));
-        publisher.observe(&session(
-            SessionState::Running,
-            AttentionState::ApprovalNeeded,
-        ));
-        publisher.observe(&session(SessionState::Complete, AttentionState::Normal));
+        publisher.observe(
+            &session(SessionState::Running, AttentionState::ApprovalNeeded),
+            None,
+        );
+        publisher.observe(
+            &session(SessionState::Running, AttentionState::ApprovalNeeded),
+            None,
+        );
+        publisher.observe(
+            &session(SessionState::Complete, AttentionState::Normal),
+            None,
+        );
 
         let first = rx.try_recv().expect("approval push");
         assert_eq!(first.title, "Argmax: Needs approval");
@@ -185,17 +189,20 @@ mod tests {
     #[test]
     fn normal_running_sessions_are_silent() {
         let (publisher, rx) = capture_publisher();
-        publisher.observe(&session(SessionState::Running, AttentionState::Normal));
+        publisher.observe(
+            &session(SessionState::Running, AttentionState::Normal),
+            None,
+        );
         assert!(rx.try_recv().is_err());
     }
 
     #[test]
     fn pushes_deep_link_to_the_session_that_raised_them() {
         let (publisher, rx) = capture_publisher();
-        publisher.observe(&session(
-            SessionState::Running,
-            AttentionState::ApprovalNeeded,
-        ));
+        publisher.observe(
+            &session(SessionState::Running, AttentionState::ApprovalNeeded),
+            None,
+        );
         let message = rx.try_recv().expect("signal");
         assert_eq!(
             message.click.as_deref(),
@@ -209,10 +216,10 @@ mod tests {
     #[test]
     fn no_mobile_url_sends_a_push_without_a_link() {
         let (publisher, rx) = capture_publisher_linking(None);
-        publisher.observe(&session(
-            SessionState::Running,
-            AttentionState::ApprovalNeeded,
-        ));
+        publisher.observe(
+            &session(SessionState::Running, AttentionState::ApprovalNeeded),
+            None,
+        );
         assert_eq!(rx.try_recv().expect("signal").click, None);
     }
 
@@ -221,7 +228,7 @@ mod tests {
         let (publisher, rx) = capture_publisher();
         let mut summary = session(SessionState::Running, AttentionState::Blocked);
         summary.id = "s 1?&".to_string();
-        publisher.observe(&summary);
+        publisher.observe(&summary, None);
         assert_eq!(
             rx.try_recv().expect("signal").click.as_deref(),
             Some(MOBILE_URL)

@@ -101,7 +101,7 @@ function renderView(
 }
 
 describe("AgentsView", () => {
-  it("discovers existing and later agents without a transcript click and preserves selection and closed tabs", () => {
+  it("discovers existing and later agents without a transcript click and preserves selection", () => {
     function Dock({ events }: { events: TimelineEvent[] }) {
       const tabs = useAgentTabs();
       return <AgentsView events={events} parentSession={session} workspace={workspace}
@@ -118,10 +118,6 @@ describe("AgentsView", () => {
     rerender(<Dock events={moreEvents} />);
     expect(screen.getAllByRole("tab")).toHaveLength(3);
     expect(selected).toHaveAttribute("aria-selected", "true");
-    fireEvent.keyDown(selected, { key: "Delete" });
-    expect(screen.getAllByRole("tab")).toHaveLength(2);
-    rerender(<Dock events={[...moreEvents, event("message", "message.completed", "2026-05-12T15:00:05.000Z")]} />);
-    expect(screen.getAllByRole("tab")).toHaveLength(2);
   });
 
   it("upgrades a provisional Claude tab without changing the selected agent", () => {
@@ -149,7 +145,7 @@ describe("AgentsView", () => {
     );
   });
 
-  it("keeps a closed provisional agent closed when native identity arrives", () => {
+  it("upgrades a provisional identity in place and keeps a reused raw id distinct", () => {
     function Dock({ events }: { events: TimelineEvent[] }) {
       const tabs = useAgentTabs();
       return <AgentsView events={events} parentSession={session} workspace={workspace}
@@ -160,13 +156,13 @@ describe("AgentsView", () => {
       input: { description: "Explore repo" }
     });
     const { rerender } = render(<Dock events={[start]} />);
-    fireEvent.keyDown(screen.getByRole("tab"), { key: "Delete" });
     const native = event("native-start", "agent.started", "2026-05-12T15:00:02.000Z", "Agent started", {
       providerInvocationId: "invocation-1", providerChildSessionId: "child-native",
       providerParentConversationId: "parent-native", agentRootToolUseId: "task-root", agentRunId: "task-root"
     });
     rerender(<Dock events={[native, start]} />);
-    expect(screen.queryByRole("tab")).toBeNull();
+    expect(screen.getAllByRole("tab")).toHaveLength(1);
+    expect(document.getElementById("review-agent-native-agent:task-root:parent-native:child-native")).not.toBeNull();
 
     rerender(<Dock events={[
       event("second-start", "agent.started", "2026-05-12T15:00:04.000Z", "Agent started", {
@@ -178,7 +174,9 @@ describe("AgentsView", () => {
         input: { description: "Review repo" }
       }), native, start
     ]} />);
-    expect(screen.getAllByRole("tab")).toHaveLength(1);
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    expect(screen.getByRole("heading", { name: "Explore repo" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Khwarizmi" }));
     expect(screen.getByRole("heading", { name: "Review repo" })).toBeInTheDocument();
   });
 
@@ -235,11 +233,77 @@ describe("AgentsView", () => {
 
     const tabs = screen.getAllByRole("tab");
     expect(tabs).toHaveLength(2);
-    expect(tabs[0]).toHaveAttribute("aria-selected", "false");
-    expect(tabs[1]).toHaveAttribute("aria-selected", "true");
+    // The newer launch sits leftmost.
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+    expect(tabs[1]).toHaveAttribute("aria-selected", "false");
     // Both stay mounted so each keeps polling; only the active one is shown.
     expect(document.getElementById("review-agent-task-1")).toHaveAttribute("aria-hidden", "true");
     expect(document.getElementById("review-agent-task-2")).not.toHaveAttribute("aria-hidden");
+  });
+
+  it("puts running subagents first and the newest launch leftmost", () => {
+    const finished = (id: string) => event(`done-${id}`, "command.completed", "2026-05-12T15:00:05.000Z", "Task", {
+      id, name: "Task", status: "completed"
+    });
+    renderView(
+      agentTabs({ tabIds: ["task-1", "task-2", "task-3", "task-4"], activeTabId: "task-1" }),
+      [
+        launch("task-1", "Explore repo"), finished("task-1"),
+        launch("task-2", "Write tests"),
+        launch("task-3", "Review diff"), finished("task-3"),
+        launch("task-4", "Fix lint")
+      ]
+    );
+
+    // The selected completed agent stays available; the other completed agent
+    // moves into the roster. Running work follows the selection.
+    expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("title")))
+      .toEqual(["Explore repo", "Fix lint", "Write tests"]);
+  });
+
+  it("moves the same native child back to running for a follow-up assignment", () => {
+    const tabId = "native-agent:spawn:parent-native:child-native";
+    renderView(agentTabs({ tabIds: [tabId], activeTabId: tabId }), [
+      event("spawn", "command.started", "2026-05-12T15:00:00.000Z", "spawn_agent", {
+        id: "spawn", name: "spawn_agent", providerInvocationId: "invoke-1",
+        input: { description: "Initial review" }
+      }),
+      event("first-start", "agent.started", "2026-05-12T15:00:01.000Z", "Agent started", {
+        providerInvocationId: "invoke-1", providerParentConversationId: "parent-native",
+        providerChildSessionId: "child-native", agentRootToolUseId: "spawn", agentRunId: "spawn"
+      }),
+      event("first-done", "agent.completed", "2026-05-12T15:00:02.000Z", "Initial result", {
+        providerInvocationId: "invoke-1", providerParentConversationId: "parent-native",
+        providerChildSessionId: "child-native", agentRootToolUseId: "spawn", agentRunId: "spawn",
+        status: "completed"
+      }),
+      event("follow-up", "command.started", "2026-05-12T15:01:00.000Z", "send_input", {
+        id: "follow-up", name: "send_input", providerInvocationId: "invoke-2",
+        input: { prompt: "Check the fix" }
+      }),
+      event("second-start", "agent.started", "2026-05-12T15:01:01.000Z", "Agent started", {
+        providerInvocationId: "invoke-2", providerParentConversationId: "parent-native",
+        providerChildSessionId: "child-native", agentRootToolUseId: "spawn", agentRunId: "follow-up",
+        description: "Check the fix"
+      })
+    ]);
+
+    expect(screen.getAllByRole("tab")).toHaveLength(1);
+    expect(screen.getByRole("tab")).toHaveAttribute("title", "Check the fix");
+    fireEvent.click(screen.getByRole("button", { name: "All agents 1" }));
+    expect(screen.getByRole("listbox", { name: "All agents" })).toHaveTextContent("Running1");
+  });
+
+  it("caps the active strip and exposes excess running agents through the roster", () => {
+    const events = Array.from({ length: 6 }, (_, index) => launch(`task-${index + 1}`, `Task ${index + 1}`));
+    renderView(agentTabs({
+      tabIds: events.map((_, index) => `task-${index + 1}`),
+      activeTabId: "task-1"
+    }), events);
+
+    expect(screen.getAllByRole("tab")).toHaveLength(4);
+    expect(screen.getByRole("button", { name: "+2 active" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All agents 6" })).toBeInTheDocument();
   });
 
   it("names the active subagent, its role, and its model in the pane header", () => {
@@ -304,16 +368,93 @@ describe("AgentsView", () => {
     expect(screen.queryByText("Parent result")).not.toBeInTheDocument();
   });
 
-  it("closes a subagent from its tab", () => {
-    const closeTab = vi.fn();
-    renderView(
-      agentTabs({ tabIds: ["task-1"], activeTabId: "task-1", closeTab }),
-      [launch("task-1", "Explore repo")]
+  it("forwards Minimal verbosity to a multitask transcript", () => {
+    const child: MultitaskChild = {
+      session: {
+        ...session,
+        id: "child-1",
+        workspaceId: "child-workspace",
+        state: "complete",
+        completedAt: "2026-05-12T15:00:04.000Z",
+        lastActivityAt: "2026-05-12T15:00:04.000Z",
+        launchKind: "multitask",
+        launchedBySessionId: session.id,
+        prompt: "Review the implementation"
+      },
+      workspace
+    };
+    const childEvent = (eventValue: TimelineEvent): TimelineEvent => ({
+      ...eventValue,
+      sessionId: child.session.id
+    });
+    const timelines = new SessionTimelines();
+    timelines.merge(
+      [
+        childEvent(event("child-answer", "message.completed", "2026-05-12T15:00:04.000Z", "Child result")),
+        childEvent(event("command-2-done", "command.completed", "2026-05-12T15:00:03.000Z", "tool_result", {
+          tool_use_id: "command-2",
+          content: "ok"
+        })),
+        childEvent(event("command-2-start", "command.started", "2026-05-12T15:00:02.000Z", "Bash", {
+          id: "command-2",
+          name: "Bash",
+          input: { command: "echo two" }
+        })),
+        childEvent(event("command-1-done", "command.completed", "2026-05-12T15:00:01.000Z", "tool_result", {
+          tool_use_id: "command-1",
+          content: "ok"
+        })),
+        childEvent(event("command-1-start", "command.started", "2026-05-12T15:00:00.000Z", "Bash", {
+          id: "command-1",
+          name: "Bash",
+          input: { command: "echo one" }
+        }))
+      ],
+      []
     );
 
-    const close = screen.getByRole("button", { name: /^Close / });
-    close.click();
+    render(
+      <SessionTimelineProvider store={timelines}>
+        <AgentsView
+          defaultToolCallsDisplay="single-line"
+          defaultToolCallGroupsExpanded={false}
+          thinkingDisplay="collapsed"
+          events={[]}
+          parentSession={session}
+          agentTabs={agentTabs({
+            tabIds: ["multitask:child-1"],
+            activeTabId: "multitask:child-1"
+          })}
+          multitasks={[child]}
+          workspace={workspace}
+        />
+      </SessionTimelineProvider>
+    );
 
-    expect(closeTab).toHaveBeenCalledWith("task-1");
+    expect(screen.getByText("Child result")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ran commands" })).toBeNull();
+  });
+
+  it("opens a completed agent from the grouped roster", () => {
+    const selectTab = vi.fn();
+    renderView(
+      agentTabs({ tabIds: ["task-1", "task-2"], activeTabId: "task-2", selectTab }),
+      [
+        launch("task-1", "Explore repo"),
+        event("done-task-1", "command.completed", "2026-05-12T15:00:02.000Z", "Task", {
+          id: "task-1", name: "Task", status: "completed"
+        }),
+        launch("task-2", "Write tests")
+      ]
+    );
+
+    expect(screen.getAllByRole("tab")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "All agents 2" }));
+    const roster = screen.getByRole("listbox", { name: "All agents" });
+    expect(within(roster).getByText("Running")).toBeInTheDocument();
+    expect(within(roster).getByText("Completed")).toBeInTheDocument();
+    fireEvent.click(within(roster).getByRole("button", { name: /Explore repo/ }));
+
+    expect(selectTab).toHaveBeenCalledWith("task-1");
   });
 });

@@ -1,0 +1,6 @@
+{
+  "content": "/**\n * Human-readable byte string. Defaults to one decimal place once we're past\n * the byte tier; the byte tier itself renders as integers (\"512 B\", not\n * \"512.0 B\") so small allocations don't look noisier than they are.\n *\n * Picks units B / KB / MB / GB so a multi-GB SQLite WAL surfaces as \"1.2 GB\"\n * instead of \"1234.0 MB\".\n */\nexport function formatBytes(bytes: number): string {\n  if (!Number.isFinite(bytes) || bytes <= 0) return \"0 B\";\n  const units = [\"B\", \"KB\", \"MB\", \"GB\"];\n  let value = bytes;\n  let unitIndex = 0;\n  while (value >= 1024 && unitIndex < units.length - 1) {\n    value /= 1024;\n    unitIndex += 1;\n  }\n  if (unitIndex === 0) {\n    return `${Math.round(value)} B`;\n  }\n  return `${value.toFixed(value >= 100 ? 0 : 1)} ${units[unitIndex]}`;\n}\n",
+  "kind": "text",
+  "mtimeMs": 1778790225408.8853,
+  "size": 770
+}

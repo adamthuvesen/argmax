@@ -1125,7 +1125,7 @@ describe("buildSessionToolCalls", () => {
     expect(tools.map((tool) => tool.toolUseId)).toEqual(["toolu_1", "toolu_2"]);
   });
 
-  it("hides discovery and bookkeeping while preserving the real external call", () => {
+  it("shows discovery and the real external call while hiding bookkeeping", () => {
     const tools = buildSessionToolCalls([
       event("search", "command.started", "2026-05-12T15:00:01.000Z", "ToolSearch", {
         id: "search",
@@ -1157,8 +1157,8 @@ describe("buildSessionToolCalls", () => {
       })
     ], false);
 
-    expect(tools).toHaveLength(1);
-    expect(tools[0]).toMatchObject({
+    expect(tools.map((tool) => tool.toolUseId)).toEqual(["search", "discover", "fetch"]);
+    expect(tools[2]).toMatchObject({
       name: "mcp__plugin-notion-workspace-notion__notion-fetch",
       inputFull: { id: "page-1" }
     });
@@ -1441,6 +1441,80 @@ describe("buildSessionToolCalls", () => {
       completionObserved: false,
       completedAt: "2026-05-12T15:00:01.000Z",
       error: null
+    });
+  });
+
+  it("settles an uncompleted agent launch at the session end that outlived it", () => {
+    // A Codex spawn_agent read back from the on-disk rollout trace carries no
+    // agent.started/agent.completed pair, and an interrupted turn kills the
+    // child before any completion lands. Resuming the session makes it running
+    // again, so only the persisted end boundary can retire the row.
+    const events = [
+      event("spawn-start", "command.started", "2026-09-14T13:26:37.000Z", "spawn_agent", {
+        id: "spawn-1",
+        name: "spawn_agent",
+        input: { prompt: "Audit the browser panel." }
+      })
+    ];
+
+    expect(buildSessionToolCalls(events, true)[0]).toMatchObject({
+      status: "running",
+      completedAt: null
+    });
+
+    const interrupted = [event("cancel", "session.cancelled", "2026-09-14T13:42:14.000Z"), ...events];
+
+    expect(buildSessionToolCalls(interrupted, true)[0]).toMatchObject({
+      status: "error",
+      completionObserved: false,
+      completedAt: "2026-09-14T13:42:14.000Z",
+      error: "Session ended before the tool reported completion."
+    });
+  });
+
+  it("keeps a tool that started after the last session end running", () => {
+    // A resumed session keeps its old end rows in history; the live turn's own
+    // rows are the common case and must not settle against them.
+    const events = [
+      event("spawn-start", "command.started", "2026-09-14T13:50:00.000Z", "spawn_agent", {
+        id: "spawn-2",
+        name: "spawn_agent",
+        input: { prompt: "Audit the browser panel." }
+      }),
+      event("cancel", "session.cancelled", "2026-09-14T13:42:14.000Z")
+    ];
+
+    expect(buildSessionToolCalls(events, true)[0]).toMatchObject({
+      status: "running",
+      completedAt: null
+    });
+  });
+
+  it("keeps a background dispatch receipt running after the session ended", () => {
+    // The receipt is a real completion deliberately held at running until the
+    // child reports, so the end boundary has no claim on it.
+    const events = [
+      event("exit", "session.completed", "2026-05-12T15:00:04.000Z"),
+      event("task-end", "command.completed", "2026-05-12T15:00:01.120Z", "task", {
+        call_id: "call-task",
+        providerInvocationId: "invoke-task",
+        name: "task",
+        input: { _toolName: "task", description: "Map session workspace tools" },
+        result: { durationMs: 34, isBackground: true }
+      }),
+      event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "task", {
+        call_id: "call-task",
+        providerInvocationId: "invoke-task",
+        name: "task",
+        input: { _toolName: "task", description: "Map session workspace tools" }
+      })
+    ];
+
+    expect(buildSessionToolCalls(events, false)[0]).toMatchObject({
+      toolUseId: "call-task",
+      status: "running",
+      backgroundLaunch: true,
+      completedAt: null
     });
   });
 });

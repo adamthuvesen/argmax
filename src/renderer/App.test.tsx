@@ -241,6 +241,56 @@ describe("App", () => {
     }
   });
 
+  it.each([false, true])("waits for dirty archive confirmation before applying answer %s", async (accepted) => {
+    const dirtySnapshot: DashboardSnapshot = {
+      ...snapshot,
+      workspaces: snapshot.workspaces.map((workspace) => ({
+        ...workspace, state: "complete", sharedWorkspace: false, dirty: true, changedFiles: 2
+      })),
+      sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" }))
+    };
+    mockDashboardSnapshot(dirtySnapshot);
+    let resolveConfirmation!: (answer: boolean) => void;
+    const confirmation = new Promise<boolean>((resolve) => { resolveConfirmation = resolve; });
+    const confirmSpy = vi.spyOn(window.argmax!.system, "confirm").mockReturnValue(confirmation);
+    archiveWorkspace.mockResolvedValue({
+      workspace: { ...dirtySnapshot.workspaces[0], state: "archived" },
+      recoveryPath: "/tmp/workspace-archive/workspace-1"
+    });
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Archive chat" }));
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(archiveWorkspace).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveConfirmation(accepted);
+      await confirmation;
+    });
+    if (accepted) {
+      expect(archiveWorkspace).toHaveBeenCalledExactlyOnceWith({ workspaceId: "workspace-1", force: true });
+    } else {
+      expect(archiveWorkspace).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "Archive chat" })).toBeInTheDocument();
+    }
+  });
+
+  it("keeps a dirty workspace when its confirmation dialog fails", async () => {
+    mockDashboardSnapshot({
+      ...snapshot,
+      workspaces: snapshot.workspaces.map((workspace) => ({
+        ...workspace, state: "complete", sharedWorkspace: false, dirty: true, changedFiles: 2
+      })),
+      sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" }))
+    });
+    vi.spyOn(window.argmax!.system, "confirm").mockRejectedValue(new Error("Dialog unavailable"));
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Archive chat" }));
+
+    expect(await screen.findByText("Dialog unavailable")).toBeInTheDocument();
+    expect(archiveWorkspace).not.toHaveBeenCalled();
+  });
+
   it("closes the open chat when archiving the currently active workspace", async () => {
     const activeSnapshot: DashboardSnapshot = {
       ...snapshot,

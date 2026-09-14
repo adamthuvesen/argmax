@@ -89,7 +89,7 @@ function markGlyph(status: ShownStatus, running: boolean): JSX.Element {
  * The agent's plan, as a checklist in the transcript's own grammar.
  *
  * No fill, no border, no radius: a plan in progress is a beat in the
- * conversation rather than a document, the same reading QuestionCard takes.
+ * conversation rather than a document.
  * The lead column is the tool row's chevron column, so an item's mark lands
  * where every disclosure chevron lands and its label lands on the verb column.
  * Mockups and the decision: `docs/design/todo-list`.

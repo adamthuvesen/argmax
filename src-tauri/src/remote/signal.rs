@@ -18,6 +18,8 @@ use crate::sessions::attention::AttentionState;
 use crate::sessions::state::SessionState;
 use crate::util::sync::LockOrRecover;
 
+use pulldown_cmark::{Event, Options, Parser, TagEnd};
+
 const DEDUP_CAPACITY: usize = 2_000;
 
 /// How loudly a signal should land. `Urgent` is a chat stalled on the user and
@@ -72,10 +74,38 @@ pub struct PushSignal {
     pub tags: &'static str,
 }
 
+/// True when this session row is one the phone hears. Callers use it to skip
+/// the transcript read that fills the body of a push that would never fire.
+pub fn signals(session: &SessionSummary) -> bool {
+    trigger(session).is_some()
+}
+
 /// The transitions a phone cares about: stalled on the user, failed, or
 /// finished. Everything else is silent.
-pub fn signal_for(session: &SessionSummary) -> Option<PushSignal> {
-    let (title, priority, tags) = match (session.attention, session.state) {
+///
+/// `latest_answer` is the agent's most recent visible message, which is what
+/// the body says: on the phone the push is the only place that text shows up
+/// before you open the chat, and the initial prompt is something you already
+/// know. Falls back to the prompt when the agent has not said anything yet.
+pub fn signal_for(session: &SessionSummary, latest_answer: Option<&str>) -> Option<PushSignal> {
+    let (title, priority, tags) = trigger(session)?;
+    let body = latest_answer
+        .map(str::trim)
+        .filter(|answer| !answer.is_empty())
+        .map(preview)
+        .filter(|body| !body.is_empty())
+        .unwrap_or_else(|| preview(&session.prompt));
+    Some(PushSignal {
+        title: format!("Argmax: {title}"),
+        body,
+        priority,
+        session_id: session.id.clone(),
+        tags,
+    })
+}
+
+fn trigger(session: &SessionSummary) -> Option<(&'static str, SignalPriority, &'static str)> {
+    let trigger = match (session.attention, session.state) {
         (AttentionState::ApprovalNeeded, _) => {
             ("Needs approval", SignalPriority::Urgent, "raised_hand")
         }
@@ -91,13 +121,7 @@ pub fn signal_for(session: &SessionSummary) -> Option<PushSignal> {
         (_, SessionState::Complete) => ("Chat complete", SignalPriority::Normal, ""),
         _ => return None,
     };
-    Some(PushSignal {
-        title: format!("Argmax: {title}"),
-        body: truncated_prompt(&session.prompt),
-        priority,
-        session_id: session.id.clone(),
-        tags,
-    })
+    Some(trigger)
 }
 
 /// Per-session latch on the (state, attention) pair. A busy turn emits a
@@ -133,17 +157,100 @@ impl SignalDedupe {
     }
 }
 
-fn truncated_prompt(prompt: &str) -> String {
+/// The opening of a message as notification-safe plain text, on one line.
+/// Newlines are collapsed because both sinks render the body as a single
+/// wrapped paragraph, so a Markdown answer's blank lines would otherwise
+/// spend the visible space on nothing.
+fn preview(text: &str) -> String {
     const MAX: usize = 140;
-    let trimmed = prompt.trim();
-    if trimmed.chars().count() <= MAX {
-        return trimmed.to_string();
+    let plain_text = strip_markdown(text);
+    let mut flattened = String::new();
+    for word in plain_text.split_whitespace() {
+        if !flattened.is_empty() {
+            flattened.push(' ');
+        }
+        flattened.push_str(word);
+        if flattened.chars().count() > MAX {
+            break;
+        }
     }
-    let mut cut: String = trimmed.chars().take(MAX).collect();
+    if flattened.chars().count() <= MAX {
+        return flattened;
+    }
+    let mut cut: String = flattened.chars().take(MAX).collect();
     cut.push('…');
     cut
 }
 
+/// Project Markdown events onto the text native notification surfaces can show.
+/// Links keep their labels, code keeps its contents, and block boundaries turn
+/// into whitespace for preview() to collapse.
+fn strip_markdown(text: &str) -> String {
+    let options = Options::ENABLE_TABLES
+        | Options::ENABLE_STRIKETHROUGH
+        | Options::ENABLE_TASKLISTS
+        | Options::ENABLE_FOOTNOTES
+        | Options::ENABLE_MATH;
+    let mut plain_text = String::with_capacity(text.len());
+
+    for event in Parser::new_ext(text, options) {
+        match event {
+            Event::Text(value)
+            | Event::Code(value)
+            | Event::InlineMath(value)
+            | Event::DisplayMath(value) => plain_text.push_str(value.as_ref()),
+            Event::Html(value) | Event::InlineHtml(value) => {
+                append_html_text(&mut plain_text, value.as_ref());
+            }
+            Event::SoftBreak | Event::HardBreak => plain_text.push('\n'),
+            Event::End(tag) if is_block_end(tag) => append_block_separator(&mut plain_text),
+            Event::TaskListMarker(_) | Event::FootnoteReference(_) | Event::Rule => {}
+            Event::Start(_) | Event::End(_) => {}
+        }
+    }
+
+    plain_text
+}
+
+fn append_block_separator(text: &mut String) {
+    if !text.ends_with('\n') {
+        text.push('\n');
+    }
+}
+
+fn is_block_end(tag: TagEnd) -> bool {
+    matches!(
+        tag,
+        TagEnd::Paragraph
+            | TagEnd::Heading(_)
+            | TagEnd::BlockQuote(_)
+            | TagEnd::CodeBlock
+            | TagEnd::HtmlBlock
+            | TagEnd::List(_)
+            | TagEnd::Item
+            | TagEnd::FootnoteDefinition
+            | TagEnd::DefinitionList
+            | TagEnd::DefinitionListTitle
+            | TagEnd::DefinitionListDefinition
+            | TagEnd::Table
+            | TagEnd::TableHead
+            | TagEnd::TableRow
+            | TagEnd::TableCell
+            | TagEnd::MetadataBlock(_)
+    )
+}
+
+fn append_html_text(text: &mut String, html: &str) {
+    let mut in_tag = false;
+    for character in html.chars() {
+        match (in_tag, character) {
+            (false, '<') => in_tag = true,
+            (true, '>') => in_tag = false,
+            (false, character) => text.push(character),
+            (true, _) => {}
+        }
+    }
+}
 #[cfg(test)]
 pub(crate) mod fixtures {
     use super::*;
@@ -227,7 +334,7 @@ mod tests {
             ),
         ];
         for (state, attention, title, priority, tags) in cases {
-            let signal = signal_for(&session(state, attention)).expect("signal");
+            let signal = signal_for(&session(state, attention), None).expect("signal");
             assert_eq!(signal.title, title);
             assert_eq!(signal.priority, priority);
             assert_eq!(signal.tags, tags);
@@ -237,7 +344,11 @@ mod tests {
 
     #[test]
     fn normal_running_sessions_are_silent() {
-        assert!(signal_for(&session(SessionState::Running, AttentionState::Normal)).is_none());
+        assert!(signal_for(
+            &session(SessionState::Running, AttentionState::Normal),
+            None
+        )
+        .is_none());
     }
 
     /// The title travels as an ntfy HTTP header, so every branch of the table
@@ -251,18 +362,89 @@ mod tests {
             (SessionState::Failed, AttentionState::Normal),
             (SessionState::Complete, AttentionState::Normal),
         ] {
-            let signal = signal_for(&session(state, attention)).expect("signal");
+            let signal = signal_for(&session(state, attention), None).expect("signal");
             assert!(signal.title.is_ascii(), "non-ASCII title: {}", signal.title);
         }
     }
 
     #[test]
-    fn long_prompts_truncate() {
+    fn long_bodies_truncate() {
         let mut summary = session(SessionState::Failed, AttentionState::Normal);
         summary.prompt = "x".repeat(400);
-        let signal = signal_for(&summary).expect("failed signal");
+        let signal = signal_for(&summary, None).expect("failed signal");
         assert!(signal.body.chars().count() <= 141);
         assert!(signal.body.ends_with('…'));
+    }
+
+    #[test]
+    fn the_body_leads_with_the_agents_answer_not_the_prompt() {
+        let summary = session(SessionState::Complete, AttentionState::Normal);
+        let signal = signal_for(&summary, Some("  Shipped the dashboard.\n\nTests pass.  "))
+            .expect("completion signal");
+        assert_eq!(signal.body, "Shipped the dashboard. Tests pass.");
+    }
+
+    #[test]
+    fn notification_body_strips_markdown_syntax() {
+        let summary = session(SessionState::Complete, AttentionState::Normal);
+        let signal = signal_for(
+            &summary,
+            Some(
+                "# Summary\n\n**Done** with _care_ and ~~legacy~~. See [the docs](https://example.com).\n\n- `code` and <https://example.com>.",
+            ),
+        )
+        .expect("completion signal");
+        assert_eq!(
+            signal.body,
+            "Summary Done with care and legacy. See the docs. code and https://example.com."
+        );
+    }
+
+    #[test]
+    fn notification_body_preserves_code_and_autolink_text() {
+        let summary = session(SessionState::Complete, AttentionState::Normal);
+        let signal = signal_for(
+            &summary,
+            Some(
+                "`[label](https://example.com)` Contact <dev@example.com> and <urn:isbn:123>.\n\n```swift\nprint(\"**done**\")\n```",
+            ),
+        )
+        .expect("completion signal");
+        assert_eq!(
+            signal.body,
+            "[label](https://example.com) Contact dev@example.com and urn:isbn:123. print(\"**done**\")"
+        );
+    }
+
+    #[test]
+    fn notification_body_handles_balanced_link_destinations() {
+        let summary = session(SessionState::Complete, AttentionState::Normal);
+        let signal = signal_for(
+            &summary,
+            Some("Read [the docs](https://example.com/a_(b)) for details."),
+        )
+        .expect("completion signal");
+        assert_eq!(signal.body, "Read the docs for details.");
+    }
+
+    /// A chat can stall or fail before the agent says anything; the prompt is
+    /// the only text there is then.
+    #[test]
+    fn a_blank_answer_falls_back_to_the_prompt() {
+        let summary = session(SessionState::Complete, AttentionState::Normal);
+        assert_eq!(
+            signal_for(&summary, Some("   \n ")).expect("signal").body,
+            "Build the dashboard"
+        );
+    }
+
+    #[test]
+    fn a_markdown_only_answer_falls_back_to_the_prompt() {
+        let summary = session(SessionState::Complete, AttentionState::Normal);
+        assert_eq!(
+            signal_for(&summary, Some("---")).expect("signal").body,
+            "Build the dashboard"
+        );
     }
 
     #[test]

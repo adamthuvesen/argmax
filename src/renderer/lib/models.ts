@@ -162,10 +162,23 @@ export function modelSelectionFromSession(session: SessionSummary | null): Provi
     // provider's default rather than showing a raw id the picker can't match.
     return modelDefaultForProvider(session.provider);
   }
+  // A session row can carry no effort — an imported transcript never recorded
+  // one, and older rows predate the field — while the model it names still runs
+  // at one. The composer chip has to read like the launcher's ("Opus 5 Medium"),
+  // and it has to name the effort the next send will actually use, so resolve
+  // the default onto the model's own ladder. The catalog flag is the gate, not
+  // the ladder: `reasoningEffortsForModel` answers per provider, so it hands
+  // Haiku the full Claude ladder for a model that has no effort at all.
+  const supportsEffort =
+    PROVIDER_MODELS[session.provider].find((model) => model.modelId === session.modelId)
+      ?.supportsReasoningEffort === true;
+  const reasoningEffort =
+    session.reasoningEffort ??
+    (supportsEffort ? effortForModel(session.provider, session.modelId) : undefined);
   return {
     label,
     modelId: session.modelId,
-    ...(session.reasoningEffort ? { reasoningEffort: session.reasoningEffort } : {})
+    ...(reasoningEffort ? { reasoningEffort } : {})
   };
 }
 

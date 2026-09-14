@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { errorMessage } from "../../shared/error.js";
 import { PROVIDER_TITLE_MODEL } from "../../shared/providerModels.js";
 import type {
   AgentMode,
@@ -7,6 +8,7 @@ import type {
   ProviderId,
   QueuedMessageDelivery
 } from "../../shared/types.js";
+import type { FollowUpDelivery } from "../lib/uiPreferences.js";
 import { modelSupportsFastMode, type ModelPickerSelection } from "../lib/models.js";
 import { withToast, type ToastMessage } from "../lib/withToast.js";
 
@@ -34,7 +36,8 @@ export interface SessionCommands {
     model: ModelPickerSelection,
     agentMode: AgentMode,
     attachments?: ComposerAttachment[],
-    agentReferences?: AgentReference[]
+    agentReferences?: AgentReference[],
+    delivery?: FollowUpDelivery
   ) => Promise<void>;
   cancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   sendQueuedMessageNow: (
@@ -65,13 +68,15 @@ export function useSessionCommands({
       model: ModelPickerSelection,
       agentMode: AgentMode,
       attachments?: ComposerAttachment[],
-      agentReferences?: AgentReference[]
+      agentReferences?: AgentReference[],
+      delivery: FollowUpDelivery = "queue"
     ): Promise<void> => {
       if (!window.argmax) {
         throw new Error("Open the Tauri app window to send input to a live chat.");
       }
 
-      const result = await window.argmax.providers.sendInput({
+      const sendInput = delivery === "steer" ? window.argmax.providers.steerInput : window.argmax.providers.sendInput;
+      const result = await sendInput({
         sessionId,
         input,
         // Carries the picked provider; the backend only acts on it when it
@@ -115,8 +120,14 @@ export function useSessionCommands({
       if (!window.argmax) {
         throw new Error("Open the Tauri app window to send a queued follow-up.");
       }
-      await window.argmax.providers.sendQueuedMessageNow({ sessionId, messageId, delivery });
-      await Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
+      try {
+        await window.argmax.providers.sendQueuedMessageNow({ sessionId, messageId, delivery });
+      } catch (error) {
+        throw new Error(errorMessage(error));
+      } finally {
+        // An already-collected inbox message is removed even when sending rejects.
+        await Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
+      }
     },
     [refreshDashboardStatus, loadSessionEvents]
   );

@@ -56,7 +56,7 @@
   padding: 0 var(--space-3);
   font-family: inherit;
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   color: var(--text-soft);
   background: var(--panel);
   border: 1px solid var(--line);
@@ -158,7 +158,7 @@
 
 .sched-row-name {
   font-size: var(--text-base);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -336,7 +336,7 @@
 .sched-empty-headline {
   margin: 0;
   font-size: var(--text-md);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   color: var(--text);
 }
 
@@ -376,7 +376,7 @@
 .sched-eyebrow {
   margin: 0;
   font-size: var(--text-2xs);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--muted);
@@ -403,7 +403,7 @@
 
 .sched-label {
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   color: var(--text-soft);
 }
 
@@ -480,7 +480,7 @@
 }
 
 .sched-readback strong {
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
   color: var(--text);
 }
 

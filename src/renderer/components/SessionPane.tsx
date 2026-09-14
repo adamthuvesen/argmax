@@ -33,6 +33,7 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
+import type { FontSize } from "../lib/fonts.js";
 import { useSessionTimeline } from "../hooks/useSessionTimeline.js";
 import { CHAT_PANE_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
 import { useStableFilter } from "../hooks/useStableFilter.js";
@@ -42,7 +43,7 @@ import { resolveOpenablePath } from "../lib/openableFile.js";
 import { readStoredReviewPanelSide } from "../lib/reviewPanelSide.js";
 import { buildSessionToolCalls } from "../lib/sessionConversationModel.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
-import { readBoundedNumberPreference, type ThinkingDisplay, type ToolCallsDisplay } from "../lib/uiPreferences.js";
+import { readBoundedNumberPreference, type FollowUpDelivery, type ThinkingDisplay, type ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { agentTabId, multitaskTabId } from "../lib/agentTabs.js";
 import { useAgentTabs } from "../hooks/useAgentTabs.js";
@@ -53,15 +54,19 @@ import { DebugPanel } from "./debug/DebugPanel.js";
 // ReviewPanel lazy-mounted (ralph B4); Vite emits a single ReviewPanel-*
 // chunk shared with the LaunchSurface call site.
 // The phone's peek at delegated work. Lazy for the same reason ReviewPanel is:
-// most sessions never open one.
+// most sessions never open one. Named imports so a surface that *can* raise
+// the peek warms them on idle — a lazy chunk fetched on the tap paints an
+// empty sheet for as long as it takes to arrive.
+const importAgentOverlay = () => import("../mobile/AgentOverlay.js");
+const importAgentsView = () => import("./AgentsView.js");
 const AgentOverlay = lazy(() =>
   importChunk(async () => ({
-    default: (await import("../mobile/AgentOverlay.js")).AgentOverlay
+    default: (await importAgentOverlay()).AgentOverlay
   }))
 );
 const AgentsView = lazy(() =>
   importChunk(async () => ({
-    default: (await import("./AgentsView.js")).AgentsView
+    default: (await importAgentsView()).AgentsView
   }))
 );
 const ReviewPanel = lazy(() =>
@@ -85,10 +90,12 @@ const SESSION_LOG_PANEL_MIN = 300;
 export function SessionPane({
   approvals,
   checks,
+  chatFontSize,
   defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
   thinkingDisplay,
   defaultTurnChangesExpanded,
+  defaultFollowUpDelivery,
   goalEnabled,
   goalMaxTurns,
   revertEnabled,
@@ -129,16 +136,21 @@ export function SessionPane({
   agentsViewAvailable = true,
   agentsPresentation = "dock",
   onAgentsOverlayChange,
+  nativeComposerFloor = false,
   workspaceCardVisible = true,
   onWorkspaceCardVisibleChange,
+  contextIndicatorEnabled = false,
   workspace
 }: {
   approvals: ApprovalRequest[];
   checks?: CheckRun[];
+  /** Settings → Appearance: the font scale shared by the transcript and composer. */
+  chatFontSize?: FontSize;
   defaultToolCallsDisplay?: ToolCallsDisplay;
   defaultToolCallGroupsExpanded?: boolean;
   thinkingDisplay?: ThinkingDisplay;
   defaultTurnChangesExpanded?: boolean;
+  defaultFollowUpDelivery?: FollowUpDelivery;
   /** Settings → Agents → Conversation: show the goal strip / checkpoints panel. */
   goalEnabled?: boolean;
   goalMaxTurns?: number;
@@ -179,7 +191,8 @@ export function SessionPane({
     model: ModelPickerSelection,
     agentMode: AgentMode,
     attachments?: ComposerAttachment[],
-    agentReferences?: AgentReference[]
+    agentReferences?: AgentReference[],
+    delivery?: FollowUpDelivery
   ) => Promise<void>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow: (
@@ -212,13 +225,23 @@ export function SessionPane({
    *  review panel; "overlay" raises a sheet over the transcript, which is what
    *  the phone has room for. */
   agentsPresentation?: "dock" | "overlay";
-  /** Phone back-stack: called with a dismisser while the overlay is up, and
-   *  with null when it closes, so a hardware back can pop the peek first. */
+  /** Phone back-stack: called with a dismisser while the overlay is on
+   *  screen — rising, up, or riding out — and with null once it has gone, so
+   *  a hardware back can pop the peek first and the native host knows when
+   *  its floor is clear to take back. The dismisser is the sheet's own, so
+   *  back rides out the same way a tap on the scrim does; during the ride
+   *  out it is a no-op. */
   onAgentsOverlayChange?: (dismiss: (() => void) | null) => void;
+  /** Whether the host draws the composer natively below the web view. Raising
+   *  the peek hands that floor back, which resizes the page: the sheet waits
+   *  for the new height before it rises rather than animating into it. */
+  nativeComposerFloor?: boolean;
   /** User preference for the floating workspace card. Visible when enabled
       and the conversation column is wide enough to hold it beside the transcript. */
   workspaceCardVisible?: boolean;
   onWorkspaceCardVisibleChange?: (visible: boolean) => void;
+  /** Settings → Appearance: show context-window usage in the active composer. */
+  contextIndicatorEnabled?: boolean;
   workspace: WorkspaceSummary | null;
   /** When this pane is focused, it registers its workspace file source +
       review-pane file-pick handler with the command palette so its Files
@@ -275,11 +298,12 @@ export function SessionPane({
   // Which files the agent wrote in its newest turn, for the review panel's
   // "Last turn" scope. Null without a session: there is no turn to scope to.
   const lastTurnPaths = useMemo(() => lastTurnEditedPaths(visibleEvents), [visibleEvents]);
+  const [isCommitDialogOpen, setIsCommitDialogOpen] = useState(false);
   const reviewState = useReviewState(reviewSource, session ? lastTurnPaths : null, {
     claimsBrowserRequests: isFocused,
+    preloadChanges: onOpenChanges ? undefined : isFocused || isCommitDialogOpen,
     sessionId
   });
-  const [isCommitDialogOpen, setIsCommitDialogOpen] = useState(false);
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [isPanelResizing, setIsPanelResizing] = useState(false);
   const [rightPanelWidth, setRightPanelWidth] = useState<number>(() =>
@@ -332,6 +356,7 @@ export function SessionPane({
   const reviewIsPanelOpen = reviewState.isPanelOpen;
   const reviewModes = reviewState.layout.modes;
   const reviewClosePane = reviewState.closePane;
+  const reviewOpenBrowser = reviewState.openBrowser;
   const onRightPanelWidthChangeRef = useRef(onRightPanelWidthChange);
   useEffect(() => {
     onRightPanelWidthChangeRef.current = onRightPanelWidthChange;
@@ -367,24 +392,69 @@ export function SessionPane({
   // through it laid the review panel over the chat.
   const overlayTabs = useAgentTabs();
   const overlayCloseAll = overlayTabs.closeAllTabs;
+  const overlayOpenTab = overlayTabs.openTab;
+  // Whether the peek should be up, and whether it is still on screen. Two
+  // states, not one: the intent drives the ride, and presence keeps the sheet
+  // mounted until it has gone. Presence is also what the phone's composer
+  // floor follows. The floor used to turn back over at the start of the ride
+  // out so the native card could rise behind the departing sheet, but that
+  // card's return shrinks the web view, and the sheet's ride is measured
+  // against the web view's height — it hopped back up a composer's height
+  // mid-ride and dropped again, a dark flicker right above the card.
+  // Tab count used to stand in for both, so closing wiped the tabs before the
+  // sheet could animate.
+  const [peekOpen, setPeekOpen] = useState(false);
+  const [peekPresent, setPeekPresent] = useState(false);
+  const closePeek = useCallback((): void => setPeekOpen(false), []);
+  // Navigating away from the chat takes the peek with it: no ride out, since
+  // the surface it belongs to is going too.
+  const dropPeek = useCallback((): void => {
+    setPeekOpen(false);
+    setPeekPresent(false);
+  }, []);
   useEffect(() => {
     if (!agentsInOverlay) return;
+    dropPeek();
     overlayCloseAll();
-  }, [agentsInOverlay, overlayCloseAll, sessionId]);
+  }, [agentsInOverlay, dropPeek, overlayCloseAll, sessionId]);
+  // Last tab closed from inside the sheet: the peek has nothing left to show.
+  const peekTabCount = overlayTabs.tabIds.length;
+  useEffect(() => {
+    if (!agentsInOverlay || !peekOpen || peekTabCount > 0) return;
+    setPeekOpen(false);
+  }, [agentsInOverlay, peekOpen, peekTabCount]);
   useEffect(() => {
     if (!agentsInOverlay) return;
-    const closeAgents = overlayTabs.tabIds.length > 0 ? overlayCloseAll : null;
-    onAgentsOverlayChange?.(closeAgents);
+    onAgentsOverlayChange?.(peekPresent ? closePeek : null);
     return () => onAgentsOverlayChange?.(null);
-  }, [
-    agentsInOverlay,
-    onAgentsOverlayChange,
-    overlayCloseAll,
-    overlayTabs.tabIds.length
-  ]);
+  }, [agentsInOverlay, closePeek, onAgentsOverlayChange, peekPresent]);
+  // Warm the peek's chunks on idle, the way the terminal's are warmed below:
+  // on the phone a launch row is a tap away from the moment the chat opens.
+  useEffect(() => {
+    if (!agentsInOverlay) return undefined;
+    const warm = (): void => {
+      void importAgentOverlay().catch(() => undefined);
+      void importAgentsView().catch(() => undefined);
+    };
+    const idle = window.requestIdleCallback;
+    if (typeof idle === "function") {
+      const id = idle(warm);
+      return () => window.cancelIdleCallback?.(id);
+    }
+    const timer = window.setTimeout(warm, 1500);
+    return () => window.clearTimeout(timer);
+  }, [agentsInOverlay]);
+  const openPeekTab = useCallback(
+    (tabId: string): void => {
+      overlayOpenTab(tabId);
+      setPeekPresent(true);
+      setPeekOpen(true);
+    },
+    [overlayOpenTab]
+  );
   const openAgentOverlay = useCallback(
-    (tool: ToolCall): void => overlayTabs.openTab(agentTabId(tool)),
-    [overlayTabs]
+    (tool: ToolCall): void => openPeekTab(agentTabId(tool)),
+    [openPeekTab]
   );
   const handleOpenAgent = agentsInOverlay
     ? openAgentOverlay
@@ -399,8 +469,8 @@ export function SessionPane({
   const openMultitaskInPanel = reviewState.openMultitask;
   const hostsMultitasks = (multitasks?.length ?? 0) > 0;
   const openMultitaskOverlay = useCallback(
-    (sessionId: string): void => overlayTabs.openTab(multitaskTabId(sessionId)),
-    [overlayTabs]
+    (sessionId: string): void => openPeekTab(multitaskTabId(sessionId)),
+    [openPeekTab]
   );
   const handleOpenMultitask = useMemo(
     () =>
@@ -540,8 +610,20 @@ export function SessionPane({
         }
         return;
       }
-      if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return;
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
       const key = event.key.toLowerCase();
+      // ⌘⇧I toggles the browser the way ⌘G toggles Files: open it in this
+      // pane's panel, or close just the browser half of a split.
+      if (event.shiftKey) {
+        if (key !== "i" || !window.argmax?.browser) return;
+        event.preventDefault();
+        if (reviewIsPanelOpen && reviewModes.includes("browser")) {
+          reviewClosePane(reviewModes[0] === "browser" ? 0 : 1);
+        } else {
+          reviewOpenBrowser();
+        }
+        return;
+      }
       if (key === "b") {
         event.preventDefault();
         reviewTogglePanel();
@@ -565,6 +647,7 @@ export function SessionPane({
     reviewIsPanelOpen,
     reviewModes,
     reviewClosePane,
+    reviewOpenBrowser,
     reviewOpenPanelInFilesMode,
     reviewTogglePanel
   ]);
@@ -666,11 +749,13 @@ export function SessionPane({
       <div className="session-main-column">
         <SessionConversation
           isFocused={isFocused}
+          chatFontSize={chatFontSize}
           checks={checks}
           defaultToolCallsDisplay={defaultToolCallsDisplay}
           defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
           thinkingDisplay={thinkingDisplay}
           defaultTurnChangesExpanded={defaultTurnChangesExpanded}
+          defaultFollowUpDelivery={defaultFollowUpDelivery}
           events={visibleEvents}
           eventsBackfilled={eventsBackfilled}
           fastModeEnabled={fastModeEnabled}
@@ -712,8 +797,10 @@ export function SessionPane({
           review={reviewState}
           session={session}
           workspace={workspace}
+          contextIndicatorEnabled={contextIndicatorEnabled}
           goalEnabled={goalEnabled}
           goalMaxTurns={goalMaxTurns}
+          nativeComposerFloor={nativeComposerFloor}
           revertEnabled={revertEnabled}
         />
 
@@ -722,14 +809,19 @@ export function SessionPane({
           events={visibleEvents}
           onResolveApproval={onResolveApproval}
         />
-      {agentsInOverlay && overlayTabs.tabIds.length > 0 ? (
+      {agentsInOverlay && peekPresent ? (
         <Suspense fallback={null}>
           <AgentOverlay
             label="Delegated work"
-            onClose={() => overlayTabs.closeAllTabs()}
+            open={peekOpen}
+            awaitsFloorChange={nativeComposerFloor}
+            onClose={closePeek}
+            onExited={() => setPeekPresent(false)}
           >
             <AgentsView
+              chatFontSize={chatFontSize}
               events={visibleEvents}
+              stripLimit={2}
               defaultToolCallsDisplay={defaultToolCallsDisplay}
               defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
               thinkingDisplay={thinkingDisplay}
@@ -756,6 +848,7 @@ export function SessionPane({
               onOpenFullChat={
                 onOpenSession
                   ? (sessionId) => {
+                      dropPeek();
                       overlayCloseAll();
                       onOpenSession(sessionId);
                     }

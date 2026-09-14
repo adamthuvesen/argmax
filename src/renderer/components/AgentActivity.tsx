@@ -17,7 +17,12 @@ import {
 } from "../lib/sessionTurnView.js";
 import { buildToolCallGroup, isAgentToolName, type ToolCall, type TurnToolItem } from "../lib/toolCalls.js";
 import { collectTurnFileChanges } from "../lib/turnFileChanges.js";
-import { foldToolRunsToSummaries, type TurnBodyChild } from "../lib/turnChildren.js";
+import {
+  foldActivityRunsToSummaries,
+  foldToolRunsToSummaries,
+  type ActivityRun,
+  type TurnBodyChild
+} from "../lib/turnChildren.js";
 import { foldTurnToolItems, latestToolCreatedAt } from "../lib/turnToolItems.js";
 import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 import { thoughtDurationMs } from "../formatElapsed.js";
@@ -104,6 +109,7 @@ function renderAssistantGroup({
   group,
   thinkingLive,
   thoughtExpanded,
+  autoExpandWhileLive,
   thinkingDisplay,
   holdThoughtOpen,
   agentKey,
@@ -116,6 +122,7 @@ function renderAssistantGroup({
   thinkingDisplay: ThinkingDisplay | undefined;
   /** The pane chip's explicit disclosure override. */
   thoughtExpanded: boolean | undefined;
+  autoExpandWhileLive: boolean;
   holdThoughtOpen: boolean;
   /** Namespaces this pane's group ids, which only count within one agent run. */
   agentKey: string | null;
@@ -128,7 +135,9 @@ function renderAssistantGroup({
       <ThoughtBlock
         key={group.id}
         display={thinkingDisplay}
+        previewText={group.text}
         defaultExpanded={thoughtExpanded}
+        autoExpandWhileLive={autoExpandWhileLive}
         live={thinkingLive}
         // The newest burst never folds in place: the pane follows its own
         // scroll to the bottom, so losing the reasoning's height the moment the
@@ -290,7 +299,11 @@ function AgentActivityRun({
   // the run reads as one self-updating line, and a finished one keeps only its
   // result until the chip is opened.
   const minimalActivity = defaultToolCallsDisplay === "single-line";
-  const compactActivity = defaultToolCallsDisplay === "collapsed" && defaultToolCallGroupsExpanded !== true;
+  const compactThinkingDisplay = thinkingDisplay ?? "collapsed";
+  const compactToolSummaries =
+    defaultToolCallsDisplay === "collapsed" &&
+    defaultToolCallGroupsExpanded !== true;
+  const compactActivity = compactToolSummaries && compactThinkingDisplay === "collapsed";
   const activityExpandedDefault =
     !minimalActivity && (defaultToolCallGroupsExpanded ?? defaultToolCallsDisplay === "expanded");
   const [activityExpandOverride, setActivityExpandOverride] = useState<boolean | null>(null);
@@ -386,6 +399,7 @@ function AgentActivityRun({
         group,
         thinkingLive: groupLive,
         thoughtExpanded: activityExpandOverride ?? false,
+        autoExpandWhileLive: !compactActivity,
         thinkingDisplay,
         // Keyed on the group, not on `groupLive`: the hold has to outlast live
         // so the newest block is still open when the answer lands under it.
@@ -402,7 +416,17 @@ function AgentActivityRun({
           id: `assistant-${group.id}`,
           createdAt: group.createdAt,
           sortAt: group.lastActivityAt,
-          node
+          node,
+          ...(compactActivity && group.thinking
+            ? {
+                activityMember: {
+                  kind: "thought" as const,
+                  id: group.id,
+                  node,
+                  live: groupLive
+                }
+              }
+            : {})
         }
       ];
     });
@@ -412,7 +436,6 @@ function AgentActivityRun({
           id: `tool-${item.tool.id}`,
           createdAt: item.tool.createdAt,
           sortAt: item.tool.createdAt,
-          hasErrors: item.tool.status === "error",
           // A nested launch stays its own row at every verbosity, Compact
           // included: it is the pane's only handle on the grandchild's work.
           runTools: isAgentToolName(item.tool.name)
@@ -436,19 +459,27 @@ function AgentActivityRun({
       if (cmp !== 0) return cmp;
       return (a.kind === "assistant" ? -1 : 0) - (b.kind === "assistant" ? -1 : 0);
     });
-    const bodySource = foldToolRunsToSummaries(sorted, (runTools) => (
+    const renderActivityGroup = ({ tools: runTools, members }: ActivityRun): JSX.Element => (
       <ToolCallGroupBubble
         group={buildToolCallGroup(runTools)}
-        compact={compactActivity}
+        activityMembers={members}
+        disclosureId={`agent-${agentKey ?? parentToolUseId}`}
+        compact={compactToolSummaries}
         defaultExpanded={!minimalActivity && activityExpanded}
         defaultToolsExpanded={toolRowsExpanded}
         workspaceCwd={workspace?.path ?? null}
         onOpenFile={onOpenFile}
         onOpenAgent={onOpenAgent}
       />
-    )).filter((child) => child.node !== null);
+    );
+    const bodySource = (compactActivity
+      ? foldActivityRunsToSummaries(sorted, renderActivityGroup)
+      : foldToolRunsToSummaries(sorted, (runTools) =>
+          renderActivityGroup({ tools: runTools, members: [] })
+        )
+    ).filter((child) => child.node !== null);
     return {
-      activityChildren: bodySource.map(({ kind, id, node, hasErrors }) => ({ kind, id, node, hasErrors })),
+      activityChildren: bodySource.map(({ kind, id, node }) => ({ kind, id, node })),
       toolItems: folded,
       silentSinceMs,
       assistantTimestamps: assistantEvents
@@ -460,12 +491,14 @@ function AgentActivityRun({
     activityExpandOverride,
     activityExpanded,
     compactActivity,
+    compactToolSummaries,
     agentKey,
     thinkingDisplay,
     finalOutput,
     minimalActivity,
     onOpenAgent,
     onOpenFile,
+    parentToolUseId,
     restoringTranscript,
     streaming,
     toolRowsExpanded,
@@ -637,6 +670,7 @@ function AgentActivityRun({
                 isTurnActive={streaming}
                 toolsExpanded={activityExpanded}
                 onToggleTools={() => setActivityExpandOverride(!activityExpanded)}
+                hasCollapsibleActivity={compactActivity && activityChildren.some((child) => child.kind === "tool")}
                 hideWorkingWhenCollapsed={minimalActivity}
                 body={activityChildren}
               />
@@ -689,15 +723,16 @@ function AgentActivityRun({
 }
 
 export function AgentActivity(props: Parameters<typeof AgentActivityRun>[0]): JSX.Element {
-  const [historyHydrated, setHistoryHydrated] = useState(!props.onLoadAgentEvents);
-  const loadAgentEvents = useCallback<NonNullable<typeof props.onLoadAgentEvents>>(async (...args) => {
+  const onLoadAgentEventsProp = props.onLoadAgentEvents;
+  const [historyHydrated, setHistoryHydrated] = useState(!onLoadAgentEventsProp);
+  const loadAgentEvents = useCallback<NonNullable<typeof onLoadAgentEventsProp>>(async (...args) => {
     try {
-      return await props.onLoadAgentEvents?.(...args);
+      return await onLoadAgentEventsProp?.(...args);
     } finally {
       setHistoryHydrated(true);
     }
-  }, [props.onLoadAgentEvents]);
-  const onLoadAgentEvents = props.onLoadAgentEvents ? loadAgentEvents : undefined;
+  }, [onLoadAgentEventsProp]);
+  const onLoadAgentEvents = onLoadAgentEventsProp ? loadAgentEvents : undefined;
   const parentSessionId = props.parentSession?.id ?? null;
   const visibleEvents = parentSessionId
     ? props.events.filter((event) => event.sessionId === parentSessionId)

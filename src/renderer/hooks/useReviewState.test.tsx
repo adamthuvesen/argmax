@@ -509,6 +509,134 @@ describe("useReviewState — IPC fan-out resistance", () => {
     ));
   });
 
+  it("warms only the focused closed pane and keeps its first diff ready", async () => {
+    listChangedFiles.mockResolvedValue([{ path: "src/a.ts", status: "M", additions: 1, deletions: 0, staged: false }]);
+    const loadDiff = vi.mocked(window.argmax!.review.loadDiff);
+    loadDiff.mockResolvedValue({ workspaceId: "workspace-1", filePath: "src/a.ts", content: "diff", revision: "r1" });
+    const { result, rerender } = renderHook(
+      ({ focused, changedFiles }) => useReviewState(workspaceSource(makeWorkspace({ changedFiles })), null,
+        { preloadChanges: focused }),
+      { initialProps: { focused: false, changedFiles: 3 } }
+    );
+    expect(listChangedFiles).not.toHaveBeenCalled();
+    rerender({ focused: true, changedFiles: 3 });
+    await waitFor(() => expect(result.current.diffState).toBe("ready"));
+    expect(result.current.isPanelOpen).toBe(false);
+    expect(result.current.selectedFilePath).toBeNull();
+    expect(loadDiff).toHaveBeenCalledTimes(1);
+    act(() => result.current.openChangesPanel());
+    await waitFor(() => expect(result.current.selectedFilePath).toBe("src/a.ts"));
+    expect(listChangedFiles).toHaveBeenCalledTimes(1);
+    expect(loadDiff).toHaveBeenCalledTimes(1);
+    act(() => result.current.closePanel());
+    rerender({ focused: false, changedFiles: 4 });
+    expect(listChangedFiles).toHaveBeenCalledTimes(1);
+    expect(loadDiff).toHaveBeenCalledTimes(1);
+    act(() => result.current.openChangesPanel());
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(loadDiff).toHaveBeenCalledTimes(2));
+  });
+
+  it("retries a failed speculative file-list load when Changes opens", async () => {
+    listChangedFiles
+      .mockRejectedValueOnce(new Error("preload files failed"))
+      .mockResolvedValueOnce([
+        { path: "src/a.ts", status: "M", additions: 1, deletions: 0, staged: false }
+      ]);
+    const { result } = renderHook(() =>
+      useReviewState(workspaceSource(makeWorkspace()), null, { preloadChanges: true })
+    );
+
+    await waitFor(() => expect(result.current.filesState).toBe("error"));
+    expect(result.current.isPanelOpen).toBe(false);
+
+    act(() => result.current.openChangesPanel());
+
+    await waitFor(() => expect(result.current.filesState).toBe("ready"));
+    await waitFor(() => expect(result.current.selectedFilePath).toBe("src/a.ts"));
+    expect(listChangedFiles).toHaveBeenCalledTimes(2);
+    expect(result.current.files).toHaveLength(1);
+  });
+
+  it("retries a failed speculative first diff when Changes opens", async () => {
+    listChangedFiles.mockResolvedValue([
+      { path: "src/a.ts", status: "M", additions: 1, deletions: 0, staged: false }
+    ]);
+    const loadDiff = vi.mocked(window.argmax!.review.loadDiff);
+    loadDiff
+      .mockRejectedValueOnce(new Error("preload diff failed"))
+      .mockResolvedValueOnce({
+        workspaceId: "workspace-1",
+        filePath: "src/a.ts",
+        content: "diff",
+        revision: "r1"
+      });
+    const { result } = renderHook(() =>
+      useReviewState(workspaceSource(makeWorkspace()), null, { preloadChanges: true })
+    );
+
+    await waitFor(() => expect(result.current.diffState).toBe("error"));
+    expect(result.current.isPanelOpen).toBe(false);
+    expect(result.current.selectedFilePath).toBeNull();
+
+    act(() => result.current.openChangesPanel());
+
+    await waitFor(() => expect(result.current.diffState).toBe("ready"));
+    expect(result.current.selectedFilePath).toBe("src/a.ts");
+    expect(result.current.diff?.content).toBe("diff");
+    expect(loadDiff).toHaveBeenCalledTimes(2);
+  });
+
+  it("evicts old diff previews while keeping recently viewed files warm", async () => {
+    const files = Array.from({ length: 14 }, (_, index) => ({
+      path: `src/file-${index}.ts`, status: "M", additions: 1, deletions: 0, staged: false
+    }));
+    listChangedFiles.mockResolvedValue(files);
+    const loadDiff = vi.mocked(window.argmax!.review.loadDiff);
+    loadDiff.mockImplementation((_target, filePath) => Promise.resolve({
+      workspaceId: "workspace-1", filePath: filePath ?? null, content: filePath ?? "", revision: "r1"
+    }));
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
+    await waitFor(() => expect(result.current.filesState).toBe("ready"));
+    for (const file of files) {
+      act(() => result.current.openFile(file.path));
+      await waitFor(() => expect(result.current.diff?.filePath).toBe(file.path));
+    }
+    expect(loadDiff).toHaveBeenCalledTimes(14);
+    act(() => result.current.openFile(files[12].path));
+    await waitFor(() => expect(result.current.diff?.filePath).toBe(files[12].path));
+    expect(loadDiff).toHaveBeenCalledTimes(14);
+    act(() => result.current.openFile(files[0].path));
+    await waitFor(() => expect(result.current.diff?.filePath).toBe(files[0].path));
+    expect(loadDiff).toHaveBeenCalledTimes(15);
+  });
+
+  it("bounds diff text retention and does not refetch the displayed oversized diff on focus", async () => {
+    const files = ["a", "b", "c"].map((name) => ({ path: name, status: "M", additions: 1, deletions: 0, staged: false }));
+    listChangedFiles.mockResolvedValue(files);
+    const loadDiff = vi.mocked(window.argmax!.review.loadDiff);
+    loadDiff.mockImplementation((_target, filePath) => Promise.resolve({
+      workspaceId: "workspace-1", filePath: filePath ?? null,
+      content: "x".repeat(filePath === "c" ? 5 * 1_024 * 1_024 : 3 * 1_024 * 1_024), revision: "r1"
+    }));
+    const { result, rerender } = renderHook(({ focused }) =>
+      useReviewState(workspaceSource(makeWorkspace()), null, { preloadChanges: focused }),
+      { initialProps: { focused: true } });
+    await waitFor(() => expect(result.current.diff?.filePath).toBe("a"));
+    act(() => result.current.openFile("b"));
+    await waitFor(() => expect(result.current.diff?.filePath).toBe("b"));
+    act(() => result.current.openFile("a"));
+    await waitFor(() => expect(result.current.diff?.filePath).toBe("a"));
+    expect(loadDiff).toHaveBeenCalledTimes(3);
+    act(() => result.current.openFile("c"));
+    await waitFor(() => expect(result.current.diff?.filePath).toBe("c"));
+    act(() => result.current.closePanel());
+    rerender({ focused: false });
+    rerender({ focused: true });
+    expect(result.current.diff?.filePath).toBe("c");
+    expect(loadDiff).toHaveBeenCalledTimes(4);
+  });
+
   it("does not refetch workspace.listFiles when lastActivityAt ticks while in Files mode", async () => {
     // Files-mode list loading also ignores token-level `lastActivityAt` ticks.
     const initial = makeWorkspace();

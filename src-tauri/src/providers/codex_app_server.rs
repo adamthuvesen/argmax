@@ -8,17 +8,20 @@
 //! answers every server request so Codex can never wait on an unsupported UI.
 
 use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, Mutex,
 };
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use serde_json::{json, Map, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdin, Command};
 use tokio::sync::{mpsc, oneshot, watch};
+use tokio::time::MissedTickBehavior;
 use uuid::Uuid;
 
 use super::adapters::prompt_for_agent_mode;
@@ -31,6 +34,7 @@ use super::{mcp_injection, AgentMode, PermissionMode, ProviderId, ProviderLaunch
 use crate::approvals::service::ApprovalService;
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::time::now_iso;
+use crate::questions::service::QuestionService;
 use crate::session_control::{
     SessionLaunchProcessConfig, SESSION_LAUNCH_SOCKET_ENV, SESSION_LAUNCH_TOKEN_ENV,
 };
@@ -38,6 +42,9 @@ use crate::util::sync::LockOrRecover;
 
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(20);
 const CANCEL_TIMEOUT: Duration = Duration::from_secs(5);
+const COMPUTER_USE_PLUGIN: &str = "computer-use@openai-bundled";
+const COMPUTER_USE_RUNTIME: &str = "unified-computer-use";
+const COMPUTER_USE_SERVER: &str = "cua_repl";
 
 /// Launch one Codex turn over its native app-server protocol.
 ///
@@ -50,12 +57,17 @@ pub async fn launch_turn(
     input: &ProviderLaunchInput,
     session_launch: Option<&SessionLaunchProcessConfig>,
     approvals: Arc<ApprovalService>,
+    questions: Arc<QuestionService>,
     on_event: EventCallback,
 ) -> ArgmaxResult<Arc<dyn ProviderRuntimeHandle>> {
     let mut environment_overrides = vec![("NO_COLOR".to_string(), "1".to_string())];
     if let Some(config) = session_launch {
         environment_overrides.extend(config.env_pairs());
     }
+    let provider_environment = build_provider_environment(environment_overrides);
+    let computer_use_server = computer_use_server(&provider_environment);
+    // Where this turn's children write their rollouts. See `live_children`.
+    let trace_home = codex_home(&provider_environment).ok();
     let mut command = Command::new(binary_path);
     command
         // `update_plan` is Codex's todo list, and it is off unless the config
@@ -66,10 +78,12 @@ pub async fn launch_turn(
             "--stdio",
             "-c",
             "tools.update_plan.enabled=true",
+            "-c",
+            "tools.experimental_request_user_input.enabled=true",
         ])
         .current_dir(&input.workspace_path)
         .env_clear()
-        .envs(build_provider_environment(environment_overrides))
+        .envs(provider_environment)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -112,7 +126,7 @@ pub async fn launch_turn(
                     "title": "Argmax",
                     "version": env!("CARGO_PKG_VERSION"),
                 },
-                "capabilities": {},
+                "capabilities": { "experimentalApi": true },
             }),
         )
         .await?;
@@ -127,7 +141,7 @@ pub async fn launch_turn(
         } else {
             "thread/start"
         };
-        let thread_params = thread_params(input, session_launch);
+        let thread_params = thread_params(input, session_launch, computer_use_server.as_ref());
         let thread_response = rpc.request(thread_method, thread_params).await?;
         let thread_id = thread_response
             .pointer("/thread/id")
@@ -194,9 +208,14 @@ pub async fn launch_turn(
 
     let (done_tx, done_rx) = watch::channel(false);
     let (cancel_tx, mut cancel_rx) = watch::channel(false);
+    let input_state = Arc::new(TurnInputState {
+        compacting: AtomicBool::new(false),
+        ingested: AtomicBool::new(false),
+    });
     let handle = Arc::new(CodexTurnHandle {
         cancel: cancel_tx,
         disposed: AtomicBool::new(false),
+        input: Arc::clone(&input_state),
         done_rx,
         rpc: Arc::clone(&rpc),
         thread_id: thread_id.clone(),
@@ -205,69 +224,80 @@ pub async fn launch_turn(
     let session_id = input.session_id.clone();
     let invocation_id = Uuid::new_v4().to_string();
     let approvals: Arc<dyn NativeApprovalBroker> = approvals;
+    let questions: Arc<dyn NativeQuestionBroker> = questions;
     tokio::spawn(async move {
         let mut translation = EventTranslation::default();
         let mut scope = TurnScope::new(&thread_id, &turn_id);
         let mut root_completion: Option<Value> = None;
+        // Children the app-server never mentions stop the turn from ending
+        // too, but nothing on the connection announces them finishing, so a
+        // held turn re-reads them on a tick of its own.
+        let mut recheck_children = tokio::time::interval(CHILD_RECHECK_INTERVAL);
+        recheck_children.set_missed_tick_behavior(MissedTickBehavior::Delay);
         let outcome = loop {
-            let incoming = tokio::select! {
+            let step = tokio::select! {
                 _ = cancel_rx.changed() => {
                     let _ = tokio::time::timeout(Duration::from_secs(2), rpc.request("turn/interrupt", json!({"threadId":thread_id,"turnId":turn_id}))).await;
                     break Ok(true);
                 }
-                incoming = incoming_rx.recv() => incoming,
+                _ = recheck_children.tick(), if root_completion.is_some() => None,
+                incoming = incoming_rx.recv() => match incoming {
+                    Some(Incoming::Message(message)) => Some(message),
+                    Some(Incoming::Closed(reason)) => break Err(reason),
+                    None => break Err("Codex app-server event channel closed".to_string()),
+                },
             };
-            match incoming {
-                Some(Incoming::Message(message)) => {
-                    if message.get("id").is_some() && message.get("method").is_some() {
-                        spawn_server_request(
-                            message,
-                            Arc::clone(&rpc),
-                            Arc::clone(&approvals),
-                            session_id.clone(),
-                            invocation_id.clone(),
-                            thread_id.clone(),
-                            turn_id.clone(),
-                        );
-                        continue;
-                    }
-                    let Some(method) = message.get("method").and_then(Value::as_str) else {
-                        continue;
-                    };
-                    let params = message.get("params").cloned().unwrap_or_else(|| json!({}));
-                    let is_root = scope.observe(method, &params);
-                    if is_root {
-                        if method == "turn/completed" {
-                            root_completion = Some(params);
-                        } else {
-                            for line in translation.translate(method, &params) {
-                                emit_line(&on_event, &session_id, line);
-                            }
-                        }
-                    }
-                    if let Some(completion) = root_completion.as_ref() {
-                        let status = completion
-                            .pointer("/turn/status")
-                            .and_then(Value::as_str)
-                            .unwrap_or("failed");
-                        if status != "completed" || scope.running_children.is_empty() {
-                            for line in translation.translate("turn/completed", completion) {
-                                emit_line(&on_event, &session_id, line);
-                            }
-                            break match status {
-                                "completed" => Ok(false),
-                                "interrupted" => Ok(true),
-                                _ => Err(completion
-                                    .pointer("/turn/error/message")
-                                    .and_then(Value::as_str)
-                                    .unwrap_or("Codex turn failed")
-                                    .to_string()),
-                            };
+            if let Some(message) = step {
+                if message.get("id").is_some() && message.get("method").is_some() {
+                    spawn_server_request(
+                        message,
+                        Arc::clone(&rpc),
+                        Arc::clone(&approvals),
+                        Arc::clone(&questions),
+                        session_id.clone(),
+                        invocation_id.clone(),
+                        (thread_id.clone(), turn_id.clone()),
+                    );
+                    continue;
+                }
+                let Some(method) = message.get("method").and_then(Value::as_str) else {
+                    continue;
+                };
+                let params = message.get("params").cloned().unwrap_or_else(|| json!({}));
+                let is_root = scope.observe(method, &params);
+                if is_root {
+                    input_state.observe(method, &params);
+                    if method == "turn/completed" {
+                        root_completion = Some(params);
+                    } else {
+                        for line in translation.translate(method, &params) {
+                            emit_line(&on_event, &session_id, line);
                         }
                     }
                 }
-                Some(Incoming::Closed(reason)) => break Err(reason),
-                None => break Err("Codex app-server event channel closed".to_string()),
+            }
+            if let Some(completion) = root_completion.as_ref() {
+                let status = completion
+                    .pointer("/turn/status")
+                    .and_then(Value::as_str)
+                    .unwrap_or("failed");
+                let waiting = status == "completed"
+                    && (!scope.running_children.is_empty()
+                        || live_children(trace_home.as_deref(), &thread_id).await);
+                if !waiting {
+                    for line in translation.translate("turn/completed", completion) {
+                        emit_line(&on_event, &session_id, line);
+                    }
+                    break match status {
+                        "completed" => Ok(false),
+                        "interrupted" => Ok(true),
+                        _ => Err(completion
+                            .pointer("/turn/error/message")
+                            .and_then(Value::as_str)
+                            .unwrap_or("Codex turn failed")
+                            .to_string()),
+                    };
+                }
             }
         };
 
@@ -307,6 +337,7 @@ pub async fn launch_turn(
 fn thread_params(
     input: &ProviderLaunchInput,
     session_launch: Option<&SessionLaunchProcessConfig>,
+    computer_use_server: Option<&Value>,
 ) -> Value {
     let mut params = Map::new();
     params.insert("cwd".to_string(), json!(input.workspace_path));
@@ -315,8 +346,8 @@ fn thread_params(
         params.insert("threadId".to_string(), json!(resume_id));
     }
     apply_permission_policy(&mut params, input, false);
-    if let Some(config) = session_launch {
-        params.insert("config".to_string(), mcp_config(config));
+    if let Some(config) = mcp_config(session_launch, computer_use_server) {
+        params.insert("config".to_string(), config);
     }
     Value::Object(params)
 }
@@ -393,19 +424,134 @@ fn effective_effort(input: &ProviderLaunchInput) -> Option<&'static str> {
     })
 }
 
-fn mcp_config(config: &SessionLaunchProcessConfig) -> Value {
-    json!({
-        "mcp_servers": {
-            mcp_injection::SERVER_NAME: {
+fn mcp_config(
+    session_launch: Option<&SessionLaunchProcessConfig>,
+    computer_use_server: Option<&Value>,
+) -> Option<Value> {
+    let mut servers = Map::new();
+    if let Some(config) = session_launch {
+        servers.insert(
+            mcp_injection::SERVER_NAME.to_string(),
+            json!({
                 "command": config.argmax_bin(),
                 "args": ["mcp"],
                 "env": {
                     SESSION_LAUNCH_SOCKET_ENV: config.socket_path(),
                     SESSION_LAUNCH_TOKEN_ENV: config.token(),
-                },
+                }
+            }),
+        );
+    }
+    if let Some(server) = computer_use_server {
+        servers.insert(COMPUTER_USE_SERVER.to_string(), server.clone());
+    }
+    (!servers.is_empty()).then(|| json!({ "mcp_servers": servers }))
+}
+
+fn computer_use_server(environment: &[(String, String)]) -> Option<Value> {
+    match codex_home(environment).and_then(|home| computer_use_server_from_home(&home)) {
+        Ok(server) => server,
+        Err(error) => {
+            tracing::warn!(%error, "Codex Computer Use is enabled but unavailable in Argmax");
+            None
+        }
+    }
+}
+
+fn codex_home(environment: &[(String, String)]) -> Result<PathBuf, String> {
+    let value = |name: &str| {
+        environment
+            .iter()
+            .find_map(|(key, value)| (key == name && !value.is_empty()).then_some(value))
+    };
+    if let Some(path) = value("CODEX_HOME") {
+        return Ok(PathBuf::from(path));
+    }
+    value("HOME")
+        .map(|home| PathBuf::from(home).join(".codex"))
+        .ok_or_else(|| "neither CODEX_HOME nor HOME is set".to_string())
+}
+
+fn computer_use_server_from_home(codex_home: &Path) -> Result<Option<Value>, String> {
+    let config_path = codex_home.join("config.toml");
+    let config = match fs::read_to_string(&config_path) {
+        Ok(config) => config,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("could not read {}: {error}", config_path.display())),
+    };
+    if !computer_use_is_enabled(&config) {
+        return Ok(None);
+    }
+
+    let runtime_root = codex_home
+        .join("plugins/cache/openai-bundled")
+        .join(COMPUTER_USE_RUNTIME);
+    let versions = fs::read_dir(&runtime_root).map_err(|error| {
+        format!(
+            "could not find the ChatGPT Computer Use runtime at {}: {error}",
+            runtime_root.display()
+        )
+    })?;
+    let mut versions = versions
+        .flatten()
+        .filter(|entry| entry.path().is_dir())
+        .collect::<Vec<_>>();
+    versions.sort_by_key(|entry| version_key(&entry.file_name().to_string_lossy()));
+
+    for version in versions.into_iter().rev() {
+        let manifest_path = version.path().join(".mcp.json");
+        let Ok(body) = fs::read_to_string(&manifest_path) else {
+            continue;
+        };
+        let Ok(document) = serde_json::from_str::<Value>(&body) else {
+            continue;
+        };
+        if let Some(server) = document
+            .pointer(&format!("/mcpServers/{COMPUTER_USE_SERVER}"))
+            .filter(|server| server.is_object())
+        {
+            return Ok(Some(server.clone()));
+        }
+    }
+
+    Err(format!(
+        "no valid {COMPUTER_USE_SERVER} configuration was found under {}",
+        runtime_root.display()
+    ))
+}
+
+fn computer_use_is_enabled(config: &str) -> bool {
+    let expected_section = format!("plugins.\"{COMPUTER_USE_PLUGIN}\"");
+    let mut in_section = false;
+    for line in config.lines() {
+        let trimmed = line.trim();
+        if let Some(section) = trimmed
+            .strip_prefix('[')
+            .and_then(|value| value.strip_suffix(']'))
+        {
+            in_section = section == expected_section;
+            continue;
+        }
+        if in_section {
+            let Some((key, value)) = trimmed.split_once('=') else {
+                continue;
+            };
+            if key.trim() == "enabled" {
+                return value
+                    .split('#')
+                    .next()
+                    .is_some_and(|value| value.trim() == "true");
             }
         }
-    })
+    }
+    false
+}
+
+fn version_key(version: &str) -> Vec<u64> {
+    version
+        .split('.')
+        .map(|part| part.parse().unwrap_or_default())
+        .collect()
 }
 
 struct RpcPeer {
@@ -602,6 +748,28 @@ trait NativeApprovalBroker: Send + Sync {
     ) -> BoxFuture<'a, ArgmaxResult<bool>>;
 }
 
+trait NativeQuestionBroker: Send + Sync {
+    fn request<'a>(
+        &'a self,
+        session_id: &'a str,
+        invocation_id: &'a str,
+        request_id: &'a str,
+        params: &'a Value,
+    ) -> BoxFuture<'a, ArgmaxResult<Value>>;
+}
+
+impl NativeQuestionBroker for QuestionService {
+    fn request<'a>(
+        &'a self,
+        session_id: &'a str,
+        invocation_id: &'a str,
+        request_id: &'a str,
+        params: &'a Value,
+    ) -> BoxFuture<'a, ArgmaxResult<Value>> {
+        Box::pin(self.request_native(session_id, invocation_id, request_id, params))
+    }
+}
+
 impl NativeApprovalBroker for ApprovalService {
     fn request<'a>(
         &'a self,
@@ -626,15 +794,17 @@ fn spawn_server_request(
     request: Value,
     rpc: Arc<RpcPeer>,
     approvals: Arc<dyn NativeApprovalBroker>,
+    questions: Arc<dyn NativeQuestionBroker>,
     session_id: String,
     invocation_id: String,
-    root_thread_id: String,
-    root_turn_id: String,
+    root_turn: (String, String),
 ) {
     tokio::spawn(async move {
+        let (root_thread_id, root_turn_id) = root_turn;
         let response = server_request_response(
             &request,
             approvals.as_ref(),
+            questions.as_ref(),
             &session_id,
             &invocation_id,
             &root_thread_id,
@@ -650,6 +820,7 @@ fn spawn_server_request(
 async fn server_request_response(
     request: &Value,
     approvals: &dyn NativeApprovalBroker,
+    questions: &dyn NativeQuestionBroker,
     session_id: &str,
     invocation_id: &str,
     root_thread_id: &str,
@@ -658,11 +829,24 @@ async fn server_request_response(
     let id = request.get("id").cloned().unwrap_or(Value::Null);
     let method = request.get("method").and_then(Value::as_str).unwrap_or("");
     let params = request.get("params").unwrap_or(&Value::Null);
+    // MCP servers may ask the host to render a form or open an authentication
+    // URL. Argmax has no elicitation surface yet, and the app-server protocol
+    // requires clients that cannot render one to decline it rather than return
+    // a method-not-found error. The MCP tool result retains the actionable
+    // failure, such as a connector reauthentication link.
+    if method == "mcpServer/elicitation/request" {
+        return json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": { "action": "decline", "content": null }
+        });
+    }
     if !matches!(
         method,
         "item/commandExecution/requestApproval"
             | "item/fileChange/requestApproval"
             | "item/permissions/requestApproval"
+            | "item/tool/requestUserInput"
     ) {
         return rpc_error(
             id,
@@ -684,6 +868,15 @@ async fn server_request_response(
     let Some(request_id) = request.get("id").and_then(request_id) else {
         return rpc_error(id, -32602, "Approval request has no usable id");
     };
+    if method == "item/tool/requestUserInput" {
+        return match questions
+            .request(session_id, invocation_id, &request_id, params)
+            .await
+        {
+            Ok(result) => json!({"jsonrpc":"2.0", "id":id, "result":result}),
+            Err(error) => rpc_error(id, -32001, error.to_string()),
+        };
+    }
     let mut command = if method == "item/permissions/requestApproval" {
         let Some(permissions) = params.get("permissions").filter(|value| value.is_object()) else {
             return rpc_error(id, -32602, "Permission request has no permission profile");
@@ -744,7 +937,11 @@ fn command_text(value: Option<&Value>) -> Option<String> {
 }
 
 fn request_id(value: &Value) -> Option<String> {
-    (value.is_string() || value.is_i64() || value.is_u64()).then(|| value.to_string())
+    match value {
+        Value::String(id) => Some(id.clone()),
+        Value::Number(id) => Some(id.to_string()),
+        _ => None,
+    }
 }
 
 fn rpc_error(id: Value, code: i64, message: impl Into<String>) -> Value {
@@ -758,6 +955,20 @@ fn rpc_error(id: Value, code: i64, message: impl Into<String>) -> Value {
 #[derive(Default)]
 struct EventTranslation {
     last_usage: Option<Value>,
+    reasoning_streams: HashMap<String, ReasoningStream>,
+    last_reasoning_item_id: Option<String>,
+}
+
+#[derive(Default)]
+struct ReasoningStream {
+    streamed: bool,
+    last_part: Option<ReasoningPart>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ReasoningPart {
+    Summary(Option<u64>),
+    Content(Option<u64>),
 }
 
 impl EventTranslation {
@@ -768,12 +979,44 @@ impl EventTranslation {
                 let Some(item) = params.get("item") else {
                     return Vec::new();
                 };
+                let is_reasoning = item.get("type").and_then(Value::as_str) == Some("reasoning");
+                if !is_reasoning {
+                    self.last_reasoning_item_id = None;
+                } else if method == "item/completed" {
+                    let item_id = item.get("id").and_then(Value::as_str);
+                    if item_id.is_some_and(|id| {
+                        self.reasoning_streams
+                            .remove(id)
+                            .is_some_and(|stream| stream.streamed)
+                    }) {
+                        return Vec::new();
+                    }
+                }
                 let event_type = if method == "item/started" {
                     "item.started"
                 } else {
                     "item.completed"
                 };
-                vec![json!({ "type": event_type, "item": exec_item(item) })]
+                let mut item = exec_item(item);
+                if is_reasoning && method == "item/completed" {
+                    if let Some(item_id) =
+                        item.get("id").and_then(Value::as_str).map(str::to_string)
+                    {
+                        if self
+                            .last_reasoning_item_id
+                            .as_deref()
+                            .is_some_and(|last| last != item_id)
+                        {
+                            if let Some(text) =
+                                item.get("text").and_then(Value::as_str).map(str::to_string)
+                            {
+                                item["text"] = Value::String(format!("\n{text}"));
+                            }
+                        }
+                        self.last_reasoning_item_id = Some(item_id);
+                    }
+                }
+                vec![json!({ "type": event_type, "item": item })]
             }
             // Codex revises its plan through its own notification rather than
             // through an item lifecycle, and it names the running step — the
@@ -796,19 +1039,22 @@ impl EventTranslation {
             "item/agentMessage/delta" => params
                 .get("delta")
                 .and_then(Value::as_str)
-                .map(|text| vec![json!({ "type": "message.delta", "text": text })])
-                .unwrap_or_default(),
-            "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" => params
-                .get("delta")
-                .and_then(Value::as_str)
                 .map(|text| {
-                    vec![json!({
-                        "type": "message.delta",
-                        "text": text,
-                        "thinking": true,
-                    })]
+                    self.last_reasoning_item_id = None;
+                    vec![json!({ "type": "message.delta", "text": text })]
                 })
                 .unwrap_or_default(),
+            "item/reasoning/summaryTextDelta" => self.reasoning_delta(
+                params,
+                ReasoningPart::Summary(params.get("summaryIndex").and_then(Value::as_u64)),
+            ),
+            "item/reasoning/textDelta" => self.reasoning_delta(
+                params,
+                ReasoningPart::Content(params.get("contentIndex").and_then(Value::as_u64)),
+            ),
+            // The following text delta carries the same summary index. Using
+            // that index avoids persisting a whitespace-only separator event.
+            "item/reasoning/summaryPartAdded" => Vec::new(),
             "thread/tokenUsage/updated" => {
                 self.last_usage = params.get("tokenUsage").cloned();
                 Vec::new()
@@ -830,6 +1076,46 @@ impl EventTranslation {
             }
             _ => Vec::new(),
         }
+    }
+
+    fn reasoning_delta(&mut self, params: &Value, part: ReasoningPart) -> Vec<Value> {
+        let Some(text) = params.get("delta").and_then(Value::as_str) else {
+            return Vec::new();
+        };
+        if text.is_empty() {
+            return Vec::new();
+        }
+        let Some(item_id) = params.get("itemId").and_then(Value::as_str) else {
+            return vec![json!({
+                "type": "message.delta",
+                "text": text,
+                "thinking": true,
+            })];
+        };
+
+        let item_boundary = self
+            .last_reasoning_item_id
+            .as_deref()
+            .is_some_and(|last| last != item_id);
+        let stream = self
+            .reasoning_streams
+            .entry(item_id.to_string())
+            .or_default();
+        let part_boundary = stream.streamed && stream.last_part.is_some_and(|last| last != part);
+        let text = if item_boundary || part_boundary {
+            format!("\n{text}")
+        } else {
+            text.to_string()
+        };
+        stream.streamed = true;
+        stream.last_part = Some(part);
+        self.last_reasoning_item_id = Some(item_id.to_string());
+
+        vec![json!({
+            "type": "message.delta",
+            "text": text,
+            "thinking": true,
+        })]
     }
 }
 
@@ -964,6 +1250,35 @@ fn emit(
 
 /// Native child threads share the app-server transport, but not the parent's
 /// transcript or token counters. Keep them alive until their work settles.
+/// How often a turn that has answered but is still holding for its children
+/// looks again. Nothing on the connection reports an unannounced child
+/// finishing, so the answer comes from the rollouts on disk.
+const CHILD_RECHECK_INTERVAL: Duration = Duration::from_secs(2);
+
+/// Whether a child this turn spawned is still working.
+///
+/// Ending the turn terminates the app-server process group, and every child
+/// thread lives inside it, so a turn that ends while a child is mid-task
+/// destroys that work with no record of it. `running_children` covers the
+/// children the app-server declared; this covers the ones it never mentioned.
+async fn live_children(codex_home: Option<&Path>, thread_id: &str) -> bool {
+    let Some(codex_home) = codex_home else {
+        return false;
+    };
+    let codex_home = codex_home.to_path_buf();
+    let thread_id = thread_id.to_string();
+    tokio::task::spawn_blocking(move || {
+        !crate::providers::subagent_trace::codex_children_still_working(
+            &codex_home,
+            &thread_id,
+            SystemTime::now(),
+        )
+        .is_empty()
+    })
+    .await
+    .unwrap_or(false)
+}
+
 struct TurnScope {
     thread_id: String,
     turn_id: String,
@@ -1017,6 +1332,16 @@ impl TurnScope {
                         continue;
                     }
                     self.children.insert(id.to_string());
+                    // closeAgent reports the child's last known state, which
+                    // can still be running after the close has succeeded.
+                    if method == "item/completed"
+                        && item.get("tool").and_then(Value::as_str) == Some("closeAgent")
+                        && item.get("status").and_then(Value::as_str) == Some("completed")
+                    {
+                        self.early_terminal_children.remove(id);
+                        self.running_children.remove(id);
+                        continue;
+                    }
                     if self.early_terminal_children.remove(id) {
                         self.running_children.remove(id);
                         continue;
@@ -1071,9 +1396,42 @@ impl TurnScope {
     }
 }
 
+/// The turn's own input has reached the model once the thread carries it as a
+/// `userMessage` item, and Codex only gets there after any context compaction
+/// it decided to run first. Both flags are written by the turn's event loop
+/// and read by `steer` and the session service, so they are shared rather than
+/// owned by either side.
+struct TurnInputState {
+    compacting: AtomicBool,
+    ingested: AtomicBool,
+}
+
+impl TurnInputState {
+    fn observe(&self, method: &str, params: &Value) {
+        let Some(item_type) = params
+            .pointer("/item/type")
+            .and_then(Value::as_str)
+            .map(snake_case)
+        else {
+            return;
+        };
+        match (method, item_type.as_str()) {
+            ("item/started", "context_compaction") => self.compacting.store(true, Ordering::SeqCst),
+            ("item/completed", "context_compaction") => {
+                self.compacting.store(false, Ordering::SeqCst)
+            }
+            ("item/started" | "item/completed", "user_message") => {
+                self.ingested.store(true, Ordering::SeqCst)
+            }
+            _ => {}
+        }
+    }
+}
+
 struct CodexTurnHandle {
     cancel: watch::Sender<bool>,
     disposed: AtomicBool,
+    input: Arc<TurnInputState>,
     done_rx: watch::Receiver<bool>,
     rpc: Arc<RpcPeer>,
     thread_id: String,
@@ -1093,6 +1451,10 @@ impl ProviderRuntimeHandle for CodexTurnHandle {
         self.disposed.load(Ordering::SeqCst)
     }
 
+    fn input_delivered(&self) -> bool {
+        self.input.ingested.load(Ordering::SeqCst)
+    }
+
     fn send_input(&self, _input: &str) {}
 
     fn steer<'a>(&'a self, prompt: &'a str) -> BoxFuture<'a, ArgmaxResult<()>> {
@@ -1101,6 +1463,17 @@ impl ProviderRuntimeHandle for CodexTurnHandle {
                 return Err(ArgmaxError::service(
                     "STEER_NOT_RUNNING",
                     "The Codex turn is no longer running",
+                ));
+            }
+            // `turn/steer` is acknowledged during a compaction and then
+            // dropped: the rewrite replaces the history the steer was going
+            // into, and the text never appears in the thread. An ack we cannot
+            // believe is worse than a refusal — the follow-up would be shown
+            // as delivered and never answered. Keep it queued instead.
+            if self.input.compacting.load(Ordering::SeqCst) {
+                return Err(ArgmaxError::service(
+                    "STEER_CONTEXT_COMPACTION",
+                    "Codex is compacting its context. This follow-up is still queued for the next turn.",
                 ));
             }
 
@@ -1219,7 +1592,7 @@ mod tests {
     fn permission_modes_use_the_documented_app_server_policies() {
         let defaults_input = input(PermissionMode::ProviderDefaults);
         for defaults in [
-            thread_params(&defaults_input, None),
+            thread_params(&defaults_input, None, None),
             turn_params(&defaults_input, "thread-1", "Do the work".into()),
         ] {
             assert!(defaults.get("approvalPolicy").is_none());
@@ -1229,7 +1602,7 @@ mod tests {
         }
 
         let ask_input = input(PermissionMode::AskEachTime);
-        let ask_thread = thread_params(&ask_input, None);
+        let ask_thread = thread_params(&ask_input, None, None);
         assert_eq!(ask_thread["approvalPolicy"], "on-request");
         assert_eq!(ask_thread["approvalsReviewer"], "user");
         assert_eq!(ask_thread["sandbox"], "workspace-write");
@@ -1239,7 +1612,7 @@ mod tests {
         assert_eq!(ask_turn["sandboxPolicy"]["type"], "workspaceWrite");
 
         let full_input = input(PermissionMode::AutoApprove);
-        let full_thread = thread_params(&full_input, None);
+        let full_thread = thread_params(&full_input, None, None);
         assert_eq!(full_thread["approvalPolicy"], "on-request");
         assert_eq!(full_thread["approvalsReviewer"], "auto_review");
         assert_eq!(full_thread["sandbox"], "danger-full-access");
@@ -1247,6 +1620,68 @@ mod tests {
         assert_eq!(full_turn["approvalPolicy"], "on-request");
         assert_eq!(full_turn["approvalsReviewer"], "auto_review");
         assert_eq!(full_turn["sandboxPolicy"]["type"], "dangerFullAccess");
+    }
+
+    #[test]
+    fn computer_use_runtime_follows_the_enabled_plugin_setting() {
+        let codex_home = tempfile::tempdir().expect("temporary Codex home");
+        let runtime = codex_home
+            .path()
+            .join("plugins/cache/openai-bundled/unified-computer-use/26.908.40834");
+        fs::create_dir_all(&runtime).expect("Computer Use runtime directory");
+        fs::write(
+            runtime.join(".mcp.json"),
+            r#"{"mcpServers":{"cua_repl":{"command":"/app/cua-node","args":["repl.mjs"]}}}"#,
+        )
+        .expect("Computer Use manifest");
+
+        fs::write(
+            codex_home.path().join("config.toml"),
+            "[plugins.\"computer-use@openai-bundled\"]\nenabled = false\n",
+        )
+        .expect("disabled config");
+        assert_eq!(
+            computer_use_server_from_home(codex_home.path()).expect("disabled setting"),
+            None
+        );
+
+        fs::write(
+            codex_home.path().join("config.toml"),
+            "[plugins.\"computer-use@openai-bundled\"]\nenabled = true # user setting\n",
+        )
+        .expect("enabled config");
+        let server = computer_use_server_from_home(codex_home.path())
+            .expect("enabled setting")
+            .expect("Computer Use server");
+        assert_eq!(server["command"], "/app/cua-node");
+        assert_eq!(server["args"], json!(["repl.mjs"]));
+    }
+
+    #[test]
+    fn codex_thread_merges_argmax_and_computer_use_servers() {
+        let session_launch = SessionLaunchProcessConfig::for_tests(
+            "/tmp/argmax.sock",
+            "secret-token",
+            "/Applications/Argmax.app/Contents/MacOS/argmax",
+        );
+        let computer_use = json!({
+            "command": "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+            "args": ["cua-repl.mjs"],
+        });
+        let params = thread_params(
+            &input(PermissionMode::AutoApprove),
+            Some(&session_launch),
+            Some(&computer_use),
+        );
+
+        assert_eq!(
+            params["config"]["mcp_servers"][mcp_injection::SERVER_NAME]["command"],
+            "/Applications/Argmax.app/Contents/MacOS/argmax"
+        );
+        assert_eq!(
+            params["config"]["mcp_servers"][COMPUTER_USE_SERVER],
+            computer_use
+        );
     }
 
     #[test]
@@ -1313,6 +1748,105 @@ mod tests {
             dynamic_tool[0]["item"]["result"]["_meta"]["opaqueKeyName"],
             "kept"
         );
+    }
+
+    #[test]
+    fn streamed_reasoning_keeps_part_boundaries_without_replaying_completion() {
+        use crate::providers::normalizer::{
+            normalize_provider_event, NormalizerSessionContext, ProviderOutputEvent,
+        };
+
+        let mut translation = EventTranslation::default();
+        assert!(translation
+            .translate(
+                "item/reasoning/summaryPartAdded",
+                &json!({ "itemId": "reasoning-1", "summaryIndex": 0 }),
+            )
+            .is_empty());
+
+        let mut lines = Vec::new();
+        lines.extend(translation.translate(
+            "item/reasoning/summaryTextDelta",
+            &json!({ "itemId": "reasoning-1", "summaryIndex": 0, "delta": "First" }),
+        ));
+        lines.extend(translation.translate(
+            "item/reasoning/summaryTextDelta",
+            &json!({ "itemId": "reasoning-1", "summaryIndex": 0, "delta": " part" }),
+        ));
+        lines.extend(translation.translate(
+            "item/reasoning/summaryTextDelta",
+            &json!({ "itemId": "reasoning-1", "summaryIndex": 1, "delta": "Second" }),
+        ));
+        assert!(translation
+            .translate(
+                "item/completed",
+                &json!({
+                    "item": {
+                        "id": "reasoning-1",
+                        "type": "reasoning",
+                        "summary": ["First part", "Second"],
+                        "content": [],
+                    }
+                }),
+            )
+            .is_empty());
+        lines.extend(translation.translate(
+            "item/completed",
+            &json!({
+                "item": {
+                    "id": "reasoning-2",
+                    "type": "reasoning",
+                    "summary": ["Completion only"],
+                    "content": [],
+                }
+            }),
+        ));
+
+        let mut context = NormalizerSessionContext::default();
+        let mut messages = Vec::new();
+        for line in lines {
+            let event = ProviderOutputEvent {
+                session_id: "session-1".to_string(),
+                stream: ProviderOutputStream::Stdout,
+                message: format!("{line}\n"),
+                created_at: "2026-09-13T12:00:00Z".to_string(),
+            };
+            let normalized = normalize_provider_event(ProviderId::Codex, &event, &mut context);
+            messages.extend(normalized.events.into_iter().map(|event| {
+                assert_eq!(event.r#type, "message.delta");
+                assert_eq!(event.payload["thinking"], true);
+                event.message
+            }));
+        }
+
+        assert_eq!(
+            messages,
+            ["First", " part", "\nSecond", "\nCompletion only"]
+        );
+    }
+
+    #[test]
+    fn empty_reasoning_delta_does_not_hide_completed_reasoning() {
+        let mut translation = EventTranslation::default();
+        assert!(translation
+            .translate(
+                "item/reasoning/summaryTextDelta",
+                &json!({ "itemId": "reasoning-1", "summaryIndex": 0, "delta": "" }),
+            )
+            .is_empty());
+
+        let completed = translation.translate(
+            "item/completed",
+            &json!({
+                "item": {
+                    "id": "reasoning-1",
+                    "type": "reasoning",
+                    "summary": ["Still visible"],
+                    "content": [],
+                }
+            }),
+        );
+        assert_eq!(completed[0]["item"]["text"], "Still visible");
     }
 
     #[test]
@@ -1431,12 +1965,35 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct FakeQuestion {
+        calls: Mutex<Vec<(String, String)>>,
+        response: Value,
+    }
+
+    impl NativeQuestionBroker for FakeQuestion {
+        fn request<'a>(
+            &'a self,
+            _session_id: &'a str,
+            _invocation_id: &'a str,
+            request_id: &'a str,
+            params: &'a Value,
+        ) -> BoxFuture<'a, ArgmaxResult<Value>> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push((request_id.to_string(), params["itemId"].to_string()));
+            Box::pin(async move { Ok(self.response.clone()) })
+        }
+    }
+
     #[tokio::test]
     async fn command_approval_roundtrip_returns_the_users_decision() {
         let approvals = FakeApproval {
             allow: true,
             ..FakeApproval::default()
         };
+        let questions = FakeQuestion::default();
         let response = server_request_response(
             &json!({
                 "jsonrpc": "2.0",
@@ -1451,6 +2008,7 @@ mod tests {
                 }
             }),
             &approvals,
+            &questions,
             "session-1",
             "invocation-1",
             "thread-1",
@@ -1475,6 +2033,7 @@ mod tests {
             allow: true,
             ..FakeApproval::default()
         };
+        let questions = FakeQuestion::default();
         let child_response = server_request_response(
             &json!({
                 "id": "child-request",
@@ -1487,6 +2046,7 @@ mod tests {
                 }
             }),
             &approvals,
+            &questions,
             "session-1",
             "invocation-1",
             "thread-1",
@@ -1507,6 +2067,7 @@ mod tests {
                 }
             }),
             &approvals,
+            &questions,
             "session-1",
             "invocation-1",
             "thread-1",
@@ -1526,7 +2087,8 @@ mod tests {
                 allow,
                 ..FakeApproval::default()
             };
-            let response = server_request_response(&json!({"id":"permission-1","method":"item/permissions/requestApproval","params":{"threadId":"thread-1","turnId":"turn-1","permissions":permissions,"cwd":"/tmp/project"}}), &approvals, "session-1", "invocation-1", "thread-1", "turn-1").await;
+            let questions = FakeQuestion::default();
+            let response = server_request_response(&json!({"id":"permission-1","method":"item/permissions/requestApproval","params":{"threadId":"thread-1","turnId":"turn-1","permissions":permissions,"cwd":"/tmp/project"}}), &approvals, &questions, "session-1", "invocation-1", "thread-1", "turn-1").await;
             assert_eq!(response["id"], "permission-1");
             assert_eq!(response["result"]["scope"], "turn");
             assert_eq!(
@@ -1544,16 +2106,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unsupported_server_request_gets_an_immediate_rpc_error() {
+    async fn user_input_request_returns_the_question_brokers_answer() {
         let approvals = FakeApproval::default();
+        let questions = FakeQuestion {
+            response: json!({"answers":{"target":{"answers":["Desktop"]}}}),
+            ..FakeQuestion::default()
+        };
         let response = server_request_response(
             &json!({
                 "jsonrpc": "2.0",
                 "id": "question-1",
                 "method": "item/tool/requestUserInput",
-                "params": { "threadId": "thread-1" },
+                "params": {
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "itemId": "ask-1",
+                    "isBlocking": true,
+                    "questions": [{"id":"target","header":"Target","question":"Where?","options":[]}]
+                },
             }),
             &approvals,
+            &questions,
             "session-1",
             "invocation-1",
             "thread-1",
@@ -1561,21 +2134,68 @@ mod tests {
         )
         .await;
         assert_eq!(response["id"], "question-1");
-        assert_eq!(response["error"]["code"], -32601);
+        assert_eq!(
+            response["result"]["answers"]["target"]["answers"],
+            json!(["Desktop"])
+        );
         assert!(approvals.calls.lock().unwrap().is_empty());
+        assert_eq!(
+            questions.calls.lock().unwrap().as_slice(),
+            &[("question-1".to_string(), "\"ask-1\"".to_string())]
+        );
+    }
+
+    #[tokio::test]
+    async fn unsupported_mcp_elicitation_is_declined_without_a_protocol_error() {
+        let response = server_request_response(
+            &json!({
+                "id": "elicitation-1",
+                "method": "mcpServer/elicitation/request",
+                "params": {
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "serverName": "codex_apps",
+                    "mode": "url",
+                    "message": "Reconnect Slack",
+                    "url": "https://example.com/reconnect",
+                    "elicitationId": "reauth-1"
+                }
+            }),
+            &FakeApproval::default(),
+            &FakeQuestion::default(),
+            "session-1",
+            "invocation-1",
+            "thread-1",
+            "turn-1",
+        )
+        .await;
+
+        assert_eq!(response["id"], "elicitation-1");
+        assert_eq!(response["result"]["action"], "decline");
+        assert_eq!(response["result"]["content"], Value::Null);
+        assert!(response.get("error").is_none());
     }
 
     #[cfg(unix)]
     #[tokio::test]
     async fn fake_app_server_process_completes_a_translated_turn() {
+        assert_fake_app_server_completes_turn(false).await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn fake_app_server_completes_after_close_agent_reports_stale_running_state() {
+        assert_fake_app_server_completes_turn(true).await;
+    }
+
+    #[cfg(unix)]
+    async fn assert_fake_app_server_completes_turn(close_child: bool) {
         use std::fs;
         use std::os::unix::fs::PermissionsExt;
 
         let temp = tempfile::tempdir().unwrap();
         let server = temp.path().join("fake-codex-app-server");
-        fs::write(
-            &server,
-            r#"#!/bin/sh
+        let script = r#"#!/bin/sh
 while IFS= read -r line; do
   case "$line" in
     *'"method":"initialize"'*)
@@ -1590,19 +2210,32 @@ while IFS= read -r line; do
       printf '%s\n' '{"jsonrpc":"2.0","method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","completedAtMs":1,"item":{"id":"message-1","type":"agentMessage","text":"Finished from fake server"}}}'
       printf '%s\n' '{"jsonrpc":"2.0","method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","completedAtMs":2,"item":{"id":"spawn-1","type":"collabAgentToolCall","tool":"spawnAgent","status":"completed","senderThreadId":"thread-1","receiverThreadIds":["child-1"],"agentsStates":{"child-1":{"status":"running","message":null}}}}}'
       printf '%s\n' '{"jsonrpc":"2.0","method":"item/completed","params":{"threadId":"child-1","turnId":"child-turn-1","completedAtMs":3,"item":{"id":"child-message","type":"agentMessage","text":"CHILD TEXT MUST NOT LEAK"}}}'
+__BEFORE_ROOT_COMPLETION__
       printf '%s\n' '{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed","items":[]}}}'
-      sleep 0.1
-      printf '%s\n' '{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"child-1","turn":{"id":"child-turn-1","status":"completed","items":[]}}}'
+__AFTER_ROOT_COMPLETION__
       ;;
   esac
 done
-"#,
-        )
-        .unwrap();
+"#;
+        let close_events = r#"      printf '%s\n' '{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"child-1","turn":{"id":"child-turn-1","status":"interrupted","items":[]}}}'
+      printf '%s\n' '{"jsonrpc":"2.0","method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","item":{"id":"close-1","type":"collabAgentToolCall","tool":"closeAgent","status":"completed","senderThreadId":"thread-1","receiverThreadIds":["child-1"],"agentsStates":{"child-1":{"status":"running"}}}}}'"#;
+        let child_completion = r#"      sleep 0.1
+      printf '%s\n' '{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"child-1","turn":{"id":"child-turn-1","status":"completed","items":[]}}}'"#;
+        let script = script
+            .replace(
+                "__BEFORE_ROOT_COMPLETION__",
+                if close_child { close_events } else { "" },
+            )
+            .replace(
+                "__AFTER_ROOT_COMPLETION__",
+                if close_child { "" } else { child_completion },
+            );
+        fs::write(&server, script).unwrap();
         fs::set_permissions(&server, fs::Permissions::from_mode(0o755)).unwrap();
 
         let database = Arc::new(Database::open(temp.path().join("argmax.sqlite")).unwrap());
-        let approvals = ApprovalService::new(database);
+        let approvals = ApprovalService::new(Arc::clone(&database));
+        let questions = QuestionService::new(database);
         let events = Arc::new(Mutex::new(Vec::new()));
         let captured = Arc::clone(&events);
         let callback: EventCallback = Arc::new(move |event| {
@@ -1615,6 +2248,7 @@ done
             &launch_input,
             None,
             approvals,
+            questions,
             callback,
         )
         .await
@@ -1652,6 +2286,36 @@ done
             events.last().map(|event| (event.r#type, event.exit_code)),
             Some((ProviderRuntimeEventType::Exit, Some(0)))
         );
+    }
+
+    #[test]
+    fn turn_input_state_follows_compaction_and_ingest() {
+        let state = TurnInputState {
+            compacting: AtomicBool::new(false),
+            ingested: AtomicBool::new(false),
+        };
+        // Wire item types are camelCase; the emitted line is snake_case.
+        let item = |item_type: &str| json!({ "item": { "id": "i1", "type": item_type } });
+
+        state.observe("item/started", &item("contextCompaction"));
+        assert!(state.compacting.load(Ordering::SeqCst));
+        // A turn interrupted here delivered nothing: Codex ingests the prompt
+        // only once the rewrite it runs first has finished.
+        assert!(!state.ingested.load(Ordering::SeqCst));
+
+        state.observe("item/completed", &item("contextCompaction"));
+        assert!(!state.compacting.load(Ordering::SeqCst));
+        assert!(!state.ingested.load(Ordering::SeqCst));
+
+        state.observe("item/started", &item("userMessage"));
+        assert!(state.ingested.load(Ordering::SeqCst));
+
+        // Nothing else moves either flag, including a message that merely
+        // mentions a turn.
+        state.observe("item/completed", &item("agentMessage"));
+        state.observe("turn/completed", &json!({ "turn": { "id": "turn-1" } }));
+        assert!(!state.compacting.load(Ordering::SeqCst));
+        assert!(state.ingested.load(Ordering::SeqCst));
     }
 
     #[cfg(unix)]
@@ -1694,7 +2358,8 @@ done
         fs::set_permissions(&server, fs::Permissions::from_mode(0o755)).unwrap();
 
         let database = Arc::new(Database::open(temp.path().join("argmax.sqlite")).unwrap());
-        let approvals = ApprovalService::new(database);
+        let approvals = ApprovalService::new(Arc::clone(&database));
+        let questions = QuestionService::new(database);
         let events = Arc::new(Mutex::new(Vec::new()));
         let captured = Arc::clone(&events);
         let callback: EventCallback = Arc::new(move |event| {
@@ -1708,6 +2373,7 @@ done
             &launch_input,
             None,
             approvals,
+            questions,
             callback,
         )
         .await
@@ -1768,7 +2434,8 @@ done
         let original_token = format!("ORIGINAL-{}", Uuid::new_v4());
         let steer_token = format!("STEER-{}", Uuid::new_v4());
         let database = Arc::new(Database::open(temp.path().join("argmax.sqlite")).unwrap());
-        let approvals = ApprovalService::new(database);
+        let approvals = ApprovalService::new(Arc::clone(&database));
+        let questions = QuestionService::new(database);
         let events = Arc::new(Mutex::new(Vec::new()));
         let captured = Arc::clone(&events);
         let callback: EventCallback = Arc::new(move |event| {
@@ -1783,7 +2450,7 @@ done
         launch_input.prompt = format!(
             "Use the shell to run sleep 5, then finish the original task by including this exact token in your final response: {original_token}"
         );
-        let handle = launch_turn(&binary, &launch_input, None, approvals, callback)
+        let handle = launch_turn(&binary, &launch_input, None, approvals, questions, callback)
             .await
             .unwrap();
         handle

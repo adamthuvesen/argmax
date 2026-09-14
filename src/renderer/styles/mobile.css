@@ -67,8 +67,16 @@ html:has(.mobile-shell[data-embed]) body,
    composer stack (queued lane included, since it is nested inside) gets out
    of the way instead of doubling it. The conversation scroller already fills
    whatever the composer leaves (`flex: 1`), so removing it needs no other
-   layout change. */
-.mobile-shell[data-composer-hidden] .session-composer-stack {
+   layout change. The live question's panel takes the same slot and stays
+   this page's: it posts `question` so the native card stands down instead.
+
+   Two stacks are exempt. The question dock (`data-question`) is one. The goal
+   bar (`data-goal`) is the other: the native card draws no goal row, so
+   hiding it with the composer would leave a running goal with no clear button
+   anywhere on the phone. It rides above the card instead, tucked under its
+   top edge the way it tucks behind this page's own composer. */
+.mobile-shell[data-composer-hidden]
+  .session-composer-stack:not([data-question]):not([data-goal]) {
   display: none;
 }
 
@@ -97,7 +105,7 @@ html:has(.mobile-shell[data-embed]) body,
 
 .mobile-list-header h1 {
   font-size: var(--text-lg);
-  font-weight: 600;
+  font-weight: calc(600 + var(--font-weight-offset));
   line-height: 1.15;
   margin: 0;
 }
@@ -169,7 +177,7 @@ html:has(.mobile-shell[data-embed]) body,
   background: var(--amber-soft);
   color: var(--amber);
   font-size: var(--text-2xs);
-  font-weight: 600;
+  font-weight: calc(600 + var(--font-weight-offset));
   letter-spacing: 0.02em;
   z-index: 1;
 }
@@ -231,7 +239,7 @@ html:has(.mobile-shell[data-embed]) body,
   margin: 0;
   padding: 0 var(--space-6) var(--space-2_5);
   font-size: var(--text-lg);
-  font-weight: 600;
+  font-weight: calc(600 + var(--font-weight-offset));
   letter-spacing: -0.01em;
   color: var(--text);
 }
@@ -317,7 +325,7 @@ html:has(.mobile-shell[data-embed]) body,
 
 .mobile-session-title {
   font-size: var(--text-lg-tight);
-  font-weight: 400;
+  font-weight: calc(400 + var(--font-weight-offset));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -465,7 +473,7 @@ html:has(.mobile-shell[data-embed]) body,
   flex: 1;
   text-align: center;
   font-size: var(--text-base-plus);
-  font-weight: 600;
+  font-weight: calc(600 + var(--font-weight-offset));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -634,6 +642,12 @@ html:has(.mobile-shell[data-embed]) body,
   font-size: var(--text-base-plus);
 }
 
+/* The chip floor at phone scale: the labels run a step larger here, and the
+   controls are thumb targets, so the row's one height grows with them. */
+.mobile-shell .session-input-toolbar {
+  --composer-chip-height: 36px;
+}
+
 /* The effort dial.
    ---------------
    The desktop's effort control is a chip that opens a 292px popover with a
@@ -770,7 +784,7 @@ html:has(.mobile-shell[data-embed]) body,
 
 .mobile-new-hero .launcher-hero-title {
   font-size: var(--text-lg-tight);
-  font-weight: 400;
+  font-weight: calc(400 + var(--font-weight-offset));
   line-height: 1.2;
 }
 
@@ -970,7 +984,7 @@ html:has(.mobile-shell[data-embed]) body,
   color: var(--muted-strong);
   font: inherit;
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
 }
 
 .mobile-segmented button[aria-checked="true"] {
@@ -1032,7 +1046,7 @@ html:has(.mobile-shell[data-embed]) body,
 }
 
 .mobile-accent-chip[data-accent-id="purple"] {
-  --accent-swatch-color: #613e9a;
+  --accent-swatch-color: #70558f;
 }
 
 .mobile-accent-chip[data-accent-id="neutral"] {
@@ -1048,15 +1062,39 @@ html:has(.mobile-shell[data-embed]) body,
 }
 
 .mobile-accent-chip[data-accent-id="orange"] {
-  --accent-swatch-color: #bd580f;
+  --accent-swatch-color: #af5b00;
+}
+
+.mobile-accent-chip[data-accent-id="teal"] {
+  --accent-swatch-color: #207070;
 }
 
 .mobile-accent-chip[data-accent-id="blue"] {
-  --accent-swatch-color: #30609a;
+  --accent-swatch-color: #396696;
 }
 
 .mobile-accent-chip[data-accent-id="coral"] {
-  --accent-swatch-color: #a64354;
+  --accent-swatch-color: #944b3e;
+}
+
+:root[data-theme="dark"] .mobile-accent-chip[data-accent-id="purple"] {
+  --accent-swatch-color: #ad94d0;
+}
+
+:root[data-theme="dark"] .mobile-accent-chip[data-accent-id="orange"] {
+  --accent-swatch-color: #e79647;
+}
+
+:root[data-theme="dark"] .mobile-accent-chip[data-accent-id="teal"] {
+  --accent-swatch-color: #65b0b0;
+}
+
+:root[data-theme="dark"] .mobile-accent-chip[data-accent-id="blue"] {
+  --accent-swatch-color: #7ea6cf;
+}
+
+:root[data-theme="dark"] .mobile-accent-chip[data-accent-id="coral"] {
+  --accent-swatch-color: #d18e82;
 }
 
 /* ---- New-chat composer ----
@@ -1178,7 +1216,7 @@ html:has(.mobile-shell[data-embed]) body,
   background: var(--accent-deep);
   color: var(--panel);
   font-size: var(--text-3xs);
-  font-weight: 600;
+  font-weight: calc(600 + var(--font-weight-offset));
   line-height: 14px;
   text-align: center;
 }
@@ -1197,7 +1235,7 @@ html:has(.mobile-shell[data-embed]) body,
   padding: 6px 14px;
   border-radius: 999px;
   font-size: var(--text-base);
-  font-weight: 600;
+  font-weight: calc(600 + var(--font-weight-offset));
   color: var(--muted);
 }
 
@@ -1324,9 +1362,20 @@ html:has(.mobile-shell[data-embed]) body,
   position: absolute;
   inset: 0;
   background: var(--modal-backdrop);
+  opacity: 0;
+  transition: opacity var(--duration-base) var(--ease);
   pointer-events: auto;
 }
 
+.mobile-agent-overlay[data-raised] .mobile-agent-overlay-scrim {
+  opacity: 1;
+}
+
+/* One transform, two directions: the sheet is parked below the edge and
+   raised by `data-raised`, so the ride out is the ride in reversed and either
+   can interrupt the other mid-flight. Keyframes could not — a dismissal had
+   to restart from the top, which is what made a swipe snap back before it
+   left. */
 .mobile-agent-overlay-panel {
   position: relative;
   display: flex;
@@ -1341,39 +1390,24 @@ html:has(.mobile-shell[data-embed]) body,
   border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
   background: var(--panel);
   box-shadow: 0 -18px 40px -24px rgb(0 0 0 / 0.75);
+  transform: translateY(100%);
+  transition: transform var(--duration-base) var(--ease);
   pointer-events: auto;
-  animation: mobile-agent-overlay-rise var(--duration-medium, 220ms) var(--ease) both;
 }
 
+.mobile-agent-overlay[data-raised] .mobile-agent-overlay-panel {
+  transform: translateY(0);
+}
+
+/* Under a thumb the sheet is the finger's, not the transition's. */
 .mobile-agent-overlay-panel[data-dragging] {
-  animation: none;
   transition: none;
 }
 
-.mobile-agent-overlay-panel[data-closing] {
-  animation: mobile-agent-overlay-fall var(--duration-medium, 180ms) var(--ease) both;
+/* Below the edge, on the way up or on the way out: nothing on it is
+   answerable, and the scrim behind it is what a tap reaches. */
+.mobile-agent-overlay:not([data-raised]) .mobile-agent-overlay-panel {
   pointer-events: none;
-}
-
-@keyframes mobile-agent-overlay-rise {
-  from {
-    transform: translateY(12px);
-    opacity: 0;
-  }
-}
-
-@keyframes mobile-agent-overlay-fall {
-  to {
-    transform: translateY(16px);
-    opacity: 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mobile-agent-overlay-panel,
-  .mobile-agent-overlay-panel[data-closing] {
-    animation: none;
-  }
 }
 
 .mobile-agent-overlay-grip {
@@ -1500,7 +1534,19 @@ html:has(.mobile-shell[data-embed]) body,
    space once there is something to switch between. Hiding the shell and not
    just the tab list: the shell carries the padding and the hairline, which
    without tabs read as an empty bar under the grabber. */
-.mobile-agent-overlay-body .file-tabs-shell:not(:has(.file-tab + .file-tab)) {
+.mobile-agent-overlay-body .file-tabs-shell:not(.agent-tabs-shell):not(:has(.file-tab + .file-tab)) {
+  display: none;
+}
+
+.mobile-agent-overlay-body .agent-tabs-shell {
+  padding-inline: var(--space-2);
+}
+
+.mobile-agent-overlay-body .agent-roster-trigger {
+  min-height: 40px;
+}
+
+.mobile-agent-overlay-body .agent-roster-overflow {
   display: none;
 }
 

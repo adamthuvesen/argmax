@@ -5,7 +5,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type DragEvent as ReactDragEvent,
   type CSSProperties,
   type JSX,
   type MouseEvent as ReactMouseEvent
@@ -33,9 +32,13 @@ import type { GridCell, GridCoord, GridState, SplitPosition } from "../lib/gridS
 import type { MultitaskChild } from "../lib/multitask.js";
 import { findWorkspaceCell, isSessionCell, MAX_CELLS, MAX_COLS, MAX_ROWS } from "../lib/gridState.js";
 import { CHAT_PANE_MIN_WIDTH_PX, SESSION_CELL_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
-import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
+import type { FollowUpDelivery, ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import { SessionPane } from "./SessionPane.js";
+import {
+  subscribeWorkspacePointerDrag,
+  type WorkspaceDragPoint
+} from "../state/workspaceDrag.js";
 
 /** Minimum pane width for side-by-side grid splits and divider drags. */
 export const MIN_RESIZABLE_CELL_WIDTH_PX = SESSION_CELL_MIN_WIDTH_PX;
@@ -75,12 +78,14 @@ interface SessionMultiGridProps {
   defaultToolCallGroupsExpanded?: boolean;
   thinkingDisplay?: ThinkingDisplay;
   defaultTurnChangesExpanded?: boolean;
+  defaultFollowUpDelivery?: FollowUpDelivery;
   goalEnabled?: boolean;
   goalMaxTurns?: number;
   revertEnabled?: boolean;
   fastModeEnabled?: boolean;
   workspaceCardVisible?: boolean;
   onWorkspaceCardVisibleChange?: (visible: boolean) => void;
+  contextIndicatorEnabled?: boolean;
   maxColumnsPerRow?: number;
   rightPanelToggleSignal?: number;
   debugLogToggleSignal?: number;
@@ -116,7 +121,8 @@ interface SessionMultiGridProps {
     model: ModelPickerSelection,
     agentMode: AgentMode,
     attachments?: ComposerAttachment[],
-    agentReferences?: AgentReference[]
+    agentReferences?: AgentReference[],
+    delivery?: FollowUpDelivery
   ) => Promise<void>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow: (
@@ -156,12 +162,14 @@ export function SessionMultiGrid({
   defaultToolCallGroupsExpanded,
   thinkingDisplay,
   defaultTurnChangesExpanded,
+  defaultFollowUpDelivery,
   goalEnabled,
   goalMaxTurns,
   revertEnabled,
   fastModeEnabled,
   workspaceCardVisible = true,
   onWorkspaceCardVisibleChange,
+  contextIndicatorEnabled = false,
   maxColumnsPerRow = MAX_COLS,
   rightPanelToggleSignal,
   debugLogToggleSignal,
@@ -408,16 +416,19 @@ export function SessionMultiGrid({
                       <SessionPane
                         approvals={approvals}
                         checks={checks}
+                        chatFontSize={chatFontSize}
                         defaultToolCallsDisplay={defaultToolCallsDisplay}
                         defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
                         thinkingDisplay={thinkingDisplay}
                         defaultTurnChangesExpanded={defaultTurnChangesExpanded}
+                        defaultFollowUpDelivery={defaultFollowUpDelivery}
                         goalEnabled={goalEnabled}
                         goalMaxTurns={goalMaxTurns}
                         revertEnabled={revertEnabled}
                         fastModeEnabled={fastModeEnabled}
                         workspaceCardVisible={workspaceCardVisible}
                         onWorkspaceCardVisibleChange={onWorkspaceCardVisibleChange}
+                        contextIndicatorEnabled={contextIndicatorEnabled}
                         isFocused={focused}
                         onClose={() => onClosePane({ row: r, col: c })}
                         onFastModeEnabledChange={onFastModeEnabledChange}
@@ -484,15 +495,16 @@ export function SessionMultiGrid({
   );
 }
 
-function edgeDropPosition(
-  event: ReactDragEvent<HTMLDivElement>,
+function edgeDropPositionAtPoint(
+  point: WorkspaceDragPoint,
+  element: HTMLDivElement,
   allowedPositions: EdgeDropPosition[]
 ): SplitPosition {
   if (allowedPositions.length === 0) return "replace";
-  const rect = event.currentTarget.getBoundingClientRect();
+  const rect = element.getBoundingClientRect();
   if (rect.width <= 0 || rect.height <= 0) return "replace";
-  const x = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
-  const y = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
+  const x = Math.max(0, Math.min(rect.width, point.clientX - rect.left));
+  const y = Math.max(0, Math.min(rect.height, point.clientY - rect.top));
   const allDistances: Array<[EdgeDropPosition, number]> = [
     ["above", y / rect.height],
     ["right", (rect.width - x) / rect.width],
@@ -514,9 +526,32 @@ function DropZones({
   onDrop: (position: SplitPosition) => void;
 }): JSX.Element {
   const [hovered, setHovered] = useState<SplitPosition | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => subscribeWorkspacePointerDrag({
+    move: (point) => {
+      const overlay = overlayRef.current;
+      if (!overlay) return;
+      const rect = overlay.getBoundingClientRect();
+      const inside = point.clientX >= rect.left && point.clientX <= rect.right &&
+        point.clientY >= rect.top && point.clientY <= rect.bottom;
+      setHovered(inside ? edgeDropPositionAtPoint(point, overlay, allowedPositions) : null);
+    },
+    drop: (point) => {
+      const overlay = overlayRef.current;
+      if (!overlay) return;
+      const rect = overlay.getBoundingClientRect();
+      const inside = point.clientX >= rect.left && point.clientX <= rect.right &&
+        point.clientY >= rect.top && point.clientY <= rect.bottom;
+      setHovered(null);
+      if (inside) onDrop(edgeDropPositionAtPoint(point, overlay, allowedPositions));
+    },
+    cancel: () => setHovered(null)
+  }), [allowedPositions, onDrop]);
 
   return (
     <div
+      ref={overlayRef}
       className="multigrid-drop-overlay"
       role="group"
       aria-label="Drop chat here"
@@ -524,7 +559,7 @@ function DropZones({
         event.preventDefault();
         event.stopPropagation();
         event.dataTransfer.dropEffect = "move";
-        const position = edgeDropPosition(event, allowedPositions);
+        const position = edgeDropPositionAtPoint(event, event.currentTarget, allowedPositions);
         if (hovered !== position) setHovered(position);
       }}
       onDragLeave={(event) => {
@@ -534,7 +569,7 @@ function DropZones({
       }}
       onDrop={(event) => {
         event.preventDefault();
-        const position = edgeDropPosition(event, allowedPositions);
+        const position = edgeDropPositionAtPoint(event, event.currentTarget, allowedPositions);
         setHovered(null);
         onDrop(position);
       }}

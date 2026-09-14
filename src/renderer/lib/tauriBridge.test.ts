@@ -82,6 +82,22 @@ describe("tauriBridge", () => {
     });
   });
 
+  it.each(["Ok", "Cancel"])("resolves native confirmation from the dialog result %s", async (result) => {
+    window.__TAURI_INTERNALS__ = { invoke: mocks.invoke };
+    mocks.invoke.mockResolvedValue(result);
+    const { installTauriBridge } = await import("./tauriBridge.js");
+    installTauriBridge();
+
+    await expect(window.argmax!.system.confirm("Archive this worktree?"))
+      .resolves.toBe(result === "Ok");
+    expect(mocks.invoke).toHaveBeenCalledWith("plugin:dialog|message", {
+      message: "Archive this worktree?",
+      title: "Argmax",
+      kind: "warning",
+      buttons: "OkCancel"
+    }, undefined);
+  });
+
   it("returns synchronous unsubscribe functions for async Tauri listeners", async () => {
     window.__TAURI_INTERNALS__ = {};
     const unlisten = vi.fn();

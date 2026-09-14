@@ -26,12 +26,13 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
     Arc, Mutex,
 };
 use std::time::Duration;
 
 use serde_json::{json, Map, Value};
+use sha2::{Digest, Sha256};
 use tokio::sync::watch;
 
 use super::acp::{AcpClient, AcpPermissionDecision, AcpPermissionHandler, AcpPermissionRequest};
@@ -40,12 +41,15 @@ use super::normalizer::ProviderOutputStream;
 use super::runtime::{
     BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType, ProviderRuntimeHandle,
 };
+use super::subagent_trace::cursor_project_slug;
 use super::unified_diff::{unified_diff, DEFAULT_CONTEXT};
 use super::{mcp_injection, AgentMode, PermissionMode, ProviderId, ProviderLaunchInput};
 use crate::approvals::service::ApprovalService;
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::time::now_iso;
 use crate::session_control::SessionLaunchProcessConfig;
+#[cfg(test)]
+use crate::session_control::SESSION_LAUNCH_TOKEN_ENV;
 use crate::util::sync::LockOrRecover;
 
 /// How long `terminate` waits for a cancelled prompt to resolve before giving
@@ -108,6 +112,8 @@ impl From<PermissionMode> for CursorProcessMode {
 struct WorkspaceSlot {
     boot: tokio::sync::Mutex<()>,
     current: Mutex<Option<Arc<AcpWorkspace>>>,
+    booting: Mutex<Option<Arc<AcpClient>>>,
+    retired: Mutex<Vec<Arc<AcpWorkspace>>>,
 }
 
 struct AcpWorkspace {
@@ -116,6 +122,204 @@ struct AcpWorkspace {
     live_sessions: Mutex<HashSet<String>>,
     available_models: Mutex<Vec<Value>>,
     permission_contexts: PermissionContexts,
+    /// The Cursor MCP configuration, and the grants for it, this process read
+    /// at startup.
+    mcp_fingerprint: [u8; 32],
+    active_turns: AtomicUsize,
+    retired: AtomicBool,
+}
+
+struct AcpWorkspaceLease {
+    workspace: Arc<AcpWorkspace>,
+}
+
+struct CursorMcpSetup {
+    process_cwd: PathBuf,
+    servers: Value,
+}
+
+fn cursor_data_dir_from_environment(environment: &[(String, String)], home: &Path) -> PathBuf {
+    environment
+        .iter()
+        .find_map(|(name, value)| {
+            (name == "CURSOR_DATA_DIR" && !value.trim().is_empty()).then(|| PathBuf::from(value))
+        })
+        .unwrap_or_else(|| home.join(".cursor"))
+}
+
+impl Drop for AcpWorkspaceLease {
+    fn drop(&mut self) {
+        let previous = self.workspace.active_turns.fetch_sub(1, Ordering::SeqCst);
+        debug_assert!(previous > 0, "ACP workspace lease count underflow");
+        if previous == 1 && self.workspace.retired.load(Ordering::SeqCst) {
+            self.workspace.client.kill();
+        }
+    }
+}
+
+fn cursor_mcp_fingerprint_in(
+    home: &Path,
+    cursor_data_dir: &Path,
+    workspace_path: &Path,
+    authentication_scope: &Path,
+) -> [u8; 32] {
+    let mut digest = Sha256::new();
+    for (path, remove_argmax_leases) in [
+        (home.join(".cursor/mcp.json"), false),
+        (workspace_path.join(".cursor/mcp.json"), true),
+        (
+            mcp_injection::cursor_project_mcp_approval_path_with_data_dir(
+                cursor_data_dir,
+                workspace_path,
+            ),
+            false,
+        ),
+    ] {
+        match cursor_mcp_config_bytes(&path, remove_argmax_leases) {
+            Ok(bytes) => {
+                digest.update(b"present:");
+                digest.update((bytes.len() as u64).to_le_bytes());
+                digest.update(bytes);
+            }
+            Err(_) => digest.update(b"absent:"),
+        }
+    }
+    for name in cursor_authenticated_mcp_servers(cursor_data_dir, authentication_scope) {
+        digest.update(b"authenticated:");
+        digest.update((name.len() as u64).to_le_bytes());
+        digest.update(name.as_bytes());
+    }
+    digest.finalize().into()
+}
+
+fn cursor_mcp_setup(
+    input: &ProviderLaunchInput,
+    session_launch: Option<&SessionLaunchProcessConfig>,
+    home: &Path,
+    cursor_data_dir: &Path,
+) -> CursorMcpSetup {
+    let mut servers = mcp_injection::acp_mcp_servers(session_launch)
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    if input.workspace_path == home {
+        return CursorMcpSetup {
+            process_cwd: home.to_path_buf(),
+            servers: Value::Array(servers),
+        };
+    }
+    match mcp_injection::cursor_acp_project_mcp_servers_with_data_dir(
+        &input.workspace_path,
+        cursor_data_dir,
+    ) {
+        Ok(project_servers) => {
+            servers.extend(project_servers);
+            CursorMcpSetup {
+                process_cwd: home.to_path_buf(),
+                servers: Value::Array(servers),
+            }
+        }
+        Err(error) => {
+            tracing::warn!(
+                path = %input.workspace_path.display(),
+                %error,
+                "Cursor project MCP config cannot be represented over ACP; retaining per-checkout authentication"
+            );
+            CursorMcpSetup {
+                process_cwd: input.workspace_path.clone(),
+                servers: Value::Array(servers),
+            }
+        }
+    }
+}
+
+/// The remote MCP servers Cursor holds an OAuth grant for at this workspace
+/// path. `cursor-agent mcp login` writes the grant into a per-project
+/// `mcp-auth.json`, and a process that started before it keeps serving the
+/// servers it could authenticate at boot — the tools stay missing even though
+/// `cursor-agent mcp list` calls the server ready. Only the names are hashed:
+/// access and refresh tokens rotate, and hashing them would replace the warm
+/// process on every refresh.
+fn cursor_authenticated_mcp_servers(cursor_data_dir: &Path, workspace_path: &Path) -> Vec<String> {
+    let Some(slug) = cursor_project_slug(&workspace_path.to_string_lossy()) else {
+        return Vec::new();
+    };
+    let path = cursor_data_dir
+        .join("projects")
+        .join(slug)
+        .join("mcp-auth.json");
+    let Ok(bytes) = std::fs::read(path) else {
+        return Vec::new();
+    };
+    let Ok(document) = serde_json::from_slice::<Value>(&bytes) else {
+        return Vec::new();
+    };
+    let Some(entries) = document.as_object() else {
+        return Vec::new();
+    };
+    let mut names = entries
+        .iter()
+        .filter(|(_, entry)| entry.get("tokens").is_some_and(|tokens| !tokens.is_null()))
+        .map(|(name, _)| name.clone())
+        .collect::<Vec<_>>();
+    names.sort();
+    names
+}
+
+fn cursor_mcp_config_bytes(path: &Path, remove_argmax_leases: bool) -> std::io::Result<Vec<u8>> {
+    let bytes = std::fs::read(path)?;
+    let Ok(mut document) = serde_json::from_slice::<Value>(&bytes) else {
+        return Ok(bytes);
+    };
+    if remove_argmax_leases {
+        if let Some(servers) = document
+            .get_mut("mcpServers")
+            .and_then(Value::as_object_mut)
+        {
+            servers.retain(|name, spec| !mcp_injection::is_argmax_mcp_lease(name, spec));
+        }
+    }
+    serde_json::to_vec(&document).or(Ok(bytes))
+}
+
+fn reap_retired_workspaces(slot: &WorkspaceSlot) {
+    slot.retired
+        .lock_or_recover("retired ACP workspaces")
+        .retain(|workspace| {
+            if workspace.active_turns.load(Ordering::SeqCst) == 0 {
+                workspace.client.kill();
+                false
+            } else {
+                true
+            }
+        });
+}
+
+fn retire_workspace(slot: &WorkspaceSlot, workspace: Arc<AcpWorkspace>) {
+    workspace.retired.store(true, Ordering::SeqCst);
+    if workspace.active_turns.load(Ordering::SeqCst) == 0 {
+        workspace.client.kill();
+    } else {
+        slot.retired
+            .lock_or_recover("retired ACP workspaces")
+            .push(workspace);
+    }
+}
+
+fn kill_slot_clients(slot: &WorkspaceSlot) {
+    if let Some(workspace) = slot.current.lock_or_recover("acp workspace").take() {
+        workspace.client.kill();
+    }
+    if let Some(client) = slot.booting.lock_or_recover("booting ACP client").take() {
+        client.kill();
+    }
+    for workspace in slot
+        .retired
+        .lock_or_recover("retired ACP workspaces")
+        .drain(..)
+    {
+        workspace.client.kill();
+    }
 }
 
 type PermissionContexts = Arc<Mutex<HashMap<String, CursorPermissionContext>>>;
@@ -157,8 +361,28 @@ impl CursorAcpSessions {
         approvals: Option<Arc<ApprovalService>>,
         on_event: EventCallback,
     ) -> ArgmaxResult<Arc<dyn ProviderRuntimeHandle>> {
-        let mcp_servers = mcp_injection::acp_mcp_servers(session_launch);
-        let workspace = self.workspace_client(binary_path, input).await?;
+        let provider_environment =
+            build_provider_environment([("NO_COLOR".to_string(), "1".to_string())]);
+        let home = provider_environment
+            .iter()
+            .find_map(|(name, value)| {
+                (name == "HOME" && !value.trim().is_empty()).then(|| PathBuf::from(value))
+            })
+            .unwrap_or_else(crate::sync::home_dir);
+        let cursor_data_dir = cursor_data_dir_from_environment(&provider_environment, &home);
+        let mcp_setup = cursor_mcp_setup(input, session_launch, &home, &cursor_data_dir);
+        let mcp_servers = mcp_setup.servers;
+        let workspace_lease = self
+            .workspace_client(
+                binary_path,
+                input,
+                &mcp_setup.process_cwd,
+                &home,
+                &cursor_data_dir,
+                provider_environment,
+            )
+            .await?;
+        let workspace = &workspace_lease.workspace;
         let client = Arc::clone(&workspace.client);
 
         let session_response = match input.resume_conversation_id.as_deref() {
@@ -186,7 +410,7 @@ impl CursorAcpSessions {
                     while replay.try_recv().is_ok() {}
                     client.unsubscribe(resume_id, replay_token);
                     let response = load?;
-                    remember_available_models(&workspace, &response);
+                    remember_available_models(workspace, &response);
                     workspace
                         .live_sessions
                         .lock_or_recover("acp live sessions")
@@ -208,7 +432,7 @@ impl CursorAcpSessions {
                         ArgmaxError::service("ACP_PROTOCOL", "session/new returned no sessionId")
                     })?
                     .to_string();
-                remember_available_models(&workspace, &response);
+                remember_available_models(workspace, &response);
                 workspace
                     .live_sessions
                     .lock_or_recover("acp live sessions")
@@ -259,11 +483,13 @@ impl CursorAcpSessions {
             )
             .await?;
 
+        let permission_contexts = Arc::clone(&workspace.permission_contexts);
         Ok(spawn_turn(
             client,
             acp_session_id,
             invocation_id,
-            Arc::clone(&workspace.permission_contexts),
+            permission_contexts,
+            workspace_lease,
             input,
             on_event,
         ))
@@ -273,7 +499,11 @@ impl CursorAcpSessions {
         &self,
         binary_path: &str,
         input: &ProviderLaunchInput,
-    ) -> ArgmaxResult<Arc<AcpWorkspace>> {
+        process_cwd: &Path,
+        home: &Path,
+        cursor_data_dir: &Path,
+        provider_environment: Vec<(String, String)>,
+    ) -> ArgmaxResult<AcpWorkspaceLease> {
         let slot = {
             let mut workspaces = self.workspaces.lock().await;
             let key = (
@@ -289,9 +519,15 @@ impl CursorAcpSessions {
         // The map lock is released before the expensive work below, so only
         // this workspace's launches queue behind its boot.
         let _boot = slot.boot.lock().await;
-        if let Some(existing) = slot.current.lock_or_recover("acp workspace").clone() {
-            if !existing.client.is_dead() {
-                return Ok(existing);
+        reap_retired_workspaces(&slot);
+        let mcp_fingerprint =
+            cursor_mcp_fingerprint_in(home, cursor_data_dir, &input.workspace_path, process_cwd);
+        if let Some(existing) = slot.current.lock_or_recover("acp workspace").as_ref() {
+            if !existing.client.is_dead() && existing.mcp_fingerprint == mcp_fingerprint {
+                existing.active_turns.fetch_add(1, Ordering::SeqCst);
+                return Ok(AcpWorkspaceLease {
+                    workspace: Arc::clone(existing),
+                });
             }
         }
         let permission_contexts = Arc::new(Mutex::new(HashMap::new()));
@@ -302,19 +538,20 @@ impl CursorAcpSessions {
         let client = AcpClient::spawn(
             binary_path,
             arguments,
-            &input.workspace_path,
-            build_provider_environment([("NO_COLOR".to_string(), "1".to_string())]),
+            process_cwd,
+            provider_environment,
             Some(cursor_permission_handler(Arc::clone(&permission_contexts))),
         )?;
+        *slot.booting.lock_or_recover("booting ACP client") = Some(Arc::clone(&client));
         let workspace = Arc::new(AcpWorkspace {
             client,
             live_sessions: Mutex::new(HashSet::new()),
             available_models: Mutex::new(Vec::new()),
             permission_contexts,
+            mcp_fingerprint,
+            active_turns: AtomicUsize::new(0),
+            retired: AtomicBool::new(false),
         });
-        // Publish before the handshake so app shutdown can still kill a child
-        // that is only half-initialized.
-        *slot.current.lock_or_recover("acp workspace") = Some(Arc::clone(&workspace));
         let handshake = workspace
             .client
             .request(
@@ -328,12 +565,20 @@ impl CursorAcpSessions {
                 }),
             )
             .await;
+        slot.booting.lock_or_recover("booting ACP client").take();
         if let Err(error) = handshake {
             workspace.client.kill();
-            slot.current.lock_or_recover("acp workspace").take();
             return Err(error);
         }
-        Ok(workspace)
+        let displaced = slot
+            .current
+            .lock_or_recover("acp workspace")
+            .replace(Arc::clone(&workspace));
+        if let Some(displaced) = displaced {
+            retire_workspace(&slot, displaced);
+        }
+        workspace.active_turns.fetch_add(1, Ordering::SeqCst);
+        Ok(AcpWorkspaceLease { workspace })
     }
 
     /// Drop the warm process for one workspace. The pool is otherwise only
@@ -353,10 +598,7 @@ impl CursorAcpSessions {
                 .collect()
         };
         for slot in slots {
-            let current = slot.current.lock_or_recover("acp workspace").take();
-            if let Some(workspace) = current {
-                workspace.client.kill();
-            }
+            kill_slot_clients(&slot);
         }
     }
 
@@ -368,9 +610,7 @@ impl CursorAcpSessions {
     pub fn kill_all_blocking(&self) {
         let mut workspaces = self.workspaces.blocking_lock();
         for (_, slot) in workspaces.drain() {
-            if let Some(workspace) = slot.current.lock_or_recover("acp workspace").take() {
-                workspace.client.kill();
-            }
+            kill_slot_clients(&slot);
         }
     }
 }
@@ -521,6 +761,7 @@ fn spawn_turn(
     acp_session_id: String,
     invocation_id: String,
     permission_contexts: PermissionContexts,
+    workspace_lease: AcpWorkspaceLease,
     input: &ProviderLaunchInput,
     on_event: EventCallback,
 ) -> Arc<dyn ProviderRuntimeHandle> {
@@ -535,6 +776,7 @@ fn spawn_turn(
     let session_id = input.session_id.clone();
     let prompt = input.prompt.clone();
     tokio::spawn(async move {
+        let _workspace_lease = workspace_lease;
         run_turn(client, acp_session_id.clone(), session_id, prompt, on_event).await;
         let mut contexts = permission_contexts.lock_or_recover("cursor ACP permission contexts");
         if contexts
@@ -855,6 +1097,7 @@ impl TurnTranslation {
         vec![json!({
             "type": "tool_call",
             "subtype": "completed",
+            "status": update.get("status").cloned().unwrap_or_else(|| json!("completed")),
             "call_id": call_id,
             "tool_call": { info.key: Value::Object(body) },
         })]
@@ -921,13 +1164,19 @@ fn non_empty_object(value: Option<&Value>) -> Option<&Map<String, Value>> {
 /// Give a tool's arguments the file it says it is about to touch, unless they
 /// already name one. Returns whether anything was added.
 fn adopt_location_path(args: &mut Value, update: &Value) -> bool {
-    let Some(path) = first_location_path(update) else {
+    let paths = location_paths(update);
+    let Some(path) = paths.first() else {
         return false;
     };
     let Some(args) = args.as_object_mut() else {
         return false;
     };
-    args.entry("path").or_insert(Value::String(path));
+    args.entry("path")
+        .or_insert_with(|| Value::String(path.clone()));
+    if paths.len() > 1 {
+        args.entry("paths")
+            .or_insert_with(|| Value::Array(paths.into_iter().map(Value::String).collect()));
+    }
     true
 }
 
@@ -935,13 +1184,19 @@ fn adopt_location_path(args: &mut Value, update: &Value) -> bool {
 /// touch. It is how Cursor names the target of a read or an edit whose
 /// `rawInput` has not arrived.
 fn first_location_path(update: &Value) -> Option<String> {
-    update
-        .get("locations")?
-        .as_array()?
+    location_paths(update).into_iter().next()
+}
+
+fn location_paths(update: &Value) -> Vec<String> {
+    let Some(locations) = update.get("locations").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    locations
         .iter()
-        .find_map(|location| location.get("path").and_then(Value::as_str))
+        .filter_map(|location| location.get("path").and_then(Value::as_str))
         .filter(|path| !path.is_empty())
         .map(str::to_string)
+        .collect()
 }
 
 /// Fold the diff a completed write reports into the tool's arguments, where
@@ -1022,7 +1277,7 @@ fn title_args(update: &Value) -> Value {
 fn is_terminal_status(update: &Value) -> bool {
     matches!(
         update.get("status").and_then(Value::as_str),
-        Some("completed" | "failed")
+        Some("completed" | "failed" | "cancelled" | "canceled" | "interrupted")
     )
 }
 
@@ -1155,11 +1410,30 @@ mod tests {
             "rawOutput": { "output": "hi" },
         })));
         assert_eq!(completed[0]["subtype"], "completed");
+        assert_eq!(completed[0]["status"], "completed");
         assert_eq!(
             completed[0]["tool_call"]["shell"]["args"]["command"],
             "echo hi"
         );
         assert_eq!(completed[0]["tool_call"]["shell"]["result"]["output"], "hi");
+    }
+
+    #[test]
+    fn cancelled_tool_calls_complete_with_their_status() {
+        let mut translation = TurnTranslation::default();
+        translation.translate(&update(json!({
+            "sessionUpdate": "tool_call",
+            "toolCallId": "tool-1",
+            "kind": "execute",
+            "rawInput": { "command": "npm test" },
+        })));
+        let completed = translation.translate(&update(json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "tool-1",
+            "status": "cancelled",
+        })));
+        assert_eq!(completed[0]["subtype"], "completed");
+        assert_eq!(completed[0]["status"], "cancelled");
     }
 
     #[test]
@@ -1484,11 +1758,15 @@ mod tests {
         let started = translation.translate(&update(json!({
             "sessionUpdate": "tool_call_update",
             "toolCallId": "tool-1",
-            "locations": [{ "path": "/repo/greet.ts" }],
+            "locations": [{ "path": "/repo/greet.ts" }, { "path": "/repo/types.ts" }],
         })));
         assert_eq!(
             started[0]["tool_call"]["read"]["args"]["path"],
             "/repo/greet.ts"
+        );
+        assert_eq!(
+            started[0]["tool_call"]["read"]["args"]["paths"],
+            json!(["/repo/greet.ts", "/repo/types.ts"])
         );
     }
 
@@ -1555,11 +1833,122 @@ mod tests {
     }
 
     #[test]
+    fn mcp_fingerprint_changes_with_project_config_content() {
+        let home = tempfile::tempdir().expect("home");
+        let workspace = tempfile::tempdir().expect("workspace");
+        let cursor_dir = workspace.path().join(".cursor");
+        std::fs::create_dir_all(&cursor_dir).expect("cursor dir");
+        let config = cursor_dir.join("mcp.json");
+        let fingerprint = || {
+            cursor_mcp_fingerprint_in(
+                home.path(),
+                &home.path().join(".cursor"),
+                workspace.path(),
+                home.path(),
+            )
+        };
+
+        let absent = fingerprint();
+        std::fs::write(&config, r#"{"mcpServers":{}}"#).expect("empty config");
+        let empty = fingerprint();
+        std::fs::write(
+            &config,
+            r#"{"mcpServers":{"linear":{"type":"http","url":"https://mcp.linear.app/mcp"}}}"#,
+        )
+        .expect("linear config");
+        let with_linear = fingerprint();
+
+        assert_ne!(absent, empty);
+        assert_ne!(empty, with_linear);
+        assert_eq!(with_linear, fingerprint());
+
+        std::fs::write(
+            &config,
+            format!(
+                r#"{{
+                    "mcpServers": {{
+                        "linear": {{ "url": "https://mcp.linear.app/mcp", "type": "http" }},
+                        "argmax_session": {{
+                            "command": "/Applications/Argmax.app/Contents/MacOS/argmax",
+                            "args": ["mcp"],
+                            "env": {{ "{SESSION_LAUNCH_TOKEN_ENV}": "temporary" }}
+                        }}
+                    }}
+                }}"#
+            ),
+        )
+        .expect("leased config");
+        assert_eq!(
+            with_linear,
+            fingerprint(),
+            "formatting and Argmax's temporary PTY lease are not user MCP changes"
+        );
+    }
+
+    #[test]
+    fn mcp_fingerprint_changes_when_a_server_is_authenticated() {
+        let home = tempfile::tempdir().expect("home");
+        let workspace = tempfile::tempdir().expect("workspace");
+        let slug = cursor_project_slug(&workspace.path().to_string_lossy()).expect("slug");
+        let project_dir = home.path().join("projects").join(slug);
+        std::fs::create_dir_all(&project_dir).expect("cursor project dir");
+        let auth = project_dir.join("mcp-auth.json");
+        let fingerprint = || {
+            cursor_mcp_fingerprint_in(home.path(), home.path(), workspace.path(), workspace.path())
+        };
+
+        let unauthenticated = fingerprint();
+        std::fs::write(&auth, r#"{"linear":{"clientInfo":{"client_id":"c"}}}"#)
+            .expect("registered client");
+        assert_eq!(
+            unauthenticated,
+            fingerprint(),
+            "a registered OAuth client without a grant changes nothing Cursor can serve"
+        );
+
+        std::fs::write(
+            &auth,
+            r#"{"linear":{"clientInfo":{"client_id":"c"},"tokens":{"access_token":"first","refresh_token":"r"}}}"#,
+        )
+        .expect("logged in");
+        let authenticated = fingerprint();
+        assert_ne!(unauthenticated, authenticated);
+
+        std::fs::write(
+            &auth,
+            r#"{"linear":{"clientInfo":{"client_id":"c"},"tokens":{"access_token":"refreshed","refresh_token":"r2"}}}"#,
+        )
+        .expect("refreshed grant");
+        assert_eq!(
+            authenticated,
+            fingerprint(),
+            "rotating an access token must not recycle the warm process"
+        );
+    }
+
+    #[test]
     fn agent_mode_maps_onto_cursors_acp_mode_ids() {
         assert_eq!(acp_mode_id(AgentMode::Plan), "plan");
         // Auto must name the default mode explicitly: a follow-up leaving Plan
         // has to set something, and omitting the call keeps the old mode.
         assert_eq!(acp_mode_id(AgentMode::Auto), "agent");
+    }
+
+    #[test]
+    fn cursor_data_dir_matches_the_environment_passed_to_the_child() {
+        let environment = vec![(
+            "CURSOR_DATA_DIR".to_owned(),
+            "/tmp/custom-cursor-data".to_owned(),
+        )];
+
+        assert_eq!(
+            cursor_data_dir_from_environment(&environment, Path::new("/tmp/home")),
+            PathBuf::from("/tmp/custom-cursor-data")
+        );
+        assert_eq!(
+            cursor_data_dir_from_environment(&[], Path::new("/tmp/home")),
+            PathBuf::from("/tmp/home/.cursor")
+        );
     }
 
     #[test]

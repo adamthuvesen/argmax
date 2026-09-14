@@ -337,6 +337,20 @@ describe("priority reasons", () => {
     expect(nextPriorityIdleAt(entries)).toBeNull();
   });
 
+  it("uses the aggregate PR summary instead of a stale primary scalar", () => {
+    const projected: WorkspaceSummary = {
+      ...workspace("w-pr", { ...QUIET, ...OPEN_PR, prState: "MERGED" }),
+      prSummaryState: "OPEN"
+    };
+    const entries = computePriorityEntries(
+      [projected],
+      [session("w-pr", "normal", QUIET)],
+      NOW
+    );
+
+    expect(entries.map((entry) => entry.reason)).toEqual(["pr-open"]);
+  });
+
   it("says the checks are failing when they are, and ranks that above the PR itself", () => {
     const entries = computePriorityEntries(
       [workspace("w-red", { ...QUIET, ...OPEN_PR, prCheckState: "failure" })],

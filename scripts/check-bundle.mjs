@@ -21,11 +21,11 @@ import { join, resolve } from "node:path";
 const ROOT = process.cwd();
 const DIST = join(ROOT, "dist/renderer");
 
-// Allow modest headroom above the September 2026 graph (1.70 / 1.57 MiB).
+// Allow modest headroom above the September 2026 graph (1.70 / 1.58 MiB).
 // Mobile is tighter: it ships over the tailnet to a phone, not off local disk.
 const ENTRIES = [
-  { html: "index.html", label: "desktop", budgetBytes: 1.75 * 1024 * 1024 },
-  { html: "mobile.html", label: "mobile", budgetBytes: 1.6 * 1024 * 1024 }
+  { html: "index.html", label: "desktop", budgetBytes: 1.76 * 1024 * 1024 },
+  { html: "mobile.html", label: "mobile", budgetBytes: 1.61 * 1024 * 1024 }
 ];
 
 function fail(message) {

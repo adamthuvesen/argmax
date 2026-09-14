@@ -194,6 +194,9 @@ pub fn normalize_tool_call(
     if let Some(result) = tool_body.and_then(|body| body.get("result")) {
         flattened.insert("result".to_string(), result.clone());
     }
+    if let Some(status) = string_value(payload.get("status")) {
+        flattened.insert("status".to_string(), Value::String(status.to_string()));
+    }
     if let Some(call_id) = string_value(payload.get("call_id")) {
         flattened.insert("call_id".to_string(), Value::String(call_id.to_string()));
     }
@@ -518,6 +521,26 @@ mod tests {
         );
         assert_eq!(result.events[0].r#type, "command.started");
         assert_eq!(result.events[0].payload["input"]["command"], "npm test");
+    }
+
+    #[test]
+    fn cursor_tool_completion_preserves_cancelled_status() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Cursor,
+            &output_event(
+                &json!({
+                    "type": "tool_call",
+                    "subtype": "completed",
+                    "status": "cancelled",
+                    "call_id": "call_1",
+                    "tool_call": { "shell": { "args": { "command": "npm test" } } }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events[0].payload["status"], "cancelled");
     }
 
     #[test]

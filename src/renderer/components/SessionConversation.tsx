@@ -46,6 +46,8 @@ import {
   sessionAgentModeKey,
   writeStoredAgentMode
 } from "../lib/agentMode.js";
+import { readStoredSessionModel, writeStoredSessionModel } from "../lib/sessionModelPreference.js";
+import type { FontSize } from "../lib/fonts.js";
 import { summarizeChangedFiles } from "../lib/changedFiles.js";
 import { decodeTimelineEvent } from "../lib/canonicalTimeline.js";
 import {
@@ -81,7 +83,7 @@ import {
   isExitPlanModeToolName
 } from "../lib/turnInteractiveCards.js";
 import { liveThoughtOwnsProgress, turnAgentModeFromPrior } from "../lib/sessionTurnView.js";
-import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
+import type { FollowUpDelivery, ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import {
   createAnnotation,
@@ -92,6 +94,8 @@ import {
 import { buildDetailsSeed, buildSideChatSeed } from "../lib/sideChat.js";
 import { SelectionToolbar, type ChatSelection } from "./SelectionToolbar.js";
 import { QuestionDock } from "./QuestionDock.js";
+import type { QuestionAnswers } from "../lib/questions.js";
+import { postToNative } from "../mobile/nativeHost.js";
 import { SessionComposer, type ComposerStatus, type NewSessionSeed } from "./SessionComposer.js";
 import { importChunk } from "../lib/importChunk.js";
 const GoalStatus = lazy(() => importChunk(async () => ({ default: (await import("./GoalStatus.js")).GoalStatus })));
@@ -154,10 +158,12 @@ function remainingDelayMs(fullMs: number, startedAt: string | null): number {
 
 export function SessionConversation({
   checks,
+  chatFontSize,
   defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
   thinkingDisplay,
   defaultTurnChangesExpanded,
+  defaultFollowUpDelivery = "queue",
   events,
   eventsBackfilled = true,
   fastModeEnabled = false,
@@ -176,6 +182,7 @@ export function SessionConversation({
   floating = false,
   goalEnabled = true,
   goalMaxTurns,
+  nativeComposerFloor = false,
   revertEnabled = true,
   registerAnnotationSink,
   defaultIde = null,
@@ -206,13 +213,17 @@ export function SessionConversation({
   review,
   session,
   workspaceCardEnabled = true,
+  contextIndicatorEnabled = false,
   workspace
 }: {
   checks?: CheckRun[];
+  /** Settings → Appearance: the font scale shared by the transcript and composer. */
+  chatFontSize?: FontSize;
   defaultToolCallsDisplay?: ToolCallsDisplay;
   defaultToolCallGroupsExpanded?: boolean;
   thinkingDisplay?: ThinkingDisplay;
   defaultTurnChangesExpanded?: boolean;
+  defaultFollowUpDelivery?: FollowUpDelivery;
   events: TimelineEvent[];
   /** The pane's backfill of this session's timeline has settled. Until it has,
       the transcript is whatever was left over from the last time the session
@@ -229,6 +240,8 @@ export function SessionConversation({
   /** User preference for the workspace card. Visible when enabled and the
       conversation column is wide enough to hold it beside the transcript. */
   workspaceCardEnabled?: boolean;
+  /** Settings → Appearance: show context-window usage in the active composer. */
+  contextIndicatorEnabled?: boolean;
   /** When provided, a close (×) button is rendered in the header — used by the multi-pane grid. */
   onClose?: () => void;
   /** Opens a launcher pane beside this one, for a task in any repository. */
@@ -259,6 +272,10 @@ export function SessionConversation({
       `/goal` command; off for revert hides "Revert to here" on a turn. */
   goalEnabled?: boolean;
   goalMaxTurns?: number;
+  /** The phone shell draws the composer natively and this page hides its own
+      stack, which would take the goal bar down with it. Set, the bar rides in
+      its own stack above the native card instead. */
+  nativeComposerFloor?: boolean;
   revertEnabled?: boolean;
   /** Lets the parent pane feed review-panel line comments into this
       conversation's annotation lane. Registered on mount, cleared on unmount. */
@@ -274,7 +291,8 @@ export function SessionConversation({
     model: ModelPickerSelection,
     agentMode: AgentMode,
     attachments?: ComposerAttachment[],
-    agentReferences?: AgentReference[]
+    agentReferences?: AgentReference[],
+    delivery?: FollowUpDelivery
   ) => Promise<void>;
   /** Follow-ups composed while the agent was running. Render as cancellable
       chips above the composer; cleared from the parent as the queue drains. */
@@ -343,13 +361,23 @@ export function SessionConversation({
       if (statusTimerRef.current !== null) window.clearTimeout(statusTimerRef.current);
     };
   }, []);
-  const [selectedModel, setSelectedModel] = useState<ModelPickerSelection>(() => modelPickerSelectionFromSession(session));
+  const [selectedModel, setSelectedModel] = useState<ModelPickerSelection>(() => {
+    const fallback = modelPickerSelectionFromSession(session);
+    return session ? readStoredSessionModel(session.id, fallback) : fallback;
+  });
   const [agentMode, setAgentMode] = useState<AgentMode>(() =>
     session ? readStoredAgentMode(sessionAgentModeKey(session.id), session.agentMode ?? "auto") : "auto"
   );
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const shouldRefocusInput = useRef(false);
   const sessionId = session?.id ?? null;
+  const setSelectedModelForSession = useCallback(
+    (model: ModelPickerSelection): void => {
+      setSelectedModel(model);
+      if (sessionId) writeStoredSessionModel(sessionId, model);
+    },
+    [sessionId]
+  );
   const eventsRef = useRef(events);
   eventsRef.current = events;
   const [optimisticUserMessages, setOptimisticUserMessages] = useState<OptimisticUserMessage[]>([]);
@@ -537,18 +565,19 @@ export function SessionConversation({
     [liveRawOutputs, session?.id, hasRenderableContent]
   );
 
-  // Only a running session can hold a genuinely in-flight tool. Passing this
-  // lets buildSessionToolCalls retire a tool whose `command.completed` was
-  // dropped (e.g. an oversized image tool_result) once the session stops,
-  // instead of leaving a tool row spinning forever.
+  // A running session or one waiting on user input can hold a genuinely
+  // in-flight tool. Passing this lets buildSessionToolCalls retire a tool whose
+  // `command.completed` was dropped (e.g. an oversized image tool_result) once
+  // the provider stops, instead of leaving a tool row spinning forever.
   const sessionRunning = session?.state === "running";
+  const sessionProviderActive = sessionRunning || session?.state === "waiting";
   const toolCalls = useMemo(
     () => buildSessionToolCalls(
       liveEvents,
-      sessionRunning,
+      sessionProviderActive,
       session?.state === "failed" || session?.state === "cancelled"
     ),
-    [liveEvents, session?.state, sessionRunning]
+    [liveEvents, session?.state, sessionProviderActive]
   );
   const agentCodenames = useMemo(() => assignAgentCodenames(toolCalls), [toolCalls]);
   // The workspace card's Subagents section reads the same tool list the agent
@@ -675,6 +704,12 @@ export function SessionConversation({
       ),
     [renderItems]
   );
+  const latestConversationIndex = useMemo(() => {
+    for (let index = transcriptRenderItems.length - 1; index >= 0; index -= 1) {
+      if (transcriptRenderItems[index]?.kind !== "session-note") return index;
+    }
+    return -1;
+  }, [transcriptRenderItems]);
   // The plan is folded once for the session and sliced by turn, so scrolling
   // back shows the plan as it stood then rather than as it stands now.
   const todoByTurn = useMemo(() => {
@@ -712,6 +747,18 @@ export function SessionConversation({
       // following/detached state instead of jumping to the guidance bubble.
       const canonical = decodeTimelineEvent(item.event);
       if (canonical.kind === "message" && canonical.delivery !== "steer") return item.event.id;
+    }
+    return null;
+  }, [transcriptRenderItems]);
+
+  // ⌘↑ in an empty composer brings this back for editing: the last thing the
+  // user typed, steer or not, which is the one a typo or afterthought is in.
+  const lastSentPrompt = useMemo(() => {
+    for (let i = transcriptRenderItems.length - 1; i >= 0; i -= 1) {
+      const item = transcriptRenderItems[i];
+      if (!item || item.kind !== "user-message") continue;
+      const text = item.event.message.trim();
+      if (text) return text;
     }
     return null;
   }, [transcriptRenderItems]);
@@ -834,7 +881,9 @@ export function SessionConversation({
       text: string,
       model: ModelPickerSelection,
       mode: AgentMode,
-      attachments?: ComposerAttachment[]
+      attachments?: ComposerAttachment[],
+      _agentReferences?: AgentReference[],
+      delivery: FollowUpDelivery = "queue"
     ): Promise<void> => {
       const optimisticId = `optimistic:${targetSessionId}:${uuidV4()}`;
       if (sessionStateRef.current !== "running") {
@@ -873,9 +922,17 @@ export function SessionConversation({
               .filter((reference) => mentionedNames.has(reference.name.toLowerCase()))
           : [];
         if (references.length > 0) {
-          await onSendSessionInput(targetSessionId, text, model, mode, attachments, references);
+          if (delivery === "steer") {
+            await onSendSessionInput(targetSessionId, text, model, mode, attachments, references, delivery);
+          } else {
+            await onSendSessionInput(targetSessionId, text, model, mode, attachments, references);
+          }
         } else {
-          await onSendSessionInput(targetSessionId, text, model, mode, attachments);
+          if (delivery === "steer") {
+            await onSendSessionInput(targetSessionId, text, model, mode, attachments, undefined, delivery);
+          } else {
+            await onSendSessionInput(targetSessionId, text, model, mode, attachments);
+          }
         }
       } catch (error) {
         setOptimisticUserMessages((current) =>
@@ -1222,7 +1279,8 @@ export function SessionConversation({
   // SessionSummary references on every dashboard delta, which would otherwise
   // overwrite the user's per-session model pick on every streaming event.
   useEffect(() => {
-    setSelectedModel(modelPickerSelectionFromSession(session));
+    const fallback = modelPickerSelectionFromSession(session);
+    setSelectedModel(sessionId ? readStoredSessionModel(sessionId, fallback) : fallback);
     setAgentMode(session ? readStoredAgentMode(sessionAgentModeKey(session.id), session.agentMode ?? "auto") : "auto");
     // eslint-disable-next-line react-hooks/exhaustive-deps -- session.id is the identity gate; `session` mutates per-tick by design
   }, [sessionId]);
@@ -1238,48 +1296,134 @@ export function SessionConversation({
   // turn — answering it sends a user message, which starts a new one — so the
   // panel takes the composer's slot and that turn stops drawing its own card.
   const liveQuestion = useMemo(() => {
-    const last = transcriptRenderItems[transcriptRenderItems.length - 1];
+    const last = transcriptRenderItems[latestConversationIndex];
     if (!last || last.kind !== "turn") return null;
     const { tool } = collectAskUserQuestionState(last.toolItems);
     if (!tool) return null;
-    return { tool, priorItem: transcriptRenderItems[transcriptRenderItems.length - 2] ?? null };
-  }, [transcriptRenderItems]);
+    return { tool, priorItem: transcriptRenderItems[latestConversationIndex - 1] ?? null };
+  }, [transcriptRenderItems, latestConversationIndex]);
   // Closing the panel is not declining the question: the composer comes back so
-  // the reader can answer in their own words, and the question stays in the
-  // transcript as the card it was before.
+  // the reader can answer in their own words. The question leaves the screen
+  // with the panel — the agent's own prose above it is the record of the ask.
   const [dismissedQuestionId, setDismissedQuestionId] = useState<string | null>(null);
   const [composerDraftPresent, setComposerDraftPresent] = useState(false);
+  const blockingQuestionRequest =
+    session?.provider === "codex" &&
+    liveQuestion?.tool.delivery === "blocking" &&
+    liveQuestion.tool.requestId
+      ? liveQuestion.tool.requestId
+      : null;
   const questionDocked =
-    liveQuestion !== null && liveQuestion.tool.id !== dismissedQuestionId && !composerDraftPresent;
+    liveQuestion !== null &&
+    liveQuestion.tool.id !== dismissedQuestionId &&
+    (blockingQuestionRequest !== null || !composerDraftPresent);
   // A draft the reader typed outranks the dock, which would cover it. Composer
   // *focus* must not: sending refocuses the input and it keeps that focus for
-  // the whole turn, so gating on focus left almost every question inline until
-  // the chat was reopened. Sticky by id, so clearing the draft cannot pull a
-  // Send button out from under a click.
+  // the whole turn, so gating on focus hid almost every question until the
+  // chat was reopened. Sticky by id, so clearing the draft cannot drop the
+  // panel onto a composer the reader is mid-click in.
   useLayoutEffect(() => {
-    if (composerDraftPresent && liveQuestion) setDismissedQuestionId(liveQuestion.tool.id);
-  }, [composerDraftPresent, liveQuestion]);
+    if (composerDraftPresent && liveQuestion && !blockingQuestionRequest) {
+      setDismissedQuestionId(liveQuestion.tool.id);
+    }
+  }, [blockingQuestionRequest, composerDraftPresent, liveQuestion]);
+  // The native iPhone shell draws its own composer card under this page and
+  // has the page's stack hidden, so the docked panel would be hidden with it.
+  // Tell the shell the slot is taken — the panel stays this page's, the card
+  // stands down — and hand it back when the question leaves. A no-op outside
+  // the shell. Nothing to close before the first open: the card is up from the
+  // moment the chat is.
+  const questionPostedRef = useRef(false);
+  useEffect(() => {
+    if (!questionDocked && !questionPostedRef.current) return;
+    questionPostedRef.current = questionDocked;
+    postToNative({ type: "question", open: questionDocked });
+  }, [questionDocked]);
+  useEffect(
+    () => () => {
+      if (questionPostedRef.current) postToNative({ type: "question", open: false });
+    },
+    []
+  );
   const answerLiveQuestion = useCallback(
-    (answerMarkdown: string): Promise<boolean> => {
+    async (answerText: string, answers: QuestionAnswers): Promise<boolean> => {
       if (!session || !liveQuestion) return Promise.resolve(false);
       shouldRefocusInput.current = true;
+      if (blockingQuestionRequest) {
+        const resolveQuestion = window.argmax?.questions.resolve;
+        if (!resolveQuestion) {
+          setStatus({ kind: "error", message: "Could not answer the question because Argmax is unavailable." });
+          return false;
+        }
+        try {
+          await resolveQuestion({
+            sessionId: session.id,
+            requestId: blockingQuestionRequest,
+            answers
+          });
+          setDismissedQuestionId(liveQuestion.tool.id);
+          return true;
+        } catch (error) {
+          setStatus({
+            kind: "error",
+            message: error instanceof Error ? error.message : "Could not answer the question."
+          });
+          return false;
+        }
+      }
       const mode: AgentMode = turnAgentModeFromPrior(liveQuestion.priorItem) === "plan" ? "plan" : "auto";
       return sendAfterTerminate(
         session.id,
         session.state === "running",
         onTerminateSession,
-        () => sendSessionInput(session.id, answerMarkdown, selectedModel, mode),
+        () => sendSessionInput(session.id, answerText, selectedModel, mode),
         (message) => setStatus({ kind: "error", message })
       );
     },
-    [liveQuestion, onTerminateSession, selectedModel, sendSessionInput, session, setStatus]
+    [blockingQuestionRequest, liveQuestion, onTerminateSession, selectedModel, sendSessionInput, session, setStatus]
   );
+  const dismissLiveQuestion = useCallback(async (): Promise<boolean> => {
+    if (!liveQuestion) return false;
+    if (!blockingQuestionRequest || !session) {
+      setDismissedQuestionId(liveQuestion.tool.id);
+      return true;
+    }
+    const resolveQuestion = window.argmax?.questions.resolve;
+    if (!resolveQuestion) {
+      setStatus({ kind: "error", message: "Could not dismiss the question because Argmax is unavailable." });
+      return false;
+    }
+    try {
+      await resolveQuestion({
+        sessionId: session.id,
+        requestId: blockingQuestionRequest,
+        answers: {},
+        dismissed: true
+      });
+      setDismissedQuestionId(liveQuestion.tool.id);
+      return true;
+    } catch (error) {
+      setStatus({
+        kind: "error",
+        message: error instanceof Error ? error.message : "Could not dismiss the question."
+      });
+      return false;
+    }
+  }, [blockingQuestionRequest, liveQuestion, session, setStatus]);
 
   const goalStatus = !floating && session && workspace && goalEnabled ? (
     <Suspense fallback={null}>
       <GoalStatus key={`goal:${session.id}`} session={session} />
     </Suspense>
   ) : null;
+  // Tucked into the composer everywhere the composer is this page's. Under the
+  // phone shell it is not: `setComposer(true)` hides that whole stack, and a
+  // goal bar hidden with it leaves a running goal with no clear button
+  // anywhere on the phone. So it gets its own stack above the native card,
+  // exempt from that rule the way a docked question is. On desktop it follows
+  // the agent-window scale through the session grid, while the phone keeps its
+  // own native composer scale.
+  const goalInComposer = !nativeComposerFloor;
 
   return (
     <section
@@ -1427,14 +1571,14 @@ export function SessionConversation({
                   return <ProviderSwitchNotice key={item.id} notice={item.notice} />;
                 }
                 if (item.kind === "session-note") {
-                  return <SessionNote key={item.id} message={item.message} />;
+                  return <SessionNote key={item.id} message={item.message} sourceActivity={item.sourceActivity} />;
                 }
                 return (
                   <SessionConversationTurn
                     key={item.id}
                     item={item}
                     priorItem={index > 0 ? transcriptRenderItems[index - 1] ?? null : null}
-                    isLatestTurn={index === transcriptRenderItems.length - 1}
+                    isLatestTurn={index === latestConversationIndex}
                     openRunAt={openRunAt}
                     session={session}
                     selectedModel={selectedModel}
@@ -1460,8 +1604,8 @@ export function SessionConversation({
                     defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
                     thinkingDisplay={thinkingDisplay}
                     defaultTurnChangesExpanded={defaultTurnChangesExpanded}
+                    transcriptDetached={showScrollToBottom}
                     restoringTranscript={restoringTranscript}
-                    questionIsDocked={questionDocked && index === transcriptRenderItems.length - 1}
                     todo={todoByTurn.get(item.id) ?? null}
                     onOpenDiff={onOpenDiff ?? review.openFile}
                     onOpenReview={onOpenChanges ?? review.openChangesPanel}
@@ -1544,14 +1688,25 @@ export function SessionConversation({
           })}
         </section>
       ) : null}
-      {questionDocked && liveQuestion ? (
-        <div className="session-composer-stack">
+      {goalInComposer || !goalStatus ? null : (
+        <div
+          className="session-composer-stack"
+          data-goal
+          data-font-size={chatFontSize === undefined ? undefined : String(chatFontSize)}
+          data-type-scale={chatFontSize === undefined ? "composer" : undefined}
+        >
           {goalStatus}
+        </div>
+      )}
+      {questionDocked && liveQuestion ? (
+        <div className="session-composer-stack" data-question>
+          {goalInComposer ? goalStatus : null}
           <QuestionDock
             key={liveQuestion.tool.id}
             questions={liveQuestion.tool.questions}
             onAnswer={answerLiveQuestion}
-            onDismiss={() => setDismissedQuestionId(liveQuestion.tool.id)}
+            onDismiss={dismissLiveQuestion}
+            {...(blockingQuestionRequest ? { dismissLabel: "Dismiss question" } : {})}
           />
         </div>
       ) : (
@@ -1559,11 +1714,15 @@ export function SessionConversation({
         isFocused={isFocused}
         agentMode={agentMode}
         canSend={canSend}
+        chatFontSize={chatFontSize}
         changeSummary={changeSummary}
+        contextIndicatorEnabled={contextIndicatorEnabled}
         fastModeEnabled={fastModeEnabled}
         floating={floating}
         inputRef={inputRef}
         isQueueing={isQueueing}
+        defaultFollowUpDelivery={defaultFollowUpDelivery}
+        lastSentPrompt={lastSentPrompt}
         onFastModeEnabledChange={onFastModeEnabledChange}
         onDraftPresentChange={setComposerDraftPresent}
         onCancelQueuedMessage={onCancelQueuedMessage}
@@ -1583,14 +1742,14 @@ export function SessionConversation({
         selectedModel={selectedModel}
         session={session}
         setAgentMode={setAgentMode}
-        setSelectedModel={setSelectedModel}
+        setSelectedModel={setSelectedModelForSession}
         setStatus={setStatus}
         shouldRefocusInput={shouldRefocusInput}
         status={status}
         workspace={workspace}
         goalEnabled={goalEnabled}
         goalMaxTurns={goalMaxTurns}
-        goalStatus={goalStatus}
+        goalStatus={goalInComposer ? goalStatus : null}
       />
       )}
     </section>

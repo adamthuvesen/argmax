@@ -53,7 +53,7 @@
 .todo-card-head-verb {
   flex: 0 0 auto;
   color: var(--muted-strong);
-  font-weight: 400;
+  font-weight: calc(400 + var(--font-weight-offset));
 }
 
 /* Tabular so the digits stay put as the count climbs. */
@@ -138,7 +138,7 @@
 
 .todo-card-item[data-state="active"] .todo-card-label {
   color: var(--text);
-  font-weight: 500;
+  font-weight: calc(500 + var(--font-weight-offset));
 }
 
 .todo-card-item[data-state="cancelled"] .todo-card-mark {

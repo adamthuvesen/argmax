@@ -14,6 +14,7 @@ use crate::{
     git::{
         exec::{reject_leading_dash, run_git_text, run_git_text_with_allowed_exit_codes},
         ops::checkout_write_lock,
+        tree_snapshot::{index_tree, snapshot_visible_worktree},
     },
     persistence::database::Database,
     persistence::projects::require_project,
@@ -501,8 +502,8 @@ pub fn review_diff_revision(content: &str) -> String {
 
 async fn review_revision_at_path(repo_path: &Path) -> ArgmaxResult<String> {
     let head = run_git_text(repo_path, ["rev-parse", "HEAD"], GIT_TIMEOUT).await?;
-    let index = run_git_text(repo_path, ["write-tree"], GIT_TIMEOUT).await?;
-    let worktree = crate::git::tree_snapshot::snapshot_visible_worktree(repo_path).await?;
+    let index = index_tree(repo_path).await?;
+    let worktree = snapshot_visible_worktree(repo_path).await?;
     Ok(review_diff_revision(&format!(
         "{head}\0{index}\0{worktree}"
     )))
@@ -1345,6 +1346,36 @@ fn fs_error(error: std::io::Error) -> ArgmaxError {
 mod tests {
     use super::*;
 
+    async fn test_git(repo: &Path, args: &[&str]) -> String {
+        run_git_text(repo, args, GIT_TIMEOUT)
+            .await
+            .unwrap_or_else(|error| panic!("git {args:?} failed: {error}"))
+    }
+
+    async fn review_repo() -> tempfile::TempDir {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let repo = dir.path();
+        test_git(repo, &["init", "--initial-branch=main"]).await;
+        test_git(repo, &["config", "user.email", "test@example.com"]).await;
+        test_git(repo, &["config", "user.name", "Test"]).await;
+        std::fs::write(repo.join("staged.txt"), "staged baseline\n").expect("write");
+        std::fs::write(repo.join("unstaged.txt"), "unstaged baseline\n").expect("write");
+        test_git(repo, &["add", "staged.txt", "unstaged.txt"]).await;
+        test_git(repo, &["commit", "-m", "baseline"]).await;
+        dir
+    }
+
+    async fn real_index_path(repo: &Path) -> PathBuf {
+        PathBuf::from(
+            test_git(
+                repo,
+                &["rev-parse", "--path-format=absolute", "--git-path", "index"],
+            )
+            .await
+            .trim(),
+        )
+    }
+
     #[test]
     fn name_status_parses_modify_add_delete() {
         // `M\0a\0A\0b\0D\0c` — three single-path records.
@@ -1442,5 +1473,78 @@ mod tests {
         let fresh = by_path("fresh.txt");
         assert_eq!(fresh.status, "??");
         assert_eq!((fresh.additions, fresh.deletions), (2, 0));
+    }
+
+    #[tokio::test]
+    async fn load_diff_succeeds_while_the_real_index_lock_is_held() {
+        let dir = review_repo().await;
+        let repo = dir.path();
+        std::fs::write(repo.join("staged.txt"), "staged change\n").expect("write");
+        test_git(repo, &["add", "staged.txt"]).await;
+        std::fs::write(repo.join("unstaged.txt"), "unstaged change\n").expect("write");
+        let index_path = real_index_path(repo).await;
+        let index_before = std::fs::read(&index_path).expect("read index");
+        let index_lock = index_path.with_file_name("index.lock");
+        std::fs::write(&index_lock, "external git owns this lock\n").expect("hold index lock");
+
+        let diff = load_diff_at_path(
+            repo,
+            "workspace",
+            Some("unstaged.txt"),
+            ReviewBaseline::WorkingTree,
+            None,
+        )
+        .await
+        .expect("read-only diff must not need the real index lock");
+
+        assert!(diff.content.contains("+unstaged change"));
+        assert_eq!(
+            std::fs::read(&index_path).expect("read index after diff"),
+            index_before
+        );
+        assert_eq!(
+            std::fs::read_to_string(&index_lock).expect("read held lock"),
+            "external git owns this lock\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn concurrent_diff_reads_share_a_revision_without_touching_the_index() {
+        let dir = review_repo().await;
+        let repo = dir.path();
+        std::fs::write(repo.join("staged.txt"), "indexed-only-content\n").expect("write");
+        test_git(repo, &["add", "staged.txt"]).await;
+        std::fs::write(repo.join("unstaged.txt"), "worktree-only-content\n").expect("write");
+        let index_path = real_index_path(repo).await;
+        let index_before = std::fs::read(&index_path).expect("read index");
+
+        let (staged, unstaged) = tokio::join!(
+            load_diff_at_path(
+                repo,
+                "staged",
+                Some("staged.txt"),
+                ReviewBaseline::WorkingTree,
+                None,
+            ),
+            load_diff_at_path(
+                repo,
+                "unstaged",
+                Some("unstaged.txt"),
+                ReviewBaseline::WorkingTree,
+                None,
+            )
+        );
+        let staged = staged.expect("staged diff");
+        let unstaged = unstaged.expect("unstaged diff");
+
+        assert_eq!(staged.revision, unstaged.revision);
+        assert!(staged.content.contains("+indexed-only-content"));
+        assert!(!staged.content.contains("worktree-only-content"));
+        assert!(unstaged.content.contains("+worktree-only-content"));
+        assert!(!unstaged.content.contains("indexed-only-content"));
+        assert_eq!(
+            std::fs::read(index_path).expect("read index after concurrent diffs"),
+            index_before
+        );
     }
 }

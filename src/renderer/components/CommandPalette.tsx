@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type AnimationEventHandler,
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
@@ -27,6 +28,8 @@ import type {
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
 import { WorkingNest } from "./WorkingNest.js";
+import { SlidingTabIndicator } from "./SlidingTabIndicator.js";
+import type { MotionPresenceState } from "../hooks/useMotionPresence.js";
 
 export type { PaletteGroup, PaletteItem } from "../lib/paletteSearch.js";
 
@@ -164,6 +167,8 @@ type PaletteRow =
 
 export interface CommandPaletteProps {
   open: boolean;
+  motionState?: MotionPresenceState;
+  onMotionEnd?: AnimationEventHandler<HTMLDivElement>;
   commands: PaletteCommand[];
   onClose: () => void;
   /** Scope the overlay opens on. ⌘K passes `all`, ⌘P passes `files`. */
@@ -192,6 +197,8 @@ export interface CommandPaletteProps {
 
 export function CommandPalette({
   open,
+  motionState,
+  onMotionEnd,
   commands,
   onClose,
   initialScope = "all",
@@ -239,25 +246,27 @@ export function CommandPalette({
 
   useEffect(() => {
     if (!open) {
-      messageTokenRef.current += 1;
-      filesTokenRef.current += 1;
-      contentTokenRef.current += 1;
-      setQuery("");
-      setSelectedIndex(0);
-      setMessageHits([]);
-      setMessagesRunning(false);
-      setFilePaths([]);
-      setFilesRunning(false);
-      setContentResult(EMPTY_CONTENT_RESULT);
-      setContentsRunning(false);
-      setContentError(null);
-      filesCacheKeyRef.current = null;
+      if (motionState !== "closing") {
+        messageTokenRef.current += 1;
+        filesTokenRef.current += 1;
+        contentTokenRef.current += 1;
+        setQuery("");
+        setSelectedIndex(0);
+        setMessageHits([]);
+        setMessagesRunning(false);
+        setFilePaths([]);
+        setFilesRunning(false);
+        setContentResult(EMPTY_CONTENT_RESULT);
+        setContentsRunning(false);
+        setContentError(null);
+        filesCacheKeyRef.current = null;
+      }
       return;
     }
     // Re-opening with a different shortcut (⌘K vs ⌘P vs ⌘F) re-selects the tab.
     setScope(initialScope);
     inputRef.current?.focus();
-  }, [open, initialScope]);
+  }, [open, initialScope, motionState]);
 
   const visibleGroups = useMemo(() => SCOPE_GROUPS[scope], [scope]);
   const showsGroup = useCallback(
@@ -535,7 +544,7 @@ export function CommandPalette({
     active?.scrollIntoView?.({ block: "nearest" });
   }, [selectedIndex, open]);
 
-  if (!open) return null;
+  if (!open && motionState !== "closing") return null;
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>): void => {
     // Tab changes the filter instead of moving focus — the input is the only
@@ -586,11 +595,14 @@ export function CommandPalette({
 
   return (
     <div
-      className="command-palette-overlay"
+      className="command-palette-overlay motion-modal-overlay"
+      data-motion-state={motionState ?? "open"}
       role="dialog"
       aria-label="Command palette"
+      aria-hidden={open ? undefined : true}
+      onAnimationEnd={onMotionEnd}
     >
-      <div className="command-palette" ref={paletteRef}>
+      <div className="command-palette motion-modal-surface" ref={paletteRef}>
         <label className="command-palette-input-wrap">
           <input
             ref={inputRef}
@@ -598,6 +610,10 @@ export function CommandPalette({
             type="search"
             placeholder={SCOPE_PLACEHOLDER[scope]}
             aria-label="Command palette query"
+            spellCheck={false}
+            autoCorrect="off"
+            autoCapitalize="off"
+            autoComplete="off"
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);
@@ -608,6 +624,7 @@ export function CommandPalette({
         </label>
         <div className="command-palette-scopes">
           <div className="command-palette-tabs" role="tablist" aria-label="Search filter">
+            <SlidingTabIndicator activeKey={scope} />
             {SCOPE_TABS.map((tab) => {
               const isActive = tab.scope === scope;
               return (

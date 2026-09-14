@@ -323,10 +323,21 @@ pub struct SessionWaitParams {
 
 #[tool_router(router = tool_router)]
 impl ArgmaxTools {
+    /// Both surfaces on one router: the session tools and the browser tools
+    /// are separate `#[tool_router]` blocks but one tool list, so a tool on
+    /// either reaches every provider.
+    ///
+    /// schemars stamps every parameter object with the JSON Schema dialect it
+    /// was generated against. No MCP client reads it — `inputSchema` is
+    /// defined as draft 2020-12 — but it is 57 bytes on each of 54 tools, and
+    /// tool definitions sit at the front of the cached prefix of every turn.
     pub fn new() -> Self {
-        Self {
-            tool_router: Self::tool_router(),
+        let mut tool_router = Self::tool_router();
+        tool_router += Self::browser_tool_router();
+        for route in tool_router.map.values_mut() {
+            std::sync::Arc::make_mut(&mut route.attr.input_schema).remove("$schema");
         }
+        Self { tool_router }
     }
 
     #[tool(
@@ -350,19 +361,13 @@ not subagents."
 
     #[tool(
         name = "session_launch",
-        description = "Start a new Argmax session for an independent task and return its id. Use this \
-when the user explicitly asks for a separate session or when the work needs its own independent, \
-durable lifecycle that remains visible and steerable after your turn, such as a separate repository \
-investigation or a long-running build. Keep bounded research, review, and implementation in the \
-current chat using your provider's native subagents. The user-facing multitask flow is for work that \
-should run alongside the chat. Do not use this merely for parallelism, fresh context, model choice, \
-or context relief. A new session starts cold, so put everything it needs in the prompt. It is a \
-top-level sidebar session, not a subagent. It is visible to the user, spends real tokens, and outlives \
-your turn. Launches are capped at two levels deep and ten per session. Pass `project` for another \
-registered project, `path` for an existing checkout of that project, and `worktree` plus optional \
-`branch` to fork an isolated worktree from that ref. `project` also takes the absolute path of a \
-repository Argmax has never opened — it is added on first use, so a chat can start in a folder the \
-user has not added yet."
+        description = "Start a new Argmax session for an independent task and return its id. Use it \
+when the user asks for a separate session, or when the work needs a durable lifecycle that stays \
+visible and steerable after your turn — a separate repository investigation, a long-running build. \
+Keep bounded research, review, and implementation in this chat using your provider's native \
+subagents. A new session starts cold, so put everything it needs in `prompt`. It is a top-level \
+sidebar session, not a subagent: the user sees it, it spends real tokens, and it outlives your \
+turn. Capped at two levels deep and ten launches per session."
     )]
     async fn session_launch(
         &self,
@@ -791,13 +796,12 @@ rather than repeating the whole task. You cannot stop yourself."
     #[tool(
         name = "inbox_read",
         description = "Collect the messages other sessions have addressed to you and have not been \
-        handed over yet — each with who sent it, whether it is a plain message or the automatic notice that \
-        a session you launched has finished, and when it arrived. Reading them marks them collected, so a \
-        second call returns only what has arrived since; a batch too large for one reply comes back over \
-        several calls. Messages also reach you as ordinary turns when you \
-        are idle; this is how you see the ones that landed while you were working. Every other argmax tool \
-        result carries an unread-inbox note when something is waiting here, so you can collect mail \
-        mid-turn without ending your current turn."
+handed over yet — each with who sent it, whether it is a plain message or the automatic notice \
+that a session you launched has finished, and when it arrived. Reading them marks them collected, \
+so a second call returns only what has arrived since; a batch too large for one reply comes back \
+over several calls. Messages also reach you as ordinary turns when you are idle; this is how you \
+see the ones that landed while you were working. Every other argmax tool result carries an \
+unread-inbox note when something is waiting here."
     )]
     async fn inbox_read(
         &self,
@@ -850,8 +854,7 @@ cancelled — reporting each one's id and state — and/or with the messages tha
 also marks collected. The argument-less form hands you each finish once, so calling it again \
 after collecting one child waits for the next one instead of repeating that child; name ids in \
 `sessions` to re-read a session you have already been told about. A wait that runs out returns \
-`{timed_out: true}`; call it again to keep waiting. This is the tool that makes launching a \
-session useful: launch, wait, then session_read its answer."
+`{timed_out: true}`; call it again to keep waiting."
     )]
     async fn session_wait(
         &self,
@@ -868,13 +871,12 @@ session useful: launch, wait, then session_read its answer."
         name = "workspace_archive",
         description = "Close this chat's workspace when the current turn ends: an isolated \
 worktree moves into Argmax's archive location with its files and local branch intact, and \
-the chat leaves the sidebar. Like session_move it is scheduled rather than immediate, because \
-archiving stops every agent in the workspace — including you — so call it as your last action \
-and write your report after it. Use it once the work has actually landed, typically after a \
-pull request is merged and its branch is deleted; that is what keeps merged worktrees from \
-piling up on disk. A workspace with uncommitted changes is kept instead of archived, so say \
-the archive is requested rather than done. A shared checkout is never deleted — archiving one \
-only ends the chat."
+the chat leaves the sidebar. Scheduled rather than immediate, because archiving stops every \
+agent in the workspace — including you — so call it as your last action and write your report \
+after it. Use it once the work has actually landed, typically after a pull request is merged \
+and its branch is deleted. A workspace with uncommitted changes is kept instead of archived, so \
+say the archive is requested rather than done. A shared checkout is never deleted — archiving \
+one only ends the chat."
     )]
     async fn workspace_archive(
         &self,
@@ -904,12 +906,9 @@ instead. Returns the label that landed and the one it replaced."
         name = "session_move",
         description = "Move this session to a different checkout and carry on working there: \
 another registered project (`project`), or another worktree of the project you are already in \
-(`path`). Pass exactly one. Reach for `path` whenever the work belongs in a different worktree — \
-running `cd` instead only moves your shell, so the workspace card, its diff, and its commit and \
-pull-request actions all keep pointing at the checkout you started in, and your next turn starts \
-back there. The move is scheduled: it runs once the current turn settles, carries the transcript \
-over, and archives the source workspace unless keep_source is set. Your `prompt` then starts your \
-first turn in the destination, so call this as the last action of a turn."
+(`path`). Pass exactly one. The move is scheduled: it runs once the current turn settles, carries \
+the transcript over, and archives the source workspace unless `keep_source` is set. Your `prompt` \
+then starts your first turn in the destination, so call this as the last action of a turn."
     )]
     async fn session_move(
         &self,

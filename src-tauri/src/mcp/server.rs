@@ -24,10 +24,7 @@ pub fn serve_stdio() -> i32 {
         }
     };
     runtime.block_on(async {
-        // Two routers, one server: the session tools and the browser tools
-        // are separate surfaces on the same socket.
-        let mut tools = ArgmaxTools::new();
-        tools.tool_router += ArgmaxTools::browser_tool_router();
+        let tools = ArgmaxTools::new();
         let service = match tools.serve(rmcp::transport::stdio()).await {
             Ok(service) => service,
             Err(error) => {
@@ -84,8 +81,7 @@ mod tests {
     /// place to hold the surface still.
     #[test]
     fn every_tool_is_on_the_one_router_both_surfaces_share() {
-        let mut tools = ArgmaxTools::new();
-        tools.tool_router += ArgmaxTools::browser_tool_router();
+        let tools = ArgmaxTools::new();
         let listed = tools
             .tool_router
             .list_all()
@@ -134,12 +130,19 @@ mod tests {
         }
 
         // Every tool the model can call needs a description, since the
-        // description is the only place its bounds are stated.
+        // description is the only place its bounds are stated. None of them
+        // carries schemars' dialect stamp, which no client reads and every
+        // turn pays for.
         for tool in tools.tool_router.list_all() {
             let description = tool.description.clone().unwrap_or_default();
             assert!(
                 description.len() > 40,
                 "{} has no usable description",
+                tool.name
+            );
+            assert!(
+                !tool.input_schema.contains_key("$schema"),
+                "{} still carries $schema",
                 tool.name
             );
         }

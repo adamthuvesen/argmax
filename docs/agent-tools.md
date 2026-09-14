@@ -713,7 +713,7 @@ not used — it would ungate the repo's hooks too.
 
 ## What the surface costs
 
-55 tools and ~52 KB of schema and server instructions, and a turn pays for all
+55 tools and ~47 KB of schema and server instructions, and a turn pays for all
 of it whether or not it calls one — tool definitions render ahead of the system
 prompt and the transcript, so they sit at the front of every cached prefix.
 
@@ -723,8 +723,8 @@ same inline `--settings` JSON that carries the background-task flag and the
 inbox hook ([adapters.rs](../src-tauri/src/providers/adapters.rs)). Claude Code
 then defers the schemas out of the prefix and gives the model a search tool to
 pull back the ones it wants. Measured against 2.1.270 with a bare launch
-carrying only this server, the prefix went from 47,967 tokens to 19,062 — the
-server's own share from 14,245 tokens per turn to 1,063.
+carrying only this server, the prefix went from 46,305 tokens to 19,076 — the
+server's own share from 12,573 tokens per turn to roughly 1,100.
 
 Two costs come with it. The model pays a search round trip before its first
 `argmax` tool call, and a tool it never thinks to search for is one it will not
@@ -732,9 +732,14 @@ find, so a rarely-wanted tool leans harder on its name and description than it
 used to. Inline settings override the user's own `env` for this key, the same
 way they already do for `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`.
 
-The other four providers have no equivalent flag and still carry the full
-surface. Keeping tool descriptions short is the only lever that works for all
-five.
+The other four providers have no equivalent flag and pay the full surface, so
+the schemas themselves have to stay lean. Two thirds of those bytes are prose —
+tool descriptions and parameter descriptions — and the rest is JSON Schema
+structure, which only shrinks by removing a tool or a parameter. What that
+buys is bounded: a description is the only place a tool's limits are stated, so
+the cuts worth making are the ones that remove duplication rather than bounds.
+Policy already carried by the `instructions` field, and parameters already
+described in the schema, do not need restating in a tool description.
 
 ## The wire underneath
 

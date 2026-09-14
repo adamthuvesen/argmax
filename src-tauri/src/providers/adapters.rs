@@ -669,9 +669,9 @@ fn claude_settings_args(
     //
     // Tool search defers the tool schemas out of the cached prefix and hands
     // the model a search tool to pull them back on demand. The `argmax` server
-    // is 55 tools and ~52 KB of schema, which every turn pays for whether or
+    // is 55 tools and ~47 KB of schema, which every turn pays for whether or
     // not it calls one: measured against 2.1.270, a launch carrying the server
-    // cost 47,967 prefix tokens with tool search off and 19,062 with it on.
+    // cost 46,305 prefix tokens with tool search off and 19,076 with it on.
     // The cost is a search round trip before the first tool call, and a tool
     // the model never thinks to search for is one it will not find.
     settings.insert(

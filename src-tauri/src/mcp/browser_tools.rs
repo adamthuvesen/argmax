@@ -38,15 +38,13 @@ pub struct OpenParams {
 pub struct NavigateParams {
     /// Where to go, as an absolute http(s) URL.
     pub url: String,
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct DuplicateParams {
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
     /// Show the copy immediately. Defaults to true.
     pub activate: Option<bool>,
@@ -73,8 +71,7 @@ pub struct OpenLinkParams {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct TabParams {
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
 }
 
@@ -87,8 +84,7 @@ pub struct CloseParams {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SnapshotParams {
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
     /// Drop prose and keep only controls, links and headings. Cheaper on a
     /// dense page when you already know what you are looking for.
@@ -100,15 +96,13 @@ pub struct FindParams {
     /// Text to look for in an element's role, name, value or text
     /// (case-insensitive substring, for example "Sign in" or "search").
     pub query: String,
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct GetTextParams {
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
     /// Cap on the characters returned. Defaults to 20000.
     pub max_chars: Option<u32>,
@@ -116,8 +110,7 @@ pub struct GetTextParams {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ExtractParams {
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
     /// Character budget for section text. Defaults to 30000.
     pub max_chars: Option<u32>,
@@ -128,8 +121,7 @@ pub struct ClickParams {
     /// Element handle from a snapshot line or browser_find, for example "e12".
     #[serde(rename = "ref")]
     pub element_ref: String,
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
 }
 
@@ -144,8 +136,7 @@ pub struct TypeParams {
     /// Press Enter afterwards, falling back to submitting the field's form.
     /// This is how you run a search box.
     pub submit: Option<bool>,
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
 }
 
@@ -157,8 +148,7 @@ pub struct SelectParams {
     /// Option to choose, matched against the option's value or its visible
     /// label.
     pub value: String,
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
 }
 
@@ -169,8 +159,7 @@ pub struct PressKeyParams {
     pub key: String,
     /// Modifiers held down: any of "Meta", "Control", "Alt", "Shift".
     pub modifiers: Option<Vec<String>>,
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
 }
 
@@ -183,8 +172,7 @@ pub struct ScrollParams {
     /// Handle of a scrollable element to scroll instead of the page.
     #[serde(rename = "ref")]
     pub element_ref: Option<String>,
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
 }
 
@@ -209,8 +197,7 @@ pub struct DragParams {
     pub delta_y: Option<f64>,
     /// Number of intermediate pointer moves. Defaults to 10, capped at 60.
     pub steps: Option<u8>,
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
 }
 
@@ -226,15 +213,13 @@ pub struct WaitForParams {
     pub url_includes: Option<String>,
     /// Seconds to wait before giving up. Defaults to 10, capped at 60.
     pub timeout_s: Option<u32>,
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ScreenshotParams {
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
     /// Element handle to crop to. Without one the whole visible page is
     /// captured.
@@ -248,15 +233,13 @@ pub struct EvaluateParams {
     /// JSON, so return something serializable. A thrown error is reported
     /// rather than swallowed.
     pub expression: String,
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct CaptureParams {
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
     /// How many of the newest records to return. Defaults to 50, capped at 200.
     pub limit: Option<u32>,
@@ -272,8 +255,7 @@ pub struct HandleDialogParams {
     pub accept: bool,
     /// Text to answer a `prompt()` with. Ignored by alert and confirm.
     pub prompt_text: Option<String>,
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
 }
 

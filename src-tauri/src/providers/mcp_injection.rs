@@ -80,21 +80,14 @@ pub const PROJECT_SOURCES_INSTRUCTION: &str = "Near the beginning of project wor
 /// The only live copy: launches send the user prompt as the user prompt.
 pub fn agent_tools_instruction() -> String {
     format!(
-        "{} Argmax runs this session. The session tools reach the sessions around it: list \
-         them, launch new ones on tasks of their own, watch them, read what they did, \
-         message them, stop them, rename this chat once you know what the work is, move \
-         this session to another project or checkout (`session_move`), and close this \
-         one's workspace once the work has landed. They act on top-level sidebar sessions \
-         the user can see, not on subagents. The usual shape is launch, then \
-         session_wait, then session_read. The browser tools drive Argmax's own browser: \
-         browser_open a page, browser_snapshot to read it as an accessibility tree with \
-         [ref=eN] handles, then click and type by ref. The user watches those pages in \
-         this session's pane. Snapshot first and after every action; screenshot only \
-         when the question is visual. An image you read lands in your context, not on \
-         the user's screen. To show them one, write a Markdown image on its own line — \
-         `![what it shows](path)` — naming a file in this checkout or a path Argmax \
-         handed you, such as a screenshot's `path`. Remote `http(s)` images are drawn as \
-         a link, not fetched. {}",
+        "{} Argmax runs this session. The session tools act on the top-level sidebar \
+         sessions the user can see, not on subagents; the usual shape is launch, then \
+         session_wait, then session_read. The browser tools drive Argmax's own browser, \
+         and the user watches those pages in this session's pane. An image you read \
+         lands in your context, not on the user's screen: to show them one, write a \
+         Markdown image on its own line — `![what it shows](path)` — naming a file in \
+         this checkout or a path Argmax handed you, such as a screenshot's `path`. \
+         Remote `http(s)` images are drawn as a link, not fetched. {}",
         historical_prompt_instruction(),
         PROJECT_SOURCES_INSTRUCTION
     )

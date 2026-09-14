@@ -576,6 +576,83 @@ describe("BrowserPanel", () => {
     }
   });
 
+  it("coalesces a resize burst and skips unchanged native bounds", async () => {
+    vi.useFakeTimers();
+    const bounds = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue(new DOMRect(800, 60, 400, 350));
+    let resized: (() => void) | undefined;
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback: () => void) { resized = callback; }
+      observe(): void {}
+      disconnect(): void {}
+    });
+    try {
+      const { unmount } = render(
+        <BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />
+      );
+      await act(async () => { await Promise.resolve(); });
+      browserStub.setBounds.mockClear();
+      bounds.mockClear();
+
+      for (let index = 0; index < 100; index += 1) {
+        bounds.mockReturnValue(new DOMRect(800, 60, 500 + index, 350));
+        fireEvent.resize(window);
+        resized?.();
+      }
+      expect(browserStub.setBounds).not.toHaveBeenCalled();
+      expect(bounds).not.toHaveBeenCalled();
+      await act(async () => { vi.advanceTimersToNextFrame(); await Promise.resolve(); });
+      expect(browserStub.setBounds).toHaveBeenCalledExactlyOnceWith({
+        tabId: activeTabId(), visible: true,
+        bounds: { x: 800, y: 60, width: 599, height: 350 }
+      });
+      expect(bounds).toHaveBeenCalledTimes(1);
+
+      fireEvent.resize(window);
+      resized?.();
+      await act(async () => { vi.advanceTimersToNextFrame(); await Promise.resolve(); });
+      expect(browserStub.setBounds).toHaveBeenCalledTimes(1);
+
+      // A queued frame must not show the native view after its owner leaves.
+      fireEvent.resize(window);
+      unmount();
+      browserStub.setBounds.mockClear();
+      await act(async () => { vi.advanceTimersToNextFrame(); await Promise.resolve(); });
+      expect(browserStub.setBounds).not.toHaveBeenCalled();
+    } finally {
+      cleanup();
+      bounds.mockRestore();
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+
+  it("retries unchanged bounds after a failed native update", async () => {
+    vi.useFakeTimers();
+    const bounds = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue(new DOMRect(800, 60, 400, 350));
+    try {
+      render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+      await act(async () => { await Promise.resolve(); });
+      browserStub.setBounds.mockClear();
+      browserStub.setBounds.mockRejectedValueOnce(new Error("native view unavailable"));
+      bounds.mockReturnValue(new DOMRect(800, 60, 500, 350));
+      fireEvent.resize(window);
+      await act(async () => { vi.advanceTimersToNextFrame(); await Promise.resolve(); });
+      fireEvent.resize(window);
+      await act(async () => { vi.advanceTimersToNextFrame(); await Promise.resolve(); });
+      expect(browserStub.setBounds).toHaveBeenCalledTimes(2);
+      expect(browserStub.setBounds).toHaveBeenLastCalledWith({
+        tabId: activeTabId(), visible: true,
+        bounds: { x: 800, y: 60, width: 500, height: 350 }
+      });
+    } finally {
+      cleanup();
+      bounds.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it("yields the native webview while the collapsed sidebar peeks", async () => {
     render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     await act(async () => {

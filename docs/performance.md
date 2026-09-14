@@ -269,6 +269,24 @@ source trees and re-fetches an older project or workspace after eviction.
 
 ## IPC Latency
 
+### Browser panel
+
+ResizeObserver and window-resize notifications share one bounds measurement per
+animation frame. Unchanged bounds skip the native call, while tab activation and
+overlay hiding remain immediate. The browser component tests exercise a burst
+of 100 resize events plus observer notifications: one measurement and native
+update, followed by no additional native update for unchanged geometry.
+
+Tab persistence runs after the interaction, coalesces changes, and excludes
+loading-only updates. Measured 2026-09-14 by running the previous and updated
+tab-store modules against an in-memory storage spy: a single burst of 100
+activation/title/loading updates across 1 / 10 / 30 tabs caused 299 / 390 / 370
+synchronous writes before, and zero synchronous writes plus one deferred write
+after. This isolates redundant serialization and write calls. It does not
+measure real disk latency, native tab-switch latency, or WebKit memory usage.
+
+### General bridge
+
 [src-tauri/src/util/ipc_latency.rs](../src-tauri/src/util/ipc_latency.rs) tracks latency histograms accessible in Settings → Diagnostics. Target p99 is < 100 ms.
 
 To prevent IPC bottlenecks:

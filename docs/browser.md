@@ -26,7 +26,7 @@ Focus still routes new open requests: a chat link or the menu item opens Browser
 - **Native WebViews:** [src-tauri/src/ipc/browser.rs](../src-tauri/src/ipc/browser.rs) creates one child webview per tab (`browser-<tabId>`) on the main window using Tauri's `Window::add_child` API (`unstable` cargo feature).
 - **Appearance:** Settings → Appearance → Browser theme stores `argmax.browser.theme.mode` separately from the app theme. `browser:set-theme` updates every live tab, and new tabs read the current process setting before their first paint. On macOS, [theme.rs](../src-tauri/src/browser/theme.rs) sets the child `WKWebView` appearance directly, so Light and Dark can differ from the surrounding Argmax window. System resolves the global macOS appearance instead of inheriting the app's override, then reapplies it to live tabs and popups when macOS appearance changes.
 - **Login popups:** `window.open` creates a native browser window using Tauri's `on_new_window` callback and the opener's webview configuration. This preserves the popup reference, `window.opener`, `postMessage`, and closure checks that popup authentication needs, including opening a blank window before assigning its login URL. Ordinary `target="_blank"` links and modified clicks in panel tabs still open panel tabs. Popups skip the inherited tab-strip shortcuts. On macOS, [popup.rs](../src-tauri/src/browser/popup.rs) adds WebKit's missing close callback to Wry's delegate class before a popup is requested, so JavaScript closure also removes its native window without changing the delegate during WebKit's new-page callback.
-- **Positioning:** The renderer measures `.browser-panel-surface` and calls `browser:set-bounds` for the active tab. Inactive tabs are hidden. The review panel's own resizer and side preference need no browser-specific handling — a ResizeObserver on the surface re-glues the webview whenever the panel's width changes.
+- **Positioning:** The renderer measures `.browser-panel-surface` and calls `browser:set-bounds` for the active tab. Inactive tabs are hidden. ResizeObserver and window-resize notifications share one measurement per animation frame, and unchanged bounds or visibility skip IPC. Tab switches, pane moves, and overlay visibility changes still synchronize immediately. Failed updates remain retryable, and unmounting cancels pending resize work before it can show the old surface again.
 
 ## Importing Chrome History
 
@@ -83,6 +83,15 @@ Nothing reorders until the drop lands. The press measures every tab's slot once,
 The drop rides the last stretch into the slot, then commits at the end of that ride — where the list's own layout already puts the tab, so the commit is invisible. Its length is the strip's own `--duration-fast`, read off the element: the CSS transition and the settle cannot drift, and "reduce motion", which zeroes that token, drops the tab into place at once. The transform transition hangs off the strip's `[data-dragging]` rather than off `.browser-tab`, so the render that commits takes the transitions away in the same breath as the transforms — left in the after-change style, every tab would animate from the slot it just left to the layout it is already sitting in.
 
 Order is the user's and it persists: `browserPanel.ts` writes each scope's strip to `localStorage`, so a carried tab keeps its place across a restart.
+
+Tab changes notify the UI immediately, but persistence waits for one idle callback
+(with a one-second timeout and a zero-delay timer fallback). The callback serializes
+the latest state once and skips the write if it matches the last saved snapshot.
+Loading, ownership, and group changes do not schedule a save because those fields
+are not persisted. Pending changes flush when the document becomes hidden or
+receives `pagehide`. This removes full-strip serialization from tab switching
+while preserving the existing restart format. An abrupt process termination can
+still lose changes queued since the last save.
 
 ## Agent Automation
 

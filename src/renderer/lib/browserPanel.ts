@@ -80,7 +80,7 @@ export function rememberBrowserUrl(url: string, scopeId: string): void {
   const state = ensureScope(scopeId);
   if (state.lastUrl === url) return;
   state.lastUrl = url;
-  persistTabs();
+  schedulePersistence();
 }
 
 // --- Surface ownership ------------------------------------------------------
@@ -166,6 +166,9 @@ let nextTabSeq = 1;
  *  materialized until its first activation recreates the webview. */
 const materializedTabs = new Set<string>();
 const tabListeners = new Set<() => void>();
+type PendingPersistence = { kind: "idle" | "timeout"; id: number };
+let pendingPersistence: PendingPersistence | null = null;
+let lastPersistedSnapshot: string | null = null;
 
 function emptyScope(): ScopeState {
   return { tabs: [], activeTabId: null, lastUrl: null, recentlyClosed: [] };
@@ -179,30 +182,67 @@ function ensureScope(scopeId: string): ScopeState {
   return created;
 }
 
-function persistTabs(): void {
-  if (typeof window === "undefined") return;
-  try {
-    const snapshot: Record<
-      string,
-      { activeTabId: string | null; lastUrl: string | null; tabs: Array<{ id: string; url: string; title: string | null }> }
-    > = {};
-    for (const [scopeId, state] of scopes) {
-      if (state.tabs.length === 0 && state.lastUrl === null) continue;
-      snapshot[scopeId] = {
-        activeTabId: state.activeTabId,
-        lastUrl: state.lastUrl,
-        tabs: state.tabs.map((tab) => ({ id: tab.id, url: tab.url, title: tab.title }))
-      };
+function serializeTabs(): string {
+  const snapshot: Record<
+    string,
+    {
+      activeTabId: string | null;
+      lastUrl: string | null;
+      tabs: Array<{ id: string; url: string; title: string | null }>;
     }
-    window.localStorage.setItem(
-      TABS_KEY,
-      JSON.stringify({
-        nextTabSeq,
-        scopes: snapshot
-      })
-    );
+  > = {};
+  for (const [scopeId, state] of scopes) {
+    if (state.tabs.length === 0 && state.lastUrl === null) continue;
+    snapshot[scopeId] = {
+      activeTabId: state.activeTabId,
+      lastUrl: state.lastUrl,
+      tabs: state.tabs.map((tab) => ({ id: tab.id, url: tab.url, title: tab.title }))
+    };
+  }
+  return JSON.stringify({ nextTabSeq, scopes: snapshot });
+}
+
+function persistTabsNow(): void {
+  if (typeof window === "undefined") return;
+  const serialized = serializeTabs();
+  if (serialized === lastPersistedSnapshot) return;
+  try {
+    window.localStorage.setItem(TABS_KEY, serialized);
+    lastPersistedSnapshot = serialized;
   } catch {
     // Tab restoration is a convenience, never an error.
+  }
+}
+
+function cancelPendingPersistence(): void {
+  if (typeof window === "undefined" || pendingPersistence === null) return;
+  if (pendingPersistence.kind === "idle") {
+    window.cancelIdleCallback(pendingPersistence.id);
+  } else {
+    window.clearTimeout(pendingPersistence.id);
+  }
+  pendingPersistence = null;
+}
+
+function flushPendingPersistence(): void {
+  if (pendingPersistence === null) return;
+  cancelPendingPersistence();
+  persistTabsNow();
+}
+
+function schedulePersistence(): void {
+  if (typeof window === "undefined" || pendingPersistence !== null) return;
+  const persist = () => {
+    pendingPersistence = null;
+    persistTabsNow();
+  };
+  if (typeof window.requestIdleCallback === "function") {
+    pendingPersistence = {
+      kind: "idle",
+      id: window.requestIdleCallback(persist, { timeout: 1_000 })
+    };
+  } else {
+    pendingPersistence = { kind: "timeout", id: window.setTimeout(persist, 0) };
   }
 }
 
@@ -264,6 +304,7 @@ function restoreTabs(): void {
     return;
   }
   if (typeof parsed !== "object" || parsed === null) return;
+  lastPersistedSnapshot = raw;
   const snapshot = parsed as {
     activeTabId?: unknown;
     nextTabSeq?: unknown;
@@ -290,8 +331,15 @@ function restoreTabs(): void {
 
 restoreTabs();
 
-function notifyTabListeners(): void {
-  persistTabs();
+if (typeof window !== "undefined" && typeof document !== "undefined") {
+  window.addEventListener("pagehide", flushPendingPersistence);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushPendingPersistence();
+  });
+}
+
+function notifyTabListeners(persist = true): void {
+  if (persist) schedulePersistence();
   for (const listener of tabListeners) listener();
 }
 
@@ -332,7 +380,7 @@ export function setBrowserTabLoading(id: string, loading: boolean): void {
   state.tabs = state.tabs.map((candidate) =>
     candidate.id === id ? { ...candidate, loading } : candidate
   );
-  notifyTabListeners();
+  notifyTabListeners(false);
 }
 
 export function subscribeBrowserTabs(listener: () => void): () => void {
@@ -426,8 +474,10 @@ export function removeBrowserTab(id: string): BrowserTab | null {
 
 /** Test-only: clears tabs, the id counter, and persisted state. */
 export function resetBrowserTabsForTests(): void {
+  cancelPendingPersistence();
   scopes.clear();
   nextTabSeq = 1;
+  lastPersistedSnapshot = null;
   materializedTabs.clear();
   registrySeen.clear();
   agentOpenRequest = null;
@@ -464,6 +514,21 @@ function tabsEqual(next: BrowserTab[], current: BrowserTab[]): boolean {
   );
 }
 
+function persistedTabsEqual(next: BrowserTab[], current: BrowserTab[]): boolean {
+  return (
+    next.length === current.length &&
+    next.every((tab, index) => {
+      const existing = current[index];
+      return (
+        existing !== undefined &&
+        existing.id === tab.id &&
+        existing.url === tab.url &&
+        existing.title === tab.title
+      );
+    })
+  );
+}
+
 function foldLiveTab(tab: BrowserTab, live: BrowserTabInfo): BrowserTab {
   return {
     ...tab,
@@ -480,6 +545,7 @@ function foldLiveTab(tab: BrowserTab, live: BrowserTabInfo): BrowserTab {
 export function applyBrowserTabs(incoming: readonly BrowserTabInfo[]): void {
   const byId = new Map(incoming.map((tab) => [tab.tabId, tab]));
   let changed = false;
+  let persistenceChanged = false;
 
   for (const state of scopes.values()) {
     const next: BrowserTab[] = [];
@@ -493,9 +559,11 @@ export function applyBrowserTabs(incoming: readonly BrowserTabInfo[]): void {
       }
     }
     if (!tabsEqual(next, state.tabs)) {
+      if (!persistedTabsEqual(next, state.tabs)) persistenceChanged = true;
       state.tabs = next;
       if (state.activeTabId !== null && !next.some((tab) => tab.id === state.activeTabId)) {
         state.activeTabId = next[0]?.id ?? null;
+        persistenceChanged = true;
       }
       changed = true;
     }
@@ -520,10 +588,11 @@ export function applyBrowserTabs(incoming: readonly BrowserTabInfo[]): void {
     if (state.activeTabId === null) state.activeTabId = tab.tabId;
     materializedTabs.add(tab.tabId);
     changed = true;
+    persistenceChanged = true;
   }
 
   for (const tab of incoming) registrySeen.add(tab.tabId);
-  if (changed) notifyTabListeners();
+  if (changed) notifyTabListeners(persistenceChanged);
 }
 
 // --- Agent-opened tabs ------------------------------------------------------

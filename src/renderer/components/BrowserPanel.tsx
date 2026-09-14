@@ -130,6 +130,7 @@ export function BrowserPanel({
   /** What the user typed, before ↑/↓ started swapping in suggestions. */
   const typedValueRef = useRef("");
   const overlayOpenRef = useRef(false);
+  const lastBoundsRef = useRef<{ tabId: string; bounds: BrowserBounds; visible: boolean } | null>(null);
   const tabs = useSyncExternalStore(subscribeBrowserTabs, () => getBrowserTabs(scopeId));
   const activeTabId = useSyncExternalStore(subscribeBrowserTabs, () => getActiveBrowserTabId(scopeId));
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
@@ -196,9 +197,19 @@ export function BrowserPanel({
     const bounds = measureBounds();
     if (!bounds) return;
     overlayOpenRef.current = overlaysSurface(bounds);
+    const visible = !overlayOpenRef.current;
+    const previous = lastBoundsRef.current;
+    if (previous?.tabId === tabId && previous.visible === visible &&
+      (!visible || (previous.bounds.x === bounds.x && previous.bounds.y === bounds.y &&
+        previous.bounds.width === bounds.width && previous.bounds.height === bounds.height))) return;
+    const next = { tabId, bounds, visible };
+    lastBoundsRef.current = next;
     void browser
-      .setBounds({ bounds, visible: !overlayOpenRef.current, tabId })
-      .catch(() => undefined);
+      .setBounds(next)
+      .catch(() => {
+        // A failed update must not prevent a later resize from trying again.
+        if (lastBoundsRef.current === next) lastBoundsRef.current = null;
+      });
   }, [browser, measureBounds, overlaysSurface, scopeId]);
 
   /** Create the tab's webview, or navigate + show it when it already exists. */
@@ -212,7 +223,10 @@ export function BrowserPanel({
         .open({ url: tab.url, bounds, tabId: tab.id })
         // browser:open always shows the webview; re-sync so an overlay that
         // is open right now (palette, dialog) stays on top of it.
-        .then(() => syncBounds())
+        .then(() => {
+          lastBoundsRef.current = null;
+          syncBounds();
+        })
         .catch((error: unknown) => {
           // Un-mark, or the tab is a zombie: every later command would hit a
           // webview label that was never created.
@@ -239,6 +253,7 @@ export function BrowserPanel({
   const hideTabWebview = useCallback(
     (tabId: string): void => {
       if (!browser) return;
+      lastBoundsRef.current = null;
       void browser
         .setBounds({ bounds: { x: 0, y: 0, width: 1, height: 1 }, visible: false, tabId })
         .catch(() => undefined);
@@ -453,12 +468,10 @@ export function BrowserPanel({
     () => () => {
       const tabId = getActiveBrowserTabId(scopeId);
       if (tabId) {
-        void window.argmax?.browser
-          .setBounds({ bounds: { x: 0, y: 0, width: 1, height: 1 }, visible: false, tabId })
-          .catch(() => undefined);
+        hideTabWebview(tabId);
       }
     },
-    [scopeId]
+    [hideTabWebview, scopeId]
   );
 
   // Keep the active native view glued to the placeholder.
@@ -466,12 +479,23 @@ export function BrowserPanel({
     const surface = surfaceRef.current;
     if (!surface) return;
     syncBounds();
-    const observer = new ResizeObserver(() => syncBounds());
+    // Window resize and ResizeObserver often report the same geometry. Read
+    // it once per frame, while tab switches and overlay changes stay immediate.
+    let frame: number | null = null;
+    const scheduleBounds = (): void => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        syncBounds();
+      });
+    };
+    const observer = new ResizeObserver(scheduleBounds);
     observer.observe(surface);
-    window.addEventListener("resize", syncBounds);
+    window.addEventListener("resize", scheduleBounds);
     return () => {
       observer.disconnect();
-      window.removeEventListener("resize", syncBounds);
+      window.removeEventListener("resize", scheduleBounds);
+      if (frame !== null) window.cancelAnimationFrame(frame);
     };
   }, [syncBounds, panePosition]);
 

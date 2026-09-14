@@ -161,8 +161,8 @@
   --activity-blue: #396696;
   --activity-green: #446c56;
   --activity-coral: #944b3e;
-  --activity-orange: #af5b00;
-  --activity-gold: #9a6a00;
+  --activity-orange: #b64800;
+  --activity-gold: #876f02;
   --activity-red: #c84151;
 
   /* Usage page series colours — one per provider, assigned by identity so a
@@ -566,8 +566,8 @@
   --activity-blue: #7ea6cf;
   --activity-green: #6dab86;
   --activity-coral: #d18e82;
-  --activity-orange: #e79647;
-  --activity-gold: #e7bb58;
+  --activity-orange: #ff8b44;
+  --activity-gold: #e9c338;
   --activity-red: #f0707f;
 
   /* Usage series, stepped for charcoal rather than flipped: same five hues,

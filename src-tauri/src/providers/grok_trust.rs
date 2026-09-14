@@ -96,7 +96,12 @@ pub fn release(folder: &Path) {
     let Some(grant) = held.get_mut(folder) else {
         return;
     };
-    grant.holders -= 1;
+    // A double release (two undo paths for one launch, or a launch that
+    // restores its scratch twice) must not underflow `holders`: `usize`
+    // wraps to `usize::MAX` on debug-off builds, which then never reaches
+    // zero and leaks the grant forever, or panics the whole process under
+    // this crate's `panic = "abort"` release profile.
+    grant.holders = grant.holders.saturating_sub(1);
     if grant.holders > 0 {
         return;
     }

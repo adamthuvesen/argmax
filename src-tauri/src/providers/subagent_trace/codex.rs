@@ -278,6 +278,11 @@ fn codex_trace_terminal_status(object: &Map<String, Value>) -> Option<&'static s
     {
         Some("task_complete") => Some("completed"),
         Some("turn_aborted") => Some("cancelled"),
+        // `reconcile.rs`'s `CODEX_TERMINAL_EVENTS` already treats this as
+        // terminal; without it here, a child that ends this way is invisible
+        // to `codex_trace_ended`, so `codex_children_still_working` keeps
+        // naming it live until `CODEX_CHILD_SILENCE` elapses.
+        Some("shutdown_complete") => Some("completed"),
         _ => None,
     }
 }

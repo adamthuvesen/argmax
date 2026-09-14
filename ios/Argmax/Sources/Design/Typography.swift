@@ -416,9 +416,4 @@ extension View {
     func typeChip() -> some View {
         typeStyle(.caption2, weight: .semibold)
     }
-
-    /// Under a title in the header: project · state.
-    func typeSubtitle() -> some View {
-        typeStyle(.caption2, ink: Theme.muted)
-    }
 }

@@ -58,13 +58,23 @@ final class TranscriptUITests: XCTestCase {
         XCTAssertTrue(more.waitForExistence(timeout: 10))
         XCTAssertEqual(app.buttons.matching(identifier: "Show more").count, 1)
         XCTAssertTrue(more.isHittable)
-        XCTAssertFalse(app.staticTexts["Short prompt"].isHittable)
         XCTAssertEqual(more.value as? String, "Collapsed")
+        // Collapsed means the bubble is capped, so measure the cap. Asserting
+        // that an earlier message had been pushed off-view tested the
+        // simulator's height instead: on a tall phone the capped bubble and
+        // its reply no longer fill the screen, and "Short prompt" stays in
+        // view with nothing wrong.
+        let bubble = app.staticTexts
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "A long pasted prompt"))
+            .firstMatch
+        XCTAssertTrue(bubble.waitForExistence(timeout: 5))
+        let collapsedHeight = bubble.frame.height
         screenshot("user-bubble-collapsed")
         more.tap()
         let less = app.buttons["Show less"]
         XCTAssertTrue(less.waitForExistence(timeout: 5))
         XCTAssertEqual(less.value as? String, "Expanded")
+        XCTAssertGreaterThan(bubble.frame.height, collapsedHeight)
         let scroll = app.scrollViews["native-transcript"]
         for _ in 0..<6 where !less.isHittable { scroll.swipeUp() }
         XCTAssertTrue(less.isHittable)

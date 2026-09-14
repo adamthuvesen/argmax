@@ -23,39 +23,28 @@ enum WorkspaceImage {
 struct WorkspaceImageView: View {
     let absolutePath: String
     let client: BridgeClient
+    var revision = ""
 
     @State private var image: UIImage?
     @State private var failure: String?
-    /// Fit, until you ask for 1:1. A sprite sheet in a column this narrow is
-    /// unreadable fitted, and unreachable without a way back out — so the tap
-    /// toggles rather than zooming into a gesture you have to undo.
-    var revision = ""
-
-    @State private var actualSize = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Group {
             if let image {
-                ScrollView([.horizontal, .vertical]) {
+                // The same canvas the transcript's full-screen image uses, so
+                // a PNG reached through Review pinches and pans like one
+                // reached from a chat. A fit written as `.aspectRatio(.fit)`
+                // inside a two-axis ScrollView does not fit: the scroll view
+                // proposes unbounded width, `maxWidth: .infinity` resolves
+                // against it, and the image falls back to its intrinsic size —
+                // 1280pt of screenshot in a 402pt phone, with scrolling turned
+                // off in exactly that state. The canvas measures the viewport
+                // first, which is what makes "fit" mean anything.
+                TranscriptRichZoomCanvas {
                     Image(uiImage: image)
-                        .resizable()
                         .interpolation(.high)
-                        .aspectRatio(contentMode: actualSize ? .fill : .fit)
-                        .frame(
-                            maxWidth: actualSize ? image.size.width : .infinity,
-                            maxHeight: actualSize ? image.size.height : .infinity
-                        )
-                        .onTapGesture {
-                            Haptics.selection()
-                            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
-                                actualSize.toggle()
-                            }
-                        }
-                        .accessibilityLabel(actualSize ? "Image, actual size" : "Image, fitted")
-                        .accessibilityHint("Double tap to switch size")
+                        .accessibilityLabel("Image")
                 }
-                .scrollDisabled(!actualSize)
             } else if let failure {
                 EmptyState(mark: .glyph("photo"), message: failure)
             } else {

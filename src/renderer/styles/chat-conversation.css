@@ -1201,6 +1201,33 @@
   object-fit: contain;
 }
 
+/* The image is wrapped in a button so clicking it opens the lightbox. The
+   button carries the rhythm the image used to and adds nothing else: no fill,
+   no padding, no border of its own. */
+.markdown-image-button {
+  display: block;
+  max-width: 100%;
+  margin: 18px 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
+
+.markdown-image-button .markdown-image {
+  margin: 0;
+}
+
+.markdown-image-button:hover .markdown-image {
+  border-color: var(--line-strong);
+}
+
+.markdown-image-button:focus-visible {
+  outline: none;
+  border-radius: var(--radius-md);
+  box-shadow: var(--ring);
+}
+
 .markdown-image-fallback {
   color: var(--muted);
 }

@@ -154,15 +154,33 @@
   --session-icon-pink: #c4527d;
   --session-icon-red: #c84151;
 
-  /* Stable transcript activity hues. These borrow the named accent palette
-     without following the user's selected accent, so a color keeps the same
-     meaning in every chat. Gold is reserved for skill activation. */
-  --activity-purple: #70558f;
-  --activity-blue: #396696;
-  --activity-green: #446c56;
-  --activity-coral: #944b3e;
-  --activity-gold: #876f02;
-  --activity-red: #c84151;
+  /* Stable transcript activity hues, so a color keeps the same meaning in
+     every chat rather than following the user's selected accent. Gold is
+     reserved for skill activation.
+
+     These started as the named accent palette's own values and have since
+     been tuned for paper: an accent fills a bubble, while an activity mark
+     is a 1.5px stroke, and antialiasing against a near-white ground pulls a
+     thin dark stroke back toward the grey axis. Chroma is what survives
+     that, so each hue spends most of what sRGB has at its lightness — green
+     ran at half its available chroma and was the most common mark in the
+     ledger. Gold is the exception: at the old hue 94 it was a yellow-green
+     with no chroma left below L 0.55, so it read as dirt rather than gold.
+     Gold is the exception twice over. Yellow's chroma lives at high
+     lightness, so a gold dark enough for 4.5:1 on paper is olive however
+     the hue is tuned -- it reads as dirt because at that lightness it is
+     dirt. These tokens only ever colour `.tool-activity-icon`, never text,
+     so the bar that applies is WCAG 1.4.11's 3:1 for graphical objects,
+     not 4.5:1. Gold takes hue 60 at L 0.62 and 3.7:1, which leaves it a
+     real amber with margin over that floor; the other five clear 4.5:1
+     anyway. `accentTokens.test.ts` pins the 3:1 floor on --bg and --panel.
+     Dark is untouched: light tints on charcoal already read as colour. */
+  --activity-purple: #7449a8;
+  --activity-blue: #1c65a9;
+  --activity-green: #1b7249;
+  --activity-coral: #a73924;
+  --activity-gold: #c16f16;
+  --activity-red: #c72e43;
 
   /* Usage page series colours — one per provider, assigned by identity so a
      window that reorders the rows never repaints them. Chosen against --bg

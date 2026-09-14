@@ -209,20 +209,15 @@ struct ReviewPreviewFrame<Content: View>: View {
     .preferredColorScheme(.light)
 }
 
-/// What the review screen actually shows once a file is open: the tab says
+/// What the review screen actually shows once a file is open: the header says
 /// which file this is, so the viewer under it is code and nothing else.
-#Preview("Diff · in the tab strip") {
+#Preview("Diff · under the review header") {
     let detail = ReviewDetail.diff(workspaceID: "preview", path: ".gitattributes", scope: .branch)
     return ReviewPreviewFrame {
         VStack(spacing: 0) {
-            ReviewFileTabs(
-                details: [detail],
-                active: detail,
-                onSelect: { _ in },
-                onClose: { _ in },
-                onShowList: {},
-                trailing: { ReviewContextButton {} }
-            )
+            ScreenHeader(title: detail.fileName, subtitle: detail.pathAndKind, onBack: {}) {
+                ReviewContextButton {}
+            }
             DiffScreen(path: ".gitattributes", blocks: previewDiffBlocks, chrome: .embedded)
         }
     }

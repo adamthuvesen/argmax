@@ -72,22 +72,22 @@ final class TranscriptToolIconTests: XCTestCase {
         }
 
         // Looked at the project: reads, listings, and git share one colour.
-        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .read), style: .light), [68, 108, 86])
-        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .list), style: .light), [68, 108, 86])
-        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .git), style: .light), [68, 108, 86])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .read), style: .light), [27, 114, 73])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .list), style: .light), [27, 114, 73])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .git), style: .light), [27, 114, 73])
         // Went looking, in the files or on the web.
-        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .search), style: .light), [112, 85, 143])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .search), style: .light), [116, 73, 168])
         XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .webSearch), style: .dark), [173, 148, 208])
         XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .browser), style: .dark), [173, 148, 208])
         // The agent's own machinery shares blue with the fallback below.
-        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .skill), style: .light), [57, 102, 150])
-        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .plan), style: .light), [57, 102, 150])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .skill), style: .light), [28, 101, 169])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .plan), style: .light), [28, 101, 169])
         XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .agentWait), style: .dark), [126, 166, 207])
         // Ran a command, in gold.
         XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .command), style: .dark), [233, 195, 56])
-        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .computer), style: .light), [135, 111, 2])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .computer), style: .light), [193, 111, 22])
         // Changed a file.
-        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .edit), style: .light), [148, 75, 62])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .edit), style: .light), [167, 57, 36])
         // Nothing named it: the same blue.
         XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .image), style: .dark), [126, 166, 207])
         XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .tool), style: .dark), [126, 166, 207])
@@ -98,7 +98,7 @@ final class TranscriptToolIconTests: XCTestCase {
         // A delete is a file change, not a failure.
         XCTAssertEqual(
             components(TranscriptToolIcon.uiColor(for: .edit), style: .light),
-            [148, 75, 62]
+            [167, 57, 36]
         )
         XCTAssertEqual(
             components(TranscriptToolIcon.uiColor(for: .edit, colorMode: .monochrome), style: .light),
@@ -149,7 +149,7 @@ final class TranscriptToolIconTests: XCTestCase {
 
     func testEveryGeneratedKeyHasARealNamespacedAsset() throws {
         let names = TranscriptToolIcon.generatedAssetNames
-        XCTAssertEqual(names.count, 15)
+        XCTAssertEqual(names.count, 16)
         XCTAssertEqual(Set(names).count, names.count)
         for name in names {
             let image = try XCTUnwrap(UIImage(named: name), "\(name) is missing from Assets.xcassets")

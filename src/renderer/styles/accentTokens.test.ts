@@ -51,13 +51,20 @@ function fontWeight(rule: string): number {
 }
 
 describe("CSS contracts that cannot be exercised in jsdom", () => {
-  it("keeps the stable activity palette readable on transcript surfaces", () => {
+  // These tokens only ever colour `.tool-activity-icon` — a glyph, never a
+  // run of text — so the bar is WCAG 1.4.11's 3:1 for graphical objects
+  // rather than 4.5:1. The distinction is not pedantry: yellow's chroma
+  // lives at high lightness, so a gold dark enough for 4.5:1 on paper is an
+  // olive whatever hue it is given, and holding text's floor here is what
+  // kept the command mark looking like dirt. The other five clear 4.5:1
+  // anyway, and dark clears it on all six.
+  it("keeps the stable activity palette legible on transcript surfaces", () => {
     const tokens = readSource("src/renderer/styles/tokens.css");
     for (const theme of ["light", "dark"]) {
       const base = cssRuleBody(tokens, theme === "dark" ? ':root[data-theme="dark"]' : ":root");
       for (const activity of ["purple", "blue", "green", "coral", "gold", "red"]) {
         for (const surface of ["bg", "panel"]) {
-          expect(contrast(readHex(base, `activity-${activity}`), readHex(base, surface))).toBeGreaterThanOrEqual(4.5);
+          expect(contrast(readHex(base, `activity-${activity}`), readHex(base, surface))).toBeGreaterThanOrEqual(3);
         }
       }
     }

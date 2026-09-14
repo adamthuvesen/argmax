@@ -7,7 +7,9 @@ struct TranscriptMessageRow: View {
     @EnvironmentObject private var appearance: Appearance
     @Environment(\.accentTint) private var accent
     @ScaledMetric(relativeTo: .body) private var previewHeight = 6 * 1.68 * 17.0
+    @ScaledMetric(relativeTo: .body) private var menuPreviewHeight = 10 * 1.68 * 17.0
     @State private var contentHeight: CGFloat = 0
+    @State private var rowSize: CGSize = .zero
     @State private var expanded = false
 
     var body: some View {
@@ -70,21 +72,37 @@ struct TranscriptMessageRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.leading, message.role == .user ? 24 : 0)
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { rowSize = $0 }
         .contextMenu {
             Button("Copy message", systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = message.text
             }
             ShareLink(item: message.text)
         } preview: {
-            // The automatic snapshot scales an entire long answer into the
-            // menu and preserves its transparent background over other rows.
-            Text(message.text)
-                .typeStyle(.body)
-                .lineLimit(8)
-                .multilineTextAlignment(.leading)
-                .frame(width: 280, alignment: .leading)
+            // The automatic snapshot lifts the whole answer, transparent, over
+            // the rows behind it, and a `Text` of the same source shows its
+            // Markdown delimiters and cuts mid-token. This is the message as
+            // the row drew it, in the row's own column, ending in the fade a
+            // collapsed prompt already uses.
+            TranscriptMarkdown(text: message.text, client: client)
+                .frame(width: max(rowSize.width - 2 * Spacing.row, 240), alignment: .topLeading)
+                // Before the height cap, or the stack pays for it by
+                // truncating every paragraph in the answer to one line.
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxHeight: menuPreviewHeight, alignment: .top)
+                .mask {
+                    if rowSize.height > menuPreviewHeight {
+                        VStack(spacing: 0) {
+                            Rectangle()
+                            LinearGradient(colors: [.black, .clear],
+                                           startPoint: .top, endPoint: .bottom)
+                                .frame(height: 26)
+                        }
+                    } else {
+                        Rectangle()
+                    }
+                }
                 .padding(Spacing.row)
-                .foregroundStyle(Theme.ink)
                 .background(Theme.raised)
                 .clipShape(RoundedRectangle(cornerRadius: Radius.card))
         }

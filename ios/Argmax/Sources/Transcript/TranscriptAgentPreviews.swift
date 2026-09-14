@@ -89,6 +89,27 @@ let previewDelegatedAgentActivity: [TranscriptItem] = [
         """)
 ]
 
+/// The long final answer a review agent signs off with: the shape whose
+/// long-press preview clipped its Markdown source mid-word.
+@MainActor
+let previewLongAgentAnswer: TranscriptItem = previewAgentMessage("answer-final", """
+    Confirmed: no diffs on those non-owned/read-only files \u{2014} mutation tests were \
+    fully reverted. Final summary:
+
+    **Done:**
+
+    - **Task 1** \u{2014} `applications/alfred/notifications.ts` now routes the completion \
+    notice through the shared formatter, so the banner no longer carries Markdown \
+    delimiters into the notification centre.
+    - **Task 2** \u{2014} the attachment strip renders outside the text bubble, which \
+    keeps a single image from inheriting the bubble padding.
+    - **Task 3** \u{2014} added a regression test over the formatter so a future \
+    change cannot reintroduce the delimiters.
+
+    **Not done:** the wider review of the notification path, which needs a host \
+    build with shared read-state support before it can be checked end to end.
+    """)
+
 @MainActor
 private func previewAgentDetail(_ items: [TranscriptItem]) -> some View {
     TranscriptAgentDetail(

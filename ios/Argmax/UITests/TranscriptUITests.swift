@@ -50,6 +50,31 @@ final class TranscriptUITests: XCTestCase {
         XCTAssertTrue(pasted.contains("| Read | Write |"))
     }
 
+    func testAgentSheetCopyMenuKeepsTheSheetOnScreen() {
+        app.terminate()
+        // Dark, because the light platter is covered by the transcript's own
+        // long-message test and this is the surface the fade reads worst on.
+        app.launchArguments += ["-scenario-agent-sheet", "-scenario-dark"]
+        app.launch()
+        let row = app.buttons["Open agent: Shannon, Completed"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.tap()
+        let answer = app.staticTexts.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Confirmed: no diffs")
+        ).firstMatch
+        XCTAssertTrue(answer.waitForExistence(timeout: 10))
+        let sheet = app.scrollViews.element(boundBy: app.scrollViews.count - 1)
+        sheet.swipeUp()
+        sheet.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 1)
+        let copy = app.buttons["Copy message"]
+        XCTAssertTrue(copy.waitForExistence(timeout: 5))
+        screenshot("agent-sheet-copy-menu")
+        let source = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "**"))
+        XCTAssertEqual(source.count, 0, "The menu preview shows Markdown source, not the message")
+        copy.tap()
+        XCTAssertTrue(answer.waitForExistence(timeout: 5))
+    }
+
     func testLongUserBubbleExpandsAndCollapses() {
         app.terminate()
         app.launchArguments.append("-scenario-user-bubble")

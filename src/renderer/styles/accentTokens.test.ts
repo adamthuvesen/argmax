@@ -334,8 +334,18 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
       readSource("src/renderer/styles/chat-conversation.css"),
       ".conversation-list"
     );
-    expect(conversation).toContain("overflow-y: auto;");
+    // `auto` is the bug: WebKit only applies `scrollbar-gutter` once the
+    // scrollbar exists, so the reservation arrives one state too late and the
+    // column jumps every time a disclosure crosses the overflow boundary.
+    expect(conversation).toContain("overflow-y: scroll;");
     expect(conversation).toContain("scrollbar-gutter: stable both-edges;");
+
+    const agents = cssRuleBody(
+      readSource("src/renderer/styles/chat-conversation.css"),
+      ".agent-activity-scroll"
+    );
+    expect(agents).toContain("overflow-y: scroll;");
+    expect(agents).toContain("scrollbar-gutter: stable both-edges;");
   });
 
   it("gates the workspace card on a gutter that actually fits it, per chat width", () => {

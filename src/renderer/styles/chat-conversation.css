@@ -685,7 +685,10 @@
 
 .agent-activity-scroll {
   min-height: 0;
-  overflow: auto;
+  /* Same centred column, same defect, same fix as `.conversation-list`. */
+  overflow-x: auto;
+  overflow-y: scroll;
+  scrollbar-gutter: stable both-edges;
   overflow-anchor: none;
   overscroll-behavior-y: contain;
 }
@@ -994,14 +997,22 @@
      it scroll sideways (a markdown table before `.markdown-table-scroll` boxed
      it) doesn't widen the reading column — it just makes every message drift
      under the thumb. Wide blocks own their own sideways scroller instead. */
-  overflow-y: auto;
+  /* `scroll`, not `auto`, and that is the whole fix for the drifting activity
+     marks. Tool and Thought disclosures take the transcript back and forth
+     across the vertical overflow boundary, the app's `::-webkit-scrollbar`
+     rule makes every scrollbar a 10px classic one, and this scroller's
+     centered padding resolves against whatever content box is left — so each
+     crossing slid every mark sideways. `scrollbar-gutter` does not cover it:
+     WebKit only honours the gutter on a scroller that already *has* a
+     scrollbar, which is exactly the state that never needed reserving
+     (measured in WKWebView: `auto` + `stable both-edges` gives the content box
+     x=10 w=380 while overflowing and x=0 w=400 while not — a 20px jump).
+     `overflow-y: scroll` reserves the track in both states and paints no thumb
+     until there is something to scroll, so nothing moves and nothing shows.
+     `both-edges` then mirrors the reservation so the column stays centred
+     rather than sitting permanently 5px left of the composer's. */
+  overflow-y: scroll;
   overflow-x: hidden;
-  /* Tool and Thought disclosures can take the transcript across the vertical
-     overflow boundary. The global WebKit scrollbar is 10px wide, and this
-     scroller's centered padding resolves against the remaining content box,
-     so an auto gutter moved every activity mark 5px left when it appeared.
-     Reserve the gutter in both states and mirror it on the inline-start edge:
-     one stable edge alone would keep the shift, only permanently. */
   scrollbar-gutter: stable both-edges;
   /* One controller owns following and preserving the reading position. */
   overflow-anchor: none;

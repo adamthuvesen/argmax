@@ -18,6 +18,12 @@ final class TranscriptStore: ObservableObject {
     @Published private(set) var thinkingStart: TranscriptThinking?
     private var thinkingBaseline: Set<String> = []
 
+    #if DEBUG
+    /// Simulator-scenario seam: the delegated-work sheet's child activity,
+    /// which a scenario has no socket to ask a host for.
+    var previewAgentItems: [TranscriptItem]?
+    #endif
+
     func beginThinking() -> TranscriptThinking {
         let start = TranscriptThinking(id: UUID().uuidString,
                                        startedAt: ISO8601DateFormatter.withMilliseconds.string(from: Date()))
@@ -351,6 +357,9 @@ final class TranscriptStore: ObservableObject {
     /// parent transcript on screen.
     func loadAgentEvents(for agent: TranscriptAgent) async throws -> [TranscriptItem] {
         let workspacePath = workspacePath
+        #if DEBUG
+        if let previewAgentItems { return previewAgentItems }
+        #endif
         let page = try await client.transcriptAgentEvents(agent)
         return TranscriptProjection.project(
             events: page.events,

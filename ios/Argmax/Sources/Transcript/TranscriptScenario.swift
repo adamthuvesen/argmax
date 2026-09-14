@@ -109,6 +109,39 @@ private final class TranscriptScenarioState: ObservableObject {
                 event(2, type: "message.completed", text: answer)
             ]), metadata: metadata)
         }
+        if ProcessInfo.processInfo.arguments.contains("-scenario-agent-sheet") {
+            transcript.previewAgentItems = previewDelegatedAgentActivity + [previewLongAgentAnswer]
+            transcript.preview(page: page([
+                event(1, type: "user.message", text: "Delegate the review"),
+                agentEvent(2, completed: false),
+                agentEvent(3, completed: true),
+                event(4, type: "message.completed", text: "The delegated review is in.")
+            ]), metadata: metadata)
+        }
+    }
+
+    /// One completed delegated run, so the scenario can open the sheet the
+    /// long-press menu lives in.
+    private func agentEvent(_ index: Int, completed: Bool) -> TranscriptEvent {
+        var payload: [String: TranscriptJSONValue] = [
+            completed ? "tool_use_id" : "id": .string("toolu-agent"),
+            "agentCodename": .string("Shannon")
+        ]
+        if completed {
+            payload["output"] = .string("Completed")
+        } else {
+            payload["name"] = .string("Task")
+            payload["input"] = .object(["prompt": .string("Review the spacing in the subagent sheet.")])
+        }
+        return TranscriptEvent(
+            id: "agent-\(completed ? "end" : "start")",
+            sessionId: "s-scenario",
+            type: completed ? "command.completed" : "command.started",
+            message: "Task",
+            payload: .object(payload),
+            createdAt: String(format: "2026-01-01T00:01:%02d.000Z", index),
+            rowCursor: Int64(index)
+        )
     }
 
     /// Provider-neutral activity metadata rendered through the production

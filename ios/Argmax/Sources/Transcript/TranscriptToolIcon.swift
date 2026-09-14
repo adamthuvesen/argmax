@@ -102,24 +102,32 @@ struct TranscriptToolIcon: View {
 
     static func uiColor(
         for kind: TranscriptToolActivityKind,
-        operation: TranscriptToolActivityOperation? = nil,
         state: TranscriptToolActivityState? = nil,
         colorMode: ActivityIconColorMode = .color
     ) -> UIColor {
         guard colorMode == .color else { return Theme.mutedColor }
-        if state == .failed || state == .cancelled || operation == .delete || kind == .agentStop {
+        // A delete is a file change, not a failure, so red stays the mark of
+        // work that did not finish.
+        if state == .failed || state == .cancelled || kind == .agentStop {
             return Theme.activityRedColor
         }
+        // Mirrors tool-activity.css: one sayable family per colour, with blue
+        // as the fallback for rows nothing else named.
         switch kind {
-        case .read, .search, .list, .webSearch, .webFetch, .browser:
-            return Theme.activityBlueColor
+        // Changed a file.
         case .edit: return Theme.activityCoralColor
-        case .git: return Theme.activityGreenColor
-        case .command, .computer: return Theme.activityOrangeColor
-        case .skill: return Theme.activityGoldColor
-        case .image, .discovery, .tool, .agent, .imageCapture, .imageGenerate,
-             .agentMessage, .agentWait, .memoryRecall, .memorySave, .plan:
+        // Looked at the project, without changing it.
+        case .read, .list, .git: return Theme.activityGreenColor
+        // Went looking for something, in the files or on the web.
+        case .search, .discovery, .webSearch, .webFetch, .browser:
             return Theme.activityPurpleColor
+        // The agent's own machinery rather than the repo.
+        case .skill, .plan, .memoryRecall, .memorySave, .agent, .agentMessage, .agentWait:
+            return Theme.activityGoldColor
+        // Ran a command, including work we could not identify.
+        case .command, .computer: return Theme.activityOrangeColor
+        case .image, .tool, .imageCapture, .imageGenerate:
+            return Theme.activityBlueColor
         case .agentStop: return Theme.activityRedColor
         }
     }
@@ -129,12 +137,7 @@ struct TranscriptToolIcon: View {
         state: TranscriptToolActivityState? = nil,
         colorMode: ActivityIconColorMode = .color
     ) -> UIColor {
-        uiColor(
-            for: activity.kind,
-            operation: activity.operation,
-            state: state,
-            colorMode: colorMode
-        )
+        uiColor(for: activity.kind, state: state, colorMode: colorMode)
     }
 
     /// Used by the asset-integrity test so adding an exported mark cannot fail

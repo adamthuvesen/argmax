@@ -63,22 +63,59 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     }
   });
 
+  // One family per colour, each sayable in a phrase. Blue is deliberately
+  // absent: it is the fallback for rows nothing named, so a kind landing there
+  // is a gap in the legend rather than a choice.
+  const ACTIVITY_FAMILIES: Record<string, string[]> = {
+    coral: ["edit"],
+    green: ["read", "list", "git"],
+    purple: ["search", "discovery", "web-search", "web-fetch", "browser"],
+    gold: ["skill", "plan", "memory-recall", "memory-save", "agent", "agent-message", "agent-wait"],
+    orange: ["command", "computer"]
+  };
+
   it("maps transcript activities to their stable semantic colors", () => {
     const styles = readSource("src/renderer/styles/tool-activity.css");
     const colorFor = (activity: string): string => {
       const rule = styles.split("}").find((block) => block.includes(`[data-activity="${activity}"]`));
       const match = /color:\s*var\(--activity-(?<color>[a-z]+)\)/.exec(rule ?? "");
-      expect(match?.groups?.color).toBeDefined();
+      expect(match?.groups?.color, activity).toBeDefined();
       return match?.groups?.color ?? "";
     };
 
-    for (const activity of ["read", "search", "list", "web-search", "web-fetch", "browser"]) {
-      expect(colorFor(activity)).toBe("blue");
+    for (const [color, activities] of Object.entries(ACTIVITY_FAMILIES)) {
+      for (const activity of activities) expect(colorFor(activity), activity).toBe(color);
     }
-    expect(colorFor("edit")).toBe("coral");
-    expect(colorFor("git")).toBe("green");
-    for (const activity of ["command", "computer"]) expect(colorFor(activity)).toBe("orange");
-    expect(colorFor("skill")).toBe("gold");
+
+    const fallback = /\.tool-activity-icon\s*\{[^}]*color:\s*var\(--activity-(?<color>[a-z]+)\)/.exec(styles);
+    expect(fallback?.groups?.color).toBe("blue");
+  });
+
+  // The two surfaces are one legend, and nothing else makes them move together.
+  it("gives the iPhone the same activity colors as the desktop", () => {
+    const swift = readSource("ios/Argmax/Sources/Transcript/TranscriptToolIcon.swift");
+    // Anchored on the colour function: the file switches over the same kinds
+    // earlier to pick each icon's SF Symbol.
+    const body = /guard colorMode == \.color.*?switch kind \{(?<cases>.*?)\n {4}\}/s
+      .exec(swift)?.groups?.cases ?? "";
+    expect(body).not.toBe("");
+
+    const colors = new Map<string, string>();
+    for (const match of body.matchAll(/case (?<kinds>[^:]+):\s*(?:\n\s*)?return Theme\.activity(?<color>\w+)Color/g)) {
+      const color = (match.groups?.color ?? "").toLowerCase();
+      for (const kind of (match.groups?.kinds ?? "").split(",")) {
+        colors.set(kind.trim().replace(/^\./, ""), color);
+      }
+    }
+
+    const camel = (activity: string): string =>
+      activity.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
+    for (const [color, activities] of Object.entries(ACTIVITY_FAMILIES)) {
+      for (const activity of activities) expect(colors.get(camel(activity)), activity).toBe(color);
+    }
+    expect(colors.get("image")).toBe("blue");
+    expect(colors.get("tool")).toBe("blue");
+    expect(colors.get("agentStop")).toBe("red");
   });
 
   it.each(["teal", "purple", "orange", "blue", "coral"])("keeps %s highlights and bubbles readable in both themes", (accent) => {

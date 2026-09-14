@@ -1,36 +1,61 @@
+/* Each colour is one sayable family, so a glance down the transcript reads as
+   a legend rather than as decoration. Blue is the fallback: a row lands there
+   when nothing named it, which is also why it must not carry a family of its
+   own. The iPhone mirrors this in TranscriptToolIcon.uiColor. */
 .tool-activity-icon {
   flex: 0 0 auto;
-  color: var(--activity-purple);
+  color: var(--activity-blue);
   animation: none;
   transition: none;
   transform: none;
 }
 
+/* Changed a file. A delete is a file change, not a failure, so it keeps this
+   colour and leaves red to failed and cancelled work. */
 .tool-activity-icon[data-activity="edit"] {
   color: var(--activity-coral);
 }
 
+/* Looked at the project. Reading a file and running `git diff` are the same
+   act — inspecting without changing — and the classifier already ranks git
+   alongside reads when it picks a mixed row's identity. */
 .tool-activity-icon:is(
   [data-activity="read"],
-  [data-activity="search"],
   [data-activity="list"],
+  [data-activity="git"]
+) {
+  color: var(--activity-green);
+}
+
+/* Went looking for something. `grep` and a web search are one verb, so the
+   browser and web kinds sit here instead of needing a colour for "internet". */
+.tool-activity-icon:is(
+  [data-activity="search"],
+  [data-activity="discovery"],
   [data-activity="web-search"],
   [data-activity="web-fetch"],
   [data-activity="browser"]
 ) {
-  color: var(--activity-blue);
+  color: var(--activity-purple);
 }
 
-.tool-activity-icon[data-activity="git"] {
-  color: var(--activity-green);
+/* The agent's own machinery: organizing itself rather than touching the repo. */
+.tool-activity-icon:is(
+  [data-activity="skill"],
+  [data-activity="plan"],
+  [data-activity="memory-recall"],
+  [data-activity="memory-save"],
+  [data-activity="agent"],
+  [data-activity="agent-message"],
+  [data-activity="agent-wait"]
+) {
+  color: var(--activity-gold);
 }
 
+/* Ran a command. This is also the bucket for work we could not identify, so
+   it stays a colour of its own and shrinks as the classifier improves. */
 .tool-activity-icon:is([data-activity="command"], [data-activity="computer"]) {
   color: var(--activity-orange);
-}
-
-.tool-activity-icon[data-activity="skill"] {
-  color: var(--activity-gold);
 }
 
 .tool-activity-icon[data-tone="danger"] {

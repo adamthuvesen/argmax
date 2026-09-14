@@ -85,7 +85,7 @@ describe("ToolCallRow", () => {
     expect(icon).not.toHaveAttribute("data-tone");
   });
 
-  it("marks failed and destructive built-in activity as danger", () => {
+  it("marks failed activity as danger and leaves a delete a file change", () => {
     const { container, rerender } = render(<ToolCallRow tool={tool({
       status: "error",
       activity: { version: 1, kind: "command", evidence: "native", targets: [] }
@@ -93,6 +93,7 @@ describe("ToolCallRow", () => {
 
     expect(container.querySelector(".tool-activity-icon")).toHaveAttribute("data-tone", "danger");
 
+    // Red marks work that did not finish. A delete finished.
     rerender(<ToolCallRow tool={tool({
       activity: {
         version: 1,
@@ -103,7 +104,7 @@ describe("ToolCallRow", () => {
       }
     })} />);
 
-    expect(container.querySelector(".tool-activity-icon")).toHaveAttribute("data-tone", "danger");
+    expect(container.querySelector(".tool-activity-icon")).not.toHaveAttribute("data-tone");
   });
 
   it("does not offer a disclosure when expanding would show nothing", () => {

@@ -327,9 +327,9 @@ function ToolCallGroupBubbleInner({
         />
       );
   const activityStatus = activityIsLive ? "running" : summary.status;
+  // A delete is a file change, not a failure; see ToolCallRow.
   const iconIsDanger = activityStatus === "error"
     || firstTool?.cancelled === true
-    || firstTool?.activity?.operation === "delete"
     || summary.iconKind === "agent-stop";
 
   // A thought already owns its disclosure. Only tool work needs an outer one.

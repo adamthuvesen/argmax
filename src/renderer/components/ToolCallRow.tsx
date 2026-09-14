@@ -91,9 +91,10 @@ function ToolCallRowInner({
   const mcpServer = parseMcpToolName(tool.name)?.server ?? null;
   const iconServer = tool.activity?.kind === "computer" ? null : mcpServer ?? commandIconServer(tool);
   const iconKind = tool.activity?.kind ?? "tool";
+  // A delete is a file change, not a failure: it keeps the edit colour so red
+  // stays the mark of work that did not finish.
   const iconIsDanger = tool.status === "error"
     || tool.cancelled === true
-    || tool.activity?.operation === "delete"
     || iconKind === "agent-stop";
   const hasLeadingContent = Boolean(childTools && childTools.length > 0);
   const hasDetail = toolCallHasExpandableDetail(tool, { hasLeadingContent });

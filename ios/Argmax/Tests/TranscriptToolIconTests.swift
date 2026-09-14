@@ -71,22 +71,34 @@ final class TranscriptToolIconTests: XCTestCase {
             XCTAssertNotNil(UIImage(systemName: expectedSymbols[kind]!))
         }
 
-        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .read), style: .light), [57, 102, 150])
-        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .search), style: .light), [57, 102, 150])
-        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .webSearch), style: .dark), [126, 166, 207])
+        // Looked at the project: reads, listings, and git share one colour.
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .read), style: .light), [68, 108, 86])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .list), style: .light), [68, 108, 86])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .git), style: .light), [68, 108, 86])
+        // Went looking, in the files or on the web.
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .search), style: .light), [112, 85, 143])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .webSearch), style: .dark), [173, 148, 208])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .browser), style: .dark), [173, 148, 208])
+        // The agent's own machinery.
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .skill), style: .light), [154, 106, 0])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .plan), style: .light), [154, 106, 0])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .agentWait), style: .dark), [231, 187, 88])
+        // Ran a command.
         XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .command), style: .dark), [231, 150, 71])
         XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .computer), style: .light), [175, 91, 0])
-        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .git), style: .light), [68, 108, 86])
-        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .image), style: .dark), [173, 148, 208])
+        // Changed a file.
         XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .edit), style: .light), [148, 75, 62])
-        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .skill), style: .light), [154, 106, 0])
+        // Nothing named it: the fallback.
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .image), style: .dark), [126, 166, 207])
+        XCTAssertEqual(components(TranscriptToolIcon.uiColor(for: .tool), style: .dark), [126, 166, 207])
         XCTAssertEqual(
             components(TranscriptToolIcon.uiColor(for: .command, state: .failed), style: .dark),
             [240, 112, 127]
         )
+        // A delete is a file change, not a failure.
         XCTAssertEqual(
-            components(TranscriptToolIcon.uiColor(for: .edit, operation: .delete), style: .light),
-            [200, 65, 81]
+            components(TranscriptToolIcon.uiColor(for: .edit), style: .light),
+            [148, 75, 62]
         )
         XCTAssertEqual(
             components(TranscriptToolIcon.uiColor(for: .edit, colorMode: .monochrome), style: .light),

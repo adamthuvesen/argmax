@@ -75,7 +75,10 @@ Dark unless the name says otherwise, default font size, 28px rows.
 every menu on it changed at once, plus the settings trigger in
 `settings-controls.css`. The lead cell is `PickerLead.tsx`. Project rows took
 B's one good idea as their trailing column: the parent folder, so two checkouts
-of one repository read apart. Group headers are one class everywhere now — the
+of one repository read apart. Group headers are one class everywhere now. The
 sidebar's sort menu dropped its private copy. The slash and `@file` autocomplete
 menus in the composer are a different family (full-width, in the input's slot)
 and were left alone.
+
+The shared row type was refined to `--text-xs` on 2026-09-15 so picker labels
+match the app's compact controls. The 28px row height remains unchanged.

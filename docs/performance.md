@@ -187,13 +187,9 @@ pauses on it, so a backgrounded window draws nothing.
 JS loops that CSS pausing cannot reach check `document.hidden` themselves:
 
 - [EffortPixelField](../src/renderer/components/EffortPixelField.tsx) (effort
-  slider canvas) and [ComposerPixelField](../src/renderer/components/ComposerPixelField.tsx)
-  (the launcher backdrop) paint at ~30 fps instead of 60 — decorative flow is
-  indistinguishable there at half the per-cell noise cost, which is the whole
-  cost — and park their rAF loops while hidden, restarting on
-  `visibilitychange`. The composer field additionally stops itself once the
-  prompt empties, so an idle launcher schedules no frames at all. Its eases are
-  per *painted* frame, so changing the paint interval means changing them too.
+  slider canvas) paints at ~30 fps instead of 60. Decorative flow is
+  indistinguishable there at half the per-cell noise cost, and its rAF loop
+  parks while hidden and restarts on `visibilitychange`.
 - [TurnExhale](../src/renderer/components/TurnExhale.tsx) (the optional PR milestone sweep)
   never runs while hidden: it is mounted only for the ~1s of its own sweep, and
   a hidden document skips the sweep outright rather than queueing one. A settled

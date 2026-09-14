@@ -470,42 +470,6 @@ export async function inspectDesktopPrerequisites({ appBinaryPath, env = {} } = 
   };
 }
 
-/** Prove the embedded driver can launch the app and reach its real backend. */
-export async function probeDesktopDriver({ appBinaryPath, outputDir, env = {}, port }) {
-  const result = { available: false, verified: false, issues: [], uiState: null };
-  let desktop;
-  try {
-    desktop = await connectDesktop({ appBinaryPath, outputDir, env, port });
-    await desktop.browser.waitUntil(
-      async () =>
-        await desktop.browser.execute(function backendReady() {
-          return Boolean(window.argmax?.health?.ping);
-        }),
-      { timeout: 20_000, interval: 100, timeoutMsg: "Argmax backend bridge did not become ready" }
-    );
-    const health = await desktop.browser.execute(async function probeHealth() {
-      return await window.argmax.health.ping();
-    });
-    if (health?.ok !== true) throw new Error("Argmax health probe returned an invalid response");
-    result.available = true;
-    result.verified = true;
-    result.uiState = await captureDesktopState(desktop.browser);
-  } catch (error) {
-    result.issues.push(errorMessage(error));
-  } finally {
-    if (desktop) {
-      try {
-        await desktop.close();
-      } catch (error) {
-        result.available = false;
-        result.verified = false;
-        result.issues.push(`Desktop cleanup failed: ${errorMessage(error)}`);
-      }
-    }
-  }
-  return result;
-}
-
 /**
  * Start a verification-only Argmax binary and connect to its embedded
  * loopback WebDriver. The service owns the app process and terminates it from

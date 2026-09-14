@@ -142,7 +142,3 @@ export async function fileSha256(filePath) {
 export function uniqueRunId(now = new Date()) {
   return `${now.toISOString().replaceAll(":", "-").replace(".", "-")}-${randomUUID().slice(0, 8)}`;
 }
-
-export function jsonLine(value) {
-  return `${JSON.stringify(value)}\n`;
-}

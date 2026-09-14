@@ -245,9 +245,7 @@ article's metadata, headings, sections, tables and unique links as structured
 JSON, so comparing sources does not mean parsing an accessibility tree.
 `browser_get_text` is the flat-prose fallback when structure does not matter,
 and `browser_snapshot` is for *acting* — it is the only one that hands out
-refs. Extraction reads `<article>`, then `<main>`, then the whole body; on that
-last fallback it drops navigation, asides and footers, because with no article
-element to trust the page's chrome would otherwise read as content.
+refs.
 
 **Tabs are for the human too.** `browser_activate` shows one of this session's
 tabs in its pane and makes it the default for later calls. `browser_open_link`
@@ -261,29 +259,22 @@ strip, so grouping is something they can see rather than private bookkeeping.
 
 **Dragging is stepped, not instant.** `browser_drag` presses at `ref` and
 releases at `to_ref` (or `delta_x`/`delta_y` from where it started), moving in
-`steps` increments — each one a separate round trip into the page. That is
-deliberate: a drag dispatched in a single task never lets the page render
-between moves, and the libraries that matter need exactly that, so a
-one-task drag lands the item back where it started. The gesture also drives
-`<input type="range">` sliders, and the pointer is released on every exit path,
-including a failure mid-gesture. For the length of the gesture the steps also
-flush animation frames by hand, because agent tabs are created hidden and a
-hidden webview never fires one.
+`steps` increments so the page renders between moves — without that the drag
+libraries that matter land the item back where it started. The gesture also
+drives `<input type="range">` sliders, and the pointer is released on every exit
+path, including a failure mid-gesture. See [browser.md](browser.md).
 
 **Screenshots cost more than snapshots.** A snapshot is text — a few kilobytes
 of roles, names and refs, and the only thing that hands out refs. A screenshot
-is a PNG that has to survive base64 through the provider's JSON stream, so it
-is rasterised at 720 CSS pixels wide and dropped entirely (text and dimensions
-only) past 900 KB of base64, which is what keeps it under the normalizer's
-4 MiB per-line cap. Reach for it when the question is visual and for nothing
-else; the tool description says so.
+is a PNG that has to survive base64 through the provider's JSON stream, so it is
+rasterised narrow and dropped entirely (text and dimensions only) when it is
+still too large. Reach for it when the question is visual and for nothing else;
+the tool description says so.
 
-**Dialogs.** A page's `alert` / `confirm` / `prompt` is synchronous: it must
-return before the page's next statement runs, and it cannot wait for an answer
-from an agent in another process. So on a tab a session opened, the three are
-captured and answered on the spot — with whatever `browser_handle_dialog`
-armed, otherwise dismissively (`confirm` → false, `prompt` → null) — and the
-record shows up for 30 seconds as a `dialog:` header line in the snapshot:
+**Dialogs.** On a tab a session opened, `alert` / `confirm` / `prompt` are
+answered on the spot — with whatever `browser_handle_dialog` armed, otherwise
+dismissively — and the record shows up for 30 seconds as a `dialog:` header line
+in the snapshot:
 
 ```
 url: https://example.com/
@@ -293,20 +284,17 @@ dialog: confirm "Delete this?" pending (auto-dismissed with false)
 
 `browser_handle_dialog` arms the answer for the *next* dialog on that tab and
 acknowledges the one that just fired, so the way through is: see the header
-line, arm the answer, repeat the action. Tabs the user opened are untouched and
-keep the engine's native dialogs — silently answering a person's confirm box
-would misreport what they clicked.
+line, arm the answer, repeat the action. Tabs the user opened are untouched.
 
 **Console and network capture.** Agent-owned tabs install capture before page
 scripts run. `browser_console` returns console calls, uncaught errors, and
 unhandled promise rejections. `browser_network` returns fetch and XHR method,
 status, duration, and error fields, plus resource timing rows. Each tab keeps
 the newest 200 rows of each kind, and one call returns 50 by default. Set
-`clear` before an interaction to isolate what that interaction caused.
-
-This is page-level capture in WKWebView, not a debugger protocol attachment.
-Response bodies and request headers are unavailable. Resource timing rows may
-not include a status. Tabs the user opened are not instrumented.
+`clear` before an interaction to isolate what that interaction caused. This is
+page-level capture, not a debugger attachment: response bodies and request
+headers are unavailable, a resource timing row may carry no status, and tabs the
+user opened are not instrumented.
 
 `project` takes a registered project's name, or any repository's absolute path
 — an unregistered one is added on first use, as above — and defaults to the
@@ -499,14 +487,13 @@ because a turn started under it, or one that fails and puts the message back on
 the queue. Undelivered is the safe direction to be wrong in: the agent collects
 it late rather than never.
 
-**A failed turn throws its queue away.** A non-zero exit clears the recipient's
-whole pending queue ([`session_service.rs`](../src-tauri/src/providers/session_service.rs),
-`handle_exit`), on the reasoning that a broken provider should not be fed the
-follow-ups that piled up behind it. That predates the inbox, and it used to mean
-an agent's message could be accepted as `queued` and then vanish with no trace
-and no way to notice. The row is what makes it survivable now: the queue entry
-goes, the row stays open, and the message is still there for `inbox_read`,
-`session_wait`, and the unread flag.
+**A failed turn parks its queue.** A non-zero exit marks the recipient's pending
+queue `recovered` rather than delivering it ([`session_service.rs`](../src-tauri/src/providers/session_service.rs),
+`handle_lifecycle_event` → `pause_queue_with_connection`), on the reasoning that
+a broken provider should not be fed the follow-ups that piled up behind it. Only
+a user stop or `/clear` deletes a queue. The row keeps it visible either way: the
+entry is marked unsent, the row stays open, and the message is still there for
+`inbox_read`, `session_wait`, and the unread flag.
 
 Survivable is not the same as delivered. After a failed turn the message will
 never arrive as a turn on its own — it waits until that session is working again

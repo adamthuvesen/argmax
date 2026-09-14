@@ -60,8 +60,8 @@ precedence. Priority uses actual PR changes rather than polling freshness.
 Existing PR links open their exact stored URL. The separate create action
 validates the displayed checkout branch against Git and supplies `--head` to
 `gh pr create`. It may open an existing PR for that branch, but opening one
-does not promote it to session work. Shared cards call the branch header
-“Checkout branch” because historical PRs can belong to other branches.
+does not promote it to session work. The shared card's branch tooltip identifies
+the checkout branch because historical PRs can belong to other branches.
 
 Refreshes serialize per project PR across service instances. Failed reads
 retain cached state and expose the refresh error. Merged state cannot regress,

@@ -96,10 +96,11 @@ describe("WorkspaceCard", () => {
     expect(card.textContent).toContain("from main");
   });
 
-  it("labels a shared workspace branch as the checkout branch", () => {
+  it("keeps shared checkout context in the tooltip without a repeated heading", () => {
     renderCard({ workspace: { ...workspace, sharedWorkspace: true } });
 
-    expect(screen.getByRole("complementary", { name: "Workspace" })).toHaveTextContent("Checkout branch");
+    expect(screen.getByTitle("Checkout branch argmax/dashboard · from main")).toBeInTheDocument();
+    expect(screen.queryByText("Checkout branch")).not.toBeInTheDocument();
   });
 
   it("copies the full branch name when its ellipsized label is clicked", async () => {
@@ -266,8 +267,9 @@ describe("WorkspaceCard", () => {
 
     fireEvent.click(screen.getByText("2 more"));
     expect(screen.getByRole("button", { name: "PR #755 Earlier work" })).toBeInTheDocument();
-    expect(screen.getByText("Merged · feat/alfred-slack-status")).toBeInTheDocument();
-    expect(screen.getByText(/Closed · feat\/alfred-slack-status · Unverified/)).toBeInTheDocument();
+    expect(screen.getAllByText("feat/alfred-slack-status").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Unverified/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^(Open|Merged|Closed) ·/)).not.toBeInTheDocument();
   });
 
   it("lets an automatically selected unverified PR be confirmed and pinned", async () => {

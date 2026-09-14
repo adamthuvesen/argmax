@@ -158,9 +158,6 @@ export function WorkspaceCard({
           <GitBranch size={13} />
         </span>
         <div className="workspace-card-branch-text">
-          {workspace.sharedWorkspace ? (
-            <span className="workspace-card-branch-kind">Checkout branch</span>
-          ) : null}
           <button
             type="button"
             className="workspace-card-branch-name"
@@ -328,19 +325,11 @@ function WorkspacePrRow({
   useDismissOnOutsideOrEscape(actionsRef, actionsOpen, () => setActionsOpen(false));
   const state = pr.prState?.toLowerCase() ?? "unknown";
   const stateLabel = `${state.charAt(0).toUpperCase()}${state.slice(1)}`;
-  const relationship =
-    pr.relationship === "worked"
-      ? "Worked on"
-      : pr.relationship === "referenced"
-        ? "Referenced"
-        : pr.relationship === "unverified"
-          ? "Unverified"
-          : null;
-  const details = [stateLabel, pr.headRefName, relationship === "Worked on" ? null : relationship]
+  const details = [pr.relationship === "referenced" ? "Referenced" : null, pr.headRefName]
     .filter(Boolean).join(" · ");
   const rowTitle = pr.url
     ? `Open pull request #${pr.prNumber} on GitHub (${state})`
-    : `Pull request #${pr.prNumber} has no URL. Refresh its GitHub state to open it.`;
+    : `Pull request #${pr.prNumber} (${state}) has no URL. Refresh its GitHub state to open it.`;
 
   return (
     <div className="workspace-card-pr-row">
@@ -366,7 +355,7 @@ function WorkspacePrRow({
             <span
               className="workspace-card-pr-relationship"
               data-relationship={pr.relationship}
-              title={details}
+              title={`${stateLabel} · ${details}`}
             >
               {details}
             </span>

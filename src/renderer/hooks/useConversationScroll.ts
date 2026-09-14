@@ -161,6 +161,7 @@ export function useConversationScroll({
   const identityRef = useRef({ sessionId, resetKey, enabled });
   const touchYRef = useRef<number | null>(null);
   const touchTargetRef = useRef<EventTarget | null>(null);
+  const pointerScrollRef = useRef(false);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const observedElementsRef = useRef<Set<Element>>(new Set());
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -227,6 +228,7 @@ export function useConversationScroll({
     if (
       modeRef.current === "following" &&
       currentTop < lastScrollTopRef.current - BOTTOM_EPSILON_PX &&
+      pointerScrollRef.current &&
       !clampedToNewBottom
     ) {
       detach();
@@ -420,6 +422,12 @@ export function useConversationScroll({
       touchYRef.current = null;
       touchTargetRef.current = null;
     };
+    const onPointerDown = (): void => {
+      pointerScrollRef.current = true;
+    };
+    const clearPointer = (): void => {
+      pointerScrollRef.current = false;
+    };
     const onScroll = (): void => {
       const previousTop = lastScrollTopRef.current;
       const height = scroll.scrollHeight;
@@ -436,7 +444,12 @@ export function useConversationScroll({
       const movedDown = top > previousTop;
       const reachedPreviousBottom = top >= lastMaxScrollTopRef.current - BOTTOM_EPSILON_PX;
 
-      if (modeRef.current === "following" && movedUp && !clampedToNewBottom) {
+      if (
+        modeRef.current === "following" &&
+        movedUp &&
+        pointerScrollRef.current &&
+        !clampedToNewBottom
+      ) {
         detach();
       } else if (modeRef.current === "detached" && movedDown && reachedPreviousBottom && !rangeShrank) {
         startFollowing();
@@ -446,6 +459,18 @@ export function useConversationScroll({
       // Keep the pre-clamp position and anchor until ResizeObserver restores
       // the detached range through `reconcile`.
       if (modeRef.current === "detached" && clampedToNewBottom) return;
+
+      // Width reflow can move WebKit's scrollTop without reader input. This is
+      // especially visible when opening a wide dock first squeezes the chat,
+      // then folding the app sidebar widens it again. Stay attached and put
+      // the latest turn back at the bottom instead of preserving the empty
+      // min-height tail as a reading position. Wheel, key and touch gestures
+      // detach before their scroll event; a scrollbar drag is covered by the
+      // active pointer gesture above.
+      if (modeRef.current === "following" && movedUp && !clampedToNewBottom) {
+        reconcile();
+        return;
+      }
 
       lastScrollTopRef.current = top;
       lastMaxScrollTopRef.current = maxTop;
@@ -458,7 +483,10 @@ export function useConversationScroll({
     scroll.addEventListener("touchmove", onTouchMove, { passive: true });
     scroll.addEventListener("touchend", clearTouch, { passive: true });
     scroll.addEventListener("touchcancel", clearTouch, { passive: true });
+    scroll.addEventListener("pointerdown", onPointerDown, { passive: true });
     scroll.addEventListener("scroll", onScroll, { passive: true });
+    document.addEventListener("pointerup", clearPointer);
+    document.addEventListener("pointercancel", clearPointer);
 
     // Correct row reflow before paint. The wrapper's height is controlled by
     // reconcile, so observing it would feed our own layout writes back into
@@ -479,11 +507,15 @@ export function useConversationScroll({
       scroll.removeEventListener("touchmove", onTouchMove);
       scroll.removeEventListener("touchend", clearTouch);
       scroll.removeEventListener("touchcancel", clearTouch);
+      scroll.removeEventListener("pointerdown", onPointerDown);
       scroll.removeEventListener("scroll", onScroll);
+      document.removeEventListener("pointerup", clearPointer);
+      document.removeEventListener("pointercancel", clearPointer);
       observer?.disconnect();
       resizeObserverRef.current = null;
       observedElementsRef.current = new Set();
       clearTouch();
+      clearPointer();
     };
   }, [detach, enabled, reconcile, rememberAnchor, resetKey, sessionId, startFollowing]);
 

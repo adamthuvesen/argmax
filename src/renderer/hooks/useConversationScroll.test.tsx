@@ -216,10 +216,11 @@ describe("useConversationScroll", () => {
       blockTop: 650,
       turnTop: 0
     };
-    installGeometry(geometry);
+    const { scroll } = installGeometry(geometry);
     act(() => view.rerender(<Harness {...props} />));
     expect(geometry.top).toBe(580);
 
+    scroll.dispatchEvent(new Event("pointerdown", { bubbles: true }));
     geometry.top = 568;
     geometry.naturalHeight = 1400;
     act(() => view.rerender(<Harness {...props} items={["one", "two"]} />));
@@ -227,6 +228,31 @@ describe("useConversationScroll", () => {
     expect(geometry.top).toBe(568);
     expect(controller.showScrollToBottom).toBe(true);
     expect(controller.newBelowCount).toBe(1);
+  });
+
+  it("stays attached when responsive reflow moves scrollTop without reader input", () => {
+    const props: HarnessProps = { items: ["one"] };
+    const view = render(<Harness {...props} />);
+    const geometry: Geometry = {
+      viewportHeight: 500,
+      naturalHeight: 1300,
+      top: 0,
+      promptTop: 700,
+      blockTop: 750,
+      turnTop: 0
+    };
+    const { scroll } = installGeometry(geometry);
+    act(() => view.rerender(<Harness {...props} />));
+    expect(geometry.top).toBe(800);
+
+    // Opening a wide dock can squeeze the transcript before the app sidebar
+    // folds. WebKit reports the resulting layout movement as a scroll event,
+    // even though the reader did not wheel, press a scroll key, touch, or drag.
+    geometry.top = 700;
+    act(() => { scroll.dispatchEvent(new Event("scroll")); });
+
+    expect(geometry.top).toBe(800);
+    expect(controller.showScrollToBottom).toBe(false);
   });
 
   it.each([

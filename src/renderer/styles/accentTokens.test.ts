@@ -329,6 +329,15 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     expect(settings).toContain("pointer-events: none;");
   });
 
+  it("keeps the centered transcript fixed when its vertical scrollbar appears", () => {
+    const conversation = cssRuleBody(
+      readSource("src/renderer/styles/chat-conversation.css"),
+      ".conversation-list"
+    );
+    expect(conversation).toContain("overflow-y: auto;");
+    expect(conversation).toContain("scrollbar-gutter: stable both-edges;");
+  });
+
   it("gates the workspace card on a gutter that actually fits it, per chat width", () => {
     const conversation = readSource("src/renderer/styles/chat-conversation.css");
     const card = readSource("src/renderer/styles/chat-workspace-card.css");

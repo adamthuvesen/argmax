@@ -996,6 +996,13 @@
      under the thumb. Wide blocks own their own sideways scroller instead. */
   overflow-y: auto;
   overflow-x: hidden;
+  /* Tool and Thought disclosures can take the transcript across the vertical
+     overflow boundary. The global WebKit scrollbar is 10px wide, and this
+     scroller's centered padding resolves against the remaining content box,
+     so an auto gutter moved every activity mark 5px left when it appeared.
+     Reserve the gutter in both states and mirror it on the inline-start edge:
+     one stable edge alone would keep the shift, only permanently. */
+  scrollbar-gutter: stable both-edges;
   /* One controller owns following and preserving the reading position. */
   overflow-anchor: none;
   overscroll-behavior-y: contain;

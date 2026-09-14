@@ -90,7 +90,11 @@ pub fn agent_tools_instruction() -> String {
          browser_open a page, browser_snapshot to read it as an accessibility tree with \
          [ref=eN] handles, then click and type by ref. The user watches those pages in \
          this session's pane. Snapshot first and after every action; screenshot only \
-         when the question is visual. {}",
+         when the question is visual. An image you read lands in your context, not on \
+         the user's screen. To show them one, write a Markdown image on its own line — \
+         `![what it shows](path)` — naming a file in this checkout or a path Argmax \
+         handed you, such as a screenshot's `path`. Remote `http(s)` images are drawn as \
+         a link, not fetched. {}",
         historical_prompt_instruction(),
         PROJECT_SOURCES_INSTRUCTION
     )

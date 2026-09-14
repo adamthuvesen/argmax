@@ -215,7 +215,7 @@ may accept any cookie prompt without asking the user.
 | `browser_scroll` | `direction`, `amount?`, `ref?`, `tab?` | `{tabId, url, detail}` |
 | `browser_drag` | `ref`, `to_ref?` \| `delta_x`/`delta_y`, `start_x?`, `start_y?`, `end_x?`, `end_y?`, `steps?`, `tab?` | `{tabId, url, detail}` |
 | `browser_wait_for` | `text?`, `ref?`, `url_includes?`, `timeout_s?`, `tab?` | `{tabId, url, detail}` |
-| `browser_screenshot` | `tab?`, `ref?` | an image content block, plus `{width, height, bytes}` |
+| `browser_screenshot` | `tab?`, `ref?` | an image content block, plus `{width, height, bytes, dropped, path}` |
 | `browser_evaluate` | `expression`, `tab?` | `{tabId, result}` |
 | `browser_console` | `tab?`, `limit?`, `clear?` | Captured console calls, uncaught errors, and unhandled rejections |
 | `browser_network` | `tab?`, `limit?`, `clear?` | Captured fetch, XHR, and resource timing records |
@@ -739,6 +739,16 @@ session from its token, checks tab ownership, and calls
 JSON rather than inside it, so the base64 becomes an MCP image block without
 also landing in the text the model reads; the browser reply gets a 4 MB
 ceiling, an inbox or wait reply 512 KB, and every other action 64 KB.
+
+That image block reaches the model and stops there: no chat card draws it, and
+the remote bridge strips those bytes out of the transcript. So the bridge also
+writes the capture into the caller's attachment store and returns its `path`,
+and a trailing text block tells the agent that the user cannot see the image
+until the answer names that path in a Markdown image. `argmax-attachment://`
+serves that directory on the desktop, the bridge serves it over HTTP, and the
+phone fetches it through `BridgeClient`, so one path renders on all three. A
+capture whose store write fails still returns the image block, with the reason
+in `pathError`.
 
 Creating, navigating and destroying a webview are AppKit calls, so the handler
 hops them to the main thread with `run_on_main_thread`. Reads do not need it:

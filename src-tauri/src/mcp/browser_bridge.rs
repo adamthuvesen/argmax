@@ -24,6 +24,7 @@ use tauri::AppHandle;
 use crate::browser::automation::{self, BrowserAction, TabTarget};
 use crate::browser::encode_base64;
 use crate::error::{ArgmaxError, ArgmaxResult};
+use crate::ipc::validation::{AttachmentMimeType, Base64ImageData, SessionId};
 use crate::session_control::{argmax_protocol_error, SessionControlError};
 
 /// Points, not device pixels: the capture is rasterised at this width so its
@@ -37,6 +38,29 @@ const SCREENSHOT_MAX_WIDTH_POINTS: f64 = 360.0;
 /// too large to parse is worse than one that explains itself.
 const SCREENSHOT_MAX_BASE64_BYTES: usize = 900_000;
 const SCREENSHOT_MIN_WIDTH_POINTS: f64 = 1.0;
+
+/// Keeps a screenshot where the chat can draw it.
+///
+/// The image block a screenshot answers with reaches the model, not the
+/// reader — no card draws it, and the remote bridge strips those bytes out of
+/// the transcript. The copy this writes is what makes the capture showable:
+/// `argmax-attachment://` serves the attachment store, so an agent that puts
+/// the returned path in a Markdown image puts it on screen on the desktop,
+/// over the bridge, and on the phone alike. The store is per session and is
+/// pruned when the session is deleted.
+fn save_screenshot(app: &AppHandle, session_id: &str, encoded: &str) -> Result<String, String> {
+    let store = tauri::Manager::state::<crate::state::AppState>(app)
+        .attachments
+        .get()
+        .cloned()
+        .ok_or_else(|| "attachment storage is not initialized".to_string())?;
+    let session = SessionId::try_from(session_id.to_string()).map_err(|issue| issue.message)?;
+    let data = Base64ImageData::try_from(encoded.to_string()).map_err(|issue| issue.message)?;
+    store
+        .save_image(&session, AttachmentMimeType::ImagePng, &data)
+        .map(|saved| saved.file_path)
+        .map_err(|error| error.to_string())
+}
 
 fn next_screenshot_width(current: f64, encoded_bytes: usize) -> f64 {
     let target_ratio = (SCREENSHOT_MAX_BASE64_BYTES as f64 / encoded_bytes as f64).sqrt() * 0.9;
@@ -360,13 +384,20 @@ async fn run(
                 width_points = next_screenshot_width(width_points, encoded.len());
             };
             let oversized = encoded.len() > SCREENSHOT_MAX_BASE64_BYTES;
+            let mut result = json!({
+                "width": captured.width,
+                "height": captured.height,
+                "bytes": captured.png.len(),
+                "dropped": oversized,
+            });
+            // A screenshot that reached the model but not the disk is degraded,
+            // not broken: report why and still hand over the image block.
+            match save_screenshot(app, session_id, &encoded) {
+                Ok(path) => result["path"] = json!(path),
+                Err(message) => result["pathError"] = json!(message),
+            }
             Ok(BrowserOutcome {
-                result: json!({
-                    "width": captured.width,
-                    "height": captured.height,
-                    "bytes": captured.png.len(),
-                    "dropped": oversized,
-                }),
+                result,
                 png_base64: (!oversized).then_some(encoded),
             })
         }

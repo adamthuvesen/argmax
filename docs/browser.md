@@ -124,7 +124,7 @@ The tools an agent calls are `mcp__argmax__browser_*`, defined in [browser_tools
 
 Two rules live in that bridge. **Ownership:** a session may only drive tabs it opened — the user's tabs and other sessions' tabs are refused with `BROWSER_TAB_NOT_OWNED`, and naming no tab resolves to the caller's own most recently used one. **Threading:** the socket handler runs on Tauri's async runtime, so creating, navigating and destroying a webview (AppKit calls, main-thread only) go through `run_on_main_thread`, while reads do not need it — WebKit's `evaluateJavaScript:` and `takeSnapshot` callbacks hop the queue themselves.
 
-A screenshot taken through a tool starts at about 720 device pixels wide on Retina displays and is rasterised again at a narrower width when its encoded PNG would exceed 900 KB. It has to survive the provider's JSON stream: the normalizer refuses lines over 4 MiB, and a dropped line takes the tool's completion with it.
+A screenshot taken through a tool starts at about 720 device pixels wide on Retina displays and is rasterised again at a narrower width when its encoded PNG would exceed 900 KB. It has to survive the provider's JSON stream: the normalizer refuses lines over 4 MiB, and a dropped line takes the tool's completion with it. The same capture is written into the caller's attachment store and its `path` returned, which is the only way the user gets to see it — the image block itself is the model's copy. An oversized capture that the reply had to drop is still saved, so the agent can put a screenshot on screen that it cannot see itself.
 
 ## IPC Channels
 

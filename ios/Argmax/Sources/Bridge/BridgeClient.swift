@@ -770,7 +770,6 @@ actor BridgeClient {
 
     private func ping(generation mine: Int) async {
         guard mine == generation, let socket, authenticated, pongTimer == nil else { return }
-        pongTimer?.cancel()
         pongTimer = Task { [weak self] in
             try? await Task.sleep(for: Self.pongDeadline)
             guard !Task.isCancelled else { return }

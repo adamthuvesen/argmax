@@ -189,7 +189,6 @@ struct PickerSheet<Value: Hashable>: View {
     }
 }
 
-/// A row lights up under the thumb; it does not scale. 6% ink, the raised
 extension PickerSheet {
     var sheetHeight: CGFloat {
         // Read so a Dynamic Type change re-evaluates the detent. The metrics
@@ -239,6 +238,7 @@ func pickerSheetHeight(
     return min(content + Spacing.headerHeight, cap)
 }
 
+/// A row lights up under the thumb; it does not scale. 6% ink, the raised
 /// step plus one.
 struct RowPress: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {

@@ -132,12 +132,6 @@ enum InsightsFormat {
         return DateFormatter.cachedDay.string(from: date)
     }
 
-    /// `AUG 13` — chart axis ticks.
-    static func axisDay(_ iso: String) -> String {
-        guard let date = parse(iso) else { return "" }
-        return DateFormatter.cachedDay.string(from: date).uppercased()
-    }
-
     /// `Sunday` + count — cadence peak lines.
     static func weekdayName(_ mondayFirst: Int) -> String {
         ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][((mondayFirst % 7) + 7) % 7]

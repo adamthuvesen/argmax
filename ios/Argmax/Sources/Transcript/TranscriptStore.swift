@@ -118,31 +118,11 @@ final class TranscriptStore: ObservableObject {
             scheduleReads()
             return
         }
-        generation += 1
-        projectionVersion += 1
-        projectionTask?.cancel()
-        projectionTask = nil
-        readTask?.cancel()
-        metadataTask?.cancel()
-        readTask = nil
-        metadataTask = nil
-        thinkingStart = nil
-        thinkingBaseline = []
+        discardOpenChat()
         openSessionID = id
         showingCachedContent = false
         contentVersion = 0
         hasMoreHistory = false
-        metadata = nil
-        workspacePath = nil
-        eventsByID = [:]
-        rawOutputsByID = [:]
-        pendingApprovals = []
-        eventCursor = nil
-        rawOutputCursor = nil
-        changeCursor = nil
-        items = []
-        session = nil
-        composer = nil
         phase = .loading
         if let cached = recent[id] {
             restore(cached.stored)
@@ -167,8 +147,19 @@ final class TranscriptStore: ObservableObject {
     }
 
     func closeSession() {
-        thinkingStart = nil
-        thinkingBaseline = []
+        discardOpenChat()
+        openSessionID = nil
+        phase = .idle
+        showingCachedContent = false
+        transcriptDirty = false
+        authoritativeReadRequested = false
+        metadataDirty = false
+    }
+
+    /// Everything the chat on screen accumulated, dropped: in-flight reads and
+    /// projections cancelled, and the generation bumped so one that is already
+    /// running throws its page away instead of applying it to the next chat.
+    private func discardOpenChat() {
         generation += 1
         projectionVersion += 1
         projectionTask?.cancel()
@@ -177,7 +168,8 @@ final class TranscriptStore: ObservableObject {
         metadataTask?.cancel()
         readTask = nil
         metadataTask = nil
-        openSessionID = nil
+        thinkingStart = nil
+        thinkingBaseline = []
         metadata = nil
         workspacePath = nil
         eventsByID = [:]
@@ -189,11 +181,6 @@ final class TranscriptStore: ObservableObject {
         items = []
         session = nil
         composer = nil
-        phase = .idle
-        showingCachedContent = false
-        transcriptDirty = false
-        authoritativeReadRequested = false
-        metadataDirty = false
     }
 
     /// An explicit refresh is authoritative and waits until the host's
@@ -327,22 +314,9 @@ final class TranscriptStore: ObservableObject {
         pendingMessages: [TranscriptPendingMessage] = [],
         isLoading: Bool = false
     ) {
-        generation += 1
-        projectionVersion += 1
-        projectionTask?.cancel()
-        projectionTask = nil
-        readTask?.cancel()
-        metadataTask?.cancel()
-        readTask = nil
-        metadataTask = nil
+        discardOpenChat()
         openSessionID = row.id
         self.workspacePath = workspacePath
-        eventsByID = [:]
-        rawOutputsByID = [:]
-        pendingApprovals = []
-        eventCursor = nil
-        rawOutputCursor = nil
-        changeCursor = nil
         ingest(metadata: row, title: title, pendingMessages: pendingMessages)
         apply(page, authoritative: true)
         projectionTask?.cancel()

@@ -198,7 +198,6 @@ enum TranscriptProjection {
             }
 
             if event.type == "multitask.finished" {
-                if !multitasks.values.contains(where: { $0.id == "multitask-\(event.id)" }) { continue }
                 if let multitask = multitasks[event.id] { items.append(.multitask(multitask)) }
                 continue
             }

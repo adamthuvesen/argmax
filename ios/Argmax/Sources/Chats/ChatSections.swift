@@ -136,8 +136,6 @@ let priorityIdleInterval: TimeInterval = 30 * 60
 
 struct PriorityEntry: Sendable {
     var workspace: WorkspaceSummary
-    /// Live, undismissed reasons, strongest first.
-    var reasons: [PriorityReason]
     /// The strongest reason, which is what the row says about itself.
     var reason: PriorityReasonKind?
     var working: Bool
@@ -246,7 +244,6 @@ func computeWorkspaceAttention(
     now: Date,
     unreadWorkspaceIDs: Set<String>? = nil
 ) -> [String: AttentionState] {
-    let loudest = loudestSessions(sessions)
     let reasons = computeWorkspaceReasons(
         workspaces: workspaces,
         sessions: sessions,
@@ -256,8 +253,7 @@ func computeWorkspaceAttention(
     var result: [String: AttentionState] = [:]
     for (workspaceID, workspaceReasons) in reasons {
         guard let top = workspaceReasons.first(where: { $0.kind.attention != nil }),
-              let attention = top.kind.attention,
-              loudest[workspaceID] != nil
+              let attention = top.kind.attention
         else { continue }
         result[workspaceID] = attention
     }
@@ -299,7 +295,6 @@ func computePriorityEntries(
         entries.append(
             PriorityEntry(
                 workspace: workspace,
-                reasons: reasons,
                 reason: reasons.first?.kind,
                 working: isWorking
             )

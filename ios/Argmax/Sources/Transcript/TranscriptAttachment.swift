@@ -136,9 +136,7 @@ struct TranscriptMarkdownImage: View {
     let onOpenFile: (String) -> Void
 
     var body: some View {
-        if image.remoteURL != nil {
-            TranscriptFileFallback(source: image, onOpenFile: onOpenFile)
-        } else if let client {
+        if let client, image.remoteURL == nil {
             TranscriptImageTile(
                 source: image,
                 client: client,

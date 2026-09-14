@@ -189,19 +189,6 @@ final class ReviewStore: ObservableObject {
             entriesLoad = .failed(hostFailureMessage(error))
         }
     }
-
-    func loadDiff(path: String, contextLines: Int?) async throws -> WorkspaceDiff {
-        try await client.loadDiff(
-            workspaceID: workspace.id,
-            filePath: path,
-            comparison: scope.comparison,
-            contextLines: contextLines
-        )
-    }
-
-    func readFile(path: String) async throws -> WorkspaceFilePreview {
-        try await client.readWorkspaceFile(workspaceID: workspace.id, filePath: path)
-    }
 }
 
 // MARK: - Status vocabulary

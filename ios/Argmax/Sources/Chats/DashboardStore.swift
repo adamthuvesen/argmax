@@ -130,11 +130,11 @@ final class DashboardStore: ObservableObject {
                 if state == .live {
                     self.transcriptChanged.send()
                     self.invalidateReviews(Set(self.snapshot.workspaces.map(\.id)))
+                    // A reconnect misses whatever changed while the socket
+                    // was down, and the host replays nothing, so the
+                    // snapshot is reloaded rather than resumed.
+                    await self.reload()
                 }
-                // A reconnect misses whatever changed while the socket was
-                // down, and the host replays nothing, so the snapshot is
-                // reloaded rather than resumed.
-                if state == .live { await self.reload() }
             }
         }
         Task { await client.connect() }

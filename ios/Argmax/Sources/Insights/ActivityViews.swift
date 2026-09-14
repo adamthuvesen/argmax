@@ -305,29 +305,8 @@ struct ActivityDailyChart: View {
                     .interpolationMethod(.monotone)
                 }
                 .chartLegend(.hidden)
-                .chartXAxis {
-                    AxisMarks(values: .stride(by: .day, count: max(1, daySpan / 3))) { value in
-                        if let date = value.as(Date.self) {
-                            AxisValueLabel {
-                                Text(DateFormatter.cachedAxis.string(from: date))
-                                    .typeStyle(.caption2).foregroundStyle(Theme.muted)
-                            }
-                        }
-                        AxisGridLine(stroke: .init(lineWidth: 0.5))
-                            .foregroundStyle(Theme.line.opacity(0.5))
-                    }
-                }
-                .chartYAxis {
-                    AxisMarks(position: .leading) { value in
-                        if let number = value.as(Double.self) {
-                            AxisValueLabel {
-                                Text(InsightsFormat.compact(number))
-                                    .typeStyle(.caption2).foregroundStyle(Theme.muted)
-                            }
-                        }
-                        AxisGridLine(stroke: .init(lineWidth: 0.5))
-                            .foregroundStyle(Theme.line.opacity(0.5))
-                    }
+                .insightsChartAxes(dayStride: max(1, daySpan / 3)) {
+                    InsightsFormat.compact($0)
                 }
                 .frame(height: 190)
                 .accessibilityLabel(
@@ -411,10 +390,7 @@ struct ActivityRepositories: View {
                     .typeContent().monospacedDigit().foregroundStyle(Theme.ink)
             }
             HStack(spacing: Spacing.snug) {
-                InsightsShareBar(
-                    fraction: Double(useLines ? total : repo.commits) / Double(max),
-                    color: color
-                )
+                InsightsShareBar(fraction: Double(total) / Double(max), color: color)
                 sparkline(repo.projectId, color: color)
                     .frame(width: 64, height: 22)
             }
@@ -721,7 +697,6 @@ struct ActivityCadenceCard: View {
         let total = max(1, weekday.reduce(0, +))
         let weekend = weekday[5] + weekday[6]
         let share = Int((Double(weekend) / Double(total) * 100).rounded())
-        guard total > 0 else { return nil }
         return "Weekends carry \(share)% of it."
     }
 

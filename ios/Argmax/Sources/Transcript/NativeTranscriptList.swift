@@ -340,8 +340,6 @@ private struct TranscriptScrollGeometry: Equatable {
     var bottomInset: CGFloat = 0
     var viewportHeight: CGFloat = 0
 
-    init() {}
-
     init(_ geometry: ScrollGeometry) {
         visibleTop = geometry.visibleRect.minY
         tailGap = geometry.contentSize.height + geometry.contentInsets.bottom

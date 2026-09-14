@@ -308,34 +308,3 @@ func transcriptKeyboardInset(
 ) -> CGFloat {
     max(0, containerBottom - keyboardTop)
 }
-
-/// Loading feedback that keeps the header and navigation available.
-///
-/// Not a `ProgressView`. A spinner centred in an empty screen is the shape of
-/// "there is nothing here"; a line under the header is the shape of "the
-/// thing under this is loading", and it leaves the header — the title, the
-/// back chevron — usable while it runs.
-struct IndeterminateLine: View {
-    @Environment(\.accentTint) private var accent
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        GeometryReader { geometry in
-            let width = geometry.size.width
-            TimelineView(.animation(paused: reduceMotion)) { context in
-                let cycle = 1.4
-                let phase = context.date.timeIntervalSinceReferenceDate
-                    .truncatingRemainder(dividingBy: cycle) / cycle
-                Rectangle()
-                    .fill(accent.color)
-                    .frame(width: width * 0.35)
-                    // Reduce Motion gets a static third: the line still says
-                    // "loading" without a thing sliding across the screen.
-                    .offset(x: reduceMotion ? width * 0.33 : -width * 0.35 + phase * width * 1.35)
-            }
-        }
-        .frame(height: 2)
-        .clipped()
-        .accessibilityLabel("Loading the chat")
-    }
-}

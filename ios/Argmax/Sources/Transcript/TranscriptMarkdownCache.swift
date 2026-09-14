@@ -80,22 +80,18 @@ final class TranscriptMarkdownCache {
         while pending.count >= Self.preparationLimit, pending[key] == nil {
             let id = UUID()
             defer { waiters[id] = nil }
-            do {
-                try await withTaskCancellationHandler(operation: {
-                    try Task.checkCancellation()
-                    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                        waiters[id] = continuation
-                    }
-                }, onCancel: {
-                    Task { @MainActor in
-                        self.waiters.removeValue(forKey: id)?.resume()
-                    }
-                })
-            } catch {
-                // Woken by cancellation; the continuation, if any, was
-                // consumed by the cancellation path.
-                throw error
-            }
+            // A throw here is cancellation; the continuation, if any, was
+            // consumed by the cancellation path.
+            try await withTaskCancellationHandler(operation: {
+                try Task.checkCancellation()
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    waiters[id] = continuation
+                }
+            }, onCancel: {
+                Task { @MainActor in
+                    self.waiters.removeValue(forKey: id)?.resume()
+                }
+            })
         }
     }
 

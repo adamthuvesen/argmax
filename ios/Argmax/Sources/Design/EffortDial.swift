@@ -461,7 +461,6 @@ struct EffortDial: View {
                 }
             }
             .frame(width: width + EffortFieldSim.overscanRight, height: height + EffortFieldSim.overscanTop + EffortFieldSim.overscanBottom)
-            .offset(y: 0)
             .allowsHitTesting(false)
         }
         .frame(width: width, height: height, alignment: .topLeading)

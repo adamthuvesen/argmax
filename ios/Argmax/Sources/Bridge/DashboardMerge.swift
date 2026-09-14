@@ -31,14 +31,9 @@ func mergeDashboardDelta(_ incoming: DashboardSnapshot, _ delta: DashboardDelta)
         }
     }
 
-    if let projects = delta.projects {
-        let merged = upsertById(snapshot.projects, projects)
-        if merged != snapshot.projects {
-            // Projects sort on their own field, and a null last activity
-            // sorts last — `latestActivityAt ?? ""` in the renderer.
-            snapshot.projects = sortedNewestFirst(merged) { $0.latestActivityAt ?? "" }
-        }
-    }
+    // Projects sort on their own field, and a null last activity sorts last —
+    // `latestActivityAt ?? ""` in the renderer.
+    snapshot.projects = mergeSlice(snapshot.projects, delta.projects) { $0.latestActivityAt ?? "" }
     snapshot.workspaces = mergeSlice(snapshot.workspaces, delta.workspaces) { $0.lastActivityAt }
     snapshot.sessions = mergeSlice(snapshot.sessions, delta.sessions) { $0.lastActivityAt }
     return snapshot

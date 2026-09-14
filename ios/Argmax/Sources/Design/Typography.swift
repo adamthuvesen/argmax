@@ -103,15 +103,6 @@ fileprivate enum FaceWeight {
         default: self = .regular
         }
     }
-
-    var uiWeight: UIFont.Weight {
-        switch self {
-        case .regular: return .regular
-        case .medium: return .medium
-        case .semibold: return .semibold
-        case .bold: return .bold
-        }
-    }
 }
 
 /// The phone's five-step app-wide type scale. The middle step is the current
@@ -385,13 +376,6 @@ extension View {
     /// settings row's value.
     func typeContent() -> some View {
         typeStyle(.subheadline, ink: Theme.ink)
-    }
-
-    /// A turn's own words — assistant and agent prose, and nothing else.
-    /// The transcript runs on three sizes, and this is the only one at
-    /// `.body`: everything around the output is chrome.
-    func typeOutput() -> some View {
-        typeStyle(.body, ink: Theme.ink)
     }
 
     /// Everything around the output: labels, controls, status, counts, names,

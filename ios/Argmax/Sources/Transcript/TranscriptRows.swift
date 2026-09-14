@@ -1,5 +1,25 @@
 import SwiftUI
 
+private extension View {
+    /// The 26pt fade a capped block ends in. The collapsed prompt and the
+    /// long-press preview both cut a message short, and both say so the same
+    /// way rather than one ending in a hard edge.
+    func fadedTail(_ faded: Bool) -> some View {
+        mask {
+            if faded {
+                VStack(spacing: 0) {
+                    Rectangle()
+                    LinearGradient(colors: [.black, .clear],
+                                   startPoint: .top, endPoint: .bottom)
+                        .frame(height: 26)
+                }
+            } else {
+                Rectangle()
+            }
+        }
+    }
+}
+
 struct TranscriptMessageRow: View {
     let message: TranscriptMessage
     let client: BridgeClient
@@ -28,18 +48,7 @@ struct TranscriptMessageRow: View {
                                 contentHeight = $0
                             }
                             .frame(maxHeight: expanded ? nil : previewHeight, alignment: .top)
-                            .mask {
-                                if contentHeight > previewHeight + 1 && !expanded {
-                                    VStack(spacing: 0) {
-                                        Rectangle()
-                                        LinearGradient(colors: [.black, .clear],
-                                                       startPoint: .top, endPoint: .bottom)
-                                            .frame(height: 26)
-                                    }
-                                } else {
-                                    Rectangle()
-                                }
-                            }
+                            .fadedTail(contentHeight > previewHeight + 1 && !expanded)
                         if contentHeight > previewHeight + 1 {
                             Button {
                                 expanded.toggle()
@@ -90,18 +99,7 @@ struct TranscriptMessageRow: View {
                 // truncating every paragraph in the answer to one line.
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxHeight: menuPreviewHeight, alignment: .top)
-                .mask {
-                    if rowSize.height > menuPreviewHeight {
-                        VStack(spacing: 0) {
-                            Rectangle()
-                            LinearGradient(colors: [.black, .clear],
-                                           startPoint: .top, endPoint: .bottom)
-                                .frame(height: 26)
-                        }
-                    } else {
-                        Rectangle()
-                    }
-                }
+                .fadedTail(rowSize.height > menuPreviewHeight)
                 .padding(Spacing.row)
                 .background(Theme.raised)
                 .clipShape(RoundedRectangle(cornerRadius: Radius.card))
@@ -248,11 +246,10 @@ struct TranscriptFoldLabel: View {
     let lineLimit: Int
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var live: Bool { running }
     private var motion: Animation? { reduceMotion ? nil : .easeOut(duration: 0.18) }
 
     var body: some View {
-        TranscriptDwelledValue(value: Shown(summary: summary, live: live, icons: iconTools)) { shown in
+        TranscriptDwelledValue(value: Shown(summary: summary, live: running, icons: iconTools)) { shown in
             HStack(spacing: Spacing.snug) {
                 if shown.live {
                     WorkingNest(size: 16).transition(.opacity)
@@ -430,22 +427,14 @@ private struct TranscriptToolRow: View {
         let input = isCommand ? nil : tool.input?.trimmingCharacters(in: .whitespacesAndNewlines)
         let output = tool.output?.trimmingCharacters(in: .whitespacesAndNewlines)
         let error = tool.error?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let hasPayload = [input, output, error].contains { !($0 ?? "").isEmpty }
-        if !hasPayload, tool.filePath == nil {
-            Text("No output")
-                .typeStyle(.footnote)
-                .foregroundStyle(Theme.muted)
-                .padding(.vertical, Spacing.tight)
-        } else {
-            VStack(alignment: .leading, spacing: 0) {
-                if let input, !input.isEmpty { payload(input, label: "Input") }
-                if let output, !output.isEmpty { payload(output, label: nil) }
-                if let error, !error.isEmpty { payload(error, label: "Error", ink: Theme.rose) }
-                footer(lines: output.map { $0.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).count } ?? 0,
-                       copyText: output ?? input ?? error)
-            }
-            .background(Theme.raised, in: .rect(cornerRadius: Radius.control - Spacing.hair))
+        VStack(alignment: .leading, spacing: 0) {
+            if let input, !input.isEmpty { payload(input, label: "Input") }
+            if let output, !output.isEmpty { payload(output, label: nil) }
+            if let error, !error.isEmpty { payload(error, label: "Error", ink: Theme.rose) }
+            footer(lines: output.map { $0.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).count } ?? 0,
+                   copyText: output ?? input ?? error)
         }
+        .background(Theme.raised, in: .rect(cornerRadius: Radius.control - Spacing.hair))
     }
 
     private func payload(_ text: String, label: String?, ink: Color? = nil) -> some View {

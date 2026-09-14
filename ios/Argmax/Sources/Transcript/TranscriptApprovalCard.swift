@@ -25,14 +25,6 @@ struct ResolveTranscriptApprovalInput: Encodable, Sendable {
 }
 
 extension BridgeClient {
-    func pendingTranscriptApprovals() async throws -> [TranscriptApprovalRequest] {
-        try await request(
-            "approvals:pending",
-            input: EmptyInput(),
-            as: [TranscriptApprovalRequest].self
-        )
-    }
-
     func resolveTranscriptApproval(
         approvalID: String,
         resolution: TranscriptApprovalResolution

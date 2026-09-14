@@ -1,3 +1,4 @@
+import Charts
 import SwiftUI
 
 // Shared shapes for the Insights pages: one card language across Usage and
@@ -136,5 +137,40 @@ struct InsightsSkeleton: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.9).repeatForever(), value: pulsing)
         .onAppear { pulsing = true }
         .accessibilityLabel("Loading insights")
+    }
+}
+
+extension View {
+    /// The axes both Insights charts wear: dated ticks along the bottom,
+    /// values up the leading edge, and one hairline grid behind them. Shared
+    /// so Usage and Activity cannot drift into two chart languages.
+    func insightsChartAxes(
+        dayStride: Int,
+        value: @escaping (Double) -> String
+    ) -> some View {
+        chartXAxis {
+            AxisMarks(values: .stride(by: .day, count: dayStride)) { mark in
+                if let date = mark.as(Date.self) {
+                    AxisValueLabel {
+                        Text(DateFormatter.cachedDay.string(from: date))
+                            .typeStyle(.caption2).foregroundStyle(Theme.muted)
+                    }
+                }
+                AxisGridLine(stroke: .init(lineWidth: 0.5))
+                    .foregroundStyle(Theme.line.opacity(0.5))
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .leading) { mark in
+                if let number = mark.as(Double.self) {
+                    AxisValueLabel {
+                        Text(value(number))
+                            .typeStyle(.caption2).foregroundStyle(Theme.muted)
+                    }
+                }
+                AxisGridLine(stroke: .init(lineWidth: 0.5))
+                    .foregroundStyle(Theme.line.opacity(0.5))
+            }
+        }
     }
 }

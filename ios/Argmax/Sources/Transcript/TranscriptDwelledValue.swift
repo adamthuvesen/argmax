@@ -47,18 +47,3 @@ struct TranscriptDwelledValue<Value: Equatable, Content: View>: View {
     }
 }
 
-/// True on the transcript's last row while the session is running: the
-/// fold that owns the turn's live work. The running mark keys on this
-/// rather than on "a tool is in flight right now", which is false for the
-/// gap between one call's completion and the next call's start and made
-/// the mark blink at every boundary.
-private struct TranscriptTailIsLiveKey: EnvironmentKey {
-    static let defaultValue = false
-}
-
-extension EnvironmentValues {
-    var transcriptTailIsLive: Bool {
-        get { self[TranscriptTailIsLiveKey.self] }
-        set { self[TranscriptTailIsLiveKey.self] = newValue }
-    }
-}

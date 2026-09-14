@@ -28,11 +28,6 @@ struct NativeTranscriptView: View {
         return nil
     }
 
-    /// The last row owns the turn's live work while the session runs.
-    private var tailIsLive: Bool {
-        transcript.session?.state == .running && transcript.connection == .live
-    }
-
     private var thinking: TranscriptThinking? {
         guard transcript.phase == .ready, transcript.connection == .live else { return nil }
         return transcript.thinkingStart
@@ -41,7 +36,6 @@ struct NativeTranscriptView: View {
 
     var body: some View {
         let rows = rows
-        let liveRowID = tailIsLive ? rows.last?.id : nil
         return VStack(spacing: 0) {
             if case .failed(let message) = transcript.phase {
                 HStack(alignment: .top, spacing: Spacing.snug) {
@@ -73,7 +67,6 @@ struct NativeTranscriptView: View {
                                      onOpenSession: { navigator.awaitingSessionID = $0 })
                 }
                     .padding(.vertical, row.verticalPadding)
-                    .environment(\.transcriptTailIsLive, row.id == liveRowID)
             } footer: {
                 TranscriptThinkingLabel(thinking: thinking)
                     .id(thinking)

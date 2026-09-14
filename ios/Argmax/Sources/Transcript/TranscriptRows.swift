@@ -219,15 +219,18 @@ struct TranscriptToolsRow: View {
 struct TranscriptFoldLabel: View {
     let tools: [TranscriptTool]
     let summary: String
-    /// A call in flight in this fold. Kept alongside the tail signal so a
-    /// long call above the tail (an agent) still shows as running.
+    /// A call in flight in this fold, and the only thing that lights the
+    /// mark. The fold speaks for work it is doing; the gap between one call
+    /// and the next belongs to the thinking cue under the transcript
+    /// (`TranscriptThinkingLabel`), which appears exactly when no tool is
+    /// running. Keying this on the live tail instead covered that gap too,
+    /// so a turn between calls carried both cues at once.
     let running: Bool
     let maxIcons: Int
     let lineLimit: Int
-    @Environment(\.transcriptTailIsLive) private var tailIsLive
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var live: Bool { running || tailIsLive }
+    private var live: Bool { running }
     private var motion: Animation? { reduceMotion ? nil : .easeOut(duration: 0.18) }
 
     var body: some View {

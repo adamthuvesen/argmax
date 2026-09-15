@@ -33,7 +33,7 @@ use self::cache::{
 };
 pub(crate) use self::codex::codex_children_still_working;
 use self::codex::{codex_trace_events, CodexNativeRun};
-use self::cursor::{cursor_child_agent_ids, cursor_task_prompt, cursor_trace_events};
+use self::cursor::{cursor_child_agent_id, cursor_task_prompt, cursor_trace_events};
 use self::grok::{grok_child_ids, grok_trace_events};
 use self::reconcile::{
     apply_reconciliation, codex_native_runs, reconciliation_plan, reconciliation_work,
@@ -275,11 +275,8 @@ fn reconcile_session_subagent_traces_from_home_database(
         return Ok(0);
     };
     let work = reconciliation_work(home, &plan);
-    let written = {
-        let connection = database.connection();
-        apply_reconciliation(&connection, &plan.session_id, work)?
-    };
-    Ok(written)
+    let connection = database.connection();
+    apply_reconciliation(&connection, &plan.session_id, work)
 }
 
 #[cfg(test)]
@@ -364,7 +361,7 @@ fn agent_trace_context(
                     .and_then(|result| result.get("isBackground"))
                     .and_then(Value::as_bool)
                     == Some(true);
-                for child_id in cursor_child_agent_ids(&row.payload) {
+                if let Some(child_id) = cursor_child_agent_id(&row.payload) {
                     push_unique(&mut child_ids, child_id);
                 }
             }
@@ -380,10 +377,10 @@ fn agent_trace_context(
         return Ok(None);
     };
     if child_ids.is_empty()
-        && !(provider == TraceProvider::Cursor && cursor_prompt.as_deref().is_some())
+        && !(provider == TraceProvider::Cursor && cursor_prompt.is_some())
         && !(provider == TraceProvider::Grok
-            && workspace_path.as_deref().is_some()
-            && session.provider_conversation_id.as_deref().is_some())
+            && workspace_path.is_some()
+            && session.provider_conversation_id.is_some())
     {
         return Ok(None);
     }

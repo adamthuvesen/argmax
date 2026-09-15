@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
@@ -26,6 +27,7 @@ import type { BrowserBounds, BrowserContentBlocking } from "../../shared/types.j
 import { errorMessage } from "../../shared/error.js";
 import { browserFindScript, parseFindResult, type BrowserFindResult } from "../lib/browserFind.js";
 import {
+  completeBrowserAddress,
   initializeBrowserHistory,
   recordBrowserVisit,
   suggestBrowserHistory,
@@ -164,8 +166,17 @@ export function BrowserPanel({
   const handledRequestRef = useRef<{ scopeId: string; seq: number } | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const addressInputRef = useRef<HTMLInputElement | null>(null);
-  /** What the user typed, before ↑/↓ started swapping in suggestions. */
+  /** What the user typed, before a completion or ↑/↓ swapped in a suggestion. */
   const typedValueRef = useRef("");
+  /**
+   * The inline completion sitting in the field, with the URL it came from: the
+   * completed text drops the scheme and `www.`, so resolving it again would
+   * visit a different host than the one that was visited before.
+   */
+  const completionRef = useRef<{ value: string; url: string } | null>(null);
+  /** Suffix selection to apply once the completed value has rendered. */
+  const pendingSelectionRef = useRef<{ value: string; start: number } | null>(null);
+  const [completionSeq, setCompletionSeq] = useState(0);
   const overlayOpenRef = useRef(false);
   const lastBoundsRef = useRef<{ tabId: string; bounds: BrowserBounds; visible: boolean } | null>(null);
   const tabs = useSyncExternalStore(subscribeBrowserTabs, () => getBrowserTabs(scopeId));
@@ -768,17 +779,49 @@ export function BrowserPanel({
     []
   );
 
+  // Select the completed suffix once the value has rendered, so the next
+  // keystroke replaces it. Layout effect, or a frame paints the completion
+  // unselected first. Keyed on a counter rather than the value: typing the
+  // character the suffix already predicted renders the same string, and the
+  // selection still has to move one character along.
+  useLayoutEffect(() => {
+    const pending = pendingSelectionRef.current;
+    pendingSelectionRef.current = null;
+    const input = addressInputRef.current;
+    if (!pending || !input || input.value !== pending.value) return;
+    input.setSelectionRange(pending.start, pending.value.length, "forward");
+  }, [completionSeq]);
+
   const closeSuggestions = useCallback((): void => {
     setSuggestions([]);
     setSuggestionIndex(-1);
   }, []);
 
+  /** Suggest for what was typed, and complete it inline when a visit extends it. */
+  const applyAddressInput = useCallback((typed: string, complete: boolean): void => {
+    typedValueRef.current = typed;
+    const next = suggestBrowserHistory(typed);
+    setSuggestions(next);
+    const completion = complete ? completeBrowserAddress(typed, next) : null;
+    completionRef.current = completion
+      ? { value: completion.completed, url: completion.entry.url }
+      : null;
+    setSuggestionIndex(completion ? next.indexOf(completion.entry) : -1);
+    setAddressValue(completion?.completed ?? typed);
+    if (!completion) return;
+    pendingSelectionRef.current = { value: completion.completed, start: typed.length };
+    setCompletionSeq((seq) => seq + 1);
+  }, []);
+
   const navigateTo = useCallback(
-    (raw: string): void => {
+    (raw: string, visited?: string): void => {
       if (!browser || !activeTabId) return;
-      const destination = resolveBrowserInput(raw);
+      // A completed address goes to the URL it was completed from: resolving
+      // "youtube.com" would drop the "www." the visit was recorded under.
+      const destination = visited ?? resolveBrowserInput(raw);
       if (!destination) return;
       addressEditingRef.current = false;
+      completionRef.current = null;
       closeSuggestions();
       // WKWebView's loadRequest is a no-op for the URL already on the tab, so
       // Enter in the omnibox would look like it did nothing. Reload instead —
@@ -804,7 +847,8 @@ export function BrowserPanel({
     // "go" whether or not WebKit would submit on its own.
     if (event.key === "Enter" && !event.nativeEvent.isComposing) {
       event.preventDefault();
-      navigateTo(addressValue);
+      const completion = completionRef.current;
+      navigateTo(addressValue, completion?.value === addressValue ? completion.url : undefined);
       return;
     }
     if (suggestions.length === 0) return;
@@ -814,10 +858,15 @@ export function BrowserPanel({
       const next = (suggestionIndex + step + suggestions.length + 1) % (suggestions.length + 1);
       const index = next === suggestions.length ? -1 : next;
       setSuggestionIndex(index);
+      // Picking a row by hand replaces the completion with the full URL.
+      completionRef.current = null;
       // Cycling past the ends restores what the user actually typed.
       setAddressValue(index === -1 ? typedValueRef.current : (suggestions[index]?.url ?? ""));
     } else if (event.key === "Escape") {
       event.preventDefault();
+      // Chrome's revert: the completed suffix goes, the typed text stays.
+      completionRef.current = null;
+      setAddressValue(typedValueRef.current);
       closeSuggestions();
     }
   };
@@ -1077,23 +1126,31 @@ export function BrowserPanel({
             spellCheck={false}
             onFocus={(event) => {
               addressEditingRef.current = true;
-              typedValueRef.current = event.target.value;
               event.target.select();
-              setSuggestions(suggestBrowserHistory(event.target.value));
-              setSuggestionIndex(-1);
+              applyAddressInput(event.target.value, false);
             }}
             onBlur={() => {
               addressEditingRef.current = false;
+              // An unaccepted completion is a page the user never chose, so the
+              // field goes back to their own text.
+              if (completionRef.current?.value === addressValue) setAddressValue(typedValueRef.current);
+              completionRef.current = null;
               closeSuggestions();
             }}
             onChange={(event) => {
               // Submitting clears the editing flag without blurring; typing
               // again must re-claim the field or a load event stomps it.
               addressEditingRef.current = true;
-              setAddressValue(event.target.value);
-              typedValueRef.current = event.target.value;
-              setSuggestions(suggestBrowserHistory(event.target.value));
-              setSuggestionIndex(-1);
+              const native = event.nativeEvent;
+              // Only plain typing at the end of the field completes: deleting
+              // must not put the suffix straight back, a paste is already the
+              // address the user wants, and selecting a range mid-composition
+              // would drop the IME's in-progress text.
+              const typing = native instanceof InputEvent &&
+                native.inputType === "insertText" &&
+                !native.isComposing;
+              const caretAtEnd = event.target.selectionStart === event.target.value.length;
+              applyAddressInput(event.target.value, typing && caretAtEnd);
             }}
             onKeyDown={handleAddressKeyDown}
           />

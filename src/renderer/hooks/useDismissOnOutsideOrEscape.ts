@@ -3,7 +3,7 @@ import { useEffect, useRef, type RefObject } from "react";
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-export interface DismissOptions {
+interface DismissOptions {
   /**
    * Trap Tab/Shift+Tab inside `ref` so focus cycles within the dismissable
    * surface instead of escaping to background controls. Use only for true

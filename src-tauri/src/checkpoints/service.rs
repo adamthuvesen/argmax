@@ -27,7 +27,7 @@ use crate::{
     persistence::{
         checkpoints::{
             find_checkpoint, finish_rewind, list_checkpoints, mark_interrupted_rewinds,
-            persist_checkpoint, start_rewind, Checkpoint, PersistCheckpointInput,
+            persist_checkpoint, start_rewind, Checkpoint,
         },
         sessions::find_session_by_id,
         time::now_iso,
@@ -217,10 +217,16 @@ impl CheckpointService {
             )?;
         }
 
-        let restore_result =
-            materialize_tree(&workspace_path, &checkpoint.worktree_tree, &deleted_paths).await;
-        let restore_result = match restore_result {
-            Ok(()) => restore_index(&workspace_path, &checkpoint.index_tree).await,
+        let restore_result = match materialize_tree(
+            &workspace_path,
+            &checkpoint.worktree_tree,
+            &deleted_paths,
+        )
+        .await
+        {
+            Ok(()) => git_text(&workspace_path, ["read-tree", &checkpoint.index_tree])
+                .await
+                .map(|_| ()),
             Err(error) => Err(error),
         };
         match restore_result {
@@ -280,14 +286,7 @@ impl CheckpointService {
         workspace_path: &Path,
     ) -> ArgmaxResult<Checkpoint> {
         self.ensure_checkout_supported(workspace_path).await?;
-        let head_sha = git_text(workspace_path, ["rev-parse", "--verify", "HEAD"]).await?;
-        let branch = git_text(
-            workspace_path,
-            ["symbolic-ref", "--quiet", "--short", "HEAD"],
-        )
-        .await?;
-        let index_tree = index_tree(workspace_path).await?;
-        let worktree_tree = snapshot_visible_worktree(workspace_path).await?;
+        let fingerprint = checkout_fingerprint(workspace_path).await?;
         let untracked_paths = untracked_paths(workspace_path).await?;
         let provider_conversation_id = self.session_conversation_for_checkpoint(&input)?;
         let checkpoint = Checkpoint {
@@ -295,10 +294,10 @@ impl CheckpointService {
             workspace_id: input.workspace_id,
             session_id: input.session_id,
             label: input.label,
-            branch,
-            head_sha,
-            worktree_tree,
-            index_tree,
+            branch: fingerprint.branch,
+            head_sha: fingerprint.head_sha,
+            worktree_tree: fingerprint.worktree_tree,
+            index_tree: fingerprint.index_tree,
             untracked_paths,
             turn_boundary: input.turn_boundary,
             provider_conversation_id,
@@ -307,7 +306,7 @@ impl CheckpointService {
         };
         pin_checkpoint_trees(workspace_path, &checkpoint).await?;
         let connection = self.database.connection();
-        persist_checkpoint(&connection, &PersistCheckpointInput { checkpoint })
+        persist_checkpoint(&connection, &checkpoint)
     }
 
     fn session_conversation_for_checkpoint(
@@ -545,11 +544,6 @@ async fn materialize_tree(
         options(),
     )
     .await?;
-    Ok(())
-}
-
-async fn restore_index(workspace_path: &Path, target_tree: &str) -> ArgmaxResult<()> {
-    git_text(workspace_path, ["read-tree", target_tree]).await?;
     Ok(())
 }
 

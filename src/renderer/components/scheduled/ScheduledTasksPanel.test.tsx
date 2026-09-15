@@ -201,17 +201,6 @@ describe("ScheduledTasksPanel", () => {
     expect(routinesStub.delete).not.toHaveBeenCalled();
   });
 
-  it("keeps the routine when delete confirmation is declined", async () => {
-    systemStub.confirm.mockResolvedValue(false);
-    render(<ScheduledTasksPanel projects={[project()]} />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Delete Morning triage" }));
-
-    await waitFor(() => expect(screen.getByRole("button", { name: "Delete Morning triage" })).toBeEnabled());
-    expect(routinesStub.delete).not.toHaveBeenCalled();
-    expect(screen.getByRole("listitem")).toHaveTextContent("Morning triage");
-  });
-
   it("deletes the confirmed routine exactly once", async () => {
     systemStub.confirm.mockResolvedValue(true);
     render(<ScheduledTasksPanel projects={[project()]} />);

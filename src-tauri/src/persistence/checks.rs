@@ -40,31 +40,23 @@ pub fn list_checks(
     workspace_ids: Option<&[String]>,
     limit: usize,
 ) -> ArgmaxResult<Vec<CheckRun>> {
-    match workspace_ids {
-        Some(ids) if !ids.is_empty() => {
-            let json = serde_json::to_string(ids).map_err(json_error)?;
-            let mut statement = connection.prepare_cached("SELECT * FROM checks WHERE workspace_id IN (SELECT value FROM json_each(?)) ORDER BY started_at DESC, id DESC LIMIT ?",
-            )
-            .map_err(sqlite_error)?;
-            let rows = statement
-                .query_map((json, limit as i64), check_row_to_run)
-                .map_err(sqlite_error)?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(sqlite_error)?;
-            Ok(rows)
-        }
-        _ => {
-            let mut statement = connection
-                .prepare_cached("SELECT * FROM checks ORDER BY started_at DESC, id DESC LIMIT ?")
-                .map_err(sqlite_error)?;
-            let rows = statement
-                .query_map([limit as i64], check_row_to_run)
-                .map_err(sqlite_error)?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(sqlite_error)?;
-            Ok(rows)
-        }
-    }
+    let filter = match workspace_ids.filter(|ids| !ids.is_empty()) {
+        Some(ids) => Some(serde_json::to_string(ids).map_err(json_error)?),
+        None => None,
+    };
+    let mut statement = connection
+        .prepare_cached(
+            "SELECT * FROM checks
+             WHERE ?1 IS NULL OR workspace_id IN (SELECT value FROM json_each(?1))
+             ORDER BY started_at DESC, id DESC LIMIT ?2",
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map(rusqlite::params![filter, limit as i64], check_row_to_run)
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(rows)
 }
 
 pub fn find_check_by_id(connection: &Connection, check_id: &str) -> ArgmaxResult<CheckRun> {

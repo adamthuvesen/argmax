@@ -32,7 +32,7 @@ export interface AnchorPoint {
   y: number;
 }
 
-export interface AnchoredPopoverOptions {
+interface AnchoredPopoverOptions {
   /** Whether the popover is on screen. Positioning only runs while it is. */
   open: boolean;
   /** Preferred side. `flip` takes the opposite one when this won't fit. */
@@ -55,7 +55,7 @@ export interface AnchoredPopoverOptions {
   strategy?: "absolute" | "fixed";
 }
 
-export interface AnchoredPopover {
+interface AnchoredPopover {
   /** Attach to the element the popover hangs off. */
   setAnchor: (node: HTMLElement | null) => void;
   /** Attach to the popover itself. */

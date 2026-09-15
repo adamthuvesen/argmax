@@ -13,9 +13,9 @@
 //! `complete_cursor_turn_after_result` turn lifecycle — is unchanged.
 //!
 //! Scope and trade-offs (see docs/providers.md):
-//! - Every Cursor model routes here when ACP advertises the exact requested
-//!   model, effort, and fast combination. A missing exact variant is an error,
-//!   never a silent downgrade.
+//! - Every Cursor model routes here. A launch takes the one variant Cursor
+//!   advertises for the requested model's family; a family it does not
+//!   advertise is an error, never a silent switch to another model.
 //! - Cursor's ACP stream never reports token usage, so ACP turns record no
 //!   usage/cost row.
 //! - The warm process is shared per workspace, so the per-session Argmax
@@ -74,14 +74,6 @@ fn acp_mode_id(agent_mode: AgentMode) -> &'static str {
 pub fn is_acp_eligible(input: &ProviderLaunchInput) -> bool {
     input.provider == ProviderId::Cursor && !input.resume_fork
 }
-
-pub fn is_acp_model_id(model_id: &str) -> bool {
-    !model_id.is_empty()
-}
-
-// ---------------------------------------------------------------------------
-// Pool
-// ---------------------------------------------------------------------------
 
 #[derive(Default)]
 pub struct CursorAcpSessions {
@@ -342,17 +334,6 @@ impl CursorAcpSessions {
     /// ACP process, spawning and initializing it first if needed. Any error
     /// here leaves the pool consistent and the caller falls back to the
     /// one-shot path.
-    pub async fn launch_turn(
-        &self,
-        binary_path: &str,
-        input: &ProviderLaunchInput,
-        session_launch: Option<&SessionLaunchProcessConfig>,
-        on_event: EventCallback,
-    ) -> ArgmaxResult<Arc<dyn ProviderRuntimeHandle>> {
-        self.launch_turn_with_approvals(binary_path, input, session_launch, None, on_event)
-            .await
-    }
-
     pub async fn launch_turn_with_approvals(
         &self,
         binary_path: &str,
@@ -713,7 +694,7 @@ fn cursor_permission_handler(contexts: PermissionContexts) -> AcpPermissionHandl
             let Some(approvals) = context.approvals else {
                 return AcpPermissionDecision::Cancelled;
             };
-            let request_id = json_rpc_id(&request.request_id);
+            let request_id = request.request_id.to_string();
             let command = cursor_permission_command(&request.params);
             let cwd = request
                 .params
@@ -739,10 +720,6 @@ fn cursor_permission_handler(contexts: PermissionContexts) -> AcpPermissionHandl
     })
 }
 
-fn json_rpc_id(id: &Value) -> String {
-    id.to_string()
-}
-
 fn cursor_permission_command(params: &Value) -> String {
     params
         .pointer("/toolCall/rawInput/command")
@@ -751,10 +728,6 @@ fn cursor_permission_command(params: &Value) -> String {
         .unwrap_or("Cursor tool request")
         .to_string()
 }
-
-// ---------------------------------------------------------------------------
-// Turn execution
-// ---------------------------------------------------------------------------
 
 fn spawn_turn(
     client: Arc<AcpClient>,
@@ -916,10 +889,6 @@ fn with_acp_session_id(mut line: Value, acp_session_id: &str) -> Value {
     }
     line
 }
-
-// ---------------------------------------------------------------------------
-// ACP update → cursor stream-json translation
-// ---------------------------------------------------------------------------
 
 /// Per-turn translation state: cumulative assistant text (the one-shot CLI
 /// emits cumulative deltas, and the normalizer diffs consecutive values) and
@@ -1152,7 +1121,7 @@ fn mcp_identity(update: &Value) -> Option<(String, Value)> {
 /// opens every tool this way, whatever its kind, and names it in the following
 /// `tool_call_update`.
 fn is_placeholder(update: &Value) -> bool {
-    non_empty_object(update.get("rawInput")).is_none() && first_location_path(update).is_none()
+    non_empty_object(update.get("rawInput")).is_none() && location_paths(update).is_empty()
 }
 
 fn non_empty_object(value: Option<&Value>) -> Option<&Map<String, Value>> {
@@ -1180,13 +1149,8 @@ fn adopt_location_path(args: &mut Value, update: &Value) -> bool {
     true
 }
 
-/// The first path in ACP's `locations`, the list of files a tool is about to
-/// touch. It is how Cursor names the target of a read or an edit whose
-/// `rawInput` has not arrived.
-fn first_location_path(update: &Value) -> Option<String> {
-    location_paths(update).into_iter().next()
-}
-
+/// The files a tool says it is about to touch. It is how Cursor names the
+/// target of a read or an edit whose `rawInput` has not arrived.
 fn location_paths(update: &Value) -> Vec<String> {
     let Some(locations) = update.get("locations").and_then(Value::as_array) else {
         return Vec::new();
@@ -1281,10 +1245,6 @@ fn is_terminal_status(update: &Value) -> bool {
     )
 }
 
-// ---------------------------------------------------------------------------
-// Turn handle
-// ---------------------------------------------------------------------------
-
 struct AcpTurnHandle {
     client: Arc<AcpClient>,
     acp_session_id: String,
@@ -1350,9 +1310,23 @@ mod tests {
         json!({ "sessionId": "acp-1", "update": value })
     }
 
-    #[test]
-    fn approval_ids_preserve_json_rpc_type() {
-        assert_ne!(json_rpc_id(&json!(42)), json_rpc_id(&json!("42")));
+    fn launch_input(model_id: &str) -> ProviderLaunchInput {
+        ProviderLaunchInput {
+            provider: ProviderId::Cursor,
+            session_id: "s".into(),
+            workspace_path: "/tmp".into(),
+            prompt: "p".into(),
+            model_label: model_id.into(),
+            model_id: model_id.into(),
+            reasoning_effort: None,
+            fast_mode: false,
+            resume_conversation_id: None,
+            resume_fork: false,
+            permission_mode: PermissionMode::AutoApprove,
+            agent_mode: AgentMode::Auto,
+            cols: 80,
+            rows: 24,
+        }
     }
 
     #[test]
@@ -1806,22 +1780,7 @@ mod tests {
 
     #[test]
     fn eligibility_covers_all_cursor_models_except_forks() {
-        let mut input = ProviderLaunchInput {
-            provider: ProviderId::Cursor,
-            session_id: "s".into(),
-            workspace_path: "/tmp".into(),
-            prompt: "p".into(),
-            model_label: "Composer 2.5 (Cursor)".into(),
-            model_id: "composer-2.5".into(),
-            reasoning_effort: None,
-            fast_mode: false,
-            resume_conversation_id: None,
-            resume_fork: false,
-            permission_mode: super::super::PermissionMode::AutoApprove,
-            agent_mode: AgentMode::Auto,
-            cols: 80,
-            rows: 24,
-        };
+        let mut input = launch_input("composer-2.5");
         assert!(is_acp_eligible(&input));
         input.model_id = "gpt-5.6-sol-medium".into();
         assert!(is_acp_eligible(&input));
@@ -1953,22 +1912,7 @@ mod tests {
 
     #[test]
     fn model_matching_ignores_the_configuration_cursor_advertises() {
-        let mut input = ProviderLaunchInput {
-            provider: ProviderId::Cursor,
-            session_id: "s".into(),
-            workspace_path: "/tmp".into(),
-            prompt: "p".into(),
-            model_label: "GPT-5.6 Sol (Cursor)".into(),
-            model_id: "gpt-5.6-sol-medium".into(),
-            reasoning_effort: None,
-            fast_mode: false,
-            resume_conversation_id: None,
-            resume_fork: false,
-            permission_mode: PermissionMode::AutoApprove,
-            agent_mode: AgentMode::Auto,
-            cols: 80,
-            rows: 24,
-        };
+        let mut input = launch_input("gpt-5.6-sol-medium");
         // Whatever effort and serving speed Cursor names for the family, that
         // is the only variant it will accept, so all of these have to match.
         for advertised in [
@@ -1988,22 +1932,7 @@ mod tests {
 
     #[test]
     fn model_matching_maps_cursor_aliases_to_advertised_families() {
-        let mut input = ProviderLaunchInput {
-            provider: ProviderId::Cursor,
-            session_id: "s".into(),
-            workspace_path: "/tmp".into(),
-            prompt: "p".into(),
-            model_label: "Grok 4.6 (Cursor)".into(),
-            model_id: "cursor-grok-4.6-medium".into(),
-            reasoning_effort: None,
-            fast_mode: false,
-            resume_conversation_id: None,
-            resume_fork: false,
-            permission_mode: PermissionMode::ProviderDefaults,
-            agent_mode: AgentMode::Auto,
-            cols: 80,
-            rows: 24,
-        };
+        let mut input = launch_input("cursor-grok-4.6-medium");
         assert!(cursor_model_matches(
             "grok-4.6[effort=high,fast=true]",
             &input

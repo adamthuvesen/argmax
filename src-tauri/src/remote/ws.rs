@@ -414,10 +414,6 @@ pub fn writer_step(
     }
 }
 
-pub fn response_ok_frame(id: i64, value: Value) -> String {
-    json!({ "type": "response", "id": id, "ok": value }).to_string()
-}
-
 pub fn response_error_frame(id: i64, error: &ArgmaxError) -> String {
     json!({ "type": "response", "id": id, "error": error }).to_string()
 }

@@ -571,27 +571,16 @@ function SourceEditor({
   useEffect(() => () => onCursorChange?.(null), [onCursorChange]);
 
   const extensions = useMemo<Extension[]>(
-    () =>
-      editable
-        ? [
-            ...editorLanguageFor(path),
-            ...semanticHighlightingFor(path),
-            keymap.of([{ key: "Mod-s", preventDefault: true, run: handleSave }]),
-            search({ top: true }),
-            editorTheme,
-            editorSyntaxHighlighting,
-            cursorReporter,
-            EditorView.lineWrapping
-          ]
-        : [
-            ...editorLanguageFor(path),
-            ...semanticHighlightingFor(path),
-            search({ top: true }),
-            editorTheme,
-            editorSyntaxHighlighting,
-            cursorReporter,
-            EditorView.lineWrapping
-          ],
+    () => [
+      ...editorLanguageFor(path),
+      ...semanticHighlightingFor(path),
+      ...(editable ? [keymap.of([{ key: "Mod-s", preventDefault: true, run: handleSave }])] : []),
+      search({ top: true }),
+      editorTheme,
+      editorSyntaxHighlighting,
+      cursorReporter,
+      EditorView.lineWrapping
+    ],
     [path, handleSave, editable, cursorReporter]
   );
 

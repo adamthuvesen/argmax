@@ -23,7 +23,7 @@ type VisibleRow = {
  *  no title — the panel already names the source — and doubles as the tree's
  *  breathing room under the review toolbar. Omitted by surfaces that supply
  *  their own chrome (the mobile review screen, the command-palette pop-out). */
-export interface WorkspaceTreeToolbar {
+interface WorkspaceTreeToolbar {
   onRefresh: () => void;
 }
 
@@ -381,13 +381,10 @@ function TreeRow({
   pinned?: boolean;
 }): JSX.Element {
   const isOpen = expanded.has(node.path);
-  // `--tree-depth` drives the indent guides: one hairline per level the row
-  // sits under, drawn as a background repeat so deep trees cost no extra DOM.
-  const indent = {
+  const indent: CSSProperties = {
     paddingLeft: INDENT_BASE + depth * INDENT_STEP,
-    height: ROW_HEIGHT,
-    "--tree-depth": depth
-  } as CSSProperties;
+    height: ROW_HEIGHT
+  };
   if (node.kind === "dir") {
     return (
       <button

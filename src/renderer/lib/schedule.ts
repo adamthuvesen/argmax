@@ -24,7 +24,7 @@ export interface ScheduleControls {
 
 /** cron dow numbers follow the `cron` crate: 1 = Sunday. Display runs
  *  Monday-first to match how people read calendars. */
-export const WEEKDAY_OPTIONS: ReadonlyArray<{ value: number; label: string }> = [
+const WEEKDAY_OPTIONS: ReadonlyArray<{ value: number; label: string }> = [
   { value: 2, label: "Mon" },
   { value: 3, label: "Tue" },
   { value: 4, label: "Wed" },

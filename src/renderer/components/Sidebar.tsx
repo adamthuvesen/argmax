@@ -1268,8 +1268,7 @@ export function Sidebar({
           ? dateGroups.map((group) => {
               const isCollapsed = collapsedDateGroups.has(group.key);
               const totalCount = group.items.length;
-              const isExpanded = expandedDateGroups.has(group.key);
-              const showAll = isExpanded;
+              const showAll = expandedDateGroups.has(group.key);
               const visibleItems = visibleSidebarItems(group.items, selectedWorkspaceId, showAll);
               const hiddenCount = totalCount - visibleItems.length;
               const hasOverflow = totalCount > SIDEBAR_SESSION_LIMIT;
@@ -1347,7 +1346,7 @@ export function Sidebar({
             })
           : orderedProjects.map((project) => {
               const manualOrder = workspaceOrders[project.id] ?? [];
-              const liveWorkspaces = sortWorkspaceGroup(
+              const projectWorkspaces = sortWorkspaceGroup(
                 sidebarWorkspaces.filter(
                   (workspace) =>
                     !workspace.pinned &&
@@ -1358,12 +1357,10 @@ export function Sidebar({
                 ),
                 manualOrder
               );
-              const projectWorkspaces = liveWorkspaces;
               const orderedWorkspaceIds = projectWorkspaces.map((workspace) => workspace.id);
               const isCollapsed = collapsedProjectIds.has(project.id);
               const totalCount = projectWorkspaces.length;
-              const isExpanded = expandedProjectIds.has(project.id);
-              const showAll = isExpanded;
+              const showAll = expandedProjectIds.has(project.id);
               const visibleWorkspaces = visibleSidebarItems(projectWorkspaces, selectedWorkspaceId, showAll);
               const hiddenCount = totalCount - visibleWorkspaces.length;
               const hasOverflow = totalCount > SIDEBAR_SESSION_LIMIT;

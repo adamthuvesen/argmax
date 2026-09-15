@@ -19,9 +19,9 @@ import { hideFullLauncher } from "./launcherSurface.js";
 // open the same pages. They call the mutators here rather than being handed a
 // callback per page.
 
-export type StandalonePage = "settings" | "schedule" | "usage" | "activity";
+type StandalonePage = "settings" | "schedule" | "usage" | "activity";
 
-export interface OverlaysSnapshot {
+interface OverlaysSnapshot {
   /** Which full-screen page owns the workspace column, if any. */
   standalonePage: StandalonePage | null;
   /** The settings group the rail highlights and the panel renders. */
@@ -133,7 +133,7 @@ export function dismissTopOverlay(): boolean {
   return false;
 }
 
-export function subscribeOverlays(listener: () => void): () => void {
+function subscribeOverlays(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);

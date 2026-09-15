@@ -71,7 +71,7 @@ describe("ReviewPanel changes layout", () => {
     cleanup();
   });
 
-  it("renders changed files as stacked full-width rows with the selected diff inline", () => {
+  it("renders changed files as a tree beside the selected file diff", () => {
     const review = reviewStub();
     review.files = [
       { path: "src/a.ts", status: "modified", additions: 1, deletions: 1 , staged: false },
@@ -80,25 +80,20 @@ describe("ReviewPanel changes layout", () => {
     const { container } = render(<ReviewPanel review={review} />);
     const body = container.querySelector(".review-body");
     const leftCol = container.querySelector(".review-list-col");
-    const resizeHandle = screen.queryByRole("separator", { name: "Resize file list width" });
-    const changedFilesStack = screen.getByLabelText("Changed files");
+    const resizeHandle = screen.getByRole("separator", { name: "Resize changed files width" });
+    const changedFilesTree = screen.getByRole("tree", { name: "Changed files" });
     const diff = container.querySelector(".review-diff");
 
     expect(body).not.toBeNull();
     expect(diff).not.toBeNull();
-    expect(leftCol).toBeNull();
-    expect(resizeHandle).toBeNull();
+    expect(leftCol).not.toBeNull();
+    expect(resizeHandle).toBeInTheDocument();
     expect(body).toHaveClass("review-body-changes");
-    expect(container.querySelector(".review-changed-files-strip")).toBeNull();
-    expect(within(changedFilesStack).getByRole("button", { name: "Collapse src/a.ts diff" })).toHaveAttribute(
-      "aria-expanded",
-      "true"
-    );
-    expect(within(changedFilesStack).getByRole("button", { name: "Expand src/deep/b.ts diff" })).toHaveAttribute(
-      "aria-expanded",
-      "false"
-    );
-    expect(changedFilesStack.querySelector(".review-inline-diff")).not.toBeNull();
+    expect(within(changedFilesTree).getByRole("treeitem", { name: "a.ts" })).toHaveAttribute("aria-selected", "true");
+    expect(within(changedFilesTree).getByRole("treeitem", { name: "b.ts" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Collapse src/a.ts diff" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("src/")).toBeVisible();
+    expect(screen.getByText("a.ts", { selector: ".review-diff-heading strong" })).toBeVisible();
     expect(body?.contains(diff)).toBe(true);
   });
 
@@ -113,8 +108,8 @@ describe("ReviewPanel changes layout", () => {
 
     render(<ReviewPanel review={review} />);
 
-    const changedFilesStack = screen.getByLabelText("Changed files");
-    fireEvent.click(within(changedFilesStack).getByRole("button", { name: "Expand src/deep/b.ts diff" }));
+    const changedFilesTree = screen.getByRole("tree", { name: "Changed files" });
+    fireEvent.click(within(changedFilesTree).getByRole("treeitem", { name: "b.ts" }));
 
     expect(openFile).toHaveBeenCalledWith("src/deep/b.ts");
   });
@@ -184,14 +179,13 @@ describe("ReviewPanel changes layout", () => {
     const review = reviewStub();
     render(<ReviewPanel review={review} />);
 
-    const changedFilesStack = screen.getByLabelText("Changed files");
-    const row = within(changedFilesStack).getByRole("button", { name: "Collapse src/a.ts diff" });
+    const row = screen.getByRole("button", { name: "Collapse src/a.ts diff" });
     expect(row).toHaveAttribute("aria-expanded", "true");
 
     fireEvent.click(row);
 
     expect(row).toHaveAttribute("aria-expanded", "false");
-    expect(changedFilesStack.querySelector(".review-inline-diff")).toBeNull();
+    expect(document.querySelector(".review-diff-scroll")).toBeNull();
     expect(review.openFile).not.toHaveBeenCalled();
   });
 

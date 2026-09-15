@@ -1,20 +1,6 @@
-// Provider runtime primitives.
-//
-// This module owns the process/PTY layer for provider sessions:
-//   - `ProviderRuntimeEvent` / `ProviderRuntimeEventType` — the wire-event
-//     shape the launcher emits and the session service consumes.
-//   - `ProviderRuntimeHandle` trait — per-session lifecycle surface
-//     (send_input, resize, terminate, disposed/accepts_input).
-//   - `ProviderProcessLauncher` trait — how the service spawns a session.
-//   - `RealProviderProcessLauncher` — production implementation that
-//     shells out to the discovered provider binary in structured-JSON
-//     mode and pipes stdout/stderr through a blocking reader thread.
-//   - `ProviderSessionHandle` — concrete handle returned by the real
-//     launcher.
-//
-// Session lifecycle, follow-up queue, persistence side effects, and
-// orphan recovery live in `session_service.rs` (this module is the
-// process/IO substrate, that one is the state machine).
+// The process/PTY substrate for provider sessions. Session lifecycle, the
+// follow-up queue, persistence side effects, and orphan recovery live in
+// `session_service.rs`: this module is the IO, that one is the state machine.
 
 use crate::{
     session_control::{SessionLaunchProcessConfig, SessionLaunchRegistry},
@@ -60,17 +46,9 @@ use crate::{
     persistence::time::now_iso,
 };
 
-// ---------------------------------------------------------------------------
-// Type aliases shared between the launcher and the session service.
-// ---------------------------------------------------------------------------
-
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 pub type EventCallback = Arc<dyn Fn(ProviderRuntimeEvent) + Send + Sync>;
 pub type DeltaPublisher = Arc<dyn Fn(DashboardDelta) + Send + Sync>;
-
-// ---------------------------------------------------------------------------
-// Runtime event surface.
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderRuntimeEvent {
@@ -94,10 +72,6 @@ pub enum ProviderRuntimeEventType {
     /// only emits `message.completed` at end-of-turn.
     StreamStarted,
 }
-
-// ---------------------------------------------------------------------------
-// Traits the session service depends on.
-// ---------------------------------------------------------------------------
 
 pub trait ProviderRuntimeHandle: Send + Sync {
     fn accepts_input(&self) -> bool;
@@ -135,10 +109,6 @@ pub trait ProviderProcessLauncher: Send + Sync {
         on_event: EventCallback,
     ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>>;
 }
-
-// ---------------------------------------------------------------------------
-// Real launcher (production path).
-// ---------------------------------------------------------------------------
 
 #[derive(Clone)]
 pub struct RealProviderProcessLauncher {
@@ -202,6 +172,15 @@ impl RealProviderProcessLauncher {
             grok_acp: Arc::new(super::grok_acp::GrokAcpSessions::new()),
         }
     }
+
+    fn required_approvals(&self) -> ArgmaxResult<Arc<crate::approvals::service::ApprovalService>> {
+        self.approvals.clone().ok_or_else(|| {
+            ArgmaxError::service(
+                "APPROVAL_SERVICE_NOT_READY",
+                "Approval service is not initialized",
+            )
+        })
+    }
 }
 
 impl Default for RealProviderProcessLauncher {
@@ -241,7 +220,7 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
             // than in the process environment. A failed handshake is surfaced
             // instead of silently losing native approval handling.
             if super::cursor_acp::is_acp_eligible(&input) {
-                match self
+                return self
                     .cursor_acp
                     .launch_turn_with_approvals(
                         binary_path.as_str(),
@@ -250,11 +229,7 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
                         self.approvals.clone(),
                         Arc::clone(&on_event),
                     )
-                    .await
-                {
-                    Ok(handle) => return Ok(handle),
-                    Err(error) => return Err(error),
-                }
+                    .await;
             }
 
             // A fork is the one Grok launch ACP cannot serve: `session/load`
@@ -274,29 +249,18 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
             }
 
             if input.provider == ProviderId::Opencode {
-                let approvals = self.approvals.clone().ok_or_else(|| {
-                    ArgmaxError::service(
-                        "APPROVAL_SERVICE_NOT_READY",
-                        "Approval service is not initialized",
-                    )
-                })?;
                 return super::opencode_server::launch_turn(
                     &binary_path,
                     &input,
                     session_launch.as_ref(),
-                    approvals,
+                    self.required_approvals()?,
                     on_event,
                 )
                 .await;
             }
 
             if input.provider == ProviderId::Codex {
-                let approvals = self.approvals.clone().ok_or_else(|| {
-                    ArgmaxError::service(
-                        "APPROVAL_SERVICE_NOT_READY",
-                        "Approval service is not initialized",
-                    )
-                })?;
+                let approvals = self.required_approvals()?;
                 let questions = self.questions.clone().ok_or_else(|| {
                     ArgmaxError::service(
                         "QUESTION_SERVICE_NOT_READY",
@@ -315,17 +279,11 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
             }
 
             if input.provider == ProviderId::Claude {
-                let approvals = self.approvals.clone().ok_or_else(|| {
-                    ArgmaxError::service(
-                        "APPROVAL_SERVICE_NOT_READY",
-                        "Approval service is not initialized",
-                    )
-                })?;
                 return super::claude_control::launch_turn(
                     &binary_path,
                     &input,
                     session_launch.as_ref(),
-                    approvals,
+                    self.required_approvals()?,
                     on_event,
                 )
                 .await;
@@ -557,9 +515,6 @@ fn launch_structured_via_pty(
     });
 
     let handle: Arc<dyn ProviderRuntimeHandle> = Arc::new(ProviderSessionHandle {
-        session_id: input.session_id.clone(),
-        provider: input.provider,
-        accepts_input: false,
         pid,
         disposed,
         reaped,
@@ -591,14 +546,7 @@ fn termios_error(error: nix::Error) -> ArgmaxError {
     )
 }
 
-// ---------------------------------------------------------------------------
-// Concrete handle returned by the real launcher.
-// ---------------------------------------------------------------------------
-
 pub struct ProviderSessionHandle {
-    pub session_id: String,
-    pub provider: ProviderId,
-    accepts_input: bool,
     pid: u32,
     disposed: Arc<AtomicBool>,
     /// Set by the wait thread once `child.wait()` returns; gates every
@@ -610,7 +558,7 @@ pub struct ProviderSessionHandle {
 
 impl ProviderRuntimeHandle for ProviderSessionHandle {
     fn accepts_input(&self) -> bool {
-        self.accepts_input
+        false
     }
 
     fn disposed(&self) -> bool {
@@ -621,12 +569,11 @@ impl ProviderRuntimeHandle for ProviderSessionHandle {
         // Structured-json sessions are single-shot: the child reads its
         // prompt from argv (and a payload via stdin at launch for Codex),
         // then exits. Follow-up messages re-launch via `--resume` rather
-        // than streaming over the existing pipe. Mirrors TS behavior.
+        // than streaming over the existing pipe.
     }
 
     fn resize(&self, _cols: u16, _rows: u16) {
-        // No-op for structured-json mode (no TTY to resize). The
-        // interactive-PTY launch mode (not yet wired) will own this.
+        // Nothing to resize: the session's PTY carries output only.
     }
 
     fn terminate<'a>(&'a self) -> BoxFuture<'a, ArgmaxResult<()>> {
@@ -674,10 +621,6 @@ impl Drop for ProviderSessionHandle {
         signal_process_group(self.pid, SignalKind::Kill);
     }
 }
-
-// ---------------------------------------------------------------------------
-// IO + process helpers used by the launcher and the session service.
-// ---------------------------------------------------------------------------
 
 pub(super) fn spawn_reader<R: Read + Send + 'static>(
     reader: R,
@@ -756,12 +699,8 @@ pub(super) fn composer_payload(
     payload
 }
 
-// ---------------------------------------------------------------------------
-// Wire ↔ enum coercions used by `recover_orphaned_sessions` and friends.
-// These are tiny and lossy; the typed surface in `ipc::inputs` is the
-// preferred entry point everywhere else.
-// ---------------------------------------------------------------------------
-
+// Wire coercions for rows read straight out of SQLite. They are lossy; the
+// typed surface in `ipc::inputs` is the entry point everywhere else.
 pub(crate) fn parse_provider(value: &str) -> ArgmaxResult<ProviderId> {
     match value {
         "claude" => Ok(ProviderId::Claude),
@@ -808,10 +747,6 @@ pub(super) fn parse_reasoning_effort(value: &str) -> Option<ReasoningEffort> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Signal helpers.
-// ---------------------------------------------------------------------------
-
 #[derive(Debug, Clone, Copy)]
 pub(super) enum SignalKind {
     Term,
@@ -857,10 +792,6 @@ pub(super) fn signal_process(pid: u32, signal: SignalKind) {
 #[cfg(not(unix))]
 pub(super) fn signal_process(_pid: u32, _signal: SignalKind) {}
 
-// ---------------------------------------------------------------------------
-// Error converters used throughout the session service.
-// ---------------------------------------------------------------------------
-
 pub(super) fn io_error(error: std::io::Error) -> ArgmaxError {
     ArgmaxError::service("IO", error.to_string())
 }
@@ -868,10 +799,6 @@ pub(super) fn io_error(error: std::io::Error) -> ArgmaxError {
 pub(super) fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
     ArgmaxError::service("SQLITE", error.to_string())
 }
-
-// ---------------------------------------------------------------------------
-// Small impl extension on a shared enum.
-// ---------------------------------------------------------------------------
 
 impl PermissionMode {
     pub(super) fn as_wire(self) -> &'static str {

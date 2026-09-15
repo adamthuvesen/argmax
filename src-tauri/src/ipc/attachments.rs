@@ -36,9 +36,6 @@ fn data_dir<R: Runtime>(app: &AppHandle<R>) -> ArgmaxResult<PathBuf> {
 
 fn attachment_error(error: AttachmentStoreError) -> ArgmaxError {
     match error {
-        AttachmentStoreError::InvalidMime => {
-            ArgmaxError::service("ATTACHMENT_INVALID_MIME", error.to_string())
-        }
         AttachmentStoreError::EmptyPayload => {
             ArgmaxError::service("ATTACHMENT_EMPTY", error.to_string())
         }

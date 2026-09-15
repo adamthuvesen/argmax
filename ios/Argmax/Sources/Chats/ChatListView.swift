@@ -455,45 +455,6 @@ extension View {
     }
 }
 
-// MARK: - Header pieces
-
-/// Live is silence. The dot only exists to say when something is wrong, so
-/// when nothing is it is not drawn at all.
-private struct ConnectionDot: View {
-    let connection: BridgeConnection
-    let unreachable: Bool
-
-    var body: some View {
-        Group {
-            if let color {
-                Circle()
-                    .fill(color)
-                    .frame(width: 6, height: 6)
-                    .transition(.opacity)
-                    .accessibilityLabel(label ?? "")
-            }
-        }
-        .frame(width: 10)
-    }
-
-    private var color: Color? {
-        switch connection {
-        case .live: return unreachable ? Theme.amber : nil
-        case .connecting, .reconnecting: return Theme.amber
-        case .unauthorized: return Theme.rose
-        }
-    }
-
-    private var label: String? {
-        switch connection {
-        case .live: return unreachable ? "Can’t reach your Mac" : nil
-        case .connecting: return "Connecting"
-        case .reconnecting: return "Reconnecting"
-        case .unauthorized: return "Pairing expired"
-        }
-    }
-}
-
 /// Not the system header: the row subtitles' size and weight, the count the
 /// web list carried, and its own air above and below.
 private struct SectionHeading: View {

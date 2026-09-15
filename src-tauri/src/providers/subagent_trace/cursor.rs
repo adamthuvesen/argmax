@@ -10,8 +10,8 @@ use walkdir::WalkDir;
 
 use super::cache::{trace_file_step, TraceFileStep};
 use super::shared::{
-    is_duplicate_text, is_path_safe_agent_id, push_unique, read_trace_lines, stamp_trace_payload,
-    trace_event, value_at_path, TraceFileLines,
+    is_duplicate_text, is_path_safe_agent_id, read_trace_lines, stamp_trace_payload, trace_event,
+    value_at_path, TraceFileLines,
 };
 use super::{AgentTraceContext, CursorTraceFile, TraceImport, TraceLine};
 use crate::providers::normalizer::JSON_PARSE_LINE_CAP;
@@ -27,6 +27,16 @@ pub(super) fn cursor_trace_events(home: &Path, context: &AgentTraceContext) -> T
             TraceFileStep::Read(stamp) => stamp,
         };
         let source = key.path.to_string_lossy().into_owned();
+        let stamped = |sequence: usize,
+                       event_type: &'static str,
+                       message: String,
+                       mut payload: Map<String, Value>,
+                       timestamp: Option<String>| {
+            stamp_trace_payload(&mut payload, context, child_id, &source, sequence);
+            trace_event(
+                context, child_id, sequence, event_type, message, payload, timestamp,
+            )
+        };
         let lines = read_trace_lines(&key.path);
         let real_result_ids = cursor_real_result_ids(&lines);
         let terminal_status = cursor_terminal_status(&lines).map(str::to_string);
@@ -74,21 +84,11 @@ pub(super) fn cursor_trace_events(home: &Path, context: &AgentTraceContext) -> T
                         }
                         let event_sequence = sequence;
                         sequence += 1;
-                        let mut payload = Map::new();
-                        stamp_trace_payload(
-                            &mut payload,
-                            context,
-                            child_id,
-                            &source,
-                            event_sequence,
-                        );
-                        events.push(trace_event(
-                            context,
-                            child_id,
+                        events.push(stamped(
                             event_sequence,
                             "message.completed",
                             text,
-                            payload,
+                            Map::new(),
                             line.timestamp.clone(),
                         ));
                     }
@@ -106,16 +106,7 @@ pub(super) fn cursor_trace_events(home: &Path, context: &AgentTraceContext) -> T
                         sequence += 1;
                         let mut payload = Map::new();
                         payload.insert("thinking".to_string(), Value::Bool(true));
-                        stamp_trace_payload(
-                            &mut payload,
-                            context,
-                            child_id,
-                            &source,
-                            event_sequence,
-                        );
-                        events.push(trace_event(
-                            context,
-                            child_id,
+                        events.push(stamped(
                             event_sequence,
                             "message.delta",
                             text,
@@ -141,16 +132,7 @@ pub(super) fn cursor_trace_events(home: &Path, context: &AgentTraceContext) -> T
                         payload.insert("name".to_string(), Value::String(tool_name.to_string()));
                         payload.insert("type".to_string(), Value::String(tool_name.to_string()));
                         payload.insert("input".to_string(), Value::Object(input));
-                        stamp_trace_payload(
-                            &mut payload,
-                            context,
-                            child_id,
-                            &source,
-                            event_sequence,
-                        );
-                        events.push(trace_event(
-                            context,
-                            child_id,
+                        events.push(stamped(
                             event_sequence,
                             "command.started",
                             tool_name.to_string(),
@@ -167,19 +149,10 @@ pub(super) fn cursor_trace_events(home: &Path, context: &AgentTraceContext) -> T
                             let mut completion = Map::new();
                             completion.insert("id".to_string(), Value::String(tool_id));
                             completion.insert("traceNoOutput".to_string(), Value::Bool(true));
-                            stamp_trace_payload(
-                                &mut completion,
-                                context,
-                                child_id,
-                                &source,
-                                completion_sequence,
-                            );
-                            events.push(trace_event(
-                                context,
-                                child_id,
+                            events.push(stamped(
                                 completion_sequence,
                                 "command.completed",
-                                "tool_result",
+                                "tool_result".to_string(),
                                 completion,
                                 line.timestamp.clone(),
                             ));
@@ -209,19 +182,10 @@ pub(super) fn cursor_trace_events(home: &Path, context: &AgentTraceContext) -> T
                         if let Some(output) = block_object.get("output").cloned() {
                             payload.insert("output".to_string(), output);
                         }
-                        stamp_trace_payload(
-                            &mut payload,
-                            context,
-                            child_id,
-                            &source,
-                            event_sequence,
-                        );
-                        events.push(trace_event(
-                            context,
-                            child_id,
+                        events.push(stamped(
                             event_sequence,
                             "command.completed",
-                            "tool_result",
+                            "tool_result".to_string(),
                             payload,
                             line.timestamp.clone(),
                         ));
@@ -230,50 +194,43 @@ pub(super) fn cursor_trace_events(home: &Path, context: &AgentTraceContext) -> T
                 }
             }
         }
-        if context.cursor_background_launch {
-            if let Some(status) = terminal_status.as_deref() {
-                let event_sequence = sequence;
-                let mut payload = Map::new();
-                stamp_trace_payload(&mut payload, context, child_id, &source, event_sequence);
-                payload.insert(
-                    "agentRootToolUseId".to_string(),
-                    Value::String(context.parent_tool_use_id.clone()),
-                );
-                payload.insert(
-                    "agentRunId".to_string(),
-                    Value::String(context.parent_tool_use_id.clone()),
-                );
-                if let Some(parent_id) = context.provider_conversation_id.as_deref() {
-                    payload.insert(
-                        "providerParentConversationId".to_string(),
-                        Value::String(parent_id.to_string()),
-                    );
+        if let Some(status) = terminal_status
+            .as_deref()
+            .filter(|_| context.cursor_background_launch)
+        {
+            let succeeded = status == "success";
+            let root_tool_use_id = context.parent_tool_use_id.as_str();
+            let outcome = if succeeded { "completed" } else { "failed" };
+            let mut payload = Map::new();
+            for (field, value) in [
+                ("agentRootToolUseId", Some(root_tool_use_id)),
+                ("agentRunId", Some(root_tool_use_id)),
+                ("status", Some(outcome)),
+                (
+                    "providerParentConversationId",
+                    context.provider_conversation_id.as_deref(),
+                ),
+                (
+                    "providerInvocationId",
+                    context.provider_invocation_id.as_deref(),
+                ),
+            ] {
+                if let Some(value) = value {
+                    payload.insert(field.to_string(), Value::String(value.to_string()));
                 }
-                if let Some(invocation_id) = context.provider_invocation_id.as_deref() {
-                    payload.insert(
-                        "providerInvocationId".to_string(),
-                        Value::String(invocation_id.to_string()),
-                    );
-                }
-                let succeeded = status == "success";
-                payload.insert(
-                    "status".to_string(),
-                    Value::String(if succeeded { "completed" } else { "failed" }.to_string()),
-                );
-                events.push(trace_event(
-                    context,
-                    child_id,
-                    event_sequence,
-                    "agent.completed",
-                    if succeeded {
-                        "Agent completed"
-                    } else {
-                        "Agent failed"
-                    },
-                    payload,
-                    terminal_timestamp,
-                ));
             }
+            let message = if succeeded {
+                "Agent completed"
+            } else {
+                "Agent failed"
+            };
+            events.push(stamped(
+                sequence,
+                "agent.completed",
+                message.to_string(),
+                payload,
+                terminal_timestamp,
+            ));
         }
         if let Some(stamp) = stamp {
             stamps.push((key, stamp));
@@ -634,17 +591,12 @@ fn cursor_tool_id(block: &Map<String, Value>, child_id: &str, sequence: usize) -
         .unwrap_or_else(|| format!("trace-cursor-tool-{child_id}-{sequence}"))
 }
 
-pub(super) fn cursor_child_agent_ids(payload: &Value) -> Vec<String> {
-    let mut ids = Vec::new();
-    for path in [["result", "success", "agentId"].as_slice()] {
-        if let Some(id) = value_at_path(payload, path)
-            .and_then(Value::as_str)
-            .filter(|id| !id.is_empty())
-        {
-            push_unique(&mut ids, id.to_string());
-        }
-    }
-    ids
+/// The authoritative child id, which only the completed task result carries.
+pub(super) fn cursor_child_agent_id(payload: &Value) -> Option<String> {
+    value_at_path(payload, &["result", "success", "agentId"])
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+        .map(str::to_string)
 }
 
 pub(super) fn cursor_task_prompt(payload: &Value) -> Option<String> {

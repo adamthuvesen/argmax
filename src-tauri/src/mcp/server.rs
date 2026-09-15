@@ -24,10 +24,7 @@ pub fn serve_stdio() -> i32 {
         }
     };
     runtime.block_on(async {
-        // Two routers, one server: the session tools and the browser tools
-        // are separate surfaces on the same socket.
-        let mut tools = ArgmaxTools::new();
-        tools.tool_router += ArgmaxTools::browser_tool_router();
+        let tools = ArgmaxTools::new();
         let service = match tools.serve(rmcp::transport::stdio()).await {
             Ok(service) => service,
             Err(error) => {
@@ -49,7 +46,7 @@ pub fn serve_stdio() -> i32 {
 impl ServerHandler for ArgmaxTools {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-            .with_instructions(agent_tools_instruction())
+            .with_instructions(agent_tools_instruction(self.browser_tools))
     }
 }
 
@@ -64,17 +61,12 @@ mod tests {
             SELF_PRESERVATION_INSTRUCTION,
         };
 
-        let instructions = ArgmaxTools::new()
+        let instructions = ArgmaxTools::with_browser_tools(true)
             .get_info()
             .instructions
             .expect("server instructions");
 
         assert!(instructions.contains(AGENT_TOOLS_INSTRUCTION));
-        assert!(instructions.contains("Keep bounded delegated work in the current chat"));
-        assert!(instructions.contains("Use `session_launch` when the user explicitly asks"));
-        assert!(instructions.contains("when the work needs its own independent, durable lifecycle"));
-        assert!(instructions.contains("Do not launch a session merely for parallelism"));
-        assert!(instructions.contains("`session_move`"));
         assert!(instructions.contains(BROWSER_COOKIE_PERMISSION));
         assert!(instructions.contains(SELF_PRESERVATION_INSTRUCTION));
         assert!(instructions.contains(CHECKOUT_MOVE_INSTRUCTION));
@@ -83,14 +75,42 @@ mod tests {
             .contains("on your own initiative"));
     }
 
+    /// A session without the browser tools must not be told it has them. The
+    /// cookie grant goes too: there is nothing left to accept a prompt on.
+    #[test]
+    fn browser_tools_off_removes_every_promise_of_a_browser() {
+        use crate::providers::mcp_injection::{
+            BROWSER_COOKIE_PERMISSION, CHECKOUT_MOVE_INSTRUCTION, SELF_PRESERVATION_INSTRUCTION,
+        };
+
+        let tools = ArgmaxTools::with_browser_tools(false);
+        let listed = tools
+            .tool_router
+            .list_all()
+            .into_iter()
+            .map(|tool| tool.name.to_string())
+            .collect::<Vec<_>>();
+        assert!(
+            !listed.iter().any(|name| name.starts_with("browser_")),
+            "browser tools are still on the router: {listed:?}"
+        );
+        assert!(listed.contains(&"session_launch".to_string()));
+
+        let instructions = tools.get_info().instructions.expect("server instructions");
+        assert!(!instructions.to_ascii_lowercase().contains("browser"));
+        assert!(!instructions.contains(BROWSER_COOKIE_PERMISSION));
+        // Everything that does not depend on a browser is untouched.
+        assert!(instructions.contains(SELF_PRESERVATION_INSTRUCTION));
+        assert!(instructions.contains(CHECKOUT_MOVE_INSTRUCTION));
+    }
+
     /// One server, one tool list, injected the same way for all five providers
     /// — so a tool that is on this router reaches every provider, and a tool
     /// that is missing reaches none of them. That makes this the cheapest
     /// place to hold the surface still.
     #[test]
     fn every_tool_is_on_the_one_router_both_surfaces_share() {
-        let mut tools = ArgmaxTools::new();
-        tools.tool_router += ArgmaxTools::browser_tool_router();
+        let tools = ArgmaxTools::with_browser_tools(true);
         let listed = tools
             .tool_router
             .list_all()
@@ -139,12 +159,19 @@ mod tests {
         }
 
         // Every tool the model can call needs a description, since the
-        // description is the only place its bounds are stated.
+        // description is the only place its bounds are stated. None of them
+        // carries schemars' dialect stamp, which no client reads and every
+        // turn pays for.
         for tool in tools.tool_router.list_all() {
             let description = tool.description.clone().unwrap_or_default();
             assert!(
                 description.len() > 40,
                 "{} has no usable description",
+                tool.name
+            );
+            assert!(
+                !tool.input_schema.contains_key("$schema"),
+                "{} still carries $schema",
                 tool.name
             );
         }

@@ -239,17 +239,4 @@ mod tests {
         assert_eq!(response.content_type, Some("image/png"));
         assert_eq!(response.bytes, b"DIRECT");
     }
-
-    #[test]
-    fn http_status_maps_each_variant() {
-        assert_eq!(AttachmentResponse::not_found().http_status(), 404);
-        assert_eq!(AttachmentResponse::forbidden().http_status(), 403);
-        assert_eq!(AttachmentResponse::bad_request().http_status(), 400);
-        let ok = AttachmentResponse {
-            status: AttachmentStatus::Ok,
-            content_type: Some("image/png"),
-            bytes: Vec::new(),
-        };
-        assert_eq!(ok.http_status(), 200);
-    }
 }

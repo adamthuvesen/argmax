@@ -20,6 +20,10 @@
   var MAX_EXTRACT_TABLES = 20;
   var MAX_EXTRACT_ROWS = 100;
   var MAX_EXTRACT_COLUMNS = 30;
+  var MAX_EXTRACT_ITEMS = 40;
+  var MAX_ITEM_CHARS = 240;
+  var MAX_EXTRACT_FIELDS = 40;
+  var MIN_ITEM_GROUP = 3;
 
   var INTERACTIVE_SELECTOR =
     "a[href], button, input, select, textarea, summary, [role], [contenteditable], [tabindex]";
@@ -256,6 +260,149 @@
     return line;
   }
 
+  function visibleText(element) {
+    return normalize((element && (element.innerText || element.textContent)) || "");
+  }
+
+  function pageState() {
+    var title = normalize(document.title);
+    var url = String(location.href || "");
+    var bodyText = visibleText(document.body).slice(0, 2000);
+
+    function frameHint() {
+      var frames = document.querySelectorAll("iframe, frame");
+      for (var i = 0; i < frames.length; i += 1) {
+        var src = String(frames[i].src || frames[i].getAttribute("src") || "");
+        if (
+          /recaptcha|hcaptcha|challenges\.cloudflare|geetest|funcaptcha|arkoselabs|cf-challenge/i.test(
+            src
+          )
+        ) {
+          return src;
+        }
+      }
+      return "";
+    }
+
+    if (
+      document.querySelector(".g-recaptcha, [data-hcaptcha-widget-id], #cf-challenge-running, #challenge-form, #captcha, .cf-browser-verification") ||
+      frameHint() ||
+      /verify you are (a )?human|attention required|enable javascript and cookies to continue/i.test(title) ||
+      /^just a moment/i.test(title)
+    ) {
+      return { kind: "captcha", reason: "human verification or challenge page" };
+    }
+
+    var cookieRoot = document.querySelector(
+      "#onetrust-banner-sdk, #onetrust-consent-sdk, #CybotCookiebotDialog, #qc-cmp2-container, #didomi-host, [id*='cookie'], [class*='cookie-banner'], [id*='consent']"
+    );
+    if (cookieRoot && isVisible(cookieRoot)) {
+      var cookieText = visibleText(cookieRoot);
+      if (/cookies?|consent|gdpr|integritet/i.test(cookieText + " " + (cookieRoot.id || ""))) {
+        return { kind: "cookie", reason: "consent banner still visible" };
+      }
+    }
+
+    if (
+      /erroroccurred=true/i.test(url) ||
+      /something went wrong|access denied|this page isn't working|an error occurred/i.test(title) ||
+      /something went wrong|an error occurred|this page isn't working|access denied/i.test(
+        bodyText.slice(0, 400)
+      )
+    ) {
+      return { kind: "error", reason: "error page or failed request" };
+    }
+
+    var busy = document.querySelector("[aria-busy='true'], [role='progressbar']");
+    if (
+      (document.body && document.body.getAttribute("aria-busy") === "true") ||
+      (document.documentElement && document.documentElement.getAttribute("aria-busy") === "true") ||
+      (busy && isVisible(busy))
+    ) {
+      var busyName = busy && isVisible(busy) ? visibleText(busy).slice(0, 80) : "";
+      return { kind: "loading", reason: busyName || "page reports busy" };
+    }
+
+    return { kind: "ready", reason: "" };
+  }
+
+  function stateLine(state) {
+    return state.reason ? "state: " + state.kind + " — " + state.reason : "state: " + state.kind;
+  }
+
+  function firstItemRef(element) {
+    if (matchesInteractive(element)) return refFor(element);
+    var interactive = element.querySelector && element.querySelector(INTERACTIVE_SELECTOR);
+    return interactive ? refFor(interactive) : null;
+  }
+
+  function extractItems(host, isChrome) {
+    var items = [];
+    if (!host || typeof Map !== "function") return items;
+    var groups = new Map();
+    var nodes = host.querySelectorAll("[role='listitem'], [role='row'], li, article");
+    for (var i = 0; i < nodes.length; i += 1) {
+      var node = nodes[i];
+      if (!isVisible(node) || isChrome(node)) continue;
+      if (node.tagName === "TR" || node.getAttribute("role") === "row") {
+        if (node.closest && node.closest("table")) continue;
+      }
+      if (node.closest && node.closest("nav, select, datalist, footer, [role='navigation']")) continue;
+      var parent = node.parentElement;
+      if (!parent) continue;
+      var group = groups.get(parent);
+      if (!group) {
+        group = [];
+        groups.set(parent, group);
+      }
+      group.push(node);
+    }
+    var ranked = [];
+    groups.forEach(function (group) {
+      if (group.length >= MIN_ITEM_GROUP) ranked.push(group);
+    });
+    ranked.sort(function (a, b) {
+      return b.length - a.length;
+    });
+    for (var g = 0; g < ranked.length && items.length < MAX_EXTRACT_ITEMS; g += 1) {
+      var siblings = ranked[g];
+      for (var s = 0; s < siblings.length && items.length < MAX_EXTRACT_ITEMS; s += 1) {
+        var text = truncate(visibleText(siblings[s]), MAX_ITEM_CHARS);
+        if (!text) continue;
+        items.push({ text: text, ref: firstItemRef(siblings[s]) });
+      }
+    }
+    return items;
+  }
+
+  function extractFields(host, isChrome) {
+    var fields = [];
+    if (!host) return fields;
+    var nodes = host.querySelectorAll(
+      "input, textarea, select, [role='combobox'], [role='searchbox'], [contenteditable='true']"
+    );
+    for (var i = 0; i < nodes.length && fields.length < MAX_EXTRACT_FIELDS; i += 1) {
+      var node = nodes[i];
+      if (!isVisible(node) || isChrome(node)) continue;
+      if (node.tagName === "INPUT") {
+        var type = (node.getAttribute("type") || "text").toLowerCase();
+        if (type === "hidden" || type === "submit" || type === "button" || type === "reset" || type === "image") {
+          continue;
+        }
+      }
+      var name = nameOf(node);
+      var value = valueOf(node);
+      if (!name && !value) continue;
+      fields.push({
+        name: name || "",
+        value: value,
+        role: roleOf(node) || node.tagName.toLowerCase(),
+        ref: refFor(node)
+      });
+    }
+    return fields;
+  }
+
   /**
    * Header line for a dialog the page raised in the last 30 seconds, so an
    * agent whose click hit a `confirm()` sees that it happened instead of
@@ -274,7 +421,12 @@
 
   function snapshot(options) {
     var collected = collect(options);
-    var lines = ["url: " + location.href, "title: " + truncate(document.title, MAX_TEXT)];
+    var state = pageState();
+    var lines = [
+      "url: " + location.href,
+      "title: " + truncate(document.title, MAX_TEXT),
+      stateLine(state)
+    ];
     var dialog = dialogLine();
     if (dialog) lines.push(dialog);
     var bytes = lines.join("\n").length + 1;
@@ -292,6 +444,7 @@
     return {
       url: location.href,
       title: document.title,
+      state: stateLine(state).slice("state: ".length),
       tree: lines.join("\n"),
       truncated: truncated
     };
@@ -334,9 +487,11 @@
     var host = document.querySelector("main") || document.querySelector("article") || document.body;
     var text = ((host && host.innerText) || "").replace(/\n{3,}/g, "\n\n").trim();
     var truncated = text.length > limit;
+    var state = pageState();
     return {
       url: location.href,
       title: document.title,
+      state: stateLine(state).slice("state: ".length),
       text: truncated ? text.slice(0, limit) : text,
       truncated: truncated
     };
@@ -463,9 +618,15 @@
     }
 
     var canonical = document.querySelector('link[rel="canonical"]');
+    var items = extractItems(host, isChrome);
+    var fields = extractFields(host, isChrome);
+    if (items.length >= MAX_EXTRACT_ITEMS) truncated = true;
+    if (fields.length >= MAX_EXTRACT_FIELDS) truncated = true;
+    var state = pageState();
     return {
       url: location.href,
       title: document.title,
+      state: stateLine(state).slice("state: ".length),
       metadata: {
         title: metaContent(['meta[property="og:title"]', 'meta[name="twitter:title"]']) || document.title,
         description: metaContent(['meta[name="description"]', 'meta[property="og:description"]']),
@@ -480,6 +641,8 @@
       sections: sections,
       tables: tables,
       links: links,
+      items: items,
+      fields: fields,
       truncated: truncated
     };
   }
@@ -509,13 +672,14 @@
     // install. Letting it drift low reinstalls both scripts on every call and
     // silently wipes anything they hold between calls — a drag's gesture
     // state, for one. A Rust test pins the two together.
-    v: 3,
+    v: 4,
     refAttr: REF_ATTR,
     byRef: byRef,
     refFor: refFor,
     unknownRef: unknownRef,
     truncate: truncate,
     isVisible: isVisible,
+    pageState: pageState,
     snapshot: snapshot,
     find: find,
     linkUrl: linkUrl,

@@ -8,7 +8,7 @@ export interface ReviewLayout {
 
 export type ReviewSplitPosition = "top" | "bottom";
 
-export const DEFAULT_REVIEW_SPLIT_RATIO = 0.5;
+const DEFAULT_REVIEW_SPLIT_RATIO = 0.5;
 export const MIN_REVIEW_SPLIT_RATIO = 0.2;
 export const MAX_REVIEW_SPLIT_RATIO = 0.8;
 
@@ -28,7 +28,7 @@ export function createReviewLayout(mode: ReviewPanelMode): ReviewLayout {
   return { modes: [mode], activeIndex: 0, ratio: DEFAULT_REVIEW_SPLIT_RATIO };
 }
 
-export function clampReviewSplitRatio(ratio: number): number {
+function clampReviewSplitRatio(ratio: number): number {
   if (!Number.isFinite(ratio)) return DEFAULT_REVIEW_SPLIT_RATIO;
   return Math.min(MAX_REVIEW_SPLIT_RATIO, Math.max(MIN_REVIEW_SPLIT_RATIO, ratio));
 }

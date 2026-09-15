@@ -47,18 +47,6 @@ func transcriptQuestionResponse(
     return TranscriptQuestionResponse(displayText: lines.joined(separator: "\n"), answers: answers)
 }
 
-func transcriptQuestionAnswer(
-    questions: [TranscriptQuestion],
-    selections: [[Int]],
-    otherText: [String]
-) -> String {
-    transcriptQuestionResponse(
-        questions: questions,
-        selections: selections,
-        otherText: otherText
-    ).displayText
-}
-
 func transcriptQuestionIsAnswered(
     _ question: TranscriptQuestion,
     selections: [Int],

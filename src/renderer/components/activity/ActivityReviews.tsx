@@ -111,7 +111,7 @@ export function ActivityReviews({ summary }: { summary: ActivitySummary }): JSX.
             <dt>Repositories reviewed</dt>
             <dd>{formatCount(repositories)}</dd>
             <dt>Approval rate</dt>
-            <dd>{total > 0 ? `${Math.round((counts.approved / total) * 100)}%` : "—"}</dd>
+            <dd>{`${Math.round((counts.approved / total) * 100)}%`}</dd>
           </dl>
           {reviews.length > 0 ? (
             <ul className="activity-recent" aria-label="Recently reviewed">

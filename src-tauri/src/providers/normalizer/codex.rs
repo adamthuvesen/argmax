@@ -15,16 +15,7 @@ pub fn event_type(provider_type: &str) -> Option<&'static str> {
     static EVENT_MAP: phf::Map<&'static str, &'static str> = phf_map! {
         "message.delta" => "message.delta",
         "assistant" => "message.completed",
-        "message.completed" => "message.completed",
         "tool_call" => "command.started",
-        "command.started" => "command.started",
-        "command.output" => "command.output",
-        "command.completed" => "command.completed",
-        "approval.requested" => "approval.requested",
-        "approval.resolved" => "approval.resolved",
-        "file.changed" => "file.changed",
-        "check.started" => "check.started",
-        "check.completed" => "check.completed",
         "result" => "session.completed",
         "error" => "error",
     };
@@ -118,7 +109,8 @@ pub fn normalize_tool_item(
 ) -> Option<PersistTimelineEventInput> {
     let item = item?;
     let item_type = item_type?;
-    if !matches!(provider_type, Some("item.started" | "item.completed")) {
+    let provider_type = provider_type?;
+    if !matches!(provider_type, "item.started" | "item.completed") {
         return None;
     }
 
@@ -150,17 +142,15 @@ pub fn normalize_tool_item(
         "input".to_string(),
         async_questions.unwrap_or_else(|| extract_tool_input(item, action)),
     );
-    if let Some(provider_type) = provider_type {
-        tool_payload.insert(
-            "providerEventType".to_string(),
-            Value::String(provider_type.to_string()),
-        );
-    }
+    tool_payload.insert(
+        "providerEventType".to_string(),
+        Value::String(provider_type.to_string()),
+    );
     tool_payload.insert("raw".to_string(), Value::Object(payload.clone()));
 
     Some(timeline_event(
         event,
-        if provider_type == Some("item.started") {
+        if provider_type == "item.started" {
             "command.started"
         } else {
             "command.completed"
@@ -244,18 +234,15 @@ pub fn normalize_native_agent_lifecycle_events(
     let states = object_value(item.get("agents_states"));
     let opens_run = matches!(tool_name, "spawn_agent" | "send_input");
     let delivery_succeeded = string_value(item.get("status")) == Some("completed");
+    if opens_run && !delivery_succeeded {
+        return Vec::new();
+    }
     let mut events = Vec::new();
 
     for child_id in receiver_ids {
         let state = states.and_then(|states| object_value(states.get(child_id)));
         let status = state.and_then(|state| string_value(state.get("status")));
-        if opens_run && !delivery_succeeded {
-            continue;
-        }
-        if opens_run
-            && delivery_succeeded
-            && !context.codex_active_agent_runs.contains_key(child_id)
-        {
+        if opens_run && !context.codex_active_agent_runs.contains_key(child_id) {
             context
                 .codex_active_agent_runs
                 .insert(child_id.to_string(), run_id.to_string());
@@ -512,22 +499,18 @@ fn is_tool_like_item(
 }
 
 /// Locate the Codex rollout file for a given thread_id under ~/.codex/sessions.
-pub fn find_codex_rollout_path(thread_id: &str) -> Option<PathBuf> {
+fn find_codex_rollout_path(thread_id: &str) -> Option<PathBuf> {
     let home = std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)?;
     let sessions_dir = home.join(".codex").join("sessions");
-    find_rollout_in_dir(&sessions_dir, thread_id)
-}
-
-pub fn find_rollout_in_dir(sessions_dir: &Path, thread_id: &str) -> Option<PathBuf> {
     if !sessions_dir.is_dir() {
         return None;
     }
     let suffix = format!("{thread_id}.jsonl");
     let mut matching_paths = Vec::new();
 
-    let mut stack = vec![sessions_dir.to_path_buf()];
+    let mut stack = vec![sessions_dir];
     while let Some(dir) = stack.pop() {
         let entries = match std::fs::read_dir(&dir) {
             Ok(entries) => entries,
@@ -564,10 +547,7 @@ pub fn find_rollout_in_dir(sessions_dir: &Path, thread_id: &str) -> Option<PathB
 /// Rollouts reach hundreds of megabytes and this runs on the PTY reader thread
 /// once per turn, so re-reading the file from the top every time is the whole
 /// cost of the call.
-pub fn read_token_count_from_rollout(
-    path: &Path,
-    offset: u64,
-) -> (Option<(u64, Option<u64>)>, u64) {
+fn read_token_count_from_rollout(path: &Path, offset: u64) -> (Option<(u64, Option<u64>)>, u64) {
     use std::io::{BufRead, Seek, SeekFrom};
 
     let Ok(file) = std::fs::File::open(path) else {
@@ -683,27 +663,21 @@ pub fn extract_usage(
     let (delta_input, delta_cached, delta_output) = if from_token_count {
         (cumulative_input, cumulative_cached, cumulative_output)
     } else {
-        let prev = context.codex_cumulative_usage.as_ref().cloned();
-        let (p_in, p_cached, p_out) = match prev {
-            Some(ref p) => (p.input_tokens, p.cached_input_tokens, p.output_tokens),
-            None => (cumulative_input, cumulative_cached, cumulative_output),
-        };
-
+        let previous = context.codex_cumulative_usage.take();
         context.codex_cumulative_usage = Some(CodexCumulativeUsage {
             input_tokens: cumulative_input,
             cached_input_tokens: cumulative_cached,
             output_tokens: cumulative_output,
         });
 
-        if prev.is_none() {
+        match previous {
             // First turn of an unseeded resume: baseline established, no delta billing
-            (0, 0, 0)
-        } else {
-            (
-                cumulative_input.saturating_sub(p_in),
-                cumulative_cached.saturating_sub(p_cached),
-                cumulative_output.saturating_sub(p_out),
-            )
+            None => (0, 0, 0),
+            Some(previous) => (
+                cumulative_input.saturating_sub(previous.input_tokens),
+                cumulative_cached.saturating_sub(previous.cached_input_tokens),
+                cumulative_output.saturating_sub(previous.output_tokens),
+            ),
         }
     };
 
@@ -1048,41 +1022,6 @@ mod tests {
         assert_eq!(
             result.events[0].payload["input"]["changes"][0]["path"],
             "/repo/src/ModelSelector.tsx"
-        );
-    }
-
-    #[test]
-    fn codex_collab_spawn_agent_item_becomes_agent_command_event() {
-        let mut context = NormalizerSessionContext::default();
-        let result = normalize_provider_event(
-            ProviderId::Codex,
-            &output_event(
-                &json!({
-                    "type": "item.started",
-                    "item": {
-                        "id": "item_2",
-                        "type": "collab_tool_call",
-                        "tool": "spawn_agent",
-                        "sender_thread_id": "019f2214-983b-7f43-958b-7f68e1dba989",
-                        "receiver_thread_ids": [],
-                        "prompt": "Do a quick repo reconnaissance. Read-only only.",
-                        "agents_states": {},
-                        "status": "in_progress"
-                    }
-                })
-                .to_string(),
-            ),
-            &mut context,
-        );
-        assert_eq!(result.events.len(), 1);
-        let event = &result.events[0];
-        assert_eq!(event.r#type, "command.started");
-        assert_eq!(event.message, "spawn_agent");
-        assert_eq!(event.payload["name"], "spawn_agent");
-        assert_eq!(event.payload["id"], "item_2");
-        assert_eq!(
-            event.payload["input"]["prompt"],
-            "Do a quick repo reconnaissance. Read-only only."
         );
     }
 

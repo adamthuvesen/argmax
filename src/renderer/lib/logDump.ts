@@ -43,7 +43,7 @@ export type LogRecord = {
   message: string;
 };
 
-export type LogSegment = { kind: "markdown"; text: string } | { kind: "log"; text: string };
+type LogSegment = { kind: "markdown"; text: string } | { kind: "log"; text: string };
 
 const ISO_TS = "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z";
 const LEVEL = "ERROR|WARN(?:ING)?|INFO|DEBUG|TRACE";
@@ -72,13 +72,6 @@ export function splitConcatenatedLogRecords(text: string): string {
 
 export function splitTrailingLogFields(message: string): string {
   return message.replace(TRAILING_FIELD_RE, "\n$1").trim();
-}
-
-export function isMcpClientTracingTarget(target: string | null | undefined): boolean {
-  if (!target) return false;
-  return ["rmcp", "codex_rmcp_client"].some(
-    (crate) => target === crate || target.startsWith(`${crate}::`)
-  );
 }
 
 export function isNoisyPlainProviderLine(message: string): boolean {

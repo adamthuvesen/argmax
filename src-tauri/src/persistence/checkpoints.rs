@@ -53,16 +53,10 @@ pub struct Checkpoint {
     pub created_at: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct PersistCheckpointInput {
-    pub checkpoint: Checkpoint,
-}
-
 pub fn persist_checkpoint(
     connection: &Connection,
-    input: &PersistCheckpointInput,
+    checkpoint: &Checkpoint,
 ) -> ArgmaxResult<Checkpoint> {
-    let checkpoint = &input.checkpoint;
     let untracked_paths = serde_json::to_string(&checkpoint.untracked_paths).map_err(json_error)?;
     connection
         .prepare_cached(

@@ -110,13 +110,6 @@
 
 /* ---- Diagnostics ---- */
 
-.settings-diagnostics-path {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  word-break: break-all;
-  color: var(--text-soft);
-}
-
 .settings-diagnostics-status {
   display: inline-flex;
   align-items: center;

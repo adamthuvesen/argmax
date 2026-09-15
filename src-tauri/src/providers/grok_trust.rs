@@ -31,6 +31,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::util::sync::LockOrRecover;
+
 /// One grant Argmax owns: how many live launches want it, and the timestamp we
 /// wrote, which is what proves the entry in the file is still ours.
 struct Grant {
@@ -56,9 +58,7 @@ pub fn grant(workspace_path: &Path) -> Option<PathBuf> {
     let store = store_path()?;
     let key = folder.to_string_lossy().into_owned();
 
-    let mut held = grants()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut held = grants().lock_or_recover("Grok trust grants");
     if let Some(grant) = held.get_mut(&folder) {
         grant.holders += 1;
         return Some(folder);
@@ -92,13 +92,16 @@ pub fn release(folder: &Path) {
     };
     let key = folder.to_string_lossy().into_owned();
 
-    let mut held = grants()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut held = grants().lock_or_recover("Grok trust grants");
     let Some(grant) = held.get_mut(folder) else {
         return;
     };
-    grant.holders -= 1;
+    // A double release (two undo paths for one launch, or a launch that
+    // restores its scratch twice) must not underflow `holders`: `usize`
+    // wraps to `usize::MAX` on debug-off builds, which then never reaches
+    // zero and leaks the grant forever, or panics the whole process under
+    // this crate's `panic = "abort"` release profile.
+    grant.holders = grant.holders.saturating_sub(1);
     if grant.holders > 0 {
         return;
     }

@@ -13,7 +13,7 @@ import { useSyncExternalStore } from "react";
 export const MASCOT_VISIBLE_STORAGE_KEY = "argmax.mascot.visible";
 
 /** On: the fox is the app's mark, so it ships shown and is opted out of. */
-export const DEFAULT_MASCOT_VISIBLE = true;
+const DEFAULT_MASCOT_VISIBLE = true;
 
 function storedMascotVisible(): boolean {
   if (typeof window === "undefined") return DEFAULT_MASCOT_VISIBLE;

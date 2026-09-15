@@ -219,8 +219,25 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     expect(styles.indexOf('url("./styles/tokens.css")')).toBeLessThan(
       styles.indexOf('url("./styles/background-intensity.css")')
     );
-    expect(cssRuleBody(tokens, ":root")).toContain("--bg: #fdfdfd;");
+    expect(cssRuleBody(tokens, ":root")).toContain("--bg: #fcfcfb;");
+    expect(cssRuleBody(tokens, ":root")).toContain("--row-selected: #edecea;");
     expect(cssRuleBody(tokens, ':root[data-theme="dark"]')).toContain("--bg: #141414;");
+    expect(cssRuleBody(tokens, ':root[data-theme="dark"]')).toContain(
+      "--row-selected: var(--panel-soft);"
+    );
+
+    // Every rung mixes away from a restated copy of the shipped literal, so a
+    // literal that moves without its copy leaves rung 6 jumping off the
+    // default instead of easing away from it.
+    const light = cssRuleBody(tokens, ":root");
+    const dark = cssRuleBody(tokens, ':root[data-theme="dark"]');
+    for (const surface of ["bg", "sidebar", "panel", "review-panel", "review-sidebar"]) {
+      const bases = [...ladder.matchAll(new RegExp(`--${surface}: color-mix\\(in oklab, (#[0-9a-f]{6})`, "g"))];
+      expect(bases.map(([, hex]) => hex)).toEqual([
+        light.match(new RegExp(`--${surface}: (#[0-9a-f]{6});`))?.[1],
+        dark.match(new RegExp(`--${surface}: (#[0-9a-f]{6});`))?.[1],
+      ]);
+    }
   });
 
   it("scales every neutral surface and its boundaries on nondefault rungs", () => {
@@ -296,7 +313,14 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
       ':root[data-theme="dark"]:is([data-background-intensity="8"], [data-background-intensity="9"], [data-background-intensity="10"])'
     );
 
-    expect(lightLow).toContain("--background-bg-target: #e3e3e3;");
+    // Light mode softens toward warm paper rather than grey, so every low-end
+    // target keeps more red than blue.
+    expect(lightLow).toContain("--background-bg-target: #e6e3d7;");
+    for (const [, hex] of lightLow.matchAll(/--background-[a-z-]+-target: (#[0-9a-f]{6});/g)) {
+      expect(Number.parseInt(hex.slice(1, 3), 16)).toBeGreaterThan(
+        Number.parseInt(hex.slice(5, 7), 16)
+      );
+    }
     expect(darkLow).toContain("--background-bg-target: #2c2c2c;");
     expect(lightHigh).toContain("--background-bg-target: #ffffff;");
     expect(lightHigh).toContain("--background-terminal-target: #ffffff;");
@@ -318,6 +342,15 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     expect(scope).toContain("top: calc(100% + 4px);");
     expect(scope).toContain("bottom: auto;");
     expect(scope).toContain("left: auto;");
+  });
+
+  it("keeps picker rows on the app's compact control type size", () => {
+    const pickerItem = cssRuleBody(
+      readSource("src/renderer/styles/chat-chrome.css"),
+      ".project-picker-item"
+    );
+
+    expect(pickerItem).toContain("font-size: var(--text-xs);");
   });
 
   it("keeps the pane minimum width aligned with the compact composer breakpoint", () => {

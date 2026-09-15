@@ -2,21 +2,6 @@ import type { TimelineEvent } from "../../shared/types.js";
 import { decodeTimelineEvent } from "./canonicalTimeline.js";
 
 /**
- * Claude extended-thinking content. The dashboard merge budgets these
- * separately and never prunes them, and the chat view renders them as their own
- * "Thought" block. The two must agree on what counts, so both use the canonical
- * decoder's classification.
- */
-export function isThinkingDelta(event: TimelineEvent): boolean {
-  const canonical = decodeTimelineEvent(event);
-  return (
-    canonical.kind === "message" &&
-    canonical.phase === "delta" &&
-    canonical.content === "thinking"
-  );
-}
-
-/**
  * Sub-agent prose that is hidden from the parent chat: Claude child rows carry
  * `parent_tool_use_id` (trace-imported Codex/Cursor rows reuse the same
  * marker), and live Codex child messages are `agent_message` payloads with

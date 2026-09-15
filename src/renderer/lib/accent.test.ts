@@ -15,8 +15,7 @@ afterEach(() => {
 
 describe("accent", () => {
   it("defaults to green when nothing is stored", () => {
-    expect(readStoredAccent()).toBe(DEFAULT_ACCENT_ID);
-    expect(DEFAULT_ACCENT_ID).toBe("green");
+    expect(readStoredAccent()).toBe("green");
   });
 
   it("falls back to green when storage holds an unknown id", () => {

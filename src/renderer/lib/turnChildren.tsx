@@ -2,7 +2,7 @@ import { Fragment, type ReactNode } from "react";
 import type { ToolCall } from "./toolCalls.js";
 
 /** A reasoning block folded into Compact's ordered activity disclosure. */
-export type ActivityThought = {
+type ActivityThought = {
   kind: "thought";
   id: string;
   node: ReactNode;

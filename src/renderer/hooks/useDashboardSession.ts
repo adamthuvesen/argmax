@@ -61,7 +61,7 @@ function withCarriedPending(current: ApprovalRequest[], fetched: ApprovalRequest
   return [...fetched, ...carried].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
-export interface UseDashboardSessionOptions {
+interface UseDashboardSessionOptions {
   onErrorToast?: (message: string) => void;
   /**
    * When false, a selected workspace does not overwrite `selectedProjectId`.
@@ -70,7 +70,7 @@ export interface UseDashboardSessionOptions {
   followWorkspaceProject?: boolean;
 }
 
-export interface UseDashboardSessionResult {
+interface UseDashboardSessionResult {
   snapshot: DashboardSnapshot;
   timelines: SessionTimelines;
   sessionMoves: ReadonlyMap<string, SessionMoveDestination>;

@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
-import type { DetectedIde, GhPrRecord, IdeId, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
+import type { DetectedIde, IdeId, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { openBrowserPanel } from "../lib/browserPanel.js";
 import { refreshSessionPrs } from "../lib/sessionPrs.js";
 import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
@@ -61,7 +61,6 @@ export function SessionActionsMenu({
   setStatus?: (status: ComposerStatus | null) => void;
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
-  const [prs, setPrs] = useState<GhPrRecord[]>([]);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [actionsMode, setActionsMode] = useState<"main" | "git">("main");
   const closeActions = useCallback(() => {
@@ -76,29 +75,18 @@ export function SessionActionsMenu({
   useDismissOnOutsideOrEscape(menu.anchorRef, actionsOpen, closeActions, menu.popoverRef);
 
   useEffect(() => {
-    if (!session?.id || !window.argmax?.prs) {
-      setPrs([]);
-      return;
-    }
+    if (!session?.id || !window.argmax?.prs) return;
     let cancelled = false;
     void window.argmax.prs
       .listForSession({ sessionId: session.id })
-      .then((rows) => {
-        if (!cancelled) setPrs(rows);
-      })
       .catch((error) => {
         if (cancelled) return;
-        setPrs([]);
         setStatus?.({
           kind: "error",
           message: error instanceof Error ? error.message : "Could not load pull requests."
         });
       });
-    void refreshSessionPrs(session.id)
-      ?.then((rows) => {
-        if (!cancelled) setPrs(rows);
-      })
-      .catch(() => undefined);
+    void refreshSessionPrs(session.id)?.catch(() => undefined);
     return () => {
       cancelled = true;
     };
@@ -116,7 +104,6 @@ export function SessionActionsMenu({
     if (!session?.id || !window.argmax?.prs) return;
     const fetcher = window.argmax.prs.refresh ?? window.argmax.prs.listForSession;
     void fetcher({ sessionId: session.id })
-      .then(setPrs)
       .catch((error) => {
         setStatus?.({
           kind: "error",
@@ -310,7 +297,6 @@ export function SessionActionsMenu({
                 Back
               </button>
               <GitActionsMenu
-                prs={prs}
                 session={session}
                 workspace={workspace}
                 onPrsRefresh={refreshPrs}

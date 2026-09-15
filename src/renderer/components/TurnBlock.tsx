@@ -4,6 +4,7 @@ import { formatElapsedSeconds } from "../formatElapsed.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { registerLiveTimer } from "../lib/liveTimer.js";
 import type { TurnToolItem } from "../lib/toolCalls.js";
+import { ShowEarlier } from "./ShowEarlier.js";
 import { groupToolRuns, type TurnBodyChild } from "../lib/turnChildren.js";
 
 export type { TurnToolItem, TurnBodyChild };
@@ -18,15 +19,6 @@ interface Bounds {
   lastSeenAt: number;
 }
 
-function readToolBounds(item: TurnToolItem): Pick<Bounds, "startedAt" | "endedAt"> {
-  const startedAt = Date.parse(item.tool.createdAt);
-  const endedAt = item.tool.completedAt ? Date.parse(item.tool.completedAt) : null;
-  return {
-    startedAt: Number.isFinite(startedAt) ? startedAt : 0,
-    endedAt: endedAt !== null && Number.isFinite(endedAt) ? endedAt : null
-  };
-}
-
 function turnBounds(toolItems: TurnToolItem[], assistantTimestamps: number[]): Bounds {
   let startedAt = Number.POSITIVE_INFINITY;
   let endedAt: number | null = 0;
@@ -35,14 +27,17 @@ function turnBounds(toolItems: TurnToolItem[], assistantTimestamps: number[]): B
 
   for (const item of toolItems) {
     sawAny = true;
-    const b = readToolBounds(item);
-    if (Number.isFinite(b.startedAt)) startedAt = Math.min(startedAt, b.startedAt);
-    lastSeenAt = Math.max(lastSeenAt, b.startedAt);
-    if (b.endedAt === null) {
+    const toolStartedAt = Date.parse(item.tool.createdAt);
+    const toolEndedAt = item.tool.completedAt ? Date.parse(item.tool.completedAt) : null;
+    if (Number.isFinite(toolStartedAt)) {
+      startedAt = Math.min(startedAt, toolStartedAt);
+      lastSeenAt = Math.max(lastSeenAt, toolStartedAt);
+    }
+    if (toolEndedAt === null || !Number.isFinite(toolEndedAt)) {
       endedAt = null;
     } else {
-      lastSeenAt = Math.max(lastSeenAt, b.endedAt);
-      if (endedAt !== null) endedAt = Math.max(endedAt, b.endedAt);
+      lastSeenAt = Math.max(lastSeenAt, toolEndedAt);
+      if (endedAt !== null) endedAt = Math.max(endedAt, toolEndedAt);
     }
   }
   for (const ts of assistantTimestamps) {
@@ -58,11 +53,6 @@ function turnBounds(toolItems: TurnToolItem[], assistantTimestamps: number[]): B
     lastSeenAt
   };
 }
-
-function isToolRunning(item: TurnToolItem): boolean {
-  return item.tool.status === "running";
-}
-
 
 export function TurnBlock({
   toolItems,
@@ -125,7 +115,10 @@ export function TurnBlock({
   /** "Revert to here", when this turn has a before-turn checkpoint. */
   revert?: JSX.Element;
 }): JSX.Element {
-  const toolRunning = useMemo(() => toolItems.some(isToolRunning), [toolItems]);
+  const toolRunning = useMemo(
+    () => toolItems.some((item) => item.tool.status === "running"),
+    [toolItems]
+  );
   // `running` controls the chip's "Working" label and live ticker —
   // the parent's isTurnActive flag is authoritative because it also knows
   // about thinking phases and user-input pauses (PlanCard / QuestionDock).
@@ -280,13 +273,11 @@ export function TurnBlock({
           data-just-revealed={justRevealed ? "true" : undefined}
         >
           {hiddenEarlierBodyCount > 0 && onShowEarlierBody ? (
-            <button
-              type="button"
-              className="conversation-show-earlier turn-show-earlier"
+            <ShowEarlier
+              noun="activity"
+              count={hiddenEarlierBodyCount}
               onClick={onShowEarlierBody}
-            >
-              Show earlier activity ({hiddenEarlierBodyCount} hidden)
-            </button>
+            />
           ) : null}
           {groupToolRuns(visibleBody)}
         </div>

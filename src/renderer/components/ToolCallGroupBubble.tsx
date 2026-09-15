@@ -17,6 +17,7 @@ import type { FileChipOpenOptions } from "./FileChip.js";
 import { ToolCallRow } from "./ToolCallRow.js";
 import { WorkingNest } from "./WorkingNest.js";
 import { ToolActivityIcon } from "./ToolActivityIcon.js";
+import { ShowEarlier } from "./ShowEarlier.js";
 import { ServerIcon } from "./ServerIcon.js";
 
 type ToolCallGroupBubbleProps = {
@@ -79,13 +80,7 @@ function ToolChildrenWindow({
   return (
     <div className="tool-call-agent-children">
       {hiddenEarlierCount > 0 ? (
-        <button
-          type="button"
-          className="conversation-show-earlier tool-group-show-earlier"
-          onClick={showEarlier}
-        >
-          Show earlier child activity ({hiddenEarlierCount} hidden)
-        </button>
+        <ShowEarlier noun="child activity" count={hiddenEarlierCount} onClick={showEarlier} />
       ) : null}
       {visibleItems.map((tool) => (
         <ToolCallRow
@@ -124,13 +119,7 @@ function ToolRowsWindow({
   return (
     <>
       {hiddenEarlierCount > 0 ? (
-        <button
-          type="button"
-          className="conversation-show-earlier tool-group-show-earlier"
-          onClick={showEarlier}
-        >
-          Show earlier tool calls ({hiddenEarlierCount} hidden)
-        </button>
+        <ShowEarlier noun="tool calls" count={hiddenEarlierCount} onClick={showEarlier} />
       ) : null}
       {visibleItems.map(({ tool, children }) => (
         <div key={tool.id}>
@@ -288,13 +277,11 @@ function ToolCallGroupBubbleInner({
     ? (
         <>
           {hiddenActivityMembers > 0 ? (
-            <button
-              type="button"
-              className="conversation-show-earlier tool-group-show-earlier"
+            <ShowEarlier
+              noun="activity"
+              count={hiddenActivityMembers}
               onClick={showEarlierActivity}
-            >
-              Show earlier activity ({hiddenActivityMembers} hidden)
-            </button>
+            />
           ) : null}
           {visibleActivityMembers.map((member) => member.kind === "thought"
             ? <div key={member.id}>{member.node}</div>

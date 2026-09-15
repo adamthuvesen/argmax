@@ -119,11 +119,6 @@ enum Theme {
     static var sage: Color { Color(sageColor) }
     static var violet: Color { Color(violetColor) }
     static var activityPurple: Color { Color(activityPurpleColor) }
-    static var activityBlue: Color { Color(activityBlueColor) }
-    static var activityGreen: Color { Color(activityGreenColor) }
-    static var activityCoral: Color { Color(activityCoralColor) }
-    static var activityGold: Color { Color(activityGoldColor) }
-    static var activityRed: Color { Color(activityRedColor) }
     static var diffAddInk: Color { Color(diffAddInkColor) }
     static var diffDelInk: Color { Color(diffDelInkColor) }
 

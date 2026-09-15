@@ -32,10 +32,6 @@ export const WORKING_NEST_SETTLE_MS = 220;
  * them to a still frame. `phaseKey` keeps the same job synchronised across
  * surfaces while separate jobs start on different beats.
  *
- * `still` asks for that pinned frame on purpose: the live accent, none of the
- * motion. It is for a surface where the mark is a header identity rather than a
- * status ticker, and a relay beside a title would only be noise.
- *
  * Drawn with HTML elements rather than SVG on purpose. WebKit's legacy SVG
  * renderer has no accelerated compositing at all — the layer tree does not know
  * SVG exists — so an SVG `<circle>` animating `transform` repaints every frame
@@ -48,14 +44,12 @@ export function WorkingNest({
   size = 14,
   className,
   phaseKey,
-  still = false,
   markId: markIdOverride
 }: {
   active: boolean;
   size?: number;
   className?: string;
   phaseKey?: string | undefined;
-  still?: boolean;
   /** Force one style regardless of the setting. Only the settings picker wants
    *  this — it has to show all four at once. */
   markId?: ActivityMarkId;
@@ -78,7 +72,7 @@ export function WorkingNest({
   }, [active]);
 
   useLayoutEffect(() => {
-    if (!active || still) return;
+    if (!active) return;
 
     for (const part of nestRef.current?.querySelectorAll(".working-nest-part") ?? []) {
       for (const animation of part.getAnimations?.() ?? []) {
@@ -89,7 +83,7 @@ export function WorkingNest({
     }
     // `markId` is a dependency because switching styles swaps the parts out for
     // a different set, and the new ones mount with fresh mount-relative delays.
-  }, [active, still, markId]);
+  }, [active, markId]);
 
   useEffect(() => {
     if (!isSettling) return;
@@ -104,7 +98,6 @@ export function WorkingNest({
       data-mark={markId}
       data-active={active ? "true" : undefined}
       data-settling={isSettling ? "true" : undefined}
-      data-still={still ? "true" : undefined}
       data-working={active ? "true" : undefined}
       data-phase={phase}
       style={{

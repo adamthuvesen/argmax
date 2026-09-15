@@ -1,7 +1,7 @@
 import { isPlainObject } from "../../shared/typeGuards.js";
 import type { ToolCall } from "./toolCalls.js";
 
-export const ACTIVITY_KINDS = [
+const ACTIVITY_KINDS = [
   "read", "edit", "image", "search", "list", "web-search", "web-fetch",
   "discovery", "command", "tool", "agent", "skill", "image-capture", "image-generate", "computer",
   "agent-message", "agent-wait", "agent-stop", "memory-recall", "memory-save", "git", "browser", "plan"
@@ -36,14 +36,14 @@ export function mergeToolActivity(start: ToolActivity | null, end: ToolActivity 
 }
 
 type ActivityState = "running" | "succeeded" | "failed" | "cancelled" | "unconfirmed";
-export function toolActivityState(tool: ToolCall): ActivityState {
+function toolActivityState(tool: ToolCall): ActivityState {
   if (tool.cancelled) return "cancelled";
   if (tool.status === "running") return "running";
   if (tool.status === "error") return "failed";
   return tool.completionObserved === true ? "succeeded" : "unconfirmed";
 }
 
-export function activityLabel(activity: ToolActivity, state: ActivityState, plural = false, target?: string): string {
+function activityLabel(activity: ToolActivity, state: ActivityState, plural = false, target?: string): string {
   const file = target || (plural ? "files" : "a file");
   const image = target || (plural ? "images" : "an image");
   const operation = activity.operation;

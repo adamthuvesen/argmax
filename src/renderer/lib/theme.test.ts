@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  DEFAULT_THEME_MODE,
   THEME_STORAGE_KEY,
   readStoredTheme,
   resolveTheme
@@ -13,7 +12,6 @@ afterEach(() => {
 
 describe("theme", () => {
   it("defaults to dark when nothing is stored", () => {
-    expect(DEFAULT_THEME_MODE).toBe("dark");
     expect(readStoredTheme()).toBe("dark");
   });
 

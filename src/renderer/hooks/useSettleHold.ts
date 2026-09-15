@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-export type SettlePhase = "running" | "landing" | "done";
+type SettlePhase = "running" | "landing" | "done";
 
 /**
  * Hold a running mark on screen for `ms` after the work ends, so it can play its

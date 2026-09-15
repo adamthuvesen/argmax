@@ -69,16 +69,15 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    let output = run_git_output(
-        workspace_path.as_ref(),
+    run_git_text_with_options(
+        workspace_path,
         args,
         GitExecOptions {
             timeout,
             ..GitExecOptions::default()
         },
     )
-    .await?;
-    decode_stdout(output)
+    .await
 }
 
 /// Like [`run_git_text`] but with caller-supplied [`GitExecOptions`] (env
@@ -220,23 +219,13 @@ where
     S: AsRef<OsStr>,
 {
     let args = collect_args(args);
-    let output = run_git_command(workspace_path, &args, options.clone()).await?;
-    let exit_code = output.status.code().unwrap_or(-1);
-
+    let output = run_git_command(workspace_path, &args, options).await?;
     if !output.status.success() {
-        return Err(non_zero_error(exit_code, &output.stderr));
-    }
-    if output.stdout.len() > options.stdout_cap_bytes {
-        return Err(ArgmaxError::service(
-            "GIT_STDOUT_TOO_LARGE",
-            format!(
-                "git stdout exceeded {} bytes (received {} bytes)",
-                options.stdout_cap_bytes,
-                output.stdout.len()
-            ),
+        return Err(non_zero_error(
+            output.status.code().unwrap_or(-1),
+            &output.stderr,
         ));
     }
-
     Ok(output.stdout)
 }
 
@@ -320,7 +309,7 @@ async fn run_git_command(
                 )
             })
     };
-    let stdout = read_capped(stdout, options.stdout_cap_bytes, "stdout");
+    let stdout = read_capped(stdout, options.stdout_cap_bytes);
     let stderr = read_truncated(stderr, GIT_STDERR_CAP_BYTES);
 
     let (status, stdout, stderr) = tokio::try_join!(wait, stdout, stderr)?;
@@ -331,11 +320,7 @@ async fn run_git_command(
     })
 }
 
-async fn read_capped<R>(
-    mut reader: R,
-    cap_bytes: usize,
-    label: &'static str,
-) -> ArgmaxResult<Vec<u8>>
+async fn read_capped<R>(mut reader: R, cap_bytes: usize) -> ArgmaxResult<Vec<u8>>
 where
     R: AsyncRead + Unpin,
 {
@@ -345,7 +330,7 @@ where
         let read = reader.read(&mut buffer).await.map_err(|error| {
             ArgmaxError::service(
                 "GIT_PIPE_READ_FAILED",
-                format!("failed to read git {label}: {error}"),
+                format!("failed to read git stdout: {error}"),
             )
         })?;
         if read == 0 {
@@ -355,7 +340,7 @@ where
             return Err(ArgmaxError::service(
                 "GIT_STDOUT_TOO_LARGE",
                 format!(
-                    "git {label} exceeded {cap_bytes} bytes (received at least {} bytes)",
+                    "git stdout exceeded {cap_bytes} bytes (received at least {} bytes)",
                     output.len() + read
                 ),
             ));

@@ -1,7 +1,5 @@
-use super::super::{
-    now_iso, AgentMode, HandleEntry, PendingMessage, ProviderSessionService, SendInputResult,
-};
-use super::{database_with_running_session, CountingFailureLauncher};
+use super::super::{HandleEntry, PendingMessage, ProviderSessionService, SendInputResult};
+use super::{database_with_running_session, pending_message, CountingFailureLauncher};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::ipc::inputs::{
     ProvidersSendInput, ProvidersSendQueuedMessageNowInput, ProvidersTerminateInput,
@@ -22,13 +20,9 @@ use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
-struct SteerHandleConfig {
+struct SteerRecordingHandle {
     supports_steering: bool,
     steer_error: Option<ArgmaxError>,
-}
-
-struct SteerRecordingHandle {
-    config: SteerHandleConfig,
     steer_calls: AtomicUsize,
     terminate_calls: AtomicUsize,
     disposed: AtomicBool,
@@ -36,18 +30,6 @@ struct SteerRecordingHandle {
     /// before the model ever read its prompt. True everywhere else, so the
     /// tests that do not care about it read the ordinary case.
     input_delivered: AtomicBool,
-}
-
-impl SteerRecordingHandle {
-    fn new(config: SteerHandleConfig) -> Arc<Self> {
-        Arc::new(Self {
-            config,
-            steer_calls: AtomicUsize::new(0),
-            terminate_calls: AtomicUsize::new(0),
-            disposed: AtomicBool::new(false),
-            input_delivered: AtomicBool::new(true),
-        })
-    }
 }
 
 impl ProviderRuntimeHandle for SteerRecordingHandle {
@@ -64,7 +46,7 @@ impl ProviderRuntimeHandle for SteerRecordingHandle {
     }
 
     fn supports_steering(&self) -> bool {
-        self.config.supports_steering
+        self.supports_steering
     }
 
     fn send_input(&self, _text: &str) {}
@@ -73,7 +55,7 @@ impl ProviderRuntimeHandle for SteerRecordingHandle {
 
     fn steer<'a>(&'a self, _prompt: &'a str) -> BoxFuture<'a, ArgmaxResult<()>> {
         self.steer_calls.fetch_add(1, Ordering::SeqCst);
-        let error = self.config.steer_error.clone();
+        let error = self.steer_error.clone();
         Box::pin(async move {
             tokio::task::yield_now().await;
             if let Some(error) = error {
@@ -92,7 +74,8 @@ impl ProviderRuntimeHandle for SteerRecordingHandle {
 }
 
 fn steer_service(
-    config: SteerHandleConfig,
+    supports_steering: bool,
+    steer_error: Option<ArgmaxError>,
 ) -> (
     Arc<ProviderSessionService>,
     Arc<SteerRecordingHandle>,
@@ -102,7 +85,14 @@ fn steer_service(
     let launcher = Arc::new(CountingFailureLauncher::default());
     let service =
         ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
-    let handle = SteerRecordingHandle::new(config);
+    let handle = Arc::new(SteerRecordingHandle {
+        supports_steering,
+        steer_error,
+        steer_calls: AtomicUsize::new(0),
+        terminate_calls: AtomicUsize::new(0),
+        disposed: AtomicBool::new(false),
+        input_delivered: AtomicBool::new(true),
+    });
     service.handles.lock_or_recover("handles").insert(
         "session-1".to_string(),
         HandleEntry::Resolved(Arc::clone(&handle) as Arc<dyn ProviderRuntimeHandle>),
@@ -125,21 +115,7 @@ fn seed_queue(service: &ProviderSessionService, message: PendingMessage) -> Stri
 }
 
 fn pending(id: &str, content: &str) -> PendingMessage {
-    PendingMessage {
-        id: id.to_string(),
-        session_id: "session-1".to_string(),
-        content: content.to_string(),
-        agent_mode: AgentMode::Auto.as_str().to_string(),
-        model_label: None,
-        model_id: None,
-        reasoning_effort: None,
-        fast_mode: false,
-        attachments: Vec::new(),
-        agent_references: Vec::new(),
-        origin: None,
-        recovery_status: None,
-        queued_at: now_iso(),
-    }
+    pending_message(id, "session-1", content)
 }
 
 async fn steer_now(
@@ -157,10 +133,7 @@ async fn steer_now(
 
 #[tokio::test]
 async fn successful_steer_persists_delivery_and_leaves_session_running() {
-    let (service, handle, launcher) = steer_service(SteerHandleConfig {
-        supports_steering: true,
-        steer_error: None,
-    });
+    let (service, handle, launcher) = steer_service(true, None);
     let message_id = seed_queue(&service, pending("ok", "adjust course"));
     steer_now(&service, &message_id).await.expect("steer");
     assert_eq!(handle.steer_calls.load(Ordering::SeqCst), 1);
@@ -194,10 +167,7 @@ async fn successful_steer_persists_delivery_and_leaves_session_running() {
 
 #[tokio::test]
 async fn codex_near_compaction_keeps_the_follow_up_queued() {
-    let (service, handle, launcher) = steer_service(SteerHandleConfig {
-        supports_steering: true,
-        steer_error: None,
-    });
+    let (service, handle, launcher) = steer_service(true, None);
     service
         .database
         .connection()
@@ -228,10 +198,7 @@ async fn codex_near_compaction_keeps_the_follow_up_queued() {
 
 #[tokio::test]
 async fn direct_steer_near_compaction_becomes_an_ordinary_queued_follow_up() {
-    let (service, handle, _) = steer_service(SteerHandleConfig {
-        supports_steering: true,
-        steer_error: None,
-    });
+    let (service, handle, _) = steer_service(true, None);
     service
         .database
         .connection()
@@ -275,10 +242,10 @@ async fn direct_steer_near_compaction_becomes_an_ordinary_queued_follow_up() {
 
 #[tokio::test]
 async fn rejected_steer_restores_unsent_without_side_effects() {
-    let (service, handle, launcher) = steer_service(SteerHandleConfig {
-        supports_steering: true,
-        steer_error: Some(ArgmaxError::service("STEER_REJECTED", "refused")),
-    });
+    let (service, handle, launcher) = steer_service(
+        true,
+        Some(ArgmaxError::service("STEER_REJECTED", "refused")),
+    );
     let message_id = seed_queue(&service, pending("rej", "retry"));
     let error = steer_now(&service, &message_id).await.unwrap_err();
     assert!(matches!(
@@ -317,10 +284,7 @@ async fn stopping_a_turn_before_the_model_read_it_says_so_on_the_chat() {
     // emits nothing while it runs. A Stop in that window leaves the thread
     // with no user message for the turn at all, so the next turn behaves as
     // though it was never asked — the chat has to say why.
-    let (service, handle, _launcher) = steer_service(SteerHandleConfig {
-        supports_steering: true,
-        steer_error: None,
-    });
+    let (service, handle, _launcher) = steer_service(true, None);
     handle.input_delivered.store(false, Ordering::SeqCst);
     service
         .terminate(ProvidersTerminateInput {
@@ -352,10 +316,7 @@ async fn stopping_a_turn_before_the_model_read_it_says_so_on_the_chat() {
 
 #[tokio::test]
 async fn stopping_a_delivered_turn_adds_no_note() {
-    let (service, _handle, _launcher) = steer_service(SteerHandleConfig {
-        supports_steering: true,
-        steer_error: None,
-    });
+    let (service, _handle, _launcher) = steer_service(true, None);
     service
         .terminate(ProvidersTerminateInput {
             session_id: SessionId::try_from("session-1".to_string()).unwrap(),
@@ -375,10 +336,7 @@ async fn stopping_a_delivered_turn_adds_no_note() {
 
 #[tokio::test]
 async fn steer_ack_after_stop_does_not_append_to_the_new_conversation() {
-    let (service, handle, launcher) = steer_service(SteerHandleConfig {
-        supports_steering: true,
-        steer_error: None,
-    });
+    let (service, handle, launcher) = steer_service(true, None);
     let id = seed_queue(&service, pending("late-ack", "old guidance"));
     let stop = async {
         while handle.steer_calls.load(Ordering::SeqCst) == 0 {
@@ -413,10 +371,10 @@ async fn steer_ack_after_stop_does_not_append_to_the_new_conversation() {
 #[tokio::test]
 async fn inbox_cannot_collect_a_message_while_steering_owns_delivery() {
     for error_code in [None, Some("STEER_REJECTED"), Some("STEER_DELIVERY_UNKNOWN")] {
-        let (service, handle, _) = steer_service(SteerHandleConfig {
-            supports_steering: true,
-            steer_error: error_code.map(|code| ArgmaxError::service(code, "probe outcome")),
-        });
+        let (service, handle, _) = steer_service(
+            true,
+            error_code.map(|code| ArgmaxError::service(code, "probe outcome")),
+        );
         insert_session_message(
             &service.database.connection(),
             &NewSessionMessage {
@@ -472,10 +430,7 @@ async fn inbox_cannot_collect_a_message_while_steering_owns_delivery() {
 
 #[tokio::test]
 async fn unsupported_not_running_and_settings_mismatch_skip_steer() {
-    let (service, handle, _) = steer_service(SteerHandleConfig {
-        supports_steering: false,
-        steer_error: None,
-    });
+    let (service, handle, _) = steer_service(false, None);
     let id = seed_queue(&service, pending("u", "x"));
     let error = steer_now(&service, &id).await.unwrap_err();
     assert!(matches!(
@@ -485,10 +440,7 @@ async fn unsupported_not_running_and_settings_mismatch_skip_steer() {
     assert_eq!(handle.steer_calls.load(Ordering::SeqCst), 0);
     assert_eq!(service.pending_messages_snapshot()["session-1"].len(), 1);
 
-    let (service, handle, _) = steer_service(SteerHandleConfig {
-        supports_steering: true,
-        steer_error: None,
-    });
+    let (service, handle, _) = steer_service(true, None);
     {
         let connection = service.database.connection();
         update_session_state(
@@ -510,10 +462,7 @@ async fn unsupported_not_running_and_settings_mismatch_skip_steer() {
     ));
     assert_eq!(handle.steer_calls.load(Ordering::SeqCst), 0);
 
-    let (service, handle, launcher) = steer_service(SteerHandleConfig {
-        supports_steering: true,
-        steer_error: None,
-    });
+    let (service, handle, launcher) = steer_service(true, None);
     let mut message = pending("set", "model");
     message.model_id = Some("other-model".to_string());
     let id = seed_queue(&service, message);
@@ -528,10 +477,7 @@ async fn unsupported_not_running_and_settings_mismatch_skip_steer() {
 
 #[tokio::test]
 async fn delivery_unknown_after_accepted_steer_restores_delivery_unknown() {
-    let (service, handle, launcher) = steer_service(SteerHandleConfig {
-        supports_steering: true,
-        steer_error: None,
-    });
+    let (service, handle, launcher) = steer_service(true, None);
     let message_id = seed_queue(&service, pending("unk", "guidance"));
     service
         .database

@@ -16,14 +16,14 @@ import type { UsageMetric } from "./usagePresentation.js";
 /** The fewest completed buckets that make an average or a peak worth stating. */
 const MIN_BUCKETS = 2;
 
-export interface UsageAverage {
+interface UsageAverage {
   /** The mean over completed buckets, in the metric's own units. */
   value: number;
   /** How a sentence names one bucket: `a day` or `an hour`. */
   unitLabel: string;
 }
 
-export interface UsagePeak {
+interface UsagePeak {
   /** RFC 3339 UTC start of the busiest completed bucket. */
   bucketStart: string;
   /** How a sentence names it: `Aug 30`, or `Aug 30, 14:00` in a 24h window. */

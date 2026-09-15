@@ -28,17 +28,22 @@
      the inherited `calt` wins. It takes the same property to turn it off. */
   --code-font-features: "liga" 0, "clig" 0, "calt" 0;
 
-  --bg: #fdfdfd;
-  --sidebar: #f9f9f7;
+  /* Light's ground is warm near-white, and the chrome sits barely under it:
+     the page and the sidebars are within two units, so their boundary is
+     carried by --line rather than by a step in fill. Intensity walks this
+     pair down toward paper; it cannot walk it up, which is why a brighter
+     sidebar than this one belongs here and not on a rung. */
+  --bg: #fcfcfb;
+  --sidebar: #fbfbf9;
   --panel: #ffffff;
   /* Both sidebars share warm paper in light and lifted charcoal in dark. */
-  --review-panel: #f9f9f7;
+  --review-panel: #fbfbf9;
   /* File-tree column inside the review panel. Paper sinks, charcoal lifts:
      in light this sits a step under the panel, in dark a step above it — the
      same trick --tool-block-surface plays, and the reason the column can't
      just take --panel-sunken (in dark that is the darkest surface in the app
      and the column would read as a hole rather than a sidebar). */
-  --review-sidebar: #f6f6f3;
+  --review-sidebar: #f8f8f5;
   --panel-soft: #fafafa;
   /* The two composers (.composer in the launcher, .session-input in a session).
      They are cards, but the one card the user types into, so dark lifts them a
@@ -47,6 +52,10 @@
      and they stay on it. */
   --composer-surface: var(--panel);
   --panel-sunken: #eef0f1;
+  /* Greige selection fill — sidebar rows, panel tabs, neutral bubbles, active
+     file tabs, and the review mode sliding indicator. Same weight as the old
+     cool gray mix, with the blue cast traded for a hint of paper warmth. */
+  --row-selected: #edecea;
   /* Code/terminal block fill in chat. Lighter than --panel-sunken in light
      mode so output blocks read airier; dark reuses its sunken surface. */
   --code-surface: #f4f6f7;
@@ -71,10 +80,20 @@
   /* The fill every control on a composer's chip floor wears — the model pill,
      the project and branch chips, the glyph buttons, the behavior toggles at
      rest. One mix off --composer-surface, so it lifts on paper and in dark
-     without a second declaration, and one step further on hover. This is what
+     without a second declaration, and one step further on hover. On paper the
+     base picks up a little of --row-selected so chips share the same greige
+     family as sidebar selection without matching it outright. This is what
      replaced the carets: the fill is what says a control is a control. */
-  --composer-chip: color-mix(in oklab, var(--text) 5%, var(--composer-surface));
-  --composer-chip-hover: color-mix(in oklab, var(--text) 9%, var(--composer-surface));
+  --composer-chip: color-mix(
+    in oklab,
+    var(--text) 5%,
+    color-mix(in oklab, var(--composer-surface) 88%, var(--row-selected))
+  );
+  --composer-chip-hover: color-mix(
+    in oklab,
+    var(--text) 9%,
+    color-mix(in oklab, var(--composer-surface) 84%, var(--row-selected))
+  );
   /* Model-suggested follow-ups are guidance, not entered text. Light
      composers lift them above the regular placeholder so they read as a
      suggestion without competing with the prompt. */
@@ -91,13 +110,15 @@
   --text: color-mix(in oklab, #1c1b18, var(--ink-toward) var(--ink-pull));
   --text-soft: color-mix(in oklab, #3a3833, var(--ink-toward) var(--ink-pull));
   --muted: color-mix(in oklab, #8a857b, var(--ink-toward) var(--ink-pull));
-  --muted-strong: color-mix(in oklab, #5d594f, var(--ink-toward) var(--ink-pull));
+  --muted-strong: color-mix(in oklab, #666158, var(--ink-toward) var(--ink-pull));
   /* Ink for the composers' secondary chips — project, branch, permission mode,
      workspace mode, effort. --muted is 3.6:1 on paper, under AA at chip size,
      so they take a step toward --muted-strong while staying clearly below the
-     model chip that sits on it. Dark keeps --muted: the same value clears
-     4.5:1 against --composer-surface there. */
-  --chip-ink: color-mix(in oklab, var(--muted) 65%, var(--muted-strong));
+     model chip that sits on it. The weight tracks --muted-strong: chips want
+     4.5:1 on white, so softening the label ink costs a longer step to hold the
+     same place. Dark keeps --muted: the same value clears 4.5:1 against
+     --composer-surface there. */
+  --chip-ink: color-mix(in oklab, var(--muted) 55%, var(--muted-strong));
 
   /* Ink for long-form rendered prose (`.markdown`): agent answers, plan cards,
      file previews. Held a step off --text on paper so a wall of text doesn't
@@ -288,10 +309,7 @@
   --overlay-panel: var(--panel);
   --overlay-panel-raised: var(--panel-sunken);
   --selection-bg: color-mix(in oklab, var(--accent) 24%, transparent);
-  --selection-bg-on-ink: rgba(255, 255, 255, 0.28);
   --bubble-on-ink: #ffffff;
-  --user-bubble-bg: var(--ink);
-  --user-bubble-fg: var(--bubble-on-ink);
   /* User message bubbles fill with the active accent. Light accents are
      mid-tone, so white ink from --bubble-on-ink is the readable pair. Dark
      overrides the fill on --user-message-bg so chrome --accent can stay
@@ -325,7 +343,6 @@
 
   /* Atmospheric paper highlights. Bright white in light (mimics paper bias);
      suppressed in dark (room with the lights off — no diffuse spotlights). */
-  --paper-highlight-strong: rgba(255, 255, 255, 0.55);
   --paper-highlight-soft: rgba(255, 255, 255, 0.6);
 
   /* Hover wash for sidebar rows, nav items, and other quiet hover surfaces.
@@ -333,14 +350,6 @@
      paper. In dark it becomes a low-alpha warm-white film — present enough
      to register, never bright enough to read as a spotlight. */
   --row-hover: rgba(255, 255, 255, 0.6);
-
-  /* Selected-row fill, shared by the sidebar's sessions, the model picker, the
-     settings nav, and the agent tabs. Defined once so those four surfaces
-     cannot drift apart again. Light selection leans slightly toward the line
-     color so it stays visible at the near-white end of the intensity ladder
-     without making every other sunken surface darker. See the dark override
-     for why dark cannot use --panel-sunken. */
-  --row-selected: color-mix(in oklab, var(--panel-sunken) 67%, var(--line));
 
   font-family: var(--font-ui);
   font-weight: var(--weight-ui);
@@ -463,7 +472,6 @@
 :root,
 [data-font-size],
 [data-type-scale] {
-  --text-4xs: calc(9px + var(--type-step));
   --text-3xs: calc(9.5px + var(--type-step));
   --text-2xs: calc(10px + var(--type-step));
   --text-2xs-plus: calc(10.5px + var(--type-step));
@@ -538,7 +546,7 @@
   --text: color-mix(in oklab, #e3e0d8, var(--ink-toward) var(--ink-pull));
   --text-soft: color-mix(in oklab, #c5c1b8, var(--ink-toward) var(--ink-pull));
   --muted: color-mix(in oklab, #8a857b, var(--ink-toward) var(--ink-pull));
-  --muted-strong: color-mix(in oklab, #aeaaa1, var(--ink-toward) var(--ink-pull));
+  --muted-strong: color-mix(in oklab, #a5a198, var(--ink-toward) var(--ink-pull));
   --chip-ink: var(--muted);
 
   /* Prose runs brighter than chrome ink in dark, not softer. The bloom that
@@ -619,8 +627,6 @@
   --ink: #f4f2ec;
   --ink-soft: #e5e1d7;
   --bubble-on-ink: #131312;
-  --user-bubble-bg: #2d2c27;
-  --user-bubble-fg: #f4f2ec;
   /* Default dark accent is sage. Mid-deep fill plus white ink, so the
      lifted --accent stays on chrome (rings, selection, nests) and the
      bubble recedes. Orange, blue, and neutral override the fill. Purple
@@ -666,7 +672,6 @@
   --overlay-panel: #171716;
   --overlay-panel-raised: #292926;
   --selection-bg: color-mix(in oklab, var(--accent) 30%, transparent);
-  --selection-bg-on-ink: rgba(127, 180, 148, 0.34);
 
   /* Same two accent hues as light, at higher alpha because charcoal swallows
      chroma. The wash stays low-alpha so the code keeps the focal point, but
@@ -682,7 +687,6 @@
 
   /* Suppress the paper-mimic gradients in dark — they were paper-bias
      hints, not architecture. Dark mode keeps its surfaces flat-with-grain. */
-  --paper-highlight-strong: transparent;
   --paper-highlight-soft: transparent;
 
   /* Low-alpha warm white for hover surfaces in dark — present enough to
@@ -864,7 +868,7 @@
    panel surface. Both sit one surface step off the page rather than carrying a
    fill of their own, so an un-tinted bubble reads as a card, not as a slab. */
 :root[data-user-bubble="neutral"] {
-  --user-message-bg: var(--panel-sunken);
+  --user-message-bg: var(--row-selected);
   --user-message-fg: var(--text);
 }
 
@@ -886,11 +890,8 @@
               box-shadow 220ms var(--ease-out, ease-out) !important;
 }
 
-/* Dark-mode polish — the moments that earn the "fabulous" descriptor.
-   The principle: light gets shadows, dark gets *light*. In dark mode every
-   focus state and primary action picks up a soft warm glow instead of a
-   crisp ring. Scoped tight so the effect feels intentional, not noisy. */
-:root[data-theme="dark"] .composer-submit:not(:disabled):hover,
+/* Light gets shadows, dark gets *light*: in dark mode a primary action picks
+   up a soft warm glow instead of a crisp ring. */
 :root[data-theme="dark"] .project-actions-confirm-buttons .project-actions-destructive:hover {
   box-shadow: var(--shadow-1),
               0 0 28px -8px color-mix(in oklab, var(--accent) 55%, transparent);

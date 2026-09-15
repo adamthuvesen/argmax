@@ -58,7 +58,7 @@ function contextWindowLabel(provider: ProviderId, modelId: string): string | und
 }
 
 /** Per-provider install/auth state for picker gating. */
-export interface ProviderAvailabilityEntry {
+interface ProviderAvailabilityEntry {
   installed: boolean;
   authenticated: boolean | null;
 }
@@ -267,10 +267,6 @@ export function LaunchModelSelector({
       value={value}
     />
   );
-}
-
-function alwaysSupportsFastMode(): boolean {
-  return true;
 }
 
 type EffortPosStyle = CSSProperties & { "--effort-pos"?: string };
@@ -552,7 +548,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   withEffortSlider = false,
   effortOpen,
   onEffortOpenChange,
-  supportsFastModeForValue = alwaysSupportsFastMode,
+  supportsFastModeForValue,
   value
 }: {
   ariaLabel: string;
@@ -576,7 +572,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   withEffortSlider?: boolean;
   effortOpen?: boolean;
   onEffortOpenChange?: (open: boolean) => void;
-  supportsFastModeForValue?: (value: T) => boolean;
+  supportsFastModeForValue: (value: T) => boolean;
   value: T;
 }): JSX.Element {
   const [internalOpen, setInternalOpen] = useState(false);
@@ -626,7 +622,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   // the selected model is known to be fast/no-effort.
   const selectedShowsEffort =
     value.reasoningEffort != null && (selectedOption ? selectedOption.supportsReasoningEffort : true);
-  const showEffortSlider = withEffortSlider && selectedShowsEffort && value.reasoningEffort != null;
+  const showEffortSlider = withEffortSlider && selectedShowsEffort;
   const orderedOptions = orderOptionsByRecency(options);
 
   const selectionForOption = (option: ChipModelOption<T>): T => {

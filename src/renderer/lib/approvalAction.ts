@@ -9,7 +9,7 @@
  */
 import { toolArguments, type ToolArgument } from "./toolArguments.js";
 
-export type ApprovalAction = {
+type ApprovalAction = {
   /** The command, or the tool name when the command is a tool request. */
   title: string;
   /** Empty for a shell command: its arguments are the command text. */

@@ -298,7 +298,7 @@ function mergePendingMessages(
   return changed ? next : base;
 }
 
-export function sortProjects(projects: DashboardSnapshot["projects"]): DashboardSnapshot["projects"] {
+function sortProjects(projects: DashboardSnapshot["projects"]): DashboardSnapshot["projects"] {
   return sortByTimestamp(projects, (project) => project.latestActivityAt ?? "");
 }
 

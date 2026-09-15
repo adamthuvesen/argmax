@@ -35,7 +35,7 @@ describe("ImageLightbox", () => {
     expect(trigger).toHaveFocus();
   });
 
-  it("dismisses from the backdrop without treating image clicks as outside", () => {
+  it("dismisses from anywhere outside the image, including beside it", () => {
     const onClose = vi.fn();
     render(
       <ImageLightbox
@@ -45,11 +45,17 @@ describe("ImageLightbox", () => {
       />
     );
 
-    fireEvent.mouseDown(screen.getByRole("img", { name: "Attached image" }));
+    const image = screen.getByRole("img", { name: "Attached image" });
+    fireEvent.mouseDown(image);
     expect(onClose).not.toHaveBeenCalled();
 
-    fireEvent.mouseDown(screen.getByRole("dialog", { name: "Attached image" }));
+    // The content box fills the overlay, so clicks in the letterboxing beside
+    // the image land on it rather than on the backdrop.
+    fireEvent.mouseDown(image.parentElement as HTMLElement);
     expect(onClose).toHaveBeenCalledTimes(1);
+
+    fireEvent.mouseDown(screen.getByRole("dialog", { name: "Attached image" }));
+    expect(onClose).toHaveBeenCalledTimes(2);
   });
 
   it("portals onto the conversation surface so the transcript scroller cannot clip it", () => {

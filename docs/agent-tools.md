@@ -195,8 +195,8 @@ The same server carries Argmax's browser. A page an agent opens is a real tab
 in the user's window, shown in that session's own pane — browsing is visible
 work, not a hidden side channel.
 
-Cookie acceptance is pre-authorized in the MCP server instructions. An agent
-may accept any cookie prompt without asking the user.
+Cookie banners on agent tabs are dismissed automatically. A leftover prompt
+may still be accepted without asking the user.
 
 | Tool | Arguments | Returns |
 |---|---|---|
@@ -209,17 +209,17 @@ may accept any cookie prompt without asking the user.
 | `browser_open_link` | `ref`, `tab?`, `activate?` | `{tabId, url, opened}` |
 | `browser_group_tabs` | `tabs`, `group?` | `{tabs, group}` |
 | `browser_close` | `tab` | `{tabId, closed}` |
-| `browser_snapshot` | `tab?`, `interactive_only?` | `{tabId, url, title, tree, truncated}` |
+| `browser_snapshot` | `tab?`, `interactive_only?` | `{tabId, url, title, state, tree, truncated}` |
 | `browser_find` | `query`, `tab?` | `{tabId, matches: [{ref, role, name, value}]}` |
-| `browser_get_text` | `tab?`, `max_chars?` | `{tabId, url, title, text, truncated}` |
-| `browser_extract` | `tab?`, `max_chars?` | `{tabId, url, title, metadata, headings, sections, tables, links, truncated}` |
-| `browser_click` / `browser_hover` | `ref`, `tab?` | `{tabId, url, detail}` |
+| `browser_get_text` | `tab?`, `max_chars?` | `{tabId, url, title, state, text, truncated}` |
+| `browser_extract` | `tab?`, `max_chars?` | `{tabId, url, title, state, metadata, headings, sections, tables, links, items, fields, truncated}` |
+| `browser_click` / `browser_hover` | `ref`, `tab?` | `{tabId, url, detail, textChars?, textCharsDelta?, listboxOpen?, urlChanged?}` |
 | `browser_type` | `ref`, `text`, `submit?`, `tab?` | `{tabId, url, detail}` |
 | `browser_select` | `ref`, `value`, `tab?` | `{tabId, url, detail}` |
 | `browser_press_key` | `key`, `modifiers?`, `tab?` | `{tabId, url, detail}` |
 | `browser_scroll` | `direction`, `amount?`, `ref?`, `tab?` | `{tabId, url, detail}` |
 | `browser_drag` | `ref`, `to_ref?` \| `delta_x`/`delta_y`, `start_x?`, `start_y?`, `end_x?`, `end_y?`, `steps?`, `tab?` | `{tabId, url, detail}` |
-| `browser_wait_for` | `text?`, `ref?`, `url_includes?`, `timeout_s?`, `tab?` | `{tabId, url, detail}` |
+| `browser_wait_for` | `text?`, `ref?`, `url_includes?`, `quiet_ms?`, `min_count?`, `timeout_s?`, `tab?` | `{tabId, url, detail, matched, state}` — a miss is `matched: false` with page state, not an error |
 | `browser_screenshot` | `tab?`, `ref?` | an image content block, plus `{width, height, bytes, dropped, path}` |
 | `browser_evaluate` | `expression`, `tab?` | `{tabId, result}` |
 | `browser_console` | `tab?`, `limit?`, `clear?` | Captured console calls, uncaught errors, and unhandled rejections |
@@ -241,13 +241,13 @@ resolves fails with a message that says exactly that.
 
 **Reading a page: three tools, cheapest first.** `browser_extract` is the one
 to reach for when the question is *what does this page say*: it returns the
-article's metadata, headings, sections, tables and unique links as structured
-JSON, so comparing sources does not mean parsing an accessibility tree.
-`browser_get_text` is the flat-prose fallback when structure does not matter,
-and `browser_snapshot` is for *acting* — it is the only one that hands out
-refs. Extraction reads `<article>`, then `<main>`, then the whole body; on that
-last fallback it drops navigation, asides and footers, because with no article
-element to trust the page's chrome would otherwise read as content.
+article's metadata, headings, sections, tables, unique links, repeating items,
+and filled form fields as structured JSON, so comparing sources does not mean
+parsing an accessibility tree. `browser_get_text` is the flat-prose fallback
+when structure does not matter, and `browser_snapshot` is for *acting* — it is
+the only one that hands out refs. All three include `state` (`captcha`,
+`cookie`, `error`, `loading`, `ready`). Use extract's `items` for card/list
+UIs and `fields` to see what a form currently holds.
 
 **Tabs are for the human too.** `browser_activate` shows one of this session's
 tabs in its pane and makes it the default for later calls. `browser_open_link`
@@ -261,29 +261,22 @@ strip, so grouping is something they can see rather than private bookkeeping.
 
 **Dragging is stepped, not instant.** `browser_drag` presses at `ref` and
 releases at `to_ref` (or `delta_x`/`delta_y` from where it started), moving in
-`steps` increments — each one a separate round trip into the page. That is
-deliberate: a drag dispatched in a single task never lets the page render
-between moves, and the libraries that matter need exactly that, so a
-one-task drag lands the item back where it started. The gesture also drives
-`<input type="range">` sliders, and the pointer is released on every exit path,
-including a failure mid-gesture. For the length of the gesture the steps also
-flush animation frames by hand, because agent tabs are created hidden and a
-hidden webview never fires one.
+`steps` increments so the page renders between moves — without that the drag
+libraries that matter land the item back where it started. The gesture also
+drives `<input type="range">` sliders, and the pointer is released on every exit
+path, including a failure mid-gesture. See [browser.md](browser.md).
 
 **Screenshots cost more than snapshots.** A snapshot is text — a few kilobytes
 of roles, names and refs, and the only thing that hands out refs. A screenshot
-is a PNG that has to survive base64 through the provider's JSON stream, so it
-is rasterised at 720 CSS pixels wide and dropped entirely (text and dimensions
-only) past 900 KB of base64, which is what keeps it under the normalizer's
-4 MiB per-line cap. Reach for it when the question is visual and for nothing
-else; the tool description says so.
+is a PNG that has to survive base64 through the provider's JSON stream, so it is
+rasterised narrow and dropped entirely (text and dimensions only) when it is
+still too large. Reach for it when the question is visual and for nothing else;
+the tool description says so.
 
-**Dialogs.** A page's `alert` / `confirm` / `prompt` is synchronous: it must
-return before the page's next statement runs, and it cannot wait for an answer
-from an agent in another process. So on a tab a session opened, the three are
-captured and answered on the spot — with whatever `browser_handle_dialog`
-armed, otherwise dismissively (`confirm` → false, `prompt` → null) — and the
-record shows up for 30 seconds as a `dialog:` header line in the snapshot:
+**Dialogs.** On a tab a session opened, `alert` / `confirm` / `prompt` are
+answered on the spot — with whatever `browser_handle_dialog` armed, otherwise
+dismissively — and the record shows up for 30 seconds as a `dialog:` header line
+in the snapshot:
 
 ```
 url: https://example.com/
@@ -293,20 +286,17 @@ dialog: confirm "Delete this?" pending (auto-dismissed with false)
 
 `browser_handle_dialog` arms the answer for the *next* dialog on that tab and
 acknowledges the one that just fired, so the way through is: see the header
-line, arm the answer, repeat the action. Tabs the user opened are untouched and
-keep the engine's native dialogs — silently answering a person's confirm box
-would misreport what they clicked.
+line, arm the answer, repeat the action. Tabs the user opened are untouched.
 
 **Console and network capture.** Agent-owned tabs install capture before page
 scripts run. `browser_console` returns console calls, uncaught errors, and
 unhandled promise rejections. `browser_network` returns fetch and XHR method,
 status, duration, and error fields, plus resource timing rows. Each tab keeps
 the newest 200 rows of each kind, and one call returns 50 by default. Set
-`clear` before an interaction to isolate what that interaction caused.
-
-This is page-level capture in WKWebView, not a debugger protocol attachment.
-Response bodies and request headers are unavailable. Resource timing rows may
-not include a status. Tabs the user opened are not instrumented.
+`clear` before an interaction to isolate what that interaction caused. This is
+page-level capture, not a debugger attachment: response bodies and request
+headers are unavailable, a resource timing row may carry no status, and tabs the
+user opened are not instrumented.
 
 `project` takes a registered project's name, or any repository's absolute path
 — an unregistered one is added on first use, as above — and defaults to the
@@ -499,14 +489,13 @@ because a turn started under it, or one that fails and puts the message back on
 the queue. Undelivered is the safe direction to be wrong in: the agent collects
 it late rather than never.
 
-**A failed turn throws its queue away.** A non-zero exit clears the recipient's
-whole pending queue ([`session_service.rs`](../src-tauri/src/providers/session_service.rs),
-`handle_exit`), on the reasoning that a broken provider should not be fed the
-follow-ups that piled up behind it. That predates the inbox, and it used to mean
-an agent's message could be accepted as `queued` and then vanish with no trace
-and no way to notice. The row is what makes it survivable now: the queue entry
-goes, the row stays open, and the message is still there for `inbox_read`,
-`session_wait`, and the unread flag.
+**A failed turn parks its queue.** A non-zero exit marks the recipient's pending
+queue `recovered` rather than delivering it ([`session_service.rs`](../src-tauri/src/providers/session_service.rs),
+`handle_lifecycle_event` → `pause_queue_with_connection`), on the reasoning that
+a broken provider should not be fed the follow-ups that piled up behind it. Only
+a user stop or `/clear` deletes a queue. The row keeps it visible either way: the
+entry is marked unsent, the row stays open, and the message is still there for
+`inbox_read`, `session_wait`, and the unread flag.
 
 Survivable is not the same as delivered. After a failed turn the message will
 never arrive as a turn on its own — it waits until that session is working again
@@ -723,6 +712,62 @@ own decision, and one whose `decided_at` has changed underneath, because the
 user trusted the folder themselves while Argmax held it. The grant is
 ref-counted alongside the config file, and `GROK_FOLDER_TRUST=0` is deliberately
 not used — it would ungate the repo's hooks too.
+
+## What the surface costs
+
+55 tools and ~47 KB of schema and server instructions, and a turn pays for all
+of it whether or not it calls one — tool definitions render ahead of the system
+prompt and the transcript, so they sit at the front of every cached prefix.
+
+Claude launches therefore set
+[`ENABLE_TOOL_SEARCH=true`](https://code.claude.com/docs/en/env-vars) in the
+same inline `--settings` JSON that carries the background-task flag and the
+inbox hook ([adapters.rs](../src-tauri/src/providers/adapters.rs)). Claude Code
+then defers the schemas out of the prefix and gives the model a search tool to
+pull back the ones it wants. Measured against 2.1.270 with a bare launch
+carrying only this server, the prefix went from 46,305 tokens to 19,076 — the
+server's own share from 12,573 tokens per turn to roughly 1,100.
+
+Two costs come with it. The model pays a search round trip before its first
+`argmax` tool call, and a tool it never thinks to search for is one it will not
+find, so a rarely-wanted tool leans harder on its name and description than it
+used to. Inline settings override the user's own `env` for this key, the same
+way they already do for `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`.
+
+The other four providers have no equivalent flag and pay the full surface, so
+the schemas themselves have to stay lean. Two thirds of those bytes are prose —
+tool descriptions and parameter descriptions — and the rest is JSON Schema
+structure, which only shrinks by removing a tool or a parameter. What that
+buys is bounded: a description is the only place a tool's limits are stated, so
+the cuts worth making are the ones that remove duplication rather than bounds.
+Policy already carried by the `instructions` field, and parameters already
+described in the schema, do not need restating in a tool description.
+
+### Turning the browser tools off
+
+Removing a tool is the lever trimming prose cannot match, and the browser tools
+are the only group a user can do without and still have Argmax: 27 of the 55,
+and about 37% of the bytes. Settings → Agents → Tools → **Browser tools** drops
+them — 46,628 bytes to 29,300, measured at 12,573 prefix tokens per turn down
+to 7,665. The Browser panel is untouched; what goes is an agent's ability to
+drive it.
+
+The decision is the launch's. `SessionLaunchRegistry::issue` reads the setting
+from [app_settings.rs](../src-tauri/src/persistence/app_settings.rs) and stamps
+it into the launch's `SessionLaunchProcessConfig`, which puts
+`ARGMAX_BROWSER_TOOLS=0` in the server spec's own `env` beside the credential —
+so it reaches the server on every provider, including the two whose spec is a
+workspace file. Reading it there rather than in the renderer is what makes a
+chat an agent launched carry the same surface as a chat the user launched.
+
+Two consequences follow from tool definitions sitting ahead of `system` and
+`messages` in the cached prefix. A change to the tool list invalidates the whole
+cache, so the setting is read per launch and never mid-conversation: a running
+chat keeps the surface it started with and picks up the change on its next
+turn. And the `instructions` blob has to move with the tools —
+`agent_tools_instruction` takes the same flag and drops the browser clause, the
+cookie grant, and the screenshot example, because an agent told it can open
+pages when it cannot is worse off than one told nothing.
 
 ## The wire underneath
 

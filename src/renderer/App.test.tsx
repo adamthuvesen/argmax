@@ -26,7 +26,9 @@ import {
   setWorkspaceIcon,
   setupAppTestMocks,
   snapshot,
-  terminateProvider
+  terminateProvider,
+  workspaceRow,
+  sessionRow
 } from "../test/appTestHarness.js";
 
 /** Paste of a screenshot: a clipboard carrying one path-less image file. */
@@ -901,52 +903,30 @@ describe("App", () => {
   });
 
   it("keeps a newly launched chat selected while the dashboard refresh catches up", async () => {
-    const newWorkspace: DashboardSnapshot["workspaces"][number] = {
+    const newWorkspace = workspaceRow({
       id: "workspace-new",
-      projectId: "project-1",
       taskLabel: "New session",
       branch: "main",
-      baseRef: "main",
       path: "/tmp/argmax",
       state: "running",
       sharedWorkspace: true,
-      kind: "git",
-      dirty: false,
-      changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:10:00.000Z",
-      pinned: false,
-      priorityDismissedAt: null,
-      priorityAddedAt: null,
-      prState: null,
-      prNumber: null,
-      icon: null,
-      iconColor: null,
-      prCreatedAt: null,
-      prMergedAt: null,
-      prCheckState: null,
-      prActivityAt: null
-    };
-    const newSession: DashboardSnapshot["sessions"][number] = {
+      lastActivityAt: "2026-05-08T16:10:00.000Z"
+    });
+    const newSession = sessionRow({
       id: "session-new",
       workspaceId: "workspace-new",
       provider: "codex",
       modelLabel: "GPT-5.6 Terra",
       modelId: "gpt-5.6-terra",
       reasoningEffort: "medium",
-      permissionMode: "auto-approve",
       providerConversationId: null,
       prompt: "New session",
       state: "running",
       attention: "normal",
       startedAt: "2026-05-08T16:10:00.000Z",
       completedAt: null,
-      lastActivityAt: "2026-05-08T16:10:00.000Z",
-      costUsd: 0,
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextTokens: 0,
-      imported: false,
-      launchKind: "agent",
-    };
+      lastActivityAt: "2026-05-08T16:10:00.000Z"
+    });
     const newEvent: DashboardSnapshot["events"][number] = {
       id: "event-new",
       sessionId: "session-new",
@@ -988,52 +968,30 @@ describe("App", () => {
 
   it("displays an @-mention-only launch prompt as the user message in the new session", async () => {
     listProjectFiles.mockResolvedValue([{ path: "AGENTS.md" }]);
-    const newWorkspace: DashboardSnapshot["workspaces"][number] = {
+    const newWorkspace = workspaceRow({
       id: "workspace-mention",
-      projectId: "project-1",
       taskLabel: "@AGENTS.md",
       branch: "main",
-      baseRef: "main",
       path: "/tmp/argmax",
       state: "running",
       sharedWorkspace: true,
-      kind: "git",
-      dirty: false,
-      changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:10:00.000Z",
-      pinned: false,
-      priorityDismissedAt: null,
-      priorityAddedAt: null,
-      prState: null,
-      prNumber: null,
-      icon: null,
-      iconColor: null,
-      prCreatedAt: null,
-      prMergedAt: null,
-      prCheckState: null,
-      prActivityAt: null
-    };
-    const newSession: DashboardSnapshot["sessions"][number] = {
+      lastActivityAt: "2026-05-08T16:10:00.000Z"
+    });
+    const newSession = sessionRow({
       id: "session-mention",
       workspaceId: "workspace-mention",
       provider: "codex",
       modelLabel: "GPT-5.6 Terra",
       modelId: "gpt-5.6-terra",
       reasoningEffort: "medium",
-      permissionMode: "auto-approve",
       providerConversationId: null,
       prompt: "@AGENTS.md",
       state: "running",
       attention: "normal",
       startedAt: "2026-05-08T16:10:00.000Z",
       completedAt: null,
-      lastActivityAt: "2026-05-08T16:10:00.000Z",
-      costUsd: 0,
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextTokens: 0,
-      imported: false,
-      launchKind: "agent",
-    };
+      lastActivityAt: "2026-05-08T16:10:00.000Z"
+    });
     const userEvent: DashboardSnapshot["events"][number] = {
       id: "event-user-mention",
       sessionId: "session-mention",

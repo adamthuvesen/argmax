@@ -143,31 +143,7 @@ pub fn list_undelivered_messages(
     to_session_id: &str,
     limit: usize,
 ) -> ArgmaxResult<Vec<SessionMessage>> {
-    let mut statement = connection
-        .prepare_cached(
-            "SELECT id, from_session_id, to_session_id, body, kind, created_at, delivered_at
-             FROM session_messages
-             WHERE to_session_id = ? AND delivered_at IS NULL
-             ORDER BY created_at ASC, rowid ASC
-             LIMIT ?",
-        )
-        .map_err(sqlite_error)?;
-    let rows = statement
-        .query_map((to_session_id, limit as i64), |row| {
-            Ok(SessionMessage {
-                id: row.get(0)?,
-                from_session_id: row.get(1)?,
-                to_session_id: row.get(2)?,
-                body: row.get(3)?,
-                kind: row.get(4)?,
-                created_at: row.get(5)?,
-                delivered_at: row.get(6)?,
-            })
-        })
-        .map_err(sqlite_error)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(sqlite_error)?;
-    Ok(rows)
+    list_undelivered(connection, to_session_id, None, limit)
 }
 
 /// Undelivered messages of one kind, oldest first. The multitask preamble
@@ -179,27 +155,39 @@ pub fn list_undelivered_messages_of_kind(
     kind: &str,
     limit: usize,
 ) -> ArgmaxResult<Vec<SessionMessage>> {
+    list_undelivered(connection, to_session_id, Some(kind), limit)
+}
+
+fn list_undelivered(
+    connection: &Connection,
+    to_session_id: &str,
+    kind: Option<&str>,
+    limit: usize,
+) -> ArgmaxResult<Vec<SessionMessage>> {
     let mut statement = connection
         .prepare_cached(
             "SELECT id, from_session_id, to_session_id, body, kind, created_at, delivered_at
              FROM session_messages
-             WHERE to_session_id = ? AND kind = ? AND delivered_at IS NULL
+             WHERE to_session_id = ?1 AND (?2 IS NULL OR kind = ?2) AND delivered_at IS NULL
              ORDER BY created_at ASC, rowid ASC
-             LIMIT ?",
+             LIMIT ?3",
         )
         .map_err(sqlite_error)?;
     let rows = statement
-        .query_map((to_session_id, kind, limit as i64), |row| {
-            Ok(SessionMessage {
-                id: row.get(0)?,
-                from_session_id: row.get(1)?,
-                to_session_id: row.get(2)?,
-                body: row.get(3)?,
-                kind: row.get(4)?,
-                created_at: row.get(5)?,
-                delivered_at: row.get(6)?,
-            })
-        })
+        .query_map(
+            rusqlite::params![to_session_id, kind, limit as i64],
+            |row| {
+                Ok(SessionMessage {
+                    id: row.get(0)?,
+                    from_session_id: row.get(1)?,
+                    to_session_id: row.get(2)?,
+                    body: row.get(3)?,
+                    kind: row.get(4)?,
+                    created_at: row.get(5)?,
+                    delivered_at: row.get(6)?,
+                })
+            },
+        )
         .map_err(sqlite_error)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(sqlite_error)?;

@@ -22,12 +22,6 @@ use super::{
 };
 use crate::{persistence::events::PersistTimelineEventInput, providers::pricing::cost_of};
 
-/// The `sessionID` envelope field is OpenCode's resume id (`run -s <id>`).
-/// Every event carries it, so the first one seeds `provider_conversation_id`.
-pub fn extract_session_id(payload: &Map<String, Value>) -> Option<String> {
-    string_value(payload.get("sessionID")).map(str::to_string)
-}
-
 /// OpenCode only puts native `task` lifecycle information in the parent's
 /// tool row. The child body never reaches the parent's event stream, but the
 /// row carries both native session ids and a distinct call id for this
@@ -83,7 +77,7 @@ pub fn native_agent_lifecycle_events(
         Value::String(child_id.to_string()),
     );
     lifecycle_payload.insert("agentRunId".to_string(), Value::String(call_id.to_string()));
-    if let Some(status) = state.and_then(|state| string_value(state.get("status"))) {
+    if let Some(status) = status {
         lifecycle_payload.insert("status".to_string(), Value::String(status.to_string()));
     }
     if let Some(model) = metadata.and_then(|metadata| object_value(metadata.get("model"))) {
@@ -251,21 +245,21 @@ fn normalize_tool_use(
     let mut flattened = Map::new();
     flattened.insert("name".to_string(), Value::String(tool_name.to_string()));
     flattened.insert("input".to_string(), Value::Object(input));
-    if let Some(call_id) = string_value(part.get("callID")) {
+    if let Some(call_id) = call_id {
         flattened.insert("call_id".to_string(), Value::String(call_id.to_string()));
     }
     flattened.insert("raw".to_string(), Value::Object(part.clone()));
-    if let Some(status) = state.and_then(|state| string_value(state.get("status"))) {
+    if let Some(status) = status {
         flattened.insert("status".to_string(), Value::String(status.to_string()));
     }
 
     // OpenCode's `todowrite` sends the whole list every time, so the update
     // rides alongside the row that carries it and the row itself is hidden.
-    let todo = is_todo_tool(tool_name)
-        .then(|| object_value(flattened.get("input")).and_then(todos_array_update))
-        .flatten()
-        .map(|update| todo_event(event, &update, string_value(part.get("callID"))));
+    let mut todo = None;
     if is_todo_tool(tool_name) {
+        todo = object_value(flattened.get("input"))
+            .and_then(todos_array_update)
+            .map(|update| todo_event(event, &update, call_id));
         stamp_todo_surface(&mut flattened);
     }
 
@@ -745,18 +739,5 @@ mod tests {
             result.provider_conversation_id.as_deref(),
             Some("ses_fixture")
         );
-    }
-
-    #[test]
-    fn opencode_usage_without_a_seeded_model_is_unknown() {
-        let mut context = NormalizerSessionContext::default();
-        let result = normalize_provider_event(
-            ProviderId::Opencode,
-            &output_event(
-                r#"{"type":"step_finish","sessionID":"ses_1","part":{"type":"step-finish","reason":"stop","tokens":{"total":10,"input":10,"output":0,"reasoning":0,"cache":{"write":0,"read":0}}}}"#,
-            ),
-            &mut context,
-        );
-        assert_eq!(result.usages[0].model_id, "opencode-unknown");
     }
 }

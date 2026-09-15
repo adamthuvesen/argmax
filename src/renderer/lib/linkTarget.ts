@@ -12,7 +12,7 @@
 export type LinkTarget = "system" | "argmax";
 
 export const LINK_TARGET_KEY = "argmax.links.target";
-export const DEFAULT_LINK_TARGET: LinkTarget = "system";
+const DEFAULT_LINK_TARGET: LinkTarget = "system";
 
 export function isLinkTarget(value: unknown): value is LinkTarget {
   return value === "system" || value === "argmax";

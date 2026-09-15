@@ -1,18 +1,14 @@
 // Graceful child termination with SIGKILL escalation.
 //
-// `terminate_with_escalation` is the ONLY path that promises the timed
-// SIGTERM → wait `GRACEFUL_TIMEOUT_MS` → SIGKILL escalation. It takes the
-// child by `&mut` so it can `try_wait` it after each step and *reap* the
-// zombie once the kernel marks the process as exited.
+// `terminate_process_group_with_escalation` is the ONLY path that promises the
+// timed SIGTERM → wait `GRACEFUL_TIMEOUT_MS` → SIGKILL escalation. It takes the
+// child by `&mut` so it can `try_wait` it after each step and *reap* the zombie
+// once the kernel marks the process as exited. It is generic over a small
+// `TermChild` trait so the same implementation drives both
+// `tokio::process::Child` (direct shellouts) and `portable_pty::Child`.
 //
-// The function is generic over a small `TermChild` trait so the same
-// implementation can drive both `tokio::process::Child` (for direct
-// shellouts) and `portable_pty::Child` (wrapped under providers/, where
-// the PTY master keeps the child handle).
-//
-// The synchronous safety-net in `ProviderSessionHandle::Drop` (added
-// later in providers/session_service.rs) does NOT call into this
-// function — Drop cannot await `tokio::time::sleep`.
+// The synchronous safety-net in `ProviderSessionHandle::Drop` does NOT call
+// into it — Drop cannot await `tokio::time::sleep`.
 
 use std::{
     sync::atomic::{AtomicBool, Ordering},
@@ -30,16 +26,6 @@ use std::{collections::BTreeMap, process::Command, time::Instant};
 pub const GRACEFUL_TIMEOUT_MS: u64 = 1500;
 const POLL_INTERVAL_MS: u64 = 50;
 
-/// PID-based variant of `terminate_with_escalation`. Sends SIGTERM,
-/// sleeps `GRACEFUL_TIMEOUT_MS`, then SIGKILL — no `try_wait` polling,
-/// because callers that own the child handle behind a `wait()`-blocking
-/// thread (PTYs via `portable_pty`, see `terminal::service`) can't safely
-/// share that handle with this
-/// function.
-///
-/// Best-effort: signal failures are not bubbled — the caller has
-/// already decided the process must die, and a separate exit watcher
-/// reaps the child when its own `wait()` returns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SignalTarget {
     Process(u32),
@@ -67,24 +53,6 @@ pub(crate) fn signal_target(target: SignalTarget, signal: Signal) {
     let _ = kill(target.nix_pid(), signal);
 }
 
-#[cfg(unix)]
-pub async fn signal_target_term_then_kill(target: SignalTarget, reaped: Option<&AtomicBool>) {
-    if is_reaped(reaped) {
-        return;
-    }
-    signal_target(target, Signal::SIGTERM);
-    sleep(Duration::from_millis(GRACEFUL_TIMEOUT_MS)).await;
-    if is_reaped(reaped) {
-        return;
-    }
-    signal_target(target, Signal::SIGKILL);
-}
-
-#[cfg(unix)]
-pub async fn signal_term_then_kill(pid: u32) {
-    signal_target_term_then_kill(SignalTarget::Process(pid), None).await;
-}
-
 /// Synchronous best-effort variant. Use from `Drop` (where awaiting a
 /// sleep is unsafe) — sends SIGTERM and an immediate SIGKILL, no grace
 /// window. Mirrors the `ProviderSessionHandle::Drop` shape.
@@ -98,11 +66,6 @@ pub fn signal_target_term_and_kill_blocking(target: SignalTarget, reaped: Option
         return;
     }
     signal_target(target, Signal::SIGKILL);
-}
-
-#[cfg(unix)]
-pub fn signal_term_and_kill_blocking(pid: u32) {
-    signal_target_term_and_kill_blocking(SignalTarget::Process(pid), None);
 }
 
 #[cfg(unix)]
@@ -330,18 +293,6 @@ pub fn cleanup_pty_session_after_leader_exit(session_id: u32) -> std::io::Result
 }
 
 #[cfg(not(unix))]
-pub async fn signal_term_then_kill(_pid: u32) {
-    // Windows path is not supported in v1 — TerminalService will own
-    // platform-specific kill logic here when added.
-}
-
-#[cfg(not(unix))]
-pub async fn signal_target_term_then_kill(_target: SignalTarget, _reaped: Option<&AtomicBool>) {}
-
-#[cfg(not(unix))]
-pub fn signal_term_and_kill_blocking(_pid: u32) {}
-
-#[cfg(not(unix))]
 pub fn signal_target_term_and_kill_blocking(_target: SignalTarget, _reaped: Option<&AtomicBool>) {}
 
 #[cfg(not(unix))]
@@ -371,7 +322,8 @@ pub enum TerminateError {
     Io(#[from] std::io::Error),
 }
 
-/// Minimal child-handle surface that `terminate_with_escalation` needs:
+/// Minimal child-handle surface that `terminate_process_group_with_escalation`
+/// needs:
 /// the PID (for signalling) and `try_wait` (for non-blocking reap).
 pub trait TermChild {
     /// Returns the OS process id, or `None` if the child has already been
@@ -395,53 +347,6 @@ impl TermChild for tokio::process::Child {
             None => Ok(None),
         }
     }
-}
-
-/// Sends SIGTERM, polls `try_wait` for up to `GRACEFUL_TIMEOUT_MS`, then
-/// escalates to SIGKILL and reaps the child. Best-effort: signal failures
-/// are not bubbled — the caller has already decided the process must die,
-/// and the OS will surface any post-termination state via `try_wait`.
-#[cfg(unix)]
-pub async fn terminate_with_escalation<C: TermChild>(
-    child: &mut C,
-) -> Result<TerminateOutcome, TerminateError> {
-    let raw_pid = match child.pid() {
-        Some(p) => p,
-        None => return Ok(TerminateOutcome::AlreadyReaped),
-    };
-    let pid = Pid::from_raw(raw_pid as i32);
-
-    // Polite ask.
-    let _ = kill(pid, Signal::SIGTERM);
-
-    // Poll until the grace window elapses. If the child exits on its own
-    // during the window, we reap it via `try_wait` and return early —
-    // no SIGKILL needed.
-    let deadline_ms = GRACEFUL_TIMEOUT_MS;
-    let mut waited_ms = 0u64;
-    while waited_ms < deadline_ms {
-        sleep(Duration::from_millis(POLL_INTERVAL_MS)).await;
-        waited_ms += POLL_INTERVAL_MS;
-        if child.try_wait()?.is_some() {
-            return Ok(TerminateOutcome::ExitedGracefully);
-        }
-    }
-
-    // Force.
-    let _ = kill(pid, Signal::SIGKILL);
-
-    // SIGKILL is synchronous-ish but the kernel still needs a moment to
-    // mark the process as exited and waitpid()-reapable. Poll briefly.
-    for _ in 0..20 {
-        sleep(Duration::from_millis(POLL_INTERVAL_MS)).await;
-        if child.try_wait()?.is_some() {
-            return Ok(TerminateOutcome::KilledAndReaped);
-        }
-    }
-
-    // Couldn't observe the reap — return Killed so the caller knows we
-    // sent SIGKILL but the child handle may still be holding state.
-    Ok(TerminateOutcome::KilledNotReaped)
 }
 
 #[cfg(unix)]
@@ -499,16 +404,6 @@ pub async fn terminate_process_group_with_escalation<C: TermChild>(
     )))
 }
 
-#[cfg(not(unix))]
-pub async fn terminate_with_escalation<C: TermChild>(
-    _child: &mut C,
-) -> Result<TerminateOutcome, TerminateError> {
-    Err(TerminateError::Io(std::io::Error::new(
-        std::io::ErrorKind::Unsupported,
-        "process termination not implemented for this platform",
-    )))
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminateOutcome {
     /// The child was already gone before we tried to signal it.
@@ -530,11 +425,14 @@ mod tests {
 
     #[tokio::test]
     async fn long_running_sleep_is_terminated_and_reaped() {
+        // Production callers detach the child into its own group so the whole
+        // group can be signalled; the termination path assumes that.
         let mut child = Command::new("sleep")
             .arg("60")
+            .process_group(0)
             .spawn()
             .expect("spawn sleep");
-        let outcome = terminate_with_escalation(&mut child)
+        let outcome = terminate_process_group_with_escalation(&mut child)
             .await
             .expect("terminate ok");
         assert!(
@@ -553,7 +451,7 @@ mod tests {
         let mut child = Command::new("true").spawn().expect("spawn true");
         // Reap eagerly so .pid() returns None.
         let _ = child.wait().await;
-        let outcome = terminate_with_escalation(&mut child)
+        let outcome = terminate_process_group_with_escalation(&mut child)
             .await
             .expect("terminate ok");
         assert_eq!(outcome, TerminateOutcome::AlreadyReaped);

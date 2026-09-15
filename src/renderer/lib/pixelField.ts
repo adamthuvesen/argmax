@@ -1,7 +1,6 @@
-// Shared primitives for the accent-tinted pixel fields (the new-session
-// composer backdrop and the effort slider). Kept engine-agnostic and cheap: no
-// allocation in the hot path, colors resolved live from CSS tokens so every
-// field tracks the user's theme and accent.
+// Shared primitives for accent-tinted pixel effects. Kept engine-agnostic and
+// cheap: no allocation in the hot path, colors resolved live from CSS tokens
+// so every field tracks the user's theme and accent.
 
 export type Rgb = { r: number; g: number; b: number };
 
@@ -80,7 +79,7 @@ export function vnoise(x: number, y: number): number {
 export const CELL = 5; // logical px per pixel-cell
 export const FLOOR = 0.22; // minimum fraction of intensity every cell gets (keeps it dense)
 export const INTENSITY_CAP = 0.85; // hard alpha ceiling
-export const CREST_MIX = 0.62; // weight above which a cell leans toward accent-deep
+const CREST_MIX = 0.62; // weight above which a cell leans toward accent-deep
 
 const FX = 0.34; // horizontal feature frequency (smaller = more individual pixels)
 const FY = 0.85; // vertical feature frequency

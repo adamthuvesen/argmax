@@ -125,6 +125,46 @@ final class TranscriptMarkdownTests: XCTestCase {
         XCTAssertEqual(code, "$not_math$\n")
     }
 
+    func testPricesAndShellVariablesNeverPairIntoEquations() throws {
+        let prose = [
+            "Standard pricing is $1.25/1M in and $4.25/1M out.",
+            "vs ~$5/$25 for Opus 5.",
+            "is $0.10/$0.20 in exchange.",
+            "Between $5-$10 per seat.",
+            "Raised from $1M to $10M.",
+            "Export $PATH and $HOME before running.",
+            "The var $foo is set from $bar."
+        ]
+        for line in prose {
+            let document = TranscriptMarkdownDocument(markdown: line)
+            XCTAssertEqual(document.math.count, 0, "unexpected math in: \(line)")
+            guard case .paragraph(let paragraph) = document.blocks.first else {
+                return XCTFail("expected prose for: \(line)")
+            }
+            XCTAssertEqual(String(paragraph.characters), line)
+        }
+    }
+
+    func testDollarSignsInsideCodeSpansStayCode() throws {
+        let document = TranscriptMarkdownDocument(
+            markdown: "Set `export FOO=$BAR` then `echo $BAZ`, and `^a$` matches."
+        )
+        XCTAssertEqual(document.math.count, 0)
+        guard case .paragraph(let paragraph) = document.blocks.first else {
+            return XCTFail("expected paragraph")
+        }
+        XCTAssertEqual(String(paragraph.characters), "Set export FOO=$BAR then echo $BAZ, and ^a$ matches.")
+    }
+
+    func testEmptyDelimiterPairNeverBecomesAnEquationCard() throws {
+        let document = TranscriptMarkdownDocument(markdown: "a $$ b and $ $ c")
+        XCTAssertEqual(document.math.count, 0)
+        guard case .paragraph(let paragraph) = document.blocks.first else {
+            return XCTFail("expected paragraph")
+        }
+        XCTAssertEqual(String(paragraph.characters), "a $$ b and $ $ c")
+    }
+
     func testMermaidFenceRemainsTypedCodeForTheRichRenderer() throws {
         let document = TranscriptMarkdownDocument(markdown: """
         ```mermaid

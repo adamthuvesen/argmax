@@ -7,7 +7,7 @@ import {
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
-import { ChevronsUpDown, Plus } from "lucide-react";
+import { ChevronRight, ChevronsUpDown, Plus } from "lucide-react";
 import { type ParsedDiffBlock } from "../lib/diff.js";
 import {
   highlightLine,
@@ -43,7 +43,8 @@ export const DiffBlocks = memo(function DiffBlocks({
   onExpandContext,
   onIndexHunk,
   onRevertHunk,
-  indexHunkLabel = "Stage"
+  indexHunkLabel = "Stage",
+  presentation = "card"
 }: {
   blocks: ParsedDiffBlock[];
   filePath?: string | null;
@@ -59,6 +60,9 @@ export const DiffBlocks = memo(function DiffBlocks({
   onIndexHunk?: (hunkIndex: number) => void;
   onRevertHunk?: (hunkIndex: number) => void;
   indexHunkLabel?: "Stage" | "Unstage";
+  /** The review panel removes patch headers and uses a compact change rail.
+   *  Other callers retain the existing card presentation. */
+  presentation?: "card" | "review";
 }): JSX.Element {
   // Subscribing to the ready signal re-renders the component as soon as the
   // shiki bundle finishes loading, swapping in highlighted tokens without
@@ -98,8 +102,12 @@ export const DiffBlocks = memo(function DiffBlocks({
   // would only drop more. Show the gaps, but stop advertising the action.
   const truncated = blocks.some((block) => block.kind === "truncated");
   return (
-    <div className="diff-blocks" data-selecting={dragging || undefined}>
-      {blocks.map((block) => {
+    <div
+      className="diff-blocks"
+      data-presentation={presentation}
+      data-selecting={dragging || undefined}
+    >
+      {blocks.map((block, blockIndex) => {
         switch (block.kind) {
           case "hunk":
             return (
@@ -113,6 +121,7 @@ export const DiffBlocks = memo(function DiffBlocks({
                 onIndexHunk={onIndexHunk ? () => onIndexHunk(Number(block.id.slice("hunk-".length))) : undefined}
                 onRevertHunk={onRevertHunk ? () => onRevertHunk(Number(block.id.slice("hunk-".length))) : undefined}
                 indexHunkLabel={indexHunkLabel}
+                presentation={presentation}
                 selection={activeSelection?.block === block ? activeSelection : null}
                 onSelectionChange={setSelection}
               />
@@ -123,6 +132,14 @@ export const DiffBlocks = memo(function DiffBlocks({
                 key={block.id}
                 count={block.count}
                 onExpand={truncated ? undefined : onExpandContext}
+                direction={
+                  blockIndex === 0
+                    ? "up"
+                    : blockIndex === blocks.length - 1
+                      ? "down"
+                      : "both"
+                }
+                presentation={presentation}
               />
             );
           case "truncated":
@@ -156,24 +173,32 @@ function formatBytes(bytes: number): string {
  */
 function OmittedLines({
   count,
-  onExpand
+  onExpand,
+  direction,
+  presentation
 }: {
   count: number;
   onExpand?: () => void;
+  direction: "up" | "both" | "down";
+  presentation: "card" | "review";
 }): JSX.Element {
   const label = `${count} unmodified ${count === 1 ? "line" : "lines"}`;
   if (!onExpand) {
     return <div className="diff-omitted">{label}</div>;
   }
+  const icon = direction === "both"
+    ? <ChevronsUpDown size={10} aria-hidden="true" />
+    : <ChevronRight size={10} aria-hidden="true" />;
   return (
     <button
       type="button"
       className="diff-omitted diff-omitted-expand"
+      data-direction={presentation === "review" ? direction : undefined}
       aria-label={`Expand ${label}`}
       title="Show more unchanged context"
       onClick={onExpand}
     >
-      <ChevronsUpDown size={12} aria-hidden="true" />
+      {presentation === "review" ? icon : <ChevronsUpDown size={12} aria-hidden="true" />}
       <span>{label}</span>
     </button>
   );
@@ -188,6 +213,7 @@ function UnifiedHunk({
   onIndexHunk,
   onRevertHunk,
   indexHunkLabel,
+  presentation,
   selection,
   onSelectionChange
 }: {
@@ -199,6 +225,7 @@ function UnifiedHunk({
   onIndexHunk?: () => void;
   onRevertHunk?: () => void;
   indexHunkLabel: "Stage" | "Unstage";
+  presentation: "card" | "review";
   selection: CommentSelection | null;
   onSelectionChange: (selection: CommentSelection | null) => void;
 }): JSX.Element {
@@ -217,11 +244,11 @@ function UnifiedHunk({
     : `${filePath}:${startLine}${range ? `-${endLine}` : ""}`;
   return (
     <div className="diff-hunk">
-      <div className="diff-hunk-header">
-        <span>{block.header}</span>
+      {presentation === "card" || onIndexHunk || onRevertHunk ? <div className="diff-hunk-header">
+        {presentation === "card" ? <span>{block.header}</span> : null}
         {onIndexHunk ? <button type="button" onClick={onIndexHunk} aria-label={`${indexHunkLabel} hunk`}>{indexHunkLabel}</button> : null}
         {onRevertHunk ? <button type="button" onClick={onRevertHunk} aria-label="Revert unstaged hunk">Revert</button> : null}
-      </div>
+      </div> : null}
       {block.lines.map((line, index) => {
         const key = `${block.id}-${index}`;
         const lineNumber = line.newLineNumber ?? line.oldLineNumber ?? null;
@@ -237,6 +264,7 @@ function UnifiedHunk({
                 }
               }}
             >
+              {presentation === "review" ? <span className="diff-line-rail" aria-hidden="true" /> : null}
               <span className="diff-line-number">
                 {lineNumber ?? ""}
                 {commentable ? (

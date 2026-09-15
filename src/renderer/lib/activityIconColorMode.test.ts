@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   ACTIVITY_ICON_COLOR_MODE_STORAGE_KEY,
   activityIconColorModeSnapshot,
-  DEFAULT_ACTIVITY_ICON_COLOR_MODE,
   initActivityIconColorMode,
   resetActivityIconColorModeForTests,
   setActivityIconColorMode
@@ -18,8 +17,7 @@ afterEach(() => {
 
 describe("activity icon color mode", () => {
   it("keeps semantic color as the default", () => {
-    expect(activityIconColorModeSnapshot()).toBe(DEFAULT_ACTIVITY_ICON_COLOR_MODE);
-    expect(DEFAULT_ACTIVITY_ICON_COLOR_MODE).toBe("color");
+    expect(activityIconColorModeSnapshot()).toBe("color");
   });
 
   it("puts monochrome mode on the document and persists it", () => {

@@ -23,7 +23,7 @@ export interface AgentRosterEntry {
   latestTransitionAt: string;
 }
 
-export interface AgentRoster {
+interface AgentRoster {
   entries: AgentRosterEntry[];
   running: number;
   failed: number;

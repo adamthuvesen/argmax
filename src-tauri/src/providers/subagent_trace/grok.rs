@@ -8,6 +8,7 @@ use serde_json::{Map, Value};
 use super::cache::{trace_file_step, TraceFileStep};
 use super::shared::{
     is_path_safe_agent_id, push_unique, read_trace_lines, stamp_trace_payload, trace_event,
+    TraceRunModel,
 };
 use super::{AgentTraceContext, TraceImport, TraceLine};
 use crate::persistence::events::PersistTimelineEventInput;
@@ -56,13 +57,11 @@ fn grok_child_events(
         let Some(object) = line.value.as_object() else {
             continue;
         };
-        run_model.absorb(object);
+        absorb_grok_assistant_model(&mut run_model, object);
         for (kind, message, mut payload) in grok_history_events(object) {
             let event_sequence = sequence;
             sequence += 1;
-            // Same fallback rule as the Codex loop: a history row with no tool
-            // id still needs one, and it has to carry the child and sequence to
-            // stay unique across the session's tool-call map.
+            // Fallback tool id, keyed the way `cursor_tool_id` explains.
             if matches!(kind, "command.started" | "command.completed")
                 && !payload.contains_key("id")
             {
@@ -88,48 +87,24 @@ fn grok_child_events(
     events
 }
 
-#[derive(Debug, Clone, Default)]
-struct GrokRunModel {
-    model_id: Option<String>,
-    reasoning_effort: Option<String>,
+/// Grok repeats the model and effort on every `assistant` row.
+fn absorb_grok_assistant_model(run_model: &mut TraceRunModel, object: &Map<String, Value>) {
+    if object.get("type").and_then(Value::as_str) != Some("assistant") {
+        return;
+    }
+    run_model.absorb(
+        object.get("model_id").and_then(Value::as_str),
+        object.get("reasoning_effort").and_then(Value::as_str),
+    );
 }
 
-impl GrokRunModel {
-    fn absorb(&mut self, object: &Map<String, Value>) {
-        if object.get("type").and_then(Value::as_str) != Some("assistant") {
-            return;
-        }
-        if let Some(model_id) = object.get("model_id").and_then(Value::as_str) {
-            if !model_id.is_empty() {
-                self.model_id = Some(model_id.to_string());
-            }
-        }
-        if let Some(effort) = object.get("reasoning_effort").and_then(Value::as_str) {
-            if !effort.is_empty() {
-                self.reasoning_effort = Some(effort.to_string());
-            }
-        }
-    }
-
-    fn stamp(&self, payload: &mut Map<String, Value>) {
-        if let Some(model_id) = &self.model_id {
-            payload.insert("agentModelId".to_string(), Value::String(model_id.clone()));
-        }
-        if let Some(effort) = &self.reasoning_effort {
-            payload.insert(
-                "agentReasoningEffort".to_string(),
-                Value::String(effort.clone()),
-            );
-        }
-    }
-}
-
-fn grok_run_model(history_path: &Path) -> GrokRunModel {
-    let mut model = GrokRunModel::default();
-    let summary_path = history_path
+/// The child's `summary.json` names what it ran on before its first row does.
+fn grok_run_model(history_path: &Path) -> TraceRunModel {
+    let mut model = TraceRunModel::default();
+    let Some(summary_path) = history_path
         .parent()
-        .map(|parent| parent.join("summary.json"));
-    let Some(summary_path) = summary_path else {
+        .map(|parent| parent.join("summary.json"))
+    else {
         return model;
     };
     let Ok(text) = fs::read_to_string(&summary_path) else {
@@ -138,16 +113,10 @@ fn grok_run_model(history_path: &Path) -> GrokRunModel {
     let Ok(Value::Object(summary)) = serde_json::from_str::<Value>(&text) else {
         return model;
     };
-    if let Some(model_id) = summary.get("current_model_id").and_then(Value::as_str) {
-        if !model_id.is_empty() {
-            model.model_id = Some(model_id.to_string());
-        }
-    }
-    if let Some(effort) = summary.get("reasoning_effort").and_then(Value::as_str) {
-        if !effort.is_empty() {
-            model.reasoning_effort = Some(effort.to_string());
-        }
-    }
+    model.absorb(
+        summary.get("current_model_id").and_then(Value::as_str),
+        summary.get("reasoning_effort").and_then(Value::as_str),
+    );
     model
 }
 

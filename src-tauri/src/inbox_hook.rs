@@ -205,19 +205,6 @@ mod tests {
     }
 
     #[test]
-    fn subagent_input_is_recognised() {
-        let input: HookInput = serde_json::from_str(
-            r#"{"hook_event_name":"PostToolUse","tool_name":"Bash","agent_id":"agent-7","agent_type":"Explore"}"#,
-        )
-        .expect("hook input");
-        assert_eq!(input.agent_id.as_deref(), Some("agent-7"));
-        let top_level: HookInput =
-            serde_json::from_str(r#"{"hook_event_name":"PostToolUse","tool_name":"Bash"}"#)
-                .expect("hook input");
-        assert_eq!(top_level.agent_id, None);
-    }
-
-    #[test]
     fn dispatch_only_claims_the_hook_subcommand() {
         assert_eq!(try_run_inbox_hook_cli(["argmax", "session", "list"]), None);
         assert_eq!(try_run_inbox_hook_cli(["argmax", "hook", "wat"]), Some(2));

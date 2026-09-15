@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState, type JSX } from "react";
 import { useAnchoredPopover, type AnchorPoint } from "../hooks/useAnchoredPopover.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import {
-  DEFAULT_SESSION_ICON_COLOR,
   SESSION_ICON_COLORS,
   SESSION_ICON_NAMES,
   SESSION_ICONS,
@@ -120,7 +119,6 @@ export function SessionIconPicker({
       <div className="session-icon-grid" role="group" aria-label="Icons">
         {matches.map((name) => {
           const Glyph = SESSION_ICONS[name];
-          if (!Glyph) return null;
           const label = sessionIconLabel(name);
           return (
             <button
@@ -132,7 +130,7 @@ export function SessionIconPicker({
               aria-pressed={icon === name}
               title={label}
               onClick={() => {
-                onApply(name, draftColor ?? DEFAULT_SESSION_ICON_COLOR);
+                onApply(name, draftColor);
                 onClose();
               }}
             >

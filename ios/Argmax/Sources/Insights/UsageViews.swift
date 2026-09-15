@@ -227,33 +227,10 @@ struct UsageDailyChart: View {
                     .interpolationMethod(.monotone)
                 }
                 .chartLegend(.hidden)
-                .chartXAxis {
-                    AxisMarks(values: .stride(by: .day, count: max(1, daySpan / 4))) { value in
-                        if let date = value.as(Date.self) {
-                            AxisValueLabel {
-                                Text(DateFormatter.cachedAxis.string(from: date))
-                                    .typeStyle(.caption2).foregroundStyle(Theme.muted)
-                            }
-                        }
-                        AxisGridLine(stroke: .init(lineWidth: 0.5))
-                            .foregroundStyle(Theme.line.opacity(0.5))
-                    }
-                }
-                .chartYAxis {
-                    AxisMarks(position: .leading) { value in
-                        if let number = value.as(Double.self) {
-                            AxisValueLabel {
-                                Text(
-                                    store.usageMode == .tokens
-                                        ? InsightsFormat.compact(number)
-                                        : InsightsFormat.usdCompact(number)
-                                )
-                                .typeStyle(.caption2).foregroundStyle(Theme.muted)
-                            }
-                        }
-                        AxisGridLine(stroke: .init(lineWidth: 0.5))
-                            .foregroundStyle(Theme.line.opacity(0.5))
-                    }
+                .insightsChartAxes(dayStride: max(1, daySpan / 4)) { number in
+                    store.usageMode == .tokens
+                        ? InsightsFormat.compact(number)
+                        : InsightsFormat.usdCompact(number)
                 }
                 .frame(height: 190)
                 .accessibilityLabel(dailyAccessibility)
@@ -480,12 +457,6 @@ struct UsageBreakdown: View {
 
 extension DateFormatter {
     static let cachedDay: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d"
-        return formatter
-    }()
-
-    static let cachedAxis: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d"
         return formatter

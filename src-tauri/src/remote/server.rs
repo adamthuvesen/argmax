@@ -837,12 +837,10 @@ mod tests {
     fn authenticate_token_accepts_bearer_and_query_param() {
         let expected_token = "0123456789abcdef0123456789abcdef";
 
-        // 1. Missing token
         let headers = HeaderMap::new();
         let uri = "/api/attachments/some/file.png".parse::<Uri>().unwrap();
         assert!(!authenticate_token(expected_token, &headers, &uri));
 
-        // 2. Bearer header with right token
         let mut bearer_headers = HeaderMap::new();
         bearer_headers.insert(
             header::AUTHORIZATION,
@@ -850,7 +848,6 @@ mod tests {
         );
         assert!(authenticate_token(expected_token, &bearer_headers, &uri));
 
-        // 3. Bearer header with wrong token
         let mut wrong_bearer = HeaderMap::new();
         wrong_bearer.insert(
             header::AUTHORIZATION,
@@ -858,7 +855,6 @@ mod tests {
         );
         assert!(!authenticate_token(expected_token, &wrong_bearer, &uri));
 
-        // 4. Query param with right token
         let uri_with_token =
             "/api/attachments/some/file.png?token=0123456789abcdef0123456789abcdef"
                 .parse::<Uri>()
@@ -869,7 +865,6 @@ mod tests {
             &uri_with_token
         ));
 
-        // 5. Query param with wrong token
         let uri_with_wrong = "/api/attachments/some/file.png?token=wrong_token_000000000000000000"
             .parse::<Uri>()
             .unwrap();

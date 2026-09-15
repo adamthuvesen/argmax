@@ -137,6 +137,39 @@ export async function recordBrowserVisit(url: string, title: string | null): Pro
   });
 }
 
+const ADDRESS_PREFIX = /^https?:\/\/(www\.)?/;
+
+/** Address-bar form of a URL: no scheme, no leading "www.". */
+function addressForm(url: string): string {
+  return url.replace(ADDRESS_PREFIX, "");
+}
+
+/**
+ * Inline completion for what the user typed: the first suggestion whose address
+ * *extends* it. A substring match can score well enough to lead
+ * `suggestBrowserHistory`, but completing one would rewrite the characters the
+ * user typed, so only a prefix qualifies. The entry comes back with it, because
+ * the completed text drops the scheme and `www.` and resolving it again would
+ * visit a different host than the one that was visited before.
+ */
+export function completeBrowserAddress(
+  typed: string,
+  suggestions: readonly BrowserHistoryEntry[]
+): { entry: BrowserHistoryEntry; completed: string } | null {
+  if (typed.length === 0 || /\s/.test(typed)) return null;
+  const needle = typed.toLowerCase();
+  for (const entry of suggestions) {
+    // A root URL completes to the bare host, the way an address bar shows it.
+    const address = addressForm(entry.url).replace(/^([^/]+)\/$/, "$1");
+    for (const candidate of [address, entry.url]) {
+      if (candidate.length > typed.length && candidate.toLowerCase().startsWith(needle)) {
+        return { entry, completed: typed + candidate.slice(typed.length) };
+      }
+    }
+  }
+  return null;
+}
+
 /** Match URL and title, preferring address prefixes and frequent, recent pages. */
 export function suggestBrowserHistory(query: string): BrowserHistoryEntry[] {
   const needle = query.trim().toLowerCase();
@@ -148,7 +181,7 @@ export function suggestBrowserHistory(query: string): BrowserHistoryEntry[] {
     const url = entry.url.toLowerCase();
     const text = `${url} ${(entry.title ?? "").toLowerCase()}`;
     if (!words.every((word) => text.includes(word))) return [];
-    const address = url.replace(/^https?:\/\/(www\.)?/, "");
+    const address = addressForm(url);
     const ageDays = Math.max(0, now - entry.visitedAt) / 86_400_000;
     const score = (address.startsWith(needle) || url.startsWith(needle) ? 20 : 0) +
       Math.log2(1 + (entry.visitCount ?? 1)) + 10 / (1 + ageDays / 7);

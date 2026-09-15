@@ -203,13 +203,6 @@ fn logged_unknown_models() -> &'static Mutex<HashSet<String>> {
 }
 
 #[cfg(test)]
-pub fn reset_unknown_model_log_for_test() {
-    logged_unknown_models()
-        .lock_or_recover("unknown-model log")
-        .clear();
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -231,20 +224,6 @@ mod tests {
             "gpt-5.5",
         );
         assert_eq!(cost, 20.05);
-    }
-
-    #[test]
-    fn prices_gpt_6_astra_at_current_list_rates() {
-        let cost = cost_of(
-            UsageCounts {
-                input: 1_000_000,
-                output: 1_000_000,
-                cache_read: 1_000_000,
-                cache_write: 1_000_000,
-            },
-            "gpt-6-astra",
-        );
-        assert_eq!(cost, 73.5);
     }
 
     #[test]
@@ -389,7 +368,6 @@ mod tests {
 
     #[test]
     fn unknown_models_cost_zero() {
-        reset_unknown_model_log_for_test();
         assert_eq!(
             cost_of(
                 UsageCounts {

@@ -48,7 +48,7 @@ const ATTENTION_REASONS = new Set<PriorityReasonKind>([
   "review-ready"
 ]);
 
-export interface PriorityReason {
+interface PriorityReason {
   kind: PriorityReasonKind;
   /**
    * When this reason became current. A "Done" is spent once a reason newer
@@ -81,7 +81,7 @@ export function workingWorkspaceIds(sessions: readonly SessionSummary[]): Set<st
   return working;
 }
 
-export interface PriorityEntry {
+interface PriorityEntry {
   workspace: WorkspaceSummary;
   /** Live, undismissed reasons, strongest first. Empty for a working or manually-added row. */
   reasons: PriorityReason[];
@@ -127,7 +127,7 @@ function attentionReason(attention: string): PriorityReasonKind | null {
     : null;
 }
 
-export interface WorkspaceAttention {
+interface WorkspaceAttention {
   attention: PriorityAttention;
   /** When `attention` became current. */
   changedAt: string;
@@ -179,7 +179,7 @@ function inPlay(workspace: WorkspaceSummary): boolean {
   return workspace.state !== "archived" && workspace.state !== "kept";
 }
 
-export interface WorkspaceReasonsInput {
+interface WorkspaceReasonsInput {
   workspaces: WorkspaceSummary[];
   sessions: SessionSummary[];
   nowMs: number;
@@ -201,7 +201,7 @@ export interface WorkspaceReasonsInput {
  * done here"). Pinned workspaces are *not*: a pin changes where a row sits,
  * not whether it needs you. Placement rules live in `computePriorityEntries`.
  */
-export function computeWorkspaceReasons(
+function computeWorkspaceReasons(
   input: WorkspaceReasonsInput
 ): Map<string, PriorityReason[]> {
   const { workspaces, sessions, nowMs, unreadWorkspaceIds } = input;

@@ -13,6 +13,7 @@ import {
 } from "react";
 import type {
   AgentMode,
+  ArgmaxApi,
   ComposerAttachment,
   IdeId,
   MenuCommand,
@@ -49,9 +50,6 @@ import { requestCloseActiveBrowserTab } from "./lib/browserPanel.js";
 import { requestCloseActiveReviewFileTab } from "./lib/reviewFilePanel.js";
 import { jumpToAdjacentChat, noteChatVisited } from "./lib/chatCycle.js";
 import { listVisibleSidebarWorkspaceIds, selectedSidebarWorkspaceId } from "./lib/sidebarOrder.js";
-// demoSnapshot is dynamic-imported inside `loadDashboardSnapshot` so it stays
-// out of the production renderer bundle. Browser-preview mode (no Tauri
-// bridge) is the only consumer; packaged builds always have window.argmax.
 import { useAppGridSelection } from "./hooks/useAppGridSelection.js";
 import { useDashboardSession } from "./hooks/useDashboardSession.js";
 import { SessionTimelineProvider } from "./hooks/useSessionTimeline.js";
@@ -140,7 +138,6 @@ import {
 import {
   BROWSER_PAGE_OPEN_KEY,
   TURN_REVERT_ENABLED_KEY,
-  COMPOSER_PIXEL_FIELD_KEY,
   COMPOSER_CONTEXT_INDICATOR_KEY,
   DESKTOP_NOTIFICATIONS_KEY,
   FAST_MODE_KEY,
@@ -181,10 +178,6 @@ import { withToast } from "./lib/withToast.js";
 
 const APP_MIN_HEIGHT_PX = 640;
 const STATIC_APP_MIN_WIDTH_PX = 600;
-
-function widestGridRowColumnCount(rows: unknown[][]): number {
-  return rows.reduce((max, row) => Math.max(max, row.length), 0);
-}
 
 const DEFAULT_AGENT_SAVE_ERROR = "Default settings could not be saved. Scheduled and automatic chats still use the previous settings. Retry in Settings → Agents.";
 
@@ -255,7 +248,6 @@ export function App(): JSX.Element {
     max: GOAL_MAX_TURNS_MAX,
     fallback: GOAL_MAX_TURNS_DEFAULT
   });
-  const [pixelFieldEnabled, setPixelFieldEnabled] = useBooleanUiPreference(COMPOSER_PIXEL_FIELD_KEY, false);
   const [contextIndicatorEnabled, setContextIndicatorEnabled] = useBooleanUiPreference(
     COMPOSER_CONTEXT_INDICATOR_KEY,
     false
@@ -401,12 +393,6 @@ export function App(): JSX.Element {
     source: { kind: "workspace" | "project"; id: string };
     onPick: (path: string) => void;
   } | null>(null);
-  const registerPaletteFileContext = useCallback(
-    (context: { source: { kind: "workspace" | "project"; id: string }; onPick: (path: string) => void } | null) => {
-      setPaletteFileContext(context);
-    },
-    []
-  );
 
   useLayoutEffect(() => {
     const node = workspaceRef.current;
@@ -506,7 +492,7 @@ export function App(): JSX.Element {
       alt: false
     });
   }, [openWorkspaceChat, selectedSession, sessionMoves, sessionsById, workspacesById]);
-  const requiredGridColumns = useMemo(() => widestGridRowColumnCount(grid.rows), [grid.rows]);
+  const requiredGridColumns = useMemo(() => grid.rows.reduce((max, row) => Math.max(max, row.length), 0), [grid.rows]);
   const requiredWorkspaceMinWidth = useMemo(() => {
     const gridColumnWidth = requiredGridColumns > 0
       ? requiredGridColumns * MIN_RESIZABLE_CELL_WIDTH_PX
@@ -718,26 +704,29 @@ export function App(): JSX.Element {
   }, [isFullLauncherOpen]);
 
   const handleArchiveWorkspace = useCallback(async (workspaceId: string): Promise<void> => {
-    if (!window.argmax) {
+    const api = window.argmax;
+    if (!api) {
       showErrorToast("Open the Tauri app window to archive workspaces.");
       return;
     }
+    const confirmDirtyArchive = (target: WorkspaceSummary): Promise<boolean> => {
+      const fileLabel = target.changedFiles === 1 ? "1 uncommitted change" : `${target.changedFiles} uncommitted changes`;
+      return api.system.confirm(
+        `${target.taskLabel} has ${fileLabel}. Archive this worktree and keep its files in recovery storage?`
+      );
+    };
     // Shared workspaces leave the filesystem alone. Isolated worktrees move
     // into recovery storage, but dirty ones still require explicit consent so
     // an archive-failed retry cannot silently act on newer changes.
     const workspace = workspacesById.get(workspaceId);
     let force = false;
-    let result: Awaited<ReturnType<typeof window.argmax.workspaces.archive>>;
+    let result: Awaited<ReturnType<typeof api.workspaces.archive>>;
     try {
       if (workspace?.dirty && !workspace.sharedWorkspace) {
-        const fileLabel = workspace.changedFiles === 1 ? "1 uncommitted change" : `${workspace.changedFiles} uncommitted changes`;
-        const confirmed = await window.argmax.system.confirm(
-          `${workspace.taskLabel} has ${fileLabel}. Archive this worktree and keep its files in recovery storage?`
-        );
-        if (!confirmed) return;
+        if (!(await confirmDirtyArchive(workspace))) return;
         force = true;
       }
-      result = await window.argmax.workspaces.archive({ workspaceId, force });
+      result = await api.workspaces.archive({ workspaceId, force });
     } catch (error) {
       showErrorToast(error instanceof Error ? error.message : "Workspace archive failed.");
       return;
@@ -748,15 +737,11 @@ export function App(): JSX.Element {
     // and retry with force; declining leaves the row kept, as intended.
     if (result.workspace.state === "kept" && !force && !result.workspace.sharedWorkspace) {
       try {
-        const fileLabel = result.workspace.changedFiles === 1 ? "1 uncommitted change" : `${result.workspace.changedFiles} uncommitted changes`;
-        const confirmed = await window.argmax.system.confirm(
-          `${result.workspace.taskLabel} has ${fileLabel}. Archive this worktree and keep its files in recovery storage?`
-        );
-        if (!confirmed) {
+        if (!(await confirmDirtyArchive(result.workspace))) {
           setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [result.workspace] }));
           return;
         }
-        result = await window.argmax.workspaces.archive({ workspaceId, force: true });
+        result = await api.workspaces.archive({ workspaceId, force: true });
       } catch (error) {
         showErrorToast(error instanceof Error ? error.message : "Workspace archive failed.");
         return;
@@ -868,78 +853,6 @@ export function App(): JSX.Element {
     setSnapshot
   ]);
 
-  const toggleWorkspacePinned = useCallback(
-    async (workspaceId: string, pinned: boolean): Promise<void> => {
-      if (!window.argmax) {
-        showErrorToast("Open the Tauri app window to pin a chat.");
-        return;
-      }
-      const ok = await withToast(
-        () => window.argmax!.workspaces.setPinned({ workspaceId, pinned }),
-        showToast,
-        "Could not toggle pin."
-      );
-      if (ok) await refreshDashboardStatus();
-    },
-    [refreshDashboardStatus]
-  );
-
-  const removeFromPriority = useCallback(
-    async (workspaceId: string): Promise<void> => {
-      if (!window.argmax) {
-        showErrorToast("Open the Tauri app window to change priority.");
-        return;
-      }
-      const ok = await withToast(
-        () => window.argmax!.workspaces.setPriorityDismissed({ workspaceId, dismissed: true }),
-        showToast,
-        "Could not remove the chat from priority."
-      );
-      if (ok) await refreshDashboardStatus();
-    },
-    [refreshDashboardStatus]
-  );
-
-  // Bulk "Clear" on the Priority header. Dismissing also clears a manual add
-  // backend-side, so one call per row empties both flavors of entry. The rows
-  // drop back into their date bucket or project group.
-  const clearPriority = useCallback(
-    async (workspaceIds: string[]): Promise<void> => {
-      if (!window.argmax) {
-        showErrorToast("Open the Tauri app window to change priority.");
-        return;
-      }
-      const ok = await withToast(
-        () =>
-          Promise.all(
-            workspaceIds.map((workspaceId) =>
-              window.argmax!.workspaces.setPriorityDismissed({ workspaceId, dismissed: true })
-            )
-          ),
-        showToast,
-        "Could not clear priority."
-      );
-      if (ok) await refreshDashboardStatus();
-    },
-    [refreshDashboardStatus]
-  );
-
-  const addToPriority = useCallback(
-    async (workspaceId: string): Promise<void> => {
-      if (!window.argmax) {
-        showErrorToast("Open the Tauri app window to change priority.");
-        return;
-      }
-      const ok = await withToast(
-        () => window.argmax!.workspaces.setPriorityAdded({ workspaceId, added: true }),
-        showToast,
-        "Could not add the chat to priority."
-      );
-      if (ok) await refreshDashboardStatus();
-    },
-    [refreshDashboardStatus]
-  );
-
   // Random session icons for sessions this renderer did not launch: agent-
   // driven session control and the mobile companion create workspaces
   // backend-side, skipping the launch paths that call `setIcon`. When a
@@ -969,77 +882,81 @@ export function App(): JSX.Element {
     }
   }, [loadState, snapshot.workspaces, randomSessionIconEnabled]);
 
-  const renameWorkspace = useCallback(
-    async (workspaceId: string, taskLabel: string): Promise<void> => {
-      if (!window.argmax) {
-        showErrorToast("Open the Tauri app window to rename a chat.");
+  // Every sidebar-row mutation is the same round trip: one workspaces call, a
+  // toast when the bridge is missing or the call fails, and a dashboard refresh
+  // once it lands.
+  const runRowCommand = useCallback(
+    (blockedMessage: string, failureMessage: string, call: (api: ArgmaxApi) => Promise<unknown>): void => {
+      const api = window.argmax;
+      if (!api) {
+        showErrorToast(blockedMessage);
         return;
       }
-      const ok = await withToast(
-        () => window.argmax!.workspaces.setLabel({ workspaceId, taskLabel }),
-        showToast,
-        "Could not rename chat."
+      void withToast(() => call(api), showToast, failureMessage).then((ok) =>
+        ok ? refreshDashboardStatus() : undefined
       );
-      if (ok) await refreshDashboardStatus();
     },
     [refreshDashboardStatus]
   );
-
-  const setWorkspaceIcon = useCallback(
-    async (workspaceId: string, icon: string | null, iconColor: string | null): Promise<void> => {
-      if (!window.argmax) {
-        showErrorToast("Open the Tauri app window to change a chat icon.");
-        return;
-      }
-      const ok = await withToast(
-        () => window.argmax!.workspaces.setIcon({ workspaceId, icon, iconColor }),
-        showToast,
-        "Could not change the chat icon."
-      );
-      if (ok) await refreshDashboardStatus();
-    },
-    [refreshDashboardStatus]
-  );
-
   // Stable per-row callbacks so SidebarSessionRow's memo comparator (which
   // checks reference equality on each prop) doesn't re-render every row on
   // every dashboard:delta. Inline lambdas would be recreated each render and
   // bust the memo.
   const onToggleWorkspacePinnedRow = useCallback(
-    (workspaceId: string, pinned: boolean): void => {
-      void toggleWorkspacePinned(workspaceId, pinned);
-    },
-    [toggleWorkspacePinned]
+    (workspaceId: string, pinned: boolean): void =>
+      runRowCommand("Open the Tauri app window to pin a chat.", "Could not toggle pin.", (api) =>
+        api.workspaces.setPinned({ workspaceId, pinned })),
+    [runRowCommand]
   );
   const onRenameWorkspaceRow = useCallback(
-    (workspaceId: string, taskLabel: string): void => {
-      void renameWorkspace(workspaceId, taskLabel);
-    },
-    [renameWorkspace]
+    (workspaceId: string, taskLabel: string): void =>
+      runRowCommand("Open the Tauri app window to rename a chat.", "Could not rename chat.", (api) =>
+        api.workspaces.setLabel({ workspaceId, taskLabel })),
+    [runRowCommand]
   );
   const onRemoveFromPriorityRow = useCallback(
-    (workspaceId: string): void => {
-      void removeFromPriority(workspaceId);
-    },
-    [removeFromPriority]
+    (workspaceId: string): void =>
+      runRowCommand(
+        "Open the Tauri app window to change priority.",
+        "Could not remove the chat from priority.",
+        (api) => api.workspaces.setPriorityDismissed({ workspaceId, dismissed: true })
+      ),
+    [runRowCommand]
   );
   const onAddToPriorityRow = useCallback(
-    (workspaceId: string): void => {
-      void addToPriority(workspaceId);
-    },
-    [addToPriority]
+    (workspaceId: string): void =>
+      runRowCommand(
+        "Open the Tauri app window to change priority.",
+        "Could not add the chat to priority.",
+        (api) => api.workspaces.setPriorityAdded({ workspaceId, added: true })
+      ),
+    [runRowCommand]
   );
+  // Bulk "Clear" on the Priority header. Dismissing also clears a manual add
+  // backend-side, so one call per row empties both flavors of entry. The rows
+  // drop back into their date bucket or project group.
   const onClearPrioritySection = useCallback(
-    (workspaceIds: string[]): void => {
-      void clearPriority(workspaceIds);
-    },
-    [clearPriority]
+    (workspaceIds: string[]): void =>
+      runRowCommand(
+        "Open the Tauri app window to change priority.",
+        "Could not clear priority.",
+        (api) =>
+          Promise.all(
+            workspaceIds.map((workspaceId) =>
+              api.workspaces.setPriorityDismissed({ workspaceId, dismissed: true })
+            )
+          )
+      ),
+    [runRowCommand]
   );
   const onSetWorkspaceIconRow = useCallback(
-    (workspaceId: string, icon: string | null, iconColor: string | null): void => {
-      void setWorkspaceIcon(workspaceId, icon, iconColor);
-    },
-    [setWorkspaceIcon]
+    (workspaceId: string, icon: string | null, iconColor: string | null): void =>
+      runRowCommand(
+        "Open the Tauri app window to change a chat icon.",
+        "Could not change the chat icon.",
+        (api) => api.workspaces.setIcon({ workspaceId, icon, iconColor })
+      ),
+    [runRowCommand]
   );
   // Right-click "Sync now" on an imported sidebar row: one sweep covers every
   // provider at once, and the sweep publishes fresh events as deltas, so the
@@ -1118,14 +1035,9 @@ export function App(): JSX.Element {
     hideFullLauncher();
     setIsBrowserPageOpen(true);
   }, [setIsBrowserPageOpen]);
-  const openUrlInAppBrowser = useCallback((): void => {
-    hideStandalonePage();
-    hideFullLauncher();
-    setIsBrowserPageOpen(true);
-  }, [setIsBrowserPageOpen]);
   useStandaloneBrowserLinks({
     active: standalonePageOpen,
-    onOpenInAppBrowser: openUrlInAppBrowser
+    onOpenInAppBrowser: onOpenBrowserRow
   });
   // Focus another chat by session id: the sender named on an agent message's
   // bubble, and the chat whose agent launched this one. A session that has
@@ -1357,6 +1269,85 @@ export function App(): JSX.Element {
     onCloseSettings: hideStandalonePage
   });
 
+  // Shared tail of every launch into a fresh workspace: optional icon, the
+  // provider start, where the resulting pane lands, and the auto-title. A
+  // launch that never started archives the workspace it created, which would
+  // otherwise sit in the sidebar with no session to explain it.
+  const startSessionInWorkspace = useCallback(
+    async (
+      created: WorkspaceSummary,
+      prompt: string,
+      model: ModelPickerSelection,
+      options: {
+        agentMode: AgentMode;
+        attachments?: ComposerAttachment[] | undefined;
+        goalCondition?: string | undefined;
+      }
+    ): Promise<void> => {
+      const api = window.argmax;
+      if (!api) throw new Error("Open the Tauri app window to launch local agents.");
+      let workspace = created;
+      let launchedSession: SessionSummary;
+      try {
+        if (randomSessionIconEnabled) {
+          workspace = await api.workspaces.setIcon({
+            workspaceId: workspace.id,
+            ...randomSessionIcon()
+          });
+        }
+        launchedSession = await api.providers.launch({
+          workspaceId: workspace.id,
+          provider: model.provider,
+          prompt,
+          modelLabel: model.label,
+          modelId: model.modelId,
+          reasoningEffort: model.reasoningEffort ?? null,
+          fastMode: fastModeEnabled && modelSupportsFastMode(model),
+          agentMode: options.agentMode,
+          permissionMode: permissionModes[model.provider],
+          cols: 120,
+          rows: 32,
+          attachments: options.attachments?.length ? options.attachments : null,
+          ...(options.goalCondition ? { goalCondition: options.goalCondition, goalMaxTurns } : {})
+        });
+      } catch (error) {
+        void api.workspaces
+          .archive({ workspaceId: workspace.id, force: true })
+          .catch(() => undefined);
+        throw error;
+      }
+      registerLaunchedSession(workspace, launchedSession);
+      // Full-launcher mode is a hard context switch: the old grid was hidden
+      // while composing, so stale split panes (especially agent activity panes)
+      // should not reappear beside the fresh session after launch.
+      const launchedFromFullLauncher = isFullLauncherOpen;
+      hideFullLauncher();
+      const cell = { sessionId: launchedSession.id, workspaceId: workspace.id };
+      if (launchedFromFullLauncher) {
+        showOnlyPane(cell);
+      } else {
+        openWorkspacePane(cell, { ctrlOrMeta: false, alt: false }, { maxColumns: maxGridColumnsPerRow });
+      }
+      void api.workspaces
+        .autoTitle({
+          workspaceId: workspace.id,
+          provider: model.provider,
+          modelId: PROVIDER_TITLE_MODEL[model.provider],
+          prompt
+        })
+        .catch(() => undefined);
+    },
+    [
+      fastModeEnabled,
+      goalMaxTurns,
+      isFullLauncherOpen,
+      maxGridColumnsPerRow,
+      permissionModes,
+      randomSessionIconEnabled,
+      registerLaunchedSession
+    ]
+  );
+
   const launchTask = useCallback(
     async (
       prompt: string,
@@ -1392,7 +1383,7 @@ export function App(): JSX.Element {
         );
       }
       const api = window.argmax;
-      let workspace =
+      const workspace =
         workspaceMode === "worktree"
           ? await api.workspaces.createIsolated({
               projectId,
@@ -1401,70 +1392,9 @@ export function App(): JSX.Element {
             })
           : await api.workspaces.createCurrent({ projectId, taskLabel });
 
-      let launchedSession: SessionSummary;
-      try {
-        if (randomSessionIconEnabled) {
-          workspace = await api.workspaces.setIcon({
-            workspaceId: workspace.id,
-            ...randomSessionIcon()
-          });
-        }
-        launchedSession = await api.providers.launch({
-          workspaceId: workspace.id,
-          provider: model.provider,
-          prompt,
-          modelLabel: model.label,
-          modelId: model.modelId,
-          reasoningEffort: model.reasoningEffort ?? null,
-          fastMode: fastModeEnabled && modelSupportsFastMode(model),
-          agentMode,
-          permissionMode: permissionModes[model.provider],
-          cols: 120,
-          rows: 32,
-          attachments: attachments?.length ? attachments : null,
-          ...(goalCondition ? { goalCondition, goalMaxTurns } : {})
-        });
-      } catch (error) {
-        // No session ever started, so the just-created workspace (and its
-        // worktree) would sit stranded in the sidebar with no explanation.
-        void api.workspaces
-          .archive({ workspaceId: workspace.id, force: true })
-          .catch(() => undefined);
-        throw error;
-      }
-
-      registerLaunchedSession(workspace, launchedSession);
-      // Full-launcher mode is a hard context switch: the old grid was hidden
-      // while composing, so stale split panes (especially agent activity panes)
-      // should not reappear beside the fresh session after launch.
-      const launchedFromFullLauncher = isFullLauncherOpen;
-      hideFullLauncher();
-      const cell = { sessionId: launchedSession.id, workspaceId: workspace.id };
-      if (launchedFromFullLauncher) {
-        showOnlyPane(cell);
-      } else {
-        openWorkspacePane(cell, { ctrlOrMeta: false, alt: false }, { maxColumns: maxGridColumnsPerRow });
-      }
-      void window.argmax.workspaces
-        .autoTitle({
-          workspaceId: workspace.id,
-          provider: model.provider,
-          modelId: PROVIDER_TITLE_MODEL[model.provider],
-          prompt
-        })
-        .catch(() => undefined);
+      await startSessionInWorkspace(workspace, prompt, model, { agentMode, attachments, goalCondition });
     },
-    [
-      selectedProject,
-      isFullLauncherOpen,
-      snapshot.projects,
-      maxGridColumnsPerRow,
-      registerLaunchedSession,
-      permissionModes,
-      fastModeEnabled,
-      randomSessionIconEnabled,
-      goalMaxTurns
-    ]
+    [selectedProject, snapshot.projects, startSessionInWorkspace]
   );
 
   // Repo-less side chat: a scratch workspace instead of a project checkout,
@@ -1484,76 +1414,20 @@ export function App(): JSX.Element {
       if (!window.argmax) {
         throw new Error("Open the Tauri app window to launch local agents.");
       }
-      const api = window.argmax;
-      const model = options?.model ?? launchModel;
-      let workspace = await api.workspaces.createScratch({
+      const workspace = await window.argmax.workspaces.createScratch({
         taskLabel: titleFromPrompt(prompt),
         kind: null
       });
-      let launchedSession: SessionSummary;
-      try {
-        if (randomSessionIconEnabled) {
-          workspace = await api.workspaces.setIcon({
-            workspaceId: workspace.id,
-            ...randomSessionIcon()
-          });
-        }
-        launchedSession = await api.providers.launch({
-          workspaceId: workspace.id,
-          provider: model.provider,
-          prompt,
-          modelLabel: model.label,
-          modelId: model.modelId,
-          reasoningEffort: model.reasoningEffort ?? null,
-          fastMode: fastModeEnabled && modelSupportsFastMode(model),
-          agentMode: options?.agentMode ?? "auto",
-          permissionMode: permissionModes[model.provider],
-          cols: 120,
-          rows: 32,
-          attachments: options?.attachments?.length ? options.attachments : null,
-          ...(options?.goalCondition ? { goalCondition: options.goalCondition, goalMaxTurns } : {})
-        });
-      } catch (error) {
-        // No session ever started; don't strand the scratch workspace in the
-        // Side chats section.
-        void api.workspaces
-          .archive({ workspaceId: workspace.id, force: true })
-          .catch(() => undefined);
-        throw error;
-      }
-      registerLaunchedSession(workspace, launchedSession);
-      // Same hard context switch as launchTask: a full-launcher launch
-      // replaces the hidden grid instead of splitting into it.
-      const launchedFromFullLauncher = isFullLauncherOpen;
-      hideFullLauncher();
-      const cell = { sessionId: launchedSession.id, workspaceId: workspace.id };
-      if (launchedFromFullLauncher) {
-        showOnlyPane(cell);
-      } else {
-        openWorkspacePane(cell, { ctrlOrMeta: false, alt: false }, { maxColumns: maxGridColumnsPerRow });
-      }
+      await startSessionInWorkspace(workspace, prompt, options?.model ?? launchModel, {
+        agentMode: options?.agentMode ?? "auto",
+        attachments: options?.attachments,
+        goalCondition: options?.goalCondition
+      });
       // The armed chat mode has served its purpose; the next plain new-session
       // entry should open in project mode again.
       setLauncherSideChatMode(false);
-      void window.argmax.workspaces
-        .autoTitle({
-          workspaceId: workspace.id,
-          provider: model.provider,
-          modelId: PROVIDER_TITLE_MODEL[model.provider],
-          prompt
-        })
-        .catch(() => undefined);
     },
-    [
-      fastModeEnabled,
-      isFullLauncherOpen,
-      launchModel,
-      maxGridColumnsPerRow,
-      registerLaunchedSession,
-      permissionModes,
-      randomSessionIconEnabled,
-      goalMaxTurns
-    ]
+    [launchModel, startSessionInWorkspace]
   );
 
   // Sidebar's "New side chat": the launcher surface pre-set to chat mode.
@@ -1935,7 +1809,6 @@ export function App(): JSX.Element {
         chatFontSize={chatFontSize}
         fastModeEnabled={fastModeEnabled}
         hasRunningSession={projectIdsWithRunningSession.has((project ?? launcherProject)?.id ?? "")}
-        pixelFieldEnabled={pixelFieldEnabled}
         onAddProject={() => void addProject()}
         onBranchSwitch={handleProjectUpdated}
         onFastModeEnabledChange={setFastModeEnabled}
@@ -1958,7 +1831,7 @@ export function App(): JSX.Element {
         projects={realProjects}
         resetSignal={launcherResetSignal}
         rightPanelToggleSignal={rightPanelToggleSignal}
-        registerPaletteFileContext={registerPaletteFileContext}
+        registerPaletteFileContext={setPaletteFileContext}
         sideChatMode={launcherSideChatMode}
         workspaces={snapshot.workspaces}
         onCheckoutWorkspaceCreated={handleCheckoutWorkspaceCreated}
@@ -1979,10 +1852,8 @@ export function App(): JSX.Element {
       launchTask,
       launcherProject,
       openRepoProjectLauncher,
-      pixelFieldEnabled,
       projectIdsWithRunningSession,
       realProjects,
-      registerPaletteFileContext,
       rightPanelToggleSignal,
       setFastModeEnabled,
       snapshot.workspaces
@@ -2253,8 +2124,6 @@ export function App(): JSX.Element {
                 onSidebarTranslucencyChange={setSidebarTranslucency}
                 workspaceCardVisible={workspaceCardVisible}
                 onWorkspaceCardVisibleChange={setWorkspaceCardVisible}
-                pixelFieldEnabled={pixelFieldEnabled}
-                onPixelFieldEnabledChange={setPixelFieldEnabled}
                 contextIndicatorEnabled={contextIndicatorEnabled}
                 onContextIndicatorEnabledChange={setContextIndicatorEnabled}
                 prMilestoneCelebrationEnabled={prMilestoneCelebrationEnabled}
@@ -2392,7 +2261,7 @@ export function App(): JSX.Element {
               onClearSession={clearSession}
               onForkSession={forkSession}
               onRunCheck={runCheck}
-              registerPaletteFileContext={registerPaletteFileContext}
+              registerPaletteFileContext={setPaletteFileContext}
             />
           ) : (
             renderLaunchSurface(launcherProject)

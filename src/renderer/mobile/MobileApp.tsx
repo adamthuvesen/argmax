@@ -305,59 +305,6 @@ function MobileAccentPicker({
   );
 }
 
-function MobileAppearanceControls({
-  theme,
-  onThemeChange,
-  accentId,
-  onAccentChange,
-  userBubbleTint,
-  onUserBubbleTintChange
-}: {
-  theme: ResolvedTheme;
-  onThemeChange: (theme: ResolvedTheme) => void;
-  accentId: AccentId;
-  onAccentChange: (accentId: AccentId) => void;
-  userBubbleTint: UserBubbleTint;
-  onUserBubbleTintChange: (tint: UserBubbleTint) => void;
-}): JSX.Element {
-  return (
-    <>
-      <p className="mobile-sheet-group-label">Theme</p>
-      <div className="mobile-sheet-group">
-        <MobileSegmentedControl
-          ariaLabel="Theme"
-          value={theme}
-          onChange={(next) => {
-            if (next === "light" || next === "dark") onThemeChange(next);
-          }}
-          options={[
-            { value: "light", label: "Light" },
-            { value: "dark", label: "Dark" }
-          ]}
-        />
-      </div>
-      <p className="mobile-sheet-group-label">Accent</p>
-      <div className="mobile-sheet-group">
-        <MobileAccentPicker value={accentId} onChange={onAccentChange} />
-      </div>
-      <p className="mobile-sheet-group-label">Your message bubbles</p>
-      <div className="mobile-sheet-group">
-        <MobileSegmentedControl
-          ariaLabel="Your message bubbles"
-          value={userBubbleTint}
-          onChange={(next) => {
-            if (isUserBubbleTint(next)) onUserBubbleTintChange(next);
-          }}
-          options={[
-            { value: "accent", label: "Accent" },
-            { value: "neutral", label: "Neutral" }
-          ]}
-        />
-      </div>
-    </>
-  );
-}
-
 export function MobileApp(): JSX.Element {
   // Whether the native iPhone shell is hosting this page (`?embed=1`). It
   // cannot change without a reload, so pin it at mount: every embed branch
@@ -1319,37 +1266,32 @@ export function MobileApp(): JSX.Element {
                   backLabel="Back to chats"
                   title={selectedWorkspace?.taskLabel ?? ""}
                   actions={
-                    selectedWorkspace ? (
-                      <>
-                        {/* Only changes live here. Starting a chat and archiving
-                            one are both a tap away in the list's row menu, and
-                            three icons crowded a bar whose left half is a title
-                            that needs the room. */}
-                        {/* A side chat runs in an app-owned scratch directory with
-                            one empty commit, so this button would open a permanently
-                            empty diff and an empty tree. Tapping a file the agent
-                            wrote there still opens the review screen from the
-                            transcript — only the standing entry point is dropped. */}
-                        {selectedWorkspace.kind === "git" ? (
-                          <button
-                            type="button"
-                            className="mobile-icon-button"
-                            onClick={openReviewScreen}
-                            aria-label={
-                              selectedWorkspace.changedFiles > 0
-                                ? `Files and changes, ${selectedWorkspace.changedFiles} changed`
-                                : "Files and changes"
-                            }
-                          >
-                            <FolderGit2 size={18} aria-hidden />
-                            {selectedWorkspace.changedFiles > 0 ? (
-                              <span className="mobile-header-badge" aria-hidden>
-                                {selectedWorkspace.changedFiles}
-                              </span>
-                            ) : null}
-                          </button>
+                    // Only changes live here. Starting a chat and archiving one
+                    // are both a tap away in the list's row menu, and three
+                    // icons crowded a bar whose left half is a title that needs
+                    // the room. A side chat runs in an app-owned scratch
+                    // directory with one empty commit, so the button would open
+                    // a permanently empty diff and tree — tapping a file the
+                    // agent wrote there still reaches review from the
+                    // transcript, only the standing entry point is dropped.
+                    selectedWorkspace?.kind === "git" ? (
+                      <button
+                        type="button"
+                        className="mobile-icon-button"
+                        onClick={openReviewScreen}
+                        aria-label={
+                          selectedWorkspace.changedFiles > 0
+                            ? `Files and changes, ${selectedWorkspace.changedFiles} changed`
+                            : "Files and changes"
+                        }
+                      >
+                        <FolderGit2 size={18} aria-hidden />
+                        {selectedWorkspace.changedFiles > 0 ? (
+                          <span className="mobile-header-badge" aria-hidden>
+                            {selectedWorkspace.changedFiles}
+                          </span>
                         ) : null}
-                      </>
+                      </button>
                     ) : undefined
                   }
                 />
@@ -1405,14 +1347,38 @@ export function MobileApp(): JSX.Element {
                 title="Appearance"
               />
               <div className="mobile-settings-body">
-                <MobileAppearanceControls
-                  theme={theme}
-                  onThemeChange={pickTheme}
-                  accentId={accentId}
-                  onAccentChange={setAccentId}
-                  userBubbleTint={userBubbleTint}
-                  onUserBubbleTintChange={setUserBubbleTint}
-                />
+                <p className="mobile-sheet-group-label">Theme</p>
+                <div className="mobile-sheet-group">
+                  <MobileSegmentedControl
+                    ariaLabel="Theme"
+                    value={theme}
+                    onChange={(next) => {
+                      if (next === "light" || next === "dark") pickTheme(next);
+                    }}
+                    options={[
+                      { value: "light", label: "Light" },
+                      { value: "dark", label: "Dark" }
+                    ]}
+                  />
+                </div>
+                <p className="mobile-sheet-group-label">Accent</p>
+                <div className="mobile-sheet-group">
+                  <MobileAccentPicker value={accentId} onChange={setAccentId} />
+                </div>
+                <p className="mobile-sheet-group-label">Your message bubbles</p>
+                <div className="mobile-sheet-group">
+                  <MobileSegmentedControl
+                    ariaLabel="Your message bubbles"
+                    value={userBubbleTint}
+                    onChange={(next) => {
+                      if (isUserBubbleTint(next)) setUserBubbleTint(next);
+                    }}
+                    options={[
+                      { value: "accent", label: "Accent" },
+                      { value: "neutral", label: "Neutral" }
+                    ]}
+                  />
+                </div>
               </div>
             </div>
         </div>

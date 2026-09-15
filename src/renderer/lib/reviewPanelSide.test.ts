@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  DEFAULT_REVIEW_PANEL_SIDE,
   REVIEW_PANEL_SIDE_KEY,
   readStoredReviewPanelSide
 } from "./reviewPanelSide.js";
@@ -12,7 +11,6 @@ afterEach(() => {
 
 describe("reviewPanelSide", () => {
   it("defaults to right when nothing is stored", () => {
-    expect(DEFAULT_REVIEW_PANEL_SIDE).toBe("right");
     expect(readStoredReviewPanelSide()).toBe("right");
   });
 

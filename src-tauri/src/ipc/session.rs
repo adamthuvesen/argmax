@@ -61,14 +61,7 @@ pub async fn session_events_since(
     state: State<'_, AppState>,
     input: SessionEventsSinceInput,
 ) -> ArgmaxResult<SessionEventsSinceResult> {
-    session_events_since_impl(&state, input).await
-}
-
-pub(crate) async fn session_events_since_impl(
-    state: &AppState,
-    input: SessionEventsSinceInput,
-) -> ArgmaxResult<SessionEventsSinceResult> {
-    session_events_since_with_budget_impl(state, input, None).await
+    session_events_since_with_budget_impl(&state, input, None).await
 }
 
 pub(crate) async fn session_events_since_remote_impl(

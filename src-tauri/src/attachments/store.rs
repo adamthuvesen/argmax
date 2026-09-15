@@ -18,8 +18,6 @@ pub struct SaveImageResult {
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum AttachmentStoreError {
-    #[error("unsupported mime type")]
-    InvalidMime,
     #[error("empty attachment payload")]
     EmptyPayload,
     #[error("attachment is {actual} bytes, exceeds {max} byte cap")]
@@ -74,7 +72,7 @@ impl AttachmentStore {
         let file_path = session_dir.join(format!(
             "{}.{}",
             Uuid::new_v4(),
-            extension_for_mime(mime_type)?
+            extension_for_mime(mime_type)
         ));
         fs::write(&file_path, &buffer)
             .map_err(|error| AttachmentStoreError::WriteFailed(error.to_string()))?;
@@ -106,12 +104,12 @@ impl AttachmentStore {
     }
 }
 
-fn extension_for_mime(mime_type: AttachmentMimeType) -> Result<&'static str, AttachmentStoreError> {
+fn extension_for_mime(mime_type: AttachmentMimeType) -> &'static str {
     match mime_type {
-        AttachmentMimeType::ImagePng => Ok("png"),
-        AttachmentMimeType::ImageJpeg => Ok("jpg"),
-        AttachmentMimeType::ImageGif => Ok("gif"),
-        AttachmentMimeType::ImageWebp => Ok("webp"),
+        AttachmentMimeType::ImagePng => "png",
+        AttachmentMimeType::ImageJpeg => "jpg",
+        AttachmentMimeType::ImageGif => "gif",
+        AttachmentMimeType::ImageWebp => "webp",
     }
 }
 

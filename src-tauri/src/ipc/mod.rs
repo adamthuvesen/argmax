@@ -82,6 +82,8 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "session:multitask",
     "session:clear",
     "session:suggest-follow-up",
+    "settings:agent-tools",
+    "settings:set-browser-tools",
     "settings:preview-chat-cleanup",
     "settings:delete-old-chats",
     "review:list-changed-files",
@@ -187,9 +189,6 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "activity:summary",
 ];
 
-/// Resolve the live `Database` Arc from `AppState`. Shared across IPC
-/// handler modules so each ported command does not re-duplicate the
-/// `state.db.get()` boilerplate.
 /// Run a blocking database read off the macOS main thread.
 ///
 /// Tauri resolves a sync `#[tauri::command]` body inline on the main thread, so
@@ -282,6 +281,8 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         session::session_multitask,
         session::session_clear,
         session::session_suggest_follow_up,
+        settings::settings_agent_tools,
+        settings::settings_set_browser_tools,
         settings::settings_preview_chat_cleanup,
         settings::settings_delete_old_chats,
         review::review_list_changed_files,

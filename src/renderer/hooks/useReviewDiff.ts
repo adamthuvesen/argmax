@@ -6,7 +6,7 @@ import { errorMessage } from "../../shared/error.js";
 import { nextDiffContext } from "../lib/diff.js";
 import type { AsyncState } from "./useReviewState.js";
 
-export interface UseReviewDiffResult {
+interface UseReviewDiffResult {
   files: ChangedFileSummary[];
   filesState: AsyncState;
   filesError: string | null;
@@ -15,6 +15,7 @@ export interface UseReviewDiffResult {
   diffState: AsyncState;
   diffError: string | null;
   openFile: (filePath: string) => void;
+  refreshChanges: () => void;
   resetForSourceChange: () => void;
   /** Ask git for more unchanged context around the open file's hunks. */
   expandDiffContext: () => void;
@@ -252,6 +253,10 @@ export function useReviewDiff(args: {
     [onOpenChanges]
   );
 
+  const refreshChanges = useCallback((): void => {
+    setActionRevision((value) => value + 1);
+  }, []);
+
   const expandDiffContext = useCallback((): void => {
     setExpandedContext((current) => {
       if (!selectedFilePath) return current;
@@ -311,6 +316,7 @@ export function useReviewDiff(args: {
     diffState,
     diffError,
     openFile,
+    refreshChanges,
     resetForSourceChange,
     expandDiffContext,
     updateFileIndex,

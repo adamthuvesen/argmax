@@ -38,6 +38,10 @@ pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
     // Destructive history cleanup is confirmed in desktop Settings.
     "settings:preview-chat-cleanup",
     "settings:delete-old-chats",
+    // Which tools an agent gets is a desktop Settings decision; the phone
+    // reads a chat, it does not configure how chats are launched.
+    "settings:agent-tools",
+    "settings:set-browser-tools",
     // Remote access as Settings owns it: the status hands out the pairing
     // token and QR, and the config writes take a filesystem path to the APNs
     // auth key. Pairing a phone is not in here — see `remote:*-push-device`
@@ -183,8 +187,8 @@ async fn dispatch_standard(
             encode(activity::activity_summary_impl(state, input).await?)
         }
         "usage:remaining" => {
-            let input: UsageRemainingInput = parse(channel, input)?;
-            encode(usage::usage_remaining_impl(state, input).await?)
+            let _: UsageRemainingInput = parse(channel, input)?;
+            encode(usage::usage_remaining_impl().await?)
         }
         "workspace:status" => {
             let input: WorkspaceStatusInput = parse(channel, input)?;

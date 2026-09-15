@@ -12,6 +12,7 @@ Provider CLIs load skills directly from disk during execution. The `/` autocompl
 | Codex | `.codex/skills`, `.agents/skills` | `~/.codex/skills`, `~/.agents/skills` | `~/.codex/prompts`, `~/.codex/skills/.system`, plugins |
 | Cursor | `.cursor/skills`, `.agents/skills` | `~/.cursor/skills`, `~/.agents/skills` | `~/.cursor/plugins/cache` |
 | OpenCode | `.opencode/skills`, `.agents/skills` | `~/.config/opencode/skills`, `~/.agents/skills` | — |
+| Grok Build | `.grok/skills`, `.agents/skills`, `.claude/skills` | `~/.grok/skills`, `~/.agents/skills`, `~/.claude/skills` | `~/.grok/installed-plugins`, `~/.grok/bundled/skills` |
 
 Hidden dot-directories (e.g. `~/.codex/skills/.system`) are ignored to avoid double-counting internal skills.
 

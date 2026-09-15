@@ -29,14 +29,14 @@ import { useSyncExternalStore } from "react";
  */
 export type ActivityMarkId = "nest" | "cascade" | "meter" | "orbit";
 
-export type ActivityMarkOption = {
+type ActivityMarkOption = {
   id: ActivityMarkId;
   label: string;
   hint: string;
 };
 
 export const ACTIVITY_MARK_STORAGE_KEY = "argmax.activityMark.style";
-export const DEFAULT_ACTIVITY_MARK: ActivityMarkId = "nest";
+const DEFAULT_ACTIVITY_MARK: ActivityMarkId = "nest";
 
 export const ACTIVITY_MARK_OPTIONS: readonly ActivityMarkOption[] = [
   {
@@ -71,7 +71,7 @@ export const ACTIVITY_MARK_PART_COUNT: Record<ActivityMarkId, number> = {
 
 const ACTIVITY_MARK_IDS = new Set<string>(ACTIVITY_MARK_OPTIONS.map((option) => option.id));
 
-export function isActivityMarkId(value: unknown): value is ActivityMarkId {
+function isActivityMarkId(value: unknown): value is ActivityMarkId {
   return typeof value === "string" && ACTIVITY_MARK_IDS.has(value);
 }
 
@@ -91,7 +91,7 @@ function storedActivityMark(): ActivityMarkId {
 let state: ActivityMarkId | null = null;
 const listeners = new Set<() => void>();
 
-export function applyActivityMarkToDocument(markId: ActivityMarkId): void {
+function applyActivityMarkToDocument(markId: ActivityMarkId): void {
   if (typeof document === "undefined") return;
   document.documentElement.dataset.activityMark = markId;
 }
@@ -110,7 +110,7 @@ export function setActivityMark(markId: ActivityMarkId): void {
   for (const listener of listeners) listener();
 }
 
-export function subscribeActivityMark(listener: () => void): () => void {
+function subscribeActivityMark(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
@@ -118,7 +118,7 @@ export function subscribeActivityMark(listener: () => void): () => void {
 }
 
 /** Stable between mutations, so `useSyncExternalStore` does not loop. */
-export function activityMarkSnapshot(): ActivityMarkId {
+function activityMarkSnapshot(): ActivityMarkId {
   state ??= storedActivityMark();
   return state;
 }
@@ -141,7 +141,7 @@ export function useActivityMark(): ActivityMarkId {
  */
 export type SessionUnderlineId = "off" | "sweep";
 
-export type SessionUnderlineOption = {
+type SessionUnderlineOption = {
   id: SessionUnderlineId;
   label: string;
   hint: string;
@@ -163,7 +163,7 @@ export const SESSION_UNDERLINE_OPTIONS: readonly SessionUnderlineOption[] = [
   }
 ] as const;
 
-export function isSessionUnderlineId(value: unknown): value is SessionUnderlineId {
+function isSessionUnderlineId(value: unknown): value is SessionUnderlineId {
   return value === "off" || value === "sweep";
 }
 
@@ -181,7 +181,7 @@ function storedSessionUnderline(): SessionUnderlineId {
 let underlineState: SessionUnderlineId | null = null;
 const underlineListeners = new Set<() => void>();
 
-export function applySessionUnderlineToDocument(underlineId: SessionUnderlineId): void {
+function applySessionUnderlineToDocument(underlineId: SessionUnderlineId): void {
   if (typeof document === "undefined") return;
   document.documentElement.dataset.sessionUnderline = underlineId;
 }
@@ -200,7 +200,7 @@ export function setSessionUnderline(underlineId: SessionUnderlineId): void {
   for (const listener of underlineListeners) listener();
 }
 
-export function subscribeSessionUnderline(listener: () => void): () => void {
+function subscribeSessionUnderline(listener: () => void): () => void {
   underlineListeners.add(listener);
   return () => {
     underlineListeners.delete(listener);

@@ -1086,36 +1086,8 @@ describe("MobileApp", () => {
     expect(createCurrentWorkspace).not.toHaveBeenCalled();
   });
 
-  it("starts a new chat branched from a worktree, from that chat's row menu", async () => {
-    // The header carries changes alone now; starting a chat lives in the row
-    // menu, which is where it was always reachable from the list.
-    render(<MobileApp />);
-    const list = await screen.findByRole("region", { name: "Chat list" });
-
-    const row = within(list)
-      .getByRole("button", { name: /Build dashboard/ })
-      .closest(".mobile-session-item");
-    if (!row) throw new Error("no row");
-    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Chat actions" }));
-    fireEvent.click(await screen.findByRole("button", { name: /^New chat here/ }));
-
-    // Workspace picker reflects that the new chat branches from that worktree
-    const workspaceBtn = screen.getByRole("button", { name: "Workspace" });
-    expect(workspaceBtn.closest(".mobile-new-row")).toHaveTextContent("New worktree · from Build dashboard");
-
-    fireEvent.change(screen.getByLabelText("Task"), { target: { value: "Continue building feature" } });
-    fireEvent.click(screen.getByRole("button", { name: "Start chat" }));
-
-    await waitFor(() => {
-      expect(createIsolatedWorkspace).toHaveBeenCalledWith(
-        expect.objectContaining({
-          projectId: snapshot.projects[0].id,
-          baseRef: "argmax/dashboard"
-        })
-      );
-    });
-  });
-
+  // Starting a chat lives in the row's actions sheet, which is where it was
+  // always reachable from the list; the header carries changes alone.
   it("starts a new chat from a worktree via the chat actions menu", async () => {
     render(<MobileApp />);
     await screen.findByRole("region", { name: "Chat list" });

@@ -19,9 +19,9 @@
 export type NewSessionMode = "embedded" | "full";
 
 export const NEW_SESSION_MODE_KEY = "argmax.newSessionMode";
-export const DEFAULT_NEW_SESSION_MODE: NewSessionMode = "full";
+const DEFAULT_NEW_SESSION_MODE: NewSessionMode = "full";
 
-export function isNewSessionMode(value: unknown): value is NewSessionMode {
+function isNewSessionMode(value: unknown): value is NewSessionMode {
   return value === "embedded" || value === "full";
 }
 

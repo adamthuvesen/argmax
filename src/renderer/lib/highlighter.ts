@@ -117,7 +117,7 @@ function ensureHighlighter(): HighlighterCore | null {
   return null;
 }
 
-export function onHighlighterReady(cb: () => void): () => void {
+function onHighlighterReady(cb: () => void): () => void {
   if (highlighter) {
     cb();
     return () => {};

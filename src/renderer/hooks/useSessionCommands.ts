@@ -29,7 +29,7 @@ export interface TerminateSessionOptions {
   restoreLauncherOnEarlyStop?: boolean;
 }
 
-export interface SessionCommands {
+interface SessionCommands {
   sendSessionInput: (
     sessionId: string,
     input: string,

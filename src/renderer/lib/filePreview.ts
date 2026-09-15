@@ -23,7 +23,7 @@ interface FetchPreviewArgs {
   maxLines?: number;
 }
 
-export async function fetchFilePreview({
+async function fetchFilePreview({
   workspaceId,
   path,
   line,
@@ -76,7 +76,7 @@ interface UseFilePreviewArgs {
   active: boolean;
 }
 
-export interface UseFilePreviewResult {
+interface UseFilePreviewResult {
   data: FilePreviewData | null;
   loading: boolean;
   error: string | null;

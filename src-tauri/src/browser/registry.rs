@@ -1,7 +1,6 @@
 //! Which browser tabs exist, and who opened them.
 //!
-//! The renderer used to be the only place that knew what tabs there were. An
-//! agent opening a page has no renderer to ask, so the list moved here: every
+//! An agent opening a page has no renderer to ask, so this is the list: every
 //! child webview the app creates is registered, tagged with the session that
 //! asked for it (or with nobody, for tabs the user opened). The renderer
 //! mirrors this list through the `browser:tabs` push event rather than owning

@@ -4,13 +4,13 @@ import type { ActivitySummary, ActivityWindow } from "../components/activity/act
 import type { UsageMetric } from "../components/usage/usagePresentation.js";
 
 /** UI choices that should survive leaving the page and coming back. */
-export type UsageUiState = {
+type UsageUiState = {
   usageWindow: UsageWindow;
   metric: UsageMetric;
   provider: ProviderId | null;
 };
 
-export type ActivityUiState = {
+type ActivityUiState = {
   activityWindow: ActivityWindow;
   metric: ActivityMetric;
   projectId: string | null;

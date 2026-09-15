@@ -38,15 +38,13 @@ pub struct OpenParams {
 pub struct NavigateParams {
     /// Where to go, as an absolute http(s) URL.
     pub url: String,
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct DuplicateParams {
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
     /// Show the copy immediately. Defaults to true.
     pub activate: Option<bool>,
@@ -73,8 +71,7 @@ pub struct OpenLinkParams {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct TabParams {
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
 }
 
@@ -87,8 +84,7 @@ pub struct CloseParams {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SnapshotParams {
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
     /// Drop prose and keep only controls, links and headings. Cheaper on a
     /// dense page when you already know what you are looking for.
@@ -100,15 +96,13 @@ pub struct FindParams {
     /// Text to look for in an element's role, name, value or text
     /// (case-insensitive substring, for example "Sign in" or "search").
     pub query: String,
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct GetTextParams {
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
     /// Cap on the characters returned. Defaults to 20000.
     pub max_chars: Option<u32>,
@@ -116,8 +110,7 @@ pub struct GetTextParams {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ExtractParams {
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
     /// Character budget for section text. Defaults to 30000.
     pub max_chars: Option<u32>,
@@ -128,8 +121,7 @@ pub struct ClickParams {
     /// Element handle from a snapshot line or browser_find, for example "e12".
     #[serde(rename = "ref")]
     pub element_ref: String,
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
 }
 
@@ -144,8 +136,7 @@ pub struct TypeParams {
     /// Press Enter afterwards, falling back to submitting the field's form.
     /// This is how you run a search box.
     pub submit: Option<bool>,
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
 }
 
@@ -157,8 +148,7 @@ pub struct SelectParams {
     /// Option to choose, matched against the option's value or its visible
     /// label.
     pub value: String,
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
 }
 
@@ -169,8 +159,7 @@ pub struct PressKeyParams {
     pub key: String,
     /// Modifiers held down: any of "Meta", "Control", "Alt", "Shift".
     pub modifiers: Option<Vec<String>>,
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
 }
 
@@ -183,8 +172,7 @@ pub struct ScrollParams {
     /// Handle of a scrollable element to scroll instead of the page.
     #[serde(rename = "ref")]
     pub element_ref: Option<String>,
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
 }
 
@@ -209,8 +197,7 @@ pub struct DragParams {
     pub delta_y: Option<f64>,
     /// Number of intermediate pointer moves. Defaults to 10, capped at 60.
     pub steps: Option<u8>,
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
 }
 
@@ -224,17 +211,21 @@ pub struct WaitForParams {
     /// Wait until the page's URL contains this substring. Use it after a
     /// click that navigates.
     pub url_includes: Option<String>,
+    /// Wait until fetch/XHR have been idle for this many milliseconds.
+    pub quiet_ms: Option<u32>,
+    /// Wait until at least this many visible list-like items exist. Combined
+    /// with `text`, counts items that contain that text.
+    pub min_count: Option<u32>,
     /// Seconds to wait before giving up. Defaults to 10, capped at 60.
+    /// A miss returns the page state instead of an error.
     pub timeout_s: Option<u32>,
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ScreenshotParams {
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
     /// Element handle to crop to. Without one the whole visible page is
     /// captured.
@@ -248,15 +239,13 @@ pub struct EvaluateParams {
     /// JSON, so return something serializable. A thrown error is reported
     /// rather than swallowed.
     pub expression: String,
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct CaptureParams {
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
     /// How many of the newest records to return. Defaults to 50, capped at 200.
     pub limit: Option<u32>,
@@ -272,8 +261,7 @@ pub struct HandleDialogParams {
     pub accept: bool,
     /// Text to answer a `prompt()` with. Ignored by alert and confirm.
     pub prompt_text: Option<String>,
-    /// Tab id from browser_open or browser_tabs. Defaults to the tab this
-    /// session used last.
+    /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
 }
 
@@ -417,8 +405,9 @@ each open tab is a live webview in the user's window."
 with its role, name and value, and a [ref=eN] handle on everything you can interact with. This is \
 the tool to reach for first and after every action — it is far cheaper than a screenshot and it is \
 what gives you the refs the click and type tools need. Refs live in the page, so they stay valid \
-while the element does and go stale the moment the page navigates. A `dialog:` header line means \
-the page raised an alert, confirm or prompt; see browser_handle_dialog."
+while the element does and go stale the moment the page navigates. A `state:` header line is \
+captcha, cookie, error, loading, or ready. A `dialog:` header line means the page raised an \
+alert, confirm or prompt; see browser_handle_dialog."
     )]
     async fn browser_snapshot(
         &self,
@@ -451,7 +440,8 @@ a long page."
     #[tool(
         name = "browser_get_text",
         description = "Read the page's visible text, main content first. Use it to read an \
-article or a result; use browser_snapshot when you need to act on something."
+article or a result; use browser_snapshot when you need to act on something. Includes the same \
+`state` field as a snapshot (captcha, cookie, error, loading, ready)."
     )]
     async fn browser_get_text(
         &self,
@@ -466,7 +456,7 @@ article or a result; use browser_snapshot when you need to act on something."
 
     #[tool(
         name = "browser_extract",
-        description = "Extract bounded, structured page content: metadata, headings, sections, tables, and unique http(s) links. Use it to read articles and compare sources without processing the accessibility tree."
+        description = "Extract bounded, structured page content: metadata, headings, sections, tables, unique http(s) links, repeating items (cards, list rows), and filled form fields. Use it to read a page without processing the accessibility tree. Includes `state` (captcha, cookie, error, loading, ready)."
     )]
     async fn browser_extract(
         &self,
@@ -482,8 +472,9 @@ article or a result; use browser_snapshot when you need to act on something."
     #[tool(
         name = "browser_click",
         description = "Click the element a ref names. Take a browser_snapshot first to get the \
-ref. The reply reports the URL afterwards, so a click that navigated says so; follow a navigation \
-with a fresh snapshot, because the old refs are gone."
+ref. The reply reports the URL, how much visible text moved, and whether a listbox opened. A \
+full-page navigation has often not landed yet — follow a click that should navigate with \
+browser_wait_for or a fresh snapshot."
     )]
     async fn browser_click(
         &self,
@@ -502,7 +493,8 @@ with a fresh snapshot, because the old refs are gone."
         name = "browser_type",
         description = "Type text into the field a ref names, replacing what is there. Set submit \
 to true to press Enter afterwards, which is how you run a search box. The value goes in through \
-the DOM's native setter, so React and Vue forms see it."
+the DOM's native setter, so React and Vue forms see it. The reply says whether a listbox opened \
+and how much visible text moved — useful after typing into a combobox."
     )]
     async fn browser_type(
         &self,
@@ -628,16 +620,23 @@ snapshot already covers the whole document, so scroll for pages that load more c
     #[tool(
         name = "browser_wait_for",
         description = "Block until the page catches up: until some text appears, an element \
-becomes visible, or the URL contains a substring. Name at least one of them. This is what to use \
-after a click or a search that navigates, instead of snapshotting a page that has not landed yet."
+becomes visible, the URL contains a substring, fetch/XHR go quiet (`quiet_ms`), or at least \
+`min_count` list-like items exist. Name at least one of them. A miss returns `matched: false` \
+with the page `state` and a text sample rather than an error — read that instead of retrying \
+blindly. Slow pages can take timeout_s up to 60."
     )]
     async fn browser_wait_for(
         &self,
         Parameters(params): Parameters<WaitForParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        if params.text.is_none() && params.element_ref.is_none() && params.url_includes.is_none() {
+        if params.text.is_none()
+            && params.element_ref.is_none()
+            && params.url_includes.is_none()
+            && params.quiet_ms.is_none()
+            && params.min_count.is_none()
+        {
             return Ok(CallToolResult::error(vec![ContentBlock::text(
-                "browser_wait_for needs one of text, ref or url_includes.",
+                "browser_wait_for needs one of text, ref, url_includes, quiet_ms or min_count.",
             )]));
         }
         act(
@@ -646,6 +645,8 @@ after a click or a search that navigates, instead of snapshotting a page that ha
                 text: params.text,
                 element_ref: params.element_ref,
                 url_includes: params.url_includes,
+                quiet_ms: params.quiet_ms,
+                min_count: params.min_count,
                 timeout_ms: params
                     .timeout_s
                     .map(|seconds| seconds.clamp(1, MAX_WAIT_SECONDS) * 1_000),

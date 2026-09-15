@@ -475,33 +475,7 @@ async fn launch_caps_and_self_messaging_are_refused_with_a_readable_error() {
     let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     let (server, registry) =
         SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
-    let process_config = registry.issue(&ProviderLaunchInput {
-        provider: ProviderId::Codex,
-        session_id: "session-parent".to_string(),
-        workspace_path: PathBuf::from(repo.path()),
-        prompt: "Parent task".to_string(),
-        model_label: "GPT-5.6 Sol".to_string(),
-        model_id: "gpt-5.6-sol".to_string(),
-        reasoning_effort: None,
-        fast_mode: false,
-        resume_conversation_id: None,
-        resume_fork: false,
-        permission_mode: PermissionMode::AutoApprove,
-        agent_mode: AgentMode::Auto,
-        cols: 120,
-        rows: 32,
-    });
-    let environment = process_config.env_pairs().into_iter().collect::<Vec<_>>();
-    let socket = environment
-        .iter()
-        .find(|(key, _)| key == SESSION_LAUNCH_SOCKET_ENV)
-        .map(|(_, value)| value.clone())
-        .expect("socket env");
-    let token = environment
-        .iter()
-        .find(|(key, _)| key == SESSION_LAUNCH_TOKEN_ENV)
-        .map(|(_, value)| value.clone())
-        .expect("token env");
+    let (socket, token) = credential(&registry, repo.path(), "session-parent");
     let _server = server
         .start(
             None,
@@ -731,38 +705,8 @@ async fn observing_stopping_and_waiting_on_a_launched_session() {
     let (server, registry) =
         SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
     providers.set_session_control(Arc::clone(&registry));
-    let credential = |session_id: &str| {
-        let config = registry.issue(&ProviderLaunchInput {
-            provider: ProviderId::Codex,
-            session_id: session_id.to_string(),
-            workspace_path: PathBuf::from(repo.path()),
-            prompt: "Task".to_string(),
-            model_label: "GPT-5.6 Sol".to_string(),
-            model_id: "gpt-5.6-sol".to_string(),
-            reasoning_effort: None,
-            fast_mode: false,
-            resume_conversation_id: None,
-            resume_fork: false,
-            permission_mode: PermissionMode::AutoApprove,
-            agent_mode: AgentMode::Auto,
-            cols: 120,
-            rows: 32,
-        });
-        let environment = config.env_pairs().into_iter().collect::<Vec<_>>();
-        let socket = environment
-            .iter()
-            .find(|(key, _)| key == SESSION_LAUNCH_SOCKET_ENV)
-            .map(|(_, value)| value.clone())
-            .expect("socket env");
-        let token = environment
-            .iter()
-            .find(|(key, _)| key == SESSION_LAUNCH_TOKEN_ENV)
-            .map(|(_, value)| value.clone())
-            .expect("token env");
-        (socket, token)
-    };
-    let (socket, parent_token) = credential("session-parent");
-    let (_, child_token) = credential("session-child");
+    let (socket, parent_token) = credential(&registry, repo.path(), "session-parent");
+    let (_, child_token) = credential(&registry, repo.path(), "session-child");
     let _server = server
         .start(
             None,

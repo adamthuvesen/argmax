@@ -187,16 +187,6 @@ mod tests {
     }
 
     #[test]
-    fn normal_running_sessions_are_silent() {
-        let (publisher, rx) = capture_publisher();
-        publisher.observe(
-            &session(SessionState::Running, AttentionState::Normal),
-            None,
-        );
-        assert!(rx.try_recv().is_err());
-    }
-
-    #[test]
     fn pushes_deep_link_to_the_session_that_raised_them() {
         let (publisher, rx) = capture_publisher();
         publisher.observe(

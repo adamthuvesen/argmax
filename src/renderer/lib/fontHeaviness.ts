@@ -2,7 +2,7 @@ export type FontHeaviness = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 
 export const FONT_HEAVINESS_MIN: FontHeaviness = 1;
 export const FONT_HEAVINESS_MAX: FontHeaviness = 10;
-export const DEFAULT_FONT_HEAVINESS: FontHeaviness = 5;
+const DEFAULT_FONT_HEAVINESS: FontHeaviness = 5;
 export const FONT_HEAVINESS_STORAGE_KEY = "argmax.font.heaviness";
 
 export const FONT_HEAVINESS_HINTS: Readonly<Record<FontHeaviness, string>> = {

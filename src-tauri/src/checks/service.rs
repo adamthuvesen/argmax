@@ -157,14 +157,6 @@ impl CheckService {
         input: RunWorkspaceCheckInput,
         on_output: Option<OutputSink>,
     ) -> ArgmaxResult<CheckRun> {
-        self.run_workspace_check_inner(input, on_output).await
-    }
-
-    async fn run_workspace_check_inner(
-        self: &Arc<Self>,
-        input: RunWorkspaceCheckInput,
-        on_output: Option<OutputSink>,
-    ) -> ArgmaxResult<CheckRun> {
         // Reject obviously-destructive shell shapes BEFORE persisting or
         // spawning. `sh -c` interprets the full command string, so
         // without this gate a check like `rm -rf $HOME` runs

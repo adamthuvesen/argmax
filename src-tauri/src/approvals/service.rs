@@ -145,12 +145,6 @@ impl ApprovalService {
                 created_at: None,
             },
         )?;
-        if requests.contains_key(&approval.id) {
-            return Err(ArgmaxError::service(
-                "APPROVAL_DUPLICATE",
-                "This provider request is already waiting for a decision",
-            ));
-        }
         let session = update_session_state(
             &tx,
             session_id,

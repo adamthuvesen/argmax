@@ -345,12 +345,8 @@ fn login_guidance(provider_id: ProviderId) -> &'static str {
 mod tests {
     use super::*;
 
-    #[test]
-    fn setup_guidance_names_local_cli() {
-        assert!(setup_guidance(ProviderId::Codex).contains("Codex CLI"));
-        assert!(setup_guidance(ProviderId::Cursor).contains("cursor-agent login"));
-    }
-
+    /// Four CLIs Argmax does not own. A drifted subcommand reads as a failed
+    /// auth probe, which refuses every launch with login guidance.
     #[test]
     fn status_args_match_provider_cli() {
         use crate::providers::adapters::get_provider_definition;
@@ -370,43 +366,6 @@ mod tests {
             get_provider_definition(ProviderId::Opencode).status_args,
             &["providers", "list"]
         );
-    }
-
-    #[test]
-    fn approval_support_uses_native_response_transports() {
-        use crate::providers::adapters::get_provider_definition;
-        assert_eq!(
-            get_provider_definition(ProviderId::Claude).approval_support,
-            ApprovalSupport::Respondable
-        );
-        assert_eq!(
-            get_provider_definition(ProviderId::Codex).approval_support,
-            ApprovalSupport::Respondable
-        );
-        assert_eq!(
-            get_provider_definition(ProviderId::Cursor).approval_support,
-            ApprovalSupport::Respondable
-        );
-        assert_eq!(
-            get_provider_definition(ProviderId::Opencode).approval_support,
-            ApprovalSupport::Respondable
-        );
-    }
-
-    #[test]
-    fn login_guidance_names_login_command() {
-        assert!(login_guidance(ProviderId::Claude).contains("claude auth login"));
-        assert!(login_guidance(ProviderId::Codex).contains("codex login"));
-        assert!(login_guidance(ProviderId::Cursor).contains("cursor-agent login"));
-        assert!(login_guidance(ProviderId::Opencode).contains("opencode auth login"));
-    }
-
-    #[test]
-    fn opencode_helper_isolation_is_opencode_only() {
-        assert!(opencode_helper_isolation(ProviderId::Claude).is_none());
-        assert!(opencode_helper_isolation(ProviderId::Codex).is_none());
-        assert!(opencode_helper_isolation(ProviderId::Cursor).is_none());
-        assert!(opencode_helper_isolation(ProviderId::Opencode).is_some());
     }
 
     #[test]

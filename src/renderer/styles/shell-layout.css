@@ -397,20 +397,6 @@ body:has(.app-shell[data-sidebar-translucent="true"]) {
   gap: 2px;
 }
 
-.rail-label {
-  margin: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  flex: 1 1 auto;
-  color: var(--muted);
-  font-size: var(--text-2xs);
-  font-weight: calc(500 + var(--font-weight-offset));
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
 /* Match the project/session row action boxes so the … / + line up in the same
    right-edge columns as the rows below, wherever the cluster is hosted. */
 .rail-actions .small-icon {
@@ -477,7 +463,6 @@ body:has(.app-shell[data-sidebar-translucent="true"]) {
    chrome, same chevron tucked inside the label, same pointer affordance. They
    just never host the … / + cluster, which stays on the lead recency header. */
 .project-group.session-pinned-group > .session-pinned-row,
-.project-group.session-working-group > .session-working-row,
 .project-group.session-priority-group > .session-priority-row {
   cursor: pointer;
 }

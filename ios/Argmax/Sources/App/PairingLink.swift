@@ -37,21 +37,6 @@ enum PairingLink {
         return token
     }
 
-    /// `https://host/mobile.html#token=…` → the same page in embed mode.
-    ///
-    /// `embed=1` is what tells the renderer the native shell is the chrome:
-    /// no list screen, no web header, no history mirroring, and a transparent
-    /// body so the container's colour shows through the load. The fragment
-    /// rides along unchanged — it is the credential.
-    static func embeddedTranscriptURL(for url: URL) -> URL? {
-        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              token(in: url) != nil
-        else { return nil }
-        components.path = "/mobile.html"
-        components.queryItems = [URLQueryItem(name: "embed", value: "1")]
-        return components.url
-    }
-
     /// `https://host/mobile.html#token=…` → `wss://host/api/ws`.
     ///
     /// Plain http maps to ws even though `validate` refuses it: a tailnet

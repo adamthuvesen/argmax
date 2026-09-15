@@ -63,9 +63,7 @@ use argmax_lib::workspaces::lifecycle::WorkspaceLifecycle;
 use serde_json::json;
 use uuid::Uuid;
 
-// ---------------------------------------------------------------------------
 // Test scaffolding: fake launcher + fake handle.
-// ---------------------------------------------------------------------------
 
 #[derive(Default)]
 struct FakeHandleState {
@@ -423,9 +421,7 @@ async fn wait_for_resolved(service: &ProviderSessionService, session_id: &str) {
     panic!("provider handle did not resolve in time");
 }
 
-// ---------------------------------------------------------------------------
 // DB fixture helpers.
-// ---------------------------------------------------------------------------
 
 const PROJECT_ID: &str = "p-test";
 const WORKSPACE_ID: &str = "w-test";
@@ -613,10 +609,6 @@ async fn wait_for_event(database: &Database, session_id: &str, event_type: &str,
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests.
-// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn launch_persists_session_and_seeds_timeline() {
@@ -2698,9 +2690,7 @@ async fn idle_flush_publishes_buffered_line_before_terminate() {
         .expect("terminate ok");
 }
 
-// ---------------------------------------------------------------------------
 // Poisoned-lock containment.
-// ---------------------------------------------------------------------------
 
 /// Handle whose `disposed()` probe panics while armed. `is_handle_resolved`
 /// (and `live_handle`) call `disposed()` while holding the service's shared

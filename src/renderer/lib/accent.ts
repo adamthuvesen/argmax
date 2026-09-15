@@ -8,7 +8,7 @@ export type AccentId =
   | "blue"
   | "coral";
 
-export type AccentOption = {
+type AccentOption = {
   id: AccentId;
   label: string;
   hint: string;

@@ -33,6 +33,8 @@ export function AgentsSettings({
   fastModeEnabled,
   onFastModeEnabledChange,
   turnChangesExpanded,
+  browserTools,
+  onBrowserToolsChange,
   goalEnabled,
   onGoalEnabledChange,
   goalMaxTurns,
@@ -60,6 +62,8 @@ export function AgentsSettings({
   fastModeEnabled: boolean;
   onFastModeEnabledChange: (v: boolean) => void;
   turnChangesExpanded: boolean;
+  browserTools: boolean;
+  onBrowserToolsChange: (v: boolean) => void;
   goalEnabled: boolean;
   onGoalEnabledChange: (v: boolean) => void;
   goalMaxTurns: number;
@@ -180,6 +184,20 @@ export function AgentsSettings({
           configuration, including Codex automatic review. Full access requests broad permissions.
           Ask for approval shows native requests in the chat. Plan mode keeps its restrictions.
         </SettingNote>
+      </SettingGroup>
+
+      <SettingGroup id="settings-tools" label="Tools">
+        <SettingRow
+          label="Browser tools"
+          description="Let agents open and drive pages in the Browser panel. Turning them off shrinks what every turn carries by roughly a third; the panel stays yours to use. Takes effect on each chat's next turn."
+          control={
+            <Toggle
+              ariaLabel="Browser tools"
+              checked={browserTools}
+              onChange={onBrowserToolsChange}
+            />
+          }
+        />
       </SettingGroup>
 
       <SettingGroup id="settings-conversation" label="Conversation">

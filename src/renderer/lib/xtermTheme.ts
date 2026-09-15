@@ -10,7 +10,7 @@ import { themeAppearance } from "./theme.js";
 import { readColorToken } from "./pixelField.js";
 import { DEFAULT_BACKGROUND_INTENSITY } from "./backgroundIntensity.js";
 
-export const LIGHT_XTERM_THEME = {
+const LIGHT_XTERM_THEME = {
   background: "#fbfbfa",
   foreground: "#1c1b18",
   cursor: "#1c1b18",
@@ -35,7 +35,7 @@ export const LIGHT_XTERM_THEME = {
   brightWhite: "#8a857b"
 } as const;
 
-export const DARK_XTERM_THEME = {
+const DARK_XTERM_THEME = {
   background: "#141414",
   // Mirrors the dark theme's --text / --text-soft: paper-white bloomed on
   // charcoal, and the terminal shouldn't be the one surface still shouting.
@@ -67,7 +67,7 @@ export const DARK_XTERM_THEME = {
   brightWhite: "#e3e0d8"
 } as const;
 
-export interface XtermThemeObject {
+interface XtermThemeObject {
   background: string;
   foreground: string;
   cursor: string;
@@ -92,7 +92,7 @@ export interface XtermThemeObject {
   brightWhite: string;
 }
 
-export function getXtermTheme(resolved: "light" | "dark"): XtermThemeObject {
+function getXtermTheme(resolved: "light" | "dark"): XtermThemeObject {
   return resolved === "dark" ? DARK_XTERM_THEME : LIGHT_XTERM_THEME;
 }
 

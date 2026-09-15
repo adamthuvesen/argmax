@@ -256,9 +256,7 @@ function SessionConversationTurnInner({
           <PlanCard
             key={`plan-${exitPlanTool.id}`}
             plan={plan}
-            createdAt={exitPlanTool.createdAt}
             rawMarkdown={exitPlanTool.markdown}
-            modelLabel={selectedModel.label}
             onAccept={handlePlanAccept}
             onReject={handlePlanReject}
           />
@@ -277,9 +275,7 @@ function SessionConversationTurnInner({
       <PlanCard
         key={group.id}
         plan={plan}
-        createdAt={group.createdAt}
         rawMarkdown={group.text}
-        modelLabel={selectedModel.label}
         onAccept={handlePlanAccept}
         onReject={handlePlanReject}
       />
@@ -303,12 +299,12 @@ function SessionConversationTurnInner({
   // before each tool. Expanding the chip restores the narration with the
   // tools. Live turns keep it so the user can watch the agent talk while tools
   // run.
-  // This turn's own liveness, not the session's: keying off `sessionIsLive`
-  // alone re-expanded every finished turn the moment a new turn started.
-  const turnIsLive = isLatestTurn && sessionIsLive;
+  // `isStreamingTurn` is this turn's own liveness, not the session's: keying
+  // off `sessionIsLive` alone re-expanded every finished turn the moment a new
+  // turn started.
   const hiddenNarrationIds = preToolNarrationGroupIds(
     visibleAssistantGroups,
-    minimalActivity && !turnIsLive && !toolsExpanded ? lastToolCreatedAt : null
+    minimalActivity && !isStreamingTurn && !toolsExpanded ? lastToolCreatedAt : null
   );
   const assistantChildren: AnnotatedChild[] = visibleAssistantGroups
     .map((group): AnnotatedChild | null => {
@@ -425,7 +421,7 @@ function SessionConversationTurnInner({
         .filter((tItem): tItem is TurnToolItem => tItem !== null),
     [item.toolItems, hiddenToolIds]
   );
-  const isTurnLiveTicking = isLatestTurn && sessionIsLive && !isPausedOnUserInput;
+  const isTurnLiveTicking = isStreamingTurn && !isPausedOnUserInput;
   const toolChildren: AnnotatedChild[] = visibleToolItems
     .map((tItem) => {
         if (isAgentToolName(tItem.tool.name)) {
@@ -554,7 +550,7 @@ function SessionConversationTurnInner({
   });
   const earliestCreatedAt = [...assistantChildren, ...toolChildren]
     .map((c) => c.createdAt)
-    .filter((t): t is string => typeof t === "string" && t.length > 0)
+    .filter((t) => t.length > 0)
     .sort()[0];
   // Hover footer content: the turn's assistant prose for Copy, and a fork
   // handler when the provider supports forking a resumed conversation. Read

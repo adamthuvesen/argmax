@@ -186,11 +186,7 @@ struct TranscriptComposer: View {
             guard !picks.isEmpty else { return }
             photoPicks = []
             Task {
-                if let reported = await images.attach(picks, storeKey: composer.sessionId, client: store.client) {
-                    failure = reported
-                } else {
-                    failure = nil
-                }
+                failure = await images.attach(picks, storeKey: composer.sessionId, client: store.client)
             }
         }
         .onChange(of: dictation.heard) { _, heard in

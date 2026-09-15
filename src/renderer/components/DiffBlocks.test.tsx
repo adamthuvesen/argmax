@@ -279,6 +279,23 @@ describe("DiffBlocks", () => {
     expect(onExpandContext).toHaveBeenCalledTimes(1);
   });
 
+  it("uses rails and directional omitted-line controls in the review presentation without showing @@ headers", () => {
+    render(
+      <DiffBlocks
+        blocks={[OMITTED, TS_HUNK, { ...OMITTED, id: "omitted-2" }]}
+        filePath="src/x.ts"
+        presentation="review"
+        onExpandContext={() => undefined}
+      />
+    );
+
+    expect(screen.queryByText(TS_HUNK.header)).toBeNull();
+    expect(document.querySelector(".diff-line-rail")).not.toBeNull();
+    const gaps = screen.getAllByRole("button", { name: "Expand 16 unmodified lines" });
+    expect(gaps[0]).toHaveAttribute("data-direction", "up");
+    expect(gaps[1]).toHaveAttribute("data-direction", "down");
+  });
+
   it("renders a gap as a static label where expansion is unavailable", () => {
     render(<DiffBlocks blocks={[TS_HUNK, OMITTED]} filePath="src/x.ts" />);
 

@@ -12,6 +12,7 @@ const SNAPSHOT_JS = readFileSync("src-tauri/src/browser/snapshot.js", "utf8");
 const ACTIONS_JS = readFileSync("src-tauri/src/browser/actions.js", "utf8");
 const DIALOG_JS = readFileSync("src-tauri/src/browser/dialog.js", "utf8");
 const CAPTURE_JS = readFileSync("src-tauri/src/browser/capture.js", "utf8");
+const COOKIE_JS = readFileSync("src-tauri/src/browser/cookie.js", "utf8");
 const nativeConsole = {
   log: console.log,
   info: console.info,
@@ -37,13 +38,16 @@ interface AgentApi {
   snapshot: (options?: { interactiveOnly?: boolean }) => {
     url: string;
     title: string;
+    state: string;
     tree: string;
     truncated: boolean;
   };
   find: (query: string) => { matches: FoundElement[] };
   linkUrl: (ref: string) => { url?: string; error?: string };
-  getText: (maxChars?: number) => { text: string; truncated: boolean };
+  getText: (maxChars?: number) => { text: string; truncated: boolean; state: string };
+  pageState: () => { kind: string; reason: string };
   extract: (maxChars?: number) => {
+    state: string;
     metadata: {
       title: string;
       description: string | null;
@@ -58,10 +62,20 @@ interface AgentApi {
     sections: Array<{ heading: string | null; level: number | null; text: string }>;
     tables: Array<{ caption: string | null; headers: string[]; rows: string[][] }>;
     links: Array<{ text: string | null; url: string }>;
+    items: Array<{ text: string; ref: string | null }>;
+    fields: Array<{ name: string; value: string; role: string; ref: string | null }>;
     truncated: boolean;
   };
   rect: (ref: string) => { ok?: { width: number; height: number }; error?: string };
-  click: (ref: string) => { ok?: true; error?: string; target?: string };
+  click: (ref: string) => {
+    ok?: true;
+    error?: string;
+    target?: string;
+    urlChanged?: boolean;
+    textChars?: number;
+    textCharsDelta?: number;
+    listboxOpen?: boolean;
+  };
   type: (
     ref: string,
     text: string,
@@ -96,8 +110,23 @@ interface AgentApi {
   };
   waitFor: (
     id: string,
-    spec: { text?: string; ref?: string; urlIncludes?: string }
-  ) => { ok?: true; pending?: boolean; error?: string };
+    spec: {
+      text?: string;
+      ref?: string;
+      urlIncludes?: string;
+      quietMs?: number;
+      minCount?: number;
+    }
+  ) => {
+    ok?: true;
+    pending?: boolean;
+    error?: string;
+    matched?: boolean;
+    state?: string;
+    inflight?: number;
+    count?: number;
+    sample?: string;
+  };
   handleDialog: (
     accept: boolean,
     promptText?: string | null
@@ -145,12 +174,26 @@ interface CaptureApi {
     }>;
     truncated: boolean;
   };
+  pending: () => number;
+}
+
+interface CookieApi {
+  dismissed: boolean;
+  target: string | null;
+  allowLocal: boolean;
+  scan: () => boolean;
 }
 
 function installCapture(): CaptureApi {
   // eslint-disable-next-line @typescript-eslint/no-implied-eval, @typescript-eslint/no-unsafe-call -- loading the shipped script text is what is under test
   new Function(CAPTURE_JS)();
   return (window as unknown as { __argmaxCapture: CaptureApi }).__argmaxCapture;
+}
+
+function installCookies(): CookieApi {
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval, @typescript-eslint/no-unsafe-call -- loading the shipped script text is what is under test
+  new Function(COOKIE_JS)();
+  return (window as unknown as { __argmaxCookies: CookieApi }).__argmaxCookies;
 }
 
 beforeAll(() => {
@@ -194,6 +237,7 @@ beforeEach(() => {
   delete (window as unknown as { __argmax?: AgentApi }).__argmax;
   delete (window as unknown as { __argmaxDialog?: unknown }).__argmaxDialog;
   delete (window as unknown as { __argmaxCapture?: unknown }).__argmaxCapture;
+  delete (window as unknown as { __argmaxCookies?: CookieApi }).__argmaxCookies;
   Object.assign(console, nativeConsole);
   window.fetch = nativeFetch;
   XMLHttpRequest.prototype.open = nativeXhrOpen;
@@ -214,6 +258,8 @@ describe("snapshot.js", () => {
     const first = api().snapshot();
     expect(first.tree).toContain("url: http://localhost:3000/");
     expect(first.tree).toContain("title: Fixture");
+    expect(first.tree).toContain("state: ready");
+    expect(first.state).toBe("ready");
     // Headings are structure, not handles: no ref, and their own text is not
     // repeated underneath them.
     expect(first.tree).toContain('- heading "Example Domain" level=1');
@@ -363,6 +409,9 @@ describe("snapshot.js", () => {
     expect(extracted.links).toEqual([
       { text: "Primary source", url: "http://localhost:3000/source" }
     ]);
+    expect(extracted.state).toBe("ready");
+    expect(extracted.items).toEqual([]);
+    expect(extracted.fields).toEqual([]);
     expect(extracted.truncated).toBe(false);
     expect(api().extract(5).truncated).toBe(true);
   });
@@ -799,7 +848,7 @@ describe("actions.js", () => {
     // page — which still matches.
     expect(api().waitFor("w1", { text: "Results for" }).ok).toBe(true);
     expect(api().waitFor("w2", { text: "never here" }).pending).toBe(true);
-    expect(api().waitFor("w3", {}).error).toContain("text, ref or urlIncludes");
+    expect(api().waitFor("w3", {}).error).toContain("text, ref, urlIncludes, quietMs or minCount");
   });
 
   it("waitFor on a URL matches the document's own location", () => {
@@ -939,4 +988,202 @@ describe("capture.js", () => {
     ]);
     expect(entries[1]?.error).toContain("offline");
   });
+
+  it("counts in-flight fetch until it settles", async () => {
+    let resolveFetch: (value: { status: number; ok: boolean }) => void = () => {};
+    window.fetch = vi.fn().mockImplementation(
+      () =>
+        new Promise<{ status: number; ok: boolean }>((resolve) => {
+          resolveFetch = resolve;
+        })
+    );
+    const capture = installCapture();
+    expect(capture.pending()).toBe(0);
+    const inflight = window.fetch("/slow");
+    expect(capture.pending()).toBe(1);
+    resolveFetch({ status: 200, ok: true });
+    await inflight;
+    expect(capture.pending()).toBe(0);
+  });
 });
+
+describe("cookie.js", () => {
+  it("clicks a known accept control inside a cookie dialog", () => {
+    const cookies = installCookies();
+    cookies.allowLocal = true;
+    let clicked = false;
+    document.body.innerHTML = `
+      <div id="onetrust-banner-sdk" role="dialog">
+        <p>We use cookies</p>
+        <button id="onetrust-accept-btn-handler">Accept all</button>
+      </div>
+    `;
+    document.getElementById("onetrust-accept-btn-handler")?.addEventListener("click", () => {
+      clicked = true;
+    });
+    expect(cookies.scan()).toBe(true);
+    expect(clicked).toBe(true);
+    expect(cookies.dismissed).toBe(true);
+  });
+
+  it("clicks Godkänn alla in a cookie-shaped dialog", () => {
+    const cookies = installCookies();
+    cookies.allowLocal = true;
+    let clicked = false;
+    document.body.innerHTML = `
+      <div role="dialog" id="cookie-consent">
+        <p>Vi värdesätter din integritet och använder cookies</p>
+        <button>Godkänn alla</button>
+      </div>
+    `;
+    document.querySelector("button")?.addEventListener("click", () => {
+      clicked = true;
+    });
+    expect(cookies.scan()).toBe(true);
+    expect(clicked).toBe(true);
+  });
+
+  it("does not click Accept in a privacy terms dialog", () => {
+    const cookies = installCookies();
+    cookies.allowLocal = true;
+    let clicked = false;
+    document.body.innerHTML = `
+      <div role="dialog" aria-modal="true">
+        <p>Please read our privacy policy and terms of service.</p>
+        <button>Accept</button>
+      </div>
+    `;
+    document.querySelector("button")?.addEventListener("click", () => {
+      clicked = true;
+    });
+    expect(cookies.scan()).toBe(false);
+    expect(clicked).toBe(false);
+  });
+
+  it("does not click a non-cookie Accept", () => {
+    const cookies = installCookies();
+    cookies.allowLocal = true;
+    let clicked = false;
+    document.body.innerHTML = `<button id="ok">Accept</button>`;
+    document.getElementById("ok")?.addEventListener("click", () => {
+      clicked = true;
+    });
+    expect(cookies.scan()).toBe(false);
+    expect(clicked).toBe(false);
+  });
+
+  it("skips localhost unless allowLocal is set", () => {
+    const cookies = installCookies();
+    let clicked = false;
+    document.body.innerHTML = `
+      <div id="onetrust-banner-sdk">
+        <button id="onetrust-accept-btn-handler">Accept all</button>
+      </div>
+    `;
+    document.getElementById("onetrust-accept-btn-handler")?.addEventListener("click", () => {
+      clicked = true;
+    });
+    expect(cookies.scan()).toBe(false);
+    expect(clicked).toBe(false);
+  });
+});
+
+describe("page state, extract items, waits", () => {
+  it("labels captcha, cookie, error, loading, and ready", () => {
+    document.body.innerHTML = `<iframe src="https://www.google.com/recaptcha/api2/anchor"></iframe>`;
+    install();
+    expect(api().pageState().kind).toBe("captcha");
+    expect(api().snapshot().tree).toContain("state: captcha");
+
+    document.body.innerHTML = `
+      <div id="onetrust-banner-sdk">We use cookies for advertising.</div>
+    `;
+    expect(api().pageState().kind).toBe("cookie");
+
+    document.title = "Something went wrong";
+    document.body.innerHTML = `<h1>Something went wrong</h1>`;
+    expect(api().pageState().kind).toBe("error");
+
+    document.title = "Fixture";
+    document.body.innerHTML = `<div role="progressbar">Searching</div>`;
+    expect(api().pageState().kind).toBe("loading");
+
+    document.body.innerHTML = `<main><h1>Article</h1><p>Body copy.</p></main>`;
+    expect(api().pageState().kind).toBe("ready");
+
+    document.title = "Fix error handling";
+    document.body.innerHTML = `<main><p>Just a moment ago we shipped this.</p></main>`;
+    expect(api().pageState().kind).toBe("ready");
+
+    document.title = "Fixture";
+    document.body.innerHTML = `<div role="progressbar" hidden>Searching</div><main>Ready</main>`;
+    expect(api().pageState().kind).toBe("ready");
+  });
+
+  it("still reports cookie when a banner remains after a dismiss attempt", () => {
+    document.body.innerHTML = `
+      <div id="onetrust-banner-sdk">We use cookies for advertising.</div>
+    `;
+    install();
+    (window as unknown as { __argmaxCookies: { dismissed: boolean } }).__argmaxCookies = {
+      dismissed: true
+    };
+    expect(api().pageState().kind).toBe("cookie");
+  });
+
+  it("extracts repeating cards and filled fields", () => {
+    document.body.innerHTML = `
+      <main>
+        <form>
+          <label>From <input aria-label="From" value="Stockholm" /></label>
+          <label>To <input aria-label="To" value="Tokyo" /></label>
+        </form>
+        <ul>
+          <li><a href="/a">Alpha 100</a></li>
+          <li><a href="/b">Beta 200</a></li>
+          <li><a href="/c">Gamma 300</a></li>
+          <li><a href="/d">Delta 400</a></li>
+        </ul>
+      </main>
+    `;
+    install();
+    const extracted = api().extract();
+    expect(extracted.items.map((item) => item.text)).toEqual([
+      "Alpha 100",
+      "Beta 200",
+      "Gamma 300",
+      "Delta 400"
+    ]);
+    expect(extracted.items[0]?.ref).toMatch(/^e\d+$/);
+    expect(extracted.fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "From", value: "Stockholm" }),
+        expect.objectContaining({ name: "To", value: "Tokyo" })
+      ])
+    );
+  });
+
+  it("waitFor minCount stays pending until enough items exist", () => {
+    document.body.innerHTML = `<ul id="list"><li>One</li></ul>`;
+    install();
+    expect(api().waitFor("c1", { minCount: 3 }).pending).toBe(true);
+    const list = document.getElementById("list") as HTMLElement;
+    list.insertAdjacentHTML("beforeend", "<li>Two</li><li>Three</li>");
+    expect(api().waitFor("c1", { minCount: 3 }).ok).toBe(true);
+    expect(api().waitFor("c1", { minCount: 3 }).matched).toBe(true);
+  });
+
+  it("click reports whether the page moved", () => {
+    document.body.innerHTML = `<button>Go</button>`;
+    install();
+    const match = api().find("Go").matches[0];
+    expect(match).toBeDefined();
+    if (!match) return;
+    const result = api().click(match.ref);
+    expect(result.ok).toBe(true);
+    expect(result.urlChanged).toBeUndefined();
+    expect(result.listboxOpen).toBe(false);
+    expect(typeof result.textChars).toBe("number");
+  });
+});
+

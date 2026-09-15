@@ -79,9 +79,39 @@
     return result;
   }
 
+  function visibleCharCount() {
+    var body = document.body;
+    return ((body && (body.innerText || body.textContent)) || "").length;
+  }
+
+  function listboxOpen() {
+    var boxes = document.querySelectorAll("[role='listbox']");
+    for (var i = 0; i < boxes.length; i += 1) {
+      if (api.isVisible(boxes[i])) return true;
+    }
+    return false;
+  }
+
+  function echoExtras() {
+    return { startUrl: location.href, startChars: visibleCharCount() };
+  }
+
+  function echo(start, extra) {
+    var after = visibleCharCount();
+    extra = extra || {};
+    // Only report a URL change when this turn already moved; a full
+    // navigation has not landed by the time click() returns.
+    if (location.href !== start.startUrl) extra.urlChanged = true;
+    extra.textChars = after;
+    extra.textCharsDelta = after - start.startChars;
+    extra.listboxOpen = listboxOpen();
+    return done(extra);
+  }
+
   function click(ref) {
     var found = resolve(ref);
     if (found.error) return found;
+    var start = echoExtras();
     var element = found.element;
     element.scrollIntoView({ block: "center", inline: "center" });
     var point = centre(element);
@@ -97,7 +127,7 @@
     // `.click()` rather than a dispatched click: it runs the default action
     // (following a link, submitting a form), which a synthetic event does not.
     element.click();
-    return done({ target: describe(element) });
+    return echo(start, { target: describe(element) });
   }
 
   /** React and Vue track the value through the prototype setter; assigning
@@ -143,6 +173,7 @@
   function typeText(ref, text, options) {
     var found = resolve(ref);
     if (found.error) return found;
+    var start = echoExtras();
     var element = found.element;
     var value = String(text == null ? "" : text);
     element.scrollIntoView({ block: "center", inline: "center" });
@@ -159,17 +190,18 @@
       return { error: describe(element) + " is not a text field" };
     }
 
-    if (!(options && options.submit)) return done({ target: describe(element) });
+    if (!(options && options.submit)) return echo(start, { target: describe(element) });
     // Enter first, because a scripted search box usually listens for it; the
     // form fallback covers the plain HTML case where nothing did.
     var prevented = pressOn(element, "Enter", []);
     var submitted = prevented ? true : submitFrom(element);
-    return done({ target: describe(element), submitted: submitted || prevented });
+    return echo(start, { target: describe(element), submitted: submitted || prevented });
   }
 
   function select(ref, value) {
     var found = resolve(ref);
     if (found.error) return found;
+    var start = echoExtras();
     var element = found.element;
     if (!(element instanceof HTMLSelectElement)) return { error: describe(element) + " is not a select" };
     var wanted = String(value == null ? "" : value);
@@ -180,7 +212,7 @@
         element.selectedIndex = i;
         element.dispatchEvent(new Event("input", { bubbles: true }));
         element.dispatchEvent(new Event("change", { bubbles: true }));
-        return done({ selected: option.value });
+        return echo(start, { selected: option.value, target: describe(element) });
       }
     }
     return { error: "no option matching " + JSON.stringify(wanted) + " in " + describe(element) };
@@ -437,18 +469,83 @@
 
   var waits = {};
 
-  function satisfied(spec) {
+  function inflightCount() {
+    var capture = window.__argmaxCapture;
+    return capture && typeof capture.pending === "function" ? capture.pending() : 0;
+  }
+
+  function visibleItemCount(needle) {
+    var nodes = document.querySelectorAll("[role='listitem'], [role='row'], li, article");
+    var n = 0;
+    var lower = needle ? String(needle).toLowerCase() : null;
+    for (var i = 0; i < nodes.length; i += 1) {
+      var el = nodes[i];
+      if (!api.isVisible(el)) continue;
+      if (el.closest && el.closest("nav, table thead, select, datalist")) continue;
+      if (lower) {
+        var text = ((el.innerText || el.textContent) || "").toLowerCase();
+        if (text.indexOf(lower) === -1) continue;
+      }
+      n += 1;
+    }
+    return n;
+  }
+
+  function waitProgress(entry, spec) {
+    var state = api.pageState ? api.pageState() : { kind: "ready", reason: "" };
+    var sample = ((document.body && (document.body.innerText || document.body.textContent)) || "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 240);
+    var stateText = state.reason ? state.kind + " — " + state.reason : state.kind;
+    return {
+      pending: true,
+      url: location.href,
+      elapsedMs: Date.now() - entry.started,
+      state: stateText,
+      inflight: inflightCount(),
+      count: visibleItemCount(spec.text || null),
+      sample: sample
+    };
+  }
+
+  function hasWaitCondition(spec) {
+    return !!(spec && (spec.text || spec.ref || spec.urlIncludes || spec.quietMs || spec.minCount));
+  }
+
+  function satisfied(spec, entry) {
     if (spec.urlIncludes && location.href.toLowerCase().indexOf(String(spec.urlIncludes).toLowerCase()) === -1) {
+      entry.quietSince = null;
       return false;
     }
     if (spec.ref) {
       var element = api.byRef(spec.ref);
-      if (!element || !api.isVisible(element)) return false;
+      if (!element || !api.isVisible(element)) {
+        entry.quietSince = null;
+        return false;
+      }
     }
-    if (spec.text) {
+    if (spec.text && !spec.minCount) {
       var body = document.body;
       var haystack = ((body && body.innerText) || "").toLowerCase();
-      if (haystack.indexOf(String(spec.text).toLowerCase()) === -1) return false;
+      if (haystack.indexOf(String(spec.text).toLowerCase()) === -1) {
+        entry.quietSince = null;
+        return false;
+      }
+    }
+    if (spec.minCount) {
+      if (visibleItemCount(spec.text || null) < Number(spec.minCount)) {
+        entry.quietSince = null;
+        return false;
+      }
+    }
+    if (spec.quietMs) {
+      if (inflightCount() > 0) {
+        entry.quietSince = null;
+        return false;
+      }
+      if (!entry.quietSince) entry.quietSince = Date.now();
+      if (Date.now() - entry.quietSince < Number(spec.quietMs)) return false;
     }
     return true;
   }
@@ -466,8 +563,8 @@
    * which is exactly right for "wait until the URL becomes …".
    */
   function waitFor(id, spec) {
-    if (!spec || (!spec.text && !spec.ref && !spec.urlIncludes)) {
-      return { error: "waitFor needs one of text, ref or urlIncludes" };
+    if (!hasWaitCondition(spec)) {
+      return { error: "waitFor needs one of text, ref, urlIncludes, quietMs or minCount" };
     }
     var entry = waits[id];
     if (!entry) {
@@ -477,6 +574,7 @@
         observer: null,
         timer: null,
         started: Date.now(),
+        quietSince: null,
         settle: null
       };
       var settle = function () {
@@ -484,7 +582,7 @@
         // navigation, and a throw there would surface as an uncaught page
         // error. A wait that can no longer read its document is over.
         try {
-          if (entry.done || !satisfied(spec)) return;
+          if (entry.done || !satisfied(spec, entry)) return;
           entry.done = true;
           entry.result = done({ matched: true });
         } catch (error) {
@@ -519,7 +617,7 @@
     // nothing in the DOM, and a mutation callback is a microtask that may not
     // have run since the last poll.
     if (entry.settle) entry.settle();
-    if (!entry.done) return { pending: true, url: location.href };
+    if (!entry.done) return waitProgress(entry, spec);
     stop(entry);
     delete waits[id];
     return entry.result;

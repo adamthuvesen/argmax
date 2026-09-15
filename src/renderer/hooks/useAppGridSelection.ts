@@ -30,7 +30,7 @@ import {
   useWorkspaceDragCleanup
 } from "../state/workspaceDrag.js";
 
-export interface UseAppGridSelectionParams {
+interface UseAppGridSelectionParams {
   snapshot: DashboardSnapshot;
   selectedProject: ProjectSummary | null;
   selectedWorkspace: WorkspaceSummary | null;
@@ -48,7 +48,7 @@ export interface UseAppGridSelectionParams {
   mirrorFocusedSelection?: boolean;
 }
 
-export interface UseAppGridSelectionResult {
+interface UseAppGridSelectionResult {
   grid: GridState;
   sessionsById: Map<string, SessionSummary>;
   workspacesById: Map<string, WorkspaceSummary>;

@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BROWSER_HISTORY_KEY,
+  completeBrowserAddress,
   initializeBrowserHistory,
   mergeBrowserHistory,
   recordBrowserVisit,
@@ -140,6 +141,28 @@ describe("browser history", () => {
       "https://github.com/often", "https://github.com/once", "https://github.com/old", "https://other.com"
     ]);
     expect(suggestBrowserHistory("github often")[0]?.url).toBe("https://github.com/often");
+  });
+
+  it("completes the first suggestion the typed address is a prefix of", () => {
+    const entries: BrowserHistoryEntry[] = [
+      // Leads the list on a substring match; completing it would rewrite "you".
+      { url: "https://about.youtube.com/press", title: "Press", visitedAt: 2, visitCount: 9 },
+      { url: "https://www.youtube.com/", title: "YouTube", visitedAt: 1, visitCount: 3 }
+    ];
+
+    expect(completeBrowserAddress("you", entries)).toEqual({ entry: entries[1], completed: "youtube.com" });
+    expect(completeBrowserAddress("https://ab", entries)?.completed).toBe("https://about.youtube.com/press");
+    expect(completeBrowserAddress("About.YouTube.com/p", entries)?.completed).toBe("About.YouTube.com/press");
+  });
+
+  it("leaves the input alone when no suggestion extends it", () => {
+    const entries: BrowserHistoryEntry[] = [
+      { url: "https://www.youtube.com/", title: "YouTube", visitedAt: 1, visitCount: 3 }
+    ];
+
+    for (const typed of ["", "youtube.com", "tube", "you tube"]) {
+      expect(completeBrowserAddress(typed, entries)).toBeNull();
+    }
   });
 
   it("reports persistence failure without replacing existing history", async () => {

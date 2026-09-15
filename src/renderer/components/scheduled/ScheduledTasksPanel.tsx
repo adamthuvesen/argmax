@@ -407,6 +407,8 @@ export function ScheduledTasksPanel({
             <ul className="sched-list" aria-label="Scheduled tasks">
               {routines.map((routine) => {
                 const state = routineState(routine);
+                const sharedChatId =
+                  routine.runTarget === "same_session" ? routine.lastSessionId : null;
                 return (
                   <li key={routine.id} className="sched-row" data-state={state}>
                     <span className="sched-marker" aria-hidden="true" />
@@ -442,16 +444,16 @@ export function ScheduledTasksPanel({
                     </div>
 
                     <div className="sched-row-actions">
-                      {routine.runTarget === "same_session" && routine.lastSessionId && onOpenSession ? (
+                      {sharedChatId && onOpenSession ? (
                         <button
                           type="button"
                           className="sched-text-button"
-                          onClick={() => onOpenSession(routine.lastSessionId!)}
+                          onClick={() => onOpenSession(sharedChatId)}
                         >
                           Open chat
                         </button>
                       ) : null}
-                      {routine.runTarget === "same_session" && routine.lastSessionId ? (
+                      {sharedChatId ? (
                         <button
                           type="button"
                           className="sched-text-button"

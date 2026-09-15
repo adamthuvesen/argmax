@@ -2,7 +2,6 @@ import { cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   CHAT_VERBOSITY_KEY,
-  THINKING_EXPANDED_KEY,
   TOOL_CALLS_DISPLAY_KEY,
   TOOL_CALLS_EXPANDED_KEY,
   TOOL_CALL_GROUPS_EXPANDED_KEY,
@@ -44,21 +43,17 @@ describe("chat verbosity preference", () => {
   });
 
   it.each([
-    { display: "single-line", groupsExpanded: null, thinkingExpanded: null, expected: 1 },
-    { display: "collapsed", groupsExpanded: null, thinkingExpanded: null, expected: 2 },
-    { display: "collapsed", groupsExpanded: "false", thinkingExpanded: null, expected: 2 },
-    { display: "collapsed", groupsExpanded: "true", thinkingExpanded: null, expected: 3 },
-    { display: "expanded", groupsExpanded: null, thinkingExpanded: null, expected: 4 },
-    { display: "expanded", groupsExpanded: null, thinkingExpanded: "true", expected: 4 }
+    { display: "single-line", groupsExpanded: null, expected: 1 },
+    { display: "collapsed", groupsExpanded: null, expected: 2 },
+    { display: "collapsed", groupsExpanded: "false", expected: 2 },
+    { display: "collapsed", groupsExpanded: "true", expected: 3 },
+    { display: "expanded", groupsExpanded: null, expected: 4 }
   ] as const)(
     "migrates legacy $display preferences to level $expected",
-    ({ display, groupsExpanded, thinkingExpanded, expected }) => {
+    ({ display, groupsExpanded, expected }) => {
       window.localStorage.setItem(TOOL_CALLS_DISPLAY_KEY, display);
       if (groupsExpanded !== null) {
         window.localStorage.setItem(TOOL_CALL_GROUPS_EXPANDED_KEY, groupsExpanded);
-      }
-      if (thinkingExpanded !== null) {
-        window.localStorage.setItem(THINKING_EXPANDED_KEY, thinkingExpanded);
       }
 
       const { result } = renderHook(() => useChatVerbosityPreference());

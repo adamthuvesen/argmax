@@ -11,10 +11,6 @@ type ChatBubbleProps = {
 export function ChatBubble({ kind, rawMarkdown, children }: ChatBubbleProps): JSX.Element {
   const [copyFlash, copy] = useCopyToClipboard();
 
-  const handleCopy = (): void => {
-    void copy(rawMarkdown);
-  };
-
   return (
     <article className={`chat-bubble ${kind}`}>
       {kind === "user" ? <UserBubbleBody rawMarkdown={rawMarkdown}>{children}</UserBubbleBody> : children}
@@ -25,7 +21,7 @@ export function ChatBubble({ kind, rawMarkdown, children }: ChatBubbleProps): JS
         title={
           copyFlash === "copied" ? "Copied!" : copyFlash === "failed" ? "Couldn't copy" : "Copy markdown"
         }
-        onClick={handleCopy}
+        onClick={() => void copy(rawMarkdown)}
       >
         <Copy size={12} />
       </button>

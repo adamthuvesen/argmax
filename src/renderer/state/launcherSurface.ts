@@ -9,7 +9,7 @@ import { useSyncExternalStore } from "react";
 // a pane menu, an early stop) has to set it, which is why it does not belong
 // to any one of them.
 
-export interface LauncherSurfaceSnapshot {
+interface LauncherSurfaceSnapshot {
   /** `full` new-session mode hides the grid and renders the launcher instead. */
   fullLauncherOpen: boolean;
   /** Compose a repo-less side chat rather than a project session. */
@@ -56,14 +56,14 @@ export function requestLauncherReset(): void {
   publish({ ...state, resetSignal: state.resetSignal + 1 });
 }
 
-export function subscribeLauncherSurface(listener: () => void): () => void {
+function subscribeLauncherSurface(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
   };
 }
 
-export function launcherSurfaceSnapshot(): LauncherSurfaceSnapshot {
+function launcherSurfaceSnapshot(): LauncherSurfaceSnapshot {
   return state;
 }
 

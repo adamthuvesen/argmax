@@ -15,10 +15,10 @@
  */
 export type WorkspaceMode = "current" | "worktree";
 
-export const WORKSPACE_MODE_KEY = "argmax.workspaceMode";
-export const DEFAULT_WORKSPACE_MODE: WorkspaceMode = "current";
+const WORKSPACE_MODE_KEY = "argmax.workspaceMode";
+const DEFAULT_WORKSPACE_MODE: WorkspaceMode = "current";
 
-export function isWorkspaceMode(value: unknown): value is WorkspaceMode {
+function isWorkspaceMode(value: unknown): value is WorkspaceMode {
   return value === "current" || value === "worktree";
 }
 

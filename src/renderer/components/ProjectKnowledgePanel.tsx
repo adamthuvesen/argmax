@@ -38,17 +38,8 @@ export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[]
   }, [projects, selectedProjectId]);
 
   const handleSummaryBlur = async (learning: Learning): Promise<void> => {
-    const draft = draftSummaries[learning.id];
-    if (draft === undefined || draft.trim() === learning.summary) {
-      setDraftSummaries((current) => {
-        const next = { ...current };
-        delete next[learning.id];
-        return next;
-      });
-      return;
-    }
-    const trimmed = draft.trim();
-    if (!trimmed) {
+    const trimmed = draftSummaries[learning.id]?.trim() ?? "";
+    if (!trimmed || trimmed === learning.summary) {
       setDraftSummaries((current) => {
         const next = { ...current };
         delete next[learning.id];

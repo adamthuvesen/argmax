@@ -4,11 +4,11 @@
    composers, nested panels, code, and picker rows. Lines and scrollbars move
    with them so their contrast remains proportional. */
 :root:is([data-background-intensity="1"], [data-background-intensity="2"], [data-background-intensity="3"], [data-background-intensity="4"], [data-background-intensity="5"], [data-background-intensity="6"], [data-background-intensity="8"], [data-background-intensity="9"], [data-background-intensity="10"]) {
-  --bg: color-mix(in oklab, #fdfdfd, var(--background-bg-target) var(--background-pull));
-  --sidebar: color-mix(in oklab, #f9f9f7, var(--background-sidebar-target) var(--background-pull));
+  --bg: color-mix(in oklab, #fcfcfb, var(--background-bg-target) var(--background-pull));
+  --sidebar: color-mix(in oklab, #fbfbf9, var(--background-sidebar-target) var(--background-pull));
   --panel: color-mix(in oklab, #ffffff, var(--background-panel-target) var(--background-pull));
-  --review-panel: color-mix(in oklab, #f9f9f7, var(--background-review-panel-target) var(--background-pull));
-  --review-sidebar: color-mix(in oklab, #f6f6f3, var(--background-review-sidebar-target) var(--background-pull));
+  --review-panel: color-mix(in oklab, #fbfbf9, var(--background-review-panel-target) var(--background-pull));
+  --review-sidebar: color-mix(in oklab, #f8f8f5, var(--background-review-sidebar-target) var(--background-pull));
   --panel-soft: color-mix(in oklab, #fafafa, var(--background-panel-soft-target) var(--background-pull));
   --composer-surface: color-mix(in oklab, #ffffff, var(--background-composer-target) var(--background-pull));
   --panel-sunken: color-mix(in oklab, #eef0f1, var(--background-sunken-target) var(--background-pull));
@@ -45,25 +45,33 @@
   --overlay-panel-raised: color-mix(in oklab, #292926, var(--background-overlay-raised-target) var(--background-pull));
 }
 
+/* Light mode's low end is heavier paper stock, not dimmer paper. Softening a
+   neutral grey reads as a screen losing its backlight, because a theme named
+   paper has no business turning into #e3e3e3. Each target is therefore the
+   former grey translated in oklab by 1.5x the tint of Anthropic's ivory
+   (#f0eee6) against white. A single shared translation is what keeps the
+   tuning intact: lightness is untouched, so the offsets between chrome,
+   panels, and recessed surfaces survive, and the recessed ones stay a touch
+   cooler than the panels around them the way a shadow on cream does. */
 :root:is([data-background-intensity="1"], [data-background-intensity="2"], [data-background-intensity="3"], [data-background-intensity="4"], [data-background-intensity="5"], [data-background-intensity="6"]) {
-  --background-bg-target: #e3e3e3;
-  --background-sidebar-target: #dfdfdd;
-  --background-panel-target: #ededed;
-  --background-review-panel-target: #dfdfdd;
-  --background-review-sidebar-target: #dcdcda;
-  --background-panel-soft-target: #eaeaea;
-  --background-composer-target: #ededed;
-  --background-sunken-target: #d9dcde;
-  --background-code-target: #dfe2e4;
-  --background-terminal-target: #e1e1e1;
-  --background-tool-target: #e0e2e4;
-  --background-line-target: #c9ccce;
-  --background-line-soft-target: #d2d5d7;
-  --background-line-strong-target: #b5babd;
-  --background-scrollbar-target: #c2c6c9;
-  --background-scrollbar-hover-target: #b5babd;
-  --background-overlay-target: #ededed;
-  --background-overlay-raised-target: #d9dcde;
+  --background-bg-target: #e6e3d7;
+  --background-sidebar-target: #e2dfd1;
+  --background-panel-target: #f0ede1;
+  --background-review-panel-target: #e2dfd1;
+  --background-review-sidebar-target: #dfdcce;
+  --background-panel-soft-target: #edeade;
+  --background-composer-target: #f0ede1;
+  --background-sunken-target: #dcdcd3;
+  --background-code-target: #e2e2d8;
+  --background-terminal-target: #e4e1d5;
+  --background-tool-target: #e3e2d8;
+  --background-line-target: #ccccc3;
+  --background-line-soft-target: #d5d5cc;
+  --background-line-strong-target: #b8bab2;
+  --background-scrollbar-target: #c5c6be;
+  --background-scrollbar-hover-target: #b8bab2;
+  --background-overlay-target: #f0ede1;
+  --background-overlay-raised-target: #dcdcd3;
 }
 
 :root[data-theme="dark"]:is([data-background-intensity="1"], [data-background-intensity="2"], [data-background-intensity="3"], [data-background-intensity="4"], [data-background-intensity="5"], [data-background-intensity="6"]) {
@@ -88,7 +96,7 @@
 }
 
 /* Light mode's high end has almost no headroom above the shipped palette —
-   the page is already #fdfdfd and its panels are already white — so aiming
+   the page is already #fcfcfb and its panels are already white — so aiming
    the whole set at white moved every surface by one or two units of 255 and
    levels 7 through 10 were the same screen. Up the ladder is therefore a
    flattening rather than a lightening: the recessed surfaces (sunken, code,
@@ -98,10 +106,13 @@
    which is what keeps a code block a block. */
 :root:is([data-background-intensity="8"], [data-background-intensity="9"], [data-background-intensity="10"]) {
   --background-bg-target: #ffffff;
-  --background-sidebar-target: #fcfcfa;
+  /* The sidebars climb nearly in step with the page so the near-flat boundary
+     of the default survives the climb. Aiming them at white instead would
+     merge them into the page at level 10 and delete the boundary. */
+  --background-sidebar-target: #fefefc;
   --background-panel-target: #ffffff;
-  --background-review-panel-target: #fcfcfa;
-  --background-review-sidebar-target: #fafaf7;
+  --background-review-panel-target: #fefefc;
+  --background-review-sidebar-target: #fcfcf9;
   --background-panel-soft-target: #ffffff;
   --background-composer-target: #ffffff;
   --background-sunken-target: #fafbfb;

@@ -34,7 +34,7 @@ export function dismissToast(): void {
   publish(null);
 }
 
-export function subscribeToast(listener: () => void): () => void {
+function subscribeToast(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);

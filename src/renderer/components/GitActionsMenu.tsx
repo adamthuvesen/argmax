@@ -9,7 +9,7 @@ import {
   Upload
 } from "lucide-react";
 import { useCallback, useState, type FormEvent, type JSX, type MouseEvent } from "react";
-import type { GhPrRecord, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
+import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { openWebUrl } from "../lib/openWebUrl.js";
 import { primaryWorkspacePr } from "../lib/sessionPrs.js";
 
@@ -42,7 +42,6 @@ export function GitActionsMenu({
   onOpenCommitDialog,
   onClose
 }: {
-  prs: GhPrRecord[];
   session: SessionSummary | null;
   workspace: WorkspaceSummary | null;
   onPrsRefresh?: () => void;

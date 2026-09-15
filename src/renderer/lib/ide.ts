@@ -10,7 +10,7 @@ export const NO_DEFAULT_IDE = "none";
  *  Settings. Use sites still verify the IDE is actually detected. */
 const FACTORY_DEFAULT_IDE: IdeId = "cursor";
 
-export const ALL_IDE_IDS = new Set<IdeId>(["vscode", "cursor", "windsurf", "zed", "terminal", "iterm"]);
+const ALL_IDE_IDS = new Set<IdeId>(["vscode", "cursor", "windsurf", "zed", "terminal", "iterm"]);
 
 export function readStoredDefaultIde(): IdeId | null {
   if (typeof window === "undefined") return FACTORY_DEFAULT_IDE;

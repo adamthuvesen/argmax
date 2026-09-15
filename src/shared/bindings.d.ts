@@ -328,6 +328,27 @@ async sessionSuggestFollowUp(input: SessionSuggestFollowUpInput) : Promise<Resul
     else return { status: "error", error: e  as any };
 }
 },
+async settingsAgentTools() : Promise<Result<AgentToolsSettings, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("settings_agent_tools") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Takes effect on the next launch. A running turn keeps the surface it
+ * started with — its provider read the tool list once, at startup, and no
+ * CLI re-reads it mid-conversation.
+ */
+async settingsSetBrowserTools(input: SetBrowserToolsInput) : Promise<Result<AgentToolsSettings, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("settings_set_browser_tools", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async settingsPreviewChatCleanup() : Promise<Result<ChatCleanupPreview, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("settings_preview_chat_cleanup") };
@@ -1197,7 +1218,7 @@ url: string;
 /**
  * What the action touched, for a tool row a person can read.
  */
-detail: string | null }
+detail: string | null; matched?: boolean | null; state?: string | null; urlChanged?: boolean | null; textChars?: number | null; textCharsDelta?: number | null; listboxOpen?: boolean | null }
 export type ActivityBusiestDay = { date: string; commits: number }
 /**
  * Commits in the window by local weekday (Monday first) and local hour.
@@ -1358,6 +1379,7 @@ export type ActivityWindow = "24h" | "7d" | "30d" |
 "year"
 export type AgentMode = "auto" | "plan"
 export type AgentReference = { name: NonEmptyString; providerChildSessionId: NonEmptyString; providerParentConversationId: NonEmptyString }
+export type AgentToolsSettings = { browserTools: boolean }
 export type ApprovalId = string
 export type ApprovalRequest = { id: string; sessionId: string; command: string; cwd: string; provider: string; providerInvocationId: string | null; providerRequestId: string | null; riskLevel: string; status: string; createdAt: string; resolvedAt: string | null }
 export type ApprovalResolution = "approved" | "rejected"
@@ -1383,7 +1405,7 @@ export type BrowserActInput = { tabId?: string | null; sessionId?: string | null
  * One interaction. Serialized tagged so a tool layer can pass it straight
  * through without a verb-per-command explosion on the IPC surface.
  */
-export type BrowserAction = { kind: "click"; ref: string } | { kind: "type"; ref: string; text: string; submit?: boolean } | { kind: "select"; ref: string; value: string } | { kind: "hover"; ref: string } | { kind: "drag"; ref: string; toRef?: string | null; startX?: number | null; startY?: number | null; endX?: number | null; endY?: number | null; deltaX?: number | null; deltaY?: number | null; steps?: number | null } | { kind: "pressKey"; key: string; modifiers?: string[] } | { kind: "scroll"; ref?: string | null; direction: string; amount?: number | null } | { kind: "waitFor"; text?: string | null; ref?: string | null; urlIncludes?: string | null; timeoutMs?: number | null }
+export type BrowserAction = { kind: "click"; ref: string } | { kind: "type"; ref: string; text: string; submit?: boolean } | { kind: "select"; ref: string; value: string } | { kind: "hover"; ref: string } | { kind: "drag"; ref: string; toRef?: string | null; startX?: number | null; startY?: number | null; endX?: number | null; endY?: number | null; deltaX?: number | null; deltaY?: number | null; steps?: number | null } | { kind: "pressKey"; key: string; modifiers?: string[] } | { kind: "scroll"; ref?: string | null; direction: string; amount?: number | null } | { kind: "waitFor"; text?: string | null; ref?: string | null; urlIncludes?: string | null; quietMs?: number | null; minCount?: number | null; timeoutMs?: number | null }
 export type BrowserBackInput = { tabId: string }
 /**
  * Logical (CSS-pixel) rect of the renderer placeholder the browser webview
@@ -1677,13 +1699,19 @@ export type NonEmptyString = string
 export type NullableExpectedMtimeMs = number | null
 export type OpenIdeChoice = "default" | "vscode" | "cursor" | "windsurf" | "zed" | "terminal" | "iterm"
 export type OpenPath = string
-export type PageExtraction = { tabId?: string; url: string; title: string; metadata: PageMetadata; headings: PageHeading[]; sections: PageSection[]; tables: PageTable[]; links: PageLink[]; truncated: boolean }
+export type PageExtraction = { tabId?: string; url: string; title: string; state?: string; metadata: PageMetadata; headings: PageHeading[]; sections: PageSection[]; tables: PageTable[]; links: PageLink[]; items?: PageItem[]; fields?: PageField[]; truncated: boolean }
+export type PageField = { name: string; value: string; role: string; ref?: string | null }
 export type PageFindResult = { tabId: string; matches: FoundElement[] }
 export type PageHeading = { level: number; text: string }
+export type PageItem = { text: string; ref?: string | null }
 export type PageLink = { text: string | null; url: string }
 export type PageMetadata = { title: string; description: string | null; canonicalUrl: string | null; language: string | null; author: string | null; publishedTime: string | null; modifiedTime: string | null; siteName: string | null }
 export type PageSection = { heading: string | null; level: number | null; text: string }
 export type PageSnapshot = { tabId: string; url: string; title: string;
+/**
+ * `captcha`, `cookie`, `error`, `loading`, or `ready`, plus a short reason.
+ */
+state: string;
 /**
  * Indented aria tree; interactive lines carry `[ref=eN]` handles.
  */
@@ -1693,7 +1721,7 @@ tree: string;
  */
 truncated: boolean }
 export type PageTable = { caption: string | null; headers: string[]; rows: string[][] }
-export type PageText = { tabId: string; url: string; title: string; text: string; truncated: boolean }
+export type PageText = { tabId: string; url: string; title: string; state: string; text: string; truncated: boolean }
 export type PendingMessage = { id: string; sessionId: string; content: string; agentMode: string; modelLabel?: string | null; modelId?: string | null; reasoningEffort?: string | null; fastMode: boolean; attachments: ComposerAttachmentInput[]; agentReferences: AgentReference[]; origin?: MessageOrigin | null;
 /**
  * Present only after startup recovery. Recovered messages stay visible
@@ -2023,6 +2051,7 @@ launchedBySessionId?: string | null;
  * subagent dock — so this has to reach the renderer.
  */
 launchKind: string }
+export type SetBrowserToolsInput = { enabled: boolean }
 export type SkillSource = "user" | "workspace" | "codex-prompt" | "plugin" | "system"
 export type SkillSummary = { name: string; description: string; source: SkillSource }
 export type SkillsListInput = { provider: ProviderId; workspaceId: WorkspaceId | null }

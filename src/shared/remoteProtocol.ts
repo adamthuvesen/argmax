@@ -14,7 +14,7 @@ export function isRemoteEnvironment(): boolean {
   return false;
 }
 
-export function getRemoteToken(): string {
+function getRemoteToken(): string {
   if (typeof window === "undefined") return "";
   try {
     const win = window as unknown as Window;

@@ -1,16 +1,16 @@
 import { useSyncExternalStore } from "react";
 
 /** Whether transcript activity icons use semantic color or one muted ink. */
-export type ActivityIconColorMode = "color" | "monochrome";
+type ActivityIconColorMode = "color" | "monochrome";
 
-export type ActivityIconColorModeOption = {
+type ActivityIconColorModeOption = {
   id: ActivityIconColorMode;
   label: string;
   hint: string;
 };
 
 export const ACTIVITY_ICON_COLOR_MODE_STORAGE_KEY = "argmax.activityIcons.colorMode";
-export const DEFAULT_ACTIVITY_ICON_COLOR_MODE: ActivityIconColorMode = "color";
+const DEFAULT_ACTIVITY_ICON_COLOR_MODE: ActivityIconColorMode = "color";
 
 export const ACTIVITY_ICON_COLOR_MODE_OPTIONS: readonly ActivityIconColorModeOption[] = [
   {
@@ -43,7 +43,7 @@ function storedActivityIconColorMode(): ActivityIconColorMode {
 let state: ActivityIconColorMode | null = null;
 const listeners = new Set<() => void>();
 
-export function applyActivityIconColorModeToDocument(mode: ActivityIconColorMode): void {
+function applyActivityIconColorModeToDocument(mode: ActivityIconColorMode): void {
   if (typeof document === "undefined") return;
   document.documentElement.dataset.activityIconColor = mode;
 }

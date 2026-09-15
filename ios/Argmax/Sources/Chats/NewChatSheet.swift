@@ -157,8 +157,6 @@ struct NewChatSheet: View {
         }
     }
 
-    // MARK: - The choices, and the one action
-
     // MARK: - The hero, and the composer
 
     /// The fox and its line, centred in the room above the composer — what

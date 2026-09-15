@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
 import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
 import { useMotionPresence } from "../hooks/useMotionPresence.js";
@@ -158,14 +158,6 @@ export function CommitDialog({
     }
   };
 
-  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
-    if (event.key === "Escape") {
-      if (submitting) return;
-      event.preventDefault();
-      onClose();
-    }
-  };
-
   // Portaled to <body> so the overlay centers on the window rather than on the
   // pane that raised it, and so no ancestor's stacking context or transform can
   // clip it. The Esc/Tab handlers are document-level, so the move costs nothing.
@@ -182,7 +174,6 @@ export function CommitDialog({
       onMouseDown={(event) => {
         if (!submitting && event.target === event.currentTarget) onClose();
       }}
-      onKeyDown={handleKeyDown}
       tabIndex={-1}
     >
       <div className="commit-dialog motion-modal-surface">

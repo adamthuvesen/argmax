@@ -100,22 +100,6 @@ final class TranscriptInteractionCoordinator: ObservableObject {
             return false
         }
     }
-
-    func stopSession(id: String) async -> Bool {
-        failure = nil
-        do {
-            _ = try await client.terminateSession(sessionID: id)
-            return true
-        } catch {
-            failure = hostFailureMessage(error)
-            return false
-        }
-    }
-
-    func clearFailure() {
-        failure = nil
-    }
-
     private func resolveQuestion(
         sessionID: String,
         requestID: String,

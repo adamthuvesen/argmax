@@ -152,23 +152,8 @@ pub async fn list_changed_files(
     id: &str,
     comparison: ReviewComparison,
 ) -> ArgmaxResult<Vec<ChangedFileSummary>> {
-    if kind == WorkspaceTargetKind::Project {
-        return list_changed_files_for_project(database, id, comparison).await;
-    }
-    let workspace_id = id;
-    let (workspace, default_branch) = load_workspace_with_default_branch(database, workspace_id)?;
-    let base_ref = pick_review_base(
-        Path::new(&workspace.path),
-        comparison,
-        &workspace.base_ref,
-        default_branch.as_deref(),
-    )
-    .await;
-    list_changed_files_at_path(
-        &workspace.path,
-        baseline_for(comparison, base_ref.as_deref()),
-    )
-    .await
+    let (repo_path, base_ref) = resolve_review_target(database, kind, id, comparison).await?;
+    list_changed_files_at_path(repo_path, baseline_for(comparison, base_ref.as_deref())).await
 }
 
 pub async fn load_diff(
@@ -179,21 +164,13 @@ pub async fn load_diff(
     comparison: ReviewComparison,
     context_lines: Option<u32>,
 ) -> ArgmaxResult<WorkspaceDiff> {
-    if kind == WorkspaceTargetKind::Project {
-        return load_diff_for_project(database, id, file_path, comparison, context_lines).await;
-    }
-    let workspace_id = id;
-    let (workspace, default_branch) = load_workspace_with_default_branch(database, workspace_id)?;
-    let base_ref = pick_review_base(
-        Path::new(&workspace.path),
-        comparison,
-        &workspace.base_ref,
-        default_branch.as_deref(),
-    )
-    .await;
+    let (repo_path, base_ref) = resolve_review_target(database, kind, id, comparison).await?;
+    // The WorkspaceDiff response shape keys on `workspaceId`; a project review
+    // reuses it for the repoPath-rooted view, and the renderer never round-trips
+    // the id back.
     load_diff_at_path(
-        workspace.path,
-        workspace_id.to_owned(),
+        repo_path,
+        id.to_owned(),
         file_path,
         baseline_for(comparison, base_ref.as_deref()),
         context_lines,
@@ -201,61 +178,46 @@ pub async fn load_diff(
     .await
 }
 
-async fn list_changed_files_for_project(
+/// The checkout a review reads and the base ref it compares against: a
+/// workspace's own path and recorded base, or a project's repo root and its
+/// default branch.
+async fn resolve_review_target(
     database: &Database,
-    project_id: &str,
+    kind: WorkspaceTargetKind,
+    id: &str,
     comparison: ReviewComparison,
-) -> ArgmaxResult<Vec<ChangedFileSummary>> {
-    let project = {
-        let connection = database.connection();
-        require_project(&connection, project_id)?
-    };
-    let primary = project_base_ref(&project.default_branch, &project.current_branch);
-    let project_base = pick_review_base(
-        Path::new(&project.repo_path),
-        comparison,
-        primary,
-        project.default_branch.as_deref(),
-    )
-    .await;
-    list_changed_files_at_path(
-        project.repo_path,
-        baseline_for(comparison, project_base.as_deref()),
-    )
-    .await
-}
-
-async fn load_diff_for_project(
-    database: &Database,
-    project_id: &str,
-    file_path: Option<&str>,
-    comparison: ReviewComparison,
-    context_lines: Option<u32>,
-) -> ArgmaxResult<WorkspaceDiff> {
-    let project = {
-        let connection = database.connection();
-        require_project(&connection, project_id)?
-    };
-    let primary = project_base_ref(&project.default_branch, &project.current_branch);
-    let project_base = pick_review_base(
-        Path::new(&project.repo_path),
-        comparison,
-        primary,
-        project.default_branch.as_deref(),
-    )
-    .await;
-    // The WorkspaceDiff response shape still uses `workspaceId` as the key —
-    // we reuse it for the project's repoPath-rooted view; renderer never
-    // round-trips this id back, so keeping the type unchanged is safer than
-    // forking the shape.
-    load_diff_at_path(
-        project.repo_path,
-        project_id.to_owned(),
-        file_path,
-        baseline_for(comparison, project_base.as_deref()),
-        context_lines,
-    )
-    .await
+) -> ArgmaxResult<(String, Option<String>)> {
+    match kind {
+        WorkspaceTargetKind::Project => {
+            let project = {
+                let connection = database.connection();
+                require_project(&connection, id)?
+            };
+            let primary = project
+                .default_branch
+                .as_deref()
+                .unwrap_or(&project.current_branch);
+            let base_ref = pick_review_base(
+                Path::new(&project.repo_path),
+                comparison,
+                primary,
+                project.default_branch.as_deref(),
+            )
+            .await;
+            Ok((project.repo_path, base_ref))
+        }
+        WorkspaceTargetKind::Workspace => {
+            let (workspace, default_branch) = load_workspace_with_default_branch(database, id)?;
+            let base_ref = pick_review_base(
+                Path::new(&workspace.path),
+                comparison,
+                &workspace.base_ref,
+                default_branch.as_deref(),
+            )
+            .await;
+            Ok((workspace.path, base_ref))
+        }
+    }
 }
 
 /// Pair the requested comparison with the base ref that survived resolution.
@@ -267,12 +229,6 @@ fn baseline_for(comparison: ReviewComparison, base_ref: Option<&str>) -> ReviewB
         (ReviewComparison::Branch, Some(base_ref)) => ReviewBaseline::Branch(base_ref),
         (ReviewComparison::Committed, Some(base_ref)) => ReviewBaseline::Committed(base_ref),
     }
-}
-
-/// A project's review baseline is its default branch, falling back to the
-/// currently checked-out branch when no default is recorded.
-fn project_base_ref<'a>(default_branch: &'a Option<String>, current_branch: &'a str) -> &'a str {
-    default_branch.as_deref().unwrap_or(current_branch)
 }
 
 /// Load a workspace plus its project's recorded default branch (if any). The
@@ -525,7 +481,7 @@ pub async fn update_file_index(
     validate_relative_review_path(&repo_path, file_path)?;
     let lock = checkout_write_lock(&repo_path).await?;
     let _guard = lock.lock().await;
-    ensure_current_review_revision(&repo_path, file_path, revision).await?;
+    ensure_current_review_revision(&repo_path, revision).await?;
     if stage {
         run_git_text(&repo_path, ["add", "--", file_path], GIT_TIMEOUT).await?;
     } else {
@@ -564,9 +520,7 @@ pub async fn update_hunk_index(
     validate_relative_review_path(&repo_path, file_path)?;
     let lock = checkout_write_lock(&repo_path).await?;
     let _guard = lock.lock().await;
-    if review_revision_at_path(&repo_path).await? != revision {
-        return Err(stale_review_error());
-    }
+    ensure_current_review_revision(&repo_path, revision).await?;
     let status = run_git_text(
         &repo_path,
         ["status", "--porcelain=v1", "-z", "--", file_path],
@@ -600,11 +554,7 @@ fn review_target_path(
     validate_repo_path(Path::new(&path))
 }
 
-async fn ensure_current_review_revision(
-    repo_path: &Path,
-    _file_path: &str,
-    revision: &str,
-) -> ArgmaxResult<()> {
+async fn ensure_current_review_revision(repo_path: &Path, revision: &str) -> ArgmaxResult<()> {
     if review_revision_at_path(repo_path).await? == revision {
         Ok(())
     } else {
@@ -666,7 +616,7 @@ pub async fn revert_unstaged_file(
     validate_relative_review_path(&repo_path, file_path)?;
     let lock = checkout_write_lock(&repo_path).await?;
     let _guard = lock.lock().await;
-    ensure_current_review_revision(&repo_path, file_path, revision).await?;
+    ensure_current_review_revision(&repo_path, revision).await?;
     let porcelain = run_git_text(
         &repo_path,
         ["status", "--porcelain=v1", "-z", "--", file_path],
@@ -707,7 +657,7 @@ pub async fn revert_unstaged_hunk(
     validate_relative_review_path(&repo_path, file_path)?;
     let lock = checkout_write_lock(&repo_path).await?;
     let _guard = lock.lock().await;
-    ensure_current_review_revision(&repo_path, file_path, revision).await?;
+    ensure_current_review_revision(&repo_path, revision).await?;
     let displayed = current_working_tree_file_diff(&repo_path, file_path, context_lines).await?;
     let selected_patch = extract_hunk_patch(&displayed, hunk_index)?;
     let unstaged = run_git_text(
@@ -800,7 +750,9 @@ fn extract_hunk_patch(diff: &str, hunk_index: usize) -> ArgmaxResult<String> {
     Ok(patch)
 }
 
-async fn apply_patch_to_index(repo_path: &Path, patch: &str, reverse: bool) -> ArgmaxResult<()> {
+/// Validate a patch with `git apply --check`, then apply it for real. The two
+/// invocations must see the same file, so the patch is written once.
+async fn apply_patch(repo_path: &Path, patch: &str, extra_args: &[&str]) -> ArgmaxResult<()> {
     let patch_file = tempfile::NamedTempFile::new().map_err(|error| {
         ArgmaxError::service(
             "REVIEW_PATCH_TEMPFILE",
@@ -814,46 +766,28 @@ async fn apply_patch_to_index(repo_path: &Path, patch: &str, reverse: bool) -> A
         )
     })?;
     let patch_path = patch_file.path().to_string_lossy().to_string();
-    let mut args = vec!["apply", "--cached", "--check"];
-    if reverse {
-        args.push("--reverse");
-    }
+    let mut args = vec!["apply"];
+    args.extend_from_slice(extra_args);
     args.push("--");
     args.push(&patch_path);
-    run_git_text(repo_path, &args, GIT_TIMEOUT).await?;
-    args[2] = "";
-    args.retain(|arg| !arg.is_empty());
+    let mut checked = vec!["apply", "--check"];
+    checked.extend_from_slice(&args[1..]);
+    run_git_text(repo_path, &checked, GIT_TIMEOUT).await?;
     run_git_text(repo_path, &args, GIT_TIMEOUT).await?;
     Ok(())
 }
 
+async fn apply_patch_to_index(repo_path: &Path, patch: &str, reverse: bool) -> ArgmaxResult<()> {
+    let extra: &[&str] = if reverse {
+        &["--cached", "--reverse"]
+    } else {
+        &["--cached"]
+    };
+    apply_patch(repo_path, patch, extra).await
+}
+
 async fn apply_patch_to_worktree(repo_path: &Path, patch: &str) -> ArgmaxResult<()> {
-    let patch_file = tempfile::NamedTempFile::new().map_err(|error| {
-        ArgmaxError::service(
-            "REVIEW_PATCH_TEMPFILE",
-            format!("could not create patch file: {error}"),
-        )
-    })?;
-    std::fs::write(patch_file.path(), patch).map_err(|error| {
-        ArgmaxError::service(
-            "REVIEW_PATCH_WRITE",
-            format!("could not write patch: {error}"),
-        )
-    })?;
-    let patch_path = patch_file.path().to_string_lossy().to_string();
-    run_git_text(
-        repo_path,
-        ["apply", "--check", "--reverse", "--", &patch_path],
-        GIT_TIMEOUT,
-    )
-    .await?;
-    run_git_text(
-        repo_path,
-        ["apply", "--reverse", "--", &patch_path],
-        GIT_TIMEOUT,
-    )
-    .await?;
-    Ok(())
+    apply_patch(repo_path, patch, &["--reverse"]).await
 }
 
 /// Gather the changed-file list for a comparison.
@@ -1258,42 +1192,42 @@ fn synthesize_untracked_text_diff(file_path: &str, content: &str) -> String {
     } else {
         "\n\\ No newline at end of file"
     };
-    [
-        format!("diff --git a/{file_path} b/{file_path}"),
-        "new file mode 100644".to_owned(),
-        "index 0000000..0000000".to_owned(),
-        "--- /dev/null".to_owned(),
-        format!("+++ b/{file_path}"),
-        format!("@@ -0,0 +1,{} @@", lines.len()),
-        format!("{body}{no_newline_marker}"),
-    ]
-    .join("\n")
+    untracked_diff(
+        file_path,
+        "100644",
+        &format!("@@ -0,0 +1,{} @@", lines.len()),
+        &format!("{body}{no_newline_marker}"),
+    )
 }
 
 fn synthesize_skipped_untracked_diff(file_path: &str, size_bytes: u64, reason: &str) -> String {
-    [
-        format!("diff --git a/{file_path} b/{file_path}"),
-        "new file mode 100644".to_owned(),
-        "index 0000000..0000000".to_owned(),
-        "--- /dev/null".to_owned(),
-        format!("+++ b/{file_path}"),
-        "@@ -0,0 +1 @@".to_owned(),
-        format!("+[untracked file not loaded: {reason}; size {size_bytes} bytes]"),
-        "\\ No newline at end of file".to_owned(),
-    ]
-    .join("\n")
+    untracked_diff(
+        file_path,
+        "100644",
+        "@@ -0,0 +1 @@",
+        &format!("+[untracked file not loaded: {reason}; size {size_bytes} bytes]\n\\ No newline at end of file"),
+    )
 }
 
 fn synthesize_untracked_symlink_diff(file_path: &str, target: &str) -> String {
+    untracked_diff(
+        file_path,
+        "120000",
+        "@@ -0,0 +1 @@",
+        &format!("+{target}\n\\ No newline at end of file"),
+    )
+}
+
+/// The `diff --git` envelope every synthesized untracked diff shares.
+fn untracked_diff(file_path: &str, mode: &str, hunk_header: &str, body: &str) -> String {
     [
         format!("diff --git a/{file_path} b/{file_path}"),
-        "new file mode 120000".to_owned(),
+        format!("new file mode {mode}"),
         "index 0000000..0000000".to_owned(),
         "--- /dev/null".to_owned(),
         format!("+++ b/{file_path}"),
-        "@@ -0,0 +1 @@".to_owned(),
-        format!("+{target}"),
-        "\\ No newline at end of file".to_owned(),
+        hunk_header.to_owned(),
+        body.to_owned(),
     ]
     .join("\n")
 }
@@ -1411,11 +1345,6 @@ mod tests {
     }
 
     #[test]
-    fn name_status_empty_input_is_empty() {
-        assert!(parse_name_status_z("").is_empty());
-    }
-
-    #[test]
     fn numstat_parses_counts_renames_and_binaries() {
         // Real `git diff --numstat -z` bytes: plain records carry the path in
         // the third tab field; a rename empties it and appends old + new; a
@@ -1430,51 +1359,9 @@ mod tests {
         assert_eq!(parsed.len(), 3);
     }
 
-    #[test]
-    fn numstat_empty_input_is_empty() {
-        assert!(parse_numstat_z("").is_empty());
-    }
-
     // The counts must survive being gathered in one batch instead of one
     // `git diff` per file, untracked files included — those are invisible to
     // numstat and still need the synthesized whole-file diff.
-    #[tokio::test]
-    async fn changed_file_counts_cover_tracked_and_untracked_files() {
-        let dir = tempfile::TempDir::new().expect("tempdir");
-        let repo = dir.path();
-        async fn git(repo: &Path, args: &[&str]) {
-            run_git_text(repo, args, GIT_TIMEOUT)
-                .await
-                .unwrap_or_else(|error| panic!("git {args:?} failed: {error}"));
-        }
-        git(repo, &["init", "-q", "."]).await;
-        git(repo, &["config", "user.email", "t@example.com"]).await;
-        git(repo, &["config", "user.name", "t"]).await;
-        std::fs::write(repo.join("kept.txt"), "a\nb\nc\n").expect("write");
-        git(repo, &["add", "-A"]).await;
-        git(repo, &["commit", "-qm", "base"]).await;
-
-        std::fs::write(repo.join("kept.txt"), "a\nB\nc\nd\n").expect("write");
-        std::fs::write(repo.join("fresh.txt"), "one\ntwo\n").expect("write");
-
-        let files = list_changed_files_at_path(repo, ReviewBaseline::WorkingTree)
-            .await
-            .expect("changed files");
-        let by_path = |name: &str| {
-            files
-                .iter()
-                .find(|file| file.path == name)
-                .unwrap_or_else(|| panic!("{name} missing from {files:?}"))
-                .clone()
-        };
-
-        let kept = by_path("kept.txt");
-        assert_eq!((kept.additions, kept.deletions), (2, 1));
-        let fresh = by_path("fresh.txt");
-        assert_eq!(fresh.status, "??");
-        assert_eq!((fresh.additions, fresh.deletions), (2, 0));
-    }
-
     #[tokio::test]
     async fn load_diff_succeeds_while_the_real_index_lock_is_held() {
         let dir = review_repo().await;

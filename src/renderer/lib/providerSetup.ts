@@ -10,7 +10,7 @@ import type { ProviderId } from "../../shared/types.js";
  * launches the CLI with the user's existing config, so servers added there
  * appear in Argmax sessions automatically (see docs/providers.md).
  */
-export type ProviderSetup = {
+type ProviderSetup = {
   displayName: string;
   installCommand: string;
   loginCommand: string;

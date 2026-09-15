@@ -47,6 +47,12 @@ pub struct DeleteOldChatsInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SetBrowserToolsInput {
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SystemDebugSnapshotInput {
     /// Highest log `seq` the caller already holds. `None` asks for the whole
     /// ring; the debug panel sends its cursor so each poll ships only new lines.

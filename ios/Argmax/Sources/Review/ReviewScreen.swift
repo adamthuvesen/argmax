@@ -452,25 +452,8 @@ struct ChangeCount: View {
                 Text(verbatim: "−\(deletions)").foregroundStyle(Theme.diffDelInk)
             }
         }
-        .modifier(ChangeCountTypeStyle(style: style))
+        .typeStyle(style == .compact ? .caption2 : .subheadline, mono: true, monospacedDigit: true)
         .accessibilityLabel("\(additions) added, \(deletions) removed")
-    }
-}
-
-/// A file row's count sits a step under the filename: digits are all
-/// cap-height and the face is monospace, so at the filename's own 18pt they
-/// out-measure the name they annotate. Metadata and transcript counts stay
-/// compact enough to remain secondary to the action they describe.
-private struct ChangeCountTypeStyle: ViewModifier {
-    let style: ChangeCount.Style
-
-    func body(content: Content) -> some View {
-        switch style {
-        case .compact:
-            content.typeStyle(.caption2, mono: true, monospacedDigit: true)
-        case .rowTitle:
-            content.typeStyle(.subheadline, mono: true, monospacedDigit: true)
-        }
     }
 }
 

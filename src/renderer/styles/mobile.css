@@ -686,10 +686,6 @@ html:has(.mobile-shell[data-embed]) body,
   transform: none !important;
 }
 
-.mobile-shell .model-picker-popover .project-picker-option {
-  min-height: 44px;
-}
-
 .mobile-shell .effort-slider-track {
   height: 44px;
 }
@@ -1291,16 +1287,79 @@ html:has(.mobile-shell[data-embed]) body,
   padding: 0 var(--space-2_5) calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
 }
 
+/* Mobile keeps the expandable changed-file list: desktop now uses a separate
+   tree and selected-file pane, so this screen owns the legacy row geometry. */
+.mobile-review-scroll .review-changed-file-section {
+  border-bottom: 1px solid var(--line);
+}
+
+.mobile-review-scroll .review-changed-file-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 42px;
+  padding: var(--space-1) var(--space-3);
+}
+
+.mobile-review-scroll .review-changed-file-toggle {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.mobile-review-scroll .review-file-row-status {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--muted-strong);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.mobile-review-scroll .review-changed-file-toggle[data-status="a"] .review-file-row-status {
+  color: var(--sage-deep);
+}
+
+.mobile-review-scroll .review-changed-file-toggle[data-status="m"] .review-file-row-status {
+  color: var(--amber);
+}
+
+.mobile-review-scroll .review-changed-file-toggle[data-status="d"] .review-file-row-status {
+  color: var(--rose);
+}
+
+.mobile-review-scroll .review-file-row-path {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-soft);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-review-scroll .review-changed-file-row .change-count {
+  justify-content: flex-end;
+  font-size: var(--text-xs);
+}
+
+.mobile-review-scroll .review-inline-diff {
+  border-top: 1px solid var(--line-soft);
+}
+
 /* Reused desktop leaves, sized for thumbs: taller changed-file rows, diffs
    scrolling sideways inside their section instead of stretching the page. */
 .mobile-review-scroll .review-changed-file-toggle {
   min-height: 40px;
-}
-
-/* The desktop row grid reserves a third track for its "Open in Files view"
-   button, which mobile omits — reclaim it so the counts hug the right edge. */
-.mobile-review-scroll .review-changed-file-row {
-  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .mobile-review-scroll .review-inline-diff {
@@ -1354,7 +1413,7 @@ html:has(.mobile-shell[data-embed]) body,
 /* Over everything the sheet covers, so a tap outside it closes rather than
    reaching the composer underneath. The same scrim the phone's own bottom
    sheets use: a veil mixed from --bg was a dark one on charcoal but a
-   near-white one on paper, where the panel is #ffffff on a #fdfdfd ground and
+   near-white one on paper, where the panel is #ffffff on a #fcfcfb ground and
    the hairline was the only thing saying a sheet had come up.
    --modal-backdrop is dark in both themes, so the peek reads as raised on
    paper too. */
@@ -1468,46 +1527,6 @@ html:has(.mobile-shell[data-embed]) body,
   z-index: 1;
   background: linear-gradient(to bottom, var(--panel), transparent);
   pointer-events: none;
-}
-
-/* The goal sheet. The desktop body is a capped strip that scrolls inside the
-   composer lane; in the sheet it is the whole panel, so it fills and scrolls
-   there instead. */
-.mobile-agent-overlay-body .goal-body {
-  flex: 1;
-  min-height: 0;
-  max-height: none;
-  overflow: auto;
-  padding: 0 var(--space-4) var(--space-4);
-  border-top: 0;
-}
-
-.mobile-agent-overlay-body .goal-form {
-  gap: var(--space-3);
-}
-
-.mobile-agent-overlay-body .goal-form input,
-.mobile-agent-overlay-body .goal-form textarea,
-.mobile-agent-overlay-body .goal-form select {
-  width: 100%;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  /* Under 16px, focusing a field zooms the page and iOS never zooms back. */
-  font-size: max(16px, var(--text-sm));
-}
-
-.mobile-agent-overlay-body .goal-form textarea {
-  min-height: 72px;
-}
-
-.mobile-agent-overlay-body .goal-body button {
-  min-height: 40px;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-}
-
-.mobile-agent-overlay-body .goal-limits label {
-  flex: 1 1 96px;
 }
 
 /* The dock's tab strip is built for a mouse and a wide panel. On a phone it

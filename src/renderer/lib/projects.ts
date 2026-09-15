@@ -4,13 +4,13 @@ import { safeJsonParseArray, safeJsonParseRecord } from "../../shared/safeJson.j
 import type { ProjectSummary } from "../../shared/types.js";
 
 export const collapsedProjectsStorageKey = "argmax.sidebar.collapsedProjects";
-export const expandedProjectsStorageKey = "argmax.sidebar.expandedProjects";
+const expandedProjectsStorageKey = "argmax.sidebar.expandedProjects";
 export const projectOrderStorageKey = "argmax.sidebar.projectOrder";
-export const workspaceOrderStorageKey = "argmax.sidebar.workspaceOrder";
+const workspaceOrderStorageKey = "argmax.sidebar.workspaceOrder";
 export const projectSortModeStorageKey = "argmax.sidebar.projectSortMode";
 export const sidebarViewModeStorageKey = "argmax.sidebar.viewMode";
 export const collapsedDateGroupsStorageKey = "argmax.sidebar.collapsedDateGroups";
-export const expandedDateGroupsStorageKey = "argmax.sidebar.expandedDateGroups";
+const expandedDateGroupsStorageKey = "argmax.sidebar.expandedDateGroups";
 
 export const SIDEBAR_SESSION_LIMIT = 5;
 
@@ -24,20 +24,23 @@ export type SidebarViewMode = "projects" | "sessions";
 
 const sidebarViewModes: readonly SidebarViewMode[] = ["projects", "sessions"];
 
-export function loadSidebarViewMode(): SidebarViewMode {
-  if (typeof window === "undefined") return "projects";
-  const raw = window.localStorage.getItem(sidebarViewModeStorageKey);
-  if (raw === null) return "projects";
+// The value is written as a bare JSON string ("recent"); tolerate plain strings
+// too in case the key was set manually for debugging.
+function loadStoredChoice<T extends string>(storageKey: string, allowed: readonly T[], fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  const raw = window.localStorage.getItem(storageKey);
+  if (raw === null) return fallback;
   let parsed: unknown = raw;
   try {
     parsed = JSON.parse(raw);
   } catch {
     parsed = raw;
   }
-  if (typeof parsed === "string" && (sidebarViewModes as readonly string[]).includes(parsed)) {
-    return parsed as SidebarViewMode;
-  }
-  return "projects";
+  return (allowed as readonly unknown[]).includes(parsed) ? (parsed as T) : fallback;
+}
+
+export function loadSidebarViewMode(): SidebarViewMode {
+  return loadStoredChoice(sidebarViewModeStorageKey, sidebarViewModes, "projects");
 }
 
 export function saveSidebarViewMode(mode: SidebarViewMode): void {
@@ -45,21 +48,7 @@ export function saveSidebarViewMode(mode: SidebarViewMode): void {
 }
 
 export function loadProjectSortMode(): ProjectSortMode {
-  if (typeof window === "undefined") return "recent";
-  const raw = window.localStorage.getItem(projectSortModeStorageKey);
-  if (raw === null) return "recent";
-  // The value is a bare JSON string ("recent"); tolerate plain strings too in
-  // case the key was set manually for debugging.
-  let parsed: unknown = raw;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    parsed = raw;
-  }
-  if (typeof parsed === "string" && (projectSortModes as readonly string[]).includes(parsed)) {
-    return parsed as ProjectSortMode;
-  }
-  return "recent";
+  return loadStoredChoice(projectSortModeStorageKey, projectSortModes, "recent");
 }
 
 export function saveProjectSortMode(mode: ProjectSortMode): void {
@@ -178,7 +167,7 @@ export function sortWorkspaceGroup<T extends { id: string; pinned: boolean; last
   });
 }
 
-export interface SidebarDateGroup<T> {
+interface SidebarDateGroup<T> {
   key: string;
   label: string;
   items: T[];
@@ -250,7 +239,7 @@ export function sortProjectsBy(
   return projects;
 }
 
-export function applyProjectOrder(projects: ProjectSummary[], order: string[]): ProjectSummary[] {
+function applyProjectOrder(projects: ProjectSummary[], order: string[]): ProjectSummary[] {
   if (order.length === 0) return projects;
   const rank = new Map(order.map((id, i) => [id, i]));
   return [...projects].sort((a, b) => {

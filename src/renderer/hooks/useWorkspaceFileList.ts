@@ -5,7 +5,7 @@ import type { ReviewSourceKind } from "../lib/reviewIpc.js";
 import { errorMessage } from "../../shared/error.js";
 import type { AsyncState, ReviewPanelMode } from "./useReviewState.js";
 
-export interface UseWorkspaceFileListResult {
+interface UseWorkspaceFileListResult {
   entries: WorkspaceFileEntry[];
   listState: AsyncState;
   listError: string | null;

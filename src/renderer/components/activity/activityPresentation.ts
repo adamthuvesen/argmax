@@ -21,12 +21,12 @@ export const ACTIVITY_METRIC_OPTIONS = [
  * past the fifth is one `--muted` tail rather than a sixth colour nobody can
  * tell from the fifth.
  */
-export const ACTIVITY_SERIES_SLOTS = 5;
+const ACTIVITY_SERIES_SLOTS = 5;
 
 /** The tail's series key, kept out of the project-id namespace. */
-export const ACTIVITY_TAIL_KEY = "__tail";
+const ACTIVITY_TAIL_KEY = "__tail";
 
-export type ActivitySlot = "1" | "2" | "3" | "4" | "5" | "tail";
+type ActivitySlot = "1" | "2" | "3" | "4" | "5" | "tail";
 
 /**
  * Anything with lines and commits on it: totals, a repository row, one
@@ -43,12 +43,6 @@ type ActivityAmounts = { commits: number; linesAdded: number; linesRemoved: numb
  */
 export function metricValue(row: ActivityAmounts, metric: ActivityMetric): number {
   return metric === "commits" ? row.commits : row.linesAdded + row.linesRemoved;
-}
-
-/** `commits` / `lines changed` — how a sentence names the active metric. */
-export function metricNoun(value: number, metric: ActivityMetric): string {
-  if (metric === "lines") return "lines changed";
-  return value === 1 ? "commit" : "commits";
 }
 
 /**

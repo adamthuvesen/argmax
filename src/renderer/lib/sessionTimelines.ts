@@ -15,7 +15,7 @@ export interface SessionTimelineSnapshot {
   rawOutputs: RawProviderOutput[];
 }
 
-export interface SessionTimelineReadTicket {
+interface SessionTimelineReadTicket {
   readonly sessionId: string;
   readonly eventCursor: number | null;
   readonly rawOutputCursor: number | null;

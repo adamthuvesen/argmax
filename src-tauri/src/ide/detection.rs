@@ -91,12 +91,6 @@ pub async fn detect_installed_ides() -> Vec<DetectedIde> {
     (*arc).clone()
 }
 
-/// Force a fresh detection that bypasses the cache. Used by tests and
-/// (eventually) the explicit "rescan IDEs" affordance.
-pub async fn detect_installed_ides_uncached() -> Vec<DetectedIde> {
-    run_detection().await
-}
-
 async fn run_detection() -> Vec<DetectedIde> {
     // Probe every GUI IDE concurrently — each does a `mdfind` + `which` under
     // multi-second timeouts, so serializing them would stack the worst-case
@@ -189,7 +183,7 @@ mod tests {
 
     #[tokio::test]
     async fn detection_always_includes_terminal() {
-        let detected = detect_installed_ides_uncached().await;
+        let detected = detect_installed_ides().await;
         assert!(detected.iter().any(|ide| ide.id == IdeId::Terminal));
     }
 }

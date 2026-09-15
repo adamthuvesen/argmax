@@ -10,7 +10,7 @@ import type {
   WorkspaceTarget
 } from "../../shared/types.js";
 
-export type ReviewTarget = WorkspaceTarget;
+type ReviewTarget = WorkspaceTarget;
 export type ReviewSourceKind = WorkspaceTarget["kind"];
 
 export interface ReviewIpcDispatch {

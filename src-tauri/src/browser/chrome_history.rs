@@ -578,42 +578,4 @@ mod tests {
             Some("https://example.com/1")
         );
     }
-
-    #[test]
-    #[ignore = "reads the developer's local Chrome profiles"]
-    fn imports_local_chrome_history_without_exposing_entries() {
-        let root = default_profile_root().expect("locate Chrome profile root");
-        let profiles = discover_profiles(&root).expect("discover local Chrome profiles");
-        let mut total_available = 0_u64;
-        let mut imported_entries = 0_usize;
-        let mut serialized_entry_bytes = 0_usize;
-        for (index, profile) in profiles.iter().enumerate() {
-            let imported = import_history(&root, &profile.id).expect("import local Chrome history");
-            assert!(imported.entries.len() <= MAX_IMPORTED_ENTRIES);
-            assert!(imported
-                .entries
-                .iter()
-                .all(|entry| entry.visited_at.is_finite() && entry.visited_at >= 0.0));
-            total_available += u64::from(imported.total_available);
-            imported_entries += imported.entries.len();
-            let profile_bytes = serde_json::to_vec(&imported.entries)
-                .expect("serialize imported entries")
-                .len();
-            eprintln!(
-                "local Chrome profile aggregate: index={}, available_urls={}, imported_urls={}, serialized_entry_bytes={}",
-                index,
-                imported.total_available,
-                imported.entries.len(),
-                profile_bytes
-            );
-            serialized_entry_bytes += profile_bytes;
-        }
-        eprintln!(
-            "local Chrome aggregate: profiles={}, available_urls={}, imported_urls={}, serialized_entry_bytes={}",
-            profiles.len(),
-            total_available,
-            imported_entries,
-            serialized_entry_bytes
-        );
-    }
 }

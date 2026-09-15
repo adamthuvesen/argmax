@@ -19,7 +19,7 @@ export interface AgentTabsState {
   replaceTab?: (fromTabId: string, toTabId: string) => void;
 }
 
-export interface AgentTabs extends AgentTabsState {
+interface AgentTabs extends AgentTabsState {
   openTab: (tabId: string) => void;
   replaceTab: (fromTabId: string, toTabId: string) => void;
   /** The same clear as `closeAllTabs`, under the name the sibling review

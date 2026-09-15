@@ -4,6 +4,7 @@ import type * as Bindings from "./bindings.js";
 export type AgentMode = Bindings.AgentMode;
 export type AttachmentMimeType = Bindings.AttachmentMimeType;
 export type DatabaseStats = Bindings.DatabaseStats;
+export type AgentToolsSettings = Bindings.AgentToolsSettings;
 export type ChatCleanupPreview = Bindings.ChatCleanupPreview;
 export type DeleteOldChatsInput = Bindings.DeleteOldChatsInput;
 export type DeleteOldChatsResult = Bindings.DeleteOldChatsResult;
@@ -590,6 +591,8 @@ export interface ArgmaxApi {
     list: (input: ConnectionsListInput) => Promise<ConnectionSummary[]>;
   };
   settings: {
+    agentTools: () => Promise<AgentToolsSettings>;
+    setBrowserTools: (input: { enabled: boolean }) => Promise<AgentToolsSettings>;
     previewChatCleanup: () => Promise<ChatCleanupPreview>;
     deleteOldChats: (input: DeleteOldChatsInput) => Promise<DeleteOldChatsResult>;
   };
@@ -789,6 +792,8 @@ export interface BrowserPageSnapshot {
   tabId: string;
   url: string;
   title: string;
+  /** captcha, cookie, error, loading, or ready — plus a short reason. */
+  state: string;
   /** Indented aria tree; interactive lines carry `[ref=eN]` handles. */
   tree: string;
   truncated: boolean;
@@ -810,6 +815,7 @@ export interface BrowserPageText {
   tabId: string;
   url: string;
   title: string;
+  state: string;
   text: string;
   truncated: boolean;
 }
@@ -832,6 +838,9 @@ export interface BrowserPageExtraction {
   sections: Array<{ heading: string | null; level: number | null; text: string }>;
   tables: Array<{ caption: string | null; headers: string[]; rows: string[][] }>;
   links: Array<{ text: string | null; url: string }>;
+  items: Array<{ text: string; ref: string | null }>;
+  fields: Array<{ name: string; value: string; role: string; ref: string | null }>;
+  state: string;
   truncated: boolean;
 }
 
@@ -840,6 +849,12 @@ export interface BrowserActionOutcome {
   /** URL after the action — a click that navigated says so here. */
   url: string;
   detail: string | null;
+  matched?: boolean | null;
+  state?: string | null;
+  urlChanged?: boolean | null;
+  textChars?: number | null;
+  textCharsDelta?: number | null;
+  listboxOpen?: boolean | null;
 }
 
 /**
@@ -867,7 +882,15 @@ export type BrowserAction = WireSubtype<
     }
   | { kind: "pressKey"; key: string; modifiers?: string[] }
   | { kind: "scroll"; ref?: string; direction: "up" | "down" | "left" | "right"; amount?: number }
-  | { kind: "waitFor"; text?: string; ref?: string; urlIncludes?: string; timeoutMs?: number }
+  | {
+      kind: "waitFor";
+      text?: string;
+      ref?: string;
+      urlIncludes?: string;
+      quietMs?: number;
+      minCount?: number;
+      timeoutMs?: number;
+    }
 >;
 
 /**

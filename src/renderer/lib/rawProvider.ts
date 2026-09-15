@@ -7,7 +7,7 @@ import type { RawProviderOutput } from "../../shared/types.js";
  * main-side raw_outputs retention (which still persists the full stream);
  * this is just how much of the tail we feed into the DOM at once.
  */
-export const RAW_TRANSCRIPT_CHAR_CAP = 8_000;
+const RAW_TRANSCRIPT_CHAR_CAP = 8_000;
 
 export function buildTerminalTranscript(rawOutputs: RawProviderOutput[], sessionId: string | null): string {
   if (!sessionId) {
@@ -29,7 +29,7 @@ export function buildTerminalTranscript(rawOutputs: RawProviderOutput[], session
     : transcript;
 }
 
-export function visibleRawProviderLines(content: string): string[] {
+function visibleRawProviderLines(content: string): string[] {
   return content
     .split(/(\r?\n)/)
     .filter((part) => part === "\n" || part === "\r\n" || !isHiddenRawProviderLine(part.trim()));

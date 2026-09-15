@@ -575,6 +575,13 @@ struct GrokToolInfo {
     input: Value,
 }
 
+fn is_terminal_status(update: &Value) -> bool {
+    matches!(
+        update.get("status").and_then(Value::as_str),
+        Some("completed" | "failed" | "cancelled" | "canceled" | "interrupted")
+    )
+}
+
 impl GrokTurnTranslation {
     fn translate(&mut self, params: &Value, session_id: &str) -> Vec<Value> {
         let Some(update) = params.get("update") else {
@@ -617,40 +624,25 @@ impl GrokTurnTranslation {
                         "content_block": { "type": "tool_use", "id": call_id,
                             "name": name, "input": input } }
                 })];
-                if matches!(
-                    update.get("status").and_then(Value::as_str),
-                    Some("completed" | "failed" | "cancelled" | "canceled" | "interrupted")
-                ) {
+                if is_terminal_status(update) {
                     let info = self.tools.remove(call_id);
                     lines.push(grok_tool_result(update, call_id, session_id, info));
                 }
                 lines
             }
-            "tool_call_update"
-                if !matches!(
-                    update.get("status").and_then(Value::as_str),
-                    Some("completed" | "failed" | "cancelled" | "canceled" | "interrupted")
-                ) =>
-            {
-                if let Some(call_id) = update.get("toolCallId").and_then(Value::as_str) {
+            "tool_call_update" => {
+                let Some(call_id) = update.get("toolCallId").and_then(Value::as_str) else {
+                    return Vec::new();
+                };
+                if !is_terminal_status(update) {
                     merge_grok_tool_info(
                         self.tools
                             .entry(call_id.to_string())
                             .or_insert_with(|| grok_tool_info(update)),
                         update,
                     );
-                }
-                Vec::new()
-            }
-            "tool_call_update"
-                if matches!(
-                    update.get("status").and_then(Value::as_str),
-                    Some("completed" | "failed" | "cancelled" | "canceled" | "interrupted")
-                ) =>
-            {
-                let Some(call_id) = update.get("toolCallId").and_then(Value::as_str) else {
                     return Vec::new();
-                };
+                }
                 let mut info = self
                     .tools
                     .remove(call_id)

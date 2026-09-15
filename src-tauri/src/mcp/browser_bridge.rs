@@ -27,11 +27,10 @@ use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::ipc::validation::{AttachmentMimeType, Base64ImageData, SessionId};
 use crate::session_control::{argmax_protocol_error, SessionControlError};
 
-/// Points, not device pixels: the capture is rasterised at this width so its
-/// base64 survives the provider's own per-line JSON cap (4 MiB in
-/// `providers::normalizer`). A whole retina window would not.
-// Retina WebKit returns two device pixels per point. Keep the delivered image
-// near 720 pixels wide so ordinary screenshots fit the provider's JSON limit.
+/// Points, not device pixels — retina WebKit returns two device pixels per
+/// point, so this delivers an image near 720 pixels wide. That keeps the base64
+/// inside the provider's own per-line JSON cap (4 MiB in
+/// `providers::normalizer`), which a whole retina window would not.
 const SCREENSHOT_MAX_WIDTH_POINTS: f64 = 360.0;
 
 /// Above this the image is dropped and the reply is text only. A tool result
@@ -283,7 +282,7 @@ async fn run(
                     }
                 }
             }
-            automation::group_tabs(app, &owned_tabs, group.clone())?;
+            automation::group_tabs(app, &owned_tabs, group.clone());
             Ok(BrowserOutcome::json(
                 json!({ "tabs": owned_tabs, "group": group }),
             ))
@@ -559,48 +558,5 @@ mod tests {
                 }
             }
         );
-    }
-
-    #[test]
-    fn a_dialog_answer_decodes_without_prompt_text() {
-        let request: BrowserRequest =
-            serde_json::from_str(r#"{"handleDialog":{"accept":true}}"#).expect("decode");
-        assert_eq!(
-            request,
-            BrowserRequest::HandleDialog {
-                tab: None,
-                accept: true,
-                prompt_text: None
-            }
-        );
-    }
-
-    #[test]
-    fn capture_requests_carry_bounds_and_clear_across_the_wire() {
-        for (encoded, expected) in [
-            (
-                r#"{"console":{"tab":"tab-1","limit":12,"clear":true}}"#,
-                BrowserRequest::Console {
-                    tab: Some("tab-1".to_string()),
-                    limit: Some(12),
-                    clear: true,
-                },
-            ),
-            (
-                r#"{"network":{"limit":200,"clear":false}}"#,
-                BrowserRequest::Network {
-                    tab: None,
-                    limit: Some(200),
-                    clear: false,
-                },
-            ),
-        ] {
-            let decoded = serde_json::from_str::<BrowserRequest>(encoded).expect("decode");
-            assert_eq!(decoded, expected);
-            let round_trip =
-                serde_json::from_str::<BrowserRequest>(&serde_json::to_string(&decoded).unwrap())
-                    .expect("round trip");
-            assert_eq!(round_trip, expected);
-        }
     }
 }

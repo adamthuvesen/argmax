@@ -129,8 +129,52 @@ struct TranscriptMarkdownPreparation {
         return nil
     }
 
+    /// Splits the line into code spans and prose, so a `$` inside `` `export FOO=$BAR` ``
+    /// or `` `^a$` `` can never open math or close it.
     private static func replacingInlineMath(
         in line: String,
+        math: inout [String: TranscriptMath],
+        marker: () -> String
+    ) -> String {
+        var output = ""
+        var cursor = line.startIndex
+        var proseStart = cursor
+        while cursor < line.endIndex {
+            guard line[cursor] == "`", let spanEnd = codeSpanEnd(at: cursor, in: line) else {
+                cursor = line.index(after: cursor)
+                continue
+            }
+            output += replacingInlineMathInProse(String(line[proseStart..<cursor]), math: &math, marker: marker)
+            output += line[cursor..<spanEnd]
+            cursor = spanEnd
+            proseStart = cursor
+        }
+        output += replacingInlineMathInProse(String(line[proseStart...]), math: &math, marker: marker)
+        return output
+    }
+
+    /// End index of a complete CommonMark code span: an opening backtick run closed
+    /// by a run of exactly the same length. Returns nil for an unclosed run.
+    private static func codeSpanEnd(at start: String.Index, in line: String) -> String.Index? {
+        var openEnd = start
+        while openEnd < line.endIndex, line[openEnd] == "`" { openEnd = line.index(after: openEnd) }
+        let fence = line.distance(from: start, to: openEnd)
+        var cursor = openEnd
+        while cursor < line.endIndex {
+            guard line[cursor] == "`" else {
+                cursor = line.index(after: cursor)
+                continue
+            }
+            var closeEnd = cursor
+            while closeEnd < line.endIndex, line[closeEnd] == "`" { closeEnd = line.index(after: closeEnd) }
+            if line.distance(from: cursor, to: closeEnd) == fence { return closeEnd }
+            cursor = closeEnd
+        }
+        return nil
+    }
+
+    private static func replacingInlineMathInProse(
+        _ line: String,
         math: inout [String: TranscriptMath],
         marker: () -> String
     ) -> String {
@@ -147,15 +191,27 @@ struct TranscriptMarkdownPreparation {
                     continue
                 }
             }
-            if line[cursor] == "$", (cursor == line.startIndex || line[line.index(before: cursor)] != "\\") {
+            if line[cursor] == "$", cursor == line.startIndex || line[line.index(before: cursor)] != "\\" {
+                if line[cursor...].hasPrefix("$$"),
+                   let bodyStart = line.index(cursor, offsetBy: 2, limitedBy: line.endIndex),
+                   let end = line[bodyStart...].range(of: "$$")?.lowerBound,
+                   !String(line[bodyStart..<end]).trimmingCharacters(in: .whitespaces).isEmpty {
+                    let key = marker()
+                    math[key] = TranscriptMath(source: String(line[bodyStart..<end]).trimmingCharacters(in: .whitespaces), display: false)
+                    output += key
+                    cursor = line.index(end, offsetBy: 2)
+                    continue
+                }
                 let bodyStart = line.index(after: cursor)
                 if let end = unescapedDollar(after: bodyStart, in: line) {
                     let body = String(line[bodyStart..<end])
-                    if !looksLikeCurrency(body) {
+                    let afterEnd = line.index(after: end)
+                    let after = afterEnd < line.endIndex ? line[afterEnd] : nil
+                    if isInlineMath(body: body, after: after) {
                         let key = marker()
                         math[key] = TranscriptMath(source: body, display: false)
                         output += key
-                        cursor = line.index(after: end)
+                        cursor = afterEnd
                         continue
                     }
                 }
@@ -176,16 +232,41 @@ struct TranscriptMarkdownPreparation {
     private static func unescapedDollar(after start: String.Index, in text: String) -> String.Index? {
         var cursor = start
         while cursor < text.endIndex {
-            if text[cursor] == "$", text[text.index(before: cursor)] != "\\" { return cursor }
+            if text[cursor] == "$", cursor == text.startIndex || text[text.index(before: cursor)] != "\\" {
+                return cursor
+            }
             cursor = text.index(after: cursor)
         }
         return nil
     }
 
-    private static func looksLikeCurrency(_ value: String) -> Bool {
-        guard value.first?.isNumber == true else { return false }
-        return value.rangeOfCharacter(from: CharacterSet(charactersIn: "+-=*/^\\")) == nil &&
-            value.rangeOfCharacter(from: .whitespaces) != nil
+    /// Characters that make a multi-word `$...$` body read as an equation rather than prose.
+    private static let mathSignals = CharacterSet(charactersIn: "0123456789=+-*/^_\\{}<>|")
+    /// A digit-leading body closing against one of these is a bracketed aside, not an equation.
+    private static let asideOpeners: Set<Character> = ["\\", "(", "[", "{"]
+
+    /// Whether `$body$` is an equation rather than a pair of unrelated dollar signs.
+    ///
+    /// Mirrors `normalizeMathDelimiters.ts` on the desktop side; keep the two in step.
+    /// A prose `$` is nearly always currency (`$1.25/1M in and $4.25`) or a shell
+    /// variable (`$PATH and $HOME`), and pairing those swallows the text between them.
+    private static func isInlineMath(body: String, after: Character?) -> Bool {
+        guard let first = body.first, let last = body.last else { return false }
+        guard body.rangeOfCharacter(from: CharacterSet.whitespaces.inverted) != nil else { return false }
+        // "$5,$10": a closer running straight into another amount closes nothing.
+        if let after, after.isNumber { return false }
+        if first.isNumber {
+            // "$1.25/1M in and $4.25" and "$50 ($x$ ...)": an amount, not an equation.
+            if last.isWhitespace || Self.asideOpeners.contains(last) { return false }
+            if let after, after.isLetter || after == "\\" { return false }
+            return true
+        }
+        // "$PATH and $HOME": several words with nothing equation-shaped in them.
+        if body.rangeOfCharacter(from: .whitespaces) != nil,
+           body.rangeOfCharacter(from: Self.mathSignals) == nil {
+            return false
+        }
+        return true
     }
 
     private static let greek = Set([

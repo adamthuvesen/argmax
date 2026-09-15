@@ -27,7 +27,7 @@ use super::{eval, snapshot_image, CaptureRect};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::state::AppState;
 
-const AGENT_API_VERSION: u32 = 3;
+const AGENT_API_VERSION: u32 = 4;
 const SNAPSHOT_JS: &str = include_str!("snapshot.js");
 const ACTIONS_JS: &str = include_str!("actions.js");
 
@@ -73,6 +73,8 @@ pub struct PageSnapshot {
     pub tab_id: String,
     pub url: String,
     pub title: String,
+    /// `captcha`, `cookie`, `error`, `loading`, or `ready`, plus a short reason.
+    pub state: String,
     /// Indented aria tree; interactive lines carry `[ref=eN]` handles.
     pub tree: String,
     /// True when the node or byte cap cut the tree short.
@@ -102,6 +104,7 @@ pub struct PageText {
     pub tab_id: String,
     pub url: String,
     pub title: String,
+    pub state: String,
     pub text: String,
     pub truncated: bool,
 }
@@ -151,16 +154,40 @@ pub struct PageLink {
 
 #[derive(Debug, Clone, Deserialize, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
+pub struct PageItem {
+    pub text: String,
+    #[serde(default, rename = "ref")]
+    pub element_ref: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PageField {
+    pub name: String,
+    pub value: String,
+    pub role: String,
+    #[serde(default, rename = "ref")]
+    pub element_ref: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
 pub struct PageExtraction {
     #[serde(default)]
     pub tab_id: String,
     pub url: String,
     pub title: String,
+    #[serde(default)]
+    pub state: String,
     pub metadata: PageMetadata,
     pub headings: Vec<PageHeading>,
     pub sections: Vec<PageSection>,
     pub tables: Vec<PageTable>,
     pub links: Vec<PageLink>,
+    #[serde(default)]
+    pub items: Vec<PageItem>,
+    #[serde(default)]
+    pub fields: Vec<PageField>,
     pub truncated: bool,
 }
 
@@ -172,6 +199,18 @@ pub struct ActionOutcome {
     pub url: String,
     /// What the action touched, for a tool row a person can read.
     pub detail: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub matched: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url_changed: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text_chars: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text_chars_delta: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub listbox_open: Option<bool>,
 }
 
 /// One interaction. Serialized tagged so a tool layer can pass it straight
@@ -249,12 +288,17 @@ pub enum BrowserAction {
         element_ref: Option<String>,
         #[serde(default)]
         url_includes: Option<String>,
+        /// Wait until fetch/XHR have been idle for this many milliseconds.
+        #[serde(default)]
+        quiet_ms: Option<u32>,
+        /// Wait until at least this many visible list-like items exist
+        /// (optionally containing `text`).
+        #[serde(default)]
+        min_count: Option<u32>,
         #[serde(default)]
         timeout_ms: Option<u32>,
     },
 }
-
-// --- tab resolution ---------------------------------------------------------
 
 fn registry(app: &AppHandle) -> std::sync::Arc<super::registry::BrowserTabRegistry> {
     std::sync::Arc::clone(&app.state::<AppState>().browser_tabs)
@@ -292,8 +336,6 @@ pub fn resolve_tab(app: &AppHandle, target: &TabTarget) -> ArgmaxResult<String> 
 fn webview(app: &AppHandle, tab_id: &str) -> ArgmaxResult<Webview> {
     crate::ipc::browser::browser_webview(app, tab_id)
 }
-
-// --- script plumbing --------------------------------------------------------
 
 /// Wraps one call to the injected API, installing it first when the page has
 /// not got it (a fresh load, or a version bump after an app update).
@@ -429,7 +471,25 @@ fn string_field(value: &Value, key: &str) -> String {
         .to_string()
 }
 
-// --- tabs -------------------------------------------------------------------
+fn optional_string_field(value: &Value, key: &str) -> Option<String> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .filter(|text| !text.is_empty())
+}
+
+fn optional_bool_field(value: &Value, key: &str) -> Option<bool> {
+    value.get(key).and_then(Value::as_bool)
+}
+
+fn optional_u32_field(value: &Value, key: &str) -> Option<u32> {
+    value.get(key).and_then(Value::as_u64).map(|n| n as u32)
+}
+
+fn optional_i32_field(value: &Value, key: &str) -> Option<i32> {
+    value.get(key).and_then(Value::as_i64).map(|n| n as i32)
+}
 
 /// Opens a page in a tab owned by `session_id`. The webview is created hidden
 /// at the window's own size: the agent may be working while the user looks at
@@ -549,15 +609,12 @@ pub fn tab_group(app: &AppHandle, tab_id: &str) -> Option<String> {
     registry(app).get(tab_id).and_then(|tab| tab.group)
 }
 
-pub fn group_tabs(app: &AppHandle, tab_ids: &[String], group: Option<String>) -> ArgmaxResult<()> {
+pub fn group_tabs(app: &AppHandle, tab_ids: &[String], group: Option<String>) {
     let tabs = registry(app);
     if tabs.set_group(tab_ids, group) {
         super::registry::publish(app, &tabs);
     }
-    Ok(())
 }
-
-// --- reads ------------------------------------------------------------------
 
 pub async fn snapshot(
     app: &AppHandle,
@@ -579,6 +636,7 @@ pub async fn snapshot(
         tab_id,
         url: string_field(&value, "url"),
         title: string_field(&value, "title"),
+        state: string_field(&value, "state"),
         tree: string_field(&value, "tree"),
         truncated: value
             .get("truncated")
@@ -663,6 +721,7 @@ pub async fn get_text(
         tab_id,
         url: string_field(&value, "url"),
         title: string_field(&value, "title"),
+        state: string_field(&value, "state"),
         text: string_field(&value, "text"),
         truncated: value
             .get("truncated")
@@ -697,30 +756,14 @@ pub async fn extract(
     Ok(extracted)
 }
 
-// --- writes -----------------------------------------------------------------
-
 pub async fn act(
     app: &AppHandle,
     target: &TabTarget,
     action: &BrowserAction,
 ) -> ArgmaxResult<ActionOutcome> {
     let tab_id = resolve_tab(app, target)?;
-    if let BrowserAction::WaitFor {
-        text,
-        element_ref,
-        url_includes,
-        timeout_ms,
-    } = action
-    {
-        return wait_for(
-            app,
-            &tab_id,
-            text.as_deref(),
-            element_ref.as_deref(),
-            url_includes.as_deref(),
-            *timeout_ms,
-        )
-        .await;
+    if let BrowserAction::WaitFor { .. } = action {
+        return wait_for(app, &tab_id, action).await;
     }
     if let BrowserAction::Drag {
         element_ref,
@@ -803,6 +846,12 @@ fn outcome(tab_id: String, value: &Value) -> ActionOutcome {
         tab_id,
         url: string_field(value, "url"),
         detail,
+        matched: optional_bool_field(value, "matched"),
+        state: optional_string_field(value, "state"),
+        url_changed: optional_bool_field(value, "urlChanged"),
+        text_chars: optional_u32_field(value, "textChars"),
+        text_chars_delta: optional_i32_field(value, "textCharsDelta"),
+        listbox_open: optional_bool_field(value, "listboxOpen"),
     }
 }
 
@@ -864,15 +913,71 @@ async fn drag(app: &AppHandle, tab_id: &str, spec: &Value) -> ArgmaxResult<Actio
 /// Polls the page's own watcher until it reports a match or the deadline
 /// passes. The watcher is idempotent by id, so a navigation that wipes it
 /// simply re-arms it against the new document on the next poll.
+fn wait_miss(
+    tab_id: String,
+    budget: Duration,
+    spec: &Value,
+    last: Option<&Value>,
+) -> ActionOutcome {
+    let state = last.and_then(|value| optional_string_field(value, "state"));
+    let sample = last
+        .and_then(|value| value.get("sample").and_then(Value::as_str))
+        .unwrap_or("");
+    let inflight = last
+        .and_then(|value| value.get("inflight").and_then(Value::as_u64))
+        .unwrap_or(0);
+    let count = last
+        .and_then(|value| value.get("count").and_then(Value::as_u64))
+        .unwrap_or(0);
+    let url = last
+        .map(|value| string_field(value, "url"))
+        .filter(|url| !url.is_empty())
+        .unwrap_or_default();
+    let detail = format!(
+        "wait missed after {} ms ({}); state: {}; inflight: {}; saw {} items; sample: {}",
+        budget.as_millis(),
+        spec,
+        state.as_deref().unwrap_or("unknown"),
+        inflight,
+        count,
+        sample
+    );
+    ActionOutcome {
+        tab_id,
+        url,
+        detail: Some(detail),
+        matched: Some(false),
+        state,
+        url_changed: None,
+        text_chars: None,
+        text_chars_delta: None,
+        listbox_open: None,
+    }
+}
+
 async fn wait_for(
     app: &AppHandle,
     tab_id: &str,
-    text: Option<&str>,
-    element_ref: Option<&str>,
-    url_includes: Option<&str>,
-    timeout_ms: Option<u32>,
+    action: &BrowserAction,
 ) -> ArgmaxResult<ActionOutcome> {
-    let spec = json!({ "text": text, "ref": element_ref, "urlIncludes": url_includes });
+    let BrowserAction::WaitFor {
+        text,
+        element_ref,
+        url_includes,
+        quiet_ms,
+        min_count,
+        timeout_ms,
+    } = action
+    else {
+        unreachable!("wait_for is only called with WaitFor");
+    };
+    let spec = json!({
+        "text": text,
+        "ref": element_ref,
+        "urlIncludes": url_includes,
+        "quietMs": quiet_ms,
+        "minCount": min_count,
+    });
     let wait_id = format!("w{}", wait_id_seed());
     let budget = Duration::from_millis(
         timeout_ms
@@ -882,16 +987,15 @@ async fn wait_for(
     );
     let deadline = Instant::now() + budget;
     let script = format!("window.__argmax.waitFor({}, {})", json!(wait_id), spec);
+    let mut last_pending: Option<Value> = None;
     loop {
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
-            return Err(ArgmaxError::service(
-                "BROWSER_WAIT_TIMEOUT",
-                format!(
-                    "the page did not match within {} ms: {}",
-                    budget.as_millis(),
-                    spec
-                ),
+            return Ok(wait_miss(
+                tab_id.to_string(),
+                budget,
+                &spec,
+                last_pending.as_ref(),
             ));
         }
         // A navigation mid-wait tears the page down, and the eval racing it
@@ -901,6 +1005,7 @@ async fn wait_for(
                 if value.get("pending").and_then(Value::as_bool) != Some(true) {
                     return Ok(outcome(tab_id.to_string(), &value));
                 }
+                last_pending = Some(value);
             }
             Err(error) if Instant::now() >= deadline => return Err(error),
             Err(_) => {}
@@ -921,8 +1026,6 @@ fn wait_id_seed() -> u128 {
         .map(|since| since.as_nanos())
         .unwrap_or(0)
 }
-
-// --- capture ----------------------------------------------------------------
 
 /// PNG of the tab, cropped to one element when a ref is given. The crop is in
 /// the page's own CSS pixels, so the element is scrolled into view first.
@@ -959,11 +1062,6 @@ pub async fn screenshot(
     snapshot_image::capture(&view, rect, max_width_points, SCREENSHOT_TIMEOUT).await
 }
 
-/// Runs an expression in the page and returns what it evaluated to.
-///
-/// `wrap_for_errors` catches inside the page, because WebKit's completion
-/// handler drops the `NSError` and a script that threw would otherwise be
-/// indistinguishable from one that returned `undefined`.
 /// Which capture buffer a read wants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CaptureKind {
@@ -1028,6 +1126,11 @@ pub async fn read_capture(
     }))
 }
 
+/// Runs an expression in the page and returns what it evaluated to.
+///
+/// `wrap_for_errors` catches inside the page, because WebKit's completion
+/// handler drops the `NSError` and a script that threw would otherwise be
+/// indistinguishable from one that returned `undefined`.
 pub async fn evaluate(
     app: &AppHandle,
     target: &TabTarget,
@@ -1151,6 +1254,8 @@ mod tests {
                 text: None,
                 element_ref: None,
                 url_includes: Some("iana.org".into()),
+                quiet_ms: None,
+                min_count: None,
                 timeout_ms: None
             }
         );

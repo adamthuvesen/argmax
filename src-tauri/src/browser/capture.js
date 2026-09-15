@@ -21,6 +21,15 @@
   var console_entries = [];
   var network_entries = [];
   var dropped = { console: 0, network: 0 };
+  var pending = 0;
+
+  function beginPending() {
+    pending += 1;
+  }
+
+  function endPending() {
+    if (pending > 0) pending -= 1;
+  }
 
   function push(list, kind, entry) {
     list.push(entry);
@@ -118,6 +127,7 @@
           : (input && input.url) || ""
       );
       var settle = function (status, ok, error) {
+        endPending();
         record_network({
           kind: "fetch",
           method: method,
@@ -129,16 +139,22 @@
           at: new Date(started).toISOString()
         });
       };
-      return native_fetch.apply(window, arguments).then(
-        function (response) {
-          settle(response.status, response.ok, null);
-          return response;
-        },
-        function (error) {
-          settle(null, false, clip(describe(error)));
-          throw error;
-        }
-      );
+      beginPending();
+      try {
+        return native_fetch.apply(window, arguments).then(
+          function (response) {
+            settle(response.status, response.ok, null);
+            return response;
+          },
+          function (error) {
+            settle(null, false, clip(describe(error)));
+            throw error;
+          }
+        );
+      } catch (error) {
+        settle(null, false, clip(describe(error)));
+        throw error;
+      }
     };
   }
 
@@ -155,7 +171,11 @@
       if (request) {
         var started = Date.now();
         var self = this;
+        var settled = false;
         var settle = function (error) {
+          if (settled) return;
+          settled = true;
+          endPending();
           record_network({
             kind: "xhr",
             method: request.method,
@@ -167,6 +187,7 @@
             at: new Date(started).toISOString()
           });
         };
+        beginPending();
         this.addEventListener("load", function () {
           settle(null);
         });
@@ -176,6 +197,15 @@
         this.addEventListener("timeout", function () {
           settle("timeout");
         });
+        this.addEventListener("abort", function () {
+          settle("abort");
+        });
+        try {
+          return send.apply(this, arguments);
+        } catch (error) {
+          settle(clip(describe(error)));
+          throw error;
+        }
       }
       return send.apply(this, arguments);
     };
@@ -221,6 +251,9 @@
     },
     readNetwork: function (limit, clear) {
       return read(network_entries, "network", limit, clear);
+    },
+    pending: function () {
+      return pending;
     }
   };
 })();

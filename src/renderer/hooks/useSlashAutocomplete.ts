@@ -19,7 +19,7 @@ import type { ComposerCommand } from "../lib/composerCommands.js";
  * Word-internal slashes (paths like `foo/bar`) never match: the `/` must
  * follow whitespace or start the input.
  */
-export function parseSlashQuery(input: string): { query: string; start: number } | null {
+function parseSlashQuery(input: string): { query: string; start: number } | null {
   const match = /(^|\s)\/(\S*)$/.exec(input);
   if (!match) {
     return null;

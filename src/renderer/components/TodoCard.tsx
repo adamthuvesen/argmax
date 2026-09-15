@@ -3,7 +3,7 @@ import { useState, type JSX } from "react";
 import type { TodoItem, TodoList, TodoStatus } from "../lib/todoList.js";
 import { WorkingNest } from "./WorkingNest.js";
 
-export type TodoCardProps = {
+type TodoCardProps = {
   list: TodoList;
   /** The turn that owns this card is still running. */
   running: boolean;

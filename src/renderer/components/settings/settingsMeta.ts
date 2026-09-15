@@ -8,7 +8,7 @@ export type SettingsGroupId =
 
 type SettingsSectionMeta = { id: string; label: string };
 
-export type SettingsGroupMeta = {
+type SettingsGroupMeta = {
   id: SettingsGroupId;
   label: string;
   /** Renders a hairline above this entry in the rail. Advanced is the only
@@ -43,6 +43,7 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
     sections: [
       { id: "settings-agent-defaults", label: "Defaults" },
       { id: "settings-permissions", label: "Permissions" },
+      { id: "settings-tools", label: "Tools" },
       { id: "settings-conversation", label: "Conversation" },
       { id: "settings-providers", label: "Providers" },
       { id: "settings-session-sync", label: "Chat sync" }

@@ -110,7 +110,7 @@ export function tryParseJsonObject(line: string): Record<string, unknown> | null
  * this does not require a `{` prefix — use it for whole `gh`/`codex` stdout
  * blobs that may have leading whitespace.
  */
-export function safeJsonParseObject<T = Record<string, unknown>>(text: string): T | null {
+function safeJsonParseObject<T = Record<string, unknown>>(text: string): T | null {
   try {
     const parsed = JSON.parse(text) as unknown;
     return isPlainObject(parsed) ? (parsed as T) : null;

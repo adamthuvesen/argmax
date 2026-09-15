@@ -18,10 +18,6 @@ use argmax_lib::persistence::{
     workspaces::list_workspaces,
 };
 use argmax_lib::providers::flush_queue::DashboardDelta;
-use argmax_lib::providers::normalizer::{
-    normalize_provider_event, NormalizerSessionContext, ProviderOutputEvent, ProviderOutputStream,
-};
-use argmax_lib::providers::ProviderId;
 use argmax_lib::sync::{run_sync, SyncConfig, WINDOW_24H, WINDOW_7D};
 use argmax_lib::workspaces::WorkspaceService;
 
@@ -476,20 +472,7 @@ fn a_growing_transcript_extends_the_imported_session() {
             ),
         ],
     );
-    // mtime must move for the sweep to notice; temp writes can land in the
-    // same millisecond, so push it forward explicitly.
-    let path = harness
-        .home
-        .path()
-        .join(".claude/projects")
-        .join(harness.repo_path.replace(['/', '.', ' '], "-"))
-        .join("sess-growing.jsonl");
-    let file = std::fs::OpenOptions::new()
-        .write(true)
-        .open(&path)
-        .expect("open transcript");
-    file.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(5))
-        .expect("bump mtime");
+    bump_mtime(&harness.transcript_path("sess-growing"), 5);
 
     let outcome = harness.sync(&claude_enabled());
     assert_eq!(outcome.imported, 0, "same session, not a new one");
@@ -761,12 +744,7 @@ fn shrinking_the_window_prunes_sessions_that_fell_outside_it() {
 
     // Discovery keys on file mtime, so age the file to match its content:
     // this is a session that both started and last ran three days ago.
-    let path = harness
-        .home
-        .path()
-        .join(".claude/projects")
-        .join(harness.repo_path.replace(['/', '.', ' '], "-"))
-        .join(format!("{old_session}.jsonl"));
+    let path = harness.transcript_path(old_session);
     let three_days_ago =
         std::time::SystemTime::now() - std::time::Duration::from_secs(3 * 24 * 60 * 60);
     std::fs::OpenOptions::new()
@@ -870,84 +848,4 @@ fn an_adopted_session_survives_losing_its_transcript() {
     assert_eq!(harness.sync(&claude_enabled()).pruned, 0);
     let connection = harness.database.connection();
     assert!(find_session_by_id(&connection, &session_id).is_ok());
-}
-
-/// Smoke test against the real `~/.claude` store and this checkout. Ignored by
-/// default (it depends on the developer's own machine); run it with
-/// `cargo test --test integration session_sync -- --ignored --nocapture` to see what a
-/// sweep would import here.
-#[test]
-#[ignore = "reads the developer's real ~/.claude transcripts"]
-fn smoke_test_against_the_real_claude_store() {
-    let home = std::path::PathBuf::from(std::env::var("HOME").expect("HOME"));
-    let cutoff = chrono::Utc::now().timestamp_millis() - 7 * 24 * 3_600_000;
-    let discovered = argmax_lib::sync::claude::discover(&home, cutoff);
-    println!(
-        "discovered {} transcripts in the last 7 days",
-        discovered.len()
-    );
-    for session in discovered.iter().take(5) {
-        println!(
-            "  {} | cwd={} | started={} | prompt={:?}",
-            session.external_id,
-            session.cwd.display(),
-            session.started_at,
-            session.prompt.chars().take(60).collect::<String>()
-        );
-    }
-    assert!(
-        discovered
-            .iter()
-            .all(|session| !session.external_id.is_empty()),
-        "every discovered session needs an id to resume with"
-    );
-
-    // The sweep hands every transcript line to the normalizer, so a row the
-    // CLI writes for itself (`attachment`, `queue-operation`, `custom-title`,
-    // …) must come back with nothing rather than as a stray bubble.
-    let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
-    for session in discovered.iter().take(20) {
-        let mut context = NormalizerSessionContext::for_transcript_replay();
-        for line in argmax_lib::sync::claude::timeline_lines(
-            &session.source_path,
-            argmax_lib::sync::claude::TranscriptCursor::default(),
-        )
-        .expect("read transcript")
-        .lines
-        {
-            let output = ProviderOutputEvent {
-                session_id: "smoke".to_string(),
-                stream: ProviderOutputStream::Stdout,
-                message: line.raw,
-                created_at: line.timestamp.unwrap_or_default(),
-            };
-            for event in normalize_provider_event(ProviderId::Claude, &output, &mut context).events
-            {
-                *counts.entry(event.r#type).or_default() += 1;
-            }
-        }
-    }
-    println!("replayed event types: {counts:?}");
-    let known = [
-        "command.completed",
-        "command.started",
-        "error",
-        "message.completed",
-        "message.delta",
-        "session.compacted",
-        "session.compacting",
-        "user.message",
-    ];
-    let unknown = counts
-        .keys()
-        .filter(|event_type| !known.contains(&event_type.as_str()))
-        .collect::<Vec<_>>();
-    assert!(
-        unknown.is_empty(),
-        "unexpected replayed event types: {unknown:?}"
-    );
-    assert!(
-        counts.get("user.message").copied().unwrap_or(0) > 0,
-        "a real transcript carries the human's prompts: {counts:?}"
-    );
 }

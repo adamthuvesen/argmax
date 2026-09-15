@@ -4,7 +4,7 @@ import { hash, luminance, readColorToken, vnoise, type Rgb } from "../lib/pixelF
 // A confirmed PR milestone sends one sweep of accent pixels across the chat.
 // Mounted only while it plays, with reduced motion and hidden pages skipped.
 
-const CELL = 6; // logical px per pixel-cell, as in the composer field
+const CELL = 6; // logical px per pixel-cell
 // The breath hugs the bottom edge of the turn rather than filling it — the band
 // height is `.turn-exhale`'s in chat-conversation.css, and this canvas paints whatever
 // it is handed. A long answer runs two thousand pixels tall, and a field behind
@@ -14,8 +14,8 @@ const TAIL = 190; // px behind the front that stay lit
 const FX = 0.3; // horizontal feature frequency (smaller = more individual pixels)
 const FY = 0.8; // vertical feature frequency
 const FLOOR = 0.3; // minimum fraction of intensity every cell gets (keeps it dense)
-// Well under the composer field's 0.8: this paints behind live prose, and the
-// breath has to stay a texture the answer sits on rather than a wash over it.
+// This paints behind live prose, so the breath has to stay a texture the answer
+// sits on rather than a wash over it.
 const INTEN_CAP = 0.72;
 const DRIFT = 0.004; // slow scroll of the noise field, so the band is alive as it passes
 
@@ -127,8 +127,7 @@ export function TurnExhale({ weight, onDone }: { weight: number; onDone: () => v
           if (behind <= 0 || behind > TAIL) continue; // nothing ahead of the front, nothing past the tail
           const edge = 1 - behind / TAIL; // 1 at the leading edge, 0 at the tail
           const sx = c * FX - scroll;
-          // Two octaves, contrast-stretched and floored: the same recipe the
-          // composer field uses, so the two read as one material.
+          // Two octaves, contrast-stretched and floored to keep the sweep dense.
           let n = 0.55 * vnoise(sx, sy) + 0.45 * vnoise(sx * 2.6 - scroll * 0.9, sy * 1.8 + 11.3);
           n = (n - 0.5) * 1.7 + 0.5;
           if (n < 0) n = 0;

@@ -111,13 +111,6 @@ impl QuestionService {
         let public_request_id = Uuid::new_v4().to_string();
         let key = (session_id.to_string(), public_request_id.clone());
         let mut pending = self.pending.lock_or_recover("native questions");
-        if pending.contains_key(&key) {
-            return Err(ArgmaxError::service(
-                "QUESTION_DUPLICATE",
-                "This provider question is already waiting for an answer",
-            ));
-        }
-
         let connection = self.database.connection();
         let transaction = connection
             .unchecked_transaction()

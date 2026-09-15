@@ -70,17 +70,6 @@ pub enum AttachmentMimeType {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "lowercase")]
-pub enum IdeId {
-    Vscode,
-    Cursor,
-    Windsurf,
-    Zed,
-    Terminal,
-    Iterm,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "lowercase")]
 pub enum ThemeMode {
     Light,
     Dark,
@@ -121,7 +110,6 @@ string_newtype!(Prompt);
 string_newtype!(BaseRef);
 string_newtype!(BranchName);
 string_newtype!(RelativePath);
-string_newtype!(AbsolutePath);
 string_newtype!(RepoPath);
 string_newtype!(AttachmentPath);
 string_newtype!(OpenPath);
@@ -158,7 +146,6 @@ try_from_string!(BranchName, |value| validate_git_ref("branch", value));
 try_from_string!(RelativePath, |value| validate_relative_path(
     "filePath", value
 ));
-try_from_string!(AbsolutePath, |value| validate_absolute_path("path", value));
 try_from_string!(RepoPath, |value| validate_absolute_path("repoPath", value));
 try_from_string!(AttachmentPath, validate_attachment_path);
 try_from_string!(OpenPath, validate_open_path);
@@ -350,15 +337,6 @@ impl<'de> Deserialize<'de> for RelativePath {
         D: serde::Deserializer<'de>,
     {
         RelativePath::try_from(String::deserialize(deserializer)?).map_err(de_error)
-    }
-}
-
-impl<'de> Deserialize<'de> for AbsolutePath {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        AbsolutePath::try_from(String::deserialize(deserializer)?).map_err(de_error)
     }
 }
 

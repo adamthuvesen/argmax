@@ -73,6 +73,7 @@ import { multitaskRowStatus, type MultitaskChild } from "../lib/multitask.js";
 import { dismissMultitask, readDismissedMultitasks } from "../lib/multitaskDismissals.js";
 import { ProjectMoveNotice } from "./ProjectMoveNotice.js";
 import { ProviderSwitchNotice } from "./ProviderSwitchNotice.js";
+import { ShowEarlier } from "./ShowEarlier.js";
 import { SessionNote } from "./SessionNote.js";
 import { foldConversationItems, foldRenderItems, type RenderItem } from "../lib/foldConversation.js";
 import { todoListsByTurn } from "../lib/todoList.js";
@@ -766,11 +767,10 @@ export function SessionConversation({
   // The card floats in the right gutter whenever the conversation column is
   // wide enough to hold it without overlapping the transcript, regardless of
   // whether a right-hand panel is docked.
-  const showWorkspaceCard = workspaceCardEnabled;
   // Only a mounted card earns the right gutter. The attribute says the card is
   // in the tree; the container queries in chat-workspace-card.css decide the
   // widths where it is on screen and the transcript slides left for it.
-  const workspaceCardMounted = showWorkspaceCard && workspace?.kind === "git";
+  const workspaceCardMounted = workspaceCardEnabled && workspace?.kind === "git";
   const conversationScrollRef = useRef<HTMLDivElement | null>(null);
   // The width gate lives in CSS (chat-workspace-card.css keeps the card
   // `display: none` until the pane can hold it beside the transcript), so
@@ -1513,7 +1513,7 @@ export function SessionConversation({
       >
         {eventsBackfilled ? null : (
           <div className="conversation-loading loading-line" role="status">
-            <WorkingNest active size={12} />
+            <WorkingNest active size={16} />
             Loading chat…
           </div>
         )}
@@ -1543,9 +1543,7 @@ export function SessionConversation({
         >
           <div className="conversation-content" ref={conversationContentRef}>
             {windowStart > 0 ? (
-              <button type="button" className="conversation-show-earlier" onClick={showEarlierItems}>
-                Show earlier messages ({windowStart} hidden)
-              </button>
+              <ShowEarlier noun="messages" count={windowStart} onClick={showEarlierItems} />
             ) : null}
             {transcriptRenderItems.length > 0 ? (
               windowedItems.map((item, windowIndex) => {
@@ -1619,7 +1617,7 @@ export function SessionConversation({
             ) : isThinking ? null : (
               <p className="conversation-empty">Agent replies will appear here.</p>
             )}
-            {terminalTranscript && !hasRenderableContent && conversationItems.length > 0 ? (
+            {terminalTranscript && conversationItems.length > 0 ? (
               <article className="chat-bubble assistant terminal-transcript">
                 <pre>{terminalTranscript}</pre>
               </article>

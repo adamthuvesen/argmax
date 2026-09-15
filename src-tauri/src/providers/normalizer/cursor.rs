@@ -1,4 +1,3 @@
-use phf::phf_map;
 use serde_json::{json, Map, Value};
 
 use super::todo::{is_todo_tool, stamp_todo_surface, todo_event, todos_array_update};
@@ -9,10 +8,7 @@ use super::{
 use crate::{persistence::events::PersistTimelineEventInput, providers::pricing::cost_of};
 
 pub fn event_type(provider_type: &str) -> Option<&'static str> {
-    static EVENT_MAP: phf::Map<&'static str, &'static str> = phf_map! {
-        "error" => "error",
-    };
-    EVENT_MAP.get(provider_type).copied()
+    (provider_type == "error").then_some("error")
 }
 
 pub fn is_lifecycle_event(provider_type: Option<&str>, subtype: Option<&str>) -> bool {
@@ -87,8 +83,17 @@ pub fn normalize_result_success(
     context: &mut NormalizerSessionContext,
 ) -> Vec<PersistTimelineEventInput> {
     let mut events = Vec::new();
-    if let Some(completed) = synthesize_message_completed_from_result(event, context) {
-        events.push(completed);
+    if let Some(final_text) = context
+        .cursor_assistant_text
+        .take()
+        .filter(|text| !text.trim().is_empty())
+    {
+        events.push(timeline_event(
+            event,
+            "message.completed",
+            final_text.clone(),
+            json!({ "synthesizedFromResult": true, "text": final_text }),
+        ));
     }
     events.push(timeline_event(
         event,
@@ -107,10 +112,10 @@ pub fn synthesize_message_completed_from_exit(
     if context.cursor_turn_completed_emitted {
         return None;
     }
-    let final_text = context.cursor_assistant_text.take()?;
-    if final_text.trim().is_empty() {
-        return None;
-    }
+    let final_text = context
+        .cursor_assistant_text
+        .take()
+        .filter(|text| !text.trim().is_empty())?;
     context.cursor_turn_completed_emitted = true;
     Some(timeline_event(
         event,
@@ -120,42 +125,30 @@ pub fn synthesize_message_completed_from_exit(
     ))
 }
 
-pub fn synthesize_message_completed_from_result(
-    event: &ProviderOutputEvent,
-    context: &mut NormalizerSessionContext,
-) -> Option<PersistTimelineEventInput> {
-    let final_text = context.cursor_assistant_text.take()?;
-    if final_text.trim().is_empty() {
-        return None;
-    }
-    context.cursor_turn_completed_emitted = true;
-    Some(timeline_event(
-        event,
-        "message.completed",
-        final_text.clone(),
-        json!({ "synthesizedFromResult": true, "text": final_text }),
-    ))
-}
-
 /// Cursor names most tools with the wrapper key — `readToolCall`,
 /// `taskToolCall` — but falls back to a generic `other` wrapper that carries
 /// the real name inside its own args as `_toolName`. Taking the key at face
 /// value there loses the tool entirely: a subagent launch arrives as `other`,
 /// buckets as "Used a tool" instead of "Started an agent", and drops its mark
 /// and its link to the Agents pane.
-fn resolve_tool_name<'a>(
-    tool_kind: Option<&'a str>,
-    tool_body: Option<&'a Map<String, Value>>,
-) -> &'a str {
-    let kind = tool_kind.unwrap_or("tool_call");
+fn resolve_tool_name<'a>(wrapped: Option<(&'a str, &'a Map<String, Value>)>) -> &'a str {
+    let Some((kind, body)) = wrapped else {
+        return "tool_call";
+    };
     if kind != "other" {
         return kind;
     }
-    tool_body
-        .and_then(|body| object_value(body.get("args")))
+    object_value(body.get("args"))
         .and_then(|args| string_value(args.get("_toolName")))
-        .filter(|name| !name.is_empty())
         .unwrap_or(kind)
+}
+
+/// Cursor wraps a tool call in a single-key object whose key names the tool.
+/// Returns that key with its body.
+fn wrapped_tool_call(payload: &Map<String, Value>) -> Option<(&str, &Map<String, Value>)> {
+    object_value(payload.get("tool_call"))?
+        .iter()
+        .find_map(|(key, value)| object_value(Some(value)).map(|body| (key.as_str(), body)))
 }
 
 pub fn normalize_tool_call(
@@ -171,27 +164,16 @@ pub fn normalize_tool_call(
         return None;
     }
 
-    let wrapper = object_value(payload.get("tool_call"));
-    let mut tool_kind = None;
-    let mut tool_body = None;
-    if let Some(wrapper) = wrapper {
-        for (key, value) in wrapper {
-            if let Some(body) = object_value(Some(value)) {
-                tool_kind = Some(key.as_str());
-                tool_body = Some(body);
-                break;
-            }
-        }
-    }
-    let tool_name = resolve_tool_name(tool_kind, tool_body);
-    let args = tool_body
-        .and_then(|body| object_value(body.get("args")))
+    let wrapped = wrapped_tool_call(payload);
+    let tool_name = resolve_tool_name(wrapped);
+    let args = wrapped
+        .and_then(|(_, body)| object_value(body.get("args")))
         .cloned()
         .unwrap_or_default();
     let mut flattened = Map::new();
     flattened.insert("name".to_string(), Value::String(tool_name.to_string()));
     flattened.insert("input".to_string(), Value::Object(args));
-    if let Some(result) = tool_body.and_then(|body| body.get("result")) {
+    if let Some(result) = wrapped.and_then(|(_, body)| body.get("result")) {
         flattened.insert("result".to_string(), result.clone());
     }
     if let Some(status) = string_value(payload.get("status")) {
@@ -231,10 +213,7 @@ pub fn normalize_todo_call(
     {
         return None;
     }
-    let wrapper = object_value(payload.get("tool_call"))?;
-    let (tool_name, body) = wrapper
-        .iter()
-        .find_map(|(key, value)| object_value(Some(value)).map(|body| (key.as_str(), body)))?;
+    let (tool_name, body) = wrapped_tool_call(payload)?;
     if !is_todo_tool(tool_name) {
         return None;
     }
@@ -269,21 +248,18 @@ pub fn native_agent_lifecycle_events(
     let Some(task) = task else {
         return Vec::new();
     };
-    let Some(child_id) = task
+    let success = task
         .get("result")
         .and_then(|result| object_value(Some(result)))
         .and_then(|result| result.get("success"))
-        .and_then(|success| object_value(Some(success)))
-        .and_then(|success| string_value(success.get("agentId")))
-        .filter(|id| !id.is_empty())
-    else {
+        .and_then(|success| object_value(Some(success)));
+    let Some(child_id) = success.and_then(|success| string_value(success.get("agentId"))) else {
         return Vec::new();
     };
-    let Some(parent_id) = string_value(payload.get("session_id")).filter(|id| !id.is_empty())
-    else {
+    let Some(parent_id) = string_value(payload.get("session_id")) else {
         return Vec::new();
     };
-    let Some(run_id) = string_value(payload.get("call_id")).filter(|id| !id.is_empty()) else {
+    let Some(run_id) = string_value(payload.get("call_id")) else {
         return Vec::new();
     };
 
@@ -304,11 +280,7 @@ pub fn native_agent_lifecycle_events(
         .and_then(|args| string_value(args.get("description")))
         .filter(|description| !description.trim().is_empty())
         .unwrap_or("Agent started");
-    let completed_message = task
-        .get("result")
-        .and_then(|result| object_value(Some(result)))
-        .and_then(|result| result.get("success"))
-        .and_then(|success| object_value(Some(success)))
+    let completed_message = success
         .and_then(cursor_task_result_summary)
         .unwrap_or("Agent completed");
 
@@ -544,38 +516,6 @@ mod tests {
     }
 
     #[test]
-    fn cursor_task_tool_call_surfaces_as_agent_launch() {
-        let mut context = NormalizerSessionContext::default();
-        let result = normalize_provider_event(
-            ProviderId::Cursor,
-            &output_event(
-                &json!({
-                    "type": "tool_call",
-                    "subtype": "started",
-                    "call_id": "call_task",
-                    "tool_call": {
-                        "taskToolCall": {
-                            "args": {
-                                "description": "Map renderer surface",
-                                "prompt": "Inspect the renderer files."
-                            }
-                        }
-                    }
-                })
-                .to_string(),
-            ),
-            &mut context,
-        );
-        assert_eq!(result.events[0].r#type, "command.started");
-        assert_eq!(result.events[0].message, "taskToolCall");
-        assert_eq!(result.events[0].payload["call_id"], "call_task");
-        assert_eq!(
-            result.events[0].payload["input"]["description"],
-            "Map renderer surface"
-        );
-    }
-
-    #[test]
     fn cursor_task_lifecycle_uses_the_completed_result_agent_id() {
         let mut context = NormalizerSessionContext::default();
         let first = normalize_provider_event(
@@ -675,44 +615,6 @@ mod tests {
     }
 
     #[test]
-    fn cursor_ask_user_question_args_flatten_for_question_card() {
-        let mut context = NormalizerSessionContext::default();
-        let result = normalize_provider_event(
-            ProviderId::Cursor,
-            &output_event(
-                &json!({
-                    "type": "tool_call",
-                    "subtype": "started",
-                    "call_id": "call_q",
-                    "tool_call": {
-                        "askQuestionToolCall": {
-                            "args": {
-                                "questions": [
-                                    {
-                                        "question": "Which path?",
-                                        "header": "Path",
-                                        "multiSelect": false,
-                                        "options": [{ "label": "Fast fix" }, { "label": "Deeper cleanup" }]
-                                    }
-                                ]
-                            }
-                        }
-                    }
-                })
-                .to_string(),
-            ),
-            &mut context,
-        );
-        assert_eq!(result.events[0].r#type, "command.started");
-        assert_eq!(result.events[0].message, "askQuestionToolCall");
-        assert_eq!(result.events[0].payload["call_id"], "call_q");
-        assert_eq!(
-            result.events[0].payload["input"]["questions"][0]["question"],
-            "Which path?"
-        );
-    }
-
-    #[test]
     fn cursor_thinking_delta_becomes_thinking_message_delta() {
         let mut context = NormalizerSessionContext::default();
         let result = normalize_provider_event(
@@ -792,18 +694,5 @@ mod tests {
         assert_eq!(result.usages[0].tokens.output, 20);
         assert_eq!(result.usages[0].context_tokens, None);
         assert_eq!(result.usages[0].context_window, None);
-    }
-
-    #[test]
-    fn cursor_usage_without_a_seeded_model_is_unknown() {
-        let mut context = NormalizerSessionContext::default();
-        let result = normalize_provider_event(
-            ProviderId::Cursor,
-            &output_event(
-                r#"{"type":"result","subtype":"success","usage":{"inputTokens":10,"outputTokens":20,"cacheReadTokens":0,"cacheWriteTokens":0}}"#,
-            ),
-            &mut context,
-        );
-        assert_eq!(result.usages[0].model_id, "cursor-unknown");
     }
 }

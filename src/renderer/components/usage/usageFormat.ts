@@ -54,6 +54,20 @@ export function formatPercent(share: number | null): string {
   return `${(share * 100).toFixed(1)}%`;
 }
 
+/**
+ * `18%`, `2.4%`, `<0.1%`. A delta is a comparison rather than a measurement,
+ * so it drops to whole percents as soon as the decimal stops carrying
+ * anything. Shared with the Activity page's hero chip.
+ */
+export function formatDeltaRatio(ratio: number): string {
+  const magnitude = Math.abs(ratio) * 100;
+  if (!Number.isFinite(magnitude)) return "—";
+  if (magnitude === 0) return "0%";
+  if (magnitude < 0.1) return "<0.1%";
+  if (magnitude >= 10) return `${Math.round(magnitude)}%`;
+  return `${magnitude.toFixed(1)}%`;
+}
+
 /** The active metric's figure, in that metric's units. */
 export function formatMetric(value: number, metric: "cost" | "tokens"): string {
   return metric === "cost" ? formatUsd(value) : formatTokens(value);

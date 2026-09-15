@@ -299,13 +299,11 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
             ) : null}
             {!summary && !error ? <UsageSkeleton /> : null}
 
-            {remainingSettled || openedFromCache.current ? (
-              <UsageRemainingCard
-                remaining={remaining}
-                error={remainingError}
-                onRefresh={() => void loadRemaining()}
-              />
-            ) : null}
+            <UsageRemainingCard
+              remaining={remaining}
+              error={remainingError}
+              onRefresh={() => void loadRemaining()}
+            />
           </>
         ) : (
           <UsageSkeleton />

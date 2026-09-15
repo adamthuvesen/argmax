@@ -8,6 +8,25 @@ use crate::error::{ArgmaxError, ArgmaxResult};
 
 pub const SESSION_PR_EVIDENCE_PARSER_VERSION: i64 = 2;
 
+/// A legacy `gh_pr` row is this session's only when the checkout is its own,
+/// the user named the PR, or the PR already existed while the session worked.
+/// Shared checkouts would otherwise inherit each other's pull requests.
+const LEGACY_ATTRIBUTION: &str = "workspaces.shared_workspace = 0
+              OR gh_pr.attribution = 'explicit'
+              OR (
+                gh_pr.attribution = 'inferred'
+                AND (
+                  sessions.state IN ('running', 'waiting', 'blocked')
+                  OR (
+                    sessions.completed_at IS NOT NULL
+                    AND gh_pr.pr_created_at IS NOT NULL
+                    AND julianday(sessions.completed_at) IS NOT NULL
+                    AND julianday(gh_pr.pr_created_at) IS NOT NULL
+                    AND julianday(gh_pr.pr_created_at) <= julianday(sessions.completed_at)
+                  )
+                )
+              )";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrAttribution {
     Explicit,
@@ -908,61 +927,6 @@ pub fn list_gh_pr_for_session(
     list_legacy_gh_pr_for_session(connection, session_id)
 }
 
-/// Read canonical GitHub state by session project and PR number, independent
-/// of whether that session currently displays or has dismissed the PR.
-pub fn find_canonical_pr_for_session(
-    connection: &Connection,
-    session_id: &str,
-    pr_number: i64,
-) -> ArgmaxResult<Option<GhPrRecord>> {
-    let project_id = project_for_session(connection, session_id)?;
-    let mut statement = connection
-        .prepare_cached(
-            r#"
-            SELECT ?1 AS session_id,
-                   prs.pr_number,
-                   prs.head_sha,
-                   prs.last_seen_check_state,
-                   prs.updated_at,
-                   prs.pr_state,
-                   COALESCE(
-                     CASE WHEN links.notified_head_sha = prs.head_sha THEN links.notified_at END,
-                     legacy.notified_at
-                   ),
-                   prs.pr_created_at,
-                   prs.pr_merged_at,
-                   prs.head_ref_name
-            FROM gh_pull_requests prs
-            LEFT JOIN session_pr_links links
-              ON links.session_id = ?1
-             AND links.project_id = prs.project_id
-             AND links.pr_number = prs.pr_number
-            LEFT JOIN gh_pr legacy
-              ON legacy.session_id = ?1 AND legacy.pr_number = prs.pr_number
-            WHERE prs.project_id = ?2 AND prs.pr_number = ?3
-            "#,
-        )
-        .map_err(sqlite_error)?;
-    match statement.query_row((session_id, project_id, pr_number), |row| {
-        Ok(GhPrRecord {
-            session_id: row.get(0)?,
-            pr_number: row.get(1)?,
-            head_sha: row.get(2)?,
-            last_seen_check_state: row.get(3)?,
-            updated_at: row.get(4)?,
-            pr_state: row.get(5)?,
-            notified_at: row.get(6)?,
-            pr_created_at: row.get(7)?,
-            pr_merged_at: row.get(8)?,
-            head_ref_name: row.get(9)?,
-        })
-    }) {
-        Ok(record) => Ok(Some(record)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(error) => Err(sqlite_error(error)),
-    }
-}
-
 /// Refreshable PRs for a session, oldest attempted refresh first. Both
 /// successful and failed attempts update `refreshed_at`, so a bounded caller
 /// eventually rotates through every association instead of retrying the same
@@ -999,7 +963,7 @@ fn list_legacy_gh_pr_for_session(
     session_id: &str,
 ) -> ArgmaxResult<Vec<GhPrRecord>> {
     let mut statement = connection
-        .prepare_cached(
+        .prepare_cached(&format!(
             r#"
             SELECT gh_pr.*
             FROM gh_pr
@@ -1007,25 +971,11 @@ fn list_legacy_gh_pr_for_session(
             JOIN workspaces ON workspaces.id = sessions.workspace_id
             WHERE gh_pr.session_id = ?
               AND (
-                workspaces.shared_workspace = 0
-                OR gh_pr.attribution = 'explicit'
-                OR (
-                  gh_pr.attribution = 'inferred'
-                  AND (
-                    sessions.state IN ('running', 'waiting', 'blocked')
-                    OR (
-                      sessions.completed_at IS NOT NULL
-                      AND gh_pr.pr_created_at IS NOT NULL
-                      AND julianday(sessions.completed_at) IS NOT NULL
-                      AND julianday(gh_pr.pr_created_at) IS NOT NULL
-                      AND julianday(gh_pr.pr_created_at) <= julianday(sessions.completed_at)
-                    )
-                  )
-                )
+                {LEGACY_ATTRIBUTION}
               )
             ORDER BY gh_pr.pr_number ASC
-            "#,
-        )
+            "#
+        ))
         .map_err(sqlite_error)?;
     let rows = statement
         .query_map([session_id], row_to_gh_pr)
@@ -1041,7 +991,7 @@ fn list_legacy_gh_pr_for_session(
 /// never advances past OPEN, which would keep the row in this set forever.
 pub fn list_open_gh_pr_session_ids(connection: &Connection) -> ArgmaxResult<Vec<String>> {
     let mut statement = connection
-        .prepare_cached(
+        .prepare_cached(&format!(
             r#"
         SELECT DISTINCT links.session_id AS id
         FROM session_pr_links links
@@ -1060,21 +1010,7 @@ pub fn list_open_gh_pr_session_ids(connection: &Connection) -> ArgmaxResult<Vec<
         JOIN workspaces ON workspaces.id = sessions.workspace_id
         WHERE (gh_pr.pr_state IS NULL OR gh_pr.pr_state = 'OPEN')
           AND (
-            workspaces.shared_workspace = 0
-            OR gh_pr.attribution = 'explicit'
-            OR (
-              gh_pr.attribution = 'inferred'
-              AND (
-                sessions.state IN ('running', 'waiting', 'blocked')
-                OR (
-                  sessions.completed_at IS NOT NULL
-                  AND gh_pr.pr_created_at IS NOT NULL
-                  AND julianday(sessions.completed_at) IS NOT NULL
-                  AND julianday(gh_pr.pr_created_at) IS NOT NULL
-                  AND julianday(gh_pr.pr_created_at) <= julianday(sessions.completed_at)
-                )
-              )
-            )
+            {LEGACY_ATTRIBUTION}
           )
           AND workspaces.state NOT IN ('archiving', 'archive-failed', 'archived')
           AND NOT EXISTS (
@@ -1082,8 +1018,8 @@ pub fn list_open_gh_pr_session_ids(connection: &Connection) -> ArgmaxResult<Vec<
             WHERE links.session_id = gh_pr.session_id
               AND links.pr_number = gh_pr.pr_number
           )
-        "#,
-        )
+        "#
+        ))
         .map_err(sqlite_error)?;
     let rows = statement
         .query_map([], |row| row.get::<_, String>("id"))
@@ -1145,7 +1081,7 @@ pub fn check_failure_launched_in_workspace(
     head_sha: &str,
 ) -> ArgmaxResult<bool> {
     let mut statement = connection
-        .prepare_cached(
+        .prepare_cached(&format!(
             r#"
         SELECT 1 FROM (
           SELECT links.session_id
@@ -1174,26 +1110,12 @@ pub fn check_failure_launched_in_workspace(
                 AND links.pr_number = gh_pr.pr_number
             )
             AND (
-              workspaces.shared_workspace = 0
-              OR gh_pr.attribution = 'explicit'
-              OR (
-                gh_pr.attribution = 'inferred'
-                AND (
-                  sessions.state IN ('running', 'waiting', 'blocked')
-                  OR (
-                    sessions.completed_at IS NOT NULL
-                    AND gh_pr.pr_created_at IS NOT NULL
-                    AND julianday(sessions.completed_at) IS NOT NULL
-                    AND julianday(gh_pr.pr_created_at) IS NOT NULL
-                    AND julianday(gh_pr.pr_created_at) <= julianday(sessions.completed_at)
-                  )
-                )
-              )
+              {LEGACY_ATTRIBUTION}
             )
         ) notified
         LIMIT 1
-        "#,
-        )
+        "#
+        ))
         .map_err(sqlite_error)?;
     statement
         .exists((workspace_id, pr_number, head_sha))
@@ -1215,9 +1137,9 @@ pub fn latest_pr_for_branch(
     if branch.is_empty() {
         return Ok(None);
     }
-    query_latest_pr(
-        connection,
-        r#"
+    let mut statement = connection
+        .prepare_cached(&format!(
+            r#"
         SELECT gh_pr.*
         FROM gh_pr
         JOIN sessions ON sessions.id = gh_pr.session_id
@@ -1225,106 +1147,17 @@ pub fn latest_pr_for_branch(
         WHERE workspaces.project_id = ?
           AND gh_pr.head_ref_name = ?
           AND (
-            workspaces.shared_workspace = 0
-            OR gh_pr.attribution = 'explicit'
-            OR (
-              gh_pr.attribution = 'inferred'
-              AND (
-                sessions.state IN ('running', 'waiting', 'blocked')
-                OR (
-                  sessions.completed_at IS NOT NULL
-                  AND gh_pr.pr_created_at IS NOT NULL
-                  AND julianday(sessions.completed_at) IS NOT NULL
-                  AND julianday(gh_pr.pr_created_at) IS NOT NULL
-                  AND julianday(gh_pr.pr_created_at) <= julianday(sessions.completed_at)
-                )
-              )
-            )
+            {LEGACY_ATTRIBUTION}
           )
         ORDER BY gh_pr.updated_at DESC, gh_pr.pr_number DESC
         LIMIT 1
-        "#,
-        (project_id, branch),
-    )
-}
-
-/// Sidebar marker for one workspace. Isolated workspaces resolve the PR on
-/// their owned branch, even when the session referenced other PRs. Shared
-/// checkouts resolve only PRs attributed to their own session, because another
-/// session may later move the checkout's HEAD.
-pub fn latest_pr_for_workspace(
-    connection: &Connection,
-    workspace_id: &str,
-    project_id: &str,
-    branch: &str,
-) -> ArgmaxResult<Option<GhPrRecord>> {
-    query_latest_pr(
-        connection,
-        r#"
-        SELECT gh_pr.*
-        FROM gh_pr
-        JOIN sessions AS observer_sessions ON observer_sessions.id = gh_pr.session_id
-        JOIN workspaces AS observer_workspaces ON observer_workspaces.id = observer_sessions.workspace_id
-        JOIN workspaces AS target_workspace ON target_workspace.id = ?3
-        WHERE observer_workspaces.project_id = ?1
-          AND target_workspace.project_id = ?1
-          AND (
-            observer_workspaces.shared_workspace = 0
-            OR gh_pr.attribution = 'explicit'
-            OR (
-              gh_pr.attribution = 'inferred'
-              AND (
-                observer_sessions.state IN ('running', 'waiting', 'blocked')
-                OR (
-                  observer_sessions.completed_at IS NOT NULL
-                  AND gh_pr.pr_created_at IS NOT NULL
-                  AND julianday(observer_sessions.completed_at) IS NOT NULL
-                  AND julianday(gh_pr.pr_created_at) IS NOT NULL
-                  AND julianday(gh_pr.pr_created_at) <= julianday(observer_sessions.completed_at)
-                )
-              )
-            )
-          )
-          AND (
-            (
-              target_workspace.shared_workspace = 1
-              AND observer_sessions.workspace_id = target_workspace.id
-            )
-            OR (
-              target_workspace.shared_workspace = 0
-              AND (
-                (?2 != '' AND gh_pr.head_ref_name = ?2)
-                OR (gh_pr.head_ref_name IS NULL AND observer_sessions.workspace_id = target_workspace.id)
-              )
-            )
-          )
-        ORDER BY
-          CASE
-            WHEN target_workspace.shared_workspace = 0
-              AND ?2 != ''
-              AND gh_pr.head_ref_name = ?2
-            THEN 0
-            ELSE 1
-          END,
-          gh_pr.updated_at DESC,
-          gh_pr.pr_number DESC
-        LIMIT 1
-        "#,
-        (project_id, branch, workspace_id),
-    )
-}
-
-fn query_latest_pr(
-    connection: &Connection,
-    sql: &str,
-    params: impl rusqlite::Params,
-) -> ArgmaxResult<Option<GhPrRecord>> {
-    let mut statement = connection.prepare_cached(sql).map_err(sqlite_error)?;
-    match statement.query_row(params, row_to_gh_pr) {
-        Ok(record) => Ok(Some(record)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(error) => Err(sqlite_error(error)),
-    }
+        "#
+        ))
+        .map_err(sqlite_error)?;
+    statement
+        .query_row((project_id, branch), row_to_gh_pr)
+        .optional()
+        .map_err(sqlite_error)
 }
 
 pub fn mark_gh_pr_notified(
@@ -1497,45 +1330,6 @@ mod tests {
             pr_created_at: Some("2026-09-07T09:00:00.000Z".to_owned()),
             pr_merged_at: (state == "MERGED").then(|| "2026-09-07T09:30:00.000Z".to_owned()),
             head_ref_name: Some("feature/pr".to_owned()),
-        }
-    }
-
-    #[test]
-    fn isolated_workspace_marker_rejects_explicit_pr_on_another_branch() {
-        for state in ["OPEN", "CLOSED", "MERGED"] {
-            let database = Database::open_in_memory().expect("open db");
-            let connection = database.connection();
-            add_project(&connection, "p1");
-            add_session(&connection, "p1", "w1", "s1", "feature/work", false);
-            record_gh_pr_observation(
-                &connection,
-                &pr("s1", state, "sha1"),
-                PrAttribution::Explicit,
-            )
-            .expect("record explicit")
-            .expect("associated");
-            assert_eq!(list_gh_pr_for_session(&connection, "s1").unwrap().len(), 1);
-            assert!(
-                latest_pr_for_workspace(&connection, "w1", "p1", "feature/work")
-                    .unwrap()
-                    .is_none(),
-                "an unrelated {state} PR is session history, not this workspace's PR"
-            );
-
-            add_session(&connection, "p1", "w2", "s2", "feature/work", false);
-            let mut matching = pr("s2", "OPEN", "eight");
-            matching.pr_number = 8;
-            matching.head_ref_name = Some("feature/work".to_owned());
-            record_gh_pr_observation(&connection, &matching, PrAttribution::Inferred)
-                .expect("record matching PR")
-                .expect("associated");
-            assert_eq!(
-                latest_pr_for_workspace(&connection, "w1", "p1", "feature/work")
-                    .unwrap()
-                    .unwrap()
-                    .pr_number,
-                8
-            );
         }
     }
 
@@ -1724,13 +1518,6 @@ mod tests {
             Some("feature/pr")
         );
         assert_eq!(list_gh_pr_for_session(&connection, "s1").unwrap().len(), 1);
-        assert_eq!(
-            latest_pr_for_workspace(&connection, "w1", "p1", "main")
-                .unwrap()
-                .unwrap()
-                .pr_number,
-            7
-        );
         update_session_state(
             &connection,
             "s1",

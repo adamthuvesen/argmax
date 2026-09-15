@@ -108,23 +108,10 @@ final class InsightsStore: ObservableObject {
     /// in the foreground, the other prefetches behind it. Either one already
     /// fresh for its window returns without touching the socket.
     func ensure(_ tab: Tab) async {
-        if tab == .usage {
-            if isFresh(.usage) {
-                prefetch(.activity)
-            } else {
-                // The prefetch rides along: usage paints the moment it lands
-                // instead of waiting for the slower sweep behind it.
-                prefetch(.activity)
-                await load(.usage)
-            }
-        } else {
-            if isFresh(.activity) {
-                prefetch(.usage)
-            } else {
-                prefetch(.usage)
-                await load(.activity)
-            }
-        }
+        // The other tab rides along: this one paints the moment it lands
+        // instead of waiting for the slower sweep behind it.
+        prefetch(tab == .usage ? .activity : .usage)
+        if !isFresh(tab) { await load(tab) }
     }
 
     /// Pull-to-refresh and window changes: only the visible tab refetches.

@@ -545,7 +545,7 @@ function toolStartTimes(toolItems: readonly TurnToolItem[]): string[] {
 }
 
 /** Earliest card cutoff when plan/question cards are the turn's authoritative artifact. */
-export function cardCutoffForTurn(params: {
+function cardCutoffForTurn(params: {
   exitPlanCreatedAt: string | null;
   questionCreatedAt: string | null;
 }): string | null {
@@ -561,7 +561,7 @@ export function turnAgentModeFromPrior(priorItem: RenderItem | null): string | n
     : null;
 }
 
-export function computeTurnStartedAtMs(params: {
+function computeTurnStartedAtMs(params: {
   priorItem: RenderItem | null;
   assistantTimestamps: readonly number[];
   toolItems: readonly TurnToolItem[];
@@ -581,7 +581,7 @@ export function computeTurnStartedAtMs(params: {
   return Number.isFinite(earliest) ? earliest : Number.NaN;
 }
 
-export type TurnRenderState = {
+type TurnRenderState = {
   assistantGroups: AssistantGroup[];
   visibleAssistantGroups: AssistantGroup[];
   cardCutoff: string | null;

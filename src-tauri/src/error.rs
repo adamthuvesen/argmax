@@ -3,10 +3,6 @@
 // `ArgmaxError` is the single error type that Tauri commands return. It
 // serializes with a stable top-level `code` string so renderer error
 // branches can stay simple.
-//
-// The Zod-era `InvalidInputIssue` shape (path / code / message per issue)
-// is preserved verbatim so renderer error renderers don't have to learn
-// a new envelope.
 
 use serde::Serialize;
 use specta::Type;

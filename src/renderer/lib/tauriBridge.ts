@@ -7,6 +7,7 @@ import type {
   ActivitySummary,
   ActivitySummaryInput,
   ArgmaxApi,
+  AgentToolsSettings,
   ChatCleanupPreview,
   DeleteOldChatsResult,
   AttachmentSaveImageInput,
@@ -243,7 +244,7 @@ function trackDeltaArrival(): void {
   }
 }
 
-export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
+function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
   const invokeCommand = <T>(channel: IpcChannel, input: unknown = {}): Promise<T> =>
     transport.invoke<T>(channel, input);
   const subscribe = <T>(channel: string, listener: (payload: T) => void): EventSubscription =>
@@ -429,6 +430,9 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       list: (input) => invokeCommand<ConnectionSummary[]>("connections:list", input)
     },
     settings: {
+      agentTools: () => invokeCommand<AgentToolsSettings>("settings:agent-tools"),
+      setBrowserTools: (input) =>
+        invokeCommand<AgentToolsSettings>("settings:set-browser-tools", input),
       previewChatCleanup: () => invokeCommand<ChatCleanupPreview>("settings:preview-chat-cleanup"),
       deleteOldChats: (input) => invokeCommand<DeleteOldChatsResult>("settings:delete-old-chats", input)
     },

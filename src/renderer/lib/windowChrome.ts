@@ -8,7 +8,7 @@ import { isTauriRuntime } from "./tauriBridge.js";
 // We act only when the mousedown target *is* a marked element (exact match, not
 // a descendant), so interactive children inside a header stay clickable without
 // needing per-child opt-outs. Mark drag handles with `data-window-drag`.
-export function installWindowChrome(): void {
+function installWindowChrome(): void {
   if (!isTauriRuntime()) return;
   window.addEventListener("mousedown", (event) => {
     if (event.button !== 0) return; // primary button only
@@ -27,7 +27,7 @@ export function installWindowChrome(): void {
 // decorative loops while nobody is watching — see styles/motion.css. Runs
 // outside the Tauri guard: the browser demo harness and the mobile surface both
 // benefit, and it costs one attribute write per visibility change.
-export function installDocumentVisibility(): void {
+function installDocumentVisibility(): void {
   const sync = (): void => {
     document.documentElement.dataset.documentHidden = String(document.hidden);
   };

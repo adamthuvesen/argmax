@@ -1,6 +1,5 @@
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
 
 use tauri::{AppHandle, Manager, Runtime};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
@@ -66,15 +65,6 @@ impl<C: UpdateChecker, D: UpdateDialog> UpdateService<C, D> {
     }
 }
 
-pub type TauriUpdateService<R> = UpdateService<TauriUpdateChecker<R>, TauriUpdateDialog<R>>;
-
-pub fn tauri_update_service<R: Runtime>(app: AppHandle<R>) -> Arc<TauriUpdateService<R>> {
-    Arc::new(UpdateService::new(
-        TauriUpdateChecker::new(app.clone()),
-        TauriUpdateDialog::new(app),
-    ))
-}
-
 #[derive(Clone)]
 pub struct TauriUpdateChecker<R: Runtime> {
     app: AppHandle<R>,
@@ -129,7 +119,10 @@ impl<R: Runtime> UpdateDialog for TauriUpdateDialog<R> {
 
 pub fn run_menu_update_check<R: Runtime>(app: AppHandle<R>) {
     tauri::async_runtime::spawn(async move {
-        let service = tauri_update_service(app);
+        let service = UpdateService::new(
+            TauriUpdateChecker::new(app.clone()),
+            TauriUpdateDialog::new(app),
+        );
         if let Err(error) = service.check_on_user_request().await {
             tracing::warn!(?error, "user-triggered update check failed");
         }
@@ -157,7 +150,7 @@ fn show_message<R: Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
 
     struct StubChecker {
         results: Mutex<Vec<ArgmaxResult<Option<AvailableUpdate>>>>,

@@ -13,22 +13,13 @@ use super::cache::{trace_file_step, TraceFileStamp, TraceFileStep};
 use super::reconcile::{CodexChildTrace, ReconciliationPlan};
 use super::shared::{
     fallback_timestamp, is_duplicate_text, push_unique, read_trace_lines, stamp_trace_payload,
-    trace_event, TraceFileLines,
+    trace_event, TraceFileLines, TraceRunModel,
 };
 use super::{AgentTraceContext, TraceImport, TraceLine};
 use crate::{
     persistence::events::PersistTimelineEventInput, providers::normalizer::JSON_PARSE_LINE_CAP,
     util::sync::LockOrRecover,
 };
-
-/// What the child thread is running on, read from the rollout's `turn_context`
-/// records. A subagent picks its own model and effort, and nothing in the
-/// parent's stdout reports them, so the imported rows carry them instead.
-#[derive(Debug, Clone, Default)]
-struct CodexRunModel {
-    model_id: Option<String>,
-    reasoning_effort: Option<String>,
-}
 
 #[derive(Debug, Clone)]
 pub(super) struct CodexNativeRun {
@@ -50,33 +41,19 @@ impl CodexNativeRun {
     }
 }
 
-impl CodexRunModel {
-    fn absorb(&mut self, object: &Map<String, Value>) {
-        if object.get("type").and_then(Value::as_str) != Some("turn_context") {
-            return;
-        }
-        let Some(payload) = object.get("payload").and_then(Value::as_object) else {
-            return;
-        };
-        if let Some(model_id) = payload.get("model").and_then(Value::as_str) {
-            self.model_id = Some(model_id.to_string());
-        }
-        if let Some(effort) = payload.get("effort").and_then(Value::as_str) {
-            self.reasoning_effort = Some(effort.to_string());
-        }
+/// The rollout's `turn_context` records name the model and effort the child
+/// thread runs on.
+fn absorb_codex_turn_context(run_model: &mut TraceRunModel, object: &Map<String, Value>) {
+    if object.get("type").and_then(Value::as_str) != Some("turn_context") {
+        return;
     }
-
-    fn stamp(&self, payload: &mut Map<String, Value>) {
-        if let Some(model_id) = &self.model_id {
-            payload.insert("agentModelId".to_string(), Value::String(model_id.clone()));
-        }
-        if let Some(effort) = &self.reasoning_effort {
-            payload.insert(
-                "agentReasoningEffort".to_string(),
-                Value::String(effort.clone()),
-            );
-        }
-    }
+    let Some(payload) = object.get("payload").and_then(Value::as_object) else {
+        return;
+    };
+    run_model.absorb(
+        payload.get("model").and_then(Value::as_str),
+        payload.get("effort").and_then(Value::as_str),
+    );
 }
 
 pub(super) fn find_codex_child_traces(
@@ -173,7 +150,7 @@ pub(super) fn codex_child_events(
     let mut seen_messages = HashSet::new();
     let mut seen_thinking = HashSet::new();
     let mut sequence = 0;
-    let mut run_model = CodexRunModel::default();
+    let mut run_model = TraceRunModel::default();
     let mut turn_ids = Vec::new();
     for line in lines {
         let Some(object) = line.value.as_object() else {
@@ -242,7 +219,7 @@ pub(super) fn codex_child_events(
         }
         // A rollout opens with `turn_context` and repeats it per turn, so the
         // model and effort are known before the first row they get stamped on.
-        run_model.absorb(object);
+        absorb_codex_turn_context(&mut run_model, object);
         let Some((kind, message, mut payload)) = codex_trace_event_payload(object) else {
             continue;
         };
@@ -253,10 +230,8 @@ pub(super) fn codex_child_events(
         }
         let event_sequence = sequence;
         sequence += 1;
-        // A rollout row that carried no call id still needs one, and the
-        // renderer keys its tool-call map session-wide, so the fallback carries
-        // the child id and this event's sequence — the rule `cursor_tool_id`
-        // documents. One constant collided across every fallback in a session.
+        // A rollout row that carried no call id still needs one, keyed the way
+        // `cursor_tool_id` explains.
         if matches!(kind, "command.started" | "command.completed") && !payload.contains_key("id") {
             let id = Value::String(format!("trace-codex-tool-{child_id}-{event_sequence}"));
             payload.insert("call_id".to_string(), id.clone());
@@ -303,6 +278,11 @@ fn codex_trace_terminal_status(object: &Map<String, Value>) -> Option<&'static s
     {
         Some("task_complete") => Some("completed"),
         Some("turn_aborted") => Some("cancelled"),
+        // `reconcile.rs`'s `CODEX_TERMINAL_EVENTS` already treats this as
+        // terminal; without it here, a child that ends this way is invisible
+        // to `codex_trace_ended`, so `codex_children_still_working` keeps
+        // naming it live until `CODEX_CHILD_SILENCE` elapses.
+        Some("shutdown_complete") => Some("completed"),
         _ => None,
     }
 }
@@ -555,9 +535,21 @@ fn find_codex_trace_file(
             if !name.ends_with(".jsonl") || !name.contains(child_thread_id) {
                 continue;
             }
-            if codex_trace_file_matches(path, child_thread_id, parent_thread_id) {
-                return Some(path.to_path_buf());
+            let Some(meta) = codex_trace_file_meta(path) else {
+                continue;
+            };
+            if meta.thread_id != child_thread_id {
+                continue;
             }
+            // A rollout that names no parent is still this child's transcript.
+            if let (Some(expected), Some(parent)) =
+                (parent_thread_id, meta.parent_thread_id.as_deref())
+            {
+                if parent != expected {
+                    continue;
+                }
+            }
+            return Some(path.to_path_buf());
         }
     }
     None
@@ -605,23 +597,6 @@ fn parse_trace_time(timestamp: &str) -> Option<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(timestamp)
         .ok()
         .map(|time| time.with_timezone(&Utc))
-}
-
-fn codex_trace_file_matches(
-    path: &Path,
-    child_thread_id: &str,
-    parent_thread_id: Option<&str>,
-) -> bool {
-    let Some(meta) = codex_trace_file_meta(path) else {
-        return false;
-    };
-    if meta.thread_id != child_thread_id {
-        return false;
-    }
-    match (parent_thread_id, meta.parent_thread_id.as_deref()) {
-        (Some(expected), Some(parent)) => parent == expected,
-        _ => true,
-    }
 }
 
 /// The `session_meta` header of a Codex rollout: who the thread is, who

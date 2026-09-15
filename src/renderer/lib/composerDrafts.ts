@@ -16,7 +16,7 @@ const MAX_DRAFTS = 50;
  * attachments root, so a draft only carries the metadata needed to show the
  * chips again and to hand the same files to the agent on send.
  */
-export interface ComposerDraft {
+interface ComposerDraft {
   text: string;
   attachments: ComposerAttachment[];
 }

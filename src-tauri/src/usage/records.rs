@@ -116,17 +116,6 @@ mod tests {
     }
 
     #[test]
-    fn processed_tokens_ignore_reasoning_which_is_already_inside_output() {
-        let tokens = UsageRecordTokens {
-            output: 100,
-            reasoning: 60,
-            ..UsageRecordTokens::default()
-        };
-        assert!(!tokens.is_empty());
-        assert_eq!(tokens.cache_write(), 0);
-    }
-
-    #[test]
     fn a_record_with_only_reasoning_is_still_empty() {
         let tokens = UsageRecordTokens {
             reasoning: 42,

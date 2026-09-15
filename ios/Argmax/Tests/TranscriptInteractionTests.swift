@@ -25,11 +25,11 @@ final class TranscriptInteractionTests: XCTestCase {
         ]
 
         XCTAssertEqual(
-            transcriptQuestionAnswer(
+            transcriptQuestionResponse(
                 questions: questions,
                 selections: [[1], [0, 2]],
                 otherText: ["", "Run it on a phone too"]
-            ),
+            ).displayText,
             "Location: Worktree\nChecks: Unit tests, Run it on a phone too"
         )
     }

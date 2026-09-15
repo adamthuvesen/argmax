@@ -6,7 +6,7 @@
  * reader ("what else is running for me right now"), so one id space carries
  * both.
  */
-export type AgentTab =
+type AgentTab =
   | {
       kind: "subagent";
       toolUseId: string;

@@ -18,7 +18,7 @@ export const MERMAID_STREAM_DEBOUNCE_MS = 180;
 
 type MermaidBindFunctions = (element: Element) => void;
 
-export type MermaidRenderResult = {
+type MermaidRenderResult = {
   svg: string;
   bindFunctions?: MermaidBindFunctions;
 };
@@ -90,7 +90,7 @@ function readProbeTypography(): { fontFamily: string; fontSize: string } {
   return { fontFamily, fontSize };
 }
 
-export function readMermaidThemeVariables(): Record<string, string | boolean> {
+function readMermaidThemeVariables(): Record<string, string | boolean> {
   if (typeof document === "undefined") return { darkMode: false };
   const root = document.documentElement;
   const style = getComputedStyle(root);

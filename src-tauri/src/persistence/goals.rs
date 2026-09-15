@@ -83,19 +83,15 @@ pub fn find_active_goal_for_session(
 }
 
 pub fn list_goals(connection: &Connection, workspace_id: Option<&str>) -> ArgmaxResult<Vec<Goal>> {
-    let sql = if workspace_id.is_some() {
-        format!("SELECT {GOAL_COLUMNS} FROM goals WHERE workspace_id = ? ORDER BY updated_at DESC, id DESC")
-    } else {
-        format!("SELECT {GOAL_COLUMNS} FROM goals ORDER BY updated_at DESC, id DESC")
-    };
-    let mut statement = connection.prepare(&sql).map_err(sqlite_error)?;
-    let rows = if let Some(workspace_id) = workspace_id {
-        statement.query_map([workspace_id], goal_from_row)
-    } else {
-        statement.query_map([], goal_from_row)
-    }
-    .map_err(sqlite_error)?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)
+    connection
+        .prepare(&format!(
+            "SELECT {GOAL_COLUMNS} FROM goals WHERE ?1 IS NULL OR workspace_id = ?1 ORDER BY updated_at DESC, id DESC"
+        ))
+        .map_err(sqlite_error)?
+        .query_map([workspace_id], goal_from_row)
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)
 }
 
 /// Records one judged turn: the running count plus whatever the evaluator said

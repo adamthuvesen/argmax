@@ -1,12 +1,12 @@
 import { rendererLogSnapshot } from "./rendererLogRing.js";
 
-export interface VerificationDiagnosticEntry {
+interface VerificationDiagnosticEntry {
   timestamp: string;
   level: "warning" | "error" | "unhandled-rejection";
   message: string;
 }
 
-export interface VerificationDiagnosticsSnapshot {
+interface VerificationDiagnosticsSnapshot {
   entries: VerificationDiagnosticEntry[];
   breadcrumbs: ReturnType<typeof rendererLogSnapshot>;
 }

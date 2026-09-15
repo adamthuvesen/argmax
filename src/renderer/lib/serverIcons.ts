@@ -4,7 +4,7 @@ import sprite from "../../../assets/fox-mascot.txt?raw";
 /** Sprite roles the mascot keeps apart once monochrome puts every fill on one
  *  ink: the outline holds the silhouette, fur and cream stay separate masses,
  *  and the eye is knocked out to the row behind it. */
-export type ServerIconTone = "line" | "fur" | "cream" | "eye";
+type ServerIconTone = "line" | "fur" | "cream" | "eye";
 
 /**
  * How much of the one ink each tone keeps under monochrome, per theme.
@@ -22,7 +22,7 @@ export const SERVER_ICON_TONE_DEPTH: Record<"light" | "dark", Record<ServerIconT
   dark: { line: 0.1, fur: 0.58, cream: 0.92, eye: 1 }
 };
 
-export interface ServerIconLayer {
+interface ServerIconLayer {
   path: string;
   /** Fill colour, or null for a black mark that takes the row's text colour
    *  instead of vanishing on the dark theme. */

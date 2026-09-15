@@ -32,6 +32,8 @@ import {
   closeSettings,
   dashboardDeltaListener,
   openSettings,
+  agentToolsStub,
+  setBrowserToolsStub,
   setNotificationsEnabledStub,
   setupAppTestMocks,
   snapshot,
@@ -239,20 +241,23 @@ describe("App settings", () => {
     );
   });
 
-  it("disables the composer pixel field by default and persists turning it on", async () => {
+  // Toggles whose whole contract is "off until you turn it on, and it sticks".
+  // A preference that also changes something on screen gets its own test.
+  it.each([
+    ["Appearance", "Layout", "Celebrate PR milestones", PR_MILESTONE_CELEBRATION_KEY],
+    ["General", "Startup", "Random icon for new chats", RANDOM_SESSION_ICON_KEY]
+  ] as const)("leaves %s → %s's “%s” off until it is turned on", async (group, heading, label, key) => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
-    await openSettings("Appearance");
-    await screen.findByRole("heading", { name: "Layout" });
+    await openSettings(group);
+    await screen.findByRole("heading", { name: heading });
 
-    const toggle = screen.getByRole("checkbox", { name: "Pixel field in composer" });
+    const toggle = screen.getByRole("checkbox", { name: label });
     expect(toggle).not.toBeChecked();
 
     fireEvent.click(toggle);
-    await waitFor(() =>
-      expect(window.localStorage.getItem("argmax.composer.pixelField.enabled")).toBe("true")
-    );
+    await waitFor(() => expect(window.localStorage.getItem(key)).toBe("true"));
   });
 
   it("disables the composer context indicator by default and persists turning it on", async () => {
@@ -342,22 +347,6 @@ describe("App settings", () => {
     expect(screen.queryByRole("img", { name: /^Fox mascot/ })).toBeNull();
   });
 
-  it("disables PR milestone celebrations by default and persists turning them on", async () => {
-    render(<App />);
-    await screen.findByRole("button", { name: "Build dashboard" });
-
-    await openSettings("Appearance");
-    await screen.findByRole("heading", { name: "Layout" });
-
-    const toggle = screen.getByRole("checkbox", { name: "Celebrate PR milestones" });
-    expect(toggle).not.toBeChecked();
-
-    fireEvent.click(toggle);
-    await waitFor(() =>
-      expect(window.localStorage.getItem(PR_MILESTONE_CELEBRATION_KEY)).toBe("true")
-    );
-  });
-
   it("keeps goals and turn revert on by default and persists turning them off", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
@@ -377,6 +366,35 @@ describe("App settings", () => {
     await waitFor(() => expect(window.localStorage.getItem(TURN_REVERT_ENABLED_KEY)).toBe("false"));
   });
 
+  it("reads the browser-tools setting from the app and writes the change back", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings("Agents");
+    await screen.findByRole("heading", { name: "Tools" });
+    expect(agentToolsStub).toHaveBeenCalled();
+
+    const toggle = screen.getByRole("checkbox", { name: "Browser tools" });
+    expect(toggle).toBeChecked();
+
+    fireEvent.click(toggle);
+    await waitFor(() => expect(setBrowserToolsStub).toHaveBeenCalledWith({ enabled: false }));
+    expect(toggle).not.toBeChecked();
+  });
+
+  it("snaps the browser-tools toggle back when the write fails", async () => {
+    setBrowserToolsStub.mockRejectedValueOnce(new Error("no database"));
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings("Agents");
+    await screen.findByRole("heading", { name: "Tools" });
+
+    const toggle = screen.getByRole("checkbox", { name: "Browser tools" });
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle).toBeChecked());
+  });
+
   it("hides the goal turn budget when goals are off", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
@@ -388,22 +406,6 @@ describe("App settings", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Goals" }));
     await waitFor(() =>
       expect(screen.queryByRole("slider", { name: "Turns a goal may spend" })).not.toBeInTheDocument()
-    );
-  });
-
-  it("disables random session icons by default and persists turning them on", async () => {
-    render(<App />);
-    await screen.findByRole("button", { name: "Build dashboard" });
-
-    await openSettings();
-    await screen.findByRole("heading", { name: "Startup" });
-
-    const toggle = screen.getByRole("checkbox", { name: "Random icon for new chats" });
-    expect(toggle).not.toBeChecked();
-
-    fireEvent.click(toggle);
-    await waitFor(() =>
-      expect(window.localStorage.getItem(RANDOM_SESSION_ICON_KEY)).toBe("true")
     );
   });
 

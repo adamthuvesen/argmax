@@ -5,7 +5,7 @@ const SIDEBAR_WIDTH_KEY = "argmax.sidebar.width";
 export const SIDEBAR_MIN_WIDTH_PX = 220;
 const SIDEBAR_MAX = 500;
 const SIDEBAR_DEFAULT = 272;
-export const SIDEBAR_AUTO_EXPAND_HYSTERESIS_PX = 24;
+const SIDEBAR_AUTO_EXPAND_HYSTERESIS_PX = 24;
 export const DEFAULT_WORKSPACE_MIN_WIDTH_PX = COMPOSER_MIN_WIDTH_PX;
 
 function normalizedWorkspaceMinWidth(workspaceMinWidth: number): number {
@@ -41,7 +41,7 @@ function clampSavedSidebarWidth(width: number): number {
   return Math.max(SIDEBAR_MIN_WIDTH_PX, Math.min(SIDEBAR_MAX, width));
 }
 
-export interface SidebarResizeState {
+interface SidebarResizeState {
   /** Current expanded-layout sidebar width in CSS pixels. */
   sidebarWidth: number;
   /** True when the sidebar is folded by the window-width responsive policy. */

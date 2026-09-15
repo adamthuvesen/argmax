@@ -284,16 +284,6 @@ pub struct TerminalService {
 }
 
 impl TerminalService {
-    pub fn new(database: Arc<Database>, on_data: OutputSink, on_exit: ExitSink) -> Arc<Self> {
-        Self::with_shell_factory_and_lifecycle(
-            database,
-            on_data,
-            on_exit,
-            default_shell_factory(),
-            WorkspaceLifecycle::new(),
-        )
-    }
-
     pub fn with_lifecycle(
         database: Arc<Database>,
         on_data: OutputSink,
@@ -426,24 +416,6 @@ impl TerminalService {
         );
 
         Ok(TerminalSpawnResult { terminal_id })
-    }
-
-    /// Spawn a terminal and type `command` into its shell. This is how an
-    /// agent starts something that has to outlive its turn: the PTY belongs to
-    /// Argmax rather than to the provider process, so the dev server it starts
-    /// is still running (and still on screen) at the next turn.
-    pub fn spawn_command(
-        self: &Arc<Self>,
-        input: TerminalSpawnInput,
-        command: Option<&str>,
-    ) -> ArgmaxResult<TerminalSpawnResult> {
-        let spawned = self.spawn(input)?;
-        let Some(command) = command.map(str::trim).filter(|value| !value.is_empty()) else {
-            return Ok(spawned);
-        };
-        self.record_command(&spawned.terminal_id, command);
-        self.write(&spawned.terminal_id, format!("{command}\n").as_bytes())?;
-        Ok(spawned)
     }
 
     /// Label a terminal before a caller types the command. The agent tool
@@ -616,7 +588,6 @@ impl TerminalService {
         .is_ok()
     }
 
-    #[allow(dead_code)]
     pub fn live_count(&self) -> usize {
         self.terminals.lock_or_recover("terminals").len()
     }
@@ -773,13 +744,11 @@ fn spawn_exit_watcher(
         if reader_thread.join().is_err() {
             tracing::warn!(terminal_id = %terminal_id, "terminal reader thread panicked");
         }
-        // portable_pty's ExitStatus doesn't expose POSIX signal numbers
-        // cross-platform; emit `None` when unavailable to match the TS shape.
-        let signal: Option<i32> = None;
         let info = TerminalExitInfo {
             terminal_id: terminal_id.clone(),
             exit_code,
-            signal,
+            // portable_pty's ExitStatus does not expose POSIX signal numbers.
+            signal: None,
         };
         if let Some(service) = service.upgrade() {
             let _ = service.remove_terminal(&terminal_id);
@@ -1160,40 +1129,6 @@ mod tests {
             process_gone(descendant_pid),
             "natural shell exit left its background job alive"
         );
-    }
-
-    #[tokio::test]
-    async fn terminate_after_natural_exit_is_noop() {
-        let (database, workspace_id, _db, _cwd) = setup();
-        let on_data: OutputSink = Arc::new(|_| {});
-        let (exit_tx, exit_rx) = oneshot::channel::<TerminalExitInfo>();
-        let exit_tx = StdMutex::new(Some(exit_tx));
-        let on_exit: ExitSink = Arc::new(move |info| {
-            if let Some(tx) = exit_tx.lock().unwrap().take() {
-                let _ = tx.send(info);
-            }
-        });
-        let svc = TerminalService::with_shell_factory(
-            database,
-            on_data,
-            on_exit,
-            script_factory("exit 0"),
-        );
-        let result = svc
-            .spawn(TerminalSpawnInput {
-                workspace_id,
-                cols: 80,
-                rows: 24,
-            })
-            .unwrap();
-        let _ = timeout(Duration::from_secs(5), exit_rx)
-            .await
-            .expect("exit watcher did not fire")
-            .expect("exit channel closed before sending");
-        sleep(Duration::from_millis(50)).await;
-
-        svc.terminate(&result.terminal_id).await;
-        assert_eq!(svc.live_count(), 0);
     }
 
     #[tokio::test]
@@ -1629,15 +1564,15 @@ mod tests {
         );
 
         let spawned = svc
-            .spawn_command(
-                TerminalSpawnInput {
-                    workspace_id: workspace_id.clone(),
-                    cols: 80,
-                    rows: 24,
-                },
-                Some("echo argmax-was-here"),
-            )
-            .expect("spawn with a command");
+            .spawn(TerminalSpawnInput {
+                workspace_id: workspace_id.clone(),
+                cols: 80,
+                rows: 24,
+            })
+            .expect("spawn");
+        svc.record_command(&spawned.terminal_id, "echo argmax-was-here");
+        svc.write(&spawned.terminal_id, b"echo argmax-was-here\n")
+            .expect("type the command");
 
         let listed = svc.workspace_terminals(&workspace_id);
         assert_eq!(listed.len(), 1);

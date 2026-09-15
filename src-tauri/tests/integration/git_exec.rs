@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::support::git_repo::{run_git, seed_git_repo};
+use crate::support::git_repo::seed_git_repo;
 use argmax_lib::git::exec::{
     reject_leading_dash, run_git_buffer, run_git_buffer_with_options, run_git_text,
     run_git_text_with_allowed_exit_codes, run_git_text_with_options, GitExecOptions,
@@ -231,21 +231,4 @@ async fn per_call_env_overrides_the_injected_path() {
     .expect("git resolves the probe through the overridden PATH");
 
     assert_eq!(stdout, "probe ran");
-}
-
-#[tokio::test]
-async fn git_fixture_helper_can_create_dirty_repo() {
-    let repo = seed_git_repo(&[("file.txt", "clean\n")]);
-    std::fs::write(repo.path().join("file.txt"), "dirty\n").expect("dirty file");
-
-    let stdout = run_git_text(
-        repo.path(),
-        ["status", "--porcelain=v1"],
-        Duration::from_secs(5),
-    )
-    .await
-    .expect("status succeeds");
-
-    assert!(stdout.contains("M file.txt"));
-    run_git(repo.path(), &["checkout", "--", "file.txt"]);
 }

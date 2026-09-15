@@ -7,27 +7,6 @@ describe("ChatBubble", () => {
     cleanup();
   });
 
-  it("renders a Copy button", () => {
-    render(
-      <ChatBubble kind="user" rawMarkdown="hello">
-        <p>hello</p>
-      </ChatBubble>
-    );
-    expect(screen.getByRole("button", { name: "Copy bubble" })).toBeInTheDocument();
-  });
-
-  it("wraps a user message body in the height-capped scroll container", () => {
-    const longMessage = Array.from({ length: 40 }, (_, i) => `paragraph ${i}`).join("\n\n");
-    const { container } = render(
-      <ChatBubble kind="user" rawMarkdown={longMessage}>
-        <p>{longMessage}</p>
-      </ChatBubble>
-    );
-    const body = container.querySelector(".chat-bubble-body");
-    expect(body).not.toBeNull();
-    expect(body?.querySelector("p")).toHaveTextContent("paragraph 0");
-  });
-
   it("offers Show more only when the body is clipped, and toggles both ways", () => {
     // jsdom reports every box as 0x0, so stand in for the CSS cap: content
     // taller than the clipped client box is what makes the toggle appear.

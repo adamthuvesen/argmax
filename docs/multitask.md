@@ -71,7 +71,7 @@ A surface that hands the pane no dock — the phone — raises the same rows in 
 
 ## Testing
 
-- Rust: [src-tauri/tests/multitask.rs](../src-tauri/tests/multitask.rs) — same-checkout sibling with inherited settings and guardrail prompt, isolated worktree, finishing without starting a turn in the parent, results riding the next prompt but not the persisted message, lineage and launch caps.
+- Rust: [src-tauri/tests/integration/multitask.rs](../src-tauri/tests/integration/multitask.rs) — same-checkout sibling with inherited settings and guardrail prompt, isolated worktree, finishing without starting a turn in the parent, results riding the next prompt but not the persisted message, lineage and launch caps.
 - Renderer: `multitask.test.ts` (notices, sidebar hiding, grouping), `agentTabs.test.ts`, `foldConversation.test.ts` (dispatch association and merging across turns), `MultitaskRow.test.tsx`, `subagentSummary.test.ts` (multitasks in the card's count), `SessionComposer.multitask.test.tsx`, and `App.multitask.test.tsx` end to end. They cover the composer-attached row, dock tab, and a stop that leaves the dispatching chat alone.
 
 ## Related

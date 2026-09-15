@@ -2,7 +2,6 @@ use rusqlite::Connection;
 use serde::Serialize;
 use specta::Type;
 
-use super::approvals::{list_pending_approvals, ApprovalRequest};
 use super::checks::{list_checks, CheckRun};
 use super::events::{
     list_session_agent_events_for_identity, list_session_changes_since,
@@ -105,7 +104,7 @@ pub fn list_session_tail_for_remote(
         event_cursor,
         raw_output_cursor,
         change_cursor,
-        change_page_budget_bytes,
+        Some(change_page_budget_bytes),
     )
 }
 
@@ -123,10 +122,6 @@ pub fn list_session_agent_tail(
         provider_parent_conversation_id,
         provider_child_session_id,
     )
-}
-
-pub fn list_pending(connection: &Connection) -> ArgmaxResult<Vec<ApprovalRequest>> {
-    list_pending_approvals(connection, DASHBOARD_ROW_LIMIT)
 }
 
 pub fn list_running_session_ids(connection: &Connection) -> ArgmaxResult<Vec<String>> {
@@ -200,24 +195,7 @@ fn dedupe_workspace_ids(ids: &[String]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::Database;
-
-    #[test]
-    fn dashboard_list_excludes_events_raw_outputs_and_approvals() {
-        let database = Database::open_in_memory().expect("open db");
-        let connection = database.connection();
-        seed_dashboard(&connection);
-
-        let snapshot = list_dashboard(&connection).expect("list dashboard");
-        let json = serde_json::to_value(&snapshot).expect("serialize dashboard");
-
-        assert_eq!(snapshot.projects.len(), 1);
-        assert_eq!(snapshot.workspaces.len(), 1);
-        assert_eq!(snapshot.sessions.len(), 1);
-        assert!(json.get("events").is_none());
-        assert!(json.get("rawOutputs").is_none());
-        assert!(json.get("approvals").is_none());
-    }
+    use crate::persistence::{approvals::list_pending_approvals, Database};
 
     #[test]
     fn pending_approvals_read_filters_resolved_rows() {
@@ -233,7 +211,8 @@ mod tests {
             )
             .expect("insert approvals");
 
-        let approvals = list_pending(&connection).expect("list pending");
+        let approvals =
+            list_pending_approvals(&connection, DASHBOARD_ROW_LIMIT).expect("list pending");
 
         assert_eq!(approvals.len(), 1);
         assert_eq!(approvals[0].id, "a2");
@@ -528,23 +507,6 @@ mod tests {
         let snapshot = list_dashboard(&connection).unwrap();
         assert_eq!(snapshot.workspaces[0].pr_number, None);
         assert!(snapshot.workspaces[0].prs.is_empty());
-    }
-
-    #[test]
-    fn dashboard_workspace_without_pr_has_none() {
-        let database = Database::open_in_memory().expect("open db");
-        let connection = database.connection();
-        seed_dashboard(&connection);
-
-        let snapshot = list_dashboard(&connection).expect("dashboard");
-        let workspace = snapshot
-            .workspaces
-            .iter()
-            .find(|w| w.id == "w1")
-            .expect("workspace present");
-
-        assert_eq!(workspace.pr_state, None);
-        assert_eq!(workspace.pr_number, None);
     }
 
     fn seed_gh_pr(

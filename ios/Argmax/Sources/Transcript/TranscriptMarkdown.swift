@@ -96,7 +96,7 @@ struct TranscriptMarkdown: View {
             }
             .fixedSize(horizontal: false, vertical: true)
         case .code(let language, let source):
-            TranscriptCodeBlock(language: language, source: source)
+            TranscriptCodeBlock(language: language, source: source, onOpenFile: onOpenFile)
         case .table(let table):
             TranscriptTableBlock(table: table)
         case .image(let image):

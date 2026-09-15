@@ -652,6 +652,62 @@ describe("BrowserPanel", () => {
     expect(browserStub.navigate).toHaveBeenCalledWith("https://github.com", activeTabId());
   });
 
+  it("completes a typed address inline and navigates to the URL it came from", async () => {
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    act(() => stateListener?.({
+      tabId: activeTabId(),
+      url: "https://www.youtube.com/",
+      title: "YouTube",
+      loading: false
+    }));
+    // Back to another page, so Enter is a navigation rather than a reload.
+    act(() => stateListener?.({
+      tabId: activeTabId(),
+      url: "https://github.com",
+      title: "GitHub",
+      loading: false
+    }));
+
+    const address = screen.getByRole("textbox", { name: "Address" });
+    fireEvent.focus(address);
+    fireEvent.input(address, { target: { value: "y" }, inputType: "insertText" });
+    // The visit lands asynchronously; the popover says history is in hand.
+    await screen.findByRole("dialog", { name: "History suggestions" });
+
+    fireEvent.input(address, { target: { value: "you" }, inputType: "insertText" });
+    expect(address.value).toBe("youtube.com");
+    expect([address.selectionStart, address.selectionEnd]).toEqual([3, 11]);
+
+    fireEvent.keyDown(address, { key: "Enter" });
+    expect(browserStub.navigate).toHaveBeenCalledWith("https://www.youtube.com/", activeTabId());
+  });
+
+  it("keeps the completion out of the way of deleting and Escape", async () => {
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    act(() => stateListener?.({
+      tabId: activeTabId(),
+      url: "https://www.youtube.com/",
+      title: "YouTube",
+      loading: false
+    }));
+
+    const address = screen.getByRole("textbox", { name: "Address" });
+    fireEvent.focus(address);
+    fireEvent.input(address, { target: { value: "you" }, inputType: "insertText" });
+    await screen.findByRole("dialog", { name: "History suggestions" });
+    fireEvent.input(address, { target: { value: "yout" }, inputType: "insertText" });
+    expect(address.value).toBe("youtube.com");
+
+    // Backspace clears the selected suffix, and the suffix stays gone.
+    fireEvent.input(address, { target: { value: "yout" }, inputType: "deleteContentBackward" });
+    expect(address.value).toBe("yout");
+
+    fireEvent.input(address, { target: { value: "youtu" }, inputType: "insertText" });
+    expect(address.value).toBe("youtube.com");
+    fireEvent.keyDown(address, { key: "Escape" });
+    expect(address.value).toBe("youtu");
+  });
+
   it("records completed visits only for the strip this panel owns", async () => {
     render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     const foreignTab = createBrowserTab("another-browser-scope", "https://foreign.example.com");

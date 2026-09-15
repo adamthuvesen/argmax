@@ -1,15 +1,13 @@
 import {
   Bot,
   ChevronDown,
+  Copy,
   Folder,
   FolderOpen,
   GitBranch,
   Globe,
-  Minus,
   PanelRightClose,
-  Plus,
   SquareTerminal,
-  Undo2,
   X
 } from "lucide-react";
 import {
@@ -31,6 +29,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useAnchoredPopover, type AnchorPoint } from "../hooks/useAnchoredPopover.js";
+import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { PickerLead } from "./PickerLead.js";
 import { SlidingTabIndicator } from "./SlidingTabIndicator.js";
@@ -59,11 +58,12 @@ import { assignAgentCodenames } from "../lib/agentNames.js";
 import { buildAgentRoster } from "../lib/agentRoster.js";
 import { AgentsView } from "./AgentsView.js";
 import { BrowserPanel } from "./BrowserPanel.js";
-import { statusLabel, summarizeChangedFiles } from "../lib/changedFiles.js";
+import { summarizeChangedFiles } from "../lib/changedFiles.js";
 import { readBoundedNumberPreference } from "../lib/uiPreferences.js";
 import { parseUnifiedDiff } from "../lib/diff.js";
 import { ChangeCount } from "./ChangeCount.js";
 import { DiffBlocks } from "./DiffBlocks.js";
+import { ChangesTree } from "./ChangesTree.js";
 import type { DiffNoteAnchor, DiffNoteInput } from "../lib/composerAnnotations.js";
 import { FilePreview, type EditorCursor } from "./FilePreview.js";
 import { languageLabelFor } from "../lib/fileLanguage.js";
@@ -258,10 +258,6 @@ function ReviewModeTabs({
 function fileBasename(path: string): string {
   const slash = path.lastIndexOf("/");
   return slash === -1 ? path : path.slice(slash + 1);
-}
-
-function statusGlyph(status: string): string {
-  return statusLabel(status).slice(0, 1).toUpperCase();
 }
 
 function FileTabStrip({ state }: { state: WorkspaceFilesState }): JSX.Element | null {
@@ -562,6 +558,7 @@ function ReviewPanelPane({
   const [collapsedDiffPath, setCollapsedDiffPath] = useState<string | null>(null);
   const [reviewActionPending, setReviewActionPending] = useState(false);
   const [reviewActionError, setReviewActionError] = useState<string | null>(null);
+  const [copyPathState, copyPath] = useCopyToClipboard();
   const reviewActionBusy = useRef(false);
   const panelRef = useRef<HTMLElement>(null);
   const runReviewAction = (action: () => Promise<void>): void => {
@@ -726,10 +723,6 @@ function ReviewPanelPane({
         : null;
 
   const toggleChangedFile = (filePath: string): void => {
-    if (review.selectedFilePath === filePath) {
-      setCollapsedDiffPath((current) => (current === filePath ? null : filePath));
-      return;
-    }
     setCollapsedDiffPath(null);
     review.openFile(filePath);
   };
@@ -884,22 +877,49 @@ function ReviewPanelPane({
             onTerminateSession={agents.onTerminateSession}
           />
         ) : null}
-        {isChanges || isAgents || isBrowser || isTerminal ? null : (
+        {isAgents || isBrowser || isTerminal ? null : (
           <>
             <div className="review-list-col" style={{ width: effectiveLeftColumnWidth }}>
-              <WorkspaceTree state={files} toolbar={{ onRefresh: files.refreshList }} />
+              {isChanges ? (
+                <ChangesTree
+                  files={review.files}
+                  selectedPath={review.selectedFilePath}
+                  actionsPending={reviewActionPending}
+                  onSelectFile={toggleChangedFile}
+                  onRefresh={review.refreshChanges}
+                  onOpenInFiles={review.openInFilesView}
+                  onToggleStaged={
+                    review.changesScope === "uncommitted" && review.diff?.revision
+                      ? (file) => runReviewAction(() =>
+                          review.updateFileIndex(file.path, review.diff!.revision, !file.staged)
+                        )
+                      : undefined
+                  }
+                  onRevert={
+                    review.changesScope === "uncommitted" &&
+                    review.diff?.revision &&
+                    review.terminalWorkspaceId
+                      ? (file) => runReviewAction(() =>
+                          review.revertFile(file.path, review.diff!.revision)
+                        )
+                      : undefined
+                  }
+                />
+              ) : (
+                <WorkspaceTree state={files} toolbar={{ onRefresh: files.refreshList }} />
+              )}
             </div>
             <div
               className="review-resize-handle"
               role="separator"
               aria-orientation="vertical"
-              aria-label="Resize file list width"
+              aria-label={isChanges ? "Resize changed files width" : "Resize file list width"}
               onMouseDown={handleResizeMouseDown}
             />
           </>
         )}
         {isAgents || isBrowser || isTerminal ? null : (
-        <div className={isChanges ? "review-diff" : "review-diff review-diff-files"}>
+        <div className={isChanges ? "review-diff review-diff-changes" : "review-diff review-diff-files"}>
           {isChanges ? (
             <>
               {reviewActionError && <p className="review-empty review-error" role="alert">{reviewActionError}</p>}
@@ -910,105 +930,96 @@ function ReviewPanelPane({
                   <span>No changes.</span>
                 </p>
               ) : null}
-              {review.files.length > 0 ? (
-                <div className="review-changed-file-stack" aria-label="Changed files">
-                  {review.files.map((file) => {
-                    const isExpanded = expandedFilePath === file.path;
-                    const glyph = statusGlyph(file.status);
-                    return (
-                      <section className="review-changed-file-section" key={file.path} data-expanded={isExpanded ? "true" : "false"}>
-                        <div className="review-changed-file-row">
-                          <button
-                            className="review-changed-file-toggle"
-                            type="button"
-                            aria-label={`${isExpanded ? "Collapse" : "Expand"} ${file.path} diff`}
-                            aria-expanded={isExpanded}
-                            aria-controls={`review-diff-${file.path}`}
-                            title={`${isExpanded ? "Collapse" : "Expand"} ${file.path}`}
-                            data-status={glyph.toLowerCase()}
-                            onClick={() => toggleChangedFile(file.path)}
-                          >
-                            <span className="review-file-row-status" aria-hidden="true">{glyph}</span>
-                            <span className="review-file-row-path">{file.path}</span>
-                          </button>
-                          <ChangeCount additions={file.additions} deletions={file.deletions} />
-                          {review.changesScope === "uncommitted" && review.diff?.revision ? (
-                            <>
-                              <button
-                                type="button"
-                                className="small-icon"
-                                aria-label={`${file.staged ? "Unstage" : "Stage"} ${file.path}`}
-                                title={`${file.staged ? "Unstage" : "Stage"} ${file.path}`}
-                                disabled={reviewActionPending}
-                                onClick={() => runReviewAction(() => review.updateFileIndex(file.path, review.diff!.revision, !file.staged))}
-                              >
-                                {file.staged ? (
-                                  <Minus size={14} aria-hidden="true" />
-                                ) : (
-                                  <Plus size={14} aria-hidden="true" />
-                                )}
-                              </button>
-                              {review.terminalWorkspaceId && file.status !== "??" ? <button
-                                type="button"
-                                className="small-icon"
-                                aria-label={`Revert unstaged changes in ${file.path}`}
-                                title="Save a recovery checkpoint, then discard unstaged changes"
-                                disabled={reviewActionPending}
-                                onClick={() => runReviewAction(() => review.revertFile(file.path, review.diff!.revision))}
-                              >
-                                <Undo2 size={14} aria-hidden="true" />
-                              </button> : null}
-                            </>
-                          ) : null}
-                          <button
-                            className="small-icon"
-                            type="button"
-                            title={`Open ${file.path} in Files view`}
-                            aria-label={`Open ${file.path} in Files view`}
-                            onClick={() => review.openInFilesView(file.path)}
-                          >
-                            <FolderOpen size={16} />
-                          </button>
-                        </div>
-                        {isExpanded ? (
-                          <div className="review-inline-diff" id={`review-diff-${file.path}`}>
-                            {review.diffState === "loading" ? (
-                              <LinesSkeleton rows={14} label="Loading diff" className="review-diff-skeleton" />
-                            ) : null}
-                            {review.diffState === "error" ? (
-                              <p className="review-empty review-error" role="alert">
-                                <span className="review-empty-mark" aria-hidden="true">!</span>
-                                <span>{review.diffError ?? "Couldn't load this diff."}</span>
-                              </p>
-                            ) : null}
-                            {review.diffState === "ready" && diffBlocks.length === 0 ? (
-                              <p className="review-empty">
-                                <span className="review-empty-mark" aria-hidden="true">∅</span>
-                                <span>No textual diff.</span>
-                              </p>
-                            ) : null}
-                            {review.changesScope === "uncommitted" && file.staged && file.status.length > 1 && <p className="review-empty">This file has staged and unstaged changes. Use file actions to change its staging.</p>}
-                            {review.diffState === "ready" && diffBlocks.length > 0 ? (
-                              <DiffBlocks
-                                blocks={diffBlocks}
-                                filePath={file.path}
-                                onAddComment={onAddDiffNote ? addDiffNote : undefined}
-                                onExpandContext={review.expandDiffContext}
-                                onIndexHunk={review.changesScope === "uncommitted" && review.diff?.revision && file.status !== "??" && !file.oldPath && !(file.staged && file.status.length > 1)
-                                  ? (hunkIndex) => runReviewAction(() => review.updateHunkIndex(file.path, review.diff!.revision, hunkIndex, !file.staged))
-                                  : undefined}
-                                onRevertHunk={review.changesScope === "uncommitted" && review.diff?.revision && review.terminalWorkspaceId && file.status !== "??" && !file.oldPath
-                                  ? (hunkIndex) => runReviewAction(() => review.revertHunk(file.path, review.diff!.revision, hunkIndex))
-                                  : undefined}
-                                indexHunkLabel={file.staged ? "Unstage" : "Stage"}
-                              />
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </section>
-                    );
-                  })}
-                </div>
+              {selectedFile ? (
+                <>
+                  <div className="review-diff-heading">
+                    <span className="review-diff-heading-icon" aria-hidden="true">
+                      <FileIcon
+                        fileName={fileBasename(selectedFile.path)}
+                        autoAssign
+                        editFileNameData={SPECIAL_FILE_ICONS}
+                        width={14}
+                        height={14}
+                      />
+                    </span>
+                    <span className="review-diff-heading-path" title={selectedFile.path}>
+                      <span>{selectedFile.path.slice(0, -fileBasename(selectedFile.path).length)}</span>
+                      <strong>{fileBasename(selectedFile.path)}</strong>
+                    </span>
+                    <ChangeCount additions={selectedFile.additions} deletions={selectedFile.deletions} />
+                    <span className="review-diff-heading-actions">
+                      <button
+                        className="small-icon"
+                        type="button"
+                        title={copyPathState === "copied" ? "Copied path" : copyPathState === "failed" ? "Could not copy path" : "Copy path"}
+                        aria-label={`Copy ${selectedFile.path} path`}
+                        onClick={() => void copyPath(selectedFile.path)}
+                      >
+                        <Copy size={13} aria-hidden="true" />
+                      </button>
+                      <button
+                        className="small-icon review-diff-collapse"
+                        type="button"
+                        data-collapsed={expandedFilePath ? undefined : "true"}
+                        title={expandedFilePath ? "Collapse diff" : "Expand diff"}
+                        aria-label={`${expandedFilePath ? "Collapse" : "Expand"} ${selectedFile.path} diff`}
+                        aria-expanded={Boolean(expandedFilePath)}
+                        onClick={() => setCollapsedDiffPath((current) =>
+                          current === selectedFile.path ? null : selectedFile.path
+                        )}
+                      >
+                        <ChevronDown size={13} aria-hidden="true" />
+                      </button>
+                      <button
+                        className="small-icon"
+                        type="button"
+                        title={`Open ${selectedFile.path} in Files view`}
+                        aria-label={`Open ${selectedFile.path} in Files view`}
+                        onClick={() => review.openInFilesView(selectedFile.path)}
+                      >
+                        <FolderOpen size={14} aria-hidden="true" />
+                      </button>
+                    </span>
+                  </div>
+                  {expandedFilePath ? (
+                    <div className="review-diff-scroll">
+                      {review.diffState === "loading" ? (
+                        <LinesSkeleton rows={14} label="Loading diff" className="review-diff-skeleton" />
+                      ) : null}
+                      {review.diffState === "error" ? (
+                        <p className="review-empty review-error" role="alert">
+                          <span className="review-empty-mark" aria-hidden="true">!</span>
+                          <span>{review.diffError ?? "Couldn't load this diff."}</span>
+                        </p>
+                      ) : null}
+                      {review.diffState === "ready" && diffBlocks.length === 0 ? (
+                        <p className="review-empty">
+                          <span className="review-empty-mark" aria-hidden="true">∅</span>
+                          <span>No textual diff.</span>
+                        </p>
+                      ) : null}
+                      {review.changesScope === "uncommitted" && selectedFile.staged && selectedFile.status.length > 1 ? (
+                        <p className="review-empty">This file has staged and unstaged changes. Use file actions to change its staging.</p>
+                      ) : null}
+                      {review.diffState === "ready" && diffBlocks.length > 0 ? (
+                        <DiffBlocks
+                          blocks={diffBlocks}
+                          filePath={selectedFile.path}
+                          presentation="review"
+                          onAddComment={onAddDiffNote ? addDiffNote : undefined}
+                          onExpandContext={review.expandDiffContext}
+                          onIndexHunk={review.changesScope === "uncommitted" && review.diff?.revision && selectedFile.status !== "??" && !selectedFile.oldPath && !(selectedFile.staged && selectedFile.status.length > 1)
+                            ? (hunkIndex) => runReviewAction(() => review.updateHunkIndex(selectedFile.path, review.diff!.revision, hunkIndex, !selectedFile.staged))
+                            : undefined}
+                          onRevertHunk={review.changesScope === "uncommitted" && review.diff?.revision && review.terminalWorkspaceId && selectedFile.status !== "??" && !selectedFile.oldPath
+                            ? (hunkIndex) => runReviewAction(() => review.revertHunk(selectedFile.path, review.diff!.revision, hunkIndex))
+                            : undefined}
+                          indexHunkLabel={selectedFile.staged ? "Unstage" : "Stage"}
+                        />
+                      ) : null}
+                    </div>
+                  ) : null}
+                </>
               ) : null}
             </>
           ) : (

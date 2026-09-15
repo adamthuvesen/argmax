@@ -140,7 +140,7 @@
 }
 
 .review-body-changes {
-  flex-direction: column;
+  flex-direction: row;
 }
 
 /* Sidebar, not "the same panel with a hairline in it". The column steps off
@@ -155,111 +155,6 @@
   background: var(--review-sidebar);
   border-right: 1px solid var(--line);
   transition: border-color var(--duration-fast) var(--ease);
-}
-
-.review-changed-file-stack {
-  display: block;
-  flex: 1 1 0;
-  min-height: 0;
-}
-
-.review-changed-file-section {
-  border-bottom: 1px solid var(--line);
-}
-
-.review-changed-file-row {
-  display: grid;
-  /* Reserve just enough for a typical "+NN −NN" stat (mono 10px) so the
-     chevron column sits snug to the numbers while staying perfectly aligned
-     row to row. Right-aligned numbers keep their edge tight to the folder. */
-  grid-template-columns: minmax(0, 1fr) 50px 28px;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: 42px;
-  padding: var(--space-1) var(--space-3);
-}
-
-.review-changed-file-toggle {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-  text-align: left;
-  font-size: var(--text-xs);
-}
-
-.review-changed-file-toggle:hover .review-file-row-path,
-.review-changed-file-toggle[aria-expanded="true"] .review-file-row-path {
-  color: var(--text);
-}
-
-.review-file-row-status {
-  display: inline-grid;
-  place-items: center;
-  width: 16px;
-  height: 16px;
-  flex: 0 0 auto;
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  font-weight: calc(400 + var(--font-weight-offset));
-  letter-spacing: 0;
-  color: var(--muted-strong);
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  transition: color var(--duration-fast) var(--ease);
-}
-
-.review-changed-file-toggle[data-status="a"] .review-file-row-status {
-  color: var(--sage-deep);
-}
-
-.review-changed-file-toggle[data-status="m"] .review-file-row-status {
-  color: var(--amber);
-}
-
-.review-changed-file-toggle[data-status="d"] .review-file-row-status {
-  color: var(--rose);
-}
-
-.review-changed-file-toggle[data-status="r"] .review-file-row-status,
-.review-changed-file-toggle[data-status="c"] .review-file-row-status {
-  color: var(--text);
-}
-
-.review-file-row-path {
-  min-width: 0;
-  color: var(--text-soft);
-  font-weight: calc(400 + var(--font-weight-offset));
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.review-changed-file-row .change-count {
-  justify-content: flex-end;
-  gap: 5px;
-  font-family: var(--font-mono);
-  /* Stays under the 11px file path it annotates: a stat that outsizes its own
-     label reads as the headline. */
-  font-size: var(--text-2xs);
-  font-weight: calc(500 + var(--font-weight-offset));
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-}
-
-.review-changed-file-row .small-icon {
-  width: 28px;
-  height: 28px;
-}
-
-.review-inline-diff {
-  border-top: 1px solid var(--line-soft);
 }
 
 .review-resize-handle {
@@ -280,6 +175,83 @@
 .review-diff {
   flex: 1 1 0;
   min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.review-diff-changes {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.review-diff-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 7px var(--space-3);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-xs);
+}
+
+.review-diff-heading-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.review-diff-heading-path {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--muted);
+}
+
+.review-diff-heading-path > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-diff-heading-path strong {
+  flex: 0 0 auto;
+  color: var(--text);
+  font-weight: calc(600 + var(--font-weight-offset));
+  white-space: nowrap;
+}
+
+.review-diff-heading .change-count {
+  flex: 0 0 auto;
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  font-weight: calc(500 + var(--font-weight-offset));
+  font-variant-numeric: tabular-nums;
+}
+
+.review-diff-heading-actions {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 1px;
+}
+
+.review-diff-heading-actions .small-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.review-diff-collapse svg {
+  transition: transform var(--duration-fast) var(--ease);
+}
+
+.review-diff-collapse[data-collapsed="true"] svg {
+  transform: rotate(-90deg);
+}
+
+.review-diff-scroll {
+  flex: 1 1 0;
   min-height: 0;
   overflow: auto;
 }
@@ -372,27 +344,6 @@
 
 .review-footer-text {
   color: var(--text-soft);
-}
-
-@media (max-width: 720px) {
-  .review-changed-file-row {
-    grid-template-columns: minmax(0, 1fr) 54px 26px;
-    padding-inline: var(--space-2);
-  }
-
-  .review-changed-file-toggle {
-    grid-template-columns: 20px minmax(0, 1fr);
-    font-size: var(--text-sm);
-  }
-
-  .review-changed-file-row .change-count {
-    font-size: var(--text-xs);
-  }
-
-  .review-changed-file-row .small-icon {
-    width: 26px;
-    height: 26px;
-  }
 }
 
 /* Window-fixed and portaled to <body> (see CommitDialog.tsx): the commit is a

@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-font-size="5" data-accent="green">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Argmax — Changes as a file tree</title>
+
+    <!-- The real thing: app tokens, the real review-panel rules, the real tree
+         rules, the real diff rules, the bundled Geist faces. Every row below is
+         built from `.workspace-tree-*` and `.review-*` so each candidate is
+         judged in the register it would actually live in. New ink uses private
+         `.ct-*` classes so the cascade cannot bleed either way. -->
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-400.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-500.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-700.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource-variable/geist-mono/wght.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/tokens.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/shell-layout.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/overlays-review.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/overlays-review-files.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/overlays-launcher.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/chat-tools.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/motion.css" />
+
+    <style>
+      html { background: var(--bg); }
+      body {
+        margin: 0; background: var(--bg); color: var(--text);
+        font-family: var(--font-ui); font-weight: var(--weight-ui);
+        -webkit-font-smoothing: antialiased;
+        /* tokens.css pins the app shell to the window with overflow: hidden.
+           This page is a long document, so it takes the scrollbar back. */
+        overflow: visible;
+      }
+      svg { display: block; }
+
+      .page-head {
+        position: sticky; top: 0; z-index: 60;
+        display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap;
+        padding: 12px 28px;
+        background: color-mix(in oklab, var(--bg) 92%, transparent);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--line);
+        font-size: 12px; color: var(--muted);
+      }
+      .page-head h1 { margin: 0; font-size: 13px; font-weight: 500; color: var(--text); }
+      .page-head button {
+        font: inherit; color: inherit; cursor: pointer;
+        background: transparent; border: 1px solid var(--line);
+        border-radius: 6px; padding: 3px 9px;
+      }
+      .page-head button[aria-pressed="true"] { color: var(--text); border-color: var(--line-strong); }
+      .page-head .sep { width: 1px; height: 16px; background: var(--line); }
+
+      .frames { display: flex; flex-wrap: wrap; gap: 28px; padding: 28px; align-items: flex-start; }
+      .frame { flex: 0 0 auto; width: 300px; }
+      .frame.wide { width: 100%; max-width: 1040px; }
+      .frame.half { width: 496px; }
+      .frame > h2 { margin: 0 0 4px; font-size: 12px; font-weight: 500; color: var(--text); }
+      .frame > p { margin: 0 0 12px; font-size: 11px; line-height: 1.55; color: var(--muted); }
+      .frame.narrow-note > p { min-height: 72px; }
+      .frame > p b { color: var(--text-soft); font-weight: 500; }
+      .frame > p code { font-family: var(--font-mono); font-size: 10px; }
+      .rule { width: 100%; height: 1px; background: var(--line); margin: 6px 0 0; }
+      .band { width: 100%; }
+      .band h3 {
+        margin: 0 0 2px; font-size: 11px; font-weight: 500; letter-spacing: 0.06em;
+        text-transform: uppercase; color: var(--muted);
+      }
+      .band p { margin: 0; max-width: 78ch; font-size: 11.5px; line-height: 1.6; color: var(--muted); }
+      .band p b { color: var(--text-soft); font-weight: 500; }
+
+      /* The stage is the real review panel: `.review-panel` rebinds --panel to
+         --review-panel for its whole subtree, which is what the sticky diff
+         gutter and every color-mix inside key off. */
+      .stage {
+        display: flex; flex-direction: row;
+        height: 470px; overflow: hidden;
+        border: 1px solid var(--line); border-radius: var(--radius-lg);
+      }
+      /* Tall enough for the open file's whole diff — both stretches and the
+         three bands — so the hero frame does not ask you to scroll inside it
+         to see how the bands sit between the code. */
+      .stage.short { height: 372px; }
+      /* 252px is what the sidebar column actually is at its default split, so
+         both the in-panel column and a column judged on its own use it. A
+         column shown on its own borrows the stage's frame and height but not
+         its row direction — `.review-list-col` stacks toolbar over tree. */
+      .stage-col,
+      .col-stage { width: 252px; flex: 0 0 auto; }
+      .col-stage {
+        height: 392px; overflow: hidden;
+        border: 1px solid var(--line); border-radius: var(--radius-lg);
+      }
+
+      /* =====================================================================
+         The tree column. `.review-list-col` is the real sidebar surface; the
+         rows are the real `.workspace-tree-row`. Everything new is `.ct-*`.
+         ===================================================================== */
+
+      .ct-tree { display: block; flex: 1 1 0; min-height: 0; overflow: auto; padding: var(--space-1_5); padding-top: 2px; font-family: var(--font-ui); font-size: var(--text-xs); }
+
+      /* A file row carries one extra trailing cell. The label keeps `flex: 1`
+         from the real rule, so the mark is pushed to the edge without the row
+         needing a grid of its own. */
+      .ct-row { --ct-hue: var(--muted-strong); }
+      .ct-row[data-status="a"] { --ct-hue: var(--sage-deep); }
+      .ct-row[data-status="m"] { --ct-hue: var(--amber); }
+      .ct-row[data-status="d"] { --ct-hue: var(--rose); }
+
+      .ct-mark {
+        flex: 0 0 auto; display: inline-grid; place-items: center;
+        color: var(--ct-hue);
+        font-family: var(--font-mono); font-size: var(--text-2xs); line-height: 1;
+      }
+
+      /* -- A — trailing boxed glyph (the reference) ------------------------ */
+      .ct-box {
+        width: 13px; height: 13px;
+        display: inline-grid; place-items: center;
+        border: 1px solid color-mix(in oklab, currentColor 62%, transparent);
+        border-radius: 3px;
+        font-family: var(--font-mono); font-size: 9px; font-weight: 600; line-height: 1;
+      }
+
+      /* -- B — the file name takes the hue -------------------------------- */
+      .v-tint .ct-row .workspace-tree-label { color: var(--ct-hue); }
+      .v-tint .ct-row:hover .workspace-tree-label { color: var(--ct-hue); }
+
+      /* -- C — leading rail, the same 2px the open file already uses ------- */
+      .v-rail .ct-row { position: relative; }
+      .v-rail .ct-row::after {
+        content: ""; position: absolute; top: 4px; bottom: 4px; left: 0; width: 2px;
+        border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+        background: var(--ct-hue);
+      }
+
+      /* -- D — trailing dot ----------------------------------------------- */
+      .ct-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+      /* -- E — the letter in the chevron gutter --------------------------- */
+      .ct-gutter {
+        flex: 0 0 12px; width: 12px; min-width: 12px;
+        display: inline-grid; place-items: center;
+        color: var(--ct-hue);
+        font-family: var(--font-mono); font-size: var(--text-2xs); font-weight: 500; line-height: 1;
+      }
+
+      /* -- F — the status glyph replaces the file-type icon --------------- */
+      .ct-swap { color: var(--ct-hue); }
+
+      /* Actions appear under the pointer only. At rest the row spends its
+         width on the file name and the status mark; the counts live in the
+         diff bar, so nothing has to be displaced to make room. */
+      .ct-acts { flex: 0 0 auto; display: none; align-items: center; gap: 1px; }
+      .v-acts .ct-row:hover .ct-acts,
+      .v-acts .ct-row.pinned-hover .ct-acts { display: flex; }
+      .ct-acts .small-icon { width: 20px; height: 20px; }
+      /* One row is pinned in its hover state so the frame shows both states at
+         once — a screenshot of this page cannot be hovered. */
+      .v-acts .ct-row.pinned-hover {
+        background-color: color-mix(in oklab, var(--review-sidebar) 92%, var(--text));
+      }
+
+      /* Deleted files: the row still opens its diff, but the name is struck so
+         "this file is gone" does not depend on colour alone. */
+      .v-strike .ct-row[data-status="d"] .workspace-tree-label { text-decoration: line-through; text-decoration-color: color-mix(in oklab, var(--rose) 70%, transparent); }
+
+      /* =====================================================================
+         The diff side. Real `.review-diff` + `.diff-*`; only the little file
+         header above the hunks is new.
+         ===================================================================== */
+      .ct-diff-head {
+        display: flex; align-items: center; gap: var(--space-2);
+        padding: 9px var(--space-3);
+        border-bottom: 1px solid var(--line);
+        font-size: var(--text-xs);
+      }
+      .ct-diff-icon { flex: 0 0 auto; display: inline-flex; }
+      /* The directory recedes, the file name is the heading. The directory is
+         the only part allowed to shrink, so a long path never eats the name. */
+      .ct-diff-head .ct-path { flex: 1 1 auto; display: flex; min-width: 0; color: var(--muted); }
+      .ct-diff-head .ct-path .dim {
+        flex: 0 1 auto; min-width: 0;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .ct-diff-head .ct-path b {
+        flex: 0 0 auto; white-space: nowrap;
+        color: var(--text);
+        font-weight: calc(600 + var(--font-weight-offset));
+      }
+      .ct-diff-head .change-count { flex: 0 0 auto; font-family: var(--font-mono); font-size: var(--text-2xs); font-weight: 500; }
+      .ct-diff-acts { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 1px; }
+      .ct-diff-acts .small-icon { width: 22px; height: 22px; }
+      .ct-diff-scroll { flex: 1 1 0; min-height: 0; overflow: auto; }
+      .ct-diff { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; min-height: 0; overflow: hidden; }
+      /* `.review-panel .diff-blocks` already steps the code down a notch; the
+         stage is a `.review-panel`, so nothing to set here. */
+
+      /* ---------------------------------------------------------------------
+         The diff body, stripped back. Three things go: the `@@ -182,14 +176,20
+         @@` header, which is patch jargon saying what the gutter already says;
+         the card around every hunk, which drew a box per hunk and a gap
+         between them; and the +/− character inside the code column. What is
+         left is one continuous column of code, cut by the bands that stand for
+         the lines git left out. Real class names throughout — these overrides
+         are the change to `overlays-review-files.css`, not a lookalike.
+         --------------------------------------------------------------------- */
+      .ct-diff .diff-blocks { padding: 0; line-height: 1.45; }
+      /* `.diff-hunk` sets the gutter width itself, so the band outside it has
+         to be told the same number or the rule down the diff steps sideways. */
+      .ct-diff .diff-blocks,
+      .ct-diff .diff-hunk { --diff-gutter-width: 34px; }
+      .ct-diff .diff-hunk { overflow: visible; border: 0; border-radius: 0; }
+      .ct-diff .diff-hunk + .diff-hunk,
+      .ct-diff .diff-omitted + .diff-hunk { margin-top: 0; }
+      .ct-diff .diff-hunk-header { display: none; }
+
+      /* Rail, gutter, code. The rail is what replaces the +/− the code column
+         used to carry: it draws a run of changed lines as one shape instead of
+         a character repeated down the side, and hands the code back that
+         character of width. */
+      .ct-diff .diff-line { grid-template-columns: 2px var(--diff-gutter-width) minmax(0, 1fr); }
+      .ct-diff .ct-rail { background: transparent; }
+      .ct-diff .diff-line.addition .ct-rail { background: var(--sage-deep); }
+      .ct-diff .diff-line.deletion .ct-rail { background: var(--rose); }
+      .ct-diff .diff-line code { padding: 0 8px; }
+      /* The gutter loses its own fill and its own hairline. Today it is a grey
+         column with a rule down it, which makes every line read as a table
+         cell and gives a changed line two backgrounds to argue over; here the
+         number sits on whatever the line is wearing, one notch smaller and
+         dimmer than the code, so the eye lands on the code first. The
+         sticky-left fill for context lines is the code surface itself, which
+         is all the number needs to stay legible while the diff scrolls. */
+      .ct-diff .diff-line-number {
+        padding: 0 6px;
+        font-size: var(--text-2xs);
+        border-right: 0;
+        background: var(--panel);
+        color: color-mix(in oklab, var(--muted) 62%, transparent);
+      }
+      .ct-diff .diff-line.addition .diff-line-number,
+      .ct-diff .diff-line.deletion .diff-line-number { background: transparent; }
+      .ct-diff .diff-line.addition .diff-line-number { color: var(--diff-add-gutter-fg); }
+      .ct-diff .diff-line.deletion .diff-line-number { color: var(--diff-del-gutter-fg); }
+
+      /* The band that stands in for the hunk header. It is a pill rather than a
+         full-bleed strip — inset 5px and rounded, so it reads as a control laid
+         over the code instead of a seam cut through it, and so nothing in the
+         diff keeps a square corner inside a rounded panel. The 5px comes off
+         the chevron's column, which leaves the chevron over the line-number
+         gutter and the label over the code. */
+      .ct-diff .diff-omitted {
+        display: grid;
+        grid-template-columns: calc(var(--diff-gutter-width) - 5px) minmax(0, 1fr);
+        align-items: stretch;
+        /* `.diff-omitted-expand` is a 7px-gap flex row today; as a grid that
+           gap would push the chevron cell off the gutter it has to line up
+           with. */
+        gap: 0;
+        width: auto; margin: 4px 5px; padding: 0;
+        border: 1px solid var(--line-soft); border-radius: var(--radius-md);
+        /* A half-strength wash rather than the full `--panel-soft` slab: at one
+           line of text tall, the band only has to say a stretch was skipped,
+           not act as a header. */
+        background: color-mix(in oklab, var(--panel-soft) 55%, transparent);
+        font-family: var(--font-code); font-size: var(--text-2xs);
+        color: var(--muted); text-align: left; cursor: pointer;
+      }
+      .ct-diff .diff-omitted:hover { background: var(--panel-soft); color: var(--text); }
+      /* The chevron keeps the gutter's column so it lines up under the numbers,
+         but drops the fill and the rule that made it look like a button welded
+         to the side of the band. */
+      .ct-diff .ct-omit-chev { grid-column: 1; display: grid; place-items: center; }
+      .ct-diff .ct-omit-chev svg { width: 10px; height: 10px; opacity: 0.6; }
+      .ct-diff .ct-omit-chev.up svg { transform: rotate(-90deg); }
+      .ct-diff .ct-omit-chev.down svg { transform: rotate(90deg); }
+      .ct-diff .ct-omit-label { padding: 2px 9px; }
+
+      /* The flat list as it ships today, for the comparison frame. */
+      .today-scroll { height: 100%; overflow: auto; }
+
+      .legend { display: flex; gap: 18px; flex-wrap: wrap; margin: 0 0 12px; font-size: 11px; color: var(--muted); }
+      .legend span { display: inline-flex; align-items: center; gap: 6px; }
+      .legend i { width: 8px; height: 8px; border-radius: 50%; }
+    </style>
+  </head>
+  <body>
+    <div class="page-head">
+      <h1>Changes as a file tree</h1>
+      <span>Tree left, diff right — the changed set only, with status on the row.</span>
+      <span class="sep"></span>
+      <button id="theme" type="button" aria-pressed="false">Light</button>
+      <button id="mapping" type="button" aria-pressed="false">Colour by: <b id="mapping-label">git status</b></button>
+      <button id="compact" type="button" aria-pressed="true">Compact folder chains</button>
+    </div>
+
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+      <defs>
+        <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></symbol>
+        <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5v14"/></symbol>
+        <symbol id="i-minus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></symbol>
+        <symbol id="i-undo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
+        <symbol id="i-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8a2 2 0 0 1 2-2h4l2 2h5a2 2 0 0 1 2 2v1"/><path d="m2 13 1.7 5.1A2 2 0 0 0 5.6 19h11.8a2 2 0 0 0 1.9-1.4L22 11H6a2 2 0 0 0-1.9 1.4Z"/></symbol>
+        <symbol id="i-collapse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m7 20 5-5 5 5M7 4l5 5 5-5"/></symbol>
+        <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></symbol>
+        <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 5.5A2.5 2.5 0 0 0 12.5 3H6a3 3 0 0 0-3 3v6.5A2.5 2.5 0 0 0 5.5 15"/></symbol>
+        <!-- Status glyphs for candidate F: the file-type icon's slot, taken over. -->
+        <symbol id="i-s-a" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="1.4" y="1.4" width="11.2" height="11.2" rx="3"/><path d="M7 4.6v4.8M4.6 7h4.8"/></symbol>
+        <symbol id="i-s-m" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="1.4" y="1.4" width="11.2" height="11.2" rx="3"/><circle cx="7" cy="7" r="1.6" fill="currentColor" stroke="none"/></symbol>
+        <symbol id="i-s-d" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="1.4" y="1.4" width="11.2" height="11.2" rx="3"/><path d="M4.6 7h4.8"/></symbol>
+      </defs>
+    </svg>
+
+    <div class="frames" id="frames"></div>
+
+    <script type="module">
+      /* ===================================================================
+         One changed set, used by every frame: the diff this feature would
+         actually produce. `git` is the porcelain letter; `add`/`del` are the
+         line counts. The two colour mappings disagree on exactly the rows
+         where a modified file only gained or only lost lines.
+         =================================================================== */
+      const FILES = [
+        { path: "docs/design/changes-tree/README.md",              git: "A", add: 58,  del: 0 },
+        { path: "docs/design/changes-tree/index.html",             git: "A", add: 412, del: 0 },
+        { path: "docs/styling.md",                                 git: "M", add: 6,   del: 2 },
+        { path: "src/renderer/components/ChangedFilesCard.tsx",    git: "D", add: 0,   del: 84 },
+        { path: "src/renderer/components/ChangesTree.tsx",         git: "A", add: 196, del: 0 },
+        { path: "src/renderer/components/DiffBlocks.tsx",          git: "M", add: 0,   del: 31 },
+        { path: "src/renderer/components/ReviewPanel.tsx",         git: "M", add: 74,  del: 61 },
+        { path: "src/renderer/components/WorkspaceTree.tsx",       git: "M", add: 18,  del: 9 },
+        { path: "src/renderer/hooks/useReviewState.ts",            git: "M", add: 12,  del: 7 },
+        { path: "src/renderer/lib/changedFileTree.ts",             git: "A", add: 88,  del: 0 },
+        { path: "src/renderer/lib/changedFiles.test.ts",           git: "M", add: 22,  del: 0 },
+        { path: "src/renderer/lib/changedFiles.ts",                git: "M", add: 26,  del: 3 },
+        { path: "src/renderer/lib/fileTree.ts",                    git: "M", add: 31,  del: 4 },
+        { path: "src/renderer/styles/mobile.css",                  git: "M", add: 9,   del: 14 },
+        { path: "src/renderer/styles/overlays-review-files.css",   git: "M", add: 58,  del: 0 },
+        { path: "src/renderer/styles/overlays-review.css",         git: "M", add: 64,  del: 96 }
+      ];
+      const OPEN = "src/renderer/styles/overlays-review.css";
+
+      /** git porcelain letter → a/m/d */
+      const byGit = (f) => (f.git === "A" ? "a" : f.git === "D" ? "d" : "m");
+      /** line composition → a/m/d. Added-only is green even when git says M. */
+      const byLines = (f) => (f.del === 0 ? "a" : f.add === 0 ? "d" : "m");
+
+      /* The header toggles set the page defaults; a frame that exists to show
+         one mapping or one folding passes its own instead. */
+      let pageMapping = byGit;
+      let pageCompact = true;
+
+      const GLYPH = { a: "+", m: "·", d: "−" };
+      const WORD = { a: "Added", m: "Modified", d: "Deleted" };
+      const HUE = { a: "--sage-deep", m: "--amber", d: "--rose" };
+
+      /* ---- the tree -------------------------------------------------------
+         Same shape as `buildFileTree`, plus the one thing a changed set needs
+         that a full tree does not: the option to fold a single-child directory
+         chain into one row. */
+      function buildTree(files) {
+        const root = { name: "", path: "", kind: "dir", children: [], index: new Map() };
+        for (const file of files) {
+          const segments = file.path.split("/");
+          let cursor = root;
+          segments.forEach((segment, i) => {
+            const isLast = i === segments.length - 1;
+            const path = cursor.path ? `${cursor.path}/${segment}` : segment;
+            let next = cursor.index.get(segment);
+            if (!next) {
+              next = { name: segment, path, kind: isLast ? "file" : "dir", children: [], index: new Map(), file: isLast ? file : null };
+              cursor.children.push(next);
+              cursor.index.set(segment, next);
+            }
+            cursor = next;
+          });
+        }
+        sort(root);
+        return root;
+      }
+      function sort(node) {
+        node.children.sort((a, b) => (a.kind !== b.kind ? (a.kind === "dir" ? -1 : 1) : a.name.localeCompare(b.name)));
+        for (const child of node.children) if (child.kind === "dir") sort(child);
+      }
+      /** Fold `src` → `renderer` → `components` into one `src/renderer/components` row. */
+      function compactChains(node) {
+        for (const child of node.children) compactChains(child);
+        if (node.kind !== "dir") return;
+        node.children = node.children.map((child) => {
+          let folded = child;
+          while (folded.kind === "dir" && folded.children.length === 1 && folded.children[0].kind === "dir") {
+            const only = folded.children[0];
+            folded = { ...only, name: `${folded.name}/${only.name}` };
+          }
+          return folded;
+        });
+      }
+
+      function rows(files, compact) {
+        const root = buildTree(files);
+        if (compact) compactChains(root);
+        const out = [];
+        const walk = (node, depth) => {
+          for (const child of node.children) {
+            out.push({ node: child, depth });
+            if (child.kind === "dir") walk(child, depth + 1);
+          }
+        };
+        walk(root, 0);
+        return out;
+      }
+
+      /* ---- glyphs ---------------------------------------------------------
+         @react-symbols is a React package, so the mockup approximates its
+         file badges with a tinted rounded square and the same one or two
+         letters it prints. The folder path is emitted with the real
+         `#64748b` slate, so the app's own retint rule paints it --accent. */
+      const use = (id, attrs = "") => `<svg viewBox="0 0 24 24" width="14" height="14" ${attrs}><use href="#${id}"/></svg>`;
+      const TYPE = {
+        tsx: ["#3178c6", "TS"], ts: ["#3178c6", "TS"], css: ["#2965f1", "#"],
+        md: ["#7b7b7b", "M"], html: ["#e34c26", "<>"], json: ["#d9a93c", "{}"], rs: ["#cf8a5e", "R"]
+      };
+      function fileIcon(name) {
+        const [fill, text] = TYPE[name.split(".").pop()] ?? ["#8a8a8a", "·"];
+        const size = text.length > 1 ? 6 : 7.5;
+        return `<svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true"><rect x=".5" y=".5" width="13" height="13" rx="3.2" fill="${fill}"/><text x="7" y="7.4" text-anchor="middle" dominant-baseline="central" font-size="${size}" font-weight="700" font-family="ui-monospace,monospace" fill="#fff">${text}</text></svg>`;
+      }
+      const folderIcon = `<svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true"><path fill="#64748b" d="M1.1 3.3c0-.66.54-1.2 1.2-1.2h2.5c.32 0 .62.13.85.35l.9.9h4.14c.66 0 1.2.54 1.2 1.2v5.45c0 .66-.54 1.2-1.2 1.2H2.3c-.66 0-1.2-.54-1.2-1.2V3.3Z"/></svg>`;
+
+      const INDENT_BASE = 10, INDENT_STEP = 12;
+      const indent = (depth) => `padding-left:${INDENT_BASE + depth * INDENT_STEP}px;height:24px;--tree-depth:${depth}`;
+
+      /* ---- one row, in every candidate's dialect ------------------------- */
+      const MARK = {
+        box: (s) => `<span class="ct-mark"><span class="ct-box">${GLYPH[s]}</span></span>`,
+        dot: () => `<span class="ct-mark"><span class="ct-dot"></span></span>`
+      };
+
+      function fileRow(node, depth, variant, mapping) {
+        const f = node.file, s = mapping(f);
+        const lead =
+          variant.lead === "letter"
+            ? `<span class="ct-gutter" aria-hidden="true">${f.git}</span>`
+            : `<span class="workspace-tree-chevron-spacer" aria-hidden="true"></span>`;
+        const icon =
+          variant.icon === "status"
+            ? `<span class="workspace-tree-icon ct-swap" aria-hidden="true">${use(`i-s-${s}`, 'aria-hidden="true"')}</span>`
+            : `<span class="workspace-tree-icon" aria-hidden="true">${fileIcon(node.name)}</span>`;
+        const trail = (variant.trail ?? []).map((kind) => MARK[kind](s, f)).join("");
+        const acts = variant.acts
+          ? `<span class="ct-acts">
+               <button class="small-icon" type="button" title="Stage ${node.name}" aria-label="Stage ${node.name}">${use("i-plus")}</button>
+               <button class="small-icon" type="button" title="Revert ${node.name}" aria-label="Revert ${node.name}">${use("i-undo")}</button>
+               <button class="small-icon" type="button" title="Open ${node.name} in Files" aria-label="Open ${node.name} in Files">${use("i-open")}</button>
+             </span>`
+          : "";
+        const open = f.path === OPEN ? ' aria-pressed="true"' : "";
+        const pinned = f.path === variant.pin ? " pinned-hover" : "";
+        return `<div class="workspace-tree-row workspace-tree-file ct-row${pinned}" role="treeitem" data-status="${s}"${open} style="${indent(depth)}" title="${WORD[s]} — ${f.path} (+${f.add} −${f.del})">${lead}${icon}<span class="workspace-tree-label">${node.name}</span>${trail}${acts}</div>`;
+      }
+
+      /* A folder row says nothing about status. The dots that used to sit here
+         were three hues of one shape answering for a whole subtree, which is
+         both the least legible mark on the page and the one nobody can act on
+         — the files below it carry their own. */
+      function dirRow(node, depth) {
+        return `<div class="workspace-tree-row workspace-tree-dir" role="treeitem" aria-expanded="true" style="${indent(depth)}" title="${node.path}"><span aria-hidden="true">${use("i-chev", 'class="workspace-tree-chevron expanded" width="12" height="12"')}</span><span class="workspace-tree-icon" aria-hidden="true">${folderIcon}</span><span class="workspace-tree-label">${node.name}</span></div>`;
+      }
+
+      /** Toolbar plus tree, without the column wrapper. */
+      function treeInner(variant, { mapping = pageMapping, compact = pageCompact, files = FILES } = {}) {
+        const body = rows(files, compact)
+          .map(({ node, depth }) =>
+            node.kind === "dir" ? dirRow(node, depth) : fileRow(node, depth, variant, mapping))
+          .join("");
+        return `<div class="workspace-tree-toolbar">
+            <button class="small-icon" type="button" title="Collapse all folders" aria-label="Collapse all folders">${use("i-collapse")}</button>
+            <button class="small-icon" type="button" title="Refresh changed files" aria-label="Refresh changed files">${use("i-refresh")}</button>
+          </div>
+          <div class="ct-tree" role="tree" aria-label="Changed files">${body}</div>`;
+      }
+
+      /* Inside a panel frame the column sits beside the diff; on its own it is
+         the 252px stage. Both keep the variant class, which the row styles
+         hang off. */
+      const treeColumn = (variant, opts) =>
+        `<div class="review-list-col stage-col ${variant.cls ?? ""}">${treeInner(variant, opts)}</div>`;
+      const treeStage = (variant, opts) =>
+        `<div class="review-panel review-list-col col-stage ${variant.cls ?? ""}">${treeInner(variant, opts)}</div>`;
+
+      /* ---- the diff side --------------------------------------------------
+         A flat run of blocks: a band of skipped lines, or a stretch of code.
+         No hunk headers, because the band above a stretch already says how far
+         it is from the one before it, and the gutter says where it starts. */
+      const DIFF = [
+        { omit: 159 },
+        { lines: [
+          [160, " ", ".review-changed-file-stack {"],
+          [161, "-", "  display: block;"],
+          [162, "-", "  flex: 1 1 0;"],
+          [163, "-", "  min-height: 0;"],
+          [161, "+", "  display: flex;"],
+          [162, "+", "  flex-direction: column;"],
+          [163, " ", "}"]
+        ] },
+        { omit: 18 },
+        { lines: [
+          [182, " ", ".review-changed-file-toggle {"],
+          [183, "-", "  grid-template-columns: 22px minmax(0, 1fr);"],
+          [177, "+", "  grid-template-columns: 16px minmax(0, 1fr) auto;"],
+          [178, "+", "  /* The tree owns the indent now, so the status cell can"],
+          [179, "+", "     shrink to the glyph it holds. */"],
+          [184, " ", "  align-items: center;"],
+          [185, " ", "  gap: var(--space-2);"]
+        ] },
+        { omit: 63 }
+      ];
+
+      /* Leading band expands upward, trailing downward, one in the middle both
+         ways — the chevron says which, so the label never has to. */
+      function omittedBand(count, dir) {
+        const glyph = dir === "both" ? use("i-collapse") : use("i-chev");
+        const label = `${count} unmodified ${count === 1 ? "line" : "lines"}`;
+        return `<button class="diff-omitted diff-omitted-expand" type="button" aria-label="Expand ${label}" title="Show more unchanged context">
+          <span class="ct-omit-chev ${dir}" aria-hidden="true">${glyph}</span>
+          <span class="ct-omit-label">${label}</span>
+        </button>`;
+      }
+
+      function diffLine([n, sign, code]) {
+        const cls = sign === "+" ? " addition" : sign === "-" ? " deletion" : "";
+        return `<div class="diff-line${cls}"><span class="ct-rail"></span><span class="diff-line-number">${n}</span><code>${code.replace(/</g, "&lt;")}</code></div>`;
+      }
+      function diffPane(mapping = pageMapping) {
+        const open = FILES.find((f) => f.path === OPEN);
+        const s = mapping(open);
+        const dir = open.path.slice(0, open.path.lastIndexOf("/") + 1);
+        const name = open.path.slice(open.path.lastIndexOf("/") + 1);
+        const body = DIFF.map((block, i) => {
+          if (block.omit === undefined) return `<div class="diff-hunk">${block.lines.map(diffLine).join("")}</div>`;
+          return omittedBand(block.omit, i === 0 ? "up" : i === DIFF.length - 1 ? "down" : "both");
+        }).join("");
+        /* The bar is the only place the line counts appear. The tree row says
+           which way a file moved; the bar says by how much, for the one file
+           you are reading. */
+        return `<div class="review-diff ct-diff" data-status="${s}">
+          <div class="ct-diff-head">
+            <span class="ct-diff-icon" aria-hidden="true">${fileIcon(name)}</span>
+            <span class="ct-path"><span class="dim">${dir}</span><b>${name}</b></span>
+            <span class="change-count"><span class="additions">+${open.add}</span><span class="deletions">-${open.del}</span></span>
+            <span class="ct-diff-acts">
+              <button class="small-icon" type="button" title="Copy path" aria-label="Copy path">${use("i-copy")}</button>
+              <button class="small-icon" type="button" title="Collapse file" aria-label="Collapse file">${use("i-chev", 'class="workspace-tree-chevron expanded"')}</button>
+              <button class="small-icon" type="button" title="Open in Files view" aria-label="Open in Files view">${use("i-open")}</button>
+            </span>
+          </div>
+          <div class="ct-diff-scroll"><div class="diff-blocks">${body}</div></div>
+        </div>`;
+      }
+
+      /* ---- today's flat list, for the before frame ----------------------- */
+      function todayList() {
+        return `<div class="review-diff review-diff-files"><div class="today-scroll"><div class="review-changed-file-stack" aria-label="Changed files">
+          ${FILES.map((f) => {
+            const s = byGit(f);
+            return `<section class="review-changed-file-section">
+              <div class="review-changed-file-row">
+                <div class="review-changed-file-toggle" data-status="${s}" aria-expanded="false">
+                  <span class="review-file-row-status" aria-hidden="true">${f.git}</span>
+                  <span class="review-file-row-path">${f.path}</span>
+                </div>
+                <span class="change-count"><span class="additions">+${f.add}</span><span class="deletions">-${f.del}</span></span>
+                <button class="small-icon" type="button" title="Open in Files view" aria-label="Open ${f.path} in Files view">${use("i-open", 'width="16" height="16"')}</button>
+              </div>
+            </section>`;
+          }).join("")}
+        </div></div></div>`;
+      }
+
+      /* ---- frames --------------------------------------------------------- */
+      const V = {
+        box:    { cls: "", trail: ["box"] },
+        tint:   { cls: "v-tint", trail: [] },
+        rail:   { cls: "v-rail", trail: [] },
+        dot:    { cls: "", trail: ["dot"] },
+        letter: { cls: "", lead: "letter", trail: [] },
+        swap:   { cls: "", icon: "status", trail: [] },
+        acts:   { cls: "v-acts", trail: ["box"], acts: true, pin: "src/renderer/components/ReviewPanel.tsx" },
+        full:   { cls: "v-strike", trail: ["box"] }
+      };
+
+      const legend = `<div class="legend">
+        <span><i style="background:var(--sage-deep)"></i> added</span>
+        <span><i style="background:var(--amber)"></i> added and removed</span>
+        <span><i style="background:var(--rose)"></i> removed</span>
+      </div>`;
+
+      function render() {
+        const host = document.getElementById("frames");
+        host.innerHTML = `
+          <div class="band">
+            <h3>0 — what ships today</h3>
+            <p>The Changes view is a flat list of full paths across the whole panel width. Sixteen files means sixteen repetitions of <code>src/renderer/</code>, the file name — the part you are looking for — sits at the far end of each row, and expanding one file pushes the rest of the list off screen. The tree the Files view already has is the fix; it just needs to be fed the changed set.</p>
+          </div>
+
+          <div class="frame wide">
+            <h2>Today — flat list, full width</h2>
+            <p>Real <code>.review-changed-file-*</code> rows. The status letter is there, in the right colours, but it is doing all the work on its own — and the file name, the part you came for, sits behind the same <code>src/renderer/</code> prefix sixteen times.</p>
+            <div class="review-panel stage short">${todayList()}</div>
+          </div>
+
+          <div class="frame wide">
+            <h2>Rebuilt — tree left, diff right</h2>
+            <p>The same sixteen files as a tree in the real sidebar column, with the open file's diff beside it. One <code>src/renderer/components</code> row instead of five copies of the path, and the <code>+N −N</code> for the file you are reading sits in the bar above its hunks.</p>
+            <div class="review-panel stage short">${treeColumn(V.full)}<div class="review-resize-handle" role="separator" aria-orientation="vertical"></div>${diffPane()}</div>
+          </div>
+
+          <div class="rule"></div>
+          <div class="band">
+            <h3>1 — how the status reads on a row</h3>
+            <p>Six ways to say added / added-and-removed / removed on a 24px tree row, all on the same tokens the panel already uses for it: <b>--sage-deep</b>, <b>--amber</b>, <b>--rose</b>. Each column is the real <code>.review-list-col</code> at its 252px working width, so what you see is what fits.</p>
+          </div>
+          ${legend}
+
+          <div class="frame narrow-note">
+            <h2>A · Trailing boxed glyph</h2>
+            <p>A 13px bordered square on the trailing edge holding <code>+</code>, <code>·</code> or <code>−</code>. Closest to the reference. Shape carries the meaning as well as colour, and the marks stack into a scannable column at the edge.</p>
+            ${treeStage(V.box)}
+          </div>
+
+          <div class="frame narrow-note">
+            <h2>B · The name takes the hue</h2>
+            <p>No extra ink at all: the file name is the status. Quietest of the six and the one that scales to a hundred rows — but it fights the type-coloured icon beside it, and colour is then the only signal.</p>
+            ${treeStage(V.tint)}
+          </div>
+
+          <div class="frame narrow-note">
+            <h2>C · Leading rail</h2>
+            <p>The same 2px rail the open file already draws on its leading edge, tinted by status. Reads beautifully in isolation and collides head-on with the selection rail it borrows from.</p>
+            ${treeStage(V.rail)}
+          </div>
+
+          <div class="frame narrow-note">
+            <h2>D · Trailing dot</h2>
+            <p>A 6px dot at the edge. Least ink of the marked options and it matches the session list's own state dot — but three hues of one shape is the version a red-green reader cannot resolve.</p>
+            ${treeStage(V.dot)}
+          </div>
+
+          <div class="frame narrow-note">
+            <h2>E · Letter in the chevron gutter</h2>
+            <p>Files already reserve a 12px chevron spacer and spend it on nothing. Put <code>A</code>/<code>M</code>/<code>D</code> there and the status costs zero extra width, keeps today's letters, and lines up under each folder's chevron.</p>
+            ${treeStage(V.letter)}
+          </div>
+
+          <div class="frame narrow-note">
+            <h2>F · Status replaces the file icon</h2>
+            <p>Here to be ruled out. The badge slot is identity — it is how you find the one <code>.css</code> in a wall of <code>.tsx</code> — and spending it on status trades a signal you cannot recover for one every other candidate delivers for free.</p>
+            ${treeStage(V.swap)}
+          </div>
+
+          <div class="rule"></div>
+          <div class="band">
+            <h3>2 — what the row does not have to carry</h3>
+            <p>Today's row carries the status, the <code>+N −N</code> counts, stage/unstage, revert, and open-in-Files. A 252px column seats about two of those, and the counts are the one tenant with somewhere better to be: the diff bar already names the file you are reading, so it can name the size of the change too. That leaves the tree row with a name, an identity icon, and a status mark — and enough room that hovering does not have to evict anything.</p>
+          </div>
+
+          <div class="frame narrow-note">
+            <h2>Actions on hover</h2>
+            <p>Hover a file and stage, revert, and open-in-Files slide in beside the mark. Nothing is displaced and nothing permanently spends 60px of a 252px column. <code>ReviewPanel.tsx</code> below is pinned in its hover state so both states sit side by side.</p>
+            ${treeStage(V.acts)}
+          </div>
+
+          <div class="rule"></div>
+          <div class="band">
+            <h3>3 — the decision the mockup cannot make for you</h3>
+            <p>"Green is added only, orange is removed and added, red is only removed" can mean two different things, and they disagree on real rows. <b>Git status</b> asks what happened to the file: new, edited, gone. <b>Line mix</b> asks what happened to the lines: a file git calls <code>M</code> that only gained lines is green. Toggle <b>Colour by</b> in the header and watch <code>changedFiles.test.ts</code> (+22 −0) and <code>DiffBlocks.tsx</code> (+0 −31) change hue while the tree stands still.</p>
+          </div>
+
+          <div class="frame narrow-note">
+            <h2>Colour by git status</h2>
+            <p>Three statuses, three hues, and the letter in the tooltip matches the letter in <code>git status</code>. A file that only gained lines is amber, because the file was edited.</p>
+            ${treeStage(V.full, { mapping: byGit })}
+          </div>
+
+          <div class="frame narrow-note">
+            <h2>Colour by line mix</h2>
+            <p>Green now means "nothing was taken away" — safe to skim. Red means "only deletions", whether the file is gone or just emptied out. More useful for reviewing, further from what git calls things.</p>
+            ${treeStage(V.full, { mapping: byLines })}
+          </div>
+
+          <div class="rule"></div>
+          <div class="band">
+            <h3>4 — compact folder chains</h3>
+            <p>A full tree is dense, so <code>buildFileTree</code> never needed to fold anything. A changed set is sparse: sixteen files spend five rows on folders that hold exactly one child. Folding those chains into one row is worth more here than anywhere else in the app. Toggle it in the header.</p>
+          </div>
+
+          <div class="frame narrow-note">
+            <h2>Chains expanded (today's builder)</h2>
+            <p><code>src</code>, then <code>renderer</code>, then <code>components</code> — three rows to say one thing, and every file pushed 36px right.</p>
+            ${treeStage(V.full, { compact: false })}
+          </div>
+
+          <div class="frame narrow-note">
+            <h2>Chains folded</h2>
+            <p>One <code>src/renderer</code> row, and the four leaf folders under it start 24px further left. Same information, five fewer rows, more room for the file names.</p>
+            ${treeStage(V.full, { compact: true })}
+          </div>
+        `;
+      }
+
+      document.getElementById("theme").addEventListener("click", (e) => {
+        const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+        document.documentElement.dataset.theme = next;
+        e.currentTarget.setAttribute("aria-pressed", String(next === "light"));
+        e.currentTarget.textContent = next === "light" ? "Dark" : "Light";
+      });
+      document.getElementById("mapping").addEventListener("click", (e) => {
+        pageMapping = pageMapping === byGit ? byLines : byGit;
+        const on = pageMapping === byLines;
+        e.currentTarget.setAttribute("aria-pressed", String(on));
+        document.getElementById("mapping-label").textContent = on ? "line mix" : "git status";
+        render();
+      });
+      document.getElementById("compact").addEventListener("click", (e) => {
+        pageCompact = !pageCompact;
+        e.currentTarget.setAttribute("aria-pressed", String(pageCompact));
+        render();
+      });
+
+      /* ?theme=light&by=lines&compact=false so a frame can be linked in the
+         state it is being discussed in. The header has to agree with it. */
+      const params = new URLSearchParams(location.search);
+      if (params.get("theme")) {
+        const theme = params.get("theme");
+        document.documentElement.dataset.theme = theme;
+        const btn = document.getElementById("theme");
+        btn.setAttribute("aria-pressed", String(theme === "light"));
+        btn.textContent = theme === "light" ? "Dark" : "Light";
+      }
+      if (params.get("by") === "lines") {
+        pageMapping = byLines;
+        document.getElementById("mapping").setAttribute("aria-pressed", "true");
+        document.getElementById("mapping-label").textContent = "line mix";
+      }
+      if (params.get("compact") === "false") {
+        pageCompact = false;
+        document.getElementById("compact").setAttribute("aria-pressed", "false");
+      }
+      render();
+    </script>
+  </body>
+</html>

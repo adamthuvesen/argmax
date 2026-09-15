@@ -225,6 +225,8 @@ export interface ReviewState {
   browserRequest: BrowserOpenRequest | null;
   handleBrowserRequest: (seq: number) => void;
   openFile: (filePath: string) => void;
+  /** Reload the changed-file list and the selected file's diff. */
+  refreshChanges: () => void;
   /** Reload the open file's diff with more unchanged context around its hunks. */
   expandDiffContext: () => void;
   updateFileIndex: (filePath: string, revision: string, stage: boolean) => Promise<void>;
@@ -792,6 +794,7 @@ export function useReviewState(
     openTerminal,
     toggleTerminal,
     openFile: diffState.openFile,
+    refreshChanges: diffState.refreshChanges,
     expandDiffContext: diffState.expandDiffContext,
     updateFileIndex: diffState.updateFileIndex,
     revertFile: diffState.revertFile,

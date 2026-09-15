@@ -189,6 +189,103 @@
   min-width: 12px;
 }
 
+/* The Changes view reuses the workspace tree's row geometry with a changed
+   set as its source. Sparse single-child folders are folded by the component,
+   leaving the trailing edge for review status and file actions. */
+.changes-tree-col {
+  flex: 1 1 0;
+}
+
+.changes-tree {
+  padding-top: 2px;
+}
+
+.changes-tree-row-shell {
+  position: relative;
+  width: calc(100% - 4px);
+  height: 24px;
+  margin: 0 2px;
+}
+
+.changes-tree-row-shell .workspace-tree-row {
+  width: 100%;
+  margin: 0;
+  padding-right: 24px;
+}
+
+.changes-tree-row-end {
+  position: absolute;
+  top: 0;
+  right: 7px;
+  bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.changes-tree-status {
+  --changes-tree-status: var(--amber);
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 13px;
+  width: 13px;
+  height: 13px;
+  border: 1px solid color-mix(in oklab, var(--changes-tree-status) 62%, transparent);
+  border-radius: var(--radius-xs);
+  color: var(--changes-tree-status);
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: calc(650 + var(--font-weight-offset));
+  line-height: 1;
+}
+
+.changes-tree-status[data-status="added"] {
+  --changes-tree-status: var(--sage-deep);
+}
+
+.changes-tree-status[data-status="deleted"] {
+  --changes-tree-status: var(--rose);
+}
+
+.changes-tree-label[data-status="deleted"] {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in oklab, var(--rose) 70%, transparent);
+}
+
+.changes-tree-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding-left: var(--space-1);
+  background: color-mix(in oklab, var(--review-sidebar) 94%, var(--text));
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.changes-tree-row-shell:hover .changes-tree-actions,
+.changes-tree-row-shell:focus-within .changes-tree-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.changes-tree-actions .small-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.changes-tree-row-shell:hover .workspace-tree-row,
+.changes-tree-row-shell:focus-within .workspace-tree-row {
+  color: var(--text);
+  background-color: color-mix(in oklab, var(--review-sidebar) 92%, var(--text));
+}
+
+.changes-tree-row-shell .workspace-tree-file[aria-pressed="true"] {
+  padding-right: 24px;
+}
+
 .file-tabs-shell {
   flex: 0 0 auto;
   padding: 5px 6px;
@@ -1208,6 +1305,173 @@
    size here is what the mobile review reads at. */
 .review-panel .diff-blocks {
   font-size: var(--text-xs);
+}
+
+/* Changes uses one continuous diff rather than a stack of patch cards. Code
+   stays on the mono face: a diff is a column-aligned artifact, and reading
+   indentation or pairing a deletion against the addition below it both need
+   the character grid a proportional face destroys. The chrome around it (the
+   unmodified-lines pill, hunk actions, the comment form) keeps the UI face.
+   The weight is authored rather than inherited because dark mode shaves
+   --weight-ui to 380, which renders code hairline over the row tints. */
+.review-diff-changes .diff-blocks[data-presentation="review"] {
+  --diff-gutter-width: 34px;
+  gap: 0;
+  padding: 0;
+  font-family: var(--font-code);
+  font-feature-settings: var(--code-font-features);
+  font-weight: calc(440 + var(--font-weight-offset));
+  line-height: 1.7;
+}
+
+.review-diff-changes .diff-blocks[data-presentation="review"] .diff-hunk {
+  --diff-gutter-width: 34px;
+  position: relative;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+}
+
+.review-diff-changes .diff-blocks[data-presentation="review"] .diff-hunk + .diff-hunk,
+.review-diff-changes .diff-blocks[data-presentation="review"] .diff-omitted + .diff-hunk {
+  margin-top: 0;
+}
+
+/* Hunk actions remain available for uncommitted changes without putting the
+   @@ range back. They appear over the hunk only while it is being inspected. */
+.review-diff-changes .diff-blocks[data-presentation="review"] .diff-hunk-header {
+  position: absolute;
+  z-index: 3;
+  top: 1px;
+  right: 5px;
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.review-diff-changes .diff-blocks[data-presentation="review"] .diff-hunk:hover .diff-hunk-header,
+.review-diff-changes .diff-blocks[data-presentation="review"] .diff-hunk:focus-within .diff-hunk-header {
+  opacity: 1;
+}
+
+.review-diff-changes .diff-blocks[data-presentation="review"] .diff-hunk-header button {
+  min-height: 20px;
+  padding: 1px 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--muted-strong);
+  font: var(--text-2xs) / 1 var(--font-ui);
+  cursor: pointer;
+}
+
+/* `min-width: max-content` on the base row is what makes a card diff scroll
+   sideways. This panel is narrow by construction, so that turns clipping into
+   the normal state and the tail of a changed line goes missing with no cue
+   that it exists. Release the floor and let the code track wrap instead. */
+.review-diff-changes .diff-blocks[data-presentation="review"] .diff-line {
+  grid-template-columns: 2px var(--diff-gutter-width) minmax(0, 1fr);
+  min-width: 0;
+}
+
+.review-diff-changes .diff-line-rail {
+  background: transparent;
+}
+
+.review-diff-changes .diff-line.addition .diff-line-rail {
+  background: var(--sage-deep);
+}
+
+.review-diff-changes .diff-line.deletion .diff-line-rail {
+  background: var(--rose);
+}
+
+/* A wrapped line is taller than its number, so the number rides the first
+   visual row rather than centering across the whole run. */
+.review-diff-changes .diff-blocks[data-presentation="review"] .diff-line-number {
+  align-self: start;
+  padding: 0 6px;
+  border-right: 0;
+  background: var(--panel);
+  font-family: var(--font-code);
+  font-size: var(--text-2xs);
+}
+
+/* Only unchanged numbers go quiet. Changed ones keep the tinted gutter
+   foreground the shared diff rules assign, which is the second place (after
+   the rail) that carries add-vs-remove once the row wash is this faint. */
+.review-diff-changes .diff-blocks[data-presentation="review"] .diff-line.context .diff-line-number {
+  color: color-mix(in oklab, var(--muted) 62%, transparent);
+}
+
+.review-diff-changes .diff-blocks[data-presentation="review"] .diff-line.addition .diff-line-number,
+.review-diff-changes .diff-blocks[data-presentation="review"] .diff-line.deletion .diff-line-number {
+  background: transparent;
+}
+
+/* The family is restated because the UA sheet gives `code` its own generic
+   `monospace`, which beats the block's inherited face. */
+.review-diff-changes .diff-blocks[data-presentation="review"] .diff-line code {
+  padding: 0 8px;
+  font-family: var(--font-code);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The tokens are the innermost elements, so their own `pre` would override the
+   wrap above and leave the change looking inert. */
+.review-diff-changes .diff-blocks[data-presentation="review"] .diff-line .hl-token {
+  white-space: inherit;
+}
+
+.review-diff-changes .diff-blocks[data-presentation="review"] .diff-omitted {
+  display: grid;
+  grid-template-columns: calc(var(--diff-gutter-width) - 5px) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0;
+  width: auto;
+  margin: 4px 5px;
+  padding: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--panel-soft) 55%, transparent);
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  text-align: left;
+}
+
+.review-diff-changes .diff-blocks[data-presentation="review"] .diff-omitted:not(.diff-omitted-expand) {
+  display: block;
+  padding: 2px 9px;
+}
+
+.review-diff-changes .diff-blocks[data-presentation="review"] .diff-omitted-expand > svg {
+  grid-column: 1;
+  place-self: center;
+  width: 10px;
+  height: 10px;
+  opacity: 0.6;
+}
+
+.review-diff-changes .diff-blocks[data-presentation="review"] .diff-omitted-expand > span {
+  padding: 2px 9px;
+}
+
+.review-diff-changes .diff-blocks[data-presentation="review"] .diff-omitted-expand[data-direction="up"] > svg {
+  transform: rotate(-90deg);
+}
+
+.review-diff-changes .diff-blocks[data-presentation="review"] .diff-omitted-expand[data-direction="down"] > svg {
+  transform: rotate(90deg);
+}
+
+.review-diff-changes .diff-blocks[data-presentation="review"] .diff-omitted-expand:hover {
+  background: var(--panel-soft);
+  color: var(--text);
 }
 
 .diff-hunk {

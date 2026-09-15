@@ -72,6 +72,7 @@ export function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
       dismissExternalChange: () => {}
     },
     openFile: () => {},
+    refreshChanges: () => {},
     expandDiffContext: () => {},
     updateFileIndex: () => Promise.resolve(),
     revertFile: () => Promise.resolve(),

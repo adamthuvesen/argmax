@@ -1,5 +1,12 @@
 import { X } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type JSX,
+  type MouseEvent as ReactMouseEvent
+} from "react";
 import { createPortal } from "react-dom";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
@@ -27,12 +34,13 @@ export function ImageLightbox({
   alt: string;
   onClose: () => void;
 }): JSX.Element | null {
-  const contentRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const probeRef = useRef<HTMLSpanElement>(null);
   const [surface, setSurface] = useState<HTMLElement | null | undefined>(undefined);
   const open = src !== null;
-  useDismissOnOutsideOrEscape(contentRef, open, onClose, undefined, { trapFocus: true });
+  useDismissOnOutsideOrEscape(overlayRef, open, onClose, undefined, { trapFocus: true });
   useRestoreFocus(open);
 
   useLayoutEffect(() => {
@@ -49,10 +57,25 @@ export function ImageLightbox({
 
   if (!open) return null;
 
+  // The content box spans the whole overlay so the image can size against it,
+  // so the letterboxing beside the image is part of the dialog rather than the
+  // backdrop. Hit-test the image to dismiss from anywhere the image is not;
+  // the hook covers clicks landing outside the overlay entirely.
+  const dismissUnlessOnImage = (event: ReactMouseEvent<HTMLDivElement>): void => {
+    if (!imageRef.current?.contains(event.target as Node)) onClose();
+  };
+
   const overlay = (
-    <div className="image-lightbox-overlay" role="dialog" aria-modal="true" aria-label={alt}>
-      <div className="image-lightbox-content" ref={contentRef}>
-        <img className="image-lightbox-image" src={src} alt={alt} />
+    <div
+      ref={overlayRef}
+      className="image-lightbox-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label={alt}
+      onMouseDown={dismissUnlessOnImage}
+    >
+      <div className="image-lightbox-content">
+        <img ref={imageRef} className="image-lightbox-image" src={src} alt={alt} />
         <button
           ref={closeButtonRef}
           type="button"

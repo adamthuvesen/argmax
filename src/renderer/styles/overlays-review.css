@@ -215,10 +215,13 @@
   white-space: nowrap;
 }
 
+/* The basename is the file and the directories ahead of it are context, but
+   color alone is enough to split the two here: bold in a 38px chrome bar read
+   as a heading competing with the diff under it. */
 .review-diff-heading-path strong {
   flex: 0 0 auto;
   color: var(--text);
-  font-weight: calc(600 + var(--font-weight-offset));
+  font-weight: inherit;
   white-space: nowrap;
 }
 

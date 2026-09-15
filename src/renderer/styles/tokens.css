@@ -110,13 +110,15 @@
   --text: color-mix(in oklab, #1c1b18, var(--ink-toward) var(--ink-pull));
   --text-soft: color-mix(in oklab, #3a3833, var(--ink-toward) var(--ink-pull));
   --muted: color-mix(in oklab, #8a857b, var(--ink-toward) var(--ink-pull));
-  --muted-strong: color-mix(in oklab, #5d594f, var(--ink-toward) var(--ink-pull));
+  --muted-strong: color-mix(in oklab, #666158, var(--ink-toward) var(--ink-pull));
   /* Ink for the composers' secondary chips — project, branch, permission mode,
      workspace mode, effort. --muted is 3.6:1 on paper, under AA at chip size,
      so they take a step toward --muted-strong while staying clearly below the
-     model chip that sits on it. Dark keeps --muted: the same value clears
-     4.5:1 against --composer-surface there. */
-  --chip-ink: color-mix(in oklab, var(--muted) 65%, var(--muted-strong));
+     model chip that sits on it. The weight tracks --muted-strong: chips want
+     4.5:1 on white, so softening the label ink costs a longer step to hold the
+     same place. Dark keeps --muted: the same value clears 4.5:1 against
+     --composer-surface there. */
+  --chip-ink: color-mix(in oklab, var(--muted) 55%, var(--muted-strong));
 
   /* Ink for long-form rendered prose (`.markdown`): agent answers, plan cards,
      file previews. Held a step off --text on paper so a wall of text doesn't
@@ -544,7 +546,7 @@
   --text: color-mix(in oklab, #e3e0d8, var(--ink-toward) var(--ink-pull));
   --text-soft: color-mix(in oklab, #c5c1b8, var(--ink-toward) var(--ink-pull));
   --muted: color-mix(in oklab, #8a857b, var(--ink-toward) var(--ink-pull));
-  --muted-strong: color-mix(in oklab, #aeaaa1, var(--ink-toward) var(--ink-pull));
+  --muted-strong: color-mix(in oklab, #a5a198, var(--ink-toward) var(--ink-pull));
   --chip-ink: var(--muted);
 
   /* Prose runs brighter than chrome ink in dark, not softer. The bloom that

@@ -184,10 +184,12 @@
         flex: 0 1 auto; min-width: 0;
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       }
+      /* Colour alone separates the file from the directories ahead of it —
+         bold in this bar read as a heading over the diff. */
       .ct-diff-head .ct-path b {
         flex: 0 0 auto; white-space: nowrap;
         color: var(--text);
-        font-weight: calc(600 + var(--font-weight-offset));
+        font-weight: inherit;
       }
       .ct-diff-head .change-count { flex: 0 0 auto; font-family: var(--font-mono); font-size: var(--text-2xs); font-weight: 500; }
       .ct-diff-acts { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 1px; }

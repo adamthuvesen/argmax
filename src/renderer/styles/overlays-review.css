@@ -169,10 +169,10 @@
 
 .review-changed-file-row {
   display: grid;
-  /* Reserve just enough for a typical "+NN −NN" stat (mono 11.5px) so the
+  /* Reserve just enough for a typical "+NN −NN" stat (mono 10px) so the
      chevron column sits snug to the numbers while staying perfectly aligned
      row to row. Right-aligned numbers keep their edge tight to the folder. */
-  grid-template-columns: minmax(0, 1fr) 58px 28px;
+  grid-template-columns: minmax(0, 1fr) 50px 28px;
   align-items: center;
   gap: var(--space-2);
   min-height: 42px;
@@ -245,7 +245,9 @@
   justify-content: flex-end;
   gap: 5px;
   font-family: var(--font-mono);
-  font-size: var(--text-xs-plus);
+  /* Stays under the 11px file path it annotates: a stat that outsizes its own
+     label reads as the headline. */
+  font-size: var(--text-2xs);
   font-weight: calc(500 + var(--font-weight-offset));
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -585,7 +587,7 @@
 }
 
 .review-mode-tabs {
-  --sliding-tab-background: var(--panel-soft);
+  --sliding-tab-background: var(--row-selected);
   --sliding-tab-radius: var(--radius-md);
   display: inline-flex;
   gap: var(--space-1_5);

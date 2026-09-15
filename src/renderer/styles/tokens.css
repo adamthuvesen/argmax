@@ -28,17 +28,22 @@
      the inherited `calt` wins. It takes the same property to turn it off. */
   --code-font-features: "liga" 0, "clig" 0, "calt" 0;
 
-  --bg: #fdfdfd;
-  --sidebar: #f9f9f7;
+  /* Light's ground is warm near-white, and the chrome sits barely under it:
+     the page and the sidebars are within two units, so their boundary is
+     carried by --line rather than by a step in fill. Intensity walks this
+     pair down toward paper; it cannot walk it up, which is why a brighter
+     sidebar than this one belongs here and not on a rung. */
+  --bg: #fcfcfb;
+  --sidebar: #fbfbf9;
   --panel: #ffffff;
   /* Both sidebars share warm paper in light and lifted charcoal in dark. */
-  --review-panel: #f9f9f7;
+  --review-panel: #fbfbf9;
   /* File-tree column inside the review panel. Paper sinks, charcoal lifts:
      in light this sits a step under the panel, in dark a step above it — the
      same trick --tool-block-surface plays, and the reason the column can't
      just take --panel-sunken (in dark that is the darkest surface in the app
      and the column would read as a hole rather than a sidebar). */
-  --review-sidebar: #f6f6f3;
+  --review-sidebar: #f8f8f5;
   --panel-soft: #fafafa;
   /* The two composers (.composer in the launcher, .session-input in a session).
      They are cards, but the one card the user types into, so dark lifts them a
@@ -47,6 +52,10 @@
      and they stay on it. */
   --composer-surface: var(--panel);
   --panel-sunken: #eef0f1;
+  /* Greige selection fill — sidebar rows, panel tabs, neutral bubbles, active
+     file tabs, and the review mode sliding indicator. Same weight as the old
+     cool gray mix, with the blue cast traded for a hint of paper warmth. */
+  --row-selected: #edecea;
   /* Code/terminal block fill in chat. Lighter than --panel-sunken in light
      mode so output blocks read airier; dark reuses its sunken surface. */
   --code-surface: #f4f6f7;
@@ -71,10 +80,20 @@
   /* The fill every control on a composer's chip floor wears — the model pill,
      the project and branch chips, the glyph buttons, the behavior toggles at
      rest. One mix off --composer-surface, so it lifts on paper and in dark
-     without a second declaration, and one step further on hover. This is what
+     without a second declaration, and one step further on hover. On paper the
+     base picks up a little of --row-selected so chips share the same greige
+     family as sidebar selection without matching it outright. This is what
      replaced the carets: the fill is what says a control is a control. */
-  --composer-chip: color-mix(in oklab, var(--text) 5%, var(--composer-surface));
-  --composer-chip-hover: color-mix(in oklab, var(--text) 9%, var(--composer-surface));
+  --composer-chip: color-mix(
+    in oklab,
+    var(--text) 5%,
+    color-mix(in oklab, var(--composer-surface) 88%, var(--row-selected))
+  );
+  --composer-chip-hover: color-mix(
+    in oklab,
+    var(--text) 9%,
+    color-mix(in oklab, var(--composer-surface) 84%, var(--row-selected))
+  );
   /* Model-suggested follow-ups are guidance, not entered text. Light
      composers lift them above the regular placeholder so they read as a
      suggestion without competing with the prompt. */
@@ -329,14 +348,6 @@
      paper. In dark it becomes a low-alpha warm-white film — present enough
      to register, never bright enough to read as a spotlight. */
   --row-hover: rgba(255, 255, 255, 0.6);
-
-  /* Selected-row fill, shared by the sidebar's sessions, the model picker, the
-     settings nav, and the agent tabs. Defined once so those four surfaces
-     cannot drift apart again. Light selection leans slightly toward the line
-     color so it stays visible at the near-white end of the intensity ladder
-     without making every other sunken surface darker. See the dark override
-     for why dark cannot use --panel-sunken. */
-  --row-selected: color-mix(in oklab, var(--panel-sunken) 67%, var(--line));
 
   font-family: var(--font-ui);
   font-weight: var(--weight-ui);
@@ -855,7 +866,7 @@
    panel surface. Both sit one surface step off the page rather than carrying a
    fill of their own, so an un-tinted bubble reads as a card, not as a slab. */
 :root[data-user-bubble="neutral"] {
-  --user-message-bg: var(--panel-sunken);
+  --user-message-bg: var(--row-selected);
   --user-message-fg: var(--text);
 }
 

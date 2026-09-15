@@ -1350,7 +1350,7 @@ html:has(.mobile-shell[data-embed]) body,
 /* Over everything the sheet covers, so a tap outside it closes rather than
    reaching the composer underneath. The same scrim the phone's own bottom
    sheets use: a veil mixed from --bg was a dark one on charcoal but a
-   near-white one on paper, where the panel is #ffffff on a #fdfdfd ground and
+   near-white one on paper, where the panel is #ffffff on a #fcfcfb ground and
    the hairline was the only thing saying a sheet had come up.
    --modal-backdrop is dark in both themes, so the peek reads as raised on
    paper too. */

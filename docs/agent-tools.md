@@ -195,8 +195,8 @@ The same server carries Argmax's browser. A page an agent opens is a real tab
 in the user's window, shown in that session's own pane — browsing is visible
 work, not a hidden side channel.
 
-Cookie acceptance is pre-authorized in the MCP server instructions. An agent
-may accept any cookie prompt without asking the user.
+Cookie banners on agent tabs are dismissed automatically. A leftover prompt
+may still be accepted without asking the user.
 
 | Tool | Arguments | Returns |
 |---|---|---|
@@ -209,17 +209,17 @@ may accept any cookie prompt without asking the user.
 | `browser_open_link` | `ref`, `tab?`, `activate?` | `{tabId, url, opened}` |
 | `browser_group_tabs` | `tabs`, `group?` | `{tabs, group}` |
 | `browser_close` | `tab` | `{tabId, closed}` |
-| `browser_snapshot` | `tab?`, `interactive_only?` | `{tabId, url, title, tree, truncated}` |
+| `browser_snapshot` | `tab?`, `interactive_only?` | `{tabId, url, title, state, tree, truncated}` |
 | `browser_find` | `query`, `tab?` | `{tabId, matches: [{ref, role, name, value}]}` |
-| `browser_get_text` | `tab?`, `max_chars?` | `{tabId, url, title, text, truncated}` |
-| `browser_extract` | `tab?`, `max_chars?` | `{tabId, url, title, metadata, headings, sections, tables, links, truncated}` |
-| `browser_click` / `browser_hover` | `ref`, `tab?` | `{tabId, url, detail}` |
+| `browser_get_text` | `tab?`, `max_chars?` | `{tabId, url, title, state, text, truncated}` |
+| `browser_extract` | `tab?`, `max_chars?` | `{tabId, url, title, state, metadata, headings, sections, tables, links, items, fields, truncated}` |
+| `browser_click` / `browser_hover` | `ref`, `tab?` | `{tabId, url, detail, textChars?, textCharsDelta?, listboxOpen?, urlChanged?}` |
 | `browser_type` | `ref`, `text`, `submit?`, `tab?` | `{tabId, url, detail}` |
 | `browser_select` | `ref`, `value`, `tab?` | `{tabId, url, detail}` |
 | `browser_press_key` | `key`, `modifiers?`, `tab?` | `{tabId, url, detail}` |
 | `browser_scroll` | `direction`, `amount?`, `ref?`, `tab?` | `{tabId, url, detail}` |
 | `browser_drag` | `ref`, `to_ref?` \| `delta_x`/`delta_y`, `start_x?`, `start_y?`, `end_x?`, `end_y?`, `steps?`, `tab?` | `{tabId, url, detail}` |
-| `browser_wait_for` | `text?`, `ref?`, `url_includes?`, `timeout_s?`, `tab?` | `{tabId, url, detail}` |
+| `browser_wait_for` | `text?`, `ref?`, `url_includes?`, `quiet_ms?`, `min_count?`, `timeout_s?`, `tab?` | `{tabId, url, detail, matched, state}` — a miss is `matched: false` with page state, not an error |
 | `browser_screenshot` | `tab?`, `ref?` | an image content block, plus `{width, height, bytes, dropped, path}` |
 | `browser_evaluate` | `expression`, `tab?` | `{tabId, result}` |
 | `browser_console` | `tab?`, `limit?`, `clear?` | Captured console calls, uncaught errors, and unhandled rejections |
@@ -241,11 +241,13 @@ resolves fails with a message that says exactly that.
 
 **Reading a page: three tools, cheapest first.** `browser_extract` is the one
 to reach for when the question is *what does this page say*: it returns the
-article's metadata, headings, sections, tables and unique links as structured
-JSON, so comparing sources does not mean parsing an accessibility tree.
-`browser_get_text` is the flat-prose fallback when structure does not matter,
-and `browser_snapshot` is for *acting* — it is the only one that hands out
-refs.
+article's metadata, headings, sections, tables, unique links, repeating items,
+and filled form fields as structured JSON, so comparing sources does not mean
+parsing an accessibility tree. `browser_get_text` is the flat-prose fallback
+when structure does not matter, and `browser_snapshot` is for *acting* — it is
+the only one that hands out refs. All three include `state` (`captcha`,
+`cookie`, `error`, `loading`, `ready`). Use extract's `items` for card/list
+UIs and `fields` to see what a form currently holds.
 
 **Tabs are for the human too.** `browser_activate` shows one of this session's
 tabs in its pane and makes it the default for later calls. `browser_open_link`

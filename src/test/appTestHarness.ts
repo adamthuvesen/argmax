@@ -672,10 +672,24 @@ export function setupAppTestMocks(): void {
       listTabs: () => Promise.resolve({ tabs: [] }),
       openForSession: () => Promise.resolve({ tabId: "agent-1" }),
       snapshot: () =>
-        Promise.resolve({ tabId: "agent-1", url: "", title: "", tree: "", truncated: false }),
+        Promise.resolve({
+          tabId: "agent-1",
+          url: "",
+          title: "",
+          state: "ready",
+          tree: "",
+          truncated: false
+        }),
       find: () => Promise.resolve({ tabId: "agent-1", matches: [] }),
       getText: () =>
-        Promise.resolve({ tabId: "agent-1", url: "", title: "", text: "", truncated: false }),
+        Promise.resolve({
+          tabId: "agent-1",
+          url: "",
+          title: "",
+          state: "ready",
+          text: "",
+          truncated: false
+        }),
       act: () => Promise.resolve({ tabId: "agent-1", url: "", detail: null }),
       onState: () => () => undefined,
       onNewTab: () => () => undefined,

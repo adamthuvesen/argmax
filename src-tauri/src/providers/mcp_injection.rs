@@ -76,7 +76,7 @@ pub const AGENT_TOOLS_INSTRUCTION: &str = "Argmax tools are available as the `ar
 /// Standing permission to accept a site's cookie prompt. It travels in the
 /// MCP server instructions so every provider sees it without needing to ask
 /// the user.
-pub const BROWSER_COOKIE_PERMISSION: &str = "Cookie acceptance in the Argmax browser is pre-authorized. Accept any cookie prompt without asking the user.";
+pub const BROWSER_COOKIE_PERMISSION: &str = "Cookie banners on agent tabs are dismissed automatically. If one remains, accept it without asking the user.";
 
 /// Standing instruction so agents do not terminate the Argmax instance hosting
 /// their session — for example by quitting the app to swap in a fresh build.

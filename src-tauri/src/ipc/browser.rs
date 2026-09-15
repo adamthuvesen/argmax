@@ -263,6 +263,10 @@ const BROWSER_DIALOG_SCRIPT: &str = include_str!("../browser/dialog.js");
 /// person is debugging in their own inspector.
 const BROWSER_CAPTURE_SCRIPT: &str = include_str!("../browser/capture.js");
 
+/// Cookie CMP auto-click, agent tabs only, every frame — a consent iframe is
+/// a common host for the accept button.
+const BROWSER_COOKIE_SCRIPT: &str = include_str!("../browser/cookie.js");
+
 /// The initialization script one tab gets. Three documents' worth, because the
 /// agent-only halves must be in place before the page's first statement runs
 /// and an initialization script is fixed when the webview is created.
@@ -597,12 +601,19 @@ fn open_tab_with_url(
     };
     #[cfg(not(target_os = "macos"))]
     let _ = blocking_identifier;
+    let owned = owner_session_id.is_some();
     let builder = builder
         // WKWebView's default UA reads as an embedded webview; Google (and
         // others) then warn "browser no longer supported" and refuse OAuth.
         // Present as desktop Safari, which is what this engine actually is.
         .user_agent(BROWSER_USER_AGENT)
-        .initialization_script(init_script(owner_session_id.is_some()))
+        .initialization_script(init_script(owned));
+    let builder = if owned {
+        builder.initialization_script_for_all_frames(BROWSER_COOKIE_SCRIPT)
+    } else {
+        builder
+    };
+    let builder = builder
         .on_new_window(move |url, features| {
             // Auth SDKs open a blank window, then navigate it and wait for
             // postMessage or closure. A separate tab loses that opener link.
@@ -616,7 +627,7 @@ fn open_tab_with_url(
                 tracing::error!(%error, "could not prepare browser popup configuration");
                 return tauri::webview::NewWindowResponse::Deny;
             }
-            let window = tauri::WebviewWindowBuilder::new(
+            let popup_builder = tauri::WebviewWindowBuilder::new(
                 &popup_app,
                 format!(
                     "browser-popup-{}-{}",
@@ -636,15 +647,21 @@ fn open_tab_with_url(
             // The popup gets a fresh WKUserContentController on macOS, so
             // explicitly restore the panel scripts Wry would otherwise see
             // through the inherited controller.
-            .initialization_script(init_script(popup_owned_by_session))
-            // Check the marker at event time, since OAuth redirects can sever
-            // window.opener.
-            .initialization_script("window.__argmaxBrowserPopup = true;")
-            .on_navigation(|url| matches!(url.scheme(), "http" | "https" | "about" | "blob"))
-            .on_document_title_changed(|window, title| {
-                let _ = window.set_title(&title);
-            })
-            .build();
+            .initialization_script(init_script(popup_owned_by_session));
+            let popup_builder = if popup_owned_by_session {
+                popup_builder.initialization_script_for_all_frames(BROWSER_COOKIE_SCRIPT)
+            } else {
+                popup_builder
+            };
+            let window = popup_builder
+                // Check the marker at event time, since OAuth redirects can sever
+                // window.opener.
+                .initialization_script("window.__argmaxBrowserPopup = true;")
+                .on_navigation(|url| matches!(url.scheme(), "http" | "https" | "about" | "blob"))
+                .on_document_title_changed(|window, title| {
+                    let _ = window.set_title(&title);
+                })
+                .build();
             match window {
                 Ok(window) => {
                     let browser_theme = *popup_app
@@ -1465,10 +1482,15 @@ mod tests {
         assert!(agent.contains("readConsole"));
         assert!(agent.contains("readNetwork"));
         assert!(agent.contains("__argmaxDialog"));
+        assert!(
+            BROWSER_COOKIE_SCRIPT.contains("__argmaxCookies"),
+            "cookie dismisser is a separate all-frames init script"
+        );
 
         let user = init_script(false);
         assert!(!user.contains("__argmaxCapture"));
         assert!(!user.contains("__argmaxDialog"));
+        assert!(!user.contains("__argmaxCookies"));
         assert!(
             user.contains("argmax-newtab"),
             "ordinary browser behavior is still installed"

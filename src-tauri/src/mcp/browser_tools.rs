@@ -211,7 +211,13 @@ pub struct WaitForParams {
     /// Wait until the page's URL contains this substring. Use it after a
     /// click that navigates.
     pub url_includes: Option<String>,
+    /// Wait until fetch/XHR have been idle for this many milliseconds.
+    pub quiet_ms: Option<u32>,
+    /// Wait until at least this many visible list-like items exist. Combined
+    /// with `text`, counts items that contain that text.
+    pub min_count: Option<u32>,
     /// Seconds to wait before giving up. Defaults to 10, capped at 60.
+    /// A miss returns the page state instead of an error.
     pub timeout_s: Option<u32>,
     /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
@@ -399,8 +405,9 @@ each open tab is a live webview in the user's window."
 with its role, name and value, and a [ref=eN] handle on everything you can interact with. This is \
 the tool to reach for first and after every action — it is far cheaper than a screenshot and it is \
 what gives you the refs the click and type tools need. Refs live in the page, so they stay valid \
-while the element does and go stale the moment the page navigates. A `dialog:` header line means \
-the page raised an alert, confirm or prompt; see browser_handle_dialog."
+while the element does and go stale the moment the page navigates. A `state:` header line is \
+captcha, cookie, error, loading, or ready. A `dialog:` header line means the page raised an \
+alert, confirm or prompt; see browser_handle_dialog."
     )]
     async fn browser_snapshot(
         &self,
@@ -433,7 +440,8 @@ a long page."
     #[tool(
         name = "browser_get_text",
         description = "Read the page's visible text, main content first. Use it to read an \
-article or a result; use browser_snapshot when you need to act on something."
+article or a result; use browser_snapshot when you need to act on something. Includes the same \
+`state` field as a snapshot (captcha, cookie, error, loading, ready)."
     )]
     async fn browser_get_text(
         &self,
@@ -448,7 +456,7 @@ article or a result; use browser_snapshot when you need to act on something."
 
     #[tool(
         name = "browser_extract",
-        description = "Extract bounded, structured page content: metadata, headings, sections, tables, and unique http(s) links. Use it to read articles and compare sources without processing the accessibility tree."
+        description = "Extract bounded, structured page content: metadata, headings, sections, tables, unique http(s) links, repeating items (cards, list rows), and filled form fields. Use it to read a page without processing the accessibility tree. Includes `state` (captcha, cookie, error, loading, ready)."
     )]
     async fn browser_extract(
         &self,
@@ -464,8 +472,9 @@ article or a result; use browser_snapshot when you need to act on something."
     #[tool(
         name = "browser_click",
         description = "Click the element a ref names. Take a browser_snapshot first to get the \
-ref. The reply reports the URL afterwards, so a click that navigated says so; follow a navigation \
-with a fresh snapshot, because the old refs are gone."
+ref. The reply reports the URL, how much visible text moved, and whether a listbox opened. A \
+full-page navigation has often not landed yet — follow a click that should navigate with \
+browser_wait_for or a fresh snapshot."
     )]
     async fn browser_click(
         &self,
@@ -484,7 +493,8 @@ with a fresh snapshot, because the old refs are gone."
         name = "browser_type",
         description = "Type text into the field a ref names, replacing what is there. Set submit \
 to true to press Enter afterwards, which is how you run a search box. The value goes in through \
-the DOM's native setter, so React and Vue forms see it."
+the DOM's native setter, so React and Vue forms see it. The reply says whether a listbox opened \
+and how much visible text moved — useful after typing into a combobox."
     )]
     async fn browser_type(
         &self,
@@ -610,16 +620,23 @@ snapshot already covers the whole document, so scroll for pages that load more c
     #[tool(
         name = "browser_wait_for",
         description = "Block until the page catches up: until some text appears, an element \
-becomes visible, or the URL contains a substring. Name at least one of them. This is what to use \
-after a click or a search that navigates, instead of snapshotting a page that has not landed yet."
+becomes visible, the URL contains a substring, fetch/XHR go quiet (`quiet_ms`), or at least \
+`min_count` list-like items exist. Name at least one of them. A miss returns `matched: false` \
+with the page `state` and a text sample rather than an error — read that instead of retrying \
+blindly. Slow pages can take timeout_s up to 60."
     )]
     async fn browser_wait_for(
         &self,
         Parameters(params): Parameters<WaitForParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        if params.text.is_none() && params.element_ref.is_none() && params.url_includes.is_none() {
+        if params.text.is_none()
+            && params.element_ref.is_none()
+            && params.url_includes.is_none()
+            && params.quiet_ms.is_none()
+            && params.min_count.is_none()
+        {
             return Ok(CallToolResult::error(vec![ContentBlock::text(
-                "browser_wait_for needs one of text, ref or url_includes.",
+                "browser_wait_for needs one of text, ref, url_includes, quiet_ms or min_count.",
             )]));
         }
         act(
@@ -628,6 +645,8 @@ after a click or a search that navigates, instead of snapshotting a page that ha
                 text: params.text,
                 element_ref: params.element_ref,
                 url_includes: params.url_includes,
+                quiet_ms: params.quiet_ms,
+                min_count: params.min_count,
                 timeout_ms: params
                     .timeout_s
                     .map(|seconds| seconds.clamp(1, MAX_WAIT_SECONDS) * 1_000),

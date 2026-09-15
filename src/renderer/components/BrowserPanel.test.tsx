@@ -668,7 +668,7 @@ describe("BrowserPanel", () => {
       loading: false
     }));
 
-    const address = screen.getByRole("textbox", { name: "Address" });
+    const address = screen.getByRole<HTMLInputElement>("textbox", { name: "Address" });
     fireEvent.focus(address);
     fireEvent.input(address, { target: { value: "y" }, inputType: "insertText" });
     // The visit lands asynchronously; the popover says history is in hand.
@@ -691,7 +691,7 @@ describe("BrowserPanel", () => {
       loading: false
     }));
 
-    const address = screen.getByRole("textbox", { name: "Address" });
+    const address = screen.getByRole<HTMLInputElement>("textbox", { name: "Address" });
     fireEvent.focus(address);
     fireEvent.input(address, { target: { value: "you" }, inputType: "insertText" });
     await screen.findByRole("dialog", { name: "History suggestions" });

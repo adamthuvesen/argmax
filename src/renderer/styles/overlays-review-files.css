@@ -223,13 +223,18 @@
   flex: 0 0 13px;
   width: 13px;
   height: 13px;
-  border: 1px solid color-mix(in oklab, var(--changes-tree-status) 62%, transparent);
+  border: 1px solid var(--changes-tree-status);
   border-radius: var(--radius-xs);
   color: var(--changes-tree-status);
   font-family: var(--font-ui);
   font-size: 9px;
   font-weight: calc(650 + var(--font-weight-offset));
   line-height: 1;
+  /* Centring places the line box, not the ink. Geist sits +, − and · on a
+     common axis 0.055em below that box's middle, so all three drew 0.5px low.
+     A 1px bottom pad shortens the content box and lifts them back; border-box
+     keeps the badge 13px. */
+  padding-bottom: 1px;
 }
 
 .changes-tree-status[data-status="added"] {

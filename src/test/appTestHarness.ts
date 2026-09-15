@@ -109,6 +109,8 @@ export let providersDiscover: AppTestMockFn<ArgmaxApi["providers"]["discover"]>;
 export let diagnosticsStub: AppTestMockFn<ArgmaxApi["system"]["diagnostics"]>;
 let vacuumDatabaseStub: AppTestMockFn<ArgmaxApi["system"]["vacuumDatabase"]>;
 export let setNotificationsEnabledStub: AppTestMockFn<ArgmaxApi["system"]["setNotificationsEnabled"]>;
+export let agentToolsStub: AppTestMockFn<ArgmaxApi["settings"]["agentTools"]>;
+export let setBrowserToolsStub: AppTestMockFn<ArgmaxApi["settings"]["setBrowserTools"]>;
 let setKeepAwakeStub: AppTestMockFn<ArgmaxApi["system"]["setKeepAwake"]>;
 let multitaskStub: AppTestMockFn<ArgmaxApi["session"]["multitask"]>;
 export let testNotificationStub: AppTestMockFn<ArgmaxApi["system"]["testNotification"]>;
@@ -334,6 +336,12 @@ export function setupAppTestMocks(): void {
   setNotificationsEnabledStub = vi
     .fn<ArgmaxApi["system"]["setNotificationsEnabled"]>()
     .mockResolvedValue({ ok: true });
+  agentToolsStub = vi
+    .fn<ArgmaxApi["settings"]["agentTools"]>()
+    .mockResolvedValue({ browserTools: true });
+  setBrowserToolsStub = vi
+    .fn<ArgmaxApi["settings"]["setBrowserTools"]>()
+    .mockImplementation(({ enabled }) => Promise.resolve({ browserTools: enabled }));
   setKeepAwakeStub = vi.fn<ArgmaxApi["system"]["setKeepAwake"]>().mockResolvedValue({ ok: true });
   testNotificationStub = vi.fn<ArgmaxApi["system"]["testNotification"]>().mockResolvedValue({ ok: true });
   multitaskStub = vi.fn<ArgmaxApi["session"]["multitask"]>().mockResolvedValue({
@@ -556,6 +564,8 @@ export function setupAppTestMocks(): void {
       list: connectionsList
     },
     settings: {
+      agentTools: agentToolsStub,
+      setBrowserTools: setBrowserToolsStub,
       previewChatCleanup: () => Promise.reject(new Error("Chat cleanup not stubbed")),
       deleteOldChats: () => Promise.reject(new Error("Chat cleanup not stubbed"))
     },

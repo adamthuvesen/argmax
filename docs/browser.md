@@ -65,7 +65,12 @@ address suggestions. Existing `argmax.browser.history` localStorage data migrate
 after a successful save. Repeating an import refreshes existing entries without
 adding duplicate URLs or inflating visit counts. Address suggestions favor URL
 prefixes, frequent visits, and recent visits. An empty address field shows the
-most recent pages. Storage failures are shown in the import dialog instead of
+most recent pages. Typing also completes the address inline, Chrome-style: when
+the top suggestion's address extends what was typed, the rest of it fills the
+field selected, so the next keystroke replaces it, Escape restores the typed
+text, and Enter goes to the URL that suggestion was visited under rather than
+the shortened text. Only ordinary typing at the end of the field completes —
+never a deletion, a paste, or an in-progress IME composition. Storage failures are shown in the import dialog instead of
 reporting success.
 
 For a local source check, run:
@@ -141,6 +146,14 @@ Refs live in the DOM as `data-argmax-ref`, so a re-snapshot reuses the attribute
 A fourth script, [dialog.js](../src-tauri/src/browser/dialog.js), is different: it is an *initialization* script, fixed when the webview is created, and it is installed **only on tabs a session opened**. A page's `alert` / `confirm` / `prompt` is synchronous — it must return a value before the page's next statement runs — so it cannot wait for an answer from an agent in another process. On an agent's tab the three are therefore overridden, answered on the spot from whatever `browser_handle_dialog` armed (dismissively when nothing did: `confirm` → false, `prompt` → null), and recorded. `snapshot.js` prints the record for 30 seconds as a `dialog:` header line, so the agent whose click hit a confirm box learns that it did. The page also pings Rust through the `argmax-newtab://dialog` scheme, which `on_navigation` intercepts, logs and blocks — there is no push event for it, because the snapshot header is where the agent reads it and the user's own tabs never raise one. Tabs the user opened keep the engine's native dialogs: silently answering a person's confirm box would misreport what they clicked.
 
 ## The MCP Path
+
+Settings → Agents → Tools → **Browser tools** decides whether an agent gets
+them at all. Off is a real saving — 27 of the server's 55 tools and about 37%
+of its bytes, roughly 4,900 tokens off every turn — and it costs the panel
+nothing: the user still browses, and the chat's Browser tab still works. The
+choice is read when a launch is issued, so it reaches a chat on its next turn
+and never changes the tool list under a running one. See "What the surface
+costs" in [agent-tools.md](agent-tools.md).
 
 The tools an agent calls are `mcp__argmax__browser_*`, defined in [browser_tools.rs](../src-tauri/src/mcp/browser_tools.rs) and listed in [agent-tools.md](agent-tools.md). They do not run in the app: the MCP server is a separate `argmax mcp` process with no `AppHandle`, so each tool sends a `SessionControlAction::Browser` over the session-control socket, and [browser_bridge.rs](../src-tauri/src/mcp/browser_bridge.rs) runs it app-side against the same `automation` functions the IPC channels use.
 

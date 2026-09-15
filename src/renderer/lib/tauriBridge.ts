@@ -7,6 +7,7 @@ import type {
   ActivitySummary,
   ActivitySummaryInput,
   ArgmaxApi,
+  AgentToolsSettings,
   ChatCleanupPreview,
   DeleteOldChatsResult,
   AttachmentSaveImageInput,
@@ -429,6 +430,9 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       list: (input) => invokeCommand<ConnectionSummary[]>("connections:list", input)
     },
     settings: {
+      agentTools: () => invokeCommand<AgentToolsSettings>("settings:agent-tools"),
+      setBrowserTools: (input) =>
+        invokeCommand<AgentToolsSettings>("settings:set-browser-tools", input),
       previewChatCleanup: () => invokeCommand<ChatCleanupPreview>("settings:preview-chat-cleanup"),
       deleteOldChats: (input) => invokeCommand<DeleteOldChatsResult>("settings:delete-old-chats", input)
     },

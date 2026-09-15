@@ -32,6 +32,8 @@ import {
   closeSettings,
   dashboardDeltaListener,
   openSettings,
+  agentToolsStub,
+  setBrowserToolsStub,
   setNotificationsEnabledStub,
   setupAppTestMocks,
   snapshot,
@@ -362,6 +364,35 @@ describe("App settings", () => {
 
     fireEvent.click(revert);
     await waitFor(() => expect(window.localStorage.getItem(TURN_REVERT_ENABLED_KEY)).toBe("false"));
+  });
+
+  it("reads the browser-tools setting from the app and writes the change back", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings("Agents");
+    await screen.findByRole("heading", { name: "Tools" });
+    expect(agentToolsStub).toHaveBeenCalled();
+
+    const toggle = screen.getByRole("checkbox", { name: "Browser tools" });
+    expect(toggle).toBeChecked();
+
+    fireEvent.click(toggle);
+    await waitFor(() => expect(setBrowserToolsStub).toHaveBeenCalledWith({ enabled: false }));
+    expect(toggle).not.toBeChecked();
+  });
+
+  it("snaps the browser-tools toggle back when the write fails", async () => {
+    setBrowserToolsStub.mockRejectedValueOnce(new Error("no database"));
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings("Agents");
+    await screen.findByRole("heading", { name: "Tools" });
+
+    const toggle = screen.getByRole("checkbox", { name: "Browser tools" });
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle).toBeChecked());
   });
 
   it("hides the goal turn budget when goals are off", async () => {

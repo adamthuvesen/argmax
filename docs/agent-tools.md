@@ -741,6 +741,32 @@ the cuts worth making are the ones that remove duplication rather than bounds.
 Policy already carried by the `instructions` field, and parameters already
 described in the schema, do not need restating in a tool description.
 
+### Turning the browser tools off
+
+Removing a tool is the lever trimming prose cannot match, and the browser tools
+are the only group a user can do without and still have Argmax: 27 of the 55,
+and about 37% of the bytes. Settings → Agents → Tools → **Browser tools** drops
+them — 46,628 bytes to 29,300, measured at 12,573 prefix tokens per turn down
+to 7,665. The Browser panel is untouched; what goes is an agent's ability to
+drive it.
+
+The decision is the launch's. `SessionLaunchRegistry::issue` reads the setting
+from [app_settings.rs](../src-tauri/src/persistence/app_settings.rs) and stamps
+it into the launch's `SessionLaunchProcessConfig`, which puts
+`ARGMAX_BROWSER_TOOLS=0` in the server spec's own `env` beside the credential —
+so it reaches the server on every provider, including the two whose spec is a
+workspace file. Reading it there rather than in the renderer is what makes a
+chat an agent launched carry the same surface as a chat the user launched.
+
+Two consequences follow from tool definitions sitting ahead of `system` and
+`messages` in the cached prefix. A change to the tool list invalidates the whole
+cache, so the setting is read per launch and never mid-conversation: a running
+chat keeps the surface it started with and picks up the change on its next
+turn. And the `instructions` blob has to move with the tools —
+`agent_tools_instruction` takes the same flag and drops the browser clause, the
+cookie grant, and the screenshot example, because an agent told it can open
+pages when it cannot is worse off than one told nothing.
+
 ## The wire underneath
 
 [protocol.rs](../src-tauri/src/session_control/protocol.rs) holds the whole

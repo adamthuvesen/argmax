@@ -6,9 +6,13 @@ use std::time::Duration as StdDuration;
 use tauri::State;
 use uuid::Uuid;
 
-use super::{inputs::DeleteOldChatsInput, live_database, read_off_main};
+use super::{
+    inputs::{DeleteOldChatsInput, SetBrowserToolsInput},
+    live_database, read_off_main,
+};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::ipc::validation::SessionId;
+use crate::persistence::app_settings::{browser_tools_enabled, set_browser_tools_enabled};
 use crate::persistence::chat_cleanup::{
     candidate_workspace_ids, delete_old_chats, eligible_session_ids, ChatCleanupPlan,
 };
@@ -32,6 +36,54 @@ pub struct DeleteOldChatsResult {
     pub deleted_chat_count: u32,
     pub skipped_recent_count: u32,
     pub skipped_running_count: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentToolsSettings {
+    pub browser_tools: bool,
+}
+
+#[tauri::command(rename = "settings:agent-tools")]
+#[specta::specta]
+pub async fn settings_agent_tools(state: State<'_, AppState>) -> ArgmaxResult<AgentToolsSettings> {
+    settings_agent_tools_impl(&state).await
+}
+
+pub(crate) async fn settings_agent_tools_impl(
+    state: &AppState,
+) -> ArgmaxResult<AgentToolsSettings> {
+    let database = live_database(state)?;
+    let browser_tools =
+        read_off_main(move || Ok(browser_tools_enabled(&database.read_connection()))).await?;
+    Ok(AgentToolsSettings { browser_tools })
+}
+
+/// Takes effect on the next launch. A running turn keeps the surface it
+/// started with — its provider read the tool list once, at startup, and no
+/// CLI re-reads it mid-conversation.
+#[tauri::command(rename = "settings:set-browser-tools")]
+#[specta::specta]
+pub async fn settings_set_browser_tools(
+    state: State<'_, AppState>,
+    input: SetBrowserToolsInput,
+) -> ArgmaxResult<AgentToolsSettings> {
+    settings_set_browser_tools_impl(&state, input).await
+}
+
+pub(crate) async fn settings_set_browser_tools_impl(
+    state: &AppState,
+    input: SetBrowserToolsInput,
+) -> ArgmaxResult<AgentToolsSettings> {
+    let database = live_database(state)?;
+    read_off_main(move || {
+        set_browser_tools_enabled(&database.connection(), input.enabled)?;
+        Ok(())
+    })
+    .await?;
+    Ok(AgentToolsSettings {
+        browser_tools: input.enabled,
+    })
 }
 
 #[tauri::command(rename = "settings:preview-chat-cleanup")]

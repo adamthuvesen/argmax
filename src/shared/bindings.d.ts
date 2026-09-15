@@ -328,6 +328,27 @@ async sessionSuggestFollowUp(input: SessionSuggestFollowUpInput) : Promise<Resul
     else return { status: "error", error: e  as any };
 }
 },
+async settingsAgentTools() : Promise<Result<AgentToolsSettings, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("settings_agent_tools") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Takes effect on the next launch. A running turn keeps the surface it
+ * started with — its provider read the tool list once, at startup, and no
+ * CLI re-reads it mid-conversation.
+ */
+async settingsSetBrowserTools(input: SetBrowserToolsInput) : Promise<Result<AgentToolsSettings, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("settings_set_browser_tools", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async settingsPreviewChatCleanup() : Promise<Result<ChatCleanupPreview, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("settings_preview_chat_cleanup") };
@@ -1358,6 +1379,7 @@ export type ActivityWindow = "24h" | "7d" | "30d" |
 "year"
 export type AgentMode = "auto" | "plan"
 export type AgentReference = { name: NonEmptyString; providerChildSessionId: NonEmptyString; providerParentConversationId: NonEmptyString }
+export type AgentToolsSettings = { browserTools: boolean }
 export type ApprovalId = string
 export type ApprovalRequest = { id: string; sessionId: string; command: string; cwd: string; provider: string; providerInvocationId: string | null; providerRequestId: string | null; riskLevel: string; status: string; createdAt: string; resolvedAt: string | null }
 export type ApprovalResolution = "approved" | "rejected"
@@ -2023,6 +2045,7 @@ launchedBySessionId?: string | null;
  * subagent dock — so this has to reach the renderer.
  */
 launchKind: string }
+export type SetBrowserToolsInput = { enabled: boolean }
 export type SkillSource = "user" | "workspace" | "codex-prompt" | "plugin" | "system"
 export type SkillSummary = { name: string; description: string; source: SkillSource }
 export type SkillsListInput = { provider: ProviderId; workspaceId: WorkspaceId | null }

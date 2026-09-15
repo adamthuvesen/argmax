@@ -14,6 +14,7 @@ import type { BackgroundIntensity } from "../lib/backgroundIntensity.js";
 import type { ThemeMode } from "../lib/theme.js";
 import type { AccentId } from "../lib/accent.js";
 import type { UserBubbleTint } from "../lib/userBubbleTint.js";
+import { useAgentToolsSettings } from "../hooks/useAgentToolsSettings.js";
 import { useAsyncLoad } from "../hooks/useAsyncLoad.js";
 import type { ReasoningEffort } from "../../shared/providerModels.js";
 import type { ModelPickerSelection } from "../lib/models.js";
@@ -193,6 +194,9 @@ export function SettingsPanel({
   /** Leaves settings for the Usage page. */
   onOpenUsage: () => void;
 }): JSX.Element {
+  // Owned here rather than in App: the launcher reads it from the database, so
+  // nothing outside Settings needs it in React state.
+  const { browserTools, setBrowserTools } = useAgentToolsSettings();
   // First load reuses the cached reports; every explicit "Refresh" (retry)
   // forces a re-probe so a provider installed after boot is actually detected.
   const hasDiscoveredRef = useRef(false);
@@ -398,6 +402,8 @@ export function SettingsPanel({
               fastModeEnabled={fastModeEnabled}
               turnChangesExpanded={turnChangesExpanded}
               onTurnChangesExpandedChange={onTurnChangesExpandedChange}
+              browserTools={browserTools}
+              onBrowserToolsChange={setBrowserTools}
               goalEnabled={goalEnabled}
               onGoalEnabledChange={onGoalEnabledChange}
               goalMaxTurns={goalMaxTurns}

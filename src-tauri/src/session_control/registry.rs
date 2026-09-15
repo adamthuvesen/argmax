@@ -14,6 +14,7 @@ use super::{
 use crate::{
     persistence::{
         after_turn::{delete_after_turn, find_after_turn, insert_after_turn, AfterTurnAction},
+        app_settings::browser_tools_enabled,
         database::Database,
     },
     providers::ProviderLaunchInput,
@@ -99,6 +100,7 @@ pub struct SessionLaunchProcessConfig {
     socket_path: PathBuf,
     token: String,
     argmax_bin: PathBuf,
+    browser_tools: bool,
 }
 
 impl std::fmt::Debug for SessionLaunchProcessConfig {
@@ -132,10 +134,17 @@ impl SessionLaunchProcessConfig {
     #[cfg(test)]
     pub fn for_tests(socket_path: &str, token: &str, argmax_bin: &str) -> Self {
         Self {
+            browser_tools: true,
             socket_path: PathBuf::from(socket_path),
             token: token.to_string(),
             argmax_bin: PathBuf::from(argmax_bin),
         }
+    }
+
+    #[cfg(test)]
+    pub fn without_browser_tools(mut self) -> Self {
+        self.browser_tools = false;
+        self
     }
 
     pub fn socket_path(&self) -> &Path {
@@ -148,6 +157,11 @@ impl SessionLaunchProcessConfig {
 
     pub fn argmax_bin(&self) -> &Path {
         &self.argmax_bin
+    }
+
+    /// Whether this launch's `argmax` server carries the browser tools.
+    pub fn browser_tools(&self) -> bool {
+        self.browser_tools
     }
 }
 
@@ -179,10 +193,16 @@ impl SessionLaunchRegistry {
                 agent_mode: input.agent_mode,
             },
         );
+        drop(credentials);
+        // Read here rather than in the caller so every launch path gets the
+        // same answer: a chat the user started, and a chat one of their agents
+        // started, carry the same tool surface.
+        let browser_tools = browser_tools_enabled(&self.inner.database.read_connection());
         SessionLaunchProcessConfig {
             socket_path: self.inner.socket_path.clone(),
             token,
             argmax_bin: self.inner.argmax_bin.clone(),
+            browser_tools,
         }
     }
 
@@ -632,6 +652,7 @@ mod tests {
             socket_path: PathBuf::from("/tmp/a/s"),
             token: "secret".to_string(),
             argmax_bin: PathBuf::from("/Applications/Argmax.app/argmax"),
+            browser_tools: true,
         };
         let env = config.env_pairs();
         assert_eq!(env[0].0, SESSION_LAUNCH_SOCKET_ENV);

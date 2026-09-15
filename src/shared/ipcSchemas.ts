@@ -43,6 +43,8 @@ export const IPC_CHANNELS = [
   "session:multitask",
   "session:clear",
   "session:suggest-follow-up",
+  "settings:agent-tools",
+  "settings:set-browser-tools",
   "settings:preview-chat-cleanup",
   "settings:delete-old-chats",
   "review:list-changed-files",

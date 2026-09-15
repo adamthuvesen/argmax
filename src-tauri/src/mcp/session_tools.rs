@@ -13,6 +13,7 @@ use rmcp::{
 };
 use serde::Deserialize;
 
+use crate::providers::mcp_injection::browser_tools_from_env;
 use crate::session_control::{
     ArchiveAction, ChecksRunAction, GoalSetAction, InboxAction, LaunchAction, LearningsAddAction,
     LearningsSearchAction, ListAction, MessageAction, MoveAction, ProjectsAction, ReadAction,
@@ -25,6 +26,9 @@ use crate::session_control::{
 #[derive(Clone)]
 pub struct ArgmaxTools {
     pub(super) tool_router: ToolRouter<Self>,
+    /// What the launch said about the browser tools. The router already
+    /// reflects it; `ServerInfo.instructions` has to as well.
+    pub(super) browser_tools: bool,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -327,17 +331,31 @@ impl ArgmaxTools {
     /// are separate `#[tool_router]` blocks but one tool list, so a tool on
     /// either reaches every provider.
     ///
+    /// The browser tools are 27 of the 55 and about two fifths of the schema,
+    /// and a turn pays for them whether or not it opens a page — so a user who
+    /// does not want agents browsing can turn them off in Settings, and the
+    /// launch passes that through as [`BROWSER_TOOLS_ENV`].
+    ///
     /// schemars stamps every parameter object with the JSON Schema dialect it
     /// was generated against. No MCP client reads it — `inputSchema` is
     /// defined as draft 2020-12 — but it is 57 bytes on each of 54 tools, and
     /// tool definitions sit at the front of the cached prefix of every turn.
     pub fn new() -> Self {
+        Self::with_browser_tools(browser_tools_from_env())
+    }
+
+    pub(super) fn with_browser_tools(browser_tools: bool) -> Self {
         let mut tool_router = Self::tool_router();
-        tool_router += Self::browser_tool_router();
+        if browser_tools {
+            tool_router += Self::browser_tool_router();
+        }
         for route in tool_router.map.values_mut() {
             std::sync::Arc::make_mut(&mut route.attr.input_schema).remove("$schema");
         }
-        Self { tool_router }
+        Self {
+            tool_router,
+            browser_tools,
+        }
     }
 
     #[tool(

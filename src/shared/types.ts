@@ -4,6 +4,7 @@ import type * as Bindings from "./bindings.js";
 export type AgentMode = Bindings.AgentMode;
 export type AttachmentMimeType = Bindings.AttachmentMimeType;
 export type DatabaseStats = Bindings.DatabaseStats;
+export type AgentToolsSettings = Bindings.AgentToolsSettings;
 export type ChatCleanupPreview = Bindings.ChatCleanupPreview;
 export type DeleteOldChatsInput = Bindings.DeleteOldChatsInput;
 export type DeleteOldChatsResult = Bindings.DeleteOldChatsResult;
@@ -590,6 +591,8 @@ export interface ArgmaxApi {
     list: (input: ConnectionsListInput) => Promise<ConnectionSummary[]>;
   };
   settings: {
+    agentTools: () => Promise<AgentToolsSettings>;
+    setBrowserTools: (input: { enabled: boolean }) => Promise<AgentToolsSettings>;
     previewChatCleanup: () => Promise<ChatCleanupPreview>;
     deleteOldChats: (input: DeleteOldChatsInput) => Promise<DeleteOldChatsResult>;
   };

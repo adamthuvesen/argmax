@@ -946,7 +946,11 @@
   align-items: center;
   gap: var(--space-1);
   min-width: 0;
-  padding: var(--space-2) var(--space-2) 0;
+  /* The 3px at the bottom is the active pill's ring and shadow, which spread
+     past its box: overflow-y clips to this padding box, so a flush edge took
+     the pill's bottom hairline off with it. The address row gives the 3px back
+     so the band's height is unchanged. */
+  padding: var(--space-2) var(--space-2) 3px;
   background: var(--sidebar);
   /* Shrink tabs evenly first; scroll only once each hits --browser-tab-min. */
   overflow-x: auto;
@@ -1001,9 +1005,10 @@
 /* Carrying a tab to another slot. Nothing reorders until the drop lands: the
    carried tab rides a transform and the tabs it has passed slide one slot the
    other way, so the strip never renumbers under the pointer. No lift under
-   the carried tab: the strip clips its own overflow on both axes, so a shadow
-   would be sliced off at the tab's edge — and the tab is already the active
-   pill, a press having selected it, so the motion is the affordance.
+   the carried tab: the strip clips its own overflow on both axes, and the only
+   room outside the tabs is the 3px the active ring already spends, so a lift's
+   shadow would come back sliced — and the tab is already the active pill, a
+   press having selected it, so the motion is the affordance.
    The transform transition hangs off the strip's [data-dragging] rather than
    off .browser-tab, so the render that commits the new order takes the
    transitions away in the same breath as the transforms — left in the
@@ -1177,12 +1182,13 @@
 
 /* Back/forward/reload sit as one tight cluster to the address bar's left and
    the 1Password, external-link and close actions as another to its right; the
-   field's own margin holds the clusters off it. */
+   field's own margin holds the clusters off it. Short 3px at the top: that is
+   the room the tab strip above borrowed for the active pill's ring. */
 .browser-panel-toolbar {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: var(--space-2) var(--space-2_5);
+  padding: 5px var(--space-2_5) var(--space-2);
   border-bottom: 1px solid var(--line);
   background: var(--sidebar);
 }

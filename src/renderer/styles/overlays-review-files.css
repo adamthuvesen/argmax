@@ -62,9 +62,9 @@
 }
 
 /* Rows are inset pills rather than edge-to-edge bars — the same quiet-pill
-   language the file tabs use above the preview. The background-image is the
-   indent guide: one hairline per level the row sits under, sized off the
-   `--tree-depth` the component sets, so depth costs no extra DOM. */
+   language the file tabs use above the preview. Indentation alone carries
+   depth; the hairline guides that used to run down each level added a column
+   of ruled lines to a panel whose whole job is to stay quiet beside the diff. */
 .workspace-tree-row {
   position: relative;
   display: flex;
@@ -78,14 +78,6 @@
   border-radius: var(--radius-md);
   color: var(--muted-strong);
   background-color: transparent;
-  background-image: repeating-linear-gradient(
-    to right,
-    color-mix(in oklab, var(--review-sidebar) 88%, var(--text)) 0 1px,
-    transparent 1px var(--tree-indent-step, 12px)
-  );
-  background-position: left 15px top;
-  background-size: calc(var(--tree-depth, 0) * var(--tree-indent-step, 12px)) 100%;
-  background-repeat: no-repeat;
   cursor: pointer;
   text-align: left;
   font: inherit;
@@ -1368,17 +1360,19 @@
   cursor: pointer;
 }
 
-/* `min-width: max-content` on the base row is what makes a card diff scroll
-   sideways. This panel is narrow by construction, so that turns clipping into
-   the normal state and the tail of a changed line goes missing with no cue
-   that it exists. Release the floor and let the code track wrap instead. */
 .review-diff-changes .diff-blocks[data-presentation="review"] .diff-line {
   grid-template-columns: 2px var(--diff-gutter-width) minmax(0, 1fr);
-  min-width: 0;
 }
 
+/* The rail and the number both pin, so scrolling a long line sideways keeps
+   its add-vs-remove cue and its number on screen. The rail takes `left: 0`,
+   which moves the number over by the rail's width instead of letting the
+   base rule's own `left: 0` slide it underneath. Panel fill rather than
+   transparent: a see-through sticky column shows the code passing behind it. */
 .review-diff-changes .diff-line-rail {
-  background: transparent;
+  position: sticky;
+  left: 0;
+  background: var(--panel);
 }
 
 .review-diff-changes .diff-line.addition .diff-line-rail {
@@ -1389,10 +1383,8 @@
   background: var(--rose);
 }
 
-/* A wrapped line is taller than its number, so the number rides the first
-   visual row rather than centering across the whole run. */
 .review-diff-changes .diff-blocks[data-presentation="review"] .diff-line-number {
-  align-self: start;
+  left: 2px;
   padding: 0 6px;
   border-right: 0;
   background: var(--panel);
@@ -1407,9 +1399,18 @@
   color: color-mix(in oklab, var(--muted) 62%, transparent);
 }
 
-.review-diff-changes .diff-blocks[data-presentation="review"] .diff-line.addition .diff-line-number,
+/* The gutter drops the stronger tint the shared rules give it and shows the
+   row's own wash instead. It paints that wash itself rather than going
+   transparent, because the column is sticky: anything see-through here reads
+   the code sliding behind it as the number's own glyphs. */
+.review-diff-changes .diff-blocks[data-presentation="review"] .diff-line.addition .diff-line-number {
+  background-color: var(--panel);
+  background-image: linear-gradient(var(--diff-add-bg), var(--diff-add-bg));
+}
+
 .review-diff-changes .diff-blocks[data-presentation="review"] .diff-line.deletion .diff-line-number {
-  background: transparent;
+  background-color: var(--panel);
+  background-image: linear-gradient(var(--diff-del-bg), var(--diff-del-bg));
 }
 
 /* The family is restated because the UA sheet gives `code` its own generic
@@ -1417,14 +1418,6 @@
 .review-diff-changes .diff-blocks[data-presentation="review"] .diff-line code {
   padding: 0 8px;
   font-family: var(--font-code);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-/* The tokens are the innermost elements, so their own `pre` would override the
-   wrap above and leave the change looking inert. */
-.review-diff-changes .diff-blocks[data-presentation="review"] .diff-line .hl-token {
-  white-space: inherit;
 }
 
 .review-diff-changes .diff-blocks[data-presentation="review"] .diff-omitted {

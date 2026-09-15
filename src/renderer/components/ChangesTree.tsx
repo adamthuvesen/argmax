@@ -32,7 +32,7 @@ export interface ChangesTreeProps {
 }
 
 /** Row geometry copied from `WorkspaceTree` so both trees line up under the
- *  review toolbar; `--tree-depth` drives the indent guides. */
+ *  review toolbar. */
 const ROW_HEIGHT = 24;
 const INDENT_BASE = 10;
 const INDENT_STEP = 12;
@@ -238,9 +238,8 @@ export function ChangesTree({
 function rowIndent(depth: number): CSSProperties {
   return {
     paddingLeft: INDENT_BASE + depth * INDENT_STEP,
-    height: ROW_HEIGHT,
-    "--tree-depth": depth
-  } as CSSProperties;
+    height: ROW_HEIGHT
+  };
 }
 
 function DirRow({

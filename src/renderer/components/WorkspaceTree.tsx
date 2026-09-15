@@ -381,13 +381,10 @@ function TreeRow({
   pinned?: boolean;
 }): JSX.Element {
   const isOpen = expanded.has(node.path);
-  // `--tree-depth` drives the indent guides: one hairline per level the row
-  // sits under, drawn as a background repeat so deep trees cost no extra DOM.
-  const indent = {
+  const indent: CSSProperties = {
     paddingLeft: INDENT_BASE + depth * INDENT_STEP,
-    height: ROW_HEIGHT,
-    "--tree-depth": depth
-  } as CSSProperties;
+    height: ROW_HEIGHT
+  };
   if (node.kind === "dir") {
     return (
       <button

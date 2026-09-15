@@ -843,12 +843,16 @@
   visibility: hidden;
 }
 
+/* Alone in the middle of an empty pane, with no rows around it for scale, the
+   generic loading line reads as a stray caption — so this one wait takes the
+   next type step up, and its mark is sized to match in the component. */
 .conversation-loading {
   position: absolute;
   inset: 0;
   justify-content: center;
   align-items: center;
   pointer-events: none;
+  font-size: var(--text-md);
 }
 
 .conversation-list {

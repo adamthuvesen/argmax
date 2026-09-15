@@ -1513,7 +1513,7 @@ export function SessionConversation({
       >
         {eventsBackfilled ? null : (
           <div className="conversation-loading loading-line" role="status">
-            <WorkingNest active size={12} />
+            <WorkingNest active size={16} />
             Loading chat…
           </div>
         )}

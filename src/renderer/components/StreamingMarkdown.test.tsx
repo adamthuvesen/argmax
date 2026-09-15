@@ -651,6 +651,22 @@ describe("<StreamingMarkdown />", () => {
     expect(container.textContent).toContain("$20");
   });
 
+  it("renders per-unit prices and shell variables as prose, not equations", async () => {
+    const text = [
+      "Standard pricing is $1.25/1M in and $4.25/1M out, vs ~$5/$25 for Opus 5.",
+      "Export $PATH and $HOME before running."
+    ].join("\n\n");
+
+    const { container } = render(<StreamingMarkdown text={text} streaming={false} />);
+
+    await waitFor(() => {
+      expect(container.textContent).toContain("$1.25/1M in and $4.25/1M out");
+    });
+    expect(container.querySelectorAll(".katex").length).toBe(0);
+    expect(container.textContent).toContain("~$5/$25 for Opus 5");
+    expect(container.textContent).toContain("Export $PATH and $HOME");
+  });
+
   it("preserves code blocks containing dollar signs and LaTeX slashes", () => {
     const text = [
       "```bash",

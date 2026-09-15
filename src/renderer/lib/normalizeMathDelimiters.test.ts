@@ -22,6 +22,29 @@ describe("normalizeMathDelimiters", () => {
     expect(normalizeMathDelimiters(input)).toBe(expected);
   });
 
+  it.each([
+    ["Standard pricing is $1.25/1M in and $4.25/1M out.", "Standard pricing is \\$1.25/1M in and \\$4.25/1M out."],
+    ["vs ~$5/$25 for Opus 5.", "vs ~\\$5/\\$25 for Opus 5."],
+    ["is $0.10/$0.20 in exchange.", "is \\$0.10/\\$0.20 in exchange."],
+    ["Between $5-$10 per seat.", "Between \\$5-\\$10 per seat."],
+    ["Tokens: $3/M input, $15/M output.", "Tokens: \\$3/M input, \\$15/M output."],
+    ["Raised from $1M to $10M.", "Raised from \\$1M to \\$10M."]
+  ])("keeps per-unit prices out of math: %s", (input, expected) => {
+    expect(normalizeMathDelimiters(input)).toBe(expected);
+  });
+
+  it.each([
+    ["Export $PATH and $HOME before running.", "Export \\$PATH and \\$HOME before running."],
+    ["The var $foo is set from $bar.", "The var \\$foo is set from \\$bar."]
+  ])("does not pair shell variables into math: %s", (input, expected) => {
+    expect(normalizeMathDelimiters(input)).toBe(expected);
+  });
+
+  it("escapes a dollar sign that never closes a span", () => {
+    expect(normalizeMathDelimiters("a $$ b")).toBe("a \\$\\$ b");
+    expect(normalizeMathDelimiters("Costs $5 today.")).toBe("Costs \\$5 today.");
+  });
+
   it("converts LaTeX block math \\[ ... \\] to $$ ... $$", () => {
     const input = "\\[ \\text{margin} = P(\\text{best family}) - P(\\text{second-best family}) \\]";
     const output = normalizeMathDelimiters(input);

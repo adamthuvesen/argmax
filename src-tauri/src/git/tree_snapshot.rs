@@ -26,7 +26,7 @@ const SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(60);
 const INDEX_CAPTURE_ATTEMPTS: usize = 3;
 
 enum IndexCaptureAttempt {
-    Complete(String),
+    Complete,
     Retry(ArgmaxError),
 }
 
@@ -111,10 +111,51 @@ pub async fn snapshot_visible_worktree(repo_path: &Path) -> ArgmaxResult<String>
     tree_from_index(repo_path, scratch_options(&index)).await
 }
 
+/// A tree object standing for the worktree's current content, for use as a
+/// fingerprint rather than as something to restore.
+///
+/// Same shape as [`snapshot_visible_worktree`] but seeded from the checkout's
+/// own index instead of `HEAD`, which is the only seed carrying stat data: with
+/// it `add` re-hashes the files whose stat moved rather than every tracked file
+/// in the repo, and a file click in the Changes panel pays this twice. The one
+/// state where the two disagree is a force-staged ignored file, which the
+/// fingerprint keeps and a checkpoint deliberately drops — a distinction that
+/// only matters to something restorable.
+pub async fn fingerprint_worktree(repo_path: &Path) -> ArgmaxResult<String> {
+    let capture = capture_index(repo_path).await?;
+    let index = capture.index.as_path();
+
+    if !capture.seeded_from_real {
+        // No index file to copy, so fall back to HEAD: a file that is tracked
+        // but also ignored would otherwise be dropped by the `add` below.
+        let _ = run_git_text_with_options(repo_path, ["read-tree", "HEAD"], scratch_options(index))
+            .await;
+    }
+    run_git_text_with_options(repo_path, ["add", "--all"], scratch_options(index)).await?;
+    tree_from_index(repo_path, scratch_options(index)).await
+}
+
 /// Return the tree represented by the user's current index without changing
 /// it. `git write-tree` rejects unresolved index entries, which is precisely
 /// the state checkpointing must refuse.
 pub async fn index_tree(repo_path: &Path) -> ArgmaxResult<String> {
+    let capture = capture_index(repo_path).await?;
+    tree_from_index(repo_path, scratch_options(&capture.index)).await
+}
+
+/// A copy of the checkout's index in a scratch directory, safe for git commands
+/// that write to `GIT_INDEX_FILE`. `seeded_from_real` is false when the checkout
+/// has no index file yet, in which case the scratch index has been read empty.
+struct CapturedIndex {
+    // Dropping the directory deletes the index, so it outlives the path.
+    _scratch: tempfile::TempDir,
+    index: PathBuf,
+    seeded_from_real: bool,
+}
+
+/// Copy the checkout's index into a scratch index, retrying while the copy
+/// catches the real index mid-write.
+async fn capture_index(repo_path: &Path) -> ArgmaxResult<CapturedIndex> {
     let resolved_index = run_git_text_with_options(
         repo_path,
         ["rev-parse", "--path-format=absolute", "--git-path", "index"],
@@ -143,13 +184,23 @@ pub async fn index_tree(repo_path: &Path) -> ArgmaxResult<String> {
                     scratch_options(&scratch_index),
                 )
                 .await?;
-                return tree_from_index(repo_path, scratch_options(&scratch_index)).await;
+                return Ok(CapturedIndex {
+                    _scratch: scratch,
+                    index: scratch_index,
+                    seeded_from_real: false,
+                });
             }
             Err(error) => return Err(index_io_error("copy", &real_index, error)),
         }
 
         match finish_index_capture(repo_path, &real_index, scratch.path(), &scratch_index).await? {
-            IndexCaptureAttempt::Complete(tree) => return Ok(tree),
+            IndexCaptureAttempt::Complete => {
+                return Ok(CapturedIndex {
+                    _scratch: scratch,
+                    index: scratch_index,
+                    seeded_from_real: true,
+                })
+            }
             IndexCaptureAttempt::Retry(error) => last_retry = Some(error),
         }
     }
@@ -210,9 +261,7 @@ async fn finish_index_capture(
         }
     }
 
-    tree_from_index(repo_path, scratch_options(scratch_index))
-        .await
-        .map(IndexCaptureAttempt::Complete)
+    Ok(IndexCaptureAttempt::Complete)
 }
 
 async fn index_file_changed(real_index: &Path, scratch_index: &Path) -> ArgmaxResult<bool> {
@@ -427,6 +476,52 @@ mod tests {
             .expect("diff")
             .expect("within cap");
         assert_eq!(diff, "", "an untouched file must produce no diff");
+    }
+
+    /// [`fingerprint_worktree`] seeds its scratch index from the checkout's own
+    /// index (for the stat data) rather than from `HEAD`. Over ordinary dirty
+    /// state that has to produce exactly the checkpoint snapshot's tree.
+    #[tokio::test]
+    async fn the_worktree_fingerprint_matches_the_checkpoint_snapshot() {
+        let repo = repo_with_commit().await;
+        let path = repo.path();
+        fs::write(path.join(".gitignore"), "out/\n").expect("write ignore");
+        fs::create_dir(path.join("out")).expect("mkdir");
+        fs::write(path.join("out/artifact.bin"), "built\n").expect("write ignored");
+        fs::write(path.join("staged.txt"), "staged\n").expect("write staged");
+        git(path, &["add", "staged.txt"]).await;
+        fs::write(path.join("staged.txt"), "staged then edited\n").expect("edit staged");
+        fs::write(path.join("kept.txt"), "one\ntwo CHANGED\nthree\n").expect("edit tracked");
+        fs::write(path.join("untracked.txt"), "new\n").expect("write untracked");
+        git(path, &["rm", "--cached", "--quiet", "kept.txt"]).await;
+
+        assert_eq!(
+            fingerprint_worktree(path).await.expect("fingerprint"),
+            snapshot_visible_worktree(path).await.expect("snapshot")
+        );
+    }
+
+    /// The single documented divergence: a force-staged ignored file is tracked,
+    /// so the fingerprint carries it, while a checkpoint leaves ignored paths to
+    /// the user and a rewind must not touch them.
+    #[tokio::test]
+    async fn a_force_staged_ignored_file_is_in_the_fingerprint_only() {
+        let repo = repo_with_commit().await;
+        let path = repo.path();
+        fs::write(path.join(".gitignore"), "out/\n").expect("write ignore");
+        fs::create_dir(path.join("out")).expect("mkdir");
+        fs::write(path.join("out/forced.bin"), "forced\n").expect("write forced");
+        git(path, &["add", "--force", "out/forced.bin"]).await;
+
+        let fingerprint = fingerprint_worktree(path).await.expect("fingerprint");
+        let snapshot = snapshot_visible_worktree(path).await.expect("snapshot");
+        assert_ne!(fingerprint, snapshot);
+        assert!(git(path, &["ls-tree", "-r", "--name-only", &fingerprint])
+            .await
+            .contains("out/forced.bin"));
+        assert!(!git(path, &["ls-tree", "-r", "--name-only", &snapshot])
+            .await
+            .contains("out/forced.bin"));
     }
 
     #[tokio::test]

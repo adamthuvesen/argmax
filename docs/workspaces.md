@@ -119,6 +119,13 @@ and rename hunks are not actionable. Files with both staged and unstaged edits
 use whole-file index actions because their combined preview does not represent
 one index patch.
 
+That revision is a fingerprint of HEAD, the index and the whole worktree, and it
+costs more to compute than the diff it guards, so only the Uncommitted
+comparison pays for it. The Branch and Committed diffs describe history nobody
+can act on from here, so they carry a revision of their own payload instead,
+which every mutation refuses. Opening a file in those scopes is roughly seven
+times cheaper for it.
+
 Reverting restores unstaged changes and saves a recovery checkpoint first.
 Untracked file deletion remains a Files action. **Commit staged** commits the
 existing index, including partial staging. It requires a commit message.

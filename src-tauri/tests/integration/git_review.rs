@@ -9,8 +9,8 @@ use argmax_lib::persistence::{
     workspaces::{persist_workspace, PersistWorkspaceInput},
 };
 use argmax_lib::review::git_review::{
-    list_changed_files, list_changed_files_at_path, load_diff_at_path, ReviewBaseline,
-    ReviewComparison,
+    list_changed_files, list_changed_files_at_path, load_diff_at_path, update_file_index,
+    ReviewBaseline, ReviewComparison,
 };
 use argmax_lib::workspaces::WorkspaceTargetKind;
 
@@ -606,4 +606,72 @@ async fn branch_mode_skips_origin_default_without_common_ancestor() {
             .collect::<Vec<_>>(),
         vec![("M", "src/index.ts")],
     );
+}
+
+/// The revision on a branch or committed diff is a payload id, not a worktree
+/// fingerprint: those comparisons describe history and offer no staging or
+/// reverting, so they skip the fingerprint that costs more than the diff. An
+/// index action must still refuse the token rather than act on it.
+#[tokio::test]
+async fn a_branch_diff_revision_cannot_unlock_an_index_action() {
+    let repo = seed_git_repo(&[("src/index.ts", "export const ok = true;\n")]);
+    run_git(repo.path(), &["branch", "base"]);
+    run_git(repo.path(), &["checkout", "-b", "feature"]);
+    std::fs::write(
+        repo.path().join("src/index.ts"),
+        "export const ok = false;\n",
+    )
+    .unwrap();
+    let database = seed_project_and_workspace(
+        repo.path().to_str().expect("utf-8 repo path"),
+        Some("base"),
+        "feature",
+        "base",
+    );
+
+    let branch = load_diff_at_path(
+        repo.path(),
+        "ws-review",
+        Some("src/index.ts"),
+        ReviewBaseline::Branch("base"),
+        None,
+    )
+    .await
+    .unwrap();
+    let working_tree = load_diff_at_path(
+        repo.path(),
+        "ws-review",
+        Some("src/index.ts"),
+        ReviewBaseline::WorkingTree,
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert_ne!(branch.revision, working_tree.revision);
+    let error = update_file_index(
+        database.as_ref(),
+        WorkspaceTargetKind::Workspace,
+        "ws-review",
+        "src/index.ts",
+        &branch.revision,
+        true,
+    )
+    .await
+    .expect_err("a history revision is not an action token");
+    assert!(
+        error.to_string().contains("changed"),
+        "expected a stale-revision error, got: {error}"
+    );
+
+    update_file_index(
+        database.as_ref(),
+        WorkspaceTargetKind::Workspace,
+        "ws-review",
+        "src/index.ts",
+        &working_tree.revision,
+        true,
+    )
+    .await
+    .expect("the working-tree revision still stages");
 }

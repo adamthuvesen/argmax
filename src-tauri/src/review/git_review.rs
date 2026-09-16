@@ -5,6 +5,7 @@ use std::{
     time::Duration,
 };
 
+use futures_util::future::join_all;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tokio::{sync::Semaphore, task::JoinSet};
@@ -14,7 +15,7 @@ use crate::{
     git::{
         exec::{reject_leading_dash, run_git_text, run_git_text_with_allowed_exit_codes},
         ops::checkout_write_lock,
-        tree_snapshot::{index_tree, snapshot_visible_worktree},
+        tree_snapshot::{fingerprint_worktree, index_tree},
     },
     persistence::database::Database,
     persistence::projects::require_project,
@@ -281,22 +282,31 @@ async fn pick_review_base(
         candidates.push(name.to_owned());
     }
     let mut seen: Vec<String> = Vec::new();
-    let mut first_existing: Option<String> = None;
-    // Every file click in the Changes panel runs this loop, so resolve HEAD
-    // once and let one `rev-parse` per candidate answer both "does it exist"
-    // and "is it HEAD" — the two probes issued the identical command.
-    let head = rev_parse_commit(repo_path, "HEAD").await.ok();
-    for candidate in candidates {
-        if seen.contains(&candidate) {
-            continue;
-        }
+    candidates.retain(|candidate| {
+        let fresh = !seen.contains(candidate);
         seen.push(candidate.clone());
-        let Ok(resolved) = rev_parse_commit(repo_path, &candidate).await else {
-            continue;
-        };
-        if !has_common_ancestor(repo_path, &candidate).await {
-            continue;
+        fresh
+    });
+
+    // Every file click in the Changes panel runs this, so resolve HEAD once and
+    // let one `rev-parse` per candidate answer both "does it exist" and "is it
+    // HEAD" — the two probes issued the identical command. The probes are
+    // independent of each other, so they run together and the answer is picked
+    // from the results in candidate order.
+    let head = rev_parse_commit(repo_path, "HEAD");
+    let probes = join_all(candidates.iter().map(|candidate| async move {
+        let resolved = rev_parse_commit(repo_path, candidate).await.ok();
+        match resolved {
+            Some(resolved) if has_common_ancestor(repo_path, candidate).await => Some(resolved),
+            _ => None,
         }
+    }));
+    let (head, probes) = tokio::join!(head, probes);
+    let head = head.ok();
+
+    let mut first_existing: Option<String> = None;
+    for (candidate, resolved) in candidates.into_iter().zip(probes) {
+        let Some(resolved) = resolved else { continue };
         if first_existing.is_none() {
             first_existing = Some(candidate.clone());
         }
@@ -364,7 +374,16 @@ pub async fn load_diff_at_path(
 ) -> ArgmaxResult<WorkspaceDiff> {
     let repo_path = validate_repo_path(repo_path.as_ref())?;
     let comparison = resolve_comparison(&repo_path, baseline).await?;
-    let revision_before = review_revision_at_path(&repo_path).await?;
+    // Only the working-tree comparison offers staging and reverting, and the
+    // revision exists to guard those. Fingerprinting HEAD, the index and the
+    // whole worktree costs more than the diff itself, so a branch or committed
+    // diff — which describes history nobody can act on from here — skips it
+    // and is identified by its own payload below instead.
+    let actionable = !comparison.branch_mode;
+    let revision_before = match actionable {
+        true => Some(review_revision_at_path(&repo_path).await?),
+        false => None,
+    };
     let diff_workspace_id = diff_workspace_id.into();
     let content = match file_path {
         Some(path) => {
@@ -429,13 +448,21 @@ pub async fn load_diff_at_path(
         }
     };
 
-    let revision = review_revision_at_path(&repo_path).await?;
-    if revision != revision_before {
-        return Err(ArgmaxError::service(
-            "REVIEW_STALE_REVISION",
-            "The checkout changed while loading this diff. Refresh before acting on it.",
-        ));
-    }
+    let revision = match revision_before {
+        Some(before) => {
+            let revision = review_revision_at_path(&repo_path).await?;
+            if revision != before {
+                return Err(ArgmaxError::service(
+                    "REVIEW_STALE_REVISION",
+                    "The checkout changed while loading this diff. Refresh before acting on it.",
+                ));
+            }
+            revision
+        }
+        // A token for a payload no action accepts: `ensure_current_review_revision`
+        // compares against the worktree fingerprint, so this can never unlock one.
+        None => review_diff_revision(&content),
+    };
     Ok(WorkspaceDiff {
         workspace_id: diff_workspace_id,
         file_path: file_path.map(ToOwned::to_owned),
@@ -457,9 +484,13 @@ pub fn review_diff_revision(content: &str) -> String {
 }
 
 async fn review_revision_at_path(repo_path: &Path) -> ArgmaxResult<String> {
-    let head = run_git_text(repo_path, ["rev-parse", "HEAD"], GIT_TIMEOUT).await?;
-    let index = index_tree(repo_path).await?;
-    let worktree = snapshot_visible_worktree(repo_path).await?;
+    // Three independent reads of the same checkout: overlapping them costs the
+    // slowest one rather than their sum, and a file click pays this twice.
+    let (head, index, worktree) = tokio::try_join!(
+        run_git_text(repo_path, ["rev-parse", "HEAD"], GIT_TIMEOUT),
+        index_tree(repo_path),
+        fingerprint_worktree(repo_path),
+    )?;
     Ok(review_diff_revision(&format!(
         "{head}\0{index}\0{worktree}"
     )))

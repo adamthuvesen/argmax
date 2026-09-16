@@ -517,13 +517,26 @@ impl WorkspaceService {
                 "Choose a valid base ref and retry.",
             ));
         }
-        assert_valid_ref(&project.repo_path, &base_ref).await?;
 
         let task_label = input.task_label.as_str();
         // Naming stays local so chat startup never waits for title generation.
         let name_id = Uuid::new_v4();
         let name = WORKTREE_NAMES[usize::from(name_id.as_bytes()[15]) % WORKTREE_NAMES.len()];
         let branch = format!("argmax/{name}-{}", &name_id.simple().to_string()[..8]);
+
+        // Two independent ref reads: the base ref's validity has nothing to do
+        // with whether the freshly generated branch name collides, so probe
+        // both at once instead of paying two sequential git round-trips.
+        // `branch_exists` never itself returns `Err` (a failed probe reads as
+        // "not taken"), so the only error either future can surface is
+        // `assert_valid_ref`'s — evaluating `branch_taken` below, after the
+        // destination-path check, keeps that error's precedence over the
+        // branch-collision one exactly as it was when the calls were
+        // sequential.
+        let (_, branch_taken) = tokio::try_join!(
+            assert_valid_ref(&project.repo_path, &base_ref),
+            branch_exists(&project.repo_path, &branch),
+        )?;
 
         let worktree_location = project.settings.worktree_location.clone();
         if !Path::new(&worktree_location).is_absolute() {
@@ -571,7 +584,7 @@ impl WorkspaceService {
         }
 
         // Pre-flight branch-collision check so the error names what to retry.
-        if branch_exists(&project.repo_path, &branch).await? {
+        if branch_taken {
             return Err(invalid_workspace(
                 format!("Branch {branch} already exists"),
                 "Retry to generate a new worktree name.",

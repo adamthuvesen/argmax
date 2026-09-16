@@ -21,7 +21,7 @@ The directory on disk a workspace's `path` points at. Shared by every workspace 
 _Avoid_: Workspace, worktree, repo
 
 **Isolated workspace**:
-A workspace backed by its own `git worktree`, forked onto `argmax/<slug>-<short-id>`. Archiving one moves its checkout into recoverable storage, retaining its files and branch.
+A workspace backed by its own `git worktree`, forked onto `argmax/<slug>-<short-id>`. Archiving one moves its checkout into recoverable storage, retaining its files for 14 days and its branch for good.
 _Avoid_: Worktree workspace, forked workspace
 
 **Shared checkout**:

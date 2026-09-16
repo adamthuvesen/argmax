@@ -3111,3 +3111,141 @@ async fn archive_retains_ignored_files_and_repeated_calls_find_the_same_recovery
         Some(recovery_path.as_str())
     );
 }
+
+fn days_ago(days: u64) -> std::time::SystemTime {
+    std::time::SystemTime::now() - Duration::from_secs(days * 24 * 60 * 60)
+}
+
+fn archived_before() -> std::time::SystemTime {
+    std::time::SystemTime::now() - argmax_lib::workspaces::orchestration::ARCHIVE_RECOVERY_EXPIRY
+}
+
+fn backdate_workspace(database: &Database, workspace_id: &str, days: i64) {
+    database
+        .connection()
+        .execute(
+            "UPDATE workspaces SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?) WHERE id = ?",
+            (format!("-{days} days"), workspace_id),
+        )
+        .expect("backdate workspace");
+}
+
+fn set_directory_mtime(path: &std::path::Path, modified: std::time::SystemTime) {
+    std::fs::File::open(path)
+        .and_then(|directory| directory.set_modified(modified))
+        .expect("set directory mtime");
+}
+
+async fn archived_isolated_workspace(
+    service: &Arc<WorkspaceService>,
+    label: &str,
+) -> (WorkspaceSummary, String) {
+    let workspace = service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+            task_label: TaskLabel::try_from(label.to_owned()).expect("task label"),
+            base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
+        })
+        .await
+        .expect("isolated workspace");
+    let archived = service
+        .archive(WorkspacesArchiveInput {
+            workspace_id: WorkspaceId::try_from(workspace.id.clone()).expect("workspace id"),
+            force: None,
+        })
+        .await
+        .expect("archive");
+    let recovery_path = archived.recovery_path.expect("recovery path");
+    (workspace, recovery_path)
+}
+
+#[tokio::test]
+async fn archive_expiry_removes_an_expired_archive_and_keeps_its_branch() {
+    let repo = seed_git_repo(&[("README.md", "hello")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let (service, _recovery) = service_with_archive_recovery(&database);
+    let (expired, expired_path) = archived_isolated_workspace(&service, "Expired work").await;
+    let (_fresh, fresh_path) = archived_isolated_workspace(&service, "Fresh work").await;
+    backdate_workspace(&database, &expired.id, 15);
+
+    let removed = service.expire_archive_recoveries(archived_before());
+
+    assert_eq!(removed, 1);
+    assert!(!std::path::Path::new(&expired_path).exists());
+    assert!(std::path::Path::new(&fresh_path).exists());
+    let worktrees = run_git_stdout(repo.path(), &["worktree", "list", "--porcelain"]);
+    assert!(
+        !worktrees.contains(&expired_path),
+        "expired worktree still registered: {worktrees}"
+    );
+    assert!(worktrees.contains(&fresh_path));
+    let branches = run_git_stdout(repo.path(), &["branch", "--list", &expired.branch]);
+    assert!(
+        !branches.trim().is_empty(),
+        "branch {} was deleted",
+        expired.branch
+    );
+}
+
+#[tokio::test]
+async fn archive_expiry_keeps_directories_of_workspaces_that_are_not_archived() {
+    let repo = seed_git_repo(&[("README.md", "hello")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let (service, recovery) = service_with_archive_recovery(&database);
+    let workspace = service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+            task_label: TaskLabel::try_from("Kept work".to_owned()).expect("task label"),
+            base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
+        })
+        .await
+        .expect("isolated workspace");
+    service
+        .keep(WorkspacesKeepInput {
+            workspace_id: WorkspaceId::try_from(workspace.id.clone()).expect("workspace id"),
+        })
+        .expect("keep");
+    backdate_workspace(&database, &workspace.id, 30);
+    let retained = recovery.path().join(&workspace.id);
+    std::fs::create_dir_all(&retained).expect("retained dir");
+    set_directory_mtime(&retained, days_ago(30));
+
+    assert_eq!(service.expire_archive_recoveries(archived_before()), 0);
+    assert!(retained.exists());
+}
+
+#[test]
+fn archive_expiry_removes_an_orphaned_directory_only_once_it_is_old() {
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    let (service, recovery) = service_with_archive_recovery(&database);
+    let old_orphan = recovery.path().join("gone-workspace");
+    let new_orphan = recovery.path().join("recent-workspace");
+    for orphan in [&old_orphan, &new_orphan] {
+        std::fs::create_dir_all(orphan.join("node_modules")).expect("orphan dir");
+        std::fs::write(orphan.join("node_modules/pkg.js"), "x").expect("orphan file");
+    }
+    set_directory_mtime(&old_orphan, days_ago(15));
+    // A checkout moved here yesterday keeps its old directory mtime, but the
+    // move rewrote its `.git` file.
+    let moved_orphan = recovery.path().join("moved-workspace");
+    std::fs::create_dir_all(&moved_orphan).expect("moved dir");
+    std::fs::write(moved_orphan.join(".git"), "gitdir: /nowhere\n").expect("git file");
+    set_directory_mtime(&moved_orphan, days_ago(15));
+
+    assert_eq!(service.expire_archive_recoveries(archived_before()), 1);
+    assert!(!old_orphan.exists());
+    assert!(new_orphan.exists());
+    assert!(moved_orphan.exists());
+}

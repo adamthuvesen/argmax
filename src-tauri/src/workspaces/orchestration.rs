@@ -26,7 +26,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use serde_json::json;
 use uuid::Uuid;
@@ -158,6 +158,16 @@ const NULL_SHA: &str = "0000000000000000000000000000000000000000";
 /// from repo pickers and normal sidebar grouping.
 pub const SCRATCH_PROJECT_ID: &str = "scratch-side-chats";
 pub const ARCHIVE_RECOVERY_DIR: &str = "workspace-archive";
+/// How long an archived worktree stays in recovery storage. An archive keeps
+/// the whole checkout, ignored files and `node_modules` included, so a single
+/// one can run to gigabytes. Two weeks is long enough to notice a workspace was
+/// archived too early; after that only the checkout is removed, and the branch
+/// and its commits stay in the repository.
+pub const ARCHIVE_RECOVERY_EXPIRY: Duration = Duration::from_secs(14 * 24 * 60 * 60);
+/// `git worktree remove` deletes the checkout file by file, and an archive can
+/// hold hundreds of thousands of them. A timeout only falls back to deleting
+/// the directory directly, so it can be generous.
+const ARCHIVE_EXPIRY_GIT_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
 /// 200 ms settle after `cancelChecks` fires so SIGTERM has time to land
 /// before we recheck porcelain. See TS comment in `archiveWorkspace`.
@@ -477,6 +487,119 @@ impl WorkspaceService {
             }
         }
         Ok(recovered)
+    }
+
+    /// Remove the recovery checkouts of workspaces archived before
+    /// `archived_before`. Only a directory whose workspace row is `archived`,
+    /// or that no row owns any more, is eligible: an archive still under way,
+    /// a failed one, and a kept workspace are never touched. Age comes from the
+    /// row's `updated_at`, which the archive stamps, and from the directory and
+    /// `.git` mtimes only when no row is left to ask. The branch and its
+    /// commits stay.
+    ///
+    /// Blocking: it runs git and deletes whole checkouts, so callers put it on
+    /// the blocking pool. Each failure is logged and skipped.
+    pub fn expire_archive_recoveries(&self, archived_before: SystemTime) -> usize {
+        let Some(root) = self.archive_recovery_root.as_ref() else {
+            return 0;
+        };
+        let entries = match std::fs::read_dir(root) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return 0,
+            Err(error) => {
+                tracing::warn!(root = %root.display(), ?error, "could not list archive recovery storage");
+                return 0;
+            }
+        };
+        let mut removed = 0;
+        for entry in entries.flatten() {
+            // Archive only ever creates directories here. Anything else, a
+            // symlink above all, is not ours to delete.
+            if !entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                continue;
+            }
+            let checkout = entry.path();
+            let Some(workspace_id) = entry.file_name().to_str().map(str::to_owned) else {
+                continue;
+            };
+            let owner = match self.archive_recovery_owner(&workspace_id) {
+                Ok(owner) => owner,
+                Err(error) => {
+                    tracing::warn!(
+                        workspace_id,
+                        ?error,
+                        "could not read the owner of an archived worktree; kept"
+                    );
+                    continue;
+                }
+            };
+            let archived_at = match &owner {
+                Some(owner) if owner.state != "archived" => continue,
+                Some(owner) => chrono::DateTime::parse_from_rfc3339(&owner.updated_at)
+                    .ok()
+                    .map(SystemTime::from),
+                // A moved checkout keeps its old directory mtime, but
+                // `git worktree move` rewrites its `.git` file, so the later of
+                // the two is when the archive happened.
+                None => [checkout.clone(), checkout.join(".git")]
+                    .iter()
+                    .filter_map(|path| {
+                        std::fs::metadata(path)
+                            .and_then(|meta| meta.modified())
+                            .ok()
+                    })
+                    .max(),
+            };
+            let Some(archived_at) = archived_at else {
+                tracing::warn!(
+                    workspace_id,
+                    "could not tell when a worktree was archived; kept"
+                );
+                continue;
+            };
+            if archived_at >= archived_before {
+                continue;
+            }
+            let repo_path = owner
+                .and_then(|owner| owner.repo_path)
+                .map(PathBuf::from)
+                .filter(|path| path.exists())
+                .or_else(|| worktree_common_dir(&checkout));
+            match remove_archived_checkout(&checkout, repo_path.as_deref()) {
+                Ok(()) => {
+                    removed += 1;
+                    tracing::info!(workspace_id, path = %checkout.display(), "removed expired archived worktree");
+                }
+                Err(error) => {
+                    tracing::warn!(workspace_id, path = %checkout.display(), ?error, "could not remove expired archived worktree");
+                }
+            }
+        }
+        removed
+    }
+
+    fn archive_recovery_owner(
+        &self,
+        workspace_id: &str,
+    ) -> ArgmaxResult<Option<ArchiveRecoveryOwner>> {
+        use rusqlite::OptionalExtension;
+        let connection = self.database.read_connection();
+        connection
+            .query_row(
+                "SELECT workspaces.state, workspaces.updated_at, projects.repo_path \
+                 FROM workspaces LEFT JOIN projects ON projects.id = workspaces.project_id \
+                 WHERE workspaces.id = ?",
+                [workspace_id],
+                |row| {
+                    Ok(ArchiveRecoveryOwner {
+                        state: row.get(0)?,
+                        updated_at: row.get(1)?,
+                        repo_path: row.get(2)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(crate::persistence::sqlite_error)
     }
 
     /// Workspaces currently watched. Several sharing one checkout cost a
@@ -2974,6 +3097,65 @@ fn repair_archived_worktree(
             "ARCHIVE_RECOVERY_INVALID",
             "Git could not register the retained worktree. Its files were left intact.",
         ));
+    }
+    Ok(())
+}
+
+/// The workspace row an archive recovery directory belongs to, as far as expiry
+/// needs it.
+struct ArchiveRecoveryOwner {
+    state: String,
+    updated_at: String,
+    repo_path: Option<String>,
+}
+
+/// The shared Git directory of a linked worktree, which `git worktree` commands
+/// accept in place of the repository when its project row is gone. `None` for
+/// anything that is not a linked worktree, so git is never asked about a
+/// repository that merely encloses the directory.
+fn worktree_common_dir(checkout: &Path) -> Option<PathBuf> {
+    if !checkout.join(".git").is_file() {
+        return None;
+    }
+    run_git_text_blocking(
+        checkout,
+        ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+        GIT_DEFAULT_TIMEOUT,
+    )
+    .ok()
+    .map(|output| PathBuf::from(output.trim()))
+    .filter(|path| path.exists())
+}
+
+/// Delete an archived checkout without leaving Git a registration that points
+/// at nothing: `git worktree remove` when the repository is reachable, and a
+/// plain delete followed by `git worktree prune` when that fails. Branches are
+/// never touched.
+fn remove_archived_checkout(checkout: &Path, repo_path: Option<&Path>) -> ArgmaxResult<()> {
+    if let Some(repo_path) = repo_path {
+        let checkout_arg = checkout.to_string_lossy();
+        match run_git_text_blocking(
+            repo_path,
+            ["worktree", "remove", "--force", checkout_arg.as_ref()],
+            ARCHIVE_EXPIRY_GIT_TIMEOUT,
+        ) {
+            Ok(_) if !checkout.exists() => return Ok(()),
+            Ok(_) => {}
+            Err(error) => tracing::warn!(
+                path = %checkout.display(),
+                ?error,
+                "git could not remove the expired worktree; deleting its directory"
+            ),
+        }
+    }
+    std::fs::remove_dir_all(checkout)
+        .map_err(|error| ArgmaxError::service("ARCHIVE_EXPIRY_REMOVE_FAILED", error.to_string()))?;
+    if let Some(repo_path) = repo_path {
+        if let Err(error) =
+            run_git_text_blocking(repo_path, ["worktree", "prune"], GIT_DEFAULT_TIMEOUT)
+        {
+            tracing::warn!(repo = %repo_path.display(), ?error, "git worktree prune failed after removing an expired archive");
+        }
     }
     Ok(())
 }

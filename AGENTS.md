@@ -23,7 +23,8 @@ release/          Packaged distributable output (gitignored)
 ## Quickstart
 
 ```bash
-npm run tauri:dev       # Tauri dev app
+npm run tauri:dev       # Tauri dev app (refuses to start while the installed app runs; see below)
+npm run tauri:dev:isolated  # dev app on its own profile (~/.argmax-dev), side by side with the installed app
 npm test                # Vitest + perf + Cargo tests
 npm run lint            # eslint
 npm run typecheck       # renderer/shared tsc
@@ -33,6 +34,7 @@ npm run tauri:build     # production Tauri bundle
 
 ## Critical Conventions
 
+- **Argmax is developed from inside Argmax.** The installed app (`/Applications/Argmax.app`) hosts the chats that do the work; the build under test is a second instance on its own profile: `npm run tauri:dev:isolated` (`ARGMAX_DATA_DIR=~/.argmax-dev`). Plain `tauri dev` shares the installed app's data dir, hits the instance lock, and exits. Never quit, kill, or replace the installed app from a chat it hosts. Rust edits restart the dev instance and kill every session it hosts, so only throwaway verification chats belong there. Details in [docs/verification.md](docs/verification.md#the-dev-instance-next-to-the-installed-app).
 - **Imports inside `src/`** end in `.js`: `import { foo } from "./foo.js"` even though the file is `foo.ts`.
 - **All IPC** flows through `window.argmax.*`. Request/response channels are Rust `#[tauri::command]` handlers in [src-tauri/src/ipc](src-tauri/src/ipc), collected by `tauri-specta`, and exposed in [src/renderer/lib/tauriBridge.ts](src/renderer/lib/tauriBridge.ts). `src-tauri/tests/fixtures/channels.txt` and `npm run check:tauri-bridge` enforce channel parity.
 - **No native Node rebuild dance.** SQLite and PTYs live in Rust (`rusqlite`, `portable-pty`). Do not reintroduce `better-sqlite3`, `node-pty`, or native builder scripts.

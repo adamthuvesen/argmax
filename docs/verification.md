@@ -133,6 +133,7 @@ Screen Recording or Accessibility permissions for that host.
 | `npm test` + checks | logic, budgets, parity gates | seconds |
 | Renderer in a browser | how the UI renders, per theme | ~10 s |
 | Scratch instance + bridge | real sessions through the real backend | ~1 min |
+| Dev instance next to the installed app | the change, hands-on, while the installed app keeps hosting the work | ~1 min |
 | Real-window screenshot | pixel truth, native chrome included | seconds |
 
 ## Rung 1: suites and checks
@@ -180,6 +181,45 @@ into the state under test, and the expression's value comes back as `eval` in
 the ready line — an async expression can click a row, wait, and return a
 measurement (a scroll gap, a row count, a text probe) alongside the PNG. An
 agent can read the PNG back and *look* at it, and assert on the value.
+
+## The dev instance next to the installed app
+
+Argmax is developed from inside Argmax: the installed app
+(`/Applications/Argmax.app`) hosts the chats doing the work, and the build under
+test runs as a second, real instance on its own profile:
+
+```bash
+npm run tauri:dev:isolated      # ARGMAX_DATA_DIR=~/.argmax-dev tauri dev
+```
+
+Plain `npm run tauri:dev` shares the installed app's data dir
+(`~/Library/Application Support/com.argmax.rs`), hits the instance lock, and
+exits with "Argmax is already running". The override moves everything that
+would collide — database, instance lock, attachments, `remote.json`, logs, and
+the worktree root (`~/.argmax-dev/local-state/worktrees`) — while the
+session-launch socket is per-process and the `argmax` MCP server is the
+instance's own binary, so nothing else is shared.
+
+What to expect from the dev instance:
+
+- **The profile persists** across restarts. Register the argmax repo once. Do
+  not copy the installed app's database over: its session rows point at
+  worktrees the installed app owns.
+- **No desktop notifications.** `tauri dev` runs unbundled, so there is no
+  bundle identifier for `UNUserNotificationCenter` ([runtime.md](runtime.md)).
+- **Remote bridge is off** until enabled in its Settings. If enabled, pick a
+  port other than 8790; that one belongs to the installed app and a bind
+  failure leaves the bridge silently off.
+- **Provider CLIs are shared.** Both instances use the same `~/.claude` and
+  `~/.codex`; session sync imports the same transcripts into both databases.
+- **A Rust edit restarts the binary** and kills every session it hosts. Keep
+  only throwaway verification chats there.
+- **Never quit, kill, or replace the installed app** from a chat it hosts;
+  that ends the provider mid-turn. Build in the workspace and give the user the
+  install steps.
+
+For scripted verification without a window, use the scratch rung below; it
+is the same override with a throwaway directory.
 
 ## Rung 3: a scratch instance, driven over the bridge
 

@@ -545,7 +545,10 @@ pub fn run() {
                         }
                         Ok(None) => {
                             tracing::error!(
-                                "another Argmax instance owns the local state; exiting"
+                                path = %data_dir.display(),
+                                "another Argmax instance owns the local state; exiting \
+                                 (a second instance needs its own ARGMAX_DATA_DIR, \
+                                 e.g. `npm run tauri:dev:isolated`)"
                             );
                             // Tauri builds the config's `main` window before the
                             // setup hook runs; hide it so the doomed instance
@@ -555,7 +558,11 @@ pub fn run() {
                             }
                             use tauri_plugin_dialog::DialogExt;
                             app.dialog()
-                                .message("Argmax is already running. Use the existing window.")
+                                .message(
+                                    "Argmax is already running. Use the existing window, or \
+                                     start a second instance on its own profile with \
+                                     ARGMAX_DATA_DIR (npm run tauri:dev:isolated).",
+                                )
                                 .title("Argmax is already running")
                                 .kind(tauri_plugin_dialog::MessageDialogKind::Warning)
                                 .show(|_| std::process::exit(0));

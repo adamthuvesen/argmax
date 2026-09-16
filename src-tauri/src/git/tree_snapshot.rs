@@ -95,33 +95,29 @@ pub async fn snapshot_worktree(
 /// a later rewind. The returned tree is self-contained and can be pinned by a
 /// ref without touching the user's real index.
 pub async fn snapshot_visible_worktree(repo_path: &Path) -> ArgmaxResult<String> {
-    let scratch = scratch_index_dir()?;
-    let index = scratch.path().join("index");
-
-    if run_git_text_with_options(repo_path, ["read-tree", "HEAD"], scratch_options(&index))
-        .await
-        .is_err()
-    {
-        run_git_text_with_options(repo_path, ["read-tree", "--empty"], scratch_options(&index))
-            .await?;
-    }
-    // `--all` captures tracked deletions and eligible untracked files.  Do not
-    // pass `--force`: ignored files belong to the caller, not the checkpoint.
-    run_git_text_with_options(repo_path, ["add", "--all"], scratch_options(&index)).await?;
-    tree_from_index(repo_path, scratch_options(&index)).await
+    let capture = stage_visible_worktree(repo_path).await?;
+    drop_force_staged_ignored(repo_path, capture.index.as_path()).await?;
+    tree_from_index(repo_path, scratch_options(&capture.index)).await
 }
 
 /// A tree object standing for the worktree's current content, for use as a
 /// fingerprint rather than as something to restore.
 ///
-/// Same shape as [`snapshot_visible_worktree`] but seeded from the checkout's
-/// own index instead of `HEAD`, which is the only seed carrying stat data: with
-/// it `add` re-hashes the files whose stat moved rather than every tracked file
-/// in the repo, and a file click in the Changes panel pays this twice. The one
-/// state where the two disagree is a force-staged ignored file, which the
-/// fingerprint keeps and a checkpoint deliberately drops — a distinction that
-/// only matters to something restorable.
+/// [`snapshot_visible_worktree`] minus the one rule that costs a git process to
+/// enforce: a force-staged ignored file is in here and out of a checkpoint.
+/// Nothing restores this tree, so that distinction buys a fingerprint nothing,
+/// and the review panel pays for it twice per file click.
 pub async fn fingerprint_worktree(repo_path: &Path) -> ArgmaxResult<String> {
+    let capture = stage_visible_worktree(repo_path).await?;
+    tree_from_index(repo_path, scratch_options(&capture.index)).await
+}
+
+/// Stage the whole visible worktree into a scratch index.
+///
+/// The seed is the checkout's own index, the only one carrying stat data: `add`
+/// then re-hashes the files whose stat moved rather than every tracked file in
+/// the repo, which is ~70 ms against ~230 ms on this repo.
+async fn stage_visible_worktree(repo_path: &Path) -> ArgmaxResult<CapturedIndex> {
     let capture = capture_index(repo_path).await?;
     let index = capture.index.as_path();
 
@@ -131,8 +127,71 @@ pub async fn fingerprint_worktree(repo_path: &Path) -> ArgmaxResult<String> {
         let _ = run_git_text_with_options(repo_path, ["read-tree", "HEAD"], scratch_options(index))
             .await;
     }
+    // `--all` captures tracked deletions and eligible untracked files.  Do not
+    // pass `--force`: ignored files belong to the caller, not the checkpoint.
     run_git_text_with_options(repo_path, ["add", "--all"], scratch_options(index)).await?;
-    tree_from_index(repo_path, scratch_options(index)).await
+    Ok(capture)
+}
+
+/// Remove index entries an ignore rule covers and `HEAD` does not have.
+///
+/// These are the one place the index seed disagrees with a `HEAD` one: staging
+/// an ignored file with `add --force` makes it tracked, so `add` keeps it, while
+/// a snapshot seeded from `HEAD` never saw it. Ignored paths are the caller's,
+/// and a rewind must not restore or remove one, so the `HEAD` answer is the
+/// right one. The listing is empty in every ordinary checkout.
+async fn drop_force_staged_ignored(repo_path: &Path, index: &Path) -> ArgmaxResult<()> {
+    let ignored = run_git_text_with_options(
+        repo_path,
+        [
+            "ls-files",
+            "--cached",
+            "--ignored",
+            "--exclude-standard",
+            "-z",
+        ],
+        scratch_options(index),
+    )
+    .await?;
+    let ignored = split_nul(&ignored);
+    if ignored.is_empty() {
+        return Ok(());
+    }
+
+    // An ignored path that HEAD already tracks belongs in the snapshot: both
+    // seeds carry it, and dropping it would delete it on a rewind.
+    let in_head = match head_exists(repo_path).await {
+        true => {
+            let mut args = vec![
+                "ls-tree".to_owned(),
+                "--name-only".to_owned(),
+                "-z".to_owned(),
+                "HEAD".to_owned(),
+                "--".to_owned(),
+            ];
+            args.extend(ignored.iter().cloned());
+            split_nul(&run_git_text_with_options(repo_path, args, snapshot_options()).await?)
+        }
+        false => Vec::new(),
+    };
+
+    let mut args = vec![
+        "rm".to_owned(),
+        "--cached".to_owned(),
+        "--quiet".to_owned(),
+        "--".to_owned(),
+    ];
+    args.extend(
+        ignored
+            .into_iter()
+            .filter(|path| !in_head.contains(path))
+            .collect::<Vec<_>>(),
+    );
+    if args.len() == 4 {
+        return Ok(());
+    }
+    run_git_text_with_options(repo_path, args, scratch_options(index)).await?;
+    Ok(())
 }
 
 /// Return the tree represented by the user's current index without changing
@@ -418,6 +477,12 @@ mod tests {
             .unwrap_or_else(|error| panic!("git {args:?} failed: {error}"))
     }
 
+    async fn git_with_index(repo: &Path, index: &Path, args: &[&str]) -> String {
+        run_git_text_with_options(repo, args, scratch_options(index))
+            .await
+            .unwrap_or_else(|error| panic!("git {args:?} failed: {error}"))
+    }
+
     async fn repo_with_commit() -> TempDir {
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path();
@@ -478,16 +543,18 @@ mod tests {
         assert_eq!(diff, "", "an untouched file must produce no diff");
     }
 
-    /// [`fingerprint_worktree`] seeds its scratch index from the checkout's own
-    /// index (for the stat data) rather than from `HEAD`. Over ordinary dirty
-    /// state that has to produce exactly the checkpoint snapshot's tree.
+    /// The snapshot seeds its scratch index from the checkout's own index for
+    /// the stat data. The tree it writes has to be the one a `HEAD` seed would
+    /// have written, dirty state and all.
     #[tokio::test]
-    async fn the_worktree_fingerprint_matches_the_checkpoint_snapshot() {
+    async fn the_snapshot_tree_does_not_depend_on_the_seed() {
         let repo = repo_with_commit().await;
         let path = repo.path();
         fs::write(path.join(".gitignore"), "out/\n").expect("write ignore");
         fs::create_dir(path.join("out")).expect("mkdir");
         fs::write(path.join("out/artifact.bin"), "built\n").expect("write ignored");
+        fs::write(path.join("out/forced.bin"), "forced\n").expect("write forced");
+        git(path, &["add", "--force", "out/forced.bin"]).await;
         fs::write(path.join("staged.txt"), "staged\n").expect("write staged");
         git(path, &["add", "staged.txt"]).await;
         fs::write(path.join("staged.txt"), "staged then edited\n").expect("edit staged");
@@ -495,33 +562,45 @@ mod tests {
         fs::write(path.join("untracked.txt"), "new\n").expect("write untracked");
         git(path, &["rm", "--cached", "--quiet", "kept.txt"]).await;
 
-        assert_eq!(
-            fingerprint_worktree(path).await.expect("fingerprint"),
-            snapshot_visible_worktree(path).await.expect("snapshot")
-        );
-    }
+        let scratch = scratch_index_dir().expect("scratch");
+        let reference = scratch.path().join("index");
+        git_with_index(path, &reference, &["read-tree", "HEAD"]).await;
+        git_with_index(path, &reference, &["add", "--all"]).await;
+        let from_head = git_with_index(path, &reference, &["write-tree"]).await;
 
-    /// The single documented divergence: a force-staged ignored file is tracked,
-    /// so the fingerprint carries it, while a checkpoint leaves ignored paths to
-    /// the user and a rewind must not touch them.
-    #[tokio::test]
-    async fn a_force_staged_ignored_file_is_in_the_fingerprint_only() {
-        let repo = repo_with_commit().await;
-        let path = repo.path();
-        fs::write(path.join(".gitignore"), "out/\n").expect("write ignore");
-        fs::create_dir(path.join("out")).expect("mkdir");
-        fs::write(path.join("out/forced.bin"), "forced\n").expect("write forced");
-        git(path, &["add", "--force", "out/forced.bin"]).await;
-
-        let fingerprint = fingerprint_worktree(path).await.expect("fingerprint");
         let snapshot = snapshot_visible_worktree(path).await.expect("snapshot");
+        assert_eq!(snapshot, from_head.trim());
+        assert!(
+            !git(path, &["ls-tree", "-r", "--name-only", &snapshot])
+                .await
+                .contains("out/"),
+            "a force-staged ignored file stays the caller's, so a rewind cannot touch it"
+        );
+        // The fingerprint skips that rule, and only that rule.
+        let fingerprint = fingerprint_worktree(path).await.expect("fingerprint");
         assert_ne!(fingerprint, snapshot);
         assert!(git(path, &["ls-tree", "-r", "--name-only", &fingerprint])
             .await
             .contains("out/forced.bin"));
-        assert!(!git(path, &["ls-tree", "-r", "--name-only", &snapshot])
+    }
+
+    /// An ignored path that HEAD already tracks is not force-staged state: both
+    /// seeds carry it, and dropping it would delete it on a rewind.
+    #[tokio::test]
+    async fn an_ignored_file_that_head_tracks_stays_in_the_snapshot() {
+        let repo = repo_with_commit().await;
+        let path = repo.path();
+        fs::write(path.join("built.log"), "one\n").expect("write");
+        git(path, &["add", "built.log"]).await;
+        fs::write(path.join(".gitignore"), "built.log\n").expect("write ignore");
+        git(path, &["add", ".gitignore"]).await;
+        git(path, &["commit", "-m", "track an ignored file"]).await;
+        fs::write(path.join("built.log"), "one\ntwo\n").expect("edit");
+
+        let snapshot = snapshot_visible_worktree(path).await.expect("snapshot");
+        assert!(git(path, &["ls-tree", "-r", "--name-only", &snapshot])
             .await
-            .contains("out/forced.bin"));
+            .contains("built.log"));
     }
 
     #[tokio::test]

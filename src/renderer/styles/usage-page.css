@@ -122,15 +122,24 @@
 
 /* ---------- Rail navigation, shared with Activity ---------- */
 
-/* Usage and Activity are two views of the same work, so the rail carries both
-   under the way back rather than making the reader leave to cross between
-   them. It reuses `.settings-rail-list` / `.settings-rail-link` exactly — the
-   settings rail's own rows — so a highlighted page and a highlighted settings
-   group are the same mark; only the divider above the list is ours. */
-.ledger-rail-list {
-  margin-top: 9px;
-  padding-top: 9px;
-  border-top: 0.5px solid var(--line);
+/* Usage and Activity are two views of the same work, so each carries the
+   switch to the other where its title would sit. The control is the settings
+   segmented primitive at title weight: the current view reads as the heading,
+   the other as the way across. */
+.ledger-switch {
+  display: flex;
+}
+
+.ledger-switch .settings-segmented {
+  padding: 3px;
+  border-radius: var(--radius-lg);
+}
+
+.ledger-switch .settings-segmented-label {
+  padding: 4px 12px;
+  font-size: var(--text-sm);
+  font-weight: calc(500 + var(--font-weight-offset));
+  letter-spacing: -0.006em;
 }
 
 /* ---------- Notices: scanning, errors ---------- */

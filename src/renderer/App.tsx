@@ -39,9 +39,6 @@ import { MIN_RESIZABLE_CELL_WIDTH_PX, SessionMultiGrid } from "./components/Sess
 import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { BrowserPage } from "./components/BrowserPage.js";
-import { ScheduleRail } from "./components/scheduled/ScheduleRail.js";
-import { ArcRail } from "./components/arcs/ArcRail.js";
-import { UsageRail, type LedgerPage } from "./components/usage/UsageRail.js";
 import { SettingsRail } from "./components/settings/SettingsRail.js";
 import { MAX_COLS, findSessionCell, focusedCell, terminalWorkspaceId } from "./lib/gridState.js";
 import { findSharedCheckoutWorkspace } from "./lib/projectCheckoutWorkspace.js";
@@ -76,7 +73,9 @@ import {
   hideCommandPalette,
   hideKeyboardCheatSheet,
   hidePromoteArcDialog,
+  hideArcPage,
   hideStandalonePage,
+  showArcPage,
   showCommandPalette,
   showKeyboardCheatSheet,
   showSchedulePage,
@@ -205,15 +204,14 @@ export function App(): JSX.Element {
   const isScheduledTasksOpen = standalonePage === "schedule";
   const isUsageOpen = standalonePage === "usage";
   const isActivityOpen = standalonePage === "activity";
-  const isArcPageOpen = standalonePage === "arc";
-  // Usage and Activity share one rail, so the rail renders for either and the
-  // nav is the same callback in both directions.
+  const isArcPageOpen = selectedArcId !== null;
+  // Usage and Activity are the two views of Hacking; both stay mounted so
+  // the switch between them is instant.
   const isLedgerOpen = isUsageOpen || isActivityOpen;
-  const openLedgerPage = (page: LedgerPage): void => {
-    if (page === "usage") showUsagePage();
-    else showActivityPage();
-  };
   const standalonePageOpen = standalonePage !== null;
+  // Only Settings replaces the app sidebar with its own rail. Schedule and
+  // Hacking are pages in the workspace, so the chats stay a click away.
+  const settingsRailOpen = isSettingsOpen;
   const toast = useToast();
   const paletteMotion = useMotionPresence(paletteOpen);
   const toastMotion = useMotionPresence(toast !== null);
@@ -242,6 +240,13 @@ export function App(): JSX.Element {
   );
   const { collapsed: sidebarCollapsed, peeking: sidebarPeek } = useSidebarChrome();
   const [isBrowserPageOpen, setIsBrowserPageOpen] = useBooleanUiPreference(BROWSER_PAGE_OPEN_KEY, false);
+  useEffect(() => {
+    if (selectedArcId !== null) setIsBrowserPageOpen(false);
+  }, [selectedArcId, setIsBrowserPageOpen]);
+  const closeWorkspacePages = useCallback((): void => {
+    setIsBrowserPageOpen(false);
+    hideArcPage();
+  }, [setIsBrowserPageOpen]);
   const [workspaceCardVisible, setWorkspaceCardVisible] = useBooleanUiPreference(WORKSPACE_CARD_KEY, true);
   const [fastModeEnabled, setFastModeEnabled] = useBooleanUiPreference(FAST_MODE_KEY, false);
   const [turnChangesExpanded, setTurnChangesExpanded] = useBooleanUiPreference(
@@ -512,7 +517,7 @@ export function App(): JSX.Element {
     isResizing,
     onResizeMouseDown
   } = useSidebarResize(requiredWorkspaceMinWidth);
-  const effectiveSidebarCollapsed = !standalonePageOpen && (sidebarCollapsed || sidebarResponsiveCollapsed);
+  const effectiveSidebarCollapsed = !settingsRailOpen && (sidebarCollapsed || sidebarResponsiveCollapsed);
   const requiredWindowMinWidth = useMemo(() => {
     // The native floor must leave room for the folded layout. If it includes
     // the current sidebar width, the window stops before the sidebar can
@@ -609,7 +614,7 @@ export function App(): JSX.Element {
         case "new-session":
           hideCommandPalette();
           hideStandalonePage();
-          setIsBrowserPageOpen(false);
+          closeWorkspacePages();
           openNewSessionPane();
           return;
         case "next-chat":
@@ -622,7 +627,7 @@ export function App(): JSX.Element {
           if (!workspaceId) return;
           hideStandalonePage();
           hideFullLauncher();
-          setIsBrowserPageOpen(false);
+          closeWorkspacePages();
           openWorkspaceChat(workspaceId, { ctrlOrMeta: false, alt: false });
           return;
         }
@@ -653,7 +658,7 @@ export function App(): JSX.Element {
           return;
       }
     },
-    [closeFocusedPane, isSettingsOpen, openNewSessionPane, openWorkspaceChat, setIsBrowserPageOpen]
+    [closeFocusedPane, closeWorkspacePages, isSettingsOpen, openNewSessionPane, openWorkspaceChat]
   );
 
   // ⌘P / ⌘F / ⌘⇧F are all the ⌘K overlay; only the pre-selected filter differs.
@@ -664,10 +669,10 @@ export function App(): JSX.Element {
     (workspaceId: string): void => {
       // Cmd+1..9 always replaces the focused pane (no split modifier).
       hideFullLauncher();
-      setIsBrowserPageOpen(false);
+      closeWorkspacePages();
       openWorkspaceChat(workspaceId, { ctrlOrMeta: false, alt: false });
     },
-    [openWorkspaceChat, setIsBrowserPageOpen]
+    [closeWorkspacePages, openWorkspaceChat]
   );
   // Fork the session into a new workspace (same checkout, copied transcript,
   // diverging provider conversation) and jump into the fork.
@@ -1021,25 +1026,36 @@ export function App(): JSX.Element {
     (projectId: string): void => {
       hideStandalonePage();
       hideFullLauncher();
-      setIsBrowserPageOpen(false);
+      closeWorkspacePages();
       clearPaneGrid();
       openRepoProjectLauncher(projectId);
     },
-    [openRepoProjectLauncher, setIsBrowserPageOpen]
+    [closeWorkspacePages, openRepoProjectLauncher]
   );
   const onOpenWorkspaceChatRow = useCallback(
     (workspaceId: string, modifiers: Parameters<typeof openWorkspaceChat>[1]): void => {
       hideStandalonePage();
       hideFullLauncher();
-      setIsBrowserPageOpen(false);
+      closeWorkspacePages();
       openWorkspaceChat(workspaceId, modifiers);
     },
-    [openWorkspaceChat, setIsBrowserPageOpen]
+    [closeWorkspacePages, openWorkspaceChat]
+  );
+  const onOpenArcRow = useCallback(
+    (arcId: string): void => {
+      hideCommandPalette();
+      hideStandalonePage();
+      hideFullLauncher();
+      closeWorkspacePages();
+      showArcPage(arcId);
+    },
+    [closeWorkspacePages]
   );
   const onOpenBrowserRow = useCallback((): void => {
     hideCommandPalette();
     hideStandalonePage();
     hideFullLauncher();
+    hideArcPage();
     setIsBrowserPageOpen(true);
   }, [setIsBrowserPageOpen]);
   useStandaloneBrowserLinks({
@@ -1055,17 +1071,17 @@ export function App(): JSX.Element {
       if (!target) return;
       hideStandalonePage();
       hideFullLauncher();
-      setIsBrowserPageOpen(false);
+      closeWorkspacePages();
       openWorkspaceChat(target.workspaceId, { ctrlOrMeta: false, alt: false });
     },
-    [snapshot.sessions, openWorkspaceChat, setIsBrowserPageOpen]
+    [closeWorkspacePages, snapshot.sessions, openWorkspaceChat]
   );
   const onOpenLauncherRow = useCallback((): void => {
     hideStandalonePage();
-    setIsBrowserPageOpen(false);
+    closeWorkspacePages();
     requestLauncherReset();
     openNewSessionPane();
-  }, [openNewSessionPane, setIsBrowserPageOpen]);
+  }, [closeWorkspacePages, openNewSessionPane]);
 
   const handleEarlyStop = useCallback(
     (sessionId: string): string | undefined => {
@@ -1174,7 +1190,7 @@ export function App(): JSX.Element {
     (selectedProject && selectedProject.id !== SCRATCH_PROJECT_ID ? selectedProject : null) ??
     realProjects[0] ??
     null;
-  const sidebarProject = !isBrowserPageOpen && (isFullLauncherOpen || grid.rows.length === 0)
+  const sidebarProject = !isBrowserPageOpen && !isArcPageOpen && (isFullLauncherOpen || grid.rows.length === 0)
     ? (launcherSideChatMode ? null : launcherProject)
     : selectedProject;
 
@@ -1207,7 +1223,7 @@ export function App(): JSX.Element {
     hideCommandPalette();
     hideKeyboardCheatSheet();
     hideStandalonePage();
-    setIsBrowserPageOpen(false);
+    closeWorkspacePages();
 
     const toggleForProject = async (project: ProjectSummary): Promise<void> => {
       if (!window.argmax) return;
@@ -1263,8 +1279,8 @@ export function App(): JSX.Element {
     isFullLauncherOpen,
     launcherProject,
     launcherSideChatMode,
+    closeWorkspacePages,
     openWorkspaceChat,
-    setIsBrowserPageOpen,
     selectedSession?.workspaceId,
     selectedWorkspace?.id,
     setSnapshot,
@@ -1460,10 +1476,10 @@ export function App(): JSX.Element {
   // Sidebar's "New side chat": the launcher surface pre-set to chat mode.
   const openSideChatLauncher = useCallback((): void => {
     hideStandalonePage();
-    setIsBrowserPageOpen(false);
+    closeWorkspacePages();
     requestLauncherReset();
     openLauncherSurface(true);
-  }, [openLauncherSurface, setIsBrowserPageOpen]);
+  }, [closeWorkspacePages, openLauncherSurface]);
 
   // "More details" explainer popup: one at a time, backed by an ephemeral
   // popup-kind scratch session that is terminated and archived when it goes
@@ -1684,7 +1700,7 @@ export function App(): JSX.Element {
         onClearGrid: () => clearPaneGrid(),
         onCloseOverlays: () => {
           hideStandalonePage();
-          setIsBrowserPageOpen(false);
+          closeWorkspacePages();
         }
       }),
     [
@@ -1695,7 +1711,7 @@ export function App(): JSX.Element {
       openWorkspaceChat,
       openMessagePalette,
       onOpenBrowserRow,
-      setIsBrowserPageOpen,
+      closeWorkspacePages,
       setSelectedProjectId,
       themeMode,
       handleThemeModeChange,
@@ -1758,12 +1774,12 @@ export function App(): JSX.Element {
         run: () => {
           const target = snapshot.sessions.find((session) => session.id === hit.sessionId);
           hideStandalonePage();
-          setIsBrowserPageOpen(false);
+          closeWorkspacePages();
           if (target) openWorkspaceChat(target.workspaceId);
         }
       }));
     },
-    [sessionLabelById, snapshot.sessions, openWorkspaceChat, setIsBrowserPageOpen]
+    [closeWorkspacePages, sessionLabelById, snapshot.sessions, openWorkspaceChat]
   );
 
   // `git grep` over the active surface's checkout, backing the palette's
@@ -1949,9 +1965,9 @@ export function App(): JSX.Element {
       tabIndex={-1}
       style={{
         gridTemplateColumns:
-          // Settings and schedule own the sidebar column: the rail is fixed-width
-          // and is shown even when the app sidebar is collapsed.
-          standalonePageOpen
+          // Settings owns the sidebar column: the rail is fixed-width and is
+          // shown even when the app sidebar is collapsed.
+          settingsRailOpen
             ? "var(--settings-rail-width) minmax(0, 1fr)"
             : effectiveSidebarCollapsed
               ? "minmax(0, 1fr)"
@@ -1966,13 +1982,13 @@ export function App(): JSX.Element {
       data-schedule-open={isScheduledTasksOpen ? "true" : undefined}
       data-usage-open={isUsageOpen ? "true" : undefined}
       data-activity-open={isActivityOpen ? "true" : undefined}
-      data-arc-open={isArcPageOpen ? "true" : undefined}
+      data-arc-page-open={isArcPageOpen && !standalonePageOpen ? "true" : undefined}
       data-browser-page-open={isBrowserPageOpen && !standalonePageOpen ? "true" : undefined}
       data-sidebar-collapsed={effectiveSidebarCollapsed ? "true" : undefined}
       data-sidebar-peek={effectiveSidebarCollapsed && sidebarPeek ? "true" : undefined}
       data-sidebar-translucent={sidebarTranslucent ? "true" : undefined}
     >
-      {standalonePageOpen ? null : (
+      {settingsRailOpen ? null : (
         <button
           type="button"
           className="sidebar-toggle"
@@ -2082,16 +2098,6 @@ export function App(): JSX.Element {
           onOpenSection={(group, sectionId) => showSettings(group, sectionId)}
           onBack={() => hideStandalonePage()}
         />
-      ) : isScheduledTasksOpen ? (
-        <ScheduleRail onBack={() => hideStandalonePage()} />
-      ) : isArcPageOpen ? (
-        <ArcRail onBack={() => hideStandalonePage()} />
-      ) : isLedgerOpen ? (
-        <UsageRail
-          active={isActivityOpen ? "activity" : "usage"}
-          onBack={() => hideStandalonePage()}
-          onNavigate={openLedgerPage}
-        />
       ) : (
         <Sidebar
           loadState={loadState}
@@ -2111,12 +2117,18 @@ export function App(): JSX.Element {
           onOpenInIde={onOpenInIdeRow}
           onOpenProject={onOpenProjectRow}
           onOpenWorkspaceChat={onOpenWorkspaceChatRow}
+          onOpenArc={onOpenArcRow}
           onResizeMouseDown={onResizeMouseDown}
           selectedProjectId={sidebarProject?.id ?? null}
           selectedWorkspaceId={
-            isFullLauncherOpen || isBrowserPageOpen ? null : (selectedWorkspace?.id ?? null)
+            isFullLauncherOpen || isBrowserPageOpen || isArcPageOpen || standalonePageOpen
+              ? null
+              : (selectedWorkspace?.id ?? null)
           }
+          selectedArcId={isArcPageOpen && !standalonePageOpen ? selectedArcId : null}
           browserSelected={isBrowserPageOpen && !standalonePageOpen}
+          scheduleSelected={isScheduledTasksOpen}
+          hackingSelected={isLedgerOpen}
           onOpenBrowser={onOpenBrowserRow}
           snapshot={snapshot}
           detectedIdes={detectedIdes}
@@ -2133,13 +2145,15 @@ export function App(): JSX.Element {
             ? "work-scroll settings-scroll"
             : isBrowserPageOpen
               ? "work-scroll browser-scroll"
-              : isFullLauncherOpen || grid.rows.length === 0
+              : isArcPageOpen
+                ? "work-scroll arc-scroll"
+                : isFullLauncherOpen || grid.rows.length === 0
                 ? "work-scroll launcher-scroll"
                 : "work-scroll session-scroll"
         }>
           {loadState === "error" ? (
             <EmptyState message={loadError} onRetry={() => void loadDashboard()} />
-          ) : loadState === "loading" && grid.rows.length === 0 && !standalonePageOpen && !isBrowserPageOpen ? (
+          ) : loadState === "loading" && grid.rows.length === 0 && !standalonePageOpen && !isBrowserPageOpen && !isArcPageOpen ? (
             <SkeletonPane label="Loading workspace" />
           ) : isSettingsOpen ? (
             <Suspense fallback={<SkeletonPane label="Loading settings" />}>
@@ -2229,15 +2243,6 @@ export function App(): JSX.Element {
             <Suspense fallback={<SkeletonPane label="Loading scheduled tasks" />}>
               <ScheduledTasksPanel projects={realProjects} onOpenSession={openSessionById} />
             </Suspense>
-          ) : isArcPageOpen && selectedArcId ? (
-            <Suspense fallback={<SkeletonPane label="Loading arc" />}>
-              <ArcPage
-                arcId={selectedArcId}
-                snapshot={snapshot}
-                projects={realProjects}
-                onOpenSession={openSessionById}
-              />
-            </Suspense>
           ) : isLedgerOpen ? (
             <>
               <div className={isUsageOpen ? undefined : "ledger-page-parked"} aria-hidden={!isUsageOpen}>
@@ -2253,6 +2258,16 @@ export function App(): JSX.Element {
             </>
           ) : isBrowserPageOpen ? (
             <BrowserPage onClose={() => setIsBrowserPageOpen(false)} />
+          ) : isArcPageOpen && selectedArcId ? (
+            <Suspense fallback={<SkeletonPane label="Loading arc" />}>
+              <ArcPage
+                arcId={selectedArcId}
+                snapshot={snapshot}
+                projects={realProjects}
+                onOpenSession={openSessionById}
+                onClose={hideArcPage}
+              />
+            </Suspense>
           ) : isFullLauncherOpen ? (
             renderLaunchSurface(launcherProject)
           ) : grid.rows.length > 0 ? (

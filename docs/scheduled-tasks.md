@@ -7,14 +7,13 @@ Scheduled tasks ("routines") are stored prompts launched as top-level sessions o
 | Piece | File |
 |---|---|
 | Panel UI | [ScheduledTasksPanel.tsx](../src/renderer/components/scheduled/ScheduledTasksPanel.tsx) |
-| Standalone rail | [ScheduleRail.tsx](../src/renderer/components/scheduled/ScheduleRail.tsx) |
 | Schedule mapping | [schedule.ts](../src/renderer/lib/schedule.ts) |
 | Scheduler loop | [scheduler.rs](../src-tauri/src/routines/scheduler.rs) |
 | Cron parsing & calculations | [schedule.rs](../src-tauri/src/routines/schedule.rs) |
 | SQLite persistence | [routines.rs](../src-tauri/src/persistence/routines.rs) (table `routines`, migration v19; `created_by` in v50; `arc_id` + `arc_coordinator` target in v52) |
 | IPC channels | [ipc/routines.rs](../src-tauri/src/ipc/routines.rs) (`routines:list`, `routines:upsert`, `routines:delete`, `routines:set-enabled`, `routines:run-now`, `routines:reset-session`) |
 
-The page is standalone. Opening it swaps the app sidebar for a back rail and uses the same content chrome as settings. The title sits in the column, not the window topbar.
+The page opens in the workspace with the app sidebar still beside it, using the same content chrome as settings. The title sits in the column, not the window topbar. Esc, or any sidebar row, leaves it.
 
 ## Scheduler Behavior
 

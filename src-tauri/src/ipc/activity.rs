@@ -64,11 +64,18 @@ pub async fn activity_summary_impl(
     );
 
     read_off_main(move || {
-        // A ledger that has completed before is swept inline so the answer is
-        // current; the first cold sweep reads every repository's history and
-        // waits for the page to ask for it.
+        // A ledger that has never completed has nothing to answer from, so
+        // the first cold sweep runs in the background and the page reads
+        // `before_first_scan` until it lands. A ledger that has completed
+        // answers immediately from what is already stored, and only kicks a
+        // background sweep if that answer is older than `FRESHNESS_INTERVAL`
+        // — the same stale-while-revalidate shape as the GitHub half.
+        // `sweep()`'s own `try_lock` guarantees a burst of window or
+        // project-picker changes inside that window starts at most one sweep.
         if scanner.has_completed_once() {
-            scanner.sweep()?;
+            if scanner.is_stale(now) {
+                spawn_sweep(&scanner);
+            }
         } else {
             spawn_sweep(&scanner);
         }
@@ -96,10 +103,12 @@ pub async fn activity_summary_impl(
 
 fn scan_state(progress: &ActivityScanProgress) -> ActivityScanState {
     ActivityScanState {
-        // Before the first sweep has completed, the ledger is partial by
-        // definition, whether the sweep has reached the repository loop yet or
-        // not.
-        phase: if progress.scanning || progress.last_completed_at.is_none() {
+        // A ledger that has completed at least once answers as `Complete`
+        // even while a background refresh sweep is in flight: the stored
+        // rows are a whole, current-enough answer, not a partial one, so the
+        // renderer's "still walking your clones" notice and faster poll must
+        // stay reserved for the one-time cold sweep.
+        phase: if progress.last_completed_at.is_none() {
             ActivityScanPhase::Scanning
         } else {
             ActivityScanPhase::Complete
@@ -107,5 +116,32 @@ fn scan_state(progress: &ActivityScanProgress) -> ActivityScanState {
         repos_total: progress.repos_total,
         repos_done: progress.repos_done,
         last_completed_at: progress.last_completed_at.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_ledger_that_has_never_completed_reports_scanning() {
+        let progress = ActivityScanProgress::default();
+        assert_eq!(scan_state(&progress).phase, ActivityScanPhase::Scanning);
+    }
+
+    #[test]
+    fn a_background_sweep_over_a_completed_ledger_still_reports_complete() {
+        // The bug this pins: `scanning` used to leak into `phase`, so a
+        // background refresh over an already-complete ledger showed the
+        // renderer's "still walking your clones" partial-data notice for
+        // numbers that were never partial.
+        let progress = ActivityScanProgress {
+            scanning: true,
+            repos_total: 10,
+            repos_done: 3,
+            last_completed_at: Some("2026-09-16T12:00:00.000Z".into()),
+            author_emails: vec!["me@example.com".into()],
+        };
+        assert_eq!(scan_state(&progress).phase, ActivityScanPhase::Complete);
     }
 }

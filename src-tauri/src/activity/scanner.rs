@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::{DateTime, Months, SecondsFormat, Utc};
+use futures_util::stream::{self, StreamExt};
 
 use crate::activity::git_log::{self, LOG_FORMAT};
 use crate::activity::LEDGER_MONTHS;
@@ -39,6 +40,18 @@ const LOG_STDOUT_CAP_BYTES: usize = 64 * 1024 * 1024;
 /// A `git log` walking every ref of a large repository is slower than the
 /// 30-second default the interactive git callers use.
 const LOG_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// `git config --get user.email` reads one local file; it never needs the
+/// budget a `git log` walk does.
+const CONFIG_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// A completed ledger answers `activity:summary` immediately; this is how
+/// long that answer is allowed to sit before a background sweep refreshes it.
+/// 60 seconds keeps a commit made just now showing up within a poll or two of
+/// the desktop's 60-second refresh, while a burst of window or project-picker
+/// changes inside that window shares the sweep `sweep_lock` already
+/// deduplicates rather than each starting its own.
+pub const FRESHNESS_INTERVAL: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ActivityScanProgress {
@@ -93,6 +106,26 @@ impl ActivityScanner {
         self.progress().last_completed_at.is_some()
     }
 
+    /// Whether the last completed sweep is old enough that the ledger should
+    /// be refreshed in the background. Mirrors `github::is_stale`: a ledger
+    /// that has never completed is always stale, but that case is handled
+    /// separately by callers (a cold sweep runs in the foreground's absence,
+    /// not as a "refresh").
+    pub fn is_stale(&self, now: DateTime<Utc>) -> bool {
+        let Some(completed) = self
+            .progress()
+            .last_completed_at
+            .as_deref()
+            .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+        else {
+            return true;
+        };
+        now.signed_duration_since(completed.with_timezone(&Utc))
+            .to_std()
+            .map(|elapsed| elapsed >= FRESHNESS_INTERVAL)
+            .unwrap_or(false)
+    }
+
     /// Run one sweep. `Ok(false)` means another sweep already holds the lock,
     /// which is not a failure — the caller reads whatever that one commits.
     pub fn sweep(&self) -> ArgmaxResult<bool> {
@@ -129,21 +162,20 @@ impl ActivityScanner {
         self.forget_removed_projects(&projects)?;
         self.discover_project_remotes(&projects);
 
-        let global_email = git_config_email(None);
-        let mut all_emails: BTreeSet<String> = BTreeSet::new();
-        if let Some(email) = &global_email {
-            all_emails.insert(email.clone());
-        }
+        // One runtime for the whole sweep's git fan-out — both the
+        // author-email lookups below and the `git log` reads after them. The
+        // sweep already runs on the blocking pool, so this owns a throwaway
+        // runtime rather than borrowing the app's shared workers.
+        let runtime = build_runtime()?;
 
         // Every repository's `user.email` is collected before any repository
         // is read: a commit authored under one repo's identity can be
         // reachable from another repo's refs, so the filter has to be the
-        // union, not a per-repo address.
-        for project in &projects {
-            if let Some(email) = git_config_email(Some(project.repo_path.as_str())) {
-                all_emails.insert(email);
-            }
-        }
+        // union, not a per-repo address. The lookups themselves run
+        // concurrently rather than one blocking `git config` spawn after
+        // another — the 420ms this used to cost on a 36-project machine was
+        // almost entirely queueing, not git.
+        let all_emails = runtime.block_on(collect_author_emails(&projects));
 
         if all_emails.is_empty() {
             // No configured identity means no way to tell the user's commits
@@ -161,13 +193,74 @@ impl ActivityScanner {
         let emails: Vec<String> = all_emails.into_iter().collect();
         self.store_author_emails(&emails)?;
 
-        for chunk in projects.chunks(MAX_CONCURRENT_REPOS) {
-            let parsed = read_logs(chunk, &since_iso, &emails, &allowed);
-            for (project, result) in chunk.iter().zip(parsed) {
+        self.sweep_repositories(&runtime, &projects, &since_iso, &emails, &allowed);
+
+        let connection = self.database.connection();
+        storage::set_meta(
+            &connection,
+            storage::META_LAST_COMPLETED_AT,
+            now_iso().as_str(),
+        )
+    }
+
+    /// Read and store every repository's log. At most `MAX_CONCURRENT_REPOS`
+    /// `git log` subprocesses run at once; the next repository starts as soon
+    /// as any one finishes, rather than the old fixed-chunk wait where one
+    /// slow repo stalled the three others sharing its chunk.
+    fn sweep_repositories(
+        &self,
+        runtime: &tokio::runtime::Runtime,
+        projects: &[projects::ProjectSummary],
+        since_iso: &str,
+        emails: &[String],
+        allowed: &HashSet<String>,
+    ) {
+        if emails.is_empty() {
+            // No identity to filter on. Every project's window is still
+            // cleared rather than left showing commits from before the
+            // identity went missing — the same distrust the warning above
+            // expresses.
+            for project in projects {
+                if let Err(error) = self.commit_project(project.id.as_str(), since_iso, Vec::new())
+                {
+                    tracing::warn!(
+                        target: "activity",
+                        project = %project.id,
+                        error = %error,
+                        "activity sweep could not store a project's commits"
+                    );
+                }
+                self.progress
+                    .lock_or_recover("activity scan progress")
+                    .repos_done += 1;
+            }
+            return;
+        }
+
+        let args = log_args(since_iso, emails);
+        runtime.block_on(async {
+            let args = &args;
+            let mut results = stream::iter(projects.iter().map(|project| async move {
+                let outcome = crate::git::exec::run_git_text_with_options(
+                    project.repo_path.as_str(),
+                    args,
+                    crate::git::exec::GitExecOptions {
+                        timeout: LOG_TIMEOUT,
+                        stdout_cap_bytes: LOG_STDOUT_CAP_BYTES,
+                        env: Vec::new(),
+                    },
+                )
+                .await
+                .map(|stdout| git_log::parse_log(&stdout, allowed));
+                (project, outcome)
+            }))
+            .buffer_unordered(MAX_CONCURRENT_REPOS);
+
+            while let Some((project, result)) = results.next().await {
                 match result {
                     Ok(commits) => {
                         if let Err(error) =
-                            self.commit_project(project.id.as_str(), &since_iso, commits)
+                            self.commit_project(project.id.as_str(), since_iso, commits)
                         {
                             tracing::warn!(
                                 target: "activity",
@@ -190,17 +283,11 @@ impl ActivityScanner {
                         );
                     }
                 }
-                let mut progress = self.progress.lock_or_recover("activity scan progress");
-                progress.repos_done += 1;
+                self.progress
+                    .lock_or_recover("activity scan progress")
+                    .repos_done += 1;
             }
-        }
-
-        let connection = self.database.connection();
-        storage::set_meta(
-            &connection,
-            storage::META_LAST_COMPLETED_AT,
-            now_iso().as_str(),
-        )
+        });
     }
 
     fn commit_project(
@@ -283,52 +370,61 @@ pub fn spawn_sweep(scanner: &Arc<ActivityScanner>) {
     });
 }
 
-/// Run `git log` for a chunk of projects concurrently. The sweep itself is
-/// already on the blocking pool, so it owns a throwaway current-thread runtime
-/// for the fan-out rather than borrowing the app's shared workers.
-fn read_logs(
-    projects: &[projects::ProjectSummary],
-    since_iso: &str,
-    emails: &[String],
-    allowed: &HashSet<String>,
-) -> Vec<ArgmaxResult<Vec<git_log::ParsedCommit>>> {
-    if emails.is_empty() {
-        return projects.iter().map(|_| Ok(Vec::new())).collect();
-    }
-    let runtime = match tokio::runtime::Builder::new_current_thread()
+/// One throwaway current-thread runtime for the whole sweep's git fan-out —
+/// the author-email lookups and the `git log` reads both drive through it.
+/// The sweep already runs on the blocking pool, so this borrows none of the
+/// app's shared workers.
+fn build_runtime() -> ArgmaxResult<tokio::runtime::Runtime> {
+    tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-    {
-        Ok(runtime) => runtime,
-        Err(error) => {
-            let message = format!("failed to start a runtime for git: {error}");
-            return projects
-                .iter()
-                .map(|_| Err(ArgmaxError::service("GIT_RUNTIME_UNAVAILABLE", &message)))
-                .collect();
-        }
-    };
-    let args = log_args(since_iso, emails);
-    runtime.block_on(async {
-        let futures = projects.iter().map(|project| {
-            let args = args.clone();
-            let path = project.repo_path.clone();
-            async move {
-                let stdout = crate::git::exec::run_git_text_with_options(
-                    &path,
-                    &args,
-                    crate::git::exec::GitExecOptions {
-                        timeout: LOG_TIMEOUT,
-                        stdout_cap_bytes: LOG_STDOUT_CAP_BYTES,
-                        env: Vec::new(),
-                    },
-                )
-                .await?;
-                Ok(git_log::parse_log(&stdout, allowed))
-            }
-        });
-        futures_util::future::join_all(futures).await
-    })
+        .map_err(|error| {
+            ArgmaxError::service(
+                "GIT_RUNTIME_UNAVAILABLE",
+                format!("failed to start a runtime for git: {error}"),
+            )
+        })
+}
+
+/// Every repository's `user.email`, plus the global one, resolved
+/// concurrently through the shared async git runner rather than one blocking
+/// `std::process::Command` spawn after another. A missing value, a path that
+/// is not a checkout, or a git that will not run all mean "no identity here"
+/// for that one lookup — the sweep says so once, collectively, rather than
+/// failing.
+async fn collect_author_emails(projects: &[projects::ProjectSummary]) -> BTreeSet<String> {
+    let home = crate::sync::home_dir().to_string_lossy().into_owned();
+    let lookups = std::iter::once((home, true)).chain(
+        projects
+            .iter()
+            .map(|project| (project.repo_path.clone(), false)),
+    );
+    let futures =
+        lookups.map(|(anchor, global)| async move { git_config_email(&anchor, global).await });
+    futures_util::future::join_all(futures)
+        .await
+        .into_iter()
+        .flatten()
+        .collect()
+}
+
+/// `git config --get user.email`, in a repository or globally. `anchor` is
+/// always a real path — `--global` ignores it, but `-C` still needs
+/// somewhere to point.
+async fn git_config_email(anchor: &str, global: bool) -> Option<String> {
+    let mut args = vec![
+        "config".to_string(),
+        "--get".to_string(),
+        "user.email".to_string(),
+    ];
+    if global {
+        args.push("--global".to_string());
+    }
+    let output = crate::git::exec::run_git_text(anchor, &args, CONFIG_TIMEOUT)
+        .await
+        .ok()?;
+    let email = output.trim().to_string();
+    (!email.is_empty()).then_some(email)
 }
 
 fn log_args(since_iso: &str, emails: &[String]) -> Vec<String> {
@@ -349,26 +445,6 @@ fn log_args(since_iso: &str, emails: &[String]) -> Vec<String> {
         args.push(format!("--author={email}"));
     }
     args
-}
-
-/// `git config user.email`, in a repository or globally. A missing value, a
-/// path that is not a checkout, or a git that will not run all mean "no
-/// identity here" — the sweep says so once rather than failing.
-fn git_config_email(repo_path: Option<&str>) -> Option<String> {
-    let mut command = std::process::Command::new("git");
-    if let Some(path) = repo_path {
-        command.arg("-C").arg(path);
-    }
-    command.args(["config", "--get", "user.email"]);
-    if repo_path.is_none() {
-        command.arg("--global");
-    }
-    let output = command.output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let email = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    (!email.is_empty()).then_some(email)
 }
 
 /// Normalize git's `%cI` / `%aI` to RFC 3339 UTC. The stored strings are
@@ -405,6 +481,35 @@ pub fn to_utc_iso(value: DateTime<Utc>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn scanner_with_last_completed_at(value: Option<&str>) -> ActivityScanner {
+        let database = Arc::new(Database::open_in_memory().expect("in-memory database"));
+        if let Some(value) = value {
+            let connection = database.connection();
+            storage::set_meta(&connection, storage::META_LAST_COMPLETED_AT, value)
+                .expect("seed last_completed_at");
+        }
+        ActivityScanner::new(database)
+    }
+
+    #[test]
+    fn a_ledger_that_has_never_completed_is_always_stale() {
+        let scanner = scanner_with_last_completed_at(None);
+        assert!(scanner.is_stale(Utc::now()));
+    }
+
+    #[test]
+    fn a_completed_sweep_is_stale_only_past_the_freshness_interval() {
+        let now: DateTime<Utc> = "2026-09-16T12:00:00.000Z".parse().expect("now");
+
+        let fresh =
+            scanner_with_last_completed_at(Some(&to_utc_iso(now - chrono::Duration::seconds(30))));
+        assert!(!fresh.is_stale(now));
+
+        let stale =
+            scanner_with_last_completed_at(Some(&to_utc_iso(now - chrono::Duration::seconds(90))));
+        assert!(stale.is_stale(now));
+    }
 
     #[test]
     fn log_args_filter_by_every_email_as_a_fixed_string() {

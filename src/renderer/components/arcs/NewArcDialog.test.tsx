@@ -75,12 +75,20 @@ describe("NewArcDialog", () => {
     expect(screen.queryByRole("dialog", { name: "New arc" })).not.toBeInTheDocument();
   });
 
-  it("blocks submit while the name is blank", () => {
+  it("blocks submit until it has a name and either a brief or a folder", () => {
     render(<NewArcDialog open onClose={() => {}} projects={PROJECTS} />);
-    expect(screen.getByRole("button", { name: "Create arc" })).toBeDisabled();
+    const submit = screen.getByRole("button", { name: "Create arc" });
+    expect(submit).toBeDisabled();
 
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Pricing rollout" } });
-    expect(screen.getByRole("button", { name: "Create arc" })).not.toBeDisabled();
+    expect(submit).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Folder"), { target: { value: "/tmp/hq/missions/pricing" } });
+    expect(submit).not.toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Folder"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Brief"), { target: { value: "Ship the new tiers." } });
+    expect(submit).not.toBeDisabled();
   });
 
   it("creates the arc, launches its coordinator, and opens the Arc page", async () => {
@@ -91,12 +99,13 @@ describe("NewArcDialog", () => {
     render(<NewArcDialog open onClose={onClose} projects={PROJECTS} />);
 
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Pricing rollout" } });
+    fireEvent.change(screen.getByLabelText("Brief"), { target: { value: "Ship the new tiers." } });
     fireEvent.click(screen.getByRole("button", { name: "Create arc" }));
 
     await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
     expect(createMock).toHaveBeenCalledWith({
       name: "Pricing rollout",
-      brief: "",
+      brief: "Ship the new tiers.",
       homeProjectId: "project-1",
       dir: null
     });
@@ -118,6 +127,7 @@ describe("NewArcDialog", () => {
     render(<NewArcDialog open onClose={onClose} projects={PROJECTS} />);
 
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Pricing rollout" } });
+    fireEvent.change(screen.getByLabelText("Brief"), { target: { value: "Ship the new tiers." } });
     fireEvent.click(screen.getByRole("button", { name: "Create arc" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("ARC_DIR_INVALID");
@@ -134,6 +144,7 @@ describe("NewArcDialog", () => {
     render(<NewArcDialog open onClose={onClose} projects={PROJECTS} />);
 
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Pricing rollout" } });
+    fireEvent.change(screen.getByLabelText("Brief"), { target: { value: "Ship the new tiers." } });
     fireEvent.click(screen.getByRole("button", { name: "Create arc" }));
 
     await waitFor(() => expect(launchCoordinatorMock).toHaveBeenCalledTimes(1));

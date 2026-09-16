@@ -1777,7 +1777,7 @@ export function Sidebar({
       </div>
       <div className="sidebar-resizer" aria-hidden="true" onMouseDown={onResizeMouseDown} />
     </aside>
-    <NewArcDialog open={newArcDialogOpen} onClose={() => setNewArcDialogOpen(false)} projects={snapshot.projects} />
+    <NewArcDialog open={newArcDialogOpen} onClose={() => setNewArcDialogOpen(false)} projects={orderedProjects} />
     </>
   );
 }

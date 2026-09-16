@@ -1,6 +1,16 @@
 import { Check, Copy, FolderOpen, Play, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type JSX, type ReactNode } from "react";
-import type { ArcRecord, ArcState, DashboardSnapshot, ProjectSummary, Routine, SessionSummary } from "../../../shared/types.js";
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
+import type {
+  ArcDetail,
+  ArcMemberSummary,
+  ArcRecord,
+  ArcState,
+  DashboardSnapshot,
+  ProjectSummary,
+  ProviderId,
+  Routine,
+  SessionSummary
+} from "../../../shared/types.js";
 import { PROVIDER_DISPLAY_NAMES } from "../../../shared/providerModels.js";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard.js";
 import { readStoredLaunchModel } from "../../lib/launchModelPreference.js";
@@ -8,13 +18,6 @@ import { describeSchedule } from "../../lib/schedule.js";
 import { factoryLaunchModel, type ModelPickerSelection } from "../../lib/models.js";
 import { showSchedulePage } from "../../state/overlays.js";
 import { showErrorToast } from "../../state/toast.js";
-
-// Product-specified display denominator for "launched recently" — not a
-// backend-enforced cap on arc member launches (none is exposed on ArcRecord
-// or ArcSummary yet). Flagged for the orchestrator to reconcile against the
-// Rust coordinator-launch caps landing in a parallel worktree.
-const ARC_RECENT_LAUNCH_WINDOW_HOURS = 24;
-const ARC_RECENT_LAUNCH_DISPLAY_LIMIT = 40;
 
 const ARC_STATE_LABEL: Record<ArcState, string> = {
   active: "Active",
@@ -37,25 +40,72 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+function isProviderId(value: string): value is ProviderId {
+  return Object.prototype.hasOwnProperty.call(PROVIDER_DISPLAY_NAMES, value);
+}
+
 /** Same provider/model as the arc's previous coordinator when one is known,
  *  otherwise the user's ordinary launch default. */
-function resolveCoordinatorModel(previous: SessionSummary | null): ModelPickerSelection {
-  if (previous) {
+function resolveCoordinatorModel(
+  previous: ArcMemberSummary | null,
+  previousSession: SessionSummary | null
+): ModelPickerSelection {
+  if (previousSession) {
     return {
-      provider: previous.provider,
-      label: previous.modelLabel,
-      modelId: previous.modelId,
-      ...(previous.reasoningEffort ? { reasoningEffort: previous.reasoningEffort } : {})
+      provider: previousSession.provider,
+      label: previousSession.modelLabel,
+      modelId: previousSession.modelId,
+      ...(previousSession.reasoningEffort ? { reasoningEffort: previousSession.reasoningEffort } : {})
     };
+  }
+  if (previous && isProviderId(previous.provider) && previous.modelLabel && previous.modelId) {
+    return { provider: previous.provider, label: previous.modelLabel, modelId: previous.modelId };
   }
   return readStoredLaunchModel() ?? factoryLaunchModel();
 }
 
-interface ArcMemberRow {
-  session: SessionSummary;
-  workspaceLabel: string;
-  projectName: string | null;
-  prState: string | null;
+/** Browser preview and the demo snapshot carry no bridge, so the page renders
+ *  from the dashboard summary and the sessions it already holds. */
+function demoDetail(snapshot: DashboardSnapshot, arcId: string): ArcDetail | null {
+  const summary = snapshot.arcs?.find((candidate) => candidate.id === arcId);
+  if (!summary) return null;
+  const members = snapshot.sessions
+    .filter((session) => session.arcId === arcId)
+    .map((session): ArcMemberSummary => {
+      const workspace = snapshot.workspaces.find((candidate) => candidate.id === session.workspaceId);
+      return {
+        sessionId: session.id,
+        taskLabel: workspace?.taskLabel ?? "",
+        projectId: workspace?.projectId ?? "",
+        projectName: snapshot.projects.find((project) => project.id === workspace?.projectId)?.name ?? "",
+        workspaceId: session.workspaceId,
+        state: session.state,
+        provider: session.provider,
+        modelLabel: session.modelLabel,
+        modelId: session.modelId,
+        startedAt: session.startedAt,
+        isCoordinator: session.id === summary.coordinatorSessionId,
+        prNumber: workspace?.prNumber ?? null,
+        prState: workspace?.prState ?? null
+      };
+    });
+  return {
+    arc: {
+      id: summary.id,
+      name: summary.name,
+      brief: "",
+      state: summary.state,
+      homeProjectId: summary.homeProjectId,
+      coordinatorSessionId: summary.coordinatorSessionId,
+      dir: summary.dir,
+      createdAt: summary.updatedAt,
+      updatedAt: summary.updatedAt
+    },
+    members,
+    membersTruncated: false,
+    launchesLast24H: 0,
+    limits: { maxActiveMembers: 8, maxLaunchesPerDay: 40 }
+  };
 }
 
 export function ArcPage({
@@ -69,7 +119,8 @@ export function ArcPage({
   projects: ProjectSummary[];
   onOpenSession: (sessionId: string) => void;
 }): JSX.Element {
-  const [arc, setArc] = useState<ArcRecord | null>(null);
+  const [detail, setDetail] = useState<ArcDetail | null>(null);
+  const arc = detail?.arc ?? null;
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -87,53 +138,70 @@ export function ArcPage({
 
   const [copyFlash, copy] = useCopyToClipboard();
 
-  const loadArc = useCallback(async (): Promise<void> => {
+  // The last record the drafts were seeded from. A reload only replaces a draft
+  // the person has not touched, so a dashboard refresh never eats typing.
+  const seededArc = useRef<ArcRecord | null>(null);
+  const applyRecord = useCallback((record: ArcRecord): void => {
+    const previous = seededArc.current;
+    seededArc.current = record;
+    setBriefDraft((draft) => (previous && previous.id === record.id && draft !== previous.brief ? draft : record.brief));
+    setNameDraft((draft) => (previous && previous.id === record.id && draft !== previous.name ? draft : record.name));
+  }, []);
+
+  const applyArc = useCallback(
+    (record: ArcRecord): void => {
+      setDetail((current) => (current ? { ...current, arc: record } : current));
+      applyRecord(record);
+    },
+    [applyRecord]
+  );
+
+  const summary = snapshot.arcs?.find((candidate) => candidate.id === arcId) ?? null;
+  // What a refetch has to follow: the arc row and its membership. Session
+  // state is read live from the snapshot, so it does not need a refetch.
+  const summaryKey = summary
+    ? `${summary.updatedAt}|${summary.memberCount}|${summary.coordinatorSessionId ?? ""}|${summary.state}`
+    : "";
+
+  const snapshotRef = useRef(snapshot);
+  snapshotRef.current = snapshot;
+
+  const loadDetail = useCallback(async (): Promise<void> => {
     if (!window.argmax) {
-      // Browser preview and the demo snapshot carry no bridge at all — the
-      // summary is all there is, so render from it rather than leaving the
-      // page blank (the brief is the one field it doesn't carry).
-      const summary = snapshot.arcs?.find((candidate) => candidate.id === arcId) ?? null;
-      if (!summary) {
+      const fallback = demoDetail(snapshotRef.current, arcId);
+      if (!fallback) {
         setLoadError("This arc was not found.");
         return;
       }
-      const fallback: ArcRecord = {
-        id: summary.id,
-        name: summary.name,
-        brief: "",
-        state: summary.state,
-        homeProjectId: summary.homeProjectId,
-        coordinatorSessionId: summary.coordinatorSessionId,
-        dir: summary.dir,
-        createdAt: summary.updatedAt,
-        updatedAt: summary.updatedAt
-      };
-      setArc(fallback);
-      setNameDraft(fallback.name);
-      setBriefDraft(fallback.brief);
+      setDetail(fallback);
+      applyRecord(fallback.arc);
       setLoadError(null);
       return;
     }
     try {
-      const { arc: record } = await window.argmax.arcs.get({ id: arcId });
-      setArc(record);
-      setNameDraft(record.name);
-      setBriefDraft(record.brief);
+      const next = await window.argmax.arcs.get({ id: arcId });
+      setDetail(next);
+      applyRecord(next.arc);
       setLoadError(null);
     } catch (error) {
       setLoadError(errorMessage(error, "Could not load this arc."));
     }
-  }, [arcId, snapshot.arcs]);
+  }, [arcId, applyRecord]);
 
-  // Fresh load every time the sidebar points the page at a different arc —
-  // the summary in the dashboard snapshot carries no brief text.
+  // Clear only when the page points at a different arc. A refetch for the same
+  // arc keeps the page rendered and the drafts intact.
   useEffect(() => {
-    setArc(null);
+    seededArc.current = null;
+    setDetail(null);
     setLoadError(null);
     setActionError(null);
     setEditingName(false);
-    void loadArc();
-  }, [loadArc]);
+  }, [arcId]);
+
+  // summaryKey is not read by the load: it is what decides when to refetch.
+  useEffect(() => {
+    void loadDetail();
+  }, [loadDetail, summaryKey]);
 
   const loadTriggers = useCallback(async (): Promise<void> => {
     if (!window.argmax) return;
@@ -176,34 +244,24 @@ export function ArcPage({
     [arc, projects]
   );
 
-  const coordinatorSession = useMemo<SessionSummary | null>(
-    () =>
-      arc?.coordinatorSessionId
-        ? (snapshot.sessions.find((session) => session.id === arc.coordinatorSessionId) ?? null)
-        : null,
-    [arc, snapshot.sessions]
+  const sessionsById = useMemo(
+    () => new Map(snapshot.sessions.map((session) => [session.id, session])),
+    [snapshot.sessions]
   );
 
-  const members = useMemo<ArcMemberRow[]>(() => {
-    if (!arc) return [];
-    return snapshot.sessions
-      .filter((session) => session.arcId === arc.id && session.id !== arc.coordinatorSessionId)
-      .map((session) => {
-        const workspace = snapshot.workspaces.find((candidate) => candidate.id === session.workspaceId) ?? null;
-        return {
-          session,
-          workspaceLabel: workspace?.taskLabel.trim() || workspace?.branch || session.prompt.slice(0, 60) || "Untitled",
-          projectName: workspace ? (projects.find((candidate) => candidate.id === workspace.projectId)?.name ?? null) : null,
-          prState: workspace?.prState ?? null
-        };
-      })
-      .sort((a, b) => b.session.startedAt.localeCompare(a.session.startedAt));
-  }, [arc, snapshot.sessions, snapshot.workspaces, projects]);
+  const coordinator = useMemo<ArcMemberSummary | null>(
+    () =>
+      arc?.coordinatorSessionId
+        ? (detail?.members.find((member) => member.sessionId === arc.coordinatorSessionId) ?? null)
+        : null,
+    [arc, detail]
+  );
+  const coordinatorSession = coordinator ? (sessionsById.get(coordinator.sessionId) ?? null) : null;
 
-  const recentLaunchCount = useMemo(() => {
-    const cutoff = Date.now() - ARC_RECENT_LAUNCH_WINDOW_HOURS * 60 * 60 * 1000;
-    return members.filter(({ session }) => new Date(session.startedAt).getTime() >= cutoff).length;
-  }, [members]);
+  const members = useMemo(
+    () => (detail?.members ?? []).filter((member) => member.sessionId !== arc?.coordinatorSessionId),
+    [detail, arc]
+  );
 
   const isDone = arc?.state === "done";
 
@@ -213,14 +271,14 @@ export function ArcPage({
       setBusy(true);
       setActionError(null);
       try {
-        setArc(await window.argmax.arcs.setState({ id: arc.id, state }));
+        applyArc(await window.argmax.arcs.setState({ id: arc.id, state }));
       } catch (error) {
         setActionError(errorMessage(error, "Could not update the arc."));
       } finally {
         setBusy(false);
       }
     },
-    [arc]
+    [arc, applyArc]
   );
 
   const handleSaveName = useCallback(async (): Promise<void> => {
@@ -235,14 +293,14 @@ export function ArcPage({
     setActionError(null);
     try {
       const updated = await window.argmax.arcs.update({ id: arc.id, name: trimmed, brief: null });
-      setArc(updated);
+      applyArc(updated);
       setEditingName(false);
     } catch (error) {
       setActionError(errorMessage(error, "Could not rename the arc."));
     } finally {
       setBusy(false);
     }
-  }, [arc, nameDraft]);
+  }, [arc, nameDraft, applyArc]);
 
   const briefDirty = arc !== null && briefDraft !== arc.brief;
 
@@ -251,13 +309,13 @@ export function ArcPage({
     setBriefSaving(true);
     setBriefError(null);
     try {
-      setArc(await window.argmax.arcs.update({ id: arc.id, name: null, brief: briefDraft }));
+      applyArc(await window.argmax.arcs.update({ id: arc.id, name: null, brief: briefDraft }));
     } catch (error) {
       setBriefError(errorMessage(error, "Could not save the brief."));
     } finally {
       setBriefSaving(false);
     }
-  }, [arc, briefDraft]);
+  }, [arc, briefDraft, applyArc]);
 
   const handleLaunchCoordinator = useCallback(
     async (isNew: boolean): Promise<void> => {
@@ -270,9 +328,9 @@ export function ArcPage({
       }
       setBusy(true);
       setActionError(null);
-      const model = resolveCoordinatorModel(coordinatorSession);
+      const model = resolveCoordinatorModel(coordinator, coordinatorSession);
       try {
-        setArc(
+        applyArc(
           await window.argmax.arcs.launchCoordinator({
             arcId: arc.id,
             provider: model.provider,
@@ -287,7 +345,7 @@ export function ArcPage({
         setBusy(false);
       }
     },
-    [arc, coordinatorSession]
+    [arc, coordinator, coordinatorSession, applyArc]
   );
 
   if (loadError && !arc) {
@@ -445,16 +503,20 @@ export function ArcPage({
 
       <div className="arc-card">
         <h2 className="arc-card-title">Coordinator</h2>
-        {coordinatorSession ? (
+        {coordinator ? (
           <>
             <p className="arc-coordinator-summary">
-              {PROVIDER_DISPLAY_NAMES[coordinatorSession.provider]} · {coordinatorSession.modelLabel} ·{" "}
-              {capitalize(coordinatorSession.state)}
+              {isProviderId(coordinator.provider) ? PROVIDER_DISPLAY_NAMES[coordinator.provider] : coordinator.provider}
+              {coordinator.modelLabel ? ` · ${coordinator.modelLabel}` : ""} ·{" "}
+              {capitalize(coordinatorSession?.state ?? coordinator.state)}
             </p>
             <div className="arc-card-actions">
-              <button type="button" className="settings-button" onClick={() => onOpenSession(coordinatorSession.id)}>
-                Open chat
-              </button>
+              <MemberOpenButton
+                label="Open chat"
+                className="settings-button"
+                canOpen={coordinatorSession !== null}
+                onOpen={() => onOpenSession(coordinator.sessionId)}
+              />
               {!isDone ? (
                 <button
                   type="button"
@@ -467,6 +529,8 @@ export function ArcPage({
               ) : null}
             </div>
           </>
+        ) : arc.coordinatorSessionId ? (
+          <p className="arc-card-hint">Loading the coordinator…</p>
         ) : (
           <>
             <p className="arc-card-hint">This arc has no coordinator chat yet.</p>
@@ -488,28 +552,42 @@ export function ArcPage({
 
       <div className="arc-card">
         <h2 className="arc-card-title">Members</h2>
-        <p className="arc-card-hint">
-          Launched in the last {ARC_RECENT_LAUNCH_WINDOW_HOURS}h: {recentLaunchCount} of{" "}
-          {ARC_RECENT_LAUNCH_DISPLAY_LIMIT}
-        </p>
+        {detail ? (
+          <p className="arc-card-hint">
+            Launched in the last 24h: {detail.launchesLast24H} of {detail.limits.maxLaunchesPerDay}
+          </p>
+        ) : null}
         {members.length === 0 ? (
           <p className="arc-card-hint">No member chats yet.</p>
         ) : (
           <ul className="arc-member-list" role="list">
-            {members.map(({ session, workspaceLabel, projectName, prState }) => (
-              <li key={session.id}>
-                <button type="button" className="arc-member-row" onClick={() => onOpenSession(session.id)}>
-                  <span className="arc-member-label">{workspaceLabel}</span>
-                  <span className="arc-member-meta">
-                    {projectName ? `${projectName} · ` : ""}
-                    {capitalize(session.state)}
-                    {prState ? ` · PR ${prState}` : ""}
-                  </span>
-                </button>
-              </li>
-            ))}
+            {members.map((member) => {
+              const session = sessionsById.get(member.sessionId) ?? null;
+              return (
+                <li key={member.sessionId}>
+                  <MemberOpenButton
+                    className="arc-member-row"
+                    canOpen={session !== null}
+                    onOpen={() => onOpenSession(member.sessionId)}
+                    label={
+                      <>
+                        <span className="arc-member-label">{member.taskLabel.trim() || "Untitled"}</span>
+                        <span className="arc-member-meta">
+                          {member.projectName ? `${member.projectName} · ` : ""}
+                          {capitalize(session?.state ?? member.state)}
+                          {member.prState ? ` · PR ${member.prState}` : ""}
+                        </span>
+                      </>
+                    }
+                  />
+                </li>
+              );
+            })}
           </ul>
         )}
+        {detail?.membersTruncated ? (
+          <p className="arc-card-hint">Showing the {members.length} most recent member chats.</p>
+        ) : null}
       </div>
 
       <div className="arc-card">
@@ -564,6 +642,32 @@ export function ArcPage({
         </div>
       </div>
     </ArcPageShell>
+  );
+}
+
+/** A chat that has aged out of the sidebar's recent list cannot be opened from
+ *  here, so it says so instead of silently doing nothing. */
+function MemberOpenButton({
+  label,
+  className,
+  canOpen,
+  onOpen
+}: {
+  label: ReactNode;
+  className: string;
+  canOpen: boolean;
+  onOpen: () => void;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      className={className}
+      disabled={!canOpen}
+      title={canOpen ? undefined : "This chat is no longer in the recent chat list"}
+      onClick={onOpen}
+    >
+      {label}
+    </button>
   );
 }
 

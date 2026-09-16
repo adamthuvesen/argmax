@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
+  ArcMemberSummary,
   ArcRecord,
   ArgmaxApi,
   DashboardSnapshot,
@@ -156,6 +157,39 @@ const SNAPSHOT: DashboardSnapshot = {
   ]
 };
 
+function member(overrides: Partial<ArcMemberSummary> = {}): ArcMemberSummary {
+  return {
+    sessionId: "session-member",
+    taskLabel: "Ship the pricing page",
+    projectId: "project-1",
+    projectName: "Argmax",
+    workspaceId: "workspace-member",
+    state: "complete",
+    provider: "codex",
+    modelLabel: "GPT-5.3 Codex",
+    modelId: "gpt-5.5",
+    startedAt: "2026-05-11T09:00:00.000Z",
+    isCoordinator: false,
+    prNumber: 42,
+    prState: "OPEN",
+    ...overrides
+  };
+}
+
+const COORDINATOR_MEMBER = member({
+  sessionId: "session-coord",
+  taskLabel: "Coordinate pricing rollout",
+  workspaceId: "workspace-coord",
+  state: "running",
+  provider: "claude",
+  modelLabel: "Sonnet",
+  modelId: "sonnet",
+  startedAt: "2026-05-10T09:00:00.000Z",
+  isCoordinator: true,
+  prNumber: null,
+  prState: null
+});
+
 const arcsStub = {
   get: vi.fn<ArgmaxApi["arcs"]["get"]>(),
   list: vi.fn<ArgmaxApi["arcs"]["list"]>(),
@@ -215,9 +249,9 @@ beforeEach(() => {
 
   arcsStub.get.mockResolvedValue({
     arc: arcRecord(),
-    members: [],
+    members: [COORDINATOR_MEMBER, member()],
     membersTruncated: false,
-    launchesLast24H: 0,
+    launchesLast24H: 3,
     limits: { maxActiveMembers: 8, maxLaunchesPerDay: 40 }
   });
   arcsStub.update.mockImplementation((input) =>
@@ -302,6 +336,43 @@ describe("ArcPage", () => {
 
     expect(await screen.findByRole("button", { name: /Ship the pricing page/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Coordinate pricing rollout/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Launched in the last 24h: 3 of 40")).toBeInTheDocument();
+  });
+
+  it("shows a member that aged out of the recent chat list without an open action", async () => {
+    arcsStub.get.mockResolvedValue({
+      arc: arcRecord(),
+      members: [COORDINATOR_MEMBER, member(), member({ sessionId: "session-old", taskLabel: "Migrate old tiers" })],
+      membersTruncated: false,
+      launchesLast24H: 0,
+      limits: { maxActiveMembers: 8, maxLaunchesPerDay: 40 }
+    });
+    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} />);
+
+    const old = await screen.findByRole("button", { name: /Migrate old tiers/ });
+    expect(old).toBeDisabled();
+    expect(old).toHaveAttribute("title", "This chat is no longer in the recent chat list");
+    expect(screen.getByRole("button", { name: /Ship the pricing page/ })).toBeEnabled();
+  });
+
+  it("keeps an unsaved brief and stays rendered when the dashboard refreshes", async () => {
+    const { rerender } = render(
+      <ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} />
+    );
+    const textarea = await screen.findByPlaceholderText("What this arc is for, and what done looks like.");
+    fireEvent.change(textarea, { target: { value: "Half-typed brief" } });
+
+    const refreshed: DashboardSnapshot = {
+      ...SNAPSHOT,
+      arcs: (SNAPSHOT.arcs ?? []).map((arc) => ({ ...arc, memberCount: 2, updatedAt: "2026-05-12T16:00:00.000Z" }))
+    };
+    rerender(<ArcPage arcId="arc-1" snapshot={refreshed} projects={[PROJECT]} onOpenSession={vi.fn()} />);
+
+    await waitFor(() => expect(arcsStub.get).toHaveBeenCalledTimes(2));
+    expect(screen.getByPlaceholderText("What this arc is for, and what done looks like.")).toHaveValue(
+      "Half-typed brief"
+    );
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
 
   it("lists only this arc's scheduled tasks in Triggers", async () => {

@@ -69,7 +69,10 @@ export function NewArcDialog({
   if (!motion.present) return null;
 
   const trimmedName = name.trim();
-  const submitDisabled = submitting || trimmedName.length === 0 || homeProjectId.length === 0;
+  // A brief is required unless an existing folder may already carry BRIEF.md;
+  // the backend makes the final call on that folder.
+  const briefMissing = brief.trim().length === 0 && folder.trim().length === 0;
+  const submitDisabled = submitting || trimmedName.length === 0 || homeProjectId.length === 0 || briefMissing;
 
   const handleSubmit = async (): Promise<void> => {
     if (submitDisabled || !window.argmax) return;
@@ -159,9 +162,13 @@ export function NewArcDialog({
             className="sched-input sched-textarea"
             rows={4}
             value={brief}
-            placeholder="What this arc is for, and what done looks like. Optional — you can fill this in later."
+            aria-describedby="new-arc-brief-help"
+            placeholder="What this arc is for, and what done looks like."
             onChange={(event) => setBrief(event.target.value)}
           />
+          <p className="sched-help" id="new-arc-brief-help">
+            Required unless the folder below already has a BRIEF.md.
+          </p>
         </div>
 
         <div className="sched-field sched-field-inline">
@@ -214,7 +221,8 @@ export function NewArcDialog({
               onChange={(event) => setFolder(event.target.value)}
             />
             <p className="sched-help">
-              Must already exist. Left blank, Argmax creates and owns a new folder for this arc.
+              Must already exist. If it has a BRIEF.md, leave the brief above empty to use it. Left blank,
+              Argmax creates and owns a new folder for this arc.
             </p>
           </div>
         </details>

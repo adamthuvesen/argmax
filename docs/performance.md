@@ -117,6 +117,13 @@ path fails loudly instead of silently taking the wrong lock. In-memory databases
 have no pool — a second handle would open a different database — and fall back
 to the writer.
 
+The pool admits at most four simultaneous readers. Extra reads wait for a
+lease instead of opening an unbounded set of SQLite page caches and competing
+scans. Settings → Advanced → Performance reports current and peak readers,
+opened connections, failures, and cumulative and longest waits. The cap covers
+the webview, remote bridge, and a background read without serializing normal
+interactive work.
+
 ## Push Payloads
 
 `Emitter::emit` renders the payload into a JS source string and evals it; unlike
@@ -202,12 +209,13 @@ JS loops that CSS pausing cannot reach check `document.hidden` themselves:
   a hidden document skips the sweep outright rather than queueing one. A settled
   transcript of two hundred turns paints nothing and schedules no frames.
 - The chat typewriter ([StreamingMarkdown](../src/renderer/components/StreamingMarkdown.tsx),
-  32 ms tick, paced per arrival so a whole backlog drains in ~1.3 s) catches up
+  64 ms tick, paced per arrival so a whole backlog drains in ~1.3 s) catches up
   silently while hidden instead of pausing the prefix: a backgrounded live turn
   can land several finished bubbles, and holding them at character zero made
   them all type out together on return. Every revealing block shares one
   interval, started by the first and cleared with the last, so React batches
-  all of their advances into one render per tick.
+  all of their advances into one render per tick. The 64 ms cadence halves the
+  maximum React and Markdown render rate while keeping reveal throughput steady.
 - The 1.5 s open-agent poll in
   [AgentActivity](../src/renderer/components/AgentActivity.tsx) runs only for
   the Agents dock tab that is shown, and still skips ticks while the document is

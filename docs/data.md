@@ -89,6 +89,11 @@ resume keeps the child id and parent conversation id.
 
 A background sweeper deletes raw provider output older than 3 days, once a day starting 30 seconds after the database opens. Chat history reads `events`, not `raw_outputs`; raw output only backs the raw transcript fallback, the debug tail, and the legacy Cursor resume-id lookup for sessions with no stored conversation id. `system:vacuum-database` runs `VACUUM` in a background task.
 
+File-backed databases admit at most four simultaneous read-only connections.
+Additional readers wait for a returned lease, keeping SQLite page caches and
+concurrent scans bounded. Reader counts and wait timings are available in the
+Advanced performance diagnostics.
+
 Settings can preview and permanently delete chats whose last activity is older than 7 days. The confirmed cleanup rechecks activity and protects active sessions, queued follow-ups, after-turn actions, active Goals, running checks, and live terminals. It removes chat attachments and empty workspace records so the sidebar has no ghost rows, while leaving every checkout and worktree on disk.
 
 ## Subagent Trace Persistence

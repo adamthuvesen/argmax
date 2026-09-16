@@ -1555,7 +1555,7 @@ export type ConnectionSummary = { name: string; kind: ConnectionKind; scope: Con
 export type ConnectionsListInput = { provider: ProviderId; workspaceId: WorkspaceId | null }
 export type DashboardListInput = Record<string, never>
 export type DashboardListSnapshot = { projects: ProjectSummary[]; workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[]; pendingMessages: Partial<{ [key in string]: PendingMessage[] }> }
-export type DatabaseStats = { rowCounts: RowCounts; walBytes: number; walAutocheckpoint: number }
+export type DatabaseStats = { rowCounts: RowCounts; walBytes: number; walAutocheckpoint: number; readers: SqliteReaderStats }
 /**
  * In-memory-only slice of the diagnostics report, safe to poll on an
  * interval. Deliberately excludes the DB row counts (nine `COUNT(*)` scans)
@@ -2062,6 +2062,7 @@ export type SourcesDeleteInput = { projectId: ProjectId; id: NonEmptyString }
 export type SourcesListInput = { projectId: ProjectId }
 export type SourcesUpdateInput = { projectId: ProjectId; id: NonEmptyString; source: SourceInput }
 export type SqlitePragmas = { journalMode: string; foreignKeys: number; synchronous: number; busyTimeout: number; walAutocheckpoint: number }
+export type SqliteReaderStats = { maxConcurrent: number; active: number; idle: number; peakActive: number; opened: number; openFailures: number; waitCount: number; totalWaitMs: number; longestWaitMs: number }
 export type StartupPhaseRecord = { phase: string; elapsedMs: number; deltaMs: number }
 export type StreamChunk = string
 export type SyncConfig = {

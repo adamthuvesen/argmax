@@ -37,10 +37,10 @@ const ChatMathMarkdown = lazy(() =>
   }))
 );
 
-const SMOOTH_STREAM_TICK_MS = 32;
+const SMOOTH_STREAM_TICK_MS = 64;
 /** Floor of the typewriter: what a block reveals per tick once it has caught up
     with delivery (~156 characters a second). */
-const SMOOTH_STREAM_MIN_CHARS_PER_TICK = 5;
+const SMOOTH_STREAM_MIN_CHARS_PER_TICK = 10;
 const SMOOTH_STREAM_MIN_CHARS = 80;
 /** Ticks a newly arrived backlog is spread over (~1.3 s). Delivery is not
     typewriter-shaped: Claude sends ~130-character chunks every 0.7 s, Codex
@@ -53,7 +53,7 @@ const SMOOTH_STREAM_MIN_CHARS = 80;
     fourteen-second crawl. The same window finishes a block whose stream has
     ended, so the end of a turn completes the reveal rather than cutting it
     short. */
-const SMOOTH_STREAM_DRAIN_TICKS = 40;
+const SMOOTH_STREAM_DRAIN_TICKS = 20;
 /** Blocks to remember reveal progress for. Bounded so a long-running app can't
     accumulate an entry per streamed block for the rest of the process. */
 const MAX_REMEMBERED_BLOCKS = 200;

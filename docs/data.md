@@ -50,8 +50,7 @@ cached session id. See [scheduled-tasks.md](scheduled-tasks.md).
 `arcs` (v51) is a long-lived body of work that can span several registered
 projects: `id`, `name`, `brief`, `state` (`active` / `paused` / `done`,
 defaulting to `active`), `home_project_id` (`ON DELETE CASCADE`),
-`coordinator_session_id` (`ON DELETE SET NULL` — no coordinator is launched
-yet; that is a later phase), `dir`, `created_at`, `updated_at`. The same
+`coordinator_session_id` (`ON DELETE SET NULL`), `dir`, `created_at`, `updated_at`. The same
 migration adds `sessions.arc_id` (`ON DELETE SET NULL`) so a chat can be
 attached to an Arc, and an index on it.
 
@@ -90,6 +89,17 @@ member — carries `sessions.arc_id`, attached inside that same launch
 transaction rather than by a follow-up call. `sessions.launch_depth` and
 `launched_by_session_id` stay at their defaults for a coordinator (no
 launcher, depth 0), the same as any top-level chat.
+
+`arc_events` (v53, [persistence/arc_events.rs](../src-tauri/src/persistence/arc_events.rs))
+is the Arc timeline: an append-only row per thing that happened — `id`
+(deterministic, so a repeated write is `INSERT OR IGNORE`d), `arc_id`
+(`ON DELETE CASCADE`), `kind`, `occurred_at`, `session_id` and `project_id`
+(no foreign keys: a row outlives the chat), `title`, `detail`, `status`,
+`pr_number`, `pr_url`. The timeline reads newest first, keyset-paged on
+`(occurred_at, rowid)` so rows recorded in the same millisecond keep their
+insertion order. The same migration adds `arcs.notes_snapshot`, the
+`NOTES.md` content the next `notes_updated` row is diffed against at a
+coordinator's turn end. `ArcSummary.lastEventAt` is `MAX(occurred_at)`.
 
 `find_session_arc` and `arc_is_live` are the settled definition of "live":
 `active`, pointed at a coordinator session, and that coordinator's workspace

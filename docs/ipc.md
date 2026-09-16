@@ -118,7 +118,7 @@ must already exist and its `BRIEF.md`/`NOTES.md` are never overwritten, while
 an omitted `dir` gets a fresh one under the app data dir. `arc:update` takes
 `{ id, name?, brief? }` — a new brief rewrites `BRIEF.md` in place.
 `arc:set-state` takes `{ id, state }` with `state` one of `active` / `paused`
-/ `done`. All six are available over the remote bridge. Mutations call
+/ `done`. All nine are available over the remote bridge. Mutations call
 `publish_dashboard_changed`, which sets `dashboardChanged` on the next
 `dashboard:delta` so `dashboard:list`'s `arcs` summaries refresh; there is no
 focused `arc:*` push channel the way `goal:*` has one.
@@ -132,6 +132,19 @@ A previous coordinator, if any, is left running with its own `arcId` intact —
 the pointer just moves. See [agent-tools.md](agent-tools.md) for the
 preambles, membership inheritance, and the launch caps an Arc's own sessions
 run under, and [data.md](data.md) for the persisted shape.
+
+`arc:timeline` takes `{ arcId, before, limit? }` and returns
+`{ events, nextCursor }`, newest first; pass the previous page's `nextCursor`
+as `before` for the next one (default page 60, maximum 200).
+
+`arc:draft-from-session` takes `{ sessionId }` and returns `{ name, brief }`,
+both null when the one-shot helper failed. It reads the chat's transcript tail
+(16 KB) with the session provider's helper model and a 45-second budget.
+`arc:promote` takes `{ sessionId, name, brief, dir }`, returns the new
+`ArcRecord`, and refuses `ARC_SESSION_IN_ARC`, `ARC_SESSION_BUSY` (a turn is
+running), and `ARC_SESSION_ARCHIVED`. When the arc is created but the chat
+cannot be sent its notice, it fails with `ARC_PROMOTE_NOTICE_FAILED`, whose
+message starts "The arc was created"; the arc still exists.
 
 ## Session PR selection
 

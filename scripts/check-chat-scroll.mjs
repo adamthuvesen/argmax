@@ -68,6 +68,18 @@ import { useConversationScroll, useTranscriptFollow } from "/src/renderer/hooks/
 
 const h = React.createElement;
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+// The fixture moves the scroller itself, so a synthetic wheel event must not
+// scroll. WebKit still runs its default wheel scroll for an untrusted event
+// (Chromium does not), which turned the "inert" wheel at the bottom into a
+// real 40px scroll. Cancel the default up front. The listeners under test
+// still receive the event.
+function dispatchWheel(target, deltaY) {
+  const event = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY });
+  const cancel = (candidate) => { if (candidate === event) candidate.preventDefault(); };
+  window.addEventListener("wheel", cancel, { capture: true, passive: false });
+  target.dispatchEvent(event);
+  window.removeEventListener("wheel", cancel, { capture: true });
+}
 const afterPaint = () => new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
 let mountedRoot = null;
 let active = null;
@@ -152,7 +164,7 @@ function ScrollFixture({ surface, initialLiveHeight, sameTurnScenario = false, i
       },
       scrollUp: async (pixels) => {
         const scroller = api.scrollRef.current;
-        scroller.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -pixels }));
+        dispatchWheel(scroller, -pixels);
         scroller.scrollBy({ top: -pixels, behavior: "instant" });
         await nextFrame();
         return measure();
@@ -198,7 +210,7 @@ function ScrollFixture({ surface, initialLiveHeight, sameTurnScenario = false, i
       inertUpwardInput: async (kind) => {
         const scroller = api.scrollRef.current;
         if (kind === "wheel") {
-          scroller.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -40 }));
+          dispatchWheel(scroller, -40);
         } else {
           const touchEvent = (type, clientY) => {
             const event = new Event(type, { bubbles: true });
@@ -217,7 +229,7 @@ function ScrollFixture({ surface, initialLiveHeight, sameTurnScenario = false, i
       },
       scrollUpThenGrow: async (pixels, growth) => {
         const scroller = api.scrollRef.current;
-        scroller.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -pixels }));
+        dispatchWheel(scroller, -pixels);
         scroller.scrollBy({ top: -pixels, behavior: "instant" });
         setLiveHeight((height) => height + growth);
         setItemVersion((version) => version + 1);
@@ -335,7 +347,7 @@ function ScrollFixture({ surface, initialLiveHeight, sameTurnScenario = false, i
       },
       nestedScrollThenGrow: async (nestedPixels, growth) => {
         const nested = api.contentRef.current.querySelector(".nested-scroll");
-        nested.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: nestedPixels }));
+        dispatchWheel(nested, nestedPixels);
         nested.scrollBy({ top: nestedPixels, behavior: "instant" });
         setNestedHeight((height) => height + growth);
         await nextFrame();

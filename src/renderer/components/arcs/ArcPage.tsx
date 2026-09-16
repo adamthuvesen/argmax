@@ -103,7 +103,7 @@ function demoDetail(snapshot: DashboardSnapshot, arcId: string): ArcDetail | nul
     },
     members,
     membersTruncated: false,
-    launchesLast24H: 0,
+    launchesLast24h: 0,
     limits: { maxActiveMembers: 8, maxLaunchesPerDay: 40 }
   };
 }
@@ -554,7 +554,7 @@ export function ArcPage({
         <h2 className="arc-card-title">Members</h2>
         {detail ? (
           <p className="arc-card-hint">
-            Launched in the last 24h: {detail.launchesLast24H} of {detail.limits.maxLaunchesPerDay}
+            Launched in the last 24h: {detail.launchesLast24h} of {detail.limits.maxLaunchesPerDay}
           </p>
         ) : null}
         {members.length === 0 ? (

@@ -346,3 +346,8 @@
   gap: 2px;
   min-width: 0;
 }
+
+.arc-folder-row .settings-button {
+  flex: none;
+  white-space: nowrap;
+}

@@ -143,6 +143,9 @@ pub struct ArcDetail {
     pub arc: ArcRecord,
     pub members: Vec<ArcMemberSummary>,
     pub members_truncated: bool,
+    // serde's camelCase gives `launchesLast24h` while specta's gives
+    // `launchesLast24H`; naming it pins both to the wire spelling.
+    #[serde(rename = "launchesLast24h")]
     pub launches_last_24h: i64,
     pub limits: ArcLimits,
 }

@@ -1457,7 +1457,7 @@ dir: string | null }
  * renders in one round trip, matching exactly what `arc_status` already
  * tells an agent.
  */
-export type ArcDetail = { arc: ArcRecord; members: ArcMemberSummary[]; membersTruncated: boolean; launchesLast24H: number; limits: ArcLimits }
+export type ArcDetail = { arc: ArcRecord; members: ArcMemberSummary[]; membersTruncated: boolean; launchesLast24h: number; limits: ArcLimits }
 export type ArcGetInput = { id: NonEmptyString }
 export type ArcLaunchCoordinatorInput = { arcId: NonEmptyString; provider: ProviderId;
 /**

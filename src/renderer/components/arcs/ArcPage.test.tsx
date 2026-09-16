@@ -251,7 +251,7 @@ beforeEach(() => {
     arc: arcRecord(),
     members: [COORDINATOR_MEMBER, member()],
     membersTruncated: false,
-    launchesLast24H: 3,
+    launchesLast24h: 3,
     limits: { maxActiveMembers: 8, maxLaunchesPerDay: 40 }
   });
   arcsStub.update.mockImplementation((input) =>
@@ -344,7 +344,7 @@ describe("ArcPage", () => {
       arc: arcRecord(),
       members: [COORDINATOR_MEMBER, member(), member({ sessionId: "session-old", taskLabel: "Migrate old tiers" })],
       membersTruncated: false,
-      launchesLast24H: 0,
+      launchesLast24h: 0,
       limits: { maxActiveMembers: 8, maxLaunchesPerDay: 40 }
     });
     render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} />);

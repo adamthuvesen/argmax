@@ -218,6 +218,15 @@ What to expect from the dev instance:
   that ends the provider mid-turn. Build in the workspace and give the user the
   install steps.
 
+To stop it, end the `tauri dev` process and the app binary it spawned. The
+binary's command line is the bare `target/debug/argmax` (cargo runs it from
+`src-tauri`), so match on that suffix; a stale one keeps the profile's lock and
+the next launch exits with the "already running" dialog:
+
+```bash
+pkill -f 'node_modules/.bin/tauri dev'; pkill -f 'target/debug/argmax$'
+```
+
 The main checkout carries other sessions' half-finished edits, and one of
 them can break the Rust build for everyone. When that happens, run the dev
 instance from a worktree at a known commit instead, sharing the compiled

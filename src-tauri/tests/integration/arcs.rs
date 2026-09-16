@@ -216,24 +216,28 @@ async fn launch_coordinator_sets_the_pointer_arc_id_shared_checkout_and_preamble
         .clone()
         .expect("coordinator pointer set");
 
-    let connection = fixture.database.connection();
-    let session = find_session_by_id(&connection, &coordinator_id).expect("coordinator session");
-    assert_eq!(session.arc_id.as_deref(), Some(arc.id.as_str()));
-    assert_eq!(session.launched_by_session_id, None, "no launcher");
-    assert_eq!(
-        session_launch_lineage(&connection, &coordinator_id)
-            .unwrap()
-            .depth,
-        0
-    );
+    {
+        let connection = fixture.database.connection();
+        let session =
+            find_session_by_id(&connection, &coordinator_id).expect("coordinator session");
+        assert_eq!(session.arc_id.as_deref(), Some(arc.id.as_str()));
+        assert_eq!(session.launched_by_session_id, None, "no launcher");
+        assert_eq!(
+            session_launch_lineage(&connection, &coordinator_id)
+                .unwrap()
+                .depth,
+            0
+        );
 
-    let workspace = find_workspace_by_id(&connection, &session.workspace_id).expect("workspace");
-    assert!(
-        workspace.shared_workspace,
-        "shared checkout, not a worktree"
-    );
-    assert_eq!(workspace.path, fixture.repo_path);
-    assert!(workspace.task_label.contains("coordinator"));
+        let workspace =
+            find_workspace_by_id(&connection, &session.workspace_id).expect("workspace");
+        assert!(
+            workspace.shared_workspace,
+            "shared checkout, not a worktree"
+        );
+        assert_eq!(workspace.path, fixture.repo_path);
+        assert!(workspace.task_label.contains("coordinator"));
+    }
 
     wait_for_launch(&fixture.launcher, &coordinator_id).await;
     let prompt = fixture.launcher.prompt_for(&coordinator_id);
@@ -537,15 +541,18 @@ async fn a_member_launched_by_the_coordinator_inherits_arc_id_and_the_preamble_a
         .as_str()
         .unwrap_or_else(|| panic!("expected a launch, got {grandchild_response}"))
         .to_string();
-    let connection = fixture.database.connection();
-    let grandchild = find_session_by_id(&connection, &grandchild_id).expect("grandchild session");
-    assert_eq!(grandchild.arc_id.as_deref(), Some(arc.id.as_str()));
-    assert_eq!(
-        session_launch_lineage(&connection, &grandchild_id)
-            .unwrap()
-            .depth,
-        2
-    );
+    {
+        let connection = fixture.database.connection();
+        let grandchild =
+            find_session_by_id(&connection, &grandchild_id).expect("grandchild session");
+        assert_eq!(grandchild.arc_id.as_deref(), Some(arc.id.as_str()));
+        assert_eq!(
+            session_launch_lineage(&connection, &grandchild_id)
+                .unwrap()
+                .depth,
+            2
+        );
+    }
     wait_for_launch(&fixture.launcher, &grandchild_id).await;
     assert!(fixture
         .launcher

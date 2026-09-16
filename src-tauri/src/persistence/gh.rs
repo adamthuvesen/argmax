@@ -10,14 +10,15 @@ use crate::error::{ArgmaxError, ArgmaxResult};
 
 pub const SESSION_PR_EVIDENCE_PARSER_VERSION: i64 = 2;
 
+/// `(project_id, pr_number)` → `(last_seen_check_state, pr_state)`.
+pub type PersistedPrStates = HashMap<(String, i64), (String, Option<String>)>;
+
 /// Every canonical PR's check/PR state, read once at the top of a poller tick
 /// — before that tick's own refreshes upsert `gh_pull_requests` — so a
 /// transition can be detected by comparing against what was persisted before
 /// this tick started, not an in-memory ledger that a restart empties. Keyed
 /// `(project_id, pr_number)`, matching the table's primary key.
-pub fn snapshot_gh_pr_states(
-    connection: &Connection,
-) -> ArgmaxResult<HashMap<(String, i64), (String, Option<String>)>> {
+pub fn snapshot_gh_pr_states(connection: &Connection) -> ArgmaxResult<PersistedPrStates> {
     let mut statement = connection
         .prepare_cached(
             "SELECT project_id, pr_number, last_seen_check_state, pr_state FROM gh_pull_requests",

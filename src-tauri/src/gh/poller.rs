@@ -629,7 +629,7 @@ fn detect_transition(
     session_id: &str,
     latest: &GhPrRecord,
     reserved_checkouts: &mut HashSet<String>,
-    prior_pr_states: &HashMap<(String, i64), (String, Option<String>)>,
+    prior_pr_states: &crate::persistence::gh::PersistedPrStates,
 ) -> Option<Transition> {
     let association = {
         let conn = inner.database.read_connection();

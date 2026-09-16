@@ -128,10 +128,15 @@ final class PushRegistration: ObservableObject {
     /// can be revoked in iOS Settings while the app is away, and the Mac's
     /// key can appear or disappear without this phone hearing about it.
     func refresh() async {
-        if let capability = try? await client.pushCapability() {
+        // The Mac round trip and the local permission read answer two
+        // independent questions, so nothing is gained by making one wait
+        // for the other.
+        async let capability = try? client.pushCapability()
+        async let authorizationTask = authorizationStatus()
+        if let capability = await capability {
             hostConfigured = capability.configured
         }
-        let authorization = await authorizationStatus()
+        let authorization = await authorizationTask
         status = Self.resolve(
             configured: hostConfigured,
             authorization: authorization,

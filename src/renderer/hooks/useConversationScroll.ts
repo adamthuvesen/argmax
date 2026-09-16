@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import { attachSmoothWheel } from "../lib/smoothWheel.js";
 
 const BOTTOM_EPSILON_PX = 1;
 const ANCHOR_INSET_PX = 48;
@@ -524,6 +525,7 @@ export function useConversationScroll({
     };
 
     scroll.addEventListener("wheel", onWheel, { passive: true });
+    const detachSmoothWheel = attachSmoothWheel(scroll);
     scroll.addEventListener("keydown", onKeyDown);
     scroll.addEventListener("touchstart", onTouchStart, { passive: true });
     scroll.addEventListener("touchmove", onTouchMove, { passive: true });
@@ -548,6 +550,7 @@ export function useConversationScroll({
 
     return () => {
       scroll.removeEventListener("wheel", onWheel);
+      detachSmoothWheel();
       scroll.removeEventListener("keydown", onKeyDown);
       scroll.removeEventListener("touchstart", onTouchStart);
       scroll.removeEventListener("touchmove", onTouchMove);

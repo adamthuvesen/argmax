@@ -253,7 +253,9 @@ not evict the reader's logical anchor just because a bounded tail moved. The
 windows read the follow state instead of taking it as a prop, so scrolling
 away or back renders none of them. Measured 2026-09-16 on a 98-turn chat
 (dev React, headless Chrome, live data over the bridge): the first upward
-wheel notch committed about 1,500 components before, and one button after.
+wheel notch committed about 1,500 components before, and one button after. Mouse-wheel easing
+([chat-cards.md](chat-cards.md#follow-scroll)) writes `scrollTop` from JS every
+frame, so any main-thread work during a scroll now shows as a stutter.
 
 Paced markdown reveals use a numeric Unicode cursor and slice the source
 string without retaining a character array or joining each visible prefix.

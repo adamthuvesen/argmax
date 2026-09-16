@@ -118,6 +118,21 @@ every mounted turn, tool group, and bubble there (about 1,500 components on a
 read the value when they render for another reason, and on a return to
 following they render only if their mounted rows went stale.
 
+A notched mouse wheel is eased, not jumped.
+[smoothWheel.ts](../src/renderer/lib/smoothWheel.ts) runs on every scroll
+viewport the controller owns. WebKit on macOS applies a wheel event with no
+gesture phase as an instant jump, and a fast spin moves 150–600px per event.
+JS cannot see the device, so the rule comes from a real Safari log: every
+trackpad gesture opens at |deltaY| 1–2, every mouse event is at least 12px.
+The first event after a 60ms pause classifies the whole gesture. Mouse
+gestures are taken over and eased (exponential, τ 45ms). Trackpads, the Magic
+Mouse, zoom, Shift+wheel, reduced motion, and scroll edges stay native. The
+easing reads `scrollTop` each frame, so anchor corrections and a scrollbar
+drag win. The listener is non-passive, which moves wheel scrolling over the
+transcript to the main thread for trackpads too. That is why the scroll path
+stays cheap. `check-chat-scroll.mjs` covers easing up, streamed growth
+mid-ease, and easing back to the bottom.
+
 The controller follows the physical bottom until the reader moves upward.
 An upward wheel or touch gesture releases following before the browser moves
 the viewport. Scroll events record the reading position. Layout reconciliation

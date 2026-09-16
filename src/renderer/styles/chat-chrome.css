@@ -541,6 +541,18 @@
   max-height: 280px;
 }
 
+/* A menu portaled to `<body>` (`useAnchoredPopover`, fixed strategy) has left
+   its anchor behind: the `body >` scope outranks every `z-index: 30` above so
+   it clears a modal overlay (130), and the settings popover's `min-width: 100%`
+   would resolve against the viewport instead of the trigger. */
+body > .picker-popover-portaled {
+  z-index: 140;
+}
+
+body > .picker-popover-portaled.settings-picker-popover {
+  min-width: 220px;
+}
+
 /* New-session composer chips: open menu below the trigger (default .project-picker-popover is upward). */
 .composer-context .project-picker-popover {
   top: calc(100% + 6px);

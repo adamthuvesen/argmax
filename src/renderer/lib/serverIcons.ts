@@ -1,4 +1,4 @@
-import { siGithub, siLinear, siNotion, siSnowflake, siSpotify, siVercel } from "simple-icons";
+import { siDatadog, siGithub, siLinear, siNotion, siSnowflake, siSpotify, siVercel } from "simple-icons";
 import sprite from "../../../assets/fox-mascot.txt?raw";
 
 /** Sprite roles the mascot keeps apart once monochrome puts every fill on one
@@ -106,6 +106,18 @@ const LINEAR: ServerIcon = {
   layers: [
     { fill: "#08090A", path: "M1-8h22a9 9 0 0 1 9 9v22a9 9 0 0 1-9 9H1a9 9 0 0 1-9-9V1a9 9 0 0 1 9-9Z" },
     { fill: "#F7F8F8", path: siLinear.path }
+  ]
+};
+
+// Datadog's app icon is the same shape: white dog on its purple square. The
+// bare purple glyph sinks into the dark row, the badge carries it on both
+// themes. The dog is dense, so it gets less padding than Linear's mark.
+const DATADOG: ServerIcon = {
+  title: siDatadog.title,
+  viewBox: "-3 -3 30 30",
+  layers: [
+    { fill: `#${siDatadog.hex}`, path: "M4-3h16a7 7 0 0 1 7 7v16a7 7 0 0 1-7 7H4a7 7 0 0 1-7-7V4a7 7 0 0 1 7-7Z" },
+    { fill: "#FFFFFF", path: siDatadog.path }
   ]
 };
 
@@ -237,6 +249,7 @@ const SERVER_ICONS: Record<string, ServerIcon> = {
   snowflake: fromSimpleIcon(siSnowflake),
   spotify: fromSimpleIcon(siSpotify),
   linear: LINEAR,
+  datadog: DATADOG,
   github: fromSimpleIcon(siGithub),
   vercel: fromSimpleIcon(siVercel),
   hex: HEX,

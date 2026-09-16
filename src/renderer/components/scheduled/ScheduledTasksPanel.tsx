@@ -144,6 +144,7 @@ export function ScheduledTasksPanel({
 }): JSX.Element {
   const [routines, setRoutines] = useState<Routine[] | null>(null);
   const [arcs, setArcs] = useState<ArcRecord[]>([]);
+  const [arcsError, setArcsError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -175,8 +176,14 @@ export function ScheduledTasksPanel({
     if (!window.argmax?.arcs) return;
     window.argmax.arcs
       .list({})
-      .then(setArcs)
-      .catch(() => setArcs([]));
+      .then((loaded) => {
+        setArcs(loaded);
+        setArcsError(null);
+      })
+      .catch((error) => {
+        setArcs([]);
+        setArcsError(errorMessage(error, "Could not load Arcs."));
+      });
   }, []);
 
   // The scheduler fires in Rust, so "next run" goes stale on its own. Rather
@@ -370,6 +377,7 @@ export function ScheduledTasksPanel({
           setDraft={setDraft}
           projects={repositories}
           arcs={arcs}
+          arcsError={arcsError}
           modelOptions={modelOptions}
           saveError={saveError}
           busy={busy}
@@ -578,6 +586,7 @@ function ScheduledTaskEditor({
   setDraft,
   projects,
   arcs,
+  arcsError,
   modelOptions,
   saveError,
   busy,
@@ -588,6 +597,7 @@ function ScheduledTaskEditor({
   setDraft: Dispatch<SetStateAction<DraftState | null>>;
   projects: ProjectSummary[];
   arcs: ArcRecord[];
+  arcsError: string | null;
   modelOptions: ReadonlyArray<{ value: string; label: string }>;
   saveError: string | null;
   busy: boolean;
@@ -816,39 +826,47 @@ function ScheduledTaskEditor({
                 />
               </div>
             </div>
-            <div className="sched-field sched-field-inline">
-              <span className="sched-label">Agent</span>
-              <div className="sched-picker">
-                <SettingsListPicker
-                  ariaLabel="Agent"
-                  value={draft.provider}
-                  onChange={(provider) => {
-                    const known = PROVIDER_MODELS[provider].some(
-                      (model) => model.modelId === draft.modelId
-                    );
-                    patch({
-                      provider,
-                      modelId: known ? draft.modelId : PROVIDER_MODEL_DEFAULTS[provider].modelId
-                    });
-                  }}
-                  options={(Object.keys(PROVIDER_MODELS) as ProviderId[]).map((provider) => ({
-                    value: provider,
-                    label: PROVIDER_DISPLAY_NAMES[provider]
-                  }))}
-                />
-              </div>
-            </div>
-            <div className="sched-field sched-field-inline">
-              <span className="sched-label">Model</span>
-              <div className="sched-picker">
-                <SettingsListPicker
-                  ariaLabel="Model"
-                  value={draft.modelId}
-                  onChange={(modelId) => patch({ modelId })}
-                  options={modelOptions}
-                />
-              </div>
-            </div>
+            {draft.runTarget === "arc_coordinator" ? (
+              <p className="sched-help">Runs on the coordinator's own model.</p>
+            ) : (
+              <>
+                <div className="sched-field sched-field-inline">
+                  <span className="sched-label">Agent</span>
+                  <div className="sched-picker">
+                    <SettingsListPicker
+                      ariaLabel="Agent"
+                      value={draft.provider}
+                      onChange={(provider) => {
+                        const known = PROVIDER_MODELS[provider].some(
+                          (model) => model.modelId === draft.modelId
+                        );
+                        patch({
+                          provider,
+                          modelId: known
+                            ? draft.modelId
+                            : PROVIDER_MODEL_DEFAULTS[provider].modelId
+                        });
+                      }}
+                      options={(Object.keys(PROVIDER_MODELS) as ProviderId[]).map((provider) => ({
+                        value: provider,
+                        label: PROVIDER_DISPLAY_NAMES[provider]
+                      }))}
+                    />
+                  </div>
+                </div>
+                <div className="sched-field sched-field-inline">
+                  <span className="sched-label">Model</span>
+                  <div className="sched-picker">
+                    <SettingsListPicker
+                      ariaLabel="Model"
+                      value={draft.modelId}
+                      onChange={(modelId) => patch({ modelId })}
+                      options={modelOptions}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
 
             <div className="sched-field sched-field-inline">
               <span className="sched-label">Run in</span>
@@ -870,23 +888,30 @@ function ScheduledTaskEditor({
             ) : null}
             {draft.runTarget === "arc_coordinator" ? (
               <>
-                <div className="sched-field sched-field-inline">
-                  <span className="sched-label">Arc</span>
-                  <div className="sched-picker">
-                    <SettingsListPicker
-                      ariaLabel="Arc"
-                      disabled={projectArcs.length === 0}
-                      value={draft.arcId ?? ""}
-                      onChange={(arcId) => patch({ arcId: arcId || null })}
-                      options={arcOptions}
-                      placement="above"
-                    />
+                {arcsError ? (
+                  <p className="sched-alert" role="alert">
+                    {arcsError}
+                  </p>
+                ) : (
+                  <div className="sched-field sched-field-inline">
+                    <span className="sched-label">Arc</span>
+                    <div className="sched-picker">
+                      <SettingsListPicker
+                        ariaLabel="Arc"
+                        disabled={projectArcs.length === 0}
+                        value={draft.arcId ?? ""}
+                        onChange={(arcId) => patch({ arcId: arcId || null })}
+                        options={arcOptions}
+                        placement="above"
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
                 <p className="sched-help">
                   Every run sends the prompt to the Arc's coordinator chat instead of launching one
-                  of its own. Paused or done Arcs, and Arcs with no coordinator running yet, skip the
-                  occurrence rather than fail.
+                  of its own, on the coordinator's own model. A paused or done Arc skips the
+                  occurrence rather than fail; an Arc with no coordinator running yet records an
+                  error and backs off like a failed launch.
                 </p>
               </>
             ) : null}

@@ -75,8 +75,8 @@ use crate::{
         },
         projects::list_projects,
         session_messages::{
-            insert_session_message, is_message_delivered, mark_message_delivered,
-            NewSessionMessage, COMPLETION_KIND, MESSAGE_KIND,
+            delete_undelivered_session_message, insert_session_message, is_message_delivered,
+            mark_message_delivered, NewSessionMessage, COMPLETION_KIND, MESSAGE_KIND,
         },
         sessions::{
             clear_session_conversation, find_session_by_id, persist_session, record_session_arc,
@@ -2893,6 +2893,9 @@ impl ProviderSessionService {
     /// `message_id` is the caller's dedup key — a deterministic id an
     /// `INSERT OR IGNORE` makes idempotent across ticks and restarts. Returns
     /// `false` without sending anything when that id was already inserted.
+    /// Returns `Err` when the send itself failed — the insert is rolled back
+    /// first, so a caller checking whether this id's row exists sees a clean
+    /// "not delivered" rather than a row that looks successful.
     pub async fn send_system_notice(
         self: &Arc<Self>,
         message_id: String,
@@ -2953,15 +2956,32 @@ impl ProviderSessionService {
                 if let Err(error) = mark_message_delivered(&connection, &message_id) {
                     tracing::warn!(?error, "failed to mark a system notice delivered");
                 }
+                Ok(true)
             }
-            Ok(_) => {}
-            Err(error) => tracing::warn!(
-                to_session_id,
-                ?error,
-                "could not start a turn with a system notice"
-            ),
+            Ok(_) => Ok(true),
+            // A genuine send failure leaves nothing behind: an inserted-but-
+            // never-delivered row would be indistinguishable from a delivered
+            // one to a caller checking existence (the gh poller's Arc event
+            // fallback does exactly that), so roll the insert back before
+            // propagating the error.
+            Err(error) => {
+                tracing::warn!(
+                    to_session_id,
+                    ?error,
+                    "could not start a turn with a system notice"
+                );
+                let connection = self.database.connection();
+                if let Err(delete_error) =
+                    delete_undelivered_session_message(&connection, &message_id)
+                {
+                    tracing::warn!(
+                        ?delete_error,
+                        "failed to roll back an undelivered system notice"
+                    );
+                }
+                Err(error)
+            }
         }
-        Ok(true)
     }
 
     fn record_launch_failure(

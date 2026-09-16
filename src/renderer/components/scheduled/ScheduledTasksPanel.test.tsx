@@ -222,6 +222,35 @@ describe("ScheduledTasksPanel", () => {
     );
   });
 
+  it("hides the model picker for an arc_coordinator task and shows a note instead", async () => {
+    routinesStub.list.mockResolvedValue([]);
+    render(<ScheduledTasksPanel projects={[project()]} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "New task" }));
+    expect(screen.getByRole("button", { name: "Agent" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Model" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Run in" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Arc coordinator" }));
+
+    expect(screen.queryByRole("button", { name: "Agent" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Model" })).not.toBeInTheDocument();
+    expect(screen.getByText("Runs on the coordinator's own model.")).toBeInTheDocument();
+  });
+
+  it("surfaces a failed Arc list inline instead of an empty picker", async () => {
+    arcsStub.list.mockRejectedValue(new Error("arcs unavailable"));
+    routinesStub.list.mockResolvedValue([]);
+    render(<ScheduledTasksPanel projects={[project()]} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "New task" }));
+    fireEvent.click(screen.getByRole("button", { name: "Run in" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Arc coordinator" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("arcs unavailable");
+    expect(screen.queryByRole("button", { name: "Arc" })).not.toBeInTheDocument();
+  });
+
   it("blocks saving an arc_coordinator task with no arc chosen", async () => {
     arcsStub.list.mockResolvedValue([]);
     routinesStub.list.mockResolvedValue([]);

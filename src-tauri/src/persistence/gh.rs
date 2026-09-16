@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use rusqlite::{Connection, OptionalExtension, Row};
 use serde::Serialize;
 use specta::Type;
@@ -7,6 +9,32 @@ use super::time::now_iso;
 use crate::error::{ArgmaxError, ArgmaxResult};
 
 pub const SESSION_PR_EVIDENCE_PARSER_VERSION: i64 = 2;
+
+/// Every canonical PR's check/PR state, read once at the top of a poller tick
+/// — before that tick's own refreshes upsert `gh_pull_requests` — so a
+/// transition can be detected by comparing against what was persisted before
+/// this tick started, not an in-memory ledger that a restart empties. Keyed
+/// `(project_id, pr_number)`, matching the table's primary key.
+pub fn snapshot_gh_pr_states(
+    connection: &Connection,
+) -> ArgmaxResult<HashMap<(String, i64), (String, Option<String>)>> {
+    let mut statement = connection
+        .prepare_cached(
+            "SELECT project_id, pr_number, last_seen_check_state, pr_state FROM gh_pull_requests",
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                (row.get::<_, String>(0)?, row.get::<_, i64>(1)?),
+                (row.get::<_, String>(2)?, row.get::<_, Option<String>>(3)?),
+            ))
+        })
+        .map_err(sqlite_error)?
+        .collect::<Result<HashMap<_, _>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(rows)
+}
 
 /// A legacy `gh_pr` row is this session's only when the checkout is its own,
 /// the user named the PR, or the PR already existed while the session worked.

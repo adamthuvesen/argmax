@@ -1005,10 +1005,26 @@ pub fn run() {
                                     let database = Arc::clone(&arc_event_database);
                                     let providers = Arc::clone(&arc_event_providers);
                                     tauri::async_runtime::spawn(async move {
+                                        let arc_id = context.arc_id.clone();
+                                        let kind = context.kind;
                                         if let Err(error) =
                                             handle_gh_arc_event(database, providers, context).await
                                         {
-                                            tracing::warn!(?error, "failed to handle gh arc event");
+                                            // A failed send leaves no row in
+                                            // `session_messages` (see
+                                            // `send_system_notice`), so the
+                                            // poller's own next-tick
+                                            // re-evaluation falls through to
+                                            // the ordinary check-failure
+                                            // follow-up for a `ChecksFailing`
+                                            // kind — nothing else to do here
+                                            // beyond logging.
+                                            tracing::warn!(
+                                                %arc_id,
+                                                ?kind,
+                                                ?error,
+                                                "failed to handle gh arc event"
+                                            );
                                         }
                                     });
                                 });
@@ -1325,19 +1341,29 @@ async fn handle_gh_check_failure(
     )
 }
 
-/// Notifies a live Arc's coordinator that a member's PR changed state,
-/// instead of the automatic check-failure follow-up (which the poller
-/// already suppressed for this session). Delivered on the same path
-/// `session_message` and the completion notice use — `send_system_notice` —
-/// so an idle coordinator wakes with it and a busy one collects it from its
-/// inbox. `message_id` is the poller's ledger key, so a retried call (a
-/// restart mid-tick) does not resend.
+/// Notifies a live Arc's coordinator that a member's PR changed state.
+/// Delivered on the same path `session_message` and the completion notice
+/// use — `send_system_notice` — so an idle coordinator wakes with it and a
+/// busy one collects it from its inbox. `context.message_id` is the poller's
+/// own deterministic id (`gh::poller::arc_event_message_id`): stable for this
+/// exact transition across a restart, and identical for every session in the
+/// Arc observing the same PR in the same tick, so `INSERT OR IGNORE`
+/// collapses concurrent observers into one delivery.
+///
+/// For a `ChecksFailing` kind this does *not* suppress the ordinary
+/// check-failure follow-up by itself — the poller decides that at delivery
+/// time. `send_system_notice` rolls its insert back and returns `Err` when
+/// the send genuinely fails, so a failure here leaves no
+/// `session_messages` row, and the poller's own next-tick re-evaluation (see
+/// `gh::poller::detect_transition`) falls through to the ordinary follow-up
+/// because it finds nothing to suppress on. Only a successful delivery keeps
+/// it suppressed.
 async fn handle_gh_arc_event(
     database: Arc<persistence::Database>,
     providers: Arc<providers::session_service::ProviderSessionService>,
     context: gh::poller::ArcEventContext,
 ) -> error::ArgmaxResult<()> {
-    let (message_id, member_label, project_name, pr_title, pr_url) = {
+    let (member_label, project_name, pr_title, pr_url) = {
         let connection = database.connection();
         let workspace =
             persistence::workspaces::find_workspace_by_id(&connection, &context.workspace_id)?;
@@ -1345,21 +1371,7 @@ async fn handle_gh_arc_event(
         let pr = persistence::gh::list_session_prs(&connection, &context.session_id)?
             .into_iter()
             .find(|pr| pr.pr_number == context.pr_number);
-        let ledger_suffix = match context.kind {
-            gh::poller::ArcEventKind::ChecksFailing => {
-                format!("{}:checks_failing", context.head_sha)
-            }
-            gh::poller::ArcEventKind::ChecksPassing => {
-                format!("{}:checks_passing", context.head_sha)
-            }
-            gh::poller::ArcEventKind::Merged => "merged".to_string(),
-        };
-        let message_id = format!(
-            "arc:{}:pr:{}:{}",
-            context.arc_id, context.pr_number, ledger_suffix
-        );
         (
-            message_id,
             workspace.task_label,
             project.name,
             pr.as_ref().and_then(|pr| pr.title.clone()),
@@ -1387,7 +1399,7 @@ async fn handle_gh_arc_event(
     );
     providers
         .send_system_notice(
-            message_id,
+            context.message_id.clone(),
             &context.coordinator_session_id,
             context.session_id.clone(),
             member_label,

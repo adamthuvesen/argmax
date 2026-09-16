@@ -18,19 +18,21 @@ One red commit gets one follow-up per workspace. Several sessions can have work 
 
 Only verified work on the checkout’s branch can launch a follow-up. References and unverified discoveries cannot. The launch also waits for the checkout to be free: while any session sharing its path is still running, the follow-up is deferred rather than dropped, because a second agent would edit the same tree the running one is mid-turn in and the sidebar resolves only one session per workspace. A still-failing PR is therefore re-evaluated on every refresh, not only on the refresh where its state changed. A check that stays red offers no second transition to hang the retry on, so a deferred follow-up also keeps its session from backing off. Only a genuine state change publishes a `dashboard:delta`.
 
-**Suppressed for a live Arc's member.** When the observing session's `arc_id` belongs to a *live* Arc (see [data.md](data.md#arcs)), this follow-up never fires — the Arc's coordinator decides what to do next instead, via the Arc PR/CI event below. A paused or done Arc, an Arc with no coordinator, and a plain non-Arc session all keep this section's behavior exactly.
+**Suppressed for a live Arc's member, but only once its notice is delivered.** When the observing session's `arc_id` belongs to a *live* Arc (see [data.md](data.md#arcs)), a fresh transition into `failure` gives the Arc's coordinator the first chance to hear about it instead (the checks-failing event below). Suppression is decided at delivery time, not up front: `gh::poller::detect_transition` re-checks, on every later tick the PR is still failing, whether that Arc notice's `session_messages` row actually exists. If it does (delivery succeeded, or is at least still queued for the coordinator), the follow-up stays suppressed. If it does not — the send genuinely failed, or nothing was ever wired to attempt it — this section's ordinary gates apply exactly as they would with no Arc. A paused or done Arc, and an Arc with no coordinator, always keep this section's behavior exactly, from the first tick.
 
 ## Arc PR/CI Events
 
 A PR with WORK evidence — the same rule `resolve_workspace_id_for_pr_action` applies above — on a session whose Arc is live gets a message to that Arc's coordinator instead of (checks failing) or alongside (checks passing, merged) the ordinary hooks. `gh::poller::ArcEventHook` fires on three transitions, independent of the check-failure hook's own gating (busy checkout) and of `on_pr_merged`'s (the `archive_on_merge` project setting, which this ignores):
 
-- **Checks failing**: `check_state` transitions to `failure` on an `OPEN` PR.
-- **Checks passing**: `check_state` transitions to `success` from `failure` or `pending`.
-- **Merged**: `pr_state` reaches `MERGED`.
+- **Checks failing**: `check_state` transitions to `failure` on an `OPEN` PR, from anything other than `failure`.
+- **Checks passing**: `check_state` transitions to `success`, from `failure`. This is the simplest correct rule, not "from `failure` or `pending`": each kind is detected from a snapshot of `gh_pull_requests` read once at the top of the tick, before that tick's own refreshes upsert it, so a `failure` → `pending` → `success` sequence spread across separate ticks reports passing only when the poller's immediately preceding snapshot was `failure` — a `pending` tick in between suppresses it. Accept one extra notice on GitHub's `failure` → `pending` → `failure` flap (the middle tick's snapshot never becomes `pending` from the Arc event's point of view, so the second `failure` reads as a fresh transition).
+- **Merged**: `pr_state` reaches `MERGED`, from anything other than `MERGED`.
+
+Each kind fires exactly once per transition — the next tick's snapshot already shows the new state, so there's nothing left to detect a second time. A restart with an already-`failure` PR fires no notice: the snapshot is read from the persisted row, which survived the restart, not from an in-memory ledger that would have come back empty. A PR that went red while the app was closed fires once, on the first tick after relaunch.
 
 A coordinator that is itself the PR's worker still gets the message — nothing excludes `session_id == coordinator_session_id`.
 
-Delivery is `ProviderSessionService::send_system_notice`, the same path `session_message` and the completion notice use: a `session_messages` row (`kind = "message"`, `from_session_id = NULL` — there is no sending session, only the PR's member session named in the body) lands before an attempted turn, so an idle coordinator wakes with it and a busy one collects it from its inbox on its next tool call. The message is plain and short:
+Delivery is `ProviderSessionService::send_system_notice`, the same path `session_message` and the completion notice use: a `session_messages` row (`kind = "message"`, `from_session_id = NULL` — there is no sending session, only the PR's member session named in the body) lands before an attempted turn, so an idle coordinator wakes with it and a busy one collects it from its inbox on its next tool call. A genuine send failure rolls that insert back and returns `Err`, so a caller checking whether the row exists sees a clean "not delivered" rather than a row that looks successful. The message is plain and short:
 
 ```
 Arc "<name>": PR #<n> (<title>) in <project> — checks failing on <sha7>. Member session <id> (<label>). <url>
@@ -38,7 +40,7 @@ Arc "<name>": PR #<n> (<title>) in <project> — checks failing on <sha7>. Membe
 
 (`checks passing` / `merged` in place of `checks failing on <sha7>`; `merged` carries no commit.)
 
-Deduplication is two-layered, keyed `arc:<arcId>:pr:<number>:<headSha>:<kind>` (`merged` omits the sha): the poller's existing in-memory `fired_ledger` avoids re-firing the hook every tick while a PR sits in the same state, and the message's `id` is set to that same key, so `INSERT OR IGNORE` on `session_messages` makes delivery idempotent across a restart without a second table.
+Deduplication is entirely persisted, keyed `arc:<arcId>:project:<projectId>:pr:<number>:<kind>:<headSha>:<observedAt>` (`merged` omits the sha) — `project_id` is in the key because `pr_number` alone collides across two projects in the same Arc, and `observedAt` is the canonical PR row's `updated_at`, which only moves when its check/PR state actually changes, so the id is stable for one transition across ticks and identical for every session in the Arc observing the same PR in the same tick. `INSERT OR IGNORE` on `session_messages` collapses those concurrent observers into one delivery. There is no in-memory ledger for Arc events — see `gh::poller::arc_event_message_id`.
 
 **Limitation.** A member session's workspace can be archived before its PR resolves. Archiving removes it from the poller's pollable-session set (see `pollable_session_ids` above), so a PR that only that archived session observed stops being polled and never reaches its passing or merged transition. This mirrors the check-failure follow-up's own limitation on an archived workspace; nothing about Arc events widens or narrows it.
 

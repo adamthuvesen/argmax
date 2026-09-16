@@ -89,14 +89,47 @@ pub enum ArcEventKind {
 }
 
 impl ArcEventKind {
-    /// The ledger/message-id suffix. Merged carries no head_sha: a merge is a
-    /// one-time milestone, not a per-commit state like checks.
-    fn ledger_suffix(self, head_sha: &str) -> String {
+    fn tag(self) -> &'static str {
         match self {
-            Self::ChecksFailing => format!("{head_sha}:checks_failing"),
-            Self::ChecksPassing => format!("{head_sha}:checks_passing"),
-            Self::Merged => "merged".to_string(),
+            Self::ChecksFailing => "checks_failing",
+            Self::ChecksPassing => "checks_passing",
+            Self::Merged => "merged",
         }
+    }
+}
+
+/// The message's dedup id, keyed on the persisted state that produced this
+/// event rather than a wall-clock timestamp: `observed_at` is the canonical
+/// PR row's `updated_at`, which only moves when `last_seen_check_state` /
+/// `pr_state` / `head_sha` actually changes (see `upsert_canonical_pr`). That
+/// makes the id identical for every session in the same Arc observing the
+/// same PR in the same tick, so `INSERT OR IGNORE` on `session_messages`
+/// collapses concurrent observers into one delivery, and identical for the
+/// same transition across ticks, so a later tick can look this id up again
+/// (see `detect_transition`'s Arc-live check-failure fallback) without
+/// recomputing anything from an in-memory ledger. Includes `project_id`
+/// because `pr_number` alone collides across two projects in the same Arc.
+/// Merged omits `head_sha`: a merge is a one-time milestone, not a per-commit
+/// state like checks.
+fn arc_event_message_id(
+    arc_id: &str,
+    project_id: &str,
+    pr_number: i64,
+    kind: ArcEventKind,
+    head_sha: &str,
+    observed_at: &str,
+) -> String {
+    match kind {
+        ArcEventKind::Merged => {
+            format!(
+                "arc:{arc_id}:project:{project_id}:pr:{pr_number}:{}:{observed_at}",
+                kind.tag()
+            )
+        }
+        ArcEventKind::ChecksFailing | ArcEventKind::ChecksPassing => format!(
+            "arc:{arc_id}:project:{project_id}:pr:{pr_number}:{}:{head_sha}:{observed_at}",
+            kind.tag()
+        ),
     }
 }
 
@@ -107,8 +140,13 @@ pub struct ArcEventContext {
     pub coordinator_session_id: String,
     pub session_id: String,
     pub workspace_id: String,
+    pub project_id: String,
     pub pr_number: i64,
     pub head_sha: String,
+    /// Precomputed by `arc_event_message_id` so the delivery hook and the
+    /// poller's own later-tick lookup (whether this exact transition already
+    /// reached `session_messages`) always agree on the same id.
+    pub message_id: String,
     pub kind: ArcEventKind,
 }
 
@@ -190,9 +228,11 @@ struct PollerInner {
     last_state: Mutex<HashMap<(String, i64), PrState>>,
     /// Insertion-ordered ledger of the hooks we've already fired: check
     /// failures keyed `workspace:pr:head_sha`, merges keyed
-    /// `merged:workspace:pr`, Arc events keyed
-    /// `arc:arc_id:pr:pr_number:head_sha:kind` (`merged` omits the sha).
-    /// Bounded so a long-running app doesn't grow it.
+    /// `merged:workspace:pr`. Arc events are *not* kept here — they dedupe on
+    /// the persisted `gh_pull_requests` row instead (see
+    /// `arc_event_message_id`), which survives a restart the way this
+    /// in-memory ledger does not. Bounded so a long-running app doesn't grow
+    /// it.
     fired_ledger: Mutex<VecDeque<String>>,
     /// Backoff for sessions polled only because they have an open PR, keyed by
     /// session id. A missing entry means every tick. Pruned each tick to the
@@ -336,6 +376,15 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
         return Ok(());
     }
 
+    // Snapshot every canonical PR's persisted state before this tick's own
+    // refreshes upsert it. Arc event transitions compare against this rather
+    // than the in-memory `last_state` map, which a restart empties — reading
+    // after the fanout below would only ever see this tick's own write.
+    let prior_pr_states = {
+        let conn = inner.database.read_connection();
+        crate::persistence::gh::snapshot_gh_pr_states(&conn)?
+    };
+
     // Bounded-concurrency fanout — one stuck `gh` no longer holds the
     // remaining sessions hostage.
     let mut refreshed_sessions = Vec::new();
@@ -379,9 +428,13 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
         let rows = inner.service.list_for_session(&session_id)?;
         let mut settled = true;
         for pr in rows {
-            if let Some(transition) =
-                detect_transition(&inner, &session_id, &pr, &mut reserved_checkouts)
-            {
+            if let Some(transition) = detect_transition(
+                &inner,
+                &session_id,
+                &pr,
+                &mut reserved_checkouts,
+                &prior_pr_states,
+            ) {
                 settled &= !transition.publish && !transition.retry;
                 transitions.push(transition);
             }
@@ -576,6 +629,7 @@ fn detect_transition(
     session_id: &str,
     latest: &GhPrRecord,
     reserved_checkouts: &mut HashSet<String>,
+    prior_pr_states: &HashMap<(String, i64), (String, Option<String>)>,
 ) -> Option<Transition> {
     let association = {
         let conn = inner.database.read_connection();
@@ -601,10 +655,7 @@ fn detect_transition(
         url: association.url,
     };
 
-    // `prior_check_state` feeds the Arc "checks passing" event below, which
-    // needs to know what the check state transitioned *from*, not just that
-    // something changed.
-    let (changed, prior_check_state) = {
+    let changed = {
         let mut state = inner.last_state.lock_or_recover("last_state");
         // Bounded like `failure_ledger`: entries for archived workspaces and
         // closed PRs are never removed individually, so a long-running app
@@ -614,15 +665,10 @@ fn detect_transition(
             state.clear();
         }
         match state.get(&key) {
-            Some(prior) if prior == &next => (false, Some(prior.check_state.clone())),
-            Some(prior) => {
-                let prior_check_state = prior.check_state.clone();
+            Some(prior) if prior == &next => false,
+            Some(_) | None => {
                 state.insert(key, next.clone());
-                (true, Some(prior_check_state))
-            }
-            None => {
-                state.insert(key, next.clone());
-                (true, None)
+                true
             }
         }
     };
@@ -658,6 +704,16 @@ fn detect_transition(
     // fetch the row only once per (session, pr) per tick.
     let live_arc = live_arc_for_session(inner, session_id);
 
+    // The persisted state this PR was in before this tick's refresh — used
+    // both by the ordinary follow-up's Arc-live suppression just below and by
+    // the Arc event block further down. Reading it once here keeps both
+    // sites looking at the same snapshot for this (project, pr).
+    let prior_persisted_check_state = |project_id: &str| -> Option<&str> {
+        prior_pr_states
+            .get(&(project_id.to_string(), latest.pr_number))
+            .map(|(check_state, _)| check_state.as_str())
+    };
+
     if next.check_state == "failure"
         && next.pr_state.as_deref() == Some("OPEN")
         && next.refresh_error.is_none()
@@ -668,7 +724,50 @@ fn detect_transition(
         // lookup failure would dedupe the failure forever and the hook
         // would never fire on a later tick.
         match resolve_workspace_id_for_pr_action(&inner.database, session_id, latest) {
-            Ok(Some(workspace_id)) => {
+            Ok(Some((workspace_id, project_id))) => {
+                // A live Arc's member hands this to its coordinator instead —
+                // but only once delivery of that notice actually succeeds.
+                // `suppressed_by_live_arc` decides that at delivery time, not
+                // up front: a fresh transition into failure gives the Arc
+                // event (queued below) first crack at delivery this tick; a
+                // later tick re-checks whether that delivery's message row
+                // actually landed in `session_messages`, and falls through to
+                // this ordinary path when it didn't (the send failed, or
+                // nothing ever attempted it — no `on_arc_event` hook wired,
+                // say). This re-evaluates every tick a still-failing PR does,
+                // the same as the non-Arc case below it.
+                let suppressed_by_live_arc = match live_arc.as_ref() {
+                    None => false,
+                    Some(arc) => {
+                        let is_fresh_transition =
+                            prior_persisted_check_state(&project_id) != Some("failure");
+                        if is_fresh_transition && inner.on_arc_event.is_some() {
+                            true
+                        } else {
+                            let message_id = arc_event_message_id(
+                                &arc.id,
+                                &project_id,
+                                latest.pr_number,
+                                ArcEventKind::ChecksFailing,
+                                &latest.head_sha,
+                                &latest.updated_at,
+                            );
+                            let conn = inner.database.read_connection();
+                            crate::persistence::session_messages::session_message_exists(
+                                &conn,
+                                &message_id,
+                            )
+                            .unwrap_or_else(|error| {
+                                tracing::warn!(
+                                    %session_id,
+                                    ?error,
+                                    "gh poller: could not check arc delivery state; assuming delivered"
+                                );
+                                true
+                            })
+                        }
+                    }
+                };
                 // Keyed by workspace, not session: every session in a checkout
                 // sees the same branch's PR, and the follow-up we launch joins
                 // them. A per-session key fires once per observer and doubles
@@ -677,10 +776,7 @@ fn detect_transition(
                     format!("{}:{}:{}", workspace_id, latest.pr_number, latest.head_sha);
                 if !inner.ledger_has(&ledger_key)
                     && !already_launched(inner, &workspace_id, latest)
-                    // The Arc's coordinator decides what happens next, not an
-                    // automatic follow-up agent. Paused/done Arcs and
-                    // sessions with no Arc keep exactly today's behaviour.
-                    && live_arc.is_none()
+                    && !suppressed_by_live_arc
                 {
                     if !workspace_is_busy(inner, &workspace_id)
                         && reserve_checkout(inner, &workspace_id, reserved_checkouts)
@@ -709,7 +805,7 @@ fn detect_transition(
     // in, the worktree and its local branch go away with it.
     if is_merged && inner.on_pr_merged.is_some() {
         match resolve_workspace_id_for_pr_action(&inner.database, session_id, latest) {
-            Ok(Some(workspace_id)) => {
+            Ok(Some((workspace_id, _project_id))) => {
                 // Keyed by workspace and PR, not by session or head_sha: every
                 // session in the checkout sees the same merge, and a merged PR
                 // keeps reporting the same commit on every later tick.
@@ -749,71 +845,81 @@ fn detect_transition(
         }
     }
 
-    // Arc PR/CI events: checks failing, checks passing (from failing or
-    // pending), or merged, for a live Arc's member session with WORK
-    // evidence — the same rule `resolve_workspace_id_for_pr_action` already
-    // applies for the ordinary hooks above. Evaluated independently of their
-    // own gating (busy checkout, `archive_on_merge`): the coordinator decides
-    // what to do next, not the poller. A coordinator that is itself the PR's
-    // worker still gets it — nothing here excludes `session_id ==
-    // coordinator_session_id`.
+    // Arc PR/CI events: checks failing, checks passing, or merged, for a live
+    // Arc's member session with WORK evidence — the same rule
+    // `resolve_workspace_id_for_pr_action` already applies for the ordinary
+    // hooks above. Evaluated independently of their own gating (busy
+    // checkout, `archive_on_merge`): the coordinator decides what to do next,
+    // not the poller. A coordinator that is itself the PR's worker still gets
+    // it — nothing here excludes `session_id == coordinator_session_id`.
+    //
+    // Each kind fires on a persisted-state transition, not a wall-clock
+    // ledger: checks failing needs `prior != failure` (now failure); checks
+    // passing needs `prior == failure` (now success) — the simplest correct
+    // rule, not `prior in (failure, pending)`, so a failure -> pending ->
+    // success sequence spread across separate ticks reports passing only
+    // when the poller's immediately preceding snapshot was failure (see
+    // docs/gh.md); merged needs `prior != MERGED` (now MERGED). Once fired,
+    // the next tick's snapshot already shows the new state, so each kind
+    // fires exactly once per transition without any ledger bookkeeping.
     if inner.on_arc_event.is_some() {
         if let Some(arc) = live_arc.as_ref() {
-            let is_checks_failing = next.check_state == "failure"
-                && next.pr_state.as_deref() == Some("OPEN")
-                && next.refresh_error.is_none();
-            let is_checks_passing = changed
-                && next.check_state == "success"
-                && matches!(
-                    prior_check_state.as_deref(),
-                    Some("failure") | Some("pending")
-                );
-            let mut kinds = Vec::new();
-            if is_checks_failing {
-                kinds.push(ArcEventKind::ChecksFailing);
-            }
-            if is_checks_passing {
-                kinds.push(ArcEventKind::ChecksPassing);
-            }
-            if is_merged {
-                kinds.push(ArcEventKind::Merged);
-            }
-            if !kinds.is_empty() {
-                match resolve_workspace_id_for_pr_action(&inner.database, session_id, latest) {
-                    Ok(Some(workspace_id)) => {
-                        let coordinator_session_id =
-                            arc.coordinator_session_id.clone().unwrap_or_default();
-                        for kind in kinds {
-                            let ledger_key = format!(
-                                "arc:{}:pr:{}:{}",
-                                arc.id,
-                                latest.pr_number,
-                                kind.ledger_suffix(&latest.head_sha)
-                            );
-                            if inner.ledger_has(&ledger_key) {
-                                continue;
-                            }
-                            inner.ledger_add(ledger_key.clone());
-                            transition.arc_events.push(ArcEventContext {
-                                arc_id: arc.id.clone(),
-                                arc_name: arc.name.clone(),
-                                coordinator_session_id: coordinator_session_id.clone(),
-                                session_id: session_id.to_string(),
-                                workspace_id: workspace_id.clone(),
-                                pr_number: latest.pr_number,
-                                head_sha: latest.head_sha.clone(),
-                                kind,
-                            });
-                        }
+            match resolve_workspace_id_for_pr_action(&inner.database, session_id, latest) {
+                Ok(Some((workspace_id, project_id))) => {
+                    let prior = prior_pr_states.get(&(project_id.clone(), latest.pr_number));
+                    let prior_check_state = prior.map(|(state, _)| state.as_str());
+                    let prior_pr_state = prior.and_then(|(_, pr_state)| pr_state.as_deref());
+
+                    let is_checks_failing = next.check_state == "failure"
+                        && next.pr_state.as_deref() == Some("OPEN")
+                        && next.refresh_error.is_none()
+                        && prior_check_state != Some("failure");
+                    let is_checks_passing =
+                        next.check_state == "success" && prior_check_state == Some("failure");
+                    let is_merged_transition = is_merged && prior_pr_state != Some("MERGED");
+
+                    let mut kinds = Vec::new();
+                    if is_checks_failing {
+                        kinds.push(ArcEventKind::ChecksFailing);
                     }
-                    Ok(None) => {}
-                    Err(error) => {
-                        tracing::warn!(
-                            %session_id,
-                            ?error,
-                            "gh poller: could not resolve workspace for arc event; will retry next tick"
+                    if is_checks_passing {
+                        kinds.push(ArcEventKind::ChecksPassing);
+                    }
+                    if is_merged_transition {
+                        kinds.push(ArcEventKind::Merged);
+                    }
+                    let coordinator_session_id =
+                        arc.coordinator_session_id.clone().unwrap_or_default();
+                    for kind in kinds {
+                        let message_id = arc_event_message_id(
+                            &arc.id,
+                            &project_id,
+                            latest.pr_number,
+                            kind,
+                            &latest.head_sha,
+                            &latest.updated_at,
                         );
+                        transition.arc_events.push(ArcEventContext {
+                            arc_id: arc.id.clone(),
+                            arc_name: arc.name.clone(),
+                            coordinator_session_id: coordinator_session_id.clone(),
+                            session_id: session_id.to_string(),
+                            workspace_id: workspace_id.clone(),
+                            project_id: project_id.clone(),
+                            pr_number: latest.pr_number,
+                            head_sha: latest.head_sha.clone(),
+                            message_id,
+                            kind,
+                        });
                     }
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    tracing::warn!(
+                        %session_id,
+                        ?error,
+                        "gh poller: could not resolve workspace for arc event; will retry next tick"
+                    );
                 }
             }
         }
@@ -928,11 +1034,14 @@ fn workspace_is_busy(inner: &Arc<PollerInner>, workspace_id: &str) -> bool {
 
 /// Only verified work on the checkout's branch can launch an editing agent.
 /// Referencing or pinning a PR alone does not authorize automatic work on it.
+/// Returns the workspace and its project, so a caller (the Arc event block,
+/// the ordinary check-failure branch's live-Arc lookup) does not need its own
+/// separate round trip just for `project_id`.
 fn resolve_workspace_id_for_pr_action(
     database: &Arc<Database>,
     session_id: &str,
     latest: &GhPrRecord,
-) -> ArgmaxResult<Option<String>> {
+) -> ArgmaxResult<Option<(String, String)>> {
     let conn = database.connection();
     let session = crate::persistence::sessions::find_session_by_id(&conn, session_id)?;
     let workspace =
@@ -944,7 +1053,7 @@ fn resolve_workspace_id_for_pr_action(
             && (latest.pr_state.as_deref() == Some("MERGED")
                 || pr.head_ref_name.as_deref() == Some(workspace.branch.as_str()))
     }) {
-        Ok(Some(workspace.id))
+        Ok(Some((workspace.id, workspace.project_id)))
     } else {
         Ok(None)
     }
@@ -1093,6 +1202,64 @@ mod tests {
         .expect("session");
     }
 
+    /// A second project/workspace/session (`p2`/`w2`/`s2`), separate from the
+    /// primary fixture's `p1`/`w1`/`s1`. Used to prove an Arc event dedupes on
+    /// `(arc_id, project_id, pr_number, ...)` rather than `pr_number` alone —
+    /// two projects can each have their own PR #42.
+    fn fixture_second_project(database: &Arc<Database>) {
+        let conn = database.connection();
+        persist_project(
+            &conn,
+            &PersistProjectInput {
+                id: "p2".to_string(),
+                name: "fixture-2".to_string(),
+                repo_path: "/tmp/argmax-gh-poller-2".to_string(),
+                default_branch: Some("main".to_string()),
+                current_branch: "main".to_string(),
+                settings: ProjectSettings {
+                    archive_on_merge: false,
+                    worktree_location: "/tmp/argmax-gh-poller-2/.worktrees".to_string(),
+                    setup_command: String::new(),
+                    check_commands: Vec::new(),
+                },
+            },
+        )
+        .expect("second project");
+        persist_workspace(
+            &conn,
+            &PersistWorkspaceInput {
+                id: "w2".to_string(),
+                project_id: "p2".to_string(),
+                task_label: "gh-poll-2".to_string(),
+                branch: "feature/x".to_string(),
+                base_ref: "main".to_string(),
+                path: "/tmp/argmax-gh-poller-2".to_string(),
+                state: "running".to_string(),
+                shared_workspace: false,
+                kind: "git".to_string(),
+                dirty: false,
+                changed_files: 0,
+            },
+        )
+        .expect("second workspace");
+        persist_session(
+            &conn,
+            &PersistSessionInput {
+                id: "s2".to_string(),
+                workspace_id: "w2".to_string(),
+                provider: "claude".to_string(),
+                model_label: "Haiku 4.5".to_string(),
+                model_id: "claude-haiku-4.5".to_string(),
+                reasoning_effort: None,
+                permission_mode: Some("auto-approve".to_string()),
+                agent_mode: Some("auto".to_string()),
+                prompt: "test".to_string(),
+                state: SessionState::Running,
+            },
+        )
+        .expect("second session");
+    }
+
     /// The check-failure follow-up waits for the checkout to be free, so a
     /// test that expects it to fire has to settle the fixture's turn first.
     fn settle_session(database: &Arc<Database>, session_id: &str) {
@@ -1121,8 +1288,26 @@ mod tests {
         check_state: &str,
         head_ref_name: &str,
     ) -> GhPrRecord {
+        record_explicit_pr_for_session(
+            database,
+            "s1",
+            pr_number,
+            pr_state,
+            check_state,
+            head_ref_name,
+        )
+    }
+
+    fn record_explicit_pr_for_session(
+        database: &Arc<Database>,
+        session_id: &str,
+        pr_number: i64,
+        pr_state: &str,
+        check_state: &str,
+        head_ref_name: &str,
+    ) -> GhPrRecord {
         let record = GhPrRecord {
-            session_id: "s1".to_string(),
+            session_id: session_id.to_string(),
             pr_number,
             head_sha: "feedface".to_string(),
             last_seen_check_state: check_state.to_string(),
@@ -1223,9 +1408,15 @@ mod tests {
                 .with_pr_merged_hook(Arc::new(|_| {})),
         );
         assert!(
-            detect_transition(&poller.inner, "s1", &older, &mut HashSet::new())
-                .unwrap()
-                .is_failure
+            detect_transition(
+                &poller.inner,
+                "s1",
+                &older,
+                &mut HashSet::new(),
+                &HashMap::new()
+            )
+            .unwrap()
+            .is_failure
         );
         assert!(
             !workspace_prs_are_merged(&poller.inner, "w1"),
@@ -1238,12 +1429,16 @@ mod tests {
         );
         let merged = record_explicit_pr(&database, 100, "MERGED", "success", "feature/x");
         assert!(workspace_prs_are_merged(&poller.inner, "w1"));
-        assert!(
-            detect_transition(&poller.inner, "s1", &merged, &mut HashSet::new())
-                .unwrap()
-                .merged
-                .is_some()
-        );
+        assert!(detect_transition(
+            &poller.inner,
+            "s1",
+            &merged,
+            &mut HashSet::new(),
+            &HashMap::new()
+        )
+        .unwrap()
+        .merged
+        .is_some());
     }
 
     #[test]
@@ -1272,7 +1467,14 @@ mod tests {
             )
             .unwrap();
         }
-        let transition = detect_transition(&poller.inner, "s1", &reference, &mut reserved).unwrap();
+        let transition = detect_transition(
+            &poller.inner,
+            "s1",
+            &reference,
+            &mut reserved,
+            &HashMap::new(),
+        )
+        .unwrap();
         assert!(transition.publish);
         assert!(
             !transition.is_failure,
@@ -1293,9 +1495,15 @@ mod tests {
             .unwrap();
         }
         assert!(
-            detect_transition(&poller.inner, "s1", &failure, &mut reserved)
-                .unwrap()
-                .is_failure
+            detect_transition(
+                &poller.inner,
+                "s1",
+                &failure,
+                &mut reserved,
+                &HashMap::new()
+            )
+            .unwrap()
+            .is_failure
         );
         let other = record_explicit_pr(&database, 101, "OPEN", "failure", "feature/x");
         {
@@ -1311,14 +1519,14 @@ mod tests {
             .unwrap();
         }
         assert!(
-            !detect_transition(&poller.inner, "s1", &other, &mut reserved)
+            !detect_transition(&poller.inner, "s1", &other, &mut reserved, &HashMap::new())
                 .unwrap()
                 .is_failure,
             "one tick cannot schedule two agents in a checkout"
         );
         reserved.clear();
         assert!(
-            detect_transition(&poller.inner, "s1", &other, &mut reserved)
+            detect_transition(&poller.inner, "s1", &other, &mut reserved, &HashMap::new())
                 .unwrap()
                 .is_failure,
             "deferred failures remain eligible next tick"
@@ -1326,7 +1534,7 @@ mod tests {
 
         let merged = record_explicit_pr(&database, 101, "MERGED", "success", "feature/x");
         assert!(
-            detect_transition(&poller.inner, "s1", &merged, &mut reserved)
+            detect_transition(&poller.inner, "s1", &merged, &mut reserved, &HashMap::new())
                 .unwrap()
                 .merged
                 .is_none(),
@@ -1334,7 +1542,7 @@ mod tests {
         );
         record_explicit_pr(&database, 100, "MERGED", "success", "feature/x");
         assert_eq!(
-            detect_transition(&poller.inner, "s1", &merged, &mut reserved)
+            detect_transition(&poller.inner, "s1", &merged, &mut reserved, &HashMap::new())
                 .unwrap()
                 .merged,
             Some(MergedPrContext {
@@ -2263,11 +2471,44 @@ mod tests {
         (events, hook)
     }
 
+    /// Records like `arc_event_recorder`, and also inserts the
+    /// `session_messages` row `send_system_notice` would leave behind on a
+    /// successful delivery — the real hook (`handle_gh_arc_event` in lib.rs)
+    /// does this via the provider send; the poller's own later-tick
+    /// suppression check only cares that the row with this exact
+    /// `message_id` exists, so a direct insert is a faithful stand-in without
+    /// wiring a real `ProviderSessionService`.
+    fn arc_event_recorder_with_delivery(
+        database: &Arc<Database>,
+    ) -> (Arc<Mutex<Vec<ArcEventContext>>>, ArcEventHook) {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let recorded = Arc::clone(&events);
+        let database = Arc::clone(database);
+        let hook: ArcEventHook = Arc::new(move |context| {
+            let conn = database.connection();
+            crate::persistence::session_messages::insert_session_message(
+                &conn,
+                &crate::persistence::session_messages::NewSessionMessage {
+                    id: context.message_id.clone(),
+                    from_session_id: None,
+                    to_session_id: context.coordinator_session_id.clone(),
+                    body: "test notice".to_string(),
+                    kind: crate::persistence::session_messages::MESSAGE_KIND.to_string(),
+                },
+            )
+            .expect("simulate delivered arc notice");
+            recorded.lock().expect("arc events poisoned").push(context);
+        });
+        (events, hook)
+    }
+
     /// A failing member PR of a live Arc gets exactly one coordinator
-    /// message across repeated ticks, and the automatic check-failure
-    /// follow-up is suppressed entirely — the coordinator decides instead.
+    /// message across repeated ticks, and once that notice is actually
+    /// delivered, the automatic check-failure follow-up stays suppressed —
+    /// the coordinator decides instead.
     #[tokio::test]
-    async fn arc_event_fires_once_for_failing_live_arc_member_and_suppresses_follow_up() {
+    async fn arc_event_fires_once_for_failing_live_arc_member_and_suppresses_follow_up_on_successful_delivery(
+    ) {
         let (_dir, database) = open_db();
         fixture(&database);
         settle_session(&database, "s1");
@@ -2287,7 +2528,7 @@ mod tests {
         let failure_hook: CheckFailureHook = Arc::new(move |_| {
             failure_count.fetch_add(1, Ordering::SeqCst);
         });
-        let (events, arc_hook) = arc_event_recorder();
+        let (events, arc_hook) = arc_event_recorder_with_delivery(&database);
 
         let poller = GhPoller::new(
             GhPollerConfig::new(Arc::clone(&database), service)
@@ -2301,7 +2542,7 @@ mod tests {
         assert_eq!(
             failure_hits.load(Ordering::SeqCst),
             0,
-            "a live Arc's member suppresses the automatic check-failure follow-up"
+            "a live Arc's member suppresses the automatic check-failure follow-up once its notice is delivered"
         );
         let recorded = events.lock().expect("arc events poisoned");
         assert_eq!(
@@ -2314,6 +2555,179 @@ mod tests {
         assert_eq!(recorded[0].coordinator_session_id, "s-coord");
         assert_eq!(recorded[0].session_id, "s1");
         assert_eq!(recorded[0].pr_number, 42);
+    }
+
+    /// When the Arc notice's delivery never lands in `session_messages` — the
+    /// send failed, or nothing was even wired to attempt it — a later tick's
+    /// re-evaluation falls through to the ordinary check-failure follow-up,
+    /// with its normal gates (busy checkout, dedupe).
+    #[tokio::test]
+    async fn arc_event_failing_delivery_falls_through_to_check_failure_follow_up() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        settle_session(&database, "s1");
+        seed_coordinator(&database, "w-coord", "s-coord");
+        seed_arc(&database, "arc-1", "active", Some("s-coord"));
+        set_session_arc(&database, "s1", "arc-1");
+
+        let failure_payload = r#"{"number": 42, "headRefOid": "feedface", "headRefName": "feature/x", "state": "OPEN", "statusCheckRollup": [{"conclusion": "failure"}]}"#;
+        let stub = StubRunner::new(vec![
+            Ok(failure_payload.to_string()),
+            Ok(failure_payload.to_string()),
+        ]);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
+
+        let failure_hits = Arc::new(AtomicUsize::new(0));
+        let failure_count = Arc::clone(&failure_hits);
+        let failure_hook: CheckFailureHook = Arc::new(move |_| {
+            failure_count.fetch_add(1, Ordering::SeqCst);
+        });
+        // The plain recorder never inserts into `session_messages` — standing
+        // in for a delivery that failed (or was never attempted).
+        let (events, arc_hook) = arc_event_recorder();
+
+        let poller = GhPoller::new(
+            GhPollerConfig::new(Arc::clone(&database), service)
+                .with_check_failure_hook(failure_hook)
+                .with_arc_event_hook(arc_hook),
+        );
+
+        poller.tick_for_test().await.expect("first failure tick");
+        assert_eq!(
+            failure_hits.load(Ordering::SeqCst),
+            0,
+            "the fresh transition gives the Arc event first crack at delivery"
+        );
+        poller.tick_for_test().await.expect("still failing tick");
+
+        assert_eq!(
+            failure_hits.load(Ordering::SeqCst),
+            1,
+            "an undelivered Arc notice falls through to the ordinary follow-up"
+        );
+        assert_eq!(
+            events.lock().expect("arc events poisoned").len(),
+            1,
+            "the Arc event itself still only fires once for this transition"
+        );
+    }
+
+    /// `pr_number` alone is not a unique key: two projects in the same Arc
+    /// can each have their own PR #42, and each gets its own notice.
+    #[tokio::test]
+    async fn arc_event_dedupes_by_project_not_pr_number_alone() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        fixture_second_project(&database);
+        settle_session(&database, "s1");
+        settle_session(&database, "s2");
+        seed_coordinator(&database, "w-coord", "s-coord");
+        seed_arc(&database, "arc-1", "active", Some("s-coord"));
+        set_session_arc(&database, "s1", "arc-1");
+        set_session_arc(&database, "s2", "arc-1");
+
+        let failure_payload = r#"{"number": 42, "headRefOid": "feedface", "headRefName": "feature/x", "state": "OPEN", "statusCheckRollup": [{"conclusion": "failure"}]}"#;
+        let stub = StubRunner::new(vec![
+            Ok(failure_payload.to_string()),
+            Ok(failure_payload.to_string()),
+        ]);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
+        let (events, arc_hook) = arc_event_recorder();
+        let poller = GhPoller::new(
+            GhPollerConfig::new(Arc::clone(&database), service).with_arc_event_hook(arc_hook),
+        );
+
+        poller.tick_for_test().await.expect("both projects fail");
+
+        let recorded = events.lock().expect("arc events poisoned");
+        assert_eq!(
+            recorded.len(),
+            2,
+            "each project's PR #42 gets its own notice"
+        );
+        let mut sessions: Vec<_> = recorded
+            .iter()
+            .map(|event| event.session_id.clone())
+            .collect();
+        sessions.sort();
+        assert_eq!(sessions, vec!["s1", "s2"]);
+        assert_ne!(
+            recorded[0].message_id, recorded[1].message_id,
+            "the message id must include project_id to avoid colliding"
+        );
+    }
+
+    /// Failing, then passing, then failing again on the same commit sends
+    /// three notices — each is its own transition.
+    #[tokio::test]
+    async fn arc_event_fires_on_each_swing_between_failing_and_passing() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        settle_session(&database, "s1");
+        seed_coordinator(&database, "w-coord", "s-coord");
+        seed_arc(&database, "arc-1", "active", Some("s-coord"));
+        set_session_arc(&database, "s1", "arc-1");
+
+        let failure_payload = r#"{"number": 42, "headRefOid": "feedface", "headRefName": "feature/x", "state": "OPEN", "statusCheckRollup": [{"conclusion": "failure"}]}"#;
+        let passing_payload = r#"{"number": 42, "headRefOid": "feedface", "headRefName": "feature/x", "state": "OPEN", "statusCheckRollup": [{"conclusion": "success"}]}"#;
+        let stub = StubRunner::new(vec![
+            Ok(failure_payload.to_string()),
+            Ok(passing_payload.to_string()),
+            Ok(failure_payload.to_string()),
+        ]);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
+        let (events, arc_hook) = arc_event_recorder();
+        let poller = GhPoller::new(
+            GhPollerConfig::new(Arc::clone(&database), service).with_arc_event_hook(arc_hook),
+        );
+
+        poller.tick_for_test().await.expect("failing tick");
+        poller.tick_for_test().await.expect("passing tick");
+        poller.tick_for_test().await.expect("failing again tick");
+
+        let recorded = events.lock().expect("arc events poisoned");
+        let kinds: Vec<_> = recorded.iter().map(|event| event.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                ArcEventKind::ChecksFailing,
+                ArcEventKind::ChecksPassing,
+                ArcEventKind::ChecksFailing
+            ],
+            "each swing on the same sha is its own transition"
+        );
+    }
+
+    /// A fresh poller (simulating a restart) against a PR already persisted
+    /// as failing sees no transition, so an unchanged red PR gets no notice.
+    #[tokio::test]
+    async fn arc_event_skips_unchanged_red_pr_after_simulated_restart() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        settle_session(&database, "s1");
+        seed_coordinator(&database, "w-coord", "s-coord");
+        seed_arc(&database, "arc-1", "active", Some("s-coord"));
+        set_session_arc(&database, "s1", "arc-1");
+        // Already failing before the (simulated-restart) poller's first tick.
+        record_explicit_pr(&database, 42, "OPEN", "failure", "feature/x");
+
+        let failure_payload = r#"{"number": 42, "headRefOid": "feedface", "headRefName": "feature/x", "state": "OPEN", "statusCheckRollup": [{"conclusion": "failure"}]}"#;
+        let stub = StubRunner::new(vec![Ok(failure_payload.to_string())]);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
+        let (events, arc_hook) = arc_event_recorder();
+        // A fresh `GhPoller` starts with an empty in-memory `last_state`, the
+        // same as a real process restart.
+        let poller = GhPoller::new(
+            GhPollerConfig::new(Arc::clone(&database), service).with_arc_event_hook(arc_hook),
+        );
+
+        poller.tick_for_test().await.expect("unchanged red tick");
+
+        assert_eq!(
+            events.lock().expect("arc events poisoned").len(),
+            0,
+            "no transition means no notice, even from a cold in-memory state"
+        );
     }
 
     /// Checks passing after failing sends exactly one coordinator message.

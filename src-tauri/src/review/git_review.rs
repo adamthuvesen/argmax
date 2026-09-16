@@ -365,6 +365,67 @@ pub async fn list_changed_files_at_path(
     load_file_summaries(repo_path, files, comparison.diff_base).await
 }
 
+/// The change entry for one path, which decides how its diff is produced: the
+/// working-tree status, because that is what says "untracked" and calls for a
+/// synthesized diff, or — for a file already committed on the branch and clean
+/// on disk — the branch-vs-base entry, which carries `old_path` so a committed
+/// rename renders as one rename rather than an orphaned add. `None` leaves the
+/// caller with a plain `git diff <base> -- path`.
+async fn resolve_diff_file(
+    repo_path: &Path,
+    comparison: &ResolvedComparison,
+    path: &str,
+) -> ArgmaxResult<Option<ChangedFileSummary>> {
+    // Committed mode never consults the working tree: a file that is committed
+    // AND dirty would come back `??`/`M` and get diffed against the wrong side.
+    if comparison.committed_only {
+        return branch_file_entry(repo_path, comparison, path).await;
+    }
+    let status = working_tree_file_entry(repo_path, path);
+    if !comparison.branch_mode {
+        return status.await;
+    }
+    // Most files on a branch under review are committed and clean, so the
+    // branch list is wanted more often than not. Asking for both at once spends
+    // one git process on a dirty file and saves a round trip on every other.
+    let (status, branch) = tokio::join!(status, branch_file_entry(repo_path, comparison, path));
+    Ok(status?.or(branch?))
+}
+
+async fn working_tree_file_entry(
+    repo_path: &Path,
+    path: &str,
+) -> ArgmaxResult<Option<ChangedFileSummary>> {
+    let porcelain = run_git_text(
+        repo_path,
+        ["status", "--porcelain=v1", "-z", "--", path],
+        GIT_TIMEOUT,
+    )
+    .await?;
+    Ok(parse_porcelain_z(&porcelain)
+        .into_iter()
+        .find(|item| item.path == path))
+}
+
+/// One path's entry in the branch-vs-base list. Untracked files are absent by
+/// construction — `git diff` cannot see them — and need not be recovered here:
+/// an untracked file is in the working-tree status, which is consulted first.
+async fn branch_file_entry(
+    repo_path: &Path,
+    comparison: &ResolvedComparison,
+    path: &str,
+) -> ArgmaxResult<Option<ChangedFileSummary>> {
+    let name_status = run_git_text(
+        repo_path,
+        ["diff", "--name-status", "-z", comparison.diff_base.as_str()],
+        GIT_TIMEOUT,
+    )
+    .await?;
+    Ok(parse_name_status_z(&name_status)
+        .into_iter()
+        .find(|item| item.path == path))
+}
+
 pub async fn load_diff_at_path(
     repo_path: impl AsRef<Path>,
     diff_workspace_id: impl Into<String>,
@@ -388,40 +449,7 @@ pub async fn load_diff_at_path(
     let content = match file_path {
         Some(path) => {
             validate_relative_review_path(&repo_path, path)?;
-            // The working-tree status still tells us whether the file is
-            // untracked (so we synthesize) versus a regular diff target; in
-            // branch mode a committed-but-clean file simply won't appear here
-            // and falls through to a plain `git diff <base> -- path`. Committed
-            // mode skips the probe entirely: a file that is committed AND dirty
-            // would come back `??`/`M` from the working tree and get diffed
-            // against the wrong side.
-            let file = if comparison.committed_only {
-                None
-            } else {
-                let porcelain = run_git_text(
-                    &repo_path,
-                    ["status", "--porcelain=v1", "-z", "--", path],
-                    GIT_TIMEOUT,
-                )
-                .await?;
-                parse_porcelain_z(&porcelain)
-                    .into_iter()
-                    .find(|item| item.path == path)
-            };
-            // In branch mode a committed-but-clean file isn't in working-tree
-            // status. Recover its change entry from the branch-vs-base list,
-            // which carries `old_path` for committed renames, so the opened
-            // diff renders the same rename the file list shows instead of an
-            // orphaned add. A plain `git diff <base> -- path` is the fallback.
-            let file = match file {
-                Some(file) => Some(file),
-                None if comparison.branch_mode => collect_changed_files(&repo_path, &comparison)
-                    .await?
-                    .into_iter()
-                    .find(|item| item.path == path),
-                None => None,
-            };
-            match file {
+            match resolve_diff_file(&repo_path, &comparison, path).await? {
                 Some(file) => {
                     load_file_diff(&repo_path, &file, &comparison.diff_base, context_lines).await?
                 }

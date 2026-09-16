@@ -11,8 +11,10 @@
 //! object database as unreferenced objects, which `git gc` collects.
 
 use std::{
+    collections::HashMap,
     io::ErrorKind,
     path::{Path, PathBuf},
+    sync::{Mutex, OnceLock},
     time::Duration,
 };
 
@@ -215,28 +217,27 @@ struct CapturedIndex {
 /// Copy the checkout's index into a scratch index, retrying while the copy
 /// catches the real index mid-write.
 async fn capture_index(repo_path: &Path) -> ArgmaxResult<CapturedIndex> {
-    let resolved_index = run_git_text_with_options(
-        repo_path,
-        ["rev-parse", "--path-format=absolute", "--git-path", "index"],
-        snapshot_options(),
-    )
-    .await?;
-    let real_index = PathBuf::from(resolved_index.trim());
-    if real_index.as_os_str().is_empty() {
-        return Err(ArgmaxError::service(
-            "GIT_TEMP_INDEX_FAILED",
-            "git did not resolve the checkout index path",
-        ));
-    }
+    let mut real_index = resolve_index_path(repo_path).await?;
 
     let mut last_retry = None;
-    for _ in 0..INDEX_CAPTURE_ATTEMPTS {
+    for attempt in 0..INDEX_CAPTURE_ATTEMPTS {
         let scratch = scratch_index_dir()?;
         let scratch_index = scratch.path().join("index");
 
         match async_fs::copy(&real_index, &scratch_index).await {
             Ok(_) => {}
             Err(error) if error.kind() == ErrorKind::NotFound => {
+                // Either the checkout has no index yet, or the remembered path
+                // is stale — a moved checkout, a repaired worktree. Re-resolve
+                // once before believing the index is simply absent.
+                if attempt == 0 {
+                    forget_index_path(repo_path);
+                    let resolved = resolve_index_path(repo_path).await?;
+                    if resolved != real_index {
+                        real_index = resolved;
+                        continue;
+                    }
+                }
                 run_git_text_with_options(
                     repo_path,
                     ["read-tree", "--empty"],
@@ -250,6 +251,17 @@ async fn capture_index(repo_path: &Path) -> ArgmaxResult<CapturedIndex> {
                 });
             }
             Err(error) => return Err(index_io_error("copy", &real_index, error)),
+        }
+
+        // Without a split index the copy is self-contained, which is every
+        // ordinary checkout. Skipping the probe there is what keeps a capture
+        // to one file copy: the review panel makes four of them per file click.
+        if !has_shared_index(&real_index).await {
+            return Ok(CapturedIndex {
+                _scratch: scratch,
+                index: scratch_index,
+                seeded_from_real: true,
+            });
         }
 
         match finish_index_capture(repo_path, &real_index, scratch.path(), &scratch_index).await? {
@@ -271,6 +283,79 @@ async fn capture_index(repo_path: &Path) -> ArgmaxResult<CapturedIndex> {
             "could not capture a stable git index after {INDEX_CAPTURE_ATTEMPTS} attempts: {reason}"
         ),
     ))
+}
+
+/// Does this checkout keep part of its index in a shared file?
+///
+/// `git rev-parse --shared-index-path` answers this, but it is a git process
+/// and the answer is no in every checkout that has never run
+/// `update-index --split-index`. The companion always sits beside the index as
+/// `sharedindex.<sha>`, so a directory read settles it.
+async fn has_shared_index(real_index: &Path) -> bool {
+    let Some(git_dir) = real_index.parent() else {
+        return false;
+    };
+    let Ok(mut entries) = async_fs::read_dir(git_dir).await else {
+        // Unreadable means unknown, and the probe is the safe answer.
+        return true;
+    };
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        if entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with("sharedindex.")
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Where this checkout keeps its index.
+///
+/// Resolving it is a git process, and the answer holds for as long as the
+/// checkout is where it was, so each checkout is asked once. A path that stops
+/// resolving to a file is dropped and asked again — see [`capture_index`].
+async fn resolve_index_path(repo_path: &Path) -> ArgmaxResult<PathBuf> {
+    if let Some(cached) = index_paths()
+        .lock()
+        .expect("index path cache")
+        .get(repo_path)
+    {
+        return Ok(cached.clone());
+    }
+
+    let resolved = run_git_text_with_options(
+        repo_path,
+        ["rev-parse", "--path-format=absolute", "--git-path", "index"],
+        snapshot_options(),
+    )
+    .await?;
+    let real_index = PathBuf::from(resolved.trim());
+    if real_index.as_os_str().is_empty() {
+        return Err(ArgmaxError::service(
+            "GIT_TEMP_INDEX_FAILED",
+            "git did not resolve the checkout index path",
+        ));
+    }
+
+    index_paths()
+        .lock()
+        .expect("index path cache")
+        .insert(repo_path.to_path_buf(), real_index.clone());
+    Ok(real_index)
+}
+
+fn forget_index_path(repo_path: &Path) {
+    index_paths()
+        .lock()
+        .expect("index path cache")
+        .remove(repo_path);
+}
+
+fn index_paths() -> &'static Mutex<HashMap<PathBuf, PathBuf>> {
+    static INDEX_PATHS: OnceLock<Mutex<HashMap<PathBuf, PathBuf>>> = OnceLock::new();
+    INDEX_PATHS.get_or_init(Mutex::default)
 }
 
 async fn finish_index_capture(
@@ -483,6 +568,17 @@ mod tests {
             .unwrap_or_else(|error| panic!("git {args:?} failed: {error}"))
     }
 
+    /// Initialize a repository with one commit at `path`, which the caller owns.
+    async fn repo_at(path: &Path) -> PathBuf {
+        git(path, &["init", "--initial-branch=main"]).await;
+        git(path, &["config", "user.email", "test@example.com"]).await;
+        git(path, &["config", "user.name", "Test"]).await;
+        fs::write(path.join("kept.txt"), "one\ntwo\nthree\n").expect("write");
+        git(path, &["add", "-A"]).await;
+        git(path, &["commit", "-m", "init"]).await;
+        path.to_path_buf()
+    }
+
     async fn repo_with_commit() -> TempDir {
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path();
@@ -678,6 +774,50 @@ mod tests {
         .await;
 
         assert_eq!(index_tree(repo.path()).await.unwrap(), expected.trim());
+    }
+
+    /// The index path is remembered per checkout to save a git process. A linked
+    /// worktree keeps its index under the main repository, so moving that
+    /// repository moves the index while the worktree stays where it was. The
+    /// remembered path has to be asked again rather than read as "this checkout
+    /// has no index", which would fingerprint an empty tree.
+    #[tokio::test]
+    async fn a_remembered_index_path_is_re_resolved_when_the_git_dir_moves() {
+        let home = TempDir::new().expect("home dir");
+        let origin = home.path().join("origin");
+        fs::create_dir(&origin).expect("mkdir origin");
+        let repo = repo_at(&origin).await;
+        let linked = TempDir::new().expect("linked worktree dir");
+        let linked_path = linked.path().to_str().expect("utf-8 path");
+        git(&repo, &["worktree", "add", "-b", "linked", linked_path]).await;
+        fs::write(linked.path().join("kept.txt"), "linked\n").expect("write");
+        git(linked.path(), &["add", "kept.txt"]).await;
+
+        let staged = index_tree(linked.path())
+            .await
+            .expect("first capture remembers the path");
+        let remembered = PathBuf::from(
+            git(
+                linked.path(),
+                &["rev-parse", "--path-format=absolute", "--git-path", "index"],
+            )
+            .await
+            .trim(),
+        );
+
+        let moved = home.path().join("moved");
+        fs::rename(&repo, &moved).expect("move the main repository");
+        git(&moved, &["worktree", "repair", linked_path]).await;
+        git(linked.path(), &["worktree", "repair"]).await;
+        assert!(!remembered.exists(), "the remembered index path is gone");
+
+        assert_eq!(
+            index_tree(linked.path())
+                .await
+                .expect("re-resolved capture"),
+            staged,
+            "a moved git dir must be re-resolved, not read as a missing index"
+        );
     }
 
     #[tokio::test]

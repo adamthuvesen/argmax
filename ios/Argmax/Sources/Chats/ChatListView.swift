@@ -603,7 +603,7 @@ struct ChatListRow: View {
             text = text + Text(separator) + Text(row.workspace.branch).font(typeScale.font(.caption, mono: true))
         }
         return text
-            .typeMeta()
+            .typeSubtitle(ink: Theme.muted)
             .lineLimit(1)
             .truncationMode(.tail)
     }

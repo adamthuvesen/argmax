@@ -11,6 +11,7 @@ import {
 } from "../lib/toolCalls.js";
 import { codenameForTool } from "../lib/agentNames.js";
 import type { ActivityMember } from "../lib/turnChildren.js";
+import type { TranscriptFollow } from "../hooks/useConversationScroll.js";
 import { useStableTailWindow } from "../hooks/useStableTailWindow.js";
 import { ActivityStat } from "./ActivityStat.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
@@ -29,7 +30,7 @@ type ToolCallGroupBubbleProps = {
   compact?: boolean;
   defaultExpanded?: boolean;
   defaultToolsExpanded?: boolean;
-  transcriptDetached?: boolean;
+  follow?: TranscriptFollow;
   workspaceCwd?: string | null;
   agentCodenames?: Map<string, string>;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
@@ -48,7 +49,7 @@ type GroupRow = ReturnType<typeof buildGroupRows>[number];
 
 type ToolRowsWindowProps = {
   rows: readonly GroupRow[];
-  detached: boolean;
+  follow?: TranscriptFollow;
   defaultToolsExpanded?: boolean;
   singletonDisclosure: { toolId: string; expanded: boolean } | null;
   workspaceCwd?: string | null;
@@ -59,7 +60,7 @@ type ToolRowsWindowProps = {
 
 function ToolChildrenWindow({
   tools,
-  detached,
+  follow,
   defaultToolsExpanded,
   workspaceCwd,
   onOpenFile,
@@ -74,7 +75,7 @@ function ToolChildrenWindow({
   } = useStableTailWindow(tools, {
     initialCount: GROUP_DETAIL_WINDOW,
     pageSize: GROUP_DETAIL_WINDOW_STEP,
-    detached,
+    follow,
     getId: (tool) => tool.id
   });
   return (
@@ -98,7 +99,7 @@ function ToolChildrenWindow({
 
 function ToolRowsWindow({
   rows,
-  detached,
+  follow,
   defaultToolsExpanded,
   singletonDisclosure,
   workspaceCwd,
@@ -113,7 +114,7 @@ function ToolRowsWindow({
   } = useStableTailWindow(rows, {
     initialCount: GROUP_DETAIL_WINDOW,
     pageSize: GROUP_DETAIL_WINDOW_STEP,
-    detached,
+    follow,
     getId: ({ tool }) => tool.id
   });
   return (
@@ -138,7 +139,7 @@ function ToolRowsWindow({
           {children.length > 0 ? (
             <ToolChildrenWindow
               tools={children}
-              detached={detached}
+              follow={follow}
               defaultToolsExpanded={defaultToolsExpanded}
               workspaceCwd={workspaceCwd}
               onOpenFile={onOpenFile}
@@ -162,7 +163,7 @@ function ToolCallGroupBubbleInner({
   compact = false,
   defaultExpanded,
   defaultToolsExpanded,
-  transcriptDetached = false,
+  follow,
   workspaceCwd,
   agentCodenames,
   onOpenFile,
@@ -270,7 +271,7 @@ function ToolCallGroupBubbleInner({
   } = useStableTailWindow(activityMembers ?? [], {
     initialCount: GROUP_DETAIL_WINDOW,
     pageSize: GROUP_DETAIL_WINDOW_STEP,
-    detached: transcriptDetached,
+    follow,
     getId: (member) => member.id
   });
   const activityBody = hasActivityMembers
@@ -289,7 +290,7 @@ function ToolCallGroupBubbleInner({
                 <div key={member.id}>
                   <ToolRowsWindow
                     rows={buildGroupRows(member.tools)}
-                    detached={transcriptDetached}
+                    follow={follow}
                     defaultToolsExpanded={defaultToolsExpanded}
                     singletonDisclosure={singletonDisclosure}
                     workspaceCwd={workspaceCwd}
@@ -304,7 +305,7 @@ function ToolCallGroupBubbleInner({
     : (
         <ToolRowsWindow
           rows={rows}
-          detached={transcriptDetached}
+          follow={follow}
           defaultToolsExpanded={defaultToolsExpanded}
           singletonDisclosure={singletonDisclosure}
           workspaceCwd={workspaceCwd}
@@ -401,7 +402,7 @@ export const ToolCallGroupBubble = memo(ToolCallGroupBubbleInner, (prev, next) =
   if (prev.compact !== next.compact) return false;
   if (prev.defaultExpanded !== next.defaultExpanded) return false;
   if (prev.defaultToolsExpanded !== next.defaultToolsExpanded) return false;
-  if (prev.transcriptDetached !== next.transcriptDetached) return false;
+  if (prev.follow !== next.follow) return false;
   if (prev.workspaceCwd !== next.workspaceCwd) return false;
   if (prev.agentCodenames !== next.agentCodenames) return false;
   if (prev.onOpenFile !== next.onOpenFile) return false;

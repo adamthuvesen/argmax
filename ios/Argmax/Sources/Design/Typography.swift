@@ -378,6 +378,25 @@ extension View {
         typeStyle(.subheadline, ink: Theme.ink)
     }
 
+    /// Readable secondary copy that is part of the content hierarchy: screen
+    /// and row subtitles, transcript activity, and interactive-card titles.
+    /// Compact metadata stays at `typeMeta()` below. Mono steps down to
+    /// footnote because its wider glyphs read larger at the same nominal size.
+    func typeSubtitle(
+        weight: Font.Weight? = nil,
+        mono: Bool = false,
+        monospacedDigit: Bool = false,
+        ink: Color? = nil
+    ) -> some View {
+        typeStyle(
+            mono ? .footnote : .subheadline,
+            weight: weight,
+            mono: mono,
+            monospacedDigit: monospacedDigit,
+            ink: ink
+        )
+    }
+
     /// Everything around the output: labels, controls, status, counts, names,
     /// second lines. One size, so hierarchy inside it comes from weight and
     /// colour — `typeMeta()` is this size in muted ink.

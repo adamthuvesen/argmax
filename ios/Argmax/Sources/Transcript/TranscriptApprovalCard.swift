@@ -98,7 +98,7 @@ struct TranscriptApprovalCard: View {
         VStack(alignment: .leading, spacing: Spacing.row) {
             HStack(alignment: .firstTextBaseline) {
                 Label {
-                    Text("Approval needed").typeStyle(.footnote, weight: .semibold)
+                    Text("Approval needed").typeSubtitle(weight: .semibold)
                 } icon: {
                     Image(systemName: "lock.shield").typeSymbol(.subheadline, weight: .semibold)
                 }

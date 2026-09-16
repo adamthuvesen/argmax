@@ -21,7 +21,7 @@ struct TranscriptAgentGroupView: View {
                             // A named agent projects its codename as its name,
                             // so the second line here only ever repeated it.
                             Text(agentTitle(agent))
-                                .typeStyle(.footnote, weight: .medium)
+                                .typeSubtitle(weight: .medium)
                                 .foregroundStyle(Theme.ink)
                                 .lineLimit(2)
                             Text(agentStatusLabel(agent.status))

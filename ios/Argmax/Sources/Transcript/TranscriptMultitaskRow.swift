@@ -117,7 +117,7 @@ struct TranscriptMultitaskRow: View {
                     VStack(alignment: .leading, spacing: Spacing.hair) {
                         HStack(spacing: Spacing.snug) {
                             Text(taskLabel)
-                                .typeStyle(.footnote, weight: .medium)
+                                .typeSubtitle(weight: .medium)
                                 .foregroundStyle(Theme.ink)
                                 .lineLimit(2)
                             Text("Multitask")

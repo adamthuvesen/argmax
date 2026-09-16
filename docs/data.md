@@ -31,6 +31,7 @@ Rust manages SQLite storage under [src-tauri/src/persistence](../src-tauri/src/p
 - `workspaces.last_viewed_at` (v47) is the host-authoritative read watermark shared by desktop and mobile. Existing workspaces initialize it from `last_activity_at`; new workspaces initialize it at creation, and clients advance it only to an activity timestamp they actually displayed.
 - `arcs` and `sessions.arc_id` (v51) back Arcs — see [Arcs](#arcs) below.
 - `routines.arc_id` and a fourth `run_target`, `arc_coordinator` (v52), point a scheduled task at a live Arc's coordinator instead of a session or a fresh checkout. SQLite cannot widen `run_target`'s existing CHECK (v36's `ROUTINE_RUN_TARGET`) in place, so this rebuilds `routines` through an explicit column list, the same idiom v20 used to converge a draft schema. A second CHECK ties the pair together: `run_target = 'arc_coordinator'` if and only if `arc_id IS NOT NULL`. Existing rows carry no `arc_id` and keep whichever target they already had.
+- v54 drops `idx_raw_outputs_session_created`. Transcript tail and page reads walk `idx_raw_outputs_session_id` in rowid order, and the retention sweep uses `idx_raw_outputs_created_at`; the composite index only served the legacy Cursor resume-id fallback, which is as fast on the single-column index. Dropping an index rewrites no rows; the freed pages return to the filesystem on the next Settings → Vacuum.
 
 Reads take pooled `SQLITE_OPEN_READ_ONLY` connections through `Database::read_connection`, not the writer `Mutex<Connection>`, so a read never queues behind a write. A write attempted on the read path fails loudly; that is the point. See [performance.md](performance.md).
 
@@ -152,7 +153,12 @@ Each invocation keeps its own `agentRunId` and `providerInvocationId`, while a
 resume keeps the child id and parent conversation id.
 - `approvals:pending`: Returns outstanding approval requests.
 
-A background sweeper deletes raw provider output older than 7 days. `system:vacuum-database` runs `VACUUM` in a background task.
+A background sweeper deletes raw provider output older than 3 days, once a day starting 30 seconds after the database opens. Chat history reads `events`, not `raw_outputs`; raw output only backs the raw transcript fallback, the debug tail, and the legacy Cursor resume-id lookup for sessions with no stored conversation id. `system:vacuum-database` runs `VACUUM` in a background task.
+
+File-backed databases admit at most four simultaneous read-only connections.
+Additional readers wait for a returned lease, keeping SQLite page caches and
+concurrent scans bounded. Reader counts and wait timings are available in the
+Advanced performance diagnostics.
 
 Settings can preview and permanently delete chats whose last activity is older than 7 days. The confirmed cleanup rechecks activity and protects active sessions, queued follow-ups, after-turn actions, active Goals, running checks, and live terminals. It removes chat attachments and empty workspace records so the sidebar has no ghost rows, while leaving every checkout and worktree on disk.
 

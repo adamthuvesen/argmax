@@ -1180,6 +1180,12 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 sync_sweep_loop(sync_app).await;
             });
+            // Archived worktrees past their recovery window are removed on the
+            // raw output prune's daily cadence, off the boot path.
+            let archive_expiry_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                archive_expiry_loop(archive_expiry_app).await;
+            });
             // Scheduled tasks ("routines") fire stored prompts on a schedule.
             // The loop pulls services from state per tick, so starting it
             // here — before the database may have opened — is safe.
@@ -1212,6 +1218,40 @@ pub fn run() {
                 }
             }
         });
+}
+
+/// Remove archive recovery checkouts older than `ARCHIVE_RECOVERY_EXPIRY`, once
+/// a day. Services are read from state per tick, like the sync sweep, so the
+/// loop holds no service alive and skips a tick the database never opened for.
+async fn archive_expiry_loop(app: tauri::AppHandle) {
+    use tauri::Manager;
+
+    let mut interval = tokio::time::interval_at(
+        tokio::time::Instant::now() + persistence::database::PRUNE_STARTUP_DELAY,
+        persistence::database::PRUNE_INTERVAL,
+    );
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        interval.tick().await;
+        let Some(workspaces) = app
+            .state::<crate::state::AppState>()
+            .workspaces
+            .get()
+            .cloned()
+        else {
+            continue;
+        };
+        let archived_before =
+            std::time::SystemTime::now() - workspaces::orchestration::ARCHIVE_RECOVERY_EXPIRY;
+        match tauri::async_runtime::spawn_blocking(move || {
+            workspaces.expire_archive_recoveries(archived_before)
+        })
+        .await
+        {
+            Ok(removed) => tracing::info!(removed, "archive recovery expiry sweep finished"),
+            Err(error) => tracing::warn!(?error, "archive recovery expiry task failed to join"),
+        }
+    }
 }
 
 /// How often the provider transcript stores are re-scanned. Slow on purpose:

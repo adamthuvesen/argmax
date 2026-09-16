@@ -15,7 +15,7 @@ use super::validation::ThemeMode;
 use super::{live_database, read_off_main};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::ide::detection::{detect_installed_ides, DetectedIde};
-use crate::persistence::database::vacuum_database;
+use crate::persistence::database::{vacuum_database, ReaderPoolStats};
 use crate::state::AppState;
 use crate::util::log_buffer::LogEntry;
 
@@ -63,6 +63,21 @@ pub struct DatabaseStats {
     pub row_counts: RowCounts,
     pub wal_bytes: u64,
     pub wal_autocheckpoint: i64,
+    pub readers: SqliteReaderStats,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SqliteReaderStats {
+    pub max_concurrent: usize,
+    pub active: usize,
+    pub idle: usize,
+    pub peak_active: usize,
+    pub opened: u64,
+    pub open_failures: u64,
+    pub wait_count: u64,
+    pub total_wait_ms: f64,
+    pub longest_wait_ms: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
@@ -151,7 +166,8 @@ pub async fn system_diagnostics(
         let sqlite_version = connection
             .query_row("SELECT sqlite_version()", [], |row| row.get::<_, String>(0))
             .unwrap_or_else(|_| "unknown".to_string());
-        let database_stats = collect_database_stats(&connection, &database_path);
+        let database_stats =
+            collect_database_stats(&connection, &database_path, database.reader_pool_stats());
         let sqlite_pragmas = collect_sqlite_pragmas(&connection);
         drop(connection);
 
@@ -403,6 +419,7 @@ struct ThemeCache {
 fn collect_database_stats(
     connection: &rusqlite::Connection,
     database_path: &Path,
+    reader_pool: Option<ReaderPoolStats>,
 ) -> DatabaseStats {
     DatabaseStats {
         row_counts: RowCounts {
@@ -420,6 +437,30 @@ fn collect_database_stats(
             .map(|metadata| metadata.len())
             .unwrap_or(0),
         wal_autocheckpoint: pragma_i64(connection, "wal_autocheckpoint"),
+        readers: reader_pool.map_or(
+            SqliteReaderStats {
+                max_concurrent: 0,
+                active: 0,
+                idle: 0,
+                peak_active: 0,
+                opened: 0,
+                open_failures: 0,
+                wait_count: 0,
+                total_wait_ms: 0.0,
+                longest_wait_ms: 0.0,
+            },
+            |stats| SqliteReaderStats {
+                max_concurrent: stats.max_concurrent,
+                active: stats.active,
+                idle: stats.idle,
+                peak_active: stats.peak_active,
+                opened: stats.opened,
+                open_failures: stats.open_failures,
+                wait_count: stats.wait_count,
+                total_wait_ms: stats.total_wait.as_secs_f64() * 1_000.0,
+                longest_wait_ms: stats.longest_wait.as_secs_f64() * 1_000.0,
+            },
+        ),
     }
 }
 
@@ -589,11 +630,12 @@ mod tests {
     fn database_stats_count_rows_and_pragmas() {
         let database = Database::open_in_memory().expect("database");
         let connection = database.connection();
-        let stats = collect_database_stats(&connection, Path::new("/tmp/argmax.sqlite"));
+        let stats = collect_database_stats(&connection, Path::new("/tmp/argmax.sqlite"), None);
         let pragmas = collect_sqlite_pragmas(&connection);
 
         assert_eq!(stats.row_counts.projects, 0);
         assert!(stats.wal_autocheckpoint > 0);
+        assert_eq!(stats.readers.max_concurrent, 0);
         assert_ne!(pragmas.journal_mode, "unknown");
     }
 

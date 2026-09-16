@@ -1016,6 +1016,14 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &ARC_EVENTS_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 54,
+        name: "drop_raw_outputs_session_created_index",
+        up: DROP_RAW_OUTPUTS_SESSION_CREATED_INDEX,
+        affected_tables: &[],
+        expected_columns: &EMPTY_EXPECTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
 
 // GitHub state belongs to a project and PR number. Session links keep the
@@ -1391,6 +1399,17 @@ ALTER TABLE routines_canonical RENAME TO routines;
 CREATE INDEX idx_routines_enabled_next
   ON routines(enabled, next_run_at);
 CREATE INDEX idx_routines_arc_id ON routines(arc_id);
+"#;
+
+// `raw_outputs` reads walk `idx_raw_outputs_session_id` in rowid order — the
+// transcript tail and its pages — and the retention sweep uses
+// `idx_raw_outputs_created_at`. The composite `(session_id, created_at)` index
+// only served the legacy Cursor resume-id fallback, which reads a session's
+// whole output anyway and stays in the tens of milliseconds on the
+// single-column index. It cost as much disk as a day of provider output.
+// Dropping an index rewrites no table rows.
+const DROP_RAW_OUTPUTS_SESSION_CREATED_INDEX: &str = r#"
+DROP INDEX IF EXISTS idx_raw_outputs_session_created;
 "#;
 
 // The disposal an agent asked for while its own turn was still running.
@@ -2642,6 +2661,10 @@ mod tests {
                     53,
                     compute_migration_checksum(crate::persistence::arc_events::MIGRATION_SQL)
                 ),
+                (
+                    54,
+                    compute_migration_checksum(DROP_RAW_OUTPUTS_SESSION_CREATED_INDEX)
+                ),
             ]
         );
 
@@ -2653,6 +2676,7 @@ mod tests {
                   'idx_sessions_state',
                   'idx_workspaces_last_activity_id',
                   'idx_raw_outputs_session_id',
+                  'idx_raw_outputs_session_created',
                   'idx_checks_started_id',
                   'idx_checkpoints_created_id',
                   'idx_approvals_created_id',

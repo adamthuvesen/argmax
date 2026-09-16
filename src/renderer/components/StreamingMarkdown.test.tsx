@@ -7,6 +7,8 @@ import { ATTACHMENT_PROTOCOL_SCHEME } from "../../shared/attachmentProtocol.js";
 import { WORKSPACE_ASSET_PROTOCOL_SCHEME } from "../../shared/assetProtocol.js";
 import { StreamingMarkdown } from "./StreamingMarkdown.js";
 
+const STREAM_TICK_MS = 64;
+
 const renderMermaidDiagram = vi.hoisted(() =>
   vi.fn(() => Promise.resolve({ svg: `<svg data-testid="mermaid-svg"><title>flow</title></svg>` }))
 );
@@ -196,14 +198,14 @@ describe("<StreamingMarkdown />", () => {
     expect(markdown?.textContent).toBe("");
 
     act(() => {
-      vi.advanceTimersByTime(32);
-    });
-    expect(markdown?.textContent).toBe("A".repeat(5));
-
-    act(() => {
-      vi.advanceTimersByTime(32);
+      vi.advanceTimersByTime(STREAM_TICK_MS);
     });
     expect(markdown?.textContent).toBe("A".repeat(10));
+
+    act(() => {
+      vi.advanceTimersByTime(STREAM_TICK_MS);
+    });
+    expect(markdown?.textContent).toBe("A".repeat(20));
 
     act(() => {
       vi.advanceTimersByTime(5_000);
@@ -219,20 +221,21 @@ describe("<StreamingMarkdown />", () => {
     const first = render(<StreamingMarkdown text={"A".repeat(120)} streaming />);
     const second = render(<StreamingMarkdown text={"B".repeat(120)} streaming />);
     expect(setIntervalSpy).toHaveBeenCalledTimes(1);
+    expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), STREAM_TICK_MS);
 
     act(() => {
-      vi.advanceTimersByTime(32);
+      vi.advanceTimersByTime(STREAM_TICK_MS);
     });
-    expect(first.container.querySelector(".markdown")?.textContent).toBe("A".repeat(5));
-    expect(second.container.querySelector(".markdown")?.textContent).toBe("B".repeat(5));
+    expect(first.container.querySelector(".markdown")?.textContent).toBe("A".repeat(10));
+    expect(second.container.querySelector(".markdown")?.textContent).toBe("B".repeat(10));
 
     // The tick outlives one block and stops with the last.
     first.unmount();
     expect(clearIntervalSpy).not.toHaveBeenCalled();
     act(() => {
-      vi.advanceTimersByTime(32);
+      vi.advanceTimersByTime(STREAM_TICK_MS);
     });
-    expect(second.container.querySelector(".markdown")?.textContent).toBe("B".repeat(10));
+    expect(second.container.querySelector(".markdown")?.textContent).toBe("B".repeat(20));
     second.unmount();
     expect(clearIntervalSpy).toHaveBeenCalledTimes(1);
   });
@@ -245,20 +248,20 @@ describe("<StreamingMarkdown />", () => {
     const { container, rerender } = render(<StreamingMarkdown text={first} streaming />);
     const markdown = container.querySelector(".markdown");
     act(() => {
-      vi.advanceTimersByTime(32 * 2);
+      vi.advanceTimersByTime(STREAM_TICK_MS * 2);
     });
-    expect(markdown?.textContent).toBe("😀".repeat(10));
+    expect(markdown?.textContent).toBe("😀".repeat(20));
 
     rerender(<StreamingMarkdown text={grown} streaming />);
     act(() => {
-      vi.advanceTimersByTime(32);
+      vi.advanceTimersByTime(STREAM_TICK_MS);
     });
-    expect(markdown?.textContent).toBe("😀".repeat(15));
+    expect(markdown?.textContent).toBe("😀".repeat(30));
 
     rerender(<StreamingMarkdown text={grown} streaming={false} />);
-    expect(markdown?.textContent).toBe("😀".repeat(15));
+    expect(markdown?.textContent).toBe("😀".repeat(30));
     act(() => {
-      vi.advanceTimersByTime(32 * 40);
+      vi.advanceTimersByTime(STREAM_TICK_MS * 20);
     });
     expect(markdown?.textContent).toBe(grown);
   });
@@ -275,13 +278,13 @@ describe("<StreamingMarkdown />", () => {
     expect(markdown?.textContent).toBe("");
 
     act(() => {
-      vi.advanceTimersByTime(32);
+      vi.advanceTimersByTime(STREAM_TICK_MS);
     });
-    // 2000 / 40 ticks = 50 per tick.
-    expect(markdown?.textContent).toBe("E".repeat(50));
+    // 2000 / 20 ticks = 100 per tick.
+    expect(markdown?.textContent).toBe("E".repeat(100));
 
     act(() => {
-      vi.advanceTimersByTime(32 * 39);
+      vi.advanceTimersByTime(STREAM_TICK_MS * 19);
     });
     expect(markdown?.textContent).toBe(text);
   });
@@ -293,23 +296,23 @@ describe("<StreamingMarkdown />", () => {
     const { container, rerender } = render(<StreamingMarkdown text={text} streaming />);
     const markdown = container.querySelector(".markdown");
     act(() => {
-      vi.advanceTimersByTime(32 * 4);
+      vi.advanceTimersByTime(STREAM_TICK_MS * 4);
     });
-    // 400 / 40 = 10 per tick.
-    expect(markdown?.textContent).toBe("F".repeat(40));
+    // 400 / 20 = 20 per tick.
+    expect(markdown?.textContent).toBe("F".repeat(80));
 
-    // The session state flipped to complete with 360 characters unrevealed.
+    // The session state flipped to complete with 320 characters unrevealed.
     rerender(<StreamingMarkdown text={text} streaming={false} />);
-    expect(markdown?.textContent).toBe("F".repeat(40));
+    expect(markdown?.textContent).toBe("F".repeat(80));
 
     act(() => {
-      vi.advanceTimersByTime(32);
+      vi.advanceTimersByTime(STREAM_TICK_MS);
     });
     // The remainder keeps the pace it was streaming at: never a snap.
-    expect(markdown?.textContent).toBe("F".repeat(50));
+    expect(markdown?.textContent).toBe("F".repeat(100));
 
     act(() => {
-      vi.advanceTimersByTime(32 * 35);
+      vi.advanceTimersByTime(STREAM_TICK_MS * 15);
     });
     expect(markdown?.textContent).toBe(text);
   });
@@ -323,19 +326,19 @@ describe("<StreamingMarkdown />", () => {
     const { container, rerender } = render(<StreamingMarkdown text={first} streaming />);
     const markdown = container.querySelector(".markdown");
     act(() => {
-      vi.advanceTimersByTime(32 * 2);
+      vi.advanceTimersByTime(STREAM_TICK_MS * 2);
     });
-    // 400 / 40 = 10 per tick.
-    expect(markdown?.textContent).toBe("G".repeat(20));
+    // 400 / 20 = 20 per tick.
+    expect(markdown?.textContent).toBe("G".repeat(40));
 
     rerender(<StreamingMarkdown text={text} streaming={false} />);
     act(() => {
-      vi.advanceTimersByTime(32);
+      vi.advanceTimersByTime(STREAM_TICK_MS);
     });
-    // 1980 / 40 = 50 per tick: faster than before, bounded to ~1.3 s.
-    expect(markdown?.textContent).toBe("G".repeat(70));
+    // 1960 / 20 = 98 per tick: faster than before, bounded to ~1.3 s.
+    expect(markdown?.textContent).toBe("G".repeat(138));
     act(() => {
-      vi.advanceTimersByTime(32 * 40);
+      vi.advanceTimersByTime(STREAM_TICK_MS * 20);
     });
     expect(markdown?.textContent).toBe(text);
   });
@@ -364,7 +367,7 @@ describe("<StreamingMarkdown />", () => {
 
     act(() => {
       // Reveal past the heading and into the paragraph, but not to the end.
-      vi.advanceTimersByTime(32 * 6);
+      vi.advanceTimersByTime(STREAM_TICK_MS * 6);
     });
 
     expect(screen.getByRole("heading", { name: "Title" })).toBeInTheDocument();
@@ -388,14 +391,14 @@ describe("<StreamingMarkdown />", () => {
 
     const first = render(<StreamingMarkdown text={text} streaming revealKey="session-a:t0:g0" />);
     act(() => {
-      vi.advanceTimersByTime(32 * 4);
+      vi.advanceTimersByTime(STREAM_TICK_MS * 4);
     });
-    expect(first.container.querySelector(".markdown")?.textContent).toBe("C".repeat(20));
+    expect(first.container.querySelector(".markdown")?.textContent).toBe("C".repeat(40));
     // Switching to another session unmounts the pane; coming back mounts a new one.
     first.unmount();
 
     const second = render(<StreamingMarkdown text={text} streaming revealKey="session-a:t0:g0" />);
-    expect(second.container.querySelector(".markdown")?.textContent).toBe("C".repeat(20));
+    expect(second.container.querySelector(".markdown")?.textContent).toBe("C".repeat(40));
   });
 
   it("types out a block it has never revealed before", () => {
@@ -433,7 +436,7 @@ describe("<StreamingMarkdown />", () => {
     );
     expect(container.querySelector(".markdown")?.textContent).toBe(text);
     act(() => {
-      vi.advanceTimersByTime(32 * 4);
+      vi.advanceTimersByTime(STREAM_TICK_MS * 4);
     });
     expect(container.querySelector(".markdown")?.textContent).toBe(text);
   });
@@ -451,7 +454,7 @@ describe("<StreamingMarkdown />", () => {
 
     Object.defineProperty(document, "hidden", { configurable: true, value: false });
     act(() => {
-      vi.advanceTimersByTime(32 * 4);
+      vi.advanceTimersByTime(STREAM_TICK_MS * 4);
     });
     expect(container.querySelector(".markdown")?.textContent).toBe(text);
   });
@@ -466,7 +469,7 @@ describe("<StreamingMarkdown />", () => {
 
     Object.defineProperty(document, "hidden", { configurable: true, value: true });
     act(() => {
-      vi.advanceTimersByTime(32);
+      vi.advanceTimersByTime(STREAM_TICK_MS);
     });
     expect(container.querySelector(".markdown")?.textContent).toBe(first);
 
@@ -475,10 +478,10 @@ describe("<StreamingMarkdown />", () => {
     );
     Object.defineProperty(document, "hidden", { configurable: true, value: false });
     act(() => {
-      vi.advanceTimersByTime(32 * 4);
+      vi.advanceTimersByTime(STREAM_TICK_MS * 4);
     });
     // Already-arrived text stays; only the growth after becoming visible types.
-    expect(container.querySelector(".markdown")?.textContent).toBe("H".repeat(140));
+    expect(container.querySelector(".markdown")?.textContent).toBe("H".repeat(160));
   });
 
   it("boxes a table in its own sideways scroller", () => {

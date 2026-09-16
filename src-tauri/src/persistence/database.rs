@@ -1,7 +1,7 @@
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Duration;
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::time::{Duration, Instant};
 
 use rusqlite::{Connection, OpenFlags};
 use tauri::async_runtime::JoinHandle;
@@ -11,20 +11,26 @@ use crate::error::{ArgmaxError, ArgmaxResult};
 use super::migrations::run_migrations;
 use crate::util::sync::LockOrRecover;
 
-const PRUNE_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+pub(crate) const PRUNE_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 /// How long the first prune waits after the database opens. Pruning a day of
 /// expired rows is a write against a table that is mostly blobs, so it costs
 /// hundreds of milliseconds to seconds on a large database — time the boot path
 /// used to pay inline, before the window existed. Nothing reads the result, so
 /// it waits until startup's own writes (session and archive recovery) are done.
-const PRUNE_STARTUP_DELAY: Duration = Duration::from_secs(30);
-const RAW_OUTPUT_RETENTION_DAYS: i64 = 7;
+pub(crate) const PRUNE_STARTUP_DELAY: Duration = Duration::from_secs(30);
+/// Raw provider output runs to roughly 160 MB a day, and nothing that has to
+/// survive reads it: chat history comes from `events`. What does read it — the
+/// raw transcript fallback, the debug tail, and the legacy Cursor resume-id
+/// lookup for sessions with no stored conversation id — only matters for
+/// recent turns.
+const RAW_OUTPUT_RETENTION_DAYS: i64 = 3;
 
-/// Idle reader connections kept alive between reads. Reads are short and the
-/// pool only has to cover the handlers that can overlap — the webview, the
-/// remote bridge, and a background sweep — so a small cap beats a large one:
-/// every extra connection is its own page cache.
-const MAX_IDLE_READERS: usize = 4;
+/// Maximum read-only connections that may be checked out at once. Reads are
+/// short and the pool only has to cover the handlers that can overlap — the
+/// webview, the remote bridge, and a background sweep — so a small cap beats a
+/// large one: every extra connection is its own page cache and concurrent scans
+/// compete for the same disk bandwidth.
+const MAX_CONCURRENT_READERS: usize = 4;
 
 /// Read-only connections onto the same WAL database.
 ///
@@ -35,7 +41,96 @@ const MAX_IDLE_READERS: usize = 4;
 /// silently taking the wrong lock.
 struct ReaderPool {
     path: PathBuf,
-    idle: Mutex<Vec<Connection>>,
+    state: Mutex<ReaderPoolState>,
+    available: Condvar,
+}
+
+#[derive(Default)]
+struct ReaderPoolState {
+    idle: Vec<Connection>,
+    active: usize,
+    peak_active: usize,
+    opened: u64,
+    open_failures: u64,
+    wait_count: u64,
+    total_wait: Duration,
+    longest_wait: Duration,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ReaderPoolStats {
+    pub max_concurrent: usize,
+    pub active: usize,
+    pub idle: usize,
+    pub peak_active: usize,
+    pub opened: u64,
+    pub open_failures: u64,
+    pub wait_count: u64,
+    pub total_wait: Duration,
+    pub longest_wait: Duration,
+}
+
+impl ReaderPool {
+    fn acquire(&self) -> Option<Connection> {
+        let mut state = self.state.lock_or_recover("reader pool");
+        let wait_started = if state.active >= MAX_CONCURRENT_READERS {
+            state.wait_count += 1;
+            Some(Instant::now())
+        } else {
+            None
+        };
+        while state.active >= MAX_CONCURRENT_READERS {
+            state = self
+                .available
+                .wait(state)
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+        }
+        if let Some(started) = wait_started {
+            let elapsed = started.elapsed();
+            state.total_wait += elapsed;
+            state.longest_wait = state.longest_wait.max(elapsed);
+        }
+        state.active += 1;
+        state.peak_active = state.peak_active.max(state.active);
+        state.idle.pop()
+    }
+
+    fn opened(&self) {
+        self.state.lock_or_recover("reader pool").opened += 1;
+    }
+
+    fn open_failed(&self) {
+        self.state.lock_or_recover("reader pool").open_failures += 1;
+        self.release(None);
+    }
+
+    fn release(&self, connection: Option<Connection>) {
+        let mut state = self.state.lock_or_recover("reader pool");
+        state.active = state
+            .active
+            .checked_sub(1)
+            .expect("reader released without an active lease");
+        if let Some(connection) = connection {
+            state.idle.push(connection);
+        }
+        drop(state);
+        self.available.notify_one();
+    }
+
+    fn stats(&self) -> ReaderPoolStats {
+        let state = self.state.lock_or_recover("reader pool");
+        ReaderPoolStats {
+            max_concurrent: MAX_CONCURRENT_READERS,
+            active: state.active,
+            idle: state.idle.len(),
+            peak_active: state.peak_active,
+            opened: state.opened,
+            open_failures: state.open_failures,
+            wait_count: state.wait_count,
+            total_wait: state.total_wait,
+            longest_wait: state.longest_wait,
+        }
+    }
 }
 
 /// A borrowed read connection. Derefs to `Connection`, so read call sites take
@@ -81,10 +176,7 @@ impl Drop for ReadGuard<'_> {
         let Some(connection) = connection.take() else {
             return;
         };
-        let mut idle = pool.idle.lock_or_recover("reader pool");
-        if idle.len() < MAX_IDLE_READERS {
-            idle.push(connection);
-        }
+        pool.release(Some(connection));
     }
 }
 
@@ -142,7 +234,8 @@ impl Database {
         // schema. Readers are opened lazily; this only records where from.
         let readers = path.map(|path| ReaderPool {
             path,
-            idle: Mutex::new(Vec::new()),
+            state: Mutex::new(ReaderPoolState::default()),
+            available: Condvar::new(),
         });
 
         Ok(Self {
@@ -171,14 +264,18 @@ impl Database {
                 inner: ReadGuardInner::Writer(self.connection()),
             };
         };
-        let pooled = pool.idle.lock_or_recover("reader pool").pop();
+        let pooled = pool.acquire();
         let connection = match pooled {
             Some(connection) => connection,
             None => match open_reader(&pool.path) {
-                Ok(connection) => connection,
+                Ok(connection) => {
+                    pool.opened();
+                    connection
+                }
                 // Degrade to the writer rather than fail the read: a reader
                 // that cannot open is a resource problem, not a data problem.
                 Err(error) => {
+                    pool.open_failed();
                     tracing::warn!(?error, "could not open a read connection; using the writer");
                     return ReadGuard {
                         inner: ReadGuardInner::Writer(self.connection()),
@@ -199,8 +296,12 @@ impl Database {
     pub fn idle_reader_count(&self) -> usize {
         self.readers
             .as_ref()
-            .map(|pool| pool.idle.lock_or_recover("reader pool").len())
+            .map(|pool| pool.state.lock_or_recover("reader pool").idle.len())
             .unwrap_or(0)
+    }
+
+    pub(crate) fn reader_pool_stats(&self) -> Option<ReaderPoolStats> {
+        self.readers.as_ref().map(ReaderPool::stats)
     }
 
     pub fn dispose(&self) {
@@ -368,6 +469,60 @@ mod tests {
         assert_eq!(database.idle_reader_count(), 1);
     }
 
+    #[test]
+    fn reader_concurrency_is_bounded_and_waits_are_measured() {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let path = directory.path().join("bounded-pool.sqlite");
+        let database = Arc::new(Database::open(&path).expect("open db"));
+        let mut readers = (0..MAX_CONCURRENT_READERS)
+            .map(|_| database.read_connection())
+            .collect::<Vec<_>>();
+
+        let saturated = database.reader_pool_stats().expect("reader stats");
+        assert_eq!(saturated.active, MAX_CONCURRENT_READERS);
+        assert_eq!(saturated.peak_active, MAX_CONCURRENT_READERS);
+        assert_eq!(saturated.opened, MAX_CONCURRENT_READERS as u64);
+
+        let (acquired_tx, acquired_rx) = std::sync::mpsc::channel();
+        let waiting_database = Arc::clone(&database);
+        let waiter = std::thread::spawn(move || {
+            let _reader = waiting_database.read_connection();
+            acquired_tx.send(()).expect("report acquired reader");
+        });
+
+        let wait_deadline = Instant::now() + Duration::from_secs(1);
+        while database
+            .reader_pool_stats()
+            .expect("reader stats")
+            .wait_count
+            == 0
+        {
+            assert!(Instant::now() < wait_deadline, "fifth reader never waited");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert!(
+            acquired_rx.try_recv().is_err(),
+            "fifth reader acquired before a lease was released"
+        );
+
+        drop(readers.pop());
+        acquired_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("fifth reader acquires after release");
+        waiter.join().expect("reader waiter");
+
+        let measured = database.reader_pool_stats().expect("reader stats");
+        assert_eq!(measured.wait_count, 1);
+        assert!(measured.total_wait > Duration::ZERO);
+        assert!(measured.longest_wait > Duration::ZERO);
+        assert_eq!(measured.peak_active, MAX_CONCURRENT_READERS);
+
+        drop(readers);
+        let idle = database.reader_pool_stats().expect("reader stats");
+        assert_eq!(idle.active, 0);
+        assert_eq!(idle.idle, MAX_CONCURRENT_READERS);
+    }
+
     /// Read-only opens make the read/write split enforceable instead of a
     /// convention someone can quietly break.
     #[test]
@@ -428,13 +583,13 @@ mod tests {
 
         connection
             .execute(
-                "INSERT INTO raw_outputs (id, session_id, stream, content, created_at) VALUES ('old', 's1', 'stdout', 'old', strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-8 days'))",
+                "INSERT INTO raw_outputs (id, session_id, stream, content, created_at) VALUES ('old', 's1', 'stdout', 'old', strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-4 days'))",
                 [],
             )
             .expect("insert old");
         connection
             .execute(
-                "INSERT INTO raw_outputs (id, session_id, stream, content, created_at) VALUES ('fresh', 's1', 'stdout', 'fresh', strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 days'))",
+                "INSERT INTO raw_outputs (id, session_id, stream, content, created_at) VALUES ('fresh', 's1', 'stdout', 'fresh', strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-2 days'))",
                 [],
             )
             .expect("insert fresh");

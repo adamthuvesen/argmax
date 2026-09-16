@@ -64,10 +64,22 @@ export const browserFixtureSource = String.raw`
 import React, { useLayoutEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
-import { useConversationScroll } from "/src/renderer/hooks/useConversationScroll.ts";
+import { useConversationScroll, useTranscriptFollow } from "/src/renderer/hooks/useConversationScroll.ts";
 
 const h = React.createElement;
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+// The fixture moves the scroller itself, so a synthetic wheel event must not
+// scroll. WebKit still runs its default wheel scroll for an untrusted event
+// (Chromium does not), which turned the "inert" wheel at the bottom into a
+// real 40px scroll. Cancel the default up front. The listeners under test
+// still receive the event.
+function dispatchWheel(target, deltaY) {
+  const event = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY });
+  const cancel = (candidate) => { if (candidate === event) candidate.preventDefault(); };
+  window.addEventListener("wheel", cancel, { capture: true, passive: false });
+  target.dispatchEvent(event);
+  window.removeEventListener("wheel", cancel, { capture: true });
+}
 const afterPaint = () => new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
 let mountedRoot = null;
 let active = null;
@@ -84,6 +96,11 @@ function block(id, height, extra = {}) {
     style: { height: height + "px" },
     ...extra
   }, id);
+}
+
+function FixtureFab({ follow, onClick }) {
+  const { detached } = useTranscriptFollow(follow);
+  return detached ? h("button", { className: "scroll-to-bottom-fab", onClick }, "Scroll to latest") : null;
 }
 
 function ScrollFixture({ surface, initialLiveHeight, sameTurnScenario = false, initialAboveHeight = 300, initialViewportHeight = 480 }) {
@@ -119,8 +136,8 @@ function ScrollFixture({ surface, initialLiveHeight, sameTurnScenario = false, i
       contentHeight: content.getBoundingClientRect().height,
       anchorId: tracked?.getAttribute("data-block") ?? null,
       anchorTop: tracked?.getBoundingClientRect().top ?? null,
-      showFab: api.showScrollToBottom,
-      newBelowCount: api.newBelowCount
+      showFab: api.follow.isDetached(),
+      newBelowCount: api.follow.newBelowCount()
     };
   };
 
@@ -147,10 +164,29 @@ function ScrollFixture({ surface, initialLiveHeight, sameTurnScenario = false, i
       },
       scrollUp: async (pixels) => {
         const scroller = api.scrollRef.current;
-        scroller.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -pixels }));
+        dispatchWheel(scroller, -pixels);
         scroller.scrollBy({ top: -pixels, behavior: "instant" });
         await nextFrame();
         return measure();
+      },
+      // A notched mouse: cancelable wheel events the smooth-wheel easing takes
+      // over. Samples every frame until the position has held for 10 frames.
+      mouseWheel: async (deltaY, notches = 1, duringEase = null) => {
+        const scroller = api.scrollRef.current;
+        const samples = [];
+        for (let notch = 0; notch < notches; notch += 1) {
+          scroller.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY }));
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          samples.push(scroller.scrollTop);
+        }
+        if (duringEase) await duringEase();
+        let still = 0;
+        for (let frame = 0; frame < 120 && still < 10; frame += 1) {
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          still = scroller.scrollTop === samples.at(-1) ? still + 1 : 0;
+          samples.push(scroller.scrollTop);
+        }
+        return { samples, final: measure() };
       },
       touchScrollUp: async (pixels) => {
         const scroller = api.scrollRef.current;
@@ -174,7 +210,7 @@ function ScrollFixture({ surface, initialLiveHeight, sameTurnScenario = false, i
       inertUpwardInput: async (kind) => {
         const scroller = api.scrollRef.current;
         if (kind === "wheel") {
-          scroller.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -40 }));
+          dispatchWheel(scroller, -40);
         } else {
           const touchEvent = (type, clientY) => {
             const event = new Event(type, { bubbles: true });
@@ -193,7 +229,7 @@ function ScrollFixture({ surface, initialLiveHeight, sameTurnScenario = false, i
       },
       scrollUpThenGrow: async (pixels, growth) => {
         const scroller = api.scrollRef.current;
-        scroller.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -pixels }));
+        dispatchWheel(scroller, -pixels);
         scroller.scrollBy({ top: -pixels, behavior: "instant" });
         setLiveHeight((height) => height + growth);
         setItemVersion((version) => version + 1);
@@ -311,7 +347,7 @@ function ScrollFixture({ surface, initialLiveHeight, sameTurnScenario = false, i
       },
       nestedScrollThenGrow: async (nestedPixels, growth) => {
         const nested = api.contentRef.current.querySelector(".nested-scroll");
-        nested.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: nestedPixels }));
+        dispatchWheel(nested, nestedPixels);
         nested.scrollBy({ top: nestedPixels, behavior: "instant" });
         setNestedHeight((height) => height + growth);
         await nextFrame();
@@ -350,9 +386,7 @@ function ScrollFixture({ surface, initialLiveHeight, sameTurnScenario = false, i
     h("div", { className: "scroll-frame" },
       h("div", { className: surface === "main" ? "conversation-list" : "agent-activity-scroll", ref: api.scrollRef, style: { height: viewportHeight + "px" } },
         h("div", { className: surface === "main" ? "conversation-content" : "agent-activity-content", ref: api.contentRef }, content)),
-      api.showScrollToBottom
-        ? h("button", { className: "scroll-to-bottom-fab", onClick: api.scrollToBottom }, "Scroll to latest")
-        : null));
+      h(FixtureFab, { follow: api.follow, onClick: api.scrollToBottom })));
 }
 
 async function mount(surface, options = {}) {
@@ -703,6 +737,51 @@ async function runChecks() {
         paintedResize.frames.every((frame) =>
           frame.distanceFromBottom <= 1 && !frame.showFab
         ),
+      tolerance: 1
+    });
+  }
+
+  for (const surface of ["main", "agent"]) {
+    const start = await mount(surface);
+    const eased = await active.mouseWheel(-120);
+    const positions = new Set(eased.samples.map((top) => Math.round(top)));
+    results.push({
+      name: surface + ": mouse wheel eases upward over several frames and detaches",
+      surface,
+      before: start,
+      after: eased.final,
+      movement: Math.round((start.scrollTop - eased.final.scrollTop - 120) * 100) / 100,
+      extraOk: positions.size >= 4 && eased.final.showFab,
+      tolerance: 1
+    });
+
+    await mount(surface);
+    const easeDetached = await active.scrollUp(200);
+    const easeBefore = active.measureAnchor(easeDetached.anchorId);
+    const easedWithGrowth = await active.mouseWheel(-120, 1, () => active.growBelow(320));
+    const easeAfter = active.measureAnchor(easeBefore.anchorId);
+    results.push({
+      name: surface + ": streamed growth mid-ease keeps the eased reader anchored",
+      surface,
+      before: easeBefore,
+      after: easeAfter,
+      movement: Math.round((movement(easeBefore, easeAfter) - 120) * 100) / 100,
+      extraOk: easedWithGrowth.final.showFab,
+      tolerance: 2
+    });
+
+    await mount(surface);
+    await active.scrollUp(180);
+    await active.mouseWheel(120, 3);
+    await active.growBelow(260);
+    const easedReturn = active.measure();
+    results.push({
+      name: surface + ": mouse wheel down to the bottom resumes follow",
+      surface,
+      before: null,
+      after: easedReturn,
+      movement: Math.round(easedReturn.distanceFromBottom * 100) / 100,
+      extraOk: !easedReturn.showFab,
       tolerance: 1
     });
   }

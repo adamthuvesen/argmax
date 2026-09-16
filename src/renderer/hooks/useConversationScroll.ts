@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import { attachSmoothWheel } from "../lib/smoothWheel.js";
 
 const BOTTOM_EPSILON_PX = 1;
 const ANCHOR_INSET_PX = 48;
@@ -19,11 +20,38 @@ interface ConversationScrollOptions {
   enabled?: boolean;
 }
 
+/**
+ * Whether the reader has scrolled away from the latest output, kept outside
+ * React state. A detach lands in the middle of the reader's scroll, and as
+ * host state it re-rendered every mounted turn there. Only the components
+ * that show it subscribe; the rest read it when they render anyway.
+ */
+export interface TranscriptFollow {
+  isDetached: () => boolean;
+  /** Rows that arrived below the reader since they detached. */
+  newBelowCount: () => number;
+  subscribe: (listener: () => void) => () => void;
+}
+
+export const ALWAYS_FOLLOWING: TranscriptFollow = {
+  isDetached: () => false,
+  newBelowCount: () => 0,
+  subscribe: () => () => undefined
+};
+
+export function useTranscriptFollow(follow: TranscriptFollow): {
+  detached: boolean;
+  newBelowCount: number;
+} {
+  const detached = useSyncExternalStore(follow.subscribe, follow.isDetached);
+  const newBelowCount = useSyncExternalStore(follow.subscribe, follow.newBelowCount);
+  return { detached, newBelowCount };
+}
+
 export interface ConversationScroll {
   scrollRef: RefObject<HTMLDivElement | null>;
   contentRef: RefObject<HTMLDivElement | null>;
-  showScrollToBottom: boolean;
-  newBelowCount: number;
+  follow: TranscriptFollow;
   scrollToBottom: () => void;
   scrollToElement: (node: HTMLElement) => void;
 }
@@ -164,8 +192,24 @@ export function useConversationScroll({
   const pointerScrollRef = useRef(false);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const observedElementsRef = useRef<Set<Element>>(new Set());
-  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
-  const [newBelowCount, setNewBelowCount] = useState(0);
+  const newBelowCountRef = useRef(0);
+  const followListenersRef = useRef(new Set<() => void>());
+  const [follow] = useState<TranscriptFollow>(() => ({
+    isDetached: () => modeRef.current === "detached",
+    newBelowCount: () => newBelowCountRef.current,
+    subscribe: (listener) => {
+      followListenersRef.current.add(listener);
+      return () => followListenersRef.current.delete(listener);
+    }
+  }));
+  const notifyFollow = useCallback((): void => {
+    for (const listener of followListenersRef.current) listener();
+  }, []);
+  const resetNewBelowCount = useCallback((): void => {
+    if (newBelowCountRef.current === 0) return;
+    newBelowCountRef.current = 0;
+    notifyFollow();
+  }, [notifyFollow]);
 
   const rememberAnchor = useCallback((): void => {
     const scroll = scrollRef.current;
@@ -185,17 +229,18 @@ export function useConversationScroll({
       );
     }
     rememberAnchor();
-    setShowScrollToBottom(true);
-  }, [rememberAnchor]);
+    notifyFollow();
+  }, [notifyFollow, rememberAnchor]);
 
   const startFollowing = useCallback((): void => {
+    const wasDetached = modeRef.current === "detached";
     modeRef.current = "following";
     detachedHeightFloorRef.current = 0;
     viewportAnchorRef.current = null;
     requestedScrollTopRef.current = null;
-    setShowScrollToBottom(false);
-    setNewBelowCount(0);
-  }, []);
+    newBelowCountRef.current = 0;
+    if (wasDetached) notifyFollow();
+  }, [notifyFollow]);
 
   /** The sole writer for scroll position and scroll-layout styles. */
   const reconcile = useCallback((): void => {
@@ -208,8 +253,7 @@ export function useConversationScroll({
       const maxTop = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
       lastScrollTopRef.current = physicalScrollTop(scroll, maxTop);
       lastMaxScrollTopRef.current = maxTop;
-      setShowScrollToBottom(false);
-      setNewBelowCount(0);
+      resetNewBelowCount();
       return;
     }
     if (scroll.clientHeight <= 0) return;
@@ -277,8 +321,7 @@ export function useConversationScroll({
       const bottom = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
       if (Math.abs(scroll.scrollTop - bottom) > BOTTOM_EPSILON_PX) scroll.scrollTop = bottom;
       viewportAnchorRef.current = null;
-      setShowScrollToBottom(false);
-      setNewBelowCount(0);
+      resetNewBelowCount();
     } else {
       const requestedTop = requestedScrollTopRef.current;
       requestedScrollTopRef.current = null;
@@ -302,13 +345,12 @@ export function useConversationScroll({
           rememberAnchor();
         }
       }
-      setShowScrollToBottom(true);
     }
 
     const settledMaxTop = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
     lastScrollTopRef.current = physicalScrollTop(scroll, settledMaxTop);
     lastMaxScrollTopRef.current = settledMaxTop;
-  }, [detach, enabled, rememberAnchor, startFollowing]);
+  }, [detach, enabled, rememberAnchor, resetNewBelowCount, startFollowing]);
 
   const scrollToBottom = useCallback((): void => {
     startFollowing();
@@ -342,7 +384,8 @@ export function useConversationScroll({
     lastItemCountRef.current = items.length;
     reconcile();
     if (!reset && modeRef.current === "detached" && items.length > previousCount) {
-      setNewBelowCount((count) => count + items.length - previousCount);
+      newBelowCountRef.current += items.length - previousCount;
+      notifyFollow();
     }
 
     const observer = resizeObserverRef.current;
@@ -376,6 +419,10 @@ export function useConversationScroll({
     // followed. Two frames, because a wheel scroll is composited and its
     // scrollTop can land after the frame the event was dispatched in.
     const releaseFollowing = (): void => {
+      // Every notch of a wheel scroll lands here. Once detached there is
+      // nothing to release, and reconciling would measure the transcript
+      // on each one.
+      if (modeRef.current === "detached") return;
       const bottomBeforeGesture = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
       const topBeforeGesture = physicalScrollTop(scroll, bottomBeforeGesture);
       detach();
@@ -478,6 +525,7 @@ export function useConversationScroll({
     };
 
     scroll.addEventListener("wheel", onWheel, { passive: true });
+    const detachSmoothWheel = attachSmoothWheel(scroll);
     scroll.addEventListener("keydown", onKeyDown);
     scroll.addEventListener("touchstart", onTouchStart, { passive: true });
     scroll.addEventListener("touchmove", onTouchMove, { passive: true });
@@ -502,6 +550,7 @@ export function useConversationScroll({
 
     return () => {
       scroll.removeEventListener("wheel", onWheel);
+      detachSmoothWheel();
       scroll.removeEventListener("keydown", onKeyDown);
       scroll.removeEventListener("touchstart", onTouchStart);
       scroll.removeEventListener("touchmove", onTouchMove);
@@ -522,8 +571,7 @@ export function useConversationScroll({
   return {
     scrollRef,
     contentRef,
-    showScrollToBottom,
-    newBelowCount,
+    follow,
     scrollToBottom,
     scrollToElement
   };

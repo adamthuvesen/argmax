@@ -53,6 +53,7 @@ import {
 import type { FileChipOpenOptions } from "./FileChip.js";
 import type { ComposerStatus } from "./SessionComposer.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
+import type { TranscriptFollow } from "../hooks/useConversationScroll.js";
 import { useStableTailWindow } from "../hooks/useStableTailWindow.js";
 
 type TurnRenderItem = Extract<RenderItem, { kind: "turn" }>;
@@ -90,7 +91,7 @@ function SessionConversationTurnInner({
   defaultToolCallGroupsExpanded,
   thinkingDisplay,
   defaultTurnChangesExpanded,
-  transcriptDetached = false,
+  follow,
   restoringTranscript = false,
   todo = null
 }: {
@@ -125,8 +126,8 @@ function SessionConversationTurnInner({
   defaultToolCallGroupsExpanded?: boolean;
   thinkingDisplay?: ThinkingDisplay;
   defaultTurnChangesExpanded?: boolean;
-  /** Freeze this turn's mounted row ids while the reader is away from latest. */
-  transcriptDetached?: boolean;
+  /** Freezes this turn's mounted row ids while the reader is away from latest. */
+  follow?: TranscriptFollow;
   restoringTranscript?: boolean;
   /** The agent's plan as it stood when this turn ended, or null if it never
    *  touched one. */
@@ -503,7 +504,7 @@ function SessionConversationTurnInner({
       compact={compactToolSummaries}
       defaultExpanded={!minimalActivity && toolsExpanded}
       defaultToolsExpanded={toolRowsExpanded}
-      transcriptDetached={transcriptDetached}
+      follow={follow}
       workspaceCwd={workspace?.path ?? null}
       agentCodenames={agentCodenames}
       onOpenFile={onOpenFile}
@@ -545,7 +546,7 @@ function SessionConversationTurnInner({
   } = useStableTailWindow(bodyChildren, {
     initialCount: TURN_BODY_WINDOW,
     pageSize: TURN_BODY_WINDOW_STEP,
-    detached: transcriptDetached,
+    follow,
     getId: (child) => child.id
   });
   const earliestCreatedAt = [...assistantChildren, ...toolChildren]

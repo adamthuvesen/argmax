@@ -99,7 +99,7 @@ export function AdvancedSettings({
 
         <SettingRow
           label="Archived workspaces"
-          description="Find files kept from archived workspaces."
+          description="Find files kept from workspaces archived in the last 14 days."
           control={
             <button
               type="button"
@@ -165,29 +165,60 @@ export function AdvancedSettings({
       {performanceOpen ? (
         <div className="settings-performance">
           {stats ? (
-            <div className="settings-card">
-              <h4 className="settings-card-title">Row counts</h4>
-              <dl className="settings-metric-grid">
-                {(
-                  [
-                    ["Projects", stats.rowCounts.projects],
-                    ["Workspaces", stats.rowCounts.workspaces],
-                    ["Sessions", stats.rowCounts.sessions],
-                    ["Events", stats.rowCounts.events],
-                    ["Raw outputs", stats.rowCounts.rawOutputs],
-                    ["Approvals", stats.rowCounts.approvals],
-                    ["Checks", stats.rowCounts.checks],
-                    ["Learnings", stats.rowCounts.learnings],
-                    ["Usage events", stats.rowCounts.usageEvents]
-                  ] as const
-                ).map(([label, count]) => (
-                  <div key={label}>
-                    <dt>{label}</dt>
-                    <dd>{count.toLocaleString()}</dd>
+            <>
+              <div className="settings-card">
+                <h4 className="settings-card-title">Row counts</h4>
+                <dl className="settings-metric-grid">
+                  {(
+                    [
+                      ["Projects", stats.rowCounts.projects],
+                      ["Workspaces", stats.rowCounts.workspaces],
+                      ["Sessions", stats.rowCounts.sessions],
+                      ["Events", stats.rowCounts.events],
+                      ["Raw outputs", stats.rowCounts.rawOutputs],
+                      ["Approvals", stats.rowCounts.approvals],
+                      ["Checks", stats.rowCounts.checks],
+                      ["Learnings", stats.rowCounts.learnings],
+                      ["Usage events", stats.rowCounts.usageEvents]
+                    ] as const
+                  ).map(([label, count]) => (
+                    <div key={label}>
+                      <dt>{label}</dt>
+                      <dd>{count.toLocaleString()}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+
+              <div className="settings-card">
+                <h4 className="settings-card-title">SQLite readers</h4>
+                <p className="settings-note">
+                  {stats.readers.active} active of {stats.readers.maxConcurrent} · peak {stats.readers.peakActive} · {stats.readers.idle} idle
+                </p>
+                <dl className="settings-metric-grid">
+                  <div>
+                    <dt>Waited reads</dt>
+                    <dd>{stats.readers.waitCount.toLocaleString()}</dd>
                   </div>
-                ))}
-              </dl>
-            </div>
+                  <div>
+                    <dt>Total wait</dt>
+                    <dd>{stats.readers.totalWaitMs.toFixed(2)} ms</dd>
+                  </div>
+                  <div>
+                    <dt>Longest wait</dt>
+                    <dd>{stats.readers.longestWaitMs.toFixed(2)} ms</dd>
+                  </div>
+                  <div>
+                    <dt>Opened</dt>
+                    <dd>{stats.readers.opened.toLocaleString()}</dd>
+                  </div>
+                  <div>
+                    <dt>Open failures</dt>
+                    <dd>{stats.readers.openFailures.toLocaleString()}</dd>
+                  </div>
+                </dl>
+              </div>
+            </>
           ) : null}
 
           {diagnostics?.startupPhases.length ? (

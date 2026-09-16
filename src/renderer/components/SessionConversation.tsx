@@ -1,7 +1,6 @@
 import { usePrMilestone } from "../hooks/usePrMilestone.js";
 import { TurnExhale } from "./TurnExhale.js";
 import {
-  ArrowDown,
   GitBranch,
   MessageSquarePlus,
   MessagesSquare,
@@ -73,6 +72,7 @@ import { multitaskRowStatus, type MultitaskChild } from "../lib/multitask.js";
 import { dismissMultitask, readDismissedMultitasks } from "../lib/multitaskDismissals.js";
 import { ProjectMoveNotice } from "./ProjectMoveNotice.js";
 import { ProviderSwitchNotice } from "./ProviderSwitchNotice.js";
+import { ScrollToLatestButton } from "./ScrollToLatestButton.js";
 import { ShowEarlier } from "./ShowEarlier.js";
 import { SessionNote } from "./SessionNote.js";
 import { foldConversationItems, foldRenderItems, type RenderItem } from "../lib/foldConversation.js";
@@ -1261,8 +1261,7 @@ export function SessionConversation({
   const {
     scrollRef: conversationListRef,
     contentRef: conversationContentRef,
-    showScrollToBottom,
-    newBelowCount,
+    follow: conversationFollow,
     scrollToBottom: scrollConversationToBottom
   } = useConversationScroll({ sessionId, items: conversationItems, resetKey: lastTurnPromptId });
   // The scroll controller preserves the reading anchor across this prepend.
@@ -1613,7 +1612,7 @@ export function SessionConversation({
                     defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
                     thinkingDisplay={thinkingDisplay}
                     defaultTurnChangesExpanded={defaultTurnChangesExpanded}
-                    transcriptDetached={showScrollToBottom}
+                    follow={conversationFollow}
                     restoringTranscript={restoringTranscript}
                     todo={todoByTurn.get(item.id) ?? null}
                     onOpenDiff={onOpenDiff ?? review.openFile}
@@ -1645,17 +1644,7 @@ export function SessionConversation({
             </div>
           </div>
         </div>
-        {showScrollToBottom ? (
-          <button
-            type="button"
-            className="scroll-to-bottom-fab"
-            aria-label={newBelowCount > 0 ? `Scroll to latest (${newBelowCount} new)` : "Scroll to latest"}
-            title={newBelowCount > 0 ? `Scroll to latest (${newBelowCount} new)` : "Scroll to latest"}
-            onClick={scrollConversationToBottom}
-          >
-            <ArrowDown size={19} strokeWidth={2.2} aria-hidden="true" />
-          </button>
-        ) : null}
+        <ScrollToLatestButton follow={conversationFollow} onClick={scrollConversationToBottom} />
       </div>
       <SelectionToolbar
         containerRef={conversationScrollRef}

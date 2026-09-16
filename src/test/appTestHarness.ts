@@ -296,7 +296,18 @@ export function setupAppTestMocks(): void {
         usageEvents: 18
       },
       walBytes: 1024 * 128,
-      walAutocheckpoint: 1000
+      walAutocheckpoint: 1000,
+      readers: {
+        maxConcurrent: 4,
+        active: 1,
+        idle: 2,
+        peakActive: 3,
+        opened: 3,
+        openFailures: 0,
+        waitCount: 1,
+        totalWaitMs: 4.25,
+        longestWaitMs: 4.25
+      }
     },
     sqlitePragmas: {
       journalMode: "wal",

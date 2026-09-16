@@ -166,6 +166,9 @@ describe("App settings", () => {
     fireEvent.click(within(menu).getByRole("menuitem", { name: /Diagnostics & Logs/ }));
     await screen.findByRole("heading", { name: "Diagnostics" });
     await waitFor(() => expect(diagnosticsStub).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "Show details" }));
+    expect(screen.getByRole("heading", { name: "SQLite readers" })).toBeInTheDocument();
+    expect(screen.getByText("1 active of 4 · peak 3 · 2 idle")).toBeInTheDocument();
   });
 
   it("resets the reused workspace scroller when opening settings", async () => {

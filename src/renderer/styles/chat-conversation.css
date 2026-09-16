@@ -31,14 +31,12 @@
   min-height: 0;
   overflow: hidden;
   background: var(--bg);
-  transition: opacity var(--duration-fast) var(--ease),
-    filter var(--duration-fast) var(--ease);
+  transition: opacity var(--duration-fast) var(--ease);
 }
 
 .session-multigrid:has(.session-multigrid-cell[data-focused="true"])
   .session-multigrid-cell:not([data-focused="true"]) {
   opacity: 0.88;
-  filter: saturate(0.94);
 }
 
 /* Nested SessionPane: the inner grid fills the multigrid cell rather than

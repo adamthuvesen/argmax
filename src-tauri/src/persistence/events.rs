@@ -399,19 +399,30 @@ fn append_native_agent_events(
                   AND json_extract(payload_json, '$.providerChildSessionId') = ?3
                 )
                 OR (
+                  -- Uncorrelated on purpose: SQLite builds the (invocation, run)
+                  -- set once. The correlated EXISTS rescanned the session per
+                  -- command row, 6 s on a 17k-event chat while holding a lock.
+                  -- The IS NOT NULL guards keep `=`'s NULL-never-matches rule.
                   type IN ('command.started', 'command.completed')
-                  AND EXISTS (
-                    SELECT 1 FROM events lifecycle
-                    WHERE lifecycle.session_id = candidate.session_id
+                  AND json_array(
+                    json_extract(payload_json, '$.providerInvocationId'),
+                    COALESCE(
+                      json_extract(payload_json, '$.tool_use_id'),
+                      json_extract(payload_json, '$.id'),
+                      json_extract(payload_json, '$.call_id')
+                    )
+                  ) IN (
+                    SELECT json_array(
+                      json_extract(lifecycle.payload_json, '$.providerInvocationId'),
+                      json_extract(lifecycle.payload_json, '$.agentRunId')
+                    )
+                    FROM events lifecycle
+                    WHERE lifecycle.session_id = ?1
                       AND lifecycle.type IN ('agent.started', 'agent.completed')
                       AND json_extract(lifecycle.payload_json, '$.providerParentConversationId') = ?2
                       AND json_extract(lifecycle.payload_json, '$.providerChildSessionId') = ?3
-                      AND json_extract(lifecycle.payload_json, '$.providerInvocationId') = json_extract(candidate.payload_json, '$.providerInvocationId')
-                      AND json_extract(lifecycle.payload_json, '$.agentRunId') = COALESCE(
-                        json_extract(candidate.payload_json, '$.tool_use_id'),
-                        json_extract(candidate.payload_json, '$.id'),
-                        json_extract(candidate.payload_json, '$.call_id')
-                      )
+                      AND json_extract(lifecycle.payload_json, '$.providerInvocationId') IS NOT NULL
+                      AND json_extract(lifecycle.payload_json, '$.agentRunId') IS NOT NULL
                   )
                 )
               )

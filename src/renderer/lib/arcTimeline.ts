@@ -198,6 +198,43 @@ function dayLabel(date: Date, now: Date): string {
   });
 }
 
+/** "just now", "12 min ago", "3 h ago", then a date. For moments in the past;
+ *  the schedule helpers phrase future times. */
+export function formatTimeAgo(iso: string, now: number = Date.now()): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "—";
+  const minutes = Math.floor((now - then) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return days === 1 ? "yesterday" : `${days} days ago`;
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+/** Whether a row names its project. Member and PR rows can sit in any of the
+ *  arc's projects, so they say which; the arc's own events never move. */
+export function showsProject(event: ArcTimelineEvent): boolean {
+  return FILTER_OF_KIND[event.kind] === "members" || FILTER_OF_KIND[event.kind] === "prs";
+}
+
+/** Splits agent prose on single backticks so code spans render as code
+ *  rather than as literal backticks. Unpaired backticks stay text. */
+export function splitInlineCode(text: string): Array<{ code: boolean; text: string }> {
+  const parts: Array<{ code: boolean; text: string }> = [];
+  const pattern = /`([^`\n]+)`/g;
+  let last = 0;
+  for (const match of text.matchAll(pattern)) {
+    const start = match.index ?? 0;
+    if (start > last) parts.push({ code: false, text: text.slice(last, start) });
+    parts.push({ code: true, text: match[1] });
+    last = start + match[0].length;
+  }
+  if (last < text.length) parts.push({ code: false, text: text.slice(last) });
+  return parts;
+}
+
 export function formatArcEventTime(occurredAt: string): string {
   const when = new Date(occurredAt);
   if (Number.isNaN(when.getTime())) return "";

@@ -328,9 +328,15 @@ pub fn notes_change(before: &str, after: &str) -> Option<NotesChange> {
     if added_lines.is_empty() && removed == 0 {
         return None;
     }
+    // A section heading names what changed; the file's own `# Title` does not.
     let first_new_line = added_lines
         .iter()
-        .find(|line| line.trim_start().starts_with('#'))
+        .find(|line| line.trim_start().starts_with("##"))
+        .or_else(|| {
+            added_lines
+                .iter()
+                .find(|line| !line.trim_start().starts_with('#'))
+        })
         .or_else(|| added_lines.first())
         .map(|line| line.trim().trim_start_matches('#').trim().to_string());
     Some(NotesChange {
@@ -370,6 +376,14 @@ mod tests {
     #[test]
     fn notes_change_counts_lines_and_prefers_a_new_heading() {
         let before = "# Plan\n- one\n- two\n";
+        assert_eq!(
+            notes_change("", "# NOTES — Rollout\n\n## Status\n- done\n")
+                .expect("changed")
+                .first_new_line
+                .as_deref(),
+            Some("Status"),
+            "the file title is skipped for the first section"
+        );
         let after = "# Plan\n- one\n- three\n\n## Gotchas\n- commit with -c user.name\n";
         let change = notes_change(before, after).expect("changed");
         assert_eq!(change.added, 3);

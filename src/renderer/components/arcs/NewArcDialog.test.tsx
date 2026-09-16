@@ -184,9 +184,10 @@ describe("NewArcDialog", () => {
       render(<NewArcDialog open onClose={onClose} projects={PROJECTS} promote={SOURCE} />);
 
       const dialog = screen.getByRole("dialog", { name: "Start an arc from this chat" });
-      expect(dialog).toHaveTextContent("Build the pricing page becomes the arc’s coordinator");
-      expect(dialog).toHaveTextContent("The 2 chats it launched join the arc too.");
-      expect(dialog).toHaveTextContent("This chat runs in its own worktree.");
+      expect(dialog).toHaveTextContent("This chat becomes the arc’s coordinator");
+      expect(dialog).toHaveTextContent("Home project Argmax");
+      expect(dialog).toHaveTextContent("The 2 chats it launched join the arc");
+      expect(dialog).toHaveTextContent("It runs in its own worktree");
       expect(screen.queryByLabelText("Coordinator model")).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Home project" })).not.toBeInTheDocument();
 

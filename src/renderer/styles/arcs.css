@@ -78,19 +78,43 @@
   font-size: var(--text-md-plus);
 }
 
-.new-arc-dialog-header button {
-  background: transparent;
-  border: 0;
-  font-size: var(--text-xl);
-  color: var(--muted);
+.new-arc-dialog-header h2 {
+  letter-spacing: -0.01em;
+}
+
+/* The same chevron the arc page's brief disclosure draws, not the native
+   triangle, so both disclosures in the feature read as one control. */
+.new-arc-folder-details summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: max-content;
+  list-style: none;
+  font-size: var(--text-xs);
+  color: var(--muted-strong);
   cursor: pointer;
 }
 
-.new-arc-folder-details summary {
-  font-size: var(--text-sm);
-  font-weight: calc(500 + var(--font-weight-offset));
-  color: var(--text-soft);
-  cursor: pointer;
+.new-arc-folder-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.new-arc-folder-details summary::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-right: 1.25px solid currentColor;
+  border-bottom: 1.25px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--motion-base) var(--ease);
+}
+
+.new-arc-folder-details[open] summary::before {
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.new-arc-folder-details summary:hover {
+  color: var(--text);
 }
 
 .new-arc-folder-details[open] summary {
@@ -198,14 +222,20 @@
   min-width: 0;
 }
 
+/* The hover outline sits 5px outside the text, so the heading shifts left to
+   keep the name on the page's edge. A negative margin on the button itself
+   would make the heading measure narrower than the name and clip it. */
 .arc-title {
+  flex: 0 1 auto;
   min-width: 0;
+  margin: -1px 0 -1px -6px;
 }
 
 .arc-name-edit {
+  display: block;
   max-width: 100%;
   padding: 1px 5px;
-  margin: -1px -5px;
+  margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -728,6 +758,16 @@ button.arc-event-subject:hover {
   overflow-wrap: anywhere;
 }
 
+.arc-event-quote code {
+  padding: 0 3px;
+  border-radius: var(--radius-xs);
+  background: var(--panel-sunken);
+  color: var(--prose-ink-strong);
+  font-family: var(--font-code);
+  font-size: 0.86em;
+  font-feature-settings: var(--code-font-features);
+}
+
 .arc-event-quote[data-clamped="true"] p {
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -901,17 +941,34 @@ button.arc-event-subject:hover {
 
 .new-arc-promote-facts {
   display: grid;
-  gap: 3px;
+  gap: 5px;
   margin: 0;
-  padding: 8px 10px;
+  padding: 0;
   list-style: none;
-  border-radius: var(--radius-md);
-  background: var(--panel-sunken);
   color: var(--muted-strong);
   font-size: var(--text-xs);
 }
 
-.new-arc-promote-facts li[data-tone="warning"] {
+.new-arc-promote-facts li {
+  display: grid;
+  grid-template-columns: 13px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  line-height: 1.45;
+}
+
+.new-arc-promote-facts li > svg {
+  margin-top: 1.5px;
+  color: var(--muted);
+}
+
+.new-arc-promote-facts strong {
+  color: var(--text);
+  font-weight: calc(500 + var(--font-weight-offset));
+}
+
+.new-arc-promote-facts li[data-tone="warning"],
+.new-arc-promote-facts li[data-tone="warning"] > svg {
   color: var(--amber);
 }
 
@@ -928,4 +985,9 @@ button.arc-event-subject:hover {
   gap: 6px;
   color: var(--muted);
   font-size: var(--text-2xs);
+}
+
+.arc-event-line .arc-event-badge {
+  flex: 0 0 auto;
+  align-self: center;
 }

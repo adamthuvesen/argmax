@@ -1,4 +1,4 @@
-import { Check, Clock, Copy, FolderOpen, Pause, Play, Trash2 } from "lucide-react";
+import { Check, Clock, Copy, FolderOpen, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import type {
   ArcDetail,
@@ -15,7 +15,8 @@ import type {
 import { PROVIDER_DISPLAY_NAMES } from "../../../shared/providerModels.js";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard.js";
 import { readStoredLaunchModel } from "../../lib/launchModelPreference.js";
-import { describeSchedule, formatRelative } from "../../lib/schedule.js";
+import { describeSchedule } from "../../lib/schedule.js";
+import { formatTimeAgo } from "../../lib/arcTimeline.js";
 import { factoryLaunchModel, type ModelPickerSelection } from "../../lib/models.js";
 import { showSchedulePage } from "../../state/overlays.js";
 import { showErrorToast } from "../../state/toast.js";
@@ -121,6 +122,7 @@ export function ArcPage({
 
   const [triggerRoutines, setTriggerRoutines] = useState<Routine[]>([]);
   const [triggersError, setTriggersError] = useState<string | null>(null);
+  const [triggersRemote, setTriggersRemote] = useState(false);
   const [removingRoutineId, setRemovingRoutineId] = useState<string | null>(null);
 
   const [briefDraft, setBriefDraft] = useState("");
@@ -202,7 +204,13 @@ export function ArcPage({
       setTriggerRoutines(routines.filter((routine) => routine.arcId === arcId));
       setTriggersError(null);
     } catch (error) {
-      setTriggersError(errorMessage(error, "Could not load triggers."));
+      const message = errorMessage(error, "Could not load triggers.");
+      // The phone bridge does not carry scheduled tasks; that is not a failure.
+      if (message.includes("only available in the desktop app")) {
+        setTriggersRemote(true);
+      } else {
+        setTriggersError(message);
+      }
     }
   }, [arcId]);
 
@@ -439,11 +447,11 @@ export function ArcPage({
               <>
                 {arc.state === "active" ? (
                   <button type="button" className="settings-button" disabled={busy} onClick={() => void handleSetState("paused")}>
-                    <Pause size={12} aria-hidden="true" /> Pause
+                    Pause
                   </button>
                 ) : (
                   <button type="button" className="settings-button" disabled={busy} onClick={() => void handleSetState("active")}>
-                    <Play size={12} aria-hidden="true" /> Resume
+                    Resume
                   </button>
                 )}
                 <button type="button" className="settings-button" disabled={busy} onClick={() => void handleSetState("done")}>
@@ -456,7 +464,7 @@ export function ArcPage({
         <p className="arc-hero-meta">
           {project ? project.name : "Unknown project"}
           <span aria-hidden="true"> · </span>started {formatDay(arc.createdAt)}
-          <span aria-hidden="true"> · </span>last activity {formatRelative(lastActivity)}
+          <span aria-hidden="true"> · </span>last activity {formatTimeAgo(lastActivity)}
         </p>
         {actionError ? (
           <p className="arc-inline-error" role="alert">
@@ -531,10 +539,16 @@ export function ArcPage({
         <div className="arc-stat">
           <dt>Pull requests</dt>
           <dd>
-            <span className="arc-stat-value">{pullRequests.open}</span>
-            <span className="arc-stat-sub">open</span>
-            <span className="arc-stat-value arc-stat-merged">{pullRequests.merged}</span>
-            <span className="arc-stat-sub">merged</span>
+            {pullRequests.open + pullRequests.merged === 0 ? (
+              <span className="arc-stat-value arc-stat-missing">None yet</span>
+            ) : (
+              <>
+                <span className="arc-stat-value">{pullRequests.open}</span>
+                <span className="arc-stat-sub">open</span>
+                <span className="arc-stat-value arc-stat-merged">{pullRequests.merged}</span>
+                <span className="arc-stat-sub">merged</span>
+              </>
+            )}
           </dd>
         </div>
       </dl>
@@ -665,7 +679,9 @@ export function ArcPage({
                 {triggersError}
               </p>
             ) : null}
-            {triggerRoutines.length === 0 ? (
+            {triggersRemote ? (
+              <p className="arc-card-hint">Scheduled tasks for this arc are listed in the desktop app.</p>
+            ) : triggerRoutines.length === 0 ? (
               <p className="arc-card-hint">
                 No scheduled tasks target this arc. Add one from Scheduled Tasks with the target &ldquo;Arc coordinator&rdquo;.
               </p>

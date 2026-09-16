@@ -1,3 +1,4 @@
+import { Bot, Folder, TriangleAlert, X } from "lucide-react";
 import { useEffect, useRef, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
 import type { ProjectSummary } from "../../../shared/types.js";
@@ -213,30 +214,41 @@ export function NewArcDialog({
       >
         <header className="new-arc-dialog-header">
           <h2>{promote ? "Start an arc from this chat" : "New arc"}</h2>
-          <button type="button" aria-label="Close" onClick={onClose} disabled={submitting}>
-            ×
+          <button type="button" className="small-icon" aria-label="Close" onClick={onClose} disabled={submitting}>
+            <X size={15} aria-hidden="true" />
           </button>
         </header>
 
         {promote ? (
           <div className="new-arc-promote-intro">
             <p>
-              <strong>{promote.chatLabel}</strong> becomes the arc&rsquo;s coordinator. It keeps its history and its
-              model, and plans and delegates from here on.
+              This chat becomes the arc&rsquo;s coordinator. It keeps its history and model, and from here on it plans
+              and delegates instead of doing the work itself.
             </p>
             <ul className="new-arc-promote-facts">
-              <li>Home project: {promote.projectName}</li>
+              <li>
+                <Folder size={13} aria-hidden="true" />
+                <span>
+                  Home project <strong>{promote.projectName}</strong>
+                </span>
+              </li>
               {promote.adoptableCount > 0 ? (
                 <li>
-                  {promote.adoptableCount === 1
-                    ? "The chat it launched joins the arc too."
-                    : `The ${promote.adoptableCount} chats it launched join the arc too.`}
+                  <Bot size={13} aria-hidden="true" />
+                  <span>
+                    {promote.adoptableCount === 1
+                      ? "The chat it launched joins the arc"
+                      : `The ${promote.adoptableCount} chats it launched join the arc`}
+                  </span>
                 </li>
               ) : null}
               {promote.isolated ? (
                 <li data-tone="warning">
-                  This chat runs in its own worktree. Archiving it ends the coordinator; you can start a new one from
-                  the arc page.
+                  <TriangleAlert size={13} aria-hidden="true" />
+                  <span>
+                    It runs in its own worktree, so archiving that worktree ends the coordinator. You can start a new
+                    one from the arc page.
+                  </span>
                 </li>
               ) : null}
             </ul>
@@ -253,7 +265,7 @@ export function NewArcDialog({
             value={name}
             autoFocus
             autoComplete="off"
-            placeholder="Q3 pricing rollout"
+            placeholder={draftState === "drafting" ? "Drafting…" : "Q3 pricing rollout"}
             onChange={(event) => {
               nameTouched.current = true;
               setName(event.target.value);
@@ -283,9 +295,8 @@ export function NewArcDialog({
           <textarea
             id="new-arc-brief"
             className="sched-input sched-textarea"
-            rows={4}
+            rows={promote ? 8 : 4}
             value={brief}
-            aria-describedby="new-arc-brief-help"
             placeholder={
               draftState === "drafting" ? "Reading the conversation…" : "What this arc is for, and what done looks like."
             }
@@ -294,9 +305,11 @@ export function NewArcDialog({
               setBrief(event.target.value);
             }}
           />
-          <p className="sched-help" id="new-arc-brief-help">
-            Required unless the folder below already has a BRIEF.md.
-          </p>
+          {brief.trim().length === 0 && draftState !== "drafting" ? (
+            <p className="sched-help" id="new-arc-brief-help">
+              Required unless the folder below already has a BRIEF.md.
+            </p>
+          ) : null}
         </div>
 
         {promote ? null : (

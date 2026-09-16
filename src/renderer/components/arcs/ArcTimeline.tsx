@@ -24,6 +24,8 @@ import {
   groupArcTimelineByDay,
   matchesArcTimelineFilter,
   presentArcEvent,
+  showsProject,
+  splitInlineCode,
   type ArcEventGlyph,
   type ArcTimelineFilter
 } from "../../lib/arcTimeline.js";
@@ -208,15 +210,14 @@ function ArcTimelineRow({
   const clampable = detail !== null && detail.length > DETAIL_CLAMP_CHARS;
 
   // A PR row opens the PR; any other row with a live chat opens the chat.
+  const { prUrl, sessionId } = event;
   const openTarget =
-    event.prUrl !== null
-      ? { label: `Open pull request #${event.prNumber ?? ""}`, open: () => openWebUrl(event.prUrl as string) }
-      : event.sessionId !== null && event.sessionAvailable && canOpenSession(event.sessionId)
-        ? { label: "Open chat", open: () => onOpenSession(event.sessionId as string) }
+    prUrl !== null
+      ? { label: `Open pull request #${event.prNumber ?? ""}`, open: () => openWebUrl(prUrl) }
+      : sessionId !== null && event.sessionAvailable && canOpenSession(sessionId)
+        ? { label: "Open chat", open: () => onOpenSession(sessionId) }
         : null;
-  const staleChat = event.sessionId !== null && event.prUrl === null && openTarget === null;
-
-  const meta = [event.projectName, staleChat ? "chat no longer available" : null].filter(Boolean).join(" · ");
+  const meta = showsProject(event) ? event.projectName : null;
 
   return (
     <li className="arc-event" data-tone={presentation.tone}>
@@ -240,20 +241,25 @@ function ArcTimelineRow({
               <span className="arc-event-subject">{presentation.subject}</span>
             )
           ) : null}
+          {presentation.badge && !meta ? <span className="arc-event-badge">{presentation.badge}</span> : null}
           <time className="arc-event-time" dateTime={event.occurredAt}>
             {formatArcEventTime(event.occurredAt)}
           </time>
         </div>
-        {meta || presentation.badge ? (
+        {meta ? (
           <div className="arc-event-meta">
-            {meta ? <span>{meta}</span> : null}
+            <span>{meta}</span>
             {presentation.badge ? <span className="arc-event-badge">{presentation.badge}</span> : null}
           </div>
         ) : null}
         {detail ? (
           presentation.detailIsQuote ? (
             <blockquote className="arc-event-quote" data-clamped={clampable && !expanded ? "true" : undefined}>
-              <p>{detail}</p>
+              <p>
+                {splitInlineCode(detail).map((part, index) =>
+                  part.code ? <code key={index}>{part.text}</code> : <span key={index}>{part.text}</span>
+                )}
+              </p>
               {clampable ? (
                 <button
                   type="button"

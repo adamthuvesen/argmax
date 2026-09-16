@@ -1,6 +1,7 @@
 use rusqlite::{Connection, OptionalExtension, Row};
 use serde::Serialize;
 use specta::Type;
+use std::collections::HashMap;
 
 use super::gh::{list_session_prs, SessionPrSummary};
 use super::time::now_iso;
@@ -119,9 +120,7 @@ pub fn list_workspaces(
                 .query_map((json, limit as i64), workspace_row_to_summary)
                 .map_err(sqlite_error)?;
             let mut workspaces = rows.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)?;
-            for workspace in &mut workspaces {
-                attach_latest_pr(connection, workspace)?;
-            }
+            attach_latest_prs(connection, &mut workspaces)?;
             Ok(workspaces)
         }
         _ => {
@@ -134,9 +133,7 @@ pub fn list_workspaces(
                 .query_map([limit as i64], workspace_row_to_summary)
                 .map_err(sqlite_error)?;
             let mut workspaces = rows.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)?;
-            for workspace in &mut workspaces {
-                attach_latest_pr(connection, workspace)?;
-            }
+            attach_latest_prs(connection, &mut workspaces)?;
             Ok(workspaces)
         }
     }
@@ -229,6 +226,192 @@ fn attach_latest_pr(connection: &Connection, workspace: &mut WorkspaceSummary) -
                 workspace.pr_merged_at = merged_at;
             }
             return Ok(());
+        }
+    }
+
+    Ok(())
+}
+
+/// Batched equivalent of calling `attach_latest_pr` once per row. `list_workspaces`
+/// used to run two prepared statements per workspace (up to `DASHBOARD_ROW_LIMIT`
+/// rows); this runs two statements total for the whole page. Output must match
+/// `attach_latest_pr` exactly for every row, including "latest session" and PR
+/// ordering/tie-breaking.
+fn attach_latest_prs(
+    connection: &Connection,
+    workspaces: &mut [WorkspaceSummary],
+) -> ArgmaxResult<()> {
+    if workspaces.is_empty() {
+        return Ok(());
+    }
+    let workspace_ids: Vec<&str> = workspaces.iter().map(|w| w.id.as_str()).collect();
+    let ids_json = serde_json::to_string(&workspace_ids).map_err(json_error)?;
+
+    // Latest session per workspace, one row per workspace via a per-partition
+    // row number — the same `ORDER BY last_activity_at DESC, id DESC LIMIT 1`
+    // tie-break as the single-row lookup above, computed for every requested
+    // workspace at once instead of one query per row.
+    let mut latest_session_of: HashMap<String, String> = HashMap::new();
+    {
+        let mut statement = connection
+            .prepare_cached(
+                r#"
+                SELECT workspace_id, id FROM (
+                  SELECT workspace_id, id,
+                         ROW_NUMBER() OVER (
+                           PARTITION BY workspace_id
+                           ORDER BY last_activity_at DESC, id DESC
+                         ) AS rn
+                  FROM sessions
+                  WHERE workspace_id IN (SELECT value FROM json_each(?1))
+                )
+                WHERE rn = 1
+                "#,
+            )
+            .map_err(sqlite_error)?;
+        let rows = statement
+            .query_map([ids_json.as_str()], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(sqlite_error)?;
+        for row in rows {
+            let (workspace_id, session_id) = row.map_err(sqlite_error)?;
+            latest_session_of.insert(workspace_id, session_id);
+        }
+    }
+    if latest_session_of.is_empty() {
+        return Ok(());
+    }
+
+    let session_ids: Vec<&str> = latest_session_of.values().map(String::as_str).collect();
+    let sessions_json = serde_json::to_string(&session_ids).map_err(json_error)?;
+
+    // Every non-dismissed PR link for those sessions, in the same relationship
+    // + relationship-state + activity ordering `list_session_prs` uses for a
+    // single session — `links.session_id` is only a leading sort key so rows
+    // stay grouped per session, it never reorders rows within a session. The
+    // canonical PR's `pr_created_at` / `pr_merged_at` ride along on every row
+    // so the primary row's milestones come from this same join instead of a
+    // third query (the single-row path's `milestones` lookup above resolves
+    // to the identical `gh_pull_requests` row via the session's workspace).
+    // (session PR summary, its PR's created-at, its PR's merged-at)
+    type PrRow = (SessionPrSummary, Option<String>, Option<String>);
+    let mut prs_by_session: HashMap<String, Vec<PrRow>> = HashMap::new();
+    {
+        let mut statement = connection
+            .prepare_cached(
+                r#"
+                SELECT links.session_id,
+                       links.pr_number,
+                       prs.url,
+                       prs.title,
+                       prs.pr_state,
+                       prs.head_ref_name,
+                       links.relationship,
+                       links.activity_at,
+                       prs.updated_at,
+                       prs.last_seen_check_state,
+                       links.is_pinned,
+                       prs.refresh_error,
+                       prs.pr_created_at,
+                       prs.pr_merged_at
+                FROM session_pr_links links
+                JOIN gh_pull_requests prs
+                  ON prs.project_id = links.project_id
+                 AND prs.pr_number = links.pr_number
+                WHERE links.session_id IN (SELECT value FROM json_each(?1))
+                  AND links.dismissed_at IS NULL
+                ORDER BY
+                  links.session_id,
+                  links.is_pinned DESC,
+                  CASE
+                    WHEN links.relationship = 'worked'
+                      AND (prs.pr_state IS NULL OR prs.pr_state = 'OPEN') THEN 0
+                    WHEN links.relationship = 'worked' THEN 1
+                    WHEN links.relationship = 'referenced' THEN 2
+                    ELSE 3
+                  END,
+                  links.activity_at DESC,
+                  links.pr_number DESC
+                "#,
+            )
+            .map_err(sqlite_error)?;
+        let rows = statement
+            .query_map([sessions_json.as_str()], |row| {
+                let session_id: String = row.get(0)?;
+                let summary = SessionPrSummary {
+                    session_id: session_id.clone(),
+                    pr_number: row.get(1)?,
+                    url: row.get(2)?,
+                    title: row.get(3)?,
+                    pr_state: row.get(4)?,
+                    head_ref_name: row.get(5)?,
+                    relationship: row.get(6)?,
+                    activity_at: row.get(7)?,
+                    updated_at: row.get(8)?,
+                    check_state: row.get(9)?,
+                    is_primary: false,
+                    is_pinned: row.get::<_, i64>(10)? != 0,
+                    refresh_error: row.get(11)?,
+                };
+                let pr_created_at: Option<String> = row.get(12)?;
+                let pr_merged_at: Option<String> = row.get(13)?;
+                Ok((session_id, summary, pr_created_at, pr_merged_at))
+            })
+            .map_err(sqlite_error)?;
+        for row in rows {
+            let (session_id, summary, pr_created_at, pr_merged_at) = row.map_err(sqlite_error)?;
+            prs_by_session.entry(session_id).or_default().push((
+                summary,
+                pr_created_at,
+                pr_merged_at,
+            ));
+        }
+    }
+
+    for workspace in workspaces.iter_mut() {
+        let Some(session_id) = latest_session_of.get(&workspace.id) else {
+            continue;
+        };
+        let Some(rows) = prs_by_session.remove(session_id) else {
+            continue;
+        };
+
+        // Mirrors `list_session_prs`: the first row that is pinned, or whose
+        // relationship isn't "unverified", is the primary.
+        let mut primary_index = None;
+        let mut primary_milestones: (Option<String>, Option<String>) = (None, None);
+        let mut summaries = Vec::with_capacity(rows.len());
+        for (index, (summary, pr_created_at, pr_merged_at)) in rows.into_iter().enumerate() {
+            if primary_index.is_none()
+                && (summary.is_pinned || summary.relationship != "unverified")
+            {
+                primary_index = Some(index);
+                primary_milestones = (pr_created_at, pr_merged_at);
+            }
+            summaries.push(summary);
+        }
+
+        workspace.prs = summaries;
+        workspace.pr_summary_state = aggregate_pr_state(&workspace.prs);
+        if let Some(index) = primary_index {
+            workspace.prs[index].is_primary = true;
+            let primary = &workspace.prs[index];
+            workspace.pr_state = primary.pr_state.clone();
+            workspace.pr_number = Some(primary.pr_number);
+            workspace.pr_check_state = Some(aggregate_open_worked_checks(&workspace.prs));
+            workspace.pr_activity_at = workspace
+                .prs
+                .iter()
+                .filter(|pr| {
+                    pr.relationship == "worked"
+                        && matches!(pr.pr_state.as_deref(), None | Some("OPEN"))
+                })
+                .map(|pr| pr.updated_at.as_str())
+                .max()
+                .map(str::to_owned);
+            workspace.pr_created_at = primary_milestones.0;
+            workspace.pr_merged_at = primary_milestones.1;
         }
     }
 
@@ -621,4 +804,176 @@ pub fn workspace_row_to_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceSumm
         prs: Vec::new(),
         pr_summary_state: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::persistence::gh::{record_session_pr_evidence, store_gh_pr_observation, GhPrRecord};
+    use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
+    use crate::persistence::sessions::{
+        persist_session, update_session_state, PersistSessionInput, SessionStateInput,
+    };
+    use crate::persistence::Database;
+    use crate::sessions::state::SessionState;
+
+    fn add_project(connection: &Connection, id: &str) {
+        persist_project(
+            connection,
+            &PersistProjectInput {
+                id: id.to_owned(),
+                name: id.to_owned(),
+                repo_path: format!("/tmp/{id}"),
+                current_branch: "main".to_owned(),
+                default_branch: Some("main".to_owned()),
+                settings: ProjectSettings {
+                    archive_on_merge: false,
+                    worktree_location: format!("/tmp/{id}/worktrees"),
+                    setup_command: String::new(),
+                    check_commands: Vec::new(),
+                },
+            },
+        )
+        .expect("persist project");
+    }
+
+    fn add_workspace(connection: &Connection, project_id: &str, workspace_id: &str) {
+        persist_workspace(
+            connection,
+            &PersistWorkspaceInput {
+                id: workspace_id.to_owned(),
+                project_id: project_id.to_owned(),
+                task_label: workspace_id.to_owned(),
+                branch: "feature/a".to_owned(),
+                base_ref: "main".to_owned(),
+                path: format!("/tmp/{project_id}/{workspace_id}"),
+                state: "running".to_owned(),
+                shared_workspace: false,
+                kind: "git".to_owned(),
+                dirty: false,
+                changed_files: 0,
+            },
+        )
+        .expect("persist workspace");
+    }
+
+    /// Adds a session and stamps its `last_activity_at`, so tests can control
+    /// which session in a workspace is "latest" without racing the clock.
+    fn add_session_at(connection: &Connection, workspace_id: &str, session_id: &str, at: &str) {
+        persist_session(
+            connection,
+            &PersistSessionInput {
+                id: session_id.to_owned(),
+                workspace_id: workspace_id.to_owned(),
+                provider: "codex".to_owned(),
+                model_label: "Default".to_owned(),
+                model_id: "default".to_owned(),
+                reasoning_effort: None,
+                permission_mode: None,
+                agent_mode: None,
+                prompt: "test".to_owned(),
+                state: SessionState::Running,
+            },
+        )
+        .expect("persist session");
+        update_session_state(
+            connection,
+            session_id,
+            &SessionStateInput::transition(SessionState::Running).active_at(at.to_owned()),
+        )
+        .expect("stamp last_activity_at");
+    }
+
+    fn worked_pr(session_id: &str, pr_number: i64, created_at: &str) -> GhPrRecord {
+        GhPrRecord {
+            session_id: session_id.to_owned(),
+            pr_number,
+            head_sha: "sha".to_owned(),
+            last_seen_check_state: "success".to_owned(),
+            updated_at: created_at.to_owned(),
+            pr_state: Some("OPEN".to_owned()),
+            notified_at: None,
+            pr_created_at: Some(created_at.to_owned()),
+            pr_merged_at: None,
+            head_ref_name: Some("feature/a".to_owned()),
+        }
+    }
+
+    /// Pins the batched `attach_latest_prs` path (used by `list_workspaces`)
+    /// against the exact behaviour `attach_latest_pr` has for a single
+    /// workspace: when a workspace has several sessions, only the most
+    /// recently active session's PRs are attached, and one workspace's PR
+    /// evidence never leaks onto a sibling workspace's summary.
+    #[test]
+    fn list_workspaces_attaches_only_the_latest_sessions_pr() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        add_project(&connection, "p1");
+
+        add_workspace(&connection, "p1", "w1");
+        add_session_at(&connection, "w1", "s1-old", "2025-01-01T00:00:00.000Z");
+        add_session_at(&connection, "w1", "s2-new", "2025-06-01T00:00:00.000Z");
+
+        add_workspace(&connection, "p1", "w2");
+        add_session_at(&connection, "w2", "s3", "2025-03-01T00:00:00.000Z");
+
+        // The older session in w1 gets its own PR — this must not surface on
+        // the workspace once a newer session in the same workspace also has one.
+        record_session_pr_evidence(
+            &connection,
+            "s1-old",
+            7,
+            "worked",
+            "evidence-old",
+            "2025-01-01T00:00:00.000Z",
+        )
+        .expect("record old evidence");
+        store_gh_pr_observation(
+            &connection,
+            &worked_pr("s1-old", 7, "2025-01-01T00:00:00.000Z"),
+        )
+        .expect("store old pr");
+
+        record_session_pr_evidence(
+            &connection,
+            "s2-new",
+            42,
+            "worked",
+            "evidence-new",
+            "2025-06-01T00:00:00.000Z",
+        )
+        .expect("record new evidence");
+        store_gh_pr_observation(
+            &connection,
+            &worked_pr("s2-new", 42, "2025-06-01T12:00:00.000Z"),
+        )
+        .expect("store new pr");
+
+        let workspaces = list_workspaces(&connection, None, 10).expect("list workspaces");
+
+        let w1 = workspaces
+            .iter()
+            .find(|w| w.id == "w1")
+            .expect("w1 present");
+        assert_eq!(
+            w1.pr_number,
+            Some(42),
+            "w1 must show its latest session's PR"
+        );
+        assert_eq!(w1.pr_state.as_deref(), Some("OPEN"));
+        assert_eq!(
+            w1.pr_created_at.as_deref(),
+            Some("2025-06-01T12:00:00.000Z")
+        );
+        assert_eq!(w1.prs.len(), 1);
+        assert_eq!(w1.prs[0].session_id, "s2-new");
+
+        let w2 = workspaces
+            .iter()
+            .find(|w| w.id == "w2")
+            .expect("w2 present");
+        assert_eq!(w2.pr_number, None);
+        assert!(w2.prs.is_empty());
+        assert_eq!(w2.pr_summary_state, None);
+    }
 }

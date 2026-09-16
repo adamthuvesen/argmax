@@ -5,6 +5,7 @@ use std::{
     time::Duration,
 };
 
+use futures_util::future::join_all;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tokio::{sync::Semaphore, task::JoinSet};
@@ -14,7 +15,7 @@ use crate::{
     git::{
         exec::{reject_leading_dash, run_git_text, run_git_text_with_allowed_exit_codes},
         ops::checkout_write_lock,
-        tree_snapshot::{index_tree, snapshot_visible_worktree},
+        tree_snapshot::{fingerprint_worktree, index_tree},
     },
     persistence::database::Database,
     persistence::projects::require_project,
@@ -190,7 +191,9 @@ async fn resolve_review_target(
     match kind {
         WorkspaceTargetKind::Project => {
             let project = {
-                let connection = database.connection();
+                // A read-only lookup; nothing upstream just wrote this row,
+                // so the reader pool is safe and avoids the writer mutex.
+                let connection = database.read_connection();
                 require_project(&connection, id)?
             };
             let primary = project
@@ -238,7 +241,9 @@ fn load_workspace_with_default_branch(
     database: &Database,
     workspace_id: &str,
 ) -> ArgmaxResult<(WorkspaceSummary, Option<String>)> {
-    let connection = database.connection();
+    // Read-only lookup; the reader pool avoids taking the single writer mutex
+    // for a plain SELECT.
+    let connection = database.read_connection();
     let workspace = find_workspace_by_id(&connection, workspace_id)?;
     let default_branch = require_project(&connection, &workspace.project_id)
         .ok()
@@ -281,22 +286,31 @@ async fn pick_review_base(
         candidates.push(name.to_owned());
     }
     let mut seen: Vec<String> = Vec::new();
-    let mut first_existing: Option<String> = None;
-    // Every file click in the Changes panel runs this loop, so resolve HEAD
-    // once and let one `rev-parse` per candidate answer both "does it exist"
-    // and "is it HEAD" — the two probes issued the identical command.
-    let head = rev_parse_commit(repo_path, "HEAD").await.ok();
-    for candidate in candidates {
-        if seen.contains(&candidate) {
-            continue;
-        }
+    candidates.retain(|candidate| {
+        let fresh = !seen.contains(candidate);
         seen.push(candidate.clone());
-        let Ok(resolved) = rev_parse_commit(repo_path, &candidate).await else {
-            continue;
-        };
-        if !has_common_ancestor(repo_path, &candidate).await {
-            continue;
+        fresh
+    });
+
+    // Every file click in the Changes panel runs this, so resolve HEAD once and
+    // let one `rev-parse` per candidate answer both "does it exist" and "is it
+    // HEAD" — the two probes issued the identical command. The probes are
+    // independent of each other, so they run together and the answer is picked
+    // from the results in candidate order.
+    let head = rev_parse_commit(repo_path, "HEAD");
+    let probes = join_all(candidates.iter().map(|candidate| async move {
+        let resolved = rev_parse_commit(repo_path, candidate).await.ok();
+        match resolved {
+            Some(resolved) if has_common_ancestor(repo_path, candidate).await => Some(resolved),
+            _ => None,
         }
+    }));
+    let (head, probes) = tokio::join!(head, probes);
+    let head = head.ok();
+
+    let mut first_existing: Option<String> = None;
+    for (candidate, resolved) in candidates.into_iter().zip(probes) {
+        let Some(resolved) = resolved else { continue };
         if first_existing.is_none() {
             first_existing = Some(candidate.clone());
         }
@@ -355,6 +369,67 @@ pub async fn list_changed_files_at_path(
     load_file_summaries(repo_path, files, comparison.diff_base).await
 }
 
+/// The change entry for one path, which decides how its diff is produced: the
+/// working-tree status, because that is what says "untracked" and calls for a
+/// synthesized diff, or — for a file already committed on the branch and clean
+/// on disk — the branch-vs-base entry, which carries `old_path` so a committed
+/// rename renders as one rename rather than an orphaned add. `None` leaves the
+/// caller with a plain `git diff <base> -- path`.
+async fn resolve_diff_file(
+    repo_path: &Path,
+    comparison: &ResolvedComparison,
+    path: &str,
+) -> ArgmaxResult<Option<ChangedFileSummary>> {
+    // Committed mode never consults the working tree: a file that is committed
+    // AND dirty would come back `??`/`M` and get diffed against the wrong side.
+    if comparison.committed_only {
+        return branch_file_entry(repo_path, comparison, path).await;
+    }
+    let status = working_tree_file_entry(repo_path, path);
+    if !comparison.branch_mode {
+        return status.await;
+    }
+    // Most files on a branch under review are committed and clean, so the
+    // branch list is wanted more often than not. Asking for both at once spends
+    // one git process on a dirty file and saves a round trip on every other.
+    let (status, branch) = tokio::join!(status, branch_file_entry(repo_path, comparison, path));
+    Ok(status?.or(branch?))
+}
+
+async fn working_tree_file_entry(
+    repo_path: &Path,
+    path: &str,
+) -> ArgmaxResult<Option<ChangedFileSummary>> {
+    let porcelain = run_git_text(
+        repo_path,
+        ["status", "--porcelain=v1", "-z", "--", path],
+        GIT_TIMEOUT,
+    )
+    .await?;
+    Ok(parse_porcelain_z(&porcelain)
+        .into_iter()
+        .find(|item| item.path == path))
+}
+
+/// One path's entry in the branch-vs-base list. Untracked files are absent by
+/// construction — `git diff` cannot see them — and need not be recovered here:
+/// an untracked file is in the working-tree status, which is consulted first.
+async fn branch_file_entry(
+    repo_path: &Path,
+    comparison: &ResolvedComparison,
+    path: &str,
+) -> ArgmaxResult<Option<ChangedFileSummary>> {
+    let name_status = run_git_text(
+        repo_path,
+        ["diff", "--name-status", "-z", comparison.diff_base.as_str()],
+        GIT_TIMEOUT,
+    )
+    .await?;
+    Ok(parse_name_status_z(&name_status)
+        .into_iter()
+        .find(|item| item.path == path))
+}
+
 pub async fn load_diff_at_path(
     repo_path: impl AsRef<Path>,
     diff_workspace_id: impl Into<String>,
@@ -364,45 +439,21 @@ pub async fn load_diff_at_path(
 ) -> ArgmaxResult<WorkspaceDiff> {
     let repo_path = validate_repo_path(repo_path.as_ref())?;
     let comparison = resolve_comparison(&repo_path, baseline).await?;
-    let revision_before = review_revision_at_path(&repo_path).await?;
+    // Only the working-tree comparison offers staging and reverting, and the
+    // revision exists to guard those. Fingerprinting HEAD, the index and the
+    // whole worktree costs more than the diff itself, so a branch or committed
+    // diff — which describes history nobody can act on from here — skips it
+    // and is identified by its own payload below instead.
+    let actionable = !comparison.branch_mode;
+    let revision_before = match actionable {
+        true => Some(review_revision_at_path(&repo_path).await?),
+        false => None,
+    };
     let diff_workspace_id = diff_workspace_id.into();
     let content = match file_path {
         Some(path) => {
             validate_relative_review_path(&repo_path, path)?;
-            // The working-tree status still tells us whether the file is
-            // untracked (so we synthesize) versus a regular diff target; in
-            // branch mode a committed-but-clean file simply won't appear here
-            // and falls through to a plain `git diff <base> -- path`. Committed
-            // mode skips the probe entirely: a file that is committed AND dirty
-            // would come back `??`/`M` from the working tree and get diffed
-            // against the wrong side.
-            let file = if comparison.committed_only {
-                None
-            } else {
-                let porcelain = run_git_text(
-                    &repo_path,
-                    ["status", "--porcelain=v1", "-z", "--", path],
-                    GIT_TIMEOUT,
-                )
-                .await?;
-                parse_porcelain_z(&porcelain)
-                    .into_iter()
-                    .find(|item| item.path == path)
-            };
-            // In branch mode a committed-but-clean file isn't in working-tree
-            // status. Recover its change entry from the branch-vs-base list,
-            // which carries `old_path` for committed renames, so the opened
-            // diff renders the same rename the file list shows instead of an
-            // orphaned add. A plain `git diff <base> -- path` is the fallback.
-            let file = match file {
-                Some(file) => Some(file),
-                None if comparison.branch_mode => collect_changed_files(&repo_path, &comparison)
-                    .await?
-                    .into_iter()
-                    .find(|item| item.path == path),
-                None => None,
-            };
-            match file {
+            match resolve_diff_file(&repo_path, &comparison, path).await? {
                 Some(file) => {
                     load_file_diff(&repo_path, &file, &comparison.diff_base, context_lines).await?
                 }
@@ -429,13 +480,21 @@ pub async fn load_diff_at_path(
         }
     };
 
-    let revision = review_revision_at_path(&repo_path).await?;
-    if revision != revision_before {
-        return Err(ArgmaxError::service(
-            "REVIEW_STALE_REVISION",
-            "The checkout changed while loading this diff. Refresh before acting on it.",
-        ));
-    }
+    let revision = match revision_before {
+        Some(before) => {
+            let revision = review_revision_at_path(&repo_path).await?;
+            if revision != before {
+                return Err(ArgmaxError::service(
+                    "REVIEW_STALE_REVISION",
+                    "The checkout changed while loading this diff. Refresh before acting on it.",
+                ));
+            }
+            revision
+        }
+        // A token for a payload no action accepts: `ensure_current_review_revision`
+        // compares against the worktree fingerprint, so this can never unlock one.
+        None => review_diff_revision(&content),
+    };
     Ok(WorkspaceDiff {
         workspace_id: diff_workspace_id,
         file_path: file_path.map(ToOwned::to_owned),
@@ -457,9 +516,13 @@ pub fn review_diff_revision(content: &str) -> String {
 }
 
 async fn review_revision_at_path(repo_path: &Path) -> ArgmaxResult<String> {
-    let head = run_git_text(repo_path, ["rev-parse", "HEAD"], GIT_TIMEOUT).await?;
-    let index = index_tree(repo_path).await?;
-    let worktree = snapshot_visible_worktree(repo_path).await?;
+    // Three independent reads of the same checkout: overlapping them costs the
+    // slowest one rather than their sum, and a file click pays this twice.
+    let (head, index, worktree) = tokio::try_join!(
+        run_git_text(repo_path, ["rev-parse", "HEAD"], GIT_TIMEOUT),
+        index_tree(repo_path),
+        fingerprint_worktree(repo_path),
+    )?;
     Ok(review_diff_revision(&format!(
         "{head}\0{index}\0{worktree}"
     )))

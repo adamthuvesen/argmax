@@ -173,7 +173,9 @@ impl WorkspaceFilesService {
     }
 
     fn root_path(&self, kind: WorkspaceTargetKind, id: &str) -> ArgmaxResult<String> {
-        let connection = self.database.connection();
+        // A pure lookup — no write in this flow depends on seeing it, so the
+        // reader pool (not the writer mutex) is the right connection.
+        let connection = self.database.read_connection();
         match kind {
             WorkspaceTargetKind::Workspace => Ok(find_workspace_by_id(&connection, id)?.path),
             WorkspaceTargetKind::Project => Ok(require_project(&connection, id)?.repo_path),

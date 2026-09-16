@@ -13,11 +13,14 @@ the same number `git log --author=you` would give. Pull requests and reviews
 come from `gh` under the signed-in account, so they include repositories
 Argmax has never opened.
 
-The page arrives in one piece. The local ledger is authoritative and is swept
-inline on every read once it has completed once, so the commits are current.
-The GitHub half is a cache: the read answers with whatever is stored and kicks
-a refresh off behind it, which means the first open after signing in shows no
-pull requests and the next one does. Nothing on the page waits on the network.
+The page arrives in one piece. The local ledger is authoritative, and once its
+first sweep has completed, every read answers from the stored ledger and kicks
+a background sweep off only when that answer is older than `FRESHNESS_INTERVAL`
+(60 seconds) — the same stale-while-revalidate shape the GitHub half already
+used. The GitHub half is a cache: the read answers with whatever is stored and
+kicks a refresh off behind it, which means the first open after signing in
+shows no pull requests and the next one does. Nothing on the page waits on the
+network, and nothing on the page waits on a sweep either.
 
 `ActivitySummary::previous` is the one comparison the renderer cannot work out
 for itself: the same-length window immediately before this one, narrowed the
@@ -136,9 +139,17 @@ project keeps `projectId: null` and still counts in the unnarrowed totals.
 project in the `projects` table into `activity_commits` (migration v44, see
 [data.md](data.md)).
 
-- Four repositories are read at once. Each is one `git log` subprocess; the
+- Author emails (every repository's `user.email` plus the global one) are
+  resolved concurrently through the shared async git runner before any
+  repository is read — the filter has to be the union of all of them, since a
+  commit authored under one repo's identity can be reachable from another
+  repo's refs, but there is no reason the lookups themselves should serialize.
+- At most `MAX_CONCURRENT_REPOS` (four) `git log` subprocesses run at once;
+  the next repository starts as soon as any one finishes, so one slow
+  repository no longer stalls the others sharing its old fixed chunk. The
   sweep runs on the blocking pool and owns a throwaway current-thread runtime
-  for the fan-out rather than borrowing the app's shared workers.
+  for the whole fan-out — email lookups and log reads both — rather than
+  borrowing the app's shared workers.
 - One repository failing does not fail the sweep. It is logged and skipped.
 - `PARSER_VERSION` is stored in `activity_scan_meta`; bumping it empties the
   ledger and rescans.
@@ -146,14 +157,25 @@ project in the `projects` table into `activity_commits` (migration v44, see
   connection, because `projects::get_project_remote` shells out to git and
   stores what it finds — the summary's pooled read-only connection cannot.
 - The first sweep is cold and runs in the background when the page is first
-  opened; the page shows "Scanning N of M repositories". Later sweeps are warm
-  and run inline on every `activity:summary`.
+  opened; the page shows "Scanning N of M repositories" and `scan.phase` is
+  `Scanning` until it lands. Every sweep after that is a background refresh:
+  `activity:summary` answers from the stored ledger immediately and starts one
+  in the background — deduplicated by `sweep()`'s own `try_lock`, so a burst
+  of window or project-picker changes cannot start more than one — only when
+  the last completed sweep is older than `FRESHNESS_INTERVAL` (60 seconds). A
+  refresh sweep never flips `scan.phase` back to `Scanning`: the stored answer
+  is a whole one, not a partial one, so the "still walking your clones" notice
+  and the page's faster poll stay reserved for the one-time cold sweep.
+  Worst case, a commit shows up on the desktop within one poll after
+  `FRESHNESS_INTERVAL` has elapsed (up to ~90 seconds after the commit, given
+  the 60-second poll); the iPhone app does not poll, so it picks up a fresh
+  sweep on the next open or pull-to-refresh.
 - At boot, a ledger that has completed before is refreshed in the background.
 - After the dashboard is ready, the renderer prefetches the default 30-day
   summary on an idle tick and stores it in memory, so the first Activity open
-  can paint from cache while a warm sweep runs on Rust's blocking pool.
-  Hovering Hacking in the sidebar kicks the same warm if idle prefetch has
-  not finished yet.
+  can paint from cache while a sweep runs on Rust's blocking pool if the
+  cached answer is stale. Hovering Hacking in the sidebar kicks the same
+  prefetch if idle prefetch has not finished yet.
 
 ## GitHub cache
 

@@ -234,7 +234,7 @@ struct ChatListView: View {
         List {
             section("Pinned", rows: store.sections.pinned, from: 0)
             section("Priority", rows: store.sections.priority, from: store.sections.pinned.count)
-            ForEach(groupChatsByDate(store.sections.chats, now: store.now)) { group in
+            ForEach(store.dateGroups) { group in
                 section(group.label, rows: group.rows, from: store.sections.pinned.count + store.sections.priority.count)
             }
             // The last row needs somewhere to end, and the home indicator is

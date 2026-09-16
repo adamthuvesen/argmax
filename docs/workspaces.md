@@ -91,7 +91,7 @@ The review panel can show two views stacked vertically. Right-click a view tab a
 
 The session review panel remembers its visibility, view arrangement, and divider position per session in localStorage. Returning to a chat or restarting the app restores them. Closing the whole sidebar preserves the arrangement for its next open. Full-screen review surfaces keep their explicit initial visibility and a single view.
 
-Layouts live in `argmax.reviewPanel.layout.<sessionId>`. The launcher uses one shared `argmax.reviewPanel.layout.launcher` preference across projects. Existing single-mode session preferences remain the fallback until a layout is saved.
+Layouts live in `argmax.reviewPanel.layout.<sessionId>`. The Files view's open tabs and active tab are kept per session in `argmax.reviewPanel.files.<sessionId>`: returning to a chat reopens them and reloads the active file from disk, and closing the last tab clears the entry. The launcher uses one shared `argmax.reviewPanel.layout.launcher` preference across projects. Existing single-mode session preferences remain the fallback until a layout is saved.
 
 [src-tauri/src/review/git_review.rs](../src-tauri/src/review/git_review.rs) provides diff calculations and file lists.
 
@@ -118,6 +118,13 @@ has moved on. Untracked files can be staged as whole files. Their preview hunks
 and rename hunks are not actionable. Files with both staged and unstaged edits
 use whole-file index actions because their combined preview does not represent
 one index patch.
+
+That revision is a fingerprint of HEAD, the index and the whole worktree, and it
+costs more to compute than the diff it guards, so only the Uncommitted
+comparison pays for it. The Branch and Committed diffs describe history nobody
+can act on from here, so they carry a revision of their own payload instead,
+which every mutation refuses. Opening a file in those scopes is roughly seven
+times cheaper for it.
 
 Reverting restores unstaged changes and saves a recovery checkpoint first.
 Untracked file deletion remains a Files action. **Commit staged** commits the

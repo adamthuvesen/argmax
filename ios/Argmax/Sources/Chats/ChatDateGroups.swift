@@ -1,6 +1,6 @@
 import Foundation
 
-struct ChatDateGroup: Identifiable {
+struct ChatDateGroup: Identifiable, Equatable {
     var id: String
     var label: String
     var rows: [ChatRow]

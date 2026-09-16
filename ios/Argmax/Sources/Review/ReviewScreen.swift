@@ -101,7 +101,11 @@ struct ReviewScreen: View {
         .task(id: reviewRevision) {
             guard !canvas else { return }
             await store.loadChangedFiles()
-            if mode == .files { await store.loadFileList() }
+            // Not while a file is open over the list: a reference opens
+            // straight into a file (`openDetail` set, `mode` along for the
+            // ride), and the whole-tree read behind it would cross the wire
+            // for a list nobody is looking at.
+            if mode == .files, openDetail == nil { await store.loadFileList() }
         }
         .onReceive(dashboard.reviewChanged) { changed in
             guard changed.contains(workspace.id), !canvas, refreshTask == nil else { return }
@@ -118,10 +122,16 @@ struct ReviewScreen: View {
             refreshTask?.cancel()
             refreshTask = nil
         }
-        .onChange(of: openDetail) { _, _ in
+        .onChange(of: openDetail) { _, current in
             // The rung belongs to the open file, so it starts over.
             diffContext = nil
             canExpandDiff = false
+            // Backing out of a file opened by reference lands on the list
+            // with nothing loaded yet — this is the deferred read the task
+            // above skipped. `loadFileList` is its own guard: already ready
+            // for this workspace, it does nothing.
+            guard !canvas, current == nil, mode == .files else { return }
+            Task { await store.loadFileList() }
         }
         .onChange(of: mode) { _, current in
             openDetail = nil

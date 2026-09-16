@@ -24,6 +24,7 @@ const integrations = [
   { key: "snowflake", aliases: ["snowflake"] },
   { key: "spotify", aliases: ["spotify"] },
   { key: "linear", aliases: ["linear"] },
+  { key: "datadog", aliases: ["datadog"] },
   { key: "github", aliases: ["github"] },
   { key: "vercel", aliases: ["vercel"] },
   { key: "hex", aliases: ["hex"] },

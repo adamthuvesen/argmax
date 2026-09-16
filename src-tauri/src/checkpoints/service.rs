@@ -136,18 +136,21 @@ impl CheckpointService {
         let _guard = lock.lock().await;
         self.ensure_checkout_supported(&workspace_path).await?;
         let current_fingerprint = checkout_fingerprint(&workspace_path).await?;
-        let (mut changed_paths, deleted_paths) = tree_changes(
-            &workspace_path,
-            &checkpoint.worktree_tree,
-            &current_fingerprint.worktree_tree,
-        )
-        .await?;
-        let (index_paths, removed_index_paths) = tree_changes(
-            &workspace_path,
-            &checkpoint.index_tree,
-            &current_fingerprint.index_tree,
-        )
-        .await?;
+        // The worktree-tree diff and the index-tree diff read two independent
+        // pinned trees against the checkout; neither writes anything, so they
+        // run concurrently instead of back to back.
+        let ((mut changed_paths, deleted_paths), (index_paths, removed_index_paths)) = tokio::try_join!(
+            tree_changes(
+                &workspace_path,
+                &checkpoint.worktree_tree,
+                &current_fingerprint.worktree_tree,
+            ),
+            tree_changes(
+                &workspace_path,
+                &checkpoint.index_tree,
+                &current_fingerprint.index_tree,
+            ),
+        )?;
         changed_paths.extend(index_paths);
         changed_paths.extend(removed_index_paths);
         changed_paths.sort();
@@ -192,8 +195,15 @@ impl CheckpointService {
         )
         .await?;
 
+        // `current` was fingerprinted above under the write lock taken at the
+        // top of this function, and the lock is still held here, so nothing
+        // could have changed the checkout in between: reuse it instead of
+        // having the recovery capture redo `ensure_checkout_supported` and
+        // `checkout_fingerprint` (6-8 more git spawns). This is only sound
+        // because the lock is continuous from that fingerprint to this
+        // capture; do not reorder `ensure_no_active_writers` around it.
         let recovery_checkpoint = self
-            .capture_locked(
+            .capture_with_fingerprint(
                 CreateCheckpointInput {
                     workspace_id: input.workspace_id.clone(),
                     session_id: None,
@@ -203,6 +213,7 @@ impl CheckpointService {
                     recovery_of: Some(checkpoint.id.clone()),
                 },
                 &workspace_path,
+                current,
             )
             .await?;
         let rewind_id = Uuid::new_v4().to_string();
@@ -287,6 +298,25 @@ impl CheckpointService {
     ) -> ArgmaxResult<Checkpoint> {
         self.ensure_checkout_supported(workspace_path).await?;
         let fingerprint = checkout_fingerprint(workspace_path).await?;
+        self.capture_with_fingerprint(input, workspace_path, fingerprint)
+            .await
+    }
+
+    /// Persist a checkpoint from a fingerprint the caller already computed.
+    ///
+    /// Callers that hold the checkout write lock continuously from their own
+    /// `ensure_checkout_supported` + `checkout_fingerprint` through this call
+    /// (see `rewind_files`) can pass that fingerprint straight through: the
+    /// lock rules out anything changing the checkout in between, so redoing
+    /// the support check and fingerprint here would only spend git processes
+    /// to confirm what is already known. `capture_locked` is the normal path
+    /// and still computes its own.
+    async fn capture_with_fingerprint(
+        &self,
+        input: CreateCheckpointInput,
+        workspace_path: &Path,
+        fingerprint: CheckoutFingerprint,
+    ) -> ArgmaxResult<Checkpoint> {
         let untracked_paths = untracked_paths(workspace_path).await?;
         let provider_conversation_id = self.session_conversation_for_checkpoint(&input)?;
         let checkpoint = Checkpoint {
@@ -408,15 +438,25 @@ async fn untracked_paths(workspace_path: &Path) -> ArgmaxResult<Vec<String>> {
 }
 
 async fn checkout_fingerprint(workspace_path: &Path) -> ArgmaxResult<CheckoutFingerprint> {
-    Ok(CheckoutFingerprint {
-        head_sha: git_text(workspace_path, ["rev-parse", "--verify", "HEAD"]).await?,
-        branch: git_text(
+    // Four independent reads: two plain git plumbing commands against the
+    // real HEAD, plus two tree snapshots that each work through their own
+    // scratch `GIT_INDEX_FILE` (see git/tree_snapshot.rs). None of them write
+    // to the checkout or share state with each other, so they run
+    // concurrently rather than one after another.
+    let (head_sha, branch, worktree_tree, index_tree) = tokio::try_join!(
+        git_text(workspace_path, ["rev-parse", "--verify", "HEAD"]),
+        git_text(
             workspace_path,
             ["symbolic-ref", "--quiet", "--short", "HEAD"],
-        )
-        .await?,
-        worktree_tree: snapshot_visible_worktree(workspace_path).await?,
-        index_tree: index_tree(workspace_path).await?,
+        ),
+        snapshot_visible_worktree(workspace_path),
+        index_tree(workspace_path),
+    )?;
+    Ok(CheckoutFingerprint {
+        head_sha,
+        branch,
+        worktree_tree,
+        index_tree,
     })
 }
 

@@ -163,18 +163,23 @@ pub async fn settings_delete_old_chats(
     let mut protected_workspace_ids = HashSet::new();
     for workspace_id in workspace_ids {
         match workspaces.begin_chat_cleanup(&workspace_id) {
-            Ok(lease) => {
-                let admissions_drained = workspaces
-                    .wait_for_chat_cleanup_admissions(&workspace_id, StdDuration::from_secs(1))
-                    .await;
-                if !admissions_drained || workspaces.chat_cleanup_has_live_process(&workspace_id) {
-                    protected_workspace_ids.insert(workspace_id.clone());
-                }
-                cleanup_leases.push((workspace_id, lease));
-            }
+            Ok(lease) => cleanup_leases.push((workspace_id, lease)),
             Err(_) => {
                 protected_workspace_ids.insert(workspace_id);
             }
+        }
+    }
+    // Each admission drain is bounded (~1s) and keyed to its own workspace —
+    // draining them one after another turned an N-workspace cleanup into an
+    // ~N-second wait for no reason, so wait on all of them concurrently.
+    let admissions_drained =
+        futures_util::future::join_all(cleanup_leases.iter().map(|(workspace_id, _)| {
+            workspaces.wait_for_chat_cleanup_admissions(workspace_id, StdDuration::from_secs(1))
+        }))
+        .await;
+    for ((workspace_id, _), admissions_drained) in cleanup_leases.iter().zip(admissions_drained) {
+        if !admissions_drained || workspaces.chat_cleanup_has_live_process(workspace_id) {
+            protected_workspace_ids.insert(workspace_id.clone());
         }
     }
     let sync_sweep = state.sync_sweep.clone();

@@ -188,6 +188,7 @@ const OPENCODE_MCP_SERVERS = new Set([
   "trace-hq",
   "notion",
   "linear",
+  "datadog",
   "vercel",
   "slack",
   "github",

@@ -198,7 +198,19 @@ pub async fn session_fork(
     state: State<'_, AppState>,
     input: SessionForkInput,
 ) -> ArgmaxResult<SessionForkResult> {
-    let workspaces = live_workspaces(&state)?;
+    session_fork_impl_async(&state, input).await
+}
+
+// Shared by the desktop command above and the remote dispatcher
+// (`remote/dispatch.rs`): `spawn_blocking`, not the `async` flag, because
+// forking copies a transcript (thousands of row inserts) — long enough to
+// park a worker shared with provider IO, the remote bridge, and the
+// `dashboard:delta` emit loop.
+pub(crate) async fn session_fork_impl_async(
+    state: &AppState,
+    input: SessionForkInput,
+) -> ArgmaxResult<SessionForkResult> {
+    let workspaces = live_workspaces(state)?;
     tauri::async_runtime::spawn_blocking(move || workspaces.fork_session(input.session_id.as_str()))
         .await
         .map_err(|error| ArgmaxError::service("SESSION_FORK_JOIN", error.to_string()))?
@@ -246,13 +258,6 @@ pub(crate) async fn session_multitask_impl(
     }
 }
 
-pub(crate) fn session_fork_impl(
-    state: &AppState,
-    input: SessionForkInput,
-) -> ArgmaxResult<SessionForkResult> {
-    live_workspaces(state)?.fork_session(input.session_id.as_str())
-}
-
 fn live_workspaces(state: &AppState) -> ArgmaxResult<Arc<WorkspaceService>> {
     state.workspaces.get().cloned().ok_or_else(|| {
         ArgmaxError::service(
@@ -286,20 +291,23 @@ pub(crate) async fn session_clear_impl(
 
 #[tauri::command(rename = "session:cost-summary")]
 #[specta::specta]
-pub fn session_cost_summary(
+pub async fn session_cost_summary(
     state: State<'_, AppState>,
     input: SessionCostSummaryInput,
 ) -> ArgmaxResult<SessionCostSummary> {
-    session_cost_summary_impl(&state, input)
+    session_cost_summary_impl(&state, input).await
 }
 
-pub(crate) fn session_cost_summary_impl(
+pub(crate) async fn session_cost_summary_impl(
     state: &AppState,
     input: SessionCostSummaryInput,
 ) -> ArgmaxResult<SessionCostSummary> {
     let database = live_database(state)?;
-    let connection = database.read_connection();
-    get_session_cost_summary(&connection, input.session_id.as_str())
+    let session_id = input.session_id.into_string();
+    read_off_main(move || {
+        get_session_cost_summary(&database.read_connection(), session_id.as_str())
+    })
+    .await
 }
 
 #[tauri::command(rename = "session:search")]

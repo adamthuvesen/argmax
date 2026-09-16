@@ -1,8 +1,9 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ArcMemberSummary,
   ArcRecord,
+  ArcTimelineEvent,
   ArgmaxApi,
   DashboardSnapshot,
   ProjectSummary,
@@ -197,8 +198,28 @@ const arcsStub = {
   create: vi.fn<ArgmaxApi["arcs"]["create"]>(),
   update: vi.fn<ArgmaxApi["arcs"]["update"]>(),
   setState: vi.fn<ArgmaxApi["arcs"]["setState"]>(),
-  launchCoordinator: vi.fn<ArgmaxApi["arcs"]["launchCoordinator"]>()
+  launchCoordinator: vi.fn<ArgmaxApi["arcs"]["launchCoordinator"]>(),
+  timeline: vi.fn<ArgmaxApi["arcs"]["timeline"]>()
 };
+
+function timelineEvent(overrides: Partial<ArcTimelineEvent> = {}): ArcTimelineEvent {
+  return {
+    id: "event-1",
+    seq: 1,
+    kind: "member_finished",
+    occurredAt: new Date().toISOString(),
+    sessionId: "session-member",
+    sessionAvailable: true,
+    projectId: "project-1",
+    projectName: "Argmax",
+    title: "Ship the pricing page",
+    detail: "Built the pricing page.",
+    status: "complete",
+    prNumber: null,
+    prUrl: null,
+    ...overrides
+  };
+}
 
 const systemStub = {
   confirm: vi.fn<ArgmaxApi["system"]["confirm"]>()
@@ -244,6 +265,8 @@ beforeEach(() => {
   arcsStub.update.mockReset();
   arcsStub.setState.mockReset();
   arcsStub.launchCoordinator.mockReset();
+  arcsStub.timeline.mockReset();
+  arcsStub.timeline.mockResolvedValue({ events: [], nextCursor: null });
   systemStub.confirm.mockReset();
   routinesStub.list.mockReset();
   routinesStub.delete.mockReset();
@@ -332,28 +355,98 @@ describe("ArcPage", () => {
     expect(arcsStub.launchCoordinator).not.toHaveBeenCalled();
   });
 
-  it("lists members and excludes the coordinator", async () => {
-    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} />);
-
-    expect(await screen.findByRole("button", { name: /Ship the pricing page/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Coordinate pricing rollout/ })).not.toBeInTheDocument();
-    expect(screen.getByText("Launched in the last 24h: 3 of 40")).toBeInTheDocument();
-  });
-
-  it("shows a member that aged out of the recent chat list without an open action", async () => {
+  it("shows working members as chips, never the coordinator, and reads the caps from the backend", async () => {
     arcsStub.get.mockResolvedValue({
       arc: arcRecord(),
-      members: [COORDINATOR_MEMBER, member(), member({ sessionId: "session-old", taskLabel: "Migrate old tiers" })],
+      members: [
+        COORDINATOR_MEMBER,
+        member(),
+        member({ sessionId: "session-old", taskLabel: "Migrate old tiers", state: "running" })
+      ],
       membersTruncated: false,
-      launchesLast24h: 0,
+      launchesLast24h: 3,
       limits: { maxActiveMembers: 8, maxLaunchesPerDay: 40 }
     });
     render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} />);
 
-    const old = await screen.findByRole("button", { name: /Migrate old tiers/ });
-    expect(old).toBeDisabled();
-    expect(old).toHaveAttribute("title", "This chat is no longer in the recent chat list");
-    expect(screen.getByRole("button", { name: /Ship the pricing page/ })).toBeEnabled();
+    const working = await screen.findByRole("list", { name: "Members working now" });
+    // The completed member and the coordinator are not "working now".
+    expect(working).toHaveTextContent("Migrate old tiers");
+    expect(working).not.toHaveTextContent("Ship the pricing page");
+    expect(working).not.toHaveTextContent("Coordinate pricing rollout");
+    // Not in the dashboard window, so it cannot be opened from here.
+    const aged = screen.getByRole("button", { name: /Migrate old tiers/ });
+    expect(aged).toBeDisabled();
+    expect(aged).toHaveAttribute("title", "This chat is no longer in the recent chat list");
+
+    expect(screen.getByText("Launched today").parentElement).toHaveTextContent("3of 40");
+    expect(screen.getByText("Working now").parentElement).toHaveTextContent("1of 8");
+  });
+
+  it("renders the timeline by day and filters it to pull requests", async () => {
+    arcsStub.timeline.mockResolvedValue({
+      events: [
+        timelineEvent({
+          id: "pr",
+          kind: "pr_checks_failing",
+          title: "Add pricing page",
+          prNumber: 12,
+          prUrl: "https://github.com/acme/argmax/pull/12",
+          status: "abc1234",
+          detail: null
+        }),
+        timelineEvent({ id: "finished" }),
+        timelineEvent({
+          id: "old",
+          kind: "created",
+          title: "Arc created",
+          sessionId: null,
+          occurredAt: "2025-01-02T10:00:00.000Z",
+          detail: null,
+          status: null
+        })
+      ],
+      nextCursor: null
+    });
+    const onOpenSession = vi.fn();
+    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={onOpenSession} />);
+
+    const timeline = await screen.findByRole("region", { name: "Timeline" });
+    expect(await within(timeline).findByRole("heading", { name: "Today" })).toBeInTheDocument();
+    expect(within(timeline).getByText("Checks failing")).toBeInTheDocument();
+    expect(within(timeline).getByText("abc1234")).toBeInTheDocument();
+    expect(within(timeline).getByText("Built the pricing page.")).toBeInTheDocument();
+    expect(within(timeline).getByText("Arc created")).toBeInTheDocument();
+
+    fireEvent.click(within(timeline).getByRole("button", { name: "Ship the pricing page" }));
+    expect(onOpenSession).toHaveBeenCalledWith("session-member");
+
+    fireEvent.click(within(timeline).getByRole("radio", { name: "Pull requests" }));
+    expect(within(timeline).getByText("Checks failing")).toBeInTheDocument();
+    expect(within(timeline).queryByText("Built the pricing page.")).not.toBeInTheDocument();
+    expect(within(timeline).queryByText("Arc created")).not.toBeInTheDocument();
+  });
+
+  it("loads earlier events from the cursor", async () => {
+    arcsStub.timeline
+      .mockResolvedValueOnce({
+        events: [timelineEvent({ id: "new" })],
+        nextCursor: { occurredAt: "2026-05-11T09:00:00.000Z", seq: 4 }
+      })
+      .mockResolvedValueOnce({
+        events: [timelineEvent({ id: "older", kind: "brief_updated", title: "Brief edited", detail: null })],
+        nextCursor: null
+      });
+    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Show earlier" }));
+    expect(await screen.findByText("Brief edited")).toBeInTheDocument();
+    expect(arcsStub.timeline).toHaveBeenLastCalledWith({
+      arcId: "arc-1",
+      before: { occurredAt: "2026-05-11T09:00:00.000Z", seq: 4 },
+      limit: 60
+    });
+    expect(screen.queryByRole("button", { name: "Show earlier" })).not.toBeInTheDocument();
   });
 
   it("keeps an unsaved brief and stays rendered when the dashboard refreshes", async () => {

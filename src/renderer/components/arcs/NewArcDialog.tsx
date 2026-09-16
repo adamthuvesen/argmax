@@ -8,20 +8,36 @@ import { factoryLaunchModel, type ModelPickerSelection } from "../../lib/models.
 import { showArcPage } from "../../state/overlays.js";
 import { showErrorToast } from "../../state/toast.js";
 import { LaunchModelSelector } from "../ModelSelector.js";
+import { WorkingNest } from "../WorkingNest.js";
 import { SettingsListPicker } from "../settings/settingsPrimitives.js";
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+/** The chat an arc is being started from, when the dialog runs in that mode. */
+export interface ArcPromoteSource {
+  sessionId: string;
+  chatLabel: string;
+  projectName: string;
+  /** The chat runs in its own worktree, which an archive would take away. */
+  isolated: boolean;
+  /** Sessions this chat launched that will join the arc with it. */
+  adoptableCount: number;
+}
+
+type DraftState = "drafting" | "drafted" | "failed" | null;
+
 export function NewArcDialog({
   open,
   onClose,
-  projects
+  projects,
+  promote = null
 }: {
   open: boolean;
   onClose: () => void;
   projects: ProjectSummary[];
+  promote?: ArcPromoteSource | null;
 }): JSX.Element | null {
   const [name, setName] = useState("");
   const [brief, setBrief] = useState("");
@@ -33,7 +49,12 @@ export function NewArcDialog({
   const [effortPickerOpen, setEffortPickerOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [draftState, setDraftState] = useState<DraftState>(null);
+  // A drafted value only fills a field the person has not typed into.
+  const nameTouched = useRef(false);
+  const briefTouched = useRef(false);
   const motion = useMotionPresence(open);
+  const promoteSessionId = promote?.sessionId ?? null;
 
   // Reset to a clean draft every time the dialog re-opens.
   useEffect(() => {
@@ -46,9 +67,36 @@ export function NewArcDialog({
     setModel(readStoredLaunchModel() ?? factoryLaunchModel());
     setSubmitting(false);
     setError(null);
+    nameTouched.current = false;
+    briefTouched.current = false;
+    setDraftState(null);
     // Only the open edge should reset the draft — projects can refresh mid-edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !promoteSessionId || !window.argmax) return;
+    let cancelled = false;
+    setDraftState("drafting");
+    void window.argmax.arcs
+      .draftFromSession({ sessionId: promoteSessionId })
+      .then((draft) => {
+        if (cancelled) return;
+        if (draft.name === null || draft.brief === null) {
+          setDraftState("failed");
+          return;
+        }
+        if (!nameTouched.current) setName(draft.name);
+        if (!briefTouched.current) setBrief(draft.brief);
+        setDraftState("drafted");
+      })
+      .catch(() => {
+        if (!cancelled) setDraftState("failed");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, promoteSessionId]);
 
   useRestoreFocus(open);
 
@@ -72,10 +120,42 @@ export function NewArcDialog({
   // A brief is required unless an existing folder may already carry BRIEF.md;
   // the backend makes the final call on that folder.
   const briefMissing = brief.trim().length === 0 && folder.trim().length === 0;
-  const submitDisabled = submitting || trimmedName.length === 0 || homeProjectId.length === 0 || briefMissing;
+  const submitDisabled =
+    submitting || trimmedName.length === 0 || (!promote && homeProjectId.length === 0) || briefMissing;
+
+  const handlePromote = async (source: ArcPromoteSource): Promise<void> => {
+    if (!window.argmax) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await window.argmax.arcs.promote({
+        sessionId: source.sessionId,
+        name: trimmedName,
+        brief: brief.trim(),
+        dir: folder.trim() ? folder.trim() : null
+      });
+      onClose();
+    } catch (promoteError) {
+      const message = errorMessage(promoteError, "Could not start the arc.");
+      // The arc exists but the chat was not told; the sidebar already shows
+      // it, so the dialog has nothing left to retry.
+      if (message.startsWith("The arc was created")) {
+        onClose();
+        showErrorToast(message);
+      } else {
+        setError(message);
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleSubmit = async (): Promise<void> => {
     if (submitDisabled || !window.argmax) return;
+    if (promote) {
+      await handlePromote(promote);
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -114,7 +194,7 @@ export function NewArcDialog({
       className="new-arc-dialog-overlay motion-modal-overlay"
       data-motion-state={motion.motionState}
       role="dialog"
-      aria-label="New arc"
+      aria-label={promote ? "Start an arc from this chat" : "New arc"}
       aria-modal="true"
       aria-hidden={open ? undefined : true}
       ref={dialogRef}
@@ -132,11 +212,36 @@ export function NewArcDialog({
         }}
       >
         <header className="new-arc-dialog-header">
-          <h2>New arc</h2>
+          <h2>{promote ? "Start an arc from this chat" : "New arc"}</h2>
           <button type="button" aria-label="Close" onClick={onClose} disabled={submitting}>
             ×
           </button>
         </header>
+
+        {promote ? (
+          <div className="new-arc-promote-intro">
+            <p>
+              <strong>{promote.chatLabel}</strong> becomes the arc&rsquo;s coordinator. It keeps its history and its
+              model, and plans and delegates from here on.
+            </p>
+            <ul className="new-arc-promote-facts">
+              <li>Home project: {promote.projectName}</li>
+              {promote.adoptableCount > 0 ? (
+                <li>
+                  {promote.adoptableCount === 1
+                    ? "The chat it launched joins the arc too."
+                    : `The ${promote.adoptableCount} chats it launched join the arc too.`}
+                </li>
+              ) : null}
+              {promote.isolated ? (
+                <li data-tone="warning">
+                  This chat runs in its own worktree. Archiving it ends the coordinator; you can start a new one from
+                  the arc page.
+                </li>
+              ) : null}
+            </ul>
+          </div>
+        ) : null}
 
         <div className="sched-field">
           <label className="sched-label" htmlFor="new-arc-name">
@@ -149,28 +254,53 @@ export function NewArcDialog({
             autoFocus
             autoComplete="off"
             placeholder="Q3 pricing rollout"
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => {
+              nameTouched.current = true;
+              setName(event.target.value);
+            }}
           />
         </div>
 
         <div className="sched-field">
-          <label className="sched-label" htmlFor="new-arc-brief">
-            Brief
-          </label>
+          <div className="new-arc-label-row">
+            <label className="sched-label" htmlFor="new-arc-brief">
+              Brief
+            </label>
+            {draftState === "drafting" ? (
+              <span className="new-arc-draft-status" role="status">
+                <WorkingNest active size={11} /> Drafting from this chat…
+              </span>
+            ) : draftState === "drafted" ? (
+              <span className="new-arc-draft-status" role="status">
+                Drafted from this chat
+              </span>
+            ) : draftState === "failed" ? (
+              <span className="new-arc-draft-status" role="status">
+                Couldn&rsquo;t draft one, so write it yourself
+              </span>
+            ) : null}
+          </div>
           <textarea
             id="new-arc-brief"
             className="sched-input sched-textarea"
             rows={4}
             value={brief}
             aria-describedby="new-arc-brief-help"
-            placeholder="What this arc is for, and what done looks like."
-            onChange={(event) => setBrief(event.target.value)}
+            placeholder={
+              draftState === "drafting" ? "Reading the conversation…" : "What this arc is for, and what done looks like."
+            }
+            onChange={(event) => {
+              briefTouched.current = true;
+              setBrief(event.target.value);
+            }}
           />
           <p className="sched-help" id="new-arc-brief-help">
             Required unless the folder below already has a BRIEF.md.
           </p>
         </div>
 
+        {promote ? null : (
+          <>
         <div className="sched-field sched-field-inline">
           <span className="sched-label">Home project</span>
           <div className="sched-picker">
@@ -201,6 +331,8 @@ export function NewArcDialog({
             onChange={setModel}
           />
         </div>
+          </>
+        )}
 
         <details
           className="new-arc-folder-details"
@@ -238,7 +370,7 @@ export function NewArcDialog({
             Cancel
           </button>
           <button type="submit" className="new-arc-dialog-submit" disabled={submitDisabled}>
-            {submitting ? "Creating…" : "Create arc"}
+            {submitting ? (promote ? "Starting…" : "Creating…") : promote ? "Start arc" : "Create arc"}
           </button>
         </footer>
       </form>

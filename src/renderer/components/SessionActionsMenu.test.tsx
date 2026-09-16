@@ -430,4 +430,37 @@ describe("SessionActionsMenu — launching chat", () => {
     await openMenu();
     expect(screen.queryByRole("menuitem", { name: "Open launching chat" })).toBeNull();
   });
+
+  it("starts an arc from the chat, and says why it cannot while a turn runs", async () => {
+    const run = vi.fn();
+    const { unmount } = render(
+      <SessionActionsMenu
+        isLogOpen={false}
+        onBrowseFiles={vi.fn()}
+        onToggleLog={vi.fn()}
+        onStartArc={{ run, disabledReason: null }}
+        session={session()}
+        workspace={workspace()}
+      />
+    );
+    await openMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Start an arc from this chat…" }));
+    expect(run).toHaveBeenCalledTimes(1);
+    unmount();
+
+    render(
+      <SessionActionsMenu
+        isLogOpen={false}
+        onBrowseFiles={vi.fn()}
+        onToggleLog={vi.fn()}
+        onStartArc={{ run, disabledReason: "Wait for this turn to finish" }}
+        session={session()}
+        workspace={workspace()}
+      />
+    );
+    await openMenu();
+    const item = screen.getByRole("menuitem", { name: "Start an arc from this chat…" });
+    expect(item).toBeDisabled();
+    expect(item).toHaveAttribute("title", "Wait for this turn to finish");
+  });
 });

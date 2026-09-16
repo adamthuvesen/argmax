@@ -31,6 +31,9 @@ interface OverlaysSnapshot {
   /** The arc `showArcPage` last opened. Stale once the page closes, but never
    *  read while `standalonePage !== "arc"`. */
   selectedArcId: string | null;
+  /** The chat "Start an arc from this chat" was invoked on, while its dialog
+   *  is open. */
+  promoteArcSessionId: string | null;
   paletteOpen: boolean;
   paletteScope: PaletteScope;
   cheatSheetOpen: boolean;
@@ -41,6 +44,7 @@ const INITIAL: OverlaysSnapshot = {
   settingsGroup: DEFAULT_SETTINGS_GROUP.id,
   settingsNavigation: null,
   selectedArcId: null,
+  promoteArcSessionId: null,
   paletteOpen: false,
   paletteScope: "all",
   cheatSheetOpen: false
@@ -95,6 +99,15 @@ export function showActivityPage(): void {
 export function showArcPage(arcId: string): void {
   hideFullLauncher();
   publish({ ...state, standalonePage: "arc", selectedArcId: arcId, paletteOpen: false });
+}
+
+export function showPromoteArcDialog(sessionId: string): void {
+  publish({ ...state, promoteArcSessionId: sessionId, paletteOpen: false });
+}
+
+export function hidePromoteArcDialog(): void {
+  if (state.promoteArcSessionId === null) return;
+  publish({ ...state, promoteArcSessionId: null });
 }
 
 /** Returns the workspace column to the grid, whichever page held it. */

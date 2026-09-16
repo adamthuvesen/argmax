@@ -113,6 +113,7 @@ import {
   SessionConversationUserMessage
 } from "./SessionConversationTurn.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
+import { showPromoteArcDialog } from "../state/overlays.js";
 import {
   readCheckpointUnavailableReason,
   useTurnCheckpoints
@@ -1477,6 +1478,16 @@ export function SessionConversation({
               onOpenLaunchingChat={
                 session?.launchedBySessionId && onOpenSession
                   ? () => onOpenSession(session.launchedBySessionId as string)
+                  : undefined
+              }
+              onStartArc={
+                session && !session.arcId && !session.imported && window.argmax?.arcs
+                  ? {
+                      run: () => showPromoteArcDialog(session.id),
+                      disabledReason: ["created", "running", "blocked"].includes(session.state)
+                        ? "Wait for this turn to finish"
+                        : null
+                    }
                   : undefined
               }
               session={session}

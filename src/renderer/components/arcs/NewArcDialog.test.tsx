@@ -154,4 +154,79 @@ describe("NewArcDialog", () => {
     await waitFor(() => expect(toastSnapshot()?.kind).toBe("error"));
     expect(toastSnapshot()?.message).toContain("provider unavailable");
   });
+
+  describe("starting from a chat", () => {
+    const SOURCE = {
+      sessionId: "session-chat",
+      chatLabel: "Build the pricing page",
+      projectName: "Argmax",
+      isolated: true,
+      adoptableCount: 2
+    };
+
+    function installPromote(
+      draft: Promise<{ name: string | null; brief: string | null }>,
+      promote = vi.fn(() => Promise.resolve(ARC_RECORD))
+    ) {
+      Object.defineProperty(window, "argmax", {
+        configurable: true,
+        writable: true,
+        value: { arcs: { draftFromSession: vi.fn(() => draft), promote } }
+      });
+      return promote;
+    }
+
+    it("fills the draft, names what comes along, and promotes the chat", async () => {
+      const promote = installPromote(
+        Promise.resolve({ name: "Pricing rollout", brief: "Ship the new tiers." })
+      );
+      const onClose = vi.fn();
+      render(<NewArcDialog open onClose={onClose} projects={PROJECTS} promote={SOURCE} />);
+
+      const dialog = screen.getByRole("dialog", { name: "Start an arc from this chat" });
+      expect(dialog).toHaveTextContent("Build the pricing page becomes the arc’s coordinator");
+      expect(dialog).toHaveTextContent("The 2 chats it launched join the arc too.");
+      expect(dialog).toHaveTextContent("This chat runs in its own worktree.");
+      expect(screen.queryByLabelText("Coordinator model")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Home project" })).not.toBeInTheDocument();
+
+      await waitFor(() => expect(screen.getByLabelText("Name")).toHaveValue("Pricing rollout"));
+      expect(screen.getByLabelText("Brief")).toHaveValue("Ship the new tiers.");
+      expect(screen.getByText("Drafted from this chat")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Start arc" }));
+      await waitFor(() => expect(promote).toHaveBeenCalledTimes(1));
+      expect(promote).toHaveBeenCalledWith({
+        sessionId: "session-chat",
+        name: "Pricing rollout",
+        brief: "Ship the new tiers.",
+        dir: null
+      });
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    });
+
+    it("never overwrites a field the person typed into before the draft landed", async () => {
+      let resolveDraft: (value: { name: string | null; brief: string | null }) => void = () => {};
+      installPromote(
+        new Promise((resolve) => {
+          resolveDraft = resolve;
+        })
+      );
+      render(<NewArcDialog open onClose={() => {}} projects={PROJECTS} promote={SOURCE} />);
+
+      expect(screen.getByText("Drafting from this chat…")).toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText("Name"), { target: { value: "My own name" } });
+      resolveDraft({ name: "Drafted name", brief: "Drafted brief." });
+
+      await waitFor(() => expect(screen.getByLabelText("Brief")).toHaveValue("Drafted brief."));
+      expect(screen.getByLabelText("Name")).toHaveValue("My own name");
+    });
+
+    it("says so when no draft could be made", async () => {
+      installPromote(Promise.resolve({ name: null, brief: null }));
+      render(<NewArcDialog open onClose={() => {}} projects={PROJECTS} promote={SOURCE} />);
+      expect(await screen.findByText("Couldn’t draft one, so write it yourself")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Start arc" })).toBeDisabled();
+    });
+  });
 });

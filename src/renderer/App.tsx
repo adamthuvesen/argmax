@@ -71,9 +71,11 @@ import {
   SIDEBAR_MIN_WIDTH_PX,
   useSidebarResize
 } from "./hooks/useSidebarResize.js";
+import { NewArcDialog, type ArcPromoteSource } from "./components/arcs/NewArcDialog.js";
 import {
   hideCommandPalette,
   hideKeyboardCheatSheet,
+  hidePromoteArcDialog,
   hideStandalonePage,
   showCommandPalette,
   showKeyboardCheatSheet,
@@ -193,6 +195,7 @@ export function App(): JSX.Element {
     settingsGroup,
     settingsNavigation,
     selectedArcId,
+    promoteArcSessionId,
     paletteOpen,
     paletteScope,
     cheatSheetOpen
@@ -1144,6 +1147,26 @@ export function App(): JSX.Element {
     [snapshot.projects]
   );
   const storedLaunchProjectId = useLaunchProjectId(realProjects);
+  // The chat an arc is being started from, resolved against the snapshot so
+  // the dialog can say what comes along with it.
+  const promoteSource = useMemo<ArcPromoteSource | null>(() => {
+    if (!promoteArcSessionId) return null;
+    const session = snapshot.sessions.find((candidate) => candidate.id === promoteArcSessionId);
+    const workspace = session
+      ? snapshot.workspaces.find((candidate) => candidate.id === session.workspaceId)
+      : undefined;
+    if (!session || !workspace) return null;
+    return {
+      sessionId: session.id,
+      chatLabel: workspace.taskLabel.trim() || "This chat",
+      projectName: snapshot.projects.find((project) => project.id === workspace.projectId)?.name ?? "",
+      isolated: !workspace.sharedWorkspace,
+      adoptableCount: Math.min(
+        8,
+        snapshot.sessions.filter((child) => child.launchedBySessionId === session.id && !child.arcId).length
+      )
+    };
+  }, [promoteArcSessionId, snapshot.sessions, snapshot.workspaces, snapshot.projects]);
   const launcherProject =
     (storedLaunchProjectId
       ? realProjects.find((project) => project.id === storedLaunchProjectId)
@@ -1989,6 +2012,12 @@ export function App(): JSX.Element {
         are full-screen modals and a loading spinner would flash worse
         than a 1-frame delay on the cold-open path.
       */}
+      <NewArcDialog
+        open={promoteSource !== null}
+        onClose={hidePromoteArcDialog}
+        projects={realProjects}
+        promote={promoteSource}
+      />
       {paletteMotion.present ? (
         <Suspense fallback={null}>
           <CommandPalette

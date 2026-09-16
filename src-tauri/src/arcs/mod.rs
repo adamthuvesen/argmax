@@ -13,15 +13,19 @@
 
 pub mod preamble;
 
-pub use preamble::{coordinator_preamble, member_preamble};
+pub use preamble::{coordinator_preamble, member_preamble, promoted_coordinator_preamble};
 
 use std::sync::Arc as StdArc;
 
 use crate::error::{ArgmaxError, ArgmaxResult};
+use crate::persistence::arc_events::{record_arc_event, ArcEventKind, NewArcEvent};
 use crate::persistence::arcs::{self, ArcRecord, ArcState};
+use crate::persistence::sessions::{find_session_by_id, record_session_arc};
+use crate::persistence::workspaces::find_workspace_by_id;
 use crate::persistence::Database;
 use crate::providers::session_service::ProviderSessionService;
 use crate::session_control::{launch_with_spec, LaunchSpec};
+use crate::sessions::state::SessionState;
 use crate::workspaces::orchestration::WorkspaceService;
 
 pub struct LaunchCoordinatorRequest {
@@ -115,9 +119,176 @@ pub async fn launch_coordinator(
     // `launch_depth` stays at its default of 0 — it is a top-level chat.
     // `sessions.arc_id` is already set: the launch transaction attached it
     // alongside the session insert.
-    arcs::set_arc_coordinator_session(&connection, &arc.id, Some(&outcome.session_id))
+    let updated =
+        arcs::set_arc_coordinator_session(&connection, &arc.id, Some(&outcome.session_id))?;
+    let title = if arc.coordinator_session_id.is_some() {
+        "Coordinator replaced"
+    } else {
+        "Coordinator started"
+    };
+    let mut event = NewArcEvent::new(
+        format!("coordinator:{}", outcome.session_id),
+        &arc.id,
+        ArcEventKind::CoordinatorStarted,
+        title,
+    );
+    event.session_id = Some(&outcome.session_id);
+    event.project_id = Some(&arc.home_project_id);
+    record_arc_event(&connection, &event)?;
+    Ok(updated)
 }
 
 fn parse_reasoning_effort(value: Option<&str>) -> Option<crate::providers::ReasoningEffort> {
     serde_json::from_value(serde_json::json!(value?)).ok()
+}
+
+pub struct PromoteSessionRequest {
+    pub session_id: String,
+    pub name: String,
+    pub brief: String,
+    pub dir: Option<String>,
+}
+
+/// How many sessions a promoted chat launched earlier come along with it.
+/// The same number as the active-member cap, so adoption can never start an
+/// Arc over its own limit.
+const MAX_ADOPTED_MEMBERS: i64 = arcs::ARC_MAX_ACTIVE_MEMBERS;
+
+/// Start an Arc from an existing chat, which becomes its coordinator.
+///
+/// One write transaction creates the Arc in the chat's project, points it at
+/// the chat, and brings along the sessions the chat already launched (their
+/// PRs are part of the work). Then the chat is told its new role through the
+/// same notice path PR events use, since no provider can change a running
+/// conversation's instructions any other way.
+pub async fn promote_session(
+    request: PromoteSessionRequest,
+    app_data_dir: &std::path::Path,
+    database: StdArc<Database>,
+    providers: StdArc<ProviderSessionService>,
+) -> ArgmaxResult<ArcRecord> {
+    let (arc, adopted) = {
+        let mut connection = database.connection();
+        let transaction = connection
+            .transaction()
+            .map_err(crate::persistence::sqlite_error)?;
+        let session = find_session_by_id(&transaction, &request.session_id)?;
+        if session.arc_id.is_some() {
+            return Err(ArgmaxError::service(
+                "ARC_SESSION_IN_ARC",
+                "This chat already belongs to an arc.",
+            ));
+        }
+        if matches!(
+            session.state,
+            SessionState::Created | SessionState::Running | SessionState::Blocked
+        ) {
+            return Err(ArgmaxError::service(
+                "ARC_SESSION_BUSY",
+                "Wait for this chat's turn to finish before starting an arc from it.",
+            ));
+        }
+        let workspace = find_workspace_by_id(&transaction, &session.workspace_id)?;
+        if matches!(
+            workspace.state.as_str(),
+            "archiving" | "archive-failed" | "archived"
+        ) {
+            return Err(ArgmaxError::service(
+                "ARC_SESSION_ARCHIVED",
+                "This chat's workspace is archived, so it cannot coordinate an arc.",
+            ));
+        }
+
+        let created = arcs::create_arc(
+            &transaction,
+            app_data_dir,
+            &arcs::ArcCreateInput {
+                name: request.name,
+                brief: request.brief,
+                home_project_id: workspace.project_id.clone(),
+                dir: request.dir,
+            },
+        )?;
+        record_session_arc(&transaction, &session.id, &created.id)?;
+        let arc = arcs::set_arc_coordinator_session(&transaction, &created.id, Some(&session.id))?;
+        let mut started = NewArcEvent::new(
+            format!("coordinator:{}", session.id),
+            &arc.id,
+            ArcEventKind::CoordinatorStarted,
+            "Started from an existing chat",
+        );
+        started.session_id = Some(&session.id);
+        started.project_id = Some(&workspace.project_id);
+        record_arc_event(&transaction, &started)?;
+
+        let children = adoptable_children(&transaction, &session.id)?;
+        for (child_id, project_id, label) in &children {
+            record_session_arc(&transaction, child_id, &arc.id)?;
+            let mut event = NewArcEvent::new(
+                format!("launched:{child_id}"),
+                &arc.id,
+                ArcEventKind::MemberLaunched,
+                if label.trim().is_empty() {
+                    "Member chat"
+                } else {
+                    label.trim()
+                },
+            );
+            event.session_id = Some(child_id);
+            event.project_id = Some(project_id);
+            event.status = Some("adopted".to_string());
+            record_arc_event(&transaction, &event)?;
+        }
+        transaction
+            .commit()
+            .map_err(crate::persistence::sqlite_error)?;
+        (arc, children.len())
+    };
+
+    providers
+        .send_system_notice(
+            format!("arc:{}:promoted", arc.id),
+            &request.session_id,
+            request.session_id.clone(),
+            arc.name.clone(),
+            promoted_coordinator_preamble(&arc, adopted),
+        )
+        .await
+        .map_err(|error| {
+            ArgmaxError::service(
+                "ARC_PROMOTE_NOTICE_FAILED",
+                format!(
+                    "The arc was created, but this chat could not be told it is now the coordinator: {error}"
+                ),
+            )
+        })?;
+    Ok(arc)
+}
+
+/// The sessions a chat launched directly whose workspace is still around,
+/// newest first, capped. Returns `(session id, project id, task label)`.
+pub fn adoptable_children(
+    connection: &rusqlite::Connection,
+    session_id: &str,
+) -> ArgmaxResult<Vec<(String, String, String)>> {
+    connection
+        .prepare_cached(
+            r#"
+            SELECT sessions.id, workspaces.project_id, workspaces.task_label
+            FROM sessions
+            JOIN workspaces ON workspaces.id = sessions.workspace_id
+            WHERE sessions.launched_by_session_id = ?1
+              AND sessions.arc_id IS NULL
+              AND workspaces.state NOT IN ('archiving', 'archive-failed', 'archived')
+            ORDER BY sessions.started_at DESC, sessions.id DESC
+            LIMIT ?2
+            "#,
+        )
+        .map_err(crate::persistence::sqlite_error)?
+        .query_map((session_id, MAX_ADOPTED_MEMBERS), |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })
+        .map_err(crate::persistence::sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(crate::persistence::sqlite_error)
 }

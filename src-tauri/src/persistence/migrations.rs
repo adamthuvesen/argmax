@@ -416,6 +416,19 @@ pub static ROUTINE_AUTHOR_COLUMNS: phf::Map<&'static str, &'static [&'static str
 // Post-v52 `routines` shape: a fourth `run_target`, `arc_coordinator`, points
 // a task at a live Arc's coordinator instead of a session or a fresh
 // checkout; `arc_id` names which one.
+// v53: the Arc timeline, and the notes snapshot its `notes_updated` rows
+// are diffed against.
+pub static ARC_EVENTS_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "arc_events" => &[
+        "arc_id", "detail", "id", "kind", "occurred_at", "pr_number", "pr_url",
+        "project_id", "session_id", "status", "title",
+    ] as &'static [&'static str],
+    "arcs" => &[
+        "brief", "coordinator_session_id", "created_at", "dir", "home_project_id",
+        "id", "name", "notes_snapshot", "state", "updated_at",
+    ] as &'static [&'static str],
+};
+
 pub static ROUTINE_ARC_TARGET_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "routines" => &[
         "arc_id", "created_by", "cron_expr", "created_at", "enabled", "id",
@@ -994,6 +1007,14 @@ pub static MIGRATIONS: &[Migration] = &[
         affected_tables: &["routines"],
         expected_columns: &ROUTINE_ARC_TARGET_COLUMNS,
         requires_foreign_keys_off: true,
+    },
+    Migration {
+        version: 53,
+        name: "arc_events",
+        up: crate::persistence::arc_events::MIGRATION_SQL,
+        affected_tables: &["arc_events", "arcs"],
+        expected_columns: &ARC_EVENTS_COLUMNS,
+        requires_foreign_keys_off: false,
     },
 ];
 
@@ -2494,6 +2515,9 @@ mod tests {
         verify_table_columns(&connection, &ARC_COLUMNS, "sessions").expect("sessions");
         verify_table_columns(&connection, &ROUTINE_ARC_TARGET_COLUMNS, "routines")
             .expect("routines");
+        for table in ["arcs", "arc_events"] {
+            verify_table_columns(&connection, &ARC_EVENTS_COLUMNS, table).expect(table);
+        }
         verify_table_columns(&connection, &WORKSPACE_LAST_VIEWED_COLUMNS, "workspaces")
             .expect("workspaces");
         verify_table_columns(
@@ -2614,6 +2638,10 @@ mod tests {
                     compute_migration_checksum(crate::persistence::arcs::MIGRATION_SQL)
                 ),
                 (52, compute_migration_checksum(ROUTINE_ARC_TARGET)),
+                (
+                    53,
+                    compute_migration_checksum(crate::persistence::arc_events::MIGRATION_SQL)
+                ),
             ]
         );
 

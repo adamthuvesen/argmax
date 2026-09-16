@@ -51,6 +51,36 @@ left."
     )
 }
 
+/// The one message an existing chat gets when a person starts an Arc from it.
+/// No provider can swap a running conversation's system prompt, so the new
+/// role arrives as a turn. Unlike a launched coordinator, this chat already
+/// knows the work, so its first job is to write that knowledge down.
+pub fn promoted_coordinator_preamble(arc: &ArcRecord, adopted_members: usize) -> String {
+    let name = &arc.name;
+    let dir = &arc.dir;
+    let adopted = match adopted_members {
+        0 => String::new(),
+        1 => " The one session you launched earlier is now a member of the Arc too.".to_string(),
+        count => {
+            format!(" The {count} sessions you launched earlier are now members of the Arc too.")
+        }
+    };
+    format!(
+        "This chat now coordinates Arc \"{name}\". Its shared folder is `{dir}`, and `{dir}/BRIEF.md` \
+holds the brief drafted from this conversation.{adopted}\n\
+\n\
+Start by writing what you already know into `{dir}/NOTES.md`: what is done, what is in flight, the \
+decisions made so far, and anything a member or a later coordinator would need. You are the only \
+writer of files in that folder.\n\
+\n\
+From here on, plan and delegate rather than implement. Launch a session per piece of work with \
+session_launch (pass `project` to put it in any registered project), review what each one reports \
+back, and keep NOTES.md current. A completion notice reaches you only from a session you launched \
+directly. Use schedule_followup to check back on longer work, and arc_status to see members and \
+limits."
+    )
+}
+
 /// Prepended to every other session's prompt when it is launched or dispatched
 /// inside an Arc — an agent launch whose caller carries this Arc's id, or a
 /// `/multitask` dispatched from one of its sessions.

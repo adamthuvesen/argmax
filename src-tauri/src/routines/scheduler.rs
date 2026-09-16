@@ -242,6 +242,7 @@ pub(crate) async fn fire_routine(
                 match send_routine_follow_up(providers, &fields, provider, &session_id, false).await
                 {
                     FollowUpOutcome::Sent => {
+                        record_scheduled_run(database, &fields, &session_id, &last_run);
                         settle_success(
                             database,
                             &fields,
@@ -592,6 +593,38 @@ fn resolve_routine_permissions(
 ) -> Option<(ProviderId, crate::providers::PermissionMode)> {
     let provider = crate::providers::runtime::parse_provider(provider).ok()?;
     Some((provider, default_agent.permission_mode_for(provider)))
+}
+
+/// The Arc timeline row for a scheduled task that reached the coordinator.
+/// Best-effort: the run already happened, and a missing row must not turn it
+/// into a failure.
+fn record_scheduled_run(
+    database: &Arc<Database>,
+    fields: &RoutineLaunchFields,
+    coordinator_session_id: &str,
+    fired_at: &str,
+) {
+    let Some(arc_id) = fields.arc_id.as_deref() else {
+        return;
+    };
+    let mut event = crate::persistence::arc_events::NewArcEvent::new(
+        format!("scheduled:{}:{fired_at}", fields.id),
+        arc_id,
+        crate::persistence::arc_events::ArcEventKind::ScheduledRun,
+        fields.name.clone(),
+    );
+    event.occurred_at = Some(fired_at.to_string());
+    event.session_id = Some(coordinator_session_id);
+    event.project_id = Some(&fields.project_id);
+    event.detail = fields
+        .prompt
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .map(str::to_string);
+    let connection = database.connection();
+    if let Err(error) = crate::persistence::arc_events::record_arc_event(&connection, &event) {
+        tracing::warn!(routine_id = %fields.id, ?error, "failed to record the arc timeline row for a scheduled run");
+    }
 }
 
 /// What firing an `arc_coordinator` routine should do, resolved fresh from

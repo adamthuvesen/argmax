@@ -60,6 +60,7 @@ use crate::{
     },
     ipc::validation::{NonEmptyString, Prompt, SessionId},
     persistence::{
+        arc_events::{record_arc_event, ArcEventKind, NewArcEvent},
         arcs,
         database::Database,
         events::{
@@ -753,6 +754,25 @@ impl ProviderSessionService {
             if let Some(arc_id) = input.arc_id.as_deref() {
                 record_session_arc(&transaction, &session_id, arc_id)?;
                 session.arc_id = Some(arc_id.to_string());
+                // The coordinator's own launch is recorded as
+                // `coordinator_started` by whoever points the Arc at it.
+                if !input.arc_is_coordinator_launch {
+                    let label = workspace.task_label.trim();
+                    let mut event = NewArcEvent::new(
+                        format!("launched:{session_id}"),
+                        arc_id,
+                        ArcEventKind::MemberLaunched,
+                        if label.is_empty() {
+                            "Member chat"
+                        } else {
+                            label
+                        },
+                    );
+                    event.occurred_at = Some(session.started_at.clone());
+                    event.session_id = Some(&session_id);
+                    event.project_id = Some(&workspace.project_id);
+                    record_arc_event(&transaction, &event)?;
+                }
             }
             // Claude and Grok are both handed `--session-id <our id>`, so the
             // CLI conversation is known before a single event arrives. Seeding
@@ -2715,6 +2735,13 @@ impl ProviderSessionService {
         state: SessionState,
         at: &str,
     ) {
+        if let Err(error) = self.record_arc_turn_end(session_id, state, at) {
+            tracing::warn!(
+                session_id,
+                ?error,
+                "failed to record the arc timeline row for a turn end"
+            );
+        }
         // A multitask is the one launch whose finish must not wake its parent:
         // the person dispatched it while watching another turn, and a turn that
         // says "noted" costs a provider relaunch to interrupt what they were
@@ -2743,6 +2770,85 @@ impl ProviderSessionService {
                 "failed to record the completion notice for the launching session"
             ),
         }
+    }
+
+    /// The Arc timeline's view of a turn end. A member's turn becomes a
+    /// `member_finished` row carrying the opening of its answer. A
+    /// coordinator's turn leaves a row only when it changed `NOTES.md`: the
+    /// coordinator wakes on every notice, and a turn that wrote nothing down
+    /// is not part of the Arc's story. Keyed by the turn end, so Cursor's
+    /// second turn-end report writes nothing new.
+    fn record_arc_turn_end(
+        &self,
+        session_id: &str,
+        state: SessionState,
+        at: &str,
+    ) -> ArgmaxResult<()> {
+        let arc = {
+            let connection = self.database.connection();
+            match arcs::find_session_arc(&connection, session_id)? {
+                Some(arc) => arc,
+                None => return Ok(()),
+            }
+        };
+        let is_coordinator = arc.coordinator_session_id.as_deref() == Some(session_id);
+        // Read outside the database lock: the notes file can be large.
+        let notes = is_coordinator
+            .then(|| std::fs::read_to_string(arcs::notes_path(&arc)).ok())
+            .flatten();
+
+        let connection = self.database.connection();
+        let session = find_session_by_id(&connection, session_id)?;
+        let workspace = find_workspace_by_id(&connection, &session.workspace_id)?;
+        let answer = latest_agent_message(&connection, session_id)?.unwrap_or_default();
+
+        if is_coordinator {
+            let Some(notes) = notes else {
+                return Ok(());
+            };
+            let Some(before) = arcs::notes_snapshot(&connection, &arc.id)? else {
+                // An Arc from before the timeline: start diffing from here.
+                return arcs::set_notes_snapshot(&connection, &arc.id, &notes);
+            };
+            let Some(change) = crate::persistence::arc_events::notes_change(&before, &notes) else {
+                return Ok(());
+            };
+            let mut event = NewArcEvent::new(
+                format!("notes:{session_id}:{at}"),
+                &arc.id,
+                ArcEventKind::NotesUpdated,
+                change
+                    .first_new_line
+                    .clone()
+                    .unwrap_or_else(|| "Notes updated".to_string()),
+            );
+            event.occurred_at = Some(at.to_string());
+            event.session_id = Some(session_id);
+            event.project_id = Some(&workspace.project_id);
+            event.status = Some(format!("+{} −{}", change.added, change.removed));
+            event.detail = Some(crate::persistence::arc_events::first_paragraph(&answer));
+            record_arc_event(&connection, &event)?;
+            return arcs::set_notes_snapshot(&connection, &arc.id, &notes);
+        }
+
+        let label = workspace.task_label.trim();
+        let mut event = NewArcEvent::new(
+            format!("finished:{session_id}:{at}"),
+            &arc.id,
+            ArcEventKind::MemberFinished,
+            if label.is_empty() {
+                "Member chat"
+            } else {
+                label
+            },
+        );
+        event.occurred_at = Some(at.to_string());
+        event.session_id = Some(session_id);
+        event.project_id = Some(&workspace.project_id);
+        event.status = Some(state.as_str().to_string());
+        event.detail = Some(crate::persistence::arc_events::first_paragraph(&answer));
+        record_arc_event(&connection, &event)?;
+        Ok(())
     }
 
     /// Passive delivery of a finished multitask: a timeline row the parent's

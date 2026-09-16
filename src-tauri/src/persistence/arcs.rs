@@ -13,6 +13,7 @@ use specta::Type;
 use uuid::Uuid;
 
 use super::{
+    arc_events::{record_arc_event, ArcEventKind, NewArcEvent},
     gh::list_session_prs,
     sqlite_error,
     time::{hours_ago, now_iso},
@@ -107,6 +108,9 @@ pub struct ArcSummary {
     pub dir: String,
     pub member_count: i64,
     pub updated_at: String,
+    /// When the newest timeline row was recorded, so an open Arc page knows
+    /// to refetch its timeline.
+    pub last_event_at: Option<String>,
 }
 
 /// One session attached to an Arc, enriched with what `arc_status` and
@@ -219,8 +223,46 @@ pub fn create_arc(
             now.as_str(),
         ))
         .map_err(sqlite_error)?;
+    // The first `notes_updated` row is diffed against the notes the Arc
+    // started with, which a user-chosen folder may already carry.
+    let starting_notes = fs::read_to_string(dir.join(NOTES_FILE_NAME)).unwrap_or_default();
+    set_notes_snapshot(connection, &id, &starting_notes)?;
+    let mut created = NewArcEvent::new(
+        format!("created:{id}"),
+        &id,
+        ArcEventKind::Created,
+        "Arc created",
+    );
+    created.occurred_at = Some(now);
+    created.project_id = Some(&input.home_project_id);
+    record_arc_event(connection, &created)?;
 
     get_arc(connection, &id)
+}
+
+/// The `NOTES.md` content the next `notes_updated` row is diffed against.
+/// `None` for an Arc created before the timeline existed.
+pub fn notes_snapshot(connection: &Connection, arc_id: &str) -> ArgmaxResult<Option<String>> {
+    connection
+        .prepare_cached("SELECT notes_snapshot FROM arcs WHERE id = ?")
+        .map_err(sqlite_error)?
+        .query_row([arc_id], |row| row.get(0))
+        .optional()
+        .map_err(sqlite_error)
+        .map(Option::flatten)
+}
+
+pub fn set_notes_snapshot(connection: &Connection, arc_id: &str, notes: &str) -> ArgmaxResult<()> {
+    connection
+        .prepare_cached("UPDATE arcs SET notes_snapshot = ? WHERE id = ?")
+        .map_err(sqlite_error)?
+        .execute((notes, arc_id))
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
+pub fn notes_path(arc: &ArcRecord) -> PathBuf {
+    PathBuf::from(&arc.dir).join(NOTES_FILE_NAME)
 }
 
 pub fn get_arc(connection: &Connection, arc_id: &str) -> ArgmaxResult<ArcRecord> {
@@ -256,7 +298,9 @@ pub fn list_arc_summaries(connection: &Connection) -> ArgmaxResult<Vec<ArcSummar
             r#"
             SELECT arcs.id, arcs.name, arcs.state, arcs.home_project_id,
                    arcs.coordinator_session_id, arcs.dir, arcs.updated_at,
-                   (SELECT COUNT(*) FROM sessions WHERE sessions.arc_id = arcs.id) AS member_count
+                   (SELECT COUNT(*) FROM sessions WHERE sessions.arc_id = arcs.id) AS member_count,
+                   (SELECT MAX(occurred_at) FROM arc_events
+                    WHERE arc_events.arc_id = arcs.id) AS last_event_at
             FROM arcs
             ORDER BY arcs.updated_at DESC, arcs.id DESC
             "#,
@@ -474,6 +518,15 @@ pub fn update_arc(
         .map_err(sqlite_error)?
         .execute((name.as_str(), brief.as_str(), now_iso().as_str(), arc_id))
         .map_err(sqlite_error)?;
+    if brief != current.brief {
+        let event = NewArcEvent::new(
+            format!("brief:{}", Uuid::new_v4()),
+            arc_id,
+            ArcEventKind::BriefUpdated,
+            "Brief edited",
+        );
+        record_arc_event(connection, &event)?;
+    }
     get_arc(connection, arc_id)
 }
 
@@ -482,12 +535,28 @@ pub fn set_arc_state(
     arc_id: &str,
     state: ArcState,
 ) -> ArgmaxResult<ArcRecord> {
-    get_arc(connection, arc_id)?;
+    let current = get_arc(connection, arc_id)?;
     connection
         .prepare_cached("UPDATE arcs SET state = ?, updated_at = ? WHERE id = ?")
         .map_err(sqlite_error)?
         .execute((state.as_str(), now_iso().as_str(), arc_id))
         .map_err(sqlite_error)?;
+    if current.state != state {
+        let title = match (current.state, state) {
+            (_, ArcState::Paused) => "Paused",
+            (ArcState::Done, ArcState::Active) => "Reopened",
+            (_, ArcState::Active) => "Resumed",
+            (_, ArcState::Done) => "Marked done",
+        };
+        let mut event = NewArcEvent::new(
+            format!("state:{}", Uuid::new_v4()),
+            arc_id,
+            ArcEventKind::StateChanged,
+            title,
+        );
+        event.status = Some(state.as_str().to_string());
+        record_arc_event(connection, &event)?;
+    }
     get_arc(connection, arc_id)
 }
 
@@ -670,6 +739,7 @@ fn row_to_arc_summary(row: &Row<'_>) -> rusqlite::Result<ArcSummary> {
         dir: row.get("dir")?,
         member_count: row.get("member_count")?,
         updated_at: row.get("updated_at")?,
+        last_event_at: row.get("last_event_at")?,
     })
 }
 

@@ -34,6 +34,14 @@ export type ArcGetInput = Bindings.ArcGetInput;
 export type ArcUpdateFieldsInput = Bindings.ArcUpdateFieldsInput;
 export type ArcSetStateInput = Bindings.ArcSetStateInput;
 export type ArcLaunchCoordinatorInput = Bindings.ArcLaunchCoordinatorInput;
+export type ArcEventKind = Bindings.ArcEventKind;
+export type ArcTimelineEvent = Bindings.ArcTimelineEvent;
+export type ArcTimelineCursor = Bindings.ArcTimelineCursor;
+export type ArcTimelineInput = Bindings.ArcTimelineInput;
+export type ArcTimelinePage = Bindings.ArcTimelinePage;
+export type ArcDraft = Bindings.ArcDraft;
+export type ArcDraftFromSessionInput = Bindings.ArcDraftFromSessionInput;
+export type ArcPromoteInput = Bindings.ArcPromoteInput;
 export type ReasoningEffort = Bindings.ReasoningEffort;
 export type ActivitySummary = Bindings.ActivitySummary;
 export type ActivitySummaryInput = Bindings.ActivitySummaryInput;
@@ -560,6 +568,9 @@ export interface ArgmaxApi {
     update: (input: ArcUpdateFieldsInput) => Promise<ArcRecord>;
     setState: (input: ArcSetStateInput) => Promise<ArcRecord>;
     launchCoordinator: (input: ArcLaunchCoordinatorInput) => Promise<ArcRecord>;
+    timeline: (input: ArcTimelineInput) => Promise<ArcTimelinePage>;
+    draftFromSession: (input: ArcDraftFromSessionInput) => Promise<ArcDraft>;
+    promote: (input: ArcPromoteInput) => Promise<ArcRecord>;
   };
   review: {
     stageFile: (input: ReviewIndexFileInput) => Promise<void>;

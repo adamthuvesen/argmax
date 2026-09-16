@@ -62,6 +62,9 @@ arc:get
 arc:update
 arc:set-state
 arc:launch-coordinator
+arc:timeline
+arc:draft-from-session
+arc:promote
 checkpoints:list
 checkpoints:preview-rewind
 checkpoints:rewind-files

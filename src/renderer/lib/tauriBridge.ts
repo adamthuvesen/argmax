@@ -7,7 +7,9 @@ import type {
   ActivitySummary,
   ActivitySummaryInput,
   ArcDetail,
+  ArcDraft,
   ArcRecord,
+  ArcTimelinePage,
   ArgmaxApi,
   AgentToolsSettings,
   ChatCleanupPreview,
@@ -381,7 +383,10 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       get: (input) => invokeCommand<ArcDetail>("arc:get", input),
       update: (input) => invokeCommand<ArcRecord>("arc:update", input),
       setState: (input) => invokeCommand<ArcRecord>("arc:set-state", input),
-      launchCoordinator: (input) => invokeCommand<ArcRecord>("arc:launch-coordinator", input)
+      launchCoordinator: (input) => invokeCommand<ArcRecord>("arc:launch-coordinator", input),
+      timeline: (input) => invokeCommand<ArcTimelinePage>("arc:timeline", input),
+      draftFromSession: (input) => invokeCommand<ArcDraft>("arc:draft-from-session", input),
+      promote: (input) => invokeCommand<ArcRecord>("arc:promote", input)
     },
     review: {
       stageFile: (input) => invokeCommand<void>("review:stage-file", input),

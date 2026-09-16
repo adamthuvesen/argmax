@@ -1363,7 +1363,7 @@ async fn handle_gh_arc_event(
     providers: Arc<providers::session_service::ProviderSessionService>,
     context: gh::poller::ArcEventContext,
 ) -> error::ArgmaxResult<()> {
-    let (member_label, project_name, pr_title, pr_url) = {
+    let (member_label, project_id, project_name, pr_title, pr_url) = {
         let connection = database.connection();
         let workspace =
             persistence::workspaces::find_workspace_by_id(&connection, &context.workspace_id)?;
@@ -1373,13 +1373,14 @@ async fn handle_gh_arc_event(
             .find(|pr| pr.pr_number == context.pr_number);
         (
             workspace.task_label,
+            workspace.project_id,
             project.name,
             pr.as_ref().and_then(|pr| pr.title.clone()),
             pr.as_ref().and_then(|pr| pr.url.clone()),
         )
     };
     let title = pr_title.unwrap_or_else(|| "untitled".to_string());
-    let url = pr_url.unwrap_or_default();
+    let url = pr_url.clone().unwrap_or_default();
     let head7: String = context.head_sha.chars().take(7).collect();
     let status = match context.kind {
         gh::poller::ArcEventKind::ChecksFailing => format!("checks failing on {head7}"),
@@ -1406,6 +1407,30 @@ async fn handle_gh_arc_event(
             body,
         )
         .await?;
+    // Recorded once the coordinator has the message, so the timeline never
+    // shows an event the coordinator was not told about.
+    let kind = match context.kind {
+        gh::poller::ArcEventKind::ChecksFailing => {
+            persistence::arc_events::ArcEventKind::PrChecksFailing
+        }
+        gh::poller::ArcEventKind::ChecksPassing => {
+            persistence::arc_events::ArcEventKind::PrChecksPassing
+        }
+        gh::poller::ArcEventKind::Merged => persistence::arc_events::ArcEventKind::PrMerged,
+    };
+    let connection = database.connection();
+    let mut event = persistence::arc_events::NewArcEvent::new(
+        format!("pr:{}", context.message_id),
+        &context.arc_id,
+        kind,
+        title,
+    );
+    event.session_id = Some(&context.session_id);
+    event.project_id = Some(&project_id);
+    event.status = (!matches!(context.kind, gh::poller::ArcEventKind::Merged)).then_some(head7);
+    event.pr_number = Some(context.pr_number);
+    event.pr_url = pr_url.as_deref();
+    persistence::arc_events::record_arc_event(&connection, &event)?;
     Ok(())
 }
 

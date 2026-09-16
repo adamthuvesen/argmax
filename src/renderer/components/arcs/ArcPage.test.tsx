@@ -152,7 +152,8 @@ const SNAPSHOT: DashboardSnapshot = {
       coordinatorSessionId: "session-coord",
       dir: "/tmp/arcs/arc-1",
       memberCount: 1,
-      updatedAt: "2026-05-12T15:54:00.000Z"
+      updatedAt: "2026-05-12T15:54:00.000Z",
+      lastEventAt: null
     }
   ]
 };

@@ -517,6 +517,30 @@ async arcLaunchCoordinator(input: ArcLaunchCoordinatorInput) : Promise<Result<Ar
     else return { status: "error", error: e  as any };
 }
 },
+async arcTimeline(input: ArcTimelineInput) : Promise<Result<ArcTimelinePage, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("arc_timeline", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async arcDraftFromSession(input: ArcDraftFromSessionInput) : Promise<Result<ArcDraft, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("arc_draft_from_session", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async arcPromote(input: ArcPromoteInput) : Promise<Result<ArcRecord, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("arc_promote", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async checkpointsList(input: CheckpointsListInput) : Promise<Result<Checkpoint[], ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("checkpoints_list", { input }) };
@@ -1458,6 +1482,13 @@ dir: string | null }
  * tells an agent.
  */
 export type ArcDetail = { arc: ArcRecord; members: ArcMemberSummary[]; membersTruncated: boolean; launchesLast24h: number; limits: ArcLimits }
+/**
+ * A drafted name and brief, or nulls when the helper call failed and the
+ * person fills the form in themselves.
+ */
+export type ArcDraft = { name: string | null; brief: string | null }
+export type ArcDraftFromSessionInput = { sessionId: NonEmptyString }
+export type ArcEventKind = "created" | "coordinator_started" | "member_launched" | "member_finished" | "pr_checks_failing" | "pr_checks_passing" | "pr_merged" | "notes_updated" | "brief_updated" | "state_changed" | "scheduled_run"
 export type ArcGetInput = { id: NonEmptyString }
 export type ArcLaunchCoordinatorInput = { arcId: NonEmptyString; provider: ProviderId;
 /**
@@ -1474,6 +1505,7 @@ export type ArcListInput = Record<string, never>
  * page a person reads can never show two different member lists.
  */
 export type ArcMemberSummary = { sessionId: string; taskLabel: string; projectId: string; projectName: string; workspaceId: string; state: SessionState; provider: string; modelLabel: string | null; modelId: string | null; startedAt: string; isCoordinator: boolean; prNumber: number | null; prState: string | null }
+export type ArcPromoteInput = { sessionId: NonEmptyString; name: string; brief: string; dir: string | null }
 /**
  * The Arc row, named `ArcRecord` rather than `Arc` because every file in this
  * codebase already imports `std::sync::Arc`.
@@ -1485,7 +1517,38 @@ export type ArcState = "active" | "paused" | "done"
  * The dashboard's lightweight view: enough to render a sidebar row without
  * carrying the full brief text on every snapshot.
  */
-export type ArcSummary = { id: string; name: string; state: ArcState; homeProjectId: string; coordinatorSessionId: string | null; dir: string; memberCount: number; updatedAt: string }
+export type ArcSummary = { id: string; name: string; state: ArcState; homeProjectId: string; coordinatorSessionId: string | null; dir: string; memberCount: number; updatedAt: string;
+/**
+ * When the newest timeline row was recorded, so an open Arc page knows
+ * to refetch its timeline.
+ */
+lastEventAt: string | null }
+/**
+ * Where the next page starts: the last row of the previous one. `seq` is
+ * the row's insertion order, which breaks ties between events recorded in
+ * the same millisecond (an Arc created and its coordinator started together)
+ * the way they actually happened.
+ */
+export type ArcTimelineCursor = { occurredAt: string; seq: number }
+/**
+ * One timeline row as the Arc page renders it.
+ */
+export type ArcTimelineEvent = { id: string; seq: number; kind: ArcEventKind; occurredAt: string; sessionId: string | null;
+/**
+ * Whether the session still exists, so the page can offer to open it.
+ */
+sessionAvailable: boolean; projectId: string | null; projectName: string | null;
+/**
+ * The member's current label when the session still exists, otherwise
+ * the label recorded with the event.
+ */
+title: string; detail: string | null; status: string | null; prNumber: number | null; prUrl: string | null }
+export type ArcTimelineInput = { arcId: NonEmptyString;
+/**
+ * The previous page's `nextCursor`, or null for the newest page.
+ */
+before: ArcTimelineCursor | null; limit: number | null }
+export type ArcTimelinePage = { events: ArcTimelineEvent[]; nextCursor: ArcTimelineCursor | null }
 export type ArcUpdateFieldsInput = { id: NonEmptyString; name: string | null; brief: string | null }
 export type ArgmaxError = { code: "INVALID_INPUT"; issues: InvalidInputIssue[] } | { code: "RECORD_NOT_FOUND"; kind: string; id: string } | { code: "MIGRATION_DRIFT"; detail: string } | { code: "SERVICE_ERROR"; sub_code: string; message: string }
 export type AttachmentMimeType = "image/png" | "image/jpeg" | "image/gif" | "image/webp"

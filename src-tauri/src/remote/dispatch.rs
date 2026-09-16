@@ -485,6 +485,18 @@ async fn dispatch_standard(
             let input = parse(channel, input)?;
             encode(arcs::arc_launch_coordinator_impl(state, input).await?)
         }
+        "arc:timeline" => {
+            let input = parse(channel, input)?;
+            encode(arcs::arc_timeline_impl(state, input).await?)
+        }
+        "arc:draft-from-session" => {
+            let input = parse(channel, input)?;
+            encode(arcs::arc_draft_from_session_impl(state, input).await?)
+        }
+        "arc:promote" => {
+            let input = parse(channel, input)?;
+            encode(arcs::arc_promote_impl(state, input).await?)
+        }
 
         "sources:list" => {
             let input = parse(channel, input)?;

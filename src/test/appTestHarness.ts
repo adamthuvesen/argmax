@@ -534,6 +534,9 @@ export function setupAppTestMocks(): void {
       update: () => Promise.reject(new Error("Arc not stubbed")),
       setState: () => Promise.reject(new Error("Arc not stubbed")),
       launchCoordinator: () => Promise.reject(new Error("Arc not stubbed")),
+      timeline: () => Promise.resolve({ events: [], nextCursor: null }),
+      draftFromSession: () => Promise.resolve({ name: null, brief: null }),
+      promote: () => Promise.reject(new Error("Arc not stubbed")),
     },
     checkpoints: {
       list: () => Promise.resolve([]),

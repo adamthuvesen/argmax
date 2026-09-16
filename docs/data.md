@@ -29,6 +29,7 @@ Rust manages SQLite storage under [src-tauri/src/persistence](../src-tauri/src/p
 - `activity_commits`, `activity_scan_meta`, `activity_github_prs`, `activity_github_reviews`, and `activity_github_meta` (v44) back the Activity page: one row per commit SHA the user authored across every registered project, the sweep's parser version and matched author emails, and the cached `gh` half — authored pull requests, one row per review submission, and the login the cache belongs to. `activity_commits.project_id` deliberately carries no foreign key: the sweep reconciles it against the `projects` table, so a project removed while the app was closed is forgotten by the next sweep rather than by a cascade nobody ran. Timestamps are stored as RFC 3339 UTC because the ledger is range-scanned as text. See [activity.md](activity.md).
 - `synced_session_tombstones` (v45) retains provider conversation ids for chats deliberately deleted in Settings, whether Argmax launched or imported them. Provider transcripts stay untouched on disk, and session sync consults these tombstones so those chats do not reappear.
 - `workspaces.last_viewed_at` (v47) is the host-authoritative read watermark shared by desktop and mobile. Existing workspaces initialize it from `last_activity_at`; new workspaces initialize it at creation, and clients advance it only to an activity timestamp they actually displayed.
+- v51 drops `idx_raw_outputs_session_created`. Transcript tail and page reads walk `idx_raw_outputs_session_id` in rowid order, and the retention sweep uses `idx_raw_outputs_created_at`; the composite index only served the legacy Cursor resume-id fallback, which is as fast on the single-column index. Dropping an index rewrites no rows; the freed pages return to the filesystem on the next Settings → Vacuum.
 
 Reads take pooled `SQLITE_OPEN_READ_ONLY` connections through `Database::read_connection`, not the writer `Mutex<Connection>`, so a read never queues behind a write. A write attempted on the read path fails loudly; that is the point. See [performance.md](performance.md).
 
@@ -86,7 +87,7 @@ Each invocation keeps its own `agentRunId` and `providerInvocationId`, while a
 resume keeps the child id and parent conversation id.
 - `approvals:pending`: Returns outstanding approval requests.
 
-A background sweeper deletes raw provider output older than 7 days. `system:vacuum-database` runs `VACUUM` in a background task.
+A background sweeper deletes raw provider output older than 3 days, once a day starting 30 seconds after the database opens. Chat history reads `events`, not `raw_outputs`; raw output only backs the raw transcript fallback, the debug tail, and the legacy Cursor resume-id lookup for sessions with no stored conversation id. `system:vacuum-database` runs `VACUUM` in a background task.
 
 Settings can preview and permanently delete chats whose last activity is older than 7 days. The confirmed cleanup rechecks activity and protects active sessions, queued follow-ups, after-turn actions, active Goals, running checks, and live terminals. It removes chat attachments and empty workspace records so the sidebar has no ghost rows, while leaving every checkout and worktree on disk.
 

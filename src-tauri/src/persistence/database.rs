@@ -11,14 +11,19 @@ use crate::error::{ArgmaxError, ArgmaxResult};
 use super::migrations::run_migrations;
 use crate::util::sync::LockOrRecover;
 
-const PRUNE_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+pub(crate) const PRUNE_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 /// How long the first prune waits after the database opens. Pruning a day of
 /// expired rows is a write against a table that is mostly blobs, so it costs
 /// hundreds of milliseconds to seconds on a large database — time the boot path
 /// used to pay inline, before the window existed. Nothing reads the result, so
 /// it waits until startup's own writes (session and archive recovery) are done.
-const PRUNE_STARTUP_DELAY: Duration = Duration::from_secs(30);
-const RAW_OUTPUT_RETENTION_DAYS: i64 = 7;
+pub(crate) const PRUNE_STARTUP_DELAY: Duration = Duration::from_secs(30);
+/// Raw provider output runs to roughly 160 MB a day, and nothing that has to
+/// survive reads it: chat history comes from `events`. What does read it — the
+/// raw transcript fallback, the debug tail, and the legacy Cursor resume-id
+/// lookup for sessions with no stored conversation id — only matters for
+/// recent turns.
+const RAW_OUTPUT_RETENTION_DAYS: i64 = 3;
 
 /// Idle reader connections kept alive between reads. Reads are short and the
 /// pool only has to cover the handlers that can overlap — the webview, the
@@ -428,13 +433,13 @@ mod tests {
 
         connection
             .execute(
-                "INSERT INTO raw_outputs (id, session_id, stream, content, created_at) VALUES ('old', 's1', 'stdout', 'old', strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-8 days'))",
+                "INSERT INTO raw_outputs (id, session_id, stream, content, created_at) VALUES ('old', 's1', 'stdout', 'old', strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-4 days'))",
                 [],
             )
             .expect("insert old");
         connection
             .execute(
-                "INSERT INTO raw_outputs (id, session_id, stream, content, created_at) VALUES ('fresh', 's1', 'stdout', 'fresh', strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 days'))",
+                "INSERT INTO raw_outputs (id, session_id, stream, content, created_at) VALUES ('fresh', 's1', 'stdout', 'fresh', strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-2 days'))",
                 [],
             )
             .expect("insert fresh");

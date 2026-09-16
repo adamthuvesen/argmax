@@ -149,6 +149,9 @@ export const demoSnapshot: DashboardSnapshot = {
       contextTokens: 0,
       imported: false,
       launchKind: "agent",
+      // A member of the demo arc below — one board chat pulled in under the
+      // review-studio coordinator's arc for the Arc page screenshot.
+      arcId: "arc-review-studio",
     },
     {
       id: "session-multitask-changelog",
@@ -193,6 +196,8 @@ export const demoSnapshot: DashboardSnapshot = {
       contextTokens: 0,
       imported: false,
       launchKind: "agent",
+      // The demo arc's coordinator chat.
+      arcId: "arc-review-studio",
     },
     {
       id: "session-approval-gate",
@@ -540,6 +545,18 @@ export const demoSnapshot: DashboardSnapshot = {
       summary: "Renderer and main process compiled successfully.",
       startedAt: "2026-05-08T15:45:00.000Z",
       completedAt: "2026-05-08T15:46:00.000Z"
+    }
+  ],
+  arcs: [
+    {
+      id: "arc-review-studio",
+      name: "Review studio launch",
+      state: "active",
+      homeProjectId: "project-argmax",
+      coordinatorSessionId: "session-review-studio",
+      dir: "~/code/.argmax/arcs/arc-review-studio",
+      memberCount: 1,
+      updatedAt: "2026-05-08T15:54:00.000Z"
     }
   ]
 };

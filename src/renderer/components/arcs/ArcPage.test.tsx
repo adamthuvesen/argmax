@@ -1,0 +1,257 @@
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  ArcRecord,
+  ArgmaxApi,
+  DashboardSnapshot,
+  ProjectSummary
+} from "../../../shared/types.js";
+import { ArcPage } from "./ArcPage.js";
+
+const PROJECT: ProjectSummary = {
+  id: "project-1",
+  name: "Argmax",
+  repoPath: "/tmp/argmax",
+  currentBranch: "main",
+  defaultBranch: "main",
+  settings: {
+    archiveOnMerge: false,
+    worktreeLocation: "/tmp/worktrees",
+    setupCommand: "",
+    checkCommands: []
+  },
+  counts: { active: 0, blocked: 0, failed: 0, reviewReady: 0 },
+  latestActivityAt: "2026-05-12T15:54:00.000Z"
+};
+
+function arcRecord(overrides: Partial<ArcRecord> = {}): ArcRecord {
+  return {
+    id: "arc-1",
+    name: "Pricing rollout",
+    brief: "Ship the new pricing tiers.",
+    state: "active",
+    homeProjectId: "project-1",
+    coordinatorSessionId: "session-coord",
+    dir: "/tmp/arcs/arc-1",
+    createdAt: "2026-05-10T09:00:00.000Z",
+    updatedAt: "2026-05-12T15:54:00.000Z",
+    ...overrides
+  };
+}
+
+const SNAPSHOT: DashboardSnapshot = {
+  projects: [PROJECT],
+  workspaces: [
+    {
+      id: "workspace-coord",
+      projectId: "project-1",
+      taskLabel: "Coordinate pricing rollout",
+      branch: "argmax/pricing-coordinator",
+      baseRef: "main",
+      path: "/tmp/argmax",
+      state: "running",
+      sharedWorkspace: true,
+      kind: "git",
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: "2026-05-12T15:54:00.000Z",
+      pinned: false,
+      priorityDismissedAt: null,
+      priorityAddedAt: null,
+      prState: null,
+      prNumber: null,
+      icon: null,
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
+    },
+    {
+      id: "workspace-member",
+      projectId: "project-1",
+      taskLabel: "Ship the pricing page",
+      branch: "argmax/pricing-page",
+      baseRef: "main",
+      path: "/tmp/wt-pricing-page",
+      state: "complete",
+      sharedWorkspace: false,
+      kind: "git",
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: "2026-05-12T15:50:00.000Z",
+      pinned: false,
+      priorityDismissedAt: null,
+      priorityAddedAt: null,
+      prState: "OPEN",
+      prNumber: 42,
+      icon: null,
+      iconColor: null,
+      prCreatedAt: null,
+      prMergedAt: null,
+      prCheckState: null,
+      prActivityAt: null
+    }
+  ],
+  sessions: [
+    {
+      id: "session-coord",
+      workspaceId: "workspace-coord",
+      provider: "claude",
+      modelLabel: "Sonnet",
+      modelId: "sonnet",
+      permissionMode: "auto-approve",
+      providerConversationId: null,
+      prompt: "Coordinate the pricing rollout arc.",
+      state: "running",
+      attention: "normal",
+      startedAt: "2026-05-10T09:00:00.000Z",
+      completedAt: null,
+      lastActivityAt: "2026-05-12T15:54:00.000Z",
+      costUsd: 0,
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextTokens: 0,
+      imported: false,
+      launchKind: "agent",
+      arcId: "arc-1"
+    },
+    {
+      id: "session-member",
+      workspaceId: "workspace-member",
+      provider: "codex",
+      modelLabel: "GPT-5.3 Codex",
+      modelId: "gpt-5.5",
+      permissionMode: "auto-approve",
+      providerConversationId: null,
+      prompt: "Ship the pricing page.",
+      state: "complete",
+      attention: "normal",
+      startedAt: "2026-05-11T09:00:00.000Z",
+      completedAt: "2026-05-11T10:00:00.000Z",
+      lastActivityAt: "2026-05-12T15:50:00.000Z",
+      costUsd: 0,
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextTokens: 0,
+      imported: false,
+      launchKind: "agent",
+      arcId: "arc-1"
+    }
+  ],
+  events: [],
+  rawOutputs: [],
+  approvals: [],
+  checks: [],
+  arcs: [
+    {
+      id: "arc-1",
+      name: "Pricing rollout",
+      state: "active",
+      homeProjectId: "project-1",
+      coordinatorSessionId: "session-coord",
+      dir: "/tmp/arcs/arc-1",
+      memberCount: 1,
+      updatedAt: "2026-05-12T15:54:00.000Z"
+    }
+  ]
+};
+
+const arcsStub = {
+  get: vi.fn<ArgmaxApi["arcs"]["get"]>(),
+  list: vi.fn<ArgmaxApi["arcs"]["list"]>(),
+  create: vi.fn<ArgmaxApi["arcs"]["create"]>(),
+  update: vi.fn<ArgmaxApi["arcs"]["update"]>(),
+  setState: vi.fn<ArgmaxApi["arcs"]["setState"]>(),
+  launchCoordinator: vi.fn<ArgmaxApi["arcs"]["launchCoordinator"]>()
+};
+
+const systemStub = {
+  confirm: vi.fn<ArgmaxApi["system"]["confirm"]>()
+};
+
+beforeEach(() => {
+  arcsStub.get.mockReset();
+  arcsStub.update.mockReset();
+  arcsStub.setState.mockReset();
+  arcsStub.launchCoordinator.mockReset();
+  systemStub.confirm.mockReset();
+
+  arcsStub.get.mockResolvedValue(arcRecord());
+  arcsStub.update.mockImplementation((input) =>
+    Promise.resolve({
+      ...arcRecord(),
+      ...(input.name !== null ? { name: input.name } : {}),
+      ...(input.brief !== null ? { brief: input.brief } : {})
+    })
+  );
+  arcsStub.setState.mockImplementation((input) => Promise.resolve(arcRecord({ state: input.state })));
+  arcsStub.launchCoordinator.mockImplementation((input) =>
+    Promise.resolve(arcRecord({ coordinatorSessionId: `relaunched-${input.provider}` }))
+  );
+  systemStub.confirm.mockResolvedValue(true);
+
+  window.argmax = { arcs: arcsStub, system: systemStub } as unknown as ArgmaxApi;
+});
+
+afterEach(() => {
+  cleanup();
+  delete (window as { argmax?: ArgmaxApi }).argmax;
+});
+
+describe("ArcPage", () => {
+  it("saves an edited brief", async () => {
+    const onOpenSession = vi.fn();
+    render(
+      <ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={onOpenSession} />
+    );
+
+    const textarea = await screen.findByPlaceholderText("What this arc is for, and what done looks like.");
+    fireEvent.change(textarea, { target: { value: "Ship the new pricing tiers, then deprecate the old ones." } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(arcsStub.update).toHaveBeenCalledTimes(1));
+    expect(arcsStub.update).toHaveBeenCalledWith({
+      id: "arc-1",
+      name: null,
+      brief: "Ship the new pricing tiers, then deprecate the old ones."
+    });
+  });
+
+  it("pauses an active arc", async () => {
+    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Pause" }));
+
+    await waitFor(() => expect(arcsStub.setState).toHaveBeenCalledTimes(1));
+    expect(arcsStub.setState).toHaveBeenCalledWith({ id: "arc-1", state: "paused" });
+  });
+
+  it("confirms and launches a new coordinator", async () => {
+    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "New coordinator" }));
+
+    await waitFor(() => expect(systemStub.confirm).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(arcsStub.launchCoordinator).toHaveBeenCalledTimes(1));
+    expect(arcsStub.launchCoordinator).toHaveBeenCalledWith(
+      expect.objectContaining({ arcId: "arc-1", provider: "claude" })
+    );
+  });
+
+  it("does not launch a new coordinator when the confirmation is declined", async () => {
+    systemStub.confirm.mockResolvedValue(false);
+    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "New coordinator" }));
+
+    await waitFor(() => expect(systemStub.confirm).toHaveBeenCalledTimes(1));
+    expect(arcsStub.launchCoordinator).not.toHaveBeenCalled();
+  });
+
+  it("lists members and excludes the coordinator", async () => {
+    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} />);
+
+    expect(await screen.findByRole("button", { name: /Ship the pricing page/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Coordinate pricing rollout/ })).not.toBeInTheDocument();
+  });
+});

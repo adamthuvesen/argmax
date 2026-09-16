@@ -1,0 +1,328 @@
+/* Arcs — the sidebar section, the member marker on an ordinary chat row, the
+   New arc dialog, and the standalone Arc page. The page reuses the settings
+   page chrome (rail, topbar, `--settings-measure` column) from
+   settings-layout.css and its form fields reuse the `.sched-*` primitives
+   from scheduled-tasks.css, so this file only adds what neither already has:
+   the sidebar row, the badge, the dialog shell, and the page's own cards. */
+
+/* ---------- Sidebar: Arcs section row ---------- */
+
+/* Same grid as `.session-link` (18px lead, flexible label) plus a trailing
+   auto column for the state pill, matching `.session-link-has-pr-count`. */
+.arc-row {
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+}
+
+.arc-row-state {
+  flex: 0 0 auto;
+  padding: 0 var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-ui);
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+}
+
+/* A done arc reads as settled, not urgent — one ink step below an active or
+   paused row, same idea as a completed session in the date view. */
+.arc-row[data-arc-state="done"] {
+  opacity: 0.6;
+}
+
+/* ---------- Sidebar: "Part of arc" member marker ---------- */
+
+.session-arc-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+  opacity: 0.85;
+}
+
+/* ---------- New arc dialog ---------- */
+
+.new-arc-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 4vh 16px;
+  background: rgba(20, 24, 32, 0.32);
+  z-index: 130;
+}
+
+.new-arc-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: min(520px, 92vw);
+  max-height: 86vh;
+  overflow: auto;
+  padding: 20px 24px 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-popover);
+}
+
+.new-arc-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.new-arc-dialog-header h2 {
+  margin: 0;
+  font-size: var(--text-md-plus);
+}
+
+.new-arc-dialog-header button {
+  background: transparent;
+  border: 0;
+  font-size: var(--text-xl);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.new-arc-folder-details summary {
+  font-size: var(--text-sm);
+  font-weight: calc(500 + var(--font-weight-offset));
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+.new-arc-folder-details[open] summary {
+  margin-bottom: var(--space-2);
+}
+
+.new-arc-dialog-error {
+  margin: 0;
+  color: var(--rose);
+  font-size: var(--text-sm);
+}
+
+.new-arc-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line-soft);
+}
+
+/* Same shape as .commit-dialog-actions button: a modal footer's plain
+   Cancel, with the submit action filled in ink to read as the one default
+   action in the dialog. */
+.new-arc-dialog-actions button {
+  height: 30px;
+  padding: 0 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+/* Out-specifies `.new-arc-dialog-actions button` (class+element beats a bare
+   class), or the ink fill below silently loses to the plain panel fill. */
+.new-arc-dialog-actions .new-arc-dialog-submit {
+  background: var(--ink);
+  color: var(--bubble-on-ink);
+  border-color: var(--ink);
+  font-weight: calc(500 + var(--font-weight-offset));
+}
+
+.new-arc-dialog-actions button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---------- Arc page ---------- */
+
+.arc-load-error {
+  color: var(--rose);
+  font-size: var(--text-sm);
+}
+
+/* One card shape for the whole page: a bordered panel, same recipe the
+   Usage page's cards use (usage-page.css), so the two standalone pages read
+   as one family even though each defines its own scoped class. */
+.arc-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-6);
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+.arc-card-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: calc(500 + var(--font-weight-offset));
+  color: var(--text-soft);
+}
+
+.arc-card-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.arc-card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.arc-unsaved {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.arc-inline-error {
+  margin: 0;
+  color: var(--rose);
+  font-size: var(--text-sm);
+}
+
+.arc-header-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.arc-name-edit {
+  padding: 2px 4px;
+  margin: -2px -4px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: var(--text-lg-tight);
+  font-weight: calc(500 + var(--font-weight-offset));
+  letter-spacing: -0.01em;
+  cursor: pointer;
+}
+
+.arc-name-edit:hover {
+  border-color: var(--line);
+}
+
+.arc-name-input {
+  padding: 2px 4px;
+  margin: -2px -4px;
+  background: var(--composer-surface);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: var(--text-lg-tight);
+  font-weight: calc(500 + var(--font-weight-offset));
+  letter-spacing: -0.01em;
+}
+
+.arc-state-pill {
+  flex: 0 0 auto;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted-strong);
+  font-size: var(--text-2xs);
+  font-weight: calc(500 + var(--font-weight-offset));
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.arc-state-pill[data-arc-state="active"] {
+  color: var(--sage);
+  border-color: var(--sage-soft);
+}
+
+.arc-state-pill[data-arc-state="paused"] {
+  color: var(--amber);
+  border-color: var(--amber-soft);
+}
+
+.arc-header-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.arc-header-actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.arc-brief-textarea {
+  min-height: 140px;
+}
+
+.arc-folder-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.arc-folder-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 7px var(--space-3);
+  background: var(--panel-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.arc-coordinator-summary {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: var(--text-sm);
+}
+
+.arc-member-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.arc-member-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: var(--space-2) var(--space-2_5);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.arc-member-row:hover {
+  background: var(--row-hover);
+}
+
+.arc-member-label {
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.arc-member-meta {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}

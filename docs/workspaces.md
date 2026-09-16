@@ -77,6 +77,14 @@ Workspaces holding at least one live **reason**, and workspaces with a live turn
 - Right-click "Done" (`workspaces:set-priority-dismissed`) clears every reason that was already true, and nothing that happens afterwards: a PR going red after a dismissal brings the row back, because `ci-red` is newer than the dismissal. Each reason carries its own `since` for that comparison — a session reason uses `attention_changed_at`, a PR reason the poller's `pr_activity_at`. Manual adds (`workspaces:set-priority-added`) persist until cleared. A row that is only listed because its turn is running has no "Done" — it leaves when the turn ends — and the header's Clear skips it.
 - The "Priority section in sidebar" setting hides the whole section, running rows included; they fall back to their date bucket or project group.
 
+## Arcs
+
+Arcs sit above every other sidebar section — a body of work spanning several projects doesn't nest under any one of them. The section header carries "New arc"; each row is an arc's name plus its state as text when it isn't `active` (`paused`, `done`), never color alone. Active and paused arcs sort ahead of done ones, most recently touched first. Clicking a row opens the standalone Arc page, wired through `showArcPage`/`selectedArcId` in [overlays.ts](../src/renderer/state/overlays.ts) the same way Settings and Schedule take over the sidebar column.
+
+A sidebar chat row whose session carries `arcId` shows a small marker (title and accessible name `Part of arc <name>`) next to its subtitle, the same slot `launched by …` uses — a member reads as part of a larger body of work rather than a stray chat, while staying in its own project's section.
+
+See `docs/arcs.md` for the full data model (coordinator chat, member chats, `BRIEF.md`/`NOTES.md`, launch caps).
+
 ## Custom Row Icons
 
 Right-click → "Edit Icon" saves `workspaces.icon` and `workspaces.icon_color` via `workspaces:set-icon`. When a custom icon is active, status indicators move to a corner badge.

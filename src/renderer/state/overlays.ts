@@ -19,7 +19,7 @@ import { hideFullLauncher } from "./launcherSurface.js";
 // open the same pages. They call the mutators here rather than being handed a
 // callback per page.
 
-type StandalonePage = "settings" | "schedule" | "usage" | "activity";
+type StandalonePage = "settings" | "schedule" | "usage" | "activity" | "arc";
 
 interface OverlaysSnapshot {
   /** Which full-screen page owns the workspace column, if any. */
@@ -28,6 +28,9 @@ interface OverlaysSnapshot {
   settingsGroup: SettingsGroupId;
   /** The last navigation request, carrying a section to scroll to. */
   settingsNavigation: SettingsNavigationTarget | null;
+  /** The arc `showArcPage` last opened. Stale once the page closes, but never
+   *  read while `standalonePage !== "arc"`. */
+  selectedArcId: string | null;
   paletteOpen: boolean;
   paletteScope: PaletteScope;
   cheatSheetOpen: boolean;
@@ -37,6 +40,7 @@ const INITIAL: OverlaysSnapshot = {
   standalonePage: null,
   settingsGroup: DEFAULT_SETTINGS_GROUP.id,
   settingsNavigation: null,
+  selectedArcId: null,
   paletteOpen: false,
   paletteScope: "all",
   cheatSheetOpen: false
@@ -86,6 +90,11 @@ export function showUsagePage(): void {
 export function showActivityPage(): void {
   hideFullLauncher();
   publish({ ...state, standalonePage: "activity", paletteOpen: false });
+}
+
+export function showArcPage(arcId: string): void {
+  hideFullLauncher();
+  publish({ ...state, standalonePage: "arc", selectedArcId: arcId, paletteOpen: false });
 }
 
 /** Returns the workspace column to the grid, whichever page held it. */

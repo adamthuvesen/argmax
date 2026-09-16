@@ -10,6 +10,7 @@ import {
   sidebarViewModeStorageKey
 } from "../lib/projects.js";
 import { resetSessionUnreadForTests } from "../lib/sessionUnread.js";
+import { overlaysSnapshot, resetOverlaysForTests } from "../state/overlays.js";
 import { Sidebar } from "./Sidebar.js";
 
 const projectSettings = {
@@ -2058,5 +2059,128 @@ describe("Sidebar — unread response mark", () => {
     expect(viewed.getAttribute("title")).toBe("Background reply — complete");
     expect(viewed.querySelector(".session-unread-marker")).toBeNull();
     expect(viewed.querySelector(".session-custom-icon")).not.toBeNull();
+  });
+});
+
+describe("Sidebar — Arcs section", () => {
+  const arcSnapshot: DashboardSnapshot = {
+    projects: [
+      {
+        id: "project-1",
+        name: "Argmax",
+        repoPath: "/tmp/argmax",
+        currentBranch: "main",
+        defaultBranch: "main",
+        settings: projectSettings,
+        counts: { active: 1, blocked: 0, failed: 0, reviewReady: 0 },
+        latestActivityAt: "2026-05-12T15:54:00.000Z"
+      }
+    ],
+    workspaces: [
+      {
+        id: "workspace-member",
+        projectId: "project-1",
+        taskLabel: "Ship the pricing page",
+        branch: "argmax/pricing",
+        baseRef: "main",
+        path: "/tmp/wt",
+        state: "running",
+        sharedWorkspace: false,
+        kind: "git",
+        dirty: false,
+        changedFiles: 0,
+        lastActivityAt: "2026-05-12T15:54:00.000Z",
+        pinned: false,
+        priorityDismissedAt: null,
+        priorityAddedAt: null,
+        prState: null,
+        prNumber: null,
+        icon: null,
+        iconColor: null,
+        prCreatedAt: null,
+        prMergedAt: null,
+        prCheckState: null,
+        prActivityAt: null
+      }
+    ],
+    sessions: [
+      {
+        id: "session-member",
+        workspaceId: "workspace-member",
+        provider: "claude",
+        modelLabel: "Sonnet",
+        modelId: "sonnet",
+        permissionMode: "auto-approve",
+        providerConversationId: null,
+        prompt: "Ship the pricing page",
+        state: "running",
+        attention: "normal",
+        startedAt: "2026-05-12T15:30:00.000Z",
+        completedAt: null,
+        lastActivityAt: "2026-05-12T15:54:00.000Z",
+        costUsd: 0,
+        tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextTokens: 0,
+        imported: false,
+        launchKind: "agent",
+        arcId: "arc-1"
+      }
+    ],
+    events: [],
+    rawOutputs: [],
+    approvals: [],
+    checks: [],
+    arcs: [
+      {
+        id: "arc-1",
+        name: "Pricing rollout",
+        state: "active",
+        homeProjectId: "project-1",
+        coordinatorSessionId: null,
+        dir: "/tmp/arcs/arc-1",
+        memberCount: 1,
+        updatedAt: "2026-05-12T15:54:00.000Z"
+      }
+    ]
+  };
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    resetSessionUnreadForTests();
+    resetOverlaysForTests();
+  });
+
+  afterEach(() => {
+    cleanup();
+    resetSessionUnreadForTests();
+    resetOverlaysForTests();
+  });
+
+  it("lists arcs from the snapshot and opens the Arc page on click", () => {
+    render(<Sidebar {...baseProps} snapshot={arcSnapshot} />);
+
+    const row = screen.getByRole("button", { name: "Pricing rollout" });
+    fireEvent.click(row);
+
+    expect(overlaysSnapshot().standalonePage).toBe("arc");
+    expect(overlaysSnapshot().selectedArcId).toBe("arc-1");
+  });
+
+  it("opens the New arc dialog from the section's New arc button", () => {
+    render(<Sidebar {...baseProps} snapshot={arcSnapshot} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "New arc" }));
+
+    expect(screen.getByRole("dialog", { name: "New arc" })).not.toBeNull();
+  });
+
+  it("shows a member badge naming the arc on a chat that belongs to one", () => {
+    render(<Sidebar {...baseProps} snapshot={arcSnapshot} />);
+
+    // Sidebar boots every project collapsed; expand to see its chats.
+    fireEvent.click(screen.getByRole("button", { name: "Show Argmax chats" }));
+
+    expect(screen.getByTitle("Part of arc Pricing rollout")).not.toBeNull();
   });
 });

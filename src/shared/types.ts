@@ -30,6 +30,19 @@ export type ArcListInput = Bindings.ArcListInput;
 export type ArcGetInput = Bindings.ArcGetInput;
 export type ArcUpdateFieldsInput = Bindings.ArcUpdateFieldsInput;
 export type ArcSetStateInput = Bindings.ArcSetStateInput;
+/**
+ * Launches (or relaunches) an arc's coordinator chat in the home project's
+ * shared checkout and repoints `coordinatorSessionId`. Also used for "New
+ * coordinator". Errors include `ARC_DONE`.
+ * TODO(arcs): replace with Bindings.ArcLaunchCoordinatorInput after generate:bindings
+ */
+export type ArcLaunchCoordinatorInput = {
+  arcId: string;
+  provider: ProviderId;
+  modelLabel?: string;
+  modelId?: string;
+  reasoningEffort?: ReasoningEffort;
+};
 export type ReasoningEffort = Bindings.ReasoningEffort;
 export type ActivitySummary = Bindings.ActivitySummary;
 export type ActivitySummaryInput = Bindings.ActivitySummaryInput;
@@ -555,6 +568,7 @@ export interface ArgmaxApi {
     get: (input: ArcGetInput) => Promise<ArcRecord>;
     update: (input: ArcUpdateFieldsInput) => Promise<ArcRecord>;
     setState: (input: ArcSetStateInput) => Promise<ArcRecord>;
+    launchCoordinator: (input: ArcLaunchCoordinatorInput) => Promise<ArcRecord>;
   };
   review: {
     stageFile: (input: ReviewIndexFileInput) => Promise<void>;

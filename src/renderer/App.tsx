@@ -40,6 +40,7 @@ import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { BrowserPage } from "./components/BrowserPage.js";
 import { ScheduleRail } from "./components/scheduled/ScheduleRail.js";
+import { ArcRail } from "./components/arcs/ArcRail.js";
 import { UsageRail, type LedgerPage } from "./components/usage/UsageRail.js";
 import { SettingsRail } from "./components/settings/SettingsRail.js";
 import { MAX_COLS, findSessionCell, focusedCell, terminalWorkspaceId } from "./lib/gridState.js";
@@ -59,6 +60,7 @@ import {
   ScheduledTasksPanel,
   SettingsPanel,
   ActivityPanel,
+  ArcPage,
   UsagePanel,
   useLazyOverlayPrefetch
 } from "./hooks/useLazyOverlayPrefetch.js";
@@ -190,6 +192,7 @@ export function App(): JSX.Element {
     standalonePage,
     settingsGroup,
     settingsNavigation,
+    selectedArcId,
     paletteOpen,
     paletteScope,
     cheatSheetOpen
@@ -199,6 +202,7 @@ export function App(): JSX.Element {
   const isScheduledTasksOpen = standalonePage === "schedule";
   const isUsageOpen = standalonePage === "usage";
   const isActivityOpen = standalonePage === "activity";
+  const isArcPageOpen = standalonePage === "arc";
   // Usage and Activity share one rail, so the rail renders for either and the
   // nav is the same callback in both directions.
   const isLedgerOpen = isUsageOpen || isActivityOpen;
@@ -1939,6 +1943,7 @@ export function App(): JSX.Element {
       data-schedule-open={isScheduledTasksOpen ? "true" : undefined}
       data-usage-open={isUsageOpen ? "true" : undefined}
       data-activity-open={isActivityOpen ? "true" : undefined}
+      data-arc-open={isArcPageOpen ? "true" : undefined}
       data-browser-page-open={isBrowserPageOpen && !standalonePageOpen ? "true" : undefined}
       data-sidebar-collapsed={effectiveSidebarCollapsed ? "true" : undefined}
       data-sidebar-peek={effectiveSidebarCollapsed && sidebarPeek ? "true" : undefined}
@@ -2050,6 +2055,8 @@ export function App(): JSX.Element {
         />
       ) : isScheduledTasksOpen ? (
         <ScheduleRail onBack={() => hideStandalonePage()} />
+      ) : isArcPageOpen ? (
+        <ArcRail onBack={() => hideStandalonePage()} />
       ) : isLedgerOpen ? (
         <UsageRail
           active={isActivityOpen ? "activity" : "usage"}
@@ -2192,6 +2199,15 @@ export function App(): JSX.Element {
           ) : isScheduledTasksOpen ? (
             <Suspense fallback={<SkeletonPane label="Loading scheduled tasks" />}>
               <ScheduledTasksPanel projects={realProjects} onOpenSession={openSessionById} />
+            </Suspense>
+          ) : isArcPageOpen && selectedArcId ? (
+            <Suspense fallback={<SkeletonPane label="Loading arc" />}>
+              <ArcPage
+                arcId={selectedArcId}
+                snapshot={snapshot}
+                projects={realProjects}
+                onOpenSession={openSessionById}
+              />
             </Suspense>
           ) : isLedgerOpen ? (
             <>

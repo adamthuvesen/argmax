@@ -11,6 +11,7 @@ const importSettingsPanel = () => import("../components/SettingsPanel.js");
 const importScheduledTasksPanel = () => import("../components/scheduled/ScheduledTasksPanel.js");
 const importUsagePanel = () => import("../components/usage/UsagePanel.js");
 const importActivityPanel = () => import("../components/activity/ActivityPanel.js");
+const importArcPage = () => import("../components/arcs/ArcPage.js");
 // ReviewPanel pulls in CodeMirror + every @codemirror/lang-* package — ~680KB.
 // LaunchSurface and SessionPane each lazy-import it locally; warming it from
 // here means the first ⌘P Enter (which opens ReviewPanel in Files mode) hits a
@@ -33,6 +34,9 @@ export const UsagePanel = lazy(() =>
 );
 export const ActivityPanel = lazy(() =>
   importChunk(async () => ({ default: (await importActivityPanel()).ActivityPanel }))
+);
+export const ArcPage = lazy(() =>
+  importChunk(async () => ({ default: (await importArcPage()).ArcPage }))
 );
 
 /** Warm lazy overlay chunks after first paint so the first ⌘K / ⌘F / Settings open isn't paying for transform+fetch+parse on the keypress. */
@@ -62,6 +66,7 @@ export function useLazyOverlayPrefetch(): void {
       importScheduledTasksPanel().catch(swallow);
       importUsagePanel().catch(swallow);
       importActivityPanel().catch(swallow);
+      importArcPage().catch(swallow);
       importReviewPanel().catch(swallow);
     };
     const scheduleHeavy = (): void => {

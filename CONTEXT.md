@@ -126,6 +126,22 @@ _Avoid_: Queue, mailbox, notifications
 The message Argmax writes to a launching session when a session it launched ends a turn: that session's id, label, final state, and last answer. Delivered like any other message, so an idle launcher wakes on a new turn. One per turn end, and only for a session that has a launcher.
 _Avoid_: Completion event, done message, callback
 
+**Arc**:
+A long-lived body of work — a feature, a migration, an app — that outlives any one chat and may span several projects. It holds a name, a brief, a state (`active`, `paused`, `done`), a home project, an arc folder, one coordinator, and its members. It is a thin container: the coordinator does the planning, and Argmax only launches, limits, and wakes it.
+_Avoid_: Project, mission, workstream, epic, initiative
+
+**Coordinator**:
+The arc's current planning chat, named by `arcs.coordinator_session_id`. It plans, launches members, reviews what comes back, and keeps `NOTES.md` current; that it does not write code itself is an instruction in its prompt, not a permission. It is disposable: starting a new one repoints the arc, and the old chat stays as history.
+_Avoid_: Orchestrator, manager, lead agent, parent
+
+**Member**:
+A session that belongs to an arc (`sessions.arc_id`), usually one a coordinator or another member launched. Membership is inherited on launch and multitask and survives `session_move`; a fork leaves the arc. Members read the arc folder but never write to it, and report durable learnings in their final answer.
+_Avoid_: Child, worker, subagent
+
+**Arc folder**:
+The directory holding an arc's shared context: `BRIEF.md` and `NOTES.md`, plus whatever the coordinator adds. Argmax creates one under its data directory unless the user points the arc at an existing folder. The coordinator is its only writer.
+_Avoid_: Arc memory, workspace, context files
+
 ### What a session produced
 
 **Timeline event**:

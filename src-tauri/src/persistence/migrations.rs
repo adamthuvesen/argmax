@@ -220,6 +220,24 @@ pub static PROJECT_SOURCE_COLUMNS: phf::Map<&'static str, &'static [&'static str
     ] as &'static [&'static str],
 };
 
+// Post-v50 `sessions` shape: v37/v38 plus the Arc pointer.
+pub static ARC_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "arcs" => &[
+        "brief", "coordinator_session_id", "created_at", "dir", "home_project_id",
+        "id", "name", "state", "updated_at",
+    ] as &'static [&'static str],
+    "sessions" => &[
+        "agent_mode", "arc_id", "attention", "attention_changed_at",
+        "cache_read_tokens", "cache_write_tokens", "completed_at", "context_tokens",
+        "context_window", "cost_usd", "id", "imported", "input_tokens",
+        "last_activity_at", "last_model_id", "launch_depth", "launch_kind",
+        "launched_by_session_id", "model_id", "model_label", "output_tokens",
+        "permission_mode", "pr_branch_at_start", "pr_branch_last_active", "prompt",
+        "provider", "provider_conversation_id", "reasoning_effort", "resume_fork",
+        "started_at", "state", "wait_reported_at", "workspace_id",
+    ] as &'static [&'static str],
+};
+
 pub static SESSION_PR_MODEL_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "gh_pull_requests" => &[
         "head_ref_name", "head_sha", "last_seen_check_state", "pr_created_at",
@@ -392,6 +410,31 @@ pub static ROUTINE_AUTHOR_COLUMNS: phf::Map<&'static str, &'static [&'static str
         "last_run_at", "last_session_id", "model_id", "model_label", "name",
         "next_run_at", "project_id", "prompt", "provider", "run_once_at",
         "run_target", "updated_at", "worktree",
+    ] as &'static [&'static str],
+};
+
+// Post-v52 `routines` shape: a fourth `run_target`, `arc_coordinator`, points
+// a task at a live Arc's coordinator instead of a session or a fresh
+// checkout; `arc_id` names which one.
+// v53: the Arc timeline, and the notes snapshot its `notes_updated` rows
+// are diffed against.
+pub static ARC_EVENTS_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "arc_events" => &[
+        "arc_id", "detail", "id", "kind", "occurred_at", "pr_number", "pr_url",
+        "project_id", "session_id", "status", "title",
+    ] as &'static [&'static str],
+    "arcs" => &[
+        "brief", "coordinator_session_id", "created_at", "dir", "home_project_id",
+        "id", "name", "notes_snapshot", "state", "updated_at",
+    ] as &'static [&'static str],
+};
+
+pub static ROUTINE_ARC_TARGET_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "routines" => &[
+        "arc_id", "created_by", "cron_expr", "created_at", "enabled", "id",
+        "last_error", "last_run_at", "last_session_id", "model_id",
+        "model_label", "name", "next_run_at", "project_id", "prompt",
+        "provider", "run_once_at", "run_target", "updated_at", "worktree",
     ] as &'static [&'static str],
 };
 
@@ -951,6 +994,30 @@ pub static MIGRATIONS: &[Migration] = &[
     },
     Migration {
         version: 51,
+        name: "arcs",
+        up: crate::persistence::arcs::MIGRATION_SQL,
+        affected_tables: &["arcs", "sessions"],
+        expected_columns: &ARC_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 52,
+        name: "routine_arc_target",
+        up: ROUTINE_ARC_TARGET,
+        affected_tables: &["routines"],
+        expected_columns: &ROUTINE_ARC_TARGET_COLUMNS,
+        requires_foreign_keys_off: true,
+    },
+    Migration {
+        version: 53,
+        name: "arc_events",
+        up: crate::persistence::arc_events::MIGRATION_SQL,
+        affected_tables: &["arc_events", "arcs"],
+        expected_columns: &ARC_EVENTS_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 54,
         name: "drop_raw_outputs_session_created_index",
         up: DROP_RAW_OUTPUTS_SESSION_CREATED_INDEX,
         affected_tables: &[],
@@ -1280,12 +1347,67 @@ DELETE FROM routines
     AND last_run_at IS NOT NULL AND last_error IS NULL;
 "#;
 
+// A fourth `run_target`: `arc_coordinator` points a scheduled task at a live
+// Arc's coordinator session instead of a fresh chat, the same chat every
+// time, or a fresh worktree. SQLite cannot widen `run_target`'s existing
+// CHECK (v36's `ROUTINE_RUN_TARGET`) in place, so this rebuilds the table
+// through an explicit column list — the same idiom v20's
+// `ROUTINES_CANONICAL_SHAPE` used to converge a draft schema. Existing rows
+// carry no `arc_id` and keep whichever `run_target` they already had. The
+// second CHECK ties the new column to the new value: a task can name an Arc
+// only by also targeting it, and can target it only by naming one.
+const ROUTINE_ARC_TARGET: &str = r#"
+CREATE TABLE routines_canonical (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  prompt TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  model_label TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  worktree INTEGER NOT NULL DEFAULT 1,
+  cron_expr TEXT,
+  run_once_at TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  last_run_at TEXT,
+  next_run_at TEXT,
+  last_error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  run_target TEXT NOT NULL DEFAULT 'worktree'
+    CHECK (run_target IN ('new_session', 'same_session', 'worktree', 'arc_coordinator')),
+  last_session_id TEXT,
+  created_by TEXT NOT NULL DEFAULT 'user' CHECK (created_by IN ('user', 'agent')),
+  arc_id TEXT REFERENCES arcs(id) ON DELETE CASCADE,
+  CHECK ((run_target = 'arc_coordinator') = (arc_id IS NOT NULL))
+);
+
+INSERT INTO routines_canonical (
+  id, name, project_id, prompt, provider, model_label, model_id, worktree,
+  cron_expr, run_once_at, enabled, last_run_at, next_run_at, last_error,
+  created_at, updated_at, run_target, last_session_id, created_by, arc_id
+)
+SELECT
+  id, name, project_id, prompt, provider, model_label, model_id, worktree,
+  cron_expr, run_once_at, enabled, last_run_at, next_run_at, last_error,
+  created_at, updated_at, run_target, last_session_id, created_by, NULL
+FROM routines;
+
+DROP TABLE routines;
+ALTER TABLE routines_canonical RENAME TO routines;
+
+CREATE INDEX idx_routines_enabled_next
+  ON routines(enabled, next_run_at);
+CREATE INDEX idx_routines_arc_id ON routines(arc_id);
+"#;
+
 // `raw_outputs` reads walk `idx_raw_outputs_session_id` in rowid order — the
 // transcript tail and its pages — and the retention sweep uses
 // `idx_raw_outputs_created_at`. The composite `(session_id, created_at)` index
 // only served the legacy Cursor resume-id fallback, which reads a session's
 // whole output anyway and stays in the tens of milliseconds on the
-// single-column index. It cost as much disk as a day of provider output. Dropping an index rewrites no table rows.
+// single-column index. It cost as much disk as a day of provider output.
+// Dropping an index rewrites no table rows.
 const DROP_RAW_OUTPUTS_SESSION_CREATED_INDEX: &str = r#"
 DROP INDEX IF EXISTS idx_raw_outputs_session_created;
 "#;
@@ -2359,6 +2481,7 @@ fn migration_drift(detail: impl Into<String>) -> ArgmaxError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
 
     #[test]
     fn provider_defaults_upgrade_preserves_chats_and_session_triggers() {
@@ -2391,7 +2514,7 @@ mod tests {
         let trigger_count: i64 = connection.query_row("SELECT count(*) FROM sqlite_master WHERE type = 'trigger' AND name = 'session_changes_sessions_after_delete'", [], |row| row.get(0)).unwrap();
         assert_eq!(trigger_count, 1);
         let indexes: i64 = connection.query_row("SELECT count(*) FROM sqlite_master WHERE type = 'index' AND tbl_name = 'sessions' AND name LIKE 'idx_sessions_%'", [], |row| row.get(0)).unwrap();
-        assert_eq!(indexes, 5);
+        assert_eq!(indexes, 6);
         run_migrations(&mut connection).unwrap();
     }
 
@@ -2408,8 +2531,12 @@ mod tests {
         // v1 EXPECTED_COLUMNS.
         verify_table_columns(&connection, &PROJECT_ARCHIVE_ON_MERGE_COLUMNS, "projects")
             .expect("projects");
-        verify_table_columns(&connection, &SESSION_PR_ATTRIBUTION_COLUMNS, "sessions")
-            .expect("sessions");
+        verify_table_columns(&connection, &ARC_COLUMNS, "sessions").expect("sessions");
+        verify_table_columns(&connection, &ROUTINE_ARC_TARGET_COLUMNS, "routines")
+            .expect("routines");
+        for table in ["arcs", "arc_events"] {
+            verify_table_columns(&connection, &ARC_EVENTS_COLUMNS, table).expect(table);
+        }
         verify_table_columns(&connection, &WORKSPACE_LAST_VIEWED_COLUMNS, "workspaces")
             .expect("workspaces");
         verify_table_columns(
@@ -2527,6 +2654,15 @@ mod tests {
                 (50, compute_migration_checksum(ROUTINE_AUTHOR)),
                 (
                     51,
+                    compute_migration_checksum(crate::persistence::arcs::MIGRATION_SQL)
+                ),
+                (52, compute_migration_checksum(ROUTINE_ARC_TARGET)),
+                (
+                    53,
+                    compute_migration_checksum(crate::persistence::arc_events::MIGRATION_SQL)
+                ),
+                (
+                    54,
                     compute_migration_checksum(DROP_RAW_OUTPUTS_SESSION_CREATED_INDEX)
                 ),
             ]
@@ -2750,7 +2886,8 @@ mod tests {
                  );
                  DELETE FROM schema_migrations WHERE version = 20;
                  DELETE FROM schema_migrations WHERE version = 36;
-                 DELETE FROM schema_migrations WHERE version = 50;",
+                 DELETE FROM schema_migrations WHERE version = 50;
+                 DELETE FROM schema_migrations WHERE version = 52;",
             )
             .expect("install draft routines table");
         connection
@@ -2770,9 +2907,140 @@ mod tests {
             .collect::<Result<_, _>>()
             .expect("rows");
         columns.sort();
-        let mut expected = ROUTINE_AUTHOR_COLUMNS["routines"].to_vec();
+        let mut expected = ROUTINE_ARC_TARGET_COLUMNS["routines"].to_vec();
         expected.sort_unstable();
         assert_eq!(columns, expected);
+    }
+
+    #[test]
+    fn routine_arc_target_migration_preserves_existing_rows_of_each_target() {
+        let mut connection = Connection::open_in_memory().expect("open db");
+        run_migrations_with(&mut connection, &MIGRATIONS[..51]).expect("migrate through v51");
+        persist_project(
+            &connection,
+            &PersistProjectInput {
+                id: "p1".to_string(),
+                name: "Project".to_string(),
+                repo_path: "/tmp/routines-arc-preserve".to_string(),
+                default_branch: Some("main".to_string()),
+                current_branch: "main".to_string(),
+                settings: ProjectSettings {
+                    archive_on_merge: false,
+                    worktree_location: "/tmp/routines-arc-preserve/.worktrees".to_string(),
+                    setup_command: String::new(),
+                    check_commands: Vec::new(),
+                },
+            },
+        )
+        .expect("seed project");
+        connection
+            .execute_batch(
+                r#"
+                INSERT INTO routines (
+                    id, name, project_id, prompt, provider, model_label, model_id,
+                    run_target, created_at, updated_at
+                ) VALUES
+                    ('r-new', 'new', 'p1', 'do it', 'claude', 'Sonnet', 'claude-sonnet',
+                        'new_session', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'),
+                    ('r-same', 'same', 'p1', 'do it', 'claude', 'Sonnet', 'claude-sonnet',
+                        'same_session', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'),
+                    ('r-wt', 'wt', 'p1', 'do it', 'claude', 'Sonnet', 'claude-sonnet',
+                        'worktree', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+                "#,
+            )
+            .expect("seed a routine of each pre-existing target");
+
+        run_migrations_with(&mut connection, &MIGRATIONS[..52]).expect("migrate through v52");
+
+        let mut targets: Vec<(String, String, Option<String>)> = connection
+            .prepare("SELECT id, run_target, arc_id FROM routines ORDER BY id")
+            .expect("prepare")
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .expect("query")
+            .collect::<Result<_, _>>()
+            .expect("rows");
+        targets.sort();
+        assert_eq!(
+            targets,
+            vec![
+                ("r-new".to_string(), "new_session".to_string(), None),
+                ("r-same".to_string(), "same_session".to_string(), None),
+                ("r-wt".to_string(), "worktree".to_string(), None),
+            ]
+        );
+    }
+
+    #[test]
+    fn routine_arc_target_check_rejects_arc_coordinator_without_arc_id() {
+        let mut connection = Connection::open_in_memory().expect("open db");
+        run_migrations(&mut connection).expect("migrate to head");
+        persist_project(
+            &connection,
+            &PersistProjectInput {
+                id: "p1".to_string(),
+                name: "Project".to_string(),
+                repo_path: "/tmp/routines-arc-check".to_string(),
+                default_branch: Some("main".to_string()),
+                current_branch: "main".to_string(),
+                settings: ProjectSettings {
+                    archive_on_merge: false,
+                    worktree_location: "/tmp/routines-arc-check/.worktrees".to_string(),
+                    setup_command: String::new(),
+                    check_commands: Vec::new(),
+                },
+            },
+        )
+        .expect("seed project");
+
+        let without_arc_id = connection.execute(
+            "INSERT INTO routines (
+                id, name, project_id, prompt, provider, model_label, model_id,
+                run_target, created_at, updated_at
+            ) VALUES ('r1', 'coordinate', 'p1', 'do it', 'claude', 'Sonnet',
+                'claude-sonnet', 'arc_coordinator', '2026-01-01T00:00:00.000Z',
+                '2026-01-01T00:00:00.000Z')",
+            [],
+        );
+        assert!(
+            without_arc_id.is_err(),
+            "arc_coordinator with no arc_id must violate the CHECK"
+        );
+
+        connection
+            .execute_batch(
+                r#"
+                INSERT INTO arcs (
+                    id, name, brief, state, home_project_id, dir, created_at, updated_at
+                ) VALUES ('arc-1', 'Arc', '', 'active', 'p1', '/tmp/arc-1',
+                    '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+                "#,
+            )
+            .expect("seed arc");
+        connection
+            .execute(
+                "INSERT INTO routines (
+                    id, name, project_id, prompt, provider, model_label, model_id,
+                    run_target, arc_id, created_at, updated_at
+                ) VALUES ('r2', 'coordinate', 'p1', 'do it', 'claude', 'Sonnet',
+                    'claude-sonnet', 'arc_coordinator', 'arc-1', '2026-01-01T00:00:00.000Z',
+                    '2026-01-01T00:00:00.000Z')",
+                [],
+            )
+            .expect("arc_coordinator with arc_id satisfies the CHECK");
+
+        let with_arc_id_but_wrong_target = connection.execute(
+            "INSERT INTO routines (
+                id, name, project_id, prompt, provider, model_label, model_id,
+                run_target, arc_id, created_at, updated_at
+            ) VALUES ('r3', 'coordinate', 'p1', 'do it', 'claude', 'Sonnet',
+                'claude-sonnet', 'worktree', 'arc-1', '2026-01-01T00:00:00.000Z',
+                '2026-01-01T00:00:00.000Z')",
+            [],
+        );
+        assert!(
+            with_arc_id_but_wrong_target.is_err(),
+            "a non-arc_coordinator target with an arc_id must also violate the CHECK"
+        );
     }
 
     #[test]

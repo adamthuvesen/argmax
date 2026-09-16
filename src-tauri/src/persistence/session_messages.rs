@@ -138,6 +138,33 @@ pub fn is_message_delivered(connection: &Connection, id: &str) -> ArgmaxResult<b
         .map_err(sqlite_error)
 }
 
+/// Whether a row with this id exists at all, delivered or still queued.
+/// `send_system_notice` rolls its insert back on a genuine send failure, so
+/// existence alone tells the gh poller "an Arc notice for this transition
+/// already reached the recipient (or is waiting in its inbox)" apart from
+/// "never attempted, or the attempt failed" — the two cases where its
+/// ordinary check-failure follow-up gates should apply instead.
+pub fn session_message_exists(connection: &Connection, id: &str) -> ArgmaxResult<bool> {
+    connection
+        .prepare_cached("SELECT EXISTS(SELECT 1 FROM session_messages WHERE id = ?)")
+        .map_err(sqlite_error)?
+        .query_row([id], |row| row.get(0))
+        .map_err(sqlite_error)
+}
+
+/// Removes an undelivered row. `send_system_notice` calls this when the send
+/// itself fails, so a failed attempt leaves no trace for `session_message_exists`
+/// to mistake for success — the row is only left behind once delivery actually
+/// reached the recipient (queued or immediate).
+pub fn delete_undelivered_session_message(connection: &Connection, id: &str) -> ArgmaxResult<()> {
+    connection
+        .prepare_cached("DELETE FROM session_messages WHERE id = ? AND delivered_at IS NULL")
+        .map_err(sqlite_error)?
+        .execute([id])
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
 pub fn list_undelivered_messages(
     connection: &Connection,
     to_session_id: &str,

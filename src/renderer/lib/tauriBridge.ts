@@ -6,6 +6,10 @@ import type { IpcChannel } from "../../shared/ipcSchemas.js";
 import type {
   ActivitySummary,
   ActivitySummaryInput,
+  ArcDetail,
+  ArcDraft,
+  ArcRecord,
+  ArcTimelinePage,
   ArgmaxApi,
   AgentToolsSettings,
   ChatCleanupPreview,
@@ -372,6 +376,17 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       get: (input) => invokeCommand<Goal | null>("goal:get", input),
       list: (input) => invokeCommand<Goal[]>("goal:list", input),
       clear: (input) => invokeCommand<Goal | null>("goal:clear", input),
+    },
+    arcs: {
+      create: (input) => invokeCommand<ArcRecord>("arc:create", input),
+      list: (input) => invokeCommand<ArcRecord[]>("arc:list", input),
+      get: (input) => invokeCommand<ArcDetail>("arc:get", input),
+      update: (input) => invokeCommand<ArcRecord>("arc:update", input),
+      setState: (input) => invokeCommand<ArcRecord>("arc:set-state", input),
+      launchCoordinator: (input) => invokeCommand<ArcRecord>("arc:launch-coordinator", input),
+      timeline: (input) => invokeCommand<ArcTimelinePage>("arc:timeline", input),
+      draftFromSession: (input) => invokeCommand<ArcDraft>("arc:draft-from-session", input),
+      promote: (input) => invokeCommand<ArcRecord>("arc:promote", input)
     },
     review: {
       stageFile: (input) => invokeCommand<void>("review:stage-file", input),

@@ -44,6 +44,7 @@ use crate::ipc::inputs::{
     WorkspacesSetIconInput, WorkspacesSetLabelInput, WorkspacesSetPinnedInput,
     WorkspacesSetPriorityAddedInput, WorkspacesSetPriorityDismissedInput,
 };
+use crate::persistence::arcs::{get_arc, set_arc_coordinator_session};
 use crate::persistence::database::Database;
 use crate::persistence::events::{
     list_all_session_events, persist_timeline_event, PersistTimelineEventInput, TimelineEvent,
@@ -53,9 +54,9 @@ use crate::persistence::projects::{
     ProjectSettings,
 };
 use crate::persistence::sessions::{
-    find_session_by_id, persist_session, record_session_launch, session_launch_lineage,
-    set_session_resume_fork, update_session_provider_conversation_id, PersistSessionInput,
-    SessionSummary,
+    find_session_by_id, persist_session, record_session_arc, record_session_launch,
+    session_launch_lineage, set_session_resume_fork, update_session_provider_conversation_id,
+    PersistSessionInput, SessionSummary,
 };
 use crate::persistence::workspaces::{
     find_workspace_by_id, mark_workspaces_viewed, persist_workspace, set_workspace_icon,
@@ -1336,137 +1337,170 @@ impl WorkspaceService {
             ),
         };
 
-        let copied = (|| -> ArgmaxResult<(WorkspaceSummary, SessionSummary, TimelineEvent)> {
-            let mut connection = self.database.connection();
-            let transaction = connection
-                .transaction()
-                .map_err(crate::persistence::sqlite_error)?;
-            let destination_session = persist_session(
-                &transaction,
-                &PersistSessionInput {
-                    id: Uuid::new_v4().to_string(),
-                    workspace_id: destination_workspace.id.clone(),
-                    provider: source_session.provider.clone(),
-                    model_label: source_session.model_label.clone(),
-                    model_id: source_session.model_id.clone(),
-                    reasoning_effort: source_session.reasoning_effort.clone(),
-                    permission_mode: Some(source_session.permission_mode.clone()),
-                    agent_mode: source_session.agent_mode.clone(),
-                    prompt: source_session.prompt.clone(),
-                    state: SessionState::Complete,
-                },
-            )?;
-            // A move relocates the same work, so its lineage travels with it:
-            // whoever dispatched this chat is still owed the finish notice, and
-            // the launch caps still have to count it where it now sits. The row
-            // is re-read because the update lands after the insert.
-            let destination_session = match source_session.launched_by_session_id.as_deref() {
-                Some(launched_by) => {
-                    record_session_launch(
+        let copied =
+            (|| -> ArgmaxResult<(WorkspaceSummary, SessionSummary, TimelineEvent, bool)> {
+                let mut connection = self.database.connection();
+                let transaction = connection
+                    .transaction()
+                    .map_err(crate::persistence::sqlite_error)?;
+                let destination_session = persist_session(
+                    &transaction,
+                    &PersistSessionInput {
+                        id: Uuid::new_v4().to_string(),
+                        workspace_id: destination_workspace.id.clone(),
+                        provider: source_session.provider.clone(),
+                        model_label: source_session.model_label.clone(),
+                        model_id: source_session.model_id.clone(),
+                        reasoning_effort: source_session.reasoning_effort.clone(),
+                        permission_mode: Some(source_session.permission_mode.clone()),
+                        agent_mode: source_session.agent_mode.clone(),
+                        prompt: source_session.prompt.clone(),
+                        state: SessionState::Complete,
+                    },
+                )?;
+                // A move relocates the same work, so its lineage travels with it:
+                // whoever dispatched this chat is still owed the finish notice, and
+                // the launch caps still have to count it where it now sits. The row
+                // is re-read because the update lands after the insert.
+                let destination_session = match source_session.launched_by_session_id.as_deref() {
+                    Some(launched_by) => {
+                        record_session_launch(
+                            &transaction,
+                            &destination_session.id,
+                            launched_by,
+                            session_launch_lineage(&transaction, source_session_id)?.depth,
+                            &source_session.launch_kind,
+                        )?;
+                        find_session_by_id(&transaction, &destination_session.id)?
+                    }
+                    None => destination_session,
+                };
+                // Carry the provider conversation where the provider supports it,
+                // as a fork: the source row keeps the original, so resuming the
+                // same id from both would interleave two chats into one CLI
+                // conversation. Order matters — setting the id clears resume_fork,
+                // so the flag goes on afterwards.
+                let destination_session = match carried_conversation.as_deref() {
+                    Some(conversation_id) => {
+                        let session = update_session_provider_conversation_id(
+                            &transaction,
+                            &destination_session.id,
+                            conversation_id,
+                        )?;
+                        set_session_resume_fork(&transaction, &session.id)?;
+                        session
+                    }
+                    None => destination_session,
+                };
+                // A move is the same work continuing in a new checkout, so Arc
+                // membership travels with it. When the source was the Arc's
+                // current coordinator, the Arc is repointed at the destination
+                // too — otherwise the coordinator's chat would vanish from the
+                // Arc the moment its checkout moves.
+                let (destination_session, coordinator_repointed) =
+                    match source_session.arc_id.as_deref() {
+                        Some(arc_id) => {
+                            record_session_arc(&transaction, &destination_session.id, arc_id)?;
+                            let arc = get_arc(&transaction, arc_id)?;
+                            let repointed =
+                                arc.coordinator_session_id.as_deref() == Some(source_session_id);
+                            if repointed {
+                                set_arc_coordinator_session(
+                                    &transaction,
+                                    arc_id,
+                                    Some(&destination_session.id),
+                                )?;
+                            }
+                            (
+                                find_session_by_id(&transaction, &destination_session.id)?,
+                                repointed,
+                            )
+                        }
+                        None => (destination_session, false),
+                    };
+                for event in list_all_session_events(&transaction, source_session_id)? {
+                    persist_timeline_event(
                         &transaction,
-                        &destination_session.id,
-                        launched_by,
-                        session_launch_lineage(&transaction, source_session_id)?.depth,
-                        &source_session.launch_kind,
+                        &PersistTimelineEventInput {
+                            id: Uuid::new_v4().to_string(),
+                            session_id: destination_session.id.clone(),
+                            r#type: event.r#type,
+                            message: event.message,
+                            payload: event.payload,
+                            created_at: Some(event.created_at),
+                        },
                     )?;
-                    find_session_by_id(&transaction, &destination_session.id)?
                 }
-                None => destination_session,
-            };
-            // Carry the provider conversation where the provider supports it,
-            // as a fork: the source row keeps the original, so resuming the
-            // same id from both would interleave two chats into one CLI
-            // conversation. Order matters — setting the id clears resume_fork,
-            // so the flag goes on afterwards.
-            let destination_session = match carried_conversation.as_deref() {
-                Some(conversation_id) => {
-                    let session = update_session_provider_conversation_id(
-                        &transaction,
-                        &destination_session.id,
-                        conversation_id,
-                    )?;
-                    set_session_resume_fork(&transaction, &session.id)?;
-                    session
-                }
-                None => destination_session,
-            };
-            for event in list_all_session_events(&transaction, source_session_id)? {
-                persist_timeline_event(
+                let seam = persist_timeline_event(
                     &transaction,
                     &PersistTimelineEventInput {
                         id: Uuid::new_v4().to_string(),
                         session_id: destination_session.id.clone(),
-                        r#type: event.r#type,
-                        message: event.message,
-                        payload: event.payload,
-                        created_at: Some(event.created_at),
+                        r#type: "session.moved".to_string(),
+                        message: match &destination {
+                            MoveDestination::Project { .. } => format!(
+                                "Moved from {} to {}.",
+                                source_project.name, destination_label
+                            ),
+                            MoveDestination::Checkout { .. } => {
+                                format!("Moved to {destination_label}.")
+                            }
+                        },
+                        payload: json!({
+                            "direction": "destination",
+                            "sourceSessionId": source_session.id,
+                            "sourceWorkspaceId": source_workspace.id,
+                            "sourceProjectId": source_project.id,
+                            "sourceProjectName": source_project.name,
+                            "destinationSessionId": destination_session.id,
+                            "destinationWorkspaceId": destination_workspace.id,
+                            "destinationProjectId": destination_project.id,
+                            "destinationProjectName": destination_project.name,
+                            "destinationPath": destination_workspace.path,
+                            "checkoutMode": checkout_mode,
+                            "conversationCarried": carried_conversation.is_some(),
+                            "sourceArchiveRequested": !keep_source,
+                        }),
+                        created_at: None,
                     },
                 )?;
-            }
-            let seam = persist_timeline_event(
-                &transaction,
-                &PersistTimelineEventInput {
-                    id: Uuid::new_v4().to_string(),
-                    session_id: destination_session.id.clone(),
-                    r#type: "session.moved".to_string(),
-                    message: match &destination {
-                        MoveDestination::Project { .. } => format!(
-                            "Moved from {} to {}.",
-                            source_project.name, destination_label
-                        ),
-                        MoveDestination::Checkout { .. } => {
-                            format!("Moved to {destination_label}.")
-                        }
-                    },
-                    payload: json!({
-                        "direction": "destination",
-                        "sourceSessionId": source_session.id,
-                        "sourceWorkspaceId": source_workspace.id,
-                        "sourceProjectId": source_project.id,
-                        "sourceProjectName": source_project.name,
-                        "destinationSessionId": destination_session.id,
-                        "destinationWorkspaceId": destination_workspace.id,
-                        "destinationProjectId": destination_project.id,
-                        "destinationProjectName": destination_project.name,
-                        "destinationPath": destination_workspace.path,
-                        "checkoutMode": checkout_mode,
-                        "conversationCarried": carried_conversation.is_some(),
-                        "sourceArchiveRequested": !keep_source,
-                    }),
-                    created_at: None,
-                },
-            )?;
-            let destination_workspace =
-                update_workspace_state(&transaction, &destination_workspace.id, "complete")?;
-            transaction
-                .commit()
-                .map_err(crate::persistence::sqlite_error)?;
-            Ok((destination_workspace, destination_session, seam))
-        })();
-        let (destination_workspace, destination_session, destination_seam) = match copied {
-            Ok(copied) => copied,
-            Err(error) => {
-                let cleanup = self
-                    .archive(WorkspacesArchiveInput {
-                        workspace_id: crate::ipc::validation::WorkspaceId::try_from(
-                            destination_workspace.id.clone(),
-                        )
-                        .map_err(ArgmaxError::invalid)?,
-                        force: Some(true),
-                    })
-                    .await;
-                if let Err(cleanup) = cleanup {
-                    // The caller only ever sees the copy failure, so without
-                    // this an orphaned worktree and branch leave no trace.
-                    tracing::warn!(
-                        ?cleanup,
-                        workspace_id = %destination_workspace.id,
-                        "could not tear down the half-built move destination"
-                    );
+                let destination_workspace =
+                    update_workspace_state(&transaction, &destination_workspace.id, "complete")?;
+                transaction
+                    .commit()
+                    .map_err(crate::persistence::sqlite_error)?;
+                Ok((
+                    destination_workspace,
+                    destination_session,
+                    seam,
+                    coordinator_repointed,
+                ))
+            })();
+        let (destination_workspace, destination_session, destination_seam, coordinator_repointed) =
+            match copied {
+                Ok(copied) => copied,
+                Err(error) => {
+                    let cleanup = self
+                        .archive(WorkspacesArchiveInput {
+                            workspace_id: crate::ipc::validation::WorkspaceId::try_from(
+                                destination_workspace.id.clone(),
+                            )
+                            .map_err(ArgmaxError::invalid)?,
+                            force: Some(true),
+                        })
+                        .await;
+                    if let Err(cleanup) = cleanup {
+                        // The caller only ever sees the copy failure, so without
+                        // this an orphaned worktree and branch leave no trace.
+                        tracing::warn!(
+                            ?cleanup,
+                            workspace_id = %destination_workspace.id,
+                            "could not tear down the half-built move destination"
+                        );
+                    }
+                    return Err(error);
                 }
-                return Err(error);
-            }
-        };
+            };
 
         {
             let connection = self.database.connection();
@@ -1475,6 +1509,10 @@ impl WorkspaceService {
                 workspaces: vec![destination_workspace.clone()],
                 sessions: vec![destination_session.clone()],
                 events: vec![destination_seam],
+                // The Arc's coordinator pointer lives outside this delta's
+                // typed fields, so a repoint needs the durable-metadata
+                // reload rather than a merge the renderer can apply itself.
+                dashboard_changed: coordinator_repointed,
                 ..DashboardDelta::default()
             });
         }

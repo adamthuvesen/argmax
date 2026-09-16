@@ -12,6 +12,7 @@ use super::super::{
 };
 use super::{resolve_or_register_project, task_label, terminal_cols, terminal_rows};
 use crate::{
+    arcs::member_preamble,
     ipc::{
         inputs::{
             ProvidersLaunchInput, WorkspacesArchiveInput, WorkspacesCreateCurrentInput,
@@ -20,6 +21,7 @@ use crate::{
         validation::{BaseRef, NonEmptyString, ProjectId, Prompt, TaskLabel, WorkspaceId},
     },
     persistence::{
+        arcs::{self, ArcRecord},
         database::Database,
         sessions::{
             find_session_by_id, record_session_launch, session_launch_lineage, LAUNCH_KIND_AGENT,
@@ -62,6 +64,18 @@ pub(crate) struct LaunchSpec {
     /// Sidebar label for the new workspace. Falls back to the prompt's first
     /// line, which is what every launch used before agents could name one.
     pub task_label: Option<String>,
+    /// The Arc this session is attached to. Checked against the Arc's caps
+    /// and attached to the session row inside the same write transaction as
+    /// the insert (see `ProviderSessionService::launch`), rather than by a
+    /// follow-up update once this call returns — closing the race where two
+    /// concurrent launches could each pass the cap check before either
+    /// session existed to count against it.
+    pub arc_id: Option<String>,
+    /// True only for the coordinator launching itself: `ARC_DONE` still
+    /// applies, but the active-member and daily-launch-budget caps do not —
+    /// the coordinator plans and delegates, it does not occupy a slot in the
+    /// work it is delegating.
+    pub arc_is_coordinator_launch: bool,
 }
 
 /// The checkout a session is asked to run beside, taken from the workspace of
@@ -194,6 +208,8 @@ pub(crate) async fn launch_with_spec(
             attachments: None,
             goal_condition: None,
             goal_max_turns: None,
+            arc_id: spec.arc_id,
+            arc_is_coordinator_launch: spec.arc_is_coordinator_launch,
         })
         .await;
     let session = match launch_result {
@@ -226,7 +242,7 @@ pub(super) async fn launch_session(
     workspaces: Arc<WorkspaceService>,
     providers: Arc<ProviderSessionService>,
 ) -> Result<SessionControlResponse, SessionControlError> {
-    let (parent_project_id, lineage) = {
+    let (parent_project_id, lineage, parent_arc) = {
         let connection = database.connection();
         let parent_session =
             find_session_by_id(&connection, &parent.session_id).map_err(argmax_protocol_error)?;
@@ -235,7 +251,13 @@ pub(super) async fn launch_session(
             .project_id;
         let lineage = session_launch_lineage(&connection, &parent.session_id)
             .map_err(argmax_protocol_error)?;
-        (project_id, lineage)
+        let parent_arc = match parent_session.arc_id.as_deref() {
+            Some(arc_id) => {
+                Some(arcs::get_arc(&connection, arc_id).map_err(argmax_protocol_error)?)
+            }
+            None => None,
+        };
+        (project_id, lineage, parent_arc)
     };
     let depth = lineage.depth + 1;
     if depth > MAX_LAUNCH_DEPTH {
@@ -247,13 +269,22 @@ pub(super) async fn launch_session(
             ),
         ));
     }
-    if lineage.launched >= MAX_LAUNCHES_PER_SESSION {
+    // The Arc's current coordinator plans and delegates for the whole Arc, so
+    // its own lifetime launch count would otherwise starve it after ten
+    // pieces of work. Every other session, coordinator or not, still counts.
+    let is_current_coordinator = parent_arc.as_ref().is_some_and(|arc| {
+        arc.coordinator_session_id.as_deref() == Some(parent.session_id.as_str())
+    });
+    if !is_current_coordinator && lineage.launched >= MAX_LAUNCHES_PER_SESSION {
         return Err(protocol_error(
             "LAUNCH_LIMIT_REACHED",
             format!(
                 "This session has already launched {MAX_LAUNCHES_PER_SESSION} sessions, which is the per-session cap. Message one of them instead."
             ),
         ));
+    }
+    if let Some(arc) = &parent_arc {
+        check_arc_launch_budget(arc, &database)?;
     }
     let provider = action.provider.unwrap_or(parent.provider);
     // A model id names a model the CLI accepts; Rust has no label catalog
@@ -276,6 +307,13 @@ pub(super) async fn launch_session(
                 )
             }
         };
+    // A session launched from inside an Arc carries the Arc's member
+    // preamble: the folder to read before starting, and the "do not write
+    // there" rule that keeps the coordinator the only writer.
+    let prompt = match &parent_arc {
+        Some(arc) => format!("{}\n\n{}", member_preamble(arc), action.prompt),
+        None => action.prompt,
+    };
     let outcome = launch_with_spec(
         LaunchSpec {
             // An agent-launched session is its own piece of work, not a chat
@@ -285,7 +323,7 @@ pub(super) async fn launch_session(
             project: action.project,
             path: action.path,
             branch: action.branch,
-            prompt: action.prompt,
+            prompt,
             worktree: action.worktree,
             provider,
             model_label,
@@ -298,6 +336,8 @@ pub(super) async fn launch_session(
             permission_mode: action.permission_mode.unwrap_or(parent.permission_mode),
             agent_mode: parent.agent_mode,
             task_label: action.task_label,
+            arc_id: parent_arc.as_ref().map(|arc| arc.id.clone()),
+            arc_is_coordinator_launch: false,
         },
         Arc::clone(&database),
         workspaces,
@@ -326,6 +366,21 @@ pub(super) async fn launch_session(
             branch: outcome.branch,
         },
     )))
+}
+
+/// The fast-path rejection: the same three Arc-scoped refusals
+/// `ProviderSessionService::launch` checks again inside its write
+/// transaction, run here first so the common (non-racing) case fails before
+/// this call pays for a workspace/worktree it would only have to archive.
+/// This copy is not itself race-safe — two concurrent launches can both pass
+/// it — which is exactly why the transactional check is the one that counts;
+/// see `arcs::check_launch_caps`.
+fn check_arc_launch_budget(
+    arc: &ArcRecord,
+    database: &Database,
+) -> Result<(), SessionControlError> {
+    let connection = database.connection();
+    arcs::check_launch_caps(&connection, &arc.id, false).map_err(argmax_protocol_error)
 }
 
 /// The effort to carry onto an explicitly named model: the caller's own when

@@ -13,7 +13,8 @@ import {
   Pencil,
   Pin,
   PinOff,
-  RefreshCw
+  RefreshCw,
+  Workflow
 } from "lucide-react";
 import {
   memo,
@@ -96,6 +97,10 @@ type SidebarSessionRowProps = {
    *  still in the snapshot. Delegated work says who delegated it instead of
    *  reading as something the user started. */
   launchedByLabel?: string | null;
+  /** Name of the arc this chat is a member of, when it has one. Renders a
+   *  small marker so a chat inside a larger body of work reads as part of
+   *  it rather than a stray one-off. */
+  arcLabel?: string | null;
   /** Set when the row renders inside the Priority section: why it floated up. */
   priorityReason?: PriorityReasonKind;
   /** A turn in flight on this workspace, or in a multitask its chat dispatched.
@@ -239,6 +244,7 @@ function SidebarSessionRowInner({
   subtitle,
   importedProvider,
   launchedByLabel,
+  arcLabel,
   priorityReason,
   isWorking,
   hasUnreadResponse,
@@ -495,7 +501,7 @@ function SidebarSessionRowInner({
           <button
             aria-current={isSelected ? "true" : undefined}
             className={`session-link${isSelected ? " active" : ""}${
-              subtitle || importedProvider || launchedByLabel ? " session-link-stacked" : ""
+              subtitle || importedProvider || launchedByLabel || arcLabel ? " session-link-stacked" : ""
             }${prCountBadge ? " session-link-has-pr-count" : ""}`}
             data-open={isOpenInGrid ? "true" : undefined}
             data-status={workspace.state}
@@ -539,7 +545,7 @@ function SidebarSessionRowInner({
             }}
           >
             {leadingGlyph ?? <span className="session-link-lead-spacer" aria-hidden="true" />}
-            {subtitle || importedProvider || launchedByLabel ? (
+            {subtitle || importedProvider || launchedByLabel || arcLabel ? (
               <span className="session-link-text">
                 <span>{displayLabel}</span>
                 <span className="session-link-subtitle">
@@ -552,6 +558,15 @@ function SidebarSessionRowInner({
                   {launchedByLabel ? (
                     <span className="session-launched-by" title={`Launched by ${launchedByLabel}`}>
                       launched by {launchedByLabel}
+                    </span>
+                  ) : null}
+                  {arcLabel ? (
+                    <span
+                      className="session-arc-badge"
+                      title={`Part of arc ${arcLabel}`}
+                      aria-label={`Part of arc ${arcLabel}`}
+                    >
+                      <Workflow size={10} aria-hidden="true" />
                     </span>
                   ) : null}
                 </span>
@@ -763,6 +778,7 @@ export function sidebarSessionRowEqual(
   if (prev.subtitle !== next.subtitle) return false;
   if (prev.importedProvider !== next.importedProvider) return false;
   if (prev.launchedByLabel !== next.launchedByLabel) return false;
+  if (prev.arcLabel !== next.arcLabel) return false;
   if (prev.priorityReason !== next.priorityReason) return false;
   if (prev.isWorking !== next.isWorking) return false;
   if (prev.hasUnreadResponse !== next.hasUnreadResponse) return false;

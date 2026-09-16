@@ -2,6 +2,7 @@ use rusqlite::Connection;
 use serde::Serialize;
 use specta::Type;
 
+use super::arcs::{list_arc_summaries, ArcSummary};
 use super::checks::{list_checks, CheckRun};
 use super::events::{
     list_session_agent_events_for_identity, list_session_changes_since,
@@ -32,6 +33,7 @@ pub struct DashboardListSnapshot {
     pub checks: Vec<CheckRun>,
     pub pending_messages:
         std::collections::BTreeMap<String, Vec<crate::providers::flush_queue::PendingMessage>>,
+    pub arcs: Vec<ArcSummary>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
@@ -45,12 +47,14 @@ pub struct WorkspaceStatusSnapshot {
 pub fn list_dashboard(connection: &Connection) -> ArgmaxResult<DashboardListSnapshot> {
     let projects = list_projects(connection)?;
     let status = list_workspace_status(connection, None)?;
+    let arcs = list_arc_summaries(connection)?;
     Ok(DashboardListSnapshot {
         projects,
         workspaces: status.workspaces,
         sessions: status.sessions,
         checks: status.checks,
         pending_messages: Default::default(),
+        arcs,
     })
 }
 

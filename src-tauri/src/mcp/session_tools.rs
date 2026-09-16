@@ -15,12 +15,12 @@ use serde::Deserialize;
 
 use crate::providers::mcp_injection::browser_tools_from_env;
 use crate::session_control::{
-    ArchiveAction, ChecksRunAction, GoalSetAction, InboxAction, LaunchAction, LearningsAddAction,
-    LearningsSearchAction, ListAction, MessageAction, MoveAction, ProjectsAction, ReadAction,
-    RenameAction, ScheduleCancelAction, ScheduleFollowupAction, ScheduleListAction,
-    ScheduleResumeAction, SessionControlAction, SourcesAddAction, SourcesListAction,
-    SourcesReadAction, StatusAction, StopAction, TerminalReadAction, TerminalSpawnAction,
-    WaitAction, WorkspaceDiffAction, WorkspaceStatusAction,
+    ArcStatusAction, ArchiveAction, ChecksRunAction, GoalSetAction, InboxAction, LaunchAction,
+    LearningsAddAction, LearningsSearchAction, ListAction, MessageAction, MoveAction,
+    ProjectsAction, ReadAction, RenameAction, ScheduleCancelAction, ScheduleFollowupAction,
+    ScheduleListAction, ScheduleResumeAction, SessionControlAction, SourcesAddAction,
+    SourcesListAction, SourcesReadAction, StatusAction, StopAction, TerminalReadAction,
+    TerminalSpawnAction, WaitAction, WorkspaceDiffAction, WorkspaceStatusAction,
 };
 
 #[derive(Clone)]
@@ -191,6 +191,9 @@ pub struct TerminalReadParams {
 
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct ProjectListParams {}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct ArcStatusParams {}
 
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct ScheduleFollowupParams {
@@ -646,6 +649,20 @@ it."
         Parameters(_params): Parameters<ProjectListParams>,
     ) -> Result<CallToolResult, ErrorData> {
         call(SessionControlAction::Projects(ProjectsAction {})).await
+    }
+
+    #[tool(
+        name = "arc_status",
+        description = "The Arc you are working in: its name, state, folder, brief, coordinator, \
+and every session currently attached to it with its task, project, state, and pull request if it \
+has one. Use it to see who else is working on this Arc and how much of the launch budget is left \
+before session_launch. Errors with NOT_IN_ARC if this session is not attached to one."
+    )]
+    async fn arc_status(
+        &self,
+        Parameters(_params): Parameters<ArcStatusParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(SessionControlAction::ArcStatus(ArcStatusAction {})).await
     }
 
     #[tool(

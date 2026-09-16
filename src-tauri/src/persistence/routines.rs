@@ -10,7 +10,9 @@ use crate::error::{ArgmaxError, ArgmaxResult};
 /// Where one firing of a scheduled task lands. `NewSession` starts a fresh
 /// chat in the shared checkout, `SameSession` sends the prompt as a
 /// follow-up into the same chat every time (tracked by `last_session_id`),
-/// and `Worktree` starts a fresh chat in its own isolated worktree.
+/// `Worktree` starts a fresh chat in its own isolated worktree, and
+/// `ArcCoordinator` sends it to a live Arc's coordinator session (named by
+/// `arc_id`) instead of launching anything itself.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum RoutineRunTarget {
@@ -18,6 +20,7 @@ pub enum RoutineRunTarget {
     SameSession,
     #[default]
     Worktree,
+    ArcCoordinator,
 }
 
 impl RoutineRunTarget {
@@ -26,6 +29,7 @@ impl RoutineRunTarget {
             Self::NewSession => "new_session",
             Self::SameSession => "same_session",
             Self::Worktree => "worktree",
+            Self::ArcCoordinator => "arc_coordinator",
         }
     }
 
@@ -34,6 +38,7 @@ impl RoutineRunTarget {
             "new_session" | "new_thread" => Some(Self::NewSession),
             "same_session" | "existing_thread" => Some(Self::SameSession),
             "worktree" => Some(Self::Worktree),
+            "arc_coordinator" => Some(Self::ArcCoordinator),
             _ => None,
         }
     }
@@ -78,6 +83,10 @@ pub struct UpsertRoutineInput {
     pub model_label: String,
     pub model_id: String,
     pub run_target: RoutineRunTarget,
+    /// The Arc an `arc_coordinator` target sends runs to. `None` for every
+    /// other target. IPC validation, not this layer, enforces that the two
+    /// travel together and that the Arc's home project matches `project_id`.
+    pub arc_id: Option<String>,
     pub cron_expr: Option<String>,
     pub run_once_at: Option<String>,
     pub enabled: bool,
@@ -102,6 +111,9 @@ pub struct RoutineLaunchFields {
     /// The chat a `same_session` routine reuses. `None` until the first run
     /// launches it; a missing session falls back to a fresh launch.
     pub last_session_id: Option<String>,
+    /// The Arc an `arc_coordinator` routine resolves its recipient from at
+    /// fire time — always the *current* coordinator, not a cached session id.
+    pub arc_id: Option<String>,
     pub cron_expr: Option<String>,
     pub run_once_at: Option<String>,
     /// The row's enabled state before the attempt. `routines:run-now` fires
@@ -129,6 +141,7 @@ pub struct Routine {
     pub worktree: bool,
     pub run_target: RoutineRunTarget,
     pub last_session_id: Option<String>,
+    pub arc_id: Option<String>,
     pub cron_expr: Option<String>,
     pub run_once_at: Option<String>,
     pub enabled: bool,
@@ -151,6 +164,7 @@ pub(crate) fn routine_launch_fields(routine: &Routine) -> RoutineLaunchFields {
         model_id: routine.model_id.clone(),
         run_target: routine.run_target,
         last_session_id: routine.last_session_id.clone(),
+        arc_id: routine.arc_id.clone(),
         cron_expr: routine.cron_expr.clone(),
         run_once_at: routine.run_once_at.clone(),
         enabled: routine.enabled,
@@ -191,10 +205,10 @@ pub fn upsert_routine(
             r#"
         INSERT INTO routines (
             id, name, project_id, prompt, provider, model_label, model_id,
-            worktree, run_target, cron_expr, run_once_at,
+            worktree, run_target, arc_id, cron_expr, run_once_at,
             enabled, next_run_at, created_by, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
             name = excluded.name,
             project_id = excluded.project_id,
@@ -204,6 +218,7 @@ pub fn upsert_routine(
             model_id = excluded.model_id,
             worktree = excluded.worktree,
             run_target = excluded.run_target,
+            arc_id = excluded.arc_id,
             cron_expr = excluded.cron_expr,
             run_once_at = excluded.run_once_at,
             enabled = excluded.enabled,
@@ -215,7 +230,7 @@ pub fn upsert_routine(
         )
         .map_err(sqlite_error)?;
     statement
-        .execute((
+        .execute(rusqlite::params![
             input.id.as_str(),
             input.name.as_str(),
             input.project_id.as_str(),
@@ -225,6 +240,7 @@ pub fn upsert_routine(
             input.model_id.as_str(),
             bool_to_i64(worktree),
             input.run_target.as_str(),
+            input.arc_id.as_deref(),
             input.cron_expr.as_deref(),
             input.run_once_at.as_deref(),
             bool_to_i64(input.enabled),
@@ -232,7 +248,7 @@ pub fn upsert_routine(
             input.created_by.as_str(),
             now.as_str(),
             now.as_str(),
-        ))
+        ])
         .map_err(sqlite_error)?;
     // Leaving `same_session` for another target orphans the reused chat, so the
     // switch drops the pointer and the next run starts fresh.
@@ -385,6 +401,7 @@ fn row_to_routine(row: &Row<'_>) -> rusqlite::Result<Routine> {
         worktree: row.get::<_, i64>("worktree")? == 1,
         run_target: RoutineRunTarget::parse(&run_target).unwrap_or_default(),
         last_session_id: row.get("last_session_id")?,
+        arc_id: row.get("arc_id")?,
         cron_expr: row.get("cron_expr")?,
         run_once_at: row.get("run_once_at")?,
         enabled: row.get::<_, i64>("enabled")? == 1,
@@ -411,6 +428,7 @@ fn row_to_launch_fields(row: &Row<'_>) -> rusqlite::Result<RoutineLaunchFields> 
         model_id: row.get("model_id")?,
         run_target: RoutineRunTarget::parse(&run_target).unwrap_or_default(),
         last_session_id: row.get("last_session_id")?,
+        arc_id: row.get("arc_id")?,
         cron_expr: row.get("cron_expr")?,
         run_once_at: row.get("run_once_at")?,
         enabled: row.get::<_, i64>("enabled")? == 1,
@@ -506,6 +524,7 @@ mod tests {
             model_label: "Opus 5".to_string(),
             model_id: "claude-opus-5".to_string(),
             run_target: RoutineRunTarget::Worktree,
+            arc_id: None,
             cron_expr: Some("0 0 9 * * *".to_string()),
             run_once_at: None,
             enabled: true,
@@ -786,6 +805,31 @@ mod tests {
         assert_eq!(routine.run_target, RoutineRunTarget::NewSession);
         assert!(!routine.worktree);
         assert_eq!(routine.last_session_id, None);
+    }
+
+    #[test]
+    fn arc_coordinator_target_round_trips_with_its_arc_id() {
+        let database = database_with_project();
+        let connection = database.connection();
+        connection
+            .execute(
+                r#"
+                INSERT INTO arcs (
+                    id, name, brief, state, home_project_id, dir, created_at, updated_at
+                ) VALUES ('arc-1', 'Arc', '', 'active', 'p1', '/tmp/arc-1',
+                    '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')
+                "#,
+                [],
+            )
+            .unwrap();
+        let mut coordinated = input("r1");
+        coordinated.run_target = RoutineRunTarget::ArcCoordinator;
+        coordinated.arc_id = Some("arc-1".to_string());
+        upsert_routine(&connection, &coordinated, None).unwrap();
+        let routine = find_routine_by_id(&connection, "r1").unwrap();
+        assert_eq!(routine.run_target, RoutineRunTarget::ArcCoordinator);
+        assert_eq!(routine.arc_id.as_deref(), Some("arc-1"));
+        assert!(!routine.worktree);
     }
 
     /// Switching away from the shared chat drops the pointer, so the next run

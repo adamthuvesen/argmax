@@ -80,6 +80,12 @@ pub async fn routines_upsert(
             RoutineRunTarget::NewSession
         }
     });
+    let arc_id = resolve_arc_coordinator_target(
+        &connection,
+        run_target,
+        input.arc_id.as_deref(),
+        input.project_id.as_str(),
+    )?;
     upsert_routine(
         &connection,
         &UpsertRoutineInput {
@@ -91,6 +97,7 @@ pub async fn routines_upsert(
             model_label: input.model_label.as_str().to_owned(),
             model_id: input.model_id.as_str().to_owned(),
             run_target,
+            arc_id,
             cron_expr,
             run_once_at,
             enabled: input.enabled.unwrap_or(true),
@@ -100,6 +107,48 @@ pub async fn routines_upsert(
         },
         next_run_at,
     )
+}
+
+/// `arc_coordinator` requires an existing Arc whose home project matches this
+/// task's project — an Arc that spans repositories is still homed in one, and
+/// a task from a different project naming it is almost certainly a mistake,
+/// not cross-project scheduling. Every other target ignores whatever `arc_id`
+/// was sent, so switching away from `arc_coordinator` cannot leave a stale
+/// pointer the CHECK constraint would then reject.
+fn resolve_arc_coordinator_target(
+    connection: &rusqlite::Connection,
+    run_target: RoutineRunTarget,
+    arc_id: Option<&str>,
+    project_id: &str,
+) -> ArgmaxResult<Option<String>> {
+    if !matches!(run_target, RoutineRunTarget::ArcCoordinator) {
+        return Ok(None);
+    }
+    let arc_id = arc_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            ArgmaxError::invalid(InvalidInputIssue::at(
+                vec!["arcId".into()],
+                "ROUTINE_ARC_INVALID",
+                "an arc-coordinator task must name an Arc",
+            ))
+        })?;
+    let arc = crate::persistence::arcs::get_arc(connection, arc_id).map_err(|_| {
+        ArgmaxError::invalid(InvalidInputIssue::at(
+            vec!["arcId".into()],
+            "ROUTINE_ARC_INVALID",
+            "that Arc does not exist",
+        ))
+    })?;
+    if arc.home_project_id != project_id {
+        return Err(ArgmaxError::invalid(InvalidInputIssue::at(
+            vec!["arcId".into()],
+            "ROUTINE_ARC_INVALID",
+            "the Arc's home project must match this task's project",
+        )));
+    }
+    Ok(Some(arc_id.to_string()))
 }
 
 #[tauri::command(rename = "routines:delete")]

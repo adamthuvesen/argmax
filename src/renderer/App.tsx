@@ -40,6 +40,7 @@ import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { BrowserPage } from "./components/BrowserPage.js";
 import { ScheduleRail } from "./components/scheduled/ScheduleRail.js";
+import { ArcRail } from "./components/arcs/ArcRail.js";
 import { UsageRail, type LedgerPage } from "./components/usage/UsageRail.js";
 import { SettingsRail } from "./components/settings/SettingsRail.js";
 import { MAX_COLS, findSessionCell, focusedCell, terminalWorkspaceId } from "./lib/gridState.js";
@@ -59,6 +60,7 @@ import {
   ScheduledTasksPanel,
   SettingsPanel,
   ActivityPanel,
+  ArcPage,
   UsagePanel,
   useLazyOverlayPrefetch
 } from "./hooks/useLazyOverlayPrefetch.js";
@@ -69,9 +71,11 @@ import {
   SIDEBAR_MIN_WIDTH_PX,
   useSidebarResize
 } from "./hooks/useSidebarResize.js";
+import { NewArcDialog, type ArcPromoteSource } from "./components/arcs/NewArcDialog.js";
 import {
   hideCommandPalette,
   hideKeyboardCheatSheet,
+  hidePromoteArcDialog,
   hideStandalonePage,
   showCommandPalette,
   showKeyboardCheatSheet,
@@ -190,6 +194,8 @@ export function App(): JSX.Element {
     standalonePage,
     settingsGroup,
     settingsNavigation,
+    selectedArcId,
+    promoteArcSessionId,
     paletteOpen,
     paletteScope,
     cheatSheetOpen
@@ -199,6 +205,7 @@ export function App(): JSX.Element {
   const isScheduledTasksOpen = standalonePage === "schedule";
   const isUsageOpen = standalonePage === "usage";
   const isActivityOpen = standalonePage === "activity";
+  const isArcPageOpen = standalonePage === "arc";
   // Usage and Activity share one rail, so the rail renders for either and the
   // nav is the same callback in both directions.
   const isLedgerOpen = isUsageOpen || isActivityOpen;
@@ -1140,6 +1147,26 @@ export function App(): JSX.Element {
     [snapshot.projects]
   );
   const storedLaunchProjectId = useLaunchProjectId(realProjects);
+  // The chat an arc is being started from, resolved against the snapshot so
+  // the dialog can say what comes along with it.
+  const promoteSource = useMemo<ArcPromoteSource | null>(() => {
+    if (!promoteArcSessionId) return null;
+    const session = snapshot.sessions.find((candidate) => candidate.id === promoteArcSessionId);
+    const workspace = session
+      ? snapshot.workspaces.find((candidate) => candidate.id === session.workspaceId)
+      : undefined;
+    if (!session || !workspace) return null;
+    return {
+      sessionId: session.id,
+      chatLabel: workspace.taskLabel.trim() || "This chat",
+      projectName: snapshot.projects.find((project) => project.id === workspace.projectId)?.name ?? "",
+      isolated: !workspace.sharedWorkspace,
+      adoptableCount: Math.min(
+        8,
+        snapshot.sessions.filter((child) => child.launchedBySessionId === session.id && !child.arcId).length
+      )
+    };
+  }, [promoteArcSessionId, snapshot.sessions, snapshot.workspaces, snapshot.projects]);
   const launcherProject =
     (storedLaunchProjectId
       ? realProjects.find((project) => project.id === storedLaunchProjectId)
@@ -1939,6 +1966,7 @@ export function App(): JSX.Element {
       data-schedule-open={isScheduledTasksOpen ? "true" : undefined}
       data-usage-open={isUsageOpen ? "true" : undefined}
       data-activity-open={isActivityOpen ? "true" : undefined}
+      data-arc-open={isArcPageOpen ? "true" : undefined}
       data-browser-page-open={isBrowserPageOpen && !standalonePageOpen ? "true" : undefined}
       data-sidebar-collapsed={effectiveSidebarCollapsed ? "true" : undefined}
       data-sidebar-peek={effectiveSidebarCollapsed && sidebarPeek ? "true" : undefined}
@@ -1984,6 +2012,12 @@ export function App(): JSX.Element {
         are full-screen modals and a loading spinner would flash worse
         than a 1-frame delay on the cold-open path.
       */}
+      <NewArcDialog
+        open={promoteSource !== null}
+        onClose={hidePromoteArcDialog}
+        projects={realProjects}
+        promote={promoteSource}
+      />
       {paletteMotion.present ? (
         <Suspense fallback={null}>
           <CommandPalette
@@ -2050,6 +2084,8 @@ export function App(): JSX.Element {
         />
       ) : isScheduledTasksOpen ? (
         <ScheduleRail onBack={() => hideStandalonePage()} />
+      ) : isArcPageOpen ? (
+        <ArcRail onBack={() => hideStandalonePage()} />
       ) : isLedgerOpen ? (
         <UsageRail
           active={isActivityOpen ? "activity" : "usage"}
@@ -2192,6 +2228,15 @@ export function App(): JSX.Element {
           ) : isScheduledTasksOpen ? (
             <Suspense fallback={<SkeletonPane label="Loading scheduled tasks" />}>
               <ScheduledTasksPanel projects={realProjects} onOpenSession={openSessionById} />
+            </Suspense>
+          ) : isArcPageOpen && selectedArcId ? (
+            <Suspense fallback={<SkeletonPane label="Loading arc" />}>
+              <ArcPage
+                arcId={selectedArcId}
+                snapshot={snapshot}
+                projects={realProjects}
+                onOpenSession={openSessionById}
+              />
             </Suspense>
           ) : isLedgerOpen ? (
             <>

@@ -1,3 +1,4 @@
+mod arc_tools;
 mod label;
 mod launch;
 mod messaging;
@@ -15,6 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use self::{
+    arc_tools::arc_status,
     label::rename_session,
     launch::launch_session,
     messaging::{
@@ -144,6 +146,7 @@ pub(super) async fn handle_session_control(
         SessionControlAction::ScheduleList(action) => list_schedules(action, parent, database),
         SessionControlAction::ScheduleCancel(action) => cancel_schedule(action, parent, database),
         SessionControlAction::ScheduleResume(action) => resume_schedule(action, parent, database),
+        SessionControlAction::ArcStatus(_) => arc_status(parent, database),
         SessionControlAction::Browser(request) => {
             let app = app.ok_or_else(|| {
                 protocol_error(

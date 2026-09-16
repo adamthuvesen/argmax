@@ -228,6 +228,10 @@ export function mergeDashboardDelta(
   const approvals = mergeSlice(snapshot.approvals, delta.approvals, (approval) => approval.createdAt, 200);
   const checks = mergeSlice(snapshot.checks, delta.checks, (check) => check.startedAt, 200);
   const pendingMessages = mergePendingMessages(snapshot.pendingMessages, delta.pendingMessages);
+  // Whole-list replacement, like `projects`: an arc change publishes the
+  // caller's full current arc list rather than a per-id delta, and the list
+  // is small enough that there is no cost to replacing it outright.
+  const arcs = delta.arcs ? delta.arcs : snapshot.arcs;
 
   if (
     snapshot === incoming &&
@@ -238,7 +242,8 @@ export function mergeDashboardDelta(
     rawOutputs === snapshot.rawOutputs &&
     approvals === snapshot.approvals &&
     checks === snapshot.checks &&
-    pendingMessages === snapshot.pendingMessages
+    pendingMessages === snapshot.pendingMessages &&
+    arcs === snapshot.arcs
   ) {
     return snapshot;
   }
@@ -251,7 +256,8 @@ export function mergeDashboardDelta(
     rawOutputs,
     approvals,
     checks,
-    pendingMessages
+    pendingMessages,
+    arcs
   };
 }
 

@@ -14,6 +14,7 @@ import {
   Settings,
   Settings2,
   Trash2,
+  Workflow,
   X
 } from "lucide-react";
 import {
@@ -65,8 +66,10 @@ import {
   showKeyboardCheatSheet,
   showSchedulePage,
   showSettings,
-  showActivityPage
+  showActivityPage,
+  showArcPage
 } from "../state/overlays.js";
+import { NewArcDialog } from "./arcs/NewArcDialog.js";
 import { usePaneGrid } from "../state/paneGrid.js";
 import { setSidebarPeek, useSidebarChrome } from "../state/sidebarChrome.js";
 import { beginWorkspaceDrag, endWorkspaceDrag } from "../state/workspaceDrag.js";
@@ -112,6 +115,20 @@ const PINNED_GROUP_KEY = "pinned";
 const PRIORITY_GROUP_KEY = "priority";
 const SIDE_CHATS_GROUP_KEY = "side-chats";
 const OLDER_GROUP_KEY = "older";
+
+// Active and paused sort together, ahead of done; ties break by most recently
+// touched. Only a non-active state gets a text marker on the row — active is
+// the default and needs no badge to say so.
+const ARC_STATE_SORT_RANK: Record<"active" | "paused" | "done", number> = {
+  active: 0,
+  paused: 0,
+  done: 1
+};
+const ARC_STATE_LABEL: Record<"active" | "paused" | "done", string> = {
+  active: "Active",
+  paused: "Paused",
+  done: "Done"
+};
 
 // Per-launch behavior: every session group except Pinned starts collapsed, so a
 // fresh window opens on the standing pins and nothing else.
@@ -242,6 +259,7 @@ export function Sidebar({
   const { collapsed } = useSidebarChrome();
   const grid = usePaneGrid();
   const { fullLauncherOpen } = useLauncherSurface();
+  const [newArcDialogOpen, setNewArcDialogOpen] = useState(false);
   // The full-screen launcher hides the grid, so no row is painted as current
   // and none is marked as open. Esc restores both.
   const selectedWorkspaceId = fullLauncherOpen || browserSelected ? null : currentWorkspaceId;
@@ -454,6 +472,30 @@ export function Sidebar({
     }
     return labels;
   }, [snapshot.sessions]);
+
+  // Arcs sort active and paused ahead of done, most recently touched first
+  // within each bucket, so a settled arc drops to the tail rather than
+  // competing with the work still in flight.
+  const arcs = useMemo(() => {
+    const list = snapshot.arcs ?? [];
+    return [...list].sort((a, b) => {
+      const rankDiff = ARC_STATE_SORT_RANK[a.state] - ARC_STATE_SORT_RANK[b.state];
+      return rankDiff !== 0 ? rankDiff : b.updatedAt.localeCompare(a.updatedAt);
+    });
+  }, [snapshot.arcs]);
+
+  // A chat that belongs to an arc names it on the row, so a member reads as
+  // part of a larger body of work rather than a chat someone opened cold.
+  const arcLabelByWorkspace = useMemo(() => {
+    const nameById = new Map((snapshot.arcs ?? []).map((arc) => [arc.id, arc.name]));
+    const labels = new Map<string, string>();
+    for (const session of snapshot.sessions) {
+      if (!session.arcId) continue;
+      const name = nameById.get(session.arcId);
+      if (name) labels.set(session.workspaceId, name);
+    }
+    return labels;
+  }, [snapshot.sessions, snapshot.arcs]);
 
   // Workspaces that need the user right now (approval, blocked, failed,
   // review-ready) or are mid-turn float into the Priority section, directly
@@ -968,6 +1010,47 @@ export function Sidebar({
       </button>
     </div>
   );
+  // A first-class section above everything else: an arc spans projects, so it
+  // doesn't belong nested under one. No collapse chevron — the list is
+  // expected to stay short, and "New arc" always needs to be reachable in one
+  // click rather than behind an expand.
+  const arcsSection = (
+    <div className="project-group session-date-group arcs-group">
+      <div className="project-row session-date-row">
+        <span className="project-name session-date-label">
+          <span className="project-name-text">Arcs</span>
+        </span>
+        <span className="rail-actions">
+          <button
+            className="small-icon"
+            type="button"
+            title="New arc"
+            aria-label="New arc"
+            onClick={() => setNewArcDialogOpen(true)}
+          >
+            <Plus size={14} />
+          </button>
+        </span>
+      </div>
+      {arcs.map((arc) => (
+        <div key={arc.id} className="session-row-wrap">
+          <button
+            type="button"
+            className="session-link arc-row"
+            data-arc-state={arc.state}
+            title={arc.name}
+            onClick={() => showArcPage(arc.id)}
+          >
+            <Workflow size={13} aria-hidden="true" />
+            <span>{arc.name}</span>
+            {arc.state === "active" ? null : (
+              <span className="arc-row-state">{ARC_STATE_LABEL[arc.state]}</span>
+            )}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
   const sideChatsCollapsed = collapsedDateGroups.has(SIDE_CHATS_GROUP_KEY);
   const sideChatsExpanded = expandedDateGroups.has(SIDE_CHATS_GROUP_KEY);
   const visibleSideChats = visibleSidebarItems(sideChatWorkspaces, selectedWorkspaceId, sideChatsExpanded);
@@ -1014,6 +1097,7 @@ export function Sidebar({
                   hasUnreadResponse={unreadWorkspaces.has(workspace.id)}
                   copyableIds={copyableIdsByWorkspace.get(workspace.id)}
                   launchedByLabel={launchedByLabelByWorkspace.get(workspace.id)}
+                  arcLabel={arcLabelByWorkspace.get(workspace.id)}
                   isSelected={selectedWorkspaceId === workspace.id}
                   isOpenInGrid={openWorkspaceIds.has(workspace.id)}
                   canDragToGrid={canDragWorkspaceToGrid}
@@ -1051,6 +1135,7 @@ export function Sidebar({
     ) : null;
 
   return (
+    <>
     <aside
       className="sidebar"
       data-loading={loadState === "loading" ? "true" : undefined}
@@ -1144,6 +1229,9 @@ export function Sidebar({
         {viewMode === "sessions" && leadDateGroupKey === null ? (
           <div className="rail-heading">{sidebarActions}</div>
         ) : null}
+        {/* Arcs sit above everything else: a body of work spanning several
+            projects doesn't belong nested under any one of them. */}
+        {arcsSection}
         {/* Pinned sits at the very top, above Priority: a pin is a standing
             user choice, while Priority is transient triage. */}
         {pinnedWorkspaces.length > 0 ? (
@@ -1171,6 +1259,7 @@ export function Sidebar({
                   subtitle={subtitleFor(workspace.projectId)}
                   importedProvider={importedProviderByWorkspace.get(workspace.id)}
                   launchedByLabel={launchedByLabelByWorkspace.get(workspace.id)}
+                  arcLabel={arcLabelByWorkspace.get(workspace.id)}
                   isSelected={selectedWorkspaceId === workspace.id}
                   isOpenInGrid={openWorkspaceIds.has(workspace.id)}
                   canDragToGrid={canDragWorkspaceToGrid}
@@ -1228,6 +1317,7 @@ export function Sidebar({
                   subtitle={subtitleFor(entry.workspace.projectId)}
                   importedProvider={importedProviderByWorkspace.get(entry.workspace.id)}
                   launchedByLabel={launchedByLabelByWorkspace.get(entry.workspace.id)}
+                  arcLabel={arcLabelByWorkspace.get(entry.workspace.id)}
                   isSelected={selectedWorkspaceId === entry.workspace.id}
                   isOpenInGrid={openWorkspaceIds.has(entry.workspace.id)}
                   canDragToGrid={canDragWorkspaceToGrid}
@@ -1308,6 +1398,7 @@ export function Sidebar({
                             subtitle={subtitleFor(workspace.projectId)}
                             importedProvider={importedProviderByWorkspace.get(workspace.id)}
                             launchedByLabel={launchedByLabelByWorkspace.get(workspace.id)}
+                            arcLabel={arcLabelByWorkspace.get(workspace.id)}
                             isSelected={selectedWorkspaceId === workspace.id}
                             isOpenInGrid={openWorkspaceIds.has(workspace.id)}
                             canDragToGrid={canDragWorkspaceToGrid}
@@ -1467,6 +1558,7 @@ export function Sidebar({
                         hasUnreadResponse={unreadWorkspaces.has(workspace.id)}
                         copyableIds={copyableIdsByWorkspace.get(workspace.id)}
                         launchedByLabel={launchedByLabelByWorkspace.get(workspace.id)}
+                        arcLabel={arcLabelByWorkspace.get(workspace.id)}
                         isSelected={selectedWorkspaceId === workspace.id}
                         isOpenInGrid={openWorkspaceIds.has(workspace.id)}
                         canDragToGrid={canDragWorkspaceToGrid}
@@ -1685,5 +1777,7 @@ export function Sidebar({
       </div>
       <div className="sidebar-resizer" aria-hidden="true" onMouseDown={onResizeMouseDown} />
     </aside>
+    <NewArcDialog open={newArcDialogOpen} onClose={() => setNewArcDialogOpen(false)} projects={orderedProjects} />
+    </>
   );
 }

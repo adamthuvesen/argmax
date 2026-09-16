@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 // What a chat row can do without opening.
@@ -97,23 +98,84 @@ final class ChatRowActionCenter: ObservableObject {
         return capable && row.session.state != .running && row.session.state != .waiting
     }
 
+    /// How long the mutation's own `dashboard:delta` gets before this falls
+    /// back to a full `dashboard:list`. Long enough for a live socket's
+    /// round trip plus `DashboardStore`'s 100ms metadata-reload debounce;
+    /// short enough that a reconnecting or lagging client still corrects
+    /// within about a second and a half rather than sitting on a stale row.
+    private static let deltaGraceInterval: Duration = .milliseconds(1500)
+
     /// Run one mutation, keeping the row's controls off until it answers and
     /// the list has the host's version of what happened.
     private func run(_ row: ChatRow, _ work: @escaping () async throws -> Void) {
         let id = row.workspace.id
         guard !inFlight.contains(id) else { return }
         inFlight.insert(id)
+        // Listen before the request goes out. The host's delta usually beats
+        // the mutation's own response, and a delta carrying rows is ingested
+        // the moment it lands — a listener attached after `work()` returns
+        // would miss it, wait out the whole grace window, and reload anyway.
+        let change = WorkspaceChangeSignal(store.reviewChanged, workspaceID: id)
         Task {
             do {
                 try await work()
+                // Only pay for the whole list when the host's version of the
+                // row never showed up.
+                if await !change.arrived(within: Self.deltaGraceInterval) {
+                    await store.reload()
+                }
             } catch {
                 failure = hostFailureMessage(error)
+                // A throw means the host most likely never applied the
+                // mutation, so no delta is coming for it — reload right away
+                // rather than waiting out the grace window for nothing.
+                await store.reload()
             }
-            // The delta usually arrives first; reloading covers the frame a
-            // lagging client never sees, which is what the web does too.
-            await store.reload()
             inFlight.remove(id)
         }
+    }
+}
+
+/// Whether the store has named one workspace as changed since this was made.
+///
+/// A pin, rename or archive reaches the list either as a delta carrying the
+/// row or as a `dashboardChanged` hint the store answers with a reload; both
+/// end in `reviewChanged` naming the workspace, which is why that one subject
+/// is enough to wait on.
+@MainActor
+private final class WorkspaceChangeSignal {
+    private var seen = false
+    private var waiter: CheckedContinuation<Bool, Never>?
+    private var subscription: AnyCancellable?
+
+    init(_ changes: PassthroughSubject<Set<String>, Never>, workspaceID: String) {
+        subscription = changes
+            .filter { $0.contains(workspaceID) }
+            .first()
+            .sink { [weak self] _ in
+                // The store is main-actor isolated, so its subject sends here.
+                MainActor.assumeIsolated { self?.finish(arrived: true) }
+            }
+    }
+
+    /// True as soon as the change has been seen — already, or within `interval`.
+    func arrived(within interval: Duration) async -> Bool {
+        if seen { return true }
+        return await withCheckedContinuation { continuation in
+            waiter = continuation
+            Task { [weak self] in
+                try? await Task.sleep(for: interval)
+                self?.finish(arrived: false)
+            }
+        }
+    }
+
+    private func finish(arrived: Bool) {
+        if arrived { seen = true }
+        subscription?.cancel()
+        guard let waiter else { return }
+        self.waiter = nil
+        waiter.resume(returning: arrived)
     }
 }
 

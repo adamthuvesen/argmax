@@ -12,6 +12,13 @@ import OSLog
 final class DashboardStore: ObservableObject {
     @Published private(set) var snapshot = DashboardSnapshot()
     @Published private(set) var sections = ChatSections()
+    /// `sections.chats`, bucketed into the desktop's recency groups. Computed
+    /// here rather than in the view: the view body re-evaluates on every
+    /// unrelated store change and every 60s clock tick, and re-sorting and
+    /// re-bucketing every chat on each of those was the list's other
+    /// full-recompute-on-every-render (`groupChatRows`'s own memoization is
+    /// what this mirrors).
+    @Published private(set) var dateGroups: [ChatDateGroup] = []
     @Published private(set) var connection: BridgeConnection = .connecting
     /// Why the last load failed, cleared by the next one that works. The
     /// list keeps its rows: stale chats read better than an empty screen.
@@ -285,9 +292,23 @@ final class DashboardStore: ObservableObject {
         }
     }
 
+    /// The rows and the calendar day `dateGroups` was last computed from.
+    /// `now` itself ticks every minute for the Priority clock and the
+    /// elapsed-time column; the day it falls on is the only part of it this
+    /// grouping cares about, so that — not `now` — is the cache key.
+    private var dateGroupsInput: (chats: [ChatRow], day: Date)?
+
     private func regroup() {
         let grouped = groupChatRows(snapshot: snapshot, now: now, unreadWorkspaceIDs: unreadWorkspaceIDs)
-        guard grouped != sections else { return }
-        sections = grouped
+        if grouped != sections { sections = grouped }
+        updateDateGroups(chats: grouped.chats)
+    }
+
+    private func updateDateGroups(chats: [ChatRow]) {
+        let day = Calendar.current.startOfDay(for: now)
+        if let input = dateGroupsInput, input.chats == chats, input.day == day { return }
+        dateGroupsInput = (chats, day)
+        let grouped = groupChatsByDate(chats, now: now)
+        if grouped != dateGroups { dateGroups = grouped }
     }
 }

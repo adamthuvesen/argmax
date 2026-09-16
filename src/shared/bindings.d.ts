@@ -485,7 +485,7 @@ async arcList(input: ArcListInput) : Promise<Result<ArcRecord[], ArgmaxError>> {
     else return { status: "error", error: e  as any };
 }
 },
-async arcGet(input: ArcGetInput) : Promise<Result<ArcRecord, ArgmaxError>> {
+async arcGet(input: ArcGetInput) : Promise<Result<ArcDetail, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("arc_get", { input }) };
 } catch (e) {
@@ -1450,13 +1450,30 @@ brief: string; homeProjectId: string;
  * `<app data dir>/arcs/<id>/`, which is created for the caller.
  */
 dir: string | null }
+/**
+ * `arc:get`'s response: the Arc row plus enough of its own state — every
+ * member (enriched, capped, with a truncation flag), this Arc's slice of
+ * the rolling daily launch budget, and the cap sizes — that the Arc page
+ * renders in one round trip, matching exactly what `arc_status` already
+ * tells an agent.
+ */
+export type ArcDetail = { arc: ArcRecord; members: ArcMemberSummary[]; membersTruncated: boolean; launchesLast24H: number; limits: ArcLimits }
 export type ArcGetInput = { id: NonEmptyString }
 export type ArcLaunchCoordinatorInput = { arcId: NonEmptyString; provider: ProviderId;
 /**
  * Both default to that provider's own default model when omitted.
  */
 modelLabel: string | null; modelId: string | null; reasoningEffort: ReasoningEffort | null }
+export type ArcLimits = { maxActiveMembers: number; maxLaunchesPerDay: number }
 export type ArcListInput = Record<string, never>
+/**
+ * One session attached to an Arc, enriched with what `arc_status` and
+ * `arc:get` both render a member row from: provider/model, whether it is
+ * the Arc's current coordinator, and its primary pull request. Built once
+ * by [`list_member_summaries`] so the tool an agent reads and the desktop
+ * page a person reads can never show two different member lists.
+ */
+export type ArcMemberSummary = { sessionId: string; taskLabel: string; projectId: string; projectName: string; workspaceId: string; state: SessionState; provider: string; modelLabel: string | null; modelId: string | null; startedAt: string; isCoordinator: boolean; prNumber: number | null; prState: string | null }
 /**
  * The Arc row, named `ArcRecord` rather than `Arc` because every file in this
  * codebase already imports `std::sync::Arc`.
@@ -1881,7 +1898,23 @@ export type ProvidersDiscoverInput = {
  * CLI. Defaults to false so an absent `{}` payload reuses the cache.
  */
 refresh?: boolean }
-export type ProvidersLaunchInput = { workspaceId: WorkspaceId; provider: ProviderId; prompt: Prompt; modelLabel: NonEmptyString; modelId: NonEmptyString; reasoningEffort: ReasoningEffort | null; fastMode?: boolean; agentMode: AgentMode | null; permissionMode: PermissionMode | null; cols: TerminalCols; rows: TerminalRows; attachments: ComposerAttachmentInput[] | null; goalCondition: string | null; goalMaxTurns: number | null }
+export type ProvidersLaunchInput = { workspaceId: WorkspaceId; provider: ProviderId; prompt: Prompt; modelLabel: NonEmptyString; modelId: NonEmptyString; reasoningEffort: ReasoningEffort | null; fastMode?: boolean; agentMode: AgentMode | null; permissionMode: PermissionMode | null; cols: TerminalCols; rows: TerminalRows; attachments: ComposerAttachmentInput[] | null; goalCondition: string | null; goalMaxTurns: number | null;
+/**
+ * The Arc this session is attached to. Checked against the Arc's caps
+ * and attached to the session row in the same write transaction as the
+ * insert, so concurrent launches can't each pass the cap check before
+ * either session existed to count against it. `None` for a launch with
+ * no Arc — every renderer-initiated launch, which is why this defaults
+ * rather than requiring every existing caller to pass it explicitly.
+ */
+arcId?: string | null;
+/**
+ * Skips the active-member and daily-launch-budget checks; `ARC_DONE`
+ * still applies. Only true for the one launch that must not count
+ * against the caps it would otherwise be checked against: the Arc's
+ * coordinator launching itself.
+ */
+arcIsCoordinatorLaunch?: boolean }
 export type ProvidersResizeInput = { sessionId: SessionId; cols: TerminalCols; rows: TerminalRows }
 export type ProvidersSendInput = { sessionId: SessionId; input: Prompt;
 /**

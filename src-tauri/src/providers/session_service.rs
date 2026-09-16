@@ -60,6 +60,7 @@ use crate::{
     },
     ipc::validation::{NonEmptyString, Prompt, SessionId},
     persistence::{
+        arcs,
         database::Database,
         events::{
             find_event_by_id, latest_agent_message, list_session_events_since, persist_raw_output,
@@ -78,11 +79,11 @@ use crate::{
             NewSessionMessage, COMPLETION_KIND, MESSAGE_KIND,
         },
         sessions::{
-            clear_session_conversation, find_session_by_id, persist_session, session_launch_kind,
-            session_resume_fork, update_session_agent_mode, update_session_model,
-            update_session_provider, update_session_provider_conversation_id, update_session_state,
-            PersistSessionInput, SessionAgentModeInput, SessionModelInput, SessionProviderInput,
-            SessionStateInput, SessionSummary, LAUNCH_KIND_MULTITASK,
+            clear_session_conversation, find_session_by_id, persist_session, record_session_arc,
+            session_launch_kind, session_resume_fork, update_session_agent_mode,
+            update_session_model, update_session_provider, update_session_provider_conversation_id,
+            update_session_state, PersistSessionInput, SessionAgentModeInput, SessionModelInput,
+            SessionProviderInput, SessionStateInput, SessionSummary, LAUNCH_KIND_MULTITASK,
         },
         time::now_iso,
         workspaces::{find_workspace_by_id, update_workspace_state, WorkspaceSummary},
@@ -723,6 +724,15 @@ impl ProviderSessionService {
                     "Workspace archive is in progress; no new provider can be started.",
                 ));
             }
+            // Checked here, inside the same write transaction the session
+            // insert below runs in, rather than by a caller that queried the
+            // caps before this transaction opened: SQLite's single writer
+            // serialises two concurrent launches racing the cap, since only
+            // one of them can hold the write lock when the count is taken,
+            // and the other sees this session already counted against it.
+            if let Some(arc_id) = input.arc_id.as_deref() {
+                arcs::check_launch_caps(&transaction, arc_id, input.arc_is_coordinator_launch)?;
+            }
             let mut session = persist_session(
                 &transaction,
                 &PersistSessionInput {
@@ -740,6 +750,10 @@ impl ProviderSessionService {
                     state: SessionState::Running,
                 },
             )?;
+            if let Some(arc_id) = input.arc_id.as_deref() {
+                record_session_arc(&transaction, &session_id, arc_id)?;
+                session.arc_id = Some(arc_id.to_string());
+            }
             // Claude and Grok are both handed `--session-id <our id>`, so the
             // CLI conversation is known before a single event arrives. Seeding
             // it here is what lets the very next turn resume: without it the

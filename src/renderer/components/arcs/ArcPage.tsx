@@ -115,7 +115,7 @@ export function ArcPage({
       return;
     }
     try {
-      const record = await window.argmax.arcs.get({ id: arcId });
+      const { arc: record } = await window.argmax.arcs.get({ id: arcId });
       setArc(record);
       setNameDraft(record.name);
       setBriefDraft(record.brief);

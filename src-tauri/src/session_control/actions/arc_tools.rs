@@ -15,9 +15,7 @@ use super::super::{
     ARC_MAX_ACTIVE_MEMBERS, ARC_MAX_LAUNCHES_PER_DAY, ARC_STATUS_BRIEF_CHARS,
     ARC_STATUS_MEMBER_LIMIT,
 };
-use crate::persistence::{
-    arcs, database::Database, gh::list_session_prs, sessions::find_session_by_id, time::hours_ago,
-};
+use crate::persistence::{arcs, database::Database, sessions::find_session_by_id, time::hours_ago};
 
 pub(super) fn arc_status(
     parent: ParentLaunchSettings,
@@ -34,25 +32,22 @@ pub(super) fn arc_status(
     };
     let arc = arcs::get_arc(&connection, &arc_id)
         .map_err(|error| protocol_error("ARC_STATUS_FAILED", error.to_string()))?;
-    let all_members = arcs::list_members(&connection, &arc_id)
+    // The same member query `arc:get` renders the Arc page from, so an agent
+    // reading `arc_status` and a person reading the page never see two
+    // different lists.
+    let all_members = arcs::list_member_summaries(&connection, &arc)
         .map_err(|error| protocol_error("ARC_STATUS_FAILED", error.to_string()))?;
     let truncated = all_members.len() > ARC_STATUS_MEMBER_LIMIT;
     let members = all_members
         .into_iter()
         .take(ARC_STATUS_MEMBER_LIMIT)
-        .map(|member| {
-            let primary_pr = list_session_prs(&connection, &member.session_id)
-                .unwrap_or_default()
-                .into_iter()
-                .find(|pr| pr.is_primary);
-            ArcStatusMember {
-                session_id: member.session_id,
-                task_label: member.task_label,
-                project_name: member.project_name,
-                state: member.state,
-                pr_number: primary_pr.as_ref().map(|pr| pr.pr_number),
-                pr_state: primary_pr.and_then(|pr| pr.pr_state),
-            }
+        .map(|member| ArcStatusMember {
+            session_id: member.session_id,
+            task_label: member.task_label,
+            project_name: member.project_name,
+            state: member.state,
+            pr_number: member.pr_number,
+            pr_state: member.pr_state,
         })
         .collect();
     let launches_last_24h = arcs::count_launches_since(&connection, &arc_id, &hours_ago(24))

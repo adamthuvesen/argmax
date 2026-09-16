@@ -367,6 +367,9 @@ pub(crate) async fn fire_routine(
         permission_mode,
         agent_mode: AgentMode::Auto,
         task_label: Some(fields.name.clone()),
+        // A scheduled/routine launch is never attached to an Arc today.
+        arc_id: None,
+        arc_is_coordinator_launch: false,
     };
     let outcome = session_control::launch_with_spec(
         spec,

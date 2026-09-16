@@ -621,6 +621,20 @@ pub struct ProvidersLaunchInput {
     pub attachments: Option<Vec<ComposerAttachmentInput>>,
     pub goal_condition: Option<String>,
     pub goal_max_turns: Option<u32>,
+    /// The Arc this session is attached to. Checked against the Arc's caps
+    /// and attached to the session row in the same write transaction as the
+    /// insert, so concurrent launches can't each pass the cap check before
+    /// either session existed to count against it. `None` for a launch with
+    /// no Arc — every renderer-initiated launch, which is why this defaults
+    /// rather than requiring every existing caller to pass it explicitly.
+    #[serde(default)]
+    pub arc_id: Option<String>,
+    /// Skips the active-member and daily-launch-budget checks; `ARC_DONE`
+    /// still applies. Only true for the one launch that must not count
+    /// against the caps it would otherwise be checked against: the Arc's
+    /// coordinator launching itself.
+    #[serde(default)]
+    pub arc_is_coordinator_launch: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

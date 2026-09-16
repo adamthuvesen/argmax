@@ -8,7 +8,7 @@ use super::super::{
     },
     protocol_error,
     registry::ParentLaunchSettings,
-    ARC_MAX_ACTIVE_MEMBERS, ARC_MAX_LAUNCHES_PER_DAY, MAX_LAUNCHES_PER_SESSION, MAX_LAUNCH_DEPTH,
+    MAX_LAUNCHES_PER_SESSION, MAX_LAUNCH_DEPTH,
 };
 use super::{resolve_or_register_project, task_label, terminal_cols, terminal_rows};
 use crate::{
@@ -21,13 +21,11 @@ use crate::{
         validation::{BaseRef, NonEmptyString, ProjectId, Prompt, TaskLabel, WorkspaceId},
     },
     persistence::{
-        arcs::{self, ArcRecord, ArcState},
+        arcs::{self, ArcRecord},
         database::Database,
         sessions::{
-            find_session_by_id, record_session_arc, record_session_launch, session_launch_lineage,
-            LAUNCH_KIND_AGENT,
+            find_session_by_id, record_session_launch, session_launch_lineage, LAUNCH_KIND_AGENT,
         },
-        time::hours_ago,
         workspaces::find_workspace_by_id,
     },
     providers::session_service::ProviderSessionService,
@@ -66,6 +64,18 @@ pub(crate) struct LaunchSpec {
     /// Sidebar label for the new workspace. Falls back to the prompt's first
     /// line, which is what every launch used before agents could name one.
     pub task_label: Option<String>,
+    /// The Arc this session is attached to. Checked against the Arc's caps
+    /// and attached to the session row inside the same write transaction as
+    /// the insert (see `ProviderSessionService::launch`), rather than by a
+    /// follow-up update once this call returns — closing the race where two
+    /// concurrent launches could each pass the cap check before either
+    /// session existed to count against it.
+    pub arc_id: Option<String>,
+    /// True only for the coordinator launching itself: `ARC_DONE` still
+    /// applies, but the active-member and daily-launch-budget caps do not —
+    /// the coordinator plans and delegates, it does not occupy a slot in the
+    /// work it is delegating.
+    pub arc_is_coordinator_launch: bool,
 }
 
 /// The checkout a session is asked to run beside, taken from the workspace of
@@ -198,6 +208,8 @@ pub(crate) async fn launch_with_spec(
             attachments: None,
             goal_condition: None,
             goal_max_turns: None,
+            arc_id: spec.arc_id,
+            arc_is_coordinator_launch: spec.arc_is_coordinator_launch,
         })
         .await;
     let session = match launch_result {
@@ -324,6 +336,8 @@ pub(super) async fn launch_session(
             permission_mode: action.permission_mode.unwrap_or(parent.permission_mode),
             agent_mode: parent.agent_mode,
             task_label: action.task_label,
+            arc_id: parent_arc.as_ref().map(|arc| arc.id.clone()),
+            arc_is_coordinator_launch: false,
         },
         Arc::clone(&database),
         workspaces,
@@ -341,10 +355,6 @@ pub(super) async fn launch_session(
             LAUNCH_KIND_AGENT,
         )
         .map_err(argmax_protocol_error)?;
-        if let Some(arc) = &parent_arc {
-            record_session_arc(&connection, &outcome.session_id, &arc.id)
-                .map_err(argmax_protocol_error)?;
-        }
     }
     Ok(SessionControlResponse::new(SessionControlResult::Launched(
         LaunchedSession {
@@ -358,42 +368,19 @@ pub(super) async fn launch_session(
     )))
 }
 
-/// The three Arc-scoped refusals a launch from inside an Arc can hit, checked
-/// in the order an agent would want to know about them: done, out of room,
-/// out of budget for today.
+/// The fast-path rejection: the same three Arc-scoped refusals
+/// `ProviderSessionService::launch` checks again inside its write
+/// transaction, run here first so the common (non-racing) case fails before
+/// this call pays for a workspace/worktree it would only have to archive.
+/// This copy is not itself race-safe — two concurrent launches can both pass
+/// it — which is exactly why the transactional check is the one that counts;
+/// see `arcs::check_launch_caps`.
 fn check_arc_launch_budget(
     arc: &ArcRecord,
     database: &Database,
 ) -> Result<(), SessionControlError> {
-    if arc.state == ArcState::Done {
-        return Err(protocol_error(
-            "ARC_DONE",
-            "This Arc is done, so it is not taking new sessions. Ask a person to reopen it (set it back to active or paused) before launching into it.",
-        ));
-    }
     let connection = database.connection();
-    let active_members =
-        arcs::count_active_members(&connection, &arc.id, arc.coordinator_session_id.as_deref())
-            .map_err(argmax_protocol_error)?;
-    if active_members >= ARC_MAX_ACTIVE_MEMBERS {
-        return Err(protocol_error(
-            "ARC_CAPACITY_REACHED",
-            format!(
-                "This Arc already has {ARC_MAX_ACTIVE_MEMBERS} sessions in flight, which is its active-member cap. Wait for one to finish before launching another."
-            ),
-        ));
-    }
-    let launches_today = arcs::count_launches_since(&connection, &arc.id, &hours_ago(24))
-        .map_err(argmax_protocol_error)?;
-    if launches_today >= ARC_MAX_LAUNCHES_PER_DAY {
-        return Err(protocol_error(
-            "ARC_LAUNCH_BUDGET_REACHED",
-            format!(
-                "This Arc has already launched {ARC_MAX_LAUNCHES_PER_DAY} sessions in the last 24 hours, which is its daily launch budget. Wait for the window to roll forward before launching another."
-            ),
-        ));
-    }
-    Ok(())
+    arcs::check_launch_caps(&connection, &arc.id, false).map_err(argmax_protocol_error)
 }
 
 /// The effort to carry onto an explicitly named model: the caller's own when

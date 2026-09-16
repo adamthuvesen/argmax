@@ -12,7 +12,11 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use uuid::Uuid;
 
-use super::{sqlite_error, time::now_iso};
+use super::{
+    gh::list_session_prs,
+    sqlite_error,
+    time::{hours_ago, now_iso},
+};
 use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 use crate::sessions::state::SessionState;
 
@@ -37,6 +41,15 @@ CREATE INDEX idx_sessions_arc_id ON sessions(arc_id);
 
 const BRIEF_FILE_NAME: &str = "BRIEF.md";
 const NOTES_FILE_NAME: &str = "NOTES.md";
+
+/// How many of an Arc's sessions may be active (not complete, failed, or
+/// cancelled) at once, the coordinator excluded — the coordinator plans and
+/// delegates, it does not occupy a slot in the work it is delegating.
+pub const ARC_MAX_ACTIVE_MEMBERS: i64 = 8;
+/// How many sessions an Arc may launch in a rolling 24 hours, coordinator
+/// launches included. A budget on the Arc rather than on any one launcher,
+/// since a relaunched coordinator must not reset it.
+pub const ARC_MAX_LAUNCHES_PER_DAY: i64 = 40;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "lowercase")]
@@ -96,18 +109,58 @@ pub struct ArcSummary {
     pub updated_at: String,
 }
 
-/// One session attached to an Arc, for the member listing the `arc_status`
-/// tool reads.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+/// One session attached to an Arc, enriched with what `arc_status` and
+/// `arc:get` both render a member row from: provider/model, whether it is
+/// the Arc's current coordinator, and its primary pull request. Built once
+/// by [`list_member_summaries`] so the tool an agent reads and the desktop
+/// page a person reads can never show two different member lists.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
-pub struct ArcMember {
+pub struct ArcMemberSummary {
     pub session_id: String,
+    pub task_label: String,
     pub project_id: String,
     pub project_name: String,
     pub workspace_id: String,
-    pub task_label: String,
     pub state: SessionState,
+    pub provider: String,
+    pub model_label: Option<String>,
+    pub model_id: Option<String>,
+    pub started_at: String,
+    pub is_coordinator: bool,
+    pub pr_number: Option<i64>,
+    pub pr_state: Option<String>,
 }
+
+/// `arc:get`'s response: the Arc row plus enough of its own state — every
+/// member (enriched, capped, with a truncation flag), this Arc's slice of
+/// the rolling daily launch budget, and the cap sizes — that the Arc page
+/// renders in one round trip, matching exactly what `arc_status` already
+/// tells an agent.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ArcDetail {
+    pub arc: ArcRecord,
+    pub members: Vec<ArcMemberSummary>,
+    pub members_truncated: bool,
+    pub launches_last_24h: i64,
+    pub limits: ArcLimits,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ArcLimits {
+    pub max_active_members: i64,
+    pub max_launches_per_day: i64,
+}
+
+/// How many of an Arc's members `arc:get` returns in one response. High
+/// enough that a person is never missing a row in practice; `arc_status`,
+/// the tool an agent reads over the wire, caps far lower
+/// (`ARC_STATUS_MEMBER_LIMIT`) — a desktop page round trip can afford more
+/// than a tool-call response should carry. `membersTruncated` tells the
+/// renderer when even this cap was not enough.
+pub const ARC_DETAIL_MEMBER_LIMIT: usize = 200;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -214,37 +267,95 @@ pub fn list_arc_summaries(connection: &Connection) -> ArgmaxResult<Vec<ArcSummar
     Ok(summaries)
 }
 
-/// Sessions currently attached to this Arc, for `arc_status`.
-pub fn list_members(connection: &Connection, arc_id: &str) -> ArgmaxResult<Vec<ArcMember>> {
+/// Every session attached to this Arc, enriched with provider/model, the
+/// coordinator flag, and primary PR — the one query behind both
+/// `arc_status` and `arc:get`, so they can never diverge. Ordered coordinator
+/// first, then most recently started. Never capped here: the two callers cap
+/// it differently (`arc_status` to `ARC_STATUS_MEMBER_LIMIT`, `arc:get` to
+/// [`ARC_DETAIL_MEMBER_LIMIT`]), so read this list's length for a truncation
+/// flag before taking the cap's worth of it.
+pub fn list_member_summaries(
+    connection: &Connection,
+    arc: &ArcRecord,
+) -> ArgmaxResult<Vec<ArcMemberSummary>> {
     let mut statement = connection
         .prepare_cached(
             r#"
             SELECT sessions.id, workspaces.project_id, projects.name AS project_name,
-                   sessions.workspace_id, workspaces.task_label, sessions.state
+                   sessions.workspace_id, workspaces.task_label, sessions.state,
+                   sessions.provider, sessions.model_label, sessions.model_id,
+                   sessions.started_at
             FROM sessions
             JOIN workspaces ON workspaces.id = sessions.workspace_id
             JOIN projects ON projects.id = workspaces.project_id
-            WHERE sessions.arc_id = ?
-            ORDER BY sessions.last_activity_at DESC, sessions.id DESC
+            WHERE sessions.arc_id = ?1
+            ORDER BY (sessions.id = ?2) DESC, sessions.started_at DESC, sessions.id DESC
             "#,
         )
         .map_err(sqlite_error)?;
+    let coordinator_session_id = arc.coordinator_session_id.as_deref();
     let members = statement
-        .query_map([arc_id], |row| {
+        .query_map((arc.id.as_str(), coordinator_session_id), |row| {
             let state: String = row.get("state")?;
-            Ok(ArcMember {
-                session_id: row.get("id")?,
+            let session_id: String = row.get("id")?;
+            Ok(ArcMemberSummary {
+                is_coordinator: coordinator_session_id == Some(session_id.as_str()),
+                session_id,
                 project_id: row.get("project_id")?,
                 project_name: row.get("project_name")?,
                 workspace_id: row.get("workspace_id")?,
                 task_label: row.get("task_label")?,
                 state: SessionState::from_wire(&state).unwrap_or(SessionState::Waiting),
+                provider: row.get("provider")?,
+                model_label: row.get("model_label")?,
+                model_id: row.get("model_id")?,
+                started_at: row.get("started_at")?,
+                pr_number: None,
+                pr_state: None,
             })
         })
         .map_err(sqlite_error)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(sqlite_error)?;
-    Ok(members)
+
+    Ok(members
+        .into_iter()
+        .map(|mut member| {
+            // A PR lookup failure must not take the whole member list down
+            // with it — the row still renders, just without a PR badge.
+            let primary_pr = list_session_prs(connection, &member.session_id)
+                .unwrap_or_default()
+                .into_iter()
+                .find(|pr| pr.is_primary);
+            member.pr_number = primary_pr.as_ref().map(|pr| pr.pr_number);
+            member.pr_state = primary_pr.and_then(|pr| pr.pr_state);
+            member
+        })
+        .collect())
+}
+
+/// `arc:get`'s response: the Arc row, its members (enriched, capped), and
+/// enough of its own launch state that the Arc page matches `arc_status`
+/// exactly rather than approximating it.
+pub fn get_arc_detail(connection: &Connection, arc_id: &str) -> ArgmaxResult<ArcDetail> {
+    let arc = get_arc(connection, arc_id)?;
+    let all_members = list_member_summaries(connection, &arc)?;
+    let members_truncated = all_members.len() > ARC_DETAIL_MEMBER_LIMIT;
+    let members = all_members
+        .into_iter()
+        .take(ARC_DETAIL_MEMBER_LIMIT)
+        .collect();
+    let launches_last_24h = count_launches_since(connection, &arc.id, &hours_ago(24))?;
+    Ok(ArcDetail {
+        arc,
+        members,
+        members_truncated,
+        launches_last_24h,
+        limits: ArcLimits {
+            max_active_members: ARC_MAX_ACTIVE_MEMBERS,
+            max_launches_per_day: ARC_MAX_LAUNCHES_PER_DAY,
+        },
+    })
 }
 
 /// How many sessions attached to this Arc are still in flight (not
@@ -285,6 +396,55 @@ pub fn count_launches_since(
         .map_err(sqlite_error)?
         .query_row((arc_id, since), |row| row.get(0))
         .map_err(sqlite_error)
+}
+
+/// The Arc-scoped refusals a launch into this Arc can hit, checked in the
+/// order an agent would want to know about them: done, out of room, out of
+/// budget for today. Callers pass this the connection of the same write
+/// transaction that will insert the session row (or that has already
+/// inserted it, for the fast-path check `session_launch` runs before
+/// creating a workspace) — SQLite's single writer then serialises any two
+/// launches racing the cap, since only one of them can hold the write lock
+/// when the count is taken.
+///
+/// `skip_member_caps` is set for the one launch that must not count against
+/// the caps it would otherwise be checked against: the coordinator launching
+/// itself. `ARC_DONE` still applies to it.
+pub fn check_launch_caps(
+    connection: &Connection,
+    arc_id: &str,
+    skip_member_caps: bool,
+) -> ArgmaxResult<()> {
+    let arc = get_arc(connection, arc_id)?;
+    if arc.state == ArcState::Done {
+        return Err(ArgmaxError::service(
+            "ARC_DONE",
+            "This Arc is done, so it is not taking new sessions. Ask a person to reopen it (set it back to active or paused) before launching into it.",
+        ));
+    }
+    if skip_member_caps {
+        return Ok(());
+    }
+    let active_members =
+        count_active_members(connection, arc_id, arc.coordinator_session_id.as_deref())?;
+    if active_members >= ARC_MAX_ACTIVE_MEMBERS {
+        return Err(ArgmaxError::service(
+            "ARC_CAPACITY_REACHED",
+            format!(
+                "This Arc already has {ARC_MAX_ACTIVE_MEMBERS} sessions in flight, which is its active-member cap. Wait for one to finish before launching another."
+            ),
+        ));
+    }
+    let launches_today = count_launches_since(connection, arc_id, &hours_ago(24))?;
+    if launches_today >= ARC_MAX_LAUNCHES_PER_DAY {
+        return Err(ArgmaxError::service(
+            "ARC_LAUNCH_BUDGET_REACHED",
+            format!(
+                "This Arc has already launched {ARC_MAX_LAUNCHES_PER_DAY} sessions in the last 24 hours, which is its daily launch budget. Wait for the window to roll forward before launching another."
+            ),
+        ));
+    }
+    Ok(())
 }
 
 /// Updates name and/or brief. A brief update rewrites `BRIEF.md` in place.
@@ -395,12 +555,34 @@ fn resolve_create_dir(
             }
 
             let brief_path = dir.join(BRIEF_FILE_NAME);
-            let effective_brief = if brief.trim().is_empty() {
-                fs::read_to_string(&brief_path).unwrap_or_default()
-            } else {
-                brief.to_string()
+            let brief_exists = brief_path.exists();
+            let typed_brief_blank = brief.trim().is_empty();
+            // The brief has exactly one source of truth: an existing
+            // `BRIEF.md` wins only when the caller left the typed brief
+            // blank (an explicit "use what's already there"); a typed brief
+            // never silently overwrites or gets shadowed by a file already
+            // on disk, and a blank typed brief with no file to fall back to
+            // is never allowed to create an Arc that starts with nothing to
+            // say about itself.
+            let effective_brief = match (brief_exists, typed_brief_blank) {
+                (true, false) => {
+                    return Err(invalid_arc(
+                        "brief",
+                        "ARC_BRIEF_EXISTS",
+                        "This folder already has BRIEF.md. Leave the brief empty to use it.",
+                    ));
+                }
+                (true, true) => fs::read_to_string(&brief_path).unwrap_or_default(),
+                (false, true) => {
+                    return Err(invalid_arc(
+                        "brief",
+                        "ARC_BRIEF_REQUIRED",
+                        "Describe what this arc is for.",
+                    ));
+                }
+                (false, false) => brief.to_string(),
             };
-            if !brief_path.exists() {
+            if !brief_exists {
                 write_file(&brief_path, &effective_brief)?;
             }
             let notes_path = dir.join(NOTES_FILE_NAME);
@@ -410,6 +592,13 @@ fn resolve_create_dir(
             Ok((dir, effective_brief))
         }
         None => {
+            if brief.trim().is_empty() {
+                return Err(invalid_arc(
+                    "brief",
+                    "ARC_BRIEF_REQUIRED",
+                    "Describe what this arc is for.",
+                ));
+            }
             let dir = app_data_dir.join("arcs").join(id);
             fs::create_dir_all(&dir).map_err(|error| {
                 ArgmaxError::service(
@@ -645,6 +834,65 @@ mod tests {
     }
 
     #[test]
+    fn blank_brief_with_no_existing_file_is_rejected() {
+        let database = database_with_project();
+        let connection = database.connection();
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut input = create_input(None);
+        input.brief = "   ".to_owned();
+
+        let error = create_arc(&connection, data_dir.path(), &input).unwrap_err();
+        assert!(matches!(
+            error,
+            ArgmaxError::InvalidInput { ref issues, .. }
+                if issues.iter().any(|issue| issue.code == "ARC_BRIEF_REQUIRED")
+        ));
+        // Rejected before touching disk: no half-created Arc directory.
+        assert!(!data_dir.path().join("arcs").exists());
+    }
+
+    #[test]
+    fn blank_brief_in_user_dir_without_existing_brief_is_rejected() {
+        let database = database_with_project();
+        let connection = database.connection();
+        let data_dir = tempfile::tempdir().unwrap();
+        let user_dir = tempfile::tempdir().unwrap();
+
+        let mut input = create_input(Some(user_dir.path().to_string_lossy().into_owned()));
+        input.brief = String::new();
+
+        let error = create_arc(&connection, data_dir.path(), &input).unwrap_err();
+        assert!(matches!(
+            error,
+            ArgmaxError::InvalidInput { ref issues, .. }
+                if issues.iter().any(|issue| issue.code == "ARC_BRIEF_REQUIRED")
+        ));
+        assert!(!user_dir.path().join("BRIEF.md").exists());
+    }
+
+    #[test]
+    fn typed_brief_conflicting_with_existing_file_is_rejected() {
+        let database = database_with_project();
+        let connection = database.connection();
+        let data_dir = tempfile::tempdir().unwrap();
+        let user_dir = tempfile::tempdir().unwrap();
+        fs::write(user_dir.path().join("BRIEF.md"), "Pre-existing brief.").unwrap();
+
+        let input = create_input(Some(user_dir.path().to_string_lossy().into_owned()));
+        let error = create_arc(&connection, data_dir.path(), &input).unwrap_err();
+        assert!(matches!(
+            error,
+            ArgmaxError::InvalidInput { ref issues, .. }
+                if issues.iter().any(|issue| issue.code == "ARC_BRIEF_EXISTS")
+        ));
+        // The file on disk is untouched by the rejected create.
+        assert_eq!(
+            fs::read_to_string(user_dir.path().join("BRIEF.md")).unwrap(),
+            "Pre-existing brief."
+        );
+    }
+
+    #[test]
     fn blank_name_is_rejected() {
         let database = database_with_project();
         let connection = database.connection();
@@ -797,17 +1045,79 @@ mod tests {
             .execute("UPDATE sessions SET arc_id = ? WHERE id = 's1'", [&arc.id])
             .unwrap();
 
-        let members = list_members(&connection, &arc.id).unwrap();
+        let members = list_member_summaries(&connection, &arc).unwrap();
         assert_eq!(members.len(), 1);
         assert_eq!(members[0].session_id, "s1");
         assert_eq!(members[0].project_id, "p1");
         assert_eq!(members[0].project_name, "p1");
         assert_eq!(members[0].workspace_id, "w1");
         assert_eq!(members[0].task_label, "Member");
+        assert_eq!(members[0].provider, "claude");
+        assert_eq!(members[0].model_label.as_deref(), Some("Sonnet"));
+        assert_eq!(members[0].model_id.as_deref(), Some("sonnet"));
+        assert!(!members[0].is_coordinator);
+        assert_eq!(members[0].pr_number, None);
+
+        let detail = get_arc_detail(&connection, &arc.id).unwrap();
+        assert_eq!(detail.arc.id, arc.id);
+        assert_eq!(detail.members.len(), 1);
+        assert!(!detail.members_truncated);
+        assert_eq!(detail.limits.max_active_members, ARC_MAX_ACTIVE_MEMBERS);
+        assert_eq!(detail.limits.max_launches_per_day, ARC_MAX_LAUNCHES_PER_DAY);
 
         let summaries = list_arc_summaries(&connection).unwrap();
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].member_count, 1);
+    }
+
+    #[test]
+    fn list_member_summaries_flags_the_current_coordinator() {
+        let database = database_with_project();
+        let connection = database.connection();
+        let data_dir = tempfile::tempdir().unwrap();
+        let arc = create_arc(&connection, data_dir.path(), &create_input(None)).unwrap();
+
+        persist_workspace(
+            &connection,
+            &PersistWorkspaceInput {
+                id: "w1".to_owned(),
+                project_id: "p1".to_owned(),
+                task_label: "Coordinator".to_owned(),
+                branch: "main".to_owned(),
+                base_ref: "main".to_owned(),
+                path: "/tmp/project-one".to_owned(),
+                state: "running".to_owned(),
+                shared_workspace: true,
+                kind: "git".to_owned(),
+                dirty: false,
+                changed_files: 0,
+            },
+        )
+        .unwrap();
+        persist_session(
+            &connection,
+            &PersistSessionInput {
+                id: "s1".to_owned(),
+                workspace_id: "w1".to_owned(),
+                provider: "claude".to_owned(),
+                model_label: "Sonnet".to_owned(),
+                model_id: "sonnet".to_owned(),
+                reasoning_effort: None,
+                permission_mode: None,
+                agent_mode: None,
+                prompt: "Coordinate".to_owned(),
+                state: crate::sessions::state::SessionState::Running,
+            },
+        )
+        .unwrap();
+        connection
+            .execute("UPDATE sessions SET arc_id = ? WHERE id = 's1'", [&arc.id])
+            .unwrap();
+        let arc = set_arc_coordinator_session(&connection, &arc.id, Some("s1")).unwrap();
+
+        let members = list_member_summaries(&connection, &arc).unwrap();
+        assert_eq!(members.len(), 1);
+        assert!(members[0].is_coordinator);
     }
 
     #[test]

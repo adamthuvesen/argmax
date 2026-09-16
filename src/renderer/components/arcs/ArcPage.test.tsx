@@ -213,7 +213,13 @@ beforeEach(() => {
   routinesStub.list.mockReset();
   routinesStub.delete.mockReset();
 
-  arcsStub.get.mockResolvedValue(arcRecord());
+  arcsStub.get.mockResolvedValue({
+    arc: arcRecord(),
+    members: [],
+    membersTruncated: false,
+    launchesLast24H: 0,
+    limits: { maxActiveMembers: 8, maxLaunchesPerDay: 40 }
+  });
   arcsStub.update.mockImplementation((input) =>
     Promise.resolve({
       ...arcRecord(),

@@ -72,14 +72,11 @@ const SESSION_LIST_LIMIT: usize = 40;
 /// sessions exist below it and the third is refused.
 const MAX_LAUNCH_DEPTH: i64 = 2;
 const MAX_LAUNCHES_PER_SESSION: i64 = 10;
-/// How many of an Arc's sessions may be active (not complete, failed, or
-/// cancelled) at once, the coordinator excluded — the coordinator plans and
-/// delegates, it does not occupy a slot in the work it is delegating.
-const ARC_MAX_ACTIVE_MEMBERS: i64 = 8;
-/// How many sessions an Arc may launch in a rolling 24 hours, coordinator
-/// launches included. A budget on the Arc rather than on any one launcher,
-/// since a relaunched coordinator must not reset it.
-const ARC_MAX_LAUNCHES_PER_DAY: i64 = 40;
+// Arc cap sizes live in `persistence::arcs` — the same module that checks
+// them transactionally against the session insert — and are re-exported here
+// so the existing `ARC_MAX_ACTIVE_MEMBERS`/`ARC_MAX_LAUNCHES_PER_DAY`
+// references in this module's submodules keep resolving unchanged.
+pub(crate) use crate::persistence::arcs::{ARC_MAX_ACTIVE_MEMBERS, ARC_MAX_LAUNCHES_PER_DAY};
 /// How many moves a chat may pick the work up after. A move starts a turn in
 /// the destination, and that turn can move again; past this the chat lands,
 /// says why it stopped, and waits for a person.

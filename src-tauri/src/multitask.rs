@@ -43,7 +43,7 @@ use crate::persistence::session_messages::{
     NewSessionMessage,
 };
 use crate::persistence::sessions::{
-    find_session_by_id, record_session_arc, record_session_launch, LAUNCH_KIND_MULTITASK,
+    find_session_by_id, record_session_launch, LAUNCH_KIND_MULTITASK,
 };
 use crate::persistence::workspaces::find_workspace_by_id;
 use crate::persistence::Database;
@@ -169,6 +169,8 @@ pub async fn dispatch(
             agent_mode: parse_json_enum(parent.agent_mode.as_deref())
                 .unwrap_or(crate::providers::AgentMode::Auto),
             task_label: Some(label.clone()),
+            arc_id: parent_arc.as_ref().map(|arc| arc.id.clone()),
+            arc_is_coordinator_launch: false,
         },
         Arc::clone(&database),
         workspaces,
@@ -193,9 +195,6 @@ pub async fn dispatch(
         0,
         LAUNCH_KIND_MULTITASK,
     )?;
-    if let Some(arc) = &parent_arc {
-        record_session_arc(&connection, &outcome.session_id, &arc.id)?;
-    }
     persist_timeline_event(
         &connection,
         &PersistTimelineEventInput {

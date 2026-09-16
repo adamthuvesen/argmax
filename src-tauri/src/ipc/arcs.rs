@@ -5,7 +5,7 @@ use tauri::State;
 use super::{live_database, publish_dashboard_changed, read_off_main, validation::NonEmptyString};
 use crate::{
     error::{ArgmaxError, ArgmaxResult},
-    persistence::arcs::{self, ArcCreateInput, ArcRecord, ArcState, ArcUpdateInput},
+    persistence::arcs::{self, ArcCreateInput, ArcDetail, ArcRecord, ArcState, ArcUpdateInput},
     providers::{ProviderId, ReasoningEffort},
     state::AppState,
 };
@@ -87,13 +87,14 @@ pub(crate) async fn arc_list_impl(
 
 #[tauri::command(rename = "arc:get")]
 #[specta::specta]
-pub async fn arc_get(state: State<'_, AppState>, input: ArcGetInput) -> ArgmaxResult<ArcRecord> {
+pub async fn arc_get(state: State<'_, AppState>, input: ArcGetInput) -> ArgmaxResult<ArcDetail> {
     arc_get_impl(&state, input).await
 }
 
-pub(crate) async fn arc_get_impl(state: &AppState, input: ArcGetInput) -> ArgmaxResult<ArcRecord> {
+pub(crate) async fn arc_get_impl(state: &AppState, input: ArcGetInput) -> ArgmaxResult<ArcDetail> {
     let database = live_database(state)?;
-    read_off_main(move || arcs::get_arc(&database.read_connection(), input.id.as_str())).await
+    read_off_main(move || arcs::get_arc_detail(&database.read_connection(), input.id.as_str()))
+        .await
 }
 
 #[tauri::command(rename = "arc:update")]
@@ -173,6 +174,12 @@ pub(crate) async fn arc_launch_coordinator_impl(
             "provider service is not initialized",
         )
     })?;
+    // Resolved the same way every other launch path resolves it: the user's
+    // default-agent permission choice for this provider, not a hardcoded
+    // fallback that ignores it.
+    let app_data_dir = state.require_app_data_dir()?.to_path_buf();
+    let default_agent = crate::default_agent::read_default_agent(&app_data_dir);
+    let permission_mode = default_agent.permission_mode_for(input.provider);
     let updated = crate::arcs::launch_coordinator(
         crate::arcs::LaunchCoordinatorRequest {
             arc_id: input.arc_id.into_string(),
@@ -180,6 +187,7 @@ pub(crate) async fn arc_launch_coordinator_impl(
             model_label: input.model_label,
             model_id: input.model_id,
             reasoning_effort: input.reasoning_effort,
+            permission_mode,
         },
         database,
         workspaces,

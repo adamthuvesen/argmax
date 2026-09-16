@@ -57,24 +57,39 @@ attached to an Arc, and an index on it.
 
 `persistence/arcs.rs` owns both the table and the small domain rules around
 it: a blank name is rejected, and every create/update keeps `dir`'s
-`BRIEF.md` in sync with the row's `brief` column. Creating with no `dir`
-makes one under `<app data dir>/arcs/<id>/` and writes fresh `BRIEF.md` and
-`NOTES.md` into it. Creating with a caller-supplied `dir` requires it to
-already exist as an absolute path (`ARC_DIR_INVALID` otherwise) and never
-overwrites an existing `BRIEF.md`/`NOTES.md` there; an empty `brief` with an
-existing `BRIEF.md` reads that file into the row instead. `list_members`
-returns the sessions attached to an Arc — project, project name, workspace,
-task label, and state — for the `arc_status` tool. `count_active_members`
-and `count_launches_since` back that tool's `limits` and the launch caps in
-[agent-tools.md](agent-tools.md#arcs). See [ipc.md](ipc.md#arcs).
+`BRIEF.md` in sync with the row's `brief` column. The brief has exactly one
+source of truth per create: no `dir` requires a non-blank typed brief
+(`ARC_BRIEF_REQUIRED` otherwise) and makes the Arc's dir under
+`<app data dir>/arcs/<id>/`, writing fresh `BRIEF.md`/`NOTES.md` into it. A
+caller-supplied `dir` must already exist as an absolute path
+(`ARC_DIR_INVALID` otherwise); an existing `BRIEF.md` there is read into the
+row only when the typed brief is blank, a non-blank typed brief alongside an
+existing `BRIEF.md` is rejected (`ARC_BRIEF_EXISTS`) rather than silently
+diverging from the file, and no `BRIEF.md` with a blank typed brief is
+`ARC_BRIEF_REQUIRED` too — validated before any directory is created or file
+written. `list_members` returns the sessions attached to an Arc — project,
+project name, workspace, task label, and state — for the `arc_status` tool.
+`count_active_members` and `count_launches_since` back that tool's `limits`
+and the launch caps in [agent-tools.md](agent-tools.md#arcs).
+`check_launch_caps` is the one place those caps are enforced — `ARC_DONE`,
+`ARC_CAPACITY_REACHED`, `ARC_LAUNCH_BUDGET_REACHED` — and every launch path
+runs it twice: once as an early, non-transactional fast rejection, and once
+for real inside `ProviderSessionService::launch`'s write transaction,
+alongside the session insert and its `record_session_arc`, so two concurrent
+launches racing the cap can't both pass the early check and then both
+insert — SQLite's single writer serialises them at the transactional check.
+See [ipc.md](ipc.md#arcs).
 
 `arcs::launch_coordinator` ([src-tauri/src/arcs/mod.rs](../src-tauri/src/arcs/mod.rs))
-launches an Arc's coordinator through the ordinary session-launch path and
-calls `set_arc_coordinator_session`. A session attached to an Arc —
-coordinator or member — carries `sessions.arc_id`; `record_session_arc` sets
-it once, at launch. `sessions.launch_depth` and `launched_by_session_id` stay
-at their defaults for a coordinator (no launcher, depth 0), the same as any
-top-level chat.
+launches an Arc's coordinator through the ordinary session-launch path,
+carrying its own `arc_id` so it clears `check_launch_caps` with
+`skip_member_caps` set (its `ARC_DONE` check still applies, but it does not
+occupy a slot in the member caps it is not a member of), and calls
+`set_arc_coordinator_session`. A session attached to an Arc — coordinator or
+member — carries `sessions.arc_id`, attached inside that same launch
+transaction rather than by a follow-up call. `sessions.launch_depth` and
+`launched_by_session_id` stay at their defaults for a coordinator (no
+launcher, depth 0), the same as any top-level chat.
 
 `find_session_arc` and `arc_is_live` are the settled definition of "live":
 `active`, pointed at a coordinator session, and that coordinator's workspace

@@ -19,7 +19,6 @@ use std::sync::Arc as StdArc;
 
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::arcs::{self, ArcRecord, ArcState};
-use crate::persistence::sessions::record_session_arc;
 use crate::persistence::Database;
 use crate::providers::session_service::ProviderSessionService;
 use crate::session_control::{launch_with_spec, LaunchSpec};
@@ -31,6 +30,10 @@ pub struct LaunchCoordinatorRequest {
     pub model_label: Option<String>,
     pub model_id: Option<String>,
     pub reasoning_effort: Option<crate::providers::ReasoningEffort>,
+    /// Resolved by the caller the same way every other launch path resolves
+    /// it — the user's default-agent permission choice for this provider —
+    /// since this module has no app data dir of its own to read it from.
+    pub permission_mode: crate::providers::PermissionMode,
 }
 
 /// Launch (or relaunch) this Arc's coordinator and point the Arc at it.
@@ -85,9 +88,17 @@ pub async fn launch_coordinator(
             model_id,
             reasoning_effort,
             fast_mode: false,
-            permission_mode: crate::providers::PermissionMode::ProviderDefaults,
+            permission_mode: request.permission_mode,
             agent_mode: crate::providers::AgentMode::Auto,
             task_label: Some(format!("{} · coordinator", arc.name)),
+            // Checked and attached inside the launch's own write transaction
+            // (see `ProviderSessionService::launch`): `ARC_DONE` still
+            // applies to the coordinator launching itself, but the
+            // active-member and daily-launch-budget caps do not — it plans
+            // and delegates, it does not occupy a slot in the work it is
+            // delegating.
+            arc_id: Some(arc.id.clone()),
+            arc_is_coordinator_launch: true,
         },
         StdArc::clone(&database),
         workspaces,
@@ -102,7 +113,8 @@ pub async fn launch_coordinator(
     let connection = database.connection();
     // No `record_session_launch`: the coordinator has no launcher, and
     // `launch_depth` stays at its default of 0 — it is a top-level chat.
-    record_session_arc(&connection, &outcome.session_id, &arc.id)?;
+    // `sessions.arc_id` is already set: the launch transaction attached it
+    // alongside the session insert.
     arcs::set_arc_coordinator_session(&connection, &arc.id, Some(&outcome.session_id))
 }
 

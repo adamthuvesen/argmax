@@ -6,6 +6,7 @@ import type { IpcChannel } from "../../shared/ipcSchemas.js";
 import type {
   ActivitySummary,
   ActivitySummaryInput,
+  ArcDetail,
   ArcRecord,
   ArgmaxApi,
   AgentToolsSettings,
@@ -377,7 +378,7 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
     arcs: {
       create: (input) => invokeCommand<ArcRecord>("arc:create", input),
       list: (input) => invokeCommand<ArcRecord[]>("arc:list", input),
-      get: (input) => invokeCommand<ArcRecord>("arc:get", input),
+      get: (input) => invokeCommand<ArcDetail>("arc:get", input),
       update: (input) => invokeCommand<ArcRecord>("arc:update", input),
       setState: (input) => invokeCommand<ArcRecord>("arc:set-state", input),
       launchCoordinator: (input) => invokeCommand<ArcRecord>("arc:launch-coordinator", input)

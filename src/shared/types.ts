@@ -24,6 +24,9 @@ export type GoalSessionInput = Bindings.GoalSessionInput;
 export type GoalListInput = Bindings.GoalListInput;
 export type ArcRecord = Bindings.ArcRecord;
 export type ArcSummary = Bindings.ArcSummary;
+export type ArcDetail = Bindings.ArcDetail;
+export type ArcMemberSummary = Bindings.ArcMemberSummary;
+export type ArcLimits = Bindings.ArcLimits;
 export type ArcState = Bindings.ArcState;
 export type ArcCreateInput = Bindings.ArcCreateInput;
 export type ArcListInput = Bindings.ArcListInput;
@@ -553,7 +556,7 @@ export interface ArgmaxApi {
   arcs: {
     create: (input: ArcCreateInput) => Promise<ArcRecord>;
     list: (input: ArcListInput) => Promise<ArcRecord[]>;
-    get: (input: ArcGetInput) => Promise<ArcRecord>;
+    get: (input: ArcGetInput) => Promise<ArcDetail>;
     update: (input: ArcUpdateFieldsInput) => Promise<ArcRecord>;
     setState: (input: ArcSetStateInput) => Promise<ArcRecord>;
     launchCoordinator: (input: ArcLaunchCoordinatorInput) => Promise<ArcRecord>;

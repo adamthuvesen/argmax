@@ -6,11 +6,17 @@ GitHub PR and check status is managed in Rust under [src-tauri/src/gh](../src-ta
 - [poller.rs](../src-tauri/src/gh/poller.rs): Polls running sessions, sessions that completed in the last two minutes, and sessions with an open PR. Its transition ledger includes the PR lifecycle state, so an `OPEN` to `MERGED` change emits `dashboard:delta` even when the head SHA and checks are unchanged. It examines every associated PR, triggers eligible check-failure follow-ups, and can archive an isolated workspace after its PR work has merged.
 - [src-tauri/src/util/gh_runner.rs](../src-tauri/src/util/gh_runner.rs): Subprocess runner interface for mocking in tests.
 
+## Poll Cadence
+
+Each refresh spawns `gh pr view`, so the poller only refreshes every tick (60s) where something can move soon. Running and recently completed sessions refresh every tick. A session polled only because it has an open PR backs off while its PRs are settled: if a refresh shows no pending checks, no refresh error, and no change, the wait doubles, from 1 tick to 2, 4, 8, and then the 10-minute cap (`OPEN_PR_BACKOFF_CAP`). A change resets the wait to one tick. That includes a new head SHA, check state, PR state, or metadata. A failed refresh, or a follow-up or archive that was deferred, also resets it. When a session runs again, its backoff is cleared. The worst-case delay for noticing a push or merge made outside Argmax on a settled PR is therefore the cap.
+
+The cadence does not depend on window visibility or focus. Check-failure follow-ups and archive-on-merge have to act while the user is away.
+
 ## The Check-Failure Follow-Up
 
 One red commit gets one follow-up per workspace. Several sessions can have work evidence for the same PR, so a per-session guard could launch duplicate agents. The guard is the in-memory ledger keyed `workspace:pr:head_sha` plus its persisted twin, `check_failure_launched_in_workspace`, which survives a restart mid-failure.
 
-Only verified work on the checkout’s branch can launch a follow-up. References and unverified discoveries cannot. The launch also waits for the checkout to be free: while any session sharing its path is still running, the follow-up is deferred rather than dropped, because a second agent would edit the same tree the running one is mid-turn in and the sidebar resolves only one session per workspace. A still-failing PR is therefore re-evaluated on every tick, not only on the tick its state changed — a check that stays red offers no second transition to hang the retry on. Only a genuine state change publishes a `dashboard:delta`.
+Only verified work on the checkout’s branch can launch a follow-up. References and unverified discoveries cannot. The launch also waits for the checkout to be free: while any session sharing its path is still running, the follow-up is deferred rather than dropped, because a second agent would edit the same tree the running one is mid-turn in and the sidebar resolves only one session per workspace. A still-failing PR is therefore re-evaluated on every refresh, not only on the refresh where its state changed. A check that stays red offers no second transition to hang the retry on, so a deferred follow-up also keeps its session from backing off. Only a genuine state change publishes a `dashboard:delta`.
 
 ## Archive On Merge
 

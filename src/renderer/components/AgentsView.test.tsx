@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EventType, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
 import { useAgentTabs, type AgentTabsState } from "../hooks/useAgentTabs.js";
@@ -217,6 +217,88 @@ describe("AgentsView", () => {
   });
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
+  });
+
+  it("polls only the shown subagent and reloads a tab the moment it is shown", async () => {
+    vi.useFakeTimers();
+    const onLoadAgentEvents = vi.fn(() => Promise.resolve());
+    const events = [launch("task-1", "Explore repo"), launch("task-2", "Write tests")];
+    const dock = (activeTabId: string) => (
+      <AgentsView
+        events={events}
+        parentSession={session}
+        agentTabs={agentTabs({ tabIds: ["task-1", "task-2"], activeTabId })}
+        workspace={workspace}
+        onLoadAgentEvents={onLoadAgentEvents}
+      />
+    );
+    const loadsFor = (toolUseId: string): number =>
+      onLoadAgentEvents.mock.calls.filter((call: unknown[]) => call[1] === toolUseId).length;
+    const settle = async (): Promise<void> => {
+      await act(async () => {
+        await Promise.resolve();
+      });
+    };
+
+    const { rerender } = render(dock("task-2"));
+    await settle();
+    // Every pane still loads once on mount.
+    expect(loadsFor("task-1")).toBe(1);
+    expect(loadsFor("task-2")).toBe(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500 * 3);
+    });
+    expect(loadsFor("task-1")).toBe(1);
+    expect(loadsFor("task-2")).toBe(4);
+
+    // Shown again: no wait for the next tick.
+    rerender(dock("task-1"));
+    await settle();
+    expect(loadsFor("task-1")).toBe(2);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(loadsFor("task-1")).toBe(3);
+    expect(loadsFor("task-2")).toBe(4);
+  });
+
+  it("reloads a subagent that finished while its tab was hidden", async () => {
+    const onLoadAgentEvents = vi.fn(() => Promise.resolve());
+    const events = [launch("task-1", "Explore repo"), launch("task-2", "Write tests")];
+    const dock = (activeTabId: string, parentSession: SessionSummary) => (
+      <AgentsView
+        events={events}
+        parentSession={parentSession}
+        agentTabs={agentTabs({ tabIds: ["task-1", "task-2"], activeTabId })}
+        workspace={workspace}
+        onLoadAgentEvents={onLoadAgentEvents}
+      />
+    );
+    const loadsFor = (toolUseId: string): number =>
+      onLoadAgentEvents.mock.calls.filter((call: unknown[]) => call[1] === toolUseId).length;
+    const completed: SessionSummary = { ...session, state: "complete" };
+
+    const { rerender } = render(dock("task-2", session));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    rerender(dock("task-2", completed));
+    expect(loadsFor("task-1")).toBe(1);
+
+    // Nothing polls a finished run, but its last trace may never have loaded.
+    rerender(dock("task-1", completed));
+    expect(loadsFor("task-1")).toBe(2);
+
+    // A tab that never missed a live poll does not reload on every switch.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    rerender(dock("task-2", completed));
+    rerender(dock("task-1", completed));
+    expect(loadsFor("task-1")).toBe(2);
   });
 
   it("points at the transcript when nothing is open", () => {
@@ -236,7 +318,7 @@ describe("AgentsView", () => {
     // The newer launch sits leftmost.
     expect(tabs[0]).toHaveAttribute("aria-selected", "true");
     expect(tabs[1]).toHaveAttribute("aria-selected", "false");
-    // Both stay mounted so each keeps polling; only the active one is shown.
+    // Both stay mounted so switching back is instant; only the active one is shown.
     expect(document.getElementById("review-agent-task-1")).toHaveAttribute("aria-hidden", "true");
     expect(document.getElementById("review-agent-task-2")).not.toHaveAttribute("aria-hidden");
   });

@@ -75,7 +75,10 @@ export function WorkingNest({
     if (!active) return;
 
     for (const part of nestRef.current?.querySelectorAll(".working-nest-part") ?? []) {
-      for (const animation of part.getAnimations?.() ?? []) {
+      // `subtree` reaches the part's pseudo-elements, which carry the `nest`
+      // relay's colour layers; left out, they keep mount-relative timing and
+      // drift off the dot's scale.
+      for (const animation of part.getAnimations?.({ subtree: true }) ?? []) {
         // CSS delays are normally relative to mount time. Anchoring every part
         // to the document timeline keeps duplicate marks on the same beat.
         animation.startTime = 0;

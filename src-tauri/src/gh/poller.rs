@@ -25,6 +25,12 @@ use super::service::GhService;
 
 pub const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(60);
 
+/// Longest wait between refreshes of a settled PR that is polled only because
+/// it is open. Every `gh pr view` is a process spawn, and long-lived open PRs
+/// would otherwise cost one per tick while nobody is working. This is also the
+/// worst-case delay before a push or merge made outside Argmax is noticed.
+const OPEN_PR_BACKOFF_CAP: Duration = Duration::from_secs(600);
+
 /// Bound on concurrent `gh pr view` calls per tick. Without it, a single
 /// slow `gh` (15s default timeout) holds the re-entrancy guard for 15s × N
 /// sessions — far past the 60s tick.
@@ -137,6 +143,21 @@ struct PollerInner {
     /// failures keyed `workspace:pr:head_sha`, merges keyed
     /// `merged:workspace:pr`. Bounded so a long-running app doesn't grow it.
     fired_ledger: Mutex<VecDeque<String>>,
+    /// Backoff for sessions polled only because they have an open PR, keyed by
+    /// session id. A missing entry means every tick. Pruned each tick to the
+    /// sessions that are still open-PR-only.
+    open_pr_backoff: Mutex<HashMap<String, OpenPrBackoff>>,
+    /// `OPEN_PR_BACKOFF_CAP` expressed in ticks of this poller's interval.
+    backoff_cap_ticks: u32,
+}
+
+/// Counted in ticks rather than wall time so the schedule follows the ticker.
+#[derive(Debug, Clone, Copy)]
+struct OpenPrBackoff {
+    /// Ticks between refreshes: 1, 2, 4, 8, … up to `backoff_cap_ticks`.
+    wait_ticks: u32,
+    /// Ticks still to skip before the next refresh.
+    skip_ticks: u32,
 }
 
 impl PollerInner {
@@ -176,6 +197,10 @@ impl GhPoller {
                 on_pr_merged: config.on_pr_merged,
                 last_state: Mutex::new(HashMap::new()),
                 fired_ledger: Mutex::new(VecDeque::new()),
+                open_pr_backoff: Mutex::new(HashMap::new()),
+                backoff_cap_ticks: (OPEN_PR_BACKOFF_CAP.as_millis()
+                    / config.interval.as_millis().max(1))
+                .clamp(1, u32::MAX as u128) as u32,
             }),
             interval: config.interval,
             tasks: Mutex::new(Vec::new()),
@@ -253,7 +278,8 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
             });
         }
     }
-    let session_ids = pollable_session_ids(&inner.database)?;
+    let pollable = pollable_sessions(&inner.database)?;
+    let session_ids = sessions_due_this_tick(&inner, &pollable.open_pr_only, pollable.all);
     if session_ids.is_empty() {
         return Ok(());
     }
@@ -296,16 +322,30 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
     // the full fanout so hooks never act on a superseded OPEN response.
     let mut transitions: Vec<Transition> = Vec::new();
     let mut reserved_checkouts = HashSet::new();
+    let mut settled_open_pr_sessions = HashSet::new();
     for session_id in refreshed_sessions {
         let rows = inner.service.list_for_session(&session_id)?;
+        let mut settled = true;
         for pr in rows {
             if let Some(transition) =
                 detect_transition(&inner, &session_id, &pr, &mut reserved_checkouts)
             {
+                settled &= !transition.publish && !transition.retry;
                 transitions.push(transition);
             }
+            settled &= pr_is_settled(&inner, &session_id, pr.pr_number);
+        }
+        if settled && pollable.open_pr_only.contains(&session_id) {
+            settled_open_pr_sessions.insert(session_id);
         }
     }
+    update_open_pr_backoff(
+        &inner,
+        session_ids
+            .iter()
+            .filter(|session_id| pollable.open_pr_only.contains(*session_id)),
+        &settled_open_pr_sessions,
+    );
 
     if transitions.is_empty() {
         return Ok(());
@@ -366,24 +406,92 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
     Ok(())
 }
 
-/// Union of `running` sessions, recently completed sessions, and sessions with
-/// an OPEN gh_pr row, dedup'd.
-fn pollable_session_ids(database: &Arc<Database>) -> ArgmaxResult<Vec<String>> {
+struct PollableSessions {
+    /// Union of `running` sessions, recently completed sessions, and sessions
+    /// with an OPEN PR, dedup'd.
+    all: Vec<String>,
+    /// The subset polled only because of an open PR. These back off while
+    /// their PRs stay settled; everything else is refreshed every tick.
+    open_pr_only: HashSet<String>,
+}
+
+fn pollable_sessions(database: &Arc<Database>) -> ArgmaxResult<PollableSessions> {
     let conn = database.connection();
-    let mut ids: HashSet<String> = list_running_session_ids(&conn)?.into_iter().collect();
-    for id in list_open_gh_pr_session_ids(&conn)? {
-        ids.insert(id);
-    }
+    let mut active: HashSet<String> = list_running_session_ids(&conn)?.into_iter().collect();
     let since = chrono::Utc::now()
         .checked_sub_signed(chrono::Duration::seconds(
             RECENTLY_COMPLETED_POLL_WINDOW.as_secs() as i64,
         ))
         .unwrap_or_else(chrono::Utc::now)
         .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    for id in list_recently_completed_session_ids(&conn, &since)? {
-        ids.insert(id);
+    active.extend(list_recently_completed_session_ids(&conn, &since)?);
+    let open_pr_only: HashSet<String> = list_open_gh_pr_session_ids(&conn)?
+        .into_iter()
+        .filter(|id| !active.contains(id))
+        .collect();
+    let all = active
+        .into_iter()
+        .chain(open_pr_only.iter().cloned())
+        .collect();
+    Ok(PollableSessions { all, open_pr_only })
+}
+
+/// Drops backoff entries for sessions that are no longer open-PR-only — a
+/// session that is running again restarts at every tick when it settles back
+/// — and holds back the open-PR-only sessions still waiting out their backoff.
+fn sessions_due_this_tick(
+    inner: &PollerInner,
+    open_pr_only: &HashSet<String>,
+    all: Vec<String>,
+) -> Vec<String> {
+    let mut backoff = inner.open_pr_backoff.lock_or_recover("open_pr_backoff");
+    backoff.retain(|session_id, _| open_pr_only.contains(session_id));
+    all.into_iter()
+        .filter(|session_id| match backoff.get_mut(session_id) {
+            Some(entry) if entry.skip_ticks > 0 => {
+                entry.skip_ticks -= 1;
+                false
+            }
+            _ => true,
+        })
+        .collect()
+}
+
+/// Checks still running or a failed read can resolve on any tick, so neither
+/// counts as settled.
+fn pr_is_settled(inner: &PollerInner, session_id: &str, pr_number: i64) -> bool {
+    let state = inner.last_state.lock_or_recover("last_state");
+    state
+        .get(&(session_id.to_string(), pr_number))
+        .is_some_and(|pr| pr.check_state != "pending" && pr.refresh_error.is_none())
+}
+
+/// Doubles the wait for each open-PR-only session refreshed this tick whose
+/// PRs were settled and unchanged. Any other one goes back to every tick,
+/// including a session whose refresh failed.
+fn update_open_pr_backoff<'a>(
+    inner: &PollerInner,
+    refreshed_open_pr_only: impl Iterator<Item = &'a String>,
+    settled: &HashSet<String>,
+) {
+    let mut backoff = inner.open_pr_backoff.lock_or_recover("open_pr_backoff");
+    for session_id in refreshed_open_pr_only {
+        if !settled.contains(session_id) {
+            backoff.remove(session_id);
+            continue;
+        }
+        let wait_ticks = backoff
+            .get(session_id)
+            .map_or(2, |entry| entry.wait_ticks.saturating_mul(2))
+            .min(inner.backoff_cap_ticks);
+        backoff.insert(
+            session_id.clone(),
+            OpenPrBackoff {
+                wait_ticks,
+                skip_ticks: wait_ticks - 1,
+            },
+        );
     }
-    Ok(ids.into_iter().collect())
 }
 
 #[derive(Debug, Clone)]
@@ -396,6 +504,9 @@ struct Transition {
     /// Set once per workspace when its PR merges and the project archives on
     /// merge. Independent of `publish` for the same reason as `is_failure`.
     merged: Option<MergedPrContext>,
+    /// A hook wanted to act but declined for a reason that clears on its own
+    /// (a running turn, a failed lookup), so the session must not back off.
+    retry: bool,
     context: CheckFailureContext,
 }
 
@@ -461,6 +572,7 @@ fn detect_transition(
         publish: changed,
         is_failure: false,
         merged: None,
+        retry: false,
         context: CheckFailureContext {
             session_id: session_id.to_string(),
             workspace_id: String::new(),
@@ -486,18 +598,22 @@ fn detect_transition(
                 // the observers each tick.
                 let ledger_key =
                     format!("{}:{}:{}", workspace_id, latest.pr_number, latest.head_sha);
-                if !inner.ledger_has(&ledger_key)
-                    && !already_launched(inner, &workspace_id, latest)
-                    && !workspace_is_busy(inner, &workspace_id)
-                    && reserve_checkout(inner, &workspace_id, reserved_checkouts)
+                if !inner.ledger_has(&ledger_key) && !already_launched(inner, &workspace_id, latest)
                 {
-                    inner.ledger_add(ledger_key);
-                    transition.context.workspace_id = workspace_id;
-                    transition.is_failure = true;
+                    if !workspace_is_busy(inner, &workspace_id)
+                        && reserve_checkout(inner, &workspace_id, reserved_checkouts)
+                    {
+                        inner.ledger_add(ledger_key);
+                        transition.context.workspace_id = workspace_id;
+                        transition.is_failure = true;
+                    } else {
+                        transition.retry = true;
+                    }
                 }
             }
             Ok(None) => {}
             Err(error) => {
+                transition.retry = true;
                 tracing::warn!(
                     %session_id,
                     ?error,
@@ -529,6 +645,7 @@ fn detect_transition(
                             pr_number = latest.pr_number,
                             "gh poller: PR merged but a turn is still running; archive deferred"
                         );
+                        transition.retry = true;
                     } else {
                         inner.ledger_add(ledger_key);
                         transition.merged = Some(MergedPrContext {
@@ -540,6 +657,7 @@ fn detect_transition(
             }
             Ok(None) => {}
             Err(error) => {
+                transition.retry = true;
                 tracing::warn!(
                     %session_id,
                     ?error,
@@ -549,7 +667,11 @@ fn detect_transition(
         }
     }
 
-    if !transition.publish && !transition.is_failure && transition.merged.is_none() {
+    if !transition.publish
+        && !transition.is_failure
+        && transition.merged.is_none()
+        && !transition.retry
+    {
         return None;
     }
     Some(transition)
@@ -1110,8 +1232,8 @@ mod tests {
         };
         assert_eq!(open, vec!["s1".to_string()]);
 
-        let pollable = pollable_session_ids(&database).expect("pollable");
-        assert!(!pollable.iter().any(|id| id == "s2"));
+        let pollable = pollable_sessions(&database).expect("pollable");
+        assert!(!pollable.all.iter().any(|id| id == "s2"));
     }
 
     #[tokio::test]
@@ -1615,6 +1737,252 @@ mod tests {
         );
         poller.tick_for_test().await.expect("tick with no sessions");
         assert_eq!(publish_count.load(Ordering::SeqCst), 0);
+    }
+
+    /// Answers every `gh` call with the current payload and counts the calls,
+    /// so a test can tell which ticks actually refreshed.
+    struct PayloadRunner {
+        payload: Mutex<String>,
+        calls: AtomicUsize,
+    }
+
+    impl PayloadRunner {
+        fn new(payload: String) -> Arc<Self> {
+            Arc::new(Self {
+                payload: Mutex::new(payload),
+                calls: AtomicUsize::new(0),
+            })
+        }
+
+        fn set(&self, payload: String) {
+            *self.payload.lock().expect("payload poisoned") = payload;
+        }
+
+        fn runner(self: Arc<Self>) -> GhRunner {
+            Arc::new(move |_cwd, _args| {
+                self.calls.fetch_add(1, Ordering::SeqCst);
+                let payload = self.payload.lock().expect("payload poisoned").clone();
+                Box::pin(async move { Ok(payload) })
+            })
+        }
+    }
+
+    fn pr_payload(head_sha: &str, conclusion: &str) -> String {
+        format!(
+            r#"{{"number": 42, "headRefOid": "{head_sha}", "headRefName": "feature/x", "state": "OPEN", "statusCheckRollup": [{{"conclusion": "{conclusion}"}}]}}"#
+        )
+    }
+
+    /// Runs the ticks numbered `ticks` and returns the ones that called `gh`.
+    async fn ticks_that_refreshed(
+        poller: &GhPoller,
+        runner: &PayloadRunner,
+        ticks: std::ops::RangeInclusive<usize>,
+    ) -> Vec<usize> {
+        let mut refreshed = Vec::new();
+        for tick in ticks {
+            let before = runner.calls.load(Ordering::SeqCst);
+            poller.tick_for_test().await.expect("tick");
+            if runner.calls.load(Ordering::SeqCst) > before {
+                refreshed.push(tick);
+            }
+        }
+        refreshed
+    }
+
+    /// Outside the recently completed window, so only its open PR polls it.
+    fn complete_session_long_ago(database: &Arc<Database>, session_id: &str) {
+        let conn = database.connection();
+        conn.execute(
+            "UPDATE sessions SET state = 'complete', completed_at = '2000-01-01T00:00:00.000Z' WHERE id = ?",
+            [session_id],
+        )
+        .expect("complete session long ago");
+    }
+
+    fn set_session_running(database: &Arc<Database>, session_id: &str) {
+        let conn = database.connection();
+        conn.execute(
+            "UPDATE sessions SET state = 'running', completed_at = NULL WHERE id = ?",
+            [session_id],
+        )
+        .expect("resume session");
+    }
+
+    fn seed_open_pr(database: &Arc<Database>) {
+        let conn = database.connection();
+        upsert_gh_pr(
+            &conn,
+            &GhPrRecord {
+                session_id: "s1".to_string(),
+                pr_number: 42,
+                head_sha: "feedface".to_string(),
+                last_seen_check_state: "pending".to_string(),
+                updated_at: now_iso(),
+                pr_state: Some("OPEN".to_string()),
+                notified_at: None,
+                pr_created_at: None,
+                pr_merged_at: None,
+                head_ref_name: None,
+            },
+        )
+        .expect("seed gh_pr");
+    }
+
+    fn open_pr_poller(
+        database: &Arc<Database>,
+        runner: &Arc<PayloadRunner>,
+        failure_hook: Option<CheckFailureHook>,
+    ) -> Arc<GhPoller> {
+        let service = GhService::with_runner(Arc::clone(database), Arc::clone(runner).runner());
+        let mut config = GhPollerConfig::new(Arc::clone(database), service);
+        config.on_check_failure = failure_hook;
+        GhPoller::new(config)
+    }
+
+    // A long-lived open PR nobody is working on costs a `gh` spawn per tick.
+    // Once its checks settle and nothing moves, the wait doubles to the cap.
+    #[tokio::test]
+    async fn settled_open_pr_backs_off_to_the_cap() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        complete_session_long_ago(&database, "s1");
+        seed_open_pr(&database);
+        let runner = PayloadRunner::new(pr_payload("feedface", "success"));
+        let poller = open_pr_poller(&database, &runner, None);
+
+        assert_eq!(
+            ticks_that_refreshed(&poller, &runner, 1..=36).await,
+            vec![1, 2, 4, 8, 16, 26, 36],
+            "waits 1, 2, 4, 8, then the 10-tick cap"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_pr_change_resets_the_backoff() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        complete_session_long_ago(&database, "s1");
+        seed_open_pr(&database);
+        let runner = PayloadRunner::new(pr_payload("feedface", "success"));
+        let poller = open_pr_poller(&database, &runner, None);
+
+        assert_eq!(
+            ticks_that_refreshed(&poller, &runner, 1..=7).await,
+            vec![1, 2, 4]
+        );
+        runner.set(pr_payload("c0ffee", "success"));
+        assert_eq!(
+            ticks_that_refreshed(&poller, &runner, 8..=12).await,
+            vec![8, 9, 11],
+            "the push seen on tick 8 puts the PR back on every tick"
+        );
+    }
+
+    // Pending checks can finish on any tick, so they never back off.
+    #[tokio::test]
+    async fn pending_checks_keep_an_open_pr_on_every_tick() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        complete_session_long_ago(&database, "s1");
+        seed_open_pr(&database);
+        let runner = PayloadRunner::new(pr_payload("feedface", "pending"));
+        let poller = open_pr_poller(&database, &runner, None);
+
+        assert_eq!(
+            ticks_that_refreshed(&poller, &runner, 1..=5).await,
+            vec![1, 2, 3, 4, 5]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_running_session_refreshes_every_tick_and_restarts_its_backoff() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        complete_session_long_ago(&database, "s1");
+        seed_open_pr(&database);
+        let runner = PayloadRunner::new(pr_payload("feedface", "success"));
+        let poller = open_pr_poller(&database, &runner, None);
+
+        assert_eq!(
+            ticks_that_refreshed(&poller, &runner, 1..=4).await,
+            vec![1, 2, 4]
+        );
+        set_session_running(&database, "s1");
+        assert_eq!(
+            ticks_that_refreshed(&poller, &runner, 5..=7).await,
+            vec![5, 6, 7],
+            "a running session ignores the backoff it had built up"
+        );
+        complete_session_long_ago(&database, "s1");
+        assert_eq!(
+            ticks_that_refreshed(&poller, &runner, 8..=11).await,
+            vec![8, 10],
+            "back to open-PR-only, it starts over from every tick"
+        );
+    }
+
+    // The follow-up must survive both the backoff and its own deferral: the
+    // failure lands while another turn holds the checkout, and a check that
+    // stays red offers no second change to reset the backoff on.
+    #[tokio::test]
+    async fn a_failing_push_fires_the_follow_up_after_backoff_started() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        complete_session_long_ago(&database, "s1");
+        seed_open_pr(&database);
+        let runner = PayloadRunner::new(pr_payload("feedface", "success"));
+        let failure_hits = Arc::new(AtomicUsize::new(0));
+        let failure_count = Arc::clone(&failure_hits);
+        let hook: CheckFailureHook = Arc::new(move |ctx: CheckFailureContext| {
+            assert_eq!(ctx.head_sha, "badc0de");
+            failure_count.fetch_add(1, Ordering::SeqCst);
+        });
+        let poller = open_pr_poller(&database, &runner, Some(hook));
+
+        assert_eq!(
+            ticks_that_refreshed(&poller, &runner, 1..=4).await,
+            vec![1, 2, 4]
+        );
+
+        runner.set(pr_payload("badc0de", "failure"));
+        {
+            // Waiting holds the checkout without joining the every-tick set.
+            let conn = database.connection();
+            persist_session(
+                &conn,
+                &PersistSessionInput {
+                    id: "s2".to_string(),
+                    workspace_id: "w1".to_string(),
+                    provider: "claude".to_string(),
+                    model_label: "Haiku 4.5".to_string(),
+                    model_id: "claude-haiku-4.5".to_string(),
+                    reasoning_effort: None,
+                    permission_mode: Some("auto-approve".to_string()),
+                    agent_mode: Some("auto".to_string()),
+                    prompt: "busy".to_string(),
+                    state: SessionState::Waiting,
+                },
+            )
+            .expect("busy session");
+        }
+        assert_eq!(
+            ticks_that_refreshed(&poller, &runner, 5..=9).await,
+            vec![8, 9]
+        );
+        assert_eq!(
+            failure_hits.load(Ordering::SeqCst),
+            0,
+            "deferred while the checkout is busy"
+        );
+
+        complete_session_long_ago(&database, "s2");
+        assert_eq!(
+            ticks_that_refreshed(&poller, &runner, 10..=10).await,
+            vec![10],
+            "a deferred follow-up keeps the PR on every tick"
+        );
+        assert_eq!(failure_hits.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]

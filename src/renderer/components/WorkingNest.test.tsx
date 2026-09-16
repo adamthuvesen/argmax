@@ -51,6 +51,9 @@ describe("<WorkingNest />", () => {
     render(<WorkingNest active phaseKey="session-alpha" />);
 
     expect(getAnimations).toHaveBeenCalledTimes(4);
+    // The nest's colour layers are pseudo-element animations, which only a
+    // subtree read returns.
+    expect(getAnimations).toHaveBeenCalledWith({ subtree: true });
     expect(animations.every((animation) => animation.startTime === 0)).toBe(true);
   });
 

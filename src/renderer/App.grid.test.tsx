@@ -1876,7 +1876,7 @@ describe("App grid", () => {
     });
   });
 
-  it("keeps an inactive but still-running subagent tab polling", async () => {
+  it("stops polling a hidden running subagent tab and catches it up when shown", async () => {
     mockDashboardSnapshot({
       ...snapshot,
       events: [
@@ -1929,11 +1929,19 @@ describe("App grid", () => {
       expect(sessionAgentEvents).toHaveBeenCalledWith({ sessionId: "session-1", parentToolUseId: "task-2" });
     });
 
+    const task2Calls = (): number =>
+      sessionAgentEvents.mock.calls.filter((call) => call[0].parentToolUseId === "task-2").length;
     const before = task1Calls();
+    const shownBefore = task2Calls();
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1500);
+      await vi.advanceTimersByTimeAsync(1500 * 3);
     });
+    // The shown tab polls; the hidden one waits.
+    expect(task2Calls()).toBeGreaterThan(shownBefore);
+    expect(task1Calls()).toBe(before);
 
+    // Showing it loads straight away rather than on the next tick.
+    fireEvent.click(screen.getByRole("tab", { name: "Gauss" }));
     await waitFor(() => {
       expect(task1Calls()).toBeGreaterThan(before);
     });

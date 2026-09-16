@@ -167,13 +167,20 @@ working nest was SVG for that reason and is now absolutely-positioned `<span>`s
 ([WorkingNest.tsx](../src/renderer/components/WorkingNest.tsx)), which is what
 makes it affordable to run one per visible row.
 
-Two keyframes still drive non-composited properties, both deliberately:
-`skeleton-shimmer` (`background-position`) only runs while a review is loading,
-and `working-nest-relay` (`background`) only under `[data-active="true"]`, for
-the two-tone hand-off that is the whole idea of the `nest` style — the
-alternative, two stacked dots cross-fading, doubles the element count of the
-default mark to save a repaint on four 4px boxes. Neither runs at rest. Anything
-new that loops forever should animate `transform`/`opacity` on an HTML element.
+One keyframe still drives a non-composited property, deliberately:
+`skeleton-shimmer` (`background-position`), which only runs while a review is
+loading. The `nest` style's two-tone hand-off used to animate `background`,
+repainting every dot of every running row each frame. Its colours are now two
+`::before`/`::after` layers over the dot's rest fill that only fade, on the same
+keyframe stops and easings as the dot's scale, so the relay adds no DOM
+elements and runs on the compositor. The layers' animations are pseudo-element
+animations, so `WorkingNest` anchors them with `getAnimations({ subtree: true })`.
+Measured 2026-09-16 in a native WKWebView with 80 running 14px nests: the
+`background` relay cost 6.3 CPU-s of WebContent plus 1.2 CPU-s of the GPU
+process per 8 s; the layered relay cost 0.0 in both, with all three animations
+confirmed running.
+Anything new that loops forever should animate `transform`/`opacity` on an HTML
+element or its pseudo-elements.
 
 Renderer CPU does not depend on the Rust build profile; the release build idles
 at 3.2% with no session running, matching the debug measurement.
@@ -198,9 +205,18 @@ JS loops that CSS pausing cannot reach check `document.hidden` themselves:
   32 ms tick, paced per arrival so a whole backlog drains in ~1.3 s) catches up
   silently while hidden instead of pausing the prefix: a backgrounded live turn
   can land several finished bubbles, and holding them at character zero made
-  them all type out together on return. The 1.5 s open-agent poll in
-  [AgentActivity](../src/renderer/components/AgentActivity.tsx) still skips
-  ticks while hidden. General session tails have no interval. A post-commit push
+  them all type out together on return. Every revealing block shares one
+  interval, started by the first and cleared with the last, so React batches
+  all of their advances into one render per tick.
+- The 1.5 s open-agent poll in
+  [AgentActivity](../src/renderer/components/AgentActivity.tsx) runs only for
+  the Agents dock tab that is shown, and still skips ticks while the document is
+  hidden. Every open tab loads once on mount. A tab that stopped polling a live
+  run while another tab was shown reloads the moment it is shown again, since
+  Codex and Cursor child traces are imported by that read and a run that
+  finished out of sight would otherwise keep its last load. The dock itself
+  unmounts when the review panel leaves Agents mode or the phone overlay
+  closes, so no poll outlives it. General session tails have no interval. A post-commit push
   hint asks the subscribed timeline to read its durable revision feed. The
   visibility-change refresh backfills the selected session on return. Hidden
   windows stop interval work, while push hints can still trigger bounded

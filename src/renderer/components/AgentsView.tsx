@@ -58,7 +58,8 @@ interface DockTab {
  * and per multitask dispatched from it, and the active one below. Both kinds
  * sit in one strip because they are one thing to the reader: what else is
  * running for me right now. Every tab stays mounted (inactive ones hidden by
- * CSS) so each keeps loading and polling in the background.
+ * CSS) so switching back is instant, but only the shown subagent polls; a tab
+ * reloads the moment it is shown again.
  */
 export function AgentsView({
   chatFontSize,
@@ -445,6 +446,7 @@ export function AgentsView({
                   defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
                   thinkingDisplay={thinkingDisplay}
                   isFocused={isFocused && isActive}
+                  visible={isActive}
                   onLoadAgentEvents={onLoadAgentEvents}
                   onLoadSessionEvents={onLoadSessionEvents}
                   onOpenAgent={onOpenAgent}

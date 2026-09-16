@@ -191,7 +191,9 @@ async fn resolve_review_target(
     match kind {
         WorkspaceTargetKind::Project => {
             let project = {
-                let connection = database.connection();
+                // A read-only lookup; nothing upstream just wrote this row,
+                // so the reader pool is safe and avoids the writer mutex.
+                let connection = database.read_connection();
                 require_project(&connection, id)?
             };
             let primary = project
@@ -239,7 +241,9 @@ fn load_workspace_with_default_branch(
     database: &Database,
     workspace_id: &str,
 ) -> ArgmaxResult<(WorkspaceSummary, Option<String>)> {
-    let connection = database.connection();
+    // Read-only lookup; the reader pool avoids taking the single writer mutex
+    // for a plain SELECT.
+    let connection = database.read_connection();
     let workspace = find_workspace_by_id(&connection, workspace_id)?;
     let default_branch = require_project(&connection, &workspace.project_id)
         .ok()

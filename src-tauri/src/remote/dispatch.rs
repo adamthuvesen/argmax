@@ -363,7 +363,11 @@ async fn dispatch_standard(
         }
         "session:fork" => {
             let input: SessionForkInput = parse(channel, input)?;
-            encode(session::session_fork_impl(state, input)?)
+            // Shares the desktop command's `spawn_blocking` (see
+            // `session_fork_impl_async`): forking copies a transcript
+            // (thousands of row inserts), long enough to park a shared tokio
+            // worker if awaited inline on the dispatch task.
+            encode(session::session_fork_impl_async(state, input).await?)
         }
         "session:multitask" => {
             let input: SessionMultitaskInput = parse(channel, input)?;
@@ -375,7 +379,7 @@ async fn dispatch_standard(
         }
         "session:cost-summary" => {
             let input: SessionCostSummaryInput = parse(channel, input)?;
-            encode(session::session_cost_summary_impl(state, input)?)
+            encode(session::session_cost_summary_impl(state, input).await?)
         }
         "session:search" => {
             let input: SessionSearchInput = parse(channel, input)?;

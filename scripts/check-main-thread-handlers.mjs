@@ -45,7 +45,6 @@ const MAIN_THREAD_ALLOWLIST = new Map([
   ["providers:cancel-queued-message", "in-memory queue edit"],
   ["terminal:resize", "in-memory PTY size update"],
   ["prs:list-for-session", "indexed read of one session's PR rows"],
-  ["session:cost-summary", "indexed aggregate over one session"],
   ["skills:list", "small read plus a cached registry lookup"],
   ["learnings:update", "single-row write"],
   ["learnings:delete", "single-row write"],

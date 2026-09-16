@@ -691,6 +691,46 @@ async systemDiagnostics(input: SystemDiagnosticsInput) : Promise<Result<Diagnost
 async systemDebugSnapshot(input: SystemDebugSnapshotInput) : Promise<DebugSnapshot> {
     return await TAURI_INVOKE("system_debug_snapshot", { input });
 },
+async systemPerformanceStart(input: SystemPerformanceStartInput) : Promise<Result<PerformanceStatus, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("system_performance_start", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async systemPerformanceStop(input: SystemPerformanceStopInput) : Promise<Result<PerformanceCapture, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("system_performance_stop", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async systemPerformanceStatus(input: SystemPerformanceStatusInput) : Promise<Result<PerformanceStatus, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("system_performance_status", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async systemPerformanceCapture(input: SystemPerformanceCaptureInput) : Promise<Result<PerformanceCapture, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("system_performance_capture", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async systemRendererStall(input: SystemRendererStallInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("system_renderer_stall", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async systemVacuumDatabase(input: SystemVacuumDatabaseInput) : Promise<Result<SystemOk, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("system_vacuum_database", { input }) };
@@ -1856,6 +1896,7 @@ messageId?: string | null }
 export type MultitaskLaunched = { sessionId: string; workspaceId: string; taskLabel: string }
 export type NonEmptyString = string
 export type NullableExpectedMtimeMs = number | null
+export type NumericSummary = { median: number; p95: number; peak: number }
 export type OpenIdeChoice = "default" | "vscode" | "cursor" | "windsurf" | "zed" | "terminal" | "iterm"
 export type OpenPath = string
 export type PageExtraction = { tabId?: string; url: string; title: string; state?: string; metadata: PageMetadata; headings: PageHeading[]; sections: PageSection[]; tables: PageTable[]; links: PageLink[]; items?: PageItem[]; fields?: PageField[]; truncated: boolean }
@@ -1888,7 +1929,14 @@ export type PendingMessage = { id: string; sessionId: string; content: string; a
  * Send explicitly.
  */
 recoveryStatus?: string | null; queuedAt: string }
+export type PerformanceCapture = { startedAt: string | null; stoppedAt: string | null; recording: boolean; droppedSamples: number; environment: PerformanceEnvironment; summary: PerformanceCaptureSummary; samples: PerformanceSample[] }
+export type PerformanceCaptureSummary = { cpuPercent: NumericSummary; rssBytes: NumericSummary; cpuPercentPerRunningChat: NumericSummary; samplerOverheadMs: NumericSummary; rendererStallCount: number; rendererStallMs: number; sqliteWaitCount: number; sqliteWaitMs: number; providerEvents: number; ipcCalls: number }
+export type PerformanceEnvironment = { appVersion: string; platform: string; arch: string; buildProfile: string; logicalCpuCount: number; sampleIntervalMs: number; sampleCapacity: number }
+export type PerformanceSample = { capturedAt: string; elapsedMs: number; samplerOverheadMs: number; processes: ProcessTreeMetrics; runningChats: number; runningChatsByProvider: Partial<{ [key in string]: number }>; providerEvents: number; providerEventsPerSecond: number; ipcCalls: number; ipcCallsPerSecond: number; pendingProviderItems: number; sqlite: SqlitePressureMetrics; rendererStalls: RendererStallMetrics }
+export type PerformanceStatus = { recording: boolean; startedAt: string | null; sampleCount: number; droppedSamples: number; latest: PerformanceSample | null }
 export type PermissionMode = "provider-defaults" | "auto-approve" | "ask-each-time"
+export type ProcessGroupMetrics = { cpuPercent: number; rssBytes: number; processCount: number }
+export type ProcessTreeMetrics = { total: ProcessGroupMetrics; host: ProcessGroupMetrics; webview: ProcessGroupMetrics; agents: ProcessGroupMetrics }
 export type ProjectCounts = { active: number; blocked: number; failed: number; reviewReady: number }
 export type ProjectFolderPickResult = { cancelled: boolean } | { cancelled: boolean; project: ProjectSummary }
 export type ProjectId = string
@@ -2076,6 +2124,7 @@ tailnetUrl: string | null; tailscaleRunning: boolean;
 pairingUrl: string; qrSvg: string; serveCommand: string; apns: RemoteApnsStatus }
 export type RemoteTestNotificationInput = Record<string, never>
 export type RemoteUnregisterPushDeviceInput = { token: string }
+export type RendererStallMetrics = { count: number; totalMs: number; longestMs: number }
 export type RepoPath = string
 export type ReviewCommitStagedInput = { workspaceId: string; message: string }
 /**
@@ -2249,6 +2298,7 @@ export type SourcesDeleteInput = { projectId: ProjectId; id: NonEmptyString }
 export type SourcesListInput = { projectId: ProjectId }
 export type SourcesUpdateInput = { projectId: ProjectId; id: NonEmptyString; source: SourceInput }
 export type SqlitePragmas = { journalMode: string; foreignKeys: number; synchronous: number; busyTimeout: number; walAutocheckpoint: number }
+export type SqlitePressureMetrics = { activeReaders: number; waitingReads: number; waitMs: number }
 export type SqliteReaderStats = { maxConcurrent: number; active: number; idle: number; peakActive: number; opened: number; openFailures: number; waitCount: number; totalWaitMs: number; longestWaitMs: number }
 export type StartupPhaseRecord = { phase: string; elapsedMs: number; deltaMs: number }
 export type StreamChunk = string
@@ -2282,6 +2332,11 @@ export type SystemDiagnosticsInput = Record<string, never>
 export type SystemListDetectedIdesInput = Record<string, never>
 export type SystemOk = { ok: boolean }
 export type SystemOpenPathInput = { path: OpenPath; cwd: NonEmptyString | null }
+export type SystemPerformanceCaptureInput = Record<string, never>
+export type SystemPerformanceStartInput = Record<string, never>
+export type SystemPerformanceStatusInput = Record<string, never>
+export type SystemPerformanceStopInput = Record<string, never>
+export type SystemRendererStallInput = { durationMs: number }
 /**
  * The app-wide default agent (Settings → Agents), including per-provider
  * permission modes. The renderer mirrors it here for autonomous launches.

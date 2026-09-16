@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use rusqlite::Connection;
 use serde::Serialize;
@@ -192,6 +192,26 @@ impl ProviderEventFlushQueue {
 
     pub fn delete_session(&mut self, session_id: &str) {
         self.sessions.remove(session_id);
+    }
+
+    pub(crate) fn performance_stats(&self) -> (BTreeMap<String, u64>, u64) {
+        let mut by_provider = BTreeMap::new();
+        let mut pending_items = 0_u64;
+        for session in self.sessions.values() {
+            *by_provider
+                .entry(session.provider.as_str().to_string())
+                .or_insert(0) += 1;
+            pending_items += session.buffer.pending_events.len() as u64;
+            pending_items += session.buffer.pending_raw_outputs.len() as u64;
+            pending_items += session.buffer.pending_usages.len() as u64;
+            pending_items += session.buffer.pending_approvals.len() as u64;
+            pending_items += session
+                .stream_buffers
+                .values()
+                .filter(|buffer| !buffer.is_empty())
+                .count() as u64;
+        }
+        (by_provider, pending_items)
     }
 
     pub fn is_current_invocation(&self, session_id: &str, provider_invocation_id: &str) -> bool {

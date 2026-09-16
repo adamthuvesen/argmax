@@ -16,6 +16,7 @@
 //   node scripts/bridge.mjs reply --session <id> --prompt '…' [--timeout 600]
 //        [--decide approve|reject]
 //   node scripts/bridge.mjs terminal --workspace <id> --run '<shell command>' [--seconds 10]
+//   node scripts/bridge.mjs perf [--seconds 60] [--output ./argmax-performance.json]
 //
 // Connection resolution, first match wins:
 //   --port <n> --token <t>        explicit
@@ -38,7 +39,7 @@
 
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { realpathSync } from "node:fs";
+import { realpathSync, writeFileSync } from "node:fs";
 
 import { connectBridge, readBridgeConfig, realProfileDataDir } from "./bridge-client.mjs";
 
@@ -304,11 +305,30 @@ async function commandTerminal(bridge, flags) {
   );
 }
 
+async function commandPerf(bridge, flags) {
+  const seconds = Number(flags.seconds ?? 60);
+  if (!Number.isFinite(seconds) || seconds <= 0) fail("--seconds must be a positive number");
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const outputPath = path.resolve(flags.output ?? `argmax-performance-${stamp}.json`);
+  const started = await bridge.call("system:performance-start", {});
+  console.log(JSON.stringify({ recording: true, startedAt: started.startedAt, seconds }));
+  await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+  const capture = await bridge.call("system:performance-stop", {});
+  writeFileSync(outputPath, `${JSON.stringify(capture, null, 2)}\n`, "utf8");
+  console.log(JSON.stringify({
+    recording: false,
+    samples: capture.samples.length,
+    droppedSamples: capture.droppedSamples,
+    output: outputPath,
+    summary: capture.summary
+  }));
+}
+
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
   const { positionals, flags } = parseArgs(rest);
   if (!command || flags.help) {
-    fail("usage: bridge.mjs <call|watch|logs|chat|reply|terminal> …  (see header comment)");
+    fail("usage: bridge.mjs <call|watch|logs|chat|reply|terminal|perf> …  (see header comment)");
   }
   let connection;
   try {
@@ -324,6 +344,7 @@ async function main() {
     else if (command === "chat") await commandChat(bridge, flags);
     else if (command === "reply") await commandReply(bridge, flags);
     else if (command === "terminal") await commandTerminal(bridge, flags);
+    else if (command === "perf") await commandPerf(bridge, flags);
     else fail(`unknown command "${command}"`);
   } finally {
     bridge.close();

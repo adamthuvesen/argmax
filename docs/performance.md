@@ -2,6 +2,38 @@
 
 Performance budgets define targets for cold start, IPC response times, and frontend data transformations.
 
+## Whole-app captures
+
+Settings → Advanced → Performance has an opt-in recorder for comparing real
+release-build workloads. It samples once per second and retains the latest 30
+minutes in memory. Starting a new capture clears the old samples. Stopping does
+not write anything, and Download JSON is the only persistence path.
+
+Each sample includes the whole Argmax descendant process tree, split into the
+Rust host, WebKit processes, and provider or tool processes. CPU is calculated
+from native cumulative process time and memory is resident bytes. The same
+sample records active chats by provider, provider output and IPC rates, pending
+provider items, SQLite reader activity and wait deltas, and renderer long tasks.
+The export includes build and platform context, sampler overhead, and median,
+p95, peak, and per-running-chat summaries.
+
+On macOS the process sampler uses `libproc` directly. It does not spawn `ps` on
+every tick. The recorder owns no worker while stopped and never writes samples
+to SQLite, so normal app use does not pay the sampling or storage cost. Measure
+release builds, label the workload before starting, and compare at least idle,
+one busy chat, and five busy chats with the same providers and prompts.
+
+For a repeatable timed capture against a running release app with the remote
+bridge enabled:
+
+```bash
+node scripts/bridge.mjs perf --seconds 300 --output ./argmax-performance.json
+```
+
+The command starts the same recorder, waits for the requested interval, stops
+it, and writes the complete capture. `--data-dir`, `--port`, and `--token` use
+the standard bridge connection resolution documented at the top of the script.
+
 ## Startup Budget
 
 Tracked by [src-tauri/src/util/startup_timer.rs](../src-tauri/src/util/startup_timer.rs) and exposed via `system:diagnostics`. Target `boot → window.ready-to-show` is ≤ 800 ms on macOS.
@@ -123,6 +155,10 @@ scans. Settings → Advanced → Performance reports current and peak readers,
 opened connections, failures, and cumulative and longest waits. The cap covers
 the webview, remote bridge, and a background read without serializing normal
 interactive work.
+
+The performance recorder reports wait counts and wait time as per-sample
+deltas. This makes a burst line up with CPU, output, and active-chat pressure
+without repeatedly querying the database.
 
 ## Push Payloads
 

@@ -11,8 +11,8 @@ See [verification.md](verification.md) for scenarios and coverage boundaries.
 | Surface | Opened by | Shows |
 |---|---|---|
 | Debug panel | `⌘⇧D`, or View → Toggle Debug Log | Live: this session's trace, the backend log tail, IPC latency |
-| Settings → Advanced → Diagnostics | `⌘,` | Static, once per visit: row counts, startup phases, the full log dump, and the save/copy/vacuum actions |
-| Perf HUD | `localStorage["argmax.perfOverlay"] = "1"` | An always-on corner readout of five hot channels |
+| Settings → Advanced → Diagnostics | `⌘,` | Static diagnostics plus start, stop, and JSON download for the opt-in performance recorder |
+| Perf HUD | `localStorage["argmax.perfOverlay"] = "1"` | Whole-process CPU and memory, running chats, renderer stalls, and five hot IPC channels |
 
 ## Debug panel
 
@@ -86,3 +86,15 @@ scans used to run inline on the macOS main thread and froze the window.
 
 Log lines are fetched by a monotonic `seq` cursor, so each tick transfers only
 what is new rather than re-sending the ring.
+
+The performance recorder is separate from `system:diagnostics`. While active,
+a dedicated worker takes one native process-tree sample per second and reads
+only in-memory provider, IPC, and SQLite pool counters. It keeps 1,800 samples
+in a ring and performs no database writes. Renderer long tasks cross
+`system:renderer-stall` only while the browser reports one, and the backend
+drops them immediately unless a capture is active.
+
+Enabling the hidden Perf HUD starts a capture when none exists and stops only
+the capture it started. This gives the HUD live process metrics without leaving
+a sampler running after the overlay is disabled. A capture started from
+Settings remains owned by Settings and is not stopped by the HUD.

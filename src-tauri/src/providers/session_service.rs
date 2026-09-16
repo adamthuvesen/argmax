@@ -12,7 +12,10 @@
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
     path::PathBuf,
-    sync::{Arc, Mutex, OnceLock, Weak},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex, OnceLock, Weak,
+    },
     time::Duration,
 };
 
@@ -251,6 +254,14 @@ pub struct SessionStateChange {
     pub state: SessionState,
 }
 
+#[derive(Debug, Default)]
+pub struct ProviderPerformanceStats {
+    pub running_chats: u64,
+    pub running_chats_by_provider: BTreeMap<String, u64>,
+    pub pending_items: u64,
+    pub output_events: u64,
+}
+
 /// Says which goal a turn is being sent for. Never exposed through IPC; the
 /// database re-checks that the goal is still active on that chat before the
 /// input is delivered.
@@ -268,6 +279,7 @@ pub struct ProviderSessionService {
     queues: Arc<Mutex<HashMap<String, VecDeque<PendingMessage>>>>,
     queue_promotions: Arc<Mutex<HashSet<String>>>,
     flush_queue: Arc<Mutex<ProviderEventFlushQueue>>,
+    output_events: Arc<AtomicU64>,
     /// One bounded output flush per session. A fixed window, rather than an
     /// idle debounce, guarantees sustained streams still reach SQLite.
     batch_flush_generation: Arc<Mutex<HashMap<String, u64>>>,
@@ -350,6 +362,19 @@ async fn wait_for_termination(
 }
 
 impl ProviderSessionService {
+    pub fn performance_stats(&self) -> ProviderPerformanceStats {
+        let (running_chats_by_provider, pending_items) = self
+            .flush_queue
+            .lock_or_recover("flush queue")
+            .performance_stats();
+        ProviderPerformanceStats {
+            running_chats: running_chats_by_provider.values().sum(),
+            running_chats_by_provider,
+            pending_items,
+            output_events: self.output_events.load(Ordering::Relaxed),
+        }
+    }
+
     pub fn new(database: Arc<Database>) -> Arc<Self> {
         Self::with_launcher(
             database,
@@ -406,6 +431,7 @@ impl ProviderSessionService {
             queues: Arc::new(Mutex::new(recovered_queues)),
             queue_promotions: Arc::new(Mutex::new(HashSet::new())),
             flush_queue: Arc::new(Mutex::new(ProviderEventFlushQueue::new())),
+            output_events: Arc::new(AtomicU64::new(0)),
             batch_flush_generation: Arc::new(Mutex::new(HashMap::new())),
             batch_flush_tasks: Arc::new(Mutex::new(HashMap::new())),
             idle_flush_generation: Arc::new(Mutex::new(HashMap::new())),
@@ -2520,6 +2546,7 @@ impl ProviderSessionService {
         event: ProviderRuntimeEvent,
         provider_invocation_id: String,
     ) -> ArgmaxResult<()> {
+        self.output_events.fetch_add(1, Ordering::Relaxed);
         let trace_bytes = event.message.len();
         let trace_session = event.session_id.clone();
         tracing::trace!(

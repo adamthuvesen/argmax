@@ -1,6 +1,11 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ArgmaxApi, DebugSnapshot, IpcChannelStats } from "../../shared/types.js";
+import type {
+  ArgmaxApi,
+  DebugSnapshot,
+  IpcChannelStats,
+  PerformanceStatus
+} from "../../shared/types.js";
 import { PERF_OVERLAY_KEY, PerfOverlay } from "./PerfOverlay.js";
 
 function snapshotWith(stats: IpcChannelStats[]): DebugSnapshot {
@@ -67,5 +72,68 @@ describe("PerfOverlay", () => {
     });
     // Non-tracked channel ("providers:launch") is dropped from the HUD.
     expect(hud.textContent).not.toContain("providers:launch");
+  });
+
+  it("starts an owned capture for live metrics and stops it on unmount", async () => {
+    window.localStorage.setItem(PERF_OVERLAY_KEY, "1");
+    const inactive: PerformanceStatus = {
+      recording: false,
+      startedAt: null,
+      sampleCount: 0,
+      droppedSamples: 0,
+      latest: null
+    };
+    const active: PerformanceStatus = {
+      recording: true,
+      startedAt: "2026-05-14T11:00:00.000Z",
+      sampleCount: 1,
+      droppedSamples: 0,
+      latest: {
+        capturedAt: "2026-05-14T11:00:01.000Z",
+        elapsedMs: 1_000,
+        samplerOverheadMs: 0.4,
+        processes: {
+          total: { cpuPercent: 12.5, rssBytes: 128 * 1024 * 1024, processCount: 3 },
+          host: { cpuPercent: 2.5, rssBytes: 32 * 1024 * 1024, processCount: 1 },
+          webview: { cpuPercent: 5, rssBytes: 64 * 1024 * 1024, processCount: 1 },
+          agents: { cpuPercent: 5, rssBytes: 32 * 1024 * 1024, processCount: 1 }
+        },
+        runningChats: 2,
+        runningChatsByProvider: { codex: 2 },
+        providerEvents: 4,
+        providerEventsPerSecond: 4,
+        ipcCalls: 2,
+        ipcCallsPerSecond: 2,
+        pendingProviderItems: 0,
+        sqlite: { activeReaders: 0, waitingReads: 0, waitMs: 0 },
+        rendererStalls: { count: 1, totalMs: 75, longestMs: 75 }
+      }
+    };
+    const debugSnapshot = vi.fn().mockResolvedValue(snapshotWith([]));
+    const performanceStatus = vi.fn()
+      .mockResolvedValueOnce(inactive)
+      .mockResolvedValue(active);
+    const performanceStart = vi.fn().mockResolvedValue(active);
+    const performanceStop = vi.fn().mockResolvedValue({});
+    (window as unknown as { argmax: Partial<ArgmaxApi> }).argmax = {
+      system: {
+        debugSnapshot,
+        performanceStatus,
+        performanceStart,
+        performanceStop
+      } as unknown as ArgmaxApi["system"]
+    };
+
+    const { unmount } = render(<PerfOverlay />);
+
+    const hud = await screen.findByRole("status", { name: /IPC perf overlay/i });
+    await waitFor(() => expect(performanceStart).toHaveBeenCalledOnce());
+    await waitFor(() => expect(hud.textContent).toContain("12.5%"));
+    expect(hud.textContent).toContain("128 MB");
+    expect(hud.textContent).toContain("Chats2");
+    expect(hud.textContent).toContain("Stalls1");
+
+    unmount();
+    await waitFor(() => expect(performanceStop).toHaveBeenCalledOnce());
   });
 });

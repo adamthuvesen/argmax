@@ -32,6 +32,10 @@ empty_input!(DashboardListInput);
 empty_input!(ApprovalsPendingInput);
 empty_input!(SystemListDetectedIdesInput);
 empty_input!(SystemDiagnosticsInput);
+empty_input!(SystemPerformanceStartInput);
+empty_input!(SystemPerformanceStopInput);
+empty_input!(SystemPerformanceStatusInput);
+empty_input!(SystemPerformanceCaptureInput);
 empty_input!(SystemVacuumDatabaseInput);
 empty_input!(RemoteGetStatusInput);
 empty_input!(RemoteTestNotificationInput);
@@ -57,6 +61,12 @@ pub struct SystemDebugSnapshotInput {
     /// Highest log `seq` the caller already holds. `None` asks for the whole
     /// ring; the debug panel sends its cursor so each poll ships only new lines.
     pub after_log_seq: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SystemRendererStallInput {
+    pub duration_ms: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

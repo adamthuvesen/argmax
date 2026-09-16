@@ -42,6 +42,8 @@ import type {
   DashboardListSnapshot,
   DashboardSnapshot,
   DebugSnapshot,
+  PerformanceCapture,
+  PerformanceStatus,
   DetectedIde,
   DiagnosticsReport,
   DiscoveredProvider,
@@ -460,6 +462,12 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       diagnostics: () => invokeCommand<DiagnosticsReport>("system:diagnostics"),
       debugSnapshot: (input) =>
         invokeCommand<DebugSnapshot>("system:debug-snapshot", { afterLogSeq: input?.afterLogSeq ?? null }),
+      performanceStart: () => invokeCommand<PerformanceStatus>("system:performance-start"),
+      performanceStop: () => invokeCommand<PerformanceCapture>("system:performance-stop"),
+      performanceStatus: () => invokeCommand<PerformanceStatus>("system:performance-status"),
+      performanceCapture: () => invokeCommand<PerformanceCapture>("system:performance-capture"),
+      reportRendererStall: (durationMs) =>
+        invokeCommand<{ ok: true }>("system:renderer-stall", { durationMs }),
       vacuumDatabase: () => invokeCommand<{ ok: true }>("system:vacuum-database"),
       setTheme: (mode) => invokeCommand<{ ok: true }>("system:set-theme", { mode }),
       setDefaultAgent: (input) =>

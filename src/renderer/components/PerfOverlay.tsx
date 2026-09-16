@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type JSX } from "react";
-import type { IpcChannelStats } from "../../shared/types.js";
+import type { IpcChannelStats, PerformanceStatus } from "../../shared/types.js";
+import { formatBytes } from "../lib/formatBytes.js";
 
 export const PERF_OVERLAY_KEY = "argmax.perfOverlay";
 
@@ -49,12 +50,26 @@ function fmt(ms: number): string {
 export function PerfOverlay(): JSX.Element | null {
   const enabled = useSyncExternalStore(subscribeEnabled, readEnabled, () => false);
   const [stats, setStats] = useState<IpcChannelStats[]>([]);
+  const [performance, setPerformance] = useState<PerformanceStatus | null>(null);
   const aliveRef = useRef<boolean>(true);
   const logCursor = useRef<number | undefined>(undefined);
+  const ownedRecording = useRef<string | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
     aliveRef.current = true;
+    const ensureRecorder = async (): Promise<void> => {
+      const api = typeof window !== "undefined" ? window.argmax : undefined;
+      if (typeof api?.system?.performanceStatus !== "function") return;
+      const current = await api.system.performanceStatus();
+      if (!current.recording && typeof api.system.performanceStart === "function") {
+        const started = await api.system.performanceStart();
+        ownedRecording.current = started.startedAt;
+        if (aliveRef.current) setPerformance(started);
+      } else if (aliveRef.current) {
+        setPerformance(current);
+      }
+    };
     const tick = async (): Promise<void> => {
       const api = typeof window !== "undefined" ? window.argmax : undefined;
       if (!api?.system?.debugSnapshot) return;
@@ -67,15 +82,31 @@ export function PerfOverlay(): JSX.Element | null {
         if (!aliveRef.current) return;
         logCursor.current = snapshot.logs.at(-1)?.seq ?? logCursor.current;
         setStats(snapshot.ipcStats);
+        if (typeof api.system.performanceStatus === "function") {
+          setPerformance(await api.system.performanceStatus());
+        }
       } catch {
         // Diagnostics IPC is non-essential for the HUD; swallow polling errors.
       }
     };
-    void tick();
+    void ensureRecorder().then(tick).catch(() => {
+      void tick();
+    });
     const id = window.setInterval(() => void tick(), POLL_INTERVAL_MS);
     return () => {
       aliveRef.current = false;
       window.clearInterval(id);
+      const startedAt = ownedRecording.current;
+      ownedRecording.current = null;
+      const api = typeof window !== "undefined" ? window.argmax : undefined;
+      if (startedAt && typeof api?.system?.performanceStatus === "function") {
+        void api.system.performanceStatus().then((current) => {
+          if (current.recording && current.startedAt === startedAt) {
+            return api.system.performanceStop();
+          }
+          return undefined;
+        }).catch(() => undefined);
+      }
     };
   }, [enabled]);
 
@@ -103,6 +134,27 @@ export function PerfOverlay(): JSX.Element | null {
         minWidth: 220
       }}
     >
+      <div style={{ opacity: 0.7, marginBottom: 4, fontSize: "var(--text-2xs)", letterSpacing: 0.4, textTransform: "uppercase" }}>
+        Argmax performance
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "2px 10px", marginBottom: 6 }}>
+        <span>CPU</span>
+        <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+          {performance?.latest ? `${performance.latest.processes.total.cpuPercent.toFixed(1)}%` : "—"}
+        </span>
+        <span>Memory</span>
+        <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+          {performance?.latest ? formatBytes(performance.latest.processes.total.rssBytes) : "—"}
+        </span>
+        <span>Chats</span>
+        <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+          {performance?.latest?.runningChats ?? "—"}
+        </span>
+        <span>Stalls</span>
+        <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+          {performance?.latest?.rendererStalls.count ?? "—"}
+        </span>
+      </div>
       <div style={{ opacity: 0.7, marginBottom: 4, fontSize: "var(--text-2xs)", letterSpacing: 0.4, textTransform: "uppercase" }}>
         IPC p50 / p99
       </div>

@@ -9,6 +9,7 @@ pub mod ipc_latency;
 pub mod keep_awake;
 pub mod log_buffer;
 pub mod login_shell;
+pub mod performance;
 pub mod process_control;
 pub mod protocol_url;
 pub mod startup_timer;

@@ -13,6 +13,9 @@ export type DiagnosticsReport = Bindings.DiagnosticsReport;
 export type IdeId = Bindings.IdeId;
 export type IpcChannelStats = Bindings.IpcChannelStats;
 export type DebugSnapshot = Bindings.DebugSnapshot;
+export type PerformanceCapture = Bindings.PerformanceCapture;
+export type PerformanceSample = Bindings.PerformanceSample;
+export type PerformanceStatus = Bindings.PerformanceStatus;
 /** A line from the Rust tracing ring buffer. */
 export type BackendLogEntry = Bindings.LogEntry;
 export type PermissionMode = Bindings.PermissionMode;
@@ -635,6 +638,11 @@ export interface ArgmaxApi {
     listDetectedIdes: () => Promise<DetectedIde[]>;
     diagnostics: () => Promise<DiagnosticsReport>;
     debugSnapshot: (input?: { afterLogSeq?: number }) => Promise<DebugSnapshot>;
+    performanceStart: () => Promise<PerformanceStatus>;
+    performanceStop: () => Promise<PerformanceCapture>;
+    performanceStatus: () => Promise<PerformanceStatus>;
+    performanceCapture: () => Promise<PerformanceCapture>;
+    reportRendererStall: (durationMs: number) => Promise<{ ok: true }>;
     vacuumDatabase: () => Promise<{ ok: true }>;
     setTheme: (mode: "light" | "dark" | "system") => Promise<{ ok: true }>;
     setDefaultAgent: (input: {

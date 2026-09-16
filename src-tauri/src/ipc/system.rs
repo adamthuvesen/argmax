@@ -18,6 +18,7 @@ use crate::ide::detection::{detect_installed_ides, DetectedIde};
 use crate::persistence::database::{vacuum_database, ReaderPoolStats};
 use crate::state::AppState;
 use crate::util::log_buffer::LogEntry;
+use crate::util::performance::{PerformanceCapture, PerformanceStatus};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -213,6 +214,71 @@ pub fn system_debug_snapshot(input: SystemDebugSnapshotInput) -> DebugSnapshot {
         ipc_stats: ipc_stats(),
         logs: crate::util::tracing_init::recent_logs_since(input.after_log_seq),
     }
+}
+
+#[tauri::command(rename = "system:performance-start")]
+#[specta::specta]
+pub async fn system_performance_start(
+    state: State<'_, AppState>,
+    _input: SystemPerformanceStartInput,
+) -> ArgmaxResult<PerformanceStatus> {
+    system_performance_start_impl(&state)
+}
+
+pub(crate) fn system_performance_start_impl(state: &AppState) -> ArgmaxResult<PerformanceStatus> {
+    state
+        .performance
+        .start(state)
+        .map_err(|error| ArgmaxError::service("PERFORMANCE_RECORDER_START", error))
+}
+
+#[tauri::command(rename = "system:performance-stop")]
+#[specta::specta]
+pub async fn system_performance_stop(
+    state: State<'_, AppState>,
+    _input: SystemPerformanceStopInput,
+) -> ArgmaxResult<PerformanceCapture> {
+    Ok(system_performance_stop_impl(&state))
+}
+
+pub(crate) fn system_performance_stop_impl(state: &AppState) -> PerformanceCapture {
+    state.performance.stop()
+}
+
+#[tauri::command(rename = "system:performance-status")]
+#[specta::specta]
+pub async fn system_performance_status(
+    state: State<'_, AppState>,
+    _input: SystemPerformanceStatusInput,
+) -> ArgmaxResult<PerformanceStatus> {
+    Ok(system_performance_status_impl(&state))
+}
+
+pub(crate) fn system_performance_status_impl(state: &AppState) -> PerformanceStatus {
+    state.performance.status()
+}
+
+#[tauri::command(rename = "system:performance-capture")]
+#[specta::specta]
+pub async fn system_performance_capture(
+    state: State<'_, AppState>,
+    _input: SystemPerformanceCaptureInput,
+) -> ArgmaxResult<PerformanceCapture> {
+    Ok(system_performance_capture_impl(&state))
+}
+
+pub(crate) fn system_performance_capture_impl(state: &AppState) -> PerformanceCapture {
+    state.performance.capture()
+}
+
+#[tauri::command(rename = "system:renderer-stall")]
+#[specta::specta]
+pub async fn system_renderer_stall(
+    state: State<'_, AppState>,
+    input: SystemRendererStallInput,
+) -> ArgmaxResult<SystemOk> {
+    state.performance.report_renderer_stall(input.duration_ms);
+    Ok(SystemOk { ok: true })
 }
 
 #[tauri::command(rename = "system:vacuum-database")]

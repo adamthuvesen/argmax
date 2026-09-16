@@ -162,7 +162,9 @@ pub(crate) async fn session_agent_events_impl(
                 "failed to import subagent trace events"
             );
         }
-        let connection = database.connection();
+        // A pooled reader: the Agents dock polls this every 1.5 s per open
+        // tab, and on the writer mutex it stalled every provider's deltas.
+        let connection = database.read_connection();
         list_session_agent_tail(
             &connection,
             &session_id,

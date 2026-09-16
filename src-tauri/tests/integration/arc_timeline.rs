@@ -337,7 +337,10 @@ async fn an_arc_records_its_story_newest_first_and_pages_without_overlap() {
     assert_eq!(events[0].title, "Paused");
     let notes = &events[2];
     assert_eq!(notes.status.as_deref(), Some("+3 −0"));
-    assert_eq!(notes.title, "Pricing rollout");
+    assert_eq!(
+        notes.title, "Done",
+        "the changed section, not the file title"
+    );
     assert_eq!(
         notes.detail.as_deref(),
         Some("Recorded the pricing page as done.")

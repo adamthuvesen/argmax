@@ -45,7 +45,7 @@ struct TranscriptPlanCard: View {
                 Image(systemName: "list.bullet.clipboard")
                     .foregroundStyle(Theme.muted)
                 Text(transcriptPlanTitle(plan.markdown))
-                    .typeStyle(.footnote, weight: .semibold)
+                    .typeSubtitle(weight: .semibold)
                     .foregroundStyle(Theme.ink)
                     .lineLimit(collapsed ? 1 : 2)
                 Spacer(minLength: Spacing.tight)

@@ -106,7 +106,7 @@ struct TranscriptThinkingLabel: View {
                     .monospacedDigit()
             }
         }
-        .typeStyle(.footnote)
+        .typeSubtitle()
         .foregroundStyle(Theme.muted)
     }
 }

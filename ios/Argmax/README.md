@@ -101,15 +101,16 @@ Geist Mono is intentionally not part of the iOS app. Code, paths, and other
 identifiers use Apple's SF Mono in every typeface, which keeps the transcript
 closer to the native iOS and ChatGPT reference styling.
 
-The transcript runs on three sizes and only three: output at `.body`, all
-chrome at `.footnote`, badges at `.caption2` semibold. Output prose has 4pt of
-extra line spacing so wrapped agent paragraphs do not form a dense wall, while
-thinking previews and tool details stay compact. Hierarchy inside the chrome
-tier comes from weight and colour. Two exceptions: mono — a command in its
-activity row, the payload under an opened one — sits at `.caption`, because
-mono reads larger than sans at the same nominal size; and narration folded
-into an activity group drops to `.subheadline` in muted-strong, so what the
-agent said on the way does not read as the reply.
+The transcript uses `.body` for output, `.subheadline` for readable secondary
+copy such as activity, plan rows, and card titles, `.footnote` for compact
+controls and metadata, and `.caption2` semibold for badges. Output prose has
+4pt of extra line spacing so wrapped agent paragraphs do not form a dense wall,
+while thinking previews and tool details stay compact. Hierarchy inside a tier
+comes from weight and colour. Mono steps down because it reads larger than sans
+at the same nominal size: a command target in an activity row uses `.footnote`,
+and the payload under an opened row uses `.caption`. Narration folded into an
+activity group uses the same `.subheadline` as the activity around it, in
+muted-strong so it does not read as the reply.
 
 An opened activity group is a ledger, the desktop's grammar
 (`docs/chat-cards.md`, "Activity Rows"): one 36pt line per step, `icon · verb ·

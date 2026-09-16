@@ -266,7 +266,7 @@ struct TranscriptFoldLabel: View {
             .geometryGroup()
             .animation(motion, value: shown)
         }
-        .typeStyle(.footnote)
+        .typeSubtitle()
         .foregroundStyle(Theme.muted)
         .frame(minHeight: 44)
         .contentShape(.rect)
@@ -312,13 +312,13 @@ struct TranscriptActivityRow<Icon: View>: View {
             icon()
             if let verb {
                 Text(verb)
-                    .typeStyle(.footnote)
+                    .typeSubtitle()
                     .foregroundStyle(Theme.mutedStrong)
                     .fixedSize()
             }
             if let target {
                 Text(target)
-                    .typeStyle(mono ? .caption : .footnote, mono: mono)
+                    .typeSubtitle(mono: mono)
                     .foregroundStyle(Theme.muted)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -519,16 +519,16 @@ struct TranscriptTodoRow: View {
                         .rotationEffect(.degrees(expanded ? 90 : 0))
                         .accessibilityHidden(true)
                     Text("Plan")
-                        .typeStyle(.footnote)
+                        .typeSubtitle()
                         .foregroundStyle(Theme.mutedStrong)
                         .fixedSize()
                     Text("\(list.doneCount) of \(list.items.count)")
-                        .typeStyle(.footnote, monospacedDigit: true)
+                        .typeSubtitle(monospacedDigit: true)
                         .foregroundStyle(Theme.muted)
                         .fixedSize()
                     if !expanded, let tail = list.collapsedTail {
                         Text(tail)
-                            .typeStyle(.footnote)
+                            .typeSubtitle()
                             .foregroundStyle(Theme.muted)
                             .lineLimit(1)
                             .truncationMode(.tail)
@@ -568,7 +568,7 @@ struct TranscriptTodoRow: View {
                 .frame(width: 12, height: 12)
                 .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
             Text(TranscriptTodoList.label(for: item))
-                .typeStyle(.footnote, weight: item.status == .active && item.text != nil ? .medium : .regular)
+                .typeSubtitle(weight: item.status == .active && item.text != nil ? .medium : .regular)
                 .foregroundStyle(labelInk(item))
                 .strikethrough(item.status == .cancelled, color: Theme.line)
         }

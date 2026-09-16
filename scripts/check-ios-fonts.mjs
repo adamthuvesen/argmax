@@ -6,9 +6,10 @@
 // picker says. Every role goes through ios/Argmax/Sources/Design/Typography.swift
 // instead, and this fails the push on anything that does not.
 //
-// The second rule is the transcript's three sizes: output at .body, chrome at
-// .footnote, badges at .caption2. A `.subheadline` or a bare `.caption` in
-// there is a fourth size nobody decided on.
+// The second rule keeps transcript sizes semantic: output at .body, readable
+// secondary copy through typeSubtitle() at .subheadline, compact chrome at
+// .footnote, and badges at .caption2. Direct `.subheadline` or bare `.caption`
+// calls bypass those roles.
 //
 //   node scripts/check-ios-fonts.mjs
 
@@ -39,12 +40,12 @@ const FONT_RULES = [
 const TIER_RULES = [
   {
     pattern: /type(Style\(\s*\.subheadline|Content\(\))/,
-    message: "the transcript has three sizes: output .body, chrome .footnote, badge .caption2"
+    message: "transcript subheadline copy uses typeSubtitle(); output is .body and compact chrome is .footnote"
   },
   {
     // `.caption` is the mono payload's size and nothing else's.
     pattern: /typeStyle\(\s*\.caption\b(?!2)(?![^)]*mono: true)/,
-    message: "bare .caption is a fourth size; chrome is .footnote, and only mono payload stays at .caption"
+    message: "bare .caption bypasses the transcript roles; only mono payload stays at .caption"
   }
 ];
 

@@ -184,7 +184,7 @@ struct TranscriptQuestionDock: View {
     private func header(_ question: TranscriptQuestion) -> some View {
         HStack(spacing: Spacing.snug) {
             Text(question.header.isEmpty ? "Question" : question.header)
-                .typeStyle(.footnote, weight: .semibold)
+                .typeSubtitle(weight: .semibold)
                 .foregroundStyle(Theme.ink)
                 .lineLimit(1)
             Spacer(minLength: Spacing.snug)
@@ -234,7 +234,7 @@ struct TranscriptQuestionDock: View {
                     .frame(width: 22, height: 22)
                 VStack(alignment: .leading, spacing: Spacing.hair) {
                     Text(label)
-                        .typeStyle(.footnote, weight: .medium)
+                        .typeSubtitle(weight: .medium)
                         .foregroundStyle(Theme.ink)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     if let detail, !detail.isEmpty {

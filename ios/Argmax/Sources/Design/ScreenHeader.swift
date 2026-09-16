@@ -65,7 +65,7 @@ struct ScreenHeader<Trailing: View, Center: View>: View {
                         // to run two steps under it, which made the one line
                         // naming where you are the smallest text on screen.
                         Text(subtitle)
-                            .typeMeta()
+                            .typeSubtitle(ink: Theme.muted)
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }

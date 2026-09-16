@@ -263,9 +263,9 @@
   align-content: start;
   width: min(100%, var(--settings-measure));
   min-width: 0;
-  /* Hug the settings rail — centering the column in the workspace leaves a
-     dead gutter beside the back button on wide windows. */
-  margin-inline: 0;
+  /* Centered in the workspace like Usage and Activity, so every standalone
+     page puts its column in the same place. */
+  margin-inline: auto;
   /* The page opens well below the titlebar rather than tight under it — the
      title is the first thing read, and it needs room above to read as one. */
   padding: 34px clamp(24px, 3vw, 40px) 96px;

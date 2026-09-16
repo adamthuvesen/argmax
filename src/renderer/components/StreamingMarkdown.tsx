@@ -58,6 +58,31 @@ const SMOOTH_STREAM_DRAIN_TICKS = 40;
     accumulate an entry per streamed block for the rest of the process. */
 const MAX_REMEMBERED_BLOCKS = 200;
 
+/**
+ * One interval for every block that is revealing. A live turn with subagents
+ * can have several bubbles typing at once across panes, and an interval each
+ * woke the main thread once per bubble per tick; one shared tick lets React
+ * batch every bubble's advance into a single render.
+ */
+const streamTickListeners = new Set<() => void>();
+let streamTickInterval: number | null = null;
+
+function subscribeToStreamTick(listener: () => void): () => void {
+  streamTickListeners.add(listener);
+  if (streamTickInterval === null) {
+    streamTickInterval = window.setInterval(() => {
+      for (const tick of streamTickListeners) tick();
+    }, SMOOTH_STREAM_TICK_MS);
+  }
+  return () => {
+    streamTickListeners.delete(listener);
+    if (streamTickListeners.size === 0 && streamTickInterval !== null) {
+      window.clearInterval(streamTickInterval);
+      streamTickInterval = null;
+    }
+  };
+}
+
 function chatUrlTransform(value: string): string {
   if (/^argmax-(?:asset|attachment):\/\//i.test(value)) return value;
   return defaultUrlTransform(value);
@@ -212,7 +237,7 @@ function useSmoothStreamingText(
     if (!revealing) {
       return;
     }
-    const interval = window.setInterval(() => {
+    return subscribeToStreamTick(() => {
       // Backgrounded windows can't show the typewriter advance. Catch up
       // silently: pausing at the last painted prefix made every finished
       // bubble in a live turn type out together when the user came back.
@@ -250,8 +275,7 @@ function useSmoothStreamingText(
         // pass, so the block settles into its history rendering at once.
         return { visible, finishing: current.finishing && visible < target };
       });
-    }, SMOOTH_STREAM_TICK_MS);
-    return () => window.clearInterval(interval);
+    });
   }, [revealing]);
 
   const visiblePrefix = useMemo(

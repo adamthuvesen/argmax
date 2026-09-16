@@ -207,6 +207,7 @@ function AgentActivityRun({
   defaultToolCallGroupsExpanded,
   thinkingDisplay,
   isFocused,
+  visible = true,
   onLoadAgentEvents,
   onLoadSessionEvents,
   onOpenAgent,
@@ -230,6 +231,9 @@ function AgentActivityRun({
   defaultToolCallGroupsExpanded?: boolean;
   thinkingDisplay?: ThinkingDisplay;
   isFocused?: boolean;
+  /** False while the dock shows another tab. A hidden pane stops polling and
+   *  reloads the moment it is shown again. */
+  visible?: boolean;
   onLoadAgentEvents?: (
     sessionId: string,
     parentToolUseId: string,
@@ -541,9 +545,22 @@ function AgentActivityRun({
     void loadAgentEventsGuarded();
   }, [loadAgentEventsGuarded, onLoadSessionEvents, parentSessionId]);
 
+  // Set when this pane stopped polling a live run because another tab was
+  // shown. Codex and Cursor child traces are imported by the agent-events read
+  // itself, so a run that finished out of sight would otherwise stay on
+  // whatever it last loaded.
+  const missedPollRef = useRef(false);
   useEffect(() => {
     if (!parentSessionId || !onLoadAgentEvents) return;
     const shouldPoll = parentSession?.state === "running" || activity.status === "running";
+    if (!visible) {
+      if (shouldPoll) missedPollRef.current = true;
+      return;
+    }
+    if (missedPollRef.current) {
+      missedPollRef.current = false;
+      void loadAgentEventsGuarded();
+    }
     if (!shouldPoll) return;
     const interval = window.setInterval(() => {
       // A backgrounded window resumes polling on refocus (dashboard deltas
@@ -552,7 +569,7 @@ function AgentActivityRun({
       void loadAgentEventsGuarded();
     }, 1500);
     return () => window.clearInterval(interval);
-  }, [activity.status, loadAgentEventsGuarded, onLoadAgentEvents, parentSession?.state, parentSessionId]);
+  }, [activity.status, loadAgentEventsGuarded, onLoadAgentEvents, parentSession?.state, parentSessionId, visible]);
 
   // The launch is when the run started, so the chip's clock counts from there
   // rather than from the subagent's first visible event.

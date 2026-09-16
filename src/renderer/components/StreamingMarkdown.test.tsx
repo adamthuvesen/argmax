@@ -211,6 +211,32 @@ describe("<StreamingMarkdown />", () => {
     expect(screen.getByText(text)).toBeInTheDocument();
   });
 
+  it("drives every revealing block from one shared interval", () => {
+    vi.useFakeTimers();
+    const setIntervalSpy = vi.spyOn(window, "setInterval");
+    const clearIntervalSpy = vi.spyOn(window, "clearInterval");
+
+    const first = render(<StreamingMarkdown text={"A".repeat(120)} streaming />);
+    const second = render(<StreamingMarkdown text={"B".repeat(120)} streaming />);
+    expect(setIntervalSpy).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      vi.advanceTimersByTime(32);
+    });
+    expect(first.container.querySelector(".markdown")?.textContent).toBe("A".repeat(5));
+    expect(second.container.querySelector(".markdown")?.textContent).toBe("B".repeat(5));
+
+    // The tick outlives one block and stops with the last.
+    first.unmount();
+    expect(clearIntervalSpy).not.toHaveBeenCalled();
+    act(() => {
+      vi.advanceTimersByTime(32);
+    });
+    expect(second.container.querySelector(".markdown")?.textContent).toBe("B".repeat(10));
+    second.unmount();
+    expect(clearIntervalSpy).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps Unicode prefixes intact through stream growth and completion", () => {
     vi.useFakeTimers();
     const first = "😀".repeat(120);

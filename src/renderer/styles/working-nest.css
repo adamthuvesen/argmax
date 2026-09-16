@@ -17,8 +17,8 @@
    Everything animates `transform` and `opacity` on HTML boxes, which is the
    only combination WebKit runs on the compositor: its legacy SVG renderer gets
    no layers at all, so the old `<circle>` version repainted every frame even
-   where it only scaled. `nest` keeps one `background` in its keyframes for the
-   two-tone relay — see the note there. */
+   where it only scaled. `nest` gets its two-tone relay from colour layers on
+   pseudo-elements that only fade — see the note there. */
 .working-nest {
   --working-nest-phase: 0;
   --working-nest-phase-offset: calc(var(--working-nest-cycle) * var(--working-nest-phase) / -4);
@@ -90,6 +90,26 @@
 .working-nest[data-mark="nest"] .working-nest-part[data-dot="3"] { left: 54.3%; top: 54.3%; }
 .working-nest[data-mark="nest"] .working-nest-part[data-dot="4"] { left: 14.3%; top: 54.3%; }
 
+/* The relay's colours, stacked over the dot's rest fill: `::before` in the
+   accent the leader passes through, `::after` in the leader's own colour. At
+   rest both are clear, so a stalled timeline leaves a plain rest-coloured dot. */
+.working-nest[data-mark="nest"] .working-nest-part::before,
+.working-nest[data-mark="nest"] .working-nest-part::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+}
+
+.working-nest[data-mark="nest"] .working-nest-part::before {
+  background: currentColor;
+}
+
+.working-nest[data-mark="nest"] .working-nest-part::after {
+  background: var(--working-nest-lead);
+}
+
 .working-nest[data-active="true"][data-mark="nest"] .working-nest-part {
   animation: working-nest-relay var(--working-nest-cycle) linear infinite;
   animation-play-state: var(--loop-play-state, running);
@@ -108,37 +128,90 @@
   animation-delay: calc(var(--working-nest-phase-offset) - var(--working-nest-cycle) * 0.25);
 }
 
-/* The one paint-tier keyframe left in the file. The relay's whole idea is a
-   leader in `--accent-deep` handing off to a rest colour, and the alternative —
-   two stacked dots cross-fading — doubles the element count of the default
-   style to save a repaint on four 4px boxes. Deliberate, and the only place it
-   is allowed. */
+/* `inherit` takes the dot's own delay, so each colour layer stays on its dot's
+   beat. WorkingNest anchors these to the document timeline with the parts. */
+.working-nest[data-active="true"][data-mark="nest"] .working-nest-part::before,
+.working-nest[data-active="true"][data-mark="nest"] .working-nest-part::after {
+  animation-duration: var(--working-nest-cycle);
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-play-state: var(--loop-play-state, running);
+  animation-delay: inherit;
+}
+
+.working-nest[data-active="true"][data-mark="nest"] .working-nest-part::before {
+  animation-name: working-nest-relay-accent;
+}
+
+.working-nest[data-active="true"][data-mark="nest"] .working-nest-part::after {
+  animation-name: working-nest-relay-lead;
+}
+
+/* The relay's whole idea is a leader in `--accent-deep` handing off through
+   the accent to a rest colour. That used to be a `background` keyframe, which
+   repainted every dot of every running mark on every frame. The colours are now
+   three fills that cross-fade instead — the dot's rest fill, the accent layer
+   over it, the leader layer over that — so the whole relay is `opacity` and
+   `transform`. The three keyframes share one set of stops and easings, which
+   is what keeps the colour on the same beat as the scale:
+
+     0-5%       leader
+     5-22%      leader → accent   (leader layer fades off the accent layer)
+     22-30%     accent → rest     (accent layer fades off the rest fill)
+     30-91.25%  rest
+     91.25-100% rest → leader     (leader layer fades back in)
+
+   The accent layer snaps back on at the loop's seam, under a leader layer that
+   is fully opaque there, so the snap never shows. */
 @keyframes working-nest-relay {
   0%, 5% {
     opacity: 1;
-    background: var(--working-nest-lead);
     transform: scale(1.2);
     animation-timing-function: var(--ease-in-out);
   }
 
   22% {
     opacity: 0.72;
-    background: currentColor;
     transform: scale(0.98);
     animation-timing-function: var(--ease-out);
   }
 
   30%, 91.25% {
     opacity: 0.3;
-    background: var(--working-nest-rest);
     transform: scale(0.78);
     animation-timing-function: var(--ease-out);
   }
 
   100% {
     opacity: 1;
-    background: var(--working-nest-lead);
     transform: scale(1.2);
+  }
+}
+
+@keyframes working-nest-relay-lead {
+  0%, 5% {
+    opacity: 1;
+    animation-timing-function: var(--ease-in-out);
+  }
+
+  22%, 91.25% {
+    opacity: 0;
+    animation-timing-function: var(--ease-out);
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes working-nest-relay-accent {
+  0%, 22% {
+    opacity: 1;
+    animation-timing-function: var(--ease-out);
+  }
+
+  30%, 100% {
+    opacity: 0;
   }
 }
 
@@ -363,7 +436,9 @@
    set rather than at 1. `still` reuses those rules by matching the same
    selectors. */
 .working-nest[data-still="true"],
-.working-nest[data-still="true"] .working-nest-part {
+.working-nest[data-still="true"] .working-nest-part,
+.working-nest[data-still="true"] .working-nest-part::before,
+.working-nest[data-still="true"] .working-nest-part::after {
   animation: none;
 }
 
@@ -392,6 +467,8 @@
    on its track — and the accent color carries the signal on its own. */
 @media (prefers-reduced-motion: reduce) {
   .working-nest[data-active="true"] .working-nest-part,
+  .working-nest[data-active="true"] .working-nest-part::before,
+  .working-nest[data-active="true"] .working-nest-part::after,
   .working-nest[data-settling="true"] .working-nest-part,
   .working-nest[data-settling="true"] {
     animation: none;

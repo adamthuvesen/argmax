@@ -111,6 +111,13 @@ has one scroll viewport and one content wrapper. The scroll-to-latest button
 is an absolute overlay outside the viewport, so its visibility cannot change
 the transcript height.
 
+Following or detached lives outside React state, in the controller's
+`follow` object. A detach lands mid-gesture, and as host state it re-rendered
+every mounted turn, tool group, and bubble there (about 1,500 components on a
+98-turn chat). Now only `ScrollToLatestButton` subscribes. The tail windows
+read the value when they render for another reason, and on a return to
+following they render only if their mounted rows went stale.
+
 The controller follows the physical bottom until the reader moves upward.
 An upward wheel or touch gesture releases following before the browser moves
 the viewport. Scroll events record the reading position. Layout reconciliation

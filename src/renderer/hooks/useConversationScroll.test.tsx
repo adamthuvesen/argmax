@@ -226,8 +226,8 @@ describe("useConversationScroll", () => {
     act(() => view.rerender(<Harness {...props} items={["one", "two"]} />));
 
     expect(geometry.top).toBe(568);
-    expect(controller.showScrollToBottom).toBe(true);
-    expect(controller.newBelowCount).toBe(1);
+    expect(controller.follow.isDetached()).toBe(true);
+    expect(controller.follow.newBelowCount()).toBe(1);
   });
 
   it("stays attached when responsive reflow moves scrollTop without reader input", () => {
@@ -252,7 +252,7 @@ describe("useConversationScroll", () => {
     act(() => { scroll.dispatchEvent(new Event("scroll")); });
 
     expect(geometry.top).toBe(800);
-    expect(controller.showScrollToBottom).toBe(false);
+    expect(controller.follow.isDetached()).toBe(false);
   });
 
   it.each([
@@ -289,7 +289,7 @@ describe("useConversationScroll", () => {
       act(() => flushResize());
 
       expect(geometry.top).toBe(1300);
-      expect(controller.showScrollToBottom).toBe(false);
+      expect(controller.follow.isDetached()).toBe(false);
     }
   );
 
@@ -323,7 +323,7 @@ describe("useConversationScroll", () => {
       act(() => flushResize());
 
       expect(geometry.top).toBe(1400);
-      expect(controller.showScrollToBottom).toBe(false);
+      expect(controller.follow.isDetached()).toBe(false);
     }
   );
 
@@ -347,7 +347,7 @@ describe("useConversationScroll", () => {
     act(() => flushResize());
 
     expect(geometry.top).toBe(851);
-    expect(controller.showScrollToBottom).toBe(false);
+    expect(controller.follow.isDetached()).toBe(false);
   });
 
   it("stays attached when elastic overscroll bounces back to the physical bottom", () => {
@@ -372,7 +372,7 @@ describe("useConversationScroll", () => {
     geometry.top = 800;
     act(() => { scroll.dispatchEvent(new Event("scroll")); });
 
-    expect(controller.showScrollToBottom).toBe(false);
+    expect(controller.follow.isDetached()).toBe(false);
     geometry.naturalHeight = 1500;
     act(() => flushResize());
     expect(geometry.top).toBe(1000);
@@ -406,7 +406,7 @@ describe("useConversationScroll", () => {
       expect(content.style.minHeight).toBe("1291px");
       expect(geometry.top).toBe(939);
       expect(geometry.blockTop - geometry.top).toBe(blockViewportTop);
-      expect(controller.showScrollToBottom).toBe(true);
+      expect(controller.follow.isDetached()).toBe(true);
     }
   );
 
@@ -434,7 +434,7 @@ describe("useConversationScroll", () => {
 
     expect(scroll.scrollHeight).toBe(1300);
     expect(geometry.top).toBe(788);
-    expect(controller.showScrollToBottom).toBe(true);
+    expect(controller.follow.isDetached()).toBe(true);
   });
 
   it("preserves a fine-grained anchor when content changes above it inside one turn", () => {
@@ -484,11 +484,11 @@ describe("useConversationScroll", () => {
     act(() => {
       input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowUp" }));
     });
-    expect(controller.showScrollToBottom).toBe(false);
+    expect(controller.follow.isDetached()).toBe(false);
 
     nested.scrollTop = 0;
     act(() => wheel(nested, -10));
-    expect(controller.showScrollToBottom).toBe(true);
+    expect(controller.follow.isDetached()).toBe(true);
     expect(scroll.scrollTop).toBe(500);
   });
 
@@ -509,23 +509,23 @@ describe("useConversationScroll", () => {
       touch(scroll, "touchstart", 100);
       touch(scroll, "touchmove", 120);
     });
-    expect(controller.showScrollToBottom).toBe(true);
+    expect(controller.follow.isDetached()).toBe(true);
 
     geometry.naturalHeight = 1400;
     act(() => view.rerender(<Harness {...props} items={["one", "two"]} />));
-    expect(controller.newBelowCount).toBe(1);
+    expect(controller.follow.newBelowCount()).toBe(1);
 
     act(() => view.rerender(<Harness {...props} resetKey="prompt-b" items={["one", "two"]} />));
-    expect(controller.showScrollToBottom).toBe(false);
-    expect(controller.newBelowCount).toBe(0);
+    expect(controller.follow.isDetached()).toBe(false);
+    expect(controller.follow.newBelowCount()).toBe(0);
     expect(geometry.top).toBe(scroll.scrollHeight - geometry.viewportHeight);
 
     act(() => wheel(scroll, -10));
-    expect(controller.showScrollToBottom).toBe(true);
+    expect(controller.follow.isDetached()).toBe(true);
     act(() => view.rerender(
       <Harness sessionId="session-b" resetKey="prompt-b" items={["one", "two"]} />
     ));
-    expect(controller.showScrollToBottom).toBe(false);
+    expect(controller.follow.isDetached()).toBe(false);
   });
 
   it("scrolls only its viewport to a requested element and stays detached", () => {
@@ -546,7 +546,7 @@ describe("useConversationScroll", () => {
 
     expect(geometry.top).toBe(750);
     expect(content.style.minHeight).toBe("1300px");
-    expect(controller.showScrollToBottom).toBe(true);
+    expect(controller.follow.isDetached()).toBe(true);
   });
 
   it("removes layout ownership and native input handling while disabled", () => {
@@ -567,7 +567,7 @@ describe("useConversationScroll", () => {
     act(() => view.rerender(<Harness {...props} enabled={false} />));
     expect(content.style.minHeight).toBe("");
     act(() => wheel(scroll, -10));
-    expect(controller.showScrollToBottom).toBe(false);
+    expect(controller.follow.isDetached()).toBe(false);
   });
 
   it("observes the viewport and rows without observing its own height reservation", () => {

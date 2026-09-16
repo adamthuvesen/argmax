@@ -1,8 +1,9 @@
-import { ArrowDown, ChevronRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import type { NativeAgentIdentity, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
 import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
 import { useConversationScroll } from "../hooks/useConversationScroll.js";
+import { ScrollToLatestButton } from "./ScrollToLatestButton.js";
 import { buildAgentActivity, persistentAgentRuns, type AgentActivity as AgentActivityModel, type AgentModel } from "../lib/agentActivity.js";
 import { decodeTimelineEvent } from "../lib/canonicalTimeline.js";
 import { emblemForCodename } from "../lib/agentEmblems.js";
@@ -509,8 +510,7 @@ function AgentActivityRun({
   const {
     scrollRef,
     contentRef,
-    showScrollToBottom,
-    newBelowCount,
+    follow,
     scrollToBottom
   } = useConversationScroll({ sessionId: agentKey, items: followItems, enabled: ownsScroll });
   const loadAgentEventsGuarded = useCallback(async (): Promise<void> => {
@@ -721,17 +721,7 @@ function AgentActivityRun({
             ) : null}
           </div>
         </div>
-        {showScrollToBottom && ownsScroll ? (
-          <button
-            type="button"
-            className="scroll-to-bottom-fab"
-            aria-label={newBelowCount > 0 ? `Scroll to latest (${newBelowCount} new)` : "Scroll to latest"}
-            title={newBelowCount > 0 ? `Scroll to latest (${newBelowCount} new)` : "Scroll to latest"}
-            onClick={scrollToBottom}
-          >
-            <ArrowDown size={19} strokeWidth={2.2} aria-hidden="true" />
-          </button>
-        ) : null}
+        {ownsScroll ? <ScrollToLatestButton follow={follow} onClick={scrollToBottom} /> : null}
       </div>
     </section>
   );
@@ -753,7 +743,7 @@ export function AgentActivity(props: Parameters<typeof AgentActivityRun>[0]): JS
     ? props.events.filter((event) => event.sessionId === parentSessionId)
     : [];
   const runs = persistentAgentRuns(visibleEvents, props.parentToolUseId, props.nativeIdentity ?? null);
-  const { scrollRef, contentRef, showScrollToBottom, newBelowCount, scrollToBottom } = useConversationScroll({
+  const { scrollRef, contentRef, follow, scrollToBottom } = useConversationScroll({
     sessionId: `${parentSessionId}:${props.parentToolUseId}`,
     items: visibleEvents,
     enabled: runs.length > 1
@@ -787,17 +777,7 @@ export function AgentActivity(props: Parameters<typeof AgentActivityRun>[0]): JS
           ))}
         </div>
       </div>
-      {showScrollToBottom ? (
-        <button
-          type="button"
-          className="scroll-to-bottom-fab"
-          aria-label={newBelowCount > 0 ? `Scroll to latest (${newBelowCount} new)` : "Scroll to latest"}
-          title="Scroll to latest"
-          onClick={scrollToBottom}
-        >
-          <ArrowDown size={19} strokeWidth={2.2} aria-hidden="true" />
-        </button>
-      ) : null}
+      <ScrollToLatestButton follow={follow} onClick={scrollToBottom} />
     </div>
   );
 }

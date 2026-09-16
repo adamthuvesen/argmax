@@ -249,7 +249,11 @@ streaming delta.
 While the reader follows live output, each window tracks the newest rows. Once
 the reader scrolls away from the bottom, [useStableTailWindow](../src/renderer/hooks/useStableTailWindow.ts)
 retains the mounted row ids until following resumes. New output therefore does
-not evict the reader's logical anchor just because a bounded tail moved.
+not evict the reader's logical anchor just because a bounded tail moved. The
+windows read the follow state instead of taking it as a prop, so scrolling
+away or back renders none of them. Measured 2026-09-16 on a 98-turn chat
+(dev React, headless Chrome, live data over the bridge): the first upward
+wheel notch committed about 1,500 components before, and one button after.
 
 Paced markdown reveals use a numeric Unicode cursor and slice the source
 string without retaining a character array or joining each visible prefix.

@@ -193,6 +193,10 @@ pub struct SessionSummary {
     /// it belongs to the chat that dispatched it, which shows it in the
     /// subagent dock — so this has to reach the renderer.
     pub launch_kind: String,
+    /// The Arc this session belongs to, when it was launched or attached as
+    /// part of one. Null for an ordinary chat.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arc_id: Option<String>,
 }
 
 /// How far a session sits from a human-started one, and how many sessions it
@@ -252,6 +256,24 @@ pub fn record_session_launch(
         )
         .map_err(sqlite_error)?
         .execute((launched_by_session_id, depth, launch_kind, session_id))
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
+/// Attach this session to an Arc: set once, at launch, by whichever path
+/// created it — the coordinator launch, an agent launch whose caller carries
+/// an `arc_id`, or a multitask dispatched from inside one. Never cleared here;
+/// the column's own `ON DELETE SET NULL` is what clears it if the Arc goes
+/// away.
+pub fn record_session_arc(
+    connection: &Connection,
+    session_id: &str,
+    arc_id: &str,
+) -> ArgmaxResult<()> {
+    connection
+        .prepare_cached("UPDATE sessions SET arc_id = ? WHERE id = ?")
+        .map_err(sqlite_error)?
+        .execute((arc_id, session_id))
         .map_err(sqlite_error)?;
     Ok(())
 }
@@ -881,5 +903,6 @@ fn session_row_to_summary(row: &Row<'_>) -> rusqlite::Result<SessionSummary> {
         context_window: row.get("context_window")?,
         launched_by_session_id: row.get("launched_by_session_id")?,
         launch_kind: row.get("launch_kind")?,
+        arc_id: row.get("arc_id")?,
     })
 }

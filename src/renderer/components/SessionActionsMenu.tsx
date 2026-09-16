@@ -9,7 +9,8 @@ import {
   MoreHorizontal,
   PanelRightDashed,
   SquareArrowOutUpRight,
-  SquarePen
+  SquarePen,
+  Workflow
 } from "lucide-react";
 import { useCallback, useEffect, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
@@ -31,6 +32,7 @@ export function SessionActionsMenu({
   onOpenCommitDialog,
   onOpenLaunchingChat,
   onOpenInIde,
+  onStartArc,
   onToggleLog,
   onToggleWorkspaceCard,
   session,
@@ -55,6 +57,9 @@ export function SessionActionsMenu({
       left the snapshot, which hides the action — a session names a launcher
       that may since have been archived. */
   onOpenLaunchingChat?: () => void;
+  /** Starts an arc with this chat as its coordinator. Absent when the chat is
+      already in an arc or cannot take a turn, which hides the action. */
+  onStartArc?: { run: () => void; disabledReason: string | null };
   onOpenCommitDialog?: () => void;
   onToggleLog: () => void;
   session: SessionSummary | null;
@@ -166,6 +171,24 @@ export function SessionActionsMenu({
                   >
                     <CornerUpLeft size={14} aria-hidden="true" />
                     Open launching chat
+                  </button>
+                </li>
+              ) : null}
+              {onStartArc ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item"
+                    disabled={onStartArc.disabledReason !== null}
+                    title={onStartArc.disabledReason ?? "This chat becomes the coordinator of a new arc"}
+                    onClick={() => {
+                      closeActions();
+                      onStartArc.run();
+                    }}
+                  >
+                    <Workflow size={14} aria-hidden="true" />
+                    Start an arc from this chat…
                   </button>
                 </li>
               ) : null}

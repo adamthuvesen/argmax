@@ -7,6 +7,8 @@
 
 mod support;
 
+mod arc_timeline;
+mod arcs;
 mod git_exec;
 mod git_review;
 mod health_smoke;

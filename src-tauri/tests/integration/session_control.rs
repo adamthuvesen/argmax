@@ -2601,6 +2601,7 @@ async fn a_schedule_can_be_listed_paused_resumed_or_deleted() {
                 model_label: "GPT".to_string(),
                 model_id: "gpt-5.6-sol".to_string(),
                 run_target: argmax_lib::persistence::routines::RoutineRunTarget::Worktree,
+                arc_id: None,
                 cron_expr: Some("0 3 * * *".to_string()),
                 run_once_at: None,
                 enabled: true,

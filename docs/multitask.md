@@ -21,6 +21,7 @@ Both call `session:multitask` ([ipc/session.rs](../src-tauri/src/ipc/session.rs)
 - **Fresh context.** The multitask is a new provider conversation, not a fork of the parent's transcript. Nothing about the parent's session — its handle, its provider process, its `provider_conversation_id` — is reused, which is exactly why the parent's turn keeps running undisturbed.
 - **Shared-checkout guardrails.** When it shares the checkout, the prompt carries a preamble naming the branch and task already in progress and asking the agent to stage only its own files. An isolated multitask gets the bare prompt.
 - **Its own lineage.** The child records `launched_by_session_id` (so both chats keep the link back) with `launch_kind = 'multitask'` and `launch_depth = 0`. Launch depth exists to stop an agent from launching agents without end; a person asking for one more chat is not that, so a multitask dispatched from a chat two agents deep still starts at the top. For the same reason multitasks do not count against the per-session agent launch cap ([sessions.rs](../src-tauri/src/persistence/sessions.rs) counts `launch_kind = 'agent'` only).
+- **Inherits its parent's Arc.** A multitask dispatched from a chat with an `arc_id` carries the same `arc_id` and gets the Arc's member preamble prepended ahead of the shared-checkout guardrails, the same as an agent-launched session would. See [agent-tools.md](agent-tools.md#arcs).
 
 ## Reporting back
 

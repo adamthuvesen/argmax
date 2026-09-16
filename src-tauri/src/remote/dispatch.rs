@@ -16,8 +16,8 @@ use serde_json::Value;
 use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 use crate::ipc::inputs::*;
 use crate::ipc::{
-    activity, approvals, attachments, checkpoints, checks, connections, dashboard, git_ops, goals,
-    health, learnings, projects, providers, prs, questions, remote, review, session, skills,
+    activity, approvals, arcs, attachments, checkpoints, checks, connections, dashboard, git_ops,
+    goals, health, learnings, projects, providers, prs, questions, remote, review, session, skills,
     sources, system, terminal, usage, workspace_files, workspaces,
 };
 use crate::state::AppState;
@@ -459,6 +459,43 @@ async fn dispatch_standard(
         "remote:push-capability" => {
             let _input: RemotePushCapabilityInput = parse(channel, input)?;
             encode(remote::remote_push_capability_impl(state)?)
+        }
+
+        "arc:create" => {
+            let input = parse(channel, input)?;
+            encode(arcs::arc_create_impl(state, input).await?)
+        }
+        "arc:list" => {
+            let input = parse(channel, input)?;
+            encode(arcs::arc_list_impl(state, input).await?)
+        }
+        "arc:get" => {
+            let input = parse(channel, input)?;
+            encode(arcs::arc_get_impl(state, input).await?)
+        }
+        "arc:update" => {
+            let input = parse(channel, input)?;
+            encode(arcs::arc_update_impl(state, input).await?)
+        }
+        "arc:set-state" => {
+            let input = parse(channel, input)?;
+            encode(arcs::arc_set_state_impl(state, input).await?)
+        }
+        "arc:launch-coordinator" => {
+            let input = parse(channel, input)?;
+            encode(arcs::arc_launch_coordinator_impl(state, input).await?)
+        }
+        "arc:timeline" => {
+            let input = parse(channel, input)?;
+            encode(arcs::arc_timeline_impl(state, input).await?)
+        }
+        "arc:draft-from-session" => {
+            let input = parse(channel, input)?;
+            encode(arcs::arc_draft_from_session_impl(state, input).await?)
+        }
+        "arc:promote" => {
+            let input = parse(channel, input)?;
+            encode(arcs::arc_promote_impl(state, input).await?)
         }
 
         "sources:list" => {

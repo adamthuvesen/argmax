@@ -32,7 +32,9 @@ use serde_json::json;
 use specta::Type;
 use uuid::Uuid;
 
+use crate::arcs::member_preamble;
 use crate::error::{ArgmaxError, ArgmaxResult};
+use crate::persistence::arcs;
 use crate::persistence::events::{
     latest_agent_message, persist_timeline_event, PersistTimelineEventInput, TimelineEvent,
 };
@@ -96,11 +98,15 @@ pub async fn dispatch(
     workspaces: Arc<WorkspaceService>,
     providers: Arc<ProviderSessionService>,
 ) -> ArgmaxResult<MultitaskLaunched> {
-    let (parent, parent_workspace) = {
+    let (parent, parent_workspace, parent_arc) = {
         let connection = database.connection();
         let parent = find_session_by_id(&connection, &request.parent_session_id)?;
         let workspace = find_workspace_by_id(&connection, &parent.workspace_id)?;
-        (parent, workspace)
+        let parent_arc = match parent.arc_id.as_deref() {
+            Some(arc_id) => Some(arcs::get_arc(&connection, arc_id)?),
+            None => None,
+        };
+        (parent, workspace, parent_arc)
     };
     if matches!(
         parent_workspace.state.as_str(),
@@ -123,6 +129,18 @@ pub async fn dispatch(
         )
     })?;
 
+    // A multitask dispatched from inside an Arc is Arc work too: it gets the
+    // same member preamble an agent-launched session would, ahead of the
+    // shared-checkout guardrails.
+    let prompt = prompt_with_preamble(
+        &request,
+        &parent_workspace.task_label,
+        &parent_workspace.branch,
+    );
+    let prompt = match &parent_arc {
+        Some(arc) => format!("{}\n\n{}", member_preamble(arc), prompt),
+        None => prompt,
+    };
     let outcome = launch_with_spec(
         LaunchSpec {
             project: None,
@@ -137,11 +155,7 @@ pub async fn dispatch(
             }),
             path: None,
             branch: None,
-            prompt: prompt_with_preamble(
-                &request,
-                &parent_workspace.task_label,
-                &parent_workspace.branch,
-            ),
+            prompt,
             worktree: request.worktree,
             provider,
             model_label: parent.model_label.clone(),
@@ -155,6 +169,8 @@ pub async fn dispatch(
             agent_mode: parse_json_enum(parent.agent_mode.as_deref())
                 .unwrap_or(crate::providers::AgentMode::Auto),
             task_label: Some(label.clone()),
+            arc_id: parent_arc.as_ref().map(|arc| arc.id.clone()),
+            arc_is_coordinator_launch: false,
         },
         Arc::clone(&database),
         workspaces,

@@ -469,6 +469,78 @@ async goalClear(input: GoalSessionInput) : Promise<Result<Goal | null, ArgmaxErr
     else return { status: "error", error: e  as any };
 }
 },
+async arcCreate(input: ArcCreateInput) : Promise<Result<ArcRecord, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("arc_create", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async arcList(input: ArcListInput) : Promise<Result<ArcRecord[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("arc_list", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async arcGet(input: ArcGetInput) : Promise<Result<ArcDetail, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("arc_get", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async arcUpdate(input: ArcUpdateFieldsInput) : Promise<Result<ArcRecord, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("arc_update", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async arcSetState(input: ArcSetStateInput) : Promise<Result<ArcRecord, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("arc_set_state", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async arcLaunchCoordinator(input: ArcLaunchCoordinatorInput) : Promise<Result<ArcRecord, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("arc_launch_coordinator", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async arcTimeline(input: ArcTimelineInput) : Promise<Result<ArcTimelinePage, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("arc_timeline", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async arcDraftFromSession(input: ArcDraftFromSessionInput) : Promise<Result<ArcDraft, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("arc_draft_from_session", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async arcPromote(input: ArcPromoteInput) : Promise<Result<ArcRecord, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("arc_promote", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async checkpointsList(input: CheckpointsListInput) : Promise<Result<Checkpoint[], ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("checkpoints_list", { input }) };
@@ -1391,6 +1463,93 @@ export type ApprovalResolution = "approved" | "rejected"
 export type ApprovalSupport = "unsupported" | "observable-only" | "respondable"
 export type ApprovalsPendingInput = Record<string, never>
 export type ApprovalsResolveInput = { approvalId: ApprovalId; status: ApprovalResolution }
+export type ArcCreateInput = { name: string;
+/**
+ * Empty when the caller wants to pick up an existing `BRIEF.md` from a
+ * user-supplied `dir`, or start with a blank one.
+ */
+brief: string; homeProjectId: string;
+/**
+ * Absolute path to an existing directory. `None` uses the default
+ * `<app data dir>/arcs/<id>/`, which is created for the caller.
+ */
+dir: string | null }
+/**
+ * `arc:get`'s response: the Arc row plus enough of its own state — every
+ * member (enriched, capped, with a truncation flag), this Arc's slice of
+ * the rolling daily launch budget, and the cap sizes — that the Arc page
+ * renders in one round trip, matching exactly what `arc_status` already
+ * tells an agent.
+ */
+export type ArcDetail = { arc: ArcRecord; members: ArcMemberSummary[]; membersTruncated: boolean; launchesLast24h: number; limits: ArcLimits }
+/**
+ * A drafted name and brief, or nulls when the helper call failed and the
+ * person fills the form in themselves.
+ */
+export type ArcDraft = { name: string | null; brief: string | null }
+export type ArcDraftFromSessionInput = { sessionId: NonEmptyString }
+export type ArcEventKind = "created" | "coordinator_started" | "member_launched" | "member_finished" | "pr_checks_failing" | "pr_checks_passing" | "pr_merged" | "notes_updated" | "brief_updated" | "state_changed" | "scheduled_run"
+export type ArcGetInput = { id: NonEmptyString }
+export type ArcLaunchCoordinatorInput = { arcId: NonEmptyString; provider: ProviderId;
+/**
+ * Both default to that provider's own default model when omitted.
+ */
+modelLabel: string | null; modelId: string | null; reasoningEffort: ReasoningEffort | null }
+export type ArcLimits = { maxActiveMembers: number; maxLaunchesPerDay: number }
+export type ArcListInput = Record<string, never>
+/**
+ * One session attached to an Arc, enriched with what `arc_status` and
+ * `arc:get` both render a member row from: provider/model, whether it is
+ * the Arc's current coordinator, and its primary pull request. Built once
+ * by [`list_member_summaries`] so the tool an agent reads and the desktop
+ * page a person reads can never show two different member lists.
+ */
+export type ArcMemberSummary = { sessionId: string; taskLabel: string; projectId: string; projectName: string; workspaceId: string; state: SessionState; provider: string; modelLabel: string | null; modelId: string | null; startedAt: string; isCoordinator: boolean; prNumber: number | null; prState: string | null }
+export type ArcPromoteInput = { sessionId: NonEmptyString; name: string; brief: string; dir: string | null }
+/**
+ * The Arc row, named `ArcRecord` rather than `Arc` because every file in this
+ * codebase already imports `std::sync::Arc`.
+ */
+export type ArcRecord = { id: string; name: string; brief: string; state: ArcState; homeProjectId: string; coordinatorSessionId: string | null; dir: string; createdAt: string; updatedAt: string }
+export type ArcSetStateInput = { id: NonEmptyString; state: ArcState }
+export type ArcState = "active" | "paused" | "done"
+/**
+ * The dashboard's lightweight view: enough to render a sidebar row without
+ * carrying the full brief text on every snapshot.
+ */
+export type ArcSummary = { id: string; name: string; state: ArcState; homeProjectId: string; coordinatorSessionId: string | null; dir: string; memberCount: number; updatedAt: string;
+/**
+ * When the newest timeline row was recorded, so an open Arc page knows
+ * to refetch its timeline.
+ */
+lastEventAt: string | null }
+/**
+ * Where the next page starts: the last row of the previous one. `seq` is
+ * the row's insertion order, which breaks ties between events recorded in
+ * the same millisecond (an Arc created and its coordinator started together)
+ * the way they actually happened.
+ */
+export type ArcTimelineCursor = { occurredAt: string; seq: number }
+/**
+ * One timeline row as the Arc page renders it.
+ */
+export type ArcTimelineEvent = { id: string; seq: number; kind: ArcEventKind; occurredAt: string; sessionId: string | null;
+/**
+ * Whether the session still exists, so the page can offer to open it.
+ */
+sessionAvailable: boolean; projectId: string | null; projectName: string | null;
+/**
+ * The member's current label when the session still exists, otherwise
+ * the label recorded with the event.
+ */
+title: string; detail: string | null; status: string | null; prNumber: number | null; prUrl: string | null }
+export type ArcTimelineInput = { arcId: NonEmptyString;
+/**
+ * The previous page's `nextCursor`, or null for the newest page.
+ */
+before: ArcTimelineCursor | null; limit: number | null }
+export type ArcTimelinePage = { events: ArcTimelineEvent[]; nextCursor: ArcTimelineCursor | null }
+export type ArcUpdateFieldsInput = { id: NonEmptyString; name: string | null; brief: string | null }
 export type ArgmaxError = { code: "INVALID_INPUT"; issues: InvalidInputIssue[] } | { code: "RECORD_NOT_FOUND"; kind: string; id: string } | { code: "MIGRATION_DRIFT"; detail: string } | { code: "SERVICE_ERROR"; sub_code: string; message: string }
 export type AttachmentMimeType = "image/png" | "image/jpeg" | "image/gif" | "image/webp"
 export type AttachmentPath = string
@@ -1554,7 +1713,7 @@ export type ConnectionScope = "built-in" | "user" | "project"
 export type ConnectionSummary = { name: string; kind: ConnectionKind; scope: ConnectionScope; availability: ConnectionAvailability; authentication: ConnectionAuthentication; statusDetail: string; authenticationCommand: string | null }
 export type ConnectionsListInput = { provider: ProviderId; workspaceId: WorkspaceId | null }
 export type DashboardListInput = Record<string, never>
-export type DashboardListSnapshot = { projects: ProjectSummary[]; workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[]; pendingMessages: Partial<{ [key in string]: PendingMessage[] }> }
+export type DashboardListSnapshot = { projects: ProjectSummary[]; workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[]; pendingMessages: Partial<{ [key in string]: PendingMessage[] }>; arcs: ArcSummary[] }
 export type DatabaseStats = { rowCounts: RowCounts; walBytes: number; walAutocheckpoint: number }
 /**
  * In-memory-only slice of the diagnostics report, safe to poll on an
@@ -1802,7 +1961,23 @@ export type ProvidersDiscoverInput = {
  * CLI. Defaults to false so an absent `{}` payload reuses the cache.
  */
 refresh?: boolean }
-export type ProvidersLaunchInput = { workspaceId: WorkspaceId; provider: ProviderId; prompt: Prompt; modelLabel: NonEmptyString; modelId: NonEmptyString; reasoningEffort: ReasoningEffort | null; fastMode?: boolean; agentMode: AgentMode | null; permissionMode: PermissionMode | null; cols: TerminalCols; rows: TerminalRows; attachments: ComposerAttachmentInput[] | null; goalCondition: string | null; goalMaxTurns: number | null }
+export type ProvidersLaunchInput = { workspaceId: WorkspaceId; provider: ProviderId; prompt: Prompt; modelLabel: NonEmptyString; modelId: NonEmptyString; reasoningEffort: ReasoningEffort | null; fastMode?: boolean; agentMode: AgentMode | null; permissionMode: PermissionMode | null; cols: TerminalCols; rows: TerminalRows; attachments: ComposerAttachmentInput[] | null; goalCondition: string | null; goalMaxTurns: number | null;
+/**
+ * The Arc this session is attached to. Checked against the Arc's caps
+ * and attached to the session row in the same write transaction as the
+ * insert, so concurrent launches can't each pass the cap check before
+ * either session existed to count against it. `None` for a launch with
+ * no Arc — every renderer-initiated launch, which is why this defaults
+ * rather than requiring every existing caller to pass it explicitly.
+ */
+arcId?: string | null;
+/**
+ * Skips the active-member and daily-launch-budget checks; `ARC_DONE`
+ * still applies. Only true for the one launch that must not count
+ * against the caps it would otherwise be checked against: the Arc's
+ * coordinator launching itself.
+ */
+arcIsCoordinatorLaunch?: boolean }
 export type ProvidersResizeInput = { sessionId: SessionId; cols: TerminalCols; rows: TerminalRows }
 export type ProvidersSendInput = { sessionId: SessionId; input: Prompt;
 /**
@@ -1930,7 +2105,7 @@ export type ReviewLoadDiffInput = { kind: WorkspaceTargetKind; id: WorkspaceTarg
 contextLines?: DiffContextLines | null }
 export type RewindFilesResult = { checkpoint: Checkpoint; recoveryCheckpoint: Checkpoint; restoredPaths: string[] }
 export type RewindPreview = { checkpoint: Checkpoint; currentFingerprint: CheckoutFingerprint; changedPaths: string[]; deletedPaths: string[] }
-export type Routine = { id: string; name: string; projectId: string; prompt: string; provider: string; modelLabel: string; modelId: string; worktree: boolean; runTarget: RoutineRunTarget; lastSessionId: string | null; cronExpr: string | null; runOnceAt: string | null; enabled: boolean; lastRunAt: string | null; nextRunAt: string | null; lastError: string | null; createdBy: RoutineAuthor; createdAt: string; updatedAt: string }
+export type Routine = { id: string; name: string; projectId: string; prompt: string; provider: string; modelLabel: string; modelId: string; worktree: boolean; runTarget: RoutineRunTarget; lastSessionId: string | null; arcId: string | null; cronExpr: string | null; runOnceAt: string | null; enabled: boolean; lastRunAt: string | null; nextRunAt: string | null; lastError: string | null; createdBy: RoutineAuthor; createdAt: string; updatedAt: string }
 /**
  * Who put a scheduled task in the list. `Agent` is a wake a chat set for
  * itself with `schedule_followup` — an alarm clock, not a routine the user
@@ -1942,9 +2117,11 @@ export type RoutineAuthor = "user" | "agent"
  * Where one firing of a scheduled task lands. `NewSession` starts a fresh
  * chat in the shared checkout, `SameSession` sends the prompt as a
  * follow-up into the same chat every time (tracked by `last_session_id`),
- * and `Worktree` starts a fresh chat in its own isolated worktree.
+ * `Worktree` starts a fresh chat in its own isolated worktree, and
+ * `ArcCoordinator` sends it to a live Arc's coordinator session (named by
+ * `arc_id`) instead of launching anything itself.
  */
-export type RoutineRunTarget = "new_session" | "same_session" | "worktree"
+export type RoutineRunTarget = "new_session" | "same_session" | "worktree" | "arc_coordinator"
 export type RoutinesDeleteInput = { id: NonEmptyString }
 export type RoutinesListInput = Record<string, never>
 export type RoutinesResetSessionInput = { id: NonEmptyString }
@@ -1956,7 +2133,12 @@ export type RoutinesUpsertInput = { id: NonEmptyString; name: NonEmptyString; pr
  * isolated worktree. `None` keeps older renderers working and falls back
  * to the `worktree` boolean.
  */
-runTarget?: RoutineRunTarget | null; cronExpr: string | null; runOnceAt: string | null; enabled: boolean | null }
+runTarget?: RoutineRunTarget | null;
+/**
+ * The Arc an `ArcCoordinator` target sends runs to. Required exactly
+ * when `run_target` is `ArcCoordinator`; ignored otherwise.
+ */
+arcId?: string | null; cronExpr: string | null; runOnceAt: string | null; enabled: boolean | null }
 export type RowCounts = { projects: number; workspaces: number; sessions: number; events: number; rawOutputs: number; approvals: number; checks: number; learnings: number; usageEvents: number }
 export type RuntimeDiagnostics = { rssBytes: number; openFileDescriptors: number; tokioTrackedTasks: number }
 export type SaveImageResult = { filePath: string; sizeBytes: number }
@@ -2050,7 +2232,12 @@ launchedBySessionId?: string | null;
  * it belongs to the chat that dispatched it, which shows it in the
  * subagent dock — so this has to reach the renderer.
  */
-launchKind: string }
+launchKind: string;
+/**
+ * The Arc this session belongs to, when it was launched or attached as
+ * part of one. Null for an ordinary chat.
+ */
+arcId?: string | null }
 export type SetBrowserToolsInput = { enabled: boolean }
 export type SkillSource = "user" | "workspace" | "codex-prompt" | "plugin" | "system"
 export type SkillSummary = { name: string; description: string; source: SkillSource }

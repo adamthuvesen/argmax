@@ -143,6 +143,7 @@ mod tests {
             "terminal_spawn",
             "terminal_read",
             "project_list",
+            "arc_status",
             "schedule_followup",
             "schedule_list",
             "schedule_cancel",

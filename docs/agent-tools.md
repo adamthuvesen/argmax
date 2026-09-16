@@ -43,6 +43,7 @@ Namespace `argmax`; Claude, Codex, and Cursor show them as
 | `schedule_list` | `project?` | `{projectId, schedules: [{scheduleId, name, prompt, enabled, cronExpr?, runOnceAt?, runTarget, createdBy, sessionId?, nextRunAt?, lastRunAt?, lastError?}], truncated}` |
 | `schedule_cancel` | `scheduleId`, `disable?` | `{scheduleId, name, deleted}` |
 | `schedule_resume` | `scheduleId` | `{scheduleId, name, nextRunAt?}` |
+| `arc_status` | — | The caller's Arc: `{arcId, name, state, dir, brief, briefTruncated, coordinatorSessionId?, callerIsCoordinator, members: [{sessionId, taskLabel, projectName, state, prNumber?, prState?}], truncated, launchesLast24h, limits: {maxActiveMembers, maxLaunchesPerDay}}`. `NOT_IN_ARC` if the caller is not attached to one. |
 
 A goal makes this session keep working until a separate evaluator judges the
 condition met. Set one when the user describes work with a verifiable end
@@ -79,6 +80,63 @@ forks from that ref instead of the project's current branch; with `path`, the
 named checkout must already be on that branch. Launch never switches another
 checkout's branch. The result includes the path and branch the session landed
 on.
+
+### Arcs
+
+An Arc's coordinator and members are ordinary sessions — `session_launch`,
+`session_wait`, and every other tool above work on them exactly as they do
+anywhere else. `arc_status` is the one addition: it answers "what Arc am I
+in, and who else is in it" for the caller's own session, since none of the
+tools above take an Arc id. Creating an Arc, editing its brief, and launching
+its coordinator are desktop actions (`arc:*` IPC, see
+[ipc.md](ipc.md#arcs)), not agent tools.
+
+**Inheritance.** A session launched with `session_launch` whose caller
+carries an `arc_id` inherits it, and its prompt gets a member preamble
+prepended: read `BRIEF.md`/`NOTES.md` in the Arc's folder first, do not write
+there, and end the final answer with a "Learnings for the arc" section so the
+coordinator can fold it into `NOTES.md`. A `/multitask` dispatched from an
+Arc session inherits the same way. Inheritance has no depth limit of its own
+— a member's own launches carry the Arc forward exactly like the coordinator's
+do — but `LAUNCH_DEPTH_EXCEEDED` still applies at two levels below the user,
+same as any other chain.
+
+**`session_move`** always mints a new session row for the destination, so a
+moved Arc member's `arc_id` is carried across explicitly, and if the session
+that moved was the Arc's current coordinator, the Arc's
+`coordinatorSessionId` is repointed at the new row in the same transaction;
+`fork_session` carries neither, so a fork of an Arc member starts outside the
+Arc rather than silently becoming (or duplicating) its coordinator.
+
+**Caps**, checked wherever `session_launch` already checks `LAUNCH_LIMIT_REACHED`
+and `LAUNCH_DEPTH_EXCEEDED`:
+
+- `ARC_DONE` — the Arc is done. A person has to reopen it (set it active or
+  paused) before it takes another launch.
+- `ARC_CAPACITY_REACHED` — 8 of the Arc's sessions are already active
+  (not `complete`, `failed`, or `cancelled`), the coordinator excluded. Wait
+  for one to finish.
+- `ARC_LAUNCH_BUDGET_REACHED` — the Arc has launched 40 sessions in the last
+  rolling 24 hours, coordinator launches included. Wait for the window to
+  roll forward.
+- The Arc's *current* coordinator (the caller's own id matches
+  `coordinatorSessionId`) is exempt from the ordinary ten-launches-per-session
+  cap — it plans and delegates for the whole Arc, so its own lifetime count
+  must not run out after ten pieces of work. Every other session, coordinator
+  or not, still counts against it. A relaunched coordinator's old session
+  keeps its own count; the exemption follows whichever session currently
+  holds the pointer.
+
+A coordinator's own prompt is the [coordinator preamble](../src-tauri/src/arcs/preamble.rs)
+`arc:launch-coordinator` starts it with, not something `session_launch`
+prepends — it tells the agent to plan and delegate rather than implement, to
+read `NOTES.md` before planning (a non-empty one means a previous coordinator
+may already have worked on this Arc), that completion notices arrive only one
+hop (so it must not `session_wait` on a grandchild), and to use
+`schedule_followup` to check back on longer work instead of blocking.
+"Plans and delegates, never codes" is that prompt contract, not a permission:
+the coordinator is an ordinary, disposable session with no special
+restrictions of its own.
 
 ### Workspaces and checks
 

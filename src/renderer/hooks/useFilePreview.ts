@@ -48,6 +48,29 @@ function createWorkspaceFileTab(path: string): WorkspaceFileTabState {
   };
 }
 
+interface StoredOpenFiles {
+  paths: string[];
+  activePath: string | null;
+}
+
+function readStoredOpenFiles(storageKey: string | null): StoredOpenFiles {
+  const empty: StoredOpenFiles = { paths: [], activePath: null };
+  if (!storageKey) return empty;
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(storageKey) ?? "null");
+    if (typeof parsed !== "object" || parsed === null) return empty;
+    const { paths, activePath } = parsed as Record<string, unknown>;
+    if (!Array.isArray(paths)) return empty;
+    const validPaths = [...new Set(paths.filter((path): path is string => typeof path === "string"))];
+    return {
+      paths: validPaths,
+      activePath: typeof activePath === "string" && validPaths.includes(activePath) ? activePath : validPaths[0] ?? null
+    };
+  } catch {
+    return empty;
+  }
+}
+
 function isWorkspaceFileTabDirty(tab: WorkspaceFileTabState | null, canEdit: boolean): boolean {
   if (!canEdit || !tab || tab.buffer === null) return false;
   return tab.buffer !== tab.original;
@@ -61,15 +84,45 @@ export function useFilePreview(args: {
   mode: ReviewPanelMode;
   isPanelOpen: boolean;
   rootPath: string | null;
+  // Where the open tabs are remembered, so a session pane that remounts on
+  // navigation reopens the files it showed. Null keeps tabs in memory only.
+  storageKey?: string | null;
 }): WorkspaceFilesState & { resetForSourceChange: () => void } {
   const { sourceId, sourceKind, dispatch, canEdit, mode, isPanelOpen, rootPath } = args;
+  const storageKey = args.storageKey ?? null;
 
   const dispatchRef = useRef<ReviewIpcDispatch | null>(dispatch);
   dispatchRef.current = dispatch;
 
-  const [tabs, setTabs] = useState<WorkspaceFileTabState[]>([]);
-  const [activeTabPath, setActiveTabPath] = useState<string | null>(null);
+  const workspaceTabLifetimeSeq = useRef(0);
+  const workspaceTabLifetimes = useRef(new Map<string, number>());
+
+  // Restored tabs start idle and load when shown, like a freshly opened file.
+  // Each needs a lifetime, or its first save would be dropped as aborted.
+  const restoreTabs = (stored: StoredOpenFiles): WorkspaceFileTabState[] =>
+    stored.paths.map((path) => {
+      workspaceTabLifetimes.current.set(path, ++workspaceTabLifetimeSeq.current);
+      return createWorkspaceFileTab(path);
+    });
+  const [initialStored] = useState(() => readStoredOpenFiles(storageKey));
+  const [tabs, setTabs] = useState<WorkspaceFileTabState[]>(() => restoreTabs(initialStored));
+  const [activeTabPath, setActiveTabPath] = useState<string | null>(initialStored.activePath);
   const [dirtyClosePath, setDirtyClosePath] = useState<string | null>(null);
+
+  const tabPathsKey = JSON.stringify(tabs.map((tab) => tab.path));
+  useEffect(() => {
+    if (!storageKey) return;
+    try {
+      if (tabPathsKey === "[]") {
+        window.localStorage.removeItem(storageKey);
+      } else {
+        const stored: StoredOpenFiles = { paths: JSON.parse(tabPathsKey) as string[], activePath: activeTabPath };
+        window.localStorage.setItem(storageKey, JSON.stringify(stored));
+      }
+    } catch {
+      // Quota or private-mode failures are non-fatal for view state.
+    }
+  }, [storageKey, tabPathsKey, activeTabPath]);
 
   const workspaceReadSeq = useRef(0);
   const workspaceReadTokens = useRef(new Map<string, number>());
@@ -79,8 +132,6 @@ export function useFilePreview(args: {
   const workspaceSaveTokens = useRef(new Map<string, number>());
   const workspaceSaveQueues = useRef(new Map<string, Promise<SaveOutcome>>());
   const workspaceSaveMtimes = useRef(new Map<string, number | null>());
-  const workspaceTabLifetimeSeq = useRef(0);
-  const workspaceTabLifetimes = useRef(new Map<string, number>());
   const sourceGeneration = useRef(0);
 
   // Remembers the disk content of files whose tabs were closed, so reopening
@@ -132,11 +183,11 @@ export function useFilePreview(args: {
   const lastExternalCheckAtRef = useRef(0);
   const externalCheckTimerRef = useRef<number | null>(null);
 
+  const storageKeyRef = useRef(storageKey);
+  storageKeyRef.current = storageKey;
+
   const resetForSourceChange = useCallback((): void => {
     sourceGeneration.current += 1;
-    setTabs([]);
-    setActiveTabPath(null);
-    setDirtyClosePath(null);
     workspaceReadTokens.current.clear();
     workspaceStatTokens.current.clear();
     workspaceSaveTokens.current.clear();
@@ -144,6 +195,12 @@ export function useFilePreview(args: {
     workspaceSaveMtimes.current.clear();
     workspaceTabLifetimes.current.clear();
     previewCache.current.clear();
+    // The stored tabs belong to the pane, not the source: a session whose
+    // source resolves late or moves checkouts keeps its files, reloaded fresh.
+    const stored = readStoredOpenFiles(storageKeyRef.current);
+    setTabs(restoreTabs(stored));
+    setActiveTabPath(stored.activePath);
+    setDirtyClosePath(null);
   }, []);
 
   const updateTab = useCallback(

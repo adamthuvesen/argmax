@@ -564,7 +564,8 @@ export function useReviewState(
     canEdit,
     mode: layout.modes.includes("files") ? "files" : mode,
     isPanelOpen,
-    rootPath: sourceRootPath
+    rootPath: sourceRootPath,
+    storageKey: panelLayoutKey && options?.sessionId ? `argmax.reviewPanel.files.${options.sessionId}` : null
   });
 
   const { resetForSourceChange: resetDiff, ...diffState } = reviewDiff;

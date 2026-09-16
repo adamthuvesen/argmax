@@ -326,3 +326,23 @@
   color: var(--muted);
   font-size: var(--text-xs);
 }
+
+.arc-trigger-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2_5);
+  border-radius: var(--radius-md);
+}
+
+.arc-trigger-row:hover {
+  background: var(--row-hover);
+}
+
+.arc-trigger-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}

@@ -4,7 +4,8 @@ import type {
   ArcRecord,
   ArgmaxApi,
   DashboardSnapshot,
-  ProjectSummary
+  ProjectSummary,
+  Routine
 } from "../../../shared/types.js";
 import { ArcPage } from "./ArcPage.js";
 
@@ -168,12 +169,49 @@ const systemStub = {
   confirm: vi.fn<ArgmaxApi["system"]["confirm"]>()
 };
 
+const routinesStub = {
+  list: vi.fn<ArgmaxApi["routines"]["list"]>(),
+  upsert: vi.fn<ArgmaxApi["routines"]["upsert"]>(),
+  delete: vi.fn<ArgmaxApi["routines"]["delete"]>(),
+  setEnabled: vi.fn<ArgmaxApi["routines"]["setEnabled"]>(),
+  runNow: vi.fn<ArgmaxApi["routines"]["runNow"]>(),
+  resetSession: vi.fn<ArgmaxApi["routines"]["resetSession"]>()
+};
+
+function routine(overrides: Partial<Routine> = {}): Routine {
+  return {
+    id: "routine-1",
+    name: "Morning triage",
+    projectId: "project-1",
+    prompt: "Triage the arc.\nCheck blockers first.",
+    provider: "claude",
+    modelLabel: "Sonnet",
+    modelId: "sonnet",
+    worktree: false,
+    runTarget: "arc_coordinator",
+    lastSessionId: null,
+    arcId: "arc-1",
+    cronExpr: "0 0 9 * * *",
+    runOnceAt: null,
+    enabled: true,
+    lastRunAt: null,
+    nextRunAt: "2026-05-13T09:00:00.000Z",
+    lastError: null,
+    createdBy: "user",
+    createdAt: "2026-05-10T09:00:00.000Z",
+    updatedAt: "2026-05-10T09:00:00.000Z",
+    ...overrides
+  };
+}
+
 beforeEach(() => {
   arcsStub.get.mockReset();
   arcsStub.update.mockReset();
   arcsStub.setState.mockReset();
   arcsStub.launchCoordinator.mockReset();
   systemStub.confirm.mockReset();
+  routinesStub.list.mockReset();
+  routinesStub.delete.mockReset();
 
   arcsStub.get.mockResolvedValue(arcRecord());
   arcsStub.update.mockImplementation((input) =>
@@ -188,8 +226,13 @@ beforeEach(() => {
     Promise.resolve(arcRecord({ coordinatorSessionId: `relaunched-${input.provider}` }))
   );
   systemStub.confirm.mockResolvedValue(true);
+  routinesStub.list.mockResolvedValue([
+    routine(),
+    routine({ id: "routine-other-arc", name: "Other arc task", arcId: "arc-2" })
+  ]);
+  routinesStub.delete.mockResolvedValue(null);
 
-  window.argmax = { arcs: arcsStub, system: systemStub } as unknown as ArgmaxApi;
+  window.argmax = { arcs: arcsStub, system: systemStub, routines: routinesStub } as unknown as ArgmaxApi;
 });
 
 afterEach(() => {
@@ -253,5 +296,35 @@ describe("ArcPage", () => {
 
     expect(await screen.findByRole("button", { name: /Ship the pricing page/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Coordinate pricing rollout/ })).not.toBeInTheDocument();
+  });
+
+  it("lists only this arc's scheduled tasks in Triggers", async () => {
+    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} />);
+
+    await waitFor(() => expect(routinesStub.list).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("Triage the arc.")).toBeInTheDocument();
+    expect(screen.queryByText("Other arc task")).not.toBeInTheDocument();
+  });
+
+  it("removes a trigger after confirming", async () => {
+    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} />);
+
+    await screen.findByText("Triage the arc.");
+    fireEvent.click(screen.getByRole("button", { name: "Remove Morning triage" }));
+
+    await waitFor(() => expect(systemStub.confirm).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(routinesStub.delete).toHaveBeenCalledWith("routine-1"));
+    await waitFor(() => expect(routinesStub.list).toHaveBeenCalledTimes(2));
+  });
+
+  it("does not delete a trigger when the confirmation is declined", async () => {
+    systemStub.confirm.mockResolvedValue(false);
+    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} />);
+
+    await screen.findByText("Triage the arc.");
+    fireEvent.click(screen.getByRole("button", { name: "Remove Morning triage" }));
+
+    await waitFor(() => expect(systemStub.confirm).toHaveBeenCalledTimes(1));
+    expect(routinesStub.delete).not.toHaveBeenCalled();
   });
 });

@@ -18,7 +18,8 @@ use argmax_lib::{
     error::ArgmaxResult,
     persistence::{
         arcs::{
-            count_active_members, create_arc, get_arc, set_arc_state, ArcCreateInput, ArcState,
+            count_active_members, create_arc, get_arc, set_arc_coordinator_session, set_arc_state,
+            ArcCreateInput, ArcState,
         },
         database::Database,
         projects::{persist_project, PersistProjectInput, ProjectSettings},
@@ -37,7 +38,7 @@ use argmax_lib::{
         SessionLaunchRegistry, SessionLaunchServer, SESSION_LAUNCH_SOCKET_ENV,
         SESSION_LAUNCH_TOKEN_ENV,
     },
-    workspaces::WorkspaceService,
+    workspaces::{orchestration::MoveDestination, WorkspaceService},
 };
 use serde_json::json;
 
@@ -802,4 +803,120 @@ async fn arc_status_answers_for_a_member_and_refuses_a_session_outside_any_arc()
     )
     .await;
     assert_eq!(refused["error"]["code"], "NOT_IN_ARC", "{refused}");
+}
+
+/// A second registered project. `repo_path` is unique per project (`persist_project`
+/// upserts on conflict there), so this points at a sibling path rather than
+/// reusing the fixture's seeded checkout; `move_session`'s project destination
+/// only reads the project row and never revalidates the working tree it
+/// points at.
+fn second_project(fixture: &Fixture) -> String {
+    let repo_path = format!("{}-secondary", fixture.repo_path);
+    let connection = fixture.database.connection();
+    persist_project(
+        &connection,
+        &PersistProjectInput {
+            id: "project-2".to_string(),
+            name: "Ragnar".to_string(),
+            repo_path: repo_path.clone(),
+            current_branch: "main".to_string(),
+            default_branch: Some("main".to_string()),
+            settings: ProjectSettings {
+                archive_on_merge: false,
+                worktree_location: format!("{repo_path}/.argmax/worktrees"),
+                setup_command: String::new(),
+                check_commands: Vec::new(),
+            },
+        },
+    )
+    .expect("second project");
+    "project-2".to_string()
+}
+
+#[tokio::test]
+async fn moving_the_coordinators_session_carries_arc_id_and_repoints_the_coordinator() {
+    let fixture = fixture();
+    let arc = new_arc(&fixture, "Ragnar rollout");
+    let destination_project = second_project(&fixture);
+    seed_arc_session(
+        &fixture,
+        &arc.id,
+        "session-coordinator",
+        SessionState::Complete,
+    );
+    {
+        let connection = fixture.database.connection();
+        set_arc_coordinator_session(&connection, &arc.id, Some("session-coordinator"))
+            .expect("point coordinator");
+    }
+
+    let moved = fixture
+        .workspaces
+        .move_session(
+            "session-coordinator",
+            MoveDestination::Project {
+                project_id: destination_project,
+                worktree: false,
+            },
+            true,
+        )
+        .await
+        .expect("move coordinator session");
+
+    assert_eq!(moved.session.arc_id.as_deref(), Some(arc.id.as_str()));
+
+    let connection = fixture.database.connection();
+    let arc_after = get_arc(&connection, &arc.id).expect("arc after move");
+    assert_eq!(
+        arc_after.coordinator_session_id.as_deref(),
+        Some(moved.session.id.as_str()),
+        "the arc repoints at the coordinator's new session"
+    );
+
+    // The old row keeps its own arc_id — its membership is not cleared by
+    // the move, only the coordinator pointer moves off of it.
+    let old = find_session_by_id(&connection, "session-coordinator").expect("old session");
+    assert_eq!(old.arc_id.as_deref(), Some(arc.id.as_str()));
+}
+
+#[tokio::test]
+async fn moving_a_members_session_carries_arc_id_without_repointing_the_coordinator() {
+    let fixture = fixture();
+    let arc = new_arc(&fixture, "Ragnar rollout");
+    let destination_project = second_project(&fixture);
+    seed_arc_session(
+        &fixture,
+        &arc.id,
+        "session-coordinator",
+        SessionState::Complete,
+    );
+    seed_arc_session(&fixture, &arc.id, "session-member", SessionState::Complete);
+    {
+        let connection = fixture.database.connection();
+        set_arc_coordinator_session(&connection, &arc.id, Some("session-coordinator"))
+            .expect("point coordinator");
+    }
+
+    let moved = fixture
+        .workspaces
+        .move_session(
+            "session-member",
+            MoveDestination::Project {
+                project_id: destination_project,
+                worktree: false,
+            },
+            true,
+        )
+        .await
+        .expect("move member session");
+
+    assert_eq!(moved.session.arc_id.as_deref(), Some(arc.id.as_str()));
+
+    let connection = fixture.database.connection();
+    let arc_after = get_arc(&connection, &arc.id).expect("arc after move");
+    assert_eq!(
+        arc_after.coordinator_session_id.as_deref(),
+        Some("session-coordinator"),
+        "a member's move leaves the coordinator pointer alone"
+    );
 }

@@ -101,6 +101,13 @@ Arc session inherits the same way. Inheritance has no depth limit of its own
 do — but `LAUNCH_DEPTH_EXCEEDED` still applies at two levels below the user,
 same as any other chain.
 
+**`session_move`** always mints a new session row for the destination, so a
+moved Arc member's `arc_id` is carried across explicitly, and if the session
+that moved was the Arc's current coordinator, the Arc's
+`coordinatorSessionId` is repointed at the new row in the same transaction;
+`fork_session` carries neither, so a fork of an Arc member starts outside the
+Arc rather than silently becoming (or duplicating) its coordinator.
+
 **Caps**, checked wherever `session_launch` already checks `LAUNCH_LIMIT_REACHED`
 and `LAUNCH_DEPTH_EXCEEDED`:
 

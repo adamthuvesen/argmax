@@ -1,10 +1,12 @@
-import { Check, Copy, FolderOpen, Play } from "lucide-react";
+import { Check, Copy, FolderOpen, Play, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type JSX, type ReactNode } from "react";
-import type { ArcRecord, ArcState, DashboardSnapshot, ProjectSummary, SessionSummary } from "../../../shared/types.js";
+import type { ArcRecord, ArcState, DashboardSnapshot, ProjectSummary, Routine, SessionSummary } from "../../../shared/types.js";
 import { PROVIDER_DISPLAY_NAMES } from "../../../shared/providerModels.js";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard.js";
 import { readStoredLaunchModel } from "../../lib/launchModelPreference.js";
+import { describeSchedule } from "../../lib/schedule.js";
 import { factoryLaunchModel, type ModelPickerSelection } from "../../lib/models.js";
+import { showSchedulePage } from "../../state/overlays.js";
 import { showErrorToast } from "../../state/toast.js";
 
 // Product-specified display denominator for "launched recently" — not a
@@ -75,6 +77,10 @@ export function ArcPage({
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
 
+  const [triggerRoutines, setTriggerRoutines] = useState<Routine[]>([]);
+  const [triggersError, setTriggersError] = useState<string | null>(null);
+  const [removingRoutineId, setRemovingRoutineId] = useState<string | null>(null);
+
   const [briefDraft, setBriefDraft] = useState("");
   const [briefSaving, setBriefSaving] = useState(false);
   const [briefError, setBriefError] = useState<string | null>(null);
@@ -128,6 +134,42 @@ export function ArcPage({
     setEditingName(false);
     void loadArc();
   }, [loadArc]);
+
+  const loadTriggers = useCallback(async (): Promise<void> => {
+    if (!window.argmax) return;
+    try {
+      const routines = await window.argmax.routines.list();
+      setTriggerRoutines(routines.filter((routine) => routine.arcId === arcId));
+      setTriggersError(null);
+    } catch (error) {
+      setTriggersError(errorMessage(error, "Could not load triggers."));
+    }
+  }, [arcId]);
+
+  useEffect(() => {
+    void loadTriggers();
+  }, [loadTriggers]);
+
+  const handleRemoveTrigger = useCallback(
+    async (routine: Routine): Promise<void> => {
+      if (!window.argmax) return;
+      const confirmed = await window.argmax.system.confirm(
+        `Delete “${routine.name}”? Chats it already started stay in the sidebar.`
+      );
+      if (!confirmed) return;
+      setRemovingRoutineId(routine.id);
+      setTriggersError(null);
+      try {
+        await window.argmax.routines.delete(routine.id);
+        await loadTriggers();
+      } catch (error) {
+        setTriggersError(errorMessage(error, "Could not remove the trigger."));
+      } finally {
+        setRemovingRoutineId(null);
+      }
+    },
+    [loadTriggers]
+  );
 
   const project = useMemo(
     () => (arc ? (projects.find((candidate) => candidate.id === arc.homeProjectId) ?? null) : null),
@@ -468,6 +510,58 @@ export function ArcPage({
             ))}
           </ul>
         )}
+      </div>
+
+      <div className="arc-card">
+        <h2 className="arc-card-title">Triggers</h2>
+        {arc.state === "paused" ? (
+          <p className="arc-inline-error" role="status">
+            Paused — triggers are silenced
+          </p>
+        ) : null}
+        <p className="arc-card-hint">
+          Pull requests from member chats: failing checks, passing checks, and merges are sent to the
+          coordinator.
+        </p>
+        {triggersError ? (
+          <p className="arc-inline-error" role="alert">
+            {triggersError}
+          </p>
+        ) : null}
+        {triggerRoutines.length === 0 ? (
+          <p className="arc-card-hint">
+            No scheduled tasks target this arc. Add one from Scheduled Tasks with target
+            &ldquo;Arc coordinator&rdquo;.
+          </p>
+        ) : (
+          <ul className="arc-member-list" role="list">
+            {triggerRoutines.map((routine) => (
+              <li key={routine.id} className="arc-trigger-row">
+                <div className="arc-trigger-body">
+                  <span className="arc-member-label">{routine.prompt.split("\n")[0] || routine.name}</span>
+                  <span className="arc-member-meta">
+                    {describeSchedule(routine)} · {routine.enabled ? "Enabled" : "Paused"}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="small-icon"
+                  aria-label={`Remove ${routine.name}`}
+                  title={`Remove ${routine.name}`}
+                  disabled={removingRoutineId === routine.id}
+                  onClick={() => void handleRemoveTrigger(routine)}
+                >
+                  <Trash2 size={13} aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="arc-card-actions">
+          <button type="button" className="settings-button" onClick={showSchedulePage}>
+            Open Scheduled Tasks
+          </button>
+        </div>
       </div>
     </ArcPageShell>
   );

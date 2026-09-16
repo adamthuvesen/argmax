@@ -7,7 +7,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rusqlite::{Connection, Row};
+use rusqlite::{Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use uuid::Uuid;
@@ -494,6 +494,54 @@ fn invalid_database_value(label: &str, value: &str) -> rusqlite::Error {
 
 fn invalid_arc(field: &'static str, code: &'static str, message: impl Into<String>) -> ArgmaxError {
     ArgmaxError::invalid(InvalidInputIssue::at(vec![field.to_owned()], code, message))
+}
+
+/// The Arc a session is attached to, if any. Plain `sessions.arc_id`, not
+/// filtered by liveness — callers that care about live vs. not call
+/// `arc_is_live` on the result.
+pub fn find_session_arc(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Option<ArcRecord>> {
+    let arc_id: Option<String> = connection
+        .prepare_cached("SELECT arc_id FROM sessions WHERE id = ?")
+        .map_err(sqlite_error)?
+        .query_row([session_id], |row| row.get(0))
+        .optional()
+        .map_err(sqlite_error)?
+        .flatten();
+    match arc_id {
+        Some(id) => get_arc(connection, &id).map(Some),
+        None => Ok(None),
+    }
+}
+
+/// The settled definition of "live": `active`, pointed at a coordinator
+/// session, and that coordinator's workspace not mid-archive or gone. The gh
+/// poller's Arc PR/CI events and the scheduler's `arc_coordinator` routine
+/// target both gate on exactly this, so it lives here once rather than in
+/// each caller.
+pub fn arc_is_live(connection: &Connection, arc: &ArcRecord) -> ArgmaxResult<bool> {
+    if arc.state != ArcState::Active {
+        return Ok(false);
+    }
+    let Some(coordinator_session_id) = arc.coordinator_session_id.as_deref() else {
+        return Ok(false);
+    };
+    let workspace_state: Option<String> = connection
+        .prepare_cached(
+            "SELECT workspaces.state FROM sessions
+             JOIN workspaces ON workspaces.id = sessions.workspace_id
+             WHERE sessions.id = ?",
+        )
+        .map_err(sqlite_error)?
+        .query_row([coordinator_session_id], |row| row.get(0))
+        .optional()
+        .map_err(sqlite_error)?;
+    Ok(matches!(
+        workspace_state.as_deref(),
+        Some(state) if !matches!(state, "archiving" | "archived" | "archive-failed")
+    ))
 }
 
 #[cfg(test)]

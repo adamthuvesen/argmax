@@ -1325,6 +1325,10 @@ pub struct RoutinesUpsertInput {
     /// to the `worktree` boolean.
     #[serde(default)]
     pub run_target: Option<RoutineRunTarget>,
+    /// The Arc an `ArcCoordinator` target sends runs to. Required exactly
+    /// when `run_target` is `ArcCoordinator`; ignored otherwise.
+    #[serde(default)]
+    pub arc_id: Option<String>,
     pub cron_expr: Option<String>,
     pub run_once_at: Option<String>,
     pub enabled: Option<bool>,

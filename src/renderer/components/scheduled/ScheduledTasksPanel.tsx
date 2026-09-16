@@ -9,7 +9,13 @@ import {
   type SetStateAction
 } from "react";
 import { Pencil, Play, Plus, Trash2 } from "lucide-react";
-import { SCRATCH_PROJECT_ID, type ProjectSummary, type ProviderId, type Routine } from "../../../shared/types.js";
+import {
+  SCRATCH_PROJECT_ID,
+  type ArcRecord,
+  type ProjectSummary,
+  type ProviderId,
+  type Routine
+} from "../../../shared/types.js";
 import {
   PROVIDER_DISPLAY_NAMES,
   PROVIDER_MODEL_DEFAULTS,
@@ -40,7 +46,7 @@ const MAX_REFRESH_DELAY_MS = 24 * 60 * 60 * 1000;
 const STATUS_DISMISS_MS = 5_000;
 
 /** Where each firing lands. Matches `RoutineRunTarget` in routines.rs. */
-type RoutineRunTarget = "new_session" | "same_session" | "worktree";
+type RoutineRunTarget = "new_session" | "same_session" | "worktree" | "arc_coordinator";
 
 interface DraftState {
   routineId: string | null;
@@ -50,6 +56,8 @@ interface DraftState {
   modelId: string;
   prompt: string;
   runTarget: RoutineRunTarget;
+  /** The Arc an `arc_coordinator` target sends runs to. Unused otherwise. */
+  arcId: string | null;
   enabled: boolean;
   kind: ScheduleKind;
   controls: ScheduleControls;
@@ -65,6 +73,7 @@ function newDraft(projectId: string): DraftState {
     modelId: PROVIDER_MODEL_DEFAULTS[provider].modelId,
     prompt: "",
     runTarget: "worktree",
+    arcId: null,
     enabled: true,
     kind: "daily",
     controls: { ...DEFAULT_SCHEDULE_CONTROLS }
@@ -81,6 +90,7 @@ function draftFromRoutine(routine: Routine): DraftState {
     modelId: routine.modelId,
     prompt: routine.prompt,
     runTarget: routine.runTarget,
+    arcId: routine.arcId,
     enabled: routine.enabled,
     kind,
     controls
@@ -99,7 +109,8 @@ const SCHEDULE_KIND_OPTIONS: ReadonlyArray<{ value: ScheduleKind; label: string 
 const RUN_TARGET_OPTIONS: ReadonlyArray<{ value: RoutineRunTarget; label: string }> = [
   { value: "new_session", label: "New chat" },
   { value: "same_session", label: "Same chat" },
-  { value: "worktree", label: "Isolated worktree" }
+  { value: "worktree", label: "Isolated worktree" },
+  { value: "arc_coordinator", label: "Arc coordinator" }
 ];
 
 function runTargetLabel(target: RoutineRunTarget): string {
@@ -132,6 +143,7 @@ export function ScheduledTasksPanel({
   onOpenSession?: (sessionId: string) => void;
 }): JSX.Element {
   const [routines, setRoutines] = useState<Routine[] | null>(null);
+  const [arcs, setArcs] = useState<ArcRecord[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -155,6 +167,17 @@ export function ScheduledTasksPanel({
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  // Arcs only matter to the editor's "Arc coordinator" target, but the list
+  // is small and shared across every project, so one load up front is
+  // simpler than fetching on demand each time the editor opens.
+  useEffect(() => {
+    if (!window.argmax?.arcs) return;
+    window.argmax.arcs
+      .list({})
+      .then(setArcs)
+      .catch(() => setArcs([]));
+  }, []);
 
   // The scheduler fires in Rust, so "next run" goes stale on its own. Rather
   // than poll, re-read once the soonest due time has passed; every reload
@@ -230,6 +253,10 @@ export function ScheduledTasksPanel({
       setSaveError("Write the prompt the agent will run.");
       return;
     }
+    if (draft.runTarget === "arc_coordinator" && !draft.arcId) {
+      setSaveError("Choose an Arc for this task's coordinator.");
+      return;
+    }
     const schedule = buildSchedule(draft.kind, draft.controls);
     if (!schedule.cronExpr && !schedule.runOnceAt) {
       setSaveError("Choose when the task should run.");
@@ -250,6 +277,7 @@ export function ScheduledTasksPanel({
         modelId: draft.modelId,
         worktree: draft.runTarget === "worktree",
         runTarget: draft.runTarget,
+        arcId: draft.runTarget === "arc_coordinator" ? draft.arcId : null,
         cronExpr: schedule.cronExpr,
         runOnceAt: schedule.runOnceAt,
         enabled: draft.enabled
@@ -341,6 +369,7 @@ export function ScheduledTasksPanel({
           draft={draft}
           setDraft={setDraft}
           projects={repositories}
+          arcs={arcs}
           modelOptions={modelOptions}
           saveError={saveError}
           busy={busy}
@@ -548,6 +577,7 @@ function ScheduledTaskEditor({
   draft,
   setDraft,
   projects,
+  arcs,
   modelOptions,
   saveError,
   busy,
@@ -557,6 +587,7 @@ function ScheduledTaskEditor({
   draft: DraftState;
   setDraft: Dispatch<SetStateAction<DraftState | null>>;
   projects: ProjectSummary[];
+  arcs: ArcRecord[];
   modelOptions: ReadonlyArray<{ value: string; label: string }>;
   saveError: string | null;
   busy: boolean;
@@ -570,6 +601,21 @@ function ScheduledTaskEditor({
   const patch = (changes: Partial<DraftState>): void => {
     setDraft((current) => (current ? { ...current, ...changes } : current));
   };
+
+  // An Arc is homed in one project; a task not in that project cannot point
+  // at its coordinator. Switching repositories away from the chosen Arc's
+  // home drops the selection rather than saving a mismatched pair.
+  const projectArcs = useMemo(
+    () => arcs.filter((arc) => arc.homeProjectId === draft.projectId),
+    [arcs, draft.projectId]
+  );
+  const arcOptions = useMemo(
+    () =>
+      projectArcs.length > 0
+        ? projectArcs.map((arc) => ({ value: arc.id, label: arc.name }))
+        : [{ value: "", label: "No Arcs in this repository" }],
+    [projectArcs]
+  );
 
   const patchControls = (changes: Partial<ScheduleControls>): void => {
     patch({ controls: { ...draft.controls, ...changes } });
@@ -757,7 +803,15 @@ function ScheduledTaskEditor({
                 <SettingsListPicker
                   ariaLabel="Repository"
                   value={draft.projectId}
-                  onChange={(projectId) => patch({ projectId })}
+                  onChange={(projectId) => {
+                    // An Arc chosen for the old repository is almost never
+                    // right for a new one — the CHECK constraint would reject
+                    // it outright, so drop it rather than save a mismatch.
+                    const stillHomed = arcs.some(
+                      (arc) => arc.id === draft.arcId && arc.homeProjectId === projectId
+                    );
+                    patch({ projectId, arcId: stillHomed ? draft.arcId : null });
+                  }}
                   options={projects.map((project) => ({ value: project.id, label: project.name }))}
                 />
               </div>
@@ -813,6 +867,28 @@ function ScheduledTaskEditor({
                 Every run sends the prompt as a follow-up in the same chat. A long-running schedule
                 keeps one growing conversation — pick New chat if you want a clean slate each time.
               </p>
+            ) : null}
+            {draft.runTarget === "arc_coordinator" ? (
+              <>
+                <div className="sched-field sched-field-inline">
+                  <span className="sched-label">Arc</span>
+                  <div className="sched-picker">
+                    <SettingsListPicker
+                      ariaLabel="Arc"
+                      disabled={projectArcs.length === 0}
+                      value={draft.arcId ?? ""}
+                      onChange={(arcId) => patch({ arcId: arcId || null })}
+                      options={arcOptions}
+                      placement="above"
+                    />
+                  </div>
+                </div>
+                <p className="sched-help">
+                  Every run sends the prompt to the Arc's coordinator chat instead of launching one
+                  of its own. Paused or done Arcs, and Arcs with no coordinator running yet, skip the
+                  occurrence rather than fail.
+                </p>
+              </>
             ) : null}
           </section>
 

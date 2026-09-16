@@ -199,6 +199,95 @@ pub(crate) async fn fire_routine(
         return FireOutcome::Recorded;
     };
 
+    // An `arc_coordinator` routine has no chat of its own to launch or reuse:
+    // it resolves the Arc's *current* coordinator fresh on every fire (so
+    // repointing the Arc mid-schedule is picked up automatically) and either
+    // delivers, defers behind a running turn exactly like `same_session`, or
+    // backs off with an error. A paused/done Arc is not a failure — the
+    // occurrence is simply skipped and the schedule advances.
+    if matches!(fields.run_target, RoutineRunTarget::ArcCoordinator) {
+        let resolution = {
+            let connection = database.connection();
+            resolve_arc_coordinator(&connection, fields.arc_id.as_deref())
+        };
+        return match resolution {
+            ArcCoordinatorResolution::Skip => {
+                settle_success(
+                    database,
+                    &fields,
+                    &last_run,
+                    stays_scheduled,
+                    next.as_ref(),
+                    None,
+                );
+                FireOutcome::Recorded
+            }
+            ArcCoordinatorResolution::NoCoordinator => {
+                let _ = mark(
+                    database,
+                    &fields,
+                    &last_run,
+                    stays_scheduled.next_run_at_or_retry(now).as_deref(),
+                    Some("Arc has no coordinator"),
+                    stays_scheduled.enabled(),
+                    None,
+                );
+                FireOutcome::Recorded
+            }
+            ArcCoordinatorResolution::Coordinator(session_id) => {
+                match send_routine_follow_up(providers, &fields, provider, &session_id).await {
+                    FollowUpOutcome::Sent => {
+                        settle_success(
+                            database,
+                            &fields,
+                            &last_run,
+                            stays_scheduled,
+                            next.as_ref(),
+                            None,
+                        );
+                        FireOutcome::Recorded
+                    }
+                    FollowUpOutcome::Busy => {
+                        tracing::debug!(
+                            routine_id = %fields.id,
+                            session_id = %session_id,
+                            "scheduled task is waiting for its arc coordinator to finish its turn"
+                        );
+                        FireOutcome::Deferred
+                    }
+                    // The coordinator vanished between resolution and send
+                    // (deleted, archived mid-flight) — the same shape as no
+                    // coordinator at all, so it backs off the same way rather
+                    // than retrying every tick.
+                    FollowUpOutcome::Missing => {
+                        let _ = mark(
+                            database,
+                            &fields,
+                            &last_run,
+                            stays_scheduled.next_run_at_or_retry(now).as_deref(),
+                            Some("Arc has no coordinator"),
+                            stays_scheduled.enabled(),
+                            None,
+                        );
+                        FireOutcome::Recorded
+                    }
+                    FollowUpOutcome::Failed(message) => {
+                        let _ = mark(
+                            database,
+                            &fields,
+                            &last_run,
+                            stays_scheduled.next_run_at_or_retry(now).as_deref(),
+                            Some(&message),
+                            stays_scheduled.enabled(),
+                            None,
+                        );
+                        FireOutcome::Recorded
+                    }
+                }
+            }
+        };
+    }
+
     // A `same_session` routine reuses one chat: if a previous run left a live
     // session behind, the prompt goes in as a turn of its own. A chat that is
     // still mid-turn leaves the row due for the next tick instead. A missing
@@ -486,11 +575,53 @@ fn resolve_routine_permissions(
     Some((provider, default_agent.permission_mode_for(provider)))
 }
 
+/// What firing an `arc_coordinator` routine should do, resolved fresh from
+/// the Arc row rather than a cached session id — a coordinator repointed
+/// since the last run is picked up automatically.
+enum ArcCoordinatorResolution {
+    /// Paused or done: not a failure, just nothing to deliver this occurrence.
+    Skip,
+    /// Active with no live coordinator — missing, or its workspace is
+    /// archiving/archived (see `crate::persistence::arcs::arc_is_live`).
+    NoCoordinator,
+    Coordinator(String),
+}
+
+fn resolve_arc_coordinator(
+    connection: &rusqlite::Connection,
+    arc_id: Option<&str>,
+) -> ArcCoordinatorResolution {
+    let Some(arc_id) = arc_id else {
+        return ArcCoordinatorResolution::NoCoordinator;
+    };
+    let arc = match crate::persistence::arcs::get_arc(connection, arc_id) {
+        Ok(arc) => arc,
+        Err(_) => return ArcCoordinatorResolution::NoCoordinator,
+    };
+    if !matches!(arc.state, crate::persistence::arcs::ArcState::Active) {
+        return ArcCoordinatorResolution::Skip;
+    }
+    match crate::persistence::arcs::arc_is_live(connection, &arc) {
+        Ok(true) => ArcCoordinatorResolution::Coordinator(
+            arc.coordinator_session_id
+                .expect("arc_is_live implies a coordinator session id"),
+        ),
+        Ok(false) => ArcCoordinatorResolution::NoCoordinator,
+        Err(_) => ArcCoordinatorResolution::NoCoordinator,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::default_agent::DefaultAgent;
-    use crate::providers::PermissionMode;
+    use crate::persistence::sessions::{persist_session, PersistSessionInput};
+    use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
+    use crate::providers::runtime::{
+        BoxFuture, EventCallback, ProviderProcessLauncher, ProviderRuntimeHandle,
+    };
+    use crate::providers::{PermissionMode, ProviderLaunchInput};
+    use crate::sessions::state::SessionState;
     use std::collections::HashMap;
 
     #[tokio::test]
@@ -547,6 +678,7 @@ mod tests {
                 model_label: "Opus 5".to_string(),
                 model_id: "claude-opus-5".to_string(),
                 run_target: RoutineRunTarget::SameSession,
+                arc_id: None,
                 cron_expr: None,
                 run_once_at: Some("2026-01-01T09:00:00.000Z".to_string()),
                 enabled: true,
@@ -555,6 +687,347 @@ mod tests {
             Some("2026-01-01T09:00:00.000Z".to_string()),
         )
         .expect("insert routine");
+    }
+
+    fn seed_arc(
+        database: &Arc<Database>,
+        arc_id: &str,
+        state: &str,
+        coordinator_session_id: Option<&str>,
+    ) {
+        let connection = database.connection();
+        connection
+            .execute(
+                "INSERT INTO arcs (id, name, brief, state, home_project_id, coordinator_session_id, dir, created_at, updated_at)
+                 VALUES (?1, 'Test Arc', '', ?2, 'p1', ?3, '/tmp/argmax-scheduler-arc', ?4, ?4)",
+                rusqlite::params![arc_id, state, coordinator_session_id, now_iso()],
+            )
+            .expect("seed arc");
+    }
+
+    fn repoint_arc_coordinator(
+        database: &Arc<Database>,
+        arc_id: &str,
+        coordinator_session_id: &str,
+    ) {
+        let connection = database.connection();
+        connection
+            .execute(
+                "UPDATE arcs SET coordinator_session_id = ? WHERE id = ?",
+                rusqlite::params![coordinator_session_id, arc_id],
+            )
+            .expect("repoint arc coordinator");
+    }
+
+    /// A coordinator session in its own workspace. `path` has to exist on
+    /// disk once a test actually fires the routine: a launch attempt
+    /// canonicalizes the workspace path before it ever reaches the launcher.
+    fn seed_coordinator_session(
+        database: &Arc<Database>,
+        workspace_id: &str,
+        session_id: &str,
+        path: &str,
+    ) {
+        let connection = database.connection();
+        persist_workspace(
+            &connection,
+            &PersistWorkspaceInput {
+                id: workspace_id.to_string(),
+                project_id: "p1".to_string(),
+                task_label: "coordinator".to_string(),
+                branch: "coordinator".to_string(),
+                base_ref: "main".to_string(),
+                path: path.to_string(),
+                state: "running".to_string(),
+                shared_workspace: false,
+                kind: "git".to_string(),
+                dirty: false,
+                changed_files: 0,
+            },
+        )
+        .expect("coordinator workspace");
+        persist_session(
+            &connection,
+            &PersistSessionInput {
+                id: session_id.to_string(),
+                workspace_id: workspace_id.to_string(),
+                provider: "claude".to_string(),
+                model_label: "Opus 5".to_string(),
+                model_id: "claude-opus-5".to_string(),
+                reasoning_effort: None,
+                permission_mode: Some("auto-approve".to_string()),
+                agent_mode: Some("auto".to_string()),
+                prompt: "coordinate".to_string(),
+                state: SessionState::Complete,
+            },
+        )
+        .expect("coordinator session");
+    }
+
+    fn arc_coordinator_routine(database: &Arc<Database>, id: &str, arc_id: &str) {
+        let connection = database.connection();
+        routines::upsert_routine(
+            &connection,
+            &routines::UpsertRoutineInput {
+                id: id.to_string(),
+                name: "Coordinate".to_string(),
+                project_id: "p1".to_string(),
+                prompt: "Status, please".to_string(),
+                provider: "claude".to_string(),
+                model_label: "Opus 5".to_string(),
+                model_id: "claude-opus-5".to_string(),
+                run_target: RoutineRunTarget::ArcCoordinator,
+                arc_id: Some(arc_id.to_string()),
+                cron_expr: Some("0 0 9 * * *".to_string()),
+                run_once_at: None,
+                enabled: true,
+                created_by: RoutineAuthor::User,
+            },
+            Some("2026-01-01T09:00:00.000Z".to_string()),
+        )
+        .expect("insert arc_coordinator routine");
+    }
+
+    fn arc_coordinator_fields(database: &Arc<Database>, id: &str) -> RoutineLaunchFields {
+        let connection = database.connection();
+        routines::routine_launch_fields(
+            &routines::find_routine_by_id(&connection, id).expect("routine row"),
+        )
+    }
+
+    /// Records the session id every launch attempt was addressed to, then
+    /// stops — the test only needs proof of *who* fire_routine tried to
+    /// reach, not a working provider turn.
+    #[derive(Default)]
+    struct RecordingLauncher {
+        session_ids: Mutex<Vec<String>>,
+        // The real spawn path launches in a detached `tokio::spawn` rather
+        // than awaiting it inline, so a caller that wants proof the launcher
+        // ran has to wait on something — this is that something.
+        launched: tokio::sync::Notify,
+    }
+
+    impl ProviderProcessLauncher for RecordingLauncher {
+        fn launch<'a>(
+            &'a self,
+            input: ProviderLaunchInput,
+            _on_event: EventCallback,
+        ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
+            self.session_ids
+                .lock_or_recover("recorded session ids")
+                .push(input.session_id.clone());
+            self.launched.notify_one();
+            Box::pin(async {
+                Err(ArgmaxError::service(
+                    "TEST_LAUNCH_STOP",
+                    "recording launcher stops here",
+                ))
+            })
+        }
+    }
+
+    fn test_default_agent() -> crate::default_agent::DefaultAgent {
+        DefaultAgent::factory()
+    }
+
+    #[test]
+    fn resolve_arc_coordinator_skips_a_paused_or_done_arc() {
+        let database = database_with_project();
+        seed_coordinator_session(
+            &database,
+            "w-coord",
+            "coord-a",
+            "/tmp/argmax-arc-coord-paused",
+        );
+        for state in ["paused", "done"] {
+            seed_arc(&database, &format!("arc-{state}"), state, Some("coord-a"));
+            let connection = database.connection();
+            assert!(matches!(
+                resolve_arc_coordinator(&connection, Some(&format!("arc-{state}"))),
+                ArcCoordinatorResolution::Skip
+            ));
+        }
+    }
+
+    #[test]
+    fn resolve_arc_coordinator_reports_no_coordinator() {
+        let database = database_with_project();
+        let connection = database.connection();
+        // No `arc_id` at all.
+        assert!(matches!(
+            resolve_arc_coordinator(&connection, None),
+            ArcCoordinatorResolution::NoCoordinator
+        ));
+        // An active Arc with nobody pointed at it.
+        drop(connection);
+        seed_arc(&database, "arc-empty", "active", None);
+        let connection = database.connection();
+        assert!(matches!(
+            resolve_arc_coordinator(&connection, Some("arc-empty")),
+            ArcCoordinatorResolution::NoCoordinator
+        ));
+    }
+
+    #[test]
+    fn resolve_arc_coordinator_reports_no_coordinator_when_its_workspace_is_archived() {
+        let database = database_with_project();
+        seed_coordinator_session(
+            &database,
+            "w-coord",
+            "coord-a",
+            "/tmp/argmax-arc-coord-archived",
+        );
+        database
+            .connection()
+            .execute(
+                "UPDATE workspaces SET state = 'archived' WHERE id = 'w-coord'",
+                [],
+            )
+            .expect("archive coordinator workspace");
+        seed_arc(&database, "arc-1", "active", Some("coord-a"));
+        let connection = database.connection();
+        assert!(matches!(
+            resolve_arc_coordinator(&connection, Some("arc-1")),
+            ArcCoordinatorResolution::NoCoordinator
+        ));
+    }
+
+    #[test]
+    fn resolve_arc_coordinator_finds_the_current_coordinator_and_a_repointed_one() {
+        let database = database_with_project();
+        seed_coordinator_session(&database, "w-coord-a", "coord-a", "/tmp/argmax-arc-coord-a");
+        seed_coordinator_session(&database, "w-coord-b", "coord-b", "/tmp/argmax-arc-coord-b");
+        seed_arc(&database, "arc-1", "active", Some("coord-a"));
+
+        let connection = database.connection();
+        assert!(matches!(
+            resolve_arc_coordinator(&connection, Some("arc-1")),
+            ArcCoordinatorResolution::Coordinator(session_id) if session_id == "coord-a"
+        ));
+        drop(connection);
+
+        repoint_arc_coordinator(&database, "arc-1", "coord-b");
+        let connection = database.connection();
+        assert!(matches!(
+            resolve_arc_coordinator(&connection, Some("arc-1")),
+            ArcCoordinatorResolution::Coordinator(session_id) if session_id == "coord-b"
+        ));
+    }
+
+    #[tokio::test]
+    async fn arc_coordinator_errors_when_there_is_no_coordinator() {
+        let database = database_with_project();
+        seed_arc(&database, "arc-1", "active", None);
+        arc_coordinator_routine(&database, "r1", "arc-1");
+        let fields = arc_coordinator_fields(&database, "r1");
+
+        let providers = ProviderSessionService::new(Arc::clone(&database));
+        let workspaces = Arc::new(WorkspaceService::new(Arc::clone(&database)));
+        let outcome = fire_routine(
+            &database,
+            &workspaces,
+            &providers,
+            fields,
+            &test_default_agent(),
+        )
+        .await;
+
+        assert_eq!(outcome, FireOutcome::Recorded);
+        let routine = routines::find_routine_by_id(&database.connection(), "r1").unwrap();
+        assert_eq!(
+            routine.last_error.as_deref(),
+            Some("Arc has no coordinator")
+        );
+        // A recurring routine still gets a fresh `next_run_at` — this is a
+        // back-off, not a disable.
+        assert!(routine.enabled);
+        assert!(routine.next_run_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn arc_coordinator_skips_a_paused_arc_and_advances_the_schedule() {
+        let database = database_with_project();
+        seed_coordinator_session(
+            &database,
+            "w-coord",
+            "coord-a",
+            "/tmp/argmax-arc-coord-skip",
+        );
+        seed_arc(&database, "arc-1", "paused", Some("coord-a"));
+        arc_coordinator_routine(&database, "r1", "arc-1");
+        let fields = arc_coordinator_fields(&database, "r1");
+
+        let providers = ProviderSessionService::new(Arc::clone(&database));
+        let workspaces = Arc::new(WorkspaceService::new(Arc::clone(&database)));
+        let outcome = fire_routine(
+            &database,
+            &workspaces,
+            &providers,
+            fields,
+            &test_default_agent(),
+        )
+        .await;
+
+        assert_eq!(outcome, FireOutcome::Recorded);
+        let routine = routines::find_routine_by_id(&database.connection(), "r1").unwrap();
+        assert_eq!(routine.last_error, None);
+        assert!(routine.enabled);
+        assert!(routine.next_run_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn arc_coordinator_delivers_to_the_current_and_then_a_replaced_coordinator() {
+        let database = database_with_project();
+        // A launch attempt canonicalizes the workspace path before it ever
+        // reaches the launcher, so these have to exist on disk.
+        let path_a = "/tmp/argmax-arc-coord-deliver-a";
+        let path_b = "/tmp/argmax-arc-coord-deliver-b";
+        std::fs::create_dir_all(path_a).expect("coordinator workspace dir a");
+        std::fs::create_dir_all(path_b).expect("coordinator workspace dir b");
+        seed_coordinator_session(&database, "w-coord-a", "coord-a", path_a);
+        seed_coordinator_session(&database, "w-coord-b", "coord-b", path_b);
+        seed_arc(&database, "arc-1", "active", Some("coord-a"));
+        arc_coordinator_routine(&database, "r1", "arc-1");
+
+        let launcher = Arc::new(RecordingLauncher::default());
+        let providers =
+            ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+        let workspaces = Arc::new(WorkspaceService::new(Arc::clone(&database)));
+        let default_agent = test_default_agent();
+
+        // The background spawn path launches asynchronously, so wait on the
+        // launcher's own signal rather than the `fire_routine` future.
+        let wait_for_launch = |launcher: &Arc<RecordingLauncher>| {
+            let launcher = Arc::clone(launcher);
+            async move {
+                tokio::time::timeout(Duration::from_secs(2), launcher.launched.notified())
+                    .await
+                    .expect("launcher should have been reached");
+            }
+        };
+
+        let fields = arc_coordinator_fields(&database, "r1");
+        fire_routine(&database, &workspaces, &providers, fields, &default_agent).await;
+        wait_for_launch(&launcher).await;
+        assert_eq!(
+            launcher
+                .session_ids
+                .lock_or_recover("recorded session ids")
+                .as_slice(),
+            ["coord-a"]
+        );
+
+        repoint_arc_coordinator(&database, "arc-1", "coord-b");
+        let fields = arc_coordinator_fields(&database, "r1");
+        fire_routine(&database, &workspaces, &providers, fields, &default_agent).await;
+        wait_for_launch(&launcher).await;
+        assert_eq!(
+            launcher
+                .session_ids
+                .lock_or_recover("recorded session ids")
+                .as_slice(),
+            ["coord-a", "coord-b"]
+        );
     }
 
     /// The point of the whole author column: a wake a chat set for itself

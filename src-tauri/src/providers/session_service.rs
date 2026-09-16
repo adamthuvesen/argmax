@@ -75,7 +75,7 @@ use crate::{
         projects::list_projects,
         session_messages::{
             insert_session_message, is_message_delivered, mark_message_delivered,
-            NewSessionMessage, COMPLETION_KIND,
+            NewSessionMessage, COMPLETION_KIND, MESSAGE_KIND,
         },
         sessions::{
             clear_session_conversation, find_session_by_id, persist_session, session_launch_kind,
@@ -2865,6 +2865,89 @@ impl ProviderSessionService {
                 "could not start a turn with the completion notice"
             ),
         }
+    }
+
+    /// A message from Argmax itself rather than another session — no sender
+    /// session, just a body and a caller-chosen origin label/session for the
+    /// "From <label>" bubble and the click-to-open target (a related session
+    /// the reader would want to jump to, not necessarily who "wrote" this).
+    /// Used by the gh poller's Arc PR/CI events, on the same delivery path
+    /// `session_message` and the completion notice use: the row lands in
+    /// `session_messages` before delivery is attempted, so `inbox_read` and
+    /// `session_wait` see it even when the turn below only queues.
+    ///
+    /// `message_id` is the caller's dedup key — a deterministic id an
+    /// `INSERT OR IGNORE` makes idempotent across ticks and restarts. Returns
+    /// `false` without sending anything when that id was already inserted.
+    pub async fn send_system_notice(
+        self: &Arc<Self>,
+        message_id: String,
+        to_session_id: &str,
+        origin_session_id: String,
+        origin_label: String,
+        body: String,
+    ) -> ArgmaxResult<bool> {
+        let inserted = {
+            let connection = self.database.connection();
+            insert_session_message(
+                &connection,
+                &NewSessionMessage {
+                    id: message_id.clone(),
+                    from_session_id: None,
+                    to_session_id: to_session_id.to_string(),
+                    body: body.clone(),
+                    kind: MESSAGE_KIND.to_string(),
+                },
+            )?
+        };
+        if !inserted {
+            return Ok(false);
+        }
+        if let Some(registry) = self.session_control.get() {
+            registry.notify_inbox(to_session_id);
+        }
+        let (Ok(session_id), Ok(input)) = (
+            SessionId::try_from(to_session_id.to_string()),
+            Prompt::try_from(body),
+        ) else {
+            return Ok(true);
+        };
+        let send_input = ProvidersSendInput {
+            agent_references: None,
+            session_id,
+            input,
+            provider: None,
+            model_label: None,
+            model_id: None,
+            reasoning_effort: None,
+            fast_mode: false,
+            agent_mode: None,
+            attachments: None,
+        };
+        let origin = MessageOrigin {
+            session_id: origin_session_id,
+            label: origin_label,
+            kind: MESSAGE_KIND.to_string(),
+            message_id: Some(message_id.clone()),
+        };
+        match self.send_input_with_origin(send_input, Some(origin)).await {
+            // Only a notice that actually reached the recipient as a turn has
+            // been delivered; one still queued has not, and stays collectable
+            // from the inbox — the same rule the completion notice follows.
+            Ok(result) if !result.queued => {
+                let connection = self.database.connection();
+                if let Err(error) = mark_message_delivered(&connection, &message_id) {
+                    tracing::warn!(?error, "failed to mark a system notice delivered");
+                }
+            }
+            Ok(_) => {}
+            Err(error) => tracing::warn!(
+                to_session_id,
+                ?error,
+                "could not start a turn with a system notice"
+            ),
+        }
+        Ok(true)
     }
 
     fn record_launch_failure(

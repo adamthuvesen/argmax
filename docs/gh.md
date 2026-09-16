@@ -18,6 +18,30 @@ One red commit gets one follow-up per workspace. Several sessions can have work 
 
 Only verified work on the checkout’s branch can launch a follow-up. References and unverified discoveries cannot. The launch also waits for the checkout to be free: while any session sharing its path is still running, the follow-up is deferred rather than dropped, because a second agent would edit the same tree the running one is mid-turn in and the sidebar resolves only one session per workspace. A still-failing PR is therefore re-evaluated on every refresh, not only on the refresh where its state changed. A check that stays red offers no second transition to hang the retry on, so a deferred follow-up also keeps its session from backing off. Only a genuine state change publishes a `dashboard:delta`.
 
+**Suppressed for a live Arc's member.** When the observing session's `arc_id` belongs to a *live* Arc (see [data.md](data.md#arcs)), this follow-up never fires — the Arc's coordinator decides what to do next instead, via the Arc PR/CI event below. A paused or done Arc, an Arc with no coordinator, and a plain non-Arc session all keep this section's behavior exactly.
+
+## Arc PR/CI Events
+
+A PR with WORK evidence — the same rule `resolve_workspace_id_for_pr_action` applies above — on a session whose Arc is live gets a message to that Arc's coordinator instead of (checks failing) or alongside (checks passing, merged) the ordinary hooks. `gh::poller::ArcEventHook` fires on three transitions, independent of the check-failure hook's own gating (busy checkout) and of `on_pr_merged`'s (the `archive_on_merge` project setting, which this ignores):
+
+- **Checks failing**: `check_state` transitions to `failure` on an `OPEN` PR.
+- **Checks passing**: `check_state` transitions to `success` from `failure` or `pending`.
+- **Merged**: `pr_state` reaches `MERGED`.
+
+A coordinator that is itself the PR's worker still gets the message — nothing excludes `session_id == coordinator_session_id`.
+
+Delivery is `ProviderSessionService::send_system_notice`, the same path `session_message` and the completion notice use: a `session_messages` row (`kind = "message"`, `from_session_id = NULL` — there is no sending session, only the PR's member session named in the body) lands before an attempted turn, so an idle coordinator wakes with it and a busy one collects it from its inbox on its next tool call. The message is plain and short:
+
+```
+Arc "<name>": PR #<n> (<title>) in <project> — checks failing on <sha7>. Member session <id> (<label>). <url>
+```
+
+(`checks passing` / `merged` in place of `checks failing on <sha7>`; `merged` carries no commit.)
+
+Deduplication is two-layered, keyed `arc:<arcId>:pr:<number>:<headSha>:<kind>` (`merged` omits the sha): the poller's existing in-memory `fired_ledger` avoids re-firing the hook every tick while a PR sits in the same state, and the message's `id` is set to that same key, so `INSERT OR IGNORE` on `session_messages` makes delivery idempotent across a restart without a second table.
+
+**Limitation.** A member session's workspace can be archived before its PR resolves. Archiving removes it from the poller's pollable-session set (see `pollable_session_ids` above), so a PR that only that archived session observed stops being polled and never reaches its passing or merged transition. This mirrors the check-failure follow-up's own limitation on an archived workspace; nothing about Arc events widens or narrows it.
+
 ## Archive On Merge
 
 Settings → Projects carries a per-project opt-in, `projects.archive_on_merge` (off by default, saved through `projects:update-settings`). With it on, a tick can archive the workspace when its primary PR has merged and every worked PR is merged. An open, closed-unmerged, unknown, or stale worked PR defers archive. Its checkout and branch are retained in the archive location and the sidebar row is hidden. This preserves local files but does not reclaim their disk space. Without it a merged PR only repaints the marker.

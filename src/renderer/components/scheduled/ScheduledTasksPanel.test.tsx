@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ArgmaxApi, ProjectSummary, Routine } from "../../../shared/types.js";
+import type { ArcRecord, ArgmaxApi, ProjectSummary, Routine } from "../../../shared/types.js";
 import { ScheduledTasksPanel } from "./ScheduledTasksPanel.js";
 
 function routine(overrides: Partial<Routine> = {}): Routine {
@@ -15,6 +15,7 @@ function routine(overrides: Partial<Routine> = {}): Routine {
     worktree: true,
     runTarget: "worktree",
     lastSessionId: null,
+    arcId: null,
     cronExpr: "0 0 9 * * *",
     runOnceAt: null,
     enabled: true,
@@ -22,6 +23,21 @@ function routine(overrides: Partial<Routine> = {}): Routine {
     nextRunAt: "2026-09-01T09:00:00.000Z",
     lastError: null,
     createdBy: "user",
+    createdAt: "2026-08-30T08:00:00.000Z",
+    updatedAt: "2026-08-30T08:00:00.000Z",
+    ...overrides
+  };
+}
+
+function arc(overrides: Partial<ArcRecord> = {}): ArcRecord {
+  return {
+    id: "arc-1",
+    name: "Payments migration",
+    brief: "",
+    state: "active",
+    homeProjectId: "p1",
+    coordinatorSessionId: "coord-1",
+    dir: "/tmp/arcs/arc-1",
     createdAt: "2026-08-30T08:00:00.000Z",
     updatedAt: "2026-08-30T08:00:00.000Z",
     ...overrides
@@ -59,6 +75,10 @@ const systemStub = {
   confirm: vi.fn<ArgmaxApi["system"]["confirm"]>()
 };
 
+const arcsStub = {
+  list: vi.fn<ArgmaxApi["arcs"]["list"]>()
+};
+
 beforeEach(() => {
   vi.restoreAllMocks();
   routinesStub.list.mockReset();
@@ -68,6 +88,7 @@ beforeEach(() => {
   routinesStub.runNow.mockReset();
   routinesStub.resetSession.mockReset();
   systemStub.confirm.mockReset();
+  arcsStub.list.mockReset();
   routinesStub.list.mockResolvedValue([routine()]);
   routinesStub.delete.mockResolvedValue(null);
   routinesStub.upsert.mockImplementation((input) =>
@@ -75,7 +96,8 @@ beforeEach(() => {
       routine({
         ...input,
         enabled: input.enabled ?? true,
-        runTarget: input.runTarget ?? (input.worktree ? "worktree" : "new_session")
+        runTarget: input.runTarget ?? (input.worktree ? "worktree" : "new_session"),
+        arcId: input.arcId ?? null
       })
     )
   );
@@ -85,7 +107,12 @@ beforeEach(() => {
     Promise.resolve(routine({ id, runTarget: "same_session", lastSessionId: null }))
   );
   systemStub.confirm.mockResolvedValue(true);
-  window.argmax = { routines: routinesStub, system: systemStub } as unknown as ArgmaxApi;
+  arcsStub.list.mockResolvedValue([arc()]);
+  window.argmax = {
+    routines: routinesStub,
+    system: systemStub,
+    arcs: arcsStub
+  } as unknown as ArgmaxApi;
 });
 
 afterEach(() => {
@@ -166,6 +193,54 @@ describe("ScheduledTasksPanel", () => {
         })
       )
     );
+  });
+
+  it("saves an arc_coordinator task with the chosen arc", async () => {
+    routinesStub.list.mockResolvedValue([]);
+    render(<ScheduledTasksPanel projects={[project()]} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "New task" }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Status check" } });
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Report status" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Run in" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Arc coordinator" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Arc" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Payments migration" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Create task" }));
+
+    await waitFor(() =>
+      expect(routinesStub.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Status check",
+          runTarget: "arc_coordinator",
+          arcId: "arc-1"
+        })
+      )
+    );
+  });
+
+  it("blocks saving an arc_coordinator task with no arc chosen", async () => {
+    arcsStub.list.mockResolvedValue([]);
+    routinesStub.list.mockResolvedValue([]);
+    render(<ScheduledTasksPanel projects={[project()]} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "New task" }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Status check" } });
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Report status" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Run in" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Arc coordinator" }));
+    expect(await screen.findByRole("button", { name: "Arc" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Create task" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Choose an Arc for this task's coordinator."
+    );
+    expect(routinesStub.upsert).not.toHaveBeenCalled();
   });
 
   it("offers open chat and reset for same-session tasks", async () => {

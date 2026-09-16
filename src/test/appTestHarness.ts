@@ -144,6 +144,7 @@ function routineStub(overrides: Partial<Routine> & { id: string }): Routine {
     worktree: true,
     runTarget: "worktree",
     lastSessionId: null,
+    arcId: null,
     cronExpr: null,
     runOnceAt: null,
     enabled: true,

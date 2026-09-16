@@ -998,6 +998,20 @@ pub fn run() {
                                     archive_merged_workspace(workspaces, context).await;
                                 });
                             });
+                            let arc_event_database = Arc::clone(&database);
+                            let arc_event_providers = Arc::clone(&providers);
+                            let arc_event_hook =
+                                Arc::new(move |context: gh::poller::ArcEventContext| {
+                                    let database = Arc::clone(&arc_event_database);
+                                    let providers = Arc::clone(&arc_event_providers);
+                                    tauri::async_runtime::spawn(async move {
+                                        if let Err(error) =
+                                            handle_gh_arc_event(database, providers, context).await
+                                        {
+                                            tracing::warn!(?error, "failed to handle gh arc event");
+                                        }
+                                    });
+                                });
                             let gh_delta_tx = delta_tx.clone();
                             let publish_delta = move |delta| {
                                 gh_delta_tx.send(delta);
@@ -1009,7 +1023,8 @@ pub fn run() {
                                 )
                                 .with_delta_publisher(Arc::new(publish_delta))
                                 .with_check_failure_hook(failure_hook)
-                                .with_pr_merged_hook(merged_hook),
+                                .with_pr_merged_hook(merged_hook)
+                                .with_arc_event_hook(arc_event_hook),
                             );
                             // Defer start() onto the Tauri runtime — calling it
                             // synchronously here panics with "there is no
@@ -1308,6 +1323,78 @@ async fn handle_gh_check_failure(
         &context.head_sha,
         &persistence::time::now_iso(),
     )
+}
+
+/// Notifies a live Arc's coordinator that a member's PR changed state,
+/// instead of the automatic check-failure follow-up (which the poller
+/// already suppressed for this session). Delivered on the same path
+/// `session_message` and the completion notice use — `send_system_notice` —
+/// so an idle coordinator wakes with it and a busy one collects it from its
+/// inbox. `message_id` is the poller's ledger key, so a retried call (a
+/// restart mid-tick) does not resend.
+async fn handle_gh_arc_event(
+    database: Arc<persistence::Database>,
+    providers: Arc<providers::session_service::ProviderSessionService>,
+    context: gh::poller::ArcEventContext,
+) -> error::ArgmaxResult<()> {
+    let (message_id, member_label, project_name, pr_title, pr_url) = {
+        let connection = database.connection();
+        let workspace =
+            persistence::workspaces::find_workspace_by_id(&connection, &context.workspace_id)?;
+        let project = persistence::projects::require_project(&connection, &workspace.project_id)?;
+        let pr = persistence::gh::list_session_prs(&connection, &context.session_id)?
+            .into_iter()
+            .find(|pr| pr.pr_number == context.pr_number);
+        let ledger_suffix = match context.kind {
+            gh::poller::ArcEventKind::ChecksFailing => {
+                format!("{}:checks_failing", context.head_sha)
+            }
+            gh::poller::ArcEventKind::ChecksPassing => {
+                format!("{}:checks_passing", context.head_sha)
+            }
+            gh::poller::ArcEventKind::Merged => "merged".to_string(),
+        };
+        let message_id = format!(
+            "arc:{}:pr:{}:{}",
+            context.arc_id, context.pr_number, ledger_suffix
+        );
+        (
+            message_id,
+            workspace.task_label,
+            project.name,
+            pr.as_ref().and_then(|pr| pr.title.clone()),
+            pr.as_ref().and_then(|pr| pr.url.clone()),
+        )
+    };
+    let title = pr_title.unwrap_or_else(|| "untitled".to_string());
+    let url = pr_url.unwrap_or_default();
+    let head7: String = context.head_sha.chars().take(7).collect();
+    let status = match context.kind {
+        gh::poller::ArcEventKind::ChecksFailing => format!("checks failing on {head7}"),
+        gh::poller::ArcEventKind::ChecksPassing => format!("checks passing on {head7}"),
+        gh::poller::ArcEventKind::Merged => "merged".to_string(),
+    };
+    let body = format!(
+        "Arc \"{}\": PR #{} ({}) in {} — {}. Member session {} ({}). {}",
+        context.arc_name,
+        context.pr_number,
+        title,
+        project_name,
+        status,
+        context.session_id,
+        member_label,
+        url,
+    );
+    providers
+        .send_system_notice(
+            message_id,
+            &context.coordinator_session_id,
+            context.session_id.clone(),
+            member_label,
+            body,
+        )
+        .await?;
+    Ok(())
 }
 
 /// Disposes of a workspace whose PR has merged, for projects that asked for

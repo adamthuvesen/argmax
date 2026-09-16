@@ -2009,7 +2009,7 @@ export type ReviewLoadDiffInput = { kind: WorkspaceTargetKind; id: WorkspaceTarg
 contextLines?: DiffContextLines | null }
 export type RewindFilesResult = { checkpoint: Checkpoint; recoveryCheckpoint: Checkpoint; restoredPaths: string[] }
 export type RewindPreview = { checkpoint: Checkpoint; currentFingerprint: CheckoutFingerprint; changedPaths: string[]; deletedPaths: string[] }
-export type Routine = { id: string; name: string; projectId: string; prompt: string; provider: string; modelLabel: string; modelId: string; worktree: boolean; runTarget: RoutineRunTarget; lastSessionId: string | null; cronExpr: string | null; runOnceAt: string | null; enabled: boolean; lastRunAt: string | null; nextRunAt: string | null; lastError: string | null; createdBy: RoutineAuthor; createdAt: string; updatedAt: string }
+export type Routine = { id: string; name: string; projectId: string; prompt: string; provider: string; modelLabel: string; modelId: string; worktree: boolean; runTarget: RoutineRunTarget; lastSessionId: string | null; arcId: string | null; cronExpr: string | null; runOnceAt: string | null; enabled: boolean; lastRunAt: string | null; nextRunAt: string | null; lastError: string | null; createdBy: RoutineAuthor; createdAt: string; updatedAt: string }
 /**
  * Who put a scheduled task in the list. `Agent` is a wake a chat set for
  * itself with `schedule_followup` — an alarm clock, not a routine the user
@@ -2021,9 +2021,11 @@ export type RoutineAuthor = "user" | "agent"
  * Where one firing of a scheduled task lands. `NewSession` starts a fresh
  * chat in the shared checkout, `SameSession` sends the prompt as a
  * follow-up into the same chat every time (tracked by `last_session_id`),
- * and `Worktree` starts a fresh chat in its own isolated worktree.
+ * `Worktree` starts a fresh chat in its own isolated worktree, and
+ * `ArcCoordinator` sends it to a live Arc's coordinator session (named by
+ * `arc_id`) instead of launching anything itself.
  */
-export type RoutineRunTarget = "new_session" | "same_session" | "worktree"
+export type RoutineRunTarget = "new_session" | "same_session" | "worktree" | "arc_coordinator"
 export type RoutinesDeleteInput = { id: NonEmptyString }
 export type RoutinesListInput = Record<string, never>
 export type RoutinesResetSessionInput = { id: NonEmptyString }
@@ -2035,7 +2037,12 @@ export type RoutinesUpsertInput = { id: NonEmptyString; name: NonEmptyString; pr
  * isolated worktree. `None` keeps older renderers working and falls back
  * to the `worktree` boolean.
  */
-runTarget?: RoutineRunTarget | null; cronExpr: string | null; runOnceAt: string | null; enabled: boolean | null }
+runTarget?: RoutineRunTarget | null;
+/**
+ * The Arc an `ArcCoordinator` target sends runs to. Required exactly
+ * when `run_target` is `ArcCoordinator`; ignored otherwise.
+ */
+arcId?: string | null; cronExpr: string | null; runOnceAt: string | null; enabled: boolean | null }
 export type RowCounts = { projects: number; workspaces: number; sessions: number; events: number; rawOutputs: number; approvals: number; checks: number; learnings: number; usageEvents: number }
 export type RuntimeDiagnostics = { rssBytes: number; openFileDescriptors: number; tokioTrackedTasks: number }
 export type SaveImageResult = { filePath: string; sizeBytes: number }

@@ -30,6 +30,7 @@ Rust manages SQLite storage under [src-tauri/src/persistence](../src-tauri/src/p
 - `synced_session_tombstones` (v45) retains provider conversation ids for chats deliberately deleted in Settings, whether Argmax launched or imported them. Provider transcripts stay untouched on disk, and session sync consults these tombstones so those chats do not reappear.
 - `workspaces.last_viewed_at` (v47) is the host-authoritative read watermark shared by desktop and mobile. Existing workspaces initialize it from `last_activity_at`; new workspaces initialize it at creation, and clients advance it only to an activity timestamp they actually displayed.
 - `arcs` and `sessions.arc_id` (v51) back Arcs — see [Arcs](#arcs) below.
+- `routines.arc_id` and a fourth `run_target`, `arc_coordinator` (v52), point a scheduled task at a live Arc's coordinator instead of a session or a fresh checkout. SQLite cannot widen `run_target`'s existing CHECK (v36's `ROUTINE_RUN_TARGET`) in place, so this rebuilds `routines` through an explicit column list, the same idiom v20 used to converge a draft schema. A second CHECK ties the pair together: `run_target = 'arc_coordinator'` if and only if `arc_id IS NOT NULL`. Existing rows carry no `arc_id` and keep whichever target they already had.
 
 Reads take pooled `SQLITE_OPEN_READ_ONLY` connections through `Database::read_connection`, not the writer `Mutex<Connection>`, so a read never queues behind a write. A write attempted on the read path fails loudly; that is the point. See [performance.md](performance.md).
 
@@ -40,7 +41,9 @@ names who put the task in the list — `user` for anything saved from the panel,
 what a spent one-shot leaves behind: the user's is disabled and kept, an
 agent's is deleted. The migration backfills `agent` for the shape only a wake
 had (a one-shot firing into the same chat) and clears the spent ones among
-them. See [scheduled-tasks.md](scheduled-tasks.md).
+them. `arc_id` (v52) names the Arc an `arc_coordinator` task resolves its
+recipient from at fire time — always the Arc's *current* coordinator, never a
+cached session id. See [scheduled-tasks.md](scheduled-tasks.md).
 
 ## Arcs
 
@@ -72,6 +75,12 @@ coordinator or member — carries `sessions.arc_id`; `record_session_arc` sets
 it once, at launch. `sessions.launch_depth` and `launched_by_session_id` stay
 at their defaults for a coordinator (no launcher, depth 0), the same as any
 top-level chat.
+
+`find_session_arc` and `arc_is_live` are the settled definition of "live":
+`active`, pointed at a coordinator session, and that coordinator's workspace
+not mid-archive or gone. The gh poller's Arc PR/CI events and the scheduler's
+`arc_coordinator` routine target both gate on exactly this. See
+[gh.md](gh.md) and [scheduled-tasks.md](scheduled-tasks.md).
 
 ## Session PR state
 

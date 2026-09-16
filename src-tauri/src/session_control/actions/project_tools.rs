@@ -193,6 +193,7 @@ pub(super) fn schedule_followup(
             // The whole point is to wake *this* chat, with its transcript: the
             // scheduler sends a `same_session` prompt as a follow-up turn.
             run_target: RoutineRunTarget::SameSession,
+            arc_id: None,
             cron_expr: None,
             run_once_at: Some(run_at.clone()),
             enabled: true,

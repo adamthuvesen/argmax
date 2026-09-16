@@ -104,15 +104,14 @@ const CODEX_STEER_MAX_CONTEXT_PERCENT: i64 = 85;
 const SESSION_STATE_BROADCAST_CAPACITY: usize = 256;
 const STRUCTURED_LAUNCH_COLS: u16 = 120;
 const STRUCTURED_LAUNCH_ROWS: u16 = 32;
-/// After the last stdout/stderr chunk, flush any provider line still sitting in
-/// the per-session stream buffer (no trailing `\n` yet). Interactive CLIs often
-/// keep the process alive after a completed answer, so `flush_trailing` on exit
-/// never runs until the user hits Stop — the chat would stay on "Thinking" even
-/// though the response is already in SQLite.
-///
-/// 16 ms ≈ one frame at 60 Hz. The debounce still rebounces on every new
-/// chunk, so this only fires when the provider pauses; the lower bound just
-/// makes that pause-driven flush feel real-time instead of laggy.
+/// Persist ordinary provider output at most once per short window. This keeps
+/// several busy chats from opening a SQLite transaction for every JSONL line
+/// while staying below a perceptible streaming delay. Approval, permission,
+/// error, and completion events bypass the window in `flush_queue`.
+const STREAM_BATCH_FLUSH_MS: u64 = 25;
+/// A newline-less fragment may be human-readable stdout rather than JSONL.
+/// Flush it only after output pauses so arbitrary PTY chunk boundaries cannot
+/// split or trim its text. Process exit and cancellation force the same flush.
 const STREAM_IDLE_FLUSH_MS: u64 = 16;
 /// How much of a child's final answer a completion notice carries. The notice
 /// is a summary handed back through the inbox, which has its own reply ceiling
@@ -267,8 +266,11 @@ pub struct ProviderSessionService {
     queues: Arc<Mutex<HashMap<String, VecDeque<PendingMessage>>>>,
     queue_promotions: Arc<Mutex<HashSet<String>>>,
     flush_queue: Arc<Mutex<ProviderEventFlushQueue>>,
-    /// Debounced `flush_trailing` for sessions with a partial provider line in
-    /// the stream buffer (no newline delimiter yet).
+    /// One bounded output flush per session. A fixed window, rather than an
+    /// idle debounce, guarantees sustained streams still reach SQLite.
+    batch_flush_generation: Arc<Mutex<HashMap<String, u64>>>,
+    batch_flush_tasks: Arc<Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>>,
+    /// Debounced force-flush for newline-less stream fragments.
     idle_flush_generation: Arc<Mutex<HashMap<String, u64>>>,
     idle_flush_tasks: Arc<Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>>,
     /// Sessions being reconciled, with a queued-rescan flag. A control event
@@ -402,6 +404,8 @@ impl ProviderSessionService {
             queues: Arc::new(Mutex::new(recovered_queues)),
             queue_promotions: Arc::new(Mutex::new(HashSet::new())),
             flush_queue: Arc::new(Mutex::new(ProviderEventFlushQueue::new())),
+            batch_flush_generation: Arc::new(Mutex::new(HashMap::new())),
+            batch_flush_tasks: Arc::new(Mutex::new(HashMap::new())),
             idle_flush_generation: Arc::new(Mutex::new(HashMap::new())),
             idle_flush_tasks: Arc::new(Mutex::new(HashMap::new())),
             subagent_reconciliations: Arc::new(Mutex::new(HashMap::new())),
@@ -1683,7 +1687,7 @@ impl ProviderSessionService {
                 .insert(session_id.clone());
             jobs
         };
-        self.cancel_idle_flush(&session_id);
+        self.cancel_stream_flushes(&session_id);
         if !preserve_queue {
             if let Err(error) = self.clear_queue(&session_id) {
                 self.terminating
@@ -2563,10 +2567,11 @@ impl ProviderSessionService {
                 }
             });
         }
-        // A completed answer can sit in the stream buffer without a trailing
-        // newline while the provider process stays alive. Debounce-flush only
-        // when a real fragment exists; newline-delimited JSONL chunks already
-        // flushed above and should not spawn no-op idle tasks.
+        if result.has_pending_batch {
+            self.schedule_batch_flush(&event.session_id);
+        } else {
+            self.cancel_batch_flush(&event.session_id);
+        }
         if result.has_trailing_fragment {
             self.schedule_idle_flush(&event.session_id);
         } else {
@@ -2576,7 +2581,7 @@ impl ProviderSessionService {
     }
 
     fn handle_lifecycle_event(self: &Arc<Self>, event: ProviderRuntimeEvent) -> ArgmaxResult<()> {
-        self.cancel_idle_flush(&event.session_id);
+        self.cancel_stream_flushes(&event.session_id);
         // A genuine process exit is the one place a Cursor turn that never sent
         // `result/success` should be synthesized as completed — but not when the
         // user cancelled (the session is heading to `cancelled`, not `complete`).
@@ -3433,11 +3438,15 @@ impl ProviderSessionService {
     }
 
     /// `synthesize_cursor_exit` is `true` only on a genuine Cursor process exit
-    /// (see `flush_trailing_fragments`). Mid-turn idle flushes and user
+    /// (see `flush_trailing_fragments`). Mid-turn batch flushes and user
     /// terminates pass `false` so they don't prematurely complete the turn.
-    fn flush_trailing(&self, session_id: &str, synthesize_cursor_exit: bool) -> ArgmaxResult<()> {
+    fn flush_trailing(
+        self: &Arc<Self>,
+        session_id: &str,
+        synthesize_cursor_exit: bool,
+    ) -> ArgmaxResult<()> {
         let mut connection = self.database.connection();
-        let mut delta = self
+        let delta = self
             .flush_queue
             .lock_or_recover("flush queue")
             .flush_trailing_fragments(
@@ -3447,6 +3456,26 @@ impl ProviderSessionService {
                 synthesize_cursor_exit,
             )?;
         drop(connection);
+        self.publish_flushed_delta(session_id, delta);
+        Ok(())
+    }
+
+    fn flush_pending(self: &Arc<Self>, session_id: &str) -> ArgmaxResult<()> {
+        let mut connection = self.database.connection();
+        let delta = self
+            .flush_queue
+            .lock_or_recover("flush queue")
+            .flush_pending_output(&mut connection, session_id)?;
+        drop(connection);
+        self.publish_flushed_delta(session_id, delta);
+        Ok(())
+    }
+
+    fn publish_flushed_delta(
+        self: &Arc<Self>,
+        session_id: &str,
+        mut delta: Option<DashboardDelta>,
+    ) {
         if let Some(delta) = delta.as_mut() {
             if delta_has_session_completed_event(delta) {
                 self.append_reconciled_subagent_events(session_id, delta);
@@ -3456,12 +3485,13 @@ impl ProviderSessionService {
             !delta_has_session_completed_event(delta) && delta_has_subagent_control_event(delta)
         });
         if let Some(delta) = delta {
+            self.schedule_measured_diffs(session_id, &delta);
+            self.schedule_observed_prs(session_id, &delta);
             self.publish(delta);
         }
         if reconcile_subagents {
             self.schedule_subagent_trace_reconciliation(session_id);
         }
-        Ok(())
     }
 
     /// Cursor's `cursor-agent` often emits `result/success` while the child
@@ -3486,7 +3516,7 @@ impl ProviderSessionService {
                 return Ok(());
             }
         }
-        self.cancel_idle_flush(session_id);
+        self.cancel_stream_flushes(session_id);
         // `result/success` already emitted the completion via the normalizer, so
         // no exit synth here.
         self.flush_trailing(session_id, false)?;
@@ -3551,6 +3581,73 @@ impl ProviderSessionService {
         }
     }
 
+    fn cancel_stream_flushes(&self, session_id: &str) {
+        self.cancel_batch_flush(session_id);
+        self.cancel_idle_flush(session_id);
+    }
+
+    fn cancel_batch_flush(&self, session_id: &str) {
+        if let Some(handle) = self
+            .batch_flush_tasks
+            .lock_or_recover("batch flush tasks")
+            .remove(session_id)
+        {
+            handle.abort();
+        }
+        self.batch_flush_generation
+            .lock_or_recover("batch flush generation")
+            .remove(session_id);
+    }
+
+    fn schedule_batch_flush(self: &Arc<Self>, session_id: &str) {
+        let mut tasks = self.batch_flush_tasks.lock_or_recover("batch flush tasks");
+        if tasks.contains_key(session_id) {
+            return;
+        }
+        let generation = {
+            let mut generations = self
+                .batch_flush_generation
+                .lock_or_recover("batch flush generation");
+            let next = generations.get(session_id).copied().unwrap_or(0) + 1;
+            generations.insert(session_id.to_string(), next);
+            next
+        };
+        let service = Arc::clone(self);
+        let session_id_owned = session_id.to_string();
+        let session_id_for_map = session_id_owned.clone();
+        let handle = tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(STREAM_BATCH_FLUSH_MS)).await;
+            let current = service
+                .batch_flush_generation
+                .lock_or_recover("batch flush generation")
+                .get(&session_id_owned)
+                .copied();
+            if current != Some(generation) {
+                return;
+            }
+            service
+                .batch_flush_tasks
+                .lock_or_recover("batch flush tasks")
+                .remove(&session_id_owned);
+            let mut generations = service
+                .batch_flush_generation
+                .lock_or_recover("batch flush generation");
+            if generations.get(&session_id_owned) == Some(&generation) {
+                generations.remove(&session_id_owned);
+            }
+            drop(generations);
+            let flush_result = service.flush_pending(&session_id_owned);
+            if let Err(error) = flush_result {
+                tracing::warn!(
+                    ?error,
+                    session_id = %session_id_owned,
+                    "batched stream flush failed"
+                );
+            }
+        });
+        tasks.insert(session_id_for_map, handle);
+    }
+
     fn cancel_idle_flush(&self, session_id: &str) {
         if let Some(handle) = self
             .idle_flush_tasks
@@ -3593,13 +3690,19 @@ impl ProviderSessionService {
             if current != Some(generation) {
                 return;
             }
-            // Mid-turn idle flush: never synthesize a Cursor completion, or the
-            // turn completes prematurely and the next delta duplicates.
-            let flush_result = service.flush_trailing(&session_id_owned, false);
             service
                 .idle_flush_tasks
                 .lock_or_recover("idle flush tasks")
                 .remove(&session_id_owned);
+            let mut generations = service
+                .idle_flush_generation
+                .lock_or_recover("idle flush generation");
+            if generations.get(&session_id_owned) == Some(&generation) {
+                generations.remove(&session_id_owned);
+            }
+            drop(generations);
+            service.cancel_batch_flush(&session_id_owned);
+            let flush_result = service.flush_trailing(&session_id_owned, false);
             if let Err(error) = flush_result {
                 tracing::warn!(
                     ?error,

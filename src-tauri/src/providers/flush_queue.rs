@@ -148,6 +148,7 @@ struct ProviderFlushSession {
 pub struct QueueOutputResult {
     pub delta: Option<DashboardDelta>,
     pub provider_conversation_id: Option<String>,
+    pub has_pending_batch: bool,
     pub has_trailing_fragment: bool,
 }
 
@@ -213,6 +214,7 @@ impl ProviderEventFlushQueue {
             return Ok(QueueOutputResult {
                 delta: None,
                 provider_conversation_id: None,
+                has_pending_batch: false,
                 has_trailing_fragment: false,
             });
         };
@@ -235,7 +237,8 @@ impl ProviderEventFlushQueue {
             return Ok(QueueOutputResult {
                 delta: None,
                 provider_conversation_id: None,
-                has_trailing_fragment: !pending.trim().is_empty(),
+                has_pending_batch: true,
+                has_trailing_fragment: true,
             });
         };
         let trailing = pending.split_off(complete_up_to);
@@ -250,22 +253,39 @@ impl ProviderEventFlushQueue {
             &normalized_event,
             &mut session.normalizer_context,
         );
+        let flush_immediately = normalized_result_requires_immediate_flush(&normalized);
         let provider_conversation_id =
             ingest_normalized_result(&mut session.buffer, provider_invocation_id, normalized);
 
-        let delta = flush_session_buffer(
-            connection,
-            &normalized_event.session_id,
-            &mut session.buffer,
-        )?;
-        // The events in `delta` are already persisted to SQLite. Always publish
-        // non-empty deltas immediately; rate bounding lives in the emit worker,
-        // which conflates queued deltas per cycle.
+        let delta = if flush_immediately {
+            flush_session_buffer(
+                connection,
+                &normalized_event.session_id,
+                &mut session.buffer,
+            )?
+        } else {
+            DashboardDelta::default()
+        };
         Ok(QueueOutputResult {
             delta: (!delta.is_empty()).then_some(delta),
             provider_conversation_id,
+            has_pending_batch: !session.buffer.is_empty(),
             has_trailing_fragment,
         })
+    }
+
+    /// Persist normalized events and raw output accumulated during the bounded
+    /// batch window without touching incomplete provider lines.
+    pub fn flush_pending_output(
+        &mut self,
+        connection: &mut Connection,
+        session_id: &str,
+    ) -> ArgmaxResult<Option<DashboardDelta>> {
+        let Some(session) = self.sessions.get_mut(session_id) else {
+            return Ok(None);
+        };
+        let delta = flush_session_buffer(connection, session_id, &mut session.buffer)?;
+        Ok((!delta.is_empty()).then_some(delta))
     }
 
     /// Flush any buffered, newline-less stream fragments to SQLite.
@@ -273,7 +293,7 @@ impl ProviderEventFlushQueue {
     /// `synthesize_cursor_exit` must be `true` only on a genuine Cursor process
     /// exit that never sent a `result/success`. The synth `.take()`s the
     /// cumulative-delta baseline and marks the turn completed, so firing it on a
-    /// mid-turn idle flush (or a user terminate) would prematurely complete the
+    /// mid-turn batch flush (or a user terminate) would prematurely complete the
     /// turn and duplicate the next delta. Mid-stream callers pass `false`.
     ///
     /// It doubles as the "the process is gone" signal: a half-written protocol
@@ -331,6 +351,17 @@ impl ProviderEventFlushQueue {
     }
 }
 
+fn normalized_result_requires_immediate_flush(result: &NormalizedProviderResult) -> bool {
+    result.permission_blocked
+        || !result.approvals.is_empty()
+        || result.events.iter().any(|event| {
+            matches!(
+                event.r#type.as_str(),
+                "approval.requested" | "permission.blocked" | "error" | "session.completed"
+            )
+        })
+}
+
 fn ingest_normalized_result(
     buffer: &mut SessionFlushBuffer,
     provider_invocation_id: &str,
@@ -354,10 +385,10 @@ fn ingest_normalized_result(
 
 /// True when a newline-less fragment opens a JSON object but does not parse —
 /// a provider JSONL line split across PTY reads, not human-readable output.
-/// The idle flush fires ~16 ms after the last chunk, which is well inside the
-/// time a long line takes to arrive: Claude's compaction summary is a single
-/// ~22 KB line that lands as two dozen 1 KB reads, and flushing its fragments
-/// dumps raw protocol JSON into the timeline. Keep buffering until the newline.
+/// The bounded stream flush may fire while a long line is still arriving:
+/// Claude's compaction summary is a single ~22 KB line that lands as two dozen
+/// 1 KB reads, and flushing its fragments dumps raw protocol JSON into the
+/// timeline. Keep buffering until the newline.
 /// Past the parse cap the line is unrecoverable anyway, so let it through and
 /// let `normalize_line` report the oversized line.
 fn is_incomplete_json_line(fragment: &str) -> bool {
@@ -365,9 +396,9 @@ fn is_incomplete_json_line(fragment: &str) -> bool {
     if !trimmed.starts_with('{') || fragment.len() > JSON_PARSE_LINE_CAP {
         return false;
     }
-    // The idle flush re-tests the same growing fragment every 16 ms, and a line
-    // that has not reached its closing brace yet cannot parse — skip serde for
-    // that case and only parse the ambiguous one.
+    // The stream flush can re-test the same growing fragment, and a line that
+    // has not reached its closing brace yet cannot parse. Skip serde for that
+    // case and only parse the ambiguous one.
     !trimmed.ends_with('}') || serde_json::from_str::<Value>(trimmed).is_err()
 }
 
@@ -819,7 +850,27 @@ mod tests {
     }
 
     #[test]
-    fn provider_flush_queue_owns_stream_buffers_until_newline() {
+    fn terminal_provider_results_bypass_batching() {
+        let ordinary = NormalizedProviderResult {
+            events: vec![event_of_type("message.delta")],
+            ..NormalizedProviderResult::default()
+        };
+        assert!(!normalized_result_requires_immediate_flush(&ordinary));
+
+        for event_type in ["error", "session.completed", "permission.blocked"] {
+            let terminal = NormalizedProviderResult {
+                events: vec![event_of_type(event_type)],
+                ..NormalizedProviderResult::default()
+            };
+            assert!(
+                normalized_result_requires_immediate_flush(&terminal),
+                "{event_type} must not wait for the batch timer"
+            );
+        }
+    }
+
+    #[test]
+    fn provider_flush_queue_batches_complete_lines_until_flush() {
         let database = Database::open_in_memory().expect("open db");
         let mut connection = database.connection();
         seed_session(&connection);
@@ -843,6 +894,7 @@ mod tests {
             )
             .expect("queue first");
         assert!(first.delta.is_none());
+        assert!(first.has_pending_batch);
         assert!(first.has_trailing_fragment);
 
         let second = queue
@@ -852,8 +904,18 @@ mod tests {
                 output_event(ProviderOutputStream::Stdout, "lo\"}}\n"),
             )
             .expect("queue second");
+        assert!(second.delta.is_none());
+        assert!(second.has_pending_batch);
         assert!(!second.has_trailing_fragment);
-        let second = second.delta.expect("delta");
+        assert!(list_session_events_since(&connection, "s1", None, None)
+            .expect("fetch before flush")
+            .events
+            .is_empty());
+
+        let second = queue
+            .flush_pending_output(&mut connection, "s1")
+            .expect("flush batch")
+            .expect("delta");
 
         assert_eq!(second.raw_outputs.len(), 2);
         assert_eq!(second.events.len(), 1);
@@ -861,6 +923,55 @@ mod tests {
         let fetched =
             list_session_events_since(&connection, "s1", None, None).expect("fetch events");
         assert_eq!(fetched.events[0].message, "Hello");
+    }
+
+    #[test]
+    fn batch_flush_preserves_newline_less_text_across_chunk_boundaries() {
+        let database = Database::open_in_memory().expect("open db");
+        let mut connection = database.connection();
+        seed_session(&connection);
+
+        let mut queue = ProviderEventFlushQueue::new();
+        queue.initialize_session(
+            "s1",
+            ProviderId::Claude,
+            "invocation-1",
+            NormalizerSessionContext::default(),
+        );
+
+        let first = queue
+            .queue_output_event(
+                &mut connection,
+                "invocation-1",
+                output_event(ProviderOutputStream::Stdout, "Hello "),
+            )
+            .expect("queue first chunk");
+        assert!(first.has_pending_batch);
+        assert!(first.has_trailing_fragment);
+
+        let raw_only = queue
+            .flush_pending_output(&mut connection, "s1")
+            .expect("flush raw output")
+            .expect("raw delta");
+        assert_eq!(raw_only.raw_outputs.len(), 1);
+        assert!(raw_only.events.is_empty());
+
+        let second = queue
+            .queue_output_event(
+                &mut connection,
+                "invocation-1",
+                output_event(ProviderOutputStream::Stdout, "world\n"),
+            )
+            .expect("queue second chunk");
+        assert!(second.has_pending_batch);
+        assert!(!second.has_trailing_fragment);
+
+        let completed = queue
+            .flush_pending_output(&mut connection, "s1")
+            .expect("flush completed line")
+            .expect("completed delta");
+        assert_eq!(completed.events.len(), 1);
+        assert_eq!(completed.events[0].message, "Hello world");
     }
 
     #[test]
@@ -1004,6 +1115,7 @@ mod tests {
                 output_event(ProviderOutputStream::Stdout, "plain trailing output"),
             )
             .expect("queue fragment");
+        assert!(queued.has_pending_batch);
         assert!(queued.has_trailing_fragment);
 
         let delta = queue
@@ -1031,7 +1143,7 @@ mod tests {
     }
 
     #[test]
-    fn cursor_idle_flush_does_not_prematurely_complete_turn() {
+    fn cursor_batch_flush_does_not_prematurely_complete_turn() {
         let database = Database::open_in_memory().expect("open db");
         let mut connection = database.connection();
         seed_session(&connection);
@@ -1056,11 +1168,11 @@ mod tests {
             )
             .expect("queue first assistant line");
 
-        // A mid-turn idle flush must NOT synthesize a turn completion...
-        let idle = queue
-            .flush_trailing_fragments(&mut connection, "s1", "2026-05-24T10:00:01.000Z", false)
-            .expect("idle flush");
-        let synthesized_completions = idle
+        // A mid-turn batch flush must NOT synthesize a turn completion...
+        let batch = queue
+            .flush_pending_output(&mut connection, "s1")
+            .expect("batch flush");
+        let synthesized_completions = batch
             .as_ref()
             .map(|delta| {
                 delta
@@ -1072,12 +1184,12 @@ mod tests {
             .unwrap_or(0);
         assert_eq!(
             synthesized_completions, 0,
-            "idle flush must not complete the turn"
+            "batch flush must not complete the turn"
         );
 
         // ...and must leave the cumulative baseline intact, so the next delta is
         // the suffix only — not the whole message re-emitted.
-        let next = queue
+        queue
             .queue_output_event(
                 &mut connection,
                 "invocation-1",
@@ -1086,8 +1198,10 @@ mod tests {
                     "{\"type\":\"assistant\",\"message\":\"Hello world\",\"timestamp_ms\":2}\n",
                 ),
             )
-            .expect("queue second assistant line")
-            .delta
+            .expect("queue second assistant line");
+        let next = queue
+            .flush_pending_output(&mut connection, "s1")
+            .expect("flush second batch")
             .expect("delta");
         assert_eq!(next.events.len(), 1);
         assert_eq!(next.events[0].message, " world");
@@ -1110,6 +1224,13 @@ mod tests {
             message: message.to_string(),
             payload: json!({}),
             created_at: Some("2026-05-24T10:00:00.000Z".to_string()),
+        }
+    }
+
+    fn event_of_type(event_type: &str) -> PersistTimelineEventInput {
+        PersistTimelineEventInput {
+            r#type: event_type.to_string(),
+            ..event(event_type)
         }
     }
 

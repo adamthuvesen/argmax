@@ -8,10 +8,11 @@ use super::super::{
     },
     protocol_error,
     registry::ParentLaunchSettings,
-    MAX_LAUNCHES_PER_SESSION, MAX_LAUNCH_DEPTH,
+    ARC_MAX_ACTIVE_MEMBERS, ARC_MAX_LAUNCHES_PER_DAY, MAX_LAUNCHES_PER_SESSION, MAX_LAUNCH_DEPTH,
 };
 use super::{resolve_or_register_project, task_label, terminal_cols, terminal_rows};
 use crate::{
+    arcs::member_preamble,
     ipc::{
         inputs::{
             ProvidersLaunchInput, WorkspacesArchiveInput, WorkspacesCreateCurrentInput,
@@ -20,10 +21,13 @@ use crate::{
         validation::{BaseRef, NonEmptyString, ProjectId, Prompt, TaskLabel, WorkspaceId},
     },
     persistence::{
+        arcs::{self, ArcRecord, ArcState},
         database::Database,
         sessions::{
-            find_session_by_id, record_session_launch, session_launch_lineage, LAUNCH_KIND_AGENT,
+            find_session_by_id, record_session_arc, record_session_launch, session_launch_lineage,
+            LAUNCH_KIND_AGENT,
         },
+        time::hours_ago,
         workspaces::find_workspace_by_id,
     },
     providers::session_service::ProviderSessionService,
@@ -226,7 +230,7 @@ pub(super) async fn launch_session(
     workspaces: Arc<WorkspaceService>,
     providers: Arc<ProviderSessionService>,
 ) -> Result<SessionControlResponse, SessionControlError> {
-    let (parent_project_id, lineage) = {
+    let (parent_project_id, lineage, parent_arc) = {
         let connection = database.connection();
         let parent_session =
             find_session_by_id(&connection, &parent.session_id).map_err(argmax_protocol_error)?;
@@ -235,7 +239,13 @@ pub(super) async fn launch_session(
             .project_id;
         let lineage = session_launch_lineage(&connection, &parent.session_id)
             .map_err(argmax_protocol_error)?;
-        (project_id, lineage)
+        let parent_arc = match parent_session.arc_id.as_deref() {
+            Some(arc_id) => {
+                Some(arcs::get_arc(&connection, arc_id).map_err(argmax_protocol_error)?)
+            }
+            None => None,
+        };
+        (project_id, lineage, parent_arc)
     };
     let depth = lineage.depth + 1;
     if depth > MAX_LAUNCH_DEPTH {
@@ -247,13 +257,22 @@ pub(super) async fn launch_session(
             ),
         ));
     }
-    if lineage.launched >= MAX_LAUNCHES_PER_SESSION {
+    // The Arc's current coordinator plans and delegates for the whole Arc, so
+    // its own lifetime launch count would otherwise starve it after ten
+    // pieces of work. Every other session, coordinator or not, still counts.
+    let is_current_coordinator = parent_arc.as_ref().is_some_and(|arc| {
+        arc.coordinator_session_id.as_deref() == Some(parent.session_id.as_str())
+    });
+    if !is_current_coordinator && lineage.launched >= MAX_LAUNCHES_PER_SESSION {
         return Err(protocol_error(
             "LAUNCH_LIMIT_REACHED",
             format!(
                 "This session has already launched {MAX_LAUNCHES_PER_SESSION} sessions, which is the per-session cap. Message one of them instead."
             ),
         ));
+    }
+    if let Some(arc) = &parent_arc {
+        check_arc_launch_budget(arc, &database)?;
     }
     let provider = action.provider.unwrap_or(parent.provider);
     // A model id names a model the CLI accepts; Rust has no label catalog
@@ -276,6 +295,13 @@ pub(super) async fn launch_session(
                 )
             }
         };
+    // A session launched from inside an Arc carries the Arc's member
+    // preamble: the folder to read before starting, and the "do not write
+    // there" rule that keeps the coordinator the only writer.
+    let prompt = match &parent_arc {
+        Some(arc) => format!("{}\n\n{}", member_preamble(arc), action.prompt),
+        None => action.prompt,
+    };
     let outcome = launch_with_spec(
         LaunchSpec {
             // An agent-launched session is its own piece of work, not a chat
@@ -285,7 +311,7 @@ pub(super) async fn launch_session(
             project: action.project,
             path: action.path,
             branch: action.branch,
-            prompt: action.prompt,
+            prompt,
             worktree: action.worktree,
             provider,
             model_label,
@@ -315,6 +341,10 @@ pub(super) async fn launch_session(
             LAUNCH_KIND_AGENT,
         )
         .map_err(argmax_protocol_error)?;
+        if let Some(arc) = &parent_arc {
+            record_session_arc(&connection, &outcome.session_id, &arc.id)
+                .map_err(argmax_protocol_error)?;
+        }
     }
     Ok(SessionControlResponse::new(SessionControlResult::Launched(
         LaunchedSession {
@@ -326,6 +356,44 @@ pub(super) async fn launch_session(
             branch: outcome.branch,
         },
     )))
+}
+
+/// The three Arc-scoped refusals a launch from inside an Arc can hit, checked
+/// in the order an agent would want to know about them: done, out of room,
+/// out of budget for today.
+fn check_arc_launch_budget(
+    arc: &ArcRecord,
+    database: &Database,
+) -> Result<(), SessionControlError> {
+    if arc.state == ArcState::Done {
+        return Err(protocol_error(
+            "ARC_DONE",
+            "This Arc is done, so it is not taking new sessions. Ask a person to reopen it (set it back to active or paused) before launching into it.",
+        ));
+    }
+    let connection = database.connection();
+    let active_members =
+        arcs::count_active_members(&connection, &arc.id, arc.coordinator_session_id.as_deref())
+            .map_err(argmax_protocol_error)?;
+    if active_members >= ARC_MAX_ACTIVE_MEMBERS {
+        return Err(protocol_error(
+            "ARC_CAPACITY_REACHED",
+            format!(
+                "This Arc already has {ARC_MAX_ACTIVE_MEMBERS} sessions in flight, which is its active-member cap. Wait for one to finish before launching another."
+            ),
+        ));
+    }
+    let launches_today = arcs::count_launches_since(&connection, &arc.id, &hours_ago(24))
+        .map_err(argmax_protocol_error)?;
+    if launches_today >= ARC_MAX_LAUNCHES_PER_DAY {
+        return Err(protocol_error(
+            "ARC_LAUNCH_BUDGET_REACHED",
+            format!(
+                "This Arc has already launched {ARC_MAX_LAUNCHES_PER_DAY} sessions in the last 24 hours, which is its daily launch budget. Wait for the window to roll forward before launching another."
+            ),
+        ));
+    }
+    Ok(())
 }
 
 /// The effort to carry onto an explicitly named model: the caller's own when

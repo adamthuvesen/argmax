@@ -4,8 +4,9 @@ use tauri::State;
 
 use super::{live_database, publish_dashboard_changed, read_off_main, validation::NonEmptyString};
 use crate::{
-    error::ArgmaxResult,
+    error::{ArgmaxError, ArgmaxResult},
     persistence::arcs::{self, ArcCreateInput, ArcRecord, ArcState, ArcUpdateInput},
+    providers::{ProviderId, ReasoningEffort},
     state::AppState,
 };
 
@@ -32,6 +33,17 @@ pub struct ArcUpdateFieldsInput {
 pub struct ArcSetStateInput {
     pub id: NonEmptyString,
     pub state: ArcState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ArcLaunchCoordinatorInput {
+    pub arc_id: NonEmptyString,
+    pub provider: ProviderId,
+    /// Both default to that provider's own default model when omitted.
+    pub model_label: Option<String>,
+    pub model_id: Option<String>,
+    pub reasoning_effort: Option<ReasoningEffort>,
 }
 
 #[tauri::command(rename = "arc:create")]
@@ -130,6 +142,49 @@ pub(crate) async fn arc_set_state_impl(
     let updated = read_off_main(move || {
         arcs::set_arc_state(&database.connection(), input.id.as_str(), input.state)
     })
+    .await?;
+    publish_dashboard_changed(state);
+    Ok(updated)
+}
+
+#[tauri::command(rename = "arc:launch-coordinator")]
+#[specta::specta]
+pub async fn arc_launch_coordinator(
+    state: State<'_, AppState>,
+    input: ArcLaunchCoordinatorInput,
+) -> ArgmaxResult<ArcRecord> {
+    arc_launch_coordinator_impl(&state, input).await
+}
+
+pub(crate) async fn arc_launch_coordinator_impl(
+    state: &AppState,
+    input: ArcLaunchCoordinatorInput,
+) -> ArgmaxResult<ArcRecord> {
+    let database = live_database(state)?;
+    let workspaces = state.workspaces.get().cloned().ok_or_else(|| {
+        ArgmaxError::service(
+            "WORKSPACE_SERVICE_NOT_READY",
+            "workspace service is not initialized",
+        )
+    })?;
+    let providers = state.providers.get().cloned().ok_or_else(|| {
+        ArgmaxError::service(
+            "PROVIDER_SERVICE_NOT_READY",
+            "provider service is not initialized",
+        )
+    })?;
+    let updated = crate::arcs::launch_coordinator(
+        crate::arcs::LaunchCoordinatorRequest {
+            arc_id: input.arc_id.into_string(),
+            provider: input.provider,
+            model_label: input.model_label,
+            model_id: input.model_id,
+            reasoning_effort: input.reasoning_effort,
+        },
+        database,
+        workspaces,
+        providers,
+    )
     .await?;
     publish_dashboard_changed(state);
     Ok(updated)

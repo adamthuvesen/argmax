@@ -90,7 +90,7 @@ export function NewArcDialog({
           provider: model.provider,
           modelLabel: model.label,
           modelId: model.modelId,
-          ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {})
+          reasoningEffort: model.reasoningEffort ?? null
         });
       } catch (launchError) {
         // The arc still exists — the page shows "Start coordinator" for a

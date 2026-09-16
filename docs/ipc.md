@@ -110,19 +110,28 @@ See [memory.md](memory.md).
 
 ## Arcs
 
-`arc:create`, `arc:list`, `arc:get`, `arc:update`, and `arc:set-state` manage
-Arcs through `ipc/arcs.rs`, backed by `persistence/arcs.rs`. `arc:create` takes
-`{ name, brief, homeProjectId, dir? }`; an absolute `dir` must already exist
-and its `BRIEF.md`/`NOTES.md` are never overwritten, while an omitted `dir`
-gets a fresh one under the app data dir. `arc:update` takes `{ id, name?,
-brief? }` — a new brief rewrites `BRIEF.md` in place. `arc:set-state` takes
-`{ id, state }` with `state` one of `active` / `paused` / `done`. All five are
-available over the remote bridge. Mutations call
+`arc:create`, `arc:list`, `arc:get`, `arc:update`, `arc:set-state`, and
+`arc:launch-coordinator` manage Arcs through `ipc/arcs.rs`, backed by
+`persistence/arcs.rs` and, for the launch, `arcs::launch_coordinator`.
+`arc:create` takes `{ name, brief, homeProjectId, dir? }`; an absolute `dir`
+must already exist and its `BRIEF.md`/`NOTES.md` are never overwritten, while
+an omitted `dir` gets a fresh one under the app data dir. `arc:update` takes
+`{ id, name?, brief? }` — a new brief rewrites `BRIEF.md` in place.
+`arc:set-state` takes `{ id, state }` with `state` one of `active` / `paused`
+/ `done`. All six are available over the remote bridge. Mutations call
 `publish_dashboard_changed`, which sets `dashboardChanged` on the next
 `dashboard:delta` so `dashboard:list`'s `arcs` summaries refresh; there is no
-focused `arc:*` push channel the way `goal:*` has one. This phase is
-persistence and IPC only — no channel launches or points at a coordinator
-session yet. See [data.md](data.md).
+focused `arc:*` push channel the way `goal:*` has one.
+
+`arc:launch-coordinator` takes `{ arcId, provider, modelLabel?, modelId?,
+reasoningEffort? }` and returns the updated `ArcRecord`. It refuses `ARC_DONE`
+on a done Arc, launches through the ordinary session-launch path into the
+home project's shared checkout (never a worktree) with the coordinator
+preamble as its prompt, and points `coordinatorSessionId` at the new session.
+A previous coordinator, if any, is left running with its own `arcId` intact —
+the pointer just moves. See [agent-tools.md](agent-tools.md) for the
+preambles, membership inheritance, and the launch caps an Arc's own sessions
+run under, and [data.md](data.md) for the persisted shape.
 
 ## Session PR selection
 

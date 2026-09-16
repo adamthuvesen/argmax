@@ -138,6 +138,7 @@ pub fn send_session_control(
             true
         }
         (SessionControlAction::ScheduleResume(_), SessionControlResult::ScheduleResumed(_)) => true,
+        (SessionControlAction::ArcStatus(_), SessionControlResult::ArcStatus(_)) => true,
         _ => false,
     };
     if !matches_action {

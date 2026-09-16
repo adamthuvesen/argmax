@@ -96,14 +96,16 @@ pub struct ArcSummary {
     pub updated_at: String,
 }
 
-/// One session attached to an Arc, for the member listing a later phase's
-/// `arc_status` tool reads.
+/// One session attached to an Arc, for the member listing the `arc_status`
+/// tool reads.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ArcMember {
     pub session_id: String,
     pub project_id: String,
+    pub project_name: String,
     pub workspace_id: String,
+    pub task_label: String,
     pub state: SessionState,
 }
 
@@ -212,14 +214,16 @@ pub fn list_arc_summaries(connection: &Connection) -> ArgmaxResult<Vec<ArcSummar
     Ok(summaries)
 }
 
-/// Sessions currently attached to this Arc, for a later phase's `arc_status`.
+/// Sessions currently attached to this Arc, for `arc_status`.
 pub fn list_members(connection: &Connection, arc_id: &str) -> ArgmaxResult<Vec<ArcMember>> {
     let mut statement = connection
         .prepare_cached(
             r#"
-            SELECT sessions.id, workspaces.project_id, sessions.workspace_id, sessions.state
+            SELECT sessions.id, workspaces.project_id, projects.name AS project_name,
+                   sessions.workspace_id, workspaces.task_label, sessions.state
             FROM sessions
             JOIN workspaces ON workspaces.id = sessions.workspace_id
+            JOIN projects ON projects.id = workspaces.project_id
             WHERE sessions.arc_id = ?
             ORDER BY sessions.last_activity_at DESC, sessions.id DESC
             "#,
@@ -231,7 +235,9 @@ pub fn list_members(connection: &Connection, arc_id: &str) -> ArgmaxResult<Vec<A
             Ok(ArcMember {
                 session_id: row.get("id")?,
                 project_id: row.get("project_id")?,
+                project_name: row.get("project_name")?,
                 workspace_id: row.get("workspace_id")?,
+                task_label: row.get("task_label")?,
                 state: SessionState::from_wire(&state).unwrap_or(SessionState::Waiting),
             })
         })
@@ -239,6 +245,46 @@ pub fn list_members(connection: &Connection, arc_id: &str) -> ArgmaxResult<Vec<A
         .collect::<Result<Vec<_>, _>>()
         .map_err(sqlite_error)?;
     Ok(members)
+}
+
+/// How many sessions attached to this Arc are still in flight (not
+/// `complete`, `failed`, or `cancelled`), excluding the coordinator itself —
+/// the coordinator plans and delegates, it is not one of the pieces of work
+/// the member cap bounds. What `arc:launch-coordinator` and the launch caps
+/// both check.
+pub fn count_active_members(
+    connection: &Connection,
+    arc_id: &str,
+    exclude_session_id: Option<&str>,
+) -> ArgmaxResult<i64> {
+    connection
+        .prepare_cached(
+            r#"
+            SELECT COUNT(*) FROM sessions
+            WHERE arc_id = ?1
+              AND state NOT IN ('complete', 'failed', 'cancelled')
+              AND (?2 IS NULL OR id != ?2)
+            "#,
+        )
+        .map_err(sqlite_error)?
+        .query_row((arc_id, exclude_session_id), |row| row.get(0))
+        .map_err(sqlite_error)
+}
+
+/// How many sessions this Arc has launched since `since` (an RFC 3339
+/// instant) — the launch-budget cap's own count. Counts every session
+/// attached to the Arc, coordinator included: the budget is the Arc's, not
+/// any one launcher's.
+pub fn count_launches_since(
+    connection: &Connection,
+    arc_id: &str,
+    since: &str,
+) -> ArgmaxResult<i64> {
+    connection
+        .prepare_cached("SELECT COUNT(*) FROM sessions WHERE arc_id = ?1 AND started_at >= ?2")
+        .map_err(sqlite_error)?
+        .query_row((arc_id, since), |row| row.get(0))
+        .map_err(sqlite_error)
 }
 
 /// Updates name and/or brief. A brief update rewrites `BRIEF.md` in place.
@@ -707,10 +753,132 @@ mod tests {
         assert_eq!(members.len(), 1);
         assert_eq!(members[0].session_id, "s1");
         assert_eq!(members[0].project_id, "p1");
+        assert_eq!(members[0].project_name, "p1");
         assert_eq!(members[0].workspace_id, "w1");
+        assert_eq!(members[0].task_label, "Member");
 
         let summaries = list_arc_summaries(&connection).unwrap();
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].member_count, 1);
+    }
+
+    #[test]
+    fn active_member_count_excludes_the_coordinator_and_terminal_states() {
+        let database = database_with_project();
+        let connection = database.connection();
+        let data_dir = tempfile::tempdir().unwrap();
+        let arc = create_arc(&connection, data_dir.path(), &create_input(None)).unwrap();
+
+        persist_workspace(
+            &connection,
+            &PersistWorkspaceInput {
+                id: "w1".to_owned(),
+                project_id: "p1".to_owned(),
+                task_label: "Members".to_owned(),
+                branch: "main".to_owned(),
+                base_ref: "main".to_owned(),
+                path: "/tmp/project-one".to_owned(),
+                state: "running".to_owned(),
+                shared_workspace: true,
+                kind: "git".to_owned(),
+                dirty: false,
+                changed_files: 0,
+            },
+        )
+        .unwrap();
+        for (id, state) in [
+            ("coordinator", crate::sessions::state::SessionState::Running),
+            (
+                "running-member",
+                crate::sessions::state::SessionState::Running,
+            ),
+            (
+                "done-member",
+                crate::sessions::state::SessionState::Complete,
+            ),
+        ] {
+            persist_session(
+                &connection,
+                &PersistSessionInput {
+                    id: id.to_owned(),
+                    workspace_id: "w1".to_owned(),
+                    provider: "claude".to_owned(),
+                    model_label: "Sonnet".to_owned(),
+                    model_id: "sonnet".to_owned(),
+                    reasoning_effort: None,
+                    permission_mode: None,
+                    agent_mode: None,
+                    prompt: "Work".to_owned(),
+                    state,
+                },
+            )
+            .unwrap();
+            connection
+                .execute("UPDATE sessions SET arc_id = ? WHERE id = ?", [&arc.id, id])
+                .unwrap();
+        }
+        set_arc_coordinator_session(&connection, &arc.id, Some("coordinator")).unwrap();
+
+        assert_eq!(
+            count_active_members(&connection, &arc.id, Some("coordinator")).unwrap(),
+            1
+        );
+        assert_eq!(count_active_members(&connection, &arc.id, None).unwrap(), 2);
+    }
+
+    #[test]
+    fn launches_since_counts_by_started_at() {
+        let database = database_with_project();
+        let connection = database.connection();
+        let data_dir = tempfile::tempdir().unwrap();
+        let arc = create_arc(&connection, data_dir.path(), &create_input(None)).unwrap();
+
+        persist_workspace(
+            &connection,
+            &PersistWorkspaceInput {
+                id: "w1".to_owned(),
+                project_id: "p1".to_owned(),
+                task_label: "Members".to_owned(),
+                branch: "main".to_owned(),
+                base_ref: "main".to_owned(),
+                path: "/tmp/project-one".to_owned(),
+                state: "running".to_owned(),
+                shared_workspace: true,
+                kind: "git".to_owned(),
+                dirty: false,
+                changed_files: 0,
+            },
+        )
+        .unwrap();
+        persist_session(
+            &connection,
+            &PersistSessionInput {
+                id: "s1".to_owned(),
+                workspace_id: "w1".to_owned(),
+                provider: "claude".to_owned(),
+                model_label: "Sonnet".to_owned(),
+                model_id: "sonnet".to_owned(),
+                reasoning_effort: None,
+                permission_mode: None,
+                agent_mode: None,
+                prompt: "Work".to_owned(),
+                state: crate::sessions::state::SessionState::Running,
+            },
+        )
+        .unwrap();
+        connection
+            .execute("UPDATE sessions SET arc_id = ? WHERE id = 's1'", [&arc.id])
+            .unwrap();
+
+        let far_future = "2999-01-01T00:00:00.000Z";
+        let far_past = "2000-01-01T00:00:00.000Z";
+        assert_eq!(
+            count_launches_since(&connection, &arc.id, far_past).unwrap(),
+            1
+        );
+        assert_eq!(
+            count_launches_since(&connection, &arc.id, far_future).unwrap(),
+            0
+        );
     }
 }

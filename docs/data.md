@@ -60,8 +60,18 @@ makes one under `<app data dir>/arcs/<id>/` and writes fresh `BRIEF.md` and
 already exist as an absolute path (`ARC_DIR_INVALID` otherwise) and never
 overwrites an existing `BRIEF.md`/`NOTES.md` there; an empty `brief` with an
 existing `BRIEF.md` reads that file into the row instead. `list_members`
-returns the sessions attached to an Arc with their project, workspace, and
-state, for a later phase's `arc_status` tool. See [ipc.md](ipc.md#arcs).
+returns the sessions attached to an Arc — project, project name, workspace,
+task label, and state — for the `arc_status` tool. `count_active_members`
+and `count_launches_since` back that tool's `limits` and the launch caps in
+[agent-tools.md](agent-tools.md#arcs). See [ipc.md](ipc.md#arcs).
+
+`arcs::launch_coordinator` ([src-tauri/src/arcs/mod.rs](../src-tauri/src/arcs/mod.rs))
+launches an Arc's coordinator through the ordinary session-launch path and
+calls `set_arc_coordinator_session`. A session attached to an Arc —
+coordinator or member — carries `sessions.arc_id`; `record_session_arc` sets
+it once, at launch. `sessions.launch_depth` and `launched_by_session_id` stay
+at their defaults for a coordinator (no launcher, depth 0), the same as any
+top-level chat.
 
 ## Session PR state
 

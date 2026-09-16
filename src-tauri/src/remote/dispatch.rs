@@ -481,6 +481,10 @@ async fn dispatch_standard(
             let input = parse(channel, input)?;
             encode(arcs::arc_set_state_impl(state, input).await?)
         }
+        "arc:launch-coordinator" => {
+            let input = parse(channel, input)?;
+            encode(arcs::arc_launch_coordinator_impl(state, input).await?)
+        }
 
         "sources:list" => {
             let input = parse(channel, input)?;

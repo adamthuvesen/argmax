@@ -236,7 +236,7 @@ export function ArcPage({
             provider: model.provider,
             modelLabel: model.label,
             modelId: model.modelId,
-            ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {})
+            reasoningEffort: model.reasoningEffort ?? null
           })
         );
       } catch (error) {

@@ -10,6 +10,7 @@ use tauri::{Emitter, Manager};
 
 pub mod activity;
 pub mod approvals;
+pub mod arcs;
 pub mod attachments;
 pub mod browser;
 pub mod checkpoints;

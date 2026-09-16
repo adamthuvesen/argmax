@@ -509,6 +509,14 @@ async arcSetState(input: ArcSetStateInput) : Promise<Result<ArcRecord, ArgmaxErr
     else return { status: "error", error: e  as any };
 }
 },
+async arcLaunchCoordinator(input: ArcLaunchCoordinatorInput) : Promise<Result<ArcRecord, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("arc_launch_coordinator", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async checkpointsList(input: CheckpointsListInput) : Promise<Result<Checkpoint[], ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("checkpoints_list", { input }) };
@@ -1443,6 +1451,11 @@ brief: string; homeProjectId: string;
  */
 dir: string | null }
 export type ArcGetInput = { id: NonEmptyString }
+export type ArcLaunchCoordinatorInput = { arcId: NonEmptyString; provider: ProviderId;
+/**
+ * Both default to that provider's own default model when omitted.
+ */
+modelLabel: string | null; modelId: string | null; reasoningEffort: ReasoningEffort | null }
 export type ArcListInput = Record<string, never>
 /**
  * The Arc row, named `ArcRecord` rather than `Arc` because every file in this

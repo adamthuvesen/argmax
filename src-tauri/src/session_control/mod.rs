@@ -17,11 +17,12 @@ pub use cli::{try_run_session_control_cli, CliPrompt, SessionControlCliInput};
 #[cfg(unix)]
 pub use client::send_session_control;
 pub use protocol::{
-    ArchiveAction, ChangedFile, CheckOutcome, ChecksOutcome, ChecksRunAction, GoalOutcome,
-    GoalSetAction, InboxAction, InboxDelivery, InboxMessage, LaunchAction, LaunchedSession,
-    LearningRecord, LearningsAddAction, LearningsSearchAction, LearningsSearchOutcome, ListAction,
-    MessageAction, MessageDelivery, MoveAction, ProjectEntry, ProjectListOutcome, ProjectsAction,
-    ReadAction, ReadEntry, RenameAction, ScheduleCancelAction, ScheduleCancelled, ScheduleEntry,
+    ArcStatusAction, ArcStatusLimits, ArcStatusMember, ArcStatusOutcome, ArchiveAction,
+    ChangedFile, CheckOutcome, ChecksOutcome, ChecksRunAction, GoalOutcome, GoalSetAction,
+    InboxAction, InboxDelivery, InboxMessage, LaunchAction, LaunchedSession, LearningRecord,
+    LearningsAddAction, LearningsSearchAction, LearningsSearchOutcome, ListAction, MessageAction,
+    MessageDelivery, MoveAction, ProjectEntry, ProjectListOutcome, ProjectsAction, ReadAction,
+    ReadEntry, RenameAction, ScheduleCancelAction, ScheduleCancelled, ScheduleEntry,
     ScheduleFollowupAction, ScheduleListAction, ScheduleListOutcome, ScheduleResumeAction,
     ScheduleResumed, ScheduledArchive, ScheduledFollowup, ScheduledMove, SessionControlAction,
     SessionControlError, SessionControlRequest, SessionControlResponse, SessionControlResult,
@@ -71,6 +72,14 @@ const SESSION_LIST_LIMIT: usize = 40;
 /// sessions exist below it and the third is refused.
 const MAX_LAUNCH_DEPTH: i64 = 2;
 const MAX_LAUNCHES_PER_SESSION: i64 = 10;
+/// How many of an Arc's sessions may be active (not complete, failed, or
+/// cancelled) at once, the coordinator excluded — the coordinator plans and
+/// delegates, it does not occupy a slot in the work it is delegating.
+const ARC_MAX_ACTIVE_MEMBERS: i64 = 8;
+/// How many sessions an Arc may launch in a rolling 24 hours, coordinator
+/// launches included. A budget on the Arc rather than on any one launcher,
+/// since a relaunched coordinator must not reset it.
+const ARC_MAX_LAUNCHES_PER_DAY: i64 = 40;
 /// How many moves a chat may pick the work up after. A move starts a turn in
 /// the destination, and that turn can move again; past this the chat lands,
 /// says why it stopped, and waits for a person.
@@ -137,6 +146,11 @@ const FOLLOWUP_MIN_SECONDS: u64 = 30;
 /// of each prompt it shows — enough to recognise a task, not to re-read it.
 const SCHEDULE_LIST_LIMIT: usize = 50;
 const SCHEDULE_PROMPT_CHARS: usize = 500;
+/// `arc_status`'s member list cap, and how much of the brief rides in the
+/// reply — enough to recognise the Arc without spending the whole reply
+/// budget on it. The full text always lives in `BRIEF.md`.
+const ARC_STATUS_MEMBER_LIMIT: usize = 50;
+const ARC_STATUS_BRIEF_CHARS: usize = 4 * 1024;
 const DEFAULT_TASK_LABEL: &str = "Local agent task";
 const MAX_TASK_LABEL_CHARS: usize = 64;
 const MAX_TASK_LABEL_BYTES: usize = 200;

@@ -65,6 +65,7 @@ export const IPC_CHANNELS = [
   "arc:get",
   "arc:update",
   "arc:set-state",
+  "arc:launch-coordinator",
   "checkpoints:list",
   "checkpoints:preview-rewind",
   "checkpoints:rewind-files",

@@ -260,6 +260,24 @@ pub fn record_session_launch(
     Ok(())
 }
 
+/// Attach this session to an Arc: set once, at launch, by whichever path
+/// created it — the coordinator launch, an agent launch whose caller carries
+/// an `arc_id`, or a multitask dispatched from inside one. Never cleared here;
+/// the column's own `ON DELETE SET NULL` is what clears it if the Arc goes
+/// away.
+pub fn record_session_arc(
+    connection: &Connection,
+    session_id: &str,
+    arc_id: &str,
+) -> ArgmaxResult<()> {
+    connection
+        .prepare_cached("UPDATE sessions SET arc_id = ? WHERE id = ?")
+        .map_err(sqlite_error)?
+        .execute((arc_id, session_id))
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
 /// Why this session was launched, for the paths that treat a multitask
 /// differently from an agent's own launch. `agent` for anything that predates
 /// the column or was started by a person directly.

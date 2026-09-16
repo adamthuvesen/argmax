@@ -55,6 +55,7 @@ pub enum SessionControlAction {
     ScheduleList(ScheduleListAction),
     ScheduleCancel(ScheduleCancelAction),
     ScheduleResume(ScheduleResumeAction),
+    ArcStatus(ArcStatusAction),
 }
 
 /// Which session an inspection is about. Every session-addressable action
@@ -176,6 +177,11 @@ pub struct TerminalReadAction {
 #[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectsAction {}
+
+/// No arguments: `arc_status` always answers about the caller's own Arc.
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ArcStatusAction {}
 
 /// Wake this session with a prompt at a time. One-shot, and always aimed at
 /// the caller: a follow-up is how a chat waits for CI without polling.
@@ -400,6 +406,7 @@ pub enum SessionControlResult {
     Schedules(ScheduleListOutcome),
     ScheduleCancelled(ScheduleCancelled),
     ScheduleResumed(ScheduleResumed),
+    ArcStatus(ArcStatusOutcome),
     Error(SessionControlError),
 }
 
@@ -609,6 +616,49 @@ pub struct ProjectEntry {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectListOutcome {
     pub projects: Vec<ProjectEntry>,
+}
+
+/// One session attached to the caller's Arc, as `arc_status` reports it.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ArcStatusMember {
+    pub session_id: String,
+    pub task_label: String,
+    pub project_name: String,
+    pub state: SessionState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pr_number: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pr_state: Option<String>,
+}
+
+/// How many sessions the caps allow — the same numbers the launch refusals
+/// name, so an agent that gets `ARC_CAPACITY_REACHED` can see how close it
+/// already was.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ArcStatusLimits {
+    pub max_active_members: i64,
+    pub max_launches_per_day: i64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ArcStatusOutcome {
+    pub arc_id: String,
+    pub name: String,
+    pub state: crate::persistence::arcs::ArcState,
+    pub dir: String,
+    /// Capped at 4 KB; `briefTruncated` says whether that cut it short.
+    pub brief: String,
+    pub brief_truncated: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coordinator_session_id: Option<String>,
+    pub caller_is_coordinator: bool,
+    pub members: Vec<ArcStatusMember>,
+    pub truncated: bool,
+    pub launches_last_24h: i64,
+    pub limits: ArcStatusLimits,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

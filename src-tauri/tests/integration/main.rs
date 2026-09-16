@@ -7,6 +7,7 @@
 
 mod support;
 
+mod arcs;
 mod git_exec;
 mod git_review;
 mod health_smoke;

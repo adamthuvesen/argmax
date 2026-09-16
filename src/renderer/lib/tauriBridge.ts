@@ -380,10 +380,7 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       get: (input) => invokeCommand<ArcRecord>("arc:get", input),
       update: (input) => invokeCommand<ArcRecord>("arc:update", input),
       setState: (input) => invokeCommand<ArcRecord>("arc:set-state", input),
-      // TODO(arcs): drop the IpcChannel cast once arc:launch-coordinator is
-      // generated into ipcSchemas.ts by the Rust side landing in parallel.
-      launchCoordinator: (input) =>
-        invokeCommand<ArcRecord>("arc:launch-coordinator" as IpcChannel, input)
+      launchCoordinator: (input) => invokeCommand<ArcRecord>("arc:launch-coordinator", input)
     },
     review: {
       stageFile: (input) => invokeCommand<void>("review:stage-file", input),

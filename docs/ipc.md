@@ -108,6 +108,22 @@ access mode, while mutations require control access. Agent source content reads
 use session-control tools and record source activity in the session timeline.
 See [memory.md](memory.md).
 
+## Arcs
+
+`arc:create`, `arc:list`, `arc:get`, `arc:update`, and `arc:set-state` manage
+Arcs through `ipc/arcs.rs`, backed by `persistence/arcs.rs`. `arc:create` takes
+`{ name, brief, homeProjectId, dir? }`; an absolute `dir` must already exist
+and its `BRIEF.md`/`NOTES.md` are never overwritten, while an omitted `dir`
+gets a fresh one under the app data dir. `arc:update` takes `{ id, name?,
+brief? }` — a new brief rewrites `BRIEF.md` in place. `arc:set-state` takes
+`{ id, state }` with `state` one of `active` / `paused` / `done`. All five are
+available over the remote bridge. Mutations call
+`publish_dashboard_changed`, which sets `dashboardChanged` on the next
+`dashboard:delta` so `dashboard:list`'s `arcs` summaries refresh; there is no
+focused `arc:*` push channel the way `goal:*` has one. This phase is
+persistence and IPC only — no channel launches or points at a coordinator
+session yet. See [data.md](data.md).
+
 ## Session PR selection
 
 `prs:set-primary` takes `{ sessionId, prNumber }`, with null selecting automatic

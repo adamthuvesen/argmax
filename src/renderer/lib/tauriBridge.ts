@@ -6,6 +6,7 @@ import type { IpcChannel } from "../../shared/ipcSchemas.js";
 import type {
   ActivitySummary,
   ActivitySummaryInput,
+  ArcRecord,
   ArgmaxApi,
   AgentToolsSettings,
   ChatCleanupPreview,
@@ -372,6 +373,13 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       get: (input) => invokeCommand<Goal | null>("goal:get", input),
       list: (input) => invokeCommand<Goal[]>("goal:list", input),
       clear: (input) => invokeCommand<Goal | null>("goal:clear", input),
+    },
+    arcs: {
+      create: (input) => invokeCommand<ArcRecord>("arc:create", input),
+      list: (input) => invokeCommand<ArcRecord[]>("arc:list", input),
+      get: (input) => invokeCommand<ArcRecord>("arc:get", input),
+      update: (input) => invokeCommand<ArcRecord>("arc:update", input),
+      setState: (input) => invokeCommand<ArcRecord>("arc:set-state", input)
     },
     review: {
       stageFile: (input) => invokeCommand<void>("review:stage-file", input),

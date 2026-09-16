@@ -526,6 +526,13 @@ export function setupAppTestMocks(): void {
       set: () => Promise.reject(new Error("Goal not stubbed")),
       clear: () => Promise.resolve(null),
     },
+    arcs: {
+      list: () => Promise.resolve([]),
+      get: () => Promise.reject(new Error("Arc not stubbed")),
+      create: () => Promise.reject(new Error("Arc not stubbed")),
+      update: () => Promise.reject(new Error("Arc not stubbed")),
+      setState: () => Promise.reject(new Error("Arc not stubbed")),
+    },
     checkpoints: {
       list: () => Promise.resolve([]),
       previewRewind: () => Promise.reject(new Error("Checkpoint not stubbed")),

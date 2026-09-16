@@ -3660,6 +3660,16 @@ impl ProviderSessionService {
         });
     }
 
+    /// Arcs ride the full dashboard snapshot rather than a focused read, so a
+    /// create/update/set-state only needs to say "reload it" rather than
+    /// duplicate the changed row into every delta.
+    pub fn publish_dashboard_changed(&self) {
+        self.publish(DashboardDelta {
+            dashboard_changed: true,
+            ..DashboardDelta::default()
+        });
+    }
+
     /// Mark the worktree where this turn starts, so a provider that reports a
     /// file write without saying what changed can still get a line stat. Off
     /// the send path: the mark costs a few hundred milliseconds on a large

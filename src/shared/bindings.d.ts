@@ -469,6 +469,46 @@ async goalClear(input: GoalSessionInput) : Promise<Result<Goal | null, ArgmaxErr
     else return { status: "error", error: e  as any };
 }
 },
+async arcCreate(input: ArcCreateInput) : Promise<Result<ArcRecord, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("arc_create", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async arcList(input: ArcListInput) : Promise<Result<ArcRecord[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("arc_list", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async arcGet(input: ArcGetInput) : Promise<Result<ArcRecord, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("arc_get", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async arcUpdate(input: ArcUpdateFieldsInput) : Promise<Result<ArcRecord, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("arc_update", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async arcSetState(input: ArcSetStateInput) : Promise<Result<ArcRecord, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("arc_set_state", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async checkpointsList(input: CheckpointsListInput) : Promise<Result<Checkpoint[], ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("checkpoints_list", { input }) };
@@ -1391,6 +1431,32 @@ export type ApprovalResolution = "approved" | "rejected"
 export type ApprovalSupport = "unsupported" | "observable-only" | "respondable"
 export type ApprovalsPendingInput = Record<string, never>
 export type ApprovalsResolveInput = { approvalId: ApprovalId; status: ApprovalResolution }
+export type ArcCreateInput = { name: string;
+/**
+ * Empty when the caller wants to pick up an existing `BRIEF.md` from a
+ * user-supplied `dir`, or start with a blank one.
+ */
+brief: string; homeProjectId: string;
+/**
+ * Absolute path to an existing directory. `None` uses the default
+ * `<app data dir>/arcs/<id>/`, which is created for the caller.
+ */
+dir: string | null }
+export type ArcGetInput = { id: NonEmptyString }
+export type ArcListInput = Record<string, never>
+/**
+ * The Arc row, named `ArcRecord` rather than `Arc` because every file in this
+ * codebase already imports `std::sync::Arc`.
+ */
+export type ArcRecord = { id: string; name: string; brief: string; state: ArcState; homeProjectId: string; coordinatorSessionId: string | null; dir: string; createdAt: string; updatedAt: string }
+export type ArcSetStateInput = { id: NonEmptyString; state: ArcState }
+export type ArcState = "active" | "paused" | "done"
+/**
+ * The dashboard's lightweight view: enough to render a sidebar row without
+ * carrying the full brief text on every snapshot.
+ */
+export type ArcSummary = { id: string; name: string; state: ArcState; homeProjectId: string; coordinatorSessionId: string | null; dir: string; memberCount: number; updatedAt: string }
+export type ArcUpdateFieldsInput = { id: NonEmptyString; name: string | null; brief: string | null }
 export type ArgmaxError = { code: "INVALID_INPUT"; issues: InvalidInputIssue[] } | { code: "RECORD_NOT_FOUND"; kind: string; id: string } | { code: "MIGRATION_DRIFT"; detail: string } | { code: "SERVICE_ERROR"; sub_code: string; message: string }
 export type AttachmentMimeType = "image/png" | "image/jpeg" | "image/gif" | "image/webp"
 export type AttachmentPath = string
@@ -1554,7 +1620,7 @@ export type ConnectionScope = "built-in" | "user" | "project"
 export type ConnectionSummary = { name: string; kind: ConnectionKind; scope: ConnectionScope; availability: ConnectionAvailability; authentication: ConnectionAuthentication; statusDetail: string; authenticationCommand: string | null }
 export type ConnectionsListInput = { provider: ProviderId; workspaceId: WorkspaceId | null }
 export type DashboardListInput = Record<string, never>
-export type DashboardListSnapshot = { projects: ProjectSummary[]; workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[]; pendingMessages: Partial<{ [key in string]: PendingMessage[] }> }
+export type DashboardListSnapshot = { projects: ProjectSummary[]; workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[]; pendingMessages: Partial<{ [key in string]: PendingMessage[] }>; arcs: ArcSummary[] }
 export type DatabaseStats = { rowCounts: RowCounts; walBytes: number; walAutocheckpoint: number }
 /**
  * In-memory-only slice of the diagnostics report, safe to poll on an
@@ -2050,7 +2116,12 @@ launchedBySessionId?: string | null;
  * it belongs to the chat that dispatched it, which shows it in the
  * subagent dock — so this has to reach the renderer.
  */
-launchKind: string }
+launchKind: string;
+/**
+ * The Arc this session belongs to, when it was launched or attached as
+ * part of one. Null for an ordinary chat.
+ */
+arcId?: string | null }
 export type SetBrowserToolsInput = { enabled: boolean }
 export type SkillSource = "user" | "workspace" | "codex-prompt" | "plugin" | "system"
 export type SkillSummary = { name: string; description: string; source: SkillSource }

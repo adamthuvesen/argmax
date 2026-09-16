@@ -22,6 +22,14 @@ export type GoalState = Bindings.GoalState;
 export type GoalSetInput = Bindings.GoalSetInput;
 export type GoalSessionInput = Bindings.GoalSessionInput;
 export type GoalListInput = Bindings.GoalListInput;
+export type ArcRecord = Bindings.ArcRecord;
+export type ArcSummary = Bindings.ArcSummary;
+export type ArcState = Bindings.ArcState;
+export type ArcCreateInput = Bindings.ArcCreateInput;
+export type ArcListInput = Bindings.ArcListInput;
+export type ArcGetInput = Bindings.ArcGetInput;
+export type ArcUpdateFieldsInput = Bindings.ArcUpdateFieldsInput;
+export type ArcSetStateInput = Bindings.ArcSetStateInput;
 export type ReasoningEffort = Bindings.ReasoningEffort;
 export type ActivitySummary = Bindings.ActivitySummary;
 export type ActivitySummaryInput = Bindings.ActivitySummaryInput;
@@ -386,11 +394,13 @@ export interface DashboardSnapshot {
    * Omitted on snapshots that pre-date the feature; absent keys mean "no change."
    */
   pendingMessages?: Record<string, PendingMessage[]>;
+  /** Arc summaries for the sidebar. Omitted on snapshots that pre-date the feature. */
+  arcs?: ArcSummary[];
 }
 
 export type DashboardListSnapshot = Pick<
   DashboardSnapshot,
-  "projects" | "workspaces" | "sessions" | "checks" | "pendingMessages"
+  "projects" | "workspaces" | "sessions" | "checks" | "pendingMessages" | "arcs"
 >;
 
 export type WorkspaceStatusSnapshot = Pick<
@@ -538,6 +548,13 @@ export interface ArgmaxApi {
     get: (input: GoalSessionInput) => Promise<Goal | null>;
     list: (input: GoalListInput) => Promise<Goal[]>;
     clear: (input: GoalSessionInput) => Promise<Goal | null>;
+  };
+  arcs: {
+    create: (input: ArcCreateInput) => Promise<ArcRecord>;
+    list: (input: ArcListInput) => Promise<ArcRecord[]>;
+    get: (input: ArcGetInput) => Promise<ArcRecord>;
+    update: (input: ArcUpdateFieldsInput) => Promise<ArcRecord>;
+    setState: (input: ArcSetStateInput) => Promise<ArcRecord>;
   };
   review: {
     stageFile: (input: ReviewIndexFileInput) => Promise<void>;

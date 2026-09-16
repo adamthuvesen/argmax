@@ -2,6 +2,7 @@ pub mod activity;
 pub mod after_turn;
 pub mod app_settings;
 pub mod approvals;
+pub mod arcs;
 pub mod chat_cleanup;
 pub mod checkpoints;
 pub mod checks;

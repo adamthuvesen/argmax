@@ -56,6 +56,11 @@ goal:set
 goal:get
 goal:list
 goal:clear
+arc:create
+arc:list
+arc:get
+arc:update
+arc:set-state
 checkpoints:list
 checkpoints:preview-rewind
 checkpoints:rewind-files

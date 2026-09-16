@@ -220,6 +220,24 @@ pub static PROJECT_SOURCE_COLUMNS: phf::Map<&'static str, &'static [&'static str
     ] as &'static [&'static str],
 };
 
+// Post-v50 `sessions` shape: v37/v38 plus the Arc pointer.
+pub static ARC_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "arcs" => &[
+        "brief", "coordinator_session_id", "created_at", "dir", "home_project_id",
+        "id", "name", "state", "updated_at",
+    ] as &'static [&'static str],
+    "sessions" => &[
+        "agent_mode", "arc_id", "attention", "attention_changed_at",
+        "cache_read_tokens", "cache_write_tokens", "completed_at", "context_tokens",
+        "context_window", "cost_usd", "id", "imported", "input_tokens",
+        "last_activity_at", "last_model_id", "launch_depth", "launch_kind",
+        "launched_by_session_id", "model_id", "model_label", "output_tokens",
+        "permission_mode", "pr_branch_at_start", "pr_branch_last_active", "prompt",
+        "provider", "provider_conversation_id", "reasoning_effort", "resume_fork",
+        "started_at", "state", "wait_reported_at", "workspace_id",
+    ] as &'static [&'static str],
+};
+
 pub static SESSION_PR_MODEL_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "gh_pull_requests" => &[
         "head_ref_name", "head_sha", "last_seen_check_state", "pr_created_at",
@@ -947,6 +965,14 @@ pub static MIGRATIONS: &[Migration] = &[
         up: ROUTINE_AUTHOR,
         affected_tables: &["routines"],
         expected_columns: &ROUTINE_AUTHOR_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 51,
+        name: "arcs",
+        up: crate::persistence::arcs::MIGRATION_SQL,
+        affected_tables: &["arcs", "sessions"],
+        expected_columns: &ARC_COLUMNS,
         requires_foreign_keys_off: false,
     },
 ];
@@ -2373,7 +2399,7 @@ mod tests {
         let trigger_count: i64 = connection.query_row("SELECT count(*) FROM sqlite_master WHERE type = 'trigger' AND name = 'session_changes_sessions_after_delete'", [], |row| row.get(0)).unwrap();
         assert_eq!(trigger_count, 1);
         let indexes: i64 = connection.query_row("SELECT count(*) FROM sqlite_master WHERE type = 'index' AND tbl_name = 'sessions' AND name LIKE 'idx_sessions_%'", [], |row| row.get(0)).unwrap();
-        assert_eq!(indexes, 5);
+        assert_eq!(indexes, 6);
         run_migrations(&mut connection).unwrap();
     }
 
@@ -2390,8 +2416,7 @@ mod tests {
         // v1 EXPECTED_COLUMNS.
         verify_table_columns(&connection, &PROJECT_ARCHIVE_ON_MERGE_COLUMNS, "projects")
             .expect("projects");
-        verify_table_columns(&connection, &SESSION_PR_ATTRIBUTION_COLUMNS, "sessions")
-            .expect("sessions");
+        verify_table_columns(&connection, &ARC_COLUMNS, "sessions").expect("sessions");
         verify_table_columns(&connection, &WORKSPACE_LAST_VIEWED_COLUMNS, "workspaces")
             .expect("workspaces");
         verify_table_columns(
@@ -2507,6 +2532,10 @@ mod tests {
                 ),
                 (49, compute_migration_checksum(SESSION_PR_MODEL)),
                 (50, compute_migration_checksum(ROUTINE_AUTHOR)),
+                (
+                    51,
+                    compute_migration_checksum(crate::persistence::arcs::MIGRATION_SQL)
+                ),
             ]
         );
 

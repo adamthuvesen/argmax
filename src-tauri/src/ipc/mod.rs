@@ -11,6 +11,7 @@ pub mod validation;
 
 pub mod activity;
 pub mod approvals;
+pub mod arcs;
 pub mod attachments;
 pub mod browser;
 pub mod browser_import;
@@ -99,6 +100,11 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "goal:get",
     "goal:list",
     "goal:clear",
+    "arc:create",
+    "arc:list",
+    "arc:get",
+    "arc:update",
+    "arc:set-state",
     "checkpoints:list",
     "checkpoints:preview-rewind",
     "checkpoints:rewind-files",
@@ -220,6 +226,15 @@ pub(crate) fn live_database(state: &AppState) -> ArgmaxResult<Arc<Database>> {
     })
 }
 
+/// Tell subscribers to reload the dashboard snapshot after an Arc changes.
+/// Missing provider service is a no-op: boot has not finished installing
+/// publishers yet, and the next `dashboard:list` will see the change anyway.
+pub(crate) fn publish_dashboard_changed(state: &AppState) {
+    if let Some(providers) = state.providers.get() {
+        providers.publish_dashboard_changed();
+    }
+}
+
 /// Push affected PR workspace summaries as soon as `gh_pr` changes. Missing workspace service
 /// is a no-op: boot has not finished installing publishers yet.
 pub(crate) fn publish_pr_workspaces_for_session(
@@ -298,6 +313,11 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         goals::goal_get,
         goals::goal_list,
         goals::goal_clear,
+        arcs::arc_create,
+        arcs::arc_list,
+        arcs::arc_get,
+        arcs::arc_update,
+        arcs::arc_set_state,
         checkpoints::checkpoints_list,
         checkpoints::checkpoints_preview_rewind,
         checkpoints::checkpoints_rewind_files,

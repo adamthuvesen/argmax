@@ -52,12 +52,28 @@ export function useReadingWave(
         MINIMUM_CYCLE_SECONDS * speed
       );
       const duration = cycle / speed;
-      // Phase from the wall clock, so every mount of a running line agrees on
-      // where the band is and a headline change never sends it back to the start.
-      const phase = (Date.now() / 1000) % duration;
+      if (Math.abs(Number.parseFloat(node.style.getPropertyValue("--reading-wave-cycle")) - cycle) < 0.5) {
+        return;   // same geometry: leave the pass alone
+      }
+
+      // A longer line means a longer cycle, and re-timing the animation would
+      // land the band somewhere else — a jump mid-pass. Carry the head over
+      // instead: the band keeps its position and its speed across a wording
+      // change, and only a fresh line takes its phase from the wall clock.
+      const animation = node.getAnimations().find(
+        (candidate) => (candidate as CSSAnimation).animationName === "reading-wave"
+      );
+      const head = Number.parseFloat(getComputedStyle(node).getPropertyValue("--reading-wave-head"));
       node.style.setProperty("--reading-wave-cycle", `${cycle}px`);
       node.style.setProperty("--reading-wave-duration", `${duration}s`);
-      node.style.setProperty("--reading-wave-delay", `${-phase}s`);
+      node.style.setProperty("--reading-wave-delay", "0s");
+      if (animation) {
+        const sigma = SIGMA_EM * em;
+        const into = Number.isFinite(head)
+          ? (head + 3 * sigma) / speed
+          : (Date.now() / 1000) % duration;
+        animation.currentTime = into * 1000;
+      }
     };
 
     measure();

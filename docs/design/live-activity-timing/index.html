@@ -219,6 +219,7 @@
             <tr><td>frames with two live lines</td><td class="doubles">0</td></tr>
             <tr><td>Thinking on screen</td><td class="thinkms">0s</td></tr>
             <tr><td>hand-offs</td><td class="handoffs">0</td></tr>
+            <tr><td>wave re-anchors</td><td class="anchors">0</td></tr>
           </table>`;
         host.append(fig);
 
@@ -233,6 +234,7 @@
           doubles: fig.querySelector(".doubles"),
           thinkms: fig.querySelector(".thinkms"),
           handoffs: fig.querySelector(".handoffs"),
+          anchors: fig.querySelector(".anchors"),
         };
 
         return {
@@ -407,7 +409,11 @@
               dom.line.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: "ease-out" });
             }
           }
-          if (pane.running) sizeWave(dom.line, { restart: batonHere && v.handoff === "baton" });
+          if (pane.running) {
+            const before = pane_reanchors;
+            sizeWave(dom.line, { restart: batonHere && v.handoff === "baton" });
+            pane.anchors = (pane.anchors ?? 0) + (pane_reanchors - before);
+          }
         }
 
         // Thinking cue in the reserved tail slot.
@@ -432,7 +438,9 @@
               dom.tail.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: "ease-out" });
             }
           }
+          const before = pane_reanchors;
           sizeWave(dom.tail, { restart: batonHere && v.handoff === "baton" });
+          pane.anchors = (pane.anchors ?? 0) + (pane_reanchors - before);
         } else {
           const seconds = Math.floor((now - pane.thinkingSince) / 1000);
           dom.tail.lastElementChild.textContent = seconds >= 3 ? `${seconds}s` : "";
@@ -445,6 +453,7 @@
         dom.doubles.parentElement.classList.toggle("bad", pane.metrics.doubles > 0);
         dom.thinkms.textContent = `${(pane.metrics.thinkingMs / 1000).toFixed(1)}s`;
         dom.handoffs.textContent = String(pane.metrics.handoffs);
+        dom.anchors.textContent = String(pane.anchors ?? 0);
       }
 
       // Size the band for a line the way `lib/readingWave.ts` does: travel is
@@ -452,6 +461,15 @@
       // row is the full column wide, which stretched one pass to 7.7s and read
       // as "nothing is moving". `restart` sends the band in from this line's
       // own left edge now; otherwise the phase stays on the wall clock.
+      // Size the band for a line the way `lib/readingWave.ts` does: travel is
+      // the width of the line's *words*, not of the flex row they sit in.
+      //
+      // The phase is touched only when the geometry actually changes, and then
+      // it is set to *continue from where the band already is* — writing a new
+      // `animation-delay` every frame made the head advance twice and wrap at
+      // every cycle, which is what read as "fast, then a jump, then it starts
+      // over". `restart` is the one deliberate exception: a hand-off sends the
+      // band in from the arriving line's own left edge.
       function sizeWave(node, { restart } = {}) {
         const spans = [...node.querySelectorAll(".reading-wave-text")];
         if (spans.length === 0) return;
@@ -465,15 +483,29 @@
           end = Math.max(end, Math.min(rect.right, visibleRight));
         }
         const speed = 7.15 * em;
-        const cycle = Math.max(end - start + 6 * 1.1 * em + 0.4 * speed, 1.6 * speed);
+        const sigma = 1.1 * em;
+        const cycle = Math.max(end - start + 6 * sigma + 0.4 * speed, 1.6 * speed);
         const duration = cycle / speed;
+        const already = Number.parseFloat(node.style.getPropertyValue("--reading-wave-cycle"));
+        if (!restart && Math.abs((already || 0) - cycle) < 0.5) return;   // nothing moved
+
+        const animation = node.getAnimations().find((a) => a.animationName === "reading-wave");
+        const head = Number.parseFloat(getComputedStyle(node).getPropertyValue("--reading-wave-head"));
         node.style.setProperty("--reading-wave-cycle", `${cycle}px`);
         node.style.setProperty("--reading-wave-duration", `${duration}s`);
-        node.style.setProperty("--reading-wave-delay", restart ? "0s" : `${-((Date.now() / 1000) % duration)}s`);
-        if (restart) {
-          node.getAnimations().forEach((a) => { if (a.animationName === "reading-wave") a.startTime = document.timeline.currentTime; });
-        }
+        node.style.setProperty("--reading-wave-delay", "0s");
+        if (!animation) return;
+        // Where the band is now, in seconds into a pass: either carried over
+        // from the head it already had, or the wall clock for a fresh line.
+        const into = restart
+          ? 0
+          : Number.isFinite(head)
+            ? (head + 3 * sigma) / speed
+            : (Date.now() / 1000) % duration;
+        animation.currentTime = into * 1000;
+        pane_reanchors += 1;
       }
+      let pane_reanchors = 0;
 
       const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 

@@ -72,10 +72,17 @@ changes in a burst; the motion work (B/C) is polish on top, and the adaptive wai
 plus soft edges (E/F) is what stops the cue flickering between two calls of a
 turn whose calls land a second apart.
 
-One harness bug worth remembering: the band has to be sized from the width of a
-line's *words*, as `lib/readingWave.ts` does. Sizing it from the flex row — which
-is the full column wide — stretched one pass to 7.7s, and the pane read as though
-the animation had stopped.
+Two bugs worth remembering, both about the band rather than the rules:
+
+- Size the band from the width of a line's *words*, as `lib/readingWave.ts` does.
+  Sizing it from the flex row — the full column wide — stretched one pass to 7.7s
+  and read as though the animation had stopped.
+- Touch the phase only when the geometry changes, and then carry the head over.
+  Rewriting `animation-delay` from the wall clock on every frame made the head
+  advance twice and wrap each cycle: fast, then a jump, then a restart. The
+  harness now reports `wave re-anchors` — one per real wording change (about 6 in
+  an 11s turn), not one per frame. The app had the milder version of the same bug:
+  it re-anchored on every wording change, which jumped the band mid-pass.
 
 The harness models the rules, not the app's components: same tokens, fonts and
 reading wave, but the transcript, follow-scroll and React reconciliation are not

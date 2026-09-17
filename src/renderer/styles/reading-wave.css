@@ -10,8 +10,10 @@
    glyphs, offset by where it starts, so a verb and its dimmer target share one
    pass and keep their own resting colours. `lib/readingWave.ts` measures the
    line and sets the cycle, so the band moves at one speed whatever the line's
-   length, and derives the phase from the wall clock, so a remount or a
-   headline change never restarts it.
+   length. It touches the phase only when the line's geometry changes, and then
+   carries the head over, so a wording change keeps the band's position and its
+   speed; a fresh line takes its phase from the wall clock, so a remount lands
+   where the clock says rather than back at the left edge.
 
    Deliberately not composited: the head drives a gradient, so each frame
    repaints the words it covers. It only runs while something is running, and

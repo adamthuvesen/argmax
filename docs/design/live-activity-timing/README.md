@@ -72,6 +72,11 @@ changes in a burst; the motion work (B/C) is polish on top, and the adaptive wai
 plus soft edges (E/F) is what stops the cue flickering between two calls of a
 turn whose calls land a second apart.
 
+One harness bug worth remembering: the band has to be sized from the width of a
+line's *words*, as `lib/readingWave.ts` does. Sizing it from the flex row — which
+is the full column wide — stretched one pass to 7.7s, and the pane read as though
+the animation had stopped.
+
 The harness models the rules, not the app's components: same tokens, fonts and
 reading wave, but the transcript, follow-scroll and React reconciliation are not
 in it. Judge motion in the dev instance after the port.

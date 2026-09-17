@@ -400,11 +400,14 @@
           if (pane.running) dom.line.setAttribute("data-reading-wave", "true");
           else dom.line.removeAttribute("data-reading-wave");
           dom.headline.classList.toggle("reading-wave-text", pane.running);
-          if (pane.batonTo === "line") {
+          const batonHere = pane.batonTo === "line";
+          if (batonHere) {
             pane.batonTo = null;
-            if (v.handoff === "baton") startPass(dom.line);
-            if (v.handoff !== "cut") dom.line.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: "ease-out" });
+            if (v.handoff && v.handoff !== "cut") {
+              dom.line.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: "ease-out" });
+            }
           }
+          if (pane.running) sizeWave(dom.line, { restart: batonHere && v.handoff === "baton" });
         }
 
         // Thinking cue in the reserved tail slot.
@@ -422,11 +425,14 @@
           dom.tail.innerHTML =
             `<span class="thinking${v.handoff === "cut" ? " fade-in" : ""} reading-wave-text">${pane.thinkingWord}</span><span class="thinking-elapsed"></span>`;
           dom.tail.setAttribute("data-reading-wave", "true");
-          if (pane.batonTo === "thinking") {
+          const batonHere = pane.batonTo === "thinking";
+          if (batonHere) {
             pane.batonTo = null;
-            if (v.handoff === "baton") startPass(dom.tail);
-            if (v.handoff !== "cut") dom.tail.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: "ease-out" });
+            if (v.handoff && v.handoff !== "cut") {
+              dom.tail.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: "ease-out" });
+            }
           }
+          sizeWave(dom.tail, { restart: batonHere && v.handoff === "baton" });
         } else {
           const seconds = Math.floor((now - pane.thinkingSince) / 1000);
           dom.tail.lastElementChild.textContent = seconds >= 3 ? `${seconds}s` : "";
@@ -441,17 +447,32 @@
         dom.handoffs.textContent = String(pane.metrics.handoffs);
       }
 
-      // Send the band in from this line's own left edge, now: the receiving
-      // line starts its pass rather than joining one already in flight.
-      function startPass(node) {
+      // Size the band for a line the way `lib/readingWave.ts` does: travel is
+      // the width of the line's *words*, not of the flex row they sit in — a
+      // row is the full column wide, which stretched one pass to 7.7s and read
+      // as "nothing is moving". `restart` sends the band in from this line's
+      // own left edge now; otherwise the phase stays on the wall clock.
+      function sizeWave(node, { restart } = {}) {
+        const spans = [...node.querySelectorAll(".reading-wave-text")];
+        if (spans.length === 0) return;
         const em = Number.parseFloat(getComputedStyle(node).fontSize) || 13;
-        const width = node.getBoundingClientRect().width || 240;
+        const start = spans[0].getBoundingClientRect().left;
+        const visibleRight = node.getBoundingClientRect().right;
+        let end = start;
+        for (const span of spans) {
+          const rect = span.getBoundingClientRect();
+          span.style.setProperty("--reading-wave-offset", `${rect.left - start}px`);
+          end = Math.max(end, Math.min(rect.right, visibleRight));
+        }
         const speed = 7.15 * em;
-        const cycle = Math.max(width + 6 * 1.1 * em + 0.4 * speed, 1.6 * speed);
+        const cycle = Math.max(end - start + 6 * 1.1 * em + 0.4 * speed, 1.6 * speed);
+        const duration = cycle / speed;
         node.style.setProperty("--reading-wave-cycle", `${cycle}px`);
-        node.style.setProperty("--reading-wave-duration", `${cycle / speed}s`);
-        node.style.setProperty("--reading-wave-delay", "0s");
-        node.getAnimations().forEach((a) => { if (a.animationName === "reading-wave") a.startTime = document.timeline.currentTime; });
+        node.style.setProperty("--reading-wave-duration", `${duration}s`);
+        node.style.setProperty("--reading-wave-delay", restart ? "0s" : `${-((Date.now() / 1000) % duration)}s`);
+        if (restart) {
+          node.getAnimations().forEach((a) => { if (a.animationName === "reading-wave") a.startTime = document.timeline.currentTime; });
+        }
       }
 
       const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);

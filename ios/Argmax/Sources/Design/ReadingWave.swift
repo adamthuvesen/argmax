@@ -59,7 +59,7 @@ struct ReadingWaveText: View {
 
 struct ReadingWave: TextRenderer {
     /// Gaussian width of the band, in ems.
-    static let sigma: CGFloat = 1.8
+    static let sigma: CGFloat = 1.1
     /// Constant travel speed in ems per second, so a two-line headline does
     /// not whip past and a short verb does not crawl.
     static let speed: CGFloat = 8.125

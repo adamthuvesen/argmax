@@ -378,18 +378,6 @@ private struct TranscriptMultitaskDetail: View {
                     return resolved
                 }
             )
-        case .plan(let plan):
-            TranscriptPlanCard(
-                plan: plan,
-                client: client,
-                onOpenFile: openFile,
-                onAccept: {
-                    let sent = await actions.acceptPlan(context: context)
-                    if sent { await requestReload() }
-                    return sent
-                },
-                onRevise: { composerFocused = true }
-            )
         case .approval(let approval):
             TranscriptApprovalCard(approval: approval) { resolution in
                 let resolved = await actions.resolveApproval(id: approval.id, resolution: resolution)

@@ -275,8 +275,7 @@ final class TranscriptStore: ObservableObject {
             prompt: row.prompt,
             state: row.state,
             attention: row.attention,
-            reasoningEffort: row.reasoningEffort ?? current?.reasoningEffort,
-            agentMode: row.agentMode
+            reasoningEffort: row.reasoningEffort ?? current?.reasoningEffort
         ), title: workspace?.taskLabel, pendingMessages: nil)
     }
 
@@ -470,7 +469,6 @@ final class TranscriptStore: ObservableObject {
                 id: $0.id,
                 sessionId: row.id,
                 content: $0.text,
-                agentMode: row.agentMode ?? "auto",
                 modelLabel: nil,
                 modelId: nil,
                 reasoningEffort: nil,
@@ -689,8 +687,7 @@ final class TranscriptStore: ObservableObject {
             ["claude", "codex", "opencode"].contains(session.provider) &&
             hasContextHeadroom &&
             (message.modelId == nil || message.modelId == session.modelId) &&
-            (message.reasoningEffort == nil || message.reasoningEffort == session.reasoningEffort) &&
-            message.agentMode == (session.agentMode ?? "auto")
+            (message.reasoningEffort == nil || message.reasoningEffort == session.reasoningEffort)
     }
 
     private func openingLine(_ prompt: String) -> String {

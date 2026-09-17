@@ -145,7 +145,8 @@ struct LaunchSessionInput: Encodable, Sendable {
     var reasoningEffort: String?
     /// Off. Fast mode is a Codex-only control the phone does not surface.
     var fastMode: Bool = false
-    /// Auto, not plan: the desktop and the web launcher both start in auto.
+    /// Auto, the only mode left. Still on the wire, because a Mac built
+    /// before Plan was removed reads the field.
     var agentMode: String = "auto"
     var cols = 120
     var rows = 32
@@ -234,7 +235,9 @@ struct SendInputInput: Encodable, Sendable {
     var modelLabel: String
     var modelId: String
     var reasoningEffort: String?
-    var agentMode: String
+    /// Auto, the only mode left. Still on the wire, because a Mac built
+    /// before Plan was removed reads the field.
+    var agentMode: String = "auto"
     var attachments: [ComposerAttachment] = []
 
     enum CodingKeys: String, CodingKey {

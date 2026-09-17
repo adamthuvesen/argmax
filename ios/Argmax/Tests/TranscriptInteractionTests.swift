@@ -133,11 +133,6 @@ final class TranscriptInteractionTests: XCTestCase {
         XCTAssertEqual(body, ["approvalId": "approval-1", "status": "rejected"])
     }
 
-    func testPlanTitleUsesFirstContentLineWithoutHeadingMarker() {
-        XCTAssertEqual(transcriptPlanTitle("\n## Native transcript\n\nDetails"), "Native transcript")
-        XCTAssertEqual(transcriptPlanTitle("\n\n"), "Plan")
-    }
-
     func testMultitaskPreviewUnwrapsMarkdownAndSkipsPlaceholders() {
         XCTAssertEqual(
             transcriptMultitaskAnswerPreview("## Done\n\n- Renamed `user_id` to **userId**."),
@@ -165,7 +160,7 @@ final class TranscriptInteractionTests: XCTestCase {
     }
 
     @MainActor
-    func testLegacyQuestionResponseStopsBeforeSendingAndPreservesMode() async {
+    func testLegacyQuestionResponseStopsBeforeSendingInAutoMode() async {
         let client = InteractionClientSpy()
         let coordinator = TranscriptInteractionCoordinator(client: client)
         let context = TranscriptSendContext(
@@ -174,7 +169,6 @@ final class TranscriptInteractionTests: XCTestCase {
             modelLabel: "Sonnet",
             modelID: "claude-sonnet",
             reasoningEffort: nil,
-            agentMode: "plan",
             isRunning: true
         )
 
@@ -192,7 +186,7 @@ final class TranscriptInteractionTests: XCTestCase {
         )
         let calls = await client.calls
         XCTAssertTrue(sent)
-        XCTAssertEqual(calls, ["stop:session-1", "send:Scope: iPhone:plan"])
+        XCTAssertEqual(calls, ["stop:session-1", "send:Scope: iPhone:auto"])
     }
 
     @MainActor
@@ -205,7 +199,6 @@ final class TranscriptInteractionTests: XCTestCase {
             modelLabel: "GPT",
             modelID: "gpt-5",
             reasoningEffort: nil,
-            agentMode: "auto",
             isRunning: false
         )
         let card = TranscriptQuestionCard(
@@ -242,7 +235,6 @@ final class TranscriptInteractionTests: XCTestCase {
             modelLabel: "GPT",
             modelID: "gpt-5",
             reasoningEffort: nil,
-            agentMode: "auto",
             isRunning: false
         )
         let card = TranscriptQuestionCard(
@@ -260,26 +252,6 @@ final class TranscriptInteractionTests: XCTestCase {
 
         XCTAssertTrue(dismissed)
         XCTAssertEqual(calls, ["question:session-1:request-1::dismissed"])
-    }
-
-    @MainActor
-    func testPlanAcceptanceSwitchesToAutoMode() async {
-        let client = InteractionClientSpy()
-        let coordinator = TranscriptInteractionCoordinator(client: client)
-        let context = TranscriptSendContext(
-            sessionID: "session-1",
-            provider: "claude",
-            modelLabel: "Sonnet",
-            modelID: "claude-sonnet",
-            reasoningEffort: nil,
-            agentMode: "plan",
-            isRunning: false
-        )
-
-        let sent = await coordinator.acceptPlan(context: context)
-        let calls = await client.calls
-        XCTAssertTrue(sent)
-        XCTAssertEqual(calls, ["send:Proceed with the plan above.:auto"])
     }
 
     @MainActor

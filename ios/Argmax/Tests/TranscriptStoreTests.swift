@@ -141,7 +141,6 @@ final class TranscriptStoreTests: XCTestCase {
             id: "queued-1",
             sessionId: "session-1",
             content: "Then test",
-            agentMode: "auto",
             modelLabel: nil,
             modelId: nil,
             reasoningEffort: nil,
@@ -293,8 +292,7 @@ final class TranscriptStoreTests: XCTestCase {
             prompt: "Go",
             state: .complete,
             attention: .normal,
-            reasoningEffort: "high",
-            agentMode: "auto"
+            reasoningEffort: "high"
         )
     }
 

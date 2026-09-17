@@ -33,8 +33,7 @@ struct TranscriptScenario: View {
                 NativeTranscriptView(
                     client: scenario.client,
                     onOpenFile: { _ in },
-                    onOpenDiff: { _ in },
-                    onRevisePlan: {}
+                    onOpenDiff: { _ in }
                 )
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         // The floor, not the bare composer: an outstanding question

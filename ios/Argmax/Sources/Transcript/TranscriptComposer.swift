@@ -482,20 +482,10 @@ struct TranscriptComposer: View {
 
     // MARK: - Sending
 
-    /// The session's own agent mode. The wire `composer` message carries no
-    /// mode field — this card has no toggle for it, only New chat's picker
-    /// grid does — so a follow-up sent from here carries whatever the session
-    /// is already running rather than silently defaulting to auto.
-    private var currentAgentMode: String {
-        guard let sessionID = transcript.composer?.sessionId else { return "auto" }
-        return store.snapshot.sessions.first { $0.id == sessionID }?.agentMode ?? "auto"
-    }
-
     private func send(_ composer: NativeComposerState) {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard hasSendableContent, !sending else { return }
         let model = activeModel(for: composer)
-        let mode = currentAgentMode
         let sent = images.attachments
         // Both, the way `SessionComposer.deliverDraft` sends them: the paths
         // as `@references` in the prompt for the agent to read inline, and the
@@ -520,7 +510,6 @@ struct TranscriptComposer: View {
                         modelLabel: model.label,
                         modelId: model.modelId,
                         reasoningEffort: model.reasoningEffort?.rawValue,
-                        agentMode: mode,
                         attachments: sent
                     )
                 )

@@ -551,7 +551,7 @@ final class TranscriptProjectionTests: XCTestCase {
         let runningSession = TranscriptSessionMetadata(
             id: "session-1", workspaceId: "workspace-1", provider: "claude",
             modelLabel: "Claude", modelId: "claude", prompt: "Read it", state: .running,
-            attention: .normal, reasoningEffort: nil, agentMode: "auto"
+            attention: .normal, reasoningEffort: nil
         )
 
         let live = try XCTUnwrap(firstTool(TranscriptProjection.project(
@@ -633,7 +633,7 @@ final class TranscriptProjectionTests: XCTestCase {
         let runningSession = TranscriptSessionMetadata(
             id: "session-1", workspaceId: "workspace-1", provider: "codex",
             modelLabel: "GPT", modelId: "gpt", prompt: "Use the app", state: .running,
-            attention: .normal, reasoningEffort: nil, agentMode: "auto"
+            attention: .normal, reasoningEffort: nil
         )
         let start = event("computer", "command.started", "computer", 1, [
             "id": .string("computer-1"), "name": .string("mcp__computer__use"), "activity": activity
@@ -709,7 +709,7 @@ final class TranscriptProjectionTests: XCTestCase {
         let runningSession = TranscriptSessionMetadata(
             id: "session-1", workspaceId: "workspace-1", provider: "claude",
             modelLabel: "Claude", modelId: "claude", prompt: "Read it", state: .running,
-            attention: .normal, reasoningEffort: nil, agentMode: "auto"
+            attention: .normal, reasoningEffort: nil
         )
         let tool = try XCTUnwrap(firstTool(TranscriptProjection.project(events: [
             event("read", "command.started", "Read", 1, [
@@ -1065,8 +1065,7 @@ final class TranscriptProjectionTests: XCTestCase {
             prompt: "Start",
             state: .waiting,
             attention: .questionAsked,
-            reasoningEffort: nil,
-            agentMode: "auto"
+            reasoningEffort: nil
         )
 
         let items = TranscriptProjection.project(

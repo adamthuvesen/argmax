@@ -195,15 +195,35 @@ struct TranscriptToolsRow: View {
     var onOpenDiff: ((String) -> Void)? = nil
     @Environment(\.mobileChatDetail) private var detail
     @Environment(\.activityToolsAreRevealed) private var activityToolsAreRevealed
+    @Environment(\.activityBeat) private var beat
 
     private var running: Bool { group.tools.contains { $0.status == .running } }
+
+    /// The row that just did the work, when this group holds the beat between
+    /// calls: the one whose completion the silence started at, the same stamp
+    /// `TranscriptThinking.settledBeat` reads. In `.detailed` and inside an
+    /// expanded fold the group shows bare rows, so the beat would otherwise
+    /// publish here and nothing would claim it — the fold's headline gets it
+    /// only where the fold exists. Static so the projection tests can pin it.
+    static func beatToolID(of group: TranscriptToolGroup, beat: String?) -> String? {
+        guard let beat, beat == group.id else { return nil }
+        return group.tools
+            .compactMap { tool in tool.completedAt.map { (id: tool.id, at: $0) } }
+            .max(by: { $0.at < $1.at })?
+            .id
+    }
+
+    private var beatToolID: String? {
+        Self.beatToolID(of: group, beat: beat)
+    }
 
     var body: some View {
         // A row reserves its own height, so the rows stack without a gap.
         if detail == .detailed || activityToolsAreRevealed {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(group.tools) { tool in
-                    TranscriptToolRow(tool: tool, onOpenFile: onOpenFile, onOpenDiff: onOpenDiff)
+                    TranscriptToolRow(tool: tool, holdsBeat: tool.id == beatToolID,
+                                      onOpenFile: onOpenFile, onOpenDiff: onOpenDiff)
                 }
             }
         } else {
@@ -336,23 +356,52 @@ struct TranscriptActivityRow<Icon: View>: View {
     var mono = false
     var changeCounts: TranscriptChangeCounts? = nil
     var showsNavigation = false
+    /// Live work marked on the row's own words, the way the desktop's
+    /// `ToolCallRow` marks a running row: the band reads the verb and the
+    /// target as one pass, and each keeps its own resting colour, because a
+    /// renderer paints the glyphs it is given and would erase whichever
+    /// colour ran underneath (`ReadingWaveText`).
+    var live = false
     @ViewBuilder let icon: () -> Icon
+
+    @State private var verbWidth: CGFloat = 0
+    @State private var targetWidth: CGFloat = 0
+    @ScaledMetric(relativeTo: .subheadline) private var em: CGFloat = 15
+
+    /// One pass over both word runs, sized like the desktop's container
+    /// measures it: the words from the verb's left edge to the target's
+    /// right, plus the band's own entry and exit. Measured rather than
+    /// assumed, because the target truncates while the verb does not, and a
+    /// pass timed from the row's width crawled on the short lines.
+    private var sharedTravel: CGFloat? {
+        guard live, verb != nil, target != nil else { return nil }
+        let sigma = ReadingWave.sigma * em
+        return verbWidth + (Spacing.snug + Spacing.hair) + targetWidth + 6 * sigma
+    }
+
+    /// Where the target starts, relative to the verb: the band has already
+    /// read that far by the time it arrives there.
+    private var targetOffset: CGFloat { verbWidth + Spacing.snug + Spacing.hair }
 
     var body: some View {
         HStack(alignment: .center, spacing: Spacing.snug + Spacing.hair) {
             icon()
             if let verb {
                 Text(verb)
+                    .readingWave(live, sharedTravel: sharedTravel, restInk: Theme.mutedStrong)
                     .typeSubtitle()
                     .foregroundStyle(Theme.mutedStrong)
                     .fixedSize()
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { verbWidth = $0 }
             }
             if let target {
                 Text(target)
+                    .readingWave(live, offset: targetOffset, sharedTravel: sharedTravel, restInk: Theme.muted)
                     .typeSubtitle(mono: mono)
                     .foregroundStyle(Theme.muted)
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { targetWidth = $0 }
             }
             if let changeCounts {
                 ChangeCount(
@@ -388,10 +437,21 @@ struct TranscriptActivityRow<Icon: View>: View {
 
 private struct TranscriptToolRow: View {
     let tool: TranscriptTool
+    /// The beat between calls, when the group this row belongs to holds it,
+    /// is this row's to carry: it is the row the silence started at. The cue
+    /// hands the beat over only for the length of its own wait, so a settled
+    /// row here waves exactly where a running one would.
+    var holdsBeat = false
     let onOpenFile: (String) -> Void
     let onOpenDiff: ((String) -> Void)?
 
     private var isCommand: Bool { tool.activity.kind == .command }
+
+    /// Live work marked on the words: a call in flight, or this row holding
+    /// the beat between calls. Providers that report a call atomically never
+    /// have a running row, so without the second clause their detailed rows
+    /// never wave at all.
+    private var live: Bool { tool.status == .running || holdsBeat }
 
     private var hasExpandableDetail: Bool {
         if tool.filePath != nil { return true }
@@ -443,7 +503,8 @@ private struct TranscriptToolRow: View {
             target: parts.target,
             mono: isCommand && parts.verb != nil,
             changeCounts: tool.visibleChangeCounts,
-            showsNavigation: showsNavigation
+            showsNavigation: showsNavigation,
+            live: live
         ) {
             TranscriptToolIcon(name: tool.name, activity: tool.activity, state: tool.activityState)
         }

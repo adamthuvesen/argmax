@@ -13,6 +13,22 @@ import SwiftUI
 struct ReadingWaveText: View {
     let text: Text
     let active: Bool
+    /// Where this text starts, in points, relative to the line's first word.
+    /// A row marks its verb and its target with two of these so both keep
+    /// their own resting colour, and the two offsets make them one pass
+    /// rather than two — the desktop does the same per span
+    /// (`--reading-wave-offset`, `reading-wave.css`).
+    var offset: CGFloat = 0
+    /// The whole line's travel, when the line is more than this one word run:
+    /// the pass is timed over every part's words together, so each part sees
+    /// the same cycle. Nil sizes the pass from this text alone, which is the
+    /// single-part case and the one every earlier caller has.
+    var sharedTravel: CGFloat? = nil
+    /// The ink this part rests at while the band is elsewhere. Nil keeps the
+    /// shared muted line, which is every whole-line caller's colour; a row
+    /// whose parts carry different inks hands each part its own, so the band
+    /// lifts from where that part actually sits rather than repainting it.
+    var restInk: Color? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accentTint) private var accent
@@ -39,7 +55,9 @@ struct ReadingWaveText: View {
                             Theme.ink.resolve(in: environment),
                             accent.color.resolve(in: environment),
                             colorScheme == .dark ? ReadingWave.accentShare : ReadingWave.lightAccentShare
-                        )
+                        ),
+                        offset: offset,
+                        sharedTravel: sharedTravel
                     ))
             }
             .accessibilityValue("Running")
@@ -48,12 +66,13 @@ struct ReadingWaveText: View {
         }
     }
 
-    /// A dark band on a mid-grey line barely registers on paper, so light
-    /// mode rests the line toward the ground and lets the band carry the ink.
+    /// The ink the line rests at while the band is elsewhere: its own colour
+    /// by default, faded toward the ground on paper, where a dark band on a
+    /// mid-grey line barely registers and the band must carry the ink.
     private var rest: Color.Resolved {
-        let muted = Theme.muted.resolve(in: environment)
-        guard colorScheme == .light else { return muted }
-        return ReadingWave.mix(muted, Theme.ground.resolve(in: environment), ReadingWave.lightRestFade)
+        let ink = (restInk ?? Theme.muted).resolve(in: environment)
+        guard colorScheme == .light else { return ink }
+        return ReadingWave.mix(ink, Theme.ground.resolve(in: environment), ReadingWave.lightRestFade)
     }
 }
 
@@ -84,6 +103,14 @@ struct ReadingWave: TextRenderer {
     let rest: Color.Resolved
     let breath: Color.Resolved
     let peak: Color.Resolved
+    /// Where this text's words start, relative to the line's first word —
+    /// how far the band has already read before it arrives here. Zero for a
+    /// line that is one word run.
+    var offset: CGFloat = 0
+    /// The line's full travel, when the line carries more than this text:
+    /// the pass, and so the band's speed and its rest, are timed over every
+    /// part's words as one line. Nil travels this text alone.
+    var sharedTravel: CGFloat? = nil
 
     // No `animatableData`: the fold animates its label on a 0.18s curve, and
     // an animatable renderer would ease the band's position along with it.
@@ -103,9 +130,11 @@ struct ReadingWave: TextRenderer {
         let sigma = Self.sigma * em
         // Reading order: a glyph's place is the width of the lines before it
         // plus its offset within its own line. The band enters 3σ before the
-        // first glyph and leaves 3σ after the last.
-        let pathLength = layout.reduce(0) { $0 + $1.typographicBounds.width }
-        let travel = pathLength + 6 * sigma
+        // first glyph and leaves 3σ after the last — measured over the whole
+        // line's words when the line has several parts, so a verb and its
+        // target read as one pass and not two.
+        let travel = sharedTravel
+            ?? layout.reduce(0) { $0 + $1.typographicBounds.width } + 6 * sigma
         let pass = min(Self.passSecondsMax, max(Self.passSecondsMin, travel / (7 * em)))
         let speed = travel / pass
         let head = CGFloat(time).truncatingRemainder(dividingBy: pass + Self.pause) * speed - 3 * sigma
@@ -115,7 +144,8 @@ struct ReadingWave: TextRenderer {
             let lineStart = line.typographicBounds.rect.minX
             for run in line {
                 for slice in run {
-                    let offset = linesBefore + slice.typographicBounds.rect.midX - lineStart - head
+                    let offset = linesBefore + slice.typographicBounds.rect.midX - lineStart
+                        + self.offset - head
                     let weight = exp(-(offset * offset) / (2 * sigma * sigma))
                     var sliceContext = context
                     sliceContext.addFilter(.colorMultiply(Color(Self.mix(rest, peak, Float(weight)))))
@@ -137,8 +167,19 @@ struct ReadingWave: TextRenderer {
 }
 
 extension Text {
-    /// Marks the text as live work while `active`; plain text otherwise.
-    func readingWave(_ active: Bool) -> ReadingWaveText {
-        ReadingWaveText(text: self, active: active)
+    /// Marks the text as live work while `active`; plain text otherwise. A
+    /// line drawn from several word runs passes `offset` and `sharedTravel`
+    /// so the parts read as one pass, and `restInk` when its parts keep
+    /// different resting colours.
+    func readingWave(
+        _ active: Bool,
+        offset: CGFloat = 0,
+        sharedTravel: CGFloat? = nil,
+        restInk: Color? = nil
+    ) -> ReadingWaveText {
+        ReadingWaveText(
+            text: self, active: active, offset: offset,
+            sharedTravel: sharedTravel, restInk: restInk
+        )
     }
 }

@@ -213,6 +213,37 @@ final class TranscriptPacingTests: XCTestCase {
         ))
     }
 
+    func testASettledDetailedRowClaimsTheBeatItsGroupPublishes() {
+        let sent = Date()
+        // Detailed and revealed folds show bare rows instead of a headline,
+        // so the group's beat is the row the silence started at to carry:
+        // the newest landed call, the same stamp the cue reads. Every call
+        // here starts and finishes in the same instant — the OpenCode shape
+        // that left these rows dead when the beat only waited for a running
+        // one.
+        let group = TranscriptToolGroup(
+            id: "tools",
+            tools: [
+                tool(id: "tool-0", kind: .read, status: .done,
+                     createdAt: sent, completedAt: sent),
+                tool(id: "tool-1", kind: .edit, status: .done,
+                     createdAt: sent, completedAt: sent.addingTimeInterval(0.001))
+            ],
+            createdAt: stamp(sent)
+        )
+        XCTAssertEqual(TranscriptToolsRow.beatToolID(of: group, beat: "tools"), "tool-1")
+        XCTAssertNil(TranscriptToolsRow.beatToolID(of: group, beat: "agents"))
+        // A group with nothing finished in it never started a silence, so it
+        // publishes nothing for a row to claim.
+        let running = TranscriptToolGroup(
+            id: "tools",
+            tools: [tool(id: "tool-0", kind: .read, status: .running,
+                         createdAt: sent, completedAt: nil)],
+            createdAt: stamp(sent)
+        )
+        XCTAssertNil(TranscriptToolsRow.beatToolID(of: running, beat: "tools"))
+    }
+
     // MARK: - What a fold's headline re-words on
 
     func testHeadlineHoldsUnlessTheKindOfWorkChanges() {

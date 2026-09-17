@@ -1,9 +1,8 @@
 /* Arcs — the sidebar section, the member marker on an ordinary chat row, the
-   New arc dialog, and the standalone Arc page. The page reuses the settings
-   page chrome (rail, topbar, `--settings-measure` column) from
-   settings-layout.css and its form fields reuse the `.sched-*` primitives
-   from scheduled-tasks.css, so this file only adds what neither already has:
-   the sidebar row, the badge, the dialog shell, and the page's own cards. */
+   New arc dialog, and the workspace Arc page. The page shares the settings
+   measure column and its form fields reuse the `.sched-*` primitives from
+   scheduled-tasks.css, so this file only adds what neither already has: the
+   sidebar row, the badge, the dialog shell, and the page's own cards. */
 
 /* ---------- Sidebar: Arcs section row ---------- */
 
@@ -49,6 +48,7 @@
   display: grid;
   place-items: center;
   padding: 4vh 16px;
+  overflow-y: auto;
   background: rgba(20, 24, 32, 0.32);
   z-index: 130;
 }
@@ -59,12 +59,90 @@
   gap: var(--space-4);
   width: min(520px, 92vw);
   max-height: 86vh;
-  overflow: auto;
+  /* Popovers portaled out, but the scroll body still needs visible overflow
+     while a menu is open so nothing in the form clips the trigger row. */
+  overflow: visible;
   padding: 20px 24px 18px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius-2xl);
   box-shadow: var(--shadow-popover);
+}
+
+.new-arc-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.new-arc-dialog:has([aria-expanded="true"]) .new-arc-dialog-body {
+  overflow: visible;
+}
+
+/* Composer chip floor — same quiet capsule as the launch composer, with full
+   ink on both labels (not the repo's muted-strong step-down). `.arc-chips`
+   is the same floor wherever the arc feature puts a picker: the dialog's
+   project and model chips, and the timeline's filter. */
+.new-arc-dialog-chips,
+.arc-chips {
+  --composer-chip-height: 28px;
+}
+
+:is(.new-arc-dialog-chips, .arc-chips) .sched-picker {
+  width: auto;
+  max-width: min(var(--sched-control-width), 100%);
+}
+
+:is(.new-arc-dialog-chips, .arc-chips) .settings-picker {
+  width: auto;
+  min-width: 0;
+  margin-left: 0;
+}
+
+:is(.new-arc-dialog-chips, .arc-chips) .settings-picker-trigger {
+  width: auto;
+  min-width: 0;
+  max-width: min(var(--sched-control-width), 100%);
+  height: var(--composer-chip-height);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: 999px;
+  background: var(--composer-chip);
+  color: var(--text);
+  font-size: var(--text-xs);
+  font-weight: calc(400 + var(--font-weight-offset));
+  box-shadow: none;
+}
+
+:is(.new-arc-dialog-chips, .arc-chips) .settings-picker-trigger:hover,
+:is(.new-arc-dialog-chips, .arc-chips) .settings-picker-trigger[aria-expanded="true"] {
+  background: var(--composer-chip-hover);
+  color: var(--text);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+:is(.new-arc-dialog-chips, .arc-chips) .settings-picker-trigger svg {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+/* The composer floor dropped carets from filled chips — the fill is the affordance. */
+:is(.new-arc-dialog-chips, .arc-chips) .settings-picker-trigger > svg:last-child {
+  display: none;
+}
+
+:is(.new-arc-dialog-chips, .arc-chips) .model-picker-cluster--chip {
+  height: var(--composer-chip-height);
+  max-width: min(var(--sched-control-width), 100%);
+}
+
+:is(.new-arc-dialog-chips, .arc-chips) .model-picker-cluster--chip .composer-context-chip,
+:is(.new-arc-dialog-chips, .arc-chips) .model-picker-cluster--chip .model-picker-label {
+  color: var(--text);
 }
 
 .new-arc-dialog-header {
@@ -132,6 +210,7 @@
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-2);
+  flex-shrink: 0;
   padding-top: var(--space-3);
   border-top: 1px solid var(--line-soft);
 }
@@ -168,6 +247,23 @@
 /* One column, read top to bottom: who is running this and how far along it
    is, then what happened, then the plumbing. The timeline is the page; the
    rest is the frame around it. */
+
+/* Full-workspace arc page: same measure as Settings, but the session sidebar
+   stays — this is not a rail swap. */
+.arc-page {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  /* No `height: 100%` here: the page is taller than the scroller, and a
+     fixed-height flex column shrinks the topbar spacer to nothing. */
+}
+
+/* The body is `.settings-main`: the same topbar, measure, padding, and
+   centering as Settings, Usage, and Activity. */
+.arc-page-body > * {
+  min-width: 0;
+}
 
 .arc-load-error {
   color: var(--rose);
@@ -300,13 +396,81 @@
   font-size: var(--text-xs);
 }
 
+/* ---- Brief ---- */
+
+/* The charter, set as prose under the title rather than filed in a card: the
+   page opens with what the arc is for, in the author's words. */
+.arc-brief {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  max-width: 62ch;
+  margin-top: 8px;
+}
+
+.arc-brief-prose {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  margin: 0;
+  color: var(--prose-ink);
+  font-family: var(--font-prose);
+  font-size: var(--text-base);
+  font-weight: var(--weight-prose);
+  line-height: 1.55;
+}
+
+.arc-brief-empty {
+  color: var(--muted);
+}
+
+.arc-brief-editing {
+  max-width: none;
+  justify-items: stretch;
+}
+
+.arc-brief-textarea {
+  min-height: 150px;
+  font-family: var(--font-prose);
+  line-height: 1.55;
+}
+
+.arc-brief-buttons {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* A quiet inline action: the hairline underline is the affordance at rest,
+   full ink on hover. Shared by the brief's Edit and the coordinator's links. */
+.arc-text-link,
+.arc-stat-link {
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--muted-strong);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, currentColor 35%, transparent);
+  text-underline-offset: 3px;
+  transition: color var(--motion-fast) var(--ease), text-decoration-color var(--motion-fast) var(--ease);
+}
+
+.arc-text-link:hover:not(:disabled),
+.arc-stat-link:hover:not(:disabled) {
+  color: var(--text);
+  text-decoration-color: currentColor;
+}
+
 /* ---- Stats strip ---- */
 
 /* One card split by hairlines rather than four floating tiles: these are
    readings off one arc, not separate things to compare. */
 .arc-stats {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.7fr) repeat(2, minmax(0, 1fr));
   margin: 0;
   border: 0.5px solid var(--line);
   border-radius: var(--radius-lg);
@@ -380,23 +544,13 @@
   gap: 2px 10px;
 }
 
-.arc-stat-link {
-  padding: 0;
-  background: none;
-  border: 0;
+.arc-stat-state {
   color: var(--muted-strong);
-  font: inherit;
-  font-size: var(--text-2xs);
-  cursor: pointer;
-  text-decoration: underline;
-  text-decoration-color: transparent;
-  text-underline-offset: 2px;
-  transition: color var(--motion-fast) var(--ease), text-decoration-color var(--motion-fast) var(--ease);
 }
 
-.arc-stat-link:hover:not(:disabled) {
-  color: var(--text);
-  text-decoration-color: currentColor;
+.arc-stat-state::before {
+  content: "· ";
+  color: var(--muted);
 }
 
 .arc-stat-link:disabled {
@@ -404,16 +558,20 @@
   opacity: 0.55;
 }
 
-@container (max-width: 520px) {
+@container (max-width: 480px) {
   .arc-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .arc-stat:nth-child(3) {
+  .arc-stat:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .arc-stat:nth-child(2) {
     border-left: 0;
   }
 
-  .arc-stat:nth-child(n + 3) {
+  .arc-stat:nth-child(n + 2) {
     border-top: 0.5px solid var(--line-soft);
   }
 }
@@ -491,70 +649,19 @@
   font-size: var(--text-2xs);
 }
 
-/* ---- Brief ---- */
-
-.arc-brief {
-  border: 0.5px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
-}
-
-.arc-brief > summary {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-width: 0;
-  padding: 11px 14px;
-  list-style: none;
-  cursor: pointer;
-}
-
-.arc-brief > summary::-webkit-details-marker {
-  display: none;
-}
-
-.arc-brief > summary::after {
-  content: "";
-  flex: 0 0 auto;
-  width: 6px;
-  height: 6px;
-  margin-left: auto;
-  border-right: 1.25px solid var(--muted);
-  border-bottom: 1.25px solid var(--muted);
-  transform: translateY(-2px) rotate(45deg);
-  transition: transform var(--motion-base) var(--ease);
-}
-
-.arc-brief[open] > summary::after {
-  transform: translateY(1px) rotate(-135deg);
-}
-
-.arc-brief-preview {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-soft);
-  font-size: var(--text-sm);
-}
-
-.arc-brief-body {
-  display: grid;
-  gap: var(--space-2_5);
-  padding: 0 14px 14px;
-}
-
-.arc-brief-textarea {
-  min-height: 150px;
-  font-family: var(--font-prose);
-  line-height: 1.55;
-}
-
 /* ---- Timeline ---- */
 
+/* A ledger, not a rail: a fixed time column, a bare glyph in the event's
+   colour, then one sentence per row and any detail as a plain paragraph
+   under it. Every row starts on the same edges and takes the same padding,
+   so the list reads down one line at a time and nothing draws a second
+   vertical line beside the words. */
 .arc-timeline {
+  --arc-time-width: 58px;
+  --arc-glyph-width: 18px;
+  --arc-column-gap: 12px;
   display: grid;
-  gap: 4px;
+  gap: 0;
   min-width: 0;
 }
 
@@ -564,60 +671,69 @@
   justify-content: space-between;
   gap: var(--space-3);
   flex-wrap: wrap;
-  margin-bottom: 4px;
+  padding-bottom: var(--space-2);
+  border-bottom: 0.5px solid var(--line);
 }
 
+/* The filter menu opens downward over the first day; the trigger keeps the
+   chip's own width rather than the settings control measure. */
+.arc-timeline-header .settings-picker {
+  --sched-control-width: 220px;
+}
+
+.arc-timeline-header .settings-picker-popover {
+  min-width: 180px;
+}
+
+/* No rail to line up with while the list is empty, so the copy starts on
+   the page edge like every other paragraph. */
 .arc-timeline-empty {
+  max-width: 56ch;
   margin: 0;
-  padding: 22px 0;
+  padding: 18px 0 22px;
   color: var(--muted);
   font-size: var(--text-sm);
-  text-align: center;
+  line-height: 1.5;
+}
+
+.arc-timeline-day {
+  margin-top: 12px;
 }
 
 .arc-timeline-day + .arc-timeline-day {
-  margin-top: 14px;
+  margin-top: 18px;
 }
 
 .arc-timeline-day-label {
   position: sticky;
-  top: 0;
+  top: var(--settings-topbar-height);
   z-index: 2;
   margin: 0;
-  padding: 6px 0 6px 38px;
+  padding: 6px 0;
   background: var(--bg);
-  color: var(--muted-strong);
+  color: var(--muted);
   font-size: var(--text-2xs);
   font-weight: calc(500 + var(--font-weight-offset));
   letter-spacing: 0.012em;
 }
 
 .arc-timeline-list {
-  position: relative;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-/* The rail: one hairline through every glyph of the day, drawn once on the
-   list rather than per row so a row's height never breaks it. */
-.arc-timeline-list::before {
-  content: "";
-  position: absolute;
-  top: 14px;
-  bottom: 14px;
-  left: 13.5px;
-  width: 1px;
-  background: var(--line-soft);
-}
-
 .arc-event {
   --arc-tone: var(--muted-strong);
-  position: relative;
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  column-gap: 10px;
-  padding: 5px 0;
+  grid-template-columns: var(--arc-time-width) var(--arc-glyph-width) minmax(0, 1fr);
+  column-gap: var(--arc-column-gap);
+  align-items: baseline;
+  padding: 7px 0;
+}
+
+.arc-event + .arc-event {
+  border-top: 0.5px solid var(--line-soft);
 }
 
 .arc-event[data-tone="accent"] { --arc-tone: var(--accent); }
@@ -635,43 +751,50 @@
   --arc-tone: var(--muted-strong);
 }
 
+.arc-event-time {
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Pinned to the first line, not centred on the row: a detail paragraph
+   below must not float the glyph between the lines. */
 .arc-event-glyph {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  /* Opaque over the rail, tinted toward the event's colour. */
-  background: color-mix(in oklab, var(--arc-tone) 11%, var(--bg));
-  box-shadow: inset 0 0 0 0.5px color-mix(in oklab, var(--arc-tone) 32%, transparent);
+  display: inline-flex;
+  align-self: start;
+  justify-content: center;
+  margin-top: 2px;
   color: var(--arc-tone);
 }
 
 .arc-event-body {
   display: grid;
-  gap: 2px;
+  gap: 3px;
   min-width: 0;
-  padding-top: 5px;
 }
 
 .arc-event-line {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  flex-wrap: wrap;
+  column-gap: 6px;
+  row-gap: 2px;
   min-width: 0;
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.45;
 }
 
 .arc-event-verb {
   flex: 0 0 auto;
   color: var(--text);
-  font-size: var(--text-sm);
   font-weight: calc(500 + var(--font-weight-offset));
 }
 
 .arc-event-subject {
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -680,7 +803,6 @@
   border: 0;
   color: var(--text-soft);
   font: inherit;
-  font-size: var(--text-sm);
   text-align: left;
 }
 
@@ -697,25 +819,20 @@ button.arc-event-subject:hover {
   text-decoration-color: currentColor;
 }
 
-.arc-event-time {
-  flex: 0 0 auto;
-  margin-left: auto;
-  padding-left: var(--space-3);
-  color: var(--muted);
-  font-size: var(--text-2xs);
-  font-variant-numeric: tabular-nums;
-}
-
+/* The project, as a trailing word rather than a second line. */
 .arc-event-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
+  flex: 0 0 auto;
   color: var(--muted);
   font-size: var(--text-xs);
 }
 
+.arc-event-meta::before {
+  content: "· ";
+}
+
 .arc-event-badge {
+  flex: 0 0 auto;
+  align-self: center;
   padding: 0 5px;
   border-radius: var(--radius-xs);
   background: var(--panel-sunken);
@@ -726,34 +843,24 @@ button.arc-event-subject:hover {
 }
 
 /* Someone's own words — a member's report, the coordinator's reasoning for a
-   notes change — set as prose behind a hairline, the transcript's blockquote. */
+   notes change — as a plain paragraph under the sentence, one ink step
+   down. Indentation alone marks it as theirs; no bar. */
 .arc-event-quote {
-  position: relative;
   display: grid;
   justify-items: start;
   gap: 2px;
-  margin: 5px 0 3px;
-  padding-left: 12px;
-}
-
-.arc-event-quote::before {
-  content: "";
-  position: absolute;
-  top: 0.2em;
-  bottom: 0.2em;
-  left: 0;
-  width: 2px;
-  border-radius: 1px;
-  background: color-mix(in oklab, var(--arc-tone) 40%, var(--line-strong));
+  max-width: 68ch;
+  margin: 1px 0 2px;
+  padding: 0;
 }
 
 .arc-event-quote p {
   margin: 0;
-  color: var(--prose-ink);
+  color: var(--text-soft);
   font-family: var(--font-prose);
   font-size: var(--text-sm);
   font-weight: var(--weight-prose);
-  line-height: 1.55;
+  line-height: 1.5;
   white-space: pre-line;
   overflow-wrap: anywhere;
 }
@@ -790,7 +897,7 @@ button.arc-event-subject:hover {
 }
 
 .arc-event-fact {
-  margin: 1px 0 0;
+  margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -805,8 +912,8 @@ button.arc-event-subject:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .arc-brief > summary::after,
   .arc-name-edit,
+  .arc-text-link,
   .arc-member-chip,
   .arc-stat-link,
   button.arc-event-subject {
@@ -867,13 +974,10 @@ button.arc-event-subject:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 5px var(--space-2_5);
-  background: var(--panel-sunken);
-  border: 0.5px solid var(--line);
-  border-radius: var(--radius-md);
   color: var(--text-soft);
   font-family: var(--font-code);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
+  font-feature-settings: var(--code-font-features);
 }
 
 .arc-member-list {
@@ -987,7 +1091,3 @@ button.arc-event-subject:hover {
   font-size: var(--text-2xs);
 }
 
-.arc-event-line .arc-event-badge {
-  flex: 0 0 auto;
-  align-self: center;
-}

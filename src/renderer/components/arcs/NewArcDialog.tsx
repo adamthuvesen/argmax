@@ -206,7 +206,7 @@ export function NewArcDialog({
       tabIndex={-1}
     >
       <form
-        className="new-arc-dialog motion-modal-surface"
+        className={`new-arc-dialog motion-modal-surface${promote ? "" : " new-arc-dialog-chips"}`}
         onSubmit={(event) => {
           event.preventDefault();
           void handleSubmit();
@@ -219,6 +219,7 @@ export function NewArcDialog({
           </button>
         </header>
 
+        <div className="new-arc-dialog-body">
         {promote ? (
           <div className="new-arc-promote-intro">
             <p>
@@ -319,6 +320,8 @@ export function NewArcDialog({
           <div className="sched-picker">
             <SettingsListPicker
               ariaLabel="Home project"
+              icon={<Folder size={14} aria-hidden="true" />}
+              portaled
               value={homeProjectId}
               onChange={setHomeProjectId}
               options={
@@ -333,16 +336,19 @@ export function NewArcDialog({
 
         <div className="sched-field sched-field-inline">
           <span className="sched-label">Coordinator model</span>
-          <LaunchModelSelector
-            ariaLabel="Coordinator model"
-            open={modelPickerOpen}
-            onOpenChange={setModelPickerOpen}
-            withEffortSlider
-            effortOpen={effortPickerOpen}
-            onEffortOpenChange={setEffortPickerOpen}
-            value={model}
-            onChange={setModel}
-          />
+          <div className="sched-picker">
+            <LaunchModelSelector
+              ariaLabel="Coordinator model"
+              open={modelPickerOpen}
+              onOpenChange={setModelPickerOpen}
+              portaled
+              withEffortSlider
+              effortOpen={effortPickerOpen}
+              onEffortOpenChange={setEffortPickerOpen}
+              value={model}
+              onChange={setModel}
+            />
+          </div>
         </div>
           </>
         )}
@@ -377,6 +383,7 @@ export function NewArcDialog({
             {error}
           </p>
         ) : null}
+        </div>
 
         <footer className="new-arc-dialog-actions">
           <button type="button" onClick={onClose} disabled={submitting}>

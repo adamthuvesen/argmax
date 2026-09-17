@@ -116,7 +116,7 @@ describe("NewArcDialog", () => {
     );
 
     expect(onClose).toHaveBeenCalledTimes(1);
-    expect(overlaysSnapshot().standalonePage).toBe("arc");
+    expect(overlaysSnapshot().standalonePage).toBeNull();
     expect(overlaysSnapshot().selectedArcId).toBe("arc-1");
   });
 
@@ -149,7 +149,7 @@ describe("NewArcDialog", () => {
 
     await waitFor(() => expect(launchCoordinatorMock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-    expect(overlaysSnapshot().standalonePage).toBe("arc");
+    expect(overlaysSnapshot().standalonePage).toBeNull();
     expect(overlaysSnapshot().selectedArcId).toBe("arc-1");
     await waitFor(() => expect(toastSnapshot()?.kind).toBe("error"));
     expect(toastSnapshot()?.message).toContain("provider unavailable");

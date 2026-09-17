@@ -9,6 +9,7 @@ import {
   Flag,
   GitMerge,
   GitPullRequest,
+  ListFilter,
   NotebookPen,
   Pause,
   Play,
@@ -30,7 +31,7 @@ import {
   type ArcTimelineFilter
 } from "../../lib/arcTimeline.js";
 import { openWebUrl } from "../../lib/openWebUrl.js";
-import { SegmentedControl } from "../settings/settingsPrimitives.js";
+import { SettingsListPicker } from "../settings/settingsPrimitives.js";
 
 const PAGE_SIZE = 60;
 /** A detail longer than this starts clamped with a way to read the rest. */
@@ -133,13 +134,13 @@ export function ArcTimeline({
 
   return (
     <section className="arc-timeline" aria-label="Timeline">
-      <header className="arc-timeline-header">
+      <header className="arc-timeline-header arc-chips">
         <h2 className="arc-section-title">Timeline</h2>
-        <SegmentedControl
+        <SettingsListPicker
           ariaLabel="Show events"
-          name={`arc-timeline-filter-${arcId}`}
+          icon={<ListFilter size={14} aria-hidden="true" />}
           value={filter}
-          onChange={(next) => setFilter(ARC_TIMELINE_FILTERS.find((option) => option.value === next)?.value ?? "all")}
+          onChange={setFilter}
           options={ARC_TIMELINE_FILTERS}
         />
       </header>
@@ -219,13 +220,19 @@ function ArcTimelineRow({
         : null;
   const meta = showsProject(event) ? event.projectName : null;
 
+  // One sentence per row: verb, subject, then the project and any badge as
+  // quiet trailing words. The time sits in its own column on the left so
+  // every row starts at the same edge and the eye reads down one line.
   return (
     <li className="arc-event" data-tone={presentation.tone}>
+      <time className="arc-event-time" dateTime={event.occurredAt}>
+        {formatArcEventTime(event.occurredAt)}
+      </time>
       <span className="arc-event-glyph" aria-hidden="true">
         <Glyph size={14} strokeWidth={1.75} />
       </span>
       <div className="arc-event-body">
-        <div className="arc-event-line">
+        <p className="arc-event-line">
           <span className="arc-event-verb">{presentation.verb}</span>
           {presentation.subject ? (
             openTarget ? (
@@ -241,17 +248,9 @@ function ArcTimelineRow({
               <span className="arc-event-subject">{presentation.subject}</span>
             )
           ) : null}
-          {presentation.badge && !meta ? <span className="arc-event-badge">{presentation.badge}</span> : null}
-          <time className="arc-event-time" dateTime={event.occurredAt}>
-            {formatArcEventTime(event.occurredAt)}
-          </time>
-        </div>
-        {meta ? (
-          <div className="arc-event-meta">
-            <span>{meta}</span>
-            {presentation.badge ? <span className="arc-event-badge">{presentation.badge}</span> : null}
-          </div>
-        ) : null}
+          {meta ? <span className="arc-event-meta">{meta}</span> : null}
+          {presentation.badge ? <span className="arc-event-badge">{presentation.badge}</span> : null}
+        </p>
         {detail ? (
           presentation.detailIsQuote ? (
             <blockquote className="arc-event-quote" data-clamped={clampable && !expanded ? "true" : undefined}>

@@ -10,7 +10,7 @@ import {
   sidebarViewModeStorageKey
 } from "../lib/projects.js";
 import { resetSessionUnreadForTests } from "../lib/sessionUnread.js";
-import { overlaysSnapshot, resetOverlaysForTests } from "../state/overlays.js";
+import { overlaysSnapshot, resetOverlaysForTests, showArcPage } from "../state/overlays.js";
 import { Sidebar } from "./Sidebar.js";
 
 const projectSettings = {
@@ -2159,13 +2159,21 @@ describe("Sidebar — Arcs section", () => {
   });
 
   it("lists arcs from the snapshot and opens the Arc page on click", () => {
-    render(<Sidebar {...baseProps} snapshot={arcSnapshot} />);
+    render(<Sidebar {...baseProps} snapshot={arcSnapshot} onOpenArc={showArcPage} />);
 
     const row = screen.getByRole("button", { name: "Pricing rollout" });
     fireEvent.click(row);
 
-    expect(overlaysSnapshot().standalonePage).toBe("arc");
+    expect(overlaysSnapshot().standalonePage).toBeNull();
     expect(overlaysSnapshot().selectedArcId).toBe("arc-1");
+  });
+
+  it("marks the selected arc row as current", () => {
+    render(
+      <Sidebar {...baseProps} snapshot={arcSnapshot} selectedArcId="arc-1" onOpenArc={showArcPage} />
+    );
+
+    expect(screen.getByRole("button", { name: "Pricing rollout" })).toHaveAttribute("aria-current", "page");
   });
 
   it("opens the New arc dialog from the section's New arc button", () => {

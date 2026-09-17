@@ -34,7 +34,7 @@
 
 [data-reading-wave="true"] {
   --reading-wave-sigma: 1.1em;
-  animation: reading-wave var(--reading-wave-duration, 2.4s) linear infinite;
+  animation: reading-wave var(--reading-wave-duration, 1.6s) linear infinite;
   animation-delay: var(--reading-wave-delay, 0s);
   animation-play-state: var(--loop-play-state, running);
 }

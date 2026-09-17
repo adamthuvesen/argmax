@@ -62,11 +62,11 @@ struct ReadingWave: TextRenderer {
     static let sigma: CGFloat = 1.1
     /// Constant travel speed in ems per second, so a two-line headline does
     /// not whip past and a short verb does not crawl.
-    static let speed: CGFloat = 11.05
+    static let speed: CGFloat = 9.1
     /// Pause between passes, in seconds.
-    static let pause: CGFloat = 0.7
+    static let pause: CGFloat = 0.4
     /// Shortest cycle, so "Thinking" never strobes.
-    static let minimumCycle: CGFloat = 2.4
+    static let minimumCycle: CGFloat = 1.6
     /// How much of the peak is accent rather than ink.
     static let accentShare: Float = 0.4
     /// Light mode's peak stays nearer ink: the light accents are already dark.

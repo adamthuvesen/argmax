@@ -82,10 +82,10 @@
   overflow: visible;
 }
 
-/* Composer chip floor — same quiet capsule as the launch composer, with full
-   ink on both labels (not the repo's muted-strong step-down). `.arc-chips`
-   is the same floor wherever the arc feature puts a picker: the dialog's
-   project and model chips, and the timeline's filter. */
+/* Composer chip floor — same quiet capsule and ink ladder as the launch
+   composer: the model in full ink, effort and project a step down in
+   --chip-ink. `.arc-chips` is the same floor wherever the arc feature puts a
+   picker: the dialog's project and model chips, and the timeline's filter. */
 .new-arc-dialog-chips,
 .arc-chips {
   --composer-chip-height: 28px;
@@ -111,7 +111,7 @@
   border: 0;
   border-radius: 999px;
   background: var(--composer-chip);
-  color: var(--text);
+  color: var(--chip-ink);
   font-size: var(--text-xs);
   font-weight: calc(400 + var(--font-weight-offset));
   box-shadow: none;
@@ -120,7 +120,7 @@
 :is(.new-arc-dialog-chips, .arc-chips) .settings-picker-trigger:hover,
 :is(.new-arc-dialog-chips, .arc-chips) .settings-picker-trigger[aria-expanded="true"] {
   background: var(--composer-chip-hover);
-  color: var(--text);
+  color: var(--muted-strong);
   border-color: transparent;
   box-shadow: none;
 }
@@ -140,9 +140,30 @@
   max-width: min(var(--sched-control-width), 100%);
 }
 
-:is(.new-arc-dialog-chips, .arc-chips) .model-picker-cluster--chip .composer-context-chip,
-:is(.new-arc-dialog-chips, .arc-chips) .model-picker-cluster--chip .model-picker-label {
+:is(.new-arc-dialog-chips, .arc-chips) .model-picker-anchor > .composer-context-chip {
   color: var(--text);
+}
+
+:is(.new-arc-dialog-chips, .arc-chips) .effort-slider-chip {
+  color: var(--chip-ink);
+}
+
+:is(.new-arc-dialog-chips, .arc-chips) .effort-slider-chip:hover,
+:is(.new-arc-dialog-chips, .arc-chips) .effort-slider-chip[aria-expanded="true"] {
+  color: var(--muted-strong);
+}
+
+/* "Opus 5 Medium" reads as one phrase: a single word space at the seam, not
+   two chip paddings back to back. */
+:is(.new-arc-dialog-chips, .arc-chips)
+  .model-picker-cluster--chip:has(.effort-slider-chip)
+  .model-picker-anchor
+  > .composer-context-chip {
+  padding-right: 2px;
+}
+
+:is(.new-arc-dialog-chips, .arc-chips) .effort-slider-chip {
+  padding-left: 2px;
 }
 
 .new-arc-dialog-header {

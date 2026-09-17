@@ -219,7 +219,8 @@ struct TranscriptToolsRow: View {
             // marked a recovered turn as a broken one. The failure lives in
             // the row's expanded body, where the reader has asked for it.
             TranscriptFoldLabel(tools: group.tools, summary: group.activitySummary,
-                                running: running, maxIcons: 3, lineLimit: 2)
+                                running: running, lines: [group.id],
+                                maxIcons: 3, lineLimit: 2)
         }
         .tint(Theme.muted)
         }
@@ -244,20 +245,29 @@ struct TranscriptFoldLabel: View {
     let tools: [TranscriptTool]
     let summary: String
     /// A call in flight in this fold, and the only thing that moves the
-    /// headline. The fold speaks for work it is doing; the gap between one call
-    /// and the next belongs to the thinking cue under the transcript
-    /// (`TranscriptThinkingLabel`), which appears exactly when no tool is
-    /// running. Keying this on the live tail instead covered that gap too,
-    /// so a turn between calls carried both cues at once.
+    /// headline. The fold re-words for work it is doing, and its counts are
+    /// news the moment they land, so the beat between calls must not hold them
+    /// behind a dwell.
     let running: Bool
+    /// The transcript items this line speaks for — one fold, or the several a
+    /// merged activity row folds together — so it can tell whether it is the
+    /// line holding the beat between calls (`\.activityBeat`).
+    let lines: [String]
     let maxIcons: Int
     let lineLimit: Int
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.activityBeat) private var beat
 
     private var motion: Animation? { reduceMotion ? nil : .easeOut(duration: 0.18) }
+    /// Whether this line carries the reading wave: a call of its own in
+    /// flight, or the beat between calls, which the line that just did the
+    /// work keeps until the cue earns its word. Three of the five providers
+    /// report a call atomically (`TranscriptThinking.beatHolder`), so without
+    /// the second clause their folds never wave at all.
+    private var live: Bool { running || (beat.map(lines.contains) ?? false) }
 
     var body: some View {
-        TranscriptDwelledValue(value: Shown(summary: summary, live: running, icons: iconTools),
+        TranscriptDwelledValue(value: Shown(summary: summary, live: live, icons: iconTools),
                                key: Self.kindKey(for: tools), running: running) { shown in
             HStack(spacing: Spacing.snug) {
                 ForEach(shown.icons) { tool in

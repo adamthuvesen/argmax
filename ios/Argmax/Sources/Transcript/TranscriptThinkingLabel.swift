@@ -58,6 +58,11 @@ struct TranscriptThinking: Hashable {
     var phase: Phase = .live
     /// How long this beat has to stay silent before the cue earns the screen.
     var wait: TimeInterval = TranscriptThinkingWait.firstBeat
+    /// The line whose work this beat started at, when a line of work started
+    /// it: the fold whose last call just landed. Nil for a turn's first beat,
+    /// whose only predecessor is the prompt, and for a card, which is not work
+    /// the reader can watch a line do.
+    var settledLine: String? = nil
 
     /// A beat is identified by what it is, not by what it is doing: the phase
     /// and the wait stay out of equality so a hand-off, or a wait recomputed
@@ -81,6 +86,25 @@ struct TranscriptThinking: Hashable {
     func remainingWait(now: Date = Date()) -> TimeInterval {
         guard let start = parseWireTimestamp(startedAt) else { return 0 }
         return min(wait, max(0, wait - now.timeIntervalSince(start)))
+    }
+
+    /// The line that holds the beat while this one waits, if any: the one that
+    /// just did the work.
+    ///
+    /// Providers disagree by orders of magnitude about how long a call *looks*
+    /// like it takes. Median `command.started` to `command.completed` over a
+    /// week of this app's own event log: OpenCode 0ms, Grok 4ms, Codex 54ms,
+    /// Cursor 252ms, Claude 610ms. Three of the five report a call atomically,
+    /// so marking only a *running* line live left their tool lines with no
+    /// wave at all and the cue owning every gap — which is what an OpenCode
+    /// turn looked like here. So the settled line keeps the beat until this
+    /// wait elapses and the cue takes over; exactly one line is live either
+    /// way, on every provider.
+    func beatHolder(now: Date = Date()) -> String? {
+        // A running line waves on its own status, and a leaving cue has
+        // already handed the beat to it.
+        guard phase == .live, remainingWait(now: now) > 0 else { return nil }
+        return settledLine
     }
 
     static func current(items: [TranscriptItem], session: NativeSession?) -> Self? {
@@ -141,10 +165,12 @@ struct TranscriptThinking: Hashable {
                 // A group with nothing finished in it has not started a
                 // silence; the beat belongs to whatever ran before it.
                 guard let settled = group.tools.compactMap(\.completedAt).max() else { continue }
-                return Self(id: item.id, startedAt: settled, wait: gapWait())
+                return Self(id: item.id, startedAt: settled, wait: gapWait(),
+                            settledLine: item.id)
             case .agents(let group):
                 guard let settled = group.agents.compactMap(\.completedAt).max() else { continue }
-                return Self(id: item.id, startedAt: settled, wait: gapWait())
+                return Self(id: item.id, startedAt: settled, wait: gapWait(),
+                            settledLine: item.id)
             default:
                 return Self(id: item.id, startedAt: item.createdAt, wait: gapWait())
             }
@@ -233,12 +259,32 @@ struct TranscriptThinking: Hashable {
     ]
 }
 
+/// Which line holds the turn's beat: the transcript item whose work just
+/// landed, or nil when the thinking cue has it and nothing else may wave.
+/// `TranscriptThinking.beatHolder` decides it and `TranscriptThinkingLabel`
+/// publishes it, since the cue's own clock is what ends the line's turn.
+/// Desktop threads the same value through `lib/activityBeat.ts`.
+private struct ActivityBeatKey: EnvironmentKey {
+    static let defaultValue: String? = nil
+}
+
+extension EnvironmentValues {
+    var activityBeat: String? {
+        get { self[ActivityBeatKey.self] }
+        set { self[ActivityBeatKey.self] = newValue }
+    }
+}
+
 struct TranscriptThinkingLabel: View {
     /// Nil holds the line's height without drawing it. The cue comes and goes
     /// several times within a turn, and collapsing its slot each time shortens
     /// the transcript under a reader pinned to the tail and walks the view up
     /// and down. Desktop reserves the same slot in `.conversation-tail`.
     let thinking: TranscriptThinking?
+    /// The line that keeps the beat while this one waits out its gap, reported
+    /// up because this view's clock is what ends that wait: the frame the cue
+    /// appears is the frame the line it took over from goes quiet.
+    @Binding var beatHolder: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var mountedAt = Date()
     /// Whether the line is on screen, which outlives the beat by the length of
@@ -281,6 +327,7 @@ struct TranscriptThinkingLabel: View {
             // dissolve, so it stays down.
             drawn = false
             opacity = 0
+            beatHolder = nil
             return
         }
         let remaining = thinking.remainingWait()
@@ -289,9 +336,12 @@ struct TranscriptThinkingLabel: View {
             // must not stand in for one that has not earned the screen yet.
             drawn = false
             opacity = 0
+            beatHolder = thinking.beatHolder()
             try? await Task.sleep(for: .seconds(remaining))
             guard !Task.isCancelled else { return }
         }
+        // The word is earned, so the line that just worked gives the beat up.
+        beatHolder = nil
         opacity = reduceMotion ? 1 : 0
         drawn = true
         guard !reduceMotion else { return }

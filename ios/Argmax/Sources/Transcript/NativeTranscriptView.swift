@@ -10,6 +10,10 @@ struct NativeTranscriptView: View {
     @Environment(\.transcriptWorkspacePath) private var workspacePath
     @State private var following = true
     @State private var scrollRequest = 0
+    /// Which line holds the turn's beat between calls. The cue reports it,
+    /// since its own wait is what ends it, and the rows read it back out of
+    /// the environment rather than taking it as a prop through every row.
+    @State private var beatHolder: String?
 
     private var rows: [MobileTranscriptRow] {
         MobileTranscriptRow.rows(transcript.items.filter { item in
@@ -66,10 +70,11 @@ struct NativeTranscriptView: View {
                 }
                     .padding(.vertical, row.verticalPadding)
             } footer: {
-                TranscriptThinkingLabel(thinking: thinking)
+                TranscriptThinkingLabel(thinking: thinking, beatHolder: $beatHolder)
                     .id(thinking)
                     .padding(.vertical, Spacing.snug)
             }
+            .environment(\.activityBeat, beatHolder)
             .overlay(alignment: .bottom) {
                 if !following && !rows.isEmpty {
                     Button {

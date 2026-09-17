@@ -88,6 +88,43 @@ final class TranscriptPacingTests: XCTestCase {
         XCTAssertNotEqual(leaving, TranscriptThinking(id: "beat", startedAt: "2026-09-17T10:00:05Z"))
     }
 
+    // MARK: - Who holds the beat between calls
+
+    func testASettledFoldHoldsTheBeatUntilTheCueEarnsItsWord() {
+        let sent = Date()
+        // The OpenCode shape: every call starts and finishes in the same
+        // instant (measured median 0ms), so nothing in the turn is ever
+        // running and a rule keyed on a running call leaves the fold dead.
+        let items = [userMessage(at: sent),
+                     toolGroup(from: sent, calls: [(1, 0), (2, 0), (3, 0)])]
+        let beat = TranscriptThinking.current(items: items, session: session)
+        XCTAssertEqual(beat?.wait, 0.9)
+        // The id is the transcript item's, which is what a fold label matches
+        // itself against.
+        XCTAssertEqual(beat?.beatHolder(now: sent.addingTimeInterval(3.5)), "tools")
+        // …and the cue is still down while the line has it: one live line.
+        XCTAssertGreaterThan(beat?.remainingWait(now: sent.addingTimeInterval(3.5)) ?? 0, 0)
+        // The cue takes over the moment its wait elapses, and the line that
+        // just worked goes quiet in the same frame.
+        XCTAssertEqual(beat?.remainingWait(now: sent.addingTimeInterval(4)), 0)
+        XCTAssertNil(beat?.beatHolder(now: sent.addingTimeInterval(4)))
+    }
+
+    func testARunningLineKeepsTheBeatItselfAndThePromptNeverHoldsIt() {
+        let sent = Date()
+        // A five-second stall and then a call still in flight: that row waves
+        // on its own status, so the fold behind it must not also.
+        let running = [userMessage(at: sent), toolGroup(from: sent, calls: [(1, 0.2), (6, nil)])]
+        let handOff = TranscriptThinking.current(items: running, session: session)
+        XCTAssertEqual(handOff?.phase, .leaving)
+        XCTAssertNil(handOff?.beatHolder(now: sent.addingTimeInterval(6.1)))
+        // A turn whose only predecessor is the prompt has no line of work to
+        // give the beat to, however long its wait still has to run.
+        let first = TranscriptThinking.current(items: [userMessage(at: sent)], session: session)
+        XCTAssertGreaterThan(first?.remainingWait(now: sent.addingTimeInterval(0.2)) ?? 0, 0)
+        XCTAssertNil(first?.beatHolder(now: sent.addingTimeInterval(0.2)))
+    }
+
     // MARK: - What a fold's headline re-words on
 
     func testHeadlineHoldsUnlessTheKindOfWorkChanges() {

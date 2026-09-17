@@ -65,7 +65,8 @@ Argmax adds one server of its own per launch — `argmax`, the agent tools — t
 The provider-facing prompt also carries a short routing instruction before the
 user's text. It tells every provider to discover and use Argmax MCP tools for
 Argmax-owned operations instead of generic UI automation, even when the MCP
-client defers the server instructions or tool schemas. Argmax persists the
+client defers the server instructions or tool schemas. Provider-native slash
+commands keep `/` at byte zero so the CLI can expand them. Argmax persists the
 original user text, and strips the routing prefix when importing provider
 transcripts, so the instruction does not appear in chat.
 

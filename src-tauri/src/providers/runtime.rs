@@ -316,7 +316,9 @@ pub(crate) fn with_argmax_routing_instruction(
     mut input: ProviderLaunchInput,
     has_argmax_mcp: bool,
 ) -> ProviderLaunchInput {
-    if has_argmax_mcp {
+    // Provider-native slash commands must stay at byte zero so the CLI can
+    // expand them. Their skill instructions take precedence for that turn.
+    if has_argmax_mcp && !input.prompt.starts_with('/') {
         input.prompt = super::mcp_injection::prepend_routing_instruction(&input.prompt);
     }
     input
@@ -327,6 +329,25 @@ mod routing_tests {
     use super::*;
     use std::path::PathBuf;
 
+    fn input(provider: ProviderId, prompt: &str) -> ProviderLaunchInput {
+        ProviderLaunchInput {
+            provider,
+            session_id: "session-1".to_string(),
+            workspace_path: PathBuf::from("/tmp/project"),
+            prompt: prompt.to_string(),
+            model_label: "Model".to_string(),
+            model_id: "model".to_string(),
+            reasoning_effort: None,
+            fast_mode: false,
+            resume_conversation_id: None,
+            resume_fork: false,
+            permission_mode: PermissionMode::AutoApprove,
+            agent_mode: AgentMode::Auto,
+            cols: 100,
+            rows: 30,
+        }
+    }
+
     #[test]
     fn every_supported_provider_gets_the_routing_instruction() {
         for provider in [
@@ -336,22 +357,7 @@ mod routing_tests {
             ProviderId::Opencode,
             ProviderId::Grok,
         ] {
-            let input = ProviderLaunchInput {
-                provider,
-                session_id: "session-1".to_string(),
-                workspace_path: PathBuf::from("/tmp/project"),
-                prompt: "Do the work".to_string(),
-                model_label: "Model".to_string(),
-                model_id: "model".to_string(),
-                reasoning_effort: None,
-                fast_mode: false,
-                resume_conversation_id: None,
-                resume_fork: false,
-                permission_mode: PermissionMode::AutoApprove,
-                agent_mode: AgentMode::Auto,
-                cols: 100,
-                rows: 30,
-            };
+            let input = input(provider, "Do the work");
 
             let routed = with_argmax_routing_instruction(input.clone(), true);
             assert!(
@@ -367,6 +373,22 @@ mod routing_tests {
 
             let without_server = with_argmax_routing_instruction(input.clone(), false);
             assert_eq!(without_server.prompt, input.prompt);
+        }
+    }
+
+    #[test]
+    fn provider_native_commands_keep_the_leading_slash() {
+        for provider in [
+            ProviderId::Claude,
+            ProviderId::Codex,
+            ProviderId::Cursor,
+            ProviderId::Opencode,
+            ProviderId::Grok,
+        ] {
+            let input = input(provider, "/review the current branch");
+            let routed = with_argmax_routing_instruction(input.clone(), true);
+
+            assert_eq!(routed.prompt, input.prompt, "{provider:?}");
         }
     }
 }

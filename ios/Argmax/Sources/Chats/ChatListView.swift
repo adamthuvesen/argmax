@@ -522,7 +522,8 @@ func toggleCollapsedChatSection(_ id: String, in stored: String) -> String {
 
 /// Not the system header: the row subtitles' size and weight, the count the
 /// web list carried, and its own air above and below. Tapping it folds the
-/// section; the count stays, so a shut section still says what it holds.
+/// section. There is no chevron: the count stays, so a shut section still
+/// says what it holds.
 private struct SectionHeading: View {
     let label: String
     let count: Int
@@ -530,26 +531,19 @@ private struct SectionHeading: View {
     let toggle: () -> Void
 
     var body: some View {
-        Button(action: toggle) {
-            HStack(spacing: Spacing.tight) {
-                Text("\(label) · \(count)")
-                    .typeSectionHeading()
-                    .textCase(nil)
-                Image(systemName: "chevron.down")
-                    .typeSymbol(.caption2, weight: .semibold)
-                    .foregroundStyle(Theme.muted)
-                    .rotationEffect(.degrees(collapsed ? -90 : 0))
-            }
+        Text("\(label) · \(count)")
+            .typeSectionHeading()
+            .textCase(nil)
             .frame(maxWidth: .infinity, alignment: .leading)
             .screenGutter()
             .padding(.top, Spacing.section)
             .padding(.bottom, Spacing.snug)
             .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(label), \(count)")
-        .accessibilityValue(collapsed ? "Collapsed" : "Expanded")
-        .accessibilityHint(collapsed ? "Shows this section" : "Hides this section")
+            .onTapGesture(perform: toggle)
+            .accessibilityLabel("\(label), \(count)")
+            .accessibilityValue(collapsed ? "Collapsed" : "Expanded")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { toggle() }
     }
 }
 

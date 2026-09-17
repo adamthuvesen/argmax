@@ -72,7 +72,7 @@ struct ReadingWave: TextRenderer {
     /// Light mode's peak stays nearer ink: the light accents are already dark.
     static let lightAccentShare: Float = 0.1
     /// How far light mode's resting line fades from muted toward the ground.
-    static let lightRestFade: Float = 0.45
+    static let lightRestFade: Float = 0.3
     /// Reduce Motion: nothing travels, the line breathes over this period.
     static let breathPeriod: Double = 2.6
 

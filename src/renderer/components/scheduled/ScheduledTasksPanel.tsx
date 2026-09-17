@@ -392,21 +392,25 @@ export function ScheduledTasksPanel({
   const total = routines?.length ?? 0;
 
   return (
-    <SchedulePage>
+    <SchedulePage
+      summary={
+        routines !== null && total > 0 ? (
+          <p className="sched-count">
+            {total} {total === 1 ? "task" : "tasks"}
+            {pausedCount > 0 ? <span className="sched-count-sep">, {pausedCount} paused</span> : null}
+          </p>
+        ) : null
+      }
+      action={
+        routines !== null && total > 0 ? (
+          <button type="button" className="sched-button sched-button-primary" onClick={startNew}>
+            <Plus size={14} aria-hidden="true" />
+            New task
+          </button>
+        ) : null
+      }
+    >
       <div className="sched-column">
-          {routines !== null && total > 0 ? (
-            <div className="sched-toolbar">
-              <p className="sched-count">
-                {total} {total === 1 ? "task" : "tasks"}
-                {pausedCount > 0 ? <span className="sched-count-sep"> · {pausedCount} paused</span> : null}
-              </p>
-              <button type="button" className="sched-button sched-button-primary" onClick={startNew}>
-                <Plus size={13} aria-hidden="true" />
-                New task
-              </button>
-            </div>
-          ) : null}
-
           {status ? (
             <p className="sched-status" role="status">
               {status}
@@ -508,7 +512,7 @@ export function ScheduledTasksPanel({
                         disabled={busy}
                         onClick={() => void runNow(routine)}
                       >
-                        <Play size={13} aria-hidden="true" />
+                        <Play size={14} aria-hidden="true" />
                       </button>
                       <button
                         type="button"
@@ -517,7 +521,7 @@ export function ScheduledTasksPanel({
                         aria-label={`Edit ${routine.name}`}
                         onClick={() => startEdit(routine)}
                       >
-                        <Pencil size={13} aria-hidden="true" />
+                        <Pencil size={14} aria-hidden="true" />
                       </button>
                       <button
                         type="button"
@@ -527,7 +531,7 @@ export function ScheduledTasksPanel({
                         disabled={busy}
                         onClick={() => void removeRoutine(routine)}
                       >
-                        <Trash2 size={13} aria-hidden="true" />
+                        <Trash2 size={14} aria-hidden="true" />
                       </button>
                       <label className="settings-toggle sched-row-toggle">
                         <input
@@ -551,12 +555,26 @@ export function ScheduledTasksPanel({
   );
 }
 
-function SchedulePage({ children }: { children: ReactNode }): JSX.Element {
+function SchedulePage({
+  children,
+  summary,
+  action
+}: {
+  children: ReactNode;
+  summary?: ReactNode;
+  action?: ReactNode;
+}): JSX.Element {
   return (
     <div className="settings-page">
       <div className="settings-topbar" data-window-drag />
-      <div className="settings-main">
-        <h1 className="settings-page-title">Schedule</h1>
+      <div className="settings-main sched-main">
+        <header className="sched-header">
+          <div className="sched-titles">
+            <h1 className="settings-page-title sched-title">Schedule</h1>
+            {summary}
+          </div>
+          {action}
+        </header>
         {children}
       </div>
     </div>

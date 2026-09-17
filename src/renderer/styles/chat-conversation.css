@@ -1609,6 +1609,12 @@
 .markdown td {
   padding: 7px 14px;
   text-align: left;
+  /* File previews use `anywhere` so a path cannot escape the pane, but that
+     also reduces every table cell's min-content width to one character and
+     lets prose-heavy columns crush short labels. `break-word` still wraps an
+     overlong token at the cell edge without feeding those emergency breaks
+     into automatic column sizing. */
+  overflow-wrap: break-word;
   border-bottom: 1px solid color-mix(in oklab, var(--line-soft) 74%, transparent);
 }
 

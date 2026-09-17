@@ -111,6 +111,16 @@ struct ChatListView: View {
             .navigationDestination(for: InsightsRoute.self) { _ in
                 InsightsScreen(onBack: { path.removeLast() })
             }
+            .navigationDestination(for: ArcRoute.self) { route in
+                ArcScreen(
+                    route: route,
+                    client: store.client,
+                    onBack: { path.removeLast() },
+                    onOpenSession: { sessionID in
+                        if let row = store.row(forSessionID: sessionID) { path.append(row) }
+                    }
+                )
+            }
             .reviewDestinations(store: store, onPop: { path.removeLast() })
         }
         .environmentObject(navigator)
@@ -232,6 +242,7 @@ struct ChatListView: View {
         // are worth having. Everything it would otherwise draw — background,
         // separators, cell insets, selection — is turned off below.
         List {
+            arcsSection
             section("Pinned", rows: store.sections.pinned, from: 0)
             section("Priority", rows: store.sections.priority, from: store.sections.pinned.count)
             ForEach(store.dateGroups) { group in
@@ -248,6 +259,30 @@ struct ChatListView: View {
         .scrollDismissesKeyboard(.immediately)
         .refreshable { await store.reload() }
         .chatRowActionPresentations(rowActions)
+    }
+
+    /// Live arcs, above everything else: an arc is not a chat but the work a
+    /// set of chats belongs to, and the one to three in flight are what a
+    /// phone checks on. Done arcs stay on the Mac. See docs/arcs.md.
+    @ViewBuilder
+    private var arcsSection: some View {
+        let arcs = liveArcs(store.snapshot.arcs)
+        if !arcs.isEmpty {
+            Group {
+                SectionHeading(label: "Arcs", count: arcs.count).plainRow()
+                ForEach(Array(arcs.enumerated()), id: \.element.id) { index, arc in
+                    ArcListRow(
+                        arc: arc,
+                        sessions: store.snapshot.sessions.filter { $0.arcId == arc.id },
+                        now: store.now,
+                        separated: index < arcs.count - 1
+                    ) {
+                        path.append(ArcRoute(arcID: arc.id))
+                    }
+                    .plainRow()
+                }
+            }
+        }
     }
 
     /// A heading and its rows, all of them ordinary rows.
@@ -374,7 +409,7 @@ struct ChatListView: View {
     private var placeholder: ChatListPlaceholder? {
         chatListPlaceholder(
             connection: store.connection,
-            hasRows: !store.sections.isEmpty,
+            hasRows: !store.sections.isEmpty || !liveArcs(store.snapshot.arcs).isEmpty,
             loadedOnce: store.loadedOnce,
             failed: store.loadFailure != nil
         )
@@ -553,6 +588,12 @@ struct ChatListRow: View {
                             ChatRowGlyphView(glyph: glyph)
                         }
                         subtitle
+                        if let arcName = row.arcName {
+                            Image(systemName: "point.3.connected.trianglepath.dotted")
+                                .typeSymbol(.caption2, weight: .medium)
+                                .foregroundStyle(Theme.muted)
+                                .accessibilityLabel("Part of arc \(arcName)")
+                        }
                     }
                 }
                 Spacer(minLength: Spacing.row)

@@ -349,6 +349,9 @@ struct ChatRow: Identifiable, Hashable, Sendable {
     var attention: AttentionState?
     /// A turn is in flight here, or in a multitask this chat dispatched.
     var working: Bool
+    /// The Arc a chat in this workspace belongs to, so a member reads as part
+    /// of a larger body of work. The desktop sidebar's `arcLabelByWorkspace`.
+    var arcName: String? = nil
 
     var id: String { workspace.id }
 }
@@ -399,6 +402,13 @@ func groupChatRows(
     var projectNameByID: [String: String] = [:]
     for project in snapshot.projects { projectNameByID[project.id] = project.name }
 
+    let arcNameByID = Dictionary(snapshot.arcs.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+    var arcNameByWorkspace: [String: String] = [:]
+    for session in snapshot.sessions {
+        if let arcID = session.arcId, let name = arcNameByID[arcID] {
+            arcNameByWorkspace[session.workspaceId] = name
+        }
+    }
     let hidden = hiddenMultitaskWorkspaceIDs(snapshot.sessions)
     let working = workingWorkspaceIDs(snapshot.sessions)
     let attention = computeWorkspaceAttention(
@@ -426,7 +436,8 @@ func groupChatRows(
             session: session,
             projectName: projectNameByID[workspace.projectId],
             attention: attention[workspace.id],
-            working: working.contains(workspace.id)
+            working: working.contains(workspace.id),
+            arcName: arcNameByWorkspace[workspace.id]
         )
         rowsByID[workspace.id] = row
         rows.append(row)

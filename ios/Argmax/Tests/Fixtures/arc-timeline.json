@@ -1,0 +1,65 @@
+{
+  "events": [
+    {
+      "detail": "The build runs in its own worktree on branch `adam/feat-forecast-v1`.",
+      "id": "notes:s-coordinator:2026-09-17T08:56:41.574Z",
+      "kind": "notes_updated",
+      "occurredAt": "2026-09-17T08:56:41.574Z",
+      "prNumber": null,
+      "prUrl": null,
+      "projectId": "p-1",
+      "projectName": "forecasts",
+      "seq": 22,
+      "sessionAvailable": true,
+      "sessionId": "s-coordinator",
+      "status": "+3 −1",
+      "title": "Dependencies: latest versions, lock file, lint, types, tests."
+    },
+    {
+      "detail": null,
+      "id": "launched:s-member",
+      "kind": "member_launched",
+      "occurredAt": "2026-09-17T08:56:11.207Z",
+      "prNumber": null,
+      "prUrl": null,
+      "projectId": "p-1",
+      "projectName": "forecasts",
+      "seq": 21,
+      "sessionAvailable": true,
+      "sessionId": "s-member",
+      "status": null,
+      "title": "forecast build v1"
+    },
+    {
+      "detail": null,
+      "id": "pr:214:merged",
+      "kind": "pr_merged",
+      "occurredAt": "2026-09-16T20:01:00.000Z",
+      "prNumber": 214,
+      "prUrl": "https://github.com/example/forecasts/pull/214",
+      "projectId": "p-1",
+      "projectName": "forecasts",
+      "seq": 3,
+      "sessionAvailable": false,
+      "sessionId": "s-old",
+      "status": null,
+      "title": "Add the data loader"
+    },
+    {
+      "detail": null,
+      "id": "created:arc-1",
+      "kind": "created",
+      "occurredAt": "2026-09-16T19:27:15.395Z",
+      "prNumber": null,
+      "prUrl": null,
+      "projectId": "p-1",
+      "projectName": "forecasts",
+      "seq": 1,
+      "sessionAvailable": false,
+      "sessionId": null,
+      "status": null,
+      "title": "Revenue forecast"
+    }
+  ],
+  "nextCursor": { "occurredAt": "2026-09-16T19:27:15.395Z", "seq": 1 }
+}

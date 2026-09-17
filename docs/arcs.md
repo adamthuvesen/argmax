@@ -43,7 +43,7 @@ A brief is required. When the chosen folder already has a `BRIEF.md`, leave the 
 
 The iPhone app lists live arcs (active, then paused, most recently touched first) in an **Arcs** section above Pinned. Done arcs stay on the Mac. A chat that belongs to an arc wears a small arc glyph on its second line. The Arc screen ([ios/Argmax/Sources/Arcs](../ios/Argmax/Sources/Arcs)) opens the coordinator and the members working now, shows the stats, the brief, and the timeline with Show earlier, and its ⋯ menu pauses, resumes, or marks the arc done. It reads `arc:get` and `arc:timeline`, which are in `remoteReadChannels.json`. The screen refetches when the dashboard's arc row or any arc session's state moves, the same keys the desktop page follows, so nothing polls. Creating an arc, starting from a chat, starting a new coordinator, renaming, editing the brief, reopening a done arc, and triggers are desktop-only.
 
-A Mac built before the arc reads joined the manifest refuses them for want of an operation id, and the phone shows that refusal on the Arc screen. Update the Mac app to fix it.
+A Mac built before the arc reads joined the manifest refuses them for want of an operation id. The phone answers `REMOTE_OPERATION_REQUIRED` on any read by sending it once more under a throwaway operation id, so an older Mac still serves the Arc screen and only journals the read.
 
 ## Not in this version
 

@@ -369,6 +369,10 @@ actor BridgeClient {
         defer { if let operation { activeOperationIDs.remove(operation.identity.operationId) } }
         // Retry only a submitted logical action, within a finite recovery window.
         let recoveryDeadline = Date().addingTimeInterval(120)
+        // A Mac built before a channel joined the read manifest refuses the
+        // read for want of an operation. Reads have no side effects, so it is
+        // sent once more under a throwaway identity nothing here keeps.
+        var olderHostReadIdentity: RemoteOperation?
         do {
             while true {
                 try Task.checkCancellation()
@@ -377,7 +381,11 @@ actor BridgeClient {
                     try await waitUntilAuthenticated()
                     guard lifecycle == startedLifecycle else { throw BridgeError.disconnected }
                     if isMutation, !operationReplay { throw Self.unknownOutcome }
-                    let reply = try await sendOnce(channel: channel, encodedInput: encoded, operation: operation?.identity)
+                    let reply = try await sendOnce(
+                        channel: channel,
+                        encodedInput: encoded,
+                        operation: operation?.identity ?? olderHostReadIdentity
+                    )
                     if let operation, reply.settled {
                         var saved = try operationStore.load()
                         saved.removeAll { $0.identity == operation.identity }
@@ -391,6 +399,11 @@ actor BridgeClient {
                                 startedLifecycle: startedLifecycle,
                                 startedGeneration: generation
                             )
+                        }
+                        if !isMutation, olderHostReadIdentity == nil,
+                           case .host(_, let subCode, _) = error, subCode == "REMOTE_OPERATION_REQUIRED" {
+                            olderHostReadIdentity = RemoteOperation.mint()
+                            continue
                         }
                         if !reply.settled, operation != nil,
                            case .host(_, let subCode, _) = error,

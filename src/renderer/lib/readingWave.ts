@@ -32,13 +32,18 @@ export function useReadingWave(
       const first = spans[0];
       if (!first) return;
       const start = first.getBoundingClientRect().left;
-      // A truncated line clips its spans; the band only needs to cross what shows.
-      const visibleEnd = node.getBoundingClientRect().right;
       let end = start;
       for (const span of spans) {
         const rect = span.getBoundingClientRect();
         span.style.setProperty("--reading-wave-offset", `${rect.left - start}px`);
-        end = Math.max(end, Math.min(rect.right, visibleEnd));
+        // A truncated line clips its spans; the band only needs to cross what shows.
+        let visibleRight = rect.right;
+        for (let clip = span.parentElement; clip && clip !== node.parentElement; clip = clip.parentElement) {
+          if (getComputedStyle(clip).overflowX !== "visible") {
+            visibleRight = Math.min(visibleRight, clip.getBoundingClientRect().right);
+          }
+        }
+        end = Math.max(end, visibleRight);
       }
       const em = Number.parseFloat(getComputedStyle(node).fontSize) || 13;
       const speed = SPEED_EM_PER_SECOND * em;

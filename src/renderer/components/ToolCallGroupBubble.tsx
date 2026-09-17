@@ -315,8 +315,8 @@ function ToolCallGroupBubbleInner({
         />
       );
   const activityStatus = activityIsLive ? "running" : summary.status;
-  const eyebrowRef = useRef<HTMLSpanElement | null>(null);
-  useReadingWave(eyebrowRef, activityStatus === "running", activityHeadline);
+  const headerRef = useRef<HTMLButtonElement | null>(null);
+  useReadingWave(headerRef, activityStatus === "running", activityHeadline);
   // A delete is a file change, not a failure; see ToolCallRow.
   const iconIsDanger = activityStatus === "error"
     || firstTool?.cancelled === true
@@ -344,8 +344,13 @@ function ToolCallGroupBubbleInner({
         />
       ) : (
         <>
+          {/* The wave lives on the header, not the headline: the headline
+              already runs its own tick animation on every change, and one
+              `animation` declaration cannot hold both. */}
           <button
+            ref={headerRef}
             className="tool-call-group-header"
+            data-reading-wave={activityStatus === "running" ? "true" : undefined}
             type="button"
             aria-expanded={expanded}
             aria-controls={detailsId}
@@ -359,12 +364,7 @@ function ToolCallGroupBubbleInner({
                   : <ToolActivityIcon kind={summary.iconKind ?? "tool"} danger={iconIsDanger} />}
               </span>
             ) : null}
-            <span
-              ref={eyebrowRef}
-              className="tool-call-group-eyebrow activity-summary-headline"
-              data-reading-wave={activityStatus === "running" ? "true" : undefined}
-              aria-hidden="true"
-            >
+            <span className="tool-call-group-eyebrow activity-summary-headline" aria-hidden="true">
               <span className="tool-call-group-eyebrow-label reading-wave-text">{headline.verb}</span>
               {headline.rest ? (
                 <span className="tool-call-group-eyebrow-detail reading-wave-text"> {headline.rest}</span>

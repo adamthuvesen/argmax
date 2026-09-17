@@ -92,20 +92,20 @@
       // Each option is one set of numbers on the same renderer, so the
       // comparison is the tuning, not the implementation.
       const VARIANTS = [
-        { id: "shipped", title: "Shipped", note: "Today: the working nest before the verb and before a running fold's headline. Text is still." },
+        { id: "nest", title: "Before · Working nest", note: "What the phone shipped before: the working nest in front of the verb and a running fold's headline. Text is still." },
+        {
+          id: "shipped", title: "Shipped · Reading wave", pick: true,
+          note: "What the app runs now (ReadingWave.swift). A tight band (σ 1.1em) reads the line glyph by glyph at 11.05em/s — the slider's 1.7× — with a 0.7s pause. Dark: muted line, peak ink + 40% accent. Light: line rests 30% toward paper, peak ink + 10% accent.",
+          sigma: 1.1, speed: 6.5, rest: 0.7, accentMix: 0.4, lift: 0, baseLift: 0, lightDim: 0.3, lightAccentMix: 0.1,
+        },
         {
           id: "A", title: "A · Reading wave",
           note: "A soft band reads the line glyph by glyph — line one, then line two — at a constant speed with a short rest. Peak is ink with 30% accent, so “running” keeps its colour. Base sits a notch above a settled label.",
           sigma: 1.5, speed: 6.5, rest: 0.7, accentMix: 0.3, lift: 0, baseLift: 0.25,
         },
         {
-          id: "A+", title: "A+ · Reading wave, stronger", pick: true,
-          note: "A with more contrast: the band is tighter (σ 1.1em) and its peak carries 40% accent. Light mode rests the line 30% toward paper and keeps the peak at near-pure ink (10% accent), because a dark band on a mid-grey line barely registers.",
-          sigma: 1.1, speed: 6.5, rest: 0.7, accentMix: 0.4, lift: 0, baseLift: 0, lightDim: 0.3, lightAccentMix: 0.1,
-        },
-        {
           id: "A++", title: "A++ · Reading wave, strongest",
-          note: "A+ pushed further: the resting line sits 15% toward the ground in dark and 70% toward paper in light (pure ink peak), σ 2em.",
+          note: "The shipped tuning pushed further: the resting line sits 15% toward the ground in dark and 70% toward paper in light (pure ink peak), σ 2em.",
           sigma: 2, speed: 6.5, rest: 0.7, accentMix: 0.45, lift: 0, baseLift: 0, darkDim: 0.15, lightDim: 0.7, lightAccentMix: 0,
         },
         {
@@ -148,15 +148,15 @@
       const grid = document.getElementById("grid");
       const phones = VARIANTS.map((v) => {
         const fig = document.createElement("figure");
-        fig.innerHTML = `<figcaption><b>${v.title}</b>${v.pick ? ' <span class="pick">· chosen</span>' : ""}<br>${v.note}</figcaption>
+        fig.innerHTML = `<figcaption><b>${v.title}</b>${v.pick ? ' <span class="pick">· in the app</span>' : ""}<br>${v.note}</figcaption>
           <div class="phone">
             <div class="bubble">Why does resume lose the turn after a steer?</div>
             <div class="answer">Let me trace how a steer reaches the provider.</div>
-            <div class="row fold">${v.id === "shipped" ? '<span class="nest"><i></i><i></i><i></i><i></i></span>' : ""}${ICONS}<div class="slot"></div></div>
+            <div class="row fold">${v.id === "nest" ? '<span class="nest"><i></i><i></i><i></i><i></i></span>' : ""}${ICONS}<div class="slot"></div></div>
             <div class="row tail"></div>
             <div class="rule"></div>
             <div class="label">Held</div>
-            <div class="row still">${v.id === "shipped" ? '<span class="nest"><i></i><i></i><i></i><i></i></span>' : ""}<div class="slot"></div><span class="secs">12s</span></div>
+            <div class="row still">${v.id === "nest" ? '<span class="nest"><i></i><i></i><i></i><i></i></span>' : ""}<div class="slot"></div><span class="secs">12s</span></div>
           </div>`;
         grid.appendChild(fig);
         const state = {
@@ -204,7 +204,7 @@
         let base = mix(colors.muted, colors.strong, live ? v.baseLift ?? 0 : 0);
         if (live && v.darkDim && colors.dark) base = mix(base, colors.ground, v.darkDim);
         if (live && v.lightDim && !colors.dark) base = mix(base, colors.ground, v.lightDim);
-        if (!live || v.id === "shipped") {
+        if (!live || v.id === "nest") {
           layer.glyphs.forEach((g) => { g.style.color = css(colors.muted); g.style.transform = ""; });
           return;
         }
@@ -267,7 +267,7 @@
 
           // The thinking cue owns the gap after the fold settles.
           if (!running && !p.tailLayer) {
-            p.tail.innerHTML = p.v.id === "shipped" ? '<span class="nest"><i></i><i></i><i></i><i></i></span>' : "";
+            p.tail.innerHTML = p.v.id === "nest" ? '<span class="nest"><i></i><i></i><i></i><i></i></span>' : "";
             const slot = document.createElement("div");
             slot.className = "slot"; slot.style.flex = "none";
             p.tail.appendChild(slot);

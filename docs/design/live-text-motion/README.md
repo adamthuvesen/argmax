@@ -11,7 +11,7 @@ open http://localhost:5251/docs/design/live-text-motion/index.html
 ```
 
 iPhone `Theme.swift` colours and Geist; `?theme=light`, `?accent=purple`,
-`?only=A`. Each phone loops one turn: a fold whose headline changes three times
+`?only=shipped`. Each phone loops one turn: a fold whose headline changes three times
 (the last wraps to two lines and crossfades mid-pass), then the fold settles and
 the thinking cue takes the gap. A held "Triangulating 12s" sits below.
 
@@ -19,9 +19,12 @@ All options run the same renderer — a per-glyph Gaussian in reading order, clo
 off absolute time — with different numbers, which is how the SwiftUI port would
 work (`TextRenderer`, iOS 18).
 
-- **Shipped** — the nest, still text.
-- **A · Reading wave** — σ 1.5em, 6.5em/s, 0.7s rest, peak ink + 30% accent,
-  running base a quarter step toward muted-strong. Advisor pick.
+- **Before · Working nest** — the nest, still text.
+- **Shipped · Reading wave** — what the app runs now; numbers under Decision.
+- **A · Reading wave** — the first cut: σ 1.5em, 6.5em/s, 0.7s rest, peak ink
+  + 30% accent, running base a quarter step toward muted-strong. Advisor pick;
+  read as too subtle, which led to the shipped tuning.
+- **A++** — the shipped tuning pushed further, dimming the resting line in both themes.
 - **B · Ink wave** — A without the accent.
 - **C · Slow light** — σ 3em, 4em/s, no rest.
 - **D · Lift** — A plus a 1pt rise on lit glyphs.

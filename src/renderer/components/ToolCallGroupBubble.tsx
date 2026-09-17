@@ -13,10 +13,10 @@ import { codenameForTool } from "../lib/agentNames.js";
 import type { ActivityMember } from "../lib/turnChildren.js";
 import type { TranscriptFollow } from "../hooks/useConversationScroll.js";
 import { useStableTailWindow } from "../hooks/useStableTailWindow.js";
+import { useReadingWave } from "../lib/readingWave.js";
 import { ActivityStat } from "./ActivityStat.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { ToolCallRow } from "./ToolCallRow.js";
-import { WorkingNest } from "./WorkingNest.js";
 import { ToolActivityIcon } from "./ToolActivityIcon.js";
 import { ShowEarlier } from "./ShowEarlier.js";
 import { ServerIcon } from "./ServerIcon.js";
@@ -315,6 +315,8 @@ function ToolCallGroupBubbleInner({
         />
       );
   const activityStatus = activityIsLive ? "running" : summary.status;
+  const eyebrowRef = useRef<HTMLSpanElement | null>(null);
+  useReadingWave(eyebrowRef, activityStatus === "running", activityHeadline);
   // A delete is a file change, not a failure; see ToolCallRow.
   const iconIsDanger = activityStatus === "error"
     || firstTool?.cancelled === true
@@ -347,7 +349,7 @@ function ToolCallGroupBubbleInner({
             type="button"
             aria-expanded={expanded}
             aria-controls={detailsId}
-            aria-label={`${activityHeadline}${previewText ? ": " + previewText : ""}`}
+            aria-label={`${activityHeadline}${previewText ? ": " + previewText : ""}${activityStatus === "running" ? " (running)" : ""}`}
             onClick={() => toggleExpanded(!expanded)}
           >
             {group.tools.length > 0 ? (
@@ -356,26 +358,25 @@ function ToolCallGroupBubbleInner({
                   : <ToolActivityIcon kind={summary.iconKind ?? "tool"} danger={iconIsDanger} />}
               </span>
             ) : null}
-            <span className="tool-call-group-eyebrow activity-summary-headline" aria-hidden="true">
-              <span className="tool-call-group-eyebrow-label">{headline.verb}</span>
+            <span
+              ref={eyebrowRef}
+              className="tool-call-group-eyebrow activity-summary-headline"
+              data-reading-wave={activityStatus === "running" ? "true" : undefined}
+              aria-hidden="true"
+            >
+              <span className="tool-call-group-eyebrow-label reading-wave-text">{headline.verb}</span>
               {headline.rest ? (
-                <span className="tool-call-group-eyebrow-detail"> {headline.rest}</span>
+                <span className="tool-call-group-eyebrow-detail reading-wave-text"> {headline.rest}</span>
               ) : null}
             </span>
             <ChevronRight size={11} className="tool-call-row-chevron" aria-hidden="true" />
             {previewText ? (
               <span className="tool-call-group-preview" aria-hidden="true">{previewText}</span>
             ) : null}
-            {/* One trailing slot, not two. While the group is working the nest
-                owns the end of the line; the running total arrives when it
-                stops. Showing both put a live animation mid-row — each claimed
-                `margin-left: auto` and split the gap between them — and gave a
-                still-growing count the finality of a result. */}
-            {activityStatus === "running" ? (
-              <span className="tool-call-group-running" aria-label="running" title="Running">
-                <WorkingNest active size={14} />
-              </span>
-            ) : changeCounts ? (
+            {/* While the group works the headline itself carries the reading
+                wave; the running total arrives when it stops, since a
+                still-growing count read as the finality of a result. */}
+            {activityStatus !== "running" && changeCounts ? (
               <span
                 className="tool-call-group-stat"
                 role="img"

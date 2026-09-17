@@ -522,13 +522,6 @@
   height: calc(var(--activity-mark-size) + 4px);
 }
 
-/* Keep the live mark on the same 14px box as the static activity glyphs.
-   `-override` is the stylesheet-owned hook for its inline size custom property;
-   see styles/working-nest.css. */
-.thinking-working-nest {
-  --working-nest-size-override: var(--activity-mark-size);
-}
-
 /* Sized and weighted like the answer that replaces it, so the label reads as
    the same voice at the same pitch rather than as a smaller status chip. */
 .thinking-label {
@@ -1013,19 +1006,8 @@
   opacity: 0.86;
 }
 
-.tool-call-group-running {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: auto;
-  color: var(--accent);
-}
-
-/* Shares the trailing slot with `.tool-call-group-running` — only ever one of
-   them is mounted, so both can claim the `auto` margin. The nest holds the end
-   of the line while the group works and the total takes over when it stops, so
-   the number arrives rather than snapping into the spot the nest just left. */
+/* The trailing total arrives when the group stops working; while it works the
+   headline carries the reading wave instead (styles/reading-wave.css). */
 .tool-call-group-stat {
   margin-left: auto;
   flex: 0 0 auto;
@@ -1224,19 +1206,6 @@ button.tool-call-row-button {
 .tool-call-row-button:hover .tool-call-row-target,
 .tool-call-group-header:hover .tool-call-group-eyebrow-detail {
   color: var(--muted-strong);
-}
-
-/* Parked at the right edge, the same way the group header's spinner is, so a
-   run of in-flight rows shows one still column of activity instead of a ragged
-   trail that jumps left and right as each target string changes length. */
-.tool-call-row-running {
-  flex: 0 0 auto;
-  align-self: center;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: auto;
-  color: var(--accent);
 }
 
 /* Hover-only disclosure hint. The whole row is the hit target, so the chevron

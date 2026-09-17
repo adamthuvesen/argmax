@@ -1,0 +1,95 @@
+/* The reading wave: live work marked on the words themselves. A soft band of
+   ink, tinted with the accent, reads a running line from left to right and
+   rests briefly between passes. It replaced the working nest in front of the
+   Thinking word and at the end of a running tool row or group headline. The
+   iPhone draws the same band (ios/Argmax/Sources/Design/ReadingWave.swift);
+   the tuning history is in docs/design/live-text-motion.
+
+   The container carries `data-reading-wave="true"` and animates the band's
+   head; each `.reading-wave-text` inside paints the band through its own
+   glyphs, offset by where it starts, so a verb and its dimmer target share one
+   pass and keep their own resting colours. `lib/readingWave.ts` measures the
+   line and sets the cycle, so the band moves at one speed whatever the line's
+   length, and derives the phase from the wall clock, so a remount or a
+   headline change never restarts it.
+
+   Deliberately not composited: the head drives a gradient, so each frame
+   repaints the words it covers. It only runs while something is running, and
+   promoting the text to its own layer to avoid that put it on a different
+   pixel phase from the row on a resampled display. */
+
+@property --reading-wave-head {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: -1000px;
+}
+
+/* Registered so it inherits as pixels: a row's mono target is a size smaller
+   than its verb, and an `em` resolved per span would give them two bands. */
+@property --reading-wave-sigma {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+[data-reading-wave="true"] {
+  --reading-wave-sigma: 1.1em;
+  animation: reading-wave var(--reading-wave-duration, 2.4s) linear infinite;
+  animation-delay: var(--reading-wave-delay, 0s);
+  animation-play-state: var(--loop-play-state, running);
+}
+
+@keyframes reading-wave {
+  from {
+    --reading-wave-head: calc(-3 * var(--reading-wave-sigma));
+  }
+  to {
+    --reading-wave-head: calc(var(--reading-wave-cycle, 40em) - 3 * var(--reading-wave-sigma));
+  }
+}
+
+[data-reading-wave="true"] .reading-wave-text {
+  /* Dark: the band brightens the line toward ink with the accent in it. */
+  --reading-wave-rest: currentColor;
+  --reading-wave-peak: color-mix(in srgb, var(--text) 60%, var(--accent));
+  --reading-wave-at: calc(var(--reading-wave-head) - var(--reading-wave-offset, 0px));
+  /* A Gaussian sampled at half-sigma steps; the eye cannot find the joins. */
+  background-image: linear-gradient(
+    90deg,
+    var(--reading-wave-rest) calc(var(--reading-wave-at) - 3 * var(--reading-wave-sigma)),
+    color-mix(in srgb, var(--reading-wave-rest), var(--reading-wave-peak) 13.5%) calc(var(--reading-wave-at) - 2 * var(--reading-wave-sigma)),
+    color-mix(in srgb, var(--reading-wave-rest), var(--reading-wave-peak) 32.5%) calc(var(--reading-wave-at) - 1.5 * var(--reading-wave-sigma)),
+    color-mix(in srgb, var(--reading-wave-rest), var(--reading-wave-peak) 60.7%) calc(var(--reading-wave-at) - var(--reading-wave-sigma)),
+    color-mix(in srgb, var(--reading-wave-rest), var(--reading-wave-peak) 88.2%) calc(var(--reading-wave-at) - 0.5 * var(--reading-wave-sigma)),
+    var(--reading-wave-peak) var(--reading-wave-at),
+    color-mix(in srgb, var(--reading-wave-rest), var(--reading-wave-peak) 88.2%) calc(var(--reading-wave-at) + 0.5 * var(--reading-wave-sigma)),
+    color-mix(in srgb, var(--reading-wave-rest), var(--reading-wave-peak) 60.7%) calc(var(--reading-wave-at) + var(--reading-wave-sigma)),
+    color-mix(in srgb, var(--reading-wave-rest), var(--reading-wave-peak) 32.5%) calc(var(--reading-wave-at) + 1.5 * var(--reading-wave-sigma)),
+    color-mix(in srgb, var(--reading-wave-rest), var(--reading-wave-peak) 13.5%) calc(var(--reading-wave-at) + 2 * var(--reading-wave-sigma)),
+    var(--reading-wave-rest) calc(var(--reading-wave-at) + 3 * var(--reading-wave-sigma))
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  /* Fill, not `color`: `currentColor` above still has to be the span's own ink. */
+  -webkit-text-fill-color: transparent;
+}
+
+/* Light: a dark band on a mid-grey line barely registers on paper, so the line
+   rests toward the ground and the band carries nearly pure ink. */
+:root:not([data-theme="dark"]) [data-reading-wave="true"] .reading-wave-text {
+  --reading-wave-rest: color-mix(in srgb, currentColor 70%, var(--bg));
+  --reading-wave-peak: color-mix(in srgb, var(--text) 90%, var(--accent));
+}
+
+/* Nothing travels for people who ask for less motion: the line is plain text,
+   at its own colour, and the row's words still say it is running. */
+@media (prefers-reduced-motion: reduce) {
+  [data-reading-wave="true"] {
+    animation: none;
+  }
+
+  [data-reading-wave="true"] .reading-wave-text {
+    background-image: none;
+    -webkit-text-fill-color: currentColor;
+  }
+}

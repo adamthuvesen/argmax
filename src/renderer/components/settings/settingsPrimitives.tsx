@@ -1,5 +1,7 @@
 import { ChevronDown } from "lucide-react";
 import { useRef, useState, type CSSProperties, type JSX, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { useAnchoredPopover } from "../../hooks/useAnchoredPopover.js";
 import type { DiagnosticsReport } from "../../../shared/types.js";
 import { ACCENT_OPTIONS, type AccentId } from "../../lib/accent.js";
 import {
@@ -282,6 +284,7 @@ export function SettingsListPicker<T extends string>({
   onChange,
   options,
   placement = "below",
+  portaled = false,
   value
 }: {
   ariaLabel: string;
@@ -293,17 +296,81 @@ export function SettingsListPicker<T extends string>({
   options: ReadonlyArray<SettingsListPickerOption<T>>;
   /** Set to "above" when the menu would otherwise cover the next group's copy. */
   placement?: "above" | "below";
+  /** Portal the menu to `<body>` with fixed positioning — for scroll-trapping modals. */
+  portaled?: boolean;
   value: T;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement | null>(null);
-  useDismissOnOutsideOrEscape(anchorRef, open, () => setOpen(false));
   const selected = options.find((option) => option.value === value) ?? options[0];
   const isOpen = open && !disabled;
   const triggerIcon = selected?.icon ?? icon;
+  const flyout = useAnchoredPopover({
+    open: isOpen && portaled,
+    placement: placement === "above" ? "top-end" : "bottom-end",
+    strategy: "fixed",
+    capHeight: true
+  });
+  useDismissOnOutsideOrEscape(
+    portaled ? flyout.anchorRef : anchorRef,
+    isOpen,
+    () => setOpen(false),
+    portaled ? flyout.popoverRef : undefined
+  );
+
+  const popover = isOpen ? (
+    <ul
+      className={`project-picker-popover settings-picker-popover${portaled ? " picker-popover-portaled" : ""}`}
+      role="listbox"
+      aria-label={ariaLabel}
+      data-placement={portaled ? undefined : placement}
+      ref={portaled ? flyout.setPopover : undefined}
+      style={portaled ? flyout.floatingStyles : undefined}
+      onClick={(event) => {
+        if (!(event.target instanceof Element && event.target.closest("button.project-picker-item"))) {
+          setOpen(false);
+        }
+      }}
+    >
+      {options.map((option) => {
+        const isSelected = option.value === value;
+        return (
+          <li
+            key={option.value}
+            role="option"
+            aria-selected={isSelected}
+            aria-disabled={option.disabled || undefined}
+          >
+            <button
+              type="button"
+              className="project-picker-item"
+              aria-pressed={isSelected}
+              disabled={option.disabled}
+              title={option.title}
+              style={option.labelStyle}
+              onClick={() => {
+                if (option.disabled) return;
+                onChange(option.value);
+                setOpen(false);
+              }}
+            >
+              <PickerLead selected={isSelected}>{option.icon}</PickerLead>
+              {option.label}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  ) : null;
 
   return (
-    <div className="settings-picker settings-list-picker" ref={anchorRef}>
+    <div
+      className="settings-picker settings-list-picker"
+      ref={(node) => {
+        anchorRef.current = node;
+        if (portaled) flyout.setAnchor(node);
+      }}
+    >
       <button
         type="button"
         id={inputId}
@@ -320,48 +387,7 @@ export function SettingsListPicker<T extends string>({
         </span>
         <ChevronDown size={14} aria-hidden="true" />
       </button>
-      {isOpen ? (
-        <ul
-          className="project-picker-popover settings-picker-popover"
-          role="listbox"
-          aria-label={ariaLabel}
-          data-placement={placement}
-          onClick={(event) => {
-            if (!(event.target instanceof Element && event.target.closest("button.project-picker-item"))) {
-              setOpen(false);
-            }
-          }}
-        >
-          {options.map((option) => {
-            const isSelected = option.value === value;
-            return (
-              <li
-                key={option.value}
-                role="option"
-                aria-selected={isSelected}
-                aria-disabled={option.disabled || undefined}
-              >
-                <button
-                  type="button"
-                  className="project-picker-item"
-                  aria-pressed={isSelected}
-                  disabled={option.disabled}
-                  title={option.title}
-                  style={option.labelStyle}
-                  onClick={() => {
-                    if (option.disabled) return;
-                    onChange(option.value);
-                    setOpen(false);
-                  }}
-                >
-                  <PickerLead selected={isSelected}>{option.icon}</PickerLead>
-                  {option.label}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
+      {popover ? (portaled && typeof document !== "undefined" ? createPortal(popover, document.body) : popover) : null}
     </div>
   );
 }

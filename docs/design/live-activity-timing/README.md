@@ -31,8 +31,25 @@ for numbers.
 - **C** — A plus segment diff: the verb holds, only a new clause fades in, and the
   icon cross-fades between two stacked glyphs.
 - **E** — C plus an adaptive wait: 0.8× the median gap so far, clamped 0.9–2.5s.
-- **F · pick** — E plus soft edges: 600ms before the first beat, 160ms fade in,
+- **F** — E plus soft edges: 600ms before the first beat, 160ms fade in,
   140ms fade out.
+- **G** — F plus an overlapped hand-off: the leaving line fades out over 140ms
+  while the arriving one fades in over 160ms, 60ms of them together.
+- **H · pick** — G plus the baton: on every hand-off the arriving line starts a
+  fresh wave pass from its own left edge, so the light moves from the verb down
+  to the tool line and back. Between hand-offs the phase runs off the wall clock.
+
+## Who owns the beat
+
+Exactly one line is live at a time, and every change of owner is a hand-off:
+
+| state | live line |
+| --- | --- |
+| turn sent, nothing back yet | Thinking, after 600ms |
+| a top-level tool is running | the tool line; Thinking is down the same frame |
+| gap between two calls | the tool line stays settled; Thinking appears only once the gap passes the adaptive wait |
+| answer streaming, or a card waiting | neither |
+| turn settled | neither; nothing is left animating |
 
 ## Metrics
 
@@ -45,6 +62,10 @@ Thinking cue and a running tool line on screen at once (the flash).
 | Claude edit-heavy | 11, 2, 23 | 11, 3, 0 | 11, 3, 0 | **9, 2, 0** |
 | 12 calls in 3s | 16, 2, 14 | 5, 0, 0 | 5, 0, 0 | 5, 0, 0 |
 | warm follow-up, long think | 8, 2, 6 | 8, 2, 0 | 6, 1, 0 | **4, 0, 0** |
+
+`hand-offs` counts owner changes: the timing rules alone cut them from 3 to 1 on
+the short-gap stream, because the cue no longer appears between calls that land a
+second apart.
 
 Timing alone removes every double-cue frame and two thirds of the visible-state
 changes in a burst; the motion work (B/C) is polish on top, and the adaptive wait

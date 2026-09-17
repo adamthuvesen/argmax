@@ -175,10 +175,24 @@
           commitEvery: 500, commitDwell: 800, previewDwell: 1000, change: "segment", handoff: 200,
         },
         {
-          id: "F", name: "F · E + soft edges", pick: true,
+          id: "F", name: "F · E + soft edges",
           why: "E, plus the cue's edges are soft: 600ms before the first beat, a 160ms fade in and a 140ms fade out, so the few gaps that do end early read as a breath rather than a flash. Nothing is ever held on top of a tool line.",
           thinkFirstBeat: 600, thinkGap: 1000, thinkAdaptive: true, thinkMinVisible: 0, thinkYieldsInstantly: true,
           commitEvery: 500, commitDwell: 800, previewDwell: 1000, change: "segment", handoff: 200, softExit: 140,
+        },
+        {
+          id: "G", name: "G · F + overlapped hand-off",
+          why: "F, plus the hand-off between the two lines overlaps: the leaving line fades out over 140ms while the arriving one fades in over 160ms, 60ms of them together, so the beat is passed rather than cut.",
+          thinkFirstBeat: 600, thinkGap: 1000, thinkAdaptive: true, thinkMinVisible: 0, thinkYieldsInstantly: true,
+          commitEvery: 500, commitDwell: 800, previewDwell: 1000, change: "segment", softExit: 140,
+          handoff: "overlap",
+        },
+        {
+          id: "H", name: "H · Baton", pick: true,
+          why: "G, plus the band is the baton: on every hand-off the arriving line starts a fresh pass from its own left edge, so the light visibly moves from the verb down to the tool line and back. Between hand-offs the phase keeps running off the wall clock.",
+          thinkFirstBeat: 600, thinkGap: 1000, thinkAdaptive: true, thinkMinVisible: 0, thinkYieldsInstantly: true,
+          commitEvery: 500, commitDwell: 800, previewDwell: 1000, change: "segment", softExit: 140,
+          handoff: "baton",
         },
       ];
 
@@ -204,6 +218,7 @@
             <tr><td>lifetimes under 800ms</td><td class="shorts">0</td></tr>
             <tr><td>frames with two live lines</td><td class="doubles">0</td></tr>
             <tr><td>Thinking on screen</td><td class="thinkms">0s</td></tr>
+            <tr><td>hand-offs</td><td class="handoffs">0</td></tr>
           </table>`;
         host.append(fig);
 
@@ -217,6 +232,7 @@
           shorts: fig.querySelector(".shorts"),
           doubles: fig.querySelector(".doubles"),
           thinkms: fig.querySelector(".thinkms"),
+          handoffs: fig.querySelector(".handoffs"),
         };
 
         return {
@@ -226,7 +242,8 @@
           segs: [], icon: null, preview: null, previewAt: -1e9,
           shown: { segs: [], icon: null, preview: null, at: -1e9 }, queued: null, queuedAt: 0,
           thinkingSince: null, thinkingWord: THINKING_WORDS[0], gaps: [],
-          metrics: { changes: 0, shorts: 0, doubles: 0, thinkingMs: 0 },
+          metrics: { changes: 0, shorts: 0, doubles: 0, thinkingMs: 0, handoffs: 0 },
+          owner: "none", handoffAt: -1e9,
           lifetimes: { line: null, thinking: null },
         };
       }
@@ -292,6 +309,16 @@
         // Two live lines in one frame is the flash the user sees.
         if (pane.thinkingSince !== null && pane.running) pane.metrics.doubles += 1;
         if (pane.thinkingSince !== null) pane.metrics.thinkingMs += 16;
+
+        // Exactly one line owns the beat: a running tool, else the cue, else
+        // nobody. Every change of owner is a hand-off.
+        const owner = pane.running ? "line" : pane.thinkingSince !== null ? "thinking" : "none";
+        if (owner !== pane.owner) {
+          if (pane.owner !== "none" && owner !== "none") pane.metrics.handoffs += 1;
+          pane.owner = owner;
+          pane.handoffAt = now;
+          pane.batonTo = owner;
+        }
 
         paint(pane, now, lineLive);
       }
@@ -373,6 +400,11 @@
           if (pane.running) dom.line.setAttribute("data-reading-wave", "true");
           else dom.line.removeAttribute("data-reading-wave");
           dom.headline.classList.toggle("reading-wave-text", pane.running);
+          if (pane.batonTo === "line") {
+            pane.batonTo = null;
+            if (v.handoff === "baton") startPass(dom.line);
+            if (v.handoff !== "cut") dom.line.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: "ease-out" });
+          }
         }
 
         // Thinking cue in the reserved tail slot.
@@ -388,8 +420,13 @@
           }
         } else if (dom.tail.childElementCount === 0) {
           dom.tail.innerHTML =
-            `<span class="thinking fade-in reading-wave-text">${pane.thinkingWord}</span><span class="thinking-elapsed"></span>`;
+            `<span class="thinking${v.handoff === "cut" ? " fade-in" : ""} reading-wave-text">${pane.thinkingWord}</span><span class="thinking-elapsed"></span>`;
           dom.tail.setAttribute("data-reading-wave", "true");
+          if (pane.batonTo === "thinking") {
+            pane.batonTo = null;
+            if (v.handoff === "baton") startPass(dom.tail);
+            if (v.handoff !== "cut") dom.tail.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: "ease-out" });
+          }
         } else {
           const seconds = Math.floor((now - pane.thinkingSince) / 1000);
           dom.tail.lastElementChild.textContent = seconds >= 3 ? `${seconds}s` : "";
@@ -401,6 +438,20 @@
         dom.doubles.textContent = String(pane.metrics.doubles);
         dom.doubles.parentElement.classList.toggle("bad", pane.metrics.doubles > 0);
         dom.thinkms.textContent = `${(pane.metrics.thinkingMs / 1000).toFixed(1)}s`;
+        dom.handoffs.textContent = String(pane.metrics.handoffs);
+      }
+
+      // Send the band in from this line's own left edge, now: the receiving
+      // line starts its pass rather than joining one already in flight.
+      function startPass(node) {
+        const em = Number.parseFloat(getComputedStyle(node).fontSize) || 13;
+        const width = node.getBoundingClientRect().width || 240;
+        const speed = 7.15 * em;
+        const cycle = Math.max(width + 6 * 1.1 * em + 0.4 * speed, 1.6 * speed);
+        node.style.setProperty("--reading-wave-cycle", `${cycle}px`);
+        node.style.setProperty("--reading-wave-duration", `${cycle / speed}s`);
+        node.style.setProperty("--reading-wave-delay", "0s");
+        node.getAnimations().forEach((a) => { if (a.animationName === "reading-wave") a.startTime = document.timeline.currentTime; });
       }
 
       const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);

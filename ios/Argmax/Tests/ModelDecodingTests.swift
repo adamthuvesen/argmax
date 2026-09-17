@@ -39,29 +39,6 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(snapshot.projects.first { $0.id == scratchProjectID }?.name, "Side chats")
     }
 
-    /// `TranscriptComposer` carries a follow-up's mode forward from this
-    /// rather than defaulting every send to auto.
-    func testKeepsTheSessionsAgentMode() throws {
-        let snapshot = try loadFixture()
-        let session = try XCTUnwrap(snapshot.sessions.first)
-        XCTAssertEqual(session.agentMode, "auto")
-    }
-
-    /// A row written before the column existed still decodes — `nil`, not a
-    /// thrown error — the same tolerance every optional field here gets.
-    func testAgentModeIsOptional() throws {
-        let payload = Data(
-            """
-            {"sessions": [{"id": "s-1", "workspaceId": "w-1", "provider": "codex",
-              "modelLabel": "GPT-5.6 Terra", "modelId": "gpt-5.6-terra", "prompt": "hi",
-              "state": "running", "attention": "normal", "startedAt": "2026-01-01T00:00:00Z",
-              "lastActivityAt": "2026-01-01T00:00:00Z", "imported": false, "launchKind": "agent"}]}
-            """.utf8
-        )
-        let snapshot = try JSONDecoder().decode(DashboardSnapshot.self, from: payload)
-        XCTAssertNil(snapshot.sessions.first?.agentMode)
-    }
-
     /// The host's `dashboard:list` also carries `checks` and
     /// `pendingMessages`, and its rows carry columns the phone never reads.
     /// Decoding must ignore all of it rather than fail.

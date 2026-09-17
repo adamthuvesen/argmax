@@ -1169,8 +1169,7 @@ final class TranscriptProjectionTests: XCTestCase {
                 prompt: "Start",
                 state: state,
                 attention: state == .waiting ? .questionAsked : .normal,
-                reasoningEffort: nil,
-                agentMode: "auto"
+                reasoningEffort: nil
             )
         }
 
@@ -1250,7 +1249,7 @@ final class TranscriptProjectionTests: XCTestCase {
         let session = TranscriptSessionMetadata(
             id: "session-1", workspaceId: "workspace-1", provider: "codex",
             modelLabel: "GPT", modelId: "gpt-5", prompt: "Start",
-            state: .running, attention: .normal, reasoningEffort: nil, agentMode: "auto"
+            state: .running, attention: .normal, reasoningEffort: nil
         )
 
         let running = try XCTUnwrap(firstAgent(TranscriptProjection.project(events: [

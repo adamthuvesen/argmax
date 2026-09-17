@@ -7,7 +7,7 @@ final class TranscriptThinkingTests: XCTestCase {
     @MainActor
     func testLocalSendCueSurvivesUserEchoAndEndsAtAssistantContent() async {
         let store = TranscriptStore(client: previewClient())
-        let metadata = TranscriptSessionMetadata(id: "session", workspaceId: "workspace", provider: "claude", modelLabel: "Opus", modelId: "opus", prompt: "", state: .complete, attention: .normal, reasoningEffort: nil, agentMode: "auto")
+        let metadata = TranscriptSessionMetadata(id: "session", workspaceId: "workspace", provider: "claude", modelLabel: "Opus", modelId: "opus", prompt: "", state: .complete, attention: .normal, reasoningEffort: nil)
         store.preview(page: page([]), metadata: metadata)
         let start = store.beginThinking()
         XCTAssertEqual(store.thinkingStart, start)

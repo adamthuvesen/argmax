@@ -17,7 +17,7 @@ final class NativeTranscriptListTests: XCTestCase {
         let metadata = TranscriptSessionMetadata(
             id: "s-1", workspaceId: "w-1", provider: "claude", modelLabel: "Opus",
             modelId: "claude-opus", prompt: "Go", state: .complete, attention: .normal,
-            reasoningEffort: "high", agentMode: "auto"
+            reasoningEffort: "high"
         )
         let page = TranscriptPage(events: [TranscriptEvent(
             id: "answer", sessionId: "s-1", type: "message.completed",

@@ -313,7 +313,7 @@ private final class TranscriptScenarioState: ObservableObject {
     private var metadata: TranscriptSessionMetadata {
         TranscriptSessionMetadata(id: "s-scenario", workspaceId: "w-scenario", provider: "claude",
                                   modelLabel: "Opus", modelId: "claude-opus", prompt: "",
-                                  state: .running, attention: .normal, reasoningEffort: "high", agentMode: "auto")
+                                  state: .running, attention: .normal, reasoningEffort: "high")
     }
 
     private func event(_ index: Int, type: String, text: String) -> TranscriptEvent {

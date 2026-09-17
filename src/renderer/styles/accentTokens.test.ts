@@ -382,6 +382,16 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     }
   });
 
+  it("keeps markdown table labels in intrinsic column sizing", () => {
+    const conversation = readSource("src/renderer/styles/chat-conversation.css");
+    const tableCells = cssRuleBody(conversation, ".markdown th,\n.markdown td");
+
+    // File previews inherit `overflow-wrap: anywhere` for long paths. Letting
+    // that reach cells makes each character an intrinsic break opportunity,
+    // so a prose-heavy second column can collapse labels to a few characters.
+    expect(tableCells).toContain("overflow-wrap: break-word;");
+  });
+
   it("dissolves scroller edges with the shared fade rather than a hard clip", () => {
     const tokens = cssRuleBody(readSource("src/renderer/styles/tokens.css"), ":root");
     expect(tokens).toContain("--scroll-edge-fade: 32px;");

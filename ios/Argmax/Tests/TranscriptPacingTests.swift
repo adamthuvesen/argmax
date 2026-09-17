@@ -110,6 +110,45 @@ final class TranscriptPacingTests: XCTestCase {
         XCTAssertNil(beat?.beatHolder(now: sent.addingTimeInterval(4)))
     }
 
+    func testTheLinkDoesNotSpendTheBeatBeforeTheFoldCanWave() {
+        let sent = Date()
+        // The Grok shape — a call that starts and completes 4ms apart — so
+        // the fold is never `running` on this side and the beat is its only
+        // path to the band. The beat is measured from the host's stamp, and
+        // the delta frame, the tail read's round trip and the projection all
+        // land after it: by the time the phone has a frame, 1.2s of a 0.9s
+        // window is gone and the line used to jump straight to the cue.
+        let items = [userMessage(at: sent), toolGroup(from: sent, calls: [(1, 0.004)])]
+        let raw = TranscriptThinking.current(items: items, session: session)
+        XCTAssertEqual(raw?.wait, 0.9)
+        let landed = sent.addingTimeInterval(1.004)
+        let seen = landed.addingTimeInterval(1.2)
+        XCTAssertEqual(raw?.remainingWait(now: seen), 0)
+        XCTAssertNil(raw?.beatHolder(now: seen))
+
+        // Charged from first sight instead, the fold gets the whole window,
+        // which is what the desktop gets from its own clock.
+        let beat = raw?.delivered(at: seen)
+        XCTAssertEqual(beat?.remainingWait(now: seen) ?? -1, 0.9, accuracy: 0.01)
+        XCTAssertEqual(beat?.beatHolder(now: seen), "tools")
+        // The cue still arrives one wait after the line appeared here, not
+        // one wait after a stamp written on another machine.
+        XCTAssertEqual(beat?.remainingWait(now: seen.addingTimeInterval(0.91)), 0)
+        XCTAssertNil(beat?.beatHolder(now: seen.addingTimeInterval(0.91)))
+
+        // A stall this client opened into is not a late delivery: its beat is
+        // spent, so the cue shows at once and no stale line waves.
+        let reopened = raw?.delivered(at: landed.addingTimeInterval(30))
+        XCTAssertEqual(reopened?.remainingWait(now: landed.addingTimeInterval(30)), 0)
+        XCTAssertNil(reopened?.beatHolder(now: landed.addingTimeInterval(30)))
+
+        // A device clock behind the host's cannot bank extra window.
+        let skewed = raw?.delivered(at: landed.addingTimeInterval(-5))
+        XCTAssertEqual(skewed?.remainingWait(now: landed) ?? -1, 0.9, accuracy: 0.01)
+        // The lag is not identity: a hand-off must not remount the cue.
+        XCTAssertEqual(beat, raw)
+    }
+
     func testARunningLineKeepsTheBeatItselfAndThePromptNeverHoldsIt() {
         let sent = Date()
         // A five-second stall and then a call still in flight: that row waves

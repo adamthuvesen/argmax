@@ -23,6 +23,15 @@ enum TranscriptThinkingWait {
     static let medianFactor: Double = 0.8
     static let shortestGap: TimeInterval = 0.9
     static let longestGap: TimeInterval = 2.5
+    /// The longest a beat can credibly have spent in transit, and so the most
+    /// of its age this client will forgive (`TranscriptThinking.delivered`).
+    /// A beat reaches the phone over the bridge — a delta frame out, a tail
+    /// read's round trip back, then the projection — and the desktop, reading
+    /// its own clock a few milliseconds behind the event, pays none of that.
+    /// Beyond this the stamp is not late, it is old: a chat opened into a
+    /// stall that has been running for half a minute, whose beat is spent and
+    /// must not hold the cue back or wave a stale line.
+    static let longestDelivery: TimeInterval = 2.5
     /// The line fades in whenever it arrives, and fades out only when a tool
     /// line takes the beat off it — a hand-off between two lines of the same
     /// pitch. Answer text and a settled turn cut instead: they are the frame
@@ -63,12 +72,16 @@ struct TranscriptThinking: Hashable {
     /// whose only predecessor is the prompt, and for a card, which is not work
     /// the reader can watch a line do.
     var settledLine: String? = nil
+    /// How long this beat took to reach the screen, and so how much of its
+    /// wait was already spent before anything could be drawn. See `delivered`.
+    private(set) var deliveryLag: TimeInterval = 0
 
-    /// A beat is identified by what it is, not by what it is doing: the phase
-    /// and the wait stay out of equality so a hand-off, or a wait recomputed
-    /// from a longer rhythm, leaves `NativeTranscriptView`'s `.id(thinking)`
-    /// alone. Remounting there would hand the dissolving line a fresh word and
-    /// restart its clock in the middle of the dissolve.
+    /// A beat is identified by what it is, not by what it is doing: the phase,
+    /// the wait and the delivery lag stay out of equality so a hand-off, a
+    /// wait recomputed from a longer rhythm, or a lag measured on mount leaves
+    /// `NativeTranscriptView`'s `.id(thinking)` alone. Remounting there would
+    /// hand the dissolving line a fresh word and restart its clock in the
+    /// middle of the dissolve.
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.id == rhs.id && lhs.startedAt == rhs.startedAt
     }
@@ -85,7 +98,32 @@ struct TranscriptThinking: Hashable {
     /// cannot park the line forever.
     func remainingWait(now: Date = Date()) -> TimeInterval {
         guard let start = parseWireTimestamp(startedAt) else { return 0 }
-        return min(wait, max(0, wait - now.timeIntervalSince(start)))
+        return min(wait, max(0, wait - (now.timeIntervalSince(start) - deliveryLag)))
+    }
+
+    /// This beat charged only for the time that passed after `observedAt` —
+    /// the local clock reading when this client first had the beat to draw.
+    ///
+    /// A beat is measured from the *host's* stamp (a tool's `completedAt`),
+    /// and on the phone everything between the Mac writing it and a frame
+    /// existing here is otherwise charged against the wait: the delta frame
+    /// out, the tail read's round trip back, then the projection. A 0.9s
+    /// window minus half a second of link is shorter than one pass of the
+    /// band, which is why a fold's headline looked like it never waved at all
+    /// while the desktop, reading its own clock for the same beat, waved for
+    /// the whole gap. Host/device clock skew leaves the arithmetic here too.
+    ///
+    /// Capped at `TranscriptThinkingWait.longestDelivery`, which is what
+    /// separates "delivered late" from "simply old". The cap never lengthens
+    /// the wait — it only forgives time this client could not have drawn in —
+    /// so the cue still arrives at most one wait after the beat appears here,
+    /// which is exactly when the desktop shows it.
+    func delivered(at observedAt: Date) -> Self {
+        guard let start = parseWireTimestamp(startedAt) else { return self }
+        var delivered = self
+        delivered.deliveryLag = min(TranscriptThinkingWait.longestDelivery,
+                                    max(0, observedAt.timeIntervalSince(start)))
+        return delivered
     }
 
     /// The line that holds the beat while this one waits, if any: the one that
@@ -292,6 +330,10 @@ struct TranscriptThinkingLabel: View {
     /// appears is the frame the line it took over from goes quiet.
     @Binding var beatHolder: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// When this client first had the beat to draw. `NativeTranscriptView`
+    /// keys this view on the beat's identity, so the state is allocated afresh
+    /// for each beat and this is its local first-sight reading — what
+    /// `TranscriptThinking.delivered` needs to take the link out of the wait.
     @State private var mountedAt = Date()
     /// Whether the line is on screen, which outlives the beat by the length of
     /// the fade out: an element has to survive the state that put it up or
@@ -327,7 +369,7 @@ struct TranscriptThinkingLabel: View {
     /// popping a verb on screen for half a second between two calls a second
     /// apart is what read as a flash.
     private func serveWait() async {
-        guard let thinking, thinking.phase == .live else {
+        guard let thinking = thinking?.delivered(at: mountedAt), thinking.phase == .live else {
             // Answer text and a settled turn cut. A beat that arrives already
             // leaving — a chat opened mid-hand-off — was never on screen to
             // dissolve, so it stays down.

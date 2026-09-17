@@ -51,6 +51,17 @@ Exactly one line is live at a time, and every change of owner is a hand-off:
 | answer streaming, or a card waiting | neither |
 | turn settled | neither; nothing is left animating |
 
+The adaptive wait is measured from the host's stamp — the completion the silence
+started at — and the desktop reads that stamp a few milliseconds after it is
+written. The phone does not: a delta frame out, a tail read's round trip back
+and the projection all land first, and charging that against a 0.9s window left
+a fold's headline with less than one pass of the band, or none at all on the
+providers that report a call atomically. So the phone forgives the age a beat
+already had when it first had a frame to draw (`TranscriptThinking.delivered`),
+capped at `longestDelivery`, beyond which the stamp is not late but old — a
+chat opened into a stall, whose beat is spent. The cue still arrives one wait
+after the line appears, on both surfaces.
+
 ## Real streams
 
 `real-c50454f0` and `real-6d041243` are pulled from the app's own event log

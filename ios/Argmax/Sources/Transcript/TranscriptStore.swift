@@ -482,7 +482,10 @@ final class TranscriptStore: ObservableObject {
             sessionId: row.id,
             provider: row.provider,
             modelId: row.modelId,
-            modelLabel: row.modelLabel,
+            // The catalogue wins when it knows the id, as on desktop: an
+            // agent-launched or imported session stores the raw API id
+            // ("claude-opus-5") as its label.
+            modelLabel: catalogModel?.label ?? row.modelLabel,
             effort: row.reasoningEffort,
             efforts: catalogModel?.reasoningEfforts.map(\.rawValue) ?? [],
             queued: messages.map { entry in

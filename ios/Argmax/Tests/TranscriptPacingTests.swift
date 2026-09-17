@@ -125,6 +125,44 @@ final class TranscriptPacingTests: XCTestCase {
         XCTAssertNil(first?.beatHolder(now: sent.addingTimeInterval(0.2)))
     }
 
+    func testABackgroundedLaunchDoesNotVoteForTheBeat() {
+        let sent = Date()
+        // An async launch is running by inference: no completion for it ever
+        // arrives, so the row never takes the beat and never silences the
+        // cue. The turn's last real work — a call that landed in the same
+        // instant, the OpenCode shape that hid this bug before the flag
+        // existed — keeps the beat, and the cue follows it after the wait.
+        let items = [
+            userMessage(at: sent),
+            toolGroup(from: sent, calls: [(1, 0), (2, 0)]),
+            agentGroup(from: sent.addingTimeInterval(2), status: .running, backgroundLaunch: true)
+        ]
+        let beat = TranscriptThinking.current(items: items, session: session)
+        XCTAssertEqual(beat?.phase, .live)
+        XCTAssertEqual(beat?.startedAt, stamp(sent.addingTimeInterval(2)))
+        XCTAssertEqual(beat?.beatHolder(now: sent.addingTimeInterval(2.5)), "tools")
+        XCTAssertEqual(beat?.remainingWait(now: sent.addingTimeInterval(2.5)) ?? -1, 0.4, accuracy: 0.01)
+        // The cue takes over the moment its wait elapses: the turn is not
+        // busy for the rest of the session.
+        XCTAssertEqual(beat?.remainingWait(now: sent.addingTimeInterval(3)), 0)
+        XCTAssertNil(beat?.beatHolder(now: sent.addingTimeInterval(3)))
+    }
+
+    func testALaunchTheTurnIsBlockedOnStillTakesTheBeat() {
+        let sent = Date()
+        // Same shape without the backgrounded mark: the card is the live
+        // line the reader is waiting on, so the cue yields to it once its
+        // wait has passed.
+        let items = [
+            userMessage(at: sent),
+            toolGroup(from: sent, calls: [(1, 0.2), (2, 1.0)]),
+            agentGroup(from: sent.addingTimeInterval(4), status: .running, backgroundLaunch: false)
+        ]
+        let beat = TranscriptThinking.current(items: items, session: session)
+        XCTAssertEqual(beat?.phase, .leaving)
+        XCTAssertNil(beat?.beatHolder(now: sent.addingTimeInterval(4.5)))
+    }
+
     // MARK: - What a fold's headline re-words on
 
     func testHeadlineHoldsUnlessTheKindOfWorkChanges() {
@@ -180,6 +218,24 @@ final class TranscriptPacingTests: XCTestCase {
         }
         return .tools(.init(id: "tools", tools: tools,
                             createdAt: stamp(start.addingTimeInterval(calls.first?.offset ?? 0))))
+    }
+
+    /// One card of delegated work, at an offset from the turn's start.
+    private func agentGroup(
+        from start: Date,
+        status: TranscriptToolStatus,
+        backgroundLaunch: Bool
+    ) -> TranscriptItem {
+        .agents(.init(
+            id: "agents",
+            agents: [.init(id: "agent", parentSessionId: "session", toolUseId: "agent",
+                           name: "Agent", prompt: nil, status: status,
+                           createdAt: stamp(start), completedAt: nil,
+                           providerChildSessionId: nil, providerParentConversationId: nil,
+                           agentCodename: nil, children: [],
+                           backgroundLaunch: backgroundLaunch)],
+            createdAt: stamp(start)
+        ))
     }
 
     private func tool(

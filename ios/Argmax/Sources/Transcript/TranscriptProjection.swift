@@ -143,7 +143,8 @@ enum TranscriptProjection {
                         providerChildSessionId: tool.providerChildSessionId,
                         providerParentConversationId: tool.providerParentConversationId,
                         agentCodename: tool.agentCodename,
-                        children: childTools
+                        children: childTools,
+                        backgroundLaunch: tool.backgroundLaunch
                     )
                     appendAgent(agent, to: &items)
                 } else if tool.parentToolUseId == nil || includingChildActivity {
@@ -528,6 +529,7 @@ enum TranscriptProjection {
         var activity: TranscriptToolActivity
         var completionObserved: Bool
         var completionStatus: String?
+        var backgroundLaunch: Bool
 
         var isAgent: Bool { TranscriptProjection.isAgentTool(normalizedToolName(name)) }
         var preview: String? {
@@ -636,13 +638,29 @@ enum TranscriptProjection {
                 ? nativeAgentLifecycles[nativeAgentLifecycleKey(invocationID: invocation, runID: toolUseID)]
                 : nil
             let hasLaterAnswer = latestAnswer.map { compare(start, $0) == .orderedAscending } ?? false
+            let isAgent = isAgentTool(normalizedToolName(name))
             let activity = mergedActivity(
                 start: decodedActivity(payload["activity"]),
                 end: decodedActivity(endPayload["activity"])
             ) ?? legacyActivity(name: name, input: input)
             let transportStatus: TranscriptToolStatus = completion == nil
-                ? (sessionRunning && (!hasLaterAnswer || isAgentTool(normalizedToolName(name))) ? .running : .done)
+                ? (sessionRunning && (!hasLaterAnswer || isAgent) ? .running : .done)
                 : (failed ? .failed : .done)
+            // An agent launch the turn has already moved past is kept
+            // `.running` by the session, not by any evidence: the child
+            // reports back as a `<task-notification>` prompt the normalizer
+            // does not parse, so no completion for it ever arrives, and the
+            // `isAgentTool` branch above would hold the row up for the rest
+            // of the session — silencing the cue and the beat through every
+            // later gap. The desktop marks the same row
+            // `backgroundLaunch` (`sessionConversationModel.ts`), running by
+            // inference rather than by evidence, so it loses its vote for
+            // the turn's beat and its band while keeping its nest. A launch
+            // the turn is still blocked on — nothing answered after it — or
+            // one whose child lifecycle spoke, is genuinely running and
+            // keeps both.
+            let backgroundLaunch = isAgent && lifecycle == nil && completion == nil
+                && sessionRunning && hasLaterAnswer
             let status: TranscriptToolStatus
             if let lifecycle {
                 if lifecycle.phase == "started" {
@@ -680,7 +698,8 @@ enum TranscriptProjection {
                 workspacePath: workspacePath,
                 activity: activity,
                 completionObserved: completion != nil,
-                completionStatus: completionStatus(endPayload)
+                completionStatus: completionStatus(endPayload),
+                backgroundLaunch: backgroundLaunch
             )
         }
         return result

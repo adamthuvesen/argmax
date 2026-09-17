@@ -1321,6 +1321,66 @@ final class TranscriptProjectionTests: XCTestCase {
         XCTAssertEqual(interrupted.completedAt, "2026-01-01T00:00:03.000Z")
     }
 
+    /// A launch the turn has moved past is running by inference, not by
+    /// evidence (`TranscriptAgent.backgroundLaunch`): no completion for one
+    /// ever arrives, so a row held up by the session alone cannot keep the
+    /// turn's beat open — the desktop marks the same shape `backgroundLaunch`
+    /// on its `ToolCall`.
+    func testAnAgentLaunchTheTurnHasMovedPastIsRunningByInference() throws {
+        let launch: [String: TranscriptJSONValue] = [
+            "id": .string("agent-tool"),
+            "name": .string("Agent"),
+            "input": .object([
+                "description": .string("Research loading animation SOTA"),
+                "prompt": .string("Research task.")
+            ])
+        ]
+        let session = TranscriptSessionMetadata(
+            id: "session-1", workspaceId: "workspace-1", provider: "claude",
+            modelLabel: "Claude", modelId: "opus", prompt: "Start",
+            state: .running, attention: .normal, reasoningEffort: nil
+        )
+
+        // The turn is still blocked on the launch — nothing answered after
+        // it — so the row is live work the reader is watching.
+        let blocked = try XCTUnwrap(firstAgent(TranscriptProjection.project(events: [
+            event("user", "user.message", "Start", 1),
+            event("launch", "command.started", "Agent", 2, launch)
+        ], session: session)))
+        XCTAssertEqual(blocked.status, .running)
+        XCTAssertFalse(blocked.backgroundLaunch)
+
+        // An answer after the launch ends the wait on it. The row stays up
+        // (the child is still out there) but marked running by inference.
+        let movedPast = try XCTUnwrap(firstAgent(TranscriptProjection.project(events: [
+            event("user", "user.message", "Start", 1),
+            event("launch", "command.started", "Agent", 2, launch),
+            event("answer", "message.completed", "Working on it.", 3)
+        ], session: session)))
+        XCTAssertEqual(movedPast.status, .running)
+        XCTAssertTrue(movedPast.backgroundLaunch)
+        XCTAssertNil(movedPast.completedAt)
+
+        // Evidence outranks the inference: a child lifecycle that spoke
+        // keeps the launch a live line, the way the desktop treats a
+        // lifecycle-backed row.
+        let lifecycled = try XCTUnwrap(firstAgent(TranscriptProjection.project(events: [
+            event("user", "user.message", "Start", 1),
+            event("launch", "command.started", "spawn_agent", 2, [
+                "id": .string("spawn-1"),
+                "name": .string("spawn_agent"),
+                "providerInvocationId": .string("invocation-1")
+            ]),
+            event("started", "agent.started", "Agent started", 3, [
+                "agentRunId": .string("spawn-1"),
+                "providerInvocationId": .string("invocation-1")
+            ]),
+            event("answer", "message.completed", "Working on it.", 4)
+        ], session: session)))
+        XCTAssertEqual(lifecycled.status, .running)
+        XCTAssertFalse(lifecycled.backgroundLaunch)
+    }
+
     /// A cancelled call is an interruption — the user stopped the turn, or the
     /// provider dropped an in-flight call — not something that failed.
     func testCancelledToolCallsAreNotFailures() throws {

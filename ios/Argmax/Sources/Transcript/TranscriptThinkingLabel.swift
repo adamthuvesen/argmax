@@ -181,6 +181,11 @@ struct TranscriptThinking: Hashable {
     /// The line that owns the beat right now, if one does, and when it took
     /// over. A start that does not parse still counts as a live line: the cue
     /// must never sit on top of a running row, whatever that row's clock says.
+    /// A backgrounded launch is the one running row that does not count: it
+    /// is marked running by inference rather than by evidence
+    /// (`TranscriptAgent.backgroundLaunch`), the same rule the desktop
+    /// applies to its `backgroundLaunch` rows, and a turn that only launched
+    /// one of those is silent, not busy.
     private static func liveLine(in turn: ArraySlice<TranscriptItem>) -> (running: Bool, startedAt: Date?) {
         var running = false
         var earliest: Date?
@@ -188,7 +193,8 @@ struct TranscriptThinking: Hashable {
             let starts: [String]
             switch item {
             case .tools(let group): starts = group.tools.filter { $0.status == .running }.map(\.createdAt)
-            case .agents(let group): starts = group.agents.filter { $0.status == .running }.map(\.createdAt)
+            case .agents(let group):
+                starts = group.agents.filter { $0.status == .running && !$0.backgroundLaunch }.map(\.createdAt)
             default: continue
             }
             if starts.isEmpty { continue }

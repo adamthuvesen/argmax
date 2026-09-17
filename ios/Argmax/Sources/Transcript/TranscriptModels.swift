@@ -517,6 +517,14 @@ struct TranscriptAgent: Hashable, Sendable, Identifiable {
     var providerParentConversationId: String?
     var agentCodename: String?
     var children: [TranscriptTool]
+    /// A launch kept `.running` by inference rather than by evidence: no
+    /// completion for one ever arrives, so the projection holds it up while
+    /// the session runs, the way the desktop re-marks a backgrounded launch
+    /// (`backgroundLaunch` on the `ToolCall`, `toolCalls.ts`). The row keeps
+    /// its nest but loses its vote for the turn's beat, and never carries the
+    /// band — a band reading its words for the rest of the session would
+    /// claim progress nobody can watch.
+    var backgroundLaunch: Bool = false
 }
 
 struct TranscriptAgentGroup: Hashable, Sendable, Identifiable {

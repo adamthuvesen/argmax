@@ -149,13 +149,27 @@ final class TranscriptToolIconTests: XCTestCase {
 
     func testEveryGeneratedKeyHasARealNamespacedAsset() throws {
         let names = TranscriptToolIcon.generatedAssetNames
-        XCTAssertEqual(names.count, 16)
+        XCTAssertFalse(names.isEmpty, "toolIcons.json exported nothing")
         XCTAssertEqual(Set(names).count, names.count)
         for name in names {
             let image = try XCTUnwrap(UIImage(named: name), "\(name) is missing from Assets.xcassets")
             XCTAssertGreaterThan(image.size.width, 0, "\(name) has no intrinsic width")
             XCTAssertGreaterThan(image.size.height, 0, "\(name) has no intrinsic height")
             XCTAssertNotNil(image.imageAsset, "\(name) is not backed by an asset catalogue image")
+        }
+        // The export is worthless if the row cannot reach it: every generated
+        // mark must come back out of the public mapping for its own key, so an
+        // alias the look-up does not answer fails here rather than shipping as
+        // a file nobody can load. The count is the catalogue's to change — it
+        // drifted once already (26b250dc) because a hand-written number was
+        // guarding a generated set.
+        for name in names where !name.hasSuffix("-mono") {
+            let key = String(name.dropFirst("Integrations/".count))
+            XCTAssertEqual(
+                TranscriptToolIcon.assetName(for: "mcp__\(key)__call"),
+                name,
+                "\(name) is generated but unreachable through the tool-name mapping"
+            )
         }
     }
 

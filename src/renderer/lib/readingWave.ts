@@ -60,7 +60,9 @@ export function useReadingWave(
       // land the band somewhere else — a jump mid-pass. Carry the head over
       // instead: the band keeps its position and its speed across a wording
       // change, and only a fresh line takes its phase from the wall clock.
-      const animation = node.getAnimations().find(
+      // jsdom has no Web Animations, and neither has a line whose animation
+      // has not started yet; both fall through to the wall-clock anchor.
+      const animation = node.getAnimations?.().find(
         (candidate) => (candidate as CSSAnimation).animationName === "reading-wave"
       );
       const head = Number.parseFloat(getComputedStyle(node).getPropertyValue("--reading-wave-head"));

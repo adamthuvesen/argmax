@@ -2,15 +2,19 @@ import { useLayoutEffect, type RefObject } from "react";
 
 // Numbers shared with the iPhone (ios/Argmax/Sources/Design/ReadingWave.swift);
 // styles/reading-wave.css owns the band's width and colours.
-/** Band travel speed in ems per second: constant, so a long line does not whip
- *  past and a short word does not crawl. */
-const SPEED_EM_PER_SECOND = 7.15;
+//
+// What is held constant is the *time* a pass takes, not the band's speed. A
+// constant speed reads as two different animations on one screen: the tool
+// line's words are a type step smaller than the Thinking verb's and its line
+// is two to three times longer, so the same px/s crawled there while the verb
+// felt right. Clamping the pass instead keeps every live line on one rhythm.
+/** A pass over the words takes this long, whatever the line's length. */
+const PASS_SECONDS_MIN = 0.8;
+const PASS_SECONDS_MAX = 1.5;
 /** Half-width of the band in ems; must match `--reading-wave-sigma`. */
 const SIGMA_EM = 1.1;
 /** Pause between passes, in seconds. */
 const PAUSE_SECONDS = 0.4;
-/** Shortest cycle, so a one-word line never strobes. */
-const MINIMUM_CYCLE_SECONDS = 1.6;
 
 /**
  * Sizes the reading wave on `container` while `active`: the band's travel is
@@ -46,12 +50,13 @@ export function useReadingWave(
         end = Math.max(end, visibleRight);
       }
       const em = Number.parseFloat(getComputedStyle(node).fontSize) || 13;
-      const speed = SPEED_EM_PER_SECOND * em;
-      const cycle = Math.max(
-        end - start + 6 * SIGMA_EM * em + PAUSE_SECONDS * speed,
-        MINIMUM_CYCLE_SECONDS * speed
-      );
-      const duration = cycle / speed;
+      const sigma = SIGMA_EM * em;
+      // The band enters 3σ before the first glyph and leaves 3σ after the last.
+      const travel = end - start + 6 * sigma;
+      const pass = Math.min(PASS_SECONDS_MAX, Math.max(PASS_SECONDS_MIN, travel / (7 * em)));
+      const speed = travel / pass;
+      const cycle = travel + PAUSE_SECONDS * speed;
+      const duration = pass + PAUSE_SECONDS;
       if (Math.abs(Number.parseFloat(node.style.getPropertyValue("--reading-wave-cycle")) - cycle) < 0.5) {
         return;   // same geometry: leave the pass alone
       }
@@ -70,7 +75,6 @@ export function useReadingWave(
       node.style.setProperty("--reading-wave-duration", `${duration}s`);
       node.style.setProperty("--reading-wave-delay", "0s");
       if (animation) {
-        const sigma = SIGMA_EM * em;
         const into = Number.isFinite(head)
           ? (head + 3 * sigma) / speed
           : (Date.now() / 1000) % duration;

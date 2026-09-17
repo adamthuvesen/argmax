@@ -9,8 +9,9 @@
    head; each `.reading-wave-text` inside paints the band through its own
    glyphs, offset by where it starts, so a verb and its dimmer target share one
    pass and keep their own resting colours. `lib/readingWave.ts` measures the
-   line and sets the cycle, so the band moves at one speed whatever the line's
-   length. It touches the phase only when the line's geometry changes, and then
+   line and sets the cycle, so a pass takes the same time whatever the line's
+   length — the tool headline is smaller and longer than the thinking verb, and
+   one shared speed crawled there while the verb read right. It touches the phase only when the line's geometry changes, and then
    carries the head over, so a wording change keeps the band's position and its
    speed; a fresh line takes its phase from the wall clock, so a remount lands
    where the clock says rather than back at the left edge.

@@ -60,13 +60,15 @@ struct ReadingWaveText: View {
 struct ReadingWave: TextRenderer {
     /// Gaussian width of the band, in ems.
     static let sigma: CGFloat = 1.1
-    /// Constant travel speed in ems per second, so a two-line headline does
-    /// not whip past and a short verb does not crawl.
-    static let speed: CGFloat = 7.15
+    /// A pass over the words takes this long, whatever the line's length. The
+    /// *time* is what is held constant, not the speed: a fold headline is a
+    /// type step smaller than the thinking verb and two to three times longer,
+    /// so one px/s read as two different animations on one screen — the verb
+    /// felt right and the headline crawled.
+    static let passSecondsMin: CGFloat = 0.8
+    static let passSecondsMax: CGFloat = 1.5
     /// Pause between passes, in seconds.
     static let pause: CGFloat = 0.4
-    /// Shortest cycle, so "Thinking" never strobes.
-    static let minimumCycle: CGFloat = 1.6
     /// How much of the peak is accent rather than ink.
     static let accentShare: Float = 0.4
     /// Light mode's peak stays nearer ink: the light accents are already dark.
@@ -99,12 +101,14 @@ struct ReadingWave: TextRenderer {
         }
 
         let sigma = Self.sigma * em
-        let speed = Self.speed * em
         // Reading order: a glyph's place is the width of the lines before it
-        // plus its offset within its own line.
+        // plus its offset within its own line. The band enters 3σ before the
+        // first glyph and leaves 3σ after the last.
         let pathLength = layout.reduce(0) { $0 + $1.typographicBounds.width }
-        let cycle = max(pathLength + 6 * sigma + Self.pause * speed, Self.minimumCycle * speed)
-        let head = CGFloat(time).truncatingRemainder(dividingBy: cycle / speed) * speed - 3 * sigma
+        let travel = pathLength + 6 * sigma
+        let pass = min(Self.passSecondsMax, max(Self.passSecondsMin, travel / (7 * em)))
+        let speed = travel / pass
+        let head = CGFloat(time).truncatingRemainder(dividingBy: pass + Self.pause) * speed - 3 * sigma
 
         var linesBefore: CGFloat = 0
         for line in layout {

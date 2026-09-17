@@ -736,8 +736,35 @@
   background: var(--panel);
 }
 
+/* The brief is reference material the pane opens folded, not the agent's
+   answer: it sits a step below prose so it reads with the tool rows and chips
+   around it rather than shouting over them. Code steps down with it to keep
+   the usual one-notch gap between prose and mono. */
 .agent-activity-prompt .markdown {
+  font-size: var(--text-sm);
   line-height: 1.7;
+}
+
+.agent-activity-prompt .markdown :is(code, pre) {
+  font-size: var(--text-xs);
+}
+
+/* Headings carry absolute tokens, so leaving them alone would put an `h2` five
+   steps above the body it introduces. Each drops the same notch the prose did. */
+.agent-activity-prompt .markdown h1 {
+  font-size: var(--text-md-plus);
+}
+
+.agent-activity-prompt .markdown h2 {
+  font-size: var(--text-base-plus);
+}
+
+.agent-activity-prompt .markdown h3 {
+  font-size: var(--text-base);
+}
+
+.agent-activity-prompt .markdown h4 {
+  font-size: var(--text-xs);
 }
 
 .agent-activity-prompt

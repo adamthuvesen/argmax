@@ -62,7 +62,7 @@ struct ReadingWave: TextRenderer {
     static let sigma: CGFloat = 1.1
     /// Constant travel speed in ems per second, so a two-line headline does
     /// not whip past and a short verb does not crawl.
-    static let speed: CGFloat = 8.125
+    static let speed: CGFloat = 11.05
     /// Pause between passes, in seconds.
     static let pause: CGFloat = 0.7
     /// Shortest cycle, so "Thinking" never strobes.

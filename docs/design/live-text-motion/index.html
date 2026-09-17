@@ -72,7 +72,7 @@
       <h1>Live text motion — iPhone transcript</h1>
       <label>Theme <select id="theme"><option>dark</option><option>light</option></select></label>
       <label>Accent <select id="accent"></select></label>
-      <label>Speed <input id="speed" type="range" min="0.5" max="1.6" step="0.05" value="1.25" /> <span id="speedOut">1.25×</span></label>
+      <label>Speed <input id="speed" type="range" min="0.5" max="2.2" step="0.05" value="1.7" /> <span id="speedOut">1.70×</span></label>
       <label><input id="slow" type="checkbox" /> Slow-mo ¼×</label>
     </div>
     <div class="grid" id="grid"></div>
@@ -243,7 +243,7 @@
         });
       }
 
-      let speedScale = 1.25, timeScale = 1, virtual = 0, last = performance.now();
+      let speedScale = 1.7, timeScale = 1, virtual = 0, last = performance.now();
       function frame(now) {
         virtual += ((now - last) / 1000) * timeScale;
         last = now;

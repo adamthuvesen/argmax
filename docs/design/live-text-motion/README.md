@@ -34,7 +34,7 @@ Elapsed seconds and tool icons stay still in every option.
 
 ## Decision
 
-**A+**, in `ios/Argmax/Sources/Design/ReadingWave.swift`: σ 1.1em, 9.1em/s (the page's 1.4×),
+**A+**, in `ios/Argmax/Sources/Design/ReadingWave.swift`: σ 1.1em, 7.15em/s (the page's 1.1×),
 0.4s pause, 1.6s shortest cycle, peak ink + 40% accent in dark. Light mode needs its own numbers — a
 dark band on a mid-grey line barely registers on paper — so it rests the line
 30% from muted toward the ground and keeps the peak at ink + 10% accent.

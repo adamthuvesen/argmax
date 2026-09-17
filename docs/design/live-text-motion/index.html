@@ -72,7 +72,7 @@
       <h1>Live text motion — iPhone transcript</h1>
       <label>Theme <select id="theme"><option>dark</option><option>light</option></select></label>
       <label>Accent <select id="accent"></select></label>
-      <label>Speed <input id="speed" type="range" min="0.5" max="2.2" step="0.05" value="1.4" /> <span id="speedOut">1.40×</span></label>
+      <label>Speed <input id="speed" type="range" min="0.5" max="2.2" step="0.05" value="1.1" /> <span id="speedOut">1.10×</span></label>
       <label><input id="slow" type="checkbox" /> Slow-mo ¼×</label>
     </div>
     <div class="grid" id="grid"></div>
@@ -95,7 +95,7 @@
         { id: "nest", title: "Before · Working nest", note: "What the phone shipped before: the working nest in front of the verb and a running fold's headline. Text is still." },
         {
           id: "shipped", title: "Shipped · Reading wave", pick: true,
-          note: "What the app runs now (ReadingWave.swift). A tight band (σ 1.1em) reads the line glyph by glyph at 9.1em/s — the slider's 1.4× — with a 0.4s pause and a 1.6s shortest cycle. Dark: muted line, peak ink + 40% accent. Light: line rests 30% toward paper, peak ink + 10% accent.",
+          note: "What the app runs now (ReadingWave.swift). A tight band (σ 1.1em) reads the line glyph by glyph at 7.15em/s — the slider's 1.1× — with a 0.4s pause and a 1.6s shortest cycle. Dark: muted line, peak ink + 40% accent. Light: line rests 30% toward paper, peak ink + 10% accent.",
           sigma: 1.1, speed: 6.5, rest: 0.4, minCycle: 1.6, accentMix: 0.4, lift: 0, baseLift: 0, lightDim: 0.3, lightAccentMix: 0.1,
         },
         {
@@ -243,7 +243,7 @@
         });
       }
 
-      let speedScale = 1.4, timeScale = 1, virtual = 0, last = performance.now();
+      let speedScale = 1.1, timeScale = 1, virtual = 0, last = performance.now();
       function frame(now) {
         virtual += ((now - last) / 1000) * timeScale;
         last = now;

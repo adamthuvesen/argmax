@@ -4,7 +4,7 @@ import { useLayoutEffect, type RefObject } from "react";
 // styles/reading-wave.css owns the band's width and colours.
 /** Band travel speed in ems per second: constant, so a long line does not whip
  *  past and a short word does not crawl. */
-const SPEED_EM_PER_SECOND = 9.1;
+const SPEED_EM_PER_SECOND = 7.15;
 /** Half-width of the band in ems; must match `--reading-wave-sigma`. */
 const SIGMA_EM = 1.1;
 /** Pause between passes, in seconds. */

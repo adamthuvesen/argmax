@@ -48,8 +48,11 @@
       .headline { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .headline .verb { color: var(--muted-strong); }
       .headline .seg { color: var(--chip-ink, var(--muted)); transition: color 200ms var(--ease, ease); }
-      .headline .seg.enter { animation: seg-in 200ms var(--ease-out, ease-out); }
-      @keyframes seg-in { from { color: color-mix(in srgb, currentColor 30%, var(--bg)); } }
+      /* A new clause arrives by fading up on its own, not by dimming the line.
+         With the band clipped to the glyphs, a colour keyframe would be
+         invisible anyway — the fill is transparent. */
+      .headline .seg.enter { animation: seg-in 220ms var(--ease-out, ease-out); }
+      @keyframes seg-in { from { opacity: 0.25; } to { opacity: 1; } }
       /* Today's flash: the whole headline dips to 0.35 opacity and comes back. */
       .headline.tick { animation: activity-tick 240ms var(--ease, ease); }
       @keyframes activity-tick { from { opacity: 0.35; } to { opacity: 1; } }
@@ -793,12 +796,15 @@
             dom.headline.dataset.key = JSON.stringify(text);
             dom.headline.className = "headline" + (v.change === "tick" ? " tick" : "");
             if (v.change === "tick") { void dom.headline.offsetWidth; dom.headline.classList.add("tick"); }
+            // Every word that should carry the band gets the band's class: the
+            // band is `background-clip: text` on each span, and a child span
+            // with its own colour would paint straight over its parent's.
             dom.headline.innerHTML =
-              `<span class="verb">${verb}</span> ` +
+              `<span class="verb reading-wave-text">${verb}</span> ` +
               clauses
                 .map((clause, i) => {
                   const isNew = v.change === "segment" && !previous.some((p) => p.includes(clause));
-                  return `<span class="seg${isNew ? " enter" : ""}">${clause}</span>`;
+                  return `<span class="seg reading-wave-text${isNew ? " enter" : ""}">${clause}</span>`;
                 })
                 .join(", ");
             if (v.change === "line") {
@@ -822,7 +828,7 @@
           dom.line.dataset.readingWave = pane.running ? "true" : "false";
           if (pane.running) dom.line.setAttribute("data-reading-wave", "true");
           else dom.line.removeAttribute("data-reading-wave");
-          dom.headline.classList.toggle("reading-wave-text", pane.running);
+          dom.headline.classList.remove("reading-wave-text");
           const batonHere = pane.batonTo === "line";
           if (batonHere) {
             pane.batonTo = null;
@@ -965,7 +971,7 @@
       function frame(realNow) {
         const now = (realNow - startedAt) * speed;
         const stream = STREAMS[streamSelect.value];
-        const end = stream.events[stream.events.length - 1].at + 2500;
+        const end = until ?? stream.events[stream.events.length - 1].at + 2500;
         document.getElementById("clock").textContent = `${(Math.min(now, end) / 1000).toFixed(1)}s`;
         for (const pane of panes) step(pane, stream, Math.min(now, end));
         if (now > end) startedAt = realNow;   // loop
@@ -983,11 +989,11 @@
       // whole stream on a fixed 16ms grid and hand back the metrics. A browser
       // tab in the background gets no animation frames, so the loop above
       // cannot be trusted to advance; this can.
-      window.__measure = (streamId = streamSelect.value) => {
+      window.__measure = (streamId = streamSelect.value, until) => {
         streamSelect.value = streamId;
         reset();
         const stream = STREAMS[streamId];
-        const end = stream.events[stream.events.length - 1].at + 2500;
+        const end = until ?? stream.events[stream.events.length - 1].at + 2500;
         // 50ms steps: the rules all have 100ms-plus thresholds, and a 16ms
         // grid over ten panes spends its time in layout reads instead.
         for (let now = 0; now <= end; now += 50) {

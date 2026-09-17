@@ -49,9 +49,12 @@
 }
 
 [data-reading-wave="true"] .reading-wave-text {
-  /* Dark: the band brightens the line toward ink with the accent in it. */
-  --reading-wave-rest: currentColor;
-  --reading-wave-peak: color-mix(in srgb, var(--text) 60%, var(--accent));
+  /* Dark: the line steps back toward the ground and the band lifts it to the
+     brightest ink with the accent in it. Desktop's running words already sit
+     at muted-strong, close to ink, so resting at their own colour left the
+     band almost nothing to brighten. */
+  --reading-wave-rest: color-mix(in srgb, currentColor 72%, var(--bg));
+  --reading-wave-peak: color-mix(in srgb, var(--prose-ink-strong) 70%, var(--accent));
   --reading-wave-at: calc(var(--reading-wave-head) - var(--reading-wave-offset, 0px));
   /* A Gaussian sampled at half-sigma steps; the eye cannot find the joins. */
   background-image: linear-gradient(

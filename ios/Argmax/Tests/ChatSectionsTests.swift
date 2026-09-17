@@ -343,3 +343,15 @@ final class ChatSectionsTests: XCTestCase {
         XCTAssertEqual(sections.pinned.count, 1)
     }
 }
+
+final class CollapsedChatSectionsTests: XCTestCase {
+    func testTogglingFoldsAndUnfoldsOneSectionWithoutTouchingOthers() {
+        var stored = ""
+        stored = toggleCollapsedChatSection("priority", in: stored)
+        stored = toggleCollapsedChatSection("today", in: stored)
+        XCTAssertEqual(collapsedChatSections(from: stored), ["priority", "today"])
+        stored = toggleCollapsedChatSection("priority", in: stored)
+        XCTAssertEqual(collapsedChatSections(from: stored), ["today"])
+        XCTAssertEqual(collapsedChatSections(from: ""), [])
+    }
+}

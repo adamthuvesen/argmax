@@ -91,14 +91,9 @@ struct TranscriptThinkingLabel: View {
 
     private func line(word: String, elapsed: TimeInterval, live: Bool) -> some View {
         HStack(spacing: Spacing.snug) {
-            // The nest redraws every frame it is in the tree, so the reserved
-            // slot holds its size with nothing in it.
-            if live {
-                WorkingNest(size: 16)
-            } else {
-                Color.clear.frame(width: 16, height: 16)
-            }
-            Text(word)
+            // The words carry the motion; the seconds stay still, since a
+            // band crossing a ticking number jitters.
+            Text(word).readingWave(live)
             if elapsed >= 3 {
                 let seconds = Int(elapsed)
                 Text(seconds < 60 ? "\(seconds)s" : "\(seconds / 60)m \(seconds % 60)s")

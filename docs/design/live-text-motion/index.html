@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Argmax iPhone — live text motion mockups</title>
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-400.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-500.css" />
+    <style>
+      /* iPhone Theme.swift values, not the desktop tokens. */
+      :root[data-theme="dark"] {
+        --ground: #141414; --ink: #f4f2ec; --muted: #8a857b; --muted-strong: #aeaaa1;
+        --line: #2a2926; --bubble: #1f1e1c; --chrome: #0c0c0c;
+      }
+      :root[data-theme="light"] {
+        --ground: #fdfdfd; --ink: #1f1d18; --muted: #7a766c; --muted-strong: #5d594f;
+        --line: #e6e3dc; --bubble: #f1efea; --chrome: #e9e7e2;
+      }
+      html, body { margin: 0; background: var(--chrome); color: var(--ink); }
+      body { font-family: "Geist Sans", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+
+      .head {
+        position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 18px; align-items: center;
+        padding: 12px 24px; background: color-mix(in oklab, var(--chrome) 90%, transparent);
+        backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted);
+      }
+      .head h1 { font-size: 13px; font-weight: 500; margin: 0; color: var(--muted-strong); }
+      .head label { display: inline-flex; gap: 6px; align-items: center; }
+      .head select, .head input { font: inherit; color: var(--ink); background: var(--ground); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; }
+
+      .grid { display: flex; flex-wrap: wrap; gap: 28px; padding: 28px 24px 60px; }
+      figure { margin: 0; width: 390px; }
+      figcaption { font-size: 12px; color: var(--muted); line-height: 1.55; margin: 0 4px 12px; min-height: 5.6em; }
+      figcaption b { color: var(--ink); font-weight: 500; }
+      figcaption .pick { color: var(--accent); font-weight: 500; }
+
+      .phone {
+        width: 390px; height: 470px; box-sizing: border-box; overflow: hidden;
+        background: var(--ground); border-radius: 34px; border: 1px solid var(--line);
+        padding: 22px 20px; display: flex; flex-direction: column; gap: 10px;
+      }
+      .bubble {
+        align-self: flex-end; max-width: 78%; background: var(--bubble); border-radius: 18px;
+        padding: 9px 14px; font-size: 17px; line-height: 1.35;
+      }
+      .answer { font-size: 17px; line-height: 1.45; color: var(--ink); }
+
+      /* typeSubtitle: 15pt subheadline, muted. */
+      .row { font-size: 15px; line-height: 20px; color: var(--muted); display: flex; gap: 8px; align-items: flex-start; min-height: 44px; padding-top: 12px; box-sizing: border-box; }
+      .row .icons { display: flex; gap: 8px; flex: none; height: 20px; align-items: center; }
+      .row .icons svg { width: 16px; height: 16px; stroke: var(--muted); fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+      /* Layers share one grid cell, so a crossfade never stacks or reflows. */
+      .slot { display: grid; flex: 1; min-width: 0; }
+      .layer { grid-area: 1 / 1; transition: opacity 180ms ease-out; }
+      .clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+      .g { display: inline; }
+      .g.lift { display: inline-block; }
+      .secs { font-variant-numeric: tabular-nums; color: var(--muted); flex: none; }
+      .tail { min-height: 44px; }
+
+      .nest { width: 16px; height: 16px; flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 1.5px; padding: 2px; box-sizing: border-box; margin-top: 2px; }
+      .nest i { border-radius: 50%; background: var(--accent); animation: relay 0.9s infinite; opacity: .35; transform: scale(.7); }
+      .nest i:nth-child(2) { animation-delay: .225s } .nest i:nth-child(4) { animation-delay: .45s } .nest i:nth-child(3) { animation-delay: .675s }
+      @keyframes relay { 0%, 100% { opacity: .35; transform: scale(.7) } 20% { opacity: 1; transform: scale(1) } 55% { opacity: .5; transform: scale(.8) } }
+
+      .rule { height: 1px; background: var(--line); margin: 4px 0; }
+      .label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); opacity: .7; }
+    </style>
+  </head>
+  <body>
+    <div class="head">
+      <h1>Live text motion — iPhone transcript</h1>
+      <label>Theme <select id="theme"><option>dark</option><option>light</option></select></label>
+      <label>Accent <select id="accent"></select></label>
+      <label>Speed <input id="speed" type="range" min="0.5" max="1.6" step="0.05" value="1.25" /> <span id="speedOut">1.25×</span></label>
+      <label><input id="slow" type="checkbox" /> Slow-mo ¼×</label>
+    </div>
+    <div class="grid" id="grid"></div>
+
+    <script>
+      const ACCENTS = {
+        green: ["#446c56", "#6dab86"], teal: ["#207070", "#65b0b0"], purple: ["#70558f", "#ad94d0"],
+        neutral: ["#6c6960", "#a8a49b"], black: ["#1c1b18", "#f4f2ec"], orange: ["#af5b00", "#e79647"],
+        blue: ["#396696", "#7ea6cf"], coral: ["#944b3e", "#d18e82"],
+      };
+      const THEME = {
+        dark: { ink: "#f4f2ec", muted: "#8a857b", strong: "#aeaaa1" },
+        light: { ink: "#1f1d18", muted: "#7a766c", strong: "#5d594f" },
+      };
+      const EM = 15;
+
+      // Each option is one set of numbers on the same renderer, so the
+      // comparison is the tuning, not the implementation.
+      const VARIANTS = [
+        { id: "shipped", title: "Shipped", note: "Today: the working nest before the verb and before a running fold's headline. Text is still." },
+        {
+          id: "A", title: "A · Reading wave",
+          note: "A soft band reads the line glyph by glyph — line one, then line two — at a constant speed with a short rest. Peak is ink with 30% accent, so “running” keeps its colour. Base sits a notch above a settled label.",
+          sigma: 1.5, speed: 6.5, rest: 0.7, accentMix: 0.3, lift: 0, baseLift: 0.25,
+        },
+        {
+          id: "A+", title: "A+ · Reading wave, stronger", pick: true,
+          note: "A with more contrast: the band is wider (σ 1.8em) and its peak carries 40% accent. Light mode rests the line 45% toward paper and keeps the peak at near-pure ink (10% accent), because a dark band on a mid-grey line barely registers.",
+          sigma: 1.8, speed: 6.5, rest: 0.7, accentMix: 0.4, lift: 0, baseLift: 0, lightDim: 0.45, lightAccentMix: 0.1,
+        },
+        {
+          id: "A++", title: "A++ · Reading wave, strongest",
+          note: "A+ pushed further: the resting line sits 15% toward the ground in dark and 70% toward paper in light (pure ink peak), σ 2em.",
+          sigma: 2, speed: 6.5, rest: 0.7, accentMix: 0.45, lift: 0, baseLift: 0, darkDim: 0.15, lightDim: 0.7, lightAccentMix: 0,
+        },
+        {
+          id: "B", title: "B · Ink wave", note: "A's motion in pure ink, no accent. Quieter and more editorial; loses the colour link to other running marks.",
+          sigma: 1.5, speed: 6.5, rest: 0.7, accentMix: 0, lift: 0, baseLift: 0.25,
+        },
+        {
+          id: "C", title: "C · Slow light", note: "A wider, slower band (σ 3em, 4em/s) with no rest: less a reading pass, more light drifting across. Calmest; the least legible as ‘progress’.",
+          sigma: 3, speed: 4, rest: 0, accentMix: 0.3, lift: 0, baseLift: 0.35,
+        },
+        {
+          id: "D", title: "D · Lift", note: "A plus a 1pt rise on lit glyphs. More alive; also closer to a bouncing-letters loader. Shown so it can be ruled out by eye.",
+          sigma: 1.2, speed: 6.5, rest: 0.7, accentMix: 0.3, lift: 1, baseLift: 0.25,
+        },
+        {
+          id: "R", title: "Reduce Motion", note: "The fallback for every option: no travel, the whole line breathes muted ↔ muted-strong over 2.6s.",
+          breathe: true,
+        },
+      ];
+
+      const HEADLINES = [
+        "Running git status",
+        "Ran 1 command, reading session_service.rs",
+        "Ran 3 commands, read session_service.rs and claude_control.rs, searching for resume_turn",
+      ];
+      const CLEAN = "Ran 3 commands, read 2 files, searched 1 pattern";
+      const WORD = "Triangulating";
+      // 0–8.4s: fold running, headline changes. 8.4–15s: fold settled, thinking live.
+      const FOLD_END = 8.4, LOOP = 15;
+
+      const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+      const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+      const css = (c) => `rgb(${c.map((v) => Math.round(v)).join(",")})`;
+
+      const ICONS = `<span class="icons">
+        <svg viewBox="0 0 16 16"><path d="M3 4.5 6 8l-3 3.5M8 12h5"/></svg>
+        <svg viewBox="0 0 16 16"><path d="M4 2h5l3 3v9H4z M9 2v3h3"/></svg>
+        <svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4"/><path d="m10 10 3.5 3.5"/></svg></span>`;
+
+      const grid = document.getElementById("grid");
+      const phones = VARIANTS.map((v) => {
+        const fig = document.createElement("figure");
+        fig.innerHTML = `<figcaption><b>${v.title}</b>${v.pick ? ' <span class="pick">· chosen</span>' : ""}<br>${v.note}</figcaption>
+          <div class="phone">
+            <div class="bubble">Why does resume lose the turn after a steer?</div>
+            <div class="answer">Let me trace how a steer reaches the provider.</div>
+            <div class="row fold">${v.id === "shipped" ? '<span class="nest"><i></i><i></i><i></i><i></i></span>' : ""}${ICONS}<div class="slot"></div></div>
+            <div class="row tail"></div>
+            <div class="rule"></div>
+            <div class="label">Held</div>
+            <div class="row still">${v.id === "shipped" ? '<span class="nest"><i></i><i></i><i></i><i></i></span>' : ""}<div class="slot"></div><span class="secs">12s</span></div>
+          </div>`;
+        grid.appendChild(fig);
+        const state = {
+          v, fig,
+          foldRow: fig.querySelector(".fold"), foldSlot: fig.querySelector(".fold .slot"),
+          tail: fig.querySelector(".tail"), stillSlot: fig.querySelector(".still .slot"),
+          foldLayers: [], shownHeadline: null, foldLive: null, tailLive: null, tailSecs: null,
+        };
+        state.stillLayer = makeLayer(state.stillSlot, WORD, false);
+        return state;
+      });
+
+      function makeLayer(parent, text, clamp) {
+        const el = document.createElement("div");
+        el.className = "layer" + (clamp ? " clamp" : "");
+        const glyphs = [...text].map((ch) => {
+          const s = document.createElement("span");
+          s.className = "g";
+          s.textContent = ch;
+          el.appendChild(s);
+          return s;
+        });
+        parent.appendChild(el);
+        const layer = { el, glyphs, path: [], length: 0 };
+        measure(layer);
+        return layer;
+      }
+
+      // Reading-order coordinate: widths of earlier lines plus x within the line.
+      function measure(layer) {
+        let lineTop = null, lineStart = 0, lineEnd = 0, before = 0;
+        layer.path = layer.glyphs.map((g) => {
+          const r = g.getBoundingClientRect();
+          if (lineTop === null || Math.abs(r.top - lineTop) > 4) {
+            if (lineTop !== null) before += lineEnd - lineStart;
+            lineTop = r.top; lineStart = r.left;
+          }
+          lineEnd = r.right;
+          return before + (r.left - lineStart) + r.width / 2;
+        });
+        layer.length = before + (lineEnd - lineStart);
+      }
+
+      function paint(layer, v, t, colors, live) {
+        let base = mix(colors.muted, colors.strong, live ? v.baseLift ?? 0 : 0);
+        if (live && v.darkDim && colors.dark) base = mix(base, colors.ground, v.darkDim);
+        if (live && v.lightDim && !colors.dark) base = mix(base, colors.ground, v.lightDim);
+        if (!live || v.id === "shipped") {
+          layer.glyphs.forEach((g) => { g.style.color = css(colors.muted); g.style.transform = ""; });
+          return;
+        }
+        if (v.breathe) {
+          const k = (1 - Math.cos((t / 2.6) * 2 * Math.PI)) / 2;
+          const c = css(mix(colors.muted, colors.strong, k));
+          layer.glyphs.forEach((g) => { g.style.color = c; });
+          return;
+        }
+        const sigma = v.sigma * EM, speed = v.speed * EM * speedScale;
+        const cycle = Math.max(layer.length + 6 * sigma + v.rest * speed, 2.4 * speed);
+        const head = ((t * speed) % cycle) - 3 * sigma;
+        const peak = mix(colors.ink, colors.accent, colors.dark ? v.accentMix : v.lightAccentMix ?? v.accentMix);
+        layer.glyphs.forEach((g, i) => {
+          const d = layer.path[i] - head;
+          const w = Math.exp(-(d * d) / (2 * sigma * sigma));
+          g.style.color = css(mix(base, peak, w));
+          if (v.lift) {
+            g.classList.add("lift");
+            g.style.transform = `translateY(${(-v.lift * w).toFixed(2)}px)`;
+          }
+        });
+      }
+
+      function setHeadline(p, text, clamp) {
+        if (p.shownHeadline === text) return;
+        p.shownHeadline = text;
+        const next = makeLayer(p.foldSlot, text, clamp);
+        next.el.style.opacity = 0;
+        const old = p.foldLayers;
+        p.foldLayers = [next, ...old];
+        requestAnimationFrame(() => {
+          next.el.style.opacity = 1;
+          old.forEach((l) => { l.el.style.opacity = 0; setTimeout(() => l.el.remove(), 200); });
+          setTimeout(() => { p.foldLayers = p.foldLayers.filter((l) => l === next || !old.includes(l)); }, 200);
+        });
+      }
+
+      let speedScale = 1.25, timeScale = 1, virtual = 0, last = performance.now();
+      function frame(now) {
+        virtual += ((now - last) / 1000) * timeScale;
+        last = now;
+        const theme = document.documentElement.dataset.theme;
+        const accentPair = ACCENTS[accentSel.value];
+        const colors = {
+          dark: theme === "dark", ground: hex(theme === "dark" ? "#141414" : "#fdfdfd"),
+          ink: hex(THEME[theme].ink), muted: hex(THEME[theme].muted), strong: hex(THEME[theme].strong),
+          accent: hex(accentPair[theme === "dark" ? 1 : 0]),
+        };
+        document.documentElement.style.setProperty("--accent", accentPair[theme === "dark" ? 1 : 0]);
+        const loop = virtual % LOOP;
+        const running = loop < FOLD_END;
+        const headline = running ? HEADLINES[Math.min(2, Math.floor(loop / 2.8))] : CLEAN;
+
+        for (const p of phones) {
+          setHeadline(p, headline, true);
+          const nest = p.foldRow.querySelector(".nest");
+          if (nest) nest.style.display = running ? "" : "none";
+          p.foldLayers.forEach((l) => paint(l, p.v, virtual, colors, running));
+
+          // The thinking cue owns the gap after the fold settles.
+          if (!running && !p.tailLayer) {
+            p.tail.innerHTML = p.v.id === "shipped" ? '<span class="nest"><i></i><i></i><i></i><i></i></span>' : "";
+            const slot = document.createElement("div");
+            slot.className = "slot"; slot.style.flex = "none";
+            p.tail.appendChild(slot);
+            p.tailLayer = makeLayer(slot, WORD, false);
+            p.tailSecs = document.createElement("span");
+            p.tailSecs.className = "secs";
+            p.tail.appendChild(p.tailSecs);
+          } else if (running && p.tailLayer) {
+            p.tail.innerHTML = ""; p.tailLayer = null;
+          }
+          if (p.tailLayer) {
+            paint(p.tailLayer, p.v, virtual, colors, true);
+            const secs = Math.floor(loop - FOLD_END);
+            p.tailSecs.textContent = secs >= 3 ? `${secs}s` : "";
+          }
+          paint(p.stillLayer, p.v, virtual, colors, true);
+        }
+        requestAnimationFrame(frame);
+      }
+
+      const accentSel = document.getElementById("accent");
+      for (const name of Object.keys(ACCENTS)) accentSel.add(new Option(name, name));
+      const params = new URLSearchParams(location.search);
+      document.documentElement.dataset.theme = params.get("theme") || "dark";
+      document.getElementById("theme").value = document.documentElement.dataset.theme;
+      accentSel.value = params.get("accent") || "green";
+      document.getElementById("theme").onchange = (e) => (document.documentElement.dataset.theme = e.target.value);
+      document.getElementById("speed").oninput = (e) => {
+        speedScale = +e.target.value;
+        document.getElementById("speedOut").textContent = speedScale.toFixed(2) + "×";
+      };
+      document.getElementById("slow").onchange = (e) => (timeScale = e.target.checked ? 0.25 : 1);
+      if (params.get("only")) phones.forEach((p) => { if (p.v.id !== params.get("only")) p.fig.remove(); });
+      document.fonts.ready.then(() => {
+        phones.forEach((p) => measure(p.stillLayer));
+        requestAnimationFrame(frame);
+      });
+    </script>
+  </body>

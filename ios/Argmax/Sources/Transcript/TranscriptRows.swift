@@ -226,17 +226,16 @@ struct TranscriptToolsRow: View {
     }
 }
 
-/// The collapsed line of a fold: the running mark, up to a few tool icons,
-/// and the headline. Each piece changes on its own clock while a turn
-/// works, so the label owns the pacing: the headline dwells long enough
-/// that a boundary's intermediate wording never paints, the mark keys on
-/// the live tail rather than the in-flight call, and what does change
-/// fades rather than snapping.
+/// The collapsed line of a fold: up to a few tool icons and the headline,
+/// which carries the reading wave while a call runs. Each piece changes on
+/// its own clock while a turn works, so the label owns the pacing: the
+/// headline dwells long enough that a boundary's intermediate wording never
+/// paints, and what does change fades rather than snapping.
 struct TranscriptFoldLabel: View {
     let tools: [TranscriptTool]
     let summary: String
-    /// A call in flight in this fold, and the only thing that lights the
-    /// mark. The fold speaks for work it is doing; the gap between one call
+    /// A call in flight in this fold, and the only thing that moves the
+    /// headline. The fold speaks for work it is doing; the gap between one call
     /// and the next belongs to the thinking cue under the transcript
     /// (`TranscriptThinkingLabel`), which appears exactly when no tool is
     /// running. Keying this on the live tail instead covered that gap too,
@@ -251,14 +250,12 @@ struct TranscriptFoldLabel: View {
     var body: some View {
         TranscriptDwelledValue(value: Shown(summary: summary, live: running, icons: iconTools)) { shown in
             HStack(spacing: Spacing.snug) {
-                if shown.live {
-                    WorkingNest(size: 16).transition(.opacity)
-                }
                 ForEach(shown.icons) { tool in
                     TranscriptToolIcon(name: tool.name, activity: tool.activity, state: tool.activityState)
                         .transition(.opacity)
                 }
                 Text(shown.summary)
+                    .readingWave(shown.live)
                     .lineLimit(lineLimit)
                     .contentTransition(.opacity)
                     .frame(maxWidth: .infinity, alignment: .leading)

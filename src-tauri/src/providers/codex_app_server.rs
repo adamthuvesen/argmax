@@ -29,9 +29,9 @@ use super::normalizer::ProviderOutputStream;
 use super::runtime::{
     BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType, ProviderRuntimeHandle,
 };
-use super::{mcp_injection, PermissionMode, ProviderId, ProviderLaunchInput};
 #[cfg(test)]
 use super::AgentMode;
+use super::{mcp_injection, PermissionMode, ProviderId, ProviderLaunchInput};
 use crate::approvals::service::ApprovalService;
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::time::now_iso;
@@ -1682,11 +1682,7 @@ mod tests {
             computer_use
         );
 
-        let turn = turn_params(
-            &routed_input,
-            "thread-1",
-            routed_input.prompt.clone(),
-        );
+        let turn = turn_params(&routed_input, "thread-1", routed_input.prompt.clone());
         let prompt = turn["input"][0]["text"].as_str().expect("turn prompt");
         let argmax = prompt.find("Argmax MCP tools").expect("Argmax route");
         let generic = prompt

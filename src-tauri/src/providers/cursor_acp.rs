@@ -43,9 +43,9 @@ use super::runtime::{
 };
 use super::subagent_trace::cursor_project_slug;
 use super::unified_diff::{unified_diff, DEFAULT_CONTEXT};
-use super::{mcp_injection, PermissionMode, ProviderId, ProviderLaunchInput};
 #[cfg(test)]
 use super::AgentMode;
+use super::{mcp_injection, PermissionMode, ProviderId, ProviderLaunchInput};
 use crate::approvals::service::ApprovalService;
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::time::now_iso;

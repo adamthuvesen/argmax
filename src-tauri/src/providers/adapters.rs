@@ -1,9 +1,9 @@
+#[cfg(test)]
+use super::AgentMode;
 use super::{
     mcp_injection, ApprovalSupport, PermissionMode, ProviderId, ProviderLaunchInput,
     ReasoningEffort,
 };
-#[cfg(test)]
-use super::AgentMode;
 use crate::session_control::SessionLaunchProcessConfig;
 
 const CLAUDE_BYPASS_PERMISSION_ARGS: &[&str] = &["--permission-mode", "bypassPermissions"];

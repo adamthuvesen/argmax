@@ -2424,10 +2424,7 @@ impl ProviderSessionService {
         } else {
             None
         };
-        if let Err(error) = handle
-            .steer(&prompt)
-            .await
-        {
+        if let Err(error) = handle.steer(&prompt).await {
             if !matches!(&error, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "STEER_DELIVERY_UNKNOWN")
             {
                 if let Some(id) = inbox_id {

@@ -5,6 +5,8 @@
 //! stream plus a real permission response endpoint, so Argmax can preserve the
 //! existing JSON normalizer while answering the exact provider-owned gate.
 
+#[cfg(test)]
+use super::AgentMode;
 use super::{
     adapters::get_provider_definition,
     environment::build_provider_environment,
@@ -16,8 +18,6 @@ use super::{
     },
     PermissionMode, ProviderId, ProviderLaunchInput,
 };
-#[cfg(test)]
-use super::AgentMode;
 use crate::{
     approvals::service::ApprovalService,
     error::{ArgmaxError, ArgmaxResult},

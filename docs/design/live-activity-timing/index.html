@@ -78,6 +78,387 @@
       // Each event is `{ at, kind, ... }` in ms from the send. Segments are the
       // wording `summarizeToolGroup` would produce for one activity kind.
       const STREAMS = {
+        // Real turns, pulled from the app's own event log (command.started /
+        // command.completed with their timestamps). Note the bursts: several
+        // calls land in the same millisecond, then nothing for ten seconds.
+
+        "real-c50454f0": {
+                "label": "Real turn: parallel bursts (26 calls)",
+                "events": [
+                        {
+                                "at": 0,
+                                "kind": "tool.start",
+                                "icon": "search",
+                                "seg": "used a tool",
+                                "preview": "mcp__engram__recall"
+                        },
+                        {
+                                "at": 61,
+                                "kind": "tool.start",
+                                "icon": "search",
+                                "seg": "searched the code",
+                                "preview": "mcp__argmax__learnings_search"
+                        },
+                        {
+                                "at": 107,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 213,
+                                "kind": "tool.start",
+                                "icon": "search",
+                                "seg": "used a tool",
+                                "preview": "mcp__argmax__sources_list"
+                        },
+                        {
+                                "at": 288,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 644,
+                                "kind": "tool.start",
+                                "icon": "search",
+                                "seg": "used a tool",
+                                "preview": "mcp__argmax__arc_status"
+                        },
+                        {
+                                "at": 705,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 910,
+                                "kind": "tool.start",
+                                "icon": "search",
+                                "seg": "searched the code",
+                                "preview": "search"
+                        },
+                        {
+                                "at": 1108,
+                                "kind": "tool.start",
+                                "icon": "file",
+                                "seg": "read files",
+                                "preview": "read"
+                        },
+                        {
+                                "at": 1578,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 1578,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 5562,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 11307,
+                                "kind": "tool.start",
+                                "icon": "search",
+                                "seg": "searched the code",
+                                "preview": "search"
+                        },
+                        {
+                                "at": 11427,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 11687,
+                                "kind": "tool.start",
+                                "icon": "search",
+                                "seg": "searched the code",
+                                "preview": "search"
+                        },
+                        {
+                                "at": 11802,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 12062,
+                                "kind": "tool.start",
+                                "icon": "file",
+                                "seg": "read files",
+                                "preview": "read"
+                        },
+                        {
+                                "at": 12222,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 12222,
+                                "kind": "tool.start",
+                                "icon": "search",
+                                "seg": "searched the code",
+                                "preview": "search"
+                        },
+                        {
+                                "at": 12590,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 12679,
+                                "kind": "tool.start",
+                                "icon": "search",
+                                "seg": "used a tool",
+                                "preview": "mcp__engram__inspect"
+                        },
+                        {
+                                "at": 12910,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 18370,
+                                "kind": "tool.start",
+                                "icon": "search",
+                                "seg": "searched the code",
+                                "preview": "search"
+                        },
+                        {
+                                "at": 19578,
+                                "kind": "tool.start",
+                                "icon": "search",
+                                "seg": "searched the code",
+                                "preview": "search"
+                        },
+                        {
+                                "at": 19578,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 19578,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 19578,
+                                "kind": "tool.start",
+                                "icon": "file",
+                                "seg": "read files",
+                                "preview": "read"
+                        },
+                        {
+                                "at": 19578,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 19578,
+                                "kind": "tool.start",
+                                "icon": "search",
+                                "seg": "searched the code",
+                                "preview": "search"
+                        },
+                        {
+                                "at": 19580,
+                                "kind": "tool.start",
+                                "icon": "search",
+                                "seg": "searched the code",
+                                "preview": "search"
+                        },
+                        {
+                                "at": 19580,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 19580,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 30953,
+                                "kind": "tool.start",
+                                "icon": "file",
+                                "seg": "read files",
+                                "preview": "read"
+                        },
+                        {
+                                "at": 30953,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 30953,
+                                "kind": "tool.start",
+                                "icon": "file",
+                                "seg": "read files",
+                                "preview": "read"
+                        },
+                        {
+                                "at": 30953,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 30953,
+                                "kind": "tool.start",
+                                "icon": "file",
+                                "seg": "read files",
+                                "preview": "read"
+                        },
+                        {
+                                "at": 30953,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 30953,
+                                "kind": "tool.start",
+                                "icon": "search",
+                                "seg": "searched the code",
+                                "preview": "search"
+                        },
+                        {
+                                "at": 30953,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 30953,
+                                "kind": "tool.start",
+                                "icon": "search",
+                                "seg": "searched the code",
+                                "preview": "search"
+                        },
+                        {
+                                "at": 30953,
+                                "kind": "tool.start",
+                                "icon": "file",
+                                "seg": "read files",
+                                "preview": "read"
+                        },
+                        {
+                                "at": 30953,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 30953,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 39081,
+                                "kind": "tool.start",
+                                "icon": "search",
+                                "seg": "searched the code",
+                                "preview": "search"
+                        },
+                        {
+                                "at": 39081,
+                                "kind": "tool.start",
+                                "icon": "file",
+                                "seg": "read files",
+                                "preview": "read"
+                        },
+                        {
+                                "at": 39162,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 39162,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 39538,
+                                "kind": "tool.start",
+                                "icon": "file",
+                                "seg": "read files",
+                                "preview": "read"
+                        },
+                        {
+                                "at": 39582,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 39726,
+                                "kind": "tool.start",
+                                "icon": "search",
+                                "seg": "searched the code",
+                                "preview": "search"
+                        },
+                        {
+                                "at": 39876,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 41376,
+                                "kind": "answer"
+                        }
+                ]
+        },
+        "real-6d041243": {
+                "label": "Real turn: second session (7 calls)",
+                "events": [
+                        {
+                                "at": 0,
+                                "kind": "tool.start",
+                                "icon": "search",
+                                "seg": "used a tool",
+                                "preview": "Agent"
+                        },
+                        {
+                                "at": 378,
+                                "kind": "tool.start",
+                                "icon": "terminal",
+                                "seg": "ran commands",
+                                "preview": "Bash"
+                        },
+                        {
+                                "at": 805,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 13181,
+                                "kind": "tool.start",
+                                "icon": "search",
+                                "seg": "used a tool",
+                                "preview": "Skill"
+                        },
+                        {
+                                "at": 13299,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 15489,
+                                "kind": "tool.start",
+                                "icon": "search",
+                                "seg": "searched the code",
+                                "preview": "ToolSearch"
+                        },
+                        {
+                                "at": 15599,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 20236,
+                                "kind": "tool.start",
+                                "icon": "search",
+                                "seg": "used a tool",
+                                "preview": "WebFetch"
+                        },
+                        {
+                                "at": 20546,
+                                "kind": "tool.start",
+                                "icon": "search",
+                                "seg": "searched the code",
+                                "preview": "WebSearch"
+                        },
+                        {
+                                "at": 27706,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 30039,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 35957,
+                                "kind": "tool.start",
+                                "icon": "terminal",
+                                "seg": "ran commands",
+                                "preview": "Bash"
+                        },
+                        {
+                                "at": 38924,
+                                "kind": "tool.end"
+                        },
+                        {
+                                "at": 40424,
+                                "kind": "answer"
+                        }
+                ]
+        },
         "claude-edits": {
           label: "Claude, edit-heavy turn",
           events: [
@@ -188,11 +569,25 @@
           handoff: "overlap",
         },
         {
-          id: "H", name: "H · Baton", pick: true,
+          id: "H", name: "H · Baton",
           why: "G, plus the band is the baton: on every hand-off the arriving line starts a fresh pass from its own left edge, so the light visibly moves from the verb down to the tool line and back. Between hand-offs the phase keeps running off the wall clock.",
           thinkFirstBeat: 600, thinkGap: 1000, thinkAdaptive: true, thinkMinVisible: 0, thinkYieldsInstantly: true,
           commitEvery: 500, commitDwell: 800, previewDwell: 1000, change: "segment", softExit: 140,
           handoff: "baton",
+        },
+        {
+          id: "I", name: "I · Wording on kind change only",
+          why: "H, but the line re-words only when the *kind* of work changes — read → edit → command. Counts stop ticking mid-turn and settle when the group does, so \"read 3 files\" never becomes \"read 4 files\" while you watch.",
+          thinkFirstBeat: 600, thinkGap: 1000, thinkAdaptive: true, thinkMinVisible: 0, thinkYieldsInstantly: true,
+          commitEvery: 500, commitDwell: 800, previewDwell: 1000, change: "segment", softExit: 140,
+          handoff: "baton", wordOn: "kind",
+        },
+        {
+          id: "K", name: "K · One line per burst", pick: true,
+          why: "I, plus calls that start within 800ms of each other count as one burst, and a wording holds 1.5s: the line names the burst once and holds until the next one. This is what the real streams need — they land four to six calls in the same millisecond.",
+          thinkFirstBeat: 600, thinkGap: 1000, thinkAdaptive: true, thinkMinVisible: 0, thinkYieldsInstantly: true,
+          commitEvery: 500, commitDwell: 1500, previewDwell: 1200, change: "segment", softExit: 140,
+          handoff: "baton", wordOn: "kind", burstWindow: 800,
         },
       ];
 
@@ -258,6 +653,11 @@
           pane.lastEventAt = event.at;
           if (event.kind === "tool.start") {
             if (pane.lastToolEndAt !== null) pane.gaps.push(event.at - pane.lastToolEndAt);
+            // A burst is one piece of work: calls that start together get one
+            // line, not one line each.
+            const window = pane.variant.burstWindow ?? 0;
+            pane.inBurst = window > 0 && pane.lastStartAt !== undefined && event.at - pane.lastStartAt <= window;
+            pane.lastStartAt = event.at;
             pane.running = true;
             pane.icon = event.icon;
             pane.preview = event.preview;
@@ -276,7 +676,13 @@
 
         // --- what the line shows: coalesced commits with a dwell.
         const want = { segs: pane.segs, icon: pane.icon, preview: pane.preview };
-        const same = JSON.stringify(want) === JSON.stringify({ segs: pane.shown.segs, icon: pane.shown.icon, preview: pane.shown.preview });
+        // What counts as "the line already says this": every word, or — when
+        // the wording is keyed on the kind of work — the kinds and the icon.
+        const identity = (state) =>
+          v.wordOn === "kind"
+            ? JSON.stringify([state.segs.map((seg) => seg.split(" ")[0]), state.icon])
+            : JSON.stringify([state.segs, state.icon, state.preview]);
+        const same = identity(want) === identity(pane.shown) || (pane.inBurst && v.burstWindow);
         if (!same) {
           if (v.commitEvery === 0) {
             commit(pane, want, now);
@@ -310,7 +716,7 @@
 
         // Two live lines in one frame is the flash the user sees.
         if (pane.thinkingSince !== null && pane.running) pane.metrics.doubles += 1;
-        if (pane.thinkingSince !== null) pane.metrics.thinkingMs += 16;
+        if (pane.thinkingSince !== null) pane.metrics.thinkingMs += 50;
 
         // Exactly one line owns the beat: a running tool, else the cue, else
         // nobody. Every change of owner is a hand-off.
@@ -546,6 +952,7 @@
       streamSelect.onchange = reset;
       document.getElementById("speed").onchange = (e) => { speed = Number(e.target.value); reset(); };
       document.getElementById("theme").onchange = (e) => { document.documentElement.dataset.theme = e.target.value; };
+      window.__variants = VARIANTS;   // live tuning from the console
       window.__panes = () => panes.map((p) => ({ variant: p.variant.id, ...p.metrics }));
       // Deterministic pass for a script: reset, then step every pane over the
       // whole stream on a fixed 16ms grid and hand back the metrics. A browser
@@ -556,7 +963,9 @@
         reset();
         const stream = STREAMS[streamId];
         const end = stream.events[stream.events.length - 1].at + 2500;
-        for (let now = 0; now <= end; now += 16) {
+        // 50ms steps: the rules all have 100ms-plus thresholds, and a 16ms
+        // grid over ten panes spends its time in layout reads instead.
+        for (let now = 0; now <= end; now += 50) {
           for (const pane of panes) step(pane, stream, now);
         }
         return window.__panes();

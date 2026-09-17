@@ -51,6 +51,29 @@ Exactly one line is live at a time, and every change of owner is a hand-off:
 | answer streaming, or a card waiting | neither |
 | turn settled | neither; nothing is left animating |
 
+## Real streams
+
+`real-c50454f0` and `real-6d041243` are pulled from the app's own event log
+(`command.started` / `command.completed` with their timestamps, trimmed to the
+first 40s of a turn). They are burstier than anything worth inventing: four to
+six calls start in the *same millisecond*, then nothing happens for eight to
+sixteen seconds. That is the churn the pacing rules have to absorb — a line that
+re-words per event is re-wording per burst member.
+
+On `real-c50454f0` (40s, 26 wording changes today):
+
+| rules | changes |
+| --- | --- |
+| today | 26 |
+| A–I (coalesce + dwell + kind-only wording) | 22 |
+| K, burst 400ms / dwell 1000ms | 17 |
+| **K, burst 800ms / dwell 1500ms** | **15** |
+| K, burst 1500ms / dwell 2500ms | 15 |
+
+15 is the floor: one change every ~2.7s, and every one of them is a real change
+of *kind* — search → read → edit → command. Holding longer than 1.5s buys
+nothing, which is where K's numbers come from.
+
 ## Metrics
 
 `pops` counts Thinking lifetimes under 800ms; `both` counts frames with a

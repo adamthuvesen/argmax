@@ -228,9 +228,9 @@ describe("ToolCallGroupBubble", () => {
       <ToolCallGroupBubble group={buildToolCallGroup([edit, running])} />
     );
 
-    // Both would otherwise claim the trailing slot and split it, parking a live
-    // animation mid-row beside a total that is still growing.
-    expect(screen.getByLabelText("running")).toBeInTheDocument();
+    // A still-growing count would read as the finality of a result; the
+    // headline says the group is working instead.
+    expect(screen.getByRole("button", { busy: true })).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: /Group edits:/ })).toBeNull();
 
     rerender(
@@ -239,7 +239,7 @@ describe("ToolCallGroupBubble", () => {
       />
     );
 
-    expect(screen.queryByLabelText("running")).toBeNull();
+    expect(screen.queryByRole("button", { busy: true })).toBeNull();
     expect(
       screen.getByRole("img", { name: "Group edits: 2 lines added, 2 lines removed" })
     ).toBeInTheDocument();
@@ -329,7 +329,7 @@ describe("ToolCallGroupBubble", () => {
     );
     expect(screen.getByRole("button", { name: "Read files: Read second.ts" })).toBe(header);
     expect(header.parentElement).toHaveAttribute("data-status", "done");
-    expect(screen.queryByLabelText("running")).toBeNull();
+    expect(screen.queryByRole("button", { busy: true })).toBeNull();
 
     await act(() => vi.advanceTimersByTime(399));
     expect(screen.getByRole("button", { name: "Read files: Read second.ts" })).toBeInTheDocument();
@@ -415,7 +415,7 @@ describe("ToolCallGroupBubble", () => {
     );
     const header = screen.getByRole("button", { name: "Read files: Read second.ts" });
     expect(header.parentElement).toHaveAttribute("data-status", "done");
-    expect(screen.queryByLabelText("running")).toBeNull();
+    expect(screen.queryByRole("button", { busy: true })).toBeNull();
     fireEvent.click(header);
     fireEvent.click(screen.getByRole("button", { name: "Read second.ts" }));
     expect(screen.getByText("Contents of second")).toBeInTheDocument();

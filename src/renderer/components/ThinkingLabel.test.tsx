@@ -43,11 +43,6 @@ describe("<ThinkingLabel />", () => {
     expect(THINKING_WORDS).toContain("Yak-shaving");
   });
 
-  it("shows the shared live-work mark", () => {
-    render(<ThinkingLabel />);
-    expect(screen.getByTestId("thinking-label").querySelector('[data-working="true"]')).not.toBeNull();
-  });
-
   it("stays quiet for a short gap and then counts the wait", () => {
     // A ten-to-thirty second relaunch is the case this exists for: a static word
     // reads as a frozen pane, and the count is what says the app is still on it.

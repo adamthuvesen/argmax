@@ -225,6 +225,15 @@ confirmed running.
 Anything new that loops forever should animate `transform`/`opacity` on an HTML
 element or its pseudo-elements.
 
+The reading wave ([reading-wave.css](../src/renderer/styles/reading-wave.css)) is
+the deliberate exception on a live surface: its band is a gradient painted through
+the text, so each frame repaints the words it covers. It runs only on a line whose
+work is running. Measured 2026-09-17 in a native WKWebView over 8 s: one waving
+line cost 0.3 CPU-s of WebContent plus 0.3 of the GPU process, five cost 0.5 +
+0.7, eighty cost 1.3 + 5.2; the same text without the wave cost 0.0. Promoting
+the text to its own layer would composite it, but puts it on a different pixel
+phase from its row on a resampled display.
+
 Renderer CPU does not depend on the Rust build profile; the release build idles
 at 3.2% with no session running, matching the debug measurement.
 

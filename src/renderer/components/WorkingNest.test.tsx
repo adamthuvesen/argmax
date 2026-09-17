@@ -116,7 +116,7 @@ describe("<WorkingNest />", () => {
   });
 
   // The size arrives as a custom property rather than an inline width, so a
-  // stylesheet can still resize the mark (`.thinking-working-nest` tracks the
+  // stylesheet can still resize the mark (a row can track the
   // chat type scale). An inline width would outrank every rule that tried.
   it("passes its size as a custom property, not an inline dimension", () => {
     const { container } = render(<WorkingNest active size={18} />);

@@ -349,7 +349,8 @@ function ToolCallGroupBubbleInner({
             type="button"
             aria-expanded={expanded}
             aria-controls={detailsId}
-            aria-label={`${activityHeadline}${previewText ? ": " + previewText : ""}${activityStatus === "running" ? " (running)" : ""}`}
+            aria-label={`${activityHeadline}${previewText ? ": " + previewText : ""}`}
+            aria-busy={activityStatus === "running" ? true : undefined}
             onClick={() => toggleExpanded(!expanded)}
           >
             {group.tools.length > 0 ? (

@@ -36,7 +36,7 @@
   vertical-align: middle;
   /* The `size` prop arrives as an inline `--working-nest-size`, and a class can
      never outrank an inline declaration — so a stylesheet that wants the mark
-     to track something else (`.thinking-working-nest` follows the chat type
+     to track something else (the mark in a row that follows the chat type
      scale) sets `--working-nest-size-override`, which is consulted first. The
      old `<svg width>` was a presentation attribute that any rule outranked;
      this restores that ordering explicitly. */

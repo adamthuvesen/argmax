@@ -1433,7 +1433,7 @@ describe("SessionConversation — streaming & composer", () => {
     expect(onSendSessionInput.mock.calls[0]).toHaveLength(5);
   });
 
-  it("renders a curated thinking word with the shared live-work mark", () => {
+  it("renders a curated thinking word", () => {
     const { container } = renderConversation(
       baseSession({ provider: "codex", state: "running" }),
       [event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")]
@@ -1444,7 +1444,6 @@ describe("SessionConversation — streaming & composer", () => {
     expect(
       THINKING_WORDS.some((word) => screen.getByTestId("thinking-label").textContent?.startsWith(word))
     ).toBe(true);
-    expect(screen.getByTestId("thinking-label").querySelector('[data-working="true"]')).not.toBeNull();
     expect(container.querySelector(".thinking-label")).not.toBeNull();
   });
 

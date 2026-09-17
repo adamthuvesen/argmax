@@ -11,6 +11,7 @@ export type DeleteOldChatsResult = Bindings.DeleteOldChatsResult;
 export type DetectedIde = Bindings.DetectedIde;
 export type DiagnosticsReport = Bindings.DiagnosticsReport;
 export type IdeId = Bindings.IdeId;
+export type OpenFileApp = Bindings.OpenFileApp;
 export type IpcChannelStats = Bindings.IpcChannelStats;
 export type DebugSnapshot = Bindings.DebugSnapshot;
 export type PerformanceCapture = Bindings.PerformanceCapture;
@@ -635,6 +636,7 @@ export interface ArgmaxApi {
   system: {
     confirm: (message: string) => Promise<boolean>;
     openPath: (input: { path: string; cwd?: string }) => Promise<{ ok: true }>;
+    openFileIn: (input: { path: string; cwd: string; app: OpenFileApp }) => Promise<{ ok: true }>;
     listDetectedIdes: () => Promise<DetectedIde[]>;
     diagnostics: () => Promise<DiagnosticsReport>;
     debugSnapshot: (input?: { afterLogSeq?: number }) => Promise<DebugSnapshot>;

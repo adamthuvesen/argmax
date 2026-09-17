@@ -669,6 +669,14 @@ async systemOpenPath(input: SystemOpenPathInput) : Promise<Result<SystemOk, Argm
     else return { status: "error", error: e  as any };
 }
 },
+async systemOpenFileIn(input: SystemOpenFileInInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("system_open_file_in", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async systemListDetectedIdes(input: SystemListDetectedIdesInput) : Promise<DetectedIde[]> {
     return await TAURI_INVOKE("system_list_detected_ides", { input });
 },
@@ -1897,6 +1905,12 @@ export type MultitaskLaunched = { sessionId: string; workspaceId: string; taskLa
 export type NonEmptyString = string
 export type NullableExpectedMtimeMs = number | null
 export type NumericSummary = { median: number; p95: number; peak: number }
+/**
+ * Where `system:open-file-in` hands a file: Finder reveals it, the editors
+ * open it. Terminal apps are left out on purpose — `open -a Terminal <file>`
+ * runs the file as a script.
+ */
+export type OpenFileApp = "finder" | "vscode" | "cursor" | "windsurf" | "zed"
 export type OpenIdeChoice = "default" | "vscode" | "cursor" | "windsurf" | "zed" | "terminal" | "iterm"
 export type OpenPath = string
 export type PageExtraction = { tabId?: string; url: string; title: string; state?: string; metadata: PageMetadata; headings: PageHeading[]; sections: PageSection[]; tables: PageTable[]; links: PageLink[]; items?: PageItem[]; fields?: PageField[]; truncated: boolean }
@@ -2331,6 +2345,11 @@ afterLogSeq: number | null }
 export type SystemDiagnosticsInput = Record<string, never>
 export type SystemListDetectedIdesInput = Record<string, never>
 export type SystemOk = { ok: boolean }
+export type SystemOpenFileInInput = { path: OpenPath;
+/**
+ * Root the path must stay inside; relative paths resolve against it.
+ */
+cwd: NonEmptyString; app: OpenFileApp }
 export type SystemOpenPathInput = { path: OpenPath; cwd: NonEmptyString | null }
 export type SystemPerformanceCaptureInput = Record<string, never>
 export type SystemPerformanceStartInput = Record<string, never>

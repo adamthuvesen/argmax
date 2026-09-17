@@ -458,6 +458,7 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
         ? confirmDialog(message, { title: "Argmax", kind: "warning" })
         : Promise.resolve(window.confirm(message)),
       openPath: (input) => invokeCommand<{ ok: true }>("system:open-path", input),
+      openFileIn: (input) => invokeCommand<{ ok: true }>("system:open-file-in", input),
       listDetectedIdes: () => invokeCommand<DetectedIde[]>("system:list-detected-ides"),
       diagnostics: () => invokeCommand<DiagnosticsReport>("system:diagnostics"),
       debugSnapshot: (input) =>

@@ -1,5 +1,5 @@
 import { FileIcon, FolderIcon } from "@react-symbols/icons/utils";
-import { ChevronRight, ChevronsDownUp, RotateCw } from "lucide-react";
+import { ChevronRight, ChevronsDownUp, ExternalLink, FolderOpen, RotateCw } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -7,9 +7,19 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type JSX
+  type JSX,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent
 } from "react";
+import { createPortal } from "react-dom";
+import { errorMessage } from "../../shared/error.js";
+import type { DetectedIde, IdeId, OpenFileApp } from "../../shared/types.js";
+import { useAnchoredPopover, type AnchorPoint } from "../hooks/useAnchoredPopover.js";
+import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { buildFileTree, type TreeNode } from "../lib/fileTree.js";
+import { readStoredDefaultIde } from "../lib/ide.js";
+import { isRemoteBridge } from "../lib/tauriBridge.js";
+import { showErrorToast } from "../state/toast.js";
 import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
 import { LoadingLine } from "./LoadingLine.js";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
@@ -37,6 +47,22 @@ const INDENT_STEP = 12;
 /** Ancestor folders pinned above the scroll window, VS Code "sticky scroll"
  *  style. Capped so a deep path can't eat the viewport. */
 const STICKY_MAX_ROWS = 4;
+
+/** IDEs that can open a single file. Terminal and iTerm are not among them:
+ *  `open -a Terminal <file>` runs the file as a script. */
+const FILE_EDITOR_IDS: ReadonlySet<IdeId> = new Set<IdeId & OpenFileApp>(["vscode", "cursor", "windsurf", "zed"]);
+
+function isFileEditor(ide: DetectedIde): ide is DetectedIde & { id: IdeId & OpenFileApp } {
+  return FILE_EDITOR_IDS.has(ide.id);
+}
+
+/** Same rule as the sidebar's "Open in IDE": the default IDE from Settings,
+ *  else the only editor installed. */
+function editorForFiles(detected: DetectedIde[]): (DetectedIde & { id: IdeId & OpenFileApp }) | null {
+  const editors = detected.filter(isFileEditor);
+  const preferred = readStoredDefaultIde();
+  return editors.find((ide) => ide.id === preferred) ?? (editors.length === 1 ? (editors[0] ?? null) : null);
+}
 
 function flattenVisible(root: TreeNode, expanded: Set<string>): VisibleRow[] {
   const rows: VisibleRow[] = [];
@@ -191,6 +217,43 @@ export function WorkspaceTree({
 
   useEffect(() => () => resizeObserverRef.current?.disconnect(), []);
 
+  // Right-click on a row: reveal it in Finder or open it in the default IDE.
+  // Desktop only — over the remote bridge the host's Finder is out of reach.
+  const rootPath = state.rootPath;
+  const canOpenExternally = rootPath !== null && !isRemoteBridge();
+  const [rowMenu, setRowMenu] = useState<{ path: string; point: AnchorPoint } | null>(null);
+  const [detectedIdes, setDetectedIdes] = useState<DetectedIde[] | null>(null);
+  const rowMenuPopover = useAnchoredPopover({ open: rowMenu !== null, gutter: 0, capHeight: true });
+  const { anchorToPoint: anchorRowMenu, popoverRef: rowMenuRef } = rowMenuPopover;
+  const closeRowMenu = useCallback((): void => setRowMenu(null), []);
+  useDismissOnOutsideOrEscape(rowMenuRef, rowMenu !== null, closeRowMenu);
+
+  useEffect(() => {
+    anchorRowMenu(rowMenu?.point ?? null);
+    if (rowMenu) rowMenuRef.current?.querySelector<HTMLButtonElement>("[role=menuitem]:not(:disabled)")?.focus();
+  }, [anchorRowMenu, rowMenu, rowMenuRef]);
+
+  const openRowMenu = useCallback(
+    (path: string, point: AnchorPoint): void => {
+      setRowMenu({ path, point });
+      if (detectedIdes !== null || !window.argmax) return;
+      window.argmax.system
+        .listDetectedIdes()
+        .then(setDetectedIdes)
+        .catch(() => setDetectedIdes([]));
+    },
+    [detectedIdes]
+  );
+
+  const openRowIn = (app: OpenFileApp, appLabel: string): void => {
+    const menu = rowMenu;
+    closeRowMenu();
+    if (!menu || rootPath === null || !window.argmax) return;
+    window.argmax.system
+      .openFileIn({ path: menu.path, cwd: rootPath, app })
+      .catch((error: unknown) => showErrorToast(`Couldn't open in ${appLabel}. ${errorMessage(error)}`));
+  };
+
   const effectiveHeight = ownsHeight ? height : measuredHeight;
   const visibleRows = useMemo(() => flattenVisible(tree, expanded), [tree, expanded]);
   const sticky = useMemo(() => stickyBlockFor(visibleRows, scrollTop), [visibleRows, scrollTop]);
@@ -252,6 +315,54 @@ export function WorkspaceTree({
   // With a toolbar the explicit height belongs to the column wrapper; the
   // scroller flexes into the remainder.
   const bodyStyle = toolbar === undefined ? containerStyle : undefined;
+
+  const editor = detectedIdes === null ? null : editorForFiles(detectedIdes);
+  const rowMenuElement =
+    rowMenu && typeof document !== "undefined"
+      ? createPortal(
+          <ul
+            ref={rowMenuPopover.setPopover}
+            className="project-picker-popover workspace-tree-context-menu"
+            role="menu"
+            aria-label={`Actions for ${rowMenu.path}`}
+            data-browser-overlay="true"
+            style={rowMenuPopover.floatingStyles}
+          >
+            <li role="none">
+              <button
+                type="button"
+                role="menuitem"
+                className="project-picker-item"
+                onClick={() => openRowIn("finder", "Finder")}
+              >
+                <FolderOpen size={13} aria-hidden="true" />
+                Reveal in Finder
+              </button>
+            </li>
+            <li role="none">
+              <button
+                type="button"
+                role="menuitem"
+                className="project-picker-item"
+                disabled={editor === null}
+                title={
+                  detectedIdes !== null && editor === null
+                    ? "Set VS Code, Cursor, Windsurf, or Zed as the default IDE in Settings → Handoff"
+                    : undefined
+                }
+                onClick={() => {
+                  if (editor) openRowIn(editor.id, editor.label);
+                }}
+              >
+                <ExternalLink size={13} aria-hidden="true" />
+                {editor ? `Open in ${editor.label}` : "Open in IDE"}
+              </button>
+            </li>
+          </ul>,
+          document.body
+        )
+      : null;
+  const onRowContextMenu = canOpenExternally ? openRowMenu : undefined;
 
   const withToolbar = (body: JSX.Element): JSX.Element => {
     if (!toolbar) return body;
@@ -338,6 +449,7 @@ export function WorkspaceTree({
                   selectedPath={state.selectedPath}
                   onToggle={toggleDir}
                   onSelect={state.openFile}
+                  onContextMenu={onRowContextMenu}
                   pinned
                 />
               );
@@ -354,10 +466,12 @@ export function WorkspaceTree({
             selectedPath={state.selectedPath}
             onToggle={toggleDir}
             onSelect={state.openFile}
+            onContextMenu={onRowContextMenu}
           />
         ))}
         <div style={{ height: bottomPad }} aria-hidden="true" />
       </div>
+      {rowMenuElement}
     </div>
   );
 }
@@ -369,6 +483,7 @@ function TreeRow({
   selectedPath,
   onToggle,
   onSelect,
+  onContextMenu,
   pinned = false
 }: {
   node: TreeNode;
@@ -377,6 +492,7 @@ function TreeRow({
   selectedPath: string | null;
   onToggle: (path: string) => void;
   onSelect: (path: string) => void;
+  onContextMenu?: (path: string, point: AnchorPoint) => void;
   /** Copy of a row shown in the sticky ancestor block. */
   pinned?: boolean;
 }): JSX.Element {
@@ -385,6 +501,20 @@ function TreeRow({
     paddingLeft: INDENT_BASE + depth * INDENT_STEP,
     height: ROW_HEIGHT
   };
+  const menuHandlers = onContextMenu
+    ? {
+        onContextMenu: (event: ReactMouseEvent<HTMLButtonElement>): void => {
+          event.preventDefault();
+          onContextMenu(node.path, { x: event.clientX, y: event.clientY });
+        },
+        onKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
+          if (!((event.shiftKey && event.key === "F10") || event.key === "ContextMenu")) return;
+          event.preventDefault();
+          const rect = event.currentTarget.getBoundingClientRect();
+          onContextMenu(node.path, { x: rect.left, y: rect.bottom });
+        }
+      }
+    : undefined;
   if (node.kind === "dir") {
     return (
       <button
@@ -396,6 +526,7 @@ function TreeRow({
         style={indent}
         title={node.path}
         onClick={() => onToggle(node.path)}
+        {...menuHandlers}
       >
         <ChevronRight size={12} className={`workspace-tree-chevron${isOpen ? " expanded" : ""}`} />
         <span className="workspace-tree-icon" title={`Folder icon for ${node.name}`} aria-hidden="true">
@@ -417,6 +548,7 @@ function TreeRow({
       style={indent}
       title={node.path}
       onClick={() => onSelect(node.path)}
+      {...menuHandlers}
     >
       <span className="workspace-tree-chevron-spacer" aria-hidden="true" />
       <span className="workspace-tree-icon" title={`File icon for ${node.name}`} aria-hidden="true">

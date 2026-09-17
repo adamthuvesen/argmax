@@ -930,6 +930,28 @@ pub struct SystemOpenPathInput {
     pub cwd: Option<NonEmptyString>,
 }
 
+/// Where `system:open-file-in` hands a file: Finder reveals it, the editors
+/// open it. Terminal apps are left out on purpose — `open -a Terminal <file>`
+/// runs the file as a script.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "lowercase")]
+pub enum OpenFileApp {
+    Finder,
+    Vscode,
+    Cursor,
+    Windsurf,
+    Zed,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SystemOpenFileInInput {
+    pub path: OpenPath,
+    /// Root the path must stay inside; relative paths resolve against it.
+    pub cwd: NonEmptyString,
+    pub app: OpenFileApp,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SystemSetThemeInput {

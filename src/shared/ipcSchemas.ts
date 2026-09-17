@@ -85,6 +85,7 @@ export const IPC_CHANNELS = [
   "sources:delete",
   "connections:list",
   "system:open-path",
+  "system:open-file-in",
   "system:list-detected-ides",
   "system:diagnostics",
   "system:debug-snapshot",

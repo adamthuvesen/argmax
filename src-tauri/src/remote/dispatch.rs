@@ -28,6 +28,7 @@ use crate::state::AppState;
 pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
     "projects:pick-folder",
     "system:open-path",
+    "system:open-file-in",
     "system:diagnostics",
     "system:set-theme",
     // The default agent is mirrored into the desktop app's own app-data dir.

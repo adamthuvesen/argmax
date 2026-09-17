@@ -133,6 +133,34 @@ pub fn system_open_path(app: AppHandle, input: SystemOpenPathInput) -> ArgmaxRes
     Ok(SystemOk { ok: true })
 }
 
+// Async + `spawn_blocking` for the same reason as `workspaces:open-in-ide`:
+// `open -a` does not return until LaunchServices has launched a cold editor.
+#[tauri::command(rename = "system:open-file-in")]
+#[specta::specta]
+pub async fn system_open_file_in(input: SystemOpenFileInInput) -> ArgmaxResult<SystemOk> {
+    let target = resolve_open_target(input.path.as_str(), Some(input.cwd.as_str()))?;
+    let mut command = std::process::Command::new("open");
+    match input.app {
+        OpenFileApp::Finder => command.arg("-R"),
+        OpenFileApp::Vscode => command.args(["-a", "Visual Studio Code"]),
+        OpenFileApp::Cursor => command.args(["-a", "Cursor"]),
+        OpenFileApp::Windsurf => command.args(["-a", "Windsurf"]),
+        OpenFileApp::Zed => command.args(["-a", "Zed"]),
+    };
+    command.arg(&target);
+    let status = tauri::async_runtime::spawn_blocking(move || command.status())
+        .await
+        .map_err(|error| ArgmaxError::service("OPEN_FILE_IN_JOIN", error.to_string()))?
+        .map_err(|error| ArgmaxError::service("OPEN_FILE_IN_FAILED", error.to_string()))?;
+    if !status.success() {
+        return Err(ArgmaxError::service(
+            "OPEN_FILE_IN_FAILED",
+            format!("`open` exited with status {status}"),
+        ));
+    }
+    Ok(SystemOk { ok: true })
+}
+
 #[tauri::command(rename = "system:list-detected-ides")]
 #[specta::specta]
 pub async fn system_list_detected_ides(_input: SystemListDetectedIdesInput) -> Vec<DetectedIde> {

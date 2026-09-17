@@ -49,6 +49,8 @@ completed replies.
 
 `settings:preview-chat-cleanup` returns a fixed seven-day cutoff, a confirmation id, and the number of eligible chats. `settings:delete-old-chats` accepts that id and applies only the previewed candidate set. The deletion transaction rechecks activity and active work, and reports chats skipped because they changed after the preview.
 
+`system:open-file-in` takes `{ path, cwd, app }` and reveals the path in Finder (`app: "finder"`) or opens it in VS Code, Cursor, Windsurf, or Zed. The path must resolve inside `cwd`. Terminal apps are not accepted, because `open -a Terminal <file>` runs the file as a script. The Files view's right-click menu uses it, and the remote bridge does not support it.
+
 `connections:list` takes a provider and optional workspace id. It returns the MCP servers, plugins, and provider connectors available at that scope, plus the strongest authentication result the provider exposes. The handler runs provider health checks with a timeout and returns **Unknown** when a CLI does not report token validity.
 
 `usage:summary` takes `{ window: "24h" | "7d" | "30d", timeZone, provider? }` and returns the Usage page in one shape: totals, per-provider rows, the chart series, and the model and day breakdowns, plus the scan's progress. A `provider` narrows everything but the per-provider rows to that provider; Cursor keeps no local usage log and is rejected. A ledger that has completed before is swept inline so the answer is current; the first cold sweep runs in the background and the page polls. See [usage.md](usage.md).

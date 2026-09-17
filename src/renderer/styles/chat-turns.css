@@ -352,9 +352,11 @@
 }
 
 /* While the agent is actively thinking, the eyebrow is fully present and softly
-   pulses as one unit to read as live, in place of the generic Thinking indicator. */
+   pulses as one unit to read as live, in place of the generic Thinking indicator.
+   Same cadence and curve as the conversation notice's breathing pulse below, so
+   every "this is live" pulse in the app moves at one shared rhythm. */
 .thought-block[data-live="true"] .thought-block-eyebrow {
-  animation: thought-pulse 1600ms var(--ease) infinite;
+  animation: thought-pulse 2600ms cubic-bezier(0.45, 0, 0.55, 1) infinite;
   animation-play-state: var(--loop-play-state, running);
 }
 
@@ -648,7 +650,8 @@
    so the ramp reads as a sine wave with no visible turn. `--ease` is an
    ease-out — it snapped to full, coasted, then reversed at speed, which is
    what made this look rough. Slow and wide so the pulse is legible from the
-   corner of the eye without pulling focus. */
+   corner of the eye without pulling focus. The thought-block eyebrow pulse
+   above shares this exact duration and curve. */
 .conversation-notice[data-running="true"] .conversation-notice-text {
   color: var(--muted-strong);
   animation: conversation-notice-pulse 2600ms cubic-bezier(0.45, 0, 0.55, 1) infinite;
@@ -1011,7 +1014,7 @@
 }
 
 .tool-call-group-eyebrow-label {
-  font-family: var(--font-ui);
+  font-family: var(--font-prose);
   font-size: var(--text-sm);
   font-weight: calc(400 + var(--font-weight-offset));
   letter-spacing: 0;
@@ -1023,7 +1026,7 @@
    shade, the same way a row's target steps back from its verb. One grammar:
    the verb says what happened, the dim remainder says to what. */
 .tool-call-group-eyebrow-detail {
-  font-family: var(--font-ui);
+  font-family: var(--font-prose);
   font-size: var(--text-sm);
   color: var(--chip-ink);
 }
@@ -1151,7 +1154,7 @@
   border: 0;
   background: transparent;
   cursor: default;
-  font-family: inherit;
+  font-family: var(--font-prose);
   font-size: var(--text-sm);
   line-height: 1.4;
   color: var(--muted);
@@ -1226,7 +1229,7 @@ button.tool-call-row-button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: inherit;
+  font-family: var(--font-prose);
   font-size: var(--text-sm);
   color: var(--muted);
 }
@@ -1376,7 +1379,7 @@ button.tool-call-row-button {
   background: transparent;
   box-shadow: none;
   cursor: pointer;
-  font-family: var(--font-ui);
+  font-family: var(--font-prose);
   line-height: 1.4;
   color: inherit;
 }

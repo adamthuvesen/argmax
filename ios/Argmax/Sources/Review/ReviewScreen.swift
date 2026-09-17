@@ -41,6 +41,14 @@ struct ReviewScreen: View {
         initialDiffPath: String? = nil,
         onBack: @escaping () -> Void
     ) {
+        // Agents link files by absolute path, and `workspace:read-file` takes
+        // only paths relative to the checkout.
+        let initialFilePath = initialFilePath.map {
+            TranscriptProjection.relativePath($0, workspacePath: workspace.path)
+        }
+        let initialDiffPath = initialDiffPath.map {
+            TranscriptProjection.relativePath($0, workspacePath: workspace.path)
+        }
         self.workspace = workspace
         self.initialFilePath = initialFilePath
         self.initialDiffPath = initialDiffPath

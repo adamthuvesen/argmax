@@ -39,6 +39,31 @@ pub(super) struct RegistryInner {
     /// Recipients of rows just written to `session_messages`. A blocked
     /// `session_wait` subscribes to this rather than polling the table.
     pub(super) inbox: broadcast::Sender<String>,
+    /// Sessions blocked in `session_wait`, counted per session. A message for
+    /// one of them is left to the wait rather than steered into its turn: the
+    /// steer would claim the row the wait woke up to collect.
+    pub(super) inbox_waiters: Mutex<HashMap<String, usize>>,
+}
+
+pub struct InboxWaitGuard {
+    inner: Arc<RegistryInner>,
+    session_id: String,
+}
+
+impl Drop for InboxWaitGuard {
+    fn drop(&mut self) {
+        let mut waiters = self
+            .inner
+            .inbox_waiters
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(count) = waiters.get_mut(&self.session_id) {
+            *count -= 1;
+            if *count == 0 {
+                waiters.remove(&self.session_id);
+            }
+        }
+    }
 }
 
 /// What an agent has asked to happen once its own turn settles. Both of these
@@ -321,6 +346,29 @@ impl SessionLaunchRegistry {
 
     pub fn subscribe_inbox(&self) -> broadcast::Receiver<String> {
         self.inner.inbox.subscribe()
+    }
+
+    /// Mark `session_id` as blocked in `session_wait` until the guard drops.
+    pub fn wait_on_inbox(&self, session_id: &str) -> InboxWaitGuard {
+        *self
+            .inner
+            .inbox_waiters
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .entry(session_id.to_string())
+            .or_default() += 1;
+        InboxWaitGuard {
+            inner: Arc::clone(&self.inner),
+            session_id: session_id.to_string(),
+        }
+    }
+
+    pub fn is_waiting_on_inbox(&self, session_id: &str) -> bool {
+        self.inner
+            .inbox_waiters
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .contains_key(session_id)
     }
 
     pub fn cancel_after_turn(&self, session_id: &str) {

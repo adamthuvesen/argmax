@@ -150,6 +150,9 @@ An uncertain acknowledgement is marked delivery-unknown and must not automatical
 retry. Stop can still cancel the running provider while steering is pending.
 An inbox-backed message is claimed before steering so `inbox_read` cannot deliver
 it again while acknowledgement is pending. Definite rejection releases that claim.
+Messages from other sessions steer automatically on the same path, and a definite
+rejection returns them to the ordinary queue rather than leaving them unsent (see
+[agent-tools.md](agent-tools.md#the-inbox)).
 
 The ignored `live_codex_turn_consumes_steering_without_cancellation` and
 `live_claude_turn_consumes_steering_without_cancellation` Rust tests verify the

@@ -753,9 +753,10 @@ chat's project can be resumed."
     #[tool(
         name = "session_message",
         description = "Send a message into another Argmax session, as if the user had typed it \
-        there. An idle session starts a turn on it. One that is mid-turn is flagged at its next \
-        tool result and can collect the message mid-turn with inbox_read; otherwise it arrives \
-        when that turn ends, which the result's `queued` field reports. You cannot message \
+        there. An idle session starts a turn on it. A running Claude or Codex turn takes it as \
+        steering without stopping. Any other mid-turn session is flagged at its next tool result \
+        and can collect it with inbox_read; otherwise it arrives when that turn ends, which the \
+        result's `queued` field reports. You cannot message \
         yourself, and nothing comes back here — read the reply with session_read, or wait for one \
         with session_wait. Message other sessions on your own initiative when coordinating work \
         needs it."

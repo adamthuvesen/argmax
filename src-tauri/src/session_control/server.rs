@@ -76,6 +76,7 @@ impl SessionLaunchServer {
                 database,
                 pending_after_turn: Mutex::new(HashMap::new()),
                 inbox: broadcast::channel(INBOX_BROADCAST_CAPACITY).0,
+                inbox_waiters: Mutex::new(HashMap::new()),
             }),
         });
         Ok((

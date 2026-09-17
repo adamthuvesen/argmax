@@ -163,7 +163,7 @@ pub(super) async fn message_session(
     };
     registry.notify_inbox(&action.session_id);
     let result = providers
-        .send_input_with_origin(
+        .send_agent_message(
             ProvidersSendInput {
                 agent_references: None,
                 session_id: target,
@@ -176,17 +176,18 @@ pub(super) async fn message_session(
                 agent_mode: None,
                 attachments: None,
             },
-            Some(MessageOrigin {
+            MessageOrigin {
                 session_id: parent.session_id.clone(),
                 label,
                 kind: MESSAGE_KIND.to_string(),
                 message_id: Some(message_id.clone()),
-            }),
+            },
         )
         .await
         .map_err(argmax_protocol_error)?;
-    // A message that reached the recipient as a turn has been delivered; one
-    // that is still queued has not, and stays collectable from the inbox.
+    // A message that reached the recipient as a turn or as steering has been
+    // delivered; one that is still queued has not, and stays collectable from
+    // the inbox.
     if !result.queued {
         let connection = database.connection();
         if let Err(error) =

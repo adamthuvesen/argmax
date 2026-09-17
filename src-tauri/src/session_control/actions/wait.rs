@@ -47,6 +47,7 @@ pub(super) async fn wait_for_sessions(
     );
     let mut states = providers.subscribe_session_states();
     let mut inbox = registry.subscribe_inbox();
+    let _waiting = registry.wait_on_inbox(&parent.session_id);
 
     // Naming ids asks a question about those sessions; omitting them asks
     // "what have my children done that I have not been told about". Only the

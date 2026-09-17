@@ -809,7 +809,8 @@ pub struct SessionRenamed {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MessageDelivery {
     pub session_id: String,
-    /// True when the target was mid-turn and the message waits for turn end.
+    /// True when the target was mid-turn, could not be steered, and the
+    /// message waits for turn end.
     pub queued: bool,
 }
 

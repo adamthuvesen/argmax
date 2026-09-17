@@ -356,7 +356,7 @@ describe("ArcPage", () => {
     expect(arcsStub.launchCoordinator).not.toHaveBeenCalled();
   });
 
-  it("shows working members as chips, never the coordinator, and reads the caps from the backend", async () => {
+  it("lists working members, never the coordinator, and reads the caps from the backend", async () => {
     arcsStub.get.mockResolvedValue({
       arc: arcRecord(),
       members: [
@@ -380,7 +380,7 @@ describe("ArcPage", () => {
     expect(aged).toBeDisabled();
     expect(aged).toHaveAttribute("title", "This chat is no longer in the recent chat list");
 
-    expect(screen.getByText("Working now").parentElement).toHaveTextContent("1member");
+    expect(screen.getByRole("region", { name: "Chats" })).toHaveTextContent("1 working · 2 PRs open · 0 merged");
     expect(screen.getByText("Limits").parentElement).toHaveTextContent("Up to 8 members working at once. 3 of 40 launches used today.");
   });
 

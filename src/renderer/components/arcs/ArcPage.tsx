@@ -1,4 +1,4 @@
-import { Check, Clock, Copy, FolderOpen, Trash2 } from "lucide-react";
+import { Check, Clock, Copy, FolderOpen, Pencil, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import type {
   ArcDetail,
@@ -450,9 +450,6 @@ export function ArcPage({
               </button>
             </h1>
           )}
-          <span className="arc-state-pill" data-arc-state={arc.state}>
-            {ARC_STATE_LABEL[arc.state]}
-          </span>
           <div className="arc-hero-actions">
             {isDone ? (
               <button type="button" className="settings-button" disabled={busy} onClick={() => void handleSetState("active")}>
@@ -477,6 +474,10 @@ export function ArcPage({
           </div>
         </div>
         <p className="arc-hero-meta">
+          <span className="arc-hero-state" data-arc-state={arc.state}>
+            {ARC_STATE_LABEL[arc.state]}
+          </span>
+          <span aria-hidden="true"> · </span>
           {project ? project.name : "Unknown project"}
           <span aria-hidden="true"> · </span>started {formatDay(arc.createdAt)}
           <span aria-hidden="true"> · </span>last activity {formatTimeAgo(lastActivity)}
@@ -537,107 +538,80 @@ export function ArcPage({
             ) : (
               <p className="arc-brief-prose arc-brief-empty">No brief yet. Members read it first, so say what done looks like.</p>
             )}
-            <button type="button" className="arc-text-link" onClick={() => setBriefOpen(true)}>
+            <button type="button" className="arc-quiet-button" onClick={() => setBriefOpen(true)}>
+              <Pencil size={12} aria-hidden="true" />
               {arc.brief.trim() ? "Edit brief" : "Add a brief"}
             </button>
           </div>
         )}
       </header>
 
-      <dl className="arc-stats">
-        <div className="arc-stat">
-          <dt>Coordinator</dt>
-          <dd>
-            {coordinator ? (
-              <span className="arc-stat-coordinator">
-                <span className="arc-state-dot" data-session-state={coordinatorState ?? undefined} aria-hidden="true" />
-                <span className="arc-stat-value">
+      <section className="arc-chats" aria-label="Chats">
+        <header className="arc-chats-header">
+          <h2 className="arc-section-title">Chats</h2>
+          <p className="arc-chats-summary">{chatsSummary(activeMembers.length, pullRequests)}</p>
+        </header>
+        <div className="arc-chat-row">
+          <span className="arc-state-dot" data-session-state={coordinatorState ?? undefined} aria-hidden="true" />
+          {coordinator ? (
+            <MemberOpenButton
+              className="arc-chat-open"
+              canOpen={coordinatorSession !== null}
+              onOpen={() => onOpenSession(coordinator.sessionId)}
+              label={
+                <>
                   {isProviderId(coordinator.provider) ? PROVIDER_DISPLAY_NAMES[coordinator.provider] : coordinator.provider}
+                  {coordinator.modelLabel ? <span className="arc-chat-model">{coordinator.modelLabel}</span> : null}
+                </>
+              }
+            />
+          ) : (
+            <span className="arc-chat-missing">{arc.coordinatorSessionId ? "Loading…" : "No coordinator"}</span>
+          )}
+          <span className="arc-chat-meta">
+            Coordinator
+            {coordinatorState ? ` · ${describeSessionState(coordinatorState)}` : ""}
+          </span>
+          {!isDone && coordinator ? (
+            <button
+              type="button"
+              className="arc-quiet-button arc-chat-action"
+              disabled={busy}
+              onClick={() => void handleLaunchCoordinator(true)}
+            >
+              New coordinator
+            </button>
+          ) : null}
+          {!isDone && !arc.coordinatorSessionId ? (
+            <button
+              type="button"
+              className="arc-quiet-button arc-chat-action"
+              disabled={busy}
+              onClick={() => void handleLaunchCoordinator(false)}
+            >
+              Start coordinator
+            </button>
+          ) : null}
+        </div>
+        {activeMembers.length > 0 ? (
+          <ul className="arc-chat-list" aria-label="Members working now">
+            {activeMembers.map((member) => (
+              <li key={member.sessionId} className="arc-chat-row">
+                <span className="arc-state-dot" data-session-state={liveState(member)} aria-hidden="true" />
+                <MemberOpenButton
+                  className="arc-chat-open"
+                  canOpen={sessionsById.has(member.sessionId)}
+                  onOpen={() => onOpenSession(member.sessionId)}
+                  label={member.taskLabel.trim() || "Untitled"}
+                />
+                <span className="arc-chat-meta">
+                  {member.projectName} · {describeSessionState(liveState(member))}
                 </span>
-                {coordinator.modelLabel ? <span className="arc-stat-sub">{coordinator.modelLabel}</span> : null}
-                <span className="arc-stat-sub arc-stat-state">{describeSessionState(coordinatorState)}</span>
-              </span>
-            ) : (
-              <span className="arc-stat-value arc-stat-missing">
-                {arc.coordinatorSessionId ? "Loading…" : "None"}
-              </span>
-            )}
-          </dd>
-          <div className="arc-stat-actions">
-            {coordinator ? (
-              <MemberOpenButton
-                label="Open chat"
-                className="arc-stat-link"
-                canOpen={coordinatorSession !== null}
-                onOpen={() => onOpenSession(coordinator.sessionId)}
-              />
-            ) : null}
-            {!isDone && coordinator ? (
-              <button
-                type="button"
-                className="arc-stat-link"
-                disabled={busy}
-                onClick={() => void handleLaunchCoordinator(true)}
-              >
-                New coordinator
-              </button>
-            ) : null}
-            {!isDone && !arc.coordinatorSessionId ? (
-              <button
-                type="button"
-                className="arc-stat-link"
-                disabled={busy}
-                onClick={() => void handleLaunchCoordinator(false)}
-              >
-                Start coordinator
-              </button>
-            ) : null}
-          </div>
-        </div>
-        <div className="arc-stat">
-          <dt>Working now</dt>
-          <dd>
-            <span className="arc-stat-value">{activeMembers.length}</span>
-            <span className="arc-stat-sub">{activeMembers.length === 1 ? "member" : "members"}</span>
-          </dd>
-        </div>
-        <div className="arc-stat">
-          <dt>Pull requests</dt>
-          <dd>
-            {pullRequests.open + pullRequests.merged === 0 ? (
-              <span className="arc-stat-value arc-stat-missing">None yet</span>
-            ) : (
-              <>
-                <span className="arc-stat-value">{pullRequests.open}</span>
-                <span className="arc-stat-sub">open</span>
-                <span className="arc-stat-value arc-stat-merged">{pullRequests.merged}</span>
-                <span className="arc-stat-sub">merged</span>
-              </>
-            )}
-          </dd>
-        </div>
-      </dl>
-
-      {activeMembers.length > 0 ? (
-        <ul className="arc-active-members" aria-label="Members working now">
-          {activeMembers.map((member) => (
-            <li key={member.sessionId}>
-              <MemberOpenButton
-                className="arc-member-chip"
-                canOpen={sessionsById.has(member.sessionId)}
-                onOpen={() => onOpenSession(member.sessionId)}
-                label={
-                  <>
-                    <span className="arc-state-dot" data-session-state={liveState(member)} aria-hidden="true" />
-                    <span className="arc-member-chip-label">{member.taskLabel.trim() || "Untitled"}</span>
-                    <span className="arc-member-chip-project">{member.projectName}</span>
-                  </>
-                }
-              />
-            </li>
-          ))}
-        </ul>
-      ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </section>
 
       <ArcTimeline
         arcId={arc.id}
@@ -805,6 +779,16 @@ function describeSessionState(state: SessionState | null): string {
   }
 }
 
+/** The section's one-line reading. Pull requests are only counted once there
+ *  are some: an arc with none has nothing to headline. */
+function chatsSummary(working: number, pullRequests: { open: number; merged: number }): string {
+  const parts = [working === 0 ? "None working" : `${working} working`];
+  if (pullRequests.open + pullRequests.merged > 0) {
+    parts.push(`${pullRequests.open} ${pullRequests.open === 1 ? "PR" : "PRs"} open`, `${pullRequests.merged} merged`);
+  }
+  return parts.join(" · ");
+}
+
 function formatDay(iso: string): string {
   const parsed = new Date(iso);
   if (Number.isNaN(parsed.getTime())) return "—";
@@ -829,7 +813,7 @@ function MemberOpenButton({
       type="button"
       className={className}
       disabled={!canOpen}
-      title={canOpen ? undefined : "This chat is no longer in the recent chat list"}
+      title={canOpen ? "Open chat" : "This chat is no longer in the recent chat list"}
       onClick={onOpen}
     >
       {label}

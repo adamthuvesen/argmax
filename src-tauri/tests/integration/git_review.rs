@@ -263,6 +263,31 @@ async fn skips_oversized_untracked_file_content() {
 }
 
 #[tokio::test]
+async fn skips_untracked_non_utf8_file_without_failing_the_diff() {
+    let repo = seed_git_repo(&[("src/index.ts", "export const ok = true;\n")]);
+    // PDF-like bytes: no NUL, but not valid UTF-8.
+    std::fs::write(
+        repo.path().join("scan.pdf"),
+        b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n",
+    )
+    .unwrap();
+    std::fs::write(repo.path().join("notes.md"), "# notes\n").unwrap();
+
+    let diff = load_diff_at_path(
+        repo.path(),
+        "workspace-1",
+        None,
+        ReviewBaseline::WorkingTree,
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert!(diff.content.contains("binary file skipped"));
+    assert!(diff.content.contains("+# notes"));
+}
+
+#[tokio::test]
 async fn untracked_symlink_diff_shows_target_not_contents() {
     let repo = seed_git_repo(&[("src/index.ts", "export const ok = true;\n")]);
     let outside_path =

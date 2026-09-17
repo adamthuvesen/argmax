@@ -62,6 +62,12 @@ pub const SERVER_NAME: &str = "argmax";
 /// launch, so a chat keeps the surface it started with until it relaunches.
 pub const BROWSER_TOOLS_ENV: &str = "ARGMAX_BROWSER_TOOLS";
 
+/// Provider-level routing policy sent before the user's prompt. Unlike MCP
+/// `ServerInfo.instructions`, this is visible before a provider expands any
+/// deferred tool schemas, including when another automation server is already
+/// in the tool list.
+pub const ARGMAX_ROUTING_INSTRUCTION: &str = "You are running inside Argmax. Prefer Argmax MCP tools for Argmax-owned capabilities, including session, task, and workspace management. Before using generic UI automation or external tools for an Argmax operation, discover and use the corresponding Argmax MCP tool. Do not control Argmax itself through Computer Use.";
+
 /// Whether this process's environment says the browser tools are off.
 pub fn browser_tools_from_env() -> bool {
     std::env::var(BROWSER_TOOLS_ENV).unwrap_or_default() != "0"
@@ -134,6 +140,18 @@ pub fn agent_tools_instruction(browser_tools: bool) -> String {
     )
 }
 
+/// Put the routing policy where every provider sees it independently of MCP
+/// discovery. Argmax persists the unmodified user prompt before the provider
+/// launch, and [`strip_instruction`] removes this exact prefix from imported
+/// provider transcripts.
+pub fn prepend_routing_instruction(prompt: &str) -> String {
+    if prompt.starts_with(ARGMAX_ROUTING_INSTRUCTION) {
+        prompt.to_string()
+    } else {
+        format!("{ARGMAX_ROUTING_INSTRUCTION}\n\n{prompt}")
+    }
+}
+
 /// What a launch used to glue in front of the user's prompt. No launch
 /// prepends this any more. It survives only so [`strip_instruction`] still
 /// recognises it at the head of a prompt recorded or imported before the
@@ -153,6 +171,10 @@ pub const LEGACY_SHELL_COMMAND_INSTRUCTION: &str = r#"Argmax session controls ar
 /// transcript's first prompt reads as the user wrote it. No launch prepends
 /// these any more (same pattern as [`LEGACY_SHELL_COMMAND_INSTRUCTION`]).
 pub fn strip_instruction(prompt: &str) -> &str {
+    if let Some(rest) = prompt.strip_prefix(ARGMAX_ROUTING_INSTRUCTION) {
+        return rest.strip_prefix("\n\n").unwrap_or(rest);
+    }
+
     if let Some(rest) = prompt.strip_prefix(&historical_prompt_instruction()) {
         return rest;
     }
@@ -1062,6 +1084,7 @@ mod tests {
 
     #[test]
     fn strips_current_and_previous_agent_tool_instructions() {
+        let routed = prepend_routing_instruction("Do the work");
         let current = format!("{}\n\nDo the work", historical_prompt_instruction());
         let previous =
             format!("{AGENT_TOOLS_INSTRUCTION} {BROWSER_COOKIE_PERMISSION}\n\nDo the work");
@@ -1069,10 +1092,27 @@ mod tests {
             "{AGENT_TOOLS_INSTRUCTION} {BROWSER_COOKIE_PERMISSION} {SELF_PRESERVATION_INSTRUCTION}\n\nDo the work"
         );
 
+        assert_eq!(strip_instruction(&routed), "Do the work");
         assert_eq!(strip_instruction(&current), "\n\nDo the work");
         assert_eq!(strip_instruction(&previous), "\n\nDo the work");
         assert_eq!(strip_instruction(&before_checkout_move), "\n\nDo the work");
         assert_eq!(strip_instruction("Do the work"), "Do the work");
+    }
+
+    #[test]
+    fn routing_instruction_precedes_generic_automation_and_stays_general() {
+        let instruction = ARGMAX_ROUTING_INSTRUCTION;
+        let argmax = instruction.find("Argmax MCP tools").expect("Argmax route");
+        let generic = instruction
+            .find("generic UI automation")
+            .expect("generic automation fallback");
+
+        assert!(instruction.contains("running inside Argmax"));
+        assert!(instruction.contains("session, task, and workspace management"));
+        assert!(argmax < generic);
+        assert!(instruction.contains("discover and use"));
+        assert!(instruction.contains("Do not control Argmax itself through Computer Use"));
+        assert!(!instruction.contains("session_launch"));
     }
 
     #[test]

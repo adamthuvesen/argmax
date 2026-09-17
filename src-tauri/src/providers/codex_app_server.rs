@@ -1656,7 +1656,7 @@ mod tests {
     }
 
     #[test]
-    fn codex_thread_merges_argmax_and_computer_use_servers() {
+    fn codex_thread_with_argmax_and_computer_use_routes_argmax_operations_first() {
         let session_launch = SessionLaunchProcessConfig::for_tests(
             "/tmp/argmax.sock",
             "secret-token",
@@ -1666,11 +1666,11 @@ mod tests {
             "command": "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
             "args": ["cua-repl.mjs"],
         });
-        let params = thread_params(
-            &input(PermissionMode::AutoApprove),
-            Some(&session_launch),
-            Some(&computer_use),
+        let routed_input = crate::providers::runtime::with_argmax_routing_instruction(
+            input(PermissionMode::AutoApprove),
+            true,
         );
+        let params = thread_params(&routed_input, Some(&session_launch), Some(&computer_use));
 
         assert_eq!(
             params["config"]["mcp_servers"][mcp_injection::SERVER_NAME]["command"],
@@ -1680,6 +1680,20 @@ mod tests {
             params["config"]["mcp_servers"][COMPUTER_USE_SERVER],
             computer_use
         );
+
+        let turn = turn_params(
+            &routed_input,
+            "thread-1",
+            prompt_for_agent_mode(&routed_input.prompt, routed_input.agent_mode),
+        );
+        let prompt = turn["input"][0]["text"].as_str().expect("turn prompt");
+        let argmax = prompt.find("Argmax MCP tools").expect("Argmax route");
+        let generic = prompt
+            .find("generic UI automation")
+            .expect("generic automation fallback");
+        assert!(argmax < generic);
+        assert!(prompt.contains("Do not control Argmax itself through Computer Use"));
+        assert!(prompt.ends_with("Do the work"));
     }
 
     #[test]

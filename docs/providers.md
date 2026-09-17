@@ -62,6 +62,13 @@ Spawned sessions run in the workspace worktree. Project-scoped `.mcp.json` or `.
 
 Argmax adds one server of its own per launch — `argmax`, the agent tools — through each provider's per-launch mechanism, without disturbing the user's configured servers. For Cursor's one-shot path and for Grok that mechanism is a config file written into the workspace and put back when the child exits; a `.cursor/mcp.json` the user keeps is merged, never replaced ([agent-tools.md](agent-tools.md)).
 
+The provider-facing prompt also carries a short routing instruction before the
+user's text. It tells every provider to discover and use Argmax MCP tools for
+Argmax-owned operations instead of generic UI automation, even when the MCP
+client defers the server instructions or tool schemas. Argmax persists the
+original user text, and strips the routing prefix when importing provider
+transcripts, so the instruction does not appear in chat.
+
 Codex sessions also receive ChatGPT's app-managed `cua_repl` server when the
 `computer-use@openai-bundled` plugin is enabled and its
 `unified-computer-use` runtime is present in the Codex plugin cache. This makes

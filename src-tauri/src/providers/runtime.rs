@@ -211,6 +211,7 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
                 .session_launch_registry
                 .as_ref()
                 .map(|registry| registry.issue(&input));
+            let input = with_argmax_routing_instruction(input, session_launch.is_some());
 
             // Warm-process fast path: eligible Cursor launches run as ACP
             // prompts on a per-workspace `cursor-agent acp` process instead of
@@ -305,6 +306,68 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
                 session_launch.as_ref(),
             )
         })
+    }
+}
+
+/// Keep the provider-facing prompt separate from the prompt Argmax persists
+/// and renders. The server gate prevents promising tools in restricted test or
+/// helper launches that deliberately omit the per-session Argmax MCP server.
+pub(crate) fn with_argmax_routing_instruction(
+    mut input: ProviderLaunchInput,
+    has_argmax_mcp: bool,
+) -> ProviderLaunchInput {
+    if has_argmax_mcp {
+        input.prompt = super::mcp_injection::prepend_routing_instruction(&input.prompt);
+    }
+    input
+}
+
+#[cfg(test)]
+mod routing_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn every_supported_provider_gets_the_routing_instruction() {
+        for provider in [
+            ProviderId::Claude,
+            ProviderId::Codex,
+            ProviderId::Cursor,
+            ProviderId::Opencode,
+            ProviderId::Grok,
+        ] {
+            let input = ProviderLaunchInput {
+                provider,
+                session_id: "session-1".to_string(),
+                workspace_path: PathBuf::from("/tmp/project"),
+                prompt: "Do the work".to_string(),
+                model_label: "Model".to_string(),
+                model_id: "model".to_string(),
+                reasoning_effort: None,
+                fast_mode: false,
+                resume_conversation_id: None,
+                resume_fork: false,
+                permission_mode: PermissionMode::AutoApprove,
+                agent_mode: AgentMode::Auto,
+                cols: 100,
+                rows: 30,
+            };
+
+            let routed = with_argmax_routing_instruction(input.clone(), true);
+            assert!(
+                routed
+                    .prompt
+                    .starts_with(super::super::mcp_injection::ARGMAX_ROUTING_INSTRUCTION),
+                "{provider:?} missed the routing instruction"
+            );
+            assert_eq!(
+                super::super::mcp_injection::strip_instruction(&routed.prompt),
+                input.prompt
+            );
+
+            let without_server = with_argmax_routing_instruction(input.clone(), false);
+            assert_eq!(without_server.prompt, input.prompt);
+        }
     }
 }
 

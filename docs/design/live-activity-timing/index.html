@@ -12,7 +12,16 @@
       /* The harness replays one turn's events through four rule sets at once on
          a shared virtual clock, so the only difference between panes is the
          timing and the transition — not the data and not the frame they see. */
-      html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font-ui); }
+      /* `tokens.css` locks the app shell's scroll (`overflow: hidden` on the
+         body), which a page of panes has to undo or it cannot be read. */
+      html, body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--font-ui);
+        overflow: auto;
+        height: auto;
+      }
       .head {
         position: sticky; top: 0; z-index: 3; display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
         padding: 10px 20px; border-bottom: 1px solid var(--line);

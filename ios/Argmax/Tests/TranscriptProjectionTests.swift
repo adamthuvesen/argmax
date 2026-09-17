@@ -231,6 +231,37 @@ final class TranscriptProjectionTests: XCTestCase {
         XCTAssertEqual(assistantTexts, ["Please clarify your preference."])
     }
 
+    /// Plan mode is gone, so `ExitPlanMode` is a tool call like any other: it
+    /// keeps its activity row and no longer hides the answer behind a card.
+    func testExitPlanModeProjectsAsAnOrdinaryToolRow() throws {
+        let payload: [String: TranscriptJSONValue] = [
+            "id": .string("plan-1"),
+            "name": .string("ExitPlanMode"),
+            "input": .object(["plan": .string("# Plan\n\nRead it, then write it.")]),
+            "activity": .object([
+                "version": .number(1),
+                "kind": .string("plan"),
+                "evidence": .string("tool"),
+                "targets": .array([])
+            ])
+        ]
+        let items = TranscriptProjection.project(events: [
+            event("user", "user.message", "Plan it", 1),
+            event("plan-start", "command.started", "ExitPlanMode", 2, payload),
+            event("plan-end", "command.completed", "ExitPlanMode", 3, payload),
+            event("prose", "message.completed", "Here is the plan.", 4)
+        ])
+
+        let tool = try XCTUnwrap(firstTool(items))
+        XCTAssertEqual(tool.name, "ExitPlanMode")
+        XCTAssertEqual(tool.activity.kind, .plan)
+        XCTAssertEqual(tool.activitySummary, "Updated the plan")
+        XCTAssertEqual(items.compactMap { item -> String? in
+            guard case .assistant(let message) = item else { return nil }
+            return message.text
+        }, ["Here is the plan."])
+    }
+
     func testApprovalResolutionUpdatesOneCardAndPreservesRequestMetadata() throws {
         let request = event("approval-req", "approval.requested", "npm test", 1, [
             "approvalId": .string("approval-1"),

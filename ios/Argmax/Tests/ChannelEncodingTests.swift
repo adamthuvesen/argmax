@@ -266,7 +266,6 @@ final class ChannelEncodingTests: XCTestCase {
                 modelLabel: "Opus 5",
                 modelId: "claude-opus-5",
                 reasoningEffort: "medium",
-                agentMode: "auto",
                 attachments: [
                     ComposerAttachment(filePath: "/data/attachments/s-1/a.png", mimeType: "image/png", sizeBytes: 2048)
                 ]
@@ -301,8 +300,7 @@ final class ChannelEncodingTests: XCTestCase {
                 provider: "cursor",
                 modelLabel: "Composer",
                 modelId: "composer",
-                reasoningEffort: nil,
-                agentMode: "auto"
+                reasoningEffort: nil
             )
         )
         XCTAssertTrue(body["reasoningEffort"] is NSNull)

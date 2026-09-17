@@ -27,9 +27,10 @@ const entry = {
 } as Pick<PendingMessage, "modelId" | "reasoningEffort">;
 
 describe("canSteerQueuedMessage", () => {
-  it("steers a matching row into a running Claude or Codex turn", () => {
+  it("steers a matching row into a running Claude, Codex or OpenCode turn", () => {
     expect(canSteerQueuedMessage(session, entry)).toBe(true);
     expect(canSteerQueuedMessage({ ...session, provider: "codex" }, entry)).toBe(true);
+    expect(canSteerQueuedMessage({ ...session, provider: "opencode" }, entry)).toBe(true);
     // A row queued before the model was picked takes the turn's own settings.
     expect(canSteerQueuedMessage(session, {})).toBe(true);
   });

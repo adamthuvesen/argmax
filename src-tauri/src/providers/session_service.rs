@@ -1114,7 +1114,7 @@ impl ProviderSessionService {
     }
 
     /// A message addressed to this session by another session, or a notice
-    /// Argmax writes on one's behalf. A running Claude or Codex turn takes it
+    /// Argmax writes on one's behalf. A running Claude, Codex or OpenCode turn takes it
     /// as steering; every other provider, and a turn that cannot be steered
     /// right now, gets it when the turn ends. `queued` is false once the
     /// message reached the model either way.

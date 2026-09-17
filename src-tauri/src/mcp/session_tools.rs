@@ -753,7 +753,7 @@ chat's project can be resumed."
     #[tool(
         name = "session_message",
         description = "Send a message into another Argmax session, as if the user had typed it \
-        there. An idle session starts a turn on it. A running Claude or Codex turn takes it as \
+        there. An idle session starts a turn on it. A running Claude, Codex or OpenCode turn takes it as \
         steering without stopping. Any other mid-turn session is flagged at its next tool result \
         and can collect it with inbox_read; otherwise it arrives when that turn ends, which the \
         result's `queued` field reports. You cannot message \

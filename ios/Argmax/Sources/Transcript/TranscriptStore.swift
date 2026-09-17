@@ -686,7 +686,7 @@ final class TranscriptStore: ObservableObject {
             hasContextHeadroom = true
         }
         return session.state == .running &&
-            (session.provider == "claude" || session.provider == "codex") &&
+            ["claude", "codex", "opencode"].contains(session.provider) &&
             hasContextHeadroom &&
             (message.modelId == nil || message.modelId == session.modelId) &&
             (message.reasoningEffort == nil || message.reasoningEffort == session.reasoningEffort) &&

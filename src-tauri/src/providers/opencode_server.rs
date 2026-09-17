@@ -32,7 +32,7 @@ use std::{
     process::Stdio,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     time::Duration,
 };
@@ -48,6 +48,14 @@ const SSE_READ_TIMEOUT: Duration = Duration::from_millis(250);
 const SSE_LINE_LIMIT: usize = 16 * 1024 * 1024;
 const MAX_SESSION_LINEAGE_DEPTH: usize = 64;
 const OPENCODE_CONFIG_CONTENT: &str = "OPENCODE_CONFIG_CONTENT";
+/// How long an idle that arrived with guidance outstanding waits before the
+/// turn is checked again. A message OpenCode stores after going idle starts a
+/// new run within milliseconds; one it stored as its old run was ending never
+/// does, and this is how long that takes to notice.
+const STEER_IDLE_RECHECK: Duration = Duration::from_secs(3);
+/// An acknowledged message that never shows up (OpenCode failed to store it)
+/// cannot hold the turn open longer than this.
+const STEER_IDLE_LIMIT: Duration = Duration::from_secs(30);
 
 pub async fn launch_turn(
     binary_path: &str,
@@ -136,10 +144,27 @@ pub async fn launch_turn(
     let (cancel, cancelled) = watch::channel(false);
     let (done_tx, done) = watch::channel(false);
     let disposed = Arc::new(AtomicBool::new(false));
+    let steering = Arc::new(Steering::default());
+    let steer_body = match prompt_body(input) {
+        Ok(body) => body,
+        Err(error) => {
+            let _ =
+                crate::util::process_control::terminate_process_group_with_escalation(&mut child)
+                    .await;
+            launch_scratch.restore();
+            return Err(error);
+        }
+    };
     let handle = Arc::new(OpencodeServerHandle {
         cancel,
         done,
         disposed: Arc::clone(&disposed),
+        steering: Arc::clone(&steering),
+        http: http.clone(),
+        endpoint: endpoint.clone(),
+        directory: input.workspace_path.to_string_lossy().into_owned(),
+        native_session_id: native_session_id.clone(),
+        steer_body,
     });
     let input = input.clone();
     tokio::spawn(async move {
@@ -156,6 +181,7 @@ pub async fn launch_turn(
             sse_cancel,
             sse_task,
             cancelled,
+            steering,
         )
         .await;
         disposed.store(true, Ordering::SeqCst);
@@ -327,6 +353,7 @@ async fn run_turn(
     sse_cancel: Arc<AtomicBool>,
     sse_task: JoinHandle<()>,
     mut cancelled: watch::Receiver<bool>,
+    steering: Arc<Steering>,
 ) {
     let invocation_id = uuid::Uuid::new_v4().to_string();
     let directory = input.workspace_path.to_string_lossy().into_owned();
@@ -337,12 +364,23 @@ async fn run_turn(
     let mut stream_started = false;
     let mut exit_code = 0;
     let mut was_cancelled = false;
+    // When OpenCode reported an idle the turn did not close on, because
+    // guidance was still on its way in.
+    let mut deferred_idle_at: Option<tokio::time::Instant> = None;
+    let mut idle_recheck_at = tokio::time::Instant::now();
 
     loop {
         tokio::select! {
             _ = cancelled.changed() => {
                 was_cancelled = true;
                 break;
+            }
+            _ = tokio::time::sleep_until(idle_recheck_at), if deferred_idle_at.is_some() => {
+                let gave_up = deferred_idle_at.is_some_and(|at| at.elapsed() >= STEER_IDLE_LIMIT);
+                if steering.try_close(true) || gave_up {
+                    break;
+                }
+                idle_recheck_at = tokio::time::Instant::now() + STEER_IDLE_RECHECK;
             }
             outcome = permission_tasks.join_next(), if !permission_tasks.is_empty() => {
                 match outcome {
@@ -364,6 +402,9 @@ async fn run_turn(
             message = event_rx.recv() => {
                 match message {
                     Some(SseMessage::Event(event)) => {
+                        if steering.observe(&event, &native_session_id) {
+                            deferred_idle_at = None;
+                        }
                         if let Some(session_id) = untracked_permission_session(&event, &tracked_sessions) {
                             match session_lineage(
                                 http,
@@ -421,7 +462,15 @@ async fn run_turn(
                             emit_runtime(&emit, &input, ProviderRuntimeEventType::Output, ProviderOutputStream::Stdout, format!("{line}\n"), None);
                             exit_code = 1;
                         }
-                        EventAction::Complete => break,
+                        EventAction::Complete => {
+                            if steering.try_close(false) {
+                                break;
+                            }
+                            if deferred_idle_at.is_none() {
+                                deferred_idle_at = Some(tokio::time::Instant::now());
+                                idle_recheck_at = tokio::time::Instant::now() + STEER_IDLE_RECHECK;
+                            }
+                        }
                             EventAction::Ignore => {}
                         }
                     }
@@ -441,6 +490,27 @@ async fn run_turn(
         }
     }
 
+    let steer_unanswered = steering.close();
+    if steer_unanswered && !was_cancelled && exit_code == 0 {
+        // OpenCode stored the guidance a moment after its loop last checked
+        // for new messages, so nothing answered it. Rare, but it must not
+        // look delivered.
+        let error = json!({
+            "name": "UnknownError",
+            "data": { "message": "OpenCode finished the turn before it read the steered message. Send it again." },
+        });
+        emit_runtime(
+            &emit,
+            &input,
+            ProviderRuntimeEventType::Output,
+            ProviderOutputStream::Stdout,
+            format!(
+                "{}\n",
+                run_envelope("error", &native_session_id, "error", &error)
+            ),
+            None,
+        );
+    }
     permission_tasks.abort_all();
     for request_id in active_requests {
         let _ = approvals.cancel_native_request(&input.session_id, &invocation_id, &request_id);
@@ -1092,10 +1162,182 @@ fn emit_runtime(
     });
 }
 
+/// Guidance sent into a running turn, shared by the handle that sends it and
+/// the loop that decides when the turn is over.
+///
+/// OpenCode takes a `prompt_async` for a busy session into the run already
+/// going: the message is stored and the loop reads it at its next step, after
+/// the current tool call. The HTTP 204 comes back before that store happens,
+/// so an idle can arrive for a run that has not seen the message yet. OpenCode
+/// then starts a fresh run for it, and the turn has to stay open for that run
+/// instead of shutting the server down under it.
+#[derive(Default)]
+struct Steering {
+    state: Mutex<SteeringState>,
+}
+
+#[derive(Default)]
+struct SteeringState {
+    closed: bool,
+    /// The root session has been busy, so the turn's own prompt is stored and
+    /// counted; a steer before that could be mistaken for it.
+    started: bool,
+    in_flight: usize,
+    acknowledged: usize,
+    /// How many root user messages must be seen before the turn may close.
+    required_user_messages: usize,
+    user_message_ids: Vec<String>,
+    answered_user_message_ids: HashSet<String>,
+}
+
+impl SteeringState {
+    /// Guidance was acknowledged and the newest user message has no finished
+    /// answer. OpenCode's loop only goes idle once its newest message is
+    /// answered, so this means the guidance arrived after it last looked.
+    fn steer_unanswered(&self) -> bool {
+        self.acknowledged > 0
+            && self
+                .user_message_ids
+                .last()
+                .is_some_and(|id| !self.answered_user_message_ids.contains(id))
+    }
+}
+
+impl Steering {
+    fn lock(&self) -> std::sync::MutexGuard<'_, SteeringState> {
+        self.state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// Records the root session's user messages and the ones its assistant
+    /// messages answered. True when the root session reports it is running.
+    fn observe(&self, event: &Value, root_session_id: &str) -> bool {
+        let Some(properties) = event.get("properties") else {
+            return false;
+        };
+        match event.get("type").and_then(Value::as_str) {
+            Some("message.updated") => {
+                let Some(info) = properties.get("info").filter(|info| {
+                    info.get("sessionID").and_then(Value::as_str) == Some(root_session_id)
+                }) else {
+                    return false;
+                };
+                let mut state = self.lock();
+                match info.get("role").and_then(Value::as_str) {
+                    Some("user") => {
+                        if let Some(id) = info.get("id").and_then(Value::as_str) {
+                            if !state.user_message_ids.iter().any(|seen| seen == id) {
+                                state.user_message_ids.push(id.to_string());
+                            }
+                        }
+                    }
+                    Some("assistant") => {
+                        let finished = info
+                            .get("finish")
+                            .and_then(Value::as_str)
+                            .is_some_and(|finish| !matches!(finish, "tool-calls" | "unknown"));
+                        if finished || info.get("error").is_some_and(|error| !error.is_null()) {
+                            if let Some(parent) = info.get("parentID").and_then(Value::as_str) {
+                                state.answered_user_message_ids.insert(parent.to_string());
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                false
+            }
+            Some("session.status") => {
+                let busy = properties.get("sessionID").and_then(Value::as_str)
+                    == Some(root_session_id)
+                    && properties
+                        .pointer("/status/type")
+                        .and_then(Value::as_str)
+                        .is_some_and(|status| status != "idle");
+                if busy {
+                    self.lock().started = true;
+                }
+                busy
+            }
+            _ => false,
+        }
+    }
+
+    /// Closes the turn to further guidance once OpenCode has seen everything
+    /// it acknowledged. `waited` is a re-check after [`STEER_IDLE_RECHECK`]:
+    /// a message seen by then with no new run following was stored as the old
+    /// run ended, and waiting longer will not answer it.
+    fn try_close(&self, waited: bool) -> bool {
+        let mut state = self.lock();
+        if state.in_flight > 0 || state.user_message_ids.len() < state.required_user_messages {
+            return false;
+        }
+        if !waited && state.steer_unanswered() {
+            return false;
+        }
+        state.closed = true;
+        true
+    }
+
+    /// Closes unconditionally, reporting whether acknowledged guidance was
+    /// left unanswered.
+    fn close(&self) -> bool {
+        let mut state = self.lock();
+        state.closed = true;
+        state.steer_unanswered()
+    }
+
+    fn begin_steer(&self) -> ArgmaxResult<()> {
+        let mut state = self.lock();
+        if state.closed {
+            return Err(ArgmaxError::service(
+                "STEER_NOT_RUNNING",
+                "The OpenCode turn has finished. This follow-up is still queued.",
+            ));
+        }
+        if !state.started {
+            return Err(ArgmaxError::service(
+                "STEER_NOT_READY",
+                "OpenCode has not started the turn yet. This follow-up is still queued.",
+            ));
+        }
+        state.in_flight += 1;
+        state.required_user_messages = state
+            .required_user_messages
+            .max(state.user_message_ids.len())
+            + 1;
+        Ok(())
+    }
+
+    fn finish_steer(&self, delivered: bool) {
+        let mut state = self.lock();
+        state.in_flight -= 1;
+        if delivered {
+            state.acknowledged += 1;
+        } else {
+            state.required_user_messages -= 1;
+        }
+    }
+}
+
+fn steer_unconfirmed() -> ArgmaxError {
+    ArgmaxError::service(
+        "STEER_DELIVERY_UNKNOWN",
+        "OpenCode did not confirm the guidance. Check the chat before sending again.",
+    )
+}
+
 struct OpencodeServerHandle {
     cancel: watch::Sender<bool>,
     done: watch::Receiver<bool>,
     disposed: Arc<AtomicBool>,
+    steering: Arc<Steering>,
+    http: ureq::Agent,
+    endpoint: String,
+    directory: String,
+    native_session_id: String,
+    /// The turn's own prompt body — model and variant — for guidance to reuse.
+    steer_body: Value,
 }
 
 impl ProviderRuntimeHandle for OpencodeServerHandle {
@@ -1105,6 +1347,53 @@ impl ProviderRuntimeHandle for OpencodeServerHandle {
 
     fn disposed(&self) -> bool {
         self.disposed.load(Ordering::SeqCst)
+    }
+
+    fn supports_steering(&self) -> bool {
+        true
+    }
+
+    fn steer<'a>(&'a self, prompt: &'a str) -> BoxFuture<'a, ArgmaxResult<()>> {
+        Box::pin(async move {
+            self.steering.begin_steer()?;
+            let mut body = self.steer_body.clone();
+            body["parts"] = json!([{ "type": "text", "text": prompt }]);
+            let http = self.http.clone();
+            let url = format!(
+                "{}/session/{}/prompt_async",
+                self.endpoint, self.native_session_id
+            );
+            let directory = self.directory.clone();
+            let result = tokio::task::spawn_blocking(move || {
+                match http
+                    .post(&url)
+                    .query("directory", &directory)
+                    .set("Content-Type", "application/json")
+                    .send_string(&body.to_string())
+                {
+                    Ok(_) => Ok(()),
+                    Err(ureq::Error::Status(status, _)) => Err(ArgmaxError::service(
+                        "STEER_REJECTED",
+                        format!("OpenCode refused the guidance with HTTP {status}."),
+                    )),
+                    Err(ureq::Error::Transport(transport))
+                        if transport.kind() == ureq::ErrorKind::ConnectionFailed =>
+                    {
+                        Err(ArgmaxError::service(
+                            "STEER_NOT_RUNNING",
+                            "The OpenCode turn has finished. This follow-up is still queued.",
+                        ))
+                    }
+                    // A timeout may have reached the server; resending could
+                    // deliver the same guidance twice.
+                    Err(ureq::Error::Transport(_)) => Err(steer_unconfirmed()),
+                }
+            })
+            .await
+            .unwrap_or_else(|_| Err(steer_unconfirmed()));
+            self.steering.finish_steer(result.is_ok());
+            result
+        })
     }
 
     fn send_input(&self, _input: &str) {}
@@ -1469,12 +1758,109 @@ mod tests {
         )
     }
 
+    fn user_message(id: &str) -> Value {
+        json!({"type":"message.updated","properties":{"info":{"id":id,"sessionID":"ses_root","role":"user"}}})
+    }
+
+    fn answer(parent: &str) -> Value {
+        json!({"type":"message.updated","properties":{"info":{"id":format!("ans_{parent}"),"sessionID":"ses_root","role":"assistant","parentID":parent,"finish":"stop"}}})
+    }
+
+    fn status(kind: &str) -> Value {
+        json!({"type":"session.status","properties":{"sessionID":"ses_root","status":{"type":kind}}})
+    }
+
+    #[test]
+    fn guidance_stored_after_the_idle_keeps_the_turn_open_for_its_run() {
+        let steering = Steering::default();
+        steering.observe(&user_message("msg_prompt"), "ses_root");
+        let not_ready = steering.begin_steer().unwrap_err();
+        assert!(
+            matches!(not_ready, ArgmaxError::ServiceError { ref sub_code, .. } if sub_code == "STEER_NOT_READY")
+        );
+        assert!(steering.observe(&status("busy"), "ses_root"));
+
+        steering.begin_steer().unwrap();
+        steering.finish_steer(true);
+        steering.observe(&answer("msg_prompt"), "ses_root");
+        // The old run ends before OpenCode has stored the guidance.
+        assert!(!steering.observe(&status("idle"), "ses_root"));
+        assert!(!steering.try_close(false));
+        assert!(!steering.try_close(true));
+
+        steering.observe(&user_message("msg_steer"), "ses_root");
+        assert!(steering.observe(&status("busy"), "ses_root"));
+        steering.observe(&answer("msg_steer"), "ses_root");
+        assert!(steering.try_close(false));
+        assert!(!steering.close());
+        let closed = steering.begin_steer().unwrap_err();
+        assert!(
+            matches!(closed, ArgmaxError::ServiceError { ref sub_code, .. } if sub_code == "STEER_NOT_RUNNING")
+        );
+    }
+
+    #[test]
+    fn guidance_no_run_answered_is_reported_and_a_failed_steer_holds_nothing_open() {
+        let steering = Steering::default();
+        steering.observe(&user_message("msg_prompt"), "ses_root");
+        steering.observe(&status("busy"), "ses_root");
+        steering.begin_steer().unwrap();
+        steering.finish_steer(false);
+        steering.observe(&answer("msg_prompt"), "ses_root");
+        assert!(steering.try_close(false));
+
+        let steering = Steering::default();
+        steering.observe(&user_message("msg_prompt"), "ses_root");
+        steering.observe(&status("busy"), "ses_root");
+        steering.begin_steer().unwrap();
+        steering.finish_steer(true);
+        steering.observe(&user_message("msg_steer"), "ses_root");
+        steering.observe(&answer("msg_prompt"), "ses_root");
+        // Stored as the run ended: seen, never answered, no new run.
+        assert!(!steering.try_close(false));
+        assert!(steering.try_close(true));
+        assert!(steering.close());
+    }
+
+    #[tokio::test]
+    async fn steering_posts_the_guidance_with_the_turns_model() {
+        let (endpoint, state) = fake_server().await;
+        let (cancel, _) = watch::channel(false);
+        let (_, done) = watch::channel(false);
+        let handle = OpencodeServerHandle {
+            cancel,
+            done,
+            disposed: Arc::new(AtomicBool::new(false)),
+            steering: Arc::new(Steering::default()),
+            http: ureq::AgentBuilder::new().build(),
+            endpoint,
+            directory: "/tmp/project".to_string(),
+            native_session_id: "ses_root".to_string(),
+            steer_body: prompt_body(&input(PermissionMode::AutoApprove, AgentMode::Auto)).unwrap(),
+        };
+        handle.steering.observe(&status("busy"), "ses_root");
+
+        handle.steer("use the new schema").await.unwrap();
+
+        let requests = state.requests.lock().unwrap();
+        let (auth, body) = &requests[0];
+        assert!(auth.starts_with("Basic "));
+        assert_eq!(
+            body["parts"],
+            json!([{ "type": "text", "text": "use the new schema" }])
+        );
+        assert_eq!(body["model"]["modelID"], "glm-5.3-flash");
+        assert_eq!(body["variant"], "high");
+        assert_eq!(handle.steering.lock().acknowledged, 1);
+    }
+
     async fn fake_server() -> (String, FakeState) {
         let state = FakeState::default();
         let app = Router::new()
             .route("/event", get(fake_events))
             .route("/session/{session_id}", get(fake_session))
             .route("/permission/per_1/reply", post(fake_reply))
+            .route("/session/{session_id}/prompt_async", post(fake_reply))
             .with_state(state.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();

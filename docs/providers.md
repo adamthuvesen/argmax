@@ -107,12 +107,27 @@ project learnings remain separate (see [memory.md](memory.md)).
 An idle follow-up persists the user message and returns, then spawns the provider in the background. The PTY/CLI spawn does not block the send IPC.
 
 While a turn is running, ordinary input stays queued. A queued follow-up has
-**Steer** for Codex and Claude and **Stop and send** for explicit interruption.
+**Steer** for Codex, Claude and OpenCode and **Stop and send** for explicit interruption.
 Both use `providers:send-queued-message-now`, with optional `delivery: "steer"`
 selecting guidance for the existing turn. Omitting delivery preserves interruption.
 Codex uses app-server `turn/steer` with `expectedTurnId`. Claude writes a user
 envelope to its existing stream-json connection; the flushed write is the
-acknowledgement. Neither operation starts a replacement process.
+acknowledgement. OpenCode posts the text to `prompt_async` on the session its turn is already
+running; the HTTP acknowledgement is the acknowledgement. None of the three
+starts a replacement process. Cursor and Grok run over ACP, whose only mid-turn
+request is `session/cancel`, so they have no Steer.
+
+**OpenCode reads guidance at its next step, and the 204 comes before the store.**
+OpenCode keeps one run per busy session and re-reads the conversation at every
+step, so a message stored mid-run is answered by that run once the current tool
+call ends. `prompt_async` returns before the message is stored, though, so the
+run can go idle without it; OpenCode then starts a new run for the message. The
+server stays up until every acknowledged message has been seen
+(`message.updated`, role `user`) and the newest one answered, re-checking a
+deferred idle every 3 seconds for up to 30. A message stored in the moment
+between the run's last check and its end is never answered: the turn closes and
+the chat shows an error asking to send it again. See `Steering` in
+[opencode_server.rs](../src-tauri/src/providers/opencode_server.rs).
 
 Claude's `--replay-user-messages` echo is *not* the acknowledgement. Claude
 replays a steered message only when it picks it up, and a turn inside a long

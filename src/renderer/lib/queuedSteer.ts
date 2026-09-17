@@ -20,7 +20,7 @@ export function hasSteeringContextHeadroom(
  * Whether a queued follow-up can be steered into the running turn instead of
  * interrupting it.
  *
- * Only Claude and Codex accept text mid-turn, and only for the settings the
+ * Only Claude, Codex and OpenCode accept text mid-turn, and only for the settings the
  * turn is already running under: a row queued against another model or effort
  * would arrive as a different chat's message. Two composers ask
  * this — the desktop's lane and the phone shell's card, through the `composer`
@@ -40,7 +40,9 @@ export function canSteerQueuedMessage(
 ): boolean {
   return (
     session.state === "running" &&
-    (session.provider === "codex" || session.provider === "claude") &&
+    (session.provider === "codex" ||
+      session.provider === "claude" ||
+      session.provider === "opencode") &&
     hasSteeringContextHeadroom(session) &&
     (entry.modelId === undefined || entry.modelId === session.modelId) &&
     (entry.reasoningEffort === undefined || entry.reasoningEffort === session.reasoningEffort)

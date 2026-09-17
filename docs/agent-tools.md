@@ -475,10 +475,10 @@ notice, and when it was handed over.
 
 Delivery and recording are separate on purpose. Every message is *also* sent
 into the recipient through `ProviderSessionService::send_agent_message`: an idle
-session starts a turn on it, a running Claude or Codex turn takes it as steering
+session starts a turn on it, a running Claude, Codex or OpenCode turn takes it as steering
 (the same path as the composer's **Steer**, see [providers.md](providers.md)),
-and every other working session gets it when its turn ends. Cursor, OpenCode
-and Grok have no way to push input into a running model, and even a steerable
+and every other working session gets it when its turn ends. Cursor and Grok
+have no way to push input into a running model, and even a steerable
 turn sometimes cannot take it: Codex is near or inside a compaction, Claude has
 not picked up the turn's first message, or the recipient is blocked in
 `session_wait`, which collects the message itself. The row
@@ -526,8 +526,8 @@ instead of looking complete, and one that emptied the inbox says nothing at all.
 This is the difference between a peer that answers and a queue the user watches
 pile up, and it is bounded by exactly one thing: an agent that touches no
 `argmax` tool for the rest of its turn is not reached, and gets the message the
-old way when the turn ends. For Claude and Codex the flag is mostly a fallback:
-their running turns are steered directly.
+old way when the turn ends. For Claude, Codex and OpenCode the flag is mostly a
+fallback: their running turns are steered directly.
 
 ### Delivered once, whichever path wins
 

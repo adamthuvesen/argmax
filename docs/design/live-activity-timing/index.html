@@ -776,10 +776,16 @@
 
         if (lineLive) {
           const shown = pane.shown;
-          const headline = ["Used", ...[]];
+          // The newest clause leads and lends the line its verb; the earlier
+          // ones follow verbatim. Splitting the verb off every clause read as
+          // "Searched used a tool, read files, the code".
           const text = shown.segs.length > 0 ? shown.segs : ["working"];
-          const verb = capitalize(text[text.length - 1].split(" ")[0]);
-          const clauses = text.map((s, i) => (i === text.length - 1 ? s.split(" ").slice(1).join(" ") : s));
+          const newest = text[text.length - 1];
+          const verb = capitalize(newest.split(" ")[0]);
+          const clauses = [
+            newest.split(" ").slice(1).join(" "),
+            ...text.slice(0, -1),
+          ].filter(Boolean);
 
           const changed = pane.pendingChange && pane.pendingChange.at === shown.at;
           if (changed || dom.headline.dataset.key !== JSON.stringify(text)) {
@@ -836,8 +842,18 @@
           if (dom.tail.childElementCount > 0) {
             if (v.softExit && !dom.tail.dataset.leaving) {
               dom.tail.dataset.leaving = "1";
-              dom.tail.animate([{ opacity: 1 }, { opacity: 0 }], { duration: v.softExit, easing: "ease-in", fill: "forwards" });
-              setTimeout(() => { dom.tail.innerHTML = ""; delete dom.tail.dataset.leaving; dom.tail.getAnimations().forEach((a) => a.cancel()); }, v.softExit);
+              // Cancel the fade only. Cancelling everything on the node took
+              // the wave's own animation with it, so the band started and
+              // stopped dead on every beat.
+              const fade = dom.tail.animate(
+                [{ opacity: 1 }, { opacity: 0 }],
+                { duration: v.softExit, easing: "ease-in", fill: "forwards" }
+              );
+              setTimeout(() => {
+                dom.tail.innerHTML = "";
+                delete dom.tail.dataset.leaving;
+                fade.cancel();
+              }, v.softExit);
             } else if (!v.softExit) {
               dom.tail.innerHTML = "";
             }

@@ -51,12 +51,13 @@
 }
 
 [data-reading-wave="true"] .reading-wave-text {
-  /* Dark: the line steps back toward the ground and the band lifts it to the
-     brightest ink with the accent in it. Desktop's running words already sit
-     at muted-strong, close to ink, so resting at their own colour left the
-     band almost nothing to brighten. */
-  --reading-wave-rest: color-mix(in srgb, currentColor 72%, var(--bg));
-  --reading-wave-peak: color-mix(in srgb, var(--prose-ink-strong) 70%, var(--accent));
+  /* Dark: the line steps back a touch toward the ground and the band lifts it
+     to the brightest ink with the accent in it. The step back is small on
+     purpose — pulling the resting line a quarter of the way to the ground made
+     a running row read as *dimmer* than the settled rows around it, which
+     looked broken rather than live. The contrast comes from the peak. */
+  --reading-wave-rest: color-mix(in srgb, currentColor 86%, var(--bg));
+  --reading-wave-peak: color-mix(in srgb, var(--prose-ink-strong) 80%, var(--accent));
   --reading-wave-at: calc(var(--reading-wave-head) - var(--reading-wave-offset, 0px));
   /* A Gaussian sampled at half-sigma steps; the eye cannot find the joins. */
   background-image: linear-gradient(

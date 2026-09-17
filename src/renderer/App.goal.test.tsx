@@ -62,7 +62,6 @@ describe("App goal launcher", () => {
     const input = await screen.findByLabelText("Task prompt");
 
     fireEvent.keyDown(input, { key: "Tab" });
-    fireEvent.keyDown(input, { key: "Tab" });
     await screen.findByText(SIDE_CHAT_TITLE);
 
     fireEvent.change(input, { target: { value: "/goal all tests pass" } });

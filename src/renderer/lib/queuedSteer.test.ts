@@ -23,16 +23,15 @@ const session = {
 
 const entry = {
   modelId: "claude-opus-5",
-  reasoningEffort: "medium",
-  agentMode: "auto"
-} as Pick<PendingMessage, "modelId" | "reasoningEffort" | "agentMode">;
+  reasoningEffort: "medium"
+} as Pick<PendingMessage, "modelId" | "reasoningEffort">;
 
 describe("canSteerQueuedMessage", () => {
   it("steers a matching row into a running Claude or Codex turn", () => {
     expect(canSteerQueuedMessage(session, entry)).toBe(true);
     expect(canSteerQueuedMessage({ ...session, provider: "codex" }, entry)).toBe(true);
     // A row queued before the model was picked takes the turn's own settings.
-    expect(canSteerQueuedMessage(session, { agentMode: "auto" })).toBe(true);
+    expect(canSteerQueuedMessage(session, {})).toBe(true);
   });
 
   it.each([
@@ -49,8 +48,7 @@ describe("canSteerQueuedMessage", () => {
       entry
     ],
     ["the row names another model", session, { ...entry, modelId: "claude-sonnet-5" }],
-    ["the row names another effort", session, { ...entry, reasoningEffort: "high" as const }],
-    ["the row names another agent mode", session, { ...entry, agentMode: "plan" as const }]
+    ["the row names another effort", session, { ...entry, reasoningEffort: "high" as const }]
   ])("refuses when %s", (_case, openSession, queued) => {
     expect(canSteerQueuedMessage(openSession, queued)).toBe(false);
   });

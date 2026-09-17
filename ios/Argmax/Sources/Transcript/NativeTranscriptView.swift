@@ -4,7 +4,6 @@ struct NativeTranscriptView: View {
     let client: BridgeClient
     let onOpenFile: (String) -> Void
     let onOpenDiff: (String) -> Void
-    let onRevisePlan: () -> Void
     @EnvironmentObject private var transcript: TranscriptStore
     @EnvironmentObject private var appearance: Appearance
     @EnvironmentObject private var navigator: ChatNavigator
@@ -63,7 +62,6 @@ struct NativeTranscriptView: View {
                 MobileTranscriptRowView(row: row) { item in
                 TranscriptContentRow(item: item, client: client,
                                      onOpenFile: onOpenFile, onOpenDiff: onOpenDiff,
-                                     onRevisePlan: onRevisePlan,
                                      onOpenSession: { navigator.awaitingSessionID = $0 })
                 }
                     .padding(.vertical, row.verticalPadding)
@@ -123,7 +121,6 @@ struct TranscriptContentRow: View {
     let client: BridgeClient
     let onOpenFile: (String) -> Void
     var onOpenDiff: ((String) -> Void)? = nil
-    var onRevisePlan: () -> Void = {}
     var onOpenSession: ((String) -> Void)?
     @EnvironmentObject private var transcript: TranscriptStore
 
@@ -151,9 +148,9 @@ struct TranscriptContentRow: View {
             TranscriptErrorRow(error: error)
         case .question:
             EmptyView()
-        case .plan, .approval, .agents, .multitask:
+        case .approval, .agents, .multitask:
             TranscriptInteractiveRow(item: item, client: client,
-                                     onOpenFile: onOpenFile, onRevisePlan: onRevisePlan,
+                                     onOpenFile: onOpenFile,
                                      onOpenSession: onOpenSession)
         }
     }
@@ -202,7 +199,6 @@ struct TranscriptComposerFloor: View {
     @Binding var draft: String
     @Binding var focusRequest: Int
     @EnvironmentObject private var transcript: TranscriptStore
-    @EnvironmentObject private var dashboard: DashboardStore
     @StateObject private var interactions: TranscriptInteractionCoordinator
     @State private var dismissed: Set<String> = []
     @State private var dockHeight: CGFloat = 0
@@ -295,7 +291,6 @@ struct TranscriptComposerFloor: View {
             modelLabel: composer.modelLabel,
             modelID: composer.modelId,
             reasoningEffort: composer.effort,
-            agentMode: dashboard.snapshot.sessions.first { $0.id == composer.sessionId }?.agentMode ?? "auto",
             isRunning: composer.running
         )
     }

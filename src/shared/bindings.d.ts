@@ -1497,7 +1497,12 @@ export type ActivityWindow = "24h" | "7d" | "30d" |
  * The current calendar year, January 1 local through now.
  */
 "year"
-export type AgentMode = "auto" | "plan"
+export type AgentMode =
+/**
+ * Sessions used to persist `plan`. That value still deserializes here so
+ * old rows and payloads load, then run as Auto.
+ */
+"auto"
 export type AgentReference = { name: NonEmptyString; providerChildSessionId: NonEmptyString; providerParentConversationId: NonEmptyString }
 export type AgentToolsSettings = { browserTools: boolean }
 export type ApprovalId = string

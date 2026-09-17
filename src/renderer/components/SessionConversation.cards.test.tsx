@@ -18,167 +18,6 @@ describe("SessionConversation — cards", () => {
     delete (window as { argmax?: unknown }).argmax;
     cleanup();
   });
-  it("hides assistant text emitted AFTER an ExitPlanMode card so the plan isn't duplicated as a chat bubble", () => {
-    // When Argmax denies ExitPlanMode in structured-json mode, the model
-    // often retries by writing the plan as a text fallback. The card has
-    // already rendered, so showing the fallback text below it duplicates
-    // the entire plan in the chat. Pre-tool narration stays visible
-    // because it's useful intro context.
-    renderConversation(
-      baseSession({ provider: "claude", state: "complete" }),
-      [
-        event("u1", "user.message", "make a plan", "2026-05-12T15:00:00.000Z", {
-          agentMode: "plan"
-        }),
-        event("m1", "message.completed", "Let me draft a plan.", "2026-05-12T15:00:01.000Z"),
-        event("tu-start", "command.started", "ExitPlanMode", "2026-05-12T15:00:02.000Z", {
-          type: "tool_use",
-          id: "tu_plan_dup",
-          name: "ExitPlanMode",
-          input: { plan: "## Plan\n\n**Step:** Do the thing\n\nApprove?" }
-        }),
-        event("tu-end", "command.completed", "tool_result", "2026-05-12T15:00:03.000Z", {
-          tool_use_id: "tu_plan_dup",
-          content: "Exit plan mode?",
-          is_error: true
-        }),
-        event("m2", "message.completed", "Plan written. Ready for your approval.", "2026-05-12T15:00:04.000Z")
-      ]
-    );
-
-    expect(screen.getByLabelText(/Plan: /)).toBeInTheDocument();
-    // Pre-tool intro narration is kept.
-    expect(screen.getByText("Let me draft a plan.")).toBeInTheDocument();
-    // Post-tool fallback text is suppressed (the card already conveys it).
-    expect(screen.queryByText("Plan written. Ready for your approval.")).not.toBeInTheDocument();
-  });
-
-  it("renders a PlanCard from ExitPlanMode even when the tool ended in error (denied in structured-json mode)", () => {
-    // In structured-json mode Argmax denies ExitPlanMode with a tool_result
-    // {is_error: true, content: "Exit plan mode?"}. The plan markdown is
-    // still in inputFull.plan, so the card MUST still render — otherwise the
-    // user just sees a "Plan written" text bubble with no card.
-    const planMarkdown =
-      "## Refactor docs\n\n**Files to change:** README.md, docs/\n\nApprove?";
-    renderConversation(
-      baseSession({ provider: "claude", state: "complete" }),
-      [
-        event("u1", "user.message", "make a plan", "2026-05-12T15:00:00.000Z", {
-          agentMode: "plan"
-        }),
-        event("tu-start", "command.started", "ExitPlanMode", "2026-05-12T15:00:01.000Z", {
-          type: "tool_use",
-          id: "tu_plan_err",
-          name: "ExitPlanMode",
-          input: { plan: planMarkdown }
-        }),
-        event("tu-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
-          tool_use_id: "tu_plan_err",
-          content: "Exit plan mode?",
-          is_error: true
-        })
-      ]
-    );
-
-    expect(screen.getByLabelText(/Plan: /)).toBeInTheDocument();
-    expect(screen.getByText("Refactor docs")).toBeInTheDocument();
-    expect(screen.queryByText("ExitPlanMode")).not.toBeInTheDocument();
-  });
-
-  it("renders an ExitPlanMode tool call as a PlanCard, hiding the raw tool row", () => {
-    const planMarkdown =
-      "## Refactor auth module\n\n" +
-      "**Files to change:** auth.ts, login.tsx\n\n" +
-      "Approve this plan?";
-    renderConversation(
-      baseSession({ provider: "claude", state: "complete" }),
-      [
-        event("u1", "user.message", "refactor auth", "2026-05-12T15:00:00.000Z", {
-          agentMode: "plan"
-        }),
-        event(
-          "m1",
-          "message.completed",
-          "Let me lay out a plan.",
-          "2026-05-12T15:00:01.000Z"
-        ),
-        event("tu-start", "command.started", "ExitPlanMode", "2026-05-12T15:00:02.000Z", {
-          type: "tool_use",
-          id: "tu_plan_1",
-          name: "ExitPlanMode",
-          input: { plan: planMarkdown }
-        }),
-        event("tu-end", "command.completed", "tool_result", "2026-05-12T15:00:03.000Z", {
-          tool_use_id: "tu_plan_1",
-          content: "ok"
-        })
-      ]
-    );
-
-    expect(screen.getByLabelText(/Plan: /)).toBeInTheDocument();
-    expect(screen.getByText("Refactor auth module")).toBeInTheDocument();
-    expect(screen.getByText("Let me lay out a plan.")).toBeInTheDocument();
-    // The raw ExitPlanMode tool row should not appear once the card has the plan.
-    expect(screen.queryByText("ExitPlanMode")).not.toBeInTheDocument();
-  });
-
-  it("suppresses a premature plan card when an unanswered question precedes it in the same turn", () => {
-    // Plan-mode flow: the model asks a clarifying question (AskUserQuestion), but
-    // because Argmax denies that tool the model falls back to ExitPlanMode in the
-    // SAME turn — writing a plan before the user has answered. Show only the
-    // question; the premature plan card must NOT render (the agent re-plans with
-    // the answer in the next turn).
-    renderConversation(
-      baseSession({ provider: "claude", state: "complete" }),
-      [
-        event("u1", "user.message", "make a plan", "2026-05-12T15:00:00.000Z", {
-          agentMode: "plan"
-        }),
-        event("tu-q", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
-          type: "tool_use",
-          id: "tu_q",
-          name: "AskUserQuestion",
-          input: {
-            questions: [
-              {
-                question: "What's the scope?",
-                header: "Scope",
-                multiSelect: false,
-                options: [
-                  { label: "Consolidate & clean", description: "Merge overlaps" },
-                  { label: "Fill gaps", description: "Add missing concepts" }
-                ]
-              }
-            ]
-          }
-        }),
-        event("tu-q-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
-          tool_use_id: "tu_q",
-          content: "Answer questions?",
-          is_error: true
-        }),
-        event("tu-plan", "command.started", "ExitPlanMode", "2026-05-12T15:00:03.000Z", {
-          type: "tool_use",
-          id: "tu_plan",
-          name: "ExitPlanMode",
-          input: { plan: "## Premature plan\n\n**Step:** Do it anyway\n\nApprove?" }
-        }),
-        event("tu-plan-end", "command.completed", "tool_result", "2026-05-12T15:00:04.000Z", {
-          tool_use_id: "tu_plan",
-          content: "Exit plan mode?",
-          is_error: true
-        })
-      ]
-    );
-
-    // The question is the authoritative ask…
-    expect(screen.getByLabelText("Question from agent")).toBeInTheDocument();
-    expect(screen.getByText("What's the scope?")).toBeInTheDocument();
-    // …and the premature plan card is suppressed until it's answered.
-    expect(screen.queryByLabelText(/Plan: /)).not.toBeInTheDocument();
-    expect(screen.queryByText("Premature plan")).not.toBeInTheDocument();
-  });
-
   it("takes the composer's place while the question is live, and gives it back when the question is closed", () => {
     render(
       <SessionConversation
@@ -595,7 +434,7 @@ describe("SessionConversation — cards", () => {
       <SessionConversation
         events={[
           event("u1", "user.message", "what should we do", "2026-05-12T15:00:00.000Z", {
-            agentMode: "plan"
+            agentMode: "auto"
           }),
           event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
             type: "tool_use",
@@ -647,7 +486,7 @@ describe("SessionConversation — cards", () => {
     expect(onSend).toHaveBeenCalledTimes(1);
     const call = onSend.mock.calls[0] as [string, string, unknown, string] | undefined;
     expect(call?.[1]).toContain("Direction: Fix audit findings");
-    expect(call?.[3]).toBe("plan");
+    expect(call?.[3]).toBe("auto");
   });
 
   it.each([
@@ -713,7 +552,7 @@ describe("SessionConversation — cards", () => {
       <SessionConversation
         events={[
           event("u1", "user.message", "choose a path", "2026-05-12T15:00:00.000Z", {
-            agentMode: "plan"
+            agentMode: "auto"
           }),
           event("tu-start", "command.started", toolMessage, "2026-05-12T15:00:01.000Z", payload)
         ]}
@@ -742,7 +581,7 @@ describe("SessionConversation — cards", () => {
     expect(onSend).toHaveBeenCalledTimes(1);
     const call = onSend.mock.calls[0] as [string, string, unknown, string] | undefined;
     expect(call?.[1]).toContain("Path: Fast fix");
-    expect(call?.[3]).toBe("plan");
+    expect(call?.[3]).toBe("auto");
   });
 
   it("shows one completed async Codex question and submits its answer", () => {
@@ -804,7 +643,7 @@ describe("SessionConversation — cards", () => {
       <SessionConversation
         events={[
           event("u1", "user.message", "ask me", "2026-05-12T15:00:00.000Z", {
-            agentMode: "plan"
+            agentMode: "auto"
           }),
           event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
             type: "tool_use",
@@ -864,7 +703,7 @@ describe("SessionConversation — cards", () => {
       <SessionConversation
         events={[
           event("u1", "user.message", "decide", "2026-05-12T15:00:00.000Z", {
-            agentMode: "plan"
+            agentMode: "auto"
           }),
           event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
             type: "tool_use",
@@ -909,13 +748,13 @@ describe("SessionConversation — cards", () => {
     // When AskUserQuestion errors out in structured-json mode, the model
     // sometimes confabulates a "Thanks based on your input" message with
     // fabricated answers BEFORE the user has touched the card. The card
-    // already conveys the ask, so post-tool prose is suppressed — same rule
-    // as PlanCard. Pre-tool intro narration stays (it's useful context).
+    // already conveys the ask, so post-tool prose is suppressed. Pre-tool
+    // intro narration stays because it is useful context.
     renderConversation(
       baseSession({ provider: "claude", state: "complete" }),
       [
         event("u1", "user.message", "scan and ask", "2026-05-12T15:00:00.000Z", {
-          agentMode: "plan"
+          agentMode: "auto"
         }),
         event("m0", "message.completed", "Scanning the repo now.", "2026-05-12T15:00:00.500Z"),
         event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
@@ -959,7 +798,7 @@ describe("SessionConversation — cards", () => {
       <SessionConversation
         events={[
           event("u1", "user.message", "decide", "2026-05-12T15:00:00.000Z", {
-            agentMode: "plan"
+            agentMode: "auto"
           }),
           event("bad-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
             type: "tool_use",
@@ -1024,7 +863,7 @@ describe("SessionConversation — cards", () => {
       baseSession({ provider: "claude", state: "running" }),
       [
         event("u1", "user.message", "decide", "2026-05-12T15:00:00.000Z", {
-          agentMode: "plan"
+          agentMode: "auto"
         }),
         event("bad-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
           type: "tool_use",
@@ -1060,7 +899,7 @@ describe("SessionConversation — cards", () => {
       <SessionConversation
         events={[
           event("u1", "user.message", "scan and ask", "2026-05-12T15:00:00.000Z", {
-            agentMode: "plan"
+            agentMode: "auto"
           }),
           event("agent-start", "command.started", "Agent", "2026-05-12T15:00:01.000Z", {
             type: "tool_use",
@@ -1121,95 +960,12 @@ describe("SessionConversation — cards", () => {
     expect(screen.queryByText("AskUserQuestion")).not.toBeInTheDocument();
   });
 
-  it("hides the ExitPlanMode tool row immediately, even while still running (no flicker)", () => {
-    render(
-      <SessionConversation
-        events={[
-          event("u1", "user.message", "plan it", "2026-05-12T15:00:00.000Z", {
-            agentMode: "plan"
-          }),
-          event("tu-start", "command.started", "ExitPlanMode", "2026-05-12T15:00:01.000Z", {
-            type: "tool_use",
-            id: "tu_plan_running",
-            name: "ExitPlanMode",
-            input: { plan: "## Title\n\n**Section:** body\n\nApprove?" }
-          })
-        ]}
-        isLogOpen={false}
-        onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
-        onTerminateSession={vi.fn().mockResolvedValue(undefined)}
-        onClearSession={vi.fn().mockResolvedValue(undefined)}
-        onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
-        pendingMessages={[]}
-        onToggleLog={vi.fn()}
-        project={project}
-        rawOutputs={[]}
-        review={reviewStub()}
-        session={baseSession({ provider: "claude", state: "running" })}
-        workspace={workspace}
-      />
-    );
-
-    expect(screen.queryByText("ExitPlanMode")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/Plan: /)).not.toBeInTheDocument();
-  });
-
-  it("renders an ExitPlanMode card when the tool is folded into a mixed tool group", () => {
-    render(
-      <SessionConversation
-        defaultToolCallsDisplay={"expanded"}
-        events={[
-          event("u1", "user.message", "plan and check", "2026-05-12T15:00:00.000Z", {
-            agentMode: "plan"
-          }),
-          event("plan-start", "command.started", "ExitPlanMode", "2026-05-12T15:00:01.000Z", {
-            type: "tool_use",
-            id: "tu_plan_grouped",
-            name: "ExitPlanMode",
-            input: { plan: "## Grouped plan\n\n**Step:** Keep the bash row visible\n\nApprove?" }
-          }),
-          event("bash-start", "command.started", "Bash", "2026-05-12T15:00:01.020Z", {
-            type: "tool_use",
-            id: "tu_bash_grouped",
-            name: "Bash",
-            input: { command: "echo ok" }
-          }),
-          event("plan-end", "command.completed", "tool_result", "2026-05-12T15:00:01.040Z", {
-            tool_use_id: "tu_plan_grouped",
-            content: "ok"
-          }),
-          event("bash-end", "command.completed", "tool_result", "2026-05-12T15:00:01.060Z", {
-            tool_use_id: "tu_bash_grouped",
-            content: "ok"
-          })
-        ]}
-        isLogOpen={false}
-        onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
-        onTerminateSession={vi.fn().mockResolvedValue(undefined)}
-        onClearSession={vi.fn().mockResolvedValue(undefined)}
-        onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
-        pendingMessages={[]}
-        onToggleLog={vi.fn()}
-        project={project}
-        rawOutputs={[]}
-        review={reviewStub()}
-        session={baseSession({ provider: "claude", state: "complete" })}
-        workspace={workspace}
-      />
-    );
-
-    expect(screen.getByLabelText(/Plan: /)).toBeInTheDocument();
-    expect(screen.getByText("Grouped plan")).toBeInTheDocument();
-    expect(screen.queryByText("ExitPlanMode")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ran echo ok" })).toBeInTheDocument();
-  });
-
   it("still docks the question when AskUserQuestion retries are adjacent", () => {
     render(
       <SessionConversation
         events={[
           event("u1", "user.message", "what should we do", "2026-05-12T15:00:00.000Z", {
-            agentMode: "plan"
+            agentMode: "auto"
           }),
           event("tu1-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
             type: "tool_use",

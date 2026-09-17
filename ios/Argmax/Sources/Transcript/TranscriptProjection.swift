@@ -22,7 +22,6 @@ enum TranscriptProjection {
         var answerSegment = 0
         var answerOpen = false
         var pickedLegacyQuestionInTurn = false
-        var pickedPlanInTurn = false
 
         if !events.contains(where: { $0.type == "user.message" }),
            !source.contains(where: { $0.type == "session.cleared" }),
@@ -58,7 +57,6 @@ enum TranscriptProjection {
                     answerSegment = 0
                     answerOpen = false
                     pickedLegacyQuestionInTurn = false
-                    pickedPlanInTurn = false
                 }
                 items.append(.user(TranscriptMessage(
                     id: "user-\(event.id)",
@@ -123,22 +121,6 @@ enum TranscriptProjection {
                                 : tool.completedAt == nil && sessionIsActive,
                             sessionID: event.sessionId,
                             requestID: requestID
-                        )))
-                    }
-                    continue
-                }
-                if isPlanTool(normalized) {
-                    if !pickedPlanInTurn,
-                       tool.status != .running,
-                       let markdown = tool.inputObject["plan"]?.string?.trimmingCharacters(in: .whitespacesAndNewlines),
-                       !markdown.isEmpty {
-                        pickedPlanInTurn = true
-                        items.append(.plan(TranscriptPlan(
-                            id: "plan-\(tool.id)",
-                            toolUseId: tool.toolUseId,
-                            markdown: markdown,
-                            createdAt: tool.createdAt,
-                            isOutstanding: tool.createdAt > lastUserAt
                         )))
                     }
                     continue
@@ -273,13 +255,11 @@ enum TranscriptProjection {
         let tools = correlatedTools(events: events, sessionRunning: false)
         var cardStarted = false
         var pickedLegacyQuestion = false
-        var pickedPlan = false
         var activeBlockingQuestions = Set<String>()
         return events.filter { event in
             if event.type == "user.message", event.payloadObject["delivery"]?.string != "steer" {
                 cardStarted = false
                 pickedLegacyQuestion = false
-                pickedPlan = false
                 activeBlockingQuestions.removeAll()
                 return true
             }
@@ -298,12 +278,6 @@ enum TranscriptProjection {
                         pickedLegacyQuestion = true
                         if delivery != "async" { cardStarted = true }
                     }
-                }
-                if isPlanTool(name), !pickedPlan, tool.status != .running,
-                   let plan = tool.inputObject["plan"]?.string,
-                   !plan.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    pickedPlan = true
-                    cardStarted = true
                 }
                 return true
             }
@@ -905,8 +879,6 @@ enum TranscriptProjection {
     private static func isQuestionTool(_ name: String) -> Bool {
         name == "askuserquestion" || name == "askquestiontoolcall" || name == "sendusermessage"
     }
-
-    private static func isPlanTool(_ name: String) -> Bool { name == "exitplanmode" }
 
     private static func isAgentTool(_ name: String) -> Bool {
         name == "task" || name == "agent" || name == "subagent" || name == "tasktoolcall" ||

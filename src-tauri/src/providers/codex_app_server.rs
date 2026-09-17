@@ -24,13 +24,14 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tokio::time::MissedTickBehavior;
 use uuid::Uuid;
 
-use super::adapters::prompt_for_agent_mode;
 use super::environment::build_provider_environment;
 use super::normalizer::ProviderOutputStream;
 use super::runtime::{
     BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType, ProviderRuntimeHandle,
 };
-use super::{mcp_injection, AgentMode, PermissionMode, ProviderId, ProviderLaunchInput};
+use super::{mcp_injection, PermissionMode, ProviderId, ProviderLaunchInput};
+#[cfg(test)]
+use super::AgentMode;
 use crate::approvals::service::ApprovalService;
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::time::now_iso;
@@ -154,7 +155,7 @@ pub async fn launch_turn(
             })?
             .to_string();
 
-        let prompt = prompt_for_agent_mode(&input.prompt, input.agent_mode);
+        let prompt = input.prompt.clone();
         let turn_response = rpc
             .request("turn/start", turn_params(input, &thread_id, prompt))
             .await?;
@@ -380,7 +381,7 @@ fn apply_permission_policy(
 ) {
     match input.permission_mode {
         PermissionMode::ProviderDefaults => {}
-        PermissionMode::AutoApprove if input.agent_mode == AgentMode::Auto => {
+        PermissionMode::AutoApprove => {
             params.insert("approvalPolicy".to_string(), json!("on-request"));
             params.insert("approvalsReviewer".to_string(), json!("auto_review"));
             if is_turn {
@@ -392,7 +393,7 @@ fn apply_permission_policy(
                 params.insert("sandbox".to_string(), json!("danger-full-access"));
             }
         }
-        PermissionMode::AutoApprove | PermissionMode::AskEachTime => {
+        PermissionMode::AskEachTime => {
             params.insert("approvalPolicy".to_string(), json!("on-request"));
             params.insert("approvalsReviewer".to_string(), json!("user"));
             if is_turn {
@@ -1684,7 +1685,7 @@ mod tests {
         let turn = turn_params(
             &routed_input,
             "thread-1",
-            prompt_for_agent_mode(&routed_input.prompt, routed_input.agent_mode),
+            routed_input.prompt.clone(),
         );
         let prompt = turn["input"][0]["text"].as_str().expect("turn prompt");
         let argmax = prompt.find("Argmax MCP tools").expect("Argmax route");

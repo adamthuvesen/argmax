@@ -160,9 +160,7 @@ pub async fn launch_turn(
         ]
         .map(str::to_string),
     );
-    if input.permission_mode == PermissionMode::AskEachTime
-        && input.agent_mode != super::AgentMode::Plan
-    {
+    if input.permission_mode == PermissionMode::AskEachTime {
         args.extend(["--permission-mode", "manual"].map(str::to_string));
     }
     let mut overrides = vec![
@@ -383,40 +381,27 @@ pub async fn launch_turn(
 /// when they press it, so gating it asks permission to show a question they
 /// are looking at. And Full access promised no gates: Claude still raises one
 /// under `--dangerously-skip-permissions` when a settings `ask` rule forces
-/// it, and sending that to the broker parks a chat nobody is watching. Plan
-/// mode keeps its gate.
+/// it, and sending that to the broker parks a chat nobody is watching.
 fn answers_itself(input: &ProviderLaunchInput, tool_name: Option<&str>) -> bool {
     if tool_name.is_some_and(super::renders_as_interactive_card) {
         return true;
     }
     input.permission_mode == PermissionMode::AutoApprove
-        && input.agent_mode == super::AgentMode::Auto
 }
 
-/// What the model reads back from a card tool. The chat draws the question
-/// in the composer's dock and the plan as a card, and the user's answer
-/// arrives as the next user message, so the CLI never sees it. Allowing the
-/// call makes it report an outcome before the user has seen the card:
-/// "The user did not answer the questions." for `AskUserQuestion`, which
-/// models read as a dismissal and fall back to asking in prose, and "User has
-/// approved your plan. You can now start coding." for `ExitPlanMode`, which
-/// starts the implementation before the plan card is pressed. Denying lets
-/// the message carry the contract instead.
+/// What the model reads back from a question tool. The chat draws the question
+/// in the composer's dock and the user's answer arrives as the next user
+/// message, so the CLI never sees it. Allowing the call makes it report "The
+/// user did not answer the questions." before the user has seen the dock.
+/// Models read that as a dismissal and fall back to asking in prose.
 const QUESTION_SHOWN_MESSAGE: &str = "The question is now in front of the user in the chat. \
 Their answer arrives as your next user message, so end this turn now: no further questions, \
 no prose restatement of the options, and no work that depends on the answer. \
 This is not a dismissal, so do not call AskUserQuestion again until the user has replied.";
 
-const PLAN_SHOWN_MESSAGE: &str = "The plan is now in front of the user as a card in the chat. \
-Their decision arrives as your next user message, so end this turn now: do not start \
-implementing, do not restate the plan, and do not call ExitPlanMode again until the user has replied. \
-This is not a rejection.";
-
 fn card_shown_message(tool_name: &str) -> Option<&'static str> {
     if super::asks_the_user_a_question(tool_name) {
         Some(QUESTION_SHOWN_MESSAGE)
-    } else if super::exits_plan_mode(tool_name) {
-        Some(PLAN_SHOWN_MESSAGE)
     } else {
         None
     }
@@ -606,21 +591,16 @@ mod tests {
     }
 
     #[test]
-    fn card_tools_and_full_access_answer_themselves_but_plan_mode_still_asks() {
+    fn card_tools_and_full_access_answer_themselves() {
         use super::super::AgentMode;
         let ask = launch_input(PermissionMode::AskEachTime, AgentMode::Auto);
         assert!(answers_itself(&ask, Some("AskUserQuestion")));
-        assert!(answers_itself(&ask, Some("ExitPlanMode")));
+        assert!(!answers_itself(&ask, Some("ExitPlanMode")));
         assert!(!answers_itself(&ask, Some("Bash")));
         assert!(!answers_itself(&ask, None));
 
         let full = launch_input(PermissionMode::AutoApprove, AgentMode::Auto);
         assert!(answers_itself(&full, Some("Bash")));
-
-        // A plan-mode chat is gated on purpose, but its own card is not.
-        let plan = launch_input(PermissionMode::AutoApprove, AgentMode::Plan);
-        assert!(!answers_itself(&plan, Some("Bash")));
-        assert!(answers_itself(&plan, Some("AskUserQuestion")));
     }
 
     #[test]
@@ -628,9 +608,7 @@ mod tests {
         let question = card_shown_message("AskUserQuestion").unwrap();
         assert!(question.contains("next user message"), "{question}");
         assert!(question.contains("not a dismissal"), "{question}");
-        let plan = card_shown_message("ExitPlanMode").unwrap();
-        assert!(plan.contains("do not start"), "{plan}");
-        assert!(plan.contains("not a rejection"), "{plan}");
+        assert!(card_shown_message("ExitPlanMode").is_none());
         assert!(card_shown_message("SendUserMessage").is_none());
         assert!(card_shown_message("Bash").is_none());
 

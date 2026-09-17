@@ -27,9 +27,8 @@ describe("App side chat launcher", () => {
     const input = await screen.findByLabelText("Task prompt");
 
     fireEvent.keyDown(input, { key: "Tab" });
-    fireEvent.keyDown(input, { key: "Tab" });
 
-    expect(screen.getByRole("button", { name: "Agent mode" })).toHaveTextContent("Chat");
+    expect(screen.getByRole("button", { name: "Chat mode" })).toHaveTextContent("Chat");
     expect(await screen.findByText(SIDE_CHAT_TITLE)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Switch project" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Switch branch" })).toBeNull();
@@ -57,13 +56,12 @@ describe("App side chat launcher", () => {
     const input = await screen.findByLabelText("Task prompt");
 
     fireEvent.keyDown(input, { key: "Tab" });
-    fireEvent.keyDown(input, { key: "Tab" });
     await screen.findByText(SIDE_CHAT_TITLE);
 
     fireEvent.keyDown(input, { key: "Tab" });
 
     expect(await screen.findByText(LAUNCHER_TITLE)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Agent mode" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Chat mode" })).toBeNull();
     expect(screen.getByRole("button", { name: "Switch project" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Switch branch" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Worktree" })).toBeInTheDocument();
@@ -86,7 +84,7 @@ describe("App side chat launcher", () => {
     fireEvent.click(screen.getByRole("button", { name: "New side chat" }));
 
     expect(await screen.findByText(SIDE_CHAT_TITLE)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Agent mode" })).toHaveTextContent("Chat");
+    expect(screen.getByRole("button", { name: "Chat mode" })).toHaveTextContent("Chat");
   });
 
   it("archives stray details-popup workspaces on boot", async () => {

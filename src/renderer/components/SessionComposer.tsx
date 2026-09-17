@@ -1,5 +1,4 @@
 import {
-  Bot,
   Columns2,
   CornerDownLeft,
   CornerUpRight,
@@ -7,7 +6,6 @@ import {
   FileDiff,
   FolderOpen,
   GitBranch,
-  ListChecks,
   Maximize2,
   MoreHorizontal,
   Paperclip,
@@ -28,13 +26,11 @@ import {
   useMemo,
   useRef,
   useState,
-  type Dispatch,
   type FormEvent,
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent,
   type MutableRefObject,
   type ReactNode,
-  type SetStateAction,
   type UIEvent as ReactUIEvent
 } from "react";
 import type {
@@ -66,10 +62,6 @@ import {
   prependAnnotationsToPrompt,
   type ComposerAnnotation
 } from "../lib/composerAnnotations.js";
-import {
-  AGENT_MODE_LABELS,
-  toggleAgentMode
-} from "../lib/agentMode.js";
 import {
   dispatchedCommandNames,
   isClearCommand,
@@ -124,7 +116,6 @@ interface ComposerChangeSummary {
 }
 
 export function SessionComposer({
-  agentMode,
   canSend,
   chatFontSize,
   changeSummary = null,
@@ -153,7 +144,6 @@ export function SessionComposer({
   reviewPanelOpen,
   selectedModel,
   session,
-  setAgentMode,
   setSelectedModel,
   setStatus,
   shouldRefocusInput,
@@ -164,7 +154,6 @@ export function SessionComposer({
   goalMaxTurns,
   goalStatus
 }: {
-  agentMode: AgentMode;
   canSend: boolean;
   /** Settings → Appearance: keep this composer on the agent-window scale. */
   chatFontSize?: FontSize;
@@ -229,7 +218,6 @@ export function SessionComposer({
   reviewPanelOpen: boolean;
   selectedModel: ModelPickerSelection;
   session: SessionSummary | null;
-  setAgentMode: Dispatch<SetStateAction<AgentMode>>;
   setSelectedModel: (model: ModelPickerSelection) => void;
   setStatus: (status: ComposerStatus | null) => void;
   shouldRefocusInput: MutableRefObject<boolean>;
@@ -341,30 +329,14 @@ export function SessionComposer({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [hasSession, isFocused, supportsEffort]);
 
-  const toggleMode = useCallback((): void => {
-    setAgentMode((mode) => toggleAgentMode(mode));
-  }, [setAgentMode]);
-
   // Composer actions offered above the skills in the `/` menu. Every entry is
   // a control that already exists in this toolbar — the menu is a keyboard
   // route to them, not a second set of features. Entries that would be a
   // no-op right now (no changes to review, nothing running) are left out
   // rather than shown disabled: a menu you can only reach by typing should
   // never answer with a dead row.
-  const nextMode = toggleAgentMode(agentMode);
   const composerCommands = useMemo<ComposerCommand[]>(() => {
-    const commands: ComposerCommand[] = [
-      {
-        name: nextMode,
-        label: AGENT_MODE_LABELS[nextMode],
-        hint:
-          nextMode === "plan"
-            ? "Draft a plan before touching anything"
-            : "Work and approve each step",
-        icon: nextMode === "plan" ? ListChecks : Bot,
-        run: toggleMode
-      }
-    ];
+    const commands: ComposerCommand[] = [];
     if (session?.state === "running") {
       commands.push({
         name: "stop",
@@ -441,14 +413,12 @@ export function SessionComposer({
   }, [
     changeSummary,
     goalEnabled,
-    nextMode,
     onClearSession,
     onMultitask,
     onTerminateSession,
     openFilePicker,
     session,
     setInput,
-    toggleMode,
     workspace
   ]);
 
@@ -563,17 +533,11 @@ export function SessionComposer({
       !event.altKey &&
       !event.nativeEvent.isComposing
     ) {
-      // Tab belongs to the suggested follow-up: it drops the placeholder into
-      // the draft so Enter sends it. Mode moved to Shift+Tab. Both swallow the
-      // keypress either way — Tab out of the composer would lose the draft's
-      // focus mid-thought.
-      event.preventDefault();
-      if (event.shiftKey) {
-        toggleMode();
-      } else if (followUpSuggestion && input.length === 0) {
+      if (!event.shiftKey && followUpSuggestion && input.length === 0) {
+        event.preventDefault();
         setInput(followUpSuggestion);
       }
-      return;
+      if (event.defaultPrevented) return;
     }
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
@@ -754,7 +718,7 @@ export function SessionComposer({
         sessionId,
         prompt,
         selectedModel,
-        agentMode,
+        "auto",
         attachments,
         undefined,
         delivery
@@ -1243,24 +1207,6 @@ export function SessionComposer({
           >
             <Maximize2 size={13} aria-hidden="true" />
           </button>
-        ) : null}
-        {session && agentMode !== "auto" ? (
-          // Auto is the default, so naming it on every turn tells the user
-          // nothing. Plan changes what the next send does, so it shows — and
-          // the chip is then how you get back out. Shift+Tab toggles either way.
-          <div className="composer-chips-group composer-chips-mode">
-            <button
-              type="button"
-              className="composer-context-chip agent-mode-toggle"
-              aria-label="Agent mode"
-              aria-pressed
-              title="Toggle agent mode (Shift+Tab)"
-              disabled={!canSend || isSending}
-              onClick={toggleMode}
-            >
-              {AGENT_MODE_LABELS[agentMode]}
-            </button>
-          </div>
         ) : null}
         {session && session.state === "running" ? (
           // One control while running: Stop. Enter queues the follow-up, and

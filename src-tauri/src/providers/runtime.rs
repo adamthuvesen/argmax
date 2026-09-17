@@ -814,8 +814,7 @@ pub(super) fn parse_permission_mode(value: &str) -> ArgmaxResult<PermissionMode>
 
 pub(super) fn parse_agent_mode(value: &str) -> Option<AgentMode> {
     match value {
-        "auto" => Some(AgentMode::Auto),
-        "plan" => Some(AgentMode::Plan),
+        "auto" | "plan" => Some(AgentMode::Auto),
         _ => None,
     }
 }

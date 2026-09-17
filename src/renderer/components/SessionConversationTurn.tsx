@@ -1,4 +1,4 @@
-import { Fragment, memo, useMemo, useState, type JSX, type MutableRefObject, type ReactNode } from "react";
+import { Fragment, memo, useMemo, useState, type JSX, type ReactNode } from "react";
 import { CornerDownRight } from "lucide-react";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { FORK_CAPABLE_PROVIDERS } from "../../shared/providerModels.js";
@@ -6,9 +6,7 @@ import { splitLinkSegments } from "../lib/messageLinks.js";
 import { splitSkillTokens } from "../lib/slashHighlight.js";
 import { ImageLightbox } from "./ImageLightbox.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
-import { parsePlan } from "../lib/parsePlan.js";
 import type { RenderItem } from "../lib/foldConversation.js";
-import type { ModelPickerSelection } from "../lib/models.js";
 import { isSupportedImageMime } from "../lib/composerAttachments.js";
 import {
   assistantGroupHasVisibleChat,
@@ -28,13 +26,10 @@ import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js"
 import { codenameForTool } from "../lib/agentNames.js";
 import { latestToolCreatedAt, visibleTurnToolItem } from "../lib/turnToolItems.js";
 import { collectTurnFileChanges } from "../lib/turnFileChanges.js";
-import { sessionAgentModeKey, writeStoredAgentMode } from "../lib/agentMode.js";
 import { thoughtDurationMs } from "../formatElapsed.js";
-import type { AgentMode } from "../../shared/types.js";
 import { AgentLaunchList } from "./AgentLaunchList.js";
 import { ChatBubble } from "./ChatBubble.js";
 import { LogBlock } from "./LogBlock.js";
-import { PlanCard } from "./PlanCard.js";
 import { TodoCard } from "./TodoCard.js";
 import { ThoughtBlock } from "./ThoughtBlock.js";
 import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
@@ -46,13 +41,9 @@ import { StreamingMarkdown } from "./StreamingMarkdown.js";
 import { WebLink } from "./WebLink.js";
 import {
   parseUserMessageAttachments,
-  sendAfterTerminate,
-  type SessionConversationSendInput,
   type UserMessageAttachment
 } from "./sessionConversationHelpers.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
-import type { ComposerStatus } from "./SessionComposer.js";
-import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import type { TranscriptFollow } from "../hooks/useConversationScroll.js";
 import { useStableTailWindow } from "../hooks/useStableTailWindow.js";
 
@@ -70,23 +61,16 @@ function SessionConversationTurnInner({
   isLatestTurn,
   openRunAt = null,
   session,
-  selectedModel,
   workspace,
   agentCodenames,
   onOpenFile,
   onOpenAgent,
   onOpenDiff,
   onOpenReview,
-  onTerminateSession,
   onForkSession,
   revertCheckpointIds,
   revertCheckpointUnavailable,
   onReverted,
-  onSendSessionInput,
-  inputRef,
-  shouldRefocusInput,
-  setStatus,
-  setAgentMode,
   defaultToolCallsDisplay,
   defaultToolCallGroupsExpanded,
   thinkingDisplay,
@@ -101,7 +85,6 @@ function SessionConversationTurnInner({
   /** `session.streaming` timestamp when nothing has closed that run yet. */
   openRunAt?: string | null;
   session: SessionSummary | null;
-  selectedModel: ModelPickerSelection;
   workspace: WorkspaceSummary | null;
   agentCodenames?: Map<string, string>;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
@@ -110,18 +93,12 @@ function SessionConversationTurnInner({
   onOpenDiff?: (path: string) => void;
   /** Open the review panel on the workspace's changes, from the top. */
   onOpenReview?: () => void;
-  onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   onForkSession?: (sessionId: string) => Promise<void>;
   /** Before-turn checkpoint id, keyed by the user-message event it answers. */
   revertCheckpointIds?: ReadonlyMap<string, string>;
   /** Why Revert is unavailable, keyed by the same user-message event id. */
   revertCheckpointUnavailable?: ReadonlyMap<string, string>;
   onReverted?: () => void;
-  onSendSessionInput: SessionConversationSendInput;
-  inputRef: MutableRefObject<HTMLTextAreaElement | null>;
-  shouldRefocusInput: MutableRefObject<boolean>;
-  setStatus: (status: ComposerStatus | null) => void;
-  setAgentMode: (mode: AgentMode) => void;
   defaultToolCallsDisplay?: ToolCallsDisplay;
   defaultToolCallGroupsExpanded?: boolean;
   thinkingDisplay?: ThinkingDisplay;
@@ -151,8 +128,8 @@ function SessionConversationTurnInner({
   // `hiddenToolIds` is a fresh Set per call, and it is the only dep of
   // `visibleToolItems`, which is the only dep of `turnChanges`. Re-deriving it
   // in the render body missed both of those memos on every streaming delta, so
-  // each mounted turn re-ran `coalesceAssistantGroups`, `parsePlan`, and a diff
-  // parse per Edit tool for every chunk that arrived anywhere in the session.
+  // each mounted turn re-ran `coalesceAssistantGroups` and a diff parse per
+  // Edit tool for every chunk that arrived anywhere in the session.
   const turnView = useMemo(
     () =>
       buildTurnRenderState({
@@ -172,14 +149,7 @@ function SessionConversationTurnInner({
       isStreamingTurn
     ]
   );
-  const {
-    visibleAssistantGroups,
-    turnAgentMode,
-    exitPlanTool,
-    hiddenToolIds,
-    turnStartedAtMs,
-    isPausedOnUserInput
-  } = turnView;
+  const { visibleAssistantGroups, hiddenToolIds, turnStartedAtMs, isPausedOnUserInput } = turnView;
   // A Thought block is "live" (shown expanded, labelled "Thinking", in place of
   // the generic indicator) while this turn is actively working and hasn't
   // produced its answer yet. Once any answer text lands the label settles, but
@@ -231,57 +201,6 @@ function SessionConversationTurnInner({
   // delegated work and the subagent's pane holds the rest.
   const toolRowsExpanded =
     !minimalActivity && (toolsExpandOverride ?? (isLatestTurn && defaultToolCallsDisplay === "expanded"));
-  const reportSendError = (message: string): void => setStatus({ kind: "error", message });
-  const handlePlanAccept = (): Promise<boolean> => {
-    if (!session) return Promise.resolve(false);
-    setAgentMode("auto");
-    writeStoredAgentMode(sessionAgentModeKey(session.id), "auto");
-    shouldRefocusInput.current = true;
-    const sessionId = session.id;
-    return sendAfterTerminate(
-      sessionId,
-      session.state === "running",
-      onTerminateSession,
-      () => onSendSessionInput(sessionId, "Proceed with the plan above.", selectedModel, "auto"),
-      reportSendError
-    );
-  };
-  const handlePlanReject = (): void => {
-    inputRef.current?.focus();
-  };
-  const exitPlanCard: JSX.Element | null = exitPlanTool
-    ? (() => {
-        const plan = parsePlan(exitPlanTool.markdown);
-        if (!plan) return null;
-        return (
-          <PlanCard
-            key={`plan-${exitPlanTool.id}`}
-            plan={plan}
-            rawMarkdown={exitPlanTool.markdown}
-            onAccept={handlePlanAccept}
-            onReject={handlePlanReject}
-          />
-        );
-      })()
-    : null;
-  const tryRenderPlan = (
-    group: { id: string; createdAt: string; text: string; growing?: boolean }
-  ): JSX.Element | null => {
-    if (exitPlanCard) return null;
-    // A plan still being typed is not parsed until its text is complete.
-    if (turnAgentMode !== "plan" || group.growing) return null;
-    const plan = parsePlan(group.text);
-    if (!plan) return null;
-    return (
-      <PlanCard
-        key={group.id}
-        plan={plan}
-        rawMarkdown={group.text}
-        onAccept={handlePlanAccept}
-        onReject={handlePlanReject}
-      />
-    );
-  };
   // `createdAt` anchors the turn-start header timestamp; `sortAt` orders the
   // body. Assistant groups order by their LAST activity (see AssistantGroup.
   // lastActivityAt) so a streamed answer settles below the tools it follows
@@ -374,10 +293,6 @@ function SessionConversationTurnInner({
         };
       }
       if (!assistantGroupHasVisibleChat(group)) return null;
-      const planNode = tryRenderPlan(group);
-      if (planNode) {
-        return { kind: "assistant", id: group.id, node: planNode, createdAt: group.createdAt, sortAt: group.lastActivityAt };
-      }
       const node = (
         <ChatBubble
           key={group.id}
@@ -397,15 +312,6 @@ function SessionConversationTurnInner({
       return { kind: "assistant", id: group.id, node, createdAt: group.createdAt, sortAt: group.lastActivityAt };
     })
     .filter((child): child is AnnotatedChild => child !== null);
-  if (exitPlanCard && exitPlanTool) {
-    assistantChildren.push({
-      kind: "assistant",
-      id: `plan-${exitPlanTool.id}`,
-      node: exitPlanCard,
-      createdAt: exitPlanTool.createdAt,
-      sortAt: exitPlanTool.createdAt
-    });
-  }
   if (todo) {
     assistantChildren.push({
       kind: "assistant",

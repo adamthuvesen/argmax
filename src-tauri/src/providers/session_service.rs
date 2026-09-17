@@ -28,7 +28,7 @@ use tokio::sync::{broadcast, watch};
 use uuid::Uuid;
 
 use super::{
-    adapters::{get_provider_definition, prompt_for_agent_mode},
+    adapters::get_provider_definition,
     flush_queue::{DashboardDelta, PendingMessage, ProviderEventFlushQueue},
     follow_up::{
         agent_reference_prompt, compose_follow_up_prompt, ensure_agent_references_supported,
@@ -1339,10 +1339,7 @@ impl ProviderSessionService {
                 )?
             };
             self.mark_turn_start(&session_id, workspace_path);
-            handle.send_input(&format!(
-                "{}\r",
-                prompt_for_agent_mode(&prompt, input.agent_mode.unwrap_or(AgentMode::Auto))
-            ));
+            handle.send_input(&format!("{}\r", prompt));
             self.persist_user_message(
                 &session_id,
                 &message,
@@ -2368,11 +2365,10 @@ impl ProviderSessionService {
                     .reasoning_effort
                     .as_deref()
                     .is_some_and(|effort| Some(effort) != session.reasoning_effort.as_deref())
-                || message.agent_mode != session.agent_mode.as_deref().unwrap_or("auto")
             {
                 return Err(ArgmaxError::service(
                     "STEER_SETTINGS_CHANGED",
-                    "Steering uses the running turn's model, effort and mode. Queue this follow-up or use Stop and send to change them.",
+                    "Steering uses the running turn's model and effort. Queue this follow-up or use Stop and send to change them.",
                 ));
             }
             let agent_mode = parse_agent_mode(&message.agent_mode).ok_or_else(|| {
@@ -2429,7 +2425,7 @@ impl ProviderSessionService {
             None
         };
         if let Err(error) = handle
-            .steer(&prompt_for_agent_mode(&prompt, agent_mode))
+            .steer(&prompt)
             .await
         {
             if !matches!(&error, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "STEER_DELIVERY_UNKNOWN")

@@ -16,7 +16,6 @@ struct TranscriptThinking: Hashable {
             case .tools(let group) where group.tools.contains(where: { $0.status == .running }): return nil
             case .agents(let group) where group.agents.contains(where: { $0.status == .running }): return nil
             case .question(let card) where card.isOutstanding: return nil
-            case .plan(let card) where card.isOutstanding: return nil
             case .approval(let card) where card.status == .pending: return nil
             default: break
             }

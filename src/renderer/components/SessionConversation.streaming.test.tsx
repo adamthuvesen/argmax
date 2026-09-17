@@ -237,20 +237,6 @@ describe("SessionConversation — streaming & composer", () => {
     ).toBeTruthy();
   });
 
-  it("shows the agent-mode chip only in plan mode", () => {
-    renderConversation(baseSession());
-
-    // Auto is the default, so the chip would be reporting the absence of a
-    // choice on every turn.
-    expect(screen.queryByRole("button", { name: "Agent mode" })).toBeNull();
-
-    fireEvent.keyDown(screen.getByPlaceholderText(/Reply to your agent/), {
-      key: "Tab",
-      shiftKey: true
-    });
-    expect(screen.getByRole("button", { name: "Agent mode" })).toHaveTextContent("Plan");
-  });
-
   it("shows the branch as a chip in the composer row", () => {
     renderConversation(baseSession());
 
@@ -1913,7 +1899,7 @@ describe("SessionConversation — streaming & composer", () => {
       baseSession({ provider: "claude", state: "running" }),
       [
         event("u1", "user.message", "ask me", "2026-05-12T15:00:00.000Z", {
-          agentMode: "plan"
+          agentMode: "auto"
         }),
         event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
           type: "tool_use",
@@ -1937,7 +1923,7 @@ describe("SessionConversation — streaming & composer", () => {
       baseSession({ provider: "claude", state: "running" }),
       [
         event("u1", "user.message", "ask me", "2026-05-12T15:00:00.000Z", {
-          agentMode: "plan"
+          agentMode: "auto"
         }),
         event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
           type: "tool_use",
@@ -2346,7 +2332,7 @@ describe("SessionConversation — streaming & composer", () => {
         provider: "claude",
         modelId: "claude-sonnet-5",
         reasoningEffort: "high",
-        agentMode: "plan",
+        agentMode: "auto",
         state: "running"
       }),
       [],
@@ -2358,7 +2344,7 @@ describe("SessionConversation — streaming & composer", () => {
             content: "Keep the current tool running",
             modelId: "claude-sonnet-5",
             reasoningEffort: "high",
-            agentMode: "plan",
+            agentMode: "auto",
             queuedAt: "2026-05-12T15:30:30.000Z"
           }
         ]
@@ -2374,8 +2360,7 @@ describe("SessionConversation — streaming & composer", () => {
 
   it.each([
     ["model", { modelId: "gpt-5.5" }],
-    ["reasoning effort", { reasoningEffort: "high" as const }],
-    ["agent mode", { agentMode: "plan" as const }]
+    ["reasoning effort", { reasoningEffort: "high" as const }]
   ])("hides Steer when the queued %s does not match the active turn", (_field, override) => {
     renderConversation(baseSession({ state: "running" }), [], {
       pendingMessages: [

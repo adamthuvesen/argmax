@@ -1,7 +1,9 @@
 use super::{
-    mcp_injection, AgentMode, ApprovalSupport, PermissionMode, ProviderId, ProviderLaunchInput,
+    mcp_injection, ApprovalSupport, PermissionMode, ProviderId, ProviderLaunchInput,
     ReasoningEffort,
 };
+#[cfg(test)]
+use super::AgentMode;
 use crate::session_control::SessionLaunchProcessConfig;
 
 const CLAUDE_BYPASS_PERMISSION_ARGS: &[&str] = &["--permission-mode", "bypassPermissions"];
@@ -217,7 +219,7 @@ fn codex_common_args(
 }
 
 fn codex_structured_stdin(input: &ProviderLaunchInput) -> Option<String> {
-    Some(prompt_for_agent_mode(&input.prompt, input.agent_mode))
+    Some(input.prompt.clone())
 }
 
 // Cursor exposes both reasoning effort and fast serving as distinct model ids
@@ -333,8 +335,7 @@ fn cursor_common_args(
     input: &ProviderLaunchInput,
     mcp: Option<&SessionLaunchProcessConfig>,
 ) -> Vec<String> {
-    let mut args = cursor_agent_mode_args(input);
-    args.extend(cursor_permission_args(input));
+    let mut args = cursor_permission_args(input);
     args.extend(mcp_injection::mcp_args(ProviderId::Cursor, mcp));
     args.extend([
         "--model".to_string(),
@@ -395,8 +396,7 @@ fn opencode_structured_resume_args(
 }
 
 fn opencode_common_args(input: &ProviderLaunchInput) -> Vec<String> {
-    let mut args = opencode_agent_mode_args(input);
-    args.extend(opencode_permission_args(input));
+    let mut args = opencode_permission_args(input);
     args.extend(opencode_variant_args(
         &input.model_id,
         input.reasoning_effort,
@@ -507,7 +507,6 @@ fn grok_common_args(input: &ProviderLaunchInput) -> Vec<String> {
         // --include-partial-messages.
         "--include-partial-messages".to_string(),
     ];
-    args.extend(grok_agent_mode_args(input));
     args.extend(grok_permission_args(input));
     args.extend(grok_reasoning_args(input));
     args.extend(["--model".to_string(), input.model_id.clone()]);
@@ -523,21 +522,7 @@ fn grok_prompt_arg(prompt: &str) -> String {
     format!("--single={prompt}")
 }
 
-// Grok ships a bundled read-only `plan` agent (permission_mode: plan, no edit
-// tools), so plan mode maps to it natively instead of a prompt prefix.
-fn grok_agent_mode_args(input: &ProviderLaunchInput) -> Vec<String> {
-    if input.agent_mode == AgentMode::Plan {
-        vec!["--agent".to_string(), "plan".to_string()]
-    } else {
-        Vec::new()
-    }
-}
-
 fn grok_permission_args(input: &ProviderLaunchInput) -> Vec<String> {
-    // Plan mode rides the read-only plan agent; never stack the bypass on it.
-    if input.agent_mode == AgentMode::Plan {
-        return Vec::new();
-    }
     if input.permission_mode == PermissionMode::AutoApprove {
         owned(GROK_BYPASS_PERMISSION_ARGS)
     } else {
@@ -561,9 +546,6 @@ fn grok_reasoning_args(input: &ProviderLaunchInput) -> Vec<String> {
 }
 
 fn claude_permission_args(input: &ProviderLaunchInput) -> Vec<String> {
-    if input.agent_mode == AgentMode::Plan {
-        return vec!["--permission-mode".to_string(), "plan".to_string()];
-    }
     if input.permission_mode == PermissionMode::AutoApprove {
         owned(CLAUDE_BYPASS_PERMISSION_ARGS)
     } else {
@@ -572,11 +554,6 @@ fn claude_permission_args(input: &ProviderLaunchInput) -> Vec<String> {
 }
 
 fn codex_permission_args(input: &ProviderLaunchInput) -> Vec<String> {
-    // Plan mode is read-only planning (conveyed to Codex via the prompt prefix);
-    // never hand it the approvals/sandbox bypass, the same way Claude doesn't.
-    if input.agent_mode == AgentMode::Plan {
-        return Vec::new();
-    }
     if input.permission_mode == PermissionMode::AutoApprove {
         owned(CODEX_BYPASS_PERMISSION_ARGS)
     } else {
@@ -585,10 +562,6 @@ fn codex_permission_args(input: &ProviderLaunchInput) -> Vec<String> {
 }
 
 fn cursor_permission_args(input: &ProviderLaunchInput) -> Vec<String> {
-    // Plan mode (the `--plan` flag) is read-only; don't also pass --force/--trust.
-    if input.agent_mode == AgentMode::Plan {
-        return Vec::new();
-    }
     if input.permission_mode == PermissionMode::AutoApprove {
         owned(CURSOR_BYPASS_PERMISSION_ARGS)
     } else {
@@ -596,30 +569,7 @@ fn cursor_permission_args(input: &ProviderLaunchInput) -> Vec<String> {
     }
 }
 
-fn cursor_agent_mode_args(input: &ProviderLaunchInput) -> Vec<String> {
-    if input.agent_mode == AgentMode::Plan {
-        vec!["--plan".to_string()]
-    } else {
-        Vec::new()
-    }
-}
-
-// OpenCode's built-in `plan` agent is read-only (edits denied), so plan mode
-// maps to it natively instead of a prompt prefix.
-fn opencode_agent_mode_args(input: &ProviderLaunchInput) -> Vec<String> {
-    if input.agent_mode == AgentMode::Plan {
-        vec!["--agent".to_string(), "plan".to_string()]
-    } else {
-        Vec::new()
-    }
-}
-
 fn opencode_permission_args(input: &ProviderLaunchInput) -> Vec<String> {
-    // Plan mode rides the read-only plan agent; never add the auto-approve
-    // bypass on top of it.
-    if input.agent_mode == AgentMode::Plan {
-        return Vec::new();
-    }
     if input.permission_mode == PermissionMode::AutoApprove {
         owned(OPENCODE_BYPASS_PERMISSION_ARGS)
     } else {
@@ -745,14 +695,6 @@ fn codex_effort_value(model_id: &str, effort: ReasoningEffort) -> &'static str {
             ReasoningEffort::Max | ReasoningEffort::Ultra => "xhigh",
             other => other.as_str(),
         },
-    }
-}
-
-pub(super) fn prompt_for_agent_mode(prompt: &str, agent_mode: AgentMode) -> String {
-    if agent_mode == AgentMode::Plan {
-        format!("Plan mode: analyze the request and propose a plan only. Do not edit files, run mutating commands, or make changes.\n\n{prompt}")
-    } else {
-        prompt.to_string()
     }
 }
 
@@ -899,19 +841,6 @@ mod tests {
                 "Implement the task",
             ]
         );
-    }
-
-    #[test]
-    fn claude_plan_mode_uses_plan_permission() {
-        let input = ProviderLaunchInput {
-            agent_mode: AgentMode::Plan,
-            ..launch_input(ProviderId::Claude)
-        };
-        let args = (get_provider_definition(ProviderId::Claude).structured_args)(&input, None);
-        assert!(args
-            .windows(2)
-            .any(|window| window == ["--permission-mode", "plan"]));
-        assert!(!args.iter().any(|arg| arg == "bypassPermissions"));
     }
 
     #[test]
@@ -1090,18 +1019,6 @@ mod tests {
     }
 
     #[test]
-    fn codex_plan_mode_prefixes_stdin_prompt() {
-        let input = ProviderLaunchInput {
-            agent_mode: AgentMode::Plan,
-            ..launch_input(ProviderId::Codex)
-        };
-        let stdin =
-            (get_provider_definition(ProviderId::Codex).structured_stdin)(&input).expect("stdin");
-        assert!(stdin.contains("Plan mode:"));
-        assert!(stdin.contains("Implement the task"));
-    }
-
-    #[test]
     fn codex_resume_args_match_runtime_contract() {
         let input = launch_input(ProviderId::Codex);
         let definition = get_provider_definition(ProviderId::Codex);
@@ -1178,16 +1095,6 @@ mod tests {
         assert!(!(definition.structured_args)(&input, None)
             .iter()
             .any(|arg| arg == "--approve-mcps"));
-    }
-
-    #[test]
-    fn cursor_plan_mode_adds_plan_flag() {
-        let input = ProviderLaunchInput {
-            agent_mode: AgentMode::Plan,
-            ..launch_input(ProviderId::Cursor)
-        };
-        let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input, None);
-        assert!(args.iter().any(|arg| arg == "--plan"));
     }
 
     #[test]
@@ -1442,17 +1349,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn opencode_plan_mode_uses_read_only_plan_agent() {
-        let input = ProviderLaunchInput {
-            agent_mode: AgentMode::Plan,
-            ..launch_input(ProviderId::Opencode)
-        };
-        let args = (get_provider_definition(ProviderId::Opencode).structured_args)(&input, None);
-        assert!(args.windows(2).any(|window| window == ["--agent", "plan"]));
-        assert!(!args.iter().any(|arg| arg == "--auto"));
-    }
-
     // Muse Spark 1.3 is the one Zen free-tier model that takes `--variant`, so
     // the matcher can't key on the `opencode-go/` prefix. Its ladder tops out
     // at xhigh, below the global Max/Ultra.
@@ -1547,40 +1443,6 @@ mod tests {
     }
 
     #[test]
-    fn plan_mode_never_bypasses_for_any_provider() {
-        // Plan mode is read-only; no provider should receive an approvals/sandbox
-        // bypass flag even when permission mode is AutoApprove.
-        for provider_id in [
-            ProviderId::Claude,
-            ProviderId::Codex,
-            ProviderId::Cursor,
-            ProviderId::Opencode,
-            ProviderId::Grok,
-        ] {
-            let input = ProviderLaunchInput {
-                permission_mode: PermissionMode::AutoApprove,
-                agent_mode: AgentMode::Plan,
-                ..launch_input(provider_id)
-            };
-            let args = (get_provider_definition(provider_id).structured_args)(&input, None);
-            assert!(
-                !args.iter().any(|arg| {
-                    matches!(
-                        arg.as_str(),
-                        "bypassPermissions"
-                            | "--dangerously-bypass-approvals-and-sandbox"
-                            | "--force"
-                            | "--trust"
-                            | "--auto"
-                            | "--always-approve"
-                    )
-                }),
-                "{provider_id:?} leaked a bypass flag in plan mode: {args:?}"
-            );
-        }
-    }
-
-    #[test]
     fn grok_structured_args_match_claude_stream_json_shape() {
         let input = launch_input(ProviderId::Grok);
         let definition = get_provider_definition(ProviderId::Grok);
@@ -1665,23 +1527,6 @@ mod tests {
                 .expect("effort flag");
             assert_eq!(args[index + 1], expected, "effort {effort:?}");
         }
-    }
-
-    #[test]
-    fn grok_plan_mode_uses_the_read_only_plan_agent_without_bypass() {
-        let input = ProviderLaunchInput {
-            agent_mode: AgentMode::Plan,
-            ..launch_input(ProviderId::Grok)
-        };
-        let args = (get_provider_definition(ProviderId::Grok).structured_args)(&input, None);
-        assert!(args.windows(2).any(|w| w[0] == "--agent" && w[1] == "plan"));
-
-        // And the same on a resumed turn; plan_mode_never_bypasses_for_any_provider
-        // covers the fresh launch only.
-        let args =
-            (get_provider_definition(ProviderId::Grok).structured_resume_args)(&input, "c1", None);
-        assert!(args.windows(2).any(|w| w[0] == "--agent" && w[1] == "plan"));
-        assert!(!args.contains(&"--always-approve".to_string()));
     }
 
     // Grok has no fast-mode surface; the toggle must not leak a flag.

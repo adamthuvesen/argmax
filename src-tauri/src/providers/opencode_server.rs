@@ -14,8 +14,10 @@ use super::{
         BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType,
         ProviderRuntimeHandle,
     },
-    AgentMode, PermissionMode, ProviderId, ProviderLaunchInput,
+    PermissionMode, ProviderId, ProviderLaunchInput,
 };
+#[cfg(test)]
+use super::AgentMode;
 use crate::{
     approvals::service::ApprovalService,
     error::{ArgmaxError, ArgmaxResult},
@@ -305,9 +307,6 @@ fn prompt_body(input: &ProviderLaunchInput) -> ArgmaxResult<Value> {
         "model": { "providerID": provider_id, "modelID": model_id },
         "parts": [{ "type": "text", "text": input.prompt }],
     });
-    if input.agent_mode == AgentMode::Plan {
-        body["agent"] = Value::String("plan".to_string());
-    }
     if let Some(variant) = opencode_variant(input) {
         body["variant"] = Value::String(variant);
     }
@@ -904,10 +903,10 @@ fn apply_permission_override(
     environment: &mut Vec<(String, String)>,
     input: &ProviderLaunchInput,
 ) -> ArgmaxResult<()> {
-    let permission = match (input.permission_mode, input.agent_mode) {
-        (PermissionMode::ProviderDefaults, _) | (_, AgentMode::Plan) => return Ok(()),
-        (PermissionMode::AutoApprove, AgentMode::Auto) => "allow",
-        (PermissionMode::AskEachTime, _) => "ask",
+    let permission = match input.permission_mode {
+        PermissionMode::ProviderDefaults => return Ok(()),
+        PermissionMode::AutoApprove => "allow",
+        PermissionMode::AskEachTime => "ask",
     };
     let config = environment
         .iter_mut()
@@ -1275,13 +1274,13 @@ mod tests {
     }
 
     #[test]
-    fn plan_keeps_its_native_restrictions_and_prompt_keeps_the_selected_variant() {
+    fn prompt_keeps_the_selected_variant() {
         let mut environment = Vec::new();
-        let plan = input(PermissionMode::AutoApprove, AgentMode::Plan);
-        apply_permission_override(&mut environment, &plan).unwrap();
-        assert!(environment.is_empty());
-        let body = prompt_body(&plan).unwrap();
-        assert_eq!(body["agent"], "plan");
+        let auto = input(PermissionMode::AutoApprove, AgentMode::Auto);
+        apply_permission_override(&mut environment, &auto).unwrap();
+        assert!(!environment.is_empty());
+        let body = prompt_body(&auto).unwrap();
+        assert!(body.get("agent").is_none());
         assert_eq!(body["model"]["providerID"], "opencode-go");
         assert_eq!(body["model"]["modelID"], "glm-5.3-flash");
         assert_eq!(body["variant"], "high");

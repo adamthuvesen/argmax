@@ -43,7 +43,9 @@ use super::runtime::{
 };
 use super::subagent_trace::cursor_project_slug;
 use super::unified_diff::{unified_diff, DEFAULT_CONTEXT};
-use super::{mcp_injection, AgentMode, PermissionMode, ProviderId, ProviderLaunchInput};
+use super::{mcp_injection, PermissionMode, ProviderId, ProviderLaunchInput};
+#[cfg(test)]
+use super::AgentMode;
 use crate::approvals::service::ApprovalService;
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::time::now_iso;
@@ -63,12 +65,9 @@ const MAX_DIFF_BYTES: usize = 128 * 1024;
 
 /// Cursor's ACP mode ids, as listed in `session/new`'s
 /// `modes.availableModes`: `agent` (the `currentModeId` a new session starts
-/// on), `plan`, and `ask`. Argmax's agent modes map onto the first two.
-fn acp_mode_id(agent_mode: AgentMode) -> &'static str {
-    match agent_mode {
-        AgentMode::Plan => "plan",
-        AgentMode::Auto => "agent",
-    }
+/// on), `plan`, and `ask`. Argmax always launches `agent`.
+fn acp_mode_id() -> &'static str {
+    "agent"
 }
 
 pub fn is_acp_eligible(input: &ProviderLaunchInput) -> bool {
@@ -459,7 +458,7 @@ impl CursorAcpSessions {
                 "session/set_mode",
                 json!({
                     "sessionId": acp_session_id,
-                    "modeId": acp_mode_id(input.agent_mode),
+                    "modeId": acp_mode_id(),
                 }),
             )
             .await?;
@@ -1887,10 +1886,7 @@ mod tests {
 
     #[test]
     fn agent_mode_maps_onto_cursors_acp_mode_ids() {
-        assert_eq!(acp_mode_id(AgentMode::Plan), "plan");
-        // Auto must name the default mode explicitly: a follow-up leaving Plan
-        // has to set something, and omitting the call keeps the old mode.
-        assert_eq!(acp_mode_id(AgentMode::Auto), "agent");
+        assert_eq!(acp_mode_id(), "agent");
     }
 
     #[test]

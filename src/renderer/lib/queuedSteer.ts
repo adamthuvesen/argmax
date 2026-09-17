@@ -21,8 +21,8 @@ export function hasSteeringContextHeadroom(
  * interrupting it.
  *
  * Only Claude and Codex accept text mid-turn, and only for the settings the
- * turn is already running under: a row queued against another model, effort,
- * or agent mode would arrive as a different chat's message. Two composers ask
+ * turn is already running under: a row queued against another model or effort
+ * would arrive as a different chat's message. Two composers ask
  * this — the desktop's lane and the phone shell's card, through the `composer`
  * message — so the rule lives here rather than in either of them.
  */
@@ -33,18 +33,16 @@ export function canSteerQueuedMessage(
     | "provider"
     | "modelId"
     | "reasoningEffort"
-    | "agentMode"
     | "contextTokens"
     | "contextWindow"
   >,
-  entry: Pick<PendingMessage, "modelId" | "reasoningEffort" | "agentMode">
+  entry: Pick<PendingMessage, "modelId" | "reasoningEffort">
 ): boolean {
   return (
     session.state === "running" &&
     (session.provider === "codex" || session.provider === "claude") &&
     hasSteeringContextHeadroom(session) &&
     (entry.modelId === undefined || entry.modelId === session.modelId) &&
-    (entry.reasoningEffort === undefined || entry.reasoningEffort === session.reasoningEffort) &&
-    entry.agentMode === (session.agentMode ?? "auto")
+    (entry.reasoningEffort === undefined || entry.reasoningEffort === session.reasoningEffort)
   );
 }

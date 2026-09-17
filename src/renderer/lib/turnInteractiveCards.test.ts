@@ -3,7 +3,6 @@ import type { TimelineEvent } from "../../shared/types.js";
 import type { ToolCall } from "./toolCalls.js";
 import {
   collectAskUserQuestionState,
-  collectExitPlanState,
   hasOutstandingCardAsk
 } from "./turnInteractiveCards.js";
 import type { TurnToolItem } from "./toolCalls.js";
@@ -136,14 +135,6 @@ describe("turnInteractiveCards", () => {
             questions: [{ question: "Pick from Cursor?", header: "Cursor", options: [{ label: "C" }] }]
           }
         })
-      },
-      {
-        kind: "tool",
-        tool: tool({
-          id: "plan-alias",
-          name: "exit_plan_mode",
-          inputFull: { plan: "# Plan\n" }
-        })
       }
     ];
 
@@ -151,36 +142,6 @@ describe("turnInteractiveCards", () => {
     expect(collectAskUserQuestionState(items).hiddenToolIds).toEqual(
       new Set(["q-alias", "cursor-q"])
     );
-    expect(collectExitPlanState(items).tool?.id).toBe("plan-alias");
-  });
-
-  it("collects the first completed ExitPlanMode plan", () => {
-    const items: TurnToolItem[] = [
-      {
-        kind: "tool",
-        tool: tool({
-          id: "plan-1",
-          name: "ExitPlanMode",
-          status: "running",
-          inputFull: { plan: "# Plan\n" }
-        })
-      },
-      {
-        kind: "tool",
-        tool: tool({
-          id: "plan-2",
-          name: "ExitPlanMode",
-          status: "error",
-          inputFull: { plan: "# Final plan\n" }
-        })
-      }
-    ];
-
-    const { tool: resolved, hiddenToolIds } = collectExitPlanState(items);
-
-    expect(resolved?.id).toBe("plan-2");
-    expect(resolved?.markdown).toBe("# Final plan\n");
-    expect(hiddenToolIds).toEqual(new Set(["plan-1", "plan-2"]));
   });
 
   it("treats outstanding card asks as after the latest user message", () => {
@@ -196,16 +157,24 @@ describe("turnInteractiveCards", () => {
     ];
     const toolCalls: ToolCall[] = [
       tool({
-        name: "ExitPlanMode",
+        name: "AskUserQuestion",
         createdAt: "2026-01-01T00:00:02.000Z",
-        inputFull: { plan: "# Plan\n" }
+        inputFull: {
+          questions: [{ question: "Pick one?", header: "Q", options: [{ label: "A" }] }]
+        }
       })
     ];
 
     expect(hasOutstandingCardAsk(events, toolCalls)).toBe(true);
     expect(
       hasOutstandingCardAsk(events, [
-        tool({ name: "ExitPlanMode", createdAt: "2025-12-31T00:00:00.000Z", inputFull: { plan: "# Plan\n" } })
+        tool({
+          name: "AskUserQuestion",
+          createdAt: "2025-12-31T00:00:00.000Z",
+          inputFull: {
+            questions: [{ question: "Pick one?", header: "Q", options: [{ label: "A" }] }]
+          }
+        })
       ])
     ).toBe(false);
   });

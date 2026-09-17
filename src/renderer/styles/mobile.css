@@ -1101,8 +1101,8 @@ html:has(.mobile-shell[data-embed]) body,
    replying to one lives here. */
 
 /* The compact grid this inherits is laid out for the session toolbar's
-   model / details / mode / send. Starting a chat has no details popover and
-   no agent mode, so the row is model / attach / send. */
+   model / details / send. Starting a chat has no details popover, so the row
+   is model / attach / send. */
 .mobile-new-composer-toolbar {
   grid-template-columns: minmax(0, 1fr) auto auto;
   grid-template-areas: "model attach send";

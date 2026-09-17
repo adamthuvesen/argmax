@@ -436,14 +436,6 @@ struct TranscriptQuestionCard: Hashable, Sendable, Identifiable {
     var requestID: String? = nil
 }
 
-struct TranscriptPlan: Hashable, Sendable, Identifiable {
-    var id: String
-    var toolUseId: String
-    var markdown: String
-    var createdAt: String
-    var isOutstanding: Bool
-}
-
 enum TranscriptTodoStatus: String, Hashable, Sendable {
     case pending
     case active
@@ -618,7 +610,6 @@ enum TranscriptItem: Hashable, Sendable, Identifiable {
     case assistant(TranscriptMessage)
     case thought(TranscriptThought)
     case tools(TranscriptToolGroup)
-    case plan(TranscriptPlan)
     case question(TranscriptQuestionCard)
     case todo(TranscriptTodoList)
     case approval(TranscriptApproval)
@@ -633,7 +624,6 @@ enum TranscriptItem: Hashable, Sendable, Identifiable {
         case .assistant(let value): return value.id
         case .thought(let value): return value.id
         case .tools(let value): return value.id
-        case .plan(let value): return value.id
         case .question(let value): return value.id
         case .todo(let value): return value.id
         case .approval(let value): return "approval-\(value.id)"
@@ -649,7 +639,6 @@ enum TranscriptItem: Hashable, Sendable, Identifiable {
         case .user(let value), .assistant(let value): return value.createdAt
         case .thought(let value): return value.createdAt
         case .tools(let value): return value.createdAt
-        case .plan(let value): return value.createdAt
         case .question(let value): return value.createdAt
         case .todo(let value): return value.createdAt
         case .approval(let value): return value.createdAt

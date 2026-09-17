@@ -95,7 +95,6 @@ impl AgentMode {
     pub fn as_str(self) -> &'static str {
         match self {
             AgentMode::Auto => "auto",
-            AgentMode::Plan => "plan",
         }
     }
 }
@@ -109,14 +108,12 @@ impl AgentMode {
 /// them, and gating a message asks permission to say something, so neither is
 /// ever sent to the approval broker.
 ///
-/// Kept in step with `isAskUserQuestionToolName` / `isExitPlanModeToolName` in
-/// [src/renderer/lib/turnInteractiveCards.ts]; the normalization is the same
-/// lowercase-alphanumeric fold, so `ExitPlanMode` and `exit_plan_mode` are one
-/// name.
+/// Kept in step with `isAskUserQuestionToolName` in
+/// [src/renderer/lib/turnInteractiveCards.ts].
 pub fn renders_as_interactive_card(tool_name: &str) -> bool {
     matches!(
         folded_tool_name(tool_name).as_str(),
-        "askuserquestion" | "askquestiontoolcall" | "sendusermessage" | "exitplanmode"
+        "askuserquestion" | "askquestiontoolcall" | "sendusermessage"
     )
 }
 
@@ -128,12 +125,6 @@ pub fn asks_the_user_a_question(tool_name: &str) -> bool {
         folded_tool_name(tool_name).as_str(),
         "askuserquestion" | "askquestiontoolcall"
     )
-}
-
-/// Whether the call is Claude's `ExitPlanMode`, whose plan the user approves
-/// from the chat's plan card rather than in the tool result.
-pub fn exits_plan_mode(tool_name: &str) -> bool {
-    folded_tool_name(tool_name) == "exitplanmode"
 }
 
 fn folded_tool_name(tool_name: &str) -> String {
@@ -155,8 +146,6 @@ mod tests {
             "ask_user_question",
             "askQuestionToolCall",
             "SendUserMessage",
-            "ExitPlanMode",
-            "exit_plan_mode",
         ] {
             assert!(renders_as_interactive_card(name), "{name}");
         }
@@ -170,15 +159,6 @@ mod tests {
         use super::asks_the_user_a_question;
         assert!(asks_the_user_a_question("AskUserQuestion"));
         assert!(asks_the_user_a_question("askQuestionToolCall"));
-        assert!(!asks_the_user_a_question("ExitPlanMode"));
         assert!(!asks_the_user_a_question("SendUserMessage"));
-    }
-
-    #[test]
-    fn only_exit_plan_mode_exits_plan_mode() {
-        use super::exits_plan_mode;
-        assert!(exits_plan_mode("ExitPlanMode"));
-        assert!(exits_plan_mode("exit_plan_mode"));
-        assert!(!exits_plan_mode("AskUserQuestion"));
     }
 }

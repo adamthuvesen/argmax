@@ -881,27 +881,6 @@ describe("App", () => {
     expect(createCurrentWorkspace).not.toHaveBeenCalled();
   });
 
-  it("toggles launcher agent mode with Tab and sends plan mode", async () => {
-    render(<App />);
-
-    const input = await screen.findByLabelText("Task prompt");
-    fireEvent.change(input, { target: { value: "Plan the migration" } });
-    fireEvent.keyDown(input, { key: "Tab" });
-
-    expect(screen.getByRole("button", { name: "Agent mode" })).toHaveTextContent("Plan");
-    fireEvent.click(screen.getByTitle("Start agent"));
-
-    await waitFor(() =>
-      expect(launchProvider).toHaveBeenCalledWith(
-        expect.objectContaining({
-          prompt: "Plan the migration",
-          agentMode: "plan"
-        })
-      )
-    );
-    expect(window.localStorage.getItem("argmax.launch.agentMode")).toBeNull();
-  });
-
   it("keeps a newly launched chat selected while the dashboard refresh catches up", async () => {
     const newWorkspace = workspaceRow({
       id: "workspace-new",

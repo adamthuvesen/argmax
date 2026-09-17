@@ -60,8 +60,7 @@ impl AttentionState {
 pub struct SessionAttentionInput {
     pub state: SessionState,
     pub has_pending_approval: bool,
-    /// An interactive ask (AskUserQuestion, ExitPlanMode) newer than the last
-    /// thing the person said — see
+    /// An interactive question newer than the last thing the person said. See
     /// [`crate::persistence::events::has_outstanding_card_ask`].
     pub has_outstanding_question: bool,
 }

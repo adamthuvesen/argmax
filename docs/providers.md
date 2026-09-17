@@ -142,8 +142,8 @@ reports it and the session service writes a `session.note`
 (`turn.input-undelivered`) after the cancellation row. Every other transport
 writes the prompt on the way in and reports delivered.
 
-Steering inherits the running turn's settings. A queued change to model, reasoning
-effort, or agent mode must wait for another turn. Accepted guidance is persisted
+Steering inherits the running turn's settings. A queued change to model or
+reasoning effort must wait for another turn. Accepted guidance is persisted
 as `user.message` with `payload.delivery: "steer"`, without resetting turn timing
 or provider normalization. Failures restore the queued message in a paused state.
 An uncertain acknowledgement is marked delivery-unknown and must not automatically
@@ -202,18 +202,17 @@ the immediate tool acknowledgement leaves one answerable card. The answer uses
 the existing next-user-message flow. Question shapes outside the card's one to
 four options remain visible as prose.
 
-**Native `request_user_input` follows Codex's delivery mode.** The app-server
-launch enables `tools.experimental_request_user_input.enabled=true`.
-`item/tool/requestUserInput` is a server request with an `isBlocking` flag.
-Plan-mode requests block. Argmax keeps their JSON-RPC response open and
-publishes a question card with the request and question IDs. Desktop and iPhone
-submit structured answers through `questions:resolve`, which resumes the same
-turn. Dismissing sends an empty answer map.
+**Native `request_user_input` follows Codex's `isBlocking` flag.** The
+app-server launch enables `tools.experimental_request_user_input.enabled=true`.
+`item/tool/requestUserInput` is a server request, and a blocking one waits for
+its answer: Argmax keeps its JSON-RPC response open and publishes a question
+card with the request and question IDs. Desktop and iPhone submit structured
+answers through `questions:resolve`, which resumes the same turn. Dismissing
+sends an empty answer map.
 
-Default-mode requests are nonblocking. Argmax publishes them as async question
-cards and immediately returns an empty answer map, so Codex can keep working.
-Answering one uses the next-user-message flow shared with
-`request_user_input_async`.
+A nonblocking request is published as an async question card and answered
+straight away with an empty answer map, so Codex can keep working. Answering
+one uses the next-user-message flow shared with `request_user_input_async`.
 
 Pending blocking cards are stored in the timeline and return after a UI
 reconnect. Answered, dismissed, and cancelled requests settle the card, and
@@ -312,7 +311,6 @@ Grok Build chats use a pooled `grok agent stdio` ACP process, isolated by worksp
 - **The prompt must ride the `=` form.** `-p`/`--single` takes the prompt as a flag *value*, not the trailing positional Claude and Cursor use. Passed as two argv entries, the CLI rejects any prompt starting with `-` with a bare usage error — a pasted diff or a "- do this" bullet trips it. `--single=<prompt>` is the only form clap always reads as a value.
 - **`--cwd` is passed explicitly** even though the child is already spawned in the worktree: with `[cli] use_leader` enabled the turn runs inside a shared leader process whose cwd is not the child's. Same trap OpenCode's `--dir` covers.
 - **Repo-local MCP servers are gated on folder trust.** `grok inspect --json` reports `projectTrusted: false` for a checkout the user has never accepted, and the `.grok/config.toml` Argmax writes is ignored until it is true. A launch therefore records the workspace in Grok's own `trusted_folders.toml` and gives the entry back at the end ([agent-tools.md](agent-tools.md)).
-- **Plan mode** maps to the bundled read-only `plan` agent (`--agent plan`, `permission_mode: plan`, no edit tools) rather than a prompt prefix.
 - **Skills** come from `.grok/skills`, `.agents/skills`, and — by Grok's own compatibility rules — `.claude/skills`, plus `~/.grok/installed-plugins/<plugin>/skills` and the bundled cache at `~/.grok/bundled/skills`.
 - **Pricing** is the `grok-4.6-build` / `grok-4.5-build` SKU rate, not xAI's published API list price. The rates in `MODEL_PRICING` were solved from the CLI's own `total_cost_usd` and reproduce it exactly; note 4.5 costs twice 4.6, so the default and title model both stay on 4.6.
 - **Session sync is not supported.** Grok stores transcripts under `~/.grok/sessions/<percent-encoded-cwd>/<uuid>/` (`$GROK_HOME/sessions/…` when that variable is set), which is a lossless cwd mapping, but Argmax has no reader for it yet — the Settings toggle renders disabled.

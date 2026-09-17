@@ -376,7 +376,7 @@
   min-width: 0;
 }
 
-/* The behavior toggles (agent mode + worktree) cluster at the right edge of
+/* The behavior toggles (Chat + worktree) cluster at the right edge of
    the row, mirroring the send control's right-anchored position on the input
    above. Whitespace alone sets them off from the context pickers — no divider,
    no borders; they stay quiet until switched on. */
@@ -453,36 +453,30 @@
   transform: rotate(180deg);
 }
 
-/* Auto is the default mode and not "special" — at rest it's a plain ghost chip
-   identical to its siblings (transparent fill, muted text, inherited from
-   .composer-context-chip including the quiet hover). Only the non-default Plan
-   mode (aria-pressed) gets a subtle accent fill as an active-state cue. min-width
-   keeps the row from jumping as the label toggles Auto ↔ Plan. */
 /* Behavior toggles are distinguished from the context pickers by structure, not
    weight: they carry no dropdown caret and no leading icon, just a word. At rest
    they're plain quiet chips; when enabled (aria-pressed) they fill with the
    accent so the two launch toggles read as a family and their state is legible
-   at a glance. Auto renders no chip at all, so min-width is what keeps Plan and
-   Chat the same width as the row cycles. */
-.agent-mode-toggle {
+   at a glance. */
+.chat-mode-toggle {
   min-width: 52px;
   justify-content: center;
 }
 
-.agent-mode-toggle[aria-pressed="true"],
+.chat-mode-toggle[aria-pressed="true"],
 .workspace-mode-toggle[aria-pressed="true"] {
   color: var(--accent-deep);
   background: var(--accent-soft);
 }
 
-.agent-mode-toggle[aria-pressed="true"]:hover,
+.chat-mode-toggle[aria-pressed="true"]:hover,
 .workspace-mode-toggle[aria-pressed="true"]:hover {
   background: var(--accent-soft);
   color: var(--accent-deep);
   filter: brightness(0.97);
 }
 
-.agent-mode-toggle:disabled {
+.chat-mode-toggle:disabled {
   cursor: default;
   opacity: 0.45;
 }

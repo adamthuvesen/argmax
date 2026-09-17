@@ -303,8 +303,8 @@
    .session-input itself, so this is the composer's own content width (its
    border box less 30px of padding). Worst case the
    row holds attach, a long model + effort (~190px), the branch at its 180px
-   cap, the changed-file count, a Plan/Chat chip, the context ring and send:
-   about 630px, and the branch is the only thing that gives, so at 600px it
+   cap, the changed-file count, the context ring and send: about 630px, and
+   the branch is the only thing that gives, so at 600px it
    still shows a dozen characters. Above that the toolbar's spacer collapses
    first and the branch ellipsizes, which reads better than the fold. CSS
    container queries do not reliably accept var() in the condition, so
@@ -316,8 +316,8 @@
 
   .session-input-toolbar {
     display: grid;
-    grid-template-columns: 30px minmax(0, 1fr) auto auto auto;
-    grid-template-areas: "attach model details mode send";
+    grid-template-columns: 30px minmax(0, 1fr) auto auto;
+    grid-template-areas: "attach model details send";
     align-items: center;
     column-gap: var(--space-1_5);
     row-gap: 0;
@@ -333,22 +333,12 @@
   }
 
   .session-input-toolbar:has(> .context-ring-anchor) {
-    grid-template-columns: 30px minmax(0, 1fr) 30px auto auto auto;
-    grid-template-areas: "attach model context details mode send";
+    grid-template-columns: 30px minmax(0, 1fr) 30px auto auto;
+    grid-template-areas: "attach model context details send";
   }
 
   .session-input-toolbar > .context-ring-anchor {
     grid-area: context;
-  }
-
-  .session-input-toolbar .composer-chips-mode {
-    grid-area: mode;
-    flex: 0 0 auto;
-  }
-
-  .session-input-toolbar .composer-chips-mode .agent-mode-toggle {
-    min-width: 46px;
-    padding-inline: var(--space-2);
   }
 
   /* The branch and the change count leave the row rather than squeeze the

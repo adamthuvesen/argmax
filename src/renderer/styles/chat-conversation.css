@@ -828,8 +828,7 @@
     .tool-call-group,
     .tool-call-row,
     .tool-call-detail,
-    .file-change-card,
-    .plan-card
+    .file-change-card
   ) {
   animation-duration: 0s;
 }

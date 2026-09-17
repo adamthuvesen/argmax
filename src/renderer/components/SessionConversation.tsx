@@ -40,11 +40,6 @@ import { modelPickerSelectionFromSession, type ModelPickerSelection } from "../l
 import { orderedOpenFilePaths } from "../lib/openFileContext.js";
 import { repoNameFromPath } from "../lib/projects.js";
 import { buildTerminalTranscript } from "../lib/rawProvider.js";
-import {
-  readStoredAgentMode,
-  sessionAgentModeKey,
-  writeStoredAgentMode
-} from "../lib/agentMode.js";
 import { readStoredSessionModel, writeStoredSessionModel } from "../lib/sessionModelPreference.js";
 import type { FontSize } from "../lib/fonts.js";
 import { summarizeChangedFiles } from "../lib/changedFiles.js";
@@ -80,10 +75,9 @@ import { todoListsByTurn } from "../lib/todoList.js";
 import {
   collectAskUserQuestionState,
   hasOutstandingCardAsk as sessionHasOutstandingCardAsk,
-  isAskUserQuestionToolName,
-  isExitPlanModeToolName
+  isAskUserQuestionToolName
 } from "../lib/turnInteractiveCards.js";
-import { liveThoughtOwnsProgress, turnAgentModeFromPrior } from "../lib/sessionTurnView.js";
+import { liveThoughtOwnsProgress } from "../lib/sessionTurnView.js";
 import type { FollowUpDelivery, ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import {
@@ -367,9 +361,6 @@ export function SessionConversation({
     const fallback = modelPickerSelectionFromSession(session);
     return session ? readStoredSessionModel(session.id, fallback) : fallback;
   });
-  const [agentMode, setAgentMode] = useState<AgentMode>(() =>
-    session ? readStoredAgentMode(sessionAgentModeKey(session.id), session.agentMode ?? "auto") : "auto"
-  );
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const shouldRefocusInput = useRef(false);
   const sessionId = session?.id ?? null;
@@ -983,9 +974,9 @@ export function SessionConversation({
   //   (b) the running spinner on a visible tool row.
   // Note we key on a *streaming* delta, not on any completed message: after a
   // finished chunk ("now I'll edit the file"), silent work should still show
-  // Thinking. The `ExitPlanMode` / `AskUserQuestion` tools are *hidden* (rendered
-  // as cards), so a running instance of either gives no on-screen indicator —
-  // treat them as "no visible tool running" and let Thinking show. Subagent
+  // Thinking. AskUserQuestion tools are hidden behind the question dock, so a
+  // running instance gives no on-screen indicator. Treat it as "no visible
+  // tool running" and let Thinking show. Subagent
   // child rows fold under their launch row and never render in the parent
   // chat, so they are not visible progress either. While a turn is starting the
   // newest delta belongs to the *previous* turn, so it is history, not live
@@ -1010,12 +1001,11 @@ export function SessionConversation({
           // reports its own terminal state. Reading the receipt itself as
           // visible progress silences this cue throughout the child's work.
           !tool.backgroundLaunch &&
-          !isExitPlanModeToolName(tool.name) &&
           !isAskUserQuestionToolName(tool.name)
       ),
     [toolCalls]
   );
-  // An interactive card (Plan or Question) outstanding means the agent has
+  // An outstanding question means the agent has
   // handed the turn over to the user — even if the probe is still alive
   // briefly emitting fallback text. From the user's perspective the agent
   // is *waiting*, not thinking. Suppress Thinking until the user submits
@@ -1281,14 +1271,8 @@ export function SessionConversation({
   useEffect(() => {
     const fallback = modelPickerSelectionFromSession(session);
     setSelectedModel(sessionId ? readStoredSessionModel(sessionId, fallback) : fallback);
-    setAgentMode(session ? readStoredAgentMode(sessionAgentModeKey(session.id), session.agentMode ?? "auto") : "auto");
     // eslint-disable-next-line react-hooks/exhaustive-deps -- session.id is the identity gate; `session` mutates per-tick by design
   }, [sessionId]);
-
-  useEffect(() => {
-    if (!sessionId) return;
-    writeStoredAgentMode(sessionAgentModeKey(sessionId), agentMode);
-  }, [agentMode, sessionId]);
 
   const { milestone: prMilestone, finish: finishPrMilestone } = usePrMilestone(workspace);
 
@@ -1371,12 +1355,11 @@ export function SessionConversation({
           return false;
         }
       }
-      const mode: AgentMode = turnAgentModeFromPrior(liveQuestion.priorItem) === "plan" ? "plan" : "auto";
       return sendAfterTerminate(
         session.id,
         session.state === "running",
         onTerminateSession,
-        () => sendSessionInput(session.id, answerText, selectedModel, mode),
+        () => sendSessionInput(session.id, answerText, selectedModel, "auto"),
         (message) => setStatus({ kind: "error", message })
       );
     },
@@ -1589,12 +1572,10 @@ export function SessionConversation({
                     isLatestTurn={index === latestConversationIndex}
                     openRunAt={openRunAt}
                     session={session}
-                    selectedModel={selectedModel}
                     workspace={workspace}
                     agentCodenames={agentCodenames}
                     onOpenFile={onOpenFile}
                     onOpenAgent={onOpenAgent}
-                    onTerminateSession={onTerminateSession}
                     onForkSession={onForkSession}
                     revertCheckpointIds={checkpointIds}
                     revertCheckpointUnavailable={checkpointUnavailable}
@@ -1603,11 +1584,6 @@ export function SessionConversation({
                       review.workspaceFiles.refreshList();
                       review.openChangesPanel();
                     }}
-                    onSendSessionInput={sendSessionInput}
-                    inputRef={inputRef}
-                    shouldRefocusInput={shouldRefocusInput}
-                    setStatus={setStatus}
-                    setAgentMode={setAgentMode}
                     defaultToolCallsDisplay={defaultToolCallsDisplay}
                     defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
                     thinkingDisplay={thinkingDisplay}
@@ -1710,7 +1686,6 @@ export function SessionConversation({
       ) : (
       <SessionComposer
         isFocused={isFocused}
-        agentMode={agentMode}
         canSend={canSend}
         chatFontSize={chatFontSize}
         changeSummary={changeSummary}
@@ -1739,7 +1714,6 @@ export function SessionConversation({
         reviewPanelOpen={review.isPanelOpen}
         selectedModel={selectedModel}
         session={session}
-        setAgentMode={setAgentMode}
         setSelectedModel={setSelectedModelForSession}
         setStatus={setStatus}
         shouldRefocusInput={shouldRefocusInput}

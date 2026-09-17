@@ -182,7 +182,7 @@ export function AgentsSettings({
           permissions, and chats launched by an agent inherit that agent's permissions.
           Provider defaults follows its native CLI
           configuration, including Codex automatic review. Full access requests broad permissions.
-          Ask for approval shows native requests in the chat. Plan mode keeps its restrictions.
+          Ask for approval shows native requests in the chat.
         </SettingNote>
       </SettingGroup>
 

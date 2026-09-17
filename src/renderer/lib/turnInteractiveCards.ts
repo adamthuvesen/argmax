@@ -3,12 +3,6 @@ import { decodeTimelineEvent } from "./canonicalTimeline.js";
 import { parseQuestionsFromToolInput, type Question } from "./questions.js";
 import type { ToolCall, TurnToolItem } from "./toolCalls.js";
 
-export type ResolvedExitPlanTool = {
-  id: string;
-  createdAt: string;
-  markdown: string;
-};
-
 export type ResolvedAskUserQuestionTool = {
   id: string;
   createdAt: string;
@@ -19,10 +13,6 @@ export type ResolvedAskUserQuestionTool = {
 
 function normalizedInteractiveToolName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
-export function isExitPlanModeToolName(name: string): boolean {
-  return normalizedInteractiveToolName(name) === "exitplanmode";
 }
 
 export function isAskUserQuestionToolName(name: string): boolean {
@@ -45,24 +35,6 @@ function toolsMatching(
     }
   }
   return matches;
-}
-
-export function collectExitPlanState(toolItems: readonly TurnToolItem[]): {
-  tool: ResolvedExitPlanTool | null;
-  hiddenToolIds: Set<string>;
-} {
-  const hiddenToolIds = new Set<string>();
-  let tool: ResolvedExitPlanTool | null = null;
-  for (const candidate of toolsMatching(toolItems, (tool) => isExitPlanModeToolName(tool.name))) {
-    hiddenToolIds.add(candidate.id);
-    if (candidate.status === "running") continue;
-    const planArg = candidate.inputFull?.plan;
-    if (typeof planArg !== "string" || planArg.trim().length === 0) continue;
-    if (!tool) {
-      tool = { id: candidate.id, createdAt: candidate.createdAt, markdown: planArg };
-    }
-  }
-  return { tool, hiddenToolIds };
 }
 
 export function collectAskUserQuestionState(toolItems: readonly TurnToolItem[]): {
@@ -106,11 +78,10 @@ export function hasOutstandingCardAsk(events: TimelineEvent[], toolCalls: ToolCa
   }
   return toolCalls.some(
     (tool) =>
-      ((isAskUserQuestionToolName(tool.name) &&
+      (isAskUserQuestionToolName(tool.name) &&
         tool.inputFull?.delivery !== "async" &&
         (tool.inputFull?.delivery !== "blocking" || tool.status === "running") &&
-        parseQuestionsFromToolInput(tool)) ||
-        isExitPlanModeToolName(tool.name)) &&
+        parseQuestionsFromToolInput(tool)) &&
       tool.createdAt > lastUserMessageTime
   );
 }

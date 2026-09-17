@@ -3,14 +3,14 @@ import { useLayoutEffect, type RefObject } from "react";
 // Numbers shared with the iPhone (ios/Argmax/Sources/Design/ReadingWave.swift);
 // styles/reading-wave.css owns the band's width and colours.
 //
-// What is held constant is the *time* a pass takes, not the band's speed. A
-// constant speed reads as two different animations on one screen: the tool
-// line's words are a type step smaller than the Thinking verb's and its line
-// is two to three times longer, so the same px/s crawled there while the verb
-// felt right. Clamping the pass instead keeps every live line on one rhythm.
-/** A pass over the words takes this long, whatever the line's length. */
-const PASS_SECONDS_MIN = 0.8;
-const PASS_SECONDS_MAX = 1.5;
+// A fixed pixel speed and a fixed cadence are mutually exclusive: at one
+// speed, a short word finishes (and repeats) far more often per second than a
+// long sentence does, so it *reads* faster even though the band moves at the
+// same rate. Holding the pass *time* constant instead — and letting the
+// band's speed vary with the line's length — is what makes every line pulse
+// at the same rhythm, whether it's one word or a full sentence.
+/** A pass over the words takes exactly this long, whatever the line's length. */
+const PASS_SECONDS = 1.1;
 /** Half-width of the band in ems; must match `--reading-wave-sigma`. */
 const SIGMA_EM = 1.1;
 /** Pause between passes, in seconds. */
@@ -53,10 +53,9 @@ export function useReadingWave(
       const sigma = SIGMA_EM * em;
       // The band enters 3σ before the first glyph and leaves 3σ after the last.
       const travel = end - start + 6 * sigma;
-      const pass = Math.min(PASS_SECONDS_MAX, Math.max(PASS_SECONDS_MIN, travel / (7 * em)));
-      const speed = travel / pass;
+      const speed = travel / PASS_SECONDS;
       const cycle = travel + PAUSE_SECONDS * speed;
-      const duration = pass + PAUSE_SECONDS;
+      const duration = PASS_SECONDS + PAUSE_SECONDS;
       if (Math.abs(Number.parseFloat(node.style.getPropertyValue("--reading-wave-cycle")) - cycle) < 0.5) {
         return;   // same geometry: leave the pass alone
       }

@@ -136,9 +136,21 @@
   color: var(--text-soft);
 }
 
+.todo-card-item[data-state="active"] .todo-card-mark {
+  color: var(--text);
+}
+
 .todo-card-item[data-state="active"] .todo-card-label {
   color: var(--text);
   font-weight: calc(500 + var(--font-weight-offset));
+}
+
+/* While it is pulsing, rest on the same ink the Thinking cue and a running
+   tool row rest on. `--text` sits too close to the wave's peak (both anchor
+   the theme's strongest ink) to leave the gradient anywhere to travel; a
+   dimmer resting tone gives it the same swing everywhere it appears. */
+.todo-card-item[data-state="active"] .todo-card-label[data-reading-wave="true"] {
+  color: var(--muted-strong);
 }
 
 .todo-card-item[data-state="cancelled"] .todo-card-mark {
@@ -170,4 +182,14 @@
   height: 7px;
   border-radius: 999px;
   border: 1.25px solid currentColor;
+}
+
+/* The active mark: the same ring, filled in. It stays still — the label
+   beside it carries the motion (the reading wave), so nothing here needs to
+   move or spin. */
+.todo-card-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
 }

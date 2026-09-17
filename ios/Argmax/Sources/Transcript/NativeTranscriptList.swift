@@ -13,6 +13,10 @@ where Item.ID == String {
     var isReady = true
     var presentationID = ""
     @Binding var following: Bool
+    var hasEarlier = false
+    var hasLater = false
+    var onLoadEarlier: () -> Void = {}
+    var onLoadLater: () -> Void = {}
     @ViewBuilder var row: (Item) -> Row
     /// Live state under the last row: the thinking cue. It is not a row, so
     /// its coming and going never changes row identities or the tail scroll's
@@ -38,6 +42,8 @@ where Item.ID == String {
     @State private var naturalContentHeight: CGFloat = 0
     @State private var turnAnchorMeasurement: TranscriptTurnAnchorMeasurement?
     @State private var activeTurnAnchorID: String?
+    @State private var earlierBoundaryRequested: String?
+    @State private var laterBoundaryRequested: String?
 
     private var reservedTurnAnchorID: String? {
         activeTurnAnchorID ?? (anchorInitialTurn ? turnAnchorID : nil)
@@ -140,6 +146,7 @@ where Item.ID == String {
             if following && !phase.isUserControlled && !next.isAtTail {
                 requestFollowingPosition()
             }
+            requestWindowPage(at: next, whileFollowing: following)
             // A scroll whose offset moves without a phase transition (a
             // programmatic offset set) never passes through
             // `onScrollPhaseChange`, so the reading anchor would keep
@@ -162,7 +169,8 @@ where Item.ID == String {
                 after: next,
                 tailGap: TranscriptScrollGeometry(context.geometry).tailGap,
                 current: following,
-                turnScrollPending: turnScrollPending
+                turnScrollPending: turnScrollPending,
+                hasLater: hasLater
             )
             if following != updated { following = updated }
             if next == .idle {
@@ -171,16 +179,25 @@ where Item.ID == String {
                     requestFollowingPosition()
                 } else {
                     readingPosition.anchor(at: context.geometry.visibleRect.minY)
+                    requestWindowPage(
+                        at: TranscriptScrollGeometry(context.geometry),
+                        whileFollowing: false
+                    )
                 }
             }
         }
         .onChange(of: following) { _, next in
             if next {
+                earlierBoundaryRequested = nil
+                laterBoundaryRequested = nil
                 readingPosition.release()
                 requestFollowingPosition()
             }
         }
-        .onChange(of: items) { _, _ in
+        .onChange(of: items, initial: true) { _, items in
+            readingPosition.retain(Set(items.map(\.id)))
+            if earlierBoundaryRequested != items.first?.id { earlierBoundaryRequested = nil }
+            if laterBoundaryRequested != items.last?.id { laterBoundaryRequested = nil }
             if following { requestFollowingPosition() }
         }
         .onChange(of: turnFloorHeight) { _, _ in
@@ -207,6 +224,8 @@ where Item.ID == String {
         }
         .onChange(of: sessionID, initial: true) { _, _ in
             activeTurnAnchorID = nil
+            earlierBoundaryRequested = nil
+            laterBoundaryRequested = nil
             phase = .idle
             following = true
             requestFollowingPosition()
@@ -214,6 +233,24 @@ where Item.ID == String {
         .onChange(of: scrollRequest) { _, _ in
             following = true
             requestFollowingPosition()
+        }
+    }
+
+    private func requestWindowPage(
+        at geometry: TranscriptScrollGeometry,
+        whileFollowing isFollowing: Bool
+    ) {
+        guard !isFollowing, !phase.isUserControlled else { return }
+        if hasEarlier, geometry.visibleTop <= 240,
+           let boundary = items.first?.id, earlierBoundaryRequested != boundary {
+            earlierBoundaryRequested = boundary
+            onLoadEarlier()
+            return
+        }
+        if hasLater, geometry.tailGap <= 240,
+           let boundary = items.last?.id, laterBoundaryRequested != boundary {
+            laterBoundaryRequested = boundary
+            onLoadLater()
         }
     }
 
@@ -295,6 +332,14 @@ final class TranscriptReadingPosition {
         pendingCompensation = false
     }
 
+    /// Windowing unmounts rows in both directions. Their last measured tops
+    /// must not compete with mounted rows when the next reading anchor is
+    /// chosen, or compensation can wait forever on an id that cannot move.
+    func retain(_ ids: Set<String>) {
+        rowTops = rowTops.filter { ids.contains($0.key) }
+        if let anchorID, !ids.contains(anchorID) { release() }
+    }
+
     /// The offset that puts the anchored row back, when this change moved it.
     /// Returns whether the anchored row moved and a compensation is due;
     /// `pendingAnchorOffset` resolves it from the latest recorded tops, so
@@ -324,11 +369,12 @@ enum TranscriptScrollBehavior {
         after phase: ScrollPhase,
         tailGap: CGFloat,
         current: Bool,
-        turnScrollPending: Bool = false
+        turnScrollPending: Bool = false,
+        hasLater: Bool = false
     ) -> Bool {
         if turnScrollPending { return true }
         if phase.isUserControlled { return false }
-        if phase == .idle && previous.isUserControlled { return tailGap < 28 }
+        if phase == .idle && previous.isUserControlled { return !hasLater && tailGap < 28 }
         return current
     }
 }
@@ -373,11 +419,18 @@ extension NativeTranscriptList where Footer == EmptyView {
         isReady: Bool = true,
         presentationID: String = "",
         following: Binding<Bool>,
+        hasEarlier: Bool = false,
+        hasLater: Bool = false,
+        onLoadEarlier: @escaping () -> Void = {},
+        onLoadLater: @escaping () -> Void = {},
         @ViewBuilder row: @escaping (Item) -> Row
     ) {
         self.init(items: items, sessionID: sessionID, scrollRequest: scrollRequest,
                   turnAnchorID: turnAnchorID, anchorInitialTurn: anchorInitialTurn, isReady: isReady,
-                  presentationID: presentationID, following: following, row: row) { EmptyView() }
+                  presentationID: presentationID, following: following,
+                  hasEarlier: hasEarlier, hasLater: hasLater,
+                  onLoadEarlier: onLoadEarlier, onLoadLater: onLoadLater,
+                  row: row) { EmptyView() }
     }
 }
 

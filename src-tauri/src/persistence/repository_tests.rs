@@ -154,10 +154,11 @@ fn project_workspace_and_session_repositories_round_trip() {
         &connection,
         "s1",
         &SessionAgentModeInput {
-            agent_mode: "auto".to_owned(),
+            agent_mode: "plan".to_owned(),
         },
     )
     .expect("update agent mode");
+    // Legacy persisted Plan mode is normalized at the repository boundary.
     assert_eq!(agent_mode.agent_mode.as_deref(), Some("auto"));
 
     let resumed = update_session_provider_conversation_id(&connection, "s1", "provider-thread-1")

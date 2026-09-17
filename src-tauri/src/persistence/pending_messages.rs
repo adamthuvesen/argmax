@@ -330,7 +330,12 @@ fn row_to_pending_message(row: &Row<'_>) -> rusqlite::Result<PendingMessage> {
         id: row.get("id")?,
         session_id: row.get("session_id")?,
         content: row.get("content")?,
-        agent_mode: row.get("agent_mode")?,
+        // Legacy queues may still contain `plan`; current clients and provider
+        // launches are Auto-only.
+        agent_mode: {
+            let _: String = row.get("agent_mode")?;
+            "auto".to_string()
+        },
         model_label: row.get("model_label")?,
         model_id: row.get("model_id")?,
         reasoning_effort: row.get("reasoning_effort")?,
@@ -491,6 +496,12 @@ mod tests {
         {
             let mut connection = database.connection();
             replace_session_queue(&mut connection, "session-1", &expected).expect("persist queue");
+            connection
+                .execute(
+                    "UPDATE pending_messages SET agent_mode = 'plan' WHERE id = 'pending-2'",
+                    [],
+                )
+                .expect("seed legacy plan mode");
             mark_message_launching(&connection, "session-1", "pending-1").expect("claim first");
         }
 
@@ -511,6 +522,7 @@ mod tests {
             Some(RECOVERED_DELIVERY_UNKNOWN)
         );
         assert_eq!(queue[1].recovery_status.as_deref(), Some(RECOVERED_UNSENT));
+        assert_eq!(queue[1].agent_mode, "auto");
         assert_eq!(queue[0].attachments, expected[0].attachments);
         assert_eq!(queue[0].agent_references, expected[0].agent_references);
         assert_eq!(queue[0].origin, expected[0].origin);

@@ -228,9 +228,18 @@ struct TranscriptToolsRow: View {
 
 /// The collapsed line of a fold: up to a few tool icons and the headline,
 /// which carries the reading wave while a call runs. Each piece changes on
-/// its own clock while a turn works, so the label owns the pacing: the
-/// headline dwells long enough that a boundary's intermediate wording never
-/// paints, and what does change fades rather than snapping.
+/// its own clock while a turn works, so the label owns the pacing
+/// (`TranscriptDwell`): while the fold runs, the headline re-words on the
+/// kinds of work in it rather than on the count, at most once every 800ms,
+/// and the counts land when the work settles. Desktop paces the same line the
+/// same way in `lib/pacedHeadline.ts`.
+///
+/// Desktop goes one step further and fades in only the clause that changed,
+/// holding the verb (`[data-arriving]`, 220ms). A phone headline is one
+/// `Text` that wraps to two lines, and neither a wrapping `HStack` of clauses
+/// nor a concatenated `Text` can transition one run of glyphs on its own, so
+/// the whole line still cross-fades over 180ms — now only on a real change of
+/// kind, which is about half as often as before.
 struct TranscriptFoldLabel: View {
     let tools: [TranscriptTool]
     let summary: String
@@ -248,7 +257,8 @@ struct TranscriptFoldLabel: View {
     private var motion: Animation? { reduceMotion ? nil : .easeOut(duration: 0.18) }
 
     var body: some View {
-        TranscriptDwelledValue(value: Shown(summary: summary, live: running, icons: iconTools)) { shown in
+        TranscriptDwelledValue(value: Shown(summary: summary, live: running, icons: iconTools),
+                               key: Self.kindKey(for: tools), running: running) { shown in
             HStack(spacing: Spacing.snug) {
                 ForEach(shown.icons) { tool in
                     TranscriptToolIcon(name: tool.name, activity: tool.activity, state: tool.activityState)
@@ -273,6 +283,20 @@ struct TranscriptFoldLabel: View {
         var summary: String
         var live: Bool
         var icons: [TranscriptTool]
+    }
+
+    /// The kinds of work in the fold, in the order the headline names them —
+    /// what a running headline is allowed to re-word on. An edit's operation
+    /// belongs to it, since creating and moving are different words. The
+    /// outcome does not: a call finishing is a count, and a fold that is still
+    /// working has no news in it.
+    static func kindKey(for tools: [TranscriptTool]) -> String {
+        var seen = Set<String>()
+        return tools.compactMap { tool -> String? in
+            let key = tool.activity.kind.rawValue
+                + (tool.activity.operation.map { ":\($0.rawValue)" } ?? "")
+            return seen.insert(key).inserted ? key : nil
+        }.joined(separator: "+")
     }
 
     private var iconTools: [TranscriptTool] {

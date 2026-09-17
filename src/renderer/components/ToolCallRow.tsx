@@ -98,7 +98,10 @@ function ToolCallRowInner({
     || iconKind === "agent-stop";
   const hasLeadingContent = Boolean(childTools && childTools.length > 0);
   const hasDetail = toolCallHasExpandableDetail(tool, { hasLeadingContent });
-  const isRunning = tool.status === "running";
+  // A backgrounded launch is marked running by inference, not by evidence:
+  // no completion ever arrives for it, so a band would travel its words for
+  // the rest of the session. It keeps the nest, the way the launch row does.
+  const isRunning = tool.status === "running" && tool.backgroundLaunch !== true;
   const rowButtonRef = useRef<HTMLElement | null>(null);
   const setRowButton = useCallback((node: HTMLElement | null) => {
     rowButtonRef.current = node;

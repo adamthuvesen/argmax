@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 /** A wording holds this long before the next one may take its place. */
-const CLAUSE_DWELL_MS = 800;
+export const CLAUSE_DWELL_MS = 800;
 
 /**
  * Paces a running group's headline. Two rules, both about what the reader can

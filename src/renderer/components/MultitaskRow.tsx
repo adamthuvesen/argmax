@@ -2,12 +2,16 @@ import { Split, Square, X } from "lucide-react";
 
 import { AgentEmblem } from "./AgentEmblem.js";
 import { emblemForKey } from "../lib/agentEmblems.js";
-import type { JSX } from "react";
-import { useSettleHold } from "../hooks/useSettleHold.js";
+import { useRef, type JSX } from "react";
 import { multitaskAnswerPreview, multitaskRowStatus, type MultitaskNotice } from "../lib/multitask.js";
-import { WORKING_NEST_SETTLE_MS, WorkingNest } from "./WorkingNest.js";
+import { usePacedHeadline } from "../lib/pacedHeadline.js";
+import { useReadingWave } from "../lib/readingWave.js";
 
 type RowStatus = "running" | "done" | "error";
+
+/** As in AgentLaunchList: the row's parts joined into the one string
+ *  `usePacedHeadline` paces, on a delimiter a task title cannot contain. */
+const PART = "\u0000";
 
 /** The subagent launch words, plus the one a subagent has no equivalent for:
  *  a multitask is a chat, so a person can stop it. */
@@ -25,9 +29,9 @@ function statusLabel(state: string | null, status: RowStatus): string {
  * shape as a subagent. It stays visible after the parent turn ends and opens in
  * the same dock, without becoming another chat in the sidebar.
  *
- * The one thing that separates it from a subagent row is the mark a settled
- * one carries: the same emblem its dock tab uses, so both surfaces name a
- * multitask the same way.
+ * The one thing that separates it from a subagent row is the mark it carries:
+ * the same emblem its dock tab uses, so both surfaces name a multitask the
+ * same way.
  */
 export function MultitaskRow({
   notice,
@@ -55,9 +59,6 @@ export function MultitaskRow({
   const state = liveState ?? notice.state;
   const taskLabel = liveLabel || notice.taskLabel;
   const status = multitaskRowStatus(state);
-  // Hold the nest through its landing before the split glyph takes the slot.
-  // A stopped or failed multitask skips it: the landing marks work arriving.
-  const markPhase = useSettleHold(status === "running", WORKING_NEST_SETTLE_MS);
   const childSessionId = notice.childSessionId;
   const identity = notice.worktree ? "Multitask · isolated" : "Multitask";
   // What it found, in one line, so a finished multitask says something more
@@ -65,14 +66,46 @@ export function MultitaskRow({
   // Only while it is settled: answering it again in the dock puts it back to
   // running, and the old result beside a live status reads as this turn's.
   const answer = status === "running" ? null : multitaskAnswerPreview(notice.answer);
+  // One wording for the row, paced as the transcript paces a running headline:
+  // the dispatch title and the short one its chat is given land seconds apart,
+  // and a chat that blocks on an approval flips its status word back and forth
+  // while it runs. Both are held to one change per beat, newest wording wins.
+  const wording = [taskLabel, identity, statusLabel(state, status)].join(PART);
+  const paced = usePacedHeadline(wording, wording, status === "running");
+  const [shownLabel, shownIdentity, shownStatus] = paced.shown.split(PART);
+  const previousParts = paced.previous.split(PART);
+  const arriving = (index: number, part: string): "true" | undefined =>
+    previousParts[index] !== part ? "true" : undefined;
+  const headlineRef = useRef<HTMLSpanElement | null>(null);
+  useReadingWave(headlineRef, status === "running", `${shownLabel}${PART}${shownIdentity}`);
   const headline = (
     <>
-      <span className="agent-launch-headline">
-        <span className="agent-launch-title">{taskLabel}</span>
-        <span className="agent-launch-identity">{identity}</span>
+      <span
+        className="agent-launch-headline"
+        ref={headlineRef}
+        data-reading-wave={status === "running" ? "true" : undefined}
+      >
+        <span
+          key={shownLabel}
+          className="agent-launch-title reading-wave-text"
+          data-arriving={arriving(0, shownLabel)}
+        >
+          {shownLabel}
+        </span>
+        <span
+          key={shownIdentity}
+          className="agent-launch-identity reading-wave-text"
+          data-arriving={arriving(1, shownIdentity)}
+        >
+          {shownIdentity}
+        </span>
       </span>
-      <span className="agent-launch-status">
-        {statusLabel(state, status)}
+      <span
+        key={shownStatus}
+        className="agent-launch-status"
+        data-arriving={arriving(2, shownStatus)}
+      >
+        {shownStatus}
         {answer ? <span className="multitask-row-answer"> · {answer}</span> : null}
       </span>
     </>
@@ -82,24 +115,18 @@ export function MultitaskRow({
     <div className="agent-launch-list multitask-row">
       <div className="agent-launch-row" data-status={status}>
         <div className="agent-launch-row-main">
-          {status !== "error" && markPhase !== "done" ? (
-            <WorkingNest
-              active={markPhase === "running"}
-              className="agent-launch-mark"
-              size={14}
-              phaseKey={childSessionId ?? taskLabel}
-            />
-          ) : (
-            <span className="agent-launch-mark multitask-row-mark" aria-hidden="true">
-              {childSessionId ? (
-                <AgentEmblem {...emblemForKey(childSessionId)} size={13} status="done" />
-              ) : (
-                // Dispatched but not yet launched: there is no session id to
-                // hash, so the kind's glyph stands in until there is.
-                <Split size={13} />
-              )}
-            </span>
-          )}
+          {/* The emblem whatever the chat is doing, as the dock tab shows it.
+              The row says it is live on its own words (the reading wave), so a
+              nest here would mark the same thing twice. */}
+          <span className="agent-launch-mark multitask-row-mark" aria-hidden="true">
+            {childSessionId ? (
+              <AgentEmblem {...emblemForKey(childSessionId)} size={13} status="done" />
+            ) : (
+              // Dispatched but not yet launched: there is no session id to
+              // hash, so the kind's glyph stands in until there is.
+              <Split size={13} />
+            )}
+          </span>
           {childSessionId && onOpen ? (
             <button
               type="button"

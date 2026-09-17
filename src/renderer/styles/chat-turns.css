@@ -1389,9 +1389,10 @@ button.tool-call-row-button {
   box-shadow: inset 0 0 0 1.5px var(--line-strong);
 }
 
-/* A running launch uses the shared working nest (styles/working-nest.css); a
-   settled one uses a plain bullet. Both occupy the same box so the title never
-   shifts sideways when an agent lands. */
+/* The mark is the agent's emblem — liveness reads on the row's words now, not
+   here. A backgrounded launch is the exception and keeps the shared working
+   nest (styles/working-nest.css); see AgentLaunchList.tsx. Both occupy the same
+   box so the title never shifts sideways when an agent lands. */
 .agent-launch-mark {
   /* The mark scales with the type ladder and is centered on the row's first
      line, which is `--text-base * 1.3` tall inside the button's 2px of top
@@ -1409,8 +1410,9 @@ button.tool-call-row-button {
   margin-right: var(--space-1);
 }
 
-/* The settled mark is the agent's emblem, arriving on the same short fade the
-   old bullet used so the landing still ends in something appearing. */
+/* The emblem arrives on the same short fade the old bullet used, so a row
+   entering the transcript — and a backgrounded launch handing over after its
+   nest has landed — still ends in something appearing. */
 .agent-launch-emblem {
   display: inline-grid;
   place-items: center;
@@ -1423,12 +1425,21 @@ button.tool-call-row-button {
   }
 }
 
+/* The line the reading wave reads while the row is live: the task and the
+   codename, one pass across both, exactly as a running tool row's verb and
+   target share one (styles/reading-wave.css). The status word sits on its own
+   line below and holds still — the band is sized from one line's words, and a
+   column of them would stretch a single pass over the row's whole height. */
 .agent-launch-headline {
   display: flex;
   align-items: baseline;
   gap: var(--space-1_5);
   min-width: 0;
   max-width: 100%;
+  /* Stated rather than inherited: `--reading-wave-sigma` is an em resolved
+     here, and a container a size off its own words would draw a band a size
+     off too. Both children are already `--text-base`. */
+  font-size: var(--text-base);
 }
 
 .agent-launch-title {
@@ -1461,6 +1472,20 @@ button.tool-call-row-button {
   white-space: nowrap;
   color: var(--muted);
   font-size: var(--text-base);
+}
+
+/* A re-worded part fades up where it lands, and only that part: a codename
+   resolving or a status flipping must not dip the whole row. Same 220ms as the
+   transcript's arriving clause, off the same keyframe, so a launch row and the
+   activity line above it read as one surface. */
+:is(.agent-launch-title, .agent-launch-identity, .agent-launch-status)[data-arriving="true"] {
+  animation: activity-clause-in 220ms var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(.agent-launch-title, .agent-launch-identity, .agent-launch-status)[data-arriving="true"] {
+    animation: none;
+  }
 }
 
 .agent-launch-row[data-status="error"] .agent-launch-status {
@@ -1680,9 +1705,9 @@ button.tool-call-row-button {
 }
 
 /* A multitask above the composer keeps the subagent launch-row shape. The row
-   borrows `.agent-launch-*` wholesale. A settled one is marked with the Split
-   glyph its dock tab already uses. The running state shares the nest because
-   both surfaces mean work is happening now. */
+   borrows `.agent-launch-*` wholesale, the reading wave on a running row's
+   words included. The mark is the emblem its dock tab already uses — or the
+   Split glyph, until the chat it dispatched has an id to hash. */
 .multitask-row-mark {
   display: inline-grid;
   place-items: center;

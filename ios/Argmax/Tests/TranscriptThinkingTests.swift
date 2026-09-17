@@ -40,7 +40,11 @@ final class TranscriptThinkingTests: XCTestCase {
         XCTAssertNil(TranscriptThinking.current(items: [user, message("answer", streaming: true)], session: session))
         XCTAssertNil(TranscriptThinking.current(items: [user, message("answer")], session: session))
         XCTAssertNil(TranscriptThinking.current(items: [user, .thought(.init(id: "thought", text: "Reasoning", createdAt: "2", isStreaming: true))], session: session))
-        XCTAssertNil(TranscriptThinking.current(items: [user, tool(.running)], session: session))
+        // The running row owns the beat: the cue is never live beside it, and
+        // dissolves rather than cutting because it was up to lose (the call
+        // started a second after a send whose wait is 600ms).
+        XCTAssertEqual(TranscriptThinking.current(items: [user, tool(.running)], session: session)?.phase,
+                       .leaving)
         let gap = TranscriptThinking.current(items: [user, tool(.done)], session: session)
         XCTAssertEqual(gap?.startedAt, "2026-09-12T10:00:05Z")
         XCTAssertEqual(gap, TranscriptThinking.current(items: [user, tool(.done)], session: session))

@@ -442,19 +442,53 @@
   color: var(--muted-strong);
   border-radius: 0;
   overflow: visible;
-  animation: thinking-fade-in var(--motion-fast) var(--ease-out);
+  animation: thinking-fade-in 160ms var(--ease-out);
 }
 
-/* Opacity only, and short. The line alternates with the transcript many times
-   in a turn, and it leaves because real content arrived — it is sized and
-   weighted like the answer that replaces it, so that swap is a substitution,
-   not a departure. An exit fade would put a dissolve on exactly the frame the
-   reader is waiting for; a cut is the honest edge. The 1px rise this used to
-   carry was below perception as motion and above it as text blur, since the
-   element is layer-promoted while it animates. */
+/* Which edge the line gets depends on who takes the beat off it, and the two
+   cases are not alike.
+
+   Answer text and a settled turn are the frame the reader has been waiting
+   for, and this line is sized and weighted like the answer that replaces it —
+   so that swap is a substitution, not a departure. A dissolve there would put
+   a fade on exactly the frame being waited for. Those cut, which is why there
+   is no exit animation on `.thinking-indicator` itself.
+
+   A tool line taking over mid-turn is a hand-off between two lines of the same
+   pitch, and cutting it left the word blinking between calls that land a
+   second apart. That one dissolves, over slightly less than it faded in: an
+   exit the eye can follow but not wait for. `THINKING_FADE_OUT_MS` in
+   SessionConversation.tsx keeps the element mounted for the same 140ms.
+
+   Opacity only, both ways. The 1px rise this used to carry was below
+   perception as motion and above it as text blur, since the element is
+   layer-promoted while it animates. */
 @keyframes thinking-fade-in {
   from { opacity: 0; }
   to   { opacity: 1; }
+}
+
+.thinking-indicator[data-leaving="true"] {
+  animation: thinking-fade-out 140ms var(--ease-in-out) forwards;
+}
+
+@keyframes thinking-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking-indicator {
+    animation: none;
+  }
+
+  /* No animation means the element would sit at full opacity for the whole
+     140ms it stays mounted, which is the flash the fade exists to avoid. Take
+     it to zero immediately instead. */
+  .thinking-indicator[data-leaving="true"] {
+    animation: none;
+    opacity: 0;
+  }
 }
 
 /* Block-level flex, not inline-flex: an inline-flex box is baseline-aligned in
@@ -1037,9 +1071,23 @@
 
 /* Activity headlines stay mounted as calls arrive. Fade once on entry without
    replaying the animation when the summary or current action changes. */
+/* No animation on the line itself: a running headline changes a clause at a
+   time (lib/pacedHeadline.ts), and dipping the whole line to 0.35 on every
+   change is what read as a strobe through a burst of calls. The clause that
+   actually changed fades up on its own, below. */
 .activity-summary-line .activity-summary-headline {
-  animation: activity-summary-tick 240ms var(--ease);
   font-variant-numeric: tabular-nums;
+}
+
+/* An arriving clause fades up where it lands. Opacity on one short span, not
+   on the line, so the words already on screen hold still. */
+.tool-call-group-eyebrow-detail[data-arriving="true"] {
+  animation: activity-clause-in 220ms var(--ease-out);
+}
+
+@keyframes activity-clause-in {
+  from { opacity: 0.25; }
+  to   { opacity: 1; }
 }
 
 @keyframes activity-summary-tick {
@@ -1052,8 +1100,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .activity-summary-line .activity-summary-headline,
-  .tool-call-group-stat {
+  .tool-call-group-stat,
+  .tool-call-group-eyebrow-detail[data-arriving="true"] {
     animation: none;
   }
 }

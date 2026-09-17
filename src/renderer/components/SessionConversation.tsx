@@ -124,12 +124,46 @@ const CONVERSATION_WINDOW = 120;
 /// Items revealed per "Show earlier" click.
 const CONVERSATION_WINDOW_STEP = 240;
 
-const THINKING_SHOW_DELAY_MS = 700;
+/// The pre-answer floor. A provider that says its first word inside this
+/// window has announced itself better than the cue could, and a line that
+/// appeared and left again inside it read as a flash rather than as a sign of
+/// life. Longer than this and the pane is silent, which is the one stretch
+/// that needs a cue: a relaunched provider can take ten to thirty seconds.
+const THINKING_FIRST_BEAT_DELAY_MS = 600;
+/// What a mid-turn gap has to clear before it is worth a line, until the turn
+/// has shown a rhythm of its own to measure against.
+const THINKING_GAP_DELAY_MS = 1000;
+/// … and once it has: a fraction of the turn's own median gap, so a turn whose
+/// tool calls land a second apart never shows the cue between two of them,
+/// while a turn that genuinely stalls still does. The clamp keeps a burst of
+/// same-millisecond calls from driving the threshold to nothing and a single
+/// long stall from raising it past the point of usefulness.
+const THINKING_GAP_MEDIAN_FACTOR = 0.8;
+const THINKING_GAP_DELAY_MIN_MS = 900;
+const THINKING_GAP_DELAY_MAX_MS = 2500;
 /// How long a finished assistant message owns the beat it ended. The text is
 /// the progress cue for this window, so the indicator stays down whether or
 /// not it was already up when the message landed.
 const THINKING_AFTER_ASSISTANT_COMPLETED_DELAY_MS = 1800;
-const THINKING_MIN_VISIBLE_MS = 600;
+/// How long the line takes to dissolve when a tool line takes the beat off it.
+/// Matches `.thinking-indicator[data-leaving="true"]` in chat-turns.css: the
+/// element has to outlive the state that put it up or there are no frames to
+/// fade in.
+const THINKING_FADE_OUT_MS = 140;
+
+/// The wait a mid-turn gap has to serve, given the gaps this turn has already
+/// shown. The median rather than the mean: a burst of calls that start in the
+/// same millisecond contributes a pile of near-zero gaps, and an average would
+/// let them drag the threshold under every real pause in the same turn.
+function thinkingGapDelayMs(gaps: readonly number[]): number {
+  if (gaps.length === 0) return THINKING_GAP_DELAY_MS;
+  const sorted = [...gaps].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)] ?? THINKING_GAP_DELAY_MS;
+  return Math.min(
+    THINKING_GAP_DELAY_MAX_MS,
+    Math.max(THINKING_GAP_DELAY_MIN_MS, median * THINKING_GAP_MEDIAN_FACTOR)
+  );
+}
 
 interface OptimisticUserMessage {
   event: TimelineEvent;
@@ -142,9 +176,9 @@ interface OptimisticUserMessage {
 /// pane that opens onto a gap already older than the delay — a session
 /// reopened mid-turn — has nothing left to smooth, and counting from the mount
 /// instead made the reader sit through the wait a second time.
-function remainingDelayMs(fullMs: number, startedAt: string | null): number {
-  if (startedAt === null) return fullMs;
-  const elapsed = Date.now() - Date.parse(startedAt);
+function remainingDelayMs(fullMs: number, startedAtMs: number | null): number {
+  if (startedAtMs === null) return fullMs;
+  const elapsed = Date.now() - startedAtMs;
   if (!Number.isFinite(elapsed)) return fullMs;
   // Never longer than the full delay: a wall clock stepped backwards would
   // otherwise turn every already-ingested event into a future one and hold the
@@ -1065,6 +1099,11 @@ export function SessionConversation({
   // Both waits below count from when the beat began, not from when this pane
   // first saw it, so a reopened session serves only what is left of them.
   const lastSignificantEventAt = lastSignificantEvent?.createdAt ?? null;
+  const lastSignificantEventAtMs = useMemo(() => {
+    if (lastSignificantEventAt === null) return null;
+    const ms = Date.parse(lastSignificantEventAt);
+    return Number.isFinite(ms) ? ms : null;
+  }, [lastSignificantEventAt]);
   // Held as the id whose window has *expired*, not as a "settling" flag: a flag
   // starts false, so the first render after the message lands would still claim
   // the beat for one commit and flash the label before the effect could set it.
@@ -1074,7 +1113,7 @@ export function SessionConversation({
     if (answerBeatId === null) return;
     const remaining = remainingDelayMs(
       THINKING_AFTER_ASSISTANT_COMPLETED_DELAY_MS,
-      lastSignificantEventAt
+      lastSignificantEventAtMs
     );
     if (remaining === 0) {
       setSettledAnswerId(answerBeatId);
@@ -1082,7 +1121,7 @@ export function SessionConversation({
     }
     const timer = window.setTimeout(() => setSettledAnswerId(answerBeatId), remaining);
     return () => window.clearTimeout(timer);
-  }, [answerBeatId, lastSignificantEventAt]);
+  }, [answerBeatId, lastSignificantEventAtMs]);
   // Show the generic indicator for any silent gap in a running turn. It stays
   // hidden while text is actively streaming, a visible tool row is running, an
   // answer is still settling, or the agent is waiting on an interactive card.
@@ -1113,6 +1152,14 @@ export function SessionConversation({
     }
     return anchor ?? undefined;
   }, [isThinking, lastSignificantEvent, turnStartBaseline]);
+  // The anchor of the line that is on screen, kept past the beat that put it
+  // there. A line leaving on a fade outlives its beat, and re-deriving the
+  // anchor then would hand the dissolving line a fresh word and restart its
+  // clock in the middle of the dissolve.
+  const shownThinkingAnchorRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (thinkingAnchorMs !== undefined) shownThinkingAnchorRef.current = thinkingAnchorMs;
+  }, [thinkingAnchorMs]);
   // Beats that have already served their wait: a turn the user just started,
   // and a settled answer — reaching here with the answer still newest means
   // its window is spent, so re-showing must not queue a second delay behind it.
@@ -1123,15 +1170,31 @@ export function SessionConversation({
       (canonicalLastSignificantEvent.role === "user" ||
         canonicalLastSignificantEvent.phase === "completed"));
   const [isThinkingVisible, setIsThinkingVisible] = useState(false);
-  const thinkingVisibleSinceRef = useRef(0);
+  /// The line on its way out, or null. It carries its own anchor so the
+  /// dissolving line is the one that was just live rather than a remount.
+  const [leavingThinking, setLeavingThinking] = useState<{ anchorMs: number | undefined } | null>(
+    null
+  );
   const thinkingShowTimerRef = useRef<number | null>(null);
+  /// Which beat the pending wait was scheduled for, so a beat that starts
+  /// mid-countdown gets its own wait instead of the previous one's remainder.
+  const thinkingShowBeatRef = useRef<string | null>(null);
   const thinkingHideTimerRef = useRef<number | null>(null);
+  // This turn's own rhythm, learned as it plays: the gap between each pair of
+  // consecutive significant events. Per turn, because a previous turn's pace
+  // says nothing about this one's — a read-only question and a twelve-file
+  // edit are not the same turn twice.
+  const thinkingGapsRef = useRef<{ turnId: string | null; previousAtMs: number | null; gaps: number[] }>(
+    { turnId: null, previousAtMs: null, gaps: [] }
+  );
 
   useEffect(() => {
     setIsThinkingVisible(false);
+    setLeavingThinking(null);
     setTurnStartBaseline(null);
     turnSawLiveStateRef.current = false;
-    thinkingVisibleSinceRef.current = 0;
+    thinkingShowBeatRef.current = null;
+    thinkingGapsRef.current = { turnId: null, previousAtMs: null, gaps: [] };
     if (thinkingShowTimerRef.current !== null) {
       window.clearTimeout(thinkingShowTimerRef.current);
       thinkingShowTimerRef.current = null;
@@ -1142,61 +1205,85 @@ export function SessionConversation({
     }
   }, [sessionId]);
 
+  // Declared before the effect that reads the gaps, so a new event is measured
+  // on the same commit that decides whether its gap is worth a line.
+  useEffect(() => {
+    const rhythm = thinkingGapsRef.current;
+    if (rhythm.turnId !== lastTurnPromptId) {
+      rhythm.turnId = lastTurnPromptId;
+      rhythm.previousAtMs = null;
+      rhythm.gaps = [];
+    }
+    if (lastSignificantEventAtMs === null) return;
+    // Only forward: the transcript is rebuilt from a set the backfill can
+    // reorder, and a negative gap would be read as a burst.
+    if (rhythm.previousAtMs !== null && lastSignificantEventAtMs > rhythm.previousAtMs) {
+      rhythm.gaps.push(lastSignificantEventAtMs - rhythm.previousAtMs);
+    }
+    rhythm.previousAtMs = lastSignificantEventAtMs;
+  }, [lastSignificantEventAtMs, lastTurnPromptId]);
+
   useEffect(() => {
     if (isThinking) {
-      if (thinkingHideTimerRef.current !== null) {
-        window.clearTimeout(thinkingHideTimerRef.current);
-        thinkingHideTimerRef.current = null;
+      // A dissolve already under way is left to finish. The beat can come back
+      // inside those 140ms — a tool that ends as fast as it started — and
+      // yanking the node then cuts the very edge the fade is there to soften.
+      // Its timer only clears the exit state; the live line wins the slot the
+      // moment it is up.
+      if (isThinkingVisible) return;
+      // Which beat this is decides what it has to outlast. The pre-answer
+      // window is a fixed floor; a mid-turn gap has to beat the rhythm this
+      // turn has already established.
+      const delayMs = isInitialThinkingBeat
+        ? THINKING_FIRST_BEAT_DELAY_MS
+        : thinkingGapDelayMs(thinkingGapsRef.current.gaps);
+      // No anchor at all — a running session whose transcript is still empty,
+      // sent from somewhere other than this pane — leaves nothing to smooth,
+      // and serving the wait there is what made a reopened chat sit blank.
+      const remaining =
+        thinkingAnchorMs === undefined ? 0 : remainingDelayMs(delayMs, thinkingAnchorMs);
+      if (remaining === 0) {
+        setIsThinkingVisible(true);
+        return;
       }
-      if (!isThinkingVisible) {
-        // A new beat can begin while a mid-turn show delay is still pending —
-        // a follow-up landing during the post-answer grace period is exactly
-        // that. The new turn owns the indicator, so drop the stale timer and
-        // show now instead of serving out the previous gap's delay.
-        if (isInitialThinkingBeat) {
-          if (thinkingShowTimerRef.current !== null) {
-            window.clearTimeout(thinkingShowTimerRef.current);
-            thinkingShowTimerRef.current = null;
-          }
-          thinkingVisibleSinceRef.current = performance.now();
-          setIsThinkingVisible(true);
-          return;
-        }
-        if (thinkingShowTimerRef.current !== null) return;
-        const remaining = remainingDelayMs(THINKING_SHOW_DELAY_MS, lastSignificantEventAt);
-        if (remaining === 0) {
-          thinkingVisibleSinceRef.current = performance.now();
-          setIsThinkingVisible(true);
-          return;
-        }
-        thinkingShowTimerRef.current = window.setTimeout(() => {
-          thinkingShowTimerRef.current = null;
-          thinkingVisibleSinceRef.current = performance.now();
-          setIsThinkingVisible(true);
-        }, remaining);
+      const beat = `${isInitialThinkingBeat ? "first" : "gap"}:${thinkingAnchorMs}`;
+      if (thinkingShowTimerRef.current !== null) {
+        if (thinkingShowBeatRef.current === beat) return;
+        window.clearTimeout(thinkingShowTimerRef.current);
       }
+      thinkingShowBeatRef.current = beat;
+      thinkingShowTimerRef.current = window.setTimeout(() => {
+        thinkingShowTimerRef.current = null;
+        thinkingShowBeatRef.current = null;
+        setIsThinkingVisible(true);
+      }, remaining);
       return;
     }
 
     if (thinkingShowTimerRef.current !== null) {
       window.clearTimeout(thinkingShowTimerRef.current);
       thinkingShowTimerRef.current = null;
+      thinkingShowBeatRef.current = null;
     }
-    if (!isThinkingVisible || thinkingHideTimerRef.current !== null) return;
-
-    const elapsed = performance.now() - thinkingVisibleSinceRef.current;
-    const hideDelay = Math.max(0, THINKING_MIN_VISIBLE_MS - elapsed);
-    if (hideDelay === 0) {
-      setIsThinkingVisible(false);
-      thinkingVisibleSinceRef.current = 0;
-      return;
-    }
+    if (!isThinkingVisible) return;
+    // Down on this commit. Whatever superseded the cue is already on screen,
+    // and holding a word on top of a running tool line — which a
+    // minimum-visible window did for half a second — is the flash itself.
+    setIsThinkingVisible(false);
+    // A tool line taking the beat is a hand-off between two lines of the same
+    // size and weight, so the outgoing one dissolves into the incoming one.
+    // Answer text and a settled turn are the frame the reader has been waiting
+    // for, so those cut: a dissolve there dissolves exactly that frame.
+    if (!anyVisibleToolRunning) return;
+    // A second exit inside the first one's 140ms restarts the fade, so the
+    // earlier timer must go rather than cut the new one short.
+    if (thinkingHideTimerRef.current !== null) window.clearTimeout(thinkingHideTimerRef.current);
+    setLeavingThinking({ anchorMs: shownThinkingAnchorRef.current });
     thinkingHideTimerRef.current = window.setTimeout(() => {
       thinkingHideTimerRef.current = null;
-      thinkingVisibleSinceRef.current = 0;
-      setIsThinkingVisible(false);
-    }, hideDelay);
-  }, [isInitialThinkingBeat, isThinking, isThinkingVisible, lastSignificantEventAt]);
+      setLeavingThinking(null);
+    }, THINKING_FADE_OUT_MS);
+  }, [anyVisibleToolRunning, isInitialThinkingBeat, isThinking, isThinkingVisible, thinkingAnchorMs]);
 
   useEffect(() => {
     return () => {
@@ -1614,8 +1701,12 @@ export function SessionConversation({
                 would shorten the transcript under a reader pinned to the bottom
                 and pull the view up by its height. */}
             <div className="conversation-tail">
-              {isThinkingVisible ? (
-                <ThinkingLabel phaseKey={workspace?.id ?? session?.id} startedAtMs={thinkingAnchorMs} />
+              {isThinkingVisible || leavingThinking !== null ? (
+                <ThinkingLabel
+                  phaseKey={workspace?.id ?? session?.id}
+                  startedAtMs={isThinkingVisible ? thinkingAnchorMs : leavingThinking?.anchorMs}
+                  leaving={!isThinkingVisible}
+                />
               ) : null}
             </div>
           </div>

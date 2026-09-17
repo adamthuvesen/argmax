@@ -606,8 +606,9 @@ describe("SessionConversation — streaming & composer", () => {
     );
 
     expect(screen.queryByRole("article", { name: "Thinking" })).not.toBeInTheDocument();
+    // This turn has shown no gap yet, so the mid-turn wait is its default.
     act(() => {
-      vi.advanceTimersByTime(700);
+      vi.advanceTimersByTime(1000);
     });
     expect(screen.getByRole("article", { name: "Thinking" })).toBeInTheDocument();
     // The reasoning is history here, not the cue: no live Thought block claims
@@ -1720,11 +1721,7 @@ describe("SessionConversation — streaming & composer", () => {
         session={running}
       />
     );
-    // Past the minimum-visible clamp, which is all that may hold it on screen.
-    act(() => {
-      vi.advanceTimersByTime(600);
-    });
-
+    // No advance: an answer takes the beat on the commit it lands on.
     expect(screen.getByText("Here is the summary.")).toBeInTheDocument();
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
     // Still running, still silent — and still no tail label until the answer's
@@ -1762,15 +1759,164 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByRole("button", { name: /Working/ })).toBeInTheDocument();
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
     act(() => {
-      vi.advanceTimersByTime(700);
+      vi.advanceTimersByTime(1000);
     });
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });
 
+  it("never shows the cue between tool calls that land half a second apart", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-12T15:00:00.000Z"));
+    // The bug this pins: a turn that chains short calls flickered a word into
+    // every gap between them. Five calls, 500 ms of silence between each — the
+    // pane should read as one continuous stretch of work, not as five waits.
+    const turnStartMs = Date.parse("2026-05-12T15:00:00.000Z");
+    const at = (ms: number): string => new Date(turnStartMs + ms).toISOString();
+    const running = baseSession({ provider: "claude", state: "running" });
+    let events = [event("u1", "user.message", "explore", at(0))];
+    let nowMs = 0;
+    const view = renderConversation(running, events);
+    const advanceTo = (ms: number): void => {
+      act(() => {
+        vi.advanceTimersByTime(ms - nowMs);
+      });
+      nowMs = ms;
+    };
+    const land = (next: TimelineEvent): void => {
+      events = [next, ...events];
+      rerenderConversation(view.rerender, running, events);
+    };
+
+    // Each call starts 500 ms after the previous one finished and runs 200 ms.
+    for (let call = 0; call < 5; call += 1) {
+      const startMs = 200 + call * 700;
+      advanceTo(startMs);
+      land(event(`c${call}`, "command.started", "Bash", at(startMs), {
+        type: "tool_use",
+        id: `tu_${call}`,
+        name: "Bash",
+        input: { command: `grep step-${call}` }
+      }));
+      advanceTo(startMs + 200);
+      land(event(`c${call}-end`, "command.completed", "Bash", at(startMs + 200), {
+        tool_use_id: `tu_${call}`,
+        content: "match"
+      }));
+      // Sample the whole gap, not only its ends: the cue must not surface at
+      // any point inside it.
+      for (let step = 1; step <= 5; step += 1) {
+        advanceTo(startMs + 200 + step * 100);
+        expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+      }
+    }
+  });
+
+  it("shows the cue once a gap in the same turn runs to two seconds", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-12T15:00:00.400Z"));
+    // The counterpart to the short-gap case: the adaptive wait raises the bar,
+    // it does not remove it. A turn that actually stalls still needs a sign of
+    // life, and the clamp keeps the bar under a second when the turn's own
+    // rhythm is faster than that.
+    renderConversation(baseSession({ provider: "claude", state: "running" }), [
+      event("c0-end", "command.completed", "Bash", "2026-05-12T15:00:00.400Z", {
+        tool_use_id: "tu_0",
+        content: "match"
+      }),
+      event("c0", "command.started", "Bash", "2026-05-12T15:00:00.200Z", {
+        type: "tool_use",
+        id: "tu_0",
+        name: "Bash",
+        input: { command: "grep foo" }
+      }),
+      event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z")
+    ]);
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+  });
+
+  it("raises the wait to match a turn whose own beats are slow", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-12T15:00:00.000Z"));
+    // The clamp floor covers fast turns; this is the other end. Three-second
+    // beats make 1.2 s of silence ordinary for this turn, and the fixed 700 ms
+    // wait called it a stall and put a word in it.
+    const turnStartMs = Date.parse("2026-05-12T15:00:00.000Z");
+    const at = (ms: number): string => new Date(turnStartMs + ms).toISOString();
+    const running = baseSession({ provider: "claude", state: "running" });
+    let nowMs = 0;
+    const advanceTo = (ms: number): void => {
+      act(() => {
+        vi.advanceTimersByTime(ms - nowMs);
+      });
+      nowMs = ms;
+    };
+    const first = event("u1", "user.message", "explore", at(0));
+    const view = renderConversation(running, [first]);
+
+    advanceTo(3_000);
+    const started = event("c0", "command.started", "Bash", at(3_000), {
+      type: "tool_use",
+      id: "tu_0",
+      name: "Bash",
+      input: { command: "npm test" }
+    });
+    rerenderConversation(view.rerender, running, [started, first]);
+    advanceTo(6_000);
+    rerenderConversation(view.rerender, running, [
+      event("c0-end", "command.completed", "Bash", at(6_000), { tool_use_id: "tu_0", content: "ok" }),
+      started,
+      first
+    ]);
+
+    advanceTo(7_200);
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+    advanceTo(8_500);
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+  });
+
+  it("hands the beat to a starting tool line on the same commit, then dissolves", () => {
+    vi.useFakeTimers();
+    // A gap five seconds old when the pane opens, so the cue is already up.
+    vi.setSystemTime(new Date("2026-05-12T15:00:05.000Z"));
+    const events = [event("u1", "user.message", "run it", "2026-05-12T15:00:00.000Z")];
+    const running = baseSession({ provider: "claude", state: "running" });
+    const view = renderConversation(running, events);
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+
+    // No timer advance: the tool row's own spinner is on screen from this
+    // commit, so the cue stops owning the beat on it. It keeps its pixels for
+    // the length of the fade and nothing else — no name, so nothing announces
+    // two live lines at once.
+    rerenderConversation(view.rerender, running, [
+      event("tu-start", "command.started", "Bash", "2026-05-12T15:00:05.000Z", {
+        type: "tool_use",
+        id: "tu_bash",
+        name: "Bash",
+        input: { command: "ls" }
+      }),
+      ...events
+    ]);
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+    expect(view.container.querySelector('.thinking-indicator[data-leaving="true"]')).not.toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(140);
+    });
+    expect(view.container.querySelector(".thinking-indicator")).toBeNull();
+  });
+
   it("shows Thinking at once when a running session is reopened mid-gap", () => {
     vi.useFakeTimers();
-    // Switching chats remounts the pane. The 700 ms wait keeps the label from
-    // flickering between events a viewer is watching land; a gap already
+    // Switching chats remounts the pane. The mid-turn wait keeps the label
+    // from flickering between events a viewer is watching land; a gap already
     // seconds old when the pane opens has nothing to smooth, and serving the
     // wait again read as a blank line on every switch back.
     vi.setSystemTime(new Date("2026-05-12T15:00:07.000Z"));
@@ -1942,12 +2088,13 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });
 
-  it("shows the follow-up and Thinking immediately, before delivery or persisted events land", async () => {
+  it("shows the follow-up at once and Thinking after its floor, before delivery or persisted events land", async () => {
     vi.useFakeTimers();
     // The backend relaunches the agent for a follow-up, so the transcript gets
     // the new user bubble seconds before any provider event (and sometimes
     // before the `running` state) arrives. The pane must not sit blank for
-    // that whole spawn: no timer advance, Thinking is already up.
+    // that whole spawn — only for the 600ms floor that keeps a provider which
+    // answers immediately from getting a cue it never needed.
     const previousTurn = [
       event("m1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
       // Repeat the same text to prove an older matching row cannot acknowledge
@@ -1983,6 +2130,10 @@ describe("SessionConversation — streaming & composer", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Send follow-up" }));
 
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
     expect(screen.getByLabelText("Chat prompt")).toHaveValue("");
     expect(screen.getAllByText("and now the tests")).toHaveLength(2);
@@ -2014,7 +2165,7 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getAllByText("and now the tests")).toHaveLength(2);
   });
 
-  it("shows Thinking immediately for a follow-up queued mid-turn, skipping the post-answer grace period", () => {
+  it("shows Thinking for a follow-up queued mid-turn, skipping the post-answer grace period", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-12T15:00:01.000Z"));
     // Queued follow-ups drain after the current turn, so the running session's
@@ -2043,6 +2194,10 @@ describe("SessionConversation — streaming & composer", () => {
     fireEvent.change(prompt, { target: { value: "then run lint" } });
     fireEvent.keyDown(prompt, { key: "Enter" });
 
+    // The send's own 600ms floor, not the answer's 1800ms grace period.
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });
 
@@ -2117,19 +2272,19 @@ describe("SessionConversation — streaming & composer", () => {
       event("u2", "user.message", "and now the tests", "2026-05-12T15:00:03.000Z"),
       ...previousTurn
     ];
+    // No timer advance: answer text is the frame the reader was waiting for,
+    // so the cue yields it on the same commit rather than dissolving over it.
     rerender(<SessionConversation {...baseProps} events={answering} />);
-    act(() => {
-      vi.advanceTimersByTime(600);
-    });
 
     expect(screen.getByText("Writing them now")).toBeInTheDocument();
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+    expect(document.querySelector(".thinking-indicator")).toBeNull();
   });
 
-  it("drops the post-send Thinking state when the send itself fails", async () => {
+  it("never puts the cue up when the send itself fails inside the first beat", async () => {
     const failingSend = vi.fn().mockRejectedValue(new Error("Workspace archive is in progress"));
-    // The minimum-visible window is a `setTimeout`, so it is advanced rather
-    // than waited out; the send's rejection settles on the same flush.
+    // The first beat's floor is a `setTimeout`, so it is advanced rather than
+    // waited out; the send's rejection settles on the same flush.
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     render(
       <SessionConversation
@@ -2159,10 +2314,11 @@ describe("SessionConversation — streaming & composer", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(screen.getByRole("alert")).toHaveTextContent("Workspace archive is in progress");
-    // The label honours its minimum visible window before it drops.
-    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+    // A send that failed inside the 600ms floor never opened a beat, so there
+    // is nothing to take down — and nothing to take down later either.
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(600);
+      await vi.advanceTimersByTimeAsync(2000);
     });
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
   });

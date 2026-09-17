@@ -131,12 +131,18 @@ function chooseThinkingWord(seed: string | undefined): (typeof THINKING_WORDS)[n
 export function ThinkingLabel({
   phaseKey,
   startedAtMs,
+  leaving = false,
 }: {
   phaseKey?: string | undefined;
   /** When this silent stretch began (epoch ms), so a remount mid-gap keeps
    *  counting the real wait instead of restarting it. Falls back to mount
    *  time when the caller has no timestamp to anchor to. */
   startedAtMs?: number | undefined;
+  /** The beat has been handed to another line and this one is dissolving. It
+   *  is pixels for the length of the fade and nothing more: it drops its name
+   *  and its live region the moment it stops owning the beat, so a reader on
+   *  assistive tech hears the arriving line instead of both. */
+  leaving?: boolean;
 }): JSX.Element {
   const [word] = useState(() =>
     chooseThinkingWord(startedAtMs === undefined ? undefined : `${phaseKey ?? ""}:${startedAtMs}`)
@@ -172,8 +178,9 @@ export function ThinkingLabel({
   return (
     <article
       className="chat-bubble assistant thinking-indicator"
-      aria-live="polite"
-      aria-label="Thinking"
+      {...(leaving
+        ? { "data-leaving": "true", "aria-hidden": true }
+        : { "aria-live": "polite" as const, "aria-label": "Thinking" })}
     >
       {/* The word carries the motion; the seconds stay still, since a band
           crossing a ticking number jitters. */}

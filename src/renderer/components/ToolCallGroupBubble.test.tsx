@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildToolCallGroup, type ToolCall } from "../lib/toolCalls.js";
 import type { ActivityMember } from "../lib/turnChildren.js";
 import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
+import { ActivityBeatContext } from "../lib/activityBeat.js";
 import { ThoughtBlock } from "./ThoughtBlock.js";
 
 afterEach(() => {
@@ -439,5 +440,29 @@ describe("ToolCallGroupBubble", () => {
     expect(screen.getByText("Contents of first")).toBeInTheDocument();
     rerender(<ToolCallGroupBubble group={buildToolCallGroup([{ ...first, output: "More output" }, second])} defaultExpanded defaultToolsExpanded />);
     expect(screen.getByText("More output")).toBeInTheDocument();
+  });
+});
+
+describe("the beat between calls", () => {
+  // OpenCode and Grok report a call's start and finish in the same instant
+  // (measured medians: 0ms and 4ms), so a rule that only lights a *running*
+  // call leaves their tool lines dead and the Thinking cue owning every gap.
+  it("marks a settled group live while it holds the turn's beat", () => {
+    const landed = tool("landed", { status: "done" });
+    const { container } = render(
+      <ActivityBeatContext.Provider value="landed">
+        <ToolCallGroupBubble group={buildToolCallGroup([landed, tool("other")])} />
+      </ActivityBeatContext.Provider>
+    );
+    expect(container.querySelector('[data-reading-wave="true"]')).not.toBeNull();
+  });
+
+  it("leaves a group alone once the beat has moved on", () => {
+    const { container } = render(
+      <ActivityBeatContext.Provider value="elsewhere">
+        <ToolCallGroupBubble group={buildToolCallGroup([tool("landed"), tool("other")])} />
+      </ActivityBeatContext.Provider>
+    );
+    expect(container.querySelector('[data-reading-wave="true"]')).toBeNull();
   });
 });

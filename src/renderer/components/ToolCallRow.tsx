@@ -17,6 +17,7 @@ import { ToolCallDetail } from "./ToolCallDetail.js";
 import { toolCallHasExpandableDetail } from "./toolCallDetailLogic.js";
 import { ServerIcon } from "./ServerIcon.js";
 import { useReadingWave } from "../lib/readingWave.js";
+import { useOwnsActivityBeat } from "../lib/activityBeat.js";
 import { ToolActivityIcon } from "./ToolActivityIcon.js";
 
 function verbForChanges(changes: FileChange[]): string | null {
@@ -101,7 +102,11 @@ function ToolCallRowInner({
   // A backgrounded launch is marked running by inference, not by evidence:
   // no completion ever arrives for it, so a band would travel its words for
   // the rest of the session. It keeps the nest, the way the launch row does.
-  const isRunning = tool.status === "running" && tool.backgroundLaunch !== true;
+  const ownsBeat = useOwnsActivityBeat(useMemo(() => [tool.id], [tool.id]));
+  // A settled row keeps the beat while the cue waits out its gap, which is the
+  // only live line a provider that reports a call atomically ever has.
+  const isRunning =
+    (tool.status === "running" || ownsBeat) && tool.backgroundLaunch !== true;
   const rowButtonRef = useRef<HTMLElement | null>(null);
   const setRowButton = useCallback((node: HTMLElement | null) => {
     rowButtonRef.current = node;

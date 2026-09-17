@@ -15,6 +15,7 @@ import type { TranscriptFollow } from "../hooks/useConversationScroll.js";
 import { useStableTailWindow } from "../hooks/useStableTailWindow.js";
 import { useReadingWave } from "../lib/readingWave.js";
 import { headlineClauses, usePacedHeadline } from "../lib/pacedHeadline.js";
+import { useOwnsActivityBeat } from "../lib/activityBeat.js";
 import { ActivityStat } from "./ActivityStat.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { ToolCallRow } from "./ToolCallRow.js";
@@ -190,6 +191,10 @@ function ToolCallGroupBubbleInner({
     : activityIsLive
       ? "Thinking"
       : "Thought";
+  const toolIds = useMemo(() => group.tools.map((tool) => tool.id), [group.tools]);
+  // A group whose calls all landed in the same instant — every OpenCode and
+  // Grok call, most Codex ones — still owns the beat until the cue takes over.
+  const ownsBeat = useOwnsActivityBeat(toolIds);
   const activityStatusIsRunning = activityIsLive || summary.status === "running";
   const kindKey = useMemo(() => toolGroupKindKey(group.tools), [group.tools]);
   const paced = usePacedHeadline(activityHeadline, kindKey, activityStatusIsRunning);
@@ -323,7 +328,7 @@ function ToolCallGroupBubbleInner({
       );
   const activityStatus = activityStatusIsRunning ? "running" : summary.status;
   const headerRef = useRef<HTMLButtonElement | null>(null);
-  useReadingWave(headerRef, activityStatus === "running", activityHeadline);
+  useReadingWave(headerRef, activityStatus === "running" || ownsBeat, activityHeadline);
   // A delete is a file change, not a failure; see ToolCallRow.
   const iconIsDanger = activityStatus === "error"
     || firstTool?.cancelled === true
@@ -357,7 +362,7 @@ function ToolCallGroupBubbleInner({
           <button
             ref={headerRef}
             className="tool-call-group-header"
-            data-reading-wave={activityStatus === "running" ? "true" : undefined}
+            data-reading-wave={activityStatus === "running" || ownsBeat ? "true" : undefined}
             type="button"
             aria-expanded={expanded}
             aria-controls={detailsId}

@@ -96,6 +96,7 @@ import { importChunk } from "../lib/importChunk.js";
 const GoalStatus = lazy(() => importChunk(async () => ({ default: (await import("./GoalStatus.js")).GoalStatus })));
 import { SessionActionsMenu } from "./SessionActionsMenu.js";
 import { WorkingNest } from "./WorkingNest.js";
+import { ActivityBeatContext } from "../lib/activityBeat.js";
 import { WorkspaceCard } from "./WorkspaceCard.js";
 import { ThinkingLabel } from "./ThinkingLabel.js";
 import { MultitaskRow } from "./MultitaskRow.js";
@@ -1075,6 +1076,21 @@ export function SessionConversation({
     !hasOutstandingCardAsk &&
     !liveThoughtVisible &&
     !isStreamingText;
+  // The most recent visible call, which keeps the beat while the cue waits out
+  // its adaptive gap. Three of the five providers report a call's start and its
+  // finish in the same instant (see lib/activityBeat.ts), so a rule that only
+  // lights a *running* call leaves their tool lines dead.
+  const lastSettledVisibleToolId = useMemo(() => {
+    let newest: { id: string; at: string } | null = null;
+    for (const tool of toolCalls) {
+      if (tool.parentToolUseId !== null || tool.backgroundLaunch) continue;
+      if (isAskUserQuestionToolName(tool.name)) continue;
+      const at = tool.completedAt ?? tool.createdAt;
+      if (!at) continue;
+      if (newest === null || at >= newest.at) newest = { id: tool.id, at };
+    }
+    return newest?.id ?? null;
+  }, [toolCalls]);
   // Compaction is minutes of provider-side silence with its own live marker in
   // the transcript. A second "Thinking" line under it would say less, not more.
   const compacting = useMemo(() => isCompacting(liveEvents), [liveEvents]);
@@ -1494,8 +1510,15 @@ export function SessionConversation({
   // the agent-window scale through the session grid, while the phone keeps its
   // own native composer scale.
   const goalInComposer = !nativeComposerFloor;
+  // Exactly one line is live: the cue if it is up, otherwise the call that just
+  // landed, and nothing once the turn settles.
+  const activityBeatToolId =
+    sessionRunning && !isThinkingVisible && !anyVisibleToolRunning && agentWorkingSilently
+      ? lastSettledVisibleToolId
+      : null;
 
   return (
+    <ActivityBeatContext.Provider value={activityBeatToolId}>
     <section
       className="conversation-surface"
       aria-label="Conversation"
@@ -1816,5 +1839,6 @@ export function SessionConversation({
       />
       )}
     </section>
+    </ActivityBeatContext.Provider>
   );
 }

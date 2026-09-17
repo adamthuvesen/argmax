@@ -163,6 +163,56 @@ final class TranscriptPacingTests: XCTestCase {
         XCTAssertNil(beat?.beatHolder(now: sent.addingTimeInterval(4.5)))
     }
 
+    // MARK: - Who claims the beat on a subagent card
+
+    func testASettledAgentCardClaimsTheBeatTheGroupPublishes() {
+        // The cue hands the beat to the group whose work just landed, so the
+        // card the silence started at has to be the one that waves — a beat
+        // nothing could show left the gap with no live line at all.
+        let group = agentGroup(id: "agents", agents: [
+            agent(id: "agent-1", status: .done, completedAt: 1.0),
+            agent(id: "agent-2", status: .done, completedAt: 2.5)
+        ])
+        XCTAssertEqual(
+            TranscriptAgentGroupView.beatAgentID(of: group, beat: "agents"),
+            "agent-2",
+            "the newest landed card is the line the silence started at"
+        )
+        XCTAssertNil(TranscriptAgentGroupView.beatAgentID(of: group, beat: "tools"))
+        // The card the cue's settled stamp names and the one the card claims
+        // read the same completion.
+        let claimed = group.agents.first {
+            $0.id == TranscriptAgentGroupView.beatAgentID(of: group, beat: "agents")
+        }
+        XCTAssertEqual(claimed?.completedAt, agentGroupMaxCompleted(of: group))
+    }
+
+    func testARunningAgentCardWavesAndABackgroundedOneNeverDoes() {
+        let group = agentGroup(id: "agents", agents: [
+            agent(id: "agent-1", status: .done, completedAt: 1.0),
+            agent(id: "agent-2", status: .running, backgroundLaunch: true)
+        ])
+        // The turn is blocked on a plain launch, so its words carry the
+        // band the way a running tool row's do.
+        XCTAssertTrue(TranscriptAgentGroupView.isLive(
+            agent(id: "agent-3", status: .running), in: group, beat: "agents"
+        ))
+        // A backgrounded launch is running by inference: no completion for
+        // one ever arrives, so its words never wave and it does not claim
+        // the beat either — the nest is the only mark it keeps.
+        XCTAssertFalse(TranscriptAgentGroupView.isLive(
+            agent(id: "agent-2", status: .running, backgroundLaunch: true), in: group, beat: "agents"
+        ))
+        // A settled card only waves while it holds the beat, and it is the
+        // newest landed one that holds it.
+        XCTAssertTrue(TranscriptAgentGroupView.isLive(
+            agent(id: "agent-1", status: .done, completedAt: 1.0), in: group, beat: "agents"
+        ))
+        XCTAssertFalse(TranscriptAgentGroupView.isLive(
+            agent(id: "agent-1", status: .done, completedAt: 1.0), in: group, beat: "tools"
+        ))
+    }
+
     // MARK: - What a fold's headline re-words on
 
     func testHeadlineHoldsUnlessTheKindOfWorkChanges() {
@@ -236,6 +286,36 @@ final class TranscriptPacingTests: XCTestCase {
                            backgroundLaunch: backgroundLaunch)],
             createdAt: stamp(start)
         ))
+    }
+
+    private func agentGroup(id: String, agents: [TranscriptAgent]) -> TranscriptAgentGroup {
+        .init(id: id, agents: agents, createdAt: stamp(Date()))
+    }
+
+    private func agent(
+        id: String,
+        status: TranscriptToolStatus,
+        backgroundLaunch: Bool = false,
+        completedAt: TimeInterval? = nil
+    ) -> TranscriptAgent {
+        var value = TranscriptAgent(
+            id: id, parentSessionId: "session", toolUseId: id,
+            name: "Agent", prompt: nil, status: status,
+            createdAt: stamp(Date()), completedAt: nil,
+            providerChildSessionId: nil, providerParentConversationId: nil,
+            agentCodename: nil, children: [],
+            backgroundLaunch: backgroundLaunch
+        )
+        if let completedAt {
+            value.completedAt = stamp(Date().addingTimeInterval(completedAt))
+        }
+        return value
+    }
+
+    /// The group's settled stamp, the way `TranscriptThinking.settledBeat`
+    /// reads it: the newest completion in the group.
+    private func agentGroupMaxCompleted(of group: TranscriptAgentGroup) -> String? {
+        group.agents.compactMap(\.completedAt).max()
     }
 
     private func tool(

@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-accent="green">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Argmax — live activity timing harness</title>
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-400.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-500.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource-variable/geist-mono/wght.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/tokens.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/reading-wave.css" />
+    <style>
+      /* The harness replays one turn's events through four rule sets at once on
+         a shared virtual clock, so the only difference between panes is the
+         timing and the transition — not the data and not the frame they see. */
+      html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font-ui); }
+      .head {
+        position: sticky; top: 0; z-index: 3; display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
+        padding: 10px 20px; border-bottom: 1px solid var(--line);
+        background: color-mix(in oklab, var(--bg) 92%, transparent); backdrop-filter: blur(8px);
+        font-size: var(--text-xs); color: var(--muted);
+      }
+      .head h1 { margin: 0; font-size: var(--text-sm); font-weight: 500; color: var(--text-soft); }
+      .head select, .head button { font: inherit; background: var(--panel, var(--bg)); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 3px 7px; }
+      .panes { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 18px; padding: 18px 20px 40px; }
+      .pane { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px 10px; }
+      .pane h2 { margin: 0 0 2px; font-size: var(--text-xs); font-weight: 500; color: var(--text-soft); }
+      .pane .why { margin: 0 0 12px; font-size: var(--text-2xs); color: var(--muted); line-height: 1.5; min-height: 2.8em; }
+
+      /* Transcript stand-in: an answer, the activity line, and the tail slot
+         the Thinking cue lives in — height-reserved, as in the app. */
+      .surface { font-size: var(--text-sm); }
+      .answer { font-family: var(--font-prose); font-size: var(--text-base); color: var(--prose-ink); margin: 0 0 8px; }
+      .activity-line {
+        display: flex; align-items: center; gap: 7px; min-height: 1.9em; color: var(--muted);
+      }
+      .mark { flex: 0 0 16px; height: 16px; display: grid; place-items: center; position: relative; }
+      .mark svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; grid-area: 1 / 1; }
+      .mark .layer { grid-area: 1 / 1; display: grid; place-items: center; transition: opacity 160ms var(--ease-out, ease-out); }
+      .headline { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .headline .verb { color: var(--muted-strong); }
+      .headline .seg { color: var(--chip-ink, var(--muted)); transition: color 200ms var(--ease, ease); }
+      .headline .seg.enter { animation: seg-in 200ms var(--ease-out, ease-out); }
+      @keyframes seg-in { from { color: color-mix(in srgb, currentColor 30%, var(--bg)); } }
+      /* Today's flash: the whole headline dips to 0.35 opacity and comes back. */
+      .headline.tick { animation: activity-tick 240ms var(--ease, ease); }
+      @keyframes activity-tick { from { opacity: 0.35; } to { opacity: 1; } }
+      .chev { flex: 0 0 auto; opacity: 0.28; }
+      .preview { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); opacity: 0.86; }
+      .stat { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--muted); }
+
+      .tail { min-height: 1.9em; display: flex; align-items: center; gap: 7px; }
+      .thinking { font-family: var(--font-prose); font-size: var(--text-base); color: var(--muted-strong); }
+      .thinking-elapsed { font-size: var(--text-sm); color: var(--muted); font-variant-numeric: tabular-nums; }
+      .cut { display: none; }
+      .fade-in { animation: fade-in 160ms var(--ease-out, ease-out); }
+      @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+      table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: var(--text-2xs); color: var(--muted); }
+      td { padding: 2px 0; }
+      td:last-child { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-soft); }
+      td.bad:last-child { color: var(--rose, #f4737e); }
+      .clock { margin-left: auto; font-variant-numeric: tabular-nums; }
+    </style>
+  </head>
+  <body>
+    <div class="head">
+      <h1>Live activity timing</h1>
+      <label>Stream <select id="stream"></select></label>
+      <label>Speed <select id="speed"><option value="1">1×</option><option value="0.25">0.25×</option></select></label>
+      <label>Theme <select id="theme"><option>dark</option><option>light</option></select></label>
+      <button id="replay">Replay</button>
+      <span class="clock" id="clock">0.0s</span>
+    </div>
+    <div class="panes" id="panes"></div>
+
+    <script type="module">
+      // ---------------------------------------------------------------- streams
+      // Each event is `{ at, kind, ... }` in ms from the send. Segments are the
+      // wording `summarizeToolGroup` would produce for one activity kind.
+      const STREAMS = {
+        "claude-edits": {
+          label: "Claude, edit-heavy turn",
+          events: [
+            { at: 400, kind: "tool.start", icon: "search", seg: "searched the code", preview: "rg reading-wave" },
+            { at: 1500, kind: "tool.end" },
+            { at: 1900, kind: "tool.start", icon: "file", seg: "read 2 files", preview: "readingWave.ts" },
+            { at: 2400, kind: "tool.end" },
+            { at: 2650, kind: "tool.start", icon: "file", seg: "read 3 files", preview: "chat-turns.css" },
+            { at: 3050, kind: "tool.end" },
+            { at: 4200, kind: "tool.start", icon: "pencil", seg: "edited a file", preview: "reading-wave.css" },
+            { at: 5200, kind: "tool.end" },
+            { at: 5500, kind: "tool.start", icon: "terminal", seg: "ran a command", preview: "npm run typecheck" },
+            { at: 9000, kind: "tool.end" },
+            { at: 10500, kind: "answer" },
+          ],
+        },
+        "burst": {
+          label: "Stress: 12 calls in 3s",
+          events: [
+            ...Array.from({ length: 12 }, (_, i) => [
+              { at: 300 + i * 250, kind: "tool.start", icon: i % 3 ? "file" : "terminal", seg: `read ${i + 1} files`, preview: `file-${i}.ts` },
+              { at: 300 + i * 250 + 180, kind: "tool.end" },
+            ]).flat(),
+            { at: 4000, kind: "answer" },
+          ],
+        },
+        "short-gaps": {
+          label: "Short gaps: 300/600/900/1500ms",
+          events: [
+            { at: 300, kind: "tool.start", icon: "terminal", seg: "ran a command", preview: "git status" },
+            { at: 1200, kind: "tool.end" },
+            { at: 1500, kind: "tool.start", icon: "file", seg: "read a file", preview: "App.tsx" },
+            { at: 2100, kind: "tool.end" },
+            { at: 2700, kind: "tool.start", icon: "file", seg: "read 2 files", preview: "Turn.tsx" },
+            { at: 3300, kind: "tool.end" },
+            { at: 4200, kind: "tool.start", icon: "pencil", seg: "edited a file", preview: "Turn.tsx" },
+            { at: 5000, kind: "tool.end" },
+            { at: 6500, kind: "tool.start", icon: "globe", seg: "used the browser", preview: "localhost:5251" },
+            { at: 7400, kind: "tool.end" },
+            { at: 9000, kind: "answer" },
+          ],
+        },
+        "slow-start": {
+          label: "Warm follow-up, 1st tool at 500ms, long think after",
+          events: [
+            { at: 500, kind: "tool.start", icon: "file", seg: "read a file", preview: "ReadingWave.swift" },
+            { at: 1100, kind: "tool.end" },
+            { at: 6000, kind: "tool.start", icon: "pencil", seg: "edited a file", preview: "ReadingWave.swift" },
+            { at: 6900, kind: "tool.end" },
+            { at: 8000, kind: "answer" },
+          ],
+        },
+      };
+
+      const ICONS = {
+        search: '<svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4"/><path d="m10 10 3.5 3.5"/></svg>',
+        file: '<svg viewBox="0 0 16 16"><path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3"/></svg>',
+        pencil: '<svg viewBox="0 0 16 16"><path d="M11 2.5 13.5 5 6 12.5 3 13l.5-3z"/></svg>',
+        terminal: '<svg viewBox="0 0 16 16"><path d="M3 4.5 6 8l-3 3.5M8 12h5"/></svg>',
+        globe: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><path d="M2.5 8h11M8 2.5c1.6 1.6 1.6 9.4 0 11"/></svg>',
+      };
+      const THINKING_WORDS = ["Triangulating", "Distilling", "Reconciling", "Sanity-checking"];
+
+      // ---------------------------------------------------------------- variants
+      // Every pane runs the same reducer; only these numbers and flags differ.
+      const VARIANTS = [
+        {
+          id: "today", name: "Today",
+          why: "What ships now: Thinking appears after a 700ms gap and is then held 600ms even once a tool line takes over, so a short gap pops. Every headline change flashes the whole line (opacity 0.35 → 1).",
+          thinkFirstBeat: 0, thinkGap: 700, thinkMinVisible: 600, thinkYieldsInstantly: false,
+          commitEvery: 0, commitDwell: 0, previewDwell: 600, change: "tick",
+        },
+        {
+          id: "A", name: "A · Timing only",
+          why: "No motion changes at all. Thinking waits out a 1000ms gap, is never held once a tool line supersedes it, and headline wording is coalesced to one commit per 500ms with an 800ms dwell.",
+          thinkFirstBeat: 300, thinkGap: 1000, thinkMinVisible: 0, thinkYieldsInstantly: true,
+          commitEvery: 500, commitDwell: 800, previewDwell: 1000, change: "none",
+        },
+        {
+          id: "B", name: "B · Timing + line cross-fade",
+          why: "A, plus the whole headline cross-fades its colour over 200ms on a change instead of dipping in opacity — colour never promotes the text to its own layer.",
+          thinkFirstBeat: 300, thinkGap: 1000, thinkMinVisible: 0, thinkYieldsInstantly: true,
+          commitEvery: 500, commitDwell: 800, previewDwell: 1000, change: "line",
+        },
+        {
+          id: "C", name: "C · Timing + segment diff",
+          why: "A, plus only what actually changed moves: the verb holds, a new clause fades in, and the icon cross-fades between two stacked glyphs. Advisor's pick.",
+          thinkFirstBeat: 300, thinkGap: 1000, thinkMinVisible: 0, thinkYieldsInstantly: true,
+          commitEvery: 500, commitDwell: 800, previewDwell: 1000, change: "segment",
+        },
+        {
+          id: "E", name: "E · C + adaptive wait",
+          why: "C, plus the Thinking wait learns the turn's own rhythm: the threshold is 0.8× the median gap so far, clamped to 0.9–2.5s. A turn whose calls land every second never shows it; a turn that really stalls still does.",
+          thinkFirstBeat: 300, thinkGap: 1000, thinkAdaptive: true, thinkMinVisible: 0, thinkYieldsInstantly: true,
+          commitEvery: 500, commitDwell: 800, previewDwell: 1000, change: "segment", handoff: 200,
+        },
+        {
+          id: "F", name: "F · E + soft edges", pick: true,
+          why: "E, plus the cue's edges are soft: 600ms before the first beat, a 160ms fade in and a 140ms fade out, so the few gaps that do end early read as a breath rather than a flash. Nothing is ever held on top of a tool line.",
+          thinkFirstBeat: 600, thinkGap: 1000, thinkAdaptive: true, thinkMinVisible: 0, thinkYieldsInstantly: true,
+          commitEvery: 500, commitDwell: 800, previewDwell: 1000, change: "segment", handoff: 200, softExit: 140,
+        },
+      ];
+
+      // ---------------------------------------------------------------- the pane
+      function createPane(variant, host) {
+        const fig = document.createElement("div");
+        fig.className = "pane";
+        fig.innerHTML = `
+          <h2>${variant.name}${variant.pick ? " · pick" : ""}</h2>
+          <p class="why">${variant.why}</p>
+          <div class="surface">
+            <p class="answer">Let me trace how a steer reaches the provider.</p>
+            <div class="activity-line" hidden>
+              <span class="mark"></span>
+              <span class="headline"></span>
+              <span class="chev">›</span>
+              <span class="preview"></span>
+            </div>
+            <div class="tail"></div>
+          </div>
+          <table>
+            <tr><td>visible-state changes</td><td class="changes">0</td></tr>
+            <tr><td>lifetimes under 800ms</td><td class="shorts">0</td></tr>
+            <tr><td>frames with two live lines</td><td class="doubles">0</td></tr>
+            <tr><td>Thinking on screen</td><td class="thinkms">0s</td></tr>
+          </table>`;
+        host.append(fig);
+
+        const dom = {
+          line: fig.querySelector(".activity-line"),
+          mark: fig.querySelector(".mark"),
+          headline: fig.querySelector(".headline"),
+          preview: fig.querySelector(".preview"),
+          tail: fig.querySelector(".tail"),
+          changes: fig.querySelector(".changes"),
+          shorts: fig.querySelector(".shorts"),
+          doubles: fig.querySelector(".doubles"),
+          thinkms: fig.querySelector(".thinkms"),
+        };
+
+        return {
+          variant, dom,
+          // replay state
+          cursor: 0, running: false, ended: false, lastEventAt: 0, lastToolEndAt: null,
+          segs: [], icon: null, preview: null, previewAt: -1e9,
+          shown: { segs: [], icon: null, preview: null, at: -1e9 }, queued: null, queuedAt: 0,
+          thinkingSince: null, thinkingWord: THINKING_WORDS[0], gaps: [],
+          metrics: { changes: 0, shorts: 0, doubles: 0, thinkingMs: 0 },
+          lifetimes: { line: null, thinking: null },
+        };
+      }
+
+      // One step of the reducer for a pane, at virtual time `now`.
+      function step(pane, stream, now) {
+        const v = pane.variant;
+        while (pane.cursor < stream.events.length && stream.events[pane.cursor].at <= now) {
+          const event = stream.events[pane.cursor++];
+          pane.lastEventAt = event.at;
+          if (event.kind === "tool.start") {
+            if (pane.lastToolEndAt !== null) pane.gaps.push(event.at - pane.lastToolEndAt);
+            pane.running = true;
+            pane.icon = event.icon;
+            pane.preview = event.preview;
+            pane.previewAt = event.at;
+            // Wording accumulates: the newest clause replaces the same kind's clause.
+            const verb = event.seg.split(" ")[0];
+            pane.segs = [...pane.segs.filter((s) => s.split(" ")[0] !== verb), event.seg];
+          } else if (event.kind === "tool.end") {
+            pane.running = false;
+            pane.lastToolEndAt = event.at;
+          } else if (event.kind === "answer") {
+            pane.ended = true;
+            pane.running = false;
+          }
+        }
+
+        // --- what the line shows: coalesced commits with a dwell.
+        const want = { segs: pane.segs, icon: pane.icon, preview: pane.preview };
+        const same = JSON.stringify(want) === JSON.stringify({ segs: pane.shown.segs, icon: pane.shown.icon, preview: pane.shown.preview });
+        if (!same) {
+          if (v.commitEvery === 0) {
+            commit(pane, want, now);
+          } else {
+            pane.queued = want;
+            const readyAt = Math.max(pane.shown.at + v.commitDwell, (pane.queuedAt || now) + 0);
+            if (now >= readyAt) commit(pane, want, now);
+          }
+        }
+
+        // --- the thinking cue: hysteresis in, superseded out.
+        const lineLive = pane.segs.length > 0 || pane.running;
+        const gapSince = pane.running ? null : Math.max(pane.lastToolEndAt ?? 0, 0);
+        const wantThinking = (() => {
+          if (pane.ended) return false;
+          if (pane.running) return false;
+          if (pane.lastToolEndAt === null) return now >= v.thinkFirstBeat;   // pre-first-tool beat
+          return now - gapSince >= threshold(pane);
+        })();
+        if (wantThinking && pane.thinkingSince === null) {
+          pane.thinkingSince = now;
+          pane.thinkingWord = THINKING_WORDS[(pane.cursor + now | 0) % THINKING_WORDS.length];
+          mark(pane, "thinking", "in", now);
+        } else if (!wantThinking && pane.thinkingSince !== null) {
+          const held = v.thinkMinVisible - (now - pane.thinkingSince);
+          if (v.thinkYieldsInstantly || held <= 0) {
+            mark(pane, "thinking", "out", now);
+            pane.thinkingSince = null;
+          }
+        }
+
+        // Two live lines in one frame is the flash the user sees.
+        if (pane.thinkingSince !== null && pane.running) pane.metrics.doubles += 1;
+        if (pane.thinkingSince !== null) pane.metrics.thinkingMs += 16;
+
+        paint(pane, now, lineLive);
+      }
+
+      // How long a gap has to last before the Thinking cue is worth showing.
+      // Adaptive: a turn whose calls land a second apart keeps raising it, so
+      // the cue never flickers between two calls of that turn.
+      function threshold(pane) {
+        const v = pane.variant;
+        if (!v.thinkAdaptive || pane.gaps.length === 0) return v.thinkGap;
+        const sorted = [...pane.gaps].sort((a, b) => a - b);
+        const median = sorted[Math.floor(sorted.length / 2)];
+        return Math.min(2500, Math.max(900, median * 0.8));
+      }
+
+      function commit(pane, want, now) {
+        const previous = pane.shown;
+        pane.shown = { ...want, at: now };
+        pane.queued = null;
+        pane.metrics.changes += 1;
+        pane.pendingChange = { previous, at: now };
+      }
+
+      function mark(pane, key, edge, now) {
+        if (edge === "in") {
+          pane.lifetimes[key] = now;
+        } else if (pane.lifetimes[key] !== null) {
+          if (now - pane.lifetimes[key] < 800) pane.metrics.shorts += 1;
+          pane.lifetimes[key] = null;
+        }
+        pane.metrics.changes += 1;
+      }
+
+      function paint(pane, now, lineLive) {
+        const v = pane.variant;
+        const { dom } = pane;
+        dom.line.hidden = !lineLive;
+
+        if (lineLive) {
+          const shown = pane.shown;
+          const headline = ["Used", ...[]];
+          const text = shown.segs.length > 0 ? shown.segs : ["working"];
+          const verb = capitalize(text[text.length - 1].split(" ")[0]);
+          const clauses = text.map((s, i) => (i === text.length - 1 ? s.split(" ").slice(1).join(" ") : s));
+
+          const changed = pane.pendingChange && pane.pendingChange.at === shown.at;
+          if (changed || dom.headline.dataset.key !== JSON.stringify(text)) {
+            const previous = pane.pendingChange?.previous?.segs ?? [];
+            dom.headline.dataset.key = JSON.stringify(text);
+            dom.headline.className = "headline" + (v.change === "tick" ? " tick" : "");
+            if (v.change === "tick") { void dom.headline.offsetWidth; dom.headline.classList.add("tick"); }
+            dom.headline.innerHTML =
+              `<span class="verb">${verb}</span> ` +
+              clauses
+                .map((clause, i) => {
+                  const isNew = v.change === "segment" && !previous.some((p) => p.includes(clause));
+                  return `<span class="seg${isNew ? " enter" : ""}">${clause}</span>`;
+                })
+                .join(", ");
+            if (v.change === "line") {
+              dom.headline.animate(
+                [{ color: "color-mix(in srgb, currentColor 40%, var(--bg))" }, { color: "currentColor" }],
+                { duration: 200, easing: "ease" }
+              );
+            }
+            // The icon cross-fades between two stacked glyphs, or cuts.
+            if (v.change === "segment") {
+              dom.mark.innerHTML = `<span class="layer" style="opacity:0">${ICONS[shown.icon] ?? ""}</span>`;
+              const layer = dom.mark.firstElementChild;
+              requestAnimationFrame(() => { layer.style.opacity = "1"; });
+            } else {
+              dom.mark.innerHTML = ICONS[shown.icon] ?? "";
+            }
+          }
+
+          const previewFresh = pane.preview && now - pane.previewAt < v.previewDwell;
+          dom.preview.textContent = pane.running || previewFresh ? pane.shown.preview ?? "" : "";
+          dom.line.dataset.readingWave = pane.running ? "true" : "false";
+          if (pane.running) dom.line.setAttribute("data-reading-wave", "true");
+          else dom.line.removeAttribute("data-reading-wave");
+          dom.headline.classList.toggle("reading-wave-text", pane.running);
+        }
+
+        // Thinking cue in the reserved tail slot.
+        if (pane.thinkingSince === null) {
+          if (dom.tail.childElementCount > 0) {
+            if (v.softExit && !dom.tail.dataset.leaving) {
+              dom.tail.dataset.leaving = "1";
+              dom.tail.animate([{ opacity: 1 }, { opacity: 0 }], { duration: v.softExit, easing: "ease-in", fill: "forwards" });
+              setTimeout(() => { dom.tail.innerHTML = ""; delete dom.tail.dataset.leaving; dom.tail.getAnimations().forEach((a) => a.cancel()); }, v.softExit);
+            } else if (!v.softExit) {
+              dom.tail.innerHTML = "";
+            }
+          }
+        } else if (dom.tail.childElementCount === 0) {
+          dom.tail.innerHTML =
+            `<span class="thinking fade-in reading-wave-text">${pane.thinkingWord}</span><span class="thinking-elapsed"></span>`;
+          dom.tail.setAttribute("data-reading-wave", "true");
+        } else {
+          const seconds = Math.floor((now - pane.thinkingSince) / 1000);
+          dom.tail.lastElementChild.textContent = seconds >= 3 ? `${seconds}s` : "";
+        }
+
+        dom.changes.textContent = String(pane.metrics.changes);
+        dom.shorts.textContent = String(pane.metrics.shorts);
+        dom.shorts.parentElement.classList.toggle("bad", pane.metrics.shorts > 0);
+        dom.doubles.textContent = String(pane.metrics.doubles);
+        dom.doubles.parentElement.classList.toggle("bad", pane.metrics.doubles > 0);
+        dom.thinkms.textContent = `${(pane.metrics.thinkingMs / 1000).toFixed(1)}s`;
+      }
+
+      const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+      // ---------------------------------------------------------------- runner
+      const host = document.getElementById("panes");
+      const streamSelect = document.getElementById("stream");
+      for (const [id, s] of Object.entries(STREAMS)) streamSelect.add(new Option(s.label, id));
+      const params = new URLSearchParams(location.search);
+      document.documentElement.dataset.theme = params.get("theme") ?? "dark";
+      document.getElementById("theme").value = document.documentElement.dataset.theme;
+      streamSelect.value = params.get("stream") ?? "short-gaps";
+      let speed = Number(params.get("speed") ?? 1);
+      document.getElementById("speed").value = String(speed);
+
+      let panes = [];
+      let startedAt = 0;
+      function reset() {
+        host.innerHTML = "";
+        panes = VARIANTS.map((v) => createPane(v, host));
+        startedAt = performance.now();
+      }
+      reset();
+
+      // One virtual clock for every pane, so the panes are always on the same
+      // frame of the same turn.
+      function frame(realNow) {
+        const now = (realNow - startedAt) * speed;
+        const stream = STREAMS[streamSelect.value];
+        const end = stream.events[stream.events.length - 1].at + 2500;
+        document.getElementById("clock").textContent = `${(Math.min(now, end) / 1000).toFixed(1)}s`;
+        for (const pane of panes) step(pane, stream, Math.min(now, end));
+        if (now > end) startedAt = realNow;   // loop
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+
+      document.getElementById("replay").onclick = reset;
+      streamSelect.onchange = reset;
+      document.getElementById("speed").onchange = (e) => { speed = Number(e.target.value); reset(); };
+      document.getElementById("theme").onchange = (e) => { document.documentElement.dataset.theme = e.target.value; };
+      window.__panes = () => panes.map((p) => ({ variant: p.variant.id, ...p.metrics }));
+      // Deterministic pass for a script: reset, then step every pane over the
+      // whole stream on a fixed 16ms grid and hand back the metrics. A browser
+      // tab in the background gets no animation frames, so the loop above
+      // cannot be trusted to advance; this can.
+      window.__measure = (streamId = streamSelect.value) => {
+        streamSelect.value = streamId;
+        reset();
+        const stream = STREAMS[streamId];
+        const end = stream.events[stream.events.length - 1].at + 2500;
+        for (let now = 0; now <= end; now += 16) {
+          for (const pane of panes) step(pane, stream, now);
+        }
+        return window.__panes();
+      };
+    </script>
+  </body>
+</html>

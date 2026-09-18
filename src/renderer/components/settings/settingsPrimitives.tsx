@@ -462,7 +462,7 @@ export function ActivityMarkPicker({
         value: option.id,
         label: option.label,
         // Running, not a still frame: the motion is the thing being chosen, and
-        // four dots at rest look the same as nine cells at rest.
+        // the static geometry does not show each option's cadence.
         icon: <WorkingNest active size={14} markId={option.id} />
       }))}
     />

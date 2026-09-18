@@ -189,4 +189,37 @@ final class DeltaMergeTests: XCTestCase {
         XCTAssertNotNil(store.row(forSessionID: "s-new"))
         await client.disconnect()
     }
+
+    /// Streaming output carries only a transcript invalidation. It must not
+    /// make an in-flight authoritative dashboard read look stale, otherwise
+    /// opening the app while chats are busy can discard the only snapshot
+    /// that contains those chats.
+    @MainActor
+    func testTranscriptOnlyDeltaDoesNotDiscardDashboardReload() async throws {
+        let socket = TestBridgeSocket()
+        let pairingURL = try XCTUnwrap(URL(string: "https://mac.tail.ts.net/mobile.html#token=t"))
+        let client = try BridgeClient(
+            pairingURL: pairingURL,
+            monitorNetwork: false,
+            socketFactory: { _ in socket }
+        )
+        let store = DashboardStore(client: client, now: testNow)
+
+        let reload = Task { await store.reload() }
+        for _ in 0..<500 where socket.requests.isEmpty {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let request = try XCTUnwrap(socket.requests.first)
+
+        store.ingest(delta: DashboardDelta(changedSessionIds: ["s-running"]))
+        let running = DashboardSnapshot(
+            workspaces: [makeWorkspace(id: "w-running", taskLabel: "Arc member")],
+            sessions: [makeSession(id: "s-running", workspaceId: "w-running", state: .running)]
+        )
+        socket.reply(to: request, ok: try JSONSerialization.jsonObject(with: JSONEncoder().encode(running)))
+        await reload.value
+
+        XCTAssertNotNil(store.row(forSessionID: "s-running"))
+        await client.disconnect()
+    }
 }

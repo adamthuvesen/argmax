@@ -58,6 +58,12 @@ is per provider *invocation* — a Rust-side list would reset on every follow-up
 turn, and Grok's textless merge deltas would fold into nothing. Folding
 persisted rows also replays for free across restart, resume, and session sync.
 
+The card reports provider state rather than inferring progress from assistant
+prose. Argmax gives Codex application context to call `update_plan` when each
+step finishes, before it starts the next step. This keeps the live card current
+without treating a status message or a successful command as proof that a plan
+step is complete.
+
 Each turn that touched the plan gets its own card showing the plan as it stood
 when that turn ended, so scrolling back does not rewrite history.
 [TodoCard.tsx](../src/renderer/components/TodoCard.tsx) is expanded while its

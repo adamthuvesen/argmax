@@ -46,6 +46,7 @@ const CANCEL_TIMEOUT: Duration = Duration::from_secs(5);
 const COMPUTER_USE_PLUGIN: &str = "computer-use@openai-bundled";
 const COMPUTER_USE_RUNTIME: &str = "unified-computer-use";
 const COMPUTER_USE_SERVER: &str = "cua_repl";
+const PLAN_MAINTENANCE_CONTEXT: &str = "Argmax displays update_plan as a live todo card. Once you create a plan, call update_plan whenever you finish a step and before starting the next step. Keep exactly one step in progress until the work is done, and do not batch completed statuses at the end.";
 
 /// Launch one Codex turn over its native app-server protocol.
 ///
@@ -363,6 +364,15 @@ fn turn_params(input: &ProviderLaunchInput, thread_id: &str, prompt: String) -> 
         ("cwd".to_string(), json!(input.workspace_path)),
         ("model".to_string(), json!(input.model_id)),
         ("summary".to_string(), json!("auto")),
+        (
+            "additionalContext".to_string(),
+            json!({
+                "argmax.todo-card": {
+                    "kind": "application",
+                    "value": PLAN_MAINTENANCE_CONTEXT,
+                }
+            }),
+        ),
     ]);
     if let Some(effort) = effective_effort(input) {
         params.insert("effort".to_string(), json!(effort));
@@ -1703,6 +1713,21 @@ mod tests {
         assert_eq!(params["effort"], "ultra");
         assert_eq!(params["serviceTier"], "priority");
         assert_eq!(params["input"][0]["text"], "Do the work");
+    }
+
+    #[test]
+    fn turn_tells_codex_to_publish_plan_progress_when_it_happens() {
+        let params = turn_params(
+            &input(PermissionMode::ProviderDefaults),
+            "thread-1",
+            "Do the work".into(),
+        );
+        let context = &params["additionalContext"]["argmax.todo-card"];
+        assert_eq!(context["kind"], "application");
+        assert_eq!(context["value"], PLAN_MAINTENANCE_CONTEXT);
+        assert!(context["value"]
+            .as_str()
+            .is_some_and(|value| value.contains("before starting the next step")));
     }
 
     #[test]

@@ -202,7 +202,10 @@ and the `surface: "todo"` stamp that hides the rows are documented in
 `-c tools.update_plan.enabled=true`; without it Codex is told the tool does not
 exist. The app-server reports the plan through `turn/plan/updated`, not through
 an item lifecycle, and that notification carries a real `inProgress` the `exec`
-projection throws away.
+projection throws away. Each `turn/start` also carries trusted application
+context telling Codex to publish a completed step before starting the next one.
+Argmax never infers completion from prose because only the provider knows
+whether a plan step is actually done.
 
 ### Questions the agent asks the user
 

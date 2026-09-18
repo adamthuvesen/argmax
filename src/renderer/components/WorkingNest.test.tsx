@@ -88,6 +88,15 @@ describe("<WorkingNest />", () => {
     }
   );
 
+  it("offers halo as a two-part activity mark", () => {
+    const haloOption = ACTIVITY_MARK_OPTIONS.find((option) => option.id === "halo");
+    const { container } = render(<WorkingNest active markId="halo" />);
+
+    expect(haloOption?.label).toBe("Halo");
+    expect(ACTIVITY_MARK_PART_COUNT.halo).toBe(2);
+    expect(container.querySelectorAll(".working-nest-part")).toHaveLength(2);
+  });
+
   it("carries the orbit trail inside the single rotating part", () => {
     const { container } = render(<WorkingNest active markId="orbit" />);
     const part = container.querySelector(".working-nest-part");

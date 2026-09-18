@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-accent="green">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Argmax — calmer activity marks</title>
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-400.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-500.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource-variable/geist-mono/wght.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/tokens.css" />
+    <!-- The shipped mark, real CSS. The `nest` column on this page is the app. -->
+    <link rel="stylesheet" href="/src/renderer/styles/working-nest.css" />
+    <style>
+      /* Five candidates for a quieter fifth activity-mark style, next to the
+         shipped `nest`. The question is not "does it look good at 6x" — it is
+         "does a column of six running rows read as one calm list".
+
+         Candidates use their own `.cm-*` classes so the cascade cannot leak
+         either way. The winner gets ported into working-nest.css as a
+         `[data-mark]` branch. */
+
+      /* tokens.css locks the app shell's scroll; a page of panes must undo it. */
+      html, body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--font-ui);
+        overflow: auto;
+        height: auto;
+      }
+
+      .head {
+        position: sticky; top: 0; z-index: 3;
+        display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
+        padding: 10px 20px; border-bottom: 1px solid var(--line);
+        background: color-mix(in oklab, var(--bg) 92%, transparent);
+        backdrop-filter: blur(8px);
+        font-size: var(--text-xs); color: var(--muted);
+      }
+      .head h1 { margin: 0; font-size: var(--text-sm); font-weight: 500; color: var(--text-soft); }
+      .head select, .head button {
+        font: inherit; background: var(--panel, var(--bg)); color: var(--text);
+        border: 1px solid var(--line); border-radius: 6px; padding: 3px 7px;
+      }
+      .head label { display: inline-flex; gap: 5px; align-items: center; }
+
+      section { padding: 22px 20px 8px; }
+      section > h2 {
+        margin: 0 0 3px; font-size: var(--text-sm); font-weight: 500; color: var(--text-soft);
+      }
+      section > p {
+        margin: 0 0 16px; max-width: 74ch;
+        font-size: var(--text-xs); line-height: 1.6; color: var(--muted);
+      }
+
+      /* ───────────────────────────────────────────── candidate scaffolding */
+
+      /* Every candidate shares the shipped mark's box contract: a square sized
+         by one custom property, parts positioned absolutely inside it, and
+         colour taken only from lead/rest so accents and per-agent identity
+         colours keep tinting it for free. */
+      .cm {
+        position: relative;
+        display: inline-block;
+        vertical-align: middle;
+        width: var(--cm-size, 16px);
+        height: var(--cm-size, 16px);
+        flex: 0 0 auto;
+        --cm-lead: var(--accent-deep);
+        --cm-rest: color-mix(in oklab, var(--accent) 45%, var(--muted));
+        color: var(--accent);
+        /* The app's one "this is live" rhythm: the thought-block eyebrow and the
+           compaction notice already breathe at 2600ms on a symmetric sine. A
+           calm mark should join that rhythm rather than invent a third one. */
+        --cm-cycle: calc(2600ms * var(--cm-tempo, 1));
+        --cm-sine: cubic-bezier(0.45, 0, 0.55, 1);
+      }
+      .cm > i { position: absolute; border-radius: 50%; }
+
+      /* Phase: a stable hash per row, as WorkingNest does. Whether a calm mark
+         *wants* phasing is the open question this page exists to answer. */
+      .cm { --cm-offset: calc(var(--cm-cycle) * var(--cm-phase, 0) / -4); }
+      html[data-phase="off"] .cm { --cm-offset: 0ms; }
+
+      /* The Nest baseline and implemented Halo use the production stylesheet.
+         Keep the harness controls honest for them too. */
+      .working-nest {
+        --working-nest-cycle: calc(0.9s * var(--cm-tempo, 1));
+      }
+      .working-nest[data-active="true"][data-mark="halo"] .working-nest-part[data-dot="1"] {
+        animation-duration: calc(2.6s * var(--cm-tempo, 1));
+      }
+      html[data-phase="off"] .working-nest {
+        --working-nest-phase: 0 !important;
+      }
+
+      /* Resting styles are the *visible* ones and every dip lives inside the
+         keyframes. `prefers-reduced-motion` pins iteration-count to 1 app-wide
+         (motion.css), so a mark whose rest state is the dim frame would settle
+         into looking switched off.
+
+         The opacity floors are the tuned number on this page. A calm row's
+         marker is already a 5px dot at `--muted` and half opacity, so a live
+         mark that dips too far becomes it: checked at 16px on charcoal, a
+         single dot below ~0.45 reads as the idle marker rather than as a
+         quieter live one. Structure (a ring, a bloom) separates them at any
+         brightness; brightness alone does not. */
+
+      /* ── 1. Breath — one dot, one gesture. The floor of the range. */
+      .cm[data-cm="breath"] > i {
+        inset: 26%;
+        background: var(--cm-lead);
+        animation: cm-breath var(--cm-cycle) var(--cm-sine) infinite;
+        animation-delay: var(--cm-offset);
+        animation-play-state: var(--loop-play-state, running);
+      }
+      @keyframes cm-breath {
+        0%, 100% { opacity: 0.46; transform: scale(0.78); }
+        50%      { opacity: 1;    transform: scale(1.06); }
+      }
+
+      /* ── 2. Halo — a still core with a breathing ring. The core never moves,
+         so it stays a fixed anchor for the eye while the ring carries "live". */
+      .cm[data-cm="halo"] > i[data-part="core"] {
+        inset: 34%;
+        background: var(--cm-lead);
+      }
+      .cm[data-cm="halo"] > i[data-part="ring"] {
+        inset: 12%;
+        border: 1.25px solid currentColor;
+        animation: cm-halo var(--cm-cycle) var(--cm-sine) infinite;
+        animation-delay: var(--cm-offset);
+        animation-play-state: var(--loop-play-state, running);
+      }
+      @keyframes cm-halo {
+        0%, 100% { opacity: 0.35; transform: scale(0.80); }
+        50%      { opacity: 0.9;  transform: scale(1); }
+      }
+
+      /* ── 3. Ping — a still core, and a ring that leaves it and fades. One
+         outward gesture per cycle: radar, not a blink. */
+      .cm[data-cm="ping"] > i[data-part="core"] {
+        inset: 33%;
+        background: var(--cm-lead);
+      }
+      .cm[data-cm="ping"] > i[data-part="ring"] {
+        inset: 20%;
+        border: 1.25px solid currentColor;
+        animation: cm-ping var(--cm-cycle) var(--ease-out) infinite;
+        animation-delay: var(--cm-offset);
+        animation-play-state: var(--loop-play-state, running);
+        opacity: 0;
+      }
+      @keyframes cm-ping {
+        0%  { opacity: 0.75; transform: scale(0.55); }
+        60% { opacity: 0;    transform: scale(1.75); }
+        /* The long tail is the rest: the ring is gone for 40% of the cycle,
+           which is what keeps six of these from looking like weather. */
+        100% { opacity: 0;   transform: scale(1.75); }
+      }
+
+      /* ── 4. Ember — the "green glow" reading. A static radial layer behind the
+         core breathes; nothing is stroked, so it survives small sizes. */
+      .cm[data-cm="ember"] > i[data-part="core"] {
+        inset: 32%;
+        background: var(--cm-lead);
+      }
+      .cm[data-cm="ember"] > i[data-part="bloom"] {
+        inset: 0;
+        background: radial-gradient(
+          circle at 50% 50%,
+          color-mix(in oklab, var(--accent) 70%, transparent) 0%,
+          transparent 68%
+        );
+        animation: cm-ember var(--cm-cycle) var(--cm-sine) infinite;
+        animation-delay: var(--cm-offset);
+        animation-play-state: var(--loop-play-state, running);
+      }
+      @keyframes cm-ember {
+        0%, 100% { opacity: 0.26; transform: scale(0.70); }
+        50%      { opacity: 0.85; transform: scale(1.08); }
+      }
+
+      /* ── 5. Pulse — two quick beats, then a long rest. The most alive of the
+         five, and the one most likely to pull focus. */
+      .cm[data-cm="pulse"] > i {
+        inset: 30%;
+        background: var(--cm-lead);
+        animation: cm-pulse var(--cm-cycle) var(--cm-sine) infinite;
+        animation-delay: var(--cm-offset);
+        animation-play-state: var(--loop-play-state, running);
+      }
+      @keyframes cm-pulse {
+        0%   { opacity: 1;    transform: scale(1.04); }
+        12%  { opacity: 0.6;  transform: scale(0.86); }
+        24%  { opacity: 1;    transform: scale(1.04); }
+        38%  { opacity: 0.48; transform: scale(0.80); }
+        /* Diastole: two thirds of the cycle at rest. */
+        100% { opacity: 0.48; transform: scale(0.80); }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        /* The app-wide rule already stops the loop after one pass; naming it
+           here keeps each candidate's still frame deliberate. */
+        .cm > i { animation-iteration-count: 1; }
+      }
+      /* ?frame=strip renders the filmstrip alone at 2x, because a screenshot is
+         downscaled about 2:1 and a 28px mark does not survive that. Same trick
+         as docs/design/pickers. */
+      html[data-frame] section { display: none; }
+      html[data-frame] .head { position: static; }
+      html[data-frame="strip"] #strip-section { display: block; }
+      html[data-frame="strip"] #strip-section > p { display: none; }
+      html[data-frame="strip"] .frame .cm { --cm-size: 56px; }
+      html[data-frame="strip"] .frame .working-nest { --working-nest-size-override: 56px; }
+      html[data-frame="strip"] .frame .cell { width: 84px; height: 84px; }
+      html[data-frame="strip"] .strip-row { grid-template-columns: 150px 1fr; }
+      html[data-frame="rail"] #rail-section { display: block; }
+
+      html[data-still="on"] .cm > i { animation-play-state: paused; }
+      html[data-still="on"] .working-nest .working-nest-part,
+      html[data-still="on"] .working-nest .working-nest-part::before,
+      html[data-still="on"] .working-nest .working-nest-part::after {
+        animation-play-state: paused;
+      }
+
+      /* ─────────────────────────────────────────────────── contact sheet */
+
+      .sheet { display: grid; gap: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+      .sheet-row {
+        display: grid;
+        grid-template-columns: 116px repeat(3, 62px) 1fr;
+        align-items: center; gap: 14px;
+        padding: 13px 16px;
+        border-bottom: 1px solid var(--line-soft);
+      }
+      .sheet-row:last-child { border-bottom: 0; }
+      .sheet-row[data-header] {
+        padding: 8px 16px; border-bottom: 1px solid var(--line);
+        font-size: var(--text-2xs); color: var(--muted); background: var(--panel-soft);
+      }
+      .sheet-name { font-size: var(--text-xs); color: var(--text-soft); font-weight: 500; }
+      .sheet-name small { display: block; font-weight: 400; color: var(--muted); font-size: var(--text-2xs); line-height: 1.5; margin-top: 2px; }
+      .sheet-cell { display: grid; place-items: center; }
+      .sheet-note { font-size: var(--text-2xs); color: var(--muted); line-height: 1.55; }
+
+      /* 6x magnification is where a keyframe's sloppiness shows. */
+      .mag { --cm-size: 96px; }
+      .mag .working-nest { --working-nest-size-override: 96px; }
+
+      /* ───────────────────────────────────────────────────── filmstrip */
+
+      .strip-row {
+        display: grid;
+        grid-template-columns: 116px 1fr;
+        align-items: center; gap: 14px;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--line-soft);
+      }
+      .strip-row:last-child { border-bottom: 0; }
+      .frames { display: flex; gap: 10px; flex-wrap: wrap; }
+      .frame { display: grid; place-items: center; gap: 4px; }
+      .frame span { font-size: 9px; color: var(--muted); opacity: 0.7; font-variant-numeric: tabular-nums; }
+      .frame .cell {
+        display: grid; place-items: center;
+        width: 44px; height: 44px;
+        border-radius: 8px; background: var(--sidebar);
+        border: 1px solid var(--line-soft);
+      }
+
+      /* Frames are held by seeking the Web Animations API, not by a CSS pause:
+         `animation-play-state: paused` in the cascade computes the right style
+         but leaves this WebKit painting nothing for the nest's parts, which
+         carry animated pseudo-elements. WorkingNest.tsx already reaches for
+         WAAPI for the same reason (it anchors `startTime` so duplicate marks
+         share a beat), so the harness uses the app's own lever. */
+      .frame .cm { --cm-size: 28px; }
+      .frame .working-nest { --working-nest-size-override: 28px; }
+
+      /* ─────────────────────────────────────────────────── sidebar test */
+
+      .columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(232px, 1fr)); gap: 16px; }
+      .column { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+      .column > h3 {
+        margin: 0; padding: 9px 12px;
+        font-size: var(--text-2xs); font-weight: 500; color: var(--muted);
+        border-bottom: 1px solid var(--line); background: var(--panel-soft);
+        display: flex; justify-content: space-between; align-items: baseline;
+      }
+      .column > h3 em { font-style: normal; color: var(--text-soft); font-variant-numeric: tabular-nums; }
+      .rail { background: var(--sidebar); padding: 6px 6px 8px; }
+
+      /* Row geometry copied from .session-link: 34px min-height, a 16px marker
+         cell, title over subtitle. Close enough that the marks are judged in
+         the density they will actually live in. */
+      .row {
+        display: grid; grid-template-columns: 16px 1fr; gap: 9px;
+        align-items: center;
+        min-height: 34px; padding: 4px 8px;
+        border-radius: 7px;
+      }
+      .row[data-selected="true"] { background: color-mix(in oklab, var(--text) 8%, transparent); }
+      .row-text { min-width: 0; }
+      .row-title {
+        font-size: var(--text-xs-plus, 11.5px); color: var(--text);
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .row-sub {
+        font-size: var(--text-2xs); color: var(--muted); opacity: 0.85;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .marker { display: grid; place-items: center; }
+      /* A calm row: the still marker the list mostly wears. */
+      .marker[data-idle] { color: var(--muted); opacity: 0.5; }
+      .marker[data-idle]::before {
+        content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor;
+      }
+
+      /* ──────────────────────────────────────────────────────── cost table */
+
+      table { width: 100%; border-collapse: collapse; font-size: var(--text-2xs); }
+      caption { text-align: left; padding-bottom: 8px; font-size: var(--text-xs); color: var(--muted); }
+      th, td { padding: 6px 10px; text-align: right; border-bottom: 1px solid var(--line-soft); }
+      th:first-child, td:first-child { text-align: left; }
+      thead th { color: var(--muted); font-weight: 400; border-bottom: 1px solid var(--line); }
+      tbody td { color: var(--text-soft); font-variant-numeric: tabular-nums; }
+      tbody td:first-child { color: var(--text); }
+      td.warn { color: var(--amber, #e79647); }
+      td.good { color: var(--accent); }
+      tfoot td { color: var(--muted); border-bottom: 0; }
+    </style>
+  </head>
+  <body>
+    <div class="head">
+      <h1>Calmer activity marks</h1>
+      <label>Theme
+        <select id="theme">
+          <option value="dark">dark</option>
+          <option value="light">light</option>
+        </select>
+      </label>
+      <label>Accent
+        <select id="accent">
+          <option value="green">green (default)</option>
+          <option value="purple">purple</option>
+          <option value="orange">orange</option>
+          <option value="blue">blue</option>
+          <option value="teal">teal</option>
+          <option value="mono">mono</option>
+        </select>
+      </label>
+      <label>Tempo
+        <select id="tempo">
+          <option value="1">1× — 2600ms</option>
+          <option value="0.7">0.7× — 1820ms</option>
+          <option value="1.4">1.4× — 3640ms</option>
+        </select>
+      </label>
+      <label>Phase
+        <select id="phase">
+          <option value="on">per-row (hashed)</option>
+          <option value="off">unison</option>
+        </select>
+      </label>
+      <label>Running rows
+        <select id="rows">
+          <option value="6">6</option>
+          <option value="2">2</option>
+          <option value="12">12</option>
+        </select>
+      </label>
+      <button id="still">Freeze frame</button>
+    </div>
+
+    <section>
+      <h2>1 — Contact sheet</h2>
+      <p>
+        Sidebar size is 16px; 13px is the transcript's launch row and the iOS chat
+        list. The 6× column is where a lazy keyframe shows. Every candidate takes
+        its colour from <code>--accent-deep</code> and the accent-mixed rest tone,
+        never from a literal green — the default accent already <em>is</em> sage,
+        and hard-coding it would break the other fourteen themes.
+      </p>
+      <div class="sheet" id="sheet"></div>
+    </section>
+
+    <section id="rail-section">
+      <h2>2 — The sidebar test</h2>
+      <p>
+        The real question. Six chats running at once, one selected, calm rows
+        between them. Scan the columns with your eyes unfocused: the shipped nest
+        relays four dots every 900ms, so a column of it is 67 gestures a minute
+        per row. Try <strong>Phase → unison</strong> here — phasing keeps separate
+        jobs legible on a fast mark, but on a slow breath it turns a tidy column
+        into a shimmer, and agreeing is calmer than disagreeing.
+      </p>
+      <div class="columns" id="columns"></div>
+    </section>
+
+    <section id="strip-section">
+      <h2>3 — Filmstrip</h2>
+      <p>
+        One cycle sampled at eleven fixed points, paused. This is the only way to
+        judge a loop on paper — an arbitrary frame tells you nothing, which is
+        how a perfectly healthy nest photographs as an empty gutter. Read across:
+        the distance between the brightest and dimmest frame is the amplitude,
+        and the number of turning points is how often it asks for attention.
+        <code>nest</code> advances through the app's own
+        <code>--working-nest-phase</code>, so its four dots stay coherent.
+      </p>
+      <div class="sheet" id="strip"></div>
+    </section>
+
+    <section>
+      <h2>4 — Cost and calm</h2>
+      <p>
+        Gestures per minute is the honest proxy for "chaotic": how many times a
+        minute the mark asks for your attention. Every candidate animates only
+        <code>transform</code> and <code>opacity</code>, so all of them stay on
+        the compositor — the shipped nest's cost is its part count, not its
+        properties.
+      </p>
+      <table id="cost">
+        <caption>Per running row, at the default tempo.</caption>
+        <thead>
+          <tr>
+            <th>Style</th><th>Animated elements</th><th>Cycle</th>
+            <th>Gestures / min</th><th>Peak opacity swing</th><th>Scale swing</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot>
+          <tr><td colspan="6">
+            Nest counts 4 dots × (dot + 2 colour layers) = 12 animated boxes.
+            All loops honour <code>--loop-play-state</code>, so a hidden window
+            pauses every column above.
+          </td></tr>
+        </tfoot>
+      </table>
+    </section>
+
+    <script type="module">
+      const CANDIDATES = [
+        {
+          id: "nest",
+          shipped: true,
+          name: "Nest",
+          blurb: "Shipped. Four dots relaying clockwise.",
+          note: "The baseline. Four dots, twelve animated boxes, a gesture every 225ms. Reads as busy because it is busy.",
+          parts: 12,
+          cycle: 900,
+          gestures: 267,
+          opacity: "1 → 0.30",
+          scale: "1.20 → 0.78"
+        },
+        {
+          id: "breath",
+          name: "Breath",
+          blurb: "One dot on the app's live rhythm.",
+          note: "The quietest thing that still says live. Joins the 2600ms sine the thought eyebrow already uses — but at its dim frame it is a muted dot, which is exactly the calm row's marker.",
+          parts: 1,
+          cycle: 2600,
+          gestures: 23,
+          opacity: "1 → 0.46",
+          scale: "1.06 → 0.78"
+        },
+        {
+          id: "halo",
+          implemented: true,
+          name: "Halo",
+          blurb: "Still core, breathing ring.",
+          note: "The core never moves, so the gutter keeps a fixed anchor while the ring carries the liveness. My pick.",
+          parts: 1,
+          cycle: 2600,
+          gestures: 23,
+          opacity: "0.90 → 0.35",
+          scale: "1 → 0.80"
+        },
+        {
+          id: "ping",
+          name: "Ping",
+          blurb: "A ring leaves the core and fades.",
+          note: "One outward gesture, then 40% of the cycle empty. Directional — reads as something being emitted.",
+          parts: 1,
+          cycle: 2600,
+          gestures: 23,
+          opacity: "0.75 → 0",
+          scale: "1.75 → 0.55"
+        },
+        {
+          id: "ember",
+          name: "Ember",
+          blurb: "A soft bloom behind the dot.",
+          note: "The literal \"glowing green dot\". Nothing is stroked, so it holds up at 13px where hairline rings shimmer.",
+          parts: 1,
+          cycle: 2600,
+          gestures: 23,
+          opacity: "0.85 → 0.26",
+          scale: "1.08 → 0.70"
+        },
+        {
+          id: "pulse",
+          name: "Pulse",
+          blurb: "Two beats, then a long rest.",
+          note: "Systole-diastole. The most alive of the five and the most likely to pull focus — a heartbeat is hard to ignore.",
+          parts: 1,
+          cycle: 2600,
+          gestures: 46,
+          opacity: "1 → 0.48",
+          scale: "1.04 → 0.80"
+        }
+      ];
+
+      const PART_MARKUP = {
+        breath: ['<i></i>'],
+        halo: ['<i data-part="ring"></i>', '<i data-part="core"></i>'],
+        ping: ['<i data-part="ring"></i>', '<i data-part="core"></i>'],
+        ember: ['<i data-part="bloom"></i>', '<i data-part="core"></i>'],
+        pulse: ['<i></i>']
+      };
+
+      /** One mark, at a size, on a phase. `nest` and the selected `halo` render
+       *  the app's real markup and classes so those columns are not imitations. */
+      function mark(candidate, phase = 0) {
+        if (candidate.shipped || candidate.implemented) {
+          const partCount = candidate.id === "halo" ? 2 : 4;
+          const dots = Array.from({ length: partCount }, (_, index) => index + 1)
+            .map((dot) => `<i class="working-nest-part" data-dot="${dot}"></i>`)
+            .join("");
+          return `<span class="working-nest" data-mark="${candidate.id}" data-active="true" data-phase="${phase}" style="--working-nest-phase:${phase}">${dots}</span>`;
+        }
+        return `<span class="cm" data-cm="${candidate.id}" style="--cm-phase:${phase}">${PART_MARKUP[candidate.id].join("")}</span>`;
+      }
+
+      // ------------------------------------------------------------- section 1
+      const sheet = document.getElementById("sheet");
+      sheet.innerHTML =
+        `<div class="sheet-row" data-header>
+           <span>Style</span><span>16px</span><span>13px</span><span>24px</span><span>6×</span>
+         </div>` +
+        CANDIDATES.map((candidate) => `
+          <div class="sheet-row">
+            <div class="sheet-name">${candidate.name}<small>${candidate.blurb}</small></div>
+            <div class="sheet-cell" style="--cm-size:16px">${mark(candidate)}</div>
+            <div class="sheet-cell" style="--cm-size:13px">${mark(candidate)}</div>
+            <div class="sheet-cell" style="--cm-size:24px">${mark(candidate)}</div>
+            <div class="sheet-cell mag">${mark(candidate)}</div>
+          </div>
+        `).join("");
+
+      // Size the shipped nest per cell — it reads an inline custom property.
+      for (const cell of sheet.querySelectorAll(".sheet-cell")) {
+        const nest = cell.querySelector(".working-nest");
+        if (!nest) continue;
+        const size = cell.classList.contains("mag")
+          ? "96px"
+          : getComputedStyle(cell).getPropertyValue("--cm-size").trim() || "16px";
+        nest.style.setProperty("--working-nest-size", size);
+      }
+
+      // ------------------------------------------------------------- section 2
+      // Realistic rows: the two from the screenshot, plus the mix of running and
+      // calm chats a working sidebar actually holds.
+      const ROWS = [
+        { title: "Plan Alfred Prefect Read-Only Access", sub: "revops-backoffice", live: true },
+        { title: "tealeaves: renewals as of date", sub: "tealeaves · launched by Forecasting", live: true, selected: true },
+        { title: "Calm activity mark mockups", sub: "argmax", live: true },
+        { title: "dbt: fix stale renewal snapshot", sub: "dbt-transform", live: false },
+        { title: "Sidebar row density audit", sub: "argmax", live: true },
+        { title: "hex-agent-ops: eval harness", sub: "hex-agent-ops", live: true },
+        { title: "Pulse instrumentation cut", sub: "product-analytics-tools", live: false },
+        { title: "Snowflake warmup flake", sub: "dotfiles", live: true },
+        { title: "Vercel scope guard", sub: "alfred", live: false },
+        { title: "Arc: PMF evidence ledger", sub: "brain", live: true },
+        { title: "Reviewer pass on session_move", sub: "argmax", live: true },
+        { title: "Icon light study", sub: "argmax", live: true },
+        { title: "Morning brief styling", sub: "dotfiles", live: true },
+        { title: "Confidence rollout digest", sub: "confidence", live: true }
+      ];
+
+      // Same stable hash WorkingNest uses, so a row's phase here matches the app.
+      function stableHash32(value) {
+        let hash = 2166136261;
+        for (let i = 0; i < value.length; i += 1) {
+          hash ^= value.charCodeAt(i);
+          hash = Math.imul(hash, 16777619);
+        }
+        return hash >>> 0;
+      }
+
+      const columns = document.getElementById("columns");
+
+      function renderColumns(liveCount) {
+        // Take rows until `liveCount` running ones are in, so the calm rows in
+        // between stay where they are and only the live population changes.
+        const picked = [];
+        let live = 0;
+        for (const row of ROWS) {
+          if (row.live && live >= liveCount) continue;
+          if (row.live) live += 1;
+          picked.push(row);
+          if (live >= liveCount && picked.length >= liveCount + 2) break;
+        }
+
+        columns.innerHTML = CANDIDATES.map((candidate) => `
+          <div class="column">
+            <h3>${candidate.name}<em>${candidate.gestures}/min</em></h3>
+            <div class="rail">
+              ${picked.map((row) => `
+                <div class="row" ${row.selected ? 'data-selected="true"' : ""}>
+                  <span class="marker" ${row.live ? "" : "data-idle"}>${
+                    row.live ? mark(candidate, stableHash32(row.title) % 4) : ""
+                  }</span>
+                  <span class="row-text">
+                    <span class="row-title">${row.title}</span>
+                    <span class="row-sub">${row.sub}</span>
+                  </span>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        `).join("");
+
+        for (const nest of columns.querySelectorAll(".working-nest")) {
+          nest.style.setProperty("--working-nest-size", "16px");
+        }
+      }
+
+      // ------------------------------------------------------------- section 3
+      const FRACTIONS = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1];
+      document.getElementById("strip").innerHTML = CANDIDATES.map((candidate) => `
+        <div class="strip-row" data-cycle="${candidate.cycle}">
+          <div class="sheet-name">${candidate.name}<small>${candidate.cycle}ms cycle</small></div>
+          <div class="frames">
+            ${FRACTIONS.map((frac) => `
+              <div class="frame" style="--cm-frac:${frac}">
+                <div class="cell">${mark(candidate)}</div>
+                <span>${Math.round(frac * candidate.cycle)}</span>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      `).join("");
+
+      /* Hold one frame. `currentTime` is timeline time, so a per-part
+       * `animation-delay` still applies (local time = currentTime - delay) and
+       * the nest's four dots keep their choreography instead of collapsing onto
+       * one phase. */
+      function freezeAt(frame, cycleMs) {
+        const frac = Number(getComputedStyle(frame).getPropertyValue("--cm-frac"));
+        for (const part of frame.querySelectorAll(".working-nest-part, .cm > i")) {
+          for (const animation of part.getAnimations({ subtree: true })) {
+            animation.currentTime = frac * cycleMs;
+            animation.pause();
+          }
+        }
+      }
+
+      for (const row of document.querySelectorAll("#strip .strip-row")) {
+        const cycleMs = Number(row.dataset.cycle);
+        for (const frame of row.querySelectorAll(".frame")) freezeAt(frame, cycleMs);
+      }
+
+      // ------------------------------------------------------------- section 4
+      document.querySelector("#cost tbody").innerHTML = CANDIDATES.map((candidate) => `
+        <tr>
+          <td>${candidate.name}</td>
+          <td class="${candidate.parts > 4 ? "warn" : "good"}">${candidate.parts}</td>
+          <td>${candidate.cycle}ms</td>
+          <td class="${candidate.gestures > 60 ? "warn" : "good"}">${candidate.gestures}</td>
+          <td>${candidate.opacity}</td>
+          <td>${candidate.scale}</td>
+        </tr>
+      `).join("");
+
+      // ------------------------------------------------------------- controls
+      const params = new URLSearchParams(location.search);
+      const controls = {
+        theme: (value) => document.documentElement.dataset.theme = value,
+        accent: (value) => document.documentElement.dataset.accent = value,
+        tempo: (value) => document.documentElement.style.setProperty("--cm-tempo", value),
+        phase: (value) => document.documentElement.dataset.phase = value,
+        rows: (value) => renderColumns(Number(value))
+      };
+
+      for (const [id, apply] of Object.entries(controls)) {
+        const select = document.getElementById(id);
+        const fromUrl = params.get(id);
+        if (fromUrl) select.value = fromUrl;
+        apply(select.value);
+        select.addEventListener("change", () => apply(select.value));
+      }
+
+      const frame = params.get("frame");
+      if (frame) document.documentElement.dataset.frame = frame;
+
+      const still = document.getElementById("still");
+      still.addEventListener("click", () => {
+        const frozen = document.documentElement.dataset.still === "on";
+        document.documentElement.dataset.still = frozen ? "off" : "on";
+        still.textContent = frozen ? "Freeze frame" : "Resume";
+      });
+      if (params.get("still") === "on") still.click();
+    </script>
+  </body>
+</html>

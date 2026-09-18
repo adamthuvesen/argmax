@@ -25,12 +25,13 @@ export const WORKING_NEST_SETTLE_MS = 220;
  *
  * Which shape it takes is Settings → Appearance → Activity mark
  * (`lib/activityMark.ts`): four dots relaying round a 2x2 (`nest`), a wave down
- * a 3x3 field (`cascade`), three bars on unrelated periods (`meter`), or a
- * comet on a track (`orbit`). Every style is the same box, the same colours and
- * the same settle; only the parts inside differ, so the sequences all live in
- * CSS (`styles/working-nest.css`) and `prefers-reduced-motion` can pin any of
- * them to a still frame. `phaseKey` keeps the same job synchronised across
- * surfaces while separate jobs start on different beats.
+ * a 3x3 field (`cascade`), three bars on unrelated periods (`meter`), a comet
+ * on a track (`orbit`), or a still core with a breathing ring (`halo`). Every
+ * style is the same box, the same colours and the same settle; only the parts
+ * inside differ. The sequences all live in CSS (`styles/working-nest.css`), so
+ * `prefers-reduced-motion` can pin any of them to a still frame. `phaseKey`
+ * gives styles a stable job-specific offset when their motion benefits from
+ * separate beats.
  *
  * Drawn with HTML elements rather than SVG on purpose. WebKit's legacy SVG
  * renderer has no accelerated compositing at all — the layer tree does not know
@@ -51,7 +52,7 @@ export function WorkingNest({
   className?: string;
   phaseKey?: string | undefined;
   /** Force one style regardless of the setting. Only the settings picker wants
-   *  this — it has to show all four at once. */
+   *  this because it shows every option at once. */
   markId?: ActivityMarkId;
 }): JSX.Element {
   // Subscribe unconditionally — `??` would short-circuit the hook away whenever

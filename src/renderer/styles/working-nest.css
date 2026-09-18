@@ -2,7 +2,7 @@
    by the sidebar's session rows, sub-agent launch rows in the transcript, agent
    tabs, and the agent pane header (components/WorkingNest.tsx).
 
-   Four styles, chosen in Settings → Appearance → Activity mark
+   Five styles, chosen in Settings → Appearance → Activity mark
    (lib/activityMark.ts) and selected here off `[data-mark]`. They share the box,
    the colours and the landing; only the parts inside differ.
 
@@ -372,6 +372,45 @@
   to { transform: rotate(360deg); }
 }
 
+/* ───────────────────────────────────────────────────────────── halo
+   A still core with one breathing ring. The core keeps a fixed anchor in a
+   dense sidebar while the ring carries the live signal. It shares the 2.6s
+   cadence used by the live thought eyebrow and conversation notice.
+
+   Halo does not use the per-job phase offset. Separate jobs need distinct
+   phases when a fast mark shows progress, but slow rings moving out of step
+   turn a column of running sessions into a shimmer. */
+.working-nest[data-mark="halo"] .working-nest-part[data-dot="1"] {
+  inset: 12%;
+  box-sizing: border-box;
+  border: 1.25px solid currentColor;
+  border-radius: 50%;
+  opacity: 0.35;
+}
+
+.working-nest[data-mark="halo"] .working-nest-part[data-dot="2"] {
+  inset: 34%;
+  border-radius: 50%;
+  background: var(--working-nest-lead, currentColor);
+}
+
+.working-nest[data-active="true"][data-mark="halo"] .working-nest-part[data-dot="1"] {
+  animation: working-nest-halo 2.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  animation-play-state: var(--loop-play-state, running);
+}
+
+@keyframes working-nest-halo {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+
+  50% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+}
+
 /* ─────────────────────────────────────────────────────────── landing
    Work ending is the one beat the mark never had: the loop simply stopped and
    the parts were suddenly muted. Now the whole mark takes one short breath —
@@ -450,6 +489,7 @@
 .working-nest[data-still="true"][data-mark="meter"] .working-nest-part[data-dot="1"] { transform: scaleY(0.5); }
 .working-nest[data-still="true"][data-mark="meter"] .working-nest-part[data-dot="2"] { transform: scaleY(0.85); }
 .working-nest[data-still="true"][data-mark="meter"] .working-nest-part[data-dot="3"] { transform: scaleY(0.65); }
+.working-nest[data-still="true"][data-mark="halo"] .working-nest-part[data-dot="1"] { opacity: 0.9; }
 
 @keyframes working-nest-enter {
   from {
@@ -463,8 +503,9 @@
 }
 
 /* Reduced motion pins every style to a still frame. Each one still reads as
-   "working" at rest — a filled 2x2, a filled field, three bars, a comet parked
-   on its track — and the accent color carries the signal on its own. */
+   "working" at rest: a filled 2x2, a filled field, three bars, a comet parked
+   on its track, or a bright ring around a fixed core. The accent color carries
+   the signal on its own. */
 @media (prefers-reduced-motion: reduce) {
   .working-nest[data-active="true"] .working-nest-part,
   .working-nest[data-active="true"] .working-nest-part::before,
@@ -482,4 +523,5 @@
   .working-nest[data-active="true"][data-mark="meter"] .working-nest-part[data-dot="1"] { transform: scaleY(0.5); }
   .working-nest[data-active="true"][data-mark="meter"] .working-nest-part[data-dot="2"] { transform: scaleY(0.85); }
   .working-nest[data-active="true"][data-mark="meter"] .working-nest-part[data-dot="3"] { transform: scaleY(0.65); }
+  .working-nest[data-active="true"][data-mark="halo"] .working-nest-part[data-dot="1"] { opacity: 0.9; }
 }

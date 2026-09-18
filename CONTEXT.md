@@ -107,10 +107,6 @@ _Avoid_: Badge, notification, unseen
 A follow-up the user composed while the agent was mid-turn. Saved durably and normally sent after the current turn. Messages recovered after a restart wait for an explicit send, with uncertain delivery called out.
 _Avoid_: Queued message, draft
 
-**Agent mode**:
-Whether the agent may act (`auto`) or must plan first (`plan`). Maps onto each provider's own equivalent flag.
-_Avoid_: Mode, plan mode
-
 **Permission mode**:
 Whether the agent's commands run unattended (`auto-approve`, the default) or stop for the user (`ask-each-time`).
 _Avoid_: Approval mode, safety mode
@@ -157,7 +153,7 @@ A line Argmax wrote into a chat about the chat itself: the move or archive it re
 _Avoid_: System message, error, warning
 
 **Interactive card**:
-A chat element the user can answer rather than just read — currently a plan card and a question card, mapped from provider tool calls.
+A chat element the user can answer rather than just read — currently the question card, mapped from provider tool calls.
 _Avoid_: Widget, prompt, dialog
 
 **Check**:

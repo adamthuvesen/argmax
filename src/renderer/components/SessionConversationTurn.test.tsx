@@ -1,9 +1,8 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { createRef, type JSX } from "react";
+import type { JSX } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionSummary } from "../../shared/types.js";
 import type { RenderItem } from "../lib/foldConversation.js";
-import type { ModelPickerSelection } from "../lib/models.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import type * as TurnFileChanges from "../lib/turnFileChanges.js";
 import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
@@ -18,13 +17,6 @@ vi.mock("../lib/turnFileChanges.js", async (importOriginal) => ({
 }));
 
 const { SessionConversationTurn } = await import("./SessionConversationTurn.js");
-
-const MODEL: ModelPickerSelection = {
-  provider: "claude",
-  modelId: "claude-sonnet-5",
-  label: "Sonnet 5",
-  reasoningEffort: "medium"
-};
 
 const session: SessionSummary = {
   id: "session-a",
@@ -89,8 +81,6 @@ function renderTurn(
     thinkingDisplay?: ThinkingDisplay;
   } = {}
 ): { rerender: () => void; container: HTMLElement } {
-  const inputRef = createRef<HTMLTextAreaElement>();
-  const shouldRefocusInput = { current: false };
   // A fresh `onOpenFile` per render is what SessionConversation itself hands
   // down, so the memo wrapper cannot bail out and the turn body really re-runs.
   const element = (): JSX.Element => (
@@ -100,15 +90,8 @@ function renderTurn(
       isLatestTurn
       openRunAt={overrides.openRunAt ?? null}
       session={overrides.session ?? session}
-      selectedModel={MODEL}
       workspace={null}
       onOpenFile={() => undefined}
-      onTerminateSession={() => Promise.resolve(undefined)}
-      onSendSessionInput={() => Promise.resolve(undefined)}
-      inputRef={inputRef}
-      shouldRefocusInput={shouldRefocusInput}
-      setStatus={() => undefined}
-      setAgentMode={() => undefined}
       defaultToolCallsDisplay={overrides.defaultToolCallsDisplay}
       defaultToolCallGroupsExpanded={overrides.defaultToolCallGroupsExpanded}
       thinkingDisplay={overrides.thinkingDisplay}

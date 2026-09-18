@@ -7,6 +7,7 @@
   "type": "module",
   "scripts": {
     "tauri:dev": "tauri dev",
+    "tauri:dev:isolated": "ARGMAX_DATA_DIR=\"${ARGMAX_DATA_DIR:-$HOME/.argmax-dev}\" tauri dev",
     "tauri:build": "tauri build",
     "build:renderer": "vite build",
     "build:icons": "node scripts/build-icons.mjs",

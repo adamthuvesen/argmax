@@ -17,7 +17,7 @@ final class NativeTranscriptListTests: XCTestCase {
         let metadata = TranscriptSessionMetadata(
             id: "s-1", workspaceId: "w-1", provider: "claude", modelLabel: "Opus",
             modelId: "claude-opus", prompt: "Go", state: .complete, attention: .normal,
-            reasoningEffort: "high", agentMode: "auto"
+            reasoningEffort: "high"
         )
         let page = TranscriptPage(events: [TranscriptEvent(
             id: "answer", sessionId: "s-1", type: "message.completed",
@@ -470,6 +470,10 @@ final class NativeTranscriptListTests: XCTestCase {
         XCTAssertTrue(TranscriptScrollBehavior.following(
             from: .decelerating, after: .idle, tailGap: 27, current: false
         ))
+        XCTAssertFalse(TranscriptScrollBehavior.following(
+            from: .decelerating, after: .idle, tailGap: 0, current: false,
+            hasLater: true
+        ))
         XCTAssertTrue(TranscriptScrollBehavior.following(
             from: .idle, after: .animating, tailGap: 120, current: true
         ))
@@ -480,6 +484,43 @@ final class NativeTranscriptListTests: XCTestCase {
             from: .decelerating, after: .idle, tailGap: 120, current: false,
             turnScrollPending: true
         ))
+    }
+
+    func testTranscriptRowWindowPagesWithoutGrowingOrFollowingLiveOutput() {
+        var ids = (0..<240).map { "row-\($0)" }
+        var window = TranscriptRowWindow()
+
+        XCTAssertEqual(window.bounds(in: ids, following: true), 120..<240)
+        window.freeze(in: ids)
+        ids.append("row-240")
+        XCTAssertEqual(window.bounds(in: ids, following: false), 120..<240,
+                       "Live output must not shift a detached reader's rows")
+
+        window.revealEarlier(in: ids)
+        XCTAssertEqual(window.bounds(in: ids, following: false), 60..<180)
+        XCTAssertEqual(window.bounds(in: ids, following: false).count,
+                       TranscriptRowWindow.capacity)
+
+        window.revealEarlier(in: ids)
+        XCTAssertEqual(window.bounds(in: ids, following: false), 0..<120)
+        window.revealLater(in: ids)
+        XCTAssertEqual(window.bounds(in: ids, following: false), 60..<180)
+        window.revealLater(in: ids)
+        XCTAssertEqual(window.bounds(in: ids, following: false), 120..<240)
+        window.revealLater(in: ids)
+        XCTAssertEqual(window.bounds(in: ids, following: false), 121..<241)
+    }
+
+    func testReadingPositionCannotAnchorToAnEvictedWindowRow() {
+        let position = TranscriptReadingPosition()
+        _ = position.rowTopChanged("visible", top: 100, following: true)
+        _ = position.rowTopChanged("evicted", top: 115, following: true)
+
+        position.retain(["visible"])
+        position.anchor(at: 120)
+
+        XCTAssertTrue(position.rowTopChanged("visible", top: 140, following: false))
+        XCTAssertEqual(position.pendingAnchorOffset(), 160)
     }
 
     func testKeyboardInsetUsesOnlyTheVisibleKeyboardOverlap() {

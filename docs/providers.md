@@ -62,6 +62,14 @@ Spawned sessions run in the workspace worktree. Project-scoped `.mcp.json` or `.
 
 Argmax adds one server of its own per launch — `argmax`, the agent tools — through each provider's per-launch mechanism, without disturbing the user's configured servers. For Cursor's one-shot path and for Grok that mechanism is a config file written into the workspace and put back when the child exits; a `.cursor/mcp.json` the user keeps is merged, never replaced ([agent-tools.md](agent-tools.md)).
 
+The provider-facing prompt also carries a short routing instruction before the
+user's text. It tells every provider to discover and use Argmax MCP tools for
+Argmax-owned operations instead of generic UI automation, even when the MCP
+client defers the server instructions or tool schemas. Provider-native slash
+commands keep `/` at byte zero so the CLI can expand them. Argmax persists the
+original user text, and strips the routing prefix when importing provider
+transcripts, so the instruction does not appear in chat.
+
 Codex sessions also receive ChatGPT's app-managed `cua_repl` server when the
 `computer-use@openai-bundled` plugin is enabled and its
 `unified-computer-use` runtime is present in the Codex plugin cache. This makes
@@ -99,12 +107,27 @@ project learnings remain separate (see [memory.md](memory.md)).
 An idle follow-up persists the user message and returns, then spawns the provider in the background. The PTY/CLI spawn does not block the send IPC.
 
 While a turn is running, ordinary input stays queued. A queued follow-up has
-**Steer** for Codex and Claude and **Stop and send** for explicit interruption.
+**Steer** for Codex, Claude and OpenCode and **Stop and send** for explicit interruption.
 Both use `providers:send-queued-message-now`, with optional `delivery: "steer"`
 selecting guidance for the existing turn. Omitting delivery preserves interruption.
 Codex uses app-server `turn/steer` with `expectedTurnId`. Claude writes a user
 envelope to its existing stream-json connection; the flushed write is the
-acknowledgement. Neither operation starts a replacement process.
+acknowledgement. OpenCode posts the text to `prompt_async` on the session its turn is already
+running; the HTTP acknowledgement is the acknowledgement. None of the three
+starts a replacement process. Cursor and Grok run over ACP, whose only mid-turn
+request is `session/cancel`, so they have no Steer.
+
+**OpenCode reads guidance at its next step, and the 204 comes before the store.**
+OpenCode keeps one run per busy session and re-reads the conversation at every
+step, so a message stored mid-run is answered by that run once the current tool
+call ends. `prompt_async` returns before the message is stored, though, so the
+run can go idle without it; OpenCode then starts a new run for the message. The
+server stays up until every acknowledged message has been seen
+(`message.updated`, role `user`) and the newest one answered, re-checking a
+deferred idle every 3 seconds for up to 30. A message stored in the moment
+between the run's last check and its end is never answered: the turn closes and
+the chat shows an error asking to send it again. See `Steering` in
+[opencode_server.rs](../src-tauri/src/providers/opencode_server.rs).
 
 Claude's `--replay-user-messages` echo is *not* the acknowledgement. Claude
 replays a steered message only when it picks it up, and a turn inside a long
@@ -134,14 +157,17 @@ reports it and the session service writes a `session.note`
 (`turn.input-undelivered`) after the cancellation row. Every other transport
 writes the prompt on the way in and reports delivered.
 
-Steering inherits the running turn's settings. A queued change to model, reasoning
-effort, or agent mode must wait for another turn. Accepted guidance is persisted
+Steering inherits the running turn's settings. A queued change to model or
+reasoning effort must wait for another turn. Accepted guidance is persisted
 as `user.message` with `payload.delivery: "steer"`, without resetting turn timing
 or provider normalization. Failures restore the queued message in a paused state.
 An uncertain acknowledgement is marked delivery-unknown and must not automatically
 retry. Stop can still cancel the running provider while steering is pending.
 An inbox-backed message is claimed before steering so `inbox_read` cannot deliver
 it again while acknowledgement is pending. Definite rejection releases that claim.
+Messages from other sessions steer automatically on the same path, and a definite
+rejection returns them to the ordinary queue rather than leaving them unsent (see
+[agent-tools.md](agent-tools.md#the-inbox)).
 
 The ignored `live_codex_turn_consumes_steering_without_cancellation` and
 `live_claude_turn_consumes_steering_without_cancellation` Rust tests verify the
@@ -176,7 +202,10 @@ and the `surface: "todo"` stamp that hides the rows are documented in
 `-c tools.update_plan.enabled=true`; without it Codex is told the tool does not
 exist. The app-server reports the plan through `turn/plan/updated`, not through
 an item lifecycle, and that notification carries a real `inProgress` the `exec`
-projection throws away.
+projection throws away. Each `turn/start` also carries trusted application
+context telling Codex to publish a completed step before starting the next one.
+Argmax never infers completion from prose because only the provider knows
+whether a plan step is actually done.
 
 ### Questions the agent asks the user
 
@@ -191,18 +220,17 @@ the immediate tool acknowledgement leaves one answerable card. The answer uses
 the existing next-user-message flow. Question shapes outside the card's one to
 four options remain visible as prose.
 
-**Native `request_user_input` follows Codex's delivery mode.** The app-server
-launch enables `tools.experimental_request_user_input.enabled=true`.
-`item/tool/requestUserInput` is a server request with an `isBlocking` flag.
-Plan-mode requests block. Argmax keeps their JSON-RPC response open and
-publishes a question card with the request and question IDs. Desktop and iPhone
-submit structured answers through `questions:resolve`, which resumes the same
-turn. Dismissing sends an empty answer map.
+**Native `request_user_input` follows Codex's `isBlocking` flag.** The
+app-server launch enables `tools.experimental_request_user_input.enabled=true`.
+`item/tool/requestUserInput` is a server request, and a blocking one waits for
+its answer: Argmax keeps its JSON-RPC response open and publishes a question
+card with the request and question IDs. Desktop and iPhone submit structured
+answers through `questions:resolve`, which resumes the same turn. Dismissing
+sends an empty answer map.
 
-Default-mode requests are nonblocking. Argmax publishes them as async question
-cards and immediately returns an empty answer map, so Codex can keep working.
-Answering one uses the next-user-message flow shared with
-`request_user_input_async`.
+A nonblocking request is published as an async question card and answered
+straight away with an empty answer map, so Codex can keep working. Answering
+one uses the next-user-message flow shared with `request_user_input_async`.
 
 Pending blocking cards are stored in the timeline and return after a UI
 reconnect. Answered, dismissed, and cancelled requests settle the card, and
@@ -301,7 +329,6 @@ Grok Build chats use a pooled `grok agent stdio` ACP process, isolated by worksp
 - **The prompt must ride the `=` form.** `-p`/`--single` takes the prompt as a flag *value*, not the trailing positional Claude and Cursor use. Passed as two argv entries, the CLI rejects any prompt starting with `-` with a bare usage error — a pasted diff or a "- do this" bullet trips it. `--single=<prompt>` is the only form clap always reads as a value.
 - **`--cwd` is passed explicitly** even though the child is already spawned in the worktree: with `[cli] use_leader` enabled the turn runs inside a shared leader process whose cwd is not the child's. Same trap OpenCode's `--dir` covers.
 - **Repo-local MCP servers are gated on folder trust.** `grok inspect --json` reports `projectTrusted: false` for a checkout the user has never accepted, and the `.grok/config.toml` Argmax writes is ignored until it is true. A launch therefore records the workspace in Grok's own `trusted_folders.toml` and gives the entry back at the end ([agent-tools.md](agent-tools.md)).
-- **Plan mode** maps to the bundled read-only `plan` agent (`--agent plan`, `permission_mode: plan`, no edit tools) rather than a prompt prefix.
 - **Skills** come from `.grok/skills`, `.agents/skills`, and — by Grok's own compatibility rules — `.claude/skills`, plus `~/.grok/installed-plugins/<plugin>/skills` and the bundled cache at `~/.grok/bundled/skills`.
 - **Pricing** is the `grok-4.6-build` / `grok-4.5-build` SKU rate, not xAI's published API list price. The rates in `MODEL_PRICING` were solved from the CLI's own `total_cost_usd` and reproduce it exactly; note 4.5 costs twice 4.6, so the default and title model both stay on 4.6.
 - **Session sync is not supported.** Grok stores transcripts under `~/.grok/sessions/<percent-encoded-cwd>/<uuid>/` (`$GROK_HOME/sessions/…` when that variable is set), which is a lossless cwd mapping, but Argmax has no reader for it yet — the Settings toggle renders disabled.

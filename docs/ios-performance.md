@@ -67,6 +67,9 @@ ledger's preload. The existing freshness window remains in effect.
 Transcript projection coalesces pending changes and runs on a background task.
 Only a matching session generation and content revision may publish. Completed
 Markdown documents have a bounded cache, with at most two active preparations.
+The transcript's exact-height eager stack mounts at most 120 presentation rows.
+When a reader leaves the live tail, that row window stays fixed as output lands
+and shifts by 60 rows near either edge, preserving the visible reading anchor.
 Image requests share a decoded-image cache. Inline images are downsampled for
 their display size. Expansion immediately shows the current preview while a
 larger representation is prepared.

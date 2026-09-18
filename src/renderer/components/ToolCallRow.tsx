@@ -1,5 +1,5 @@
 import { ChevronRight } from "lucide-react";
-import { memo, useMemo, useState, type JSX } from "react";
+import { memo, useCallback, useMemo, useRef, useState, type JSX } from "react";
 import { interpretFileChange, summarizeFileChanges, type FileChange } from "../lib/fileChange.js";
 import { shortenPathsInText } from "../lib/pathDisplay.js";
 import { commandIconServer } from "../lib/commandIcons.js";
@@ -16,7 +16,8 @@ import type { FileChipOpenOptions } from "./FileChip.js";
 import { ToolCallDetail } from "./ToolCallDetail.js";
 import { toolCallHasExpandableDetail } from "./toolCallDetailLogic.js";
 import { ServerIcon } from "./ServerIcon.js";
-import { WorkingNest } from "./WorkingNest.js";
+import { useReadingWave } from "../lib/readingWave.js";
+import { useOwnsActivityBeat } from "../lib/activityBeat.js";
 import { ToolActivityIcon } from "./ToolActivityIcon.js";
 
 function verbForChanges(changes: FileChange[]): string | null {
@@ -98,6 +99,19 @@ function ToolCallRowInner({
     || iconKind === "agent-stop";
   const hasLeadingContent = Boolean(childTools && childTools.length > 0);
   const hasDetail = toolCallHasExpandableDetail(tool, { hasLeadingContent });
+  // A backgrounded launch is marked running by inference, not by evidence:
+  // no completion ever arrives for it, so a band would travel its words for
+  // the rest of the session. It keeps the nest, the way the launch row does.
+  const ownsBeat = useOwnsActivityBeat(useMemo(() => [tool.id], [tool.id]));
+  // A settled row keeps the beat while the cue waits out its gap, which is the
+  // only live line a provider that reports a call atomically ever has.
+  const isRunning =
+    (tool.status === "running" || ownsBeat) && tool.backgroundLaunch !== true;
+  const rowButtonRef = useRef<HTMLElement | null>(null);
+  const setRowButton = useCallback((node: HTMLElement | null) => {
+    rowButtonRef.current = node;
+  }, []);
+  useReadingWave(rowButtonRef, isRunning, `${verb}\u0000${target ?? ""}`);
   const expanded =
     hasDetail && (expandedOverride ?? localExpanded ?? defaultExpanded ?? false);
   // An agent row exists to open its run in the pane's Agents view. A surface
@@ -134,24 +148,25 @@ function ToolCallRowInner({
         {iconServer || (!tool.activity && isWebToolName(tool.name)) ? <ServerIcon server={iconServer} web={isWebToolName(tool.name)} />
           : <ToolActivityIcon kind={iconKind} danger={iconIsDanger} />}
       </span>
-      <span className="tool-call-row-verb">{verb}</span>
+      <span className="tool-call-row-verb reading-wave-text">{verb}</span>
       {target ? (
-        <span className="tool-call-row-target">{shortenPathsInText(target)}</span>
+        <span className="tool-call-row-target reading-wave-text">{shortenPathsInText(target)}</span>
       ) : null}
       {counts ? <ActivityStat counts={counts} /> : null}
       {opensAgentPane || inertAgentRow || !hasDetail ? null : (
         <ChevronRight size={11} className="tool-call-row-chevron" aria-hidden="true" />
       )}
-      {tool.status === "running" ? (
-        <span className="tool-call-row-running" aria-hidden="true">
-          <WorkingNest active size={14} />
-        </span>
-      ) : null}
     </>
   );
+  // Every shape of the row carries the wave on the element that holds its words.
+  const rowButtonProps = {
+    ref: setRowButton,
+    className: "tool-call-row-button",
+    "data-reading-wave": isRunning ? "true" : undefined
+  };
   const rowButton = opensAgentPane ? (
     <button
-      className="tool-call-row-button"
+      {...rowButtonProps}
       type="button"
       aria-label={action}
       onClick={() => onOpenAgent(tool)}
@@ -159,10 +174,10 @@ function ToolCallRowInner({
       {rowContent}
     </button>
   ) : inertAgentRow ? (
-    <div className="tool-call-row-button">{rowContent}</div>
+    <div {...rowButtonProps}>{rowContent}</div>
   ) : hasDetail ? (
     <button
-      className="tool-call-row-button"
+      {...rowButtonProps}
       type="button"
       aria-expanded={expanded}
       aria-label={action}
@@ -171,7 +186,7 @@ function ToolCallRowInner({
       {rowContent}
     </button>
   ) : (
-    <div className="tool-call-row-button">{rowContent}</div>
+    <div {...rowButtonProps}>{rowContent}</div>
   );
 
   return (

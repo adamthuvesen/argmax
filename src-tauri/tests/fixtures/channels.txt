@@ -81,9 +81,15 @@ sources:update
 sources:delete
 connections:list
 system:open-path
+system:open-file-in
 system:list-detected-ides
 system:diagnostics
 system:debug-snapshot
+system:performance-start
+system:performance-stop
+system:performance-status
+system:performance-capture
+system:renderer-stall
 system:vacuum-database
 system:set-theme
 system:set-default-agent

@@ -29,10 +29,7 @@ struct TranscriptScreen: View {
                 client: store.client,
                 onOpenFile: { openReview(filePath: $0) },
                 onOpenDiff: { openReview(diffPath: $0) }
-            ) {
-                draft = "Please revise the plan: "
-                focusRequest += 1
-            }
+            )
             .environment(\.transcriptWorkspacePath,
                          store.snapshot.workspaces.first { $0.id == row.workspace.id }?.path ?? row.workspace.path)
             .background(Theme.ground.ignoresSafeArea())

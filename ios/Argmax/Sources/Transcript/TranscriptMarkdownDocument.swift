@@ -234,11 +234,17 @@ struct TranscriptMarkdownDocument: Sendable {
         }
     }
 
+    /// Drops `:42` or `:42:7` (line, then column).
     private static func removingLineSuffix(from value: String) -> String {
-        guard let colon = value.lastIndex(of: ":") else { return value }
+        guard let withoutLast = removingNumberSuffix(from: value) else { return value }
+        return removingNumberSuffix(from: withoutLast) ?? withoutLast
+    }
+
+    private static func removingNumberSuffix(from value: String) -> String? {
+        guard let colon = value.lastIndex(of: ":") else { return nil }
         let suffix = value[value.index(after: colon)...]
         guard (1...7).contains(suffix.count), suffix.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 }) else {
-            return value
+            return nil
         }
         return String(value[..<colon])
     }

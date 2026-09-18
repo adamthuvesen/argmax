@@ -237,6 +237,10 @@ final class TranscriptMarkdownTests: XCTestCase {
             "Sources/App.swift"
         )
         XCTAssertEqual(
+            TranscriptMarkdownDocument.localPath(from: try XCTUnwrap(URL(string: "Sources/App.swift:42:7"))),
+            "Sources/App.swift"
+        )
+        XCTAssertEqual(
             TranscriptMarkdownDocument.localPath(from: try XCTUnwrap(URL(string: "Sources/App.swift#L42"))),
             "Sources/App.swift"
         )

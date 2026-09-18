@@ -18,6 +18,7 @@ use crate::ide::detection::{detect_installed_ides, DetectedIde};
 use crate::persistence::database::{vacuum_database, ReaderPoolStats};
 use crate::state::AppState;
 use crate::util::log_buffer::LogEntry;
+use crate::util::performance::{PerformanceCapture, PerformanceStatus};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -132,6 +133,34 @@ pub fn system_open_path(app: AppHandle, input: SystemOpenPathInput) -> ArgmaxRes
     Ok(SystemOk { ok: true })
 }
 
+// Async + `spawn_blocking` for the same reason as `workspaces:open-in-ide`:
+// `open -a` does not return until LaunchServices has launched a cold editor.
+#[tauri::command(rename = "system:open-file-in")]
+#[specta::specta]
+pub async fn system_open_file_in(input: SystemOpenFileInInput) -> ArgmaxResult<SystemOk> {
+    let target = resolve_open_target(input.path.as_str(), Some(input.cwd.as_str()))?;
+    let mut command = std::process::Command::new("open");
+    match input.app {
+        OpenFileApp::Finder => command.arg("-R"),
+        OpenFileApp::Vscode => command.args(["-a", "Visual Studio Code"]),
+        OpenFileApp::Cursor => command.args(["-a", "Cursor"]),
+        OpenFileApp::Windsurf => command.args(["-a", "Windsurf"]),
+        OpenFileApp::Zed => command.args(["-a", "Zed"]),
+    };
+    command.arg(&target);
+    let status = tauri::async_runtime::spawn_blocking(move || command.status())
+        .await
+        .map_err(|error| ArgmaxError::service("OPEN_FILE_IN_JOIN", error.to_string()))?
+        .map_err(|error| ArgmaxError::service("OPEN_FILE_IN_FAILED", error.to_string()))?;
+    if !status.success() {
+        return Err(ArgmaxError::service(
+            "OPEN_FILE_IN_FAILED",
+            format!("`open` exited with status {status}"),
+        ));
+    }
+    Ok(SystemOk { ok: true })
+}
+
 #[tauri::command(rename = "system:list-detected-ides")]
 #[specta::specta]
 pub async fn system_list_detected_ides(_input: SystemListDetectedIdesInput) -> Vec<DetectedIde> {
@@ -213,6 +242,71 @@ pub fn system_debug_snapshot(input: SystemDebugSnapshotInput) -> DebugSnapshot {
         ipc_stats: ipc_stats(),
         logs: crate::util::tracing_init::recent_logs_since(input.after_log_seq),
     }
+}
+
+#[tauri::command(rename = "system:performance-start")]
+#[specta::specta]
+pub async fn system_performance_start(
+    state: State<'_, AppState>,
+    _input: SystemPerformanceStartInput,
+) -> ArgmaxResult<PerformanceStatus> {
+    system_performance_start_impl(&state)
+}
+
+pub(crate) fn system_performance_start_impl(state: &AppState) -> ArgmaxResult<PerformanceStatus> {
+    state
+        .performance
+        .start(state)
+        .map_err(|error| ArgmaxError::service("PERFORMANCE_RECORDER_START", error))
+}
+
+#[tauri::command(rename = "system:performance-stop")]
+#[specta::specta]
+pub async fn system_performance_stop(
+    state: State<'_, AppState>,
+    _input: SystemPerformanceStopInput,
+) -> ArgmaxResult<PerformanceCapture> {
+    Ok(system_performance_stop_impl(&state))
+}
+
+pub(crate) fn system_performance_stop_impl(state: &AppState) -> PerformanceCapture {
+    state.performance.stop()
+}
+
+#[tauri::command(rename = "system:performance-status")]
+#[specta::specta]
+pub async fn system_performance_status(
+    state: State<'_, AppState>,
+    _input: SystemPerformanceStatusInput,
+) -> ArgmaxResult<PerformanceStatus> {
+    Ok(system_performance_status_impl(&state))
+}
+
+pub(crate) fn system_performance_status_impl(state: &AppState) -> PerformanceStatus {
+    state.performance.status()
+}
+
+#[tauri::command(rename = "system:performance-capture")]
+#[specta::specta]
+pub async fn system_performance_capture(
+    state: State<'_, AppState>,
+    _input: SystemPerformanceCaptureInput,
+) -> ArgmaxResult<PerformanceCapture> {
+    Ok(system_performance_capture_impl(&state))
+}
+
+pub(crate) fn system_performance_capture_impl(state: &AppState) -> PerformanceCapture {
+    state.performance.capture()
+}
+
+#[tauri::command(rename = "system:renderer-stall")]
+#[specta::specta]
+pub async fn system_renderer_stall(
+    state: State<'_, AppState>,
+    input: SystemRendererStallInput,
+) -> ArgmaxResult<SystemOk> {
+    state.performance.report_renderer_stall(input.duration_ms);
+    Ok(SystemOk { ok: true })
 }
 
 #[tauri::command(rename = "system:vacuum-database")]

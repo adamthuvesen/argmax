@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildToolCallGroup, type ToolCall } from "../lib/toolCalls.js";
 import type { ActivityMember } from "../lib/turnChildren.js";
 import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
+import { ActivityBeatContext } from "../lib/activityBeat.js";
 import { ThoughtBlock } from "./ThoughtBlock.js";
 
 afterEach(() => {
@@ -228,9 +229,9 @@ describe("ToolCallGroupBubble", () => {
       <ToolCallGroupBubble group={buildToolCallGroup([edit, running])} />
     );
 
-    // Both would otherwise claim the trailing slot and split it, parking a live
-    // animation mid-row beside a total that is still growing.
-    expect(screen.getByLabelText("running")).toBeInTheDocument();
+    // A still-growing count would read as the finality of a result; the
+    // headline says the group is working instead.
+    expect(screen.getByRole("button", { busy: true })).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: /Group edits:/ })).toBeNull();
 
     rerender(
@@ -239,7 +240,7 @@ describe("ToolCallGroupBubble", () => {
       />
     );
 
-    expect(screen.queryByLabelText("running")).toBeNull();
+    expect(screen.queryByRole("button", { busy: true })).toBeNull();
     expect(
       screen.getByRole("img", { name: "Group edits: 2 lines added, 2 lines removed" })
     ).toBeInTheDocument();
@@ -329,7 +330,7 @@ describe("ToolCallGroupBubble", () => {
     );
     expect(screen.getByRole("button", { name: "Read files: Read second.ts" })).toBe(header);
     expect(header.parentElement).toHaveAttribute("data-status", "done");
-    expect(screen.queryByLabelText("running")).toBeNull();
+    expect(screen.queryByRole("button", { busy: true })).toBeNull();
 
     await act(() => vi.advanceTimersByTime(399));
     expect(screen.getByRole("button", { name: "Read files: Read second.ts" })).toBeInTheDocument();
@@ -415,7 +416,7 @@ describe("ToolCallGroupBubble", () => {
     );
     const header = screen.getByRole("button", { name: "Read files: Read second.ts" });
     expect(header.parentElement).toHaveAttribute("data-status", "done");
-    expect(screen.queryByLabelText("running")).toBeNull();
+    expect(screen.queryByRole("button", { busy: true })).toBeNull();
     fireEvent.click(header);
     fireEvent.click(screen.getByRole("button", { name: "Read second.ts" }));
     expect(screen.getByText("Contents of second")).toBeInTheDocument();
@@ -439,5 +440,29 @@ describe("ToolCallGroupBubble", () => {
     expect(screen.getByText("Contents of first")).toBeInTheDocument();
     rerender(<ToolCallGroupBubble group={buildToolCallGroup([{ ...first, output: "More output" }, second])} defaultExpanded defaultToolsExpanded />);
     expect(screen.getByText("More output")).toBeInTheDocument();
+  });
+});
+
+describe("the beat between calls", () => {
+  // OpenCode and Grok report a call's start and finish in the same instant
+  // (measured medians: 0ms and 4ms), so a rule that only lights a *running*
+  // call leaves their tool lines dead and the Thinking cue owning every gap.
+  it("marks a settled group live while it holds the turn's beat", () => {
+    const landed = tool("landed", { status: "done" });
+    const { container } = render(
+      <ActivityBeatContext.Provider value="landed">
+        <ToolCallGroupBubble group={buildToolCallGroup([landed, tool("other")])} />
+      </ActivityBeatContext.Provider>
+    );
+    expect(container.querySelector('[data-reading-wave="true"]')).not.toBeNull();
+  });
+
+  it("leaves a group alone once the beat has moved on", () => {
+    const { container } = render(
+      <ActivityBeatContext.Provider value="elsewhere">
+        <ToolCallGroupBubble group={buildToolCallGroup([tool("landed"), tool("other")])} />
+      </ActivityBeatContext.Provider>
+    );
+    expect(container.querySelector('[data-reading-wave="true"]')).toBeNull();
   });
 });

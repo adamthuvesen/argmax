@@ -14,10 +14,12 @@
   /* Topbar title and content column share one measure and one inset, so the
      page title sits exactly on the cards' left edge. */
   --settings-measure: 760px;
+  --settings-topbar-height: 46px;
 }
 
 .settings-scroll {
-  overflow: auto;
+  overflow-x: clip;
+  overflow-y: auto;
   scrollbar-gutter: stable;
 }
 
@@ -232,6 +234,7 @@
 .settings-page {
   display: flex;
   flex-direction: column;
+  width: 100%;
   min-width: 0;
 }
 
@@ -242,7 +245,7 @@
   position: sticky;
   top: 0;
   z-index: 6;
-  height: 46px;
+  height: var(--settings-topbar-height);
   background: transparent;
 }
 
@@ -260,6 +263,8 @@
   align-content: start;
   width: min(100%, var(--settings-measure));
   min-width: 0;
+  /* Centered in the workspace like Usage and Activity, so every standalone
+     page puts its column in the same place. */
   margin-inline: auto;
   /* The page opens well below the titlebar rather than tight under it — the
      title is the first thing read, and it needs room above to read as one. */
@@ -550,6 +555,19 @@
   font-weight: calc(500 + var(--font-weight-offset));
   letter-spacing: 0.012em;
   color: var(--muted-strong);
+}
+
+.settings-performance-recorder,
+.settings-performance-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.settings-performance-recorder {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin: var(--space-3) 0;
 }
 
 .settings-metric-grid {

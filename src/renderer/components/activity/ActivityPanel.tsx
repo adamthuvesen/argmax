@@ -7,6 +7,7 @@ import {
   requestActivitySummary
 } from "../../lib/ledgerPageState.js";
 import { SegmentedControl, SettingsListPicker } from "../settings/settingsPrimitives.js";
+import { LedgerSwitch } from "../usage/LedgerSwitch.js";
 import type { ActivitySummary, ActivityWindow } from "./activityContract.js";
 import { formatCount, formatRangeLabel, formatScanStamp } from "./activityFormat.js";
 import {
@@ -151,7 +152,8 @@ export function ActivityPanel({ visible = true }: { visible?: boolean } = {}): J
       <div className="activity-main">
         <header className="activity-topbar">
           <div className="activity-titles">
-            <h1 className="settings-page-title">Activity</h1>
+            <h1 className="activity-visually-hidden">Activity</h1>
+            <LedgerSwitch active="activity" />
             {rangeLabel ? (
               <p className="activity-range">
                 <span>{rangeLabel}</span>

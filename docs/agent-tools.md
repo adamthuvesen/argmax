@@ -17,7 +17,7 @@ Namespace `argmax`; Claude, Codex, and Cursor show them as
 |---|---|---|
 | `session_list` | `project?`, `all?` | `{sessions: [{sessionId, projectId, projectName, taskLabel, provider, state, attention, lastActivityAt, launchedBySessionId?}], truncated}` — newest activity first, the caller excluded, capped at 40 rows |
 | `session_launch` | `prompt`, `project?`, `path?`, `branch?`, `provider?`, `model?`, `worktree?`, `taskLabel?`, `reasoning?`, `permissionMode?` | `{sessionId, workspaceId, projectId, projectName, path, branch}` |
-| `session_message` | `session`, `message` | `{sessionId, queued}` — `queued` is true when the target was mid-turn |
+| `session_message` | `session`, `message` | `{sessionId, queued}` — `queued` is true when the target was mid-turn and could not be steered |
 | `session_status` | `session` | `{sessionId, taskLabel, provider, modelId, state, attention, turnAgeSeconds?, lastActivityAt, lastAssistantText?, unreadInbox, launchedBySessionId?, launchDepth}` |
 | `session_read` | `session`, `cursor?`, `maxChars?` | `{sessionId, entries: [{at, kind, text}], nextCursor, truncated}` |
 | `session_stop` | `session` | `{sessionId, state}` |
@@ -474,12 +474,23 @@ it, who it is for, its body, whether it is a plain `message` or a `completion`
 notice, and when it was handed over.
 
 Delivery and recording are separate on purpose. Every message is *also* sent
-into the recipient as an ordinary turn through the existing queue-until-idle
-path — an idle session starts a turn on it, a working one gets it when its turn
-ends. But a session that is mid-turn cannot see a turn that has not started
-yet, and no provider CLI surfaces a server push into a running model. The row
+into the recipient through `ProviderSessionService::send_agent_message`: an idle
+session starts a turn on it, a running Claude, Codex or OpenCode turn takes it as steering
+(the same path as the composer's **Steer**, see [providers.md](providers.md)),
+and every other working session gets it when its turn ends. Cursor and Grok
+have no way to push input into a running model, and even a steerable
+turn sometimes cannot take it: Codex is near or inside a compaction, Claude has
+not picked up the turn's first message, or the recipient is blocked in
+`session_wait`, which collects the message itself. The row
 is what closes that gap: `inbox_read` hands over what is not yet delivered and
 marks it collected, and `session_wait` wakes on the insert.
+
+An automatic steer that fails differs from the composer's in one way. A person's
+failed steer stays queued as unsent so they decide what to do with it; an
+agent's message goes back to the ordinary queue and drains when the turn ends,
+since nobody is there to retry it. A steer whose acknowledgement was lost stays
+delivery-unknown and is never resent, the same as the composer's. Completion
+notices and Arc and PR notices (`send_system_notice`) use the same delivery.
 
 Two caps keep a hand-over bounded, since a row is marked collected by the same
 call that carries it and a reply the client refuses would take the messages
@@ -515,9 +526,8 @@ instead of looking complete, and one that emptied the inbox says nothing at all.
 This is the difference between a peer that answers and a queue the user watches
 pile up, and it is bounded by exactly one thing: an agent that touches no
 `argmax` tool for the rest of its turn is not reached, and gets the message the
-old way when the turn ends. The user can explicitly choose **Steer** on a queued
-message for Claude or Codex to deliver it through the running provider connection.
-Automatic inbox delivery still follows the tool-result flag and turn-end queue.
+old way when the turn ends. For Claude, Codex and OpenCode the flag is mostly a
+fallback: their running turns are steered directly.
 
 ### Delivered once, whichever path wins
 

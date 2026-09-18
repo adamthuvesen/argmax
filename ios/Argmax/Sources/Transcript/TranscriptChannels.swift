@@ -18,7 +18,6 @@ struct TranscriptPendingMessage: Decodable, Hashable, Sendable, Identifiable {
     var id: String
     var sessionId: String
     var content: String
-    var agentMode: String
     var modelLabel: String?
     var modelId: String?
     var reasoningEffort: String?
@@ -36,7 +35,6 @@ struct TranscriptSessionMetadata: Codable, Hashable, Sendable, Identifiable {
     var state: SessionState
     var attention: AttentionState
     var reasoningEffort: String?
-    var agentMode: String?
     var contextTokens: Int? = nil
     var contextWindow: Int? = nil
 }

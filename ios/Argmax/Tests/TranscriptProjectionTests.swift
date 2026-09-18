@@ -231,6 +231,37 @@ final class TranscriptProjectionTests: XCTestCase {
         XCTAssertEqual(assistantTexts, ["Please clarify your preference."])
     }
 
+    /// Plan mode is gone, so `ExitPlanMode` is a tool call like any other: it
+    /// keeps its activity row and no longer hides the answer behind a card.
+    func testExitPlanModeProjectsAsAnOrdinaryToolRow() throws {
+        let payload: [String: TranscriptJSONValue] = [
+            "id": .string("plan-1"),
+            "name": .string("ExitPlanMode"),
+            "input": .object(["plan": .string("# Plan\n\nRead it, then write it.")]),
+            "activity": .object([
+                "version": .number(1),
+                "kind": .string("plan"),
+                "evidence": .string("tool"),
+                "targets": .array([])
+            ])
+        ]
+        let items = TranscriptProjection.project(events: [
+            event("user", "user.message", "Plan it", 1),
+            event("plan-start", "command.started", "ExitPlanMode", 2, payload),
+            event("plan-end", "command.completed", "ExitPlanMode", 3, payload),
+            event("prose", "message.completed", "Here is the plan.", 4)
+        ])
+
+        let tool = try XCTUnwrap(firstTool(items))
+        XCTAssertEqual(tool.name, "ExitPlanMode")
+        XCTAssertEqual(tool.activity.kind, .plan)
+        XCTAssertEqual(tool.activitySummary, "Updated the plan")
+        XCTAssertEqual(items.compactMap { item -> String? in
+            guard case .assistant(let message) = item else { return nil }
+            return message.text
+        }, ["Here is the plan."])
+    }
+
     func testApprovalResolutionUpdatesOneCardAndPreservesRequestMetadata() throws {
         let request = event("approval-req", "approval.requested", "npm test", 1, [
             "approvalId": .string("approval-1"),
@@ -551,7 +582,7 @@ final class TranscriptProjectionTests: XCTestCase {
         let runningSession = TranscriptSessionMetadata(
             id: "session-1", workspaceId: "workspace-1", provider: "claude",
             modelLabel: "Claude", modelId: "claude", prompt: "Read it", state: .running,
-            attention: .normal, reasoningEffort: nil, agentMode: "auto"
+            attention: .normal, reasoningEffort: nil
         )
 
         let live = try XCTUnwrap(firstTool(TranscriptProjection.project(
@@ -633,7 +664,7 @@ final class TranscriptProjectionTests: XCTestCase {
         let runningSession = TranscriptSessionMetadata(
             id: "session-1", workspaceId: "workspace-1", provider: "codex",
             modelLabel: "GPT", modelId: "gpt", prompt: "Use the app", state: .running,
-            attention: .normal, reasoningEffort: nil, agentMode: "auto"
+            attention: .normal, reasoningEffort: nil
         )
         let start = event("computer", "command.started", "computer", 1, [
             "id": .string("computer-1"), "name": .string("mcp__computer__use"), "activity": activity
@@ -709,7 +740,7 @@ final class TranscriptProjectionTests: XCTestCase {
         let runningSession = TranscriptSessionMetadata(
             id: "session-1", workspaceId: "workspace-1", provider: "claude",
             modelLabel: "Claude", modelId: "claude", prompt: "Read it", state: .running,
-            attention: .normal, reasoningEffort: nil, agentMode: "auto"
+            attention: .normal, reasoningEffort: nil
         )
         let tool = try XCTUnwrap(firstTool(TranscriptProjection.project(events: [
             event("read", "command.started", "Read", 1, [
@@ -1065,8 +1096,7 @@ final class TranscriptProjectionTests: XCTestCase {
             prompt: "Start",
             state: .waiting,
             attention: .questionAsked,
-            reasoningEffort: nil,
-            agentMode: "auto"
+            reasoningEffort: nil
         )
 
         let items = TranscriptProjection.project(
@@ -1170,8 +1200,7 @@ final class TranscriptProjectionTests: XCTestCase {
                 prompt: "Start",
                 state: state,
                 attention: state == .waiting ? .questionAsked : .normal,
-                reasoningEffort: nil,
-                agentMode: "auto"
+                reasoningEffort: nil
             )
         }
 
@@ -1251,7 +1280,7 @@ final class TranscriptProjectionTests: XCTestCase {
         let session = TranscriptSessionMetadata(
             id: "session-1", workspaceId: "workspace-1", provider: "codex",
             modelLabel: "GPT", modelId: "gpt-5", prompt: "Start",
-            state: .running, attention: .normal, reasoningEffort: nil, agentMode: "auto"
+            state: .running, attention: .normal, reasoningEffort: nil
         )
 
         let running = try XCTUnwrap(firstAgent(TranscriptProjection.project(events: [
@@ -1290,6 +1319,66 @@ final class TranscriptProjectionTests: XCTestCase {
         ], session: session)))
         XCTAssertEqual(interrupted.status, .failed)
         XCTAssertEqual(interrupted.completedAt, "2026-01-01T00:00:03.000Z")
+    }
+
+    /// A launch the turn has moved past is running by inference, not by
+    /// evidence (`TranscriptAgent.backgroundLaunch`): no completion for one
+    /// ever arrives, so a row held up by the session alone cannot keep the
+    /// turn's beat open — the desktop marks the same shape `backgroundLaunch`
+    /// on its `ToolCall`.
+    func testAnAgentLaunchTheTurnHasMovedPastIsRunningByInference() throws {
+        let launch: [String: TranscriptJSONValue] = [
+            "id": .string("agent-tool"),
+            "name": .string("Agent"),
+            "input": .object([
+                "description": .string("Research loading animation SOTA"),
+                "prompt": .string("Research task.")
+            ])
+        ]
+        let session = TranscriptSessionMetadata(
+            id: "session-1", workspaceId: "workspace-1", provider: "claude",
+            modelLabel: "Claude", modelId: "opus", prompt: "Start",
+            state: .running, attention: .normal, reasoningEffort: nil
+        )
+
+        // The turn is still blocked on the launch — nothing answered after
+        // it — so the row is live work the reader is watching.
+        let blocked = try XCTUnwrap(firstAgent(TranscriptProjection.project(events: [
+            event("user", "user.message", "Start", 1),
+            event("launch", "command.started", "Agent", 2, launch)
+        ], session: session)))
+        XCTAssertEqual(blocked.status, .running)
+        XCTAssertFalse(blocked.backgroundLaunch)
+
+        // An answer after the launch ends the wait on it. The row stays up
+        // (the child is still out there) but marked running by inference.
+        let movedPast = try XCTUnwrap(firstAgent(TranscriptProjection.project(events: [
+            event("user", "user.message", "Start", 1),
+            event("launch", "command.started", "Agent", 2, launch),
+            event("answer", "message.completed", "Working on it.", 3)
+        ], session: session)))
+        XCTAssertEqual(movedPast.status, .running)
+        XCTAssertTrue(movedPast.backgroundLaunch)
+        XCTAssertNil(movedPast.completedAt)
+
+        // Evidence outranks the inference: a child lifecycle that spoke
+        // keeps the launch a live line, the way the desktop treats a
+        // lifecycle-backed row.
+        let lifecycled = try XCTUnwrap(firstAgent(TranscriptProjection.project(events: [
+            event("user", "user.message", "Start", 1),
+            event("launch", "command.started", "spawn_agent", 2, [
+                "id": .string("spawn-1"),
+                "name": .string("spawn_agent"),
+                "providerInvocationId": .string("invocation-1")
+            ]),
+            event("started", "agent.started", "Agent started", 3, [
+                "agentRunId": .string("spawn-1"),
+                "providerInvocationId": .string("invocation-1")
+            ]),
+            event("answer", "message.completed", "Working on it.", 4)
+        ], session: session)))
+        XCTAssertEqual(lifecycled.status, .running)
+        XCTAssertFalse(lifecycled.backgroundLaunch)
     }
 
     /// A cancelled call is an interruption — the user stopped the turn, or the

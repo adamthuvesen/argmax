@@ -240,8 +240,7 @@ final class ChannelEncodingTests: XCTestCase {
                 provider: "codex",
                 modelLabel: "GPT-5.6 Terra",
                 modelId: "gpt-5.6-terra",
-                reasoningEffort: "high",
-                agentMode: "auto"
+                reasoningEffort: "high"
             )
         )
         XCTAssertEqual(
@@ -250,6 +249,7 @@ final class ChannelEncodingTests: XCTestCase {
         )
         XCTAssertEqual(body["input"] as? String, "and the tests")
         XCTAssertEqual(body["provider"] as? String, "codex")
+        XCTAssertEqual(body["agentMode"] as? String, "auto", "a Mac built before Plan was removed reads the field")
         XCTAssertEqual(body["fastMode"] as? Bool, false, "a Codex-only control the phone does not surface")
         XCTAssertTrue(body["attachments"] is NSNull, "an empty pick still sends the key")
     }
@@ -266,7 +266,6 @@ final class ChannelEncodingTests: XCTestCase {
                 modelLabel: "Opus 5",
                 modelId: "claude-opus-5",
                 reasoningEffort: "medium",
-                agentMode: "auto",
                 attachments: [
                     ComposerAttachment(filePath: "/data/attachments/s-1/a.png", mimeType: "image/png", sizeBytes: 2048)
                 ]
@@ -301,8 +300,7 @@ final class ChannelEncodingTests: XCTestCase {
                 provider: "cursor",
                 modelLabel: "Composer",
                 modelId: "composer",
-                reasoningEffort: nil,
-                agentMode: "auto"
+                reasoningEffort: nil
             )
         )
         XCTAssertTrue(body["reasoningEffort"] is NSNull)

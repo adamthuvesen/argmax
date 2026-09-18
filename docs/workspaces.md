@@ -49,7 +49,7 @@ A cross-project move always leaves the provider conversation id empty. A `--path
 
 ## Scratch Workspaces
 
-`workspaces:create-scratch` initializes temporary workspaces in `local-state/side-chats/` with an empty git repository to support providers that require a git root. The launcher selects this path through Chat on the mode chip (Tab cycles Auto / Plan / Chat), which attaches no project.
+`workspaces:create-scratch` initializes temporary workspaces in `local-state/side-chats/` with an empty git repository to support providers that require a git root. The launcher selects this path through Chat on the mode chip (Tab cycles Auto / Chat), which attaches no project.
 
 `workspaces.kind` supports three kinds (migration v15):
 - `git`: Standard repo checkouts (shared or isolated).
@@ -63,7 +63,7 @@ Workspaces holding at least one live **reason**, and workspaces with a live turn
 | Reason | Raised by | Cleared by |
 | --- | --- | --- |
 | `approval-needed` | a pending approval | the decision |
-| `question-asked` | an unanswered `AskUserQuestion` / `ExitPlanMode` (see [chat-cards.md](chat-cards.md)) | answering it |
+| `question-asked` | an unanswered `AskUserQuestion` (see [chat-cards.md](chat-cards.md)) | answering it |
 | `blocked` | session `blocked` / `waiting` | 30 minutes of silence |
 | `failed` | session `failed` | 30 minutes of silence |
 | `ci-red` | the attributed PR's check rollup at `failure` ([gh.md](gh.md)) | checks going green, or the PR closing |

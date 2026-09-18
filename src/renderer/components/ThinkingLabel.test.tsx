@@ -14,6 +14,22 @@ describe("<ThinkingLabel />", () => {
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });
 
+  it("stops claiming the beat while it dissolves", () => {
+    // The fade keeps the line on screen for 140ms after another line has taken
+    // the beat. It is pixels for that stretch and nothing more: a name and a
+    // live region there would announce two live lines at once.
+    const { container, rerender } = render(<ThinkingLabel />);
+    const word = container.querySelector(".thinking-label")?.textContent;
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+
+    rerender(<ThinkingLabel leaving />);
+
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+    expect(container.querySelector('.thinking-indicator[data-leaving="true"]')).not.toBeNull();
+    // Same element, same word: a remount mid-fade would reroll it.
+    expect(container.querySelector(".thinking-label")?.textContent).toBe(word);
+  });
+
   it("chooses one curated word and keeps it stable", () => {
     vi.spyOn(Math, "random")
       .mockReturnValueOnce(0.5)
@@ -41,11 +57,6 @@ describe("<ThinkingLabel />", () => {
     const word = screen.getByTestId("thinking-label").textContent;
     expect(word).toContain("Yak-shaving");
     expect(THINKING_WORDS).toContain("Yak-shaving");
-  });
-
-  it("shows the shared live-work mark", () => {
-    render(<ThinkingLabel />);
-    expect(screen.getByTestId("thinking-label").querySelector('[data-working="true"]')).not.toBeNull();
   });
 
   it("stays quiet for a short gap and then counts the wait", () => {

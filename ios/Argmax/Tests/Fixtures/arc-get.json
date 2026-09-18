@@ -1,0 +1,51 @@
+{
+  "arc": {
+    "brief": "Forecast next year's revenue and break it into its components.\n\nTwo parts: the forecast itself, and a methodology that is repeatable.",
+    "coordinatorSessionId": "s-coordinator",
+    "createdAt": "2026-09-16T19:27:15.395Z",
+    "dir": "/Users/example/Library/Application Support/com.argmax.rs/arcs/arc-1",
+    "homeProjectId": "p-1",
+    "id": "arc-1",
+    "name": "Revenue forecast",
+    "state": "active",
+    "updatedAt": "2026-09-16T19:27:15.408Z"
+  },
+  "launchesLast24h": 5,
+  "limits": {
+    "maxActiveMembers": 8,
+    "maxLaunchesPerDay": 40
+  },
+  "members": [
+    {
+      "isCoordinator": true,
+      "modelId": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "prNumber": null,
+      "prState": null,
+      "projectId": "p-1",
+      "projectName": "forecasts",
+      "provider": "claude",
+      "sessionId": "s-coordinator",
+      "startedAt": "2026-09-16T19:27:15.403Z",
+      "state": "complete",
+      "taskLabel": "Revenue forecast · coordinator",
+      "workspaceId": "w-coordinator"
+    },
+    {
+      "isCoordinator": false,
+      "modelId": "gpt-5.6-terra",
+      "modelLabel": null,
+      "prNumber": 214,
+      "prState": "OPEN",
+      "projectId": "p-1",
+      "projectName": "forecasts",
+      "provider": "codex",
+      "sessionId": "s-member",
+      "startedAt": "2026-09-17T08:56:11.200Z",
+      "state": "running",
+      "taskLabel": "forecast build v1",
+      "workspaceId": "w-member"
+    }
+  ],
+  "membersTruncated": false
+}

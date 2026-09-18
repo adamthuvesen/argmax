@@ -7,7 +7,7 @@ final class TranscriptThinkingTests: XCTestCase {
     @MainActor
     func testLocalSendCueSurvivesUserEchoAndEndsAtAssistantContent() async {
         let store = TranscriptStore(client: previewClient())
-        let metadata = TranscriptSessionMetadata(id: "session", workspaceId: "workspace", provider: "claude", modelLabel: "Opus", modelId: "opus", prompt: "", state: .complete, attention: .normal, reasoningEffort: nil, agentMode: "auto")
+        let metadata = TranscriptSessionMetadata(id: "session", workspaceId: "workspace", provider: "claude", modelLabel: "Opus", modelId: "opus", prompt: "", state: .complete, attention: .normal, reasoningEffort: nil)
         store.preview(page: page([]), metadata: metadata)
         let start = store.beginThinking()
         XCTAssertEqual(store.thinkingStart, start)
@@ -40,7 +40,11 @@ final class TranscriptThinkingTests: XCTestCase {
         XCTAssertNil(TranscriptThinking.current(items: [user, message("answer", streaming: true)], session: session))
         XCTAssertNil(TranscriptThinking.current(items: [user, message("answer")], session: session))
         XCTAssertNil(TranscriptThinking.current(items: [user, .thought(.init(id: "thought", text: "Reasoning", createdAt: "2", isStreaming: true))], session: session))
-        XCTAssertNil(TranscriptThinking.current(items: [user, tool(.running)], session: session))
+        // The running row owns the beat: the cue is never live beside it, and
+        // dissolves rather than cutting because it was up to lose (the call
+        // started a second after a send whose wait is 600ms).
+        XCTAssertEqual(TranscriptThinking.current(items: [user, tool(.running)], session: session)?.phase,
+                       .leaving)
         let gap = TranscriptThinking.current(items: [user, tool(.done)], session: session)
         XCTAssertEqual(gap?.startedAt, "2026-09-12T10:00:05Z")
         XCTAssertEqual(gap, TranscriptThinking.current(items: [user, tool(.done)], session: session))

@@ -275,8 +275,7 @@ final class TranscriptStore: ObservableObject {
             prompt: row.prompt,
             state: row.state,
             attention: row.attention,
-            reasoningEffort: row.reasoningEffort ?? current?.reasoningEffort,
-            agentMode: row.agentMode
+            reasoningEffort: row.reasoningEffort ?? current?.reasoningEffort
         ), title: workspace?.taskLabel, pendingMessages: nil)
     }
 
@@ -470,7 +469,6 @@ final class TranscriptStore: ObservableObject {
                 id: $0.id,
                 sessionId: row.id,
                 content: $0.text,
-                agentMode: row.agentMode ?? "auto",
                 modelLabel: nil,
                 modelId: nil,
                 reasoningEffort: nil,
@@ -482,7 +480,10 @@ final class TranscriptStore: ObservableObject {
             sessionId: row.id,
             provider: row.provider,
             modelId: row.modelId,
-            modelLabel: row.modelLabel,
+            // The catalogue wins when it knows the id, as on desktop: an
+            // agent-launched or imported session stores the raw API id
+            // ("claude-opus-5") as its label.
+            modelLabel: catalogModel?.label ?? row.modelLabel,
             effort: row.reasoningEffort,
             efforts: catalogModel?.reasoningEfforts.map(\.rawValue) ?? [],
             queued: messages.map { entry in
@@ -683,11 +684,10 @@ final class TranscriptStore: ObservableObject {
             hasContextHeadroom = true
         }
         return session.state == .running &&
-            (session.provider == "claude" || session.provider == "codex") &&
+            ["claude", "codex", "opencode"].contains(session.provider) &&
             hasContextHeadroom &&
             (message.modelId == nil || message.modelId == session.modelId) &&
-            (message.reasoningEffort == nil || message.reasoningEffort == session.reasoningEffort) &&
-            message.agentMode == (session.agentMode ?? "auto")
+            (message.reasoningEffort == nil || message.reasoningEffort == session.reasoningEffort)
     }
 
     private func openingLine(_ prompt: String) -> String {

@@ -431,6 +431,15 @@ function stripOuterQuotes(input: string): string {
   return input;
 }
 
+/** The kinds of work a group has done, in the headline's own order. This is
+ *  what a running headline re-words on; the counts inside it are not news
+ *  until the group settles (see lib/pacedHeadline.ts). */
+export function toolGroupKindKey(tools: ToolCall[]): string {
+  const buckets = new Set<FineBucket>();
+  for (const tool of tools) buckets.add(getFineBucket(tool.name));
+  return FINE_BUCKET_ORDER.filter((bucket) => buckets.has(bucket)).join("+");
+}
+
 export function summarizeToolGroup(tools: ToolCall[]): {
   headline: string;
   currentAction: string | null;

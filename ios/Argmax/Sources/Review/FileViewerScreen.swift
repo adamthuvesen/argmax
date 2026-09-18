@@ -87,7 +87,9 @@ struct FileViewerScreen: View {
 
     @ViewBuilder
     private var content: some View {
-        if let message = load.message {
+        if isOutsideCheckout {
+            EmptyState(mark: .glyph("doc.questionmark"), message: "This file is outside the chat's checkout.")
+        } else if let message = load.message {
             EmptyState(
                 mark: .glyph("exclamationmark.triangle"),
                 message: message,
@@ -138,6 +140,10 @@ struct FileViewerScreen: View {
         }
     }
 
+    /// A path the review route could not make relative: an agent linked a
+    /// file in another checkout, which `workspace:read-file` cannot reach.
+    private var isOutsideCheckout: Bool { path.hasPrefix("/") }
+
     private var fileName: String { String(path.split(separator: "/").last ?? Substring(path)) }
 
     private var subtitle: String {
@@ -149,6 +155,7 @@ struct FileViewerScreen: View {
     }
 
     private func fetch() async {
+        guard !isOutsideCheckout else { return }
         token += 1
         let current = token
         load = .loading

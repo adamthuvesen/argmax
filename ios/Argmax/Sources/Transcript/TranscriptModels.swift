@@ -436,14 +436,6 @@ struct TranscriptQuestionCard: Hashable, Sendable, Identifiable {
     var requestID: String? = nil
 }
 
-struct TranscriptPlan: Hashable, Sendable, Identifiable {
-    var id: String
-    var toolUseId: String
-    var markdown: String
-    var createdAt: String
-    var isOutstanding: Bool
-}
-
 enum TranscriptTodoStatus: String, Hashable, Sendable {
     case pending
     case active
@@ -525,6 +517,14 @@ struct TranscriptAgent: Hashable, Sendable, Identifiable {
     var providerParentConversationId: String?
     var agentCodename: String?
     var children: [TranscriptTool]
+    /// A launch kept `.running` by inference rather than by evidence: no
+    /// completion for one ever arrives, so the projection holds it up while
+    /// the session runs, the way the desktop re-marks a backgrounded launch
+    /// (`backgroundLaunch` on the `ToolCall`, `toolCalls.ts`). The row keeps
+    /// its nest but loses its vote for the turn's beat, and never carries the
+    /// band — a band reading its words for the rest of the session would
+    /// claim progress nobody can watch.
+    var backgroundLaunch: Bool = false
 }
 
 struct TranscriptAgentGroup: Hashable, Sendable, Identifiable {
@@ -618,7 +618,6 @@ enum TranscriptItem: Hashable, Sendable, Identifiable {
     case assistant(TranscriptMessage)
     case thought(TranscriptThought)
     case tools(TranscriptToolGroup)
-    case plan(TranscriptPlan)
     case question(TranscriptQuestionCard)
     case todo(TranscriptTodoList)
     case approval(TranscriptApproval)
@@ -633,7 +632,6 @@ enum TranscriptItem: Hashable, Sendable, Identifiable {
         case .assistant(let value): return value.id
         case .thought(let value): return value.id
         case .tools(let value): return value.id
-        case .plan(let value): return value.id
         case .question(let value): return value.id
         case .todo(let value): return value.id
         case .approval(let value): return "approval-\(value.id)"
@@ -649,7 +647,6 @@ enum TranscriptItem: Hashable, Sendable, Identifiable {
         case .user(let value), .assistant(let value): return value.createdAt
         case .thought(let value): return value.createdAt
         case .tools(let value): return value.createdAt
-        case .plan(let value): return value.createdAt
         case .question(let value): return value.createdAt
         case .todo(let value): return value.createdAt
         case .approval(let value): return value.createdAt

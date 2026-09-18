@@ -1,9 +1,10 @@
 import { ChevronRight, ClipboardCopy, FolderOpen } from "lucide-react";
-import { useState, type JSX } from "react";
-import type { DiagnosticsReport, ProjectSummary } from "../../../shared/types.js";
+import { useEffect, useState, type JSX } from "react";
+import type { DiagnosticsReport, PerformanceStatus, ProjectSummary } from "../../../shared/types.js";
 import { APP_VERSION_LABEL } from "../../../shared/appVersion.js";
 import { formatBytes } from "../../lib/formatBytes.js";
 import { saveLogsFile } from "../../lib/logDownload.js";
+import { savePerformanceCapture } from "../../lib/performanceDownload.js";
 import { LoadingLine } from "../LoadingLine.js";
 import { ProjectKnowledgePanel } from "../ProjectKnowledgePanel.js";
 import { ChatHistorySettings } from "./ChatHistorySettings.js";
@@ -36,8 +37,72 @@ export function AdvancedSettings({
   vacuumDatabase: () => Promise<void>;
 }): JSX.Element {
   const [performanceOpen, setPerformanceOpen] = useState(false);
+  const [performanceStatus, setPerformanceStatus] = useState<PerformanceStatus | null>(null);
   const stats = diagnostics?.databaseStats;
   const readyPhase = diagnostics?.startupPhases.find((phase) => phase.phase === "window.ready-to-show");
+
+  useEffect(() => {
+    if (!performanceOpen) return undefined;
+    let alive = true;
+    const refresh = async (): Promise<void> => {
+      try {
+        const api = window.argmax;
+        if (!api) return;
+        const status = await api.system.performanceStatus();
+        if (alive) setPerformanceStatus(status);
+      } catch (error) {
+        if (alive) {
+          setDiagnosticsStatus(error instanceof Error ? error.message : "Could not read performance status.");
+        }
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 1_000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [performanceOpen, setDiagnosticsStatus]);
+
+  const startPerformanceRecording = async (): Promise<void> => {
+    try {
+      const api = window.argmax;
+      if (!api) throw new Error("Argmax runtime is unavailable.");
+      const status = await api.system.performanceStart();
+      setPerformanceStatus(status);
+      setDiagnosticsStatus("Performance recording started. Samples stay in memory only.");
+    } catch (error) {
+      setDiagnosticsStatus(error instanceof Error ? error.message : "Could not start performance recording.");
+    }
+  };
+
+  const stopPerformanceRecording = async (): Promise<void> => {
+    try {
+      const api = window.argmax;
+      if (!api) throw new Error("Argmax runtime is unavailable.");
+      const capture = await api.system.performanceStop();
+      setPerformanceStatus({
+        recording: capture.recording,
+        startedAt: capture.startedAt,
+        sampleCount: capture.samples.length,
+        droppedSamples: capture.droppedSamples,
+        latest: capture.samples.at(-1) ?? null
+      });
+      setDiagnosticsStatus(`Performance recording stopped with ${capture.samples.length} samples.`);
+    } catch (error) {
+      setDiagnosticsStatus(error instanceof Error ? error.message : "Could not stop performance recording.");
+    }
+  };
+
+  const downloadPerformanceRecording = async (): Promise<void> => {
+    try {
+      const api = window.argmax;
+      if (!api) throw new Error("Argmax runtime is unavailable.");
+      savePerformanceCapture(await api.system.performanceCapture(), setDiagnosticsStatus);
+    } catch (error) {
+      setDiagnosticsStatus(error instanceof Error ? error.message : "Could not load performance capture.");
+    }
+  };
 
   return (
     <>
@@ -164,6 +229,78 @@ export function AdvancedSettings({
 
       {performanceOpen ? (
         <div className="settings-performance">
+          <div className="settings-card">
+            <h4 className="settings-card-title">Performance recorder</h4>
+            <p className="settings-note">
+              Opt-in, one-second samples of the Argmax process tree, active chats, provider output,
+              IPC, SQLite reader pressure, and renderer stalls. The last 30 minutes stay in memory.
+            </p>
+            <div className="settings-performance-recorder">
+              <span className="settings-note" role="status">
+                {performanceStatus?.recording
+                  ? `Recording · ${performanceStatus.sampleCount.toLocaleString()} samples`
+                  : performanceStatus?.sampleCount
+                    ? `Stopped · ${performanceStatus.sampleCount.toLocaleString()} samples ready`
+                    : "Not recording"}
+              </span>
+              <div className="settings-performance-actions">
+                {performanceStatus?.recording ? (
+                  <button
+                    type="button"
+                    className="settings-button"
+                    onClick={() => void stopPerformanceRecording()}
+                  >
+                    Stop
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="settings-button"
+                    onClick={() => void startPerformanceRecording()}
+                  >
+                    Start
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="settings-button"
+                  onClick={() => void downloadPerformanceRecording()}
+                  disabled={!performanceStatus?.sampleCount}
+                >
+                  Download JSON
+                </button>
+              </div>
+            </div>
+            {performanceStatus?.latest ? (
+              <dl className="settings-metric-grid">
+                <div>
+                  <dt>Total CPU</dt>
+                  <dd>{performanceStatus.latest.processes.total.cpuPercent.toFixed(1)}%</dd>
+                </div>
+                <div>
+                  <dt>Total memory</dt>
+                  <dd>{formatBytes(performanceStatus.latest.processes.total.rssBytes)}</dd>
+                </div>
+                <div>
+                  <dt>Running chats</dt>
+                  <dd>{performanceStatus.latest.runningChats}</dd>
+                </div>
+                <div>
+                  <dt>Provider events/s</dt>
+                  <dd>{performanceStatus.latest.providerEventsPerSecond.toFixed(1)}</dd>
+                </div>
+                <div>
+                  <dt>SQLite waits</dt>
+                  <dd>{performanceStatus.latest.sqlite.waitingReads}</dd>
+                </div>
+                <div>
+                  <dt>Renderer stalls</dt>
+                  <dd>{performanceStatus.latest.rendererStalls.count}</dd>
+                </div>
+              </dl>
+            ) : null}
+          </div>
+
           {stats ? (
             <>
               <div className="settings-card">

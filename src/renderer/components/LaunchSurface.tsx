@@ -3,7 +3,6 @@ import {
   Folder,
   FolderGit2,
   GitBranch,
-  ListChecks,
   MessageCircle,
   MoreHorizontal,
   Paperclip,
@@ -63,7 +62,6 @@ import {
 import { preferredLaunchModel, type ModelPickerSelection } from "../lib/models.js";
 import {
   LAUNCHER_MODE_LABELS,
-  agentModeForLaunch,
   cycleLauncherMode,
   launcherModeTitle,
   type LauncherMode
@@ -244,7 +242,6 @@ export function LaunchSurface({
     carriedOnRetarget: promptCarriedOnRetarget,
     persist: !isSubmitting
   });
-  const [agentMode, setAgentMode] = useState<AgentMode>("auto");
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(readStoredWorkspaceMode);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
@@ -463,18 +460,17 @@ export function LaunchSurface({
   }, []);
 
   const chatAvailable = Boolean(onLaunchSideChat && onSideChatModeChange);
-  const launcherMode: LauncherMode = chatMode ? "chat" : agentMode;
+  const launcherMode: LauncherMode = chatMode ? "chat" : "auto";
 
   const toggleMode = useCallback((): void => {
-    const next = cycleLauncherMode(chatMode ? "chat" : agentMode, chatAvailable);
+    const next = cycleLauncherMode(launcherMode, chatAvailable);
     if (next === "chat") {
       closeContextPickers();
       onSideChatModeChange?.(true);
       return;
     }
     onSideChatModeChange?.(false);
-    setAgentMode(next);
-  }, [agentMode, chatAvailable, chatMode, closeContextPickers, onSideChatModeChange]);
+  }, [chatAvailable, closeContextPickers, launcherMode, onSideChatModeChange]);
 
   const toggleWorkspace = useCallback((): void => {
     setWorkspaceMode((mode) => {
@@ -650,9 +646,7 @@ export function LaunchSurface({
   }, []);
   // Composer actions offered above the skills in the `/` menu. Each one is a
   // control that already sits in this toolbar — the menu is a keyboard route
-  // to them, not a second set of features. The mode rows name the mode you
-  // would land in, so `/plan` sets Plan outright instead of advancing the
-  // chip's cycle by one.
+  // to them, not a second set of features.
   const launcherCommands = useMemo<ComposerCommand[]>(() => {
     const setMode = (next: LauncherMode) => () => {
       if (next === "chat") {
@@ -661,7 +655,6 @@ export function LaunchSurface({
         return;
       }
       onSideChatModeChange?.(false);
-      setAgentMode(next);
     };
     const modes: ComposerCommand[] = [
       {
@@ -670,13 +663,6 @@ export function LaunchSurface({
         hint: "Work and approve each step",
         icon: Bot,
         run: setMode("auto")
-      },
-      {
-        name: "plan",
-        label: LAUNCHER_MODE_LABELS.plan,
-        hint: "Draft a plan before touching anything",
-        icon: ListChecks,
-        run: setMode("plan")
       }
     ];
     if (chatAvailable) {
@@ -757,7 +743,6 @@ export function LaunchSurface({
     onSideChatModeChange,
     openBranchPicker,
     openFilePicker,
-    setAgentMode,
     setPrompt,
     toggleWorkspace,
     workspaceMode
@@ -857,9 +842,9 @@ export function LaunchSurface({
     try {
       const attachments = pendingAttachments.length > 0 ? pendingAttachments : undefined;
       if (chatMode && onLaunchSideChat) {
-        await onLaunchSideChat(finalPrompt, model, agentModeForLaunch(launcherMode), attachments, goalCondition);
+        await onLaunchSideChat(finalPrompt, model, "auto", attachments, goalCondition);
       } else {
-        await onLaunchTask(finalPrompt, model, agentMode, workspaceMode, attachments, goalCondition);
+        await onLaunchTask(finalPrompt, model, "auto", workspaceMode, attachments, goalCondition);
       }
       setPrompt("");
       clearAttachments();
@@ -1233,13 +1218,13 @@ export function LaunchSurface({
           </div>
           )}
           <div className="composer-context-group composer-context-group--behavior">
-            {/* Auto is the resting mode and carries no flags, so it stays unlabelled;
-                the chip appears only once Tab or the palette picks Plan or Chat. */}
+            {/* Auto is the resting mode and carries no flags, so it stays unlabelled.
+                The chip appears only for a scratch Chat. */}
             {launcherMode === "auto" ? null : (
               <button
                 type="button"
-                className="composer-context-chip agent-mode-toggle"
-                aria-label="Agent mode"
+                className="composer-context-chip chat-mode-toggle"
+                aria-label="Chat mode"
                 aria-pressed
                 title={launcherModeTitle(launcherMode, chatAvailable)}
                 onClick={toggleMode}

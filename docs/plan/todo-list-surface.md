@@ -35,9 +35,9 @@ remote renders the same persisted rows and would need the parser duplicated.
 ## The canonical event
 
 Type string `todo.updated` — `noun.past-verb`, matching `command.completed` and
-`approval.requested`. Not `plan.*`: `CONTEXT.md:144` already binds "plan card"
-to Claude's ExitPlanMode. Not `task.*`: collides with subagent Task and
-scheduled tasks.
+`approval.requested`. Not `plan.*`: providers use "plan" for their own
+enter/exit plan tools, which reach the transcript as ordinary tool rows. Not
+`task.*`: collides with subagent Task and scheduled tasks.
 
 ```jsonc
 {
@@ -89,7 +89,7 @@ buckets on that marker:
 - exclude `surface === "todo"` rows from `summarizeFileChanges` and the fine
   bucket, which also fixes the Grok edit-count bug on the same line
 - suppress the raw rows via `hiddenToolIds`, the mechanism
-  `turnInteractiveCards.ts` already uses for ExitPlanMode and AskUserQuestion
+  `turnInteractiveCards.ts` already uses for AskUserQuestion
 
 One recognition list, in Rust, tested with real captured fixtures per provider.
 Inside each emitter, match on **payload shape** rather than tool name wherever
@@ -155,10 +155,11 @@ keep true. Record the gap in `docs/chat-cards.md`.
 - New `todoList.ts` — the fold. Session-scoped, in event order: `snapshot`
   replaces, `merge` patches by id, unknown id appends. Returns the list plus
   the `createdAt` of the last event folded in.
-- `turnInteractiveCards.ts` — collect per turn beside `collectExitPlanState`,
-  add the raw rows to `hiddenToolIds`. A turn containing todo activity renders
-  the state as of its last todo event, so scrolling back shows the plan as it
-  stood then; the live turn shows current state.
+- `turnInteractiveCards.ts` — collect per turn beside
+  `collectAskUserQuestionState`, add the raw rows to `hiddenToolIds`. A turn
+  containing todo activity renders the state as of its last todo event, so
+  scrolling back shows the plan as it stood then; the live turn shows current
+  state.
 - `TodoCard.tsx` + `todo-card.css` — variant A, ported from
   `docs/design/todo-list/index.html`. Marks land on the tool row's chevron
   column (`--td-lead: 12px`, `--space-1_5` gap); active row carries

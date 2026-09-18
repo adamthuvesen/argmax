@@ -19,11 +19,14 @@ function pickOption(name: string): void {
   fireEvent.click(within(screen.getByRole("option", { name })).getByRole("button"));
 }
 
-/** Opens Hacking from the sidebar, then crosses to Usage on its rail. */
+/** Opens Hacking from the sidebar; Usage is the view it lands on. */
 function crossToUsage(): void {
   fireEvent.click(screen.getByRole("button", { name: "Hacking" }));
-  const rail = screen.getByRole("complementary", { name: "Hacking" });
-  fireEvent.click(within(rail).getByRole("button", { name: "Usage" }));
+}
+
+/** Esc leaves the page; the app sidebar was there the whole time. */
+function leavePage(): void {
+  fireEvent.keyDown(document.body, { key: "Escape" });
 }
 
 /**
@@ -52,18 +55,21 @@ describe("App usage", () => {
     setupAppTestMocks();
   });
 
-  it("opens as a standalone page and yields the sidebar column to a back rail", async () => {
+  it("opens in the workspace with the app sidebar kept, and crosses to Activity on its switch", async () => {
     await openUsage();
 
-    expect(screen.getByRole("complementary", { name: "Hacking" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Build dashboard" })).not.toBeInTheDocument();
+    // The chats are still a click away; the Hacking row is the current page.
+    expect(screen.getByRole("button", { name: "Build dashboard" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Hacking" })).toHaveAttribute("aria-current", "page");
     expect(await screen.findByText("Aug 4 to Sep 2")).toBeInTheDocument();
 
-    const rail = screen.getByRole("complementary", { name: "Hacking" });
-    fireEvent.click(within(rail).getByRole("button", { name: "Back" }));
+    const usageSwitch = within(usagePage()).getByRole("radiogroup", { name: "Hacking view" });
+    fireEvent.click(within(usageSwitch).getByRole("radio", { name: "Activity" }));
+    expect(await screen.findByRole("heading", { name: "Activity" })).toBeInTheDocument();
 
-    expect(await screen.findByRole("button", { name: "Build dashboard" })).toBeInTheDocument();
+    leavePage();
     expect(screen.queryByRole("heading", { name: "Usage" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Hacking" })).not.toHaveAttribute("aria-current");
   });
 
   it("asks the backend for the window the user picked and relabels the range", async () => {
@@ -322,9 +328,8 @@ describe("App usage", () => {
       .closest(".usage-page") as HTMLElement;
     expect(await within(usagePage).findByText("Aug 4 to Sep 2")).toBeInTheDocument();
 
-    const rail = screen.getByRole("complementary", { name: "Hacking" });
-    fireEvent.click(within(rail).getByRole("button", { name: "Back" }));
-    await screen.findByRole("button", { name: "Build dashboard" });
+    leavePage();
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Usage" })).not.toBeInTheDocument());
 
     usageSummary.mockClear();
     crossToUsage();

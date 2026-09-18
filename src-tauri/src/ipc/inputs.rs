@@ -32,6 +32,10 @@ empty_input!(DashboardListInput);
 empty_input!(ApprovalsPendingInput);
 empty_input!(SystemListDetectedIdesInput);
 empty_input!(SystemDiagnosticsInput);
+empty_input!(SystemPerformanceStartInput);
+empty_input!(SystemPerformanceStopInput);
+empty_input!(SystemPerformanceStatusInput);
+empty_input!(SystemPerformanceCaptureInput);
 empty_input!(SystemVacuumDatabaseInput);
 empty_input!(RemoteGetStatusInput);
 empty_input!(RemoteTestNotificationInput);
@@ -57,6 +61,12 @@ pub struct SystemDebugSnapshotInput {
     /// Highest log `seq` the caller already holds. `None` asks for the whole
     /// ring; the debug panel sends its cursor so each poll ships only new lines.
     pub after_log_seq: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SystemRendererStallInput {
+    pub duration_ms: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -918,6 +928,28 @@ pub struct ConnectionsListInput {
 pub struct SystemOpenPathInput {
     pub path: OpenPath,
     pub cwd: Option<NonEmptyString>,
+}
+
+/// Where `system:open-file-in` hands a file: Finder reveals it, the editors
+/// open it. Terminal apps are left out on purpose — `open -a Terminal <file>`
+/// runs the file as a script.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "lowercase")]
+pub enum OpenFileApp {
+    Finder,
+    Vscode,
+    Cursor,
+    Windsurf,
+    Zed,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SystemOpenFileInInput {
+    pub path: OpenPath,
+    /// Root the path must stay inside; relative paths resolve against it.
+    pub cwd: NonEmptyString,
+    pub app: OpenFileApp,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

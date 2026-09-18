@@ -12,6 +12,7 @@ import {
   type ReviewSource
 } from "../hooks/useReviewState.js";
 import { statusLabel, summarizeChangedFiles } from "../lib/changedFiles.js";
+import { normalizeFileChipPath } from "../lib/fileChipPath.js";
 import { BottomSheet, SheetOption } from "./BottomSheet.js";
 import { MobileScreenHeader } from "./MobileScreenHeader.js";
 import { parseUnifiedDiff } from "../lib/diff.js";
@@ -62,9 +63,10 @@ export function MobileReviewScreen({
   const { openInFilesView } = review;
   useEffect(() => {
     if (!initialFilePath) return;
-    openInFilesView(initialFilePath);
+    // Agents link files by absolute path; the Files view reads relative ones.
+    openInFilesView(normalizeFileChipPath(initialFilePath, workspace.path));
     onFilePreviewOpenChange(true);
-  }, [initialFilePath, onFilePreviewOpenChange, openInFilesView]);
+  }, [initialFilePath, onFilePreviewOpenChange, openInFilesView, workspace.path]);
 
   const isChanges = review.mode === "changes";
   const selectedFile = review.files.find((file) => file.path === review.selectedFilePath) ?? null;

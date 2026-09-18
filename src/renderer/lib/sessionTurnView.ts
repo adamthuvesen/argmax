@@ -1,5 +1,4 @@
 import type { TimelineEvent } from "../../shared/types.js";
-import { stringValue } from "../../shared/typeGuards.js";
 import { decodeTimelineEvent } from "./canonicalTimeline.js";
 import type { RenderItem } from "./foldConversation.js";
 import {
@@ -9,12 +8,9 @@ import {
   parseLogDump,
   splitLogSegments
 } from "./logDump.js";
-import { parsePlan } from "./parsePlan.js";
 import {
   collectAskUserQuestionState,
-  collectExitPlanState,
-  type ResolvedAskUserQuestionTool,
-  type ResolvedExitPlanTool
+  type ResolvedAskUserQuestionTool
 } from "./turnInteractiveCards.js";
 import type { TurnToolItem } from "./toolCalls.js";
 
@@ -544,23 +540,6 @@ function toolStartTimes(toolItems: readonly TurnToolItem[]): string[] {
   return toolItems.map((item) => item.tool.createdAt).sort();
 }
 
-/** Earliest card cutoff when plan/question cards are the turn's authoritative artifact. */
-function cardCutoffForTurn(params: {
-  exitPlanCreatedAt: string | null;
-  questionCreatedAt: string | null;
-}): string | null {
-  const cardCutoffs = [params.exitPlanCreatedAt, params.questionCreatedAt].filter(
-    (t): t is string => t !== null
-  );
-  return cardCutoffs.length > 0 ? cardCutoffs.reduce((a, b) => (a < b ? a : b)) : null;
-}
-
-export function turnAgentModeFromPrior(priorItem: RenderItem | null): string | null {
-  return priorItem && priorItem.kind === "user-message"
-    ? stringValue(priorItem.event.payload.agentMode)
-    : null;
-}
-
 function computeTurnStartedAtMs(params: {
   priorItem: RenderItem | null;
   assistantTimestamps: readonly number[];
@@ -585,13 +564,9 @@ type TurnRenderState = {
   assistantGroups: AssistantGroup[];
   visibleAssistantGroups: AssistantGroup[];
   cardCutoff: string | null;
-  turnAgentMode: string | null;
-  exitPlanTool: ResolvedExitPlanTool | null;
-  exitPlanHiddenToolIds: Set<string>;
   askUserQuestionTool: ResolvedAskUserQuestionTool | null;
   askUserQuestionHiddenToolIds: Set<string>;
   hiddenToolIds: Set<string>;
-  hasExitPlanCard: boolean;
   hasQuestionCard: boolean;
   turnStartedAtMs: number;
   isPausedOnUserInput: boolean;
@@ -610,55 +585,30 @@ export function buildTurnRenderState(params: {
     splitAt: toolStartTimes(params.toolItems),
     streaming: params.isStreamingTurn ?? true
   });
-  const { tool: exitPlanTool, hiddenToolIds: exitPlanHiddenToolIds } = collectExitPlanState(
-    params.toolItems
-  );
   const { tool: askUserQuestionTool, hiddenToolIds: askUserQuestionHiddenToolIds } =
     collectAskUserQuestionState(params.toolItems);
-  const exitPlanHasPlan = exitPlanTool !== null && parsePlan(exitPlanTool.markdown) !== null;
   const hasQuestionCard = askUserQuestionTool !== null;
   const hasBlockingQuestion = hasQuestionCard && askUserQuestionTool.delivery !== "async";
-  const cardCutoff = cardCutoffForTurn({
-    exitPlanCreatedAt: exitPlanHasPlan && exitPlanTool ? exitPlanTool.createdAt : null,
-    questionCreatedAt: hasBlockingQuestion ? askUserQuestionTool.createdAt : null
-  });
+  const cardCutoff = hasBlockingQuestion ? askUserQuestionTool.createdAt : null;
   const visibleAssistantGroups = (cardCutoff
     ? assistantGroups.filter((g) => g.createdAt < cardCutoff)
     : assistantGroups
   ).filter(assistantGroupHasVisibleChat);
-  const hiddenToolIds = new Set([...exitPlanHiddenToolIds, ...askUserQuestionHiddenToolIds]);
-
-  // A plan produced in the same turn as a still-unanswered question was written
-  // before the user could answer (their answer starts the next turn) — so it's a
-  // premature plan the model emitted when its denied AskUserQuestion fell back to
-  // ExitPlanMode. Show only the question and drop the plan card; the agent re-plans
-  // with the answer next turn. The plan's tool row + raw text stay hidden anyway
-  // (via hiddenToolIds and the question-anchored cardCutoff).
-  const planPrecededByQuestion =
-    exitPlanHasPlan &&
-    hasBlockingQuestion &&
-    exitPlanTool !== null &&
-    askUserQuestionTool !== null &&
-    askUserQuestionTool.createdAt <= exitPlanTool.createdAt;
-  const renderedExitPlanTool = planPrecededByQuestion ? null : exitPlanTool;
+  const hiddenToolIds = new Set(askUserQuestionHiddenToolIds);
 
   return {
     assistantGroups,
     visibleAssistantGroups,
     cardCutoff,
-    turnAgentMode: turnAgentModeFromPrior(params.priorItem),
-    exitPlanTool: renderedExitPlanTool,
-    exitPlanHiddenToolIds,
     askUserQuestionTool,
     askUserQuestionHiddenToolIds,
     hiddenToolIds,
-    hasExitPlanCard: renderedExitPlanTool !== null,
     hasQuestionCard,
     turnStartedAtMs: computeTurnStartedAtMs({
       priorItem: params.priorItem,
       assistantTimestamps: params.assistantTimestamps,
       toolItems: params.toolItems
     }),
-    isPausedOnUserInput: hasBlockingQuestion || exitPlanTool !== null
+    isPausedOnUserInput: hasBlockingQuestion
   };
 }

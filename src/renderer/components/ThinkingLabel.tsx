@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState, type JSX } from "react";
 import { formatElapsedSeconds } from "../formatElapsed.js";
 import { registerLiveTimer } from "../lib/liveTimer.js";
-import { WorkingNest } from "./WorkingNest.js";
+import { useReadingWave } from "../lib/readingWave.js";
 
 /** Below this the count is noise: a normal beat between two tool calls is over
  *  before it would read, and a number that flickers in and out on every short
@@ -131,12 +131,18 @@ function chooseThinkingWord(seed: string | undefined): (typeof THINKING_WORDS)[n
 export function ThinkingLabel({
   phaseKey,
   startedAtMs,
+  leaving = false,
 }: {
   phaseKey?: string | undefined;
   /** When this silent stretch began (epoch ms), so a remount mid-gap keeps
    *  counting the real wait instead of restarting it. Falls back to mount
    *  time when the caller has no timestamp to anchor to. */
   startedAtMs?: number | undefined;
+  /** The beat has been handed to another line and this one is dissolving. It
+   *  is pixels for the length of the fade and nothing more: it drops its name
+   *  and its live region the moment it stops owning the beat, so a reader on
+   *  assistive tech hears the arriving line instead of both. */
+  leaving?: boolean;
 }): JSX.Element {
   const [word] = useState(() =>
     chooseThinkingWord(startedAtMs === undefined ? undefined : `${phaseKey ?? ""}:${startedAtMs}`)
@@ -151,6 +157,8 @@ export function ThinkingLabel({
   // lifetime rule, clocked off performance.now like the tests that pin it).
   const [mountAnchor] = useState(() => performance.now());
   const elapsedRef = useRef<HTMLSpanElement | null>(null);
+  const streamRef = useRef<HTMLDivElement | null>(null);
+  useReadingWave(streamRef, true, word);
   // Commit phase, as in TurnBlock: the span renders empty and the timer fills
   // it, so a passive effect would paint an empty span first and shift the line.
   useLayoutEffect(() => {
@@ -170,14 +178,20 @@ export function ThinkingLabel({
   return (
     <article
       className="chat-bubble assistant thinking-indicator"
-      aria-live="polite"
-      aria-label="Thinking"
+      {...(leaving
+        ? { "data-leaving": "true", "aria-hidden": true }
+        : { "aria-live": "polite" as const, "aria-label": "Thinking" })}
     >
-      <div className="thinking-label-stream" data-testid="thinking-label" aria-hidden="true">
-        <span className="activity-icon-slot">
-          <WorkingNest active size={14} className="thinking-working-nest" phaseKey={phaseKey} />
-        </span>
-        <span className="thinking-label">{word}</span>
+      {/* The word carries the motion; the seconds stay still, since a band
+          crossing a ticking number jitters. */}
+      <div
+        ref={streamRef}
+        className="thinking-label-stream"
+        data-testid="thinking-label"
+        data-reading-wave="true"
+        aria-hidden="true"
+      >
+        <span className="thinking-label reading-wave-text">{word}</span>
         <span className="thinking-elapsed" ref={elapsedRef} />
       </div>
     </article>

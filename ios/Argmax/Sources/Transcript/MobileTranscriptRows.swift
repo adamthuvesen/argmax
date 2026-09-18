@@ -113,6 +113,7 @@ struct MobileTranscriptRowView<Content: View>: View {
                         ? "Thought process and activity"
                         : TranscriptToolActivity.summary(for: tools).headline,
                     running: tools.contains { $0.status == .running },
+                    lines: items.map(\.id),
                     maxIcons: detail == .minimal ? 1 : 3,
                     lineLimit: 1
                 )

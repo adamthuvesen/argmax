@@ -352,9 +352,11 @@
 }
 
 /* While the agent is actively thinking, the eyebrow is fully present and softly
-   pulses as one unit to read as live, in place of the generic Thinking indicator. */
+   pulses as one unit to read as live, in place of the generic Thinking indicator.
+   Same cadence and curve as the conversation notice's breathing pulse below, so
+   every "this is live" pulse in the app moves at one shared rhythm. */
 .thought-block[data-live="true"] .thought-block-eyebrow {
-  animation: thought-pulse 1600ms var(--ease) infinite;
+  animation: thought-pulse 2600ms cubic-bezier(0.45, 0, 0.55, 1) infinite;
   animation-play-state: var(--loop-play-state, running);
 }
 
@@ -442,19 +444,53 @@
   color: var(--muted-strong);
   border-radius: 0;
   overflow: visible;
-  animation: thinking-fade-in var(--motion-fast) var(--ease-out);
+  animation: thinking-fade-in 160ms var(--ease-out);
 }
 
-/* Opacity only, and short. The line alternates with the transcript many times
-   in a turn, and it leaves because real content arrived — it is sized and
-   weighted like the answer that replaces it, so that swap is a substitution,
-   not a departure. An exit fade would put a dissolve on exactly the frame the
-   reader is waiting for; a cut is the honest edge. The 1px rise this used to
-   carry was below perception as motion and above it as text blur, since the
-   element is layer-promoted while it animates. */
+/* Which edge the line gets depends on who takes the beat off it, and the two
+   cases are not alike.
+
+   Answer text and a settled turn are the frame the reader has been waiting
+   for, and this line is sized and weighted like the answer that replaces it —
+   so that swap is a substitution, not a departure. A dissolve there would put
+   a fade on exactly the frame being waited for. Those cut, which is why there
+   is no exit animation on `.thinking-indicator` itself.
+
+   A tool line taking over mid-turn is a hand-off between two lines of the same
+   pitch, and cutting it left the word blinking between calls that land a
+   second apart. That one dissolves, over slightly less than it faded in: an
+   exit the eye can follow but not wait for. `THINKING_FADE_OUT_MS` in
+   SessionConversation.tsx keeps the element mounted for the same 140ms.
+
+   Opacity only, both ways. The 1px rise this used to carry was below
+   perception as motion and above it as text blur, since the element is
+   layer-promoted while it animates. */
 @keyframes thinking-fade-in {
   from { opacity: 0; }
   to   { opacity: 1; }
+}
+
+.thinking-indicator[data-leaving="true"] {
+  animation: thinking-fade-out 140ms var(--ease-in-out) forwards;
+}
+
+@keyframes thinking-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking-indicator {
+    animation: none;
+  }
+
+  /* No animation means the element would sit at full opacity for the whole
+     140ms it stays mounted, which is the flash the fade exists to avoid. Take
+     it to zero immediately instead. */
+  .thinking-indicator[data-leaving="true"] {
+    animation: none;
+    opacity: 0;
+  }
 }
 
 /* Block-level flex, not inline-flex: an inline-flex box is baseline-aligned in
@@ -520,13 +556,6 @@
 .tool-call-row-button > .activity-icon-slot {
   align-self: flex-start;
   height: calc(var(--activity-mark-size) + 4px);
-}
-
-/* Keep the live mark on the same 14px box as the static activity glyphs.
-   `-override` is the stylesheet-owned hook for its inline size custom property;
-   see styles/working-nest.css. */
-.thinking-working-nest {
-  --working-nest-size-override: var(--activity-mark-size);
 }
 
 /* Sized and weighted like the answer that replaces it, so the label reads as
@@ -621,7 +650,8 @@
    so the ramp reads as a sine wave with no visible turn. `--ease` is an
    ease-out — it snapped to full, coasted, then reversed at speed, which is
    what made this look rough. Slow and wide so the pulse is legible from the
-   corner of the eye without pulling focus. */
+   corner of the eye without pulling focus. The thought-block eyebrow pulse
+   above shares this exact duration and curve. */
 .conversation-notice[data-running="true"] .conversation-notice-text {
   color: var(--muted-strong);
   animation: conversation-notice-pulse 2600ms cubic-bezier(0.45, 0, 0.55, 1) infinite;
@@ -984,7 +1014,7 @@
 }
 
 .tool-call-group-eyebrow-label {
-  font-family: var(--font-ui);
+  font-family: var(--font-prose);
   font-size: var(--text-sm);
   font-weight: calc(400 + var(--font-weight-offset));
   letter-spacing: 0;
@@ -996,7 +1026,7 @@
    shade, the same way a row's target steps back from its verb. One grammar:
    the verb says what happened, the dim remainder says to what. */
 .tool-call-group-eyebrow-detail {
-  font-family: var(--font-ui);
+  font-family: var(--font-prose);
   font-size: var(--text-sm);
   color: var(--chip-ink);
 }
@@ -1013,19 +1043,8 @@
   opacity: 0.86;
 }
 
-.tool-call-group-running {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: auto;
-  color: var(--accent);
-}
-
-/* Shares the trailing slot with `.tool-call-group-running` — only ever one of
-   them is mounted, so both can claim the `auto` margin. The nest holds the end
-   of the line while the group works and the total takes over when it stops, so
-   the number arrives rather than snapping into the spot the nest just left. */
+/* The trailing total arrives when the group stops working; while it works the
+   headline carries the reading wave instead (styles/reading-wave.css). */
 .tool-call-group-stat {
   margin-left: auto;
   flex: 0 0 auto;
@@ -1055,9 +1074,23 @@
 
 /* Activity headlines stay mounted as calls arrive. Fade once on entry without
    replaying the animation when the summary or current action changes. */
+/* No animation on the line itself: a running headline changes a clause at a
+   time (lib/pacedHeadline.ts), and dipping the whole line to 0.35 on every
+   change is what read as a strobe through a burst of calls. The clause that
+   actually changed fades up on its own, below. */
 .activity-summary-line .activity-summary-headline {
-  animation: activity-summary-tick 240ms var(--ease);
   font-variant-numeric: tabular-nums;
+}
+
+/* An arriving clause fades up where it lands. Opacity on one short span, not
+   on the line, so the words already on screen hold still. */
+.tool-call-group-eyebrow-detail[data-arriving="true"] {
+  animation: activity-clause-in 220ms var(--ease-out);
+}
+
+@keyframes activity-clause-in {
+  from { opacity: 0.25; }
+  to   { opacity: 1; }
 }
 
 @keyframes activity-summary-tick {
@@ -1070,8 +1103,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .activity-summary-line .activity-summary-headline,
-  .tool-call-group-stat {
+  .tool-call-group-stat,
+  .tool-call-group-eyebrow-detail[data-arriving="true"] {
     animation: none;
   }
 }
@@ -1121,7 +1154,7 @@
   border: 0;
   background: transparent;
   cursor: default;
-  font-family: inherit;
+  font-family: var(--font-prose);
   font-size: var(--text-sm);
   line-height: 1.4;
   color: var(--muted);
@@ -1196,7 +1229,7 @@ button.tool-call-row-button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: inherit;
+  font-family: var(--font-prose);
   font-size: var(--text-sm);
   color: var(--muted);
 }
@@ -1224,19 +1257,6 @@ button.tool-call-row-button {
 .tool-call-row-button:hover .tool-call-row-target,
 .tool-call-group-header:hover .tool-call-group-eyebrow-detail {
   color: var(--muted-strong);
-}
-
-/* Parked at the right edge, the same way the group header's spinner is, so a
-   run of in-flight rows shows one still column of activity instead of a ragged
-   trail that jumps left and right as each target string changes length. */
-.tool-call-row-running {
-  flex: 0 0 auto;
-  align-self: center;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: auto;
-  color: var(--accent);
 }
 
 /* Hover-only disclosure hint. The whole row is the hit target, so the chevron
@@ -1359,7 +1379,7 @@ button.tool-call-row-button {
   background: transparent;
   box-shadow: none;
   cursor: pointer;
-  font-family: var(--font-ui);
+  font-family: var(--font-prose);
   line-height: 1.4;
   color: inherit;
 }
@@ -1372,9 +1392,10 @@ button.tool-call-row-button {
   box-shadow: inset 0 0 0 1.5px var(--line-strong);
 }
 
-/* A running launch uses the shared working nest (styles/working-nest.css); a
-   settled one uses a plain bullet. Both occupy the same box so the title never
-   shifts sideways when an agent lands. */
+/* The mark is the agent's emblem — liveness reads on the row's words now, not
+   here. A backgrounded launch is the exception and keeps the shared working
+   nest (styles/working-nest.css); see AgentLaunchList.tsx. Both occupy the same
+   box so the title never shifts sideways when an agent lands. */
 .agent-launch-mark {
   /* The mark scales with the type ladder and is centered on the row's first
      line, which is `--text-base * 1.3` tall inside the button's 2px of top
@@ -1392,8 +1413,9 @@ button.tool-call-row-button {
   margin-right: var(--space-1);
 }
 
-/* The settled mark is the agent's emblem, arriving on the same short fade the
-   old bullet used so the landing still ends in something appearing. */
+/* The emblem arrives on the same short fade the old bullet used, so a row
+   entering the transcript — and a backgrounded launch handing over after its
+   nest has landed — still ends in something appearing. */
 .agent-launch-emblem {
   display: inline-grid;
   place-items: center;
@@ -1406,12 +1428,21 @@ button.tool-call-row-button {
   }
 }
 
+/* The line the reading wave reads while the row is live: the task and the
+   codename, one pass across both, exactly as a running tool row's verb and
+   target share one (styles/reading-wave.css). The status word sits on its own
+   line below and holds still — the band is sized from one line's words, and a
+   column of them would stretch a single pass over the row's whole height. */
 .agent-launch-headline {
   display: flex;
   align-items: baseline;
   gap: var(--space-1_5);
   min-width: 0;
   max-width: 100%;
+  /* Stated rather than inherited: `--reading-wave-sigma` is an em resolved
+     here, and a container a size off its own words would draw a band a size
+     off too. Both children are already `--text-base`. */
+  font-size: var(--text-base);
 }
 
 .agent-launch-title {
@@ -1444,6 +1475,20 @@ button.tool-call-row-button {
   white-space: nowrap;
   color: var(--muted);
   font-size: var(--text-base);
+}
+
+/* A re-worded part fades up where it lands, and only that part: a codename
+   resolving or a status flipping must not dip the whole row. Same 220ms as the
+   transcript's arriving clause, off the same keyframe, so a launch row and the
+   activity line above it read as one surface. */
+:is(.agent-launch-title, .agent-launch-identity, .agent-launch-status)[data-arriving="true"] {
+  animation: activity-clause-in 220ms var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(.agent-launch-title, .agent-launch-identity, .agent-launch-status)[data-arriving="true"] {
+    animation: none;
+  }
 }
 
 .agent-launch-row[data-status="error"] .agent-launch-status {
@@ -1663,9 +1708,9 @@ button.tool-call-row-button {
 }
 
 /* A multitask above the composer keeps the subagent launch-row shape. The row
-   borrows `.agent-launch-*` wholesale. A settled one is marked with the Split
-   glyph its dock tab already uses. The running state shares the nest because
-   both surfaces mean work is happening now. */
+   borrows `.agent-launch-*` wholesale, the reading wave on a running row's
+   words included. The mark is the emblem its dock tab already uses — or the
+   Split glyph, until the chat it dispatched has an id to hash. */
 .multitask-row-mark {
   display: inline-grid;
   place-items: center;

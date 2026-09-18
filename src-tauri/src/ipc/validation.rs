@@ -39,10 +39,11 @@ pub enum ReasoningEffort {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "lowercase")]
 pub enum AgentMode {
+    /// Sessions used to persist `plan`. That value still deserializes here so
+    /// old rows and payloads load, then run as Auto.
+    #[serde(rename = "auto", alias = "plan")]
     Auto,
-    Plan,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]

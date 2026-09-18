@@ -777,32 +777,7 @@ describe("SessionConversation — tools & chrome", () => {
     expect(onOpenFile).not.toHaveBeenCalled();
   });
 
-  it.each(["claude", "cursor", "codex"] as const)(
-    "renders an assistant message produced in custom plan mode as a PlanCard for %s",
-    (provider) => {
-      const plan = [
-        "# Plan: Tidy chat header",
-        "",
-        "Make the header lighter and clearer.",
-        "",
-        "## Key Changes",
-        "",
-        "- Update the badge color",
-        "- Shrink the avatar"
-      ].join("\n");
-
-      renderConversation(baseSession({ provider, state: "complete" }), [
-        event("u1", "user.message", "draft a plan", "2026-05-12T15:00:00.000Z", { agentMode: "plan" }),
-        event("m1", "message.completed", plan, "2026-05-12T15:00:01.000Z")
-      ]);
-
-      expect(screen.getByRole("article", { name: /Plan: Tidy chat header/ })).toBeInTheDocument();
-      expect(screen.getByRole("listbox", { name: "Plan response" })).toBeInTheDocument();
-      expect(screen.getByText("Key Changes")).toBeInTheDocument();
-    }
-  );
-
-  it("renders the same content as a ChatBubble when the turn was sent in edit mode", () => {
+  it("renders plan-shaped assistant content as an ordinary ChatBubble", () => {
     const plan = [
       "# Plan: Tidy chat header",
       "",
@@ -822,16 +797,6 @@ describe("SessionConversation — tools & chrome", () => {
     expect(screen.queryByRole("article", { name: /Plan: Tidy chat header/ })).toBeNull();
     // Title still shows, but as plain markdown inside a ChatBubble
     expect(screen.getByRole("heading", { name: "Plan: Tidy chat header" })).toBeInTheDocument();
-  });
-
-  it("falls back to a ChatBubble when a plan-mode reply has no parseable plan structure", () => {
-    renderConversation(baseSession({ state: "complete" }), [
-      event("u1", "user.message", "what time is it?", "2026-05-12T15:00:00.000Z", { agentMode: "plan" }),
-      event("m1", "message.completed", "It's about 3:30 PM here.", "2026-05-12T15:00:01.000Z")
-    ]);
-
-    expect(screen.queryByRole("listbox", { name: "Plan response" })).toBeNull();
-    expect(screen.getByText("It's about 3:30 PM here.")).toBeInTheDocument();
   });
 
   it("hides the per-session toolbar actions behind a Chat actions picker", () => {

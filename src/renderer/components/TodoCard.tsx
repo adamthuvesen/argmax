@@ -1,7 +1,7 @@
 import { ChevronRight } from "lucide-react";
-import { useState, type JSX } from "react";
+import { useRef, useState, type JSX } from "react";
+import { useReadingWave } from "../lib/readingWave.js";
 import type { TodoItem, TodoList, TodoStatus } from "../lib/todoList.js";
-import { WorkingNest } from "./WorkingNest.js";
 
 type TodoCardProps = {
   list: TodoList;
@@ -40,15 +40,15 @@ function itemLabel(item: TodoItem): string {
   return item.id !== null ? `Task ${item.id}` : "Untitled task";
 }
 
-function TodoMark({ status, running }: { status: ShownStatus; running: boolean }): JSX.Element {
+function TodoMark({ status }: { status: ShownStatus }): JSX.Element {
   return (
     <span className="todo-card-mark" role="img" aria-label={STATUS_LABEL[status]}>
-      {markGlyph(status, running)}
+      {markGlyph(status)}
     </span>
   );
 }
 
-function markGlyph(status: ShownStatus, running: boolean): JSX.Element {
+function markGlyph(status: ShownStatus): JSX.Element {
   if (status === "done") {
     return (
       <svg
@@ -63,10 +63,10 @@ function markGlyph(status: ShownStatus, running: boolean): JSX.Element {
       </svg>
     );
   }
-  // The app's one running mark, not a spinner invented for this surface. It
-  // stops when the turn does: an item left `active` by an ended turn is a
-  // record, not live work.
-  if (status === "active") return <WorkingNest active={running} size={12} />;
+  // A filled version of the same checkbox, not a spinner: the item's own
+  // label carries the motion now (the reading wave), so the mark only has to
+  // say "this is the one open right now".
+  if (status === "active") return <i className="todo-card-dot" />;
   if (status === "cancelled") {
     return (
       <svg
@@ -104,6 +104,13 @@ export function TodoCard({ list, running }: TodoCardProps): JSX.Element {
   const shown = list.items.filter((item): item is TodoItem & { status: ShownStatus } =>
     item.status !== "removed"
   );
+  // At most one item is ever active, so one ref and one hook call carries the
+  // wave for whichever row currently holds it.
+  const activeLabelRef = useRef<HTMLSpanElement | null>(null);
+  const activeItem = shown.find((item) => item.status === "active") ?? null;
+  const activeLabel = activeItem ? itemLabel(activeItem) : "";
+  const pulsing = running && activeItem !== null;
+  useReadingWave(activeLabelRef, pulsing, activeLabel);
 
   return (
     <div
@@ -126,17 +133,23 @@ export function TodoCard({ list, running }: TodoCardProps): JSX.Element {
         {tail === null ? null : <span className="todo-card-head-now">{tail}</span>}
       </button>
       <ul className="todo-card-list">
-        {shown.map((item, index) => (
-          <li className="todo-card-item" data-state={item.status} key={item.id ?? `row-${index}`}>
-            <TodoMark status={item.status} running={running} />
-            <span
-              className="todo-card-label"
-              data-unnamed={item.text === null ? "true" : undefined}
-            >
-              {itemLabel(item)}
-            </span>
-          </li>
-        ))}
+        {shown.map((item, index) => {
+          const isActive = item === activeItem;
+          const wave = isActive && pulsing;
+          return (
+            <li className="todo-card-item" data-state={item.status} key={item.id ?? `row-${index}`}>
+              <TodoMark status={item.status} />
+              <span
+                className="todo-card-label"
+                data-unnamed={item.text === null ? "true" : undefined}
+                ref={isActive ? activeLabelRef : undefined}
+                data-reading-wave={wave ? "true" : undefined}
+              >
+                {wave ? <span className="reading-wave-text">{itemLabel(item)}</span> : itemLabel(item)}
+              </span>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

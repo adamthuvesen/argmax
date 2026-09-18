@@ -266,17 +266,14 @@ struct SessionSummary: Codable, Hashable, Sendable, Identifiable {
     var imported: Bool
     var launchKind: String
     var launchedBySessionId: String?
-    /// "auto" or "plan". Read by `TranscriptComposer` to carry a follow-up's
-    /// mode forward — the native composer has no mode toggle of its own, only
-    /// New chat's picker grid does — so a row from before the column existed
-    /// falls back to "auto" the same way the renderer's `?? "auto"` does.
-    var agentMode: String?
     /// Read on open so the composer's effort chip starts right instead of
     /// showing the first option until the metadata read lands.
     var reasoningEffort: String?
+    /// The Arc this chat belongs to, as its coordinator or a member.
+    var arcId: String? = nil
 }
 
-/// The three slices of `DashboardSnapshot` the phone keeps.
+/// The four slices of `DashboardSnapshot` the phone keeps.
 ///
 /// The host also sends `events`, `rawOutputs`, `approvals`, `checks` and
 /// `pendingMessages`; the transcript is a web view, so none of them have a
@@ -285,15 +282,20 @@ struct DashboardSnapshot: Codable, Hashable, Sendable {
     var projects: [ProjectSummary]
     var workspaces: [WorkspaceSummary]
     var sessions: [SessionSummary]
+    /// Deltas never carry arc rows. An arc write publishes a
+    /// `dashboardChanged` hint instead, and the reload it causes brings them.
+    var arcs: [ArcSummary]
 
     init(
         projects: [ProjectSummary] = [],
         workspaces: [WorkspaceSummary] = [],
-        sessions: [SessionSummary] = []
+        sessions: [SessionSummary] = [],
+        arcs: [ArcSummary] = []
     ) {
         self.projects = projects
         self.workspaces = workspaces
         self.sessions = sessions
+        self.arcs = arcs
     }
 
     init(from decoder: Decoder) throws {
@@ -303,6 +305,8 @@ struct DashboardSnapshot: Codable, Hashable, Sendable {
         projects = try container.decodeIfPresent([ProjectSummary].self, forKey: .projects) ?? []
         workspaces = try container.decodeIfPresent([WorkspaceSummary].self, forKey: .workspaces) ?? []
         sessions = try container.decodeIfPresent([SessionSummary].self, forKey: .sessions) ?? []
+        // Also absent from a snapshot this app cached before it read arcs.
+        arcs = try container.decodeIfPresent([ArcSummary].self, forKey: .arcs) ?? []
     }
 }
 

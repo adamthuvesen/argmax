@@ -3,14 +3,14 @@
  * Matches:
  *   - one or more path segments (alphanum / _ / - / . / @)
  *   - a final segment with a 1–5 char extension
- *   - optional `:NNN` line suffix
+ *   - optional `:NNN` line suffix, or `:NNN:NN` line and column
  * Returns null on anything containing whitespace or anything obviously not
  * a file path. We'd rather under-chip than convert random inline code into
  * clickable chips that go nowhere.
  */
 // Requires at least one non-dot character before the extension so inputs like
 // `.ts` aren't matched as path=".ts".
-const FILE_PATH_PATTERN = /^([\w/@-][\w./@-]*\.[a-z0-9]{1,5})(?::(\d{1,7}))?$/i;
+const FILE_PATH_PATTERN = /^([\w/@-][\w./@-]*\.[a-z0-9]{1,5})(?::(\d{1,7})(?::\d{1,7})?)?$/i;
 
 interface FileChipMatch {
   path: string;

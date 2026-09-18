@@ -207,7 +207,6 @@ final class DashboardStore: ObservableObject {
     }
 
     func ingest(delta: DashboardDelta) {
-        snapshotVersion += 1
         var sessionWorkspaces = Dictionary(uniqueKeysWithValues: snapshot.sessions.map { ($0.id, $0.workspaceId) })
         var affected = Set(delta.workspaces?.map(\.id) ?? [])
         for row in delta.sessions ?? [] {
@@ -219,8 +218,11 @@ final class DashboardStore: ObservableObject {
         let merged = mergeDashboardDelta(snapshot, delta)
         // Most deltas change nothing here (a streamed chunk carries only
         // `changedSessionIds`); handing an unchanged snapshot to the open
-        // transcript made it republish and re-project per chunk.
+        // transcript made it republish and re-project per chunk. Those hints
+        // also must not invalidate an in-flight dashboard read: that read may
+        // be the first snapshot containing chats launched while the app slept.
         guard merged != snapshot else { return }
+        snapshotVersion += 1
         snapshot = merged
         onTranscriptSnapshot?(merged)
         saveCache(merged)

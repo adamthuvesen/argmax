@@ -19,7 +19,7 @@ import { hideFullLauncher } from "./launcherSurface.js";
 // open the same pages. They call the mutators here rather than being handed a
 // callback per page.
 
-type StandalonePage = "settings" | "schedule" | "usage" | "activity" | "arc";
+type StandalonePage = "settings" | "schedule" | "usage" | "activity";
 
 interface OverlaysSnapshot {
   /** Which full-screen page owns the workspace column, if any. */
@@ -28,8 +28,7 @@ interface OverlaysSnapshot {
   settingsGroup: SettingsGroupId;
   /** The last navigation request, carrying a section to scroll to. */
   settingsNavigation: SettingsNavigationTarget | null;
-  /** The arc `showArcPage` last opened. Stale once the page closes, but never
-   *  read while `standalonePage !== "arc"`. */
+  /** The arc page open in the workspace column, if any. */
   selectedArcId: string | null;
   /** The chat "Start an arc from this chat" was invoked on, while its dialog
    *  is open. */
@@ -71,6 +70,7 @@ export function showSettings(group: SettingsGroupId = "general", sectionId?: str
   publish({
     ...state,
     standalonePage: "settings",
+    selectedArcId: null,
     settingsGroup: group,
     settingsNavigation: {
       group,
@@ -83,22 +83,28 @@ export function showSettings(group: SettingsGroupId = "general", sectionId?: str
 
 export function showSchedulePage(): void {
   hideFullLauncher();
-  publish({ ...state, standalonePage: "schedule", paletteOpen: false });
+  publish({ ...state, standalonePage: "schedule", selectedArcId: null, paletteOpen: false });
 }
 
 export function showUsagePage(): void {
   hideFullLauncher();
-  publish({ ...state, standalonePage: "usage", paletteOpen: false });
+  publish({ ...state, standalonePage: "usage", selectedArcId: null, paletteOpen: false });
 }
 
 export function showActivityPage(): void {
   hideFullLauncher();
-  publish({ ...state, standalonePage: "activity", paletteOpen: false });
+  publish({ ...state, standalonePage: "activity", selectedArcId: null, paletteOpen: false });
 }
 
+/** Opens the arc in the workspace column; the session sidebar stays visible. */
 export function showArcPage(arcId: string): void {
   hideFullLauncher();
-  publish({ ...state, standalonePage: "arc", selectedArcId: arcId, paletteOpen: false });
+  publish({ ...state, selectedArcId: arcId, paletteOpen: false });
+}
+
+export function hideArcPage(): void {
+  if (state.selectedArcId === null) return;
+  publish({ ...state, selectedArcId: null });
 }
 
 export function showPromoteArcDialog(sessionId: string): void {

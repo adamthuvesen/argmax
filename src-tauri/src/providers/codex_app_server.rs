@@ -24,13 +24,14 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tokio::time::MissedTickBehavior;
 use uuid::Uuid;
 
-use super::adapters::prompt_for_agent_mode;
 use super::environment::build_provider_environment;
 use super::normalizer::ProviderOutputStream;
 use super::runtime::{
     BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType, ProviderRuntimeHandle,
 };
-use super::{mcp_injection, AgentMode, PermissionMode, ProviderId, ProviderLaunchInput};
+#[cfg(test)]
+use super::AgentMode;
+use super::{mcp_injection, PermissionMode, ProviderId, ProviderLaunchInput};
 use crate::approvals::service::ApprovalService;
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::time::now_iso;
@@ -45,6 +46,7 @@ const CANCEL_TIMEOUT: Duration = Duration::from_secs(5);
 const COMPUTER_USE_PLUGIN: &str = "computer-use@openai-bundled";
 const COMPUTER_USE_RUNTIME: &str = "unified-computer-use";
 const COMPUTER_USE_SERVER: &str = "cua_repl";
+const PLAN_MAINTENANCE_CONTEXT: &str = "Argmax displays update_plan as a live todo card. Once you create a plan, call update_plan whenever you finish a step and before starting the next step. Keep exactly one step in progress until the work is done, and do not batch completed statuses at the end.";
 
 /// Launch one Codex turn over its native app-server protocol.
 ///
@@ -154,7 +156,7 @@ pub async fn launch_turn(
             })?
             .to_string();
 
-        let prompt = prompt_for_agent_mode(&input.prompt, input.agent_mode);
+        let prompt = input.prompt.clone();
         let turn_response = rpc
             .request("turn/start", turn_params(input, &thread_id, prompt))
             .await?;
@@ -362,6 +364,15 @@ fn turn_params(input: &ProviderLaunchInput, thread_id: &str, prompt: String) -> 
         ("cwd".to_string(), json!(input.workspace_path)),
         ("model".to_string(), json!(input.model_id)),
         ("summary".to_string(), json!("auto")),
+        (
+            "additionalContext".to_string(),
+            json!({
+                "argmax.todo-card": {
+                    "kind": "application",
+                    "value": PLAN_MAINTENANCE_CONTEXT,
+                }
+            }),
+        ),
     ]);
     if let Some(effort) = effective_effort(input) {
         params.insert("effort".to_string(), json!(effort));
@@ -380,7 +391,7 @@ fn apply_permission_policy(
 ) {
     match input.permission_mode {
         PermissionMode::ProviderDefaults => {}
-        PermissionMode::AutoApprove if input.agent_mode == AgentMode::Auto => {
+        PermissionMode::AutoApprove => {
             params.insert("approvalPolicy".to_string(), json!("on-request"));
             params.insert("approvalsReviewer".to_string(), json!("auto_review"));
             if is_turn {
@@ -392,7 +403,7 @@ fn apply_permission_policy(
                 params.insert("sandbox".to_string(), json!("danger-full-access"));
             }
         }
-        PermissionMode::AutoApprove | PermissionMode::AskEachTime => {
+        PermissionMode::AskEachTime => {
             params.insert("approvalPolicy".to_string(), json!("on-request"));
             params.insert("approvalsReviewer".to_string(), json!("user"));
             if is_turn {
@@ -1656,7 +1667,7 @@ mod tests {
     }
 
     #[test]
-    fn codex_thread_merges_argmax_and_computer_use_servers() {
+    fn codex_thread_with_argmax_and_computer_use_routes_argmax_operations_first() {
         let session_launch = SessionLaunchProcessConfig::for_tests(
             "/tmp/argmax.sock",
             "secret-token",
@@ -1666,11 +1677,11 @@ mod tests {
             "command": "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
             "args": ["cua-repl.mjs"],
         });
-        let params = thread_params(
-            &input(PermissionMode::AutoApprove),
-            Some(&session_launch),
-            Some(&computer_use),
+        let routed_input = crate::providers::runtime::with_argmax_routing_instruction(
+            input(PermissionMode::AutoApprove),
+            true,
         );
+        let params = thread_params(&routed_input, Some(&session_launch), Some(&computer_use));
 
         assert_eq!(
             params["config"]["mcp_servers"][mcp_injection::SERVER_NAME]["command"],
@@ -1680,6 +1691,16 @@ mod tests {
             params["config"]["mcp_servers"][COMPUTER_USE_SERVER],
             computer_use
         );
+
+        let turn = turn_params(&routed_input, "thread-1", routed_input.prompt.clone());
+        let prompt = turn["input"][0]["text"].as_str().expect("turn prompt");
+        let argmax = prompt.find("Argmax MCP tools").expect("Argmax route");
+        let generic = prompt
+            .find("generic UI automation")
+            .expect("generic automation fallback");
+        assert!(argmax < generic);
+        assert!(prompt.contains("Do not control Argmax itself through Computer Use"));
+        assert!(prompt.ends_with("Do the work"));
     }
 
     #[test]
@@ -1692,6 +1713,21 @@ mod tests {
         assert_eq!(params["effort"], "ultra");
         assert_eq!(params["serviceTier"], "priority");
         assert_eq!(params["input"][0]["text"], "Do the work");
+    }
+
+    #[test]
+    fn turn_tells_codex_to_publish_plan_progress_when_it_happens() {
+        let params = turn_params(
+            &input(PermissionMode::ProviderDefaults),
+            "thread-1",
+            "Do the work".into(),
+        );
+        let context = &params["additionalContext"]["argmax.todo-card"];
+        assert_eq!(context["kind"], "application");
+        assert_eq!(context["value"], PLAN_MAINTENANCE_CONTEXT);
+        assert!(context["value"]
+            .as_str()
+            .is_some_and(|value| value.contains("before starting the next step")));
     }
 
     #[test]

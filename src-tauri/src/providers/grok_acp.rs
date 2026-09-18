@@ -23,9 +23,9 @@ use super::normalizer::ProviderOutputStream;
 use super::runtime::{
     BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType, ProviderRuntimeHandle,
 };
-use super::{
-    mcp_injection, AgentMode, PermissionMode, ProviderId, ProviderLaunchInput, ReasoningEffort,
-};
+#[cfg(test)]
+use super::AgentMode;
+use super::{mcp_injection, PermissionMode, ProviderId, ProviderLaunchInput, ReasoningEffort};
 use crate::approvals::service::ApprovalService;
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::time::now_iso;
@@ -59,13 +59,9 @@ enum GrokProcessMode {
     ProviderDefaults,
     AskEachTime,
     AutoApprove,
-    Plan,
 }
 
 fn grok_process_mode(input: &ProviderLaunchInput) -> GrokProcessMode {
-    if input.agent_mode == AgentMode::Plan {
-        return GrokProcessMode::Plan;
-    }
     match input.permission_mode {
         PermissionMode::ProviderDefaults => GrokProcessMode::ProviderDefaults,
         PermissionMode::AskEachTime => GrokProcessMode::AskEachTime,
@@ -80,7 +76,6 @@ fn grok_process_arguments(mode: GrokProcessMode) -> &'static [&'static str] {
         GrokProcessMode::AutoApprove => {
             &["--permission-mode", "bypassPermissions", "agent", "stdio"]
         }
-        GrokProcessMode::Plan => &["--permission-mode", "plan", "agent", "stdio"],
     }
 }
 
@@ -890,7 +885,7 @@ mod tests {
     }
 
     #[test]
-    fn eligibility_includes_plan_but_excludes_forks() {
+    fn eligibility_includes_all_modes_except_forks() {
         let mut input = ProviderLaunchInput {
             provider: ProviderId::Grok,
             session_id: "s".into(),
@@ -907,8 +902,6 @@ mod tests {
             cols: 80,
             rows: 24,
         };
-        assert!(is_acp_eligible(&input));
-        input.agent_mode = AgentMode::Plan;
         assert!(is_acp_eligible(&input));
         input.resume_fork = true;
         assert!(!is_acp_eligible(&input));
@@ -927,10 +920,6 @@ mod tests {
         assert_eq!(
             grok_process_arguments(GrokProcessMode::AutoApprove),
             ["--permission-mode", "bypassPermissions", "agent", "stdio"]
-        );
-        assert_eq!(
-            grok_process_arguments(GrokProcessMode::Plan),
-            ["--permission-mode", "plan", "agent", "stdio"]
         );
     }
 

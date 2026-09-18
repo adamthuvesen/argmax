@@ -6,7 +6,7 @@ An Arc is a long-lived body of work: a feature, a migration, an app. It outlives
 
 **New arc** in the sidebar's Arcs section asks for a name, a brief, a home project, and the coordinator's model, with an optional existing folder. Creating it writes the arc folder and launches the coordinator in the home project's shared checkout. **Start an arc from this chat…** in a chat's actions menu does the same from work already under way: the chat becomes the coordinator, a one-shot helper drafts the name and brief from its conversation (never overwriting a field you have typed into), and the chats it launched join the arc. It is unavailable while the chat's turn is running.
 
-The Arc page opens with the name, state, and a stats strip (coordinator, members working now, launches today, pull requests), the members still working as chips, and the brief behind a disclosure. The timeline follows, then the folder and triggers.
+The Arc page opens with the name, a meta line led by the state, and the brief's first paragraph with an Edit action. A Chats ledger follows: the coordinator as its first row, then the members still working, with the working and pull request counts in its header. The timeline follows, then the folder and triggers.
 
 A brief is required. When the chosen folder already has a `BRIEF.md`, leave the brief empty and the file is used (`ARC_BRIEF_EXISTS` otherwise; `ARC_BRIEF_REQUIRED` when there is neither). Pointing an Arc at an existing folder is how a folder kept elsewhere, such as an hq mission, becomes its shared context.
 
@@ -39,9 +39,15 @@ A brief is required. When the chosen folder already has a `BRIEF.md`, leave the 
 
 **Triggers.** A member's PR that starts failing, starts passing, or merges sends one message to the coordinator. While the Arc is live and that message was delivered, the ordinary check-failure follow-up stands down for that PR. Scheduled tasks can target the Arc's coordinator. A paused Arc silences both. See [ADR 0011](adr/0011-arc-events-replace-check-failure-follow-ups.md).
 
+## On the phone
+
+The iPhone app lists live arcs (active, then paused, most recently touched first) in an **Arcs** section above Pinned. Done arcs stay on the Mac. A chat that belongs to an arc wears a small arc glyph on its second line. The Arc screen ([ios/Argmax/Sources/Arcs](../ios/Argmax/Sources/Arcs)) opens the coordinator and the members working now, shows the stats, the brief, and the timeline with Show earlier, and its ⋯ menu pauses, resumes, or marks the arc done. It reads `arc:get` and `arc:timeline`, which are in `remoteReadChannels.json`. The screen refetches when the dashboard's arc row or any arc session's state moves, the same keys the desktop page follows, so nothing polls. Creating an arc, starting from a chat, starting a new coordinator, renaming, editing the brief, reopening a done arc, and triggers are desktop-only.
+
+A Mac built before the arc reads joined the manifest refuses them for want of an operation id. The phone answers `REMOTE_OPERATION_REQUIRED` on any read by sending it once more under a throwaway operation id, so an older Mac still serves the Arc screen and only journals the read.
+
 ## Not in this version
 
-Slack triggers, agents writing recurring schedules, and the phone app.
+Slack triggers and agents writing recurring schedules.
 
 ## Limits
 

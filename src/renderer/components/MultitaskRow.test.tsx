@@ -1,7 +1,9 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { CLAUSE_DWELL_MS } from "../lib/pacedHeadline.js";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MultitaskNotice } from "../lib/multitask.js";
 import { MultitaskRow } from "./MultitaskRow.js";
+
 
 function notice(overrides: Partial<MultitaskNotice> = {}): MultitaskNotice {
   return {
@@ -26,6 +28,68 @@ describe("MultitaskRow", () => {
     expect(screen.getByText("Running")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Open multitask: Fix the README typo" }));
     expect(onOpen).toHaveBeenCalledWith("child-1");
+  });
+
+  it("marks a running multitask on its own words, in the launch row's mark slot", () => {
+    // The row borrows the subagent launch-row shape, so it borrows the live
+    // mark too: the reading wave through the task and its kind, with the dock
+    // tab's emblem holding the mark slot whatever the chat is doing.
+    const { container } = render(<MultitaskRow notice={notice()} onOpen={vi.fn()} />);
+
+    expect(container.querySelector(".agent-launch-headline[data-reading-wave='true']")).not.toBeNull();
+    expect(container.querySelector(".agent-launch-title.reading-wave-text")).not.toBeNull();
+    expect(container.querySelector(".working-nest")).toBeNull();
+    expect(container.querySelector(".multitask-row-mark .agent-emblem[data-shape]")).not.toBeNull();
+
+    cleanup();
+    const settled = render(<MultitaskRow notice={notice({ state: "complete" })} onOpen={vi.fn()} />);
+    expect(
+      settled.container.querySelector(".agent-launch-headline[data-reading-wave='true']")
+    ).toBeNull();
+  });
+
+  it("shows one wording per beat, and only the newest, while it runs", () => {
+    // A chat that blocks on an approval and is answered a moment later used to
+    // flick a word onto the row and take it away again. One change per beat,
+    // newest wording wins: the intermediate never reaches the screen.
+    vi.useFakeTimers();
+    try {
+      const running = notice({ taskLabel: "Fix the README typo in the install section, it..." });
+      const { rerender } = render(<MultitaskRow notice={running} onOpen={vi.fn()} />);
+      // The short title its chat is given lands a second or two after dispatch.
+      rerender(
+        <MultitaskRow notice={running} liveLabel="Fix Install Section Typo" onOpen={vi.fn()} />
+      );
+      act(() => void vi.advanceTimersByTime(CLAUSE_DWELL_MS));
+      expect(screen.getByText("Fix Install Section Typo")).toBeInTheDocument();
+
+      rerender(<MultitaskRow notice={running} liveLabel="Fix Install Section Typo" liveState="blocked" onOpen={vi.fn()} />);
+      act(() => void vi.advanceTimersByTime(100));
+      expect(screen.queryByText("Waiting for you")).toBeNull();
+
+      rerender(<MultitaskRow notice={running} liveLabel="Fix Install Section Typo" liveState="running" onOpen={vi.fn()} />);
+      act(() => void vi.advanceTimersByTime(CLAUSE_DWELL_MS));
+      expect(screen.queryByText("Waiting for you")).toBeNull();
+      expect(screen.getByText("Running")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("fades up only the part that changed when its chat is renamed", () => {
+    vi.useFakeTimers();
+    try {
+      const { container, rerender } = render(<MultitaskRow notice={notice()} onOpen={vi.fn()} />);
+      rerender(
+        <MultitaskRow notice={notice()} liveLabel="Fix Install Section Typo" onOpen={vi.fn()} />
+      );
+      act(() => void vi.advanceTimersByTime(CLAUSE_DWELL_MS));
+      expect(container.querySelector(".agent-launch-title[data-arriving='true']")?.textContent)
+        .toBe("Fix Install Section Typo");
+      expect(container.querySelector(".agent-launch-status[data-arriving='true']")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("says how it ended once it has", () => {

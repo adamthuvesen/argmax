@@ -4,15 +4,19 @@ struct NativeTranscriptView: View {
     let client: BridgeClient
     let onOpenFile: (String) -> Void
     let onOpenDiff: (String) -> Void
-    let onRevisePlan: () -> Void
     @EnvironmentObject private var transcript: TranscriptStore
     @EnvironmentObject private var appearance: Appearance
     @EnvironmentObject private var navigator: ChatNavigator
     @Environment(\.transcriptWorkspacePath) private var workspacePath
     @State private var following = true
     @State private var scrollRequest = 0
+    @State private var rowWindow = TranscriptRowWindow()
+    /// Which line holds the turn's beat between calls. The cue reports it,
+    /// since its own wait is what ends it, and the rows read it back out of
+    /// the environment rather than taking it as a prop through every row.
+    @State private var beatHolder: String?
 
-    private var rows: [MobileTranscriptRow] {
+    private var allRows: [MobileTranscriptRow] {
         MobileTranscriptRow.rows(transcript.items.filter { item in
             if case .question = item { return false }
             return true
@@ -35,7 +39,10 @@ struct NativeTranscriptView: View {
     }
 
     var body: some View {
-        let rows = rows
+        let allRows = allRows
+        let rowIDs = allRows.map(\.id)
+        let bounds = rowWindow.bounds(in: rowIDs, following: following)
+        let rows = Array(allRows[bounds])
         return VStack(spacing: 0) {
             if case .failed(let message) = transcript.phase {
                 HStack(alignment: .top, spacing: Spacing.snug) {
@@ -58,20 +65,24 @@ struct NativeTranscriptView: View {
                 isReady: transcript.phase == .ready && transcript.connection == .live
                     && !transcript.showingCachedContent,
                 presentationID: appearance.tint.rawValue + appearance.bubbleTint + (workspacePath ?? "") + String(appearance.chatDetail.rawValue),
-                following: $following
+                following: $following,
+                hasEarlier: bounds.lowerBound > allRows.startIndex,
+                hasLater: bounds.upperBound < allRows.endIndex,
+                onLoadEarlier: { rowWindow.revealEarlier(in: rowIDs) },
+                onLoadLater: { rowWindow.revealLater(in: rowIDs) }
             ) { row in
                 MobileTranscriptRowView(row: row) { item in
                 TranscriptContentRow(item: item, client: client,
                                      onOpenFile: onOpenFile, onOpenDiff: onOpenDiff,
-                                     onRevisePlan: onRevisePlan,
                                      onOpenSession: { navigator.awaitingSessionID = $0 })
                 }
                     .padding(.vertical, row.verticalPadding)
             } footer: {
-                TranscriptThinkingLabel(thinking: thinking)
+                TranscriptThinkingLabel(thinking: thinking, beatHolder: $beatHolder)
                     .id(thinking)
                     .padding(.vertical, Spacing.snug)
             }
+            .environment(\.activityBeat, beatHolder)
             .overlay(alignment: .bottom) {
                 if !following && !rows.isEmpty {
                     Button {
@@ -102,6 +113,20 @@ struct NativeTranscriptView: View {
                 }
             }
         }
+        .onChange(of: following) { _, isFollowing in
+            if isFollowing {
+                rowWindow.reset()
+            } else {
+                rowWindow.freeze(in: rowIDs)
+            }
+        }
+        .onChange(of: transcript.sessionID) { _, _ in
+            rowWindow.reset()
+        }
+        .onChange(of: appearance.chatDetail) { _, _ in
+            rowWindow.reset()
+            following = true
+        }
         .opacity(transcript.phase == .loading ? 0 : 1)
         .allowsHitTesting(transcript.phase != .loading)
         .accessibilityHidden(transcript.phase == .loading)
@@ -118,12 +143,71 @@ struct NativeTranscriptView: View {
     }
 }
 
+/// The exact-height transcript stack stays eager, but only for the rows near
+/// the reader. Stable boundary ids keep live output from moving a detached
+/// history window, while fixed-size steps let either edge page through rows
+/// already projected by `TranscriptStore`.
+struct TranscriptRowWindow: Equatable {
+    static let capacity = 120
+    static let step = 60
+
+    private var firstID: String?
+    private var lastID: String?
+
+    func bounds(in ids: [String], following: Bool) -> Range<Int> {
+        guard !ids.isEmpty else { return 0..<0 }
+        if following { return tailBounds(in: ids) }
+
+        let first = firstID.flatMap { ids.firstIndex(of: $0) }
+        let last = lastID.flatMap { ids.firstIndex(of: $0) }.map { $0 + 1 }
+        switch (first, last) {
+        case let (.some(lower), .some(upper)) where lower < upper:
+            return lower..<upper
+        case let (_, .some(upper)):
+            return max(ids.startIndex, upper - Self.capacity)..<upper
+        case let (.some(lower), _):
+            return lower..<min(ids.endIndex, lower + Self.capacity)
+        default:
+            return tailBounds(in: ids)
+        }
+    }
+
+    mutating func freeze(in ids: [String]) {
+        set(bounds: tailBounds(in: ids), ids: ids)
+    }
+
+    mutating func revealEarlier(in ids: [String]) {
+        let current = bounds(in: ids, following: false)
+        let lower = max(ids.startIndex, current.lowerBound - Self.step)
+        set(bounds: lower..<min(ids.endIndex, lower + Self.capacity), ids: ids)
+    }
+
+    mutating func revealLater(in ids: [String]) {
+        let current = bounds(in: ids, following: false)
+        let upper = min(ids.endIndex, current.upperBound + Self.step)
+        set(bounds: max(ids.startIndex, upper - Self.capacity)..<upper, ids: ids)
+    }
+
+    mutating func reset() {
+        firstID = nil
+        lastID = nil
+    }
+
+    private func tailBounds(in ids: [String]) -> Range<Int> {
+        max(ids.startIndex, ids.endIndex - Self.capacity)..<ids.endIndex
+    }
+
+    private mutating func set(bounds: Range<Int>, ids: [String]) {
+        firstID = bounds.isEmpty ? nil : ids[bounds.lowerBound]
+        lastID = bounds.isEmpty ? nil : ids[bounds.upperBound - 1]
+    }
+}
+
 struct TranscriptContentRow: View {
     let item: TranscriptItem
     let client: BridgeClient
     let onOpenFile: (String) -> Void
     var onOpenDiff: ((String) -> Void)? = nil
-    var onRevisePlan: () -> Void = {}
     var onOpenSession: ((String) -> Void)?
     @EnvironmentObject private var transcript: TranscriptStore
 
@@ -151,9 +235,9 @@ struct TranscriptContentRow: View {
             TranscriptErrorRow(error: error)
         case .question:
             EmptyView()
-        case .plan, .approval, .agents, .multitask:
+        case .approval, .agents, .multitask:
             TranscriptInteractiveRow(item: item, client: client,
-                                     onOpenFile: onOpenFile, onRevisePlan: onRevisePlan,
+                                     onOpenFile: onOpenFile,
                                      onOpenSession: onOpenSession)
         }
     }
@@ -202,7 +286,6 @@ struct TranscriptComposerFloor: View {
     @Binding var draft: String
     @Binding var focusRequest: Int
     @EnvironmentObject private var transcript: TranscriptStore
-    @EnvironmentObject private var dashboard: DashboardStore
     @StateObject private var interactions: TranscriptInteractionCoordinator
     @State private var dismissed: Set<String> = []
     @State private var dockHeight: CGFloat = 0
@@ -295,7 +378,6 @@ struct TranscriptComposerFloor: View {
             modelLabel: composer.modelLabel,
             modelID: composer.modelId,
             reasoningEffort: composer.effort,
-            agentMode: dashboard.snapshot.sessions.first { $0.id == composer.sessionId }?.agentMode ?? "auto",
             isRunning: composer.running
         )
     }

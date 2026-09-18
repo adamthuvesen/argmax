@@ -11,8 +11,12 @@ export type DeleteOldChatsResult = Bindings.DeleteOldChatsResult;
 export type DetectedIde = Bindings.DetectedIde;
 export type DiagnosticsReport = Bindings.DiagnosticsReport;
 export type IdeId = Bindings.IdeId;
+export type OpenFileApp = Bindings.OpenFileApp;
 export type IpcChannelStats = Bindings.IpcChannelStats;
 export type DebugSnapshot = Bindings.DebugSnapshot;
+export type PerformanceCapture = Bindings.PerformanceCapture;
+export type PerformanceSample = Bindings.PerformanceSample;
+export type PerformanceStatus = Bindings.PerformanceStatus;
 /** A line from the Rust tracing ring buffer. */
 export type BackendLogEntry = Bindings.LogEntry;
 export type PermissionMode = Bindings.PermissionMode;
@@ -448,8 +452,8 @@ export type SyncStatus = Retype<Bindings.SyncStatus, { config: SyncConfigInput }
  *  scheduler as a normal top-level session. Wire shape mirrors the Rust
  *  `Routine` record (see src-tauri/src/persistence/routines.rs).
  *
- *  Permission and agent modes are not stored per task. New scheduled chats
- *  use the app-wide Tool permissions setting; follow-ups retain the existing
+ *  Permission mode is not stored per task. New scheduled chats use the
+ *  app-wide Tool permissions setting; follow-ups retain the existing
  *  session's saved policy. */
 export type Routine = Retype<Bindings.Routine, { provider: ProviderId }>;
 
@@ -632,9 +636,15 @@ export interface ArgmaxApi {
   system: {
     confirm: (message: string) => Promise<boolean>;
     openPath: (input: { path: string; cwd?: string }) => Promise<{ ok: true }>;
+    openFileIn: (input: { path: string; cwd: string; app: OpenFileApp }) => Promise<{ ok: true }>;
     listDetectedIdes: () => Promise<DetectedIde[]>;
     diagnostics: () => Promise<DiagnosticsReport>;
     debugSnapshot: (input?: { afterLogSeq?: number }) => Promise<DebugSnapshot>;
+    performanceStart: () => Promise<PerformanceStatus>;
+    performanceStop: () => Promise<PerformanceCapture>;
+    performanceStatus: () => Promise<PerformanceStatus>;
+    performanceCapture: () => Promise<PerformanceCapture>;
+    reportRendererStall: (durationMs: number) => Promise<{ ok: true }>;
     vacuumDatabase: () => Promise<{ ok: true }>;
     setTheme: (mode: "light" | "dark" | "system") => Promise<{ ok: true }>;
     setDefaultAgent: (input: {

@@ -296,7 +296,10 @@ fn normalize_tool_use(
             None => vec![started, completed],
         }
     } else {
-        vec![completed]
+        match todo {
+            Some(todo) => vec![completed, todo],
+            None => vec![completed],
+        }
     }
 }
 
@@ -585,6 +588,63 @@ mod tests {
         assert_eq!(completed.events[0].payload["call_id"], "call-run");
         assert_eq!(completed.events[1].r#type, "agent.completed");
         assert_eq!(completed.events[1].message, "Findings.");
+    }
+
+    #[test]
+    fn opencode_todo_update_survives_a_running_then_terminal_call() {
+        let mut context = NormalizerSessionContext::default();
+        let running = normalize_provider_event(
+            ProviderId::Opencode,
+            &output_event(
+                &json!({
+                    "type": "tool_use",
+                    "sessionID": "ses_1",
+                    "part": {
+                        "type": "tool",
+                        "tool": "todowrite",
+                        "callID": "call-todo",
+                        "state": {
+                            "status": "running",
+                            "input": {}
+                        }
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(running.events.len(), 1);
+        assert_eq!(running.events[0].r#type, "command.started");
+
+        let completed = normalize_provider_event(
+            ProviderId::Opencode,
+            &output_event(
+                &json!({
+                    "type": "tool_use",
+                    "sessionID": "ses_1",
+                    "part": {
+                        "type": "tool",
+                        "tool": "todowrite",
+                        "callID": "call-todo",
+                        "state": {
+                            "status": "completed",
+                            "input": {
+                                "todos": [
+                                    {"content": "Read docs", "status": "completed"},
+                                    {"content": "Ship fix", "status": "in_progress"}
+                                ]
+                            },
+                            "output": "ok"
+                        }
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(completed.events.len(), 2);
+        assert_eq!(completed.events[0].r#type, "command.completed");
+        assert_eq!(completed.events[1].r#type, "todo.updated");
     }
 
     #[test]

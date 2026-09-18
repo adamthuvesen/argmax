@@ -1,9 +1,9 @@
 import { ChevronRight } from "lucide-react";
-import { memo, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
+import { Fragment, memo, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
 import {
   buildGroupRows,
   parseMcpToolName,
-  splitLeadingVerb,
+  toolGroupKindKey,
   summarizeToolChangeCounts,
   summarizeToolGroup,
   type ToolCall,
@@ -13,10 +13,12 @@ import { codenameForTool } from "../lib/agentNames.js";
 import type { ActivityMember } from "../lib/turnChildren.js";
 import type { TranscriptFollow } from "../hooks/useConversationScroll.js";
 import { useStableTailWindow } from "../hooks/useStableTailWindow.js";
+import { useReadingWave } from "../lib/readingWave.js";
+import { headlineClauses, usePacedHeadline } from "../lib/pacedHeadline.js";
+import { useOwnsActivityBeat } from "../lib/activityBeat.js";
 import { ActivityStat } from "./ActivityStat.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { ToolCallRow } from "./ToolCallRow.js";
-import { WorkingNest } from "./WorkingNest.js";
 import { ToolActivityIcon } from "./ToolActivityIcon.js";
 import { ShowEarlier } from "./ShowEarlier.js";
 import { ServerIcon } from "./ServerIcon.js";
@@ -189,7 +191,17 @@ function ToolCallGroupBubbleInner({
     : activityIsLive
       ? "Thinking"
       : "Thought";
-  const headline = useMemo(() => splitLeadingVerb(activityHeadline), [activityHeadline]);
+  const toolIds = useMemo(() => group.tools.map((tool) => tool.id), [group.tools]);
+  // A group whose calls all landed in the same instant — every OpenCode and
+  // Grok call, most Codex ones — still owns the beat until the cue takes over.
+  const ownsBeat = useOwnsActivityBeat(toolIds);
+  const activityStatusIsRunning = activityIsLive || summary.status === "running";
+  const kindKey = useMemo(() => toolGroupKindKey(group.tools), [group.tools]);
+  const paced = usePacedHeadline(activityHeadline, kindKey, activityStatusIsRunning);
+  // The verb leads and holds; everything after it is one clause per kind of
+  // work, so only the clause that changed has to move.
+  const clauses = useMemo(() => headlineClauses(paced.shown), [paced.shown]);
+  const previousClauses = useMemo(() => headlineClauses(paced.previous), [paced.previous]);
   const changeCounts = useMemo(() => summarizeToolChangeCounts(group.tools), [group.tools]);
   const rows = useMemo(() => buildGroupRows(group.tools), [group.tools]);
   const firstActivityMember = activityMembers?.[0];
@@ -314,7 +326,9 @@ function ToolCallGroupBubbleInner({
           onOpenAgent={onOpenAgent}
         />
       );
-  const activityStatus = activityIsLive ? "running" : summary.status;
+  const activityStatus = activityStatusIsRunning ? "running" : summary.status;
+  const headerRef = useRef<HTMLButtonElement | null>(null);
+  useReadingWave(headerRef, activityStatus === "running" || ownsBeat, activityHeadline);
   // A delete is a file change, not a failure; see ToolCallRow.
   const iconIsDanger = activityStatus === "error"
     || firstTool?.cancelled === true
@@ -342,12 +356,18 @@ function ToolCallGroupBubbleInner({
         />
       ) : (
         <>
+          {/* The wave lives on the header, not the headline: the headline
+              already runs its own tick animation on every change, and one
+              `animation` declaration cannot hold both. */}
           <button
+            ref={headerRef}
             className="tool-call-group-header"
+            data-reading-wave={activityStatus === "running" || ownsBeat ? "true" : undefined}
             type="button"
             aria-expanded={expanded}
             aria-controls={detailsId}
             aria-label={`${activityHeadline}${previewText ? ": " + previewText : ""}`}
+            aria-busy={activityStatus === "running" ? true : undefined}
             onClick={() => toggleExpanded(!expanded)}
           >
             {group.tools.length > 0 ? (
@@ -357,25 +377,37 @@ function ToolCallGroupBubbleInner({
               </span>
             ) : null}
             <span className="tool-call-group-eyebrow activity-summary-headline" aria-hidden="true">
-              <span className="tool-call-group-eyebrow-label">{headline.verb}</span>
-              {headline.rest ? (
-                <span className="tool-call-group-eyebrow-detail"> {headline.rest}</span>
-              ) : null}
+              {clauses.map((clause, index) => {
+                const [verb, ...tail] = index === 0 ? clause.split(" ") : [];
+                const isNew = !previousClauses.includes(clause);
+                const detail = index === 0 ? tail.join(" ") : clause;
+                return (
+                  <Fragment key={clause}>
+                    {index === 0 ? (
+                      <span className="tool-call-group-eyebrow-label reading-wave-text">{verb}</span>
+                    ) : (
+                      <span className="tool-call-group-eyebrow-detail reading-wave-text">, </span>
+                    )}
+                    {detail ? (
+                      <span
+                        className="tool-call-group-eyebrow-detail reading-wave-text"
+                        data-arriving={isNew ? "true" : undefined}
+                      >
+                        {index === 0 ? " " : ""}{detail}
+                      </span>
+                    ) : null}
+                  </Fragment>
+                );
+              })}
             </span>
             <ChevronRight size={11} className="tool-call-row-chevron" aria-hidden="true" />
             {previewText ? (
               <span className="tool-call-group-preview" aria-hidden="true">{previewText}</span>
             ) : null}
-            {/* One trailing slot, not two. While the group is working the nest
-                owns the end of the line; the running total arrives when it
-                stops. Showing both put a live animation mid-row — each claimed
-                `margin-left: auto` and split the gap between them — and gave a
-                still-growing count the finality of a result. */}
-            {activityStatus === "running" ? (
-              <span className="tool-call-group-running" aria-label="running" title="Running">
-                <WorkingNest active size={14} />
-              </span>
-            ) : changeCounts ? (
+            {/* While the group works the headline itself carries the reading
+                wave; the running total arrives when it stops, since a
+                still-growing count read as the finality of a result. */}
+            {activityStatus !== "running" && changeCounts ? (
               <span
                 className="tool-call-group-stat"
                 role="img"

@@ -12,7 +12,10 @@
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
     path::PathBuf,
-    sync::{Arc, Mutex, OnceLock, Weak},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex, OnceLock, Weak,
+    },
     time::Duration,
 };
 
@@ -25,7 +28,7 @@ use tokio::sync::{broadcast, watch};
 use uuid::Uuid;
 
 use super::{
-    adapters::{get_provider_definition, prompt_for_agent_mode},
+    adapters::get_provider_definition,
     flush_queue::{DashboardDelta, PendingMessage, ProviderEventFlushQueue},
     follow_up::{
         agent_reference_prompt, compose_follow_up_prompt, ensure_agent_references_supported,
@@ -176,6 +179,21 @@ enum Queueing {
 /// is a driver that will come back when the turn settles.
 pub const TURN_IN_FLIGHT: &str = "SESSION_TURN_IN_FLIGHT";
 
+/// What a send that lands behind a running turn does with its queued row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MidTurnDelivery {
+    /// Wait for the turn to end.
+    Queue,
+    /// The composer's Steer: deliver into the running turn, and leave a
+    /// failure queued as unsent for the person to retry or discard.
+    Steer,
+    /// A message from another session or Argmax itself: steer when the
+    /// provider can take it, otherwise wait for the turn to end exactly as
+    /// `Queue` does. Nobody is watching to retry a failure, so a definite
+    /// rejection goes back to the ordinary queue instead of parking unsent.
+    SteerOrQueue,
+}
+
 fn turn_in_flight_error() -> ArgmaxError {
     ArgmaxError::service(
         TURN_IN_FLIGHT,
@@ -251,6 +269,14 @@ pub struct SessionStateChange {
     pub state: SessionState,
 }
 
+#[derive(Debug, Default)]
+pub struct ProviderPerformanceStats {
+    pub running_chats: u64,
+    pub running_chats_by_provider: BTreeMap<String, u64>,
+    pub pending_items: u64,
+    pub output_events: u64,
+}
+
 /// Says which goal a turn is being sent for. Never exposed through IPC; the
 /// database re-checks that the goal is still active on that chat before the
 /// input is delivered.
@@ -268,6 +294,7 @@ pub struct ProviderSessionService {
     queues: Arc<Mutex<HashMap<String, VecDeque<PendingMessage>>>>,
     queue_promotions: Arc<Mutex<HashSet<String>>>,
     flush_queue: Arc<Mutex<ProviderEventFlushQueue>>,
+    output_events: Arc<AtomicU64>,
     /// One bounded output flush per session. A fixed window, rather than an
     /// idle debounce, guarantees sustained streams still reach SQLite.
     batch_flush_generation: Arc<Mutex<HashMap<String, u64>>>,
@@ -350,6 +377,19 @@ async fn wait_for_termination(
 }
 
 impl ProviderSessionService {
+    pub fn performance_stats(&self) -> ProviderPerformanceStats {
+        let (running_chats_by_provider, pending_items) = self
+            .flush_queue
+            .lock_or_recover("flush queue")
+            .performance_stats();
+        ProviderPerformanceStats {
+            running_chats: running_chats_by_provider.values().sum(),
+            running_chats_by_provider,
+            pending_items,
+            output_events: self.output_events.load(Ordering::Relaxed),
+        }
+    }
+
     pub fn new(database: Arc<Database>) -> Arc<Self> {
         Self::with_launcher(
             database,
@@ -406,6 +446,7 @@ impl ProviderSessionService {
             queues: Arc::new(Mutex::new(recovered_queues)),
             queue_promotions: Arc::new(Mutex::new(HashSet::new())),
             flush_queue: Arc::new(Mutex::new(ProviderEventFlushQueue::new())),
+            output_events: Arc::new(AtomicU64::new(0)),
             batch_flush_generation: Arc::new(Mutex::new(HashMap::new())),
             batch_flush_tasks: Arc::new(Mutex::new(HashMap::new())),
             idle_flush_generation: Arc::new(Mutex::new(HashMap::new())),
@@ -1036,7 +1077,7 @@ impl ProviderSessionService {
         self: &Arc<Self>,
         input: ProvidersSendInput,
     ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(input, None, None, Queueing::Allowed, false)
+        self.send_input_scoped(input, None, None, Queueing::Allowed, MidTurnDelivery::Queue)
             .await
     }
 
@@ -1048,7 +1089,7 @@ impl ProviderSessionService {
         self: &Arc<Self>,
         input: ProvidersSendInput,
     ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(input, None, None, Queueing::Allowed, true)
+        self.send_input_scoped(input, None, None, Queueing::Allowed, MidTurnDelivery::Steer)
             .await
     }
 
@@ -1062,8 +1103,34 @@ impl ProviderSessionService {
         input: ProvidersSendInput,
         origin: Option<MessageOrigin>,
     ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(input, origin, None, Queueing::Allowed, false)
-            .await
+        self.send_input_scoped(
+            input,
+            origin,
+            None,
+            Queueing::Allowed,
+            MidTurnDelivery::Queue,
+        )
+        .await
+    }
+
+    /// A message addressed to this session by another session, or a notice
+    /// Argmax writes on one's behalf. A running Claude, Codex or OpenCode turn takes it
+    /// as steering; every other provider, and a turn that cannot be steered
+    /// right now, gets it when the turn ends. `queued` is false once the
+    /// message reached the model either way.
+    pub async fn send_agent_message(
+        self: &Arc<Self>,
+        input: ProvidersSendInput,
+        origin: MessageOrigin,
+    ) -> ArgmaxResult<SendInputResult> {
+        self.send_input_scoped(
+            input,
+            Some(origin),
+            None,
+            Queueing::Allowed,
+            MidTurnDelivery::SteerOrQueue,
+        )
+        .await
     }
 
     pub async fn send_goal_input(
@@ -1071,8 +1138,14 @@ impl ProviderSessionService {
         input: ProvidersSendInput,
         identity: GoalTurnIdentity,
     ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(input, None, Some(identity), Queueing::Refused, false)
-            .await
+        self.send_input_scoped(
+            input,
+            None,
+            Some(identity),
+            Queueing::Refused,
+            MidTurnDelivery::Queue,
+        )
+        .await
     }
 
     /// A scheduled task's turn in a chat it shares. Like a goal turn it is
@@ -1082,7 +1155,7 @@ impl ProviderSessionService {
         self: &Arc<Self>,
         input: ProvidersSendInput,
     ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(input, None, None, Queueing::Refused, false)
+        self.send_input_scoped(input, None, None, Queueing::Refused, MidTurnDelivery::Queue)
             .await
     }
 
@@ -1092,7 +1165,7 @@ impl ProviderSessionService {
         origin: Option<MessageOrigin>,
         goal_turn: Option<GoalTurnIdentity>,
         queueing: Queueing,
-        steer_when_queued: bool,
+        mid_turn_delivery: MidTurnDelivery,
     ) -> ArgmaxResult<SendInputResult> {
         let session_id = input.session_id.as_str().to_string();
         let message = input.input.as_str().trim().to_string();
@@ -1110,7 +1183,13 @@ impl ProviderSessionService {
             .unwrap_or(0);
         self.ensure_no_pending_after_turn(&session_id)?;
 
-        let (workspace_id, session_provider, session_permission_mode, steering_context_headroom) = {
+        let (
+            workspace_id,
+            session_provider,
+            session_permission_mode,
+            session_agent_mode,
+            steering_context_headroom,
+        ) = {
             let _send_generation = self.lock_send_generation(&session_id, send_generation)?;
             let connection = self.database.connection();
             let session = find_session_by_id(&connection, &session_id)?;
@@ -1144,9 +1223,17 @@ impl ProviderSessionService {
                 session.workspace_id,
                 parse_provider(&session.provider)?,
                 parse_permission_mode(&session.permission_mode)?,
+                session.agent_mode.as_deref().and_then(parse_agent_mode),
                 steering_context_headroom,
             )
         };
+        // A queued row without a mode of its own (an agent's message, a
+        // notice) keeps the chat's mode, the same fallback a relaunch uses.
+        // Queued as `auto`, it could never steer a plan-mode turn.
+        let queued_agent_mode = input
+            .agent_mode
+            .or(session_agent_mode)
+            .unwrap_or(AgentMode::Auto);
         if self
             .termination_jobs
             .lock_or_recover("termination jobs")
@@ -1207,7 +1294,7 @@ impl ProviderSessionService {
                 let Some(pending) = self.enqueue_pending_message(
                     &session_id,
                     &message,
-                    input.agent_mode.unwrap_or(AgentMode::Auto),
+                    queued_agent_mode,
                     &input,
                     origin,
                 )?
@@ -1219,16 +1306,21 @@ impl ProviderSessionService {
                 };
                 drop(send_generation_guard);
                 drop(admission);
-                if steer_when_queued && steering_context_headroom {
-                    return Box::pin(
-                        self.send_queued_message_now(ProvidersSendQueuedMessageNowInput {
-                            session_id: SessionId::try_from(session_id)
-                                .map_err(ArgmaxError::invalid)?,
-                            message_id: NonEmptyString::try_from(pending.id)
-                                .map_err(ArgmaxError::invalid)?,
-                            delivery: Some(QueuedMessageDelivery::Steer),
-                        }),
-                    )
+                let steer = match mid_turn_delivery {
+                    MidTurnDelivery::Queue => false,
+                    MidTurnDelivery::Steer => steering_context_headroom,
+                    MidTurnDelivery::SteerOrQueue => {
+                        steering_context_headroom
+                            && handle.supports_steering()
+                            && !self.is_waiting_on_inbox(&session_id)
+                    }
+                };
+                if steer {
+                    return Box::pin(self.steer_queued_row(
+                        session_id,
+                        pending.id,
+                        mid_turn_delivery,
+                    ))
                     .await;
                 }
                 self.drain_queue_if_turn_ended(&session_id);
@@ -1247,10 +1339,7 @@ impl ProviderSessionService {
                 )?
             };
             self.mark_turn_start(&session_id, workspace_path);
-            handle.send_input(&format!(
-                "{}\r",
-                prompt_for_agent_mode(&prompt, input.agent_mode.unwrap_or(AgentMode::Auto))
-            ));
+            handle.send_input(&format!("{}\r", prompt));
             self.persist_user_message(
                 &session_id,
                 &message,
@@ -1282,7 +1371,7 @@ impl ProviderSessionService {
             let Some(pending) = self.enqueue_pending_message(
                 &session_id,
                 &message,
-                input.agent_mode.unwrap_or(AgentMode::Auto),
+                queued_agent_mode,
                 &input,
                 origin,
             )?
@@ -1294,17 +1383,10 @@ impl ProviderSessionService {
             };
             drop(send_generation_guard);
             drop(admission);
-            if steer_when_queued && steering_context_headroom {
-                return Box::pin(self.send_queued_message_now(
-                    ProvidersSendQueuedMessageNowInput {
-                        session_id:
-                            SessionId::try_from(session_id).map_err(ArgmaxError::invalid)?,
-                        message_id:
-                            NonEmptyString::try_from(pending.id).map_err(ArgmaxError::invalid)?,
-                        delivery: Some(QueuedMessageDelivery::Steer),
-                    },
-                ))
-                .await;
+            // No live provider to steer into: an automatic message just waits.
+            if mid_turn_delivery == MidTurnDelivery::Steer && steering_context_headroom {
+                return Box::pin(self.steer_queued_row(session_id, pending.id, mid_turn_delivery))
+                    .await;
             }
             self.drain_queue_if_turn_ended(&session_id);
             return Ok(SendInputResult {
@@ -1969,6 +2051,62 @@ impl ProviderSessionService {
         self: &Arc<Self>,
         input: ProvidersSendQueuedMessageNowInput,
     ) -> ArgmaxResult<SendInputResult> {
+        self.promote_queued_message(input, false).await
+    }
+
+    fn is_waiting_on_inbox(&self, session_id: &str) -> bool {
+        self.session_control
+            .get()
+            .is_some_and(|registry| registry.is_waiting_on_inbox(session_id))
+    }
+
+    async fn steer_queued_row(
+        self: &Arc<Self>,
+        session_id: String,
+        message_id: String,
+        mid_turn_delivery: MidTurnDelivery,
+    ) -> ArgmaxResult<SendInputResult> {
+        let input = ProvidersSendQueuedMessageNowInput {
+            session_id: SessionId::try_from(session_id).map_err(ArgmaxError::invalid)?,
+            message_id: NonEmptyString::try_from(message_id).map_err(ArgmaxError::invalid)?,
+            delivery: Some(QueuedMessageDelivery::Steer),
+        };
+        if mid_turn_delivery != MidTurnDelivery::SteerOrQueue {
+            return self.promote_queued_message(input, false).await;
+        }
+        match self.promote_queued_message(input, true).await {
+            Ok(result) => Ok(result),
+            // Collected from the inbox, or the ack was lost after the write:
+            // either way the model has it, and resending would duplicate it.
+            Err(ArgmaxError::ServiceError { sub_code, .. })
+                if sub_code == "QUEUED_MESSAGE_ALREADY_DELIVERED"
+                    || sub_code == "STEER_DELIVERY_UNKNOWN" =>
+            {
+                Ok(SendInputResult {
+                    ok: true,
+                    queued: false,
+                })
+            }
+            // Any other refusal left the row in the ordinary queue (or a
+            // drain already took it), so it arrives when the turn ends.
+            Err(error) => {
+                tracing::debug!(?error, "agent message not steered; queued for turn end");
+                Ok(SendInputResult {
+                    ok: true,
+                    queued: true,
+                })
+            }
+        }
+    }
+
+    /// `requeue_on_steer_failure` is for messages no person is watching: a
+    /// definite steering failure returns the row to the ordinary queue so it
+    /// drains at turn end, instead of parking it unsent for a manual retry.
+    async fn promote_queued_message(
+        self: &Arc<Self>,
+        input: ProvidersSendQueuedMessageNowInput,
+        requeue_on_steer_failure: bool,
+    ) -> ArgmaxResult<SendInputResult> {
         let session_id = input.session_id.as_str().to_string();
         if !self
             .queue_promotions
@@ -2068,16 +2206,19 @@ impl ProviderSessionService {
                         result = Err(error);
                     }
                 } else {
-                    message.recovery_status = Some(
-                    if matches!(error, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "STEER_DELIVERY_UNKNOWN") {
-                        "delivery-unknown"
+                    let delivery_unknown = matches!(error, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "STEER_DELIVERY_UNKNOWN");
+                    message.recovery_status = if delivery_unknown {
+                        Some("delivery-unknown".to_string())
+                    } else if requeue_on_steer_failure {
+                        None
                     } else {
-                        "unsent"
-                    }
-                    .to_string(),
-                );
-                    // An unsuccessful steer must never auto-drain as a new turn.
-                    // Stop may have explicitly discarded this row during delivery.
+                        Some("unsent".to_string())
+                    };
+                    // A person's unsuccessful steer must never auto-drain as a
+                    // new turn; they chose to interrupt, not to wait. An
+                    // automatic message only ever wanted to arrive, so it
+                    // drains. Stop may have explicitly discarded this row
+                    // during delivery.
                     if let Err(restore_error) = restore(self, message) {
                         tracing::warn!(session_id, error = %restore_error, "could not restore steered follow-up");
                     }
@@ -2224,11 +2365,10 @@ impl ProviderSessionService {
                     .reasoning_effort
                     .as_deref()
                     .is_some_and(|effort| Some(effort) != session.reasoning_effort.as_deref())
-                || message.agent_mode != session.agent_mode.as_deref().unwrap_or("auto")
             {
                 return Err(ArgmaxError::service(
                     "STEER_SETTINGS_CHANGED",
-                    "Steering uses the running turn's model, effort and mode. Queue this follow-up or use Stop and send to change them.",
+                    "Steering uses the running turn's model and effort. Queue this follow-up or use Stop and send to change them.",
                 ));
             }
             let agent_mode = parse_agent_mode(&message.agent_mode).ok_or_else(|| {
@@ -2284,10 +2424,7 @@ impl ProviderSessionService {
         } else {
             None
         };
-        if let Err(error) = handle
-            .steer(&prompt_for_agent_mode(&prompt, agent_mode))
-            .await
-        {
+        if let Err(error) = handle.steer(&prompt).await {
             if !matches!(&error, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "STEER_DELIVERY_UNKNOWN")
             {
                 if let Some(id) = inbox_id {
@@ -2520,6 +2657,7 @@ impl ProviderSessionService {
         event: ProviderRuntimeEvent,
         provider_invocation_id: String,
     ) -> ArgmaxResult<()> {
+        self.output_events.fetch_add(1, Ordering::Relaxed);
         let trace_bytes = event.message.len();
         let trace_session = event.session_id.clone();
         tracing::trace!(
@@ -2968,10 +3106,7 @@ impl ProviderSessionService {
             },
             _ => return,
         };
-        match self
-            .send_input_with_origin(input, Some(notice.origin))
-            .await
-        {
+        match self.send_agent_message(input, notice.origin).await {
             // Only a notice that actually reached the launcher as a turn has
             // been delivered. One that queued behind a running turn has not,
             // and stays collectable from the inbox — the same rule an agent's
@@ -3058,7 +3193,7 @@ impl ProviderSessionService {
             kind: MESSAGE_KIND.to_string(),
             message_id: Some(message_id.clone()),
         };
-        match self.send_input_with_origin(send_input, Some(origin)).await {
+        match self.send_agent_message(send_input, origin).await {
             // Only a notice that actually reached the recipient as a turn has
             // been delivered; one still queued has not, and stays collectable
             // from the inbox — the same rule the completion notice follows.

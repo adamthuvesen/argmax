@@ -22,7 +22,6 @@ enum TranscriptProjection {
         var answerSegment = 0
         var answerOpen = false
         var pickedLegacyQuestionInTurn = false
-        var pickedPlanInTurn = false
 
         if !events.contains(where: { $0.type == "user.message" }),
            !source.contains(where: { $0.type == "session.cleared" }),
@@ -58,7 +57,6 @@ enum TranscriptProjection {
                     answerSegment = 0
                     answerOpen = false
                     pickedLegacyQuestionInTurn = false
-                    pickedPlanInTurn = false
                 }
                 items.append(.user(TranscriptMessage(
                     id: "user-\(event.id)",
@@ -127,22 +125,6 @@ enum TranscriptProjection {
                     }
                     continue
                 }
-                if isPlanTool(normalized) {
-                    if !pickedPlanInTurn,
-                       tool.status != .running,
-                       let markdown = tool.inputObject["plan"]?.string?.trimmingCharacters(in: .whitespacesAndNewlines),
-                       !markdown.isEmpty {
-                        pickedPlanInTurn = true
-                        items.append(.plan(TranscriptPlan(
-                            id: "plan-\(tool.id)",
-                            toolUseId: tool.toolUseId,
-                            markdown: markdown,
-                            createdAt: tool.createdAt,
-                            isOutstanding: tool.createdAt > lastUserAt
-                        )))
-                    }
-                    continue
-                }
                 if tool.surface == "todo" || isHiddenTool(normalized) { continue }
                 if tool.isAgent {
                     let childTools = toolStarts.values
@@ -161,7 +143,8 @@ enum TranscriptProjection {
                         providerChildSessionId: tool.providerChildSessionId,
                         providerParentConversationId: tool.providerParentConversationId,
                         agentCodename: tool.agentCodename,
-                        children: childTools
+                        children: childTools,
+                        backgroundLaunch: tool.backgroundLaunch
                     )
                     appendAgent(agent, to: &items)
                 } else if tool.parentToolUseId == nil || includingChildActivity {
@@ -273,13 +256,11 @@ enum TranscriptProjection {
         let tools = correlatedTools(events: events, sessionRunning: false)
         var cardStarted = false
         var pickedLegacyQuestion = false
-        var pickedPlan = false
         var activeBlockingQuestions = Set<String>()
         return events.filter { event in
             if event.type == "user.message", event.payloadObject["delivery"]?.string != "steer" {
                 cardStarted = false
                 pickedLegacyQuestion = false
-                pickedPlan = false
                 activeBlockingQuestions.removeAll()
                 return true
             }
@@ -298,12 +279,6 @@ enum TranscriptProjection {
                         pickedLegacyQuestion = true
                         if delivery != "async" { cardStarted = true }
                     }
-                }
-                if isPlanTool(name), !pickedPlan, tool.status != .running,
-                   let plan = tool.inputObject["plan"]?.string,
-                   !plan.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    pickedPlan = true
-                    cardStarted = true
                 }
                 return true
             }
@@ -554,6 +529,7 @@ enum TranscriptProjection {
         var activity: TranscriptToolActivity
         var completionObserved: Bool
         var completionStatus: String?
+        var backgroundLaunch: Bool
 
         var isAgent: Bool { TranscriptProjection.isAgentTool(normalizedToolName(name)) }
         var preview: String? {
@@ -662,13 +638,29 @@ enum TranscriptProjection {
                 ? nativeAgentLifecycles[nativeAgentLifecycleKey(invocationID: invocation, runID: toolUseID)]
                 : nil
             let hasLaterAnswer = latestAnswer.map { compare(start, $0) == .orderedAscending } ?? false
+            let isAgent = isAgentTool(normalizedToolName(name))
             let activity = mergedActivity(
                 start: decodedActivity(payload["activity"]),
                 end: decodedActivity(endPayload["activity"])
             ) ?? legacyActivity(name: name, input: input)
             let transportStatus: TranscriptToolStatus = completion == nil
-                ? (sessionRunning && (!hasLaterAnswer || isAgentTool(normalizedToolName(name))) ? .running : .done)
+                ? (sessionRunning && (!hasLaterAnswer || isAgent) ? .running : .done)
                 : (failed ? .failed : .done)
+            // An agent launch the turn has already moved past is kept
+            // `.running` by the session, not by any evidence: the child
+            // reports back as a `<task-notification>` prompt the normalizer
+            // does not parse, so no completion for it ever arrives, and the
+            // `isAgentTool` branch above would hold the row up for the rest
+            // of the session — silencing the cue and the beat through every
+            // later gap. The desktop marks the same row
+            // `backgroundLaunch` (`sessionConversationModel.ts`), running by
+            // inference rather than by evidence, so it loses its vote for
+            // the turn's beat and its band while keeping its nest. A launch
+            // the turn is still blocked on — nothing answered after it — or
+            // one whose child lifecycle spoke, is genuinely running and
+            // keeps both.
+            let backgroundLaunch = isAgent && lifecycle == nil && completion == nil
+                && sessionRunning && hasLaterAnswer
             let status: TranscriptToolStatus
             if let lifecycle {
                 if lifecycle.phase == "started" {
@@ -706,7 +698,8 @@ enum TranscriptProjection {
                 workspacePath: workspacePath,
                 activity: activity,
                 completionObserved: completion != nil,
-                completionStatus: completionStatus(endPayload)
+                completionStatus: completionStatus(endPayload),
+                backgroundLaunch: backgroundLaunch
             )
         }
         return result
@@ -905,8 +898,6 @@ enum TranscriptProjection {
     private static func isQuestionTool(_ name: String) -> Bool {
         name == "askuserquestion" || name == "askquestiontoolcall" || name == "sendusermessage"
     }
-
-    private static func isPlanTool(_ name: String) -> Bool { name == "exitplanmode" }
 
     private static func isAgentTool(_ name: String) -> Bool {
         name == "task" || name == "agent" || name == "subagent" || name == "tasktoolcall" ||

@@ -511,3 +511,106 @@ async fn delivery_unknown_after_accepted_steer_restores_delivery_unknown() {
             .any(|event| event.r#type == "user.message")
     );
 }
+
+async fn send_agent_message_to_running_turn(
+    service: &Arc<ProviderSessionService>,
+) -> SendInputResult {
+    service
+        .database
+        .connection()
+        .execute(
+            "UPDATE workspaces SET path = ? WHERE id = 'workspace-1'",
+            [std::env::current_dir()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()],
+        )
+        .unwrap();
+    insert_session_message(
+        &service.database.connection(),
+        &NewSessionMessage {
+            id: "agent-message".to_string(),
+            from_session_id: None,
+            to_session_id: "session-1".to_string(),
+            body: "the schema changed".to_string(),
+            kind: "message".to_string(),
+        },
+    )
+    .unwrap();
+    let input: ProvidersSendInput = serde_json::from_value(json!({
+        "sessionId": "session-1",
+        "input": "the schema changed",
+        "fastMode": false
+    }))
+    .unwrap();
+    service
+        .send_agent_message(
+            input,
+            super::super::MessageOrigin {
+                session_id: "sender".to_string(),
+                label: "Sender".to_string(),
+                kind: "message".to_string(),
+                message_id: Some("agent-message".to_string()),
+            },
+        )
+        .await
+        .expect("agent message")
+}
+
+#[tokio::test]
+async fn agent_message_steers_a_running_turn_that_supports_it() {
+    let (service, handle, launcher) = steer_service(true, None);
+
+    let result = send_agent_message_to_running_turn(&service).await;
+
+    assert!(!result.queued);
+    assert_eq!(handle.steer_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(launcher.launches.load(Ordering::SeqCst), 0);
+    assert!(service.pending_messages_snapshot().is_empty());
+    let mut connection = service.database.connection();
+    assert!(take_undelivered_messages(&mut connection, "session-1", 10, 64_000)
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
+async fn agent_message_waits_for_turn_end_when_the_provider_cannot_steer() {
+    let (service, handle, _) = steer_service(false, None);
+
+    let result = send_agent_message_to_running_turn(&service).await;
+
+    assert!(result.queued);
+    assert_eq!(handle.steer_calls.load(Ordering::SeqCst), 0);
+    let queued = &service.pending_messages_snapshot()["session-1"][0];
+    assert_eq!(queued.content, "the schema changed");
+    assert_eq!(queued.recovery_status, None);
+}
+
+#[tokio::test]
+async fn rejected_agent_steer_returns_to_the_ordinary_queue() {
+    // A person's failed steer parks unsent for them to retry. Nobody retries
+    // an agent's message, so it must still drain when the turn ends.
+    let (service, handle, launcher) = steer_service(
+        true,
+        Some(ArgmaxError::service("STEER_NOT_READY", "not yet")),
+    );
+
+    let result = send_agent_message_to_running_turn(&service).await;
+
+    assert!(result.queued);
+    assert_eq!(handle.steer_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(launcher.launches.load(Ordering::SeqCst), 0);
+    let queued = &service.pending_messages_snapshot()["session-1"][0];
+    assert_eq!(queued.recovery_status, None);
+    let mut connection = service.database.connection();
+    assert_eq!(
+        list_session_pending_messages(&connection, "session-1").unwrap()[0].recovery_status,
+        None
+    );
+    assert_eq!(
+        take_undelivered_messages(&mut connection, "session-1", 10, 64_000)
+            .unwrap()
+            .len(),
+        1
+    );
+}

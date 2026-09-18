@@ -241,3 +241,39 @@ describe("WorkspaceTree virtualization", () => {
     expect(screen.getByRole("treeitem", { name: "docs" })).toBeVisible();
   });
 });
+
+describe("WorkspaceTree row menu", () => {
+  afterEach(() => {
+    delete (window as { argmax?: unknown }).argmax;
+    window.localStorage.clear();
+  });
+
+  it("reveals a file in Finder and opens it in the default IDE, scoped to the root", async () => {
+    const openFileIn = vi.fn().mockResolvedValue({ ok: true });
+    const listDetectedIdes = vi.fn().mockResolvedValue([
+      { id: "terminal", label: "Terminal", appPath: "/System/Applications/Utilities/Terminal.app", hasCli: false },
+      { id: "zed", label: "Zed", appPath: "/Applications/Zed.app", hasCli: true }
+    ]);
+    (window as { argmax?: unknown }).argmax = { system: { openFileIn, listDetectedIdes } };
+    // A terminal default cannot open a file; the only installed editor stands in.
+    window.localStorage.setItem("argmax.defaultIde", "terminal");
+    const state = { ...makeState([{ path: "docs/report.pdf" }, { path: "uv.lock" }]), rootPath: "/repo" };
+
+    render(<WorkspaceTree state={state} height={200} />);
+
+    fireEvent.contextMenu(screen.getByRole("treeitem", { name: "uv.lock" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Open in Zed" }));
+    expect(openFileIn).toHaveBeenCalledWith({ path: "uv.lock", cwd: "/repo", app: "zed" });
+    expect(screen.queryByRole("menu")).toBeNull();
+
+    fireEvent.contextMenu(screen.getByRole("treeitem", { name: "docs" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Reveal in Finder" }));
+    expect(openFileIn).toHaveBeenLastCalledWith({ path: "docs", cwd: "/repo", app: "finder" });
+  });
+
+  it("offers no menu without a root path", () => {
+    render(<WorkspaceTree state={makeState([{ path: "uv.lock" }])} height={200} />);
+    fireEvent.contextMenu(screen.getByRole("treeitem", { name: "uv.lock" }));
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+});

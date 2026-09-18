@@ -33,8 +33,7 @@ struct TranscriptScenario: View {
                 NativeTranscriptView(
                     client: scenario.client,
                     onOpenFile: { _ in },
-                    onOpenDiff: { _ in },
-                    onRevisePlan: {}
+                    onOpenDiff: { _ in }
                 )
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         // The floor, not the bare composer: an outstanding question
@@ -314,7 +313,7 @@ private final class TranscriptScenarioState: ObservableObject {
     private var metadata: TranscriptSessionMetadata {
         TranscriptSessionMetadata(id: "s-scenario", workspaceId: "w-scenario", provider: "claude",
                                   modelLabel: "Opus", modelId: "claude-opus", prompt: "",
-                                  state: .running, attention: .normal, reasoningEffort: "high", agentMode: "auto")
+                                  state: .running, attention: .normal, reasoningEffort: "high")
     }
 
     private func event(_ index: Int, type: String, text: String) -> TranscriptEvent {

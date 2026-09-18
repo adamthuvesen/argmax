@@ -14,6 +14,7 @@ import {
   usageRemainingHasSettled
 } from "../../lib/ledgerPageState.js";
 import { SegmentedControl, SettingsListPicker } from "../settings/settingsPrimitives.js";
+import { LedgerSwitch } from "./LedgerSwitch.js";
 import { UsageAreaChart } from "./UsageAreaChart.js";
 import { UsageBreakdown } from "./UsageBreakdown.js";
 import { UsageHero } from "./UsageHero.js";
@@ -236,7 +237,8 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
       <div className="usage-main">
         <header className="usage-topbar">
           <div className="usage-titles">
-            <h1 className="settings-page-title">Usage</h1>
+            <h1 className="usage-visually-hidden">Usage</h1>
+            <LedgerSwitch active="usage" />
             {rangeLabel ? (
               <p className="usage-range">
                 <span>{rangeLabel}</span>

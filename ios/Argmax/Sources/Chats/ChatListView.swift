@@ -33,6 +33,9 @@ struct ChatListView: View {
     /// Stable session ids connect each visible row to the transcript it
     /// opens. The system owns the animation and its interactive reversal.
     @Namespace private var chatTransitions
+    /// The sections folded shut, by id, comma-joined. Per phone, like the
+    /// appearance settings: a fold is how this reader skims this list.
+    @AppStorage(collapsedChatSectionsKey) private var collapsedSectionIDs = ""
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -110,6 +113,16 @@ struct ChatListView: View {
             }
             .navigationDestination(for: InsightsRoute.self) { _ in
                 InsightsScreen(onBack: { path.removeLast() })
+            }
+            .navigationDestination(for: ArcRoute.self) { route in
+                ArcScreen(
+                    route: route,
+                    client: store.client,
+                    onBack: { path.removeLast() },
+                    onOpenSession: { sessionID in
+                        if let row = store.row(forSessionID: sessionID) { path.append(row) }
+                    }
+                )
             }
             .reviewDestinations(store: store, onPop: { path.removeLast() })
         }
@@ -232,10 +245,11 @@ struct ChatListView: View {
         // are worth having. Everything it would otherwise draw — background,
         // separators, cell insets, selection — is turned off below.
         List {
-            section("Pinned", rows: store.sections.pinned, from: 0)
-            section("Priority", rows: store.sections.priority, from: store.sections.pinned.count)
+            arcsSection
+            section("Pinned", id: "pinned", rows: store.sections.pinned, from: 0)
+            section("Priority", id: "priority", rows: store.sections.priority, from: store.sections.pinned.count)
             ForEach(store.dateGroups) { group in
-                section(group.label, rows: group.rows, from: store.sections.pinned.count + store.sections.priority.count)
+                section(group.label, id: group.id, rows: group.rows, from: store.sections.pinned.count + store.sections.priority.count)
             }
             // The last row needs somewhere to end, and the home indicator is
             // not it.
@@ -250,6 +264,30 @@ struct ChatListView: View {
         .chatRowActionPresentations(rowActions)
     }
 
+    /// Live arcs, above everything else: an arc is not a chat but the work a
+    /// set of chats belongs to, and the one to three in flight are what a
+    /// phone checks on. Done arcs stay on the Mac. See docs/arcs.md.
+    @ViewBuilder
+    private var arcsSection: some View {
+        let arcs = liveArcs(store.snapshot.arcs)
+        if !arcs.isEmpty {
+            Group {
+                heading("Arcs", id: "arcs", count: arcs.count)
+                ForEach(Array((isCollapsed("arcs") ? [] : arcs).enumerated()), id: \.element.id) { index, arc in
+                    ArcListRow(
+                        arc: arc,
+                        sessions: store.snapshot.sessions.filter { $0.arcId == arc.id },
+                        now: store.now,
+                        separated: index < arcs.count - 1
+                    ) {
+                        path.append(ArcRoute(arcID: arc.id))
+                    }
+                    .plainRow()
+                }
+            }
+        }
+    }
+
     /// A heading and its rows, all of them ordinary rows.
     ///
     /// Not `Section(header:)`: a plain list pins its section headers, so
@@ -258,11 +296,11 @@ struct ChatListView: View {
     /// that no longer described what was on screen. The heading is content,
     /// so it scrolls with the content.
     @ViewBuilder
-    private func section(_ label: String, rows: [ChatRow], from offset: Int) -> some View {
+    private func section(_ label: String, id: String, rows: [ChatRow], from offset: Int) -> some View {
         if !rows.isEmpty {
             Group {
-                SectionHeading(label: label, count: rows.count).plainRow()
-                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                heading(label, id: id, count: rows.count)
+                ForEach(Array((isCollapsed(id) ? [] : rows).enumerated()), id: \.element.id) { index, row in
                     ChatListRow(
                         row: row,
                         now: store.now,
@@ -289,6 +327,18 @@ struct ChatListView: View {
         }
     }
 
+    private func isCollapsed(_ id: String) -> Bool {
+        collapsedChatSections(from: collapsedSectionIDs).contains(id)
+    }
+
+    private func heading(_ label: String, id: String, count: Int) -> some View {
+        SectionHeading(label: label, count: count, collapsed: isCollapsed(id)) {
+            withAnimation(.easeOut(duration: 0.2)) {
+                collapsedSectionIDs = toggleCollapsedChatSection(id, in: collapsedSectionIDs)
+            }
+        }
+        .plainRow()
+    }
 
     // MARK: - Opening what was just started
 
@@ -374,7 +424,7 @@ struct ChatListView: View {
     private var placeholder: ChatListPlaceholder? {
         chatListPlaceholder(
             connection: store.connection,
-            hasRows: !store.sections.isEmpty,
+            hasRows: !store.sections.isEmpty || !liveArcs(store.snapshot.arcs).isEmpty,
             loadedOnce: store.loadedOnce,
             failed: store.loadFailure != nil
         )
@@ -455,11 +505,30 @@ extension View {
     }
 }
 
+/// Where the folded sections live in `UserDefaults`.
+let collapsedChatSectionsKey = "argmax.chatList.collapsedSections"
+
+/// The folded section ids in their stored form, a comma-joined string, which
+/// `@AppStorage` can hold without a custom encoding.
+func collapsedChatSections(from stored: String) -> Set<String> {
+    Set(stored.split(separator: ",").map(String.init))
+}
+
+func toggleCollapsedChatSection(_ id: String, in stored: String) -> String {
+    var ids = collapsedChatSections(from: stored)
+    if ids.remove(id) == nil { ids.insert(id) }
+    return ids.sorted().joined(separator: ",")
+}
+
 /// Not the system header: the row subtitles' size and weight, the count the
-/// web list carried, and its own air above and below.
+/// web list carried, and its own air above and below. Tapping it folds the
+/// section. There is no chevron: the count stays, so a shut section still
+/// says what it holds.
 private struct SectionHeading: View {
     let label: String
     let count: Int
+    let collapsed: Bool
+    let toggle: () -> Void
 
     var body: some View {
         Text("\(label) · \(count)")
@@ -469,7 +538,12 @@ private struct SectionHeading: View {
             .screenGutter()
             .padding(.top, Spacing.section)
             .padding(.bottom, Spacing.snug)
+            .contentShape(.rect)
+            .onTapGesture(perform: toggle)
             .accessibilityLabel("\(label), \(count)")
+            .accessibilityValue(collapsed ? "Collapsed" : "Expanded")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { toggle() }
     }
 }
 
@@ -553,6 +627,12 @@ struct ChatListRow: View {
                             ChatRowGlyphView(glyph: glyph)
                         }
                         subtitle
+                        if let arcName = row.arcName {
+                            Image(systemName: "point.3.connected.trianglepath.dotted")
+                                .typeSymbol(.caption2, weight: .medium)
+                                .foregroundStyle(Theme.muted)
+                                .accessibilityLabel("Part of arc \(arcName)")
+                        }
                     }
                 }
                 Spacer(minLength: Spacing.row)

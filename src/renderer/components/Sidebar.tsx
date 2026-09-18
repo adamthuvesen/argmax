@@ -66,8 +66,7 @@ import {
   showKeyboardCheatSheet,
   showSchedulePage,
   showSettings,
-  showActivityPage,
-  showArcPage
+  showUsagePage,
 } from "../state/overlays.js";
 import { NewArcDialog } from "./arcs/NewArcDialog.js";
 import { usePaneGrid } from "../state/paneGrid.js";
@@ -201,6 +200,7 @@ export function Sidebar({
   onOpenProject,
   onOpenWorkspaceChat,
   onOpenBrowser,
+  onOpenArc,
   onRemoveProject,
   onRenameWorkspace,
   onResizeMouseDown,
@@ -214,6 +214,9 @@ export function Sidebar({
   selectedProjectId,
   selectedWorkspaceId: currentWorkspaceId,
   browserSelected,
+  scheduleSelected = false,
+  hackingSelected = false,
+  selectedArcId,
   snapshot,
   detectedIdes,
   defaultIde
@@ -228,6 +231,7 @@ export function Sidebar({
   onOpenProject: (projectId: string) => void;
   onOpenWorkspaceChat: (workspaceId: string, modifiers: WorkspaceClickModifiers) => void;
   onOpenBrowser?: () => void;
+  onOpenArc?: (arcId: string) => void;
   onRemoveProject?: (projectId: string) => void;
   onRenameWorkspace?: (workspaceId: string, taskLabel: string) => void;
   onResizeMouseDown: (event: ReactMouseEvent) => void;
@@ -252,6 +256,12 @@ export function Sidebar({
   selectedWorkspaceId: string | null;
   /** True while the workspace is the Browser page, so the rail item is current. */
   browserSelected?: boolean;
+  /** Schedule is the page on screen, so its row is current and no chat is. */
+  scheduleSelected?: boolean;
+  /** Usage or Activity is on screen; both are the one Hacking row. */
+  hackingSelected?: boolean;
+  /** The arc page open in the workspace column, if any. */
+  selectedArcId?: string | null;
   snapshot: DashboardSnapshot;
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
@@ -262,7 +272,10 @@ export function Sidebar({
   const [newArcDialogOpen, setNewArcDialogOpen] = useState(false);
   // The full-screen launcher hides the grid, so no row is painted as current
   // and none is marked as open. Esc restores both.
-  const selectedWorkspaceId = fullLauncherOpen || browserSelected ? null : currentWorkspaceId;
+  const selectedWorkspaceId =
+    fullLauncherOpen || browserSelected || scheduleSelected || hackingSelected || selectedArcId
+      ? null
+      : currentWorkspaceId;
   const openWorkspaceIds = useMemo(
     () =>
       fullLauncherOpen
@@ -1039,7 +1052,8 @@ export function Sidebar({
             className="session-link arc-row"
             data-arc-state={arc.state}
             title={arc.name}
-            onClick={() => showArcPage(arc.id)}
+            aria-current={selectedArcId === arc.id ? "page" : undefined}
+            onClick={() => onOpenArc?.(arc.id)}
           >
             <Workflow size={13} aria-hidden="true" />
             <span>{arc.name}</span>
@@ -1174,6 +1188,7 @@ export function Sidebar({
           type="button"
           title="Schedule"
           aria-label="Schedule"
+          aria-current={scheduleSelected ? "page" : undefined}
           onClick={showSchedulePage}
         >
           <span className="rail-nav-glyph" aria-hidden="true">
@@ -1186,8 +1201,9 @@ export function Sidebar({
           type="button"
           title="Hacking"
           aria-label="Hacking"
+          aria-current={hackingSelected ? "page" : undefined}
           onMouseEnter={warmLedgerPages}
-          onClick={showActivityPage}
+          onClick={showUsagePage}
         >
           <span className="rail-nav-glyph" aria-hidden="true">
             <Activity size={14} />

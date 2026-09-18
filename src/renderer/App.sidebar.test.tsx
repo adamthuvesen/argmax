@@ -871,8 +871,8 @@ describe("App sidebar", () => {
 
     const menu = await screen.findByRole("listbox", { name: "Slash commands" });
     expect(skillsList).toHaveBeenCalledWith({ provider: "claude", workspaceId: null });
-    // Composer actions lead; the skills follow under their own heading.
-    expect(within(menu).getAllByRole("option")[0]).toHaveTextContent("Plan");
+    // Composer actions lead; the provider's plan skill remains a normal skill.
+    expect(within(menu).getByRole("option", { name: /plan/i })).toBeInTheDocument();
     expect(within(menu).getByText("Skills")).toBeInTheDocument();
 
     // A query past the command names leaves only the skill, and Enter inserts it.
@@ -880,34 +880,6 @@ describe("App sidebar", () => {
     fireEvent.keyDown(input, { key: "Enter" });
     expect(input.value).toBe("/impl ");
     expect(launchProvider).not.toHaveBeenCalled();
-  });
-
-  it("toggles active-session agent mode with Shift+Tab and sends plan mode", async () => {
-    const completeSnapshot = {
-      ...snapshot,
-      sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" as const }))
-    };
-    mockDashboardSnapshot(completeSnapshot);
-    workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(completeSnapshot));
-    render(<App />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    const input = await screen.findByLabelText("Chat prompt");
-    fireEvent.change(input, { target: { value: "Plan the follow-up" } });
-    fireEvent.keyDown(input, { key: "Tab", shiftKey: true });
-
-    expect(screen.getByRole("button", { name: "Agent mode" })).toHaveTextContent("Plan");
-    fireEvent.click(screen.getByTitle("Send follow-up"));
-
-    await waitFor(() =>
-      expect(sendProviderInput).toHaveBeenCalledWith(
-        expect.objectContaining({
-          input: "Plan the follow-up",
-          agentMode: "plan"
-        })
-      )
-    );
-    expect(window.localStorage.getItem("argmax.sessionAgentMode.session-1")).toBe("plan");
   });
 
   it("opens project files via the unified command palette on Cmd+P", async () => {

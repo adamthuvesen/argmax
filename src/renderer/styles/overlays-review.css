@@ -105,7 +105,8 @@
   font-weight: calc(600 + var(--font-weight-offset));
 }
 
-.review-tab-context-menu {
+.review-tab-context-menu,
+.workspace-tree-context-menu {
   position: fixed;
   z-index: 90;
   min-width: 136px;

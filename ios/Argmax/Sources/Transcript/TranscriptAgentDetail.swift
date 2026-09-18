@@ -154,8 +154,6 @@ struct TranscriptAgentActivityRow: View {
                 .foregroundStyle(Theme.rose)
         case .notice(let notice):
             Text(notice.text).typeMeta()
-        case .plan(let plan):
-            TranscriptMarkdown(text: plan.markdown, client: client, onOpenFile: onOpenFile)
         case .question(let question):
             Text(question.questions.first?.question ?? "Question from agent").typeChrome()
         case .approval(let approval):

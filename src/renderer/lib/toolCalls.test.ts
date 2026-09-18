@@ -571,8 +571,8 @@ describe("describeToolAction", () => {
   });
 
   it("search → 'Searched for <query>'", () => {
-    expect(describeToolAction(tool({ name: "Grep", inputPreview: "parsePlan" }))).toBe(
-      "Searched for parsePlan"
+    expect(describeToolAction(tool({ name: "Grep", inputPreview: "sessionTurnView" }))).toBe(
+      "Searched for sessionTurnView"
     );
   });
 

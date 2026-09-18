@@ -16,6 +16,10 @@ describe("matchFileChip", () => {
     expect(matchFileChip("src/foo/bar.tsx:42")).toEqual({ path: "src/foo/bar.tsx", line: 42 });
   });
 
+  it("matches a path with line and column suffix", () => {
+    expect(matchFileChip("src/foo/bar.tsx:42:7")).toEqual({ path: "src/foo/bar.tsx", line: 42 });
+  });
+
   it("rejects strings with whitespace", () => {
     expect(matchFileChip("hello world.ts")).toBeNull();
   });

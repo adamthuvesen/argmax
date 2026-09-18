@@ -652,7 +652,7 @@ fn transcript_user_text(payload: &Map<String, Value>) -> Option<String> {
         Value::String(text) => text.clone(),
         _ => extract_message_content(payload)?,
     };
-    let trimmed = text.trim();
+    let trimmed = crate::providers::mcp_injection::strip_instruction(text.trim()).trim();
     (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
@@ -1519,6 +1519,8 @@ mod tests {
     const TRANSCRIPT_STRING_PROMPT: &str =
         r#"{"type":"user","message":{"role":"user","content":"Fix the flaky test"}}"#;
     const TRANSCRIPT_BLOCK_PROMPT: &str = r#"{"type":"user","message":{"role":"user","content":[{"type":"text","text":"And also this"}]}}"#;
+    const TRANSCRIPT_ROUTED_STRING_PROMPT: &str = r#"{"type":"user","message":{"role":"user","content":"You are running inside Argmax. Prefer Argmax MCP tools for Argmax-owned capabilities, including session, task, and workspace management. Before using generic UI automation or external tools for an Argmax operation, discover and use the corresponding Argmax MCP tool. Do not control Argmax itself through Computer Use.\n\nFix the flaky test"}}"#;
+    const TRANSCRIPT_ROUTED_BLOCK_PROMPT: &str = r#"{"type":"user","message":{"role":"user","content":[{"type":"text","text":"You are running inside Argmax. Prefer Argmax MCP tools for Argmax-owned capabilities, including session, task, and workspace management. Before using generic UI automation or external tools for an Argmax operation, discover and use the corresponding Argmax MCP tool. Do not control Argmax itself through Computer Use.\n\nAnd also this"}]}}"#;
     const TRANSCRIPT_TOOL_RESULT: &str = r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"done"}]}}"#;
     const TRANSCRIPT_SKILL_BODY: &str = r#"{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Base directory for this skill: /repo/.claude/skills/review"}]}}"#;
     const TRANSCRIPT_META_NOTE: &str = r#"{"type":"user","isMeta":true,"message":{"role":"user","content":"Caveat: the messages below were generated while running local commands."}}"#;
@@ -1534,6 +1536,8 @@ mod tests {
         for (line, text) in [
             (TRANSCRIPT_STRING_PROMPT, "Fix the flaky test"),
             (TRANSCRIPT_BLOCK_PROMPT, "And also this"),
+            (TRANSCRIPT_ROUTED_STRING_PROMPT, "Fix the flaky test"),
+            (TRANSCRIPT_ROUTED_BLOCK_PROMPT, "And also this"),
         ] {
             let events = replay(line);
             assert_eq!(events.len(), 1, "{line}");

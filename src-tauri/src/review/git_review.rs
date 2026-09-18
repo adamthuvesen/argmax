@@ -1216,8 +1216,8 @@ async fn synthesize_untracked_diff(repo_path: &Path, file_path: &str) -> ArgmaxR
         ));
     }
 
-    let content = match tokio::fs::read_to_string(&absolute_path).await {
-        Ok(content) => content,
+    let bytes = match tokio::fs::read(&absolute_path).await {
+        Ok(bytes) => bytes,
         Err(error)
             if matches!(
                 error.kind(),
@@ -1228,13 +1228,18 @@ async fn synthesize_untracked_diff(repo_path: &Path, file_path: &str) -> ArgmaxR
         }
         Err(error) => return Err(fs_error(error)),
     };
-    if content.contains('\0') {
-        return Ok(synthesize_skipped_untracked_diff(
-            file_path,
-            metadata.len(),
-            "binary file skipped",
-        ));
-    }
+    // A PDF or image need not hold a NUL, and one undecodable file must not
+    // fail the whole Changes view, so non-UTF-8 content counts as binary too.
+    let content = match String::from_utf8(bytes) {
+        Ok(content) if !content.contains('\0') => content,
+        _ => {
+            return Ok(synthesize_skipped_untracked_diff(
+                file_path,
+                metadata.len(),
+                "binary file skipped",
+            ));
+        }
+    };
 
     Ok(synthesize_untracked_text_diff(file_path, &content))
 }

@@ -882,7 +882,12 @@ fn session_row_to_summary(row: &Row<'_>) -> rusqlite::Result<SessionSummary> {
         model_id: model_id.unwrap_or_default(),
         reasoning_effort: row.get("reasoning_effort")?,
         permission_mode: row.get("permission_mode")?,
-        agent_mode: row.get("agent_mode")?,
+        // `plan` was persisted before Argmax removed its Plan mode. Keep the
+        // nullable wire field for compatibility, but never expose that retired
+        // value to current clients.
+        agent_mode: row
+            .get::<_, Option<String>>("agent_mode")?
+            .map(|_| "auto".to_string()),
         provider_conversation_id: row.get("provider_conversation_id")?,
         prompt: row.get("prompt")?,
         state: session_state_from_row(row)?,

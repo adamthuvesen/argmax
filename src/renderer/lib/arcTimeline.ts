@@ -5,7 +5,7 @@ import type { ArcEventKind, ArcTimelineEvent } from "../../shared/types.js";
 export type ArcTimelineFilter = "all" | "members" | "prs" | "notes" | "arc";
 
 export const ARC_TIMELINE_FILTERS: ReadonlyArray<{ value: ArcTimelineFilter; label: string }> = [
-  { value: "all", label: "All" },
+  { value: "all", label: "All events" },
   { value: "members", label: "Members" },
   { value: "prs", label: "Pull requests" },
   { value: "notes", label: "Notes" },
@@ -110,7 +110,9 @@ export function presentArcEvent(event: ArcTimelineEvent): ArcEventPresentation {
       return {
         ...base,
         verb: "Notes updated",
-        subject: event.title === "Notes updated" ? null : event.title,
+        // The title is the first new line of NOTES.md — the coordinator's own
+        // heading — so it reads as a quotation, not as a member's name.
+        subject: event.title === "Notes updated" ? null : `“${event.title}”`,
         glyph: "notes",
         tone: "notes",
         badge: event.status,

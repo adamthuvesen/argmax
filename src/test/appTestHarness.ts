@@ -595,10 +595,18 @@ export function setupAppTestMocks(): void {
     system: {
       confirm: (message) => Promise.resolve(window.confirm(message)),
       openPath: () => Promise.resolve({ ok: true }),
+      openFileIn: () => Promise.resolve({ ok: true }),
       listDetectedIdes: listDetectedIdes,
       diagnostics: diagnosticsStub,
       debugSnapshot: () =>
         Promise.resolve({ generatedAt: "2026-05-14T11:00:05.000Z", ipcStats: [], logs: [] }),
+      performanceStart: () =>
+        Promise.resolve({ recording: true, startedAt: "2026-05-14T11:00:05.000Z", sampleCount: 0, droppedSamples: 0, latest: null }),
+      performanceStop: () => Promise.reject(new Error("performance capture not stubbed")),
+      performanceStatus: () =>
+        Promise.resolve({ recording: false, startedAt: null, sampleCount: 0, droppedSamples: 0, latest: null }),
+      performanceCapture: () => Promise.reject(new Error("performance capture not stubbed")),
+      reportRendererStall: () => Promise.resolve({ ok: true }),
       vacuumDatabase: vacuumDatabaseStub,
       setTheme: () => Promise.resolve({ ok: true }),
       setDefaultAgent: vi.fn(() => Promise.resolve({ ok: true }) as Promise<{ ok: true }>),

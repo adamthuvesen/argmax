@@ -4,15 +4,14 @@ import SwiftUI
 /// Everything needed to send a card response as the next user turn.
 ///
 /// The timeline owns the card, while the current session row owns these
-/// values. Keeping that boundary explicit prevents a question or plan from
-/// guessing which model and mode the provider is already using.
+/// values. Keeping that boundary explicit prevents a question from guessing
+/// which model the provider is already using.
 struct TranscriptSendContext: Equatable, Sendable {
     var sessionID: String
     var provider: String
     var modelLabel: String
     var modelID: String
     var reasoningEffort: String?
-    var agentMode: String
     var isRunning: Bool
 }
 
@@ -32,8 +31,8 @@ extension BridgeClient: TranscriptInteractionClient {}
 
 /// Executes the write side of native transcript cards.
 ///
-/// Legacy question and plan tools end their provider-side control call with a
-/// denial, so their reply is a new user message. Codex's blocking question
+/// A legacy question tool ends its provider-side control call with a denial,
+/// so its reply is a new user message. Codex's blocking question
 /// keeps the provider request alive and resolves it through the question
 /// broker instead, without stopping or starting a turn.
 @MainActor
@@ -52,10 +51,10 @@ final class TranscriptInteractionCoordinator: ObservableObject {
         context: TranscriptSendContext
     ) async -> Bool {
         guard let requestID = card.requestID else {
-            return await sendAfterStopping(
+            return await send(
                 response.displayText,
                 context: context,
-                agentMode: context.agentMode
+                stopFirst: context.isRunning
             )
         }
         return await resolveQuestion(
@@ -80,11 +79,7 @@ final class TranscriptInteractionCoordinator: ObservableObject {
     }
 
     func sendMessage(_ message: String, context: TranscriptSendContext) async -> Bool {
-        await send(message, context: context, agentMode: context.agentMode, stopFirst: false)
-    }
-
-    func acceptPlan(context: TranscriptSendContext) async -> Bool {
-        await sendAfterStopping("Proceed with the plan above.", context: context, agentMode: "auto")
+        await send(message, context: context, stopFirst: false)
     }
 
     func resolveApproval(
@@ -121,18 +116,9 @@ final class TranscriptInteractionCoordinator: ObservableObject {
         }
     }
 
-    private func sendAfterStopping(
-        _ text: String,
-        context: TranscriptSendContext,
-        agentMode: String
-    ) async -> Bool {
-        await send(text, context: context, agentMode: agentMode, stopFirst: context.isRunning)
-    }
-
     private func send(
         _ text: String,
         context: TranscriptSendContext,
-        agentMode: String,
         stopFirst: Bool
     ) async -> Bool {
         failure = nil
@@ -146,8 +132,7 @@ final class TranscriptInteractionCoordinator: ObservableObject {
                 provider: context.provider,
                 modelLabel: context.modelLabel,
                 modelId: context.modelID,
-                reasoningEffort: context.reasoningEffort,
-                agentMode: agentMode
+                reasoningEffort: context.reasoningEffort
             ))
             return true
         } catch {
@@ -163,7 +148,6 @@ struct TranscriptInteractiveRow: View {
     let item: TranscriptItem
     let client: BridgeClient
     let onOpenFile: (String) -> Void
-    var onRevisePlan: () -> Void = {}
     var onOpenSession: ((String) -> Void)?
 
     @EnvironmentObject private var transcript: TranscriptStore
@@ -174,13 +158,11 @@ struct TranscriptInteractiveRow: View {
         item: TranscriptItem,
         client: BridgeClient,
         onOpenFile: @escaping (String) -> Void,
-        onRevisePlan: @escaping () -> Void = {},
         onOpenSession: ((String) -> Void)? = nil
     ) {
         self.item = item
         self.client = client
         self.onOpenFile = onOpenFile
-        self.onRevisePlan = onRevisePlan
         self.onOpenSession = onOpenSession
         _actions = StateObject(wrappedValue: TranscriptInteractionCoordinator(client: client))
     }
@@ -188,19 +170,6 @@ struct TranscriptInteractiveRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.snug) {
             switch item {
-            case .plan(let plan):
-                TranscriptPlanCard(
-                    plan: plan,
-                    client: client,
-                    onOpenFile: onOpenFile,
-                    onAccept: {
-                        guard let context = sendContext else { return false }
-                        let sent = await actions.acceptPlan(context: context)
-                        if sent { await transcript.reload() }
-                        return sent
-                    },
-                    onRevise: onRevisePlan
-                )
             case .approval(let approval):
                 TranscriptApprovalCard(approval: approval) { resolution in
                     let resolved = await actions.resolveApproval(id: approval.id, resolution: resolution)
@@ -238,19 +207,6 @@ struct TranscriptInteractiveRow: View {
         }
     }
 
-    private var sendContext: TranscriptSendContext? {
-        guard let composer = transcript.composer else { return nil }
-        return TranscriptSendContext(
-            sessionID: composer.sessionId,
-            provider: composer.provider,
-            modelLabel: composer.modelLabel,
-            modelID: composer.modelId,
-            reasoningEffort: composer.effort,
-            agentMode: dashboard.snapshot.sessions.first { $0.id == composer.sessionId }?.agentMode ?? "auto",
-            isRunning: composer.running
-        )
-    }
-
     private func context(for session: TranscriptSessionMetadata) -> TranscriptSendContext {
         TranscriptSendContext(
             sessionID: session.id,
@@ -258,7 +214,6 @@ struct TranscriptInteractiveRow: View {
             modelLabel: session.modelLabel,
             modelID: session.modelId,
             reasoningEffort: session.reasoningEffort,
-            agentMode: session.agentMode ?? "auto",
             isRunning: session.state == .running
         )
     }

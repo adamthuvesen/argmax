@@ -22,7 +22,10 @@ function tool(overrides: Partial<ToolCall> = {}): ToolCall {
 }
 
 describe("AgentLaunchList", () => {
-  it("keeps the animated nest while running and names the state in words too", () => {
+  it("marks a running launch on its own words, and names the state in words too", () => {
+    // The turn is blocked on this agent, so the row is the live line the reader
+    // is watching — marked the way a running tool row is marked, with the
+    // reading wave through its words rather than with a dot beside them.
     const { container } = render(
       <AgentLaunchList tools={[tool({ status: "running", completedAt: null })]} onOpenAgent={vi.fn()} />
     );
@@ -30,23 +33,43 @@ describe("AgentLaunchList", () => {
       screen.getByRole("button", { name: startedAgentName("Map the renderer") })
     ).toBeInTheDocument();
     expect(screen.getByText("Running")).toBeInTheDocument();
+    expect(container.querySelector(".agent-launch-headline[data-reading-wave='true']")).not.toBeNull();
+    expect(container.querySelector(".agent-launch-title.reading-wave-text")).not.toBeNull();
+    expect(container.querySelector(".agent-launch-identity.reading-wave-text")).not.toBeNull();
+    expect(container.querySelector(".working-nest")).toBeNull();
+    // The emblem is this agent's identity, not a prize for finishing, so it is
+    // in the slot from the launch.
+    expect(
+      container.querySelector(".agent-launch-emblem[data-launch-mark='running'] .agent-emblem[data-shape]")
+    ).not.toBeNull();
+  });
+
+  it("keeps the nest for a backgrounded launch, whose progress nobody can watch", () => {
+    // No completion ever arrives for one of these, so the row is running by
+    // inference. A band reading its words for the rest of the session would
+    // claim progress the app cannot see; a status mark says only that it is
+    // alive somewhere else.
+    const { container } = render(
+      <AgentLaunchList tools={[tool({ status: "running", completedAt: null, backgroundLaunch: true })]} />
+    );
     expect(container.querySelector(".working-nest[data-active='true']")).not.toBeNull();
+    expect(container.querySelector(".agent-launch-headline[data-reading-wave='true']")).toBeNull();
     // The row carries the agent's hue while it runs, so the nest lands in the
     // colour its emblem is about to take.
     expect(container.querySelector(".agent-launch-row.agent-emblem-tint[data-hue]")).not.toBeNull();
     expect(container.querySelector(".agent-launch-emblem")).toBeNull();
   });
 
-  it("holds the nest through its landing before the finished bullet takes over", () => {
-    // The nest's landing is the only thing that marks an agent arriving, and it
-    // lives on the nest — so swapping straight to the bullet the frame work
+  it("holds a backgrounded launch's nest through its landing before the emblem takes over", () => {
+    // The nest's landing is the only thing that marks one of these arriving, and
+    // it lives on the nest — so swapping straight to the emblem the frame work
     // stops means it never plays at all. That is how it was unreachable in the
     // shipped app: every caller unmounted the mark instead of settling it.
     vi.useFakeTimers();
     try {
-      const running = tool({ status: "running", completedAt: null });
+      const running = tool({ status: "running", completedAt: null, backgroundLaunch: true });
       const { container, rerender } = render(<AgentLaunchList tools={[running]} />);
-      rerender(<AgentLaunchList tools={[tool({ status: "done" })]} />);
+      rerender(<AgentLaunchList tools={[tool({ status: "done", backgroundLaunch: true })]} />);
       expect(container.querySelector(".working-nest[data-settling='true']")).not.toBeNull();
       expect(container.querySelector(".agent-launch-emblem")).toBeNull();
       act(() => void vi.advanceTimersByTime(WORKING_NEST_SETTLE_MS));
@@ -57,13 +80,28 @@ describe("AgentLaunchList", () => {
     }
   });
 
-  it("sends an agent that errored straight to its bullet, with no landing", () => {
+  it("sends a backgrounded agent that errored straight to its emblem, with no landing", () => {
+    const { container, rerender } = render(
+      <AgentLaunchList tools={[tool({ status: "running", completedAt: null, backgroundLaunch: true })]} />
+    );
+    rerender(<AgentLaunchList tools={[tool({ status: "error", backgroundLaunch: true })]} />);
+    expect(container.querySelector(".working-nest")).toBeNull();
+    expect(container.querySelector(".agent-launch-emblem[data-launch-mark='error']")).not.toBeNull();
+  });
+
+  it("fades up only the word that changed when the agent lands", () => {
+    // The status word is the one part that re-words, and the settle is the
+    // moment it is worth reading — so it commits at once and moves on its own.
+    // Dipping the whole row would re-animate a task title that never changed.
     const { container, rerender } = render(
       <AgentLaunchList tools={[tool({ status: "running", completedAt: null })]} />
     );
-    rerender(<AgentLaunchList tools={[tool({ status: "error" })]} />);
-    expect(container.querySelector(".working-nest")).toBeNull();
-    expect(container.querySelector(".agent-launch-emblem[data-launch-mark='error']")).not.toBeNull();
+    rerender(<AgentLaunchList tools={[tool({ status: "done" })]} />);
+    expect(container.querySelector(".agent-launch-status[data-arriving='true']")?.textContent)
+      .toBe("Completed");
+    expect(container.querySelector(".agent-launch-title[data-arriving='true']")).toBeNull();
+    // And the band is gone with the work it was marking.
+    expect(container.querySelector(".agent-launch-headline[data-reading-wave='true']")).toBeNull();
   });
 
   it("leads with the agent's description and follows it with the codename", () => {

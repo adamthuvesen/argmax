@@ -1661,11 +1661,9 @@ fn latest_user_message_column(
 }
 
 /// Names whose tool call puts a question in front of the person and then waits
-/// for them. Kept in step with `isAskUserQuestionToolName` and
-/// `isExitPlanModeToolName` in `src/renderer/lib/turnInteractiveCards.ts`,
-/// which decide the same thing for the chat surface.
+/// for them. Kept in step with `isAskUserQuestionToolName` in
+/// `src/renderer/lib/turnInteractiveCards.ts`.
 const ASK_TOOL_NAMES: [&str; 3] = ["askuserquestion", "askquestiontoolcall", "sendusermessage"];
-const EXIT_PLAN_TOOL_NAME: &str = "exitplanmode";
 
 fn normalized_tool_name(name: &str) -> String {
     name.chars()
@@ -1714,9 +1712,9 @@ fn ask_tool_identity(payload: &Value) -> Option<String> {
 }
 
 /// Whether this session is sitting on an ask the person has not answered: an
-/// `AskUserQuestion` or `ExitPlanMode` tool call newer than the last thing
-/// they said. The same rule `hasOutstandingCardAsk` applies in the renderer,
-/// evaluated here because the sidebar cannot see the transcript.
+/// `AskUserQuestion` tool call newer than the last thing they said. The same
+/// rule `hasOutstandingCardAsk` applies in the renderer, evaluated here
+/// because the sidebar cannot see the transcript.
 ///
 /// `answers_itself` auto-allows these tools, so the turn settles the instant
 /// the question is drawn and the session goes `complete` like any other. Left
@@ -1756,7 +1754,6 @@ pub fn has_outstanding_card_ask(connection: &Connection, session_id: &str) -> Ar
                 payload_json LIKE '%skUserQuestion%'
                 OR payload_json LIKE '%skQuestionToolCall%'
                 OR payload_json LIKE '%endUserMessage%'
-                OR payload_json LIKE '%xitPlanMode%'
               )
             ORDER BY rowid DESC
             "#,
@@ -1773,9 +1770,6 @@ pub fn has_outstanding_card_ask(connection: &Connection, session_id: &str) -> Ar
         let Some(name) = ask_tool_identity(&payload) else {
             continue;
         };
-        if name == EXIT_PLAN_TOOL_NAME {
-            return Ok(true);
-        }
         // A question tool with nothing to choose between draws no card, so it
         // is not something the person can answer.
         if ASK_TOOL_NAMES.contains(&name.as_str())

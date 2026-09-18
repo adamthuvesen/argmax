@@ -115,6 +115,9 @@ pub struct AppState {
     /// is in an active session state. Armed by `system:set-keep-awake` and
     /// fed from the `dashboard:delta` publisher like the dock badge.
     pub keep_awake: Arc<crate::util::keep_awake::KeepAwakeService>,
+    /// Opt-in, in-memory performance capture. It owns no worker while idle
+    /// and keeps at most thirty minutes of one-second samples.
+    pub performance: Arc<crate::util::performance::PerformanceRecorder>,
     /// Live browser tabs and who opened each one. The renderer used to own
     /// this list; an agent opening a page has no renderer to ask, so the app
     /// keeps it and pushes `browser:tabs` for the strip to mirror.
@@ -163,6 +166,7 @@ impl Default for AppState {
             routine_runs: Default::default(),
             skills: Arc::new(SkillRegistry::from_env()),
             keep_awake: Arc::default(),
+            performance: Arc::default(),
             browser_tabs: Arc::default(),
             browser_theme: std::sync::Mutex::new(ThemeMode::System),
             browser_content_blocking: Default::default(),

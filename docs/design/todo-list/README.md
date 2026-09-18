@@ -72,14 +72,14 @@ how much furniture they wrap around it:
 
 - **A · Checklist** — no shell at all. Just the eyebrow (`Plan · 2 of 5`) and
   the rows, sitting in the transcript the way tool rows do. This is the reading
-  `docs/styling.md` argues for with QuestionCard: a plan in progress is a beat
-  in the conversation, not a document.
+  `docs/styling.md` argues for with the question dock: a plan in progress is a
+  beat in the conversation, not a document.
 - **B · Spine** — A plus one continuous 1px rule behind the lead column, with
   the finished fraction painted over it in sage. The spine *is* the progress
   meter, so there is no separate bar. Measured from the last finished mark at
   render time rather than assumed, because rows wrap and no fraction of the
   list's height is the right answer.
-- **C · Slab** — PlanCard's grammar: `--panel` fill, `--radius-2xl`, hairline,
+- **C · Slab** — panel grammar: `--panel` fill, `--radius-2xl`, hairline,
   header rule, and a small meter in the header. A document in the scrollback.
 - **D · Marquee** — one collapsed line carrying the count and the current step,
   expanding on click. The smallest possible footprint.
@@ -172,7 +172,7 @@ nearly indistinguishable from the plain rule. D alone hides the thing the user
 wants while the turn is running.
 
 If a shell is wanted after all, C is the one to take, not B: it is already the
-app's PlanCard grammar and adds no new vocabulary.
+app's panel grammar and adds no new vocabulary.
 
 Not in scope here: whether the raw `taskcreate` / `taskupdate` rows stay hidden
 once the card exists (they should), and the `todo_write` edit-bucket bug, which

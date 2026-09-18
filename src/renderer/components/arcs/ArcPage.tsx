@@ -1,4 +1,4 @@
-import { Check, Clock, Copy, FolderOpen, Trash2 } from "lucide-react";
+import { Check, Clock, Copy, FolderOpen, Pencil, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import type {
   ArcDetail,
@@ -16,6 +16,7 @@ import { PROVIDER_DISPLAY_NAMES } from "../../../shared/providerModels.js";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard.js";
 import { readStoredLaunchModel } from "../../lib/launchModelPreference.js";
 import { describeSchedule } from "../../lib/schedule.js";
+import { isTypingTarget } from "../../lib/typingTarget.js";
 import { formatTimeAgo } from "../../lib/arcTimeline.js";
 import { factoryLaunchModel, type ModelPickerSelection } from "../../lib/models.js";
 import { showSchedulePage } from "../../state/overlays.js";
@@ -104,12 +105,14 @@ export function ArcPage({
   arcId,
   snapshot,
   projects,
-  onOpenSession
+  onOpenSession,
+  onClose
 }: {
   arcId: string;
   snapshot: DashboardSnapshot;
   projects: ProjectSummary[];
   onOpenSession: (sessionId: string) => void;
+  onClose: () => void;
 }): JSX.Element {
   const [detail, setDetail] = useState<ArcDetail | null>(null);
   const arc = detail?.arc ?? null;
@@ -217,6 +220,18 @@ export function ArcPage({
   useEffect(() => {
     void loadTriggers();
   }, [loadTriggers]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      if (isTypingTarget(event.target)) return;
+      if (document.querySelector('[role="dialog"]')) return;
+      event.preventDefault();
+      onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
 
   const handleRemoveTrigger = useCallback(
     async (routine: Routine): Promise<void> => {
@@ -435,9 +450,6 @@ export function ArcPage({
               </button>
             </h1>
           )}
-          <span className="arc-state-pill" data-arc-state={arc.state}>
-            {ARC_STATE_LABEL[arc.state]}
-          </span>
           <div className="arc-hero-actions">
             {isDone ? (
               <button type="button" className="settings-button" disabled={busy} onClick={() => void handleSetState("active")}>
@@ -462,6 +474,10 @@ export function ArcPage({
           </div>
         </div>
         <p className="arc-hero-meta">
+          <span className="arc-hero-state" data-arc-state={arc.state}>
+            {ARC_STATE_LABEL[arc.state]}
+          </span>
+          <span aria-hidden="true"> · </span>
           {project ? project.name : "Unknown project"}
           <span aria-hidden="true"> · </span>started {formatDay(arc.createdAt)}
           <span aria-hidden="true"> · </span>last activity {formatTimeAgo(lastActivity)}
@@ -471,144 +487,131 @@ export function ArcPage({
             {actionError}
           </p>
         ) : null}
+
+        {briefOpen ? (
+          <div className="arc-brief arc-brief-editing">
+            <textarea
+              className="sched-input sched-textarea arc-brief-textarea"
+              aria-label="Brief"
+              value={briefDraft}
+              autoFocus
+              disabled={isDone}
+              placeholder="What this arc is for, and what done looks like."
+              onChange={(event) => setBriefDraft(event.target.value)}
+            />
+            {briefError ? (
+              <p className="arc-inline-error" role="alert">
+                {briefError}
+              </p>
+            ) : null}
+            <div className="arc-card-actions">
+              <p className="arc-card-hint">Saved to BRIEF.md, which every member reads first.</p>
+              <div className="arc-brief-buttons">
+                <button
+                  type="button"
+                  className="settings-button"
+                  disabled={briefSaving}
+                  onClick={() => {
+                    setBriefDraft(arc.brief);
+                    setBriefOpen(false);
+                  }}
+                >
+                  Cancel
+                </button>
+                {!isDone ? (
+                  <button
+                    type="button"
+                    className="settings-button arc-brief-save"
+                    disabled={!briefDirty || briefSaving}
+                    onClick={() => void handleSaveBrief().then(() => setBriefOpen(false))}
+                  >
+                    {briefSaving ? "Saving…" : "Save"}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="arc-brief">
+            {arc.brief.trim() ? (
+              <p className="arc-brief-prose">{briefExcerpt(arc.brief)}</p>
+            ) : (
+              <p className="arc-brief-prose arc-brief-empty">No brief yet. Members read it first, so say what done looks like.</p>
+            )}
+            <button type="button" className="arc-quiet-button" onClick={() => setBriefOpen(true)}>
+              <Pencil size={12} aria-hidden="true" />
+              {arc.brief.trim() ? "Edit brief" : "Add a brief"}
+            </button>
+          </div>
+        )}
       </header>
 
-      <dl className="arc-stats">
-        <div className="arc-stat">
-          <dt>Coordinator</dt>
-          <dd>
-            {coordinator ? (
-              <span className="arc-stat-coordinator">
-                <span className="arc-state-dot" data-session-state={coordinatorState ?? undefined} aria-hidden="true" />
-                <span className="arc-stat-value">
+      <section className="arc-chats" aria-label="Chats">
+        <header className="arc-chats-header">
+          <h2 className="arc-section-title">Chats</h2>
+          <p className="arc-chats-summary">{chatsSummary(activeMembers.length, pullRequests)}</p>
+        </header>
+        <div className="arc-chat-row">
+          <span className="arc-state-dot" data-session-state={coordinatorState ?? undefined} aria-hidden="true" />
+          {coordinator ? (
+            <MemberOpenButton
+              className="arc-chat-open"
+              canOpen={coordinatorSession !== null}
+              onOpen={() => onOpenSession(coordinator.sessionId)}
+              label={
+                <>
                   {isProviderId(coordinator.provider) ? PROVIDER_DISPLAY_NAMES[coordinator.provider] : coordinator.provider}
-                </span>
-                {coordinator.modelLabel ? <span className="arc-stat-sub">{coordinator.modelLabel}</span> : null}
-              </span>
-            ) : (
-              <span className="arc-stat-value arc-stat-missing">
-                {arc.coordinatorSessionId ? "Loading…" : "None"}
-              </span>
-            )}
-          </dd>
-          <div className="arc-stat-actions">
-            {coordinator ? (
-              <MemberOpenButton
-                label="Open chat"
-                className="arc-stat-link"
-                canOpen={coordinatorSession !== null}
-                onOpen={() => onOpenSession(coordinator.sessionId)}
-              />
-            ) : null}
-            {!isDone && coordinator ? (
-              <button
-                type="button"
-                className="arc-stat-link"
-                disabled={busy}
-                onClick={() => void handleLaunchCoordinator(true)}
-              >
-                New coordinator
-              </button>
-            ) : null}
-            {!isDone && !arc.coordinatorSessionId ? (
-              <button
-                type="button"
-                className="arc-stat-link"
-                disabled={busy}
-                onClick={() => void handleLaunchCoordinator(false)}
-              >
-                Start coordinator
-              </button>
-            ) : null}
-          </div>
-        </div>
-        <div className="arc-stat">
-          <dt>Working now</dt>
-          <dd>
-            <span className="arc-stat-value">{activeMembers.length}</span>
-            <span className="arc-stat-sub">of {detail?.limits.maxActiveMembers ?? 8}</span>
-          </dd>
-        </div>
-        <div className="arc-stat">
-          <dt>Launched today</dt>
-          <dd>
-            <span className="arc-stat-value">{detail?.launchesLast24h ?? 0}</span>
-            <span className="arc-stat-sub">of {detail?.limits.maxLaunchesPerDay ?? 40}</span>
-          </dd>
-        </div>
-        <div className="arc-stat">
-          <dt>Pull requests</dt>
-          <dd>
-            {pullRequests.open + pullRequests.merged === 0 ? (
-              <span className="arc-stat-value arc-stat-missing">None yet</span>
-            ) : (
-              <>
-                <span className="arc-stat-value">{pullRequests.open}</span>
-                <span className="arc-stat-sub">open</span>
-                <span className="arc-stat-value arc-stat-merged">{pullRequests.merged}</span>
-                <span className="arc-stat-sub">merged</span>
-              </>
-            )}
-          </dd>
-        </div>
-      </dl>
-
-      {activeMembers.length > 0 ? (
-        <ul className="arc-active-members" aria-label="Members working now">
-          {activeMembers.map((member) => (
-            <li key={member.sessionId}>
-              <MemberOpenButton
-                className="arc-member-chip"
-                canOpen={sessionsById.has(member.sessionId)}
-                onOpen={() => onOpenSession(member.sessionId)}
-                label={
-                  <>
-                    <span className="arc-state-dot" data-session-state={liveState(member)} aria-hidden="true" />
-                    <span className="arc-member-chip-label">{member.taskLabel.trim() || "Untitled"}</span>
-                    <span className="arc-member-chip-project">{member.projectName}</span>
-                  </>
-                }
-              />
-            </li>
-          ))}
-        </ul>
-      ) : null}
-
-      <details className="arc-brief" open={briefOpen} onToggle={(event) => setBriefOpen(event.currentTarget.open)}>
-        <summary>
-          <span className="arc-section-title">Brief</span>
-          {!briefOpen ? <span className="arc-brief-preview">{firstLine(arc.brief)}</span> : null}
-          {briefDirty ? <span className="arc-unsaved">Unsaved</span> : null}
-        </summary>
-        <div className="arc-brief-body">
-          <textarea
-            className="sched-input sched-textarea arc-brief-textarea"
-            aria-label="Brief"
-            value={briefDraft}
-            disabled={isDone}
-            placeholder="What this arc is for, and what done looks like."
-            onChange={(event) => setBriefDraft(event.target.value)}
-          />
-          {briefError ? (
-            <p className="arc-inline-error" role="alert">
-              {briefError}
-            </p>
+                  {coordinator.modelLabel ? <span className="arc-chat-model">{coordinator.modelLabel}</span> : null}
+                </>
+              }
+            />
+          ) : (
+            <span className="arc-chat-missing">{arc.coordinatorSessionId ? "Loading…" : "No coordinator"}</span>
+          )}
+          <span className="arc-chat-meta">
+            Coordinator
+            {coordinatorState ? ` · ${describeSessionState(coordinatorState)}` : ""}
+          </span>
+          {!isDone && coordinator ? (
+            <button
+              type="button"
+              className="arc-quiet-button arc-chat-action"
+              disabled={busy}
+              onClick={() => void handleLaunchCoordinator(true)}
+            >
+              New coordinator
+            </button>
           ) : null}
-          <div className="arc-card-actions">
-            <p className="arc-card-hint">Saved to BRIEF.md, which every member reads first.</p>
-            {!isDone ? (
-              <button
-                type="button"
-                className="settings-button"
-                disabled={!briefDirty || briefSaving}
-                onClick={() => void handleSaveBrief()}
-              >
-                {briefSaving ? "Saving…" : "Save"}
-              </button>
-            ) : null}
-          </div>
+          {!isDone && !arc.coordinatorSessionId ? (
+            <button
+              type="button"
+              className="arc-quiet-button arc-chat-action"
+              disabled={busy}
+              onClick={() => void handleLaunchCoordinator(false)}
+            >
+              Start coordinator
+            </button>
+          ) : null}
         </div>
-      </details>
+        {activeMembers.length > 0 ? (
+          <ul className="arc-chat-list" aria-label="Members working now">
+            {activeMembers.map((member) => (
+              <li key={member.sessionId} className="arc-chat-row">
+                <span className="arc-state-dot" data-session-state={liveState(member)} aria-hidden="true" />
+                <MemberOpenButton
+                  className="arc-chat-open"
+                  canOpen={sessionsById.has(member.sessionId)}
+                  onOpen={() => onOpenSession(member.sessionId)}
+                  label={member.taskLabel.trim() || "Untitled"}
+                />
+                <span className="arc-chat-meta">
+                  {member.projectName} · {describeSessionState(liveState(member))}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </section>
 
       <ArcTimeline
         arcId={arc.id}
@@ -627,7 +630,7 @@ export function ArcPage({
             </div>
             <div className="arc-folder-row">
               <code className="arc-folder-path" title={arc.dir}>
-                {arc.dir}
+                {shortPath(arc.dir)}
               </code>
               <button
                 type="button"
@@ -667,11 +670,23 @@ export function ArcPage({
 
           <div className="arc-setup-row">
             <div className="arc-setup-label">
+              <span>Limits</span>
+              <span className="arc-card-hint">
+                Up to {detail?.limits.maxActiveMembers ?? 8} members working at once.{" "}
+                {detail?.launchesLast24h ?? 0} of {detail?.limits.maxLaunchesPerDay ?? 40} launches used today.
+              </span>
+            </div>
+          </div>
+
+          <div className="arc-setup-divider" />
+
+          <div className="arc-setup-row">
+            <div className="arc-setup-label">
               <span>Triggers</span>
               <span className="arc-card-hint">
                 {arc.state === "paused"
-                  ? "Paused: nothing below wakes the coordinator until you resume."
-                  : "Failing checks, passing checks, and merges on member pull requests always reach the coordinator."}
+                  ? "Paused: nothing wakes the coordinator until you resume."
+                  : "Checks and merges on member pull requests wake the coordinator."}
               </span>
             </div>
             {triggersError ? (
@@ -682,9 +697,7 @@ export function ArcPage({
             {triggersRemote ? (
               <p className="arc-card-hint">Scheduled tasks for this arc are listed in the desktop app.</p>
             ) : triggerRoutines.length === 0 ? (
-              <p className="arc-card-hint">
-                No scheduled tasks target this arc. Add one from Scheduled Tasks with the target &ldquo;Arc coordinator&rdquo;.
-              </p>
+              <p className="arc-card-hint">No scheduled tasks yet.</p>
             ) : (
               <ul className="arc-member-list" role="list">
                 {triggerRoutines.map((routine) => (
@@ -712,7 +725,7 @@ export function ArcPage({
             )}
             <div>
               <button type="button" className="settings-button" onClick={showSchedulePage}>
-                Open Scheduled Tasks
+                Add a scheduled task
               </button>
             </div>
           </div>
@@ -724,8 +737,56 @@ export function ArcPage({
 
 const SETTLED_STATES: ReadonlySet<SessionState> = new Set(["complete", "failed", "cancelled"]);
 
-function firstLine(text: string): string {
+/** The brief's first paragraph of body text: what the arc is for, in the
+ *  author's words. Headings are skipped — a brief usually opens with the
+ *  arc's name as an H1, and the page already carries that. */
+function briefExcerpt(text: string): string {
+  const lines = text.split("\n").map((line) => (/^#+\s/.test(line) ? "" : line.trim()));
+  const start = lines.findIndex(Boolean);
+  if (start === -1) return firstHeading(text);
+  const end = lines.findIndex((line, index) => index > start && !line);
+  return lines.slice(start, end === -1 ? undefined : end).join(" ");
+}
+
+/** A brief that is only headings still has something to say. */
+function firstHeading(text: string): string {
   return text.split("\n").map((line) => line.replace(/^#+\s*/, "").trim()).find(Boolean) ?? "";
+}
+
+/** The tail of a path a person can recognise: nobody reads a UUID folder in
+ *  full, and the whole path is one click away on the copy button. */
+function shortPath(dir: string): string {
+  const parts = dir.split("/").filter(Boolean);
+  return parts.length <= 3 ? dir : `…/${parts.slice(-2).join("/")}`;
+}
+
+function describeSessionState(state: SessionState | null): string {
+  switch (state) {
+    case "running":
+    case "created":
+      return "working";
+    case "waiting":
+    case "blocked":
+      return "waiting for you";
+    case "failed":
+      return "failed";
+    case "cancelled":
+      return "stopped";
+    case "complete":
+      return "idle";
+    default:
+      return "";
+  }
+}
+
+/** The section's one-line reading. Pull requests are only counted once there
+ *  are some: an arc with none has nothing to headline. */
+function chatsSummary(working: number, pullRequests: { open: number; merged: number }): string {
+  const parts = [working === 0 ? "None working" : `${working} working`];
+  if (pullRequests.open + pullRequests.merged > 0) {
+    parts.push(`${pullRequests.open} ${pullRequests.open === 1 ? "PR" : "PRs"} open`, `${pullRequests.merged} merged`);
+  }
+  return parts.join(" · ");
 }
 
 function formatDay(iso: string): string {
@@ -752,7 +813,7 @@ function MemberOpenButton({
       type="button"
       className={className}
       disabled={!canOpen}
-      title={canOpen ? undefined : "This chat is no longer in the recent chat list"}
+      title={canOpen ? "Open chat" : "This chat is no longer in the recent chat list"}
       onClick={onOpen}
     >
       {label}
@@ -762,9 +823,9 @@ function MemberOpenButton({
 
 function ArcPageShell({ children }: { children: ReactNode }): JSX.Element {
   return (
-    <div className="settings-page arc-page">
+    <section className="settings-page arc-page" aria-label="Arc">
       <div className="settings-topbar" data-window-drag />
-      <div className="settings-main">{children}</div>
-    </div>
+      <div className="settings-main arc-page-body">{children}</div>
+    </section>
   );
 }

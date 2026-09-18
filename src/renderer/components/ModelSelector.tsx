@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronRight, Zap } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type JSX } from "react";
+import { createPortal } from "react-dom";
 import {
   clampEffort,
   DEFAULT_REASONING_EFFORT,
@@ -209,6 +210,7 @@ export function LaunchModelSelector({
   onChange,
   onFastModeEnabledChange,
   open,
+  portaled = false,
   withEffortSlider = false,
   effortOpen,
   onEffortOpenChange,
@@ -224,6 +226,8 @@ export function LaunchModelSelector({
   onChange: (model: ModelPickerSelection) => void;
   onFastModeEnabledChange?: (enabled: boolean) => void;
   open?: boolean;
+  /** Portal the menu to `<body>` with fixed positioning — for scroll-trapping modals. */
+  portaled?: boolean;
   withEffortSlider?: boolean;
   effortOpen?: boolean;
   onEffortOpenChange?: (open: boolean) => void;
@@ -258,6 +262,7 @@ export function LaunchModelSelector({
       onFastModeEnabledChange={onFastModeEnabledChange}
       onOpenChange={onOpenChange}
       open={open}
+      portaled={portaled}
       options={options}
       reasoningEffortsForValue={(model) => reasoningEffortsForModel(model.provider, model.modelId)}
       withEffortSlider={withEffortSlider}
@@ -321,7 +326,8 @@ function EffortSlider({
   onChange,
   ariaLabel,
   open: controlledOpen,
-  onOpenChange
+  onOpenChange,
+  portaled = false
 }: {
   value: ReasoningEffort;
   efforts: readonly ReasoningEffort[];
@@ -332,6 +338,8 @@ function EffortSlider({
    *  does not know about. Uncontrolled everywhere else. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Portal the menu to `<body>` with fixed positioning — for scroll-trapping modals. */
+  portaled?: boolean;
 }): JSX.Element {
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
@@ -346,7 +354,12 @@ function EffortSlider({
   const [dragging, setDragging] = useState(false);
   // Anchored like the model flyout beside it, so the two halves of one control
   // open the same way instead of one being hand-positioned in CSS.
-  const flyout = useAnchoredPopover({ open, placement: "bottom-start", strategy: "absolute" });
+  const flyout = useAnchoredPopover({
+    open,
+    placement: "bottom-start",
+    strategy: portaled ? "fixed" : "absolute",
+    capHeight: portaled
+  });
   const trackRef = useRef<HTMLDivElement | null>(null);
 
   const maxIndex = efforts.length - 1;
@@ -361,7 +374,12 @@ function EffortSlider({
     setDragging(false);
     if (draft !== value) onChange(draft);
   };
-  useDismissOnOutsideOrEscape(flyout.anchorRef, open, commitAndClose);
+  useDismissOnOutsideOrEscape(
+    flyout.anchorRef,
+    open,
+    commitAndClose,
+    portaled ? flyout.popoverRef : undefined
+  );
 
   useEffect(() => {
     if (!dragging) setPos(index);
@@ -419,6 +437,94 @@ function EffortSlider({
     return Math.min(maxIndex, Math.max(0, ((clientX - rect.left) / rect.width) * maxIndex));
   };
 
+  const effortPopover = open ? (
+    <div
+      className={`effort-slider-popover${portaled ? " picker-popover-portaled" : ""}`}
+      data-type-scale="chrome"
+      role="dialog"
+      aria-label={ariaLabel}
+      data-heat={EFFORT_HEAT_TIER[draft]}
+      ref={flyout.setPopover}
+      style={flyout.floatingStyles}
+    >
+      <div className="effort-slider-head">
+        <span className="effort-slider-caption">Effort</span>
+        <span className="effort-slider-current">{effortLabel(draft)}</span>
+      </div>
+      <div
+        className="effort-slider-track"
+        ref={trackRef}
+        role="slider"
+        tabIndex={0}
+        aria-label="Reasoning effort"
+        aria-valuemin={0}
+        aria-valuemax={maxIndex}
+        aria-valuenow={index}
+        aria-valuetext={effortLabel(draft)}
+        onKeyDown={(event) => {
+          let next = index;
+          if (event.key === "ArrowRight" || event.key === "ArrowUp") next = index + 1;
+          else if (event.key === "ArrowLeft" || event.key === "ArrowDown") next = index - 1;
+          else if (event.key === "Home") next = 0;
+          else if (event.key === "End") next = maxIndex;
+          else return;
+          event.preventDefault();
+          selectIndex(next);
+        }}
+        onPointerDown={(event) => {
+          event.preventDefault(); // don't anchor a text selection on the press
+          event.currentTarget.focus();
+          event.currentTarget.setPointerCapture(event.pointerId);
+          setDragging(true);
+          const next = posFromClientX(event.clientX);
+          setPos(next);
+          selectIndex(Math.round(next)); // keep the label/aria in step with the thumb
+        }}
+        onPointerMove={(event) => {
+          if (!dragging) return;
+          const next = posFromClientX(event.clientX);
+          setPos(next);
+          selectIndex(Math.round(next));
+        }}
+        onPointerUp={(event) => {
+          if (!dragging) return;
+          const next = Math.round(posFromClientX(event.clientX));
+          setDragging(false);
+          selectIndex(next);
+        }}
+        onPointerCancel={() => setDragging(false)}
+      >
+        <div className="effort-slider-fieldclip">
+          <EffortPixelField level={fraction} heat={heat} />
+        </div>
+        <div
+          className="effort-slider-cursor"
+          data-dragging={dragging || undefined}
+          aria-hidden="true"
+          style={{ "--effort-pos": String(fraction) } as EffortPosStyle}
+        />
+      </div>
+      <div className="effort-slider-stops">
+        {efforts.map((effort, stop) => (
+          <button
+            key={effort}
+            type="button"
+            className="effort-slider-stop"
+            tabIndex={-1}
+            data-active={stop === index || undefined}
+            data-lit={stop <= index || undefined}
+            aria-label={`Set effort to ${effortLabel(effort)}`}
+            style={{ "--effort-pos": String(maxIndex === 0 ? 0 : stop / maxIndex) } as EffortPosStyle}
+            onClick={() => selectIndex(stop)}
+          >
+            <span className="effort-slider-stop-tick" aria-hidden="true" />
+            <span className="effort-slider-stop-label">{SHORT_EFFORT_LABELS[effort]}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  ) : null;
+
   return (
     <div className="project-picker-anchor effort-slider-anchor" ref={flyout.setAnchor}>
       <button
@@ -441,93 +547,11 @@ function EffortSlider({
             carets in one pill only ask which half is the control. */}
         <span className="model-picker-label">{effortLabel(value)}</span>
       </button>
-      {open && (
-        <div
-          className="effort-slider-popover"
-          data-type-scale="chrome"
-          role="dialog"
-          aria-label={ariaLabel}
-          data-heat={EFFORT_HEAT_TIER[draft]}
-          ref={flyout.setPopover}
-          style={flyout.floatingStyles}
-        >
-          <div className="effort-slider-head">
-            <span className="effort-slider-caption">Effort</span>
-            <span className="effort-slider-current">{effortLabel(draft)}</span>
-          </div>
-          <div
-            className="effort-slider-track"
-            ref={trackRef}
-            role="slider"
-            tabIndex={0}
-            aria-label="Reasoning effort"
-            aria-valuemin={0}
-            aria-valuemax={maxIndex}
-            aria-valuenow={index}
-            aria-valuetext={effortLabel(draft)}
-            onKeyDown={(event) => {
-              let next = index;
-              if (event.key === "ArrowRight" || event.key === "ArrowUp") next = index + 1;
-              else if (event.key === "ArrowLeft" || event.key === "ArrowDown") next = index - 1;
-              else if (event.key === "Home") next = 0;
-              else if (event.key === "End") next = maxIndex;
-              else return;
-              event.preventDefault();
-              selectIndex(next);
-            }}
-            onPointerDown={(event) => {
-              event.preventDefault(); // don't anchor a text selection on the press
-              event.currentTarget.focus();
-              event.currentTarget.setPointerCapture(event.pointerId);
-              setDragging(true);
-              const next = posFromClientX(event.clientX);
-              setPos(next);
-              selectIndex(Math.round(next)); // keep the label/aria in step with the thumb
-            }}
-            onPointerMove={(event) => {
-              if (!dragging) return;
-              const next = posFromClientX(event.clientX);
-              setPos(next);
-              selectIndex(Math.round(next));
-            }}
-            onPointerUp={(event) => {
-              if (!dragging) return;
-              const next = Math.round(posFromClientX(event.clientX));
-              setDragging(false);
-              selectIndex(next);
-            }}
-            onPointerCancel={() => setDragging(false)}
-          >
-            <div className="effort-slider-fieldclip">
-              <EffortPixelField level={fraction} heat={heat} />
-            </div>
-            <div
-              className="effort-slider-cursor"
-              data-dragging={dragging || undefined}
-              aria-hidden="true"
-              style={{ "--effort-pos": String(fraction) } as EffortPosStyle}
-            />
-          </div>
-          <div className="effort-slider-stops">
-            {efforts.map((effort, stop) => (
-              <button
-                key={effort}
-                type="button"
-                className="effort-slider-stop"
-                tabIndex={-1}
-                data-active={stop === index || undefined}
-                data-lit={stop <= index || undefined}
-                aria-label={`Set effort to ${effortLabel(effort)}`}
-                style={{ "--effort-pos": String(maxIndex === 0 ? 0 : stop / maxIndex) } as EffortPosStyle}
-                onClick={() => selectIndex(stop)}
-              >
-                <span className="effort-slider-stop-tick" aria-hidden="true" />
-                <span className="effort-slider-stop-label">{SHORT_EFFORT_LABELS[effort]}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      {effortPopover
+        ? portaled && typeof document !== "undefined"
+          ? createPortal(effortPopover, document.body)
+          : effortPopover
+        : null}
     </div>
   );
 }
@@ -543,6 +567,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   onFastModeEnabledChange,
   onOpenChange,
   open: controlledOpen,
+  portaled = false,
   options,
   reasoningEffortsForValue,
   withEffortSlider = false,
@@ -563,6 +588,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   onFastModeEnabledChange?: (enabled: boolean) => void;
   onOpenChange?: (open: boolean) => void;
   open?: boolean;
+  portaled?: boolean;
   options: Array<ChipModelOption<T>>;
   /** Effort levels for a given value's provider, low → high. Claude and Codex
    *  Astra/Sol/Terra run the full low→ultra list; other models stop earlier. */
@@ -598,7 +624,8 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   const flyout = useAnchoredPopover({
     open,
     placement: align === "end" ? "bottom-end" : "bottom-start",
-    strategy: "absolute"
+    strategy: portaled ? "fixed" : "absolute",
+    capHeight: portaled
   });
   // The Speed submenu hangs off its own row, so it tracks that row instead of
   // being nudged into place with margins measured against the list.
@@ -606,10 +633,15 @@ function ChipModelPicker<T extends ProviderModelSelection>({
     open: fastModeMenuOpen,
     placement: "right-start",
     gutter: 6,
-    strategy: "absolute"
+    strategy: portaled ? "fixed" : "absolute"
   });
 
-  useDismissOnOutsideOrEscape(flyout.anchorRef, open, () => setOpen(false));
+  useDismissOnOutsideOrEscape(
+    flyout.anchorRef,
+    open,
+    () => setOpen(false),
+    portaled ? flyout.popoverRef : undefined
+  );
   const selectedSupportsFastMode = supportsFastModeForValue(value);
   // Fast mode is surfaced as a submenu the UI labels "Speed" (Standard / Fast);
   // picking "Fast" flips fastModeEnabled. The code below uses the fast-mode name
@@ -662,6 +694,153 @@ function ChipModelPicker<T extends ProviderModelSelection>({
     setOpen(false);
   };
 
+  const modelPickerFlyout = (
+    <div
+      className={`model-picker-flyout${portaled ? " picker-popover-portaled" : ""}`}
+      // The menu reads at app-chrome size even when the chip that opened it
+      // sits in a composer (one step up). See tokens.css.
+      data-type-scale="chrome"
+      ref={flyout.setPopover}
+      style={flyout.floatingStyles}
+      onClick={(event) => {
+        // Clicking inert popover chrome (group labels, padding) dismisses,
+        // mirroring the other composer pickers. Buttons handle their own
+        // clicks — model rows and the Speed trigger close/open themselves.
+        if (event.target instanceof Element && !event.target.closest("button")) {
+          setOpen(false);
+        }
+      }}
+    >
+      <ul
+        className="project-picker-popover model-picker-popover"
+        role="listbox"
+        aria-label={ariaLabel}
+        ref={primaryListRef}
+        tabIndex={-1}
+        onKeyDown={modelFilter.onKeyDown}
+      >
+        <PickerFilterRow
+          query={modelFilter.query}
+          matchCount={modelFilter.matches.length}
+          totalCount={orderedOptions.length}
+        />
+        {modelFilter.matches.map((option, index) => {
+          const selected = isSelected(option.value);
+          const previousGroup = index > 0 ? modelFilter.matches[index - 1]?.group : null;
+          return (
+            <Fragment key={option.key}>
+              {option.group && option.group !== previousGroup ? (
+                <li
+                  className="project-picker-group-label"
+                  role="presentation"
+                  data-provider={option.groupProvider}
+                >
+                  {option.group}
+                </li>
+              ) : null}
+              <li
+                role="option"
+                aria-selected={selected}
+                aria-disabled={option.disabled || undefined}
+                // Name-from-content on the option ignores the button's
+                // aria-label, so the full label goes on both.
+                aria-label={
+                  option.fullLabel && option.fullLabel !== option.label ? option.fullLabel : undefined
+                }
+                className="model-picker-row"
+                data-disabled={option.disabled || undefined}
+                data-active={index === modelFilter.activeIndex ? "true" : undefined}
+              >
+                <button
+                  type="button"
+                  className="project-picker-item model-picker-item"
+                  aria-pressed={selected}
+                  aria-label={
+                    option.fullLabel && option.fullLabel !== option.label ? option.fullLabel : undefined
+                  }
+                  disabled={option.disabled}
+                  title={option.disabled ? `${option.label} — provider CLI not installed` : undefined}
+                  onClick={() => selectModel(option)}
+                >
+                  <PickerLead selected={selected} />
+                  <span className="model-picker-name">{option.label}</span>
+                  {option.annotation ? (
+                    <span className="picker-meta" data-tone="warn">
+                      {option.annotation}
+                    </span>
+                  ) : option.meta ? (
+                    <span className="picker-meta" aria-hidden="true">
+                      {option.meta}
+                    </span>
+                  ) : null}
+                </button>
+              </li>
+            </Fragment>
+          );
+        })}
+        {modelFilter.matches.length === 0 ? (
+          <li className="project-picker-empty" role="presentation">
+            No models match
+          </li>
+        ) : null}
+        {canChangeFastMode ? (
+          <>
+            <li className="project-picker-divider" role="separator" />
+            <li role="presentation" className="model-picker-row model-picker-speed-row">
+              <button
+                type="button"
+                ref={speedMenu.setAnchor}
+                className="project-picker-item model-picker-item model-picker-submenu-trigger"
+                aria-expanded={fastModeMenuOpen}
+                onClick={() => setFastModeMenuOpen((menuOpen) => !menuOpen)}
+              >
+                <PickerLead />
+                <span className="model-picker-name">Speed</span>
+                <ChevronRight size={14} aria-hidden="true" className="model-picker-submenu-caret" />
+              </button>
+            </li>
+          </>
+        ) : null}
+      </ul>
+      {fastModeMenuOpen && canChangeFastMode ? (
+        <ul
+          className="project-picker-popover model-speed-popover"
+          role="listbox"
+          aria-label="Speed"
+          ref={speedMenu.setPopover}
+          style={speedMenu.floatingStyles}
+        >
+          <li className="project-picker-group-label" role="presentation">
+            Speed
+          </li>
+          <li role="option" aria-selected={!fastModeEnabled}>
+            <button
+              type="button"
+              className="project-picker-item model-effort-item"
+              aria-pressed={!fastModeEnabled}
+              onClick={() => setFastMode(false)}
+            >
+              <PickerLead selected={!fastModeEnabled} />
+              <span>Standard</span>
+            </button>
+          </li>
+          <li role="option" aria-selected={fastModeEnabled}>
+            <button
+              type="button"
+              className="project-picker-item model-effort-item"
+              aria-pressed={fastModeEnabled}
+              title="Faster responses, increased usage"
+              onClick={() => setFastMode(true)}
+            >
+              <PickerLead selected={fastModeEnabled} />
+              <span>Fast</span>
+            </button>
+          </li>
+        </ul>
+      ) : null}
+    </div>
+  );
+
   return (
     <div className={`model-picker-cluster${withEffortSlider ? " model-picker-cluster--chip" : ""}`}>
     <div
@@ -689,152 +868,11 @@ function ChipModelPicker<T extends ProviderModelSelection>({
           <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />
         )}
       </button>
-      {open && (
-        <div
-          className="model-picker-flyout"
-          // The menu reads at app-chrome size even when the chip that opened it
-          // sits in a composer (one step up). See tokens.css.
-          data-type-scale="chrome"
-          ref={flyout.setPopover}
-          style={flyout.floatingStyles}
-          onClick={(event) => {
-            // Clicking inert popover chrome (group labels, padding) dismisses,
-            // mirroring the other composer pickers. Buttons handle their own
-            // clicks — model rows and the Speed trigger close/open themselves.
-            if (event.target instanceof Element && !event.target.closest("button")) {
-              setOpen(false);
-            }
-          }}
-        >
-          <ul
-            className="project-picker-popover model-picker-popover"
-            role="listbox"
-            aria-label={ariaLabel}
-            ref={primaryListRef}
-            tabIndex={-1}
-            onKeyDown={modelFilter.onKeyDown}
-          >
-            <PickerFilterRow
-              query={modelFilter.query}
-              matchCount={modelFilter.matches.length}
-              totalCount={orderedOptions.length}
-            />
-            {modelFilter.matches.map((option, index) => {
-              const selected = isSelected(option.value);
-              const previousGroup = index > 0 ? modelFilter.matches[index - 1]?.group : null;
-              return (
-                <Fragment key={option.key}>
-                  {option.group && option.group !== previousGroup ? (
-                    <li
-                      className="project-picker-group-label"
-                      role="presentation"
-                      data-provider={option.groupProvider}
-                    >
-                      {option.group}
-                    </li>
-                  ) : null}
-                  <li
-                    role="option"
-                    aria-selected={selected}
-                    aria-disabled={option.disabled || undefined}
-                    // Name-from-content on the option ignores the button's
-                    // aria-label, so the full label goes on both.
-                    aria-label={
-                      option.fullLabel && option.fullLabel !== option.label ? option.fullLabel : undefined
-                    }
-                    className="model-picker-row"
-                    data-disabled={option.disabled || undefined}
-                    data-active={index === modelFilter.activeIndex ? "true" : undefined}
-                  >
-                    <button
-                      type="button"
-                      className="project-picker-item model-picker-item"
-                      aria-pressed={selected}
-                      aria-label={
-                        option.fullLabel && option.fullLabel !== option.label ? option.fullLabel : undefined
-                      }
-                      disabled={option.disabled}
-                      title={option.disabled ? `${option.label} — provider CLI not installed` : undefined}
-                      onClick={() => selectModel(option)}
-                    >
-                      <PickerLead selected={selected} />
-                      <span className="model-picker-name">{option.label}</span>
-                      {option.annotation ? (
-                        <span className="picker-meta" data-tone="warn">
-                          {option.annotation}
-                        </span>
-                      ) : option.meta ? (
-                        <span className="picker-meta" aria-hidden="true">
-                          {option.meta}
-                        </span>
-                      ) : null}
-                    </button>
-                  </li>
-                </Fragment>
-              );
-            })}
-            {modelFilter.matches.length === 0 ? (
-              <li className="project-picker-empty" role="presentation">
-                No models match
-              </li>
-            ) : null}
-            {canChangeFastMode ? (
-              <>
-                <li className="project-picker-divider" role="separator" />
-                <li role="presentation" className="model-picker-row model-picker-speed-row">
-                  <button
-                    type="button"
-                    ref={speedMenu.setAnchor}
-                    className="project-picker-item model-picker-item model-picker-submenu-trigger"
-                    aria-expanded={fastModeMenuOpen}
-                    onClick={() => setFastModeMenuOpen((menuOpen) => !menuOpen)}
-                  >
-                    <PickerLead />
-                    <span className="model-picker-name">Speed</span>
-                    <ChevronRight size={14} aria-hidden="true" className="model-picker-submenu-caret" />
-                  </button>
-                </li>
-              </>
-            ) : null}
-          </ul>
-          {fastModeMenuOpen && canChangeFastMode ? (
-            <ul
-              className="project-picker-popover model-speed-popover"
-              role="listbox"
-              aria-label="Speed"
-              ref={speedMenu.setPopover}
-              style={speedMenu.floatingStyles}
-            >
-              <li className="project-picker-group-label" role="presentation">
-                Speed
-              </li>
-              <li role="option" aria-selected={!fastModeEnabled}>
-                <button
-                  type="button"
-                  className="project-picker-item model-effort-item"
-                  aria-pressed={!fastModeEnabled}
-                  onClick={() => setFastMode(false)}
-                >
-                  <PickerLead selected={!fastModeEnabled} />
-                  <span>Standard</span>
-                </button>
-              </li>
-              <li role="option" aria-selected={fastModeEnabled}>
-                <button
-                  type="button"
-                  className="project-picker-item model-effort-item"
-                  aria-pressed={fastModeEnabled}
-                  title="Faster responses, increased usage"
-                  onClick={() => setFastMode(true)}
-                >
-                  <PickerLead selected={fastModeEnabled} />
-                  <span>Fast</span>
-                </button>
-              </li>
-            </ul>
-          ) : null}
-        </div>
-      )}
+      {open
+        ? portaled && typeof document !== "undefined"
+          ? createPortal(modelPickerFlyout, document.body)
+          : modelPickerFlyout
+        : null}
     </div>
       {showEffortSlider && value.reasoningEffort ? (
         <EffortSlider
@@ -843,6 +881,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
           ariaLabel={`${ariaLabel} effort`}
           open={effortOpen}
           onOpenChange={onEffortOpenChange}
+          portaled={portaled}
           onChange={(reasoningEffort) => onChange({ ...value, reasoningEffort })}
         />
       ) : null}

@@ -6,6 +6,7 @@ Argmax runs as a Tauri 2 application: Rust manages persistence, PTYs, menus, not
 
 ```bash
 npm run tauri:dev   # Start dev app (Vite + cargo build)
+npm run tauri:dev:isolated   # Same, on its own profile, next to the installed app
 npm run tauri:build # Production build
 npm run test:rust   # Cargo test suite
 ```

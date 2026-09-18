@@ -35,6 +35,9 @@ if (typeof PerformanceObserver !== "undefined") {
   try {
     new PerformanceObserver((entries) => {
       for (const entry of entries.getEntries()) {
+        void window.argmax?.system?.reportRendererStall?.(entry.duration).catch(() => {
+          // Performance recording is optional and must never affect rendering.
+        });
         if (entry.duration > 500) {
           console.warn(
             `[argmax] renderer long task: JS thread blocked ${Math.round(entry.duration)}ms`

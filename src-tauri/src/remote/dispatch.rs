@@ -28,6 +28,7 @@ use crate::state::AppState;
 pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
     "projects:pick-folder",
     "system:open-path",
+    "system:open-file-in",
     "system:diagnostics",
     "system:set-theme",
     // The default agent is mirrored into the desktop app's own app-data dir.
@@ -35,6 +36,8 @@ pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
     "system:set-notifications-enabled",
     "system:set-keep-awake",
     "system:test-notification",
+    // Renderer timing entries originate in the desktop WebKit process.
+    "system:renderer-stall",
     // Destructive history cleanup is confirmed in desktop Settings.
     "settings:preview-chat-cleanup",
     "settings:delete-old-chats",
@@ -432,6 +435,22 @@ async fn dispatch_standard(
         // machine-readable window into the log ring and IPC latency stats —
         // how a script verifies behavior without eyes on the panel.
         "system:debug-snapshot" => encode(system::system_debug_snapshot(parse(channel, input)?)),
+        "system:performance-start" => {
+            let _input: SystemPerformanceStartInput = parse(channel, input)?;
+            encode(system::system_performance_start_impl(state)?)
+        }
+        "system:performance-stop" => {
+            let _input: SystemPerformanceStopInput = parse(channel, input)?;
+            encode(system::system_performance_stop_impl(state))
+        }
+        "system:performance-status" => {
+            let _input: SystemPerformanceStatusInput = parse(channel, input)?;
+            encode(system::system_performance_status_impl(state))
+        }
+        "system:performance-capture" => {
+            let _input: SystemPerformanceCaptureInput = parse(channel, input)?;
+            encode(system::system_performance_capture_impl(state))
+        }
         "system:list-detected-ides" => {
             encode(system::system_list_detected_ides(parse(channel, input)?).await)
         }

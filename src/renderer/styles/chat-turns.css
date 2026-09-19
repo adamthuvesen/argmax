@@ -296,7 +296,7 @@
   background: transparent;
   cursor: pointer;
   color: var(--muted-strong);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   line-height: 1.4;
   transition: color var(--duration-fast) var(--ease);
 }
@@ -324,7 +324,7 @@
 
 .thought-block-eyebrow-label {
   font-family: var(--font-ui);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   font-weight: calc(400 + var(--font-weight-offset));
   letter-spacing: 0;
   text-transform: none;
@@ -991,7 +991,7 @@
   background: transparent;
   cursor: pointer;
   color: var(--muted);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   line-height: 1.4;
   transition: color var(--duration-fast) var(--ease);
 }
@@ -1015,7 +1015,7 @@
 
 .tool-call-group-eyebrow-label {
   font-family: var(--font-prose);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   font-weight: calc(400 + var(--font-weight-offset));
   letter-spacing: 0;
   text-transform: none;
@@ -1027,7 +1027,7 @@
    the verb says what happened, the dim remainder says to what. */
 .tool-call-group-eyebrow-detail {
   font-family: var(--font-prose);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   color: var(--chip-ink);
 }
 
@@ -1038,7 +1038,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--font-code);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   color: var(--muted);
   opacity: 0.86;
 }
@@ -1155,7 +1155,7 @@
   background: transparent;
   cursor: default;
   font-family: var(--font-prose);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   line-height: 1.4;
   color: var(--muted);
   transition: color var(--duration-fast) var(--ease);
@@ -1230,7 +1230,7 @@ button.tool-call-row-button {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--font-prose);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   color: var(--muted);
 }
 

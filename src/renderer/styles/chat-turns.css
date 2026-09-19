@@ -1036,7 +1036,7 @@
 .tool-call-group-eyebrow-detail {
   font-family: var(--font-prose);
   font-size: var(--text-base);
-  color: var(--tool-detail-ink);
+  color: var(--chip-ink);
 }
 
 .tool-call-group-preview {

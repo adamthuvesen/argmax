@@ -575,7 +575,7 @@
    as the seconds tick. */
 .thinking-elapsed {
   font-family: var(--font-ui);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   line-height: 1.2;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
@@ -749,7 +749,7 @@
   margin: 0;
   min-width: 0;
   font-family: var(--font-code);
-  font-size: var(--text-xs);
+  font-size: var(--text-base);
   font-feature-settings: var(--code-font-features);
   line-height: 1.7;
 }
@@ -857,7 +857,7 @@
   border: 0;
   background: transparent;
   font-family: var(--font-code);
-  font-size: var(--text-xs);
+  font-size: var(--text-base);
   font-feature-settings: var(--code-font-features);
   line-height: 1.7;
   /* A notch under the assistant's prose: a payload is something the transcript
@@ -913,7 +913,7 @@
   gap: var(--space-1);
   min-width: 0;
   font-family: var(--font-code);
-  font-size: var(--text-xs);
+  font-size: var(--text-base);
   font-feature-settings: var(--code-font-features);
   line-height: 1.55;
   color: color-mix(in oklab, var(--text) 72%, var(--muted-strong) 28%);
@@ -1573,7 +1573,7 @@ button.tool-call-row-button {
 
 .turn-changes-title {
   color: var(--muted-strong);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
 }
 
 .turn-changes-review {
@@ -1667,7 +1667,7 @@ button.tool-call-row-button {
   /* The name is what the row is for, so it sits on chrome ink rather than the
      muted step the directory beside it takes. */
   color: var(--text-soft);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1686,7 +1686,7 @@ button.tool-call-row-button {
   gap: var(--space-1_5);
   margin-left: 14px;
   font-family: var(--font-code);
-  font-size: var(--text-xs);
+  font-size: var(--text-base);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }

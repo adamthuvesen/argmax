@@ -668,6 +668,12 @@
   overflow: hidden;
 }
 
+/* On paper the 58% mix nearly matches the white card; lean further into
+   the sunken tone so the tab reads as a separate layer. */
+:root:not([data-theme="dark"]) .composer-queued-lane {
+  background: color-mix(in oklab, var(--composer-surface) 30%, var(--panel-sunken));
+}
+
 .composer-queued-chip {
   display: flex;
   align-items: center;

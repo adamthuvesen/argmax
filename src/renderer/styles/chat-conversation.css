@@ -1123,7 +1123,7 @@
   background: transparent;
   border: 0;
   font-family: var(--font-code);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   /* Mono stacks have no `wght` axis to shave, so pin regular instead of
      inheriting the prose weight token. */
   font-weight: calc(400 + var(--font-weight-offset));
@@ -1140,7 +1140,7 @@
   background: var(--panel-sunken);
   border: 1px solid var(--line);
   overflow-x: auto;
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   line-height: 1.55;
 }
 

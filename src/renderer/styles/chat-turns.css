@@ -1297,7 +1297,7 @@ button.tool-call-row-button {
   display: inline-flex;
   gap: 5px;
   font-family: var(--font-code);
-  font-size: var(--text-xs);
+  font-size: var(--text-base);
   font-variant-numeric: tabular-nums;
   color: var(--muted);
 }

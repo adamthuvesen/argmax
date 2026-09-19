@@ -774,22 +774,9 @@ export function CommandPalette({
               </Fragment>
             );
           })}
-          {messagesRunning && trimmedQuery.length >= MIN_MESSAGE_QUERY_LENGTH ? (
-            <li className="loading-line command-palette-loading" role="status">
+          {(messagesRunning && trimmedQuery.length >= MIN_MESSAGE_QUERY_LENGTH) || filesRunning || contentsRunning ? (
+            <li className="loading-line command-palette-loading" role="status" aria-label="Searching">
               <WorkingNest active size={12} />
-              Searching messages…
-            </li>
-          ) : null}
-          {filesRunning ? (
-            <li className="loading-line command-palette-loading" role="status">
-              <WorkingNest active size={12} />
-              Loading files…
-            </li>
-          ) : null}
-          {contentsRunning ? (
-            <li className="loading-line command-palette-loading" role="status">
-              <WorkingNest active size={12} />
-              Searching file contents…
             </li>
           ) : null}
         </ul>

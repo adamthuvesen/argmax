@@ -1615,9 +1615,8 @@ export function SessionConversation({
         data-loading={eventsBackfilled ? undefined : "true"}
       >
         {eventsBackfilled ? null : (
-          <div className="conversation-loading loading-line" role="status">
+          <div className="conversation-loading loading-line" role="status" aria-label="Loading chat">
             <WorkingNest active size={16} />
-            Loading chat…
           </div>
         )}
         {prMilestone ? <TurnExhale key={prMilestone} weight={1} onDone={finishPrMilestone} /> : null}

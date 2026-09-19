@@ -10,16 +10,16 @@
       code — a diff, a file preview. Ragged line lengths, so it
       reads as prose rather than a bar.
    3. A loading line (`LoadingLine`) is for everything smaller
-      than a pane: the working nest and one phrase, sitting
-      where the content will be. The command palette wears it
+      than a pane: the working nest alone, sitting where the
+      content will be, named only through aria-label. The command palette wears it
       as a result row (`.command-palette-loading` adds the row
       inset and nothing else), because a `<p>` is not a row in
       a listbox.
 
    A page with a strong shape of its own draws that shape
    instead of the generic pane — see `.usage-skeleton` below.
-   What never appears is a bare "Loading…" string: a phrase with
-   no mark beside it reads as content, not as a wait.
+   What never appears is a "Loading…" string: the mark says
+   *wait* on its own, and a phrase reads as content.
 
    Every shape is built from `.loading-block`: one filled box
    with one sweep across it. That sweep is the app's only
@@ -168,13 +168,11 @@
 /* ---------- 3. The loading line ---------- */
 
 /* The working nest is the app's "running right now" mark, so a wait that is
-   too small for a skeleton wears the same mark as a running turn. Aligned to
-   the first line of the phrase rather than centred, so a wrapped sentence does
-   not drag the mark down the block. */
+   too small for a skeleton wears the same mark as a running turn. The mark
+   stands alone: no phrase beside it, the name lives in aria-label. */
 .loading-line {
   display: flex;
-  align-items: baseline;
-  gap: var(--space-2_5);
+  align-items: center;
   margin: 0;
   min-width: 0;
   color: var(--muted-strong);
@@ -183,9 +181,6 @@
 
 .loading-line > .working-nest {
   flex: none;
-  /* Baseline alignment puts a box with no text in it on the wrong line; nudge
-     it back onto the phrase's. */
-  transform: translateY(1px);
 }
 
 /* ---------- The usage page's own shape ---------- */

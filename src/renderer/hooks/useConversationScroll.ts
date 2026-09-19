@@ -168,8 +168,8 @@ function upwardKey(event: KeyboardEvent): boolean {
  * Owns native input, bottom following, and detached viewport preservation for
  * a conversation. The content element is the only layout shim: while following
  * it is tall enough to place the latest prompt at the top at the physical
- * bottom; while detached its measured height is a floor that absorbs folds and
- * removals below the reader.
+ * bottom; while detached it reaches at least to the bottom of the reader's
+ * viewport, which absorbs folds and removals below them.
  */
 export function useConversationScroll({
   sessionId,
@@ -180,7 +180,6 @@ export function useConversationScroll({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const modeRef = useRef<FollowMode>("following");
-  const detachedHeightFloorRef = useRef(0);
   const viewportAnchorRef = useRef<ViewportAnchor | null>(null);
   const lastScrollTopRef = useRef(0);
   const lastMaxScrollTopRef = useRef(0);
@@ -219,15 +218,7 @@ export function useConversationScroll({
 
   const detach = useCallback((): void => {
     if (modeRef.current === "detached") return;
-    const content = contentRef.current;
     modeRef.current = "detached";
-    if (content) {
-      detachedHeightFloorRef.current = Math.max(
-        content.getBoundingClientRect().height,
-        content.offsetHeight,
-        content.scrollHeight
-      );
-    }
     rememberAnchor();
     notifyFollow();
   }, [notifyFollow, rememberAnchor]);
@@ -235,7 +226,6 @@ export function useConversationScroll({
   const startFollowing = useCallback((): void => {
     const wasDetached = modeRef.current === "detached";
     modeRef.current = "following";
-    detachedHeightFloorRef.current = 0;
     viewportAnchorRef.current = null;
     requestedScrollTopRef.current = null;
     newBelowCountRef.current = 0;
@@ -287,6 +277,29 @@ export function useConversationScroll({
       startFollowing();
     }
 
+    // Where a detached reader's viewport belongs after this change, or null to
+    // leave it where it is. Decided before the height write so the floor can
+    // be sized to it.
+    let detachedTop: number | null = null;
+    if (modeRef.current === "detached") {
+      const requestedTop = requestedScrollTopRef.current;
+      requestedScrollTopRef.current = null;
+      const anchor = viewportAnchorRef.current;
+      if (requestedTop !== null) {
+        detachedTop = Math.min(requestedTop, currentMaxTop);
+        // Re-read below once the requested position is applied.
+        viewportAnchorRef.current = null;
+      } else if (content && anchor && content.contains(anchor.node)) {
+        const nextContentTop = contentTop(content, anchor.node);
+        const delta = nextContentTop - anchor.contentTop;
+        const baseTop = clampedToNewBottom ? lastScrollTopRef.current : currentTop;
+        if (clampedToNewBottom || Math.abs(delta) > BOTTOM_EPSILON_PX) detachedTop = baseTop + delta;
+        anchor.contentTop = nextContentTop;
+      } else if (clampedToNewBottom) {
+        detachedTop = lastScrollTopRef.current;
+      }
+    }
+
     if (content) {
       const latestAnchor = Array.from(content.querySelectorAll<HTMLElement>("[data-turn-anchor]"))
         .at(-1);
@@ -295,14 +308,16 @@ export function useConversationScroll({
         const paddingTop = Number.parseFloat(getComputedStyle(content).paddingTop) || 0;
         followHeight = contentTop(content, latestAnchor) + scroll.clientHeight - paddingTop;
       }
+      // A detached reader's floor reaches exactly to the bottom of their
+      // viewport: a fold or removal below them cannot clamp the view, and
+      // nothing they haven't seen is kept as blank range to scroll into. A
+      // floor sized from an earlier range only ever grew — every collapse and
+      // every viewport shrink-and-regrow left its height behind.
       const minHeight = Math.max(
         0,
         followHeight,
         modeRef.current === "detached"
-          ? Math.max(
-              detachedHeightFloorRef.current,
-              lastMaxScrollTopRef.current + scroll.clientHeight
-            )
+          ? (detachedTop ?? currentTop) + scroll.clientHeight
           : 0
       );
       const nextMinHeight = minHeight > 0 ? `${minHeight}px` : "";
@@ -323,28 +338,9 @@ export function useConversationScroll({
       viewportAnchorRef.current = null;
       resetNewBelowCount();
     } else {
-      const requestedTop = requestedScrollTopRef.current;
-      requestedScrollTopRef.current = null;
-      if (requestedTop !== null) {
-        scroll.scrollTop = requestedTop;
-        rememberAnchor();
-      } else {
-        const anchor = viewportAnchorRef.current;
-        if (content && anchor && content.contains(anchor.node)) {
-          const nextContentTop = contentTop(content, anchor.node);
-          const delta = nextContentTop - anchor.contentTop;
-          const baseTop = clampedToNewBottom ? lastScrollTopRef.current : currentTop;
-          if (clampedToNewBottom || Math.abs(delta) > BOTTOM_EPSILON_PX) {
-            scroll.scrollTop = baseTop + delta;
-          }
-          anchor.contentTop = nextContentTop;
-        } else if (clampedToNewBottom) {
-          scroll.scrollTop = lastScrollTopRef.current;
-          rememberAnchor();
-        } else {
-          rememberAnchor();
-        }
-      }
+      if (detachedTop !== null) scroll.scrollTop = detachedTop;
+      const anchor = viewportAnchorRef.current;
+      if (!content || !anchor || !content.contains(anchor.node)) rememberAnchor();
     }
 
     const settledMaxTop = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
@@ -437,7 +433,19 @@ export function useConversationScroll({
     };
 
     const onWheel = (event: WheelEvent): void => {
-      if (event.deltaY >= 0 || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+      if (event.deltaY > 0) {
+        // A collapse below can leave a detached reader at the physical
+        // bottom, where scrolling down moves nothing and so never raises the
+        // scroll event that would resume following. Take the input instead.
+        if (modeRef.current !== "detached") return;
+        const maxTop = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+        if (physicalScrollTop(scroll, maxTop) < maxTop - BOTTOM_EPSILON_PX) return;
+        if (scrollableAncestor(scroll, event.target, 1)) return;
+        startFollowing();
+        reconcile();
+        return;
+      }
       if (scrollableAncestor(scroll, event.target, -1)) return;
       releaseFollowing();
     };

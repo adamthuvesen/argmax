@@ -31,6 +31,18 @@ type UserToggle = {
   autoExpanded: boolean;
 };
 
+/** First line of the reasoning, stripped of Markdown emphasis and markers, so a
+ *  folded "Thought" says what it was about. */
+function thoughtExcerpt(text: string): string {
+  const line = text.split("\n").map((part) => part.trim()).find((part) => part.length > 0) ?? "";
+  // Paired emphasis and code ticks only: a bare `_` belongs to `session_id`.
+  return line
+    .replace(/^[#>*\-\s]+/, "")
+    .replace(/\*\*|__|`/g, "")
+    .replace(/\*(\S[^*]*)\*/g, "$1")
+    .trim();
+}
+
 export function ThoughtBlock({
   children,
   previewText,
@@ -68,6 +80,7 @@ export function ThoughtBlock({
     : live || (holdOpen && openedLive) || defaultExpanded;
   const expanded = userToggle?.autoExpanded === autoExpanded ? userToggle.value : autoExpanded;
   const label = formatThoughtLabel(live, durationMs);
+  const excerpt = !live && !expanded ? thoughtExcerpt(previewText) : "";
   const titleVerb = live ? "thinking" : "thought";
   // The tail cut is in UTF-16 units and can split a surrogate pair; a tail
   // that starts with a lone low surrogate would render a replacement
@@ -113,6 +126,7 @@ export function ThoughtBlock({
           </span>
           <span className="thought-block-eyebrow-label">{label}</span>
         </span>
+        {excerpt ? <span className="thought-block-excerpt" aria-hidden="true">{excerpt}</span> : null}
         <ChevronRight
           size={12}
           className={`thought-block-chevron${expanded ? " expanded" : ""}`}

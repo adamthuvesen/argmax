@@ -492,11 +492,11 @@ describe("SessionConversation — tools & chrome", () => {
   // The chevron on a launch row reveals the raw launch receipt — for a
   // backgrounded agent, a wall of internal instructions addressed to the
   // parent. So it follows the individual-row level rather than the group
-  // level: Balanced names the delegated work and stops there.
+  // level: Steps names the delegated work and stops there.
   it.each([
-    { label: "Balanced", display: "collapsed" as const, open: false },
+    { label: "Steps", display: "collapsed" as const, open: false },
     { label: "Detailed", display: "expanded" as const, open: true }
-  ])("opens a launch row's receipt from Detailed up, not at Balanced ($label)", ({ display, open }) => {
+  ])("opens a launch row's receipt from Detailed up, not at Steps ($label)", ({ display, open }) => {
     const task = "Explore repo quickly and report key files.";
     renderConversation(
       baseSession({ provider: "codex", modelLabel: "GPT-5.6 Sol", state: "complete" }),
@@ -698,6 +698,36 @@ describe("SessionConversation — tools & chrome", () => {
     expect(screen.getByRole("button", { name: "Edited chat-chrome.css" })).toBeInTheDocument();
   });
 
+  it("lists the latest turn's steps by name at Steps, outputs closed, older turns folded", () => {
+    const command = (id: string, text: string, at: string) => [
+      event(`${id}-start`, "command.started", "Bash", at, { id, name: "Bash", input: { command: text } }),
+      event(`${id}-end`, "command.completed", "tool_result", at, { tool_use_id: id, content: `${text} output` })
+    ];
+    renderConversation(
+      baseSession({ provider: "claude", state: "complete" }),
+      [
+        event("u1", "user.message", "first", "2026-07-01T08:30:00.000Z"),
+        ...command("old-1", "git status", "2026-07-01T08:30:01.000Z"),
+        ...command("old-2", "git log", "2026-07-01T08:30:02.000Z"),
+        event("a1", "message.completed", "Done.", "2026-07-01T08:30:03.000Z"),
+        event("u2", "user.message", "second", "2026-07-01T08:31:00.000Z"),
+        ...command("new-1", "npm test", "2026-07-01T08:31:01.000Z"),
+        ...command("new-2", "npm run lint", "2026-07-01T08:31:02.000Z"),
+        event("a2", "message.completed", "Clean.", "2026-07-01T08:31:03.000Z")
+      ],
+      { defaultToolCallsDisplay: "collapsed", defaultToolCallGroupsExpanded: true, thinkingDisplay: "preview" }
+    );
+
+    const [older, latest] = screen.getAllByRole("button", { name: "Ran 2 commands" });
+    expect(older).toHaveAttribute("aria-expanded", "false");
+    expect(latest).toHaveAttribute("aria-expanded", "true");
+    // Each call is named in the open group; its output stays behind the row.
+    expect(screen.getByText("npm test")).toBeInTheDocument();
+    expect(screen.getByText("npm run lint")).toBeInTheDocument();
+    expect(screen.queryByText("npm test output")).toBeNull();
+    expect(screen.queryByText("git status")).toBeNull();
+  });
+
   it("keeps command bursts separated by assistant prose as separate groups", () => {
     const commandEvents = (
       id: string,
@@ -743,7 +773,7 @@ describe("SessionConversation — tools & chrome", () => {
       ]
     );
 
-    const commandGroups = screen.getAllByRole("button", { name: "Ran commands" });
+    const commandGroups = screen.getAllByRole("button", { name: /^Ran \d+ commands$/ });
     expect(commandGroups).toHaveLength(1);
     const groupedBurst = commandGroups[0];
     const firstUpdate = screen.getByText("Pass 1A.");

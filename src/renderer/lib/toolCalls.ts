@@ -297,32 +297,34 @@ const FINE_BUCKET_ORDER: FineBucket[] = [
 
 // Each bucket keeps its action verb when several kinds of work share a
 // headline. Counts only decide between singular and plural wording.
-function clauseForBucket(bucket: FineBucket, n: number, first: boolean): string {
+function clauseForBucket(bucket: FineBucket, n: number, first: boolean, settled: boolean): string {
+  // Same rule as activityLabel: a count only on a settled plural.
+  const counted = (noun: string): string => (settled ? `${n} ${noun}` : noun);
   let clause: string;
   switch (bucket) {
     case "agent":
-      clause = n === 1 ? "Started an agent" : "Started agents";
+      clause = n === 1 ? "Started an agent" : `Started ${counted("agents")}`;
       break;
     case "read-files":
-      clause = n === 1 ? "Read a file" : "Read files";
+      clause = n === 1 ? "Read a file" : `Read ${counted("files")}`;
       break;
     case "read-lists":
-      clause = n === 1 ? "Listed a directory" : "Listed directories";
+      clause = n === 1 ? "Listed a directory" : `Listed ${counted("directories")}`;
       break;
     case "search":
       clause = "Searched";
       break;
     case "web":
-      clause = n === 1 ? "Fetched a URL" : "Fetched URLs";
+      clause = n === 1 ? "Fetched a URL" : `Fetched ${counted("URLs")}`;
       break;
     case "edit":
-      clause = n === 1 ? "Edited a file" : "Edited files";
+      clause = n === 1 ? "Edited a file" : `Edited ${counted("files")}`;
       break;
     case "bash":
-      clause = n === 1 ? "Ran a command" : "Ran commands";
+      clause = n === 1 ? "Ran a command" : `Ran ${counted("commands")}`;
       break;
     case "other":
-      clause = n === 1 ? "Used a tool" : "Used tools";
+      clause = n === 1 ? "Used a tool" : `Used ${counted("tools")}`;
       break;
   }
   return first ? clause : `${clause.charAt(0).toLowerCase()}${clause.slice(1)}`;
@@ -440,7 +442,7 @@ export function toolGroupKindKey(tools: ToolCall[]): string {
   return FINE_BUCKET_ORDER.filter((bucket) => buckets.has(bucket)).join("+");
 }
 
-export function summarizeToolGroup(tools: ToolCall[]): {
+export function summarizeToolGroup(tools: ToolCall[], counting = true): {
   headline: string;
   currentAction: string | null;
   status: ToolCall["status"];
@@ -451,14 +453,6 @@ export function summarizeToolGroup(tools: ToolCall[]): {
     const b = getFineBucket(tool.name);
     counts.set(b, (counts.get(b) ?? 0) + 1);
   }
-  const clauses: string[] = [];
-  let first = true;
-  for (const bucket of FINE_BUCKET_ORDER) {
-    const n = counts.get(bucket);
-    if (!n) continue;
-    clauses.push(clauseForBucket(bucket, n, first));
-    first = false;
-  }
   let allErrors = tools.length > 0;
   let latestRunning: ToolCall | null = null;
   for (const tool of tools) {
@@ -466,6 +460,14 @@ export function summarizeToolGroup(tools: ToolCall[]): {
       allErrors = false;
       if (tool.status === "running") latestRunning = tool;
     }
+  }
+  const clauses: string[] = [];
+  let first = true;
+  for (const bucket of FINE_BUCKET_ORDER) {
+    const n = counts.get(bucket);
+    if (!n) continue;
+    clauses.push(clauseForBucket(bucket, n, first, counting && tools.every((tool) => tool.status === "done")));
+    first = false;
   }
   const headline = clauses.length > 0 ? clauses.join(", ") : "Used tools";
   const status: ToolCall["status"] = allErrors ? "error" : latestRunning ? "running" : "done";
@@ -475,7 +477,7 @@ export function summarizeToolGroup(tools: ToolCall[]): {
   const currentAction = latestRunning ? describeToolAction(latestRunning) : null;
 
   if (tools.some((tool) => tool.activity)) {
-    return { ...summarizeActivities(tools), currentAction, status };
+    return { ...summarizeActivities(tools, counting), currentAction, status };
   }
   return { headline, currentAction, status };
 }

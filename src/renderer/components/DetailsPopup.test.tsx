@@ -187,10 +187,10 @@ describe("DetailsPopup", () => {
 
     expect(screen.getByText("The file tabs are ready.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Worked/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Ran commands" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Ran \d+ commands$/ })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /^Worked/ }));
-    expect(screen.getAllByRole("button", { name: "Ran commands" })).toHaveLength(4);
+    expect(screen.getAllByRole("button", { name: /^Ran \d+ commands$/ })).toHaveLength(4);
   });
 
   it("hides the seed prompt but keeps typed follow-ups", () => {

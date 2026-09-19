@@ -138,17 +138,23 @@ interface ResolvedVerbosity {
 export const CHAT_VERBOSITY_LABELS: Record<ChatVerbosity, string> = {
   1: "Minimal",
   2: "Compact",
-  3: "Balanced",
+  3: "Steps",
   4: "Detailed"
 };
 
 export const CHAT_VERBOSITY_HINTS: Record<ChatVerbosity, string> = {
-  1: "Activity summaries while working. Finished turns keep the answer. Expand Worked to inspect all tool activity, including failed attempts.",
-  2: "One short activity summary between messages. Expand to see commands, files, and agent activity.",
-  3: "Activity summaries with a short preview of current thinking. Expand thoughts to read more.",
-  4: "Tool calls and groups open on the latest turn, with full, labelled thoughts."
+  1: "One activity line while working. Finished turns keep the answer. Expand Worked to inspect every step, including failed attempts.",
+  2: "One short activity summary between messages, naming the current step while it runs.",
+  3: "Every step listed by name with its output closed, and a live preview of the current thought.",
+  4: "Steps open with their output on the latest turn, and thoughts in full."
 };
 
+/**
+ * Each level adds one thing: Minimal drops finished work, Compact keeps one
+ * summary per stretch of work, Steps lists every call by name (groups open,
+ * rows closed), Detailed opens the rows. Steps is the pair the legacy
+ * "collapsed calls + expanded groups" preference already migrated to.
+ */
 export function resolveChatVerbosity(verbosity: ChatVerbosity): ResolvedVerbosity {
   switch (verbosity) {
     case 1:
@@ -156,7 +162,7 @@ export function resolveChatVerbosity(verbosity: ChatVerbosity): ResolvedVerbosit
     case 2:
       return { toolCallsDisplay: "collapsed", toolCallGroupsExpanded: false, thinkingDisplay: "collapsed" };
     case 3:
-      return { toolCallsDisplay: "collapsed", toolCallGroupsExpanded: false, thinkingDisplay: "preview" };
+      return { toolCallsDisplay: "collapsed", toolCallGroupsExpanded: true, thinkingDisplay: "preview" };
     case 4:
       return { toolCallsDisplay: "expanded", toolCallGroupsExpanded: true, thinkingDisplay: "inline" };
   }

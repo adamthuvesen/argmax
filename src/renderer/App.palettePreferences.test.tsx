@@ -24,7 +24,7 @@ it("applies all chat verbosity levels from Cmd+K Actions and persists them in Se
   render(<App />);
   await screen.findByRole("button", { name: "Build dashboard" });
 
-  for (const [index, label] of ["Minimal", "Compact", "Balanced", "Detailed"].entries()) {
+  for (const [index, label] of ["Minimal", "Compact", "Steps", "Detailed"].entries()) {
     fireEvent.keyDown(document, { key: "k", metaKey: true });
     await screen.findByRole("dialog", { name: "Command palette" });
     fireEvent.click(screen.getByRole("tab", { name: "Actions" }));

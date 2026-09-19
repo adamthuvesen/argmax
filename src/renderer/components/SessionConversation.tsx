@@ -1065,6 +1065,7 @@ export function SessionConversation({
     if (latest?.kind !== "turn") return false;
     return liveThoughtOwnsProgress({
       assistantEvents: latest.assistantEvents,
+      toolItems: latest.toolItems,
       isLatestTurn: true,
       sessionRunning,
       isPausedOnUserInput: hasOutstandingCardAsk

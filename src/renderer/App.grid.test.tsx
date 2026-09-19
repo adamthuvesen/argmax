@@ -845,7 +845,8 @@ describe("App grid", () => {
     fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
 
     const pane = await screen.findByRole("region", { name: /^Agent activity: / });
-    fireEvent.click(within(pane).getByRole("button", { name: "Read a file" }));
+    // This suite runs at Steps, where a single call is its own row rather than
+    // a summary to open.
     expect(within(pane).getByRole("button", { name: "Read App.tsx" })).toBeInTheDocument();
     expect(within(pane).queryByText("This provider reported the agent launch, but did not stream child activity.")).toBeNull();
   });

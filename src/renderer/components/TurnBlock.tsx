@@ -164,8 +164,16 @@ export function TurnBlock({
       : body;
 
   const elapsedLabel = formatElapsedSeconds(elapsedMs);
-  const staticChipLabel = running ? "Working" : elapsedLabel ? `Worked for ${elapsedLabel}` : "Worked";
   const hasTools = toolItems.length > 0;
+  // Minimal hides a finished turn's work behind this chip, so the chip says how
+  // much is there to open.
+  const stepCount =
+    hideWorkingWhenCollapsed && !running && hasTools
+      ? ` · ${toolItems.length} ${toolItems.length === 1 ? "step" : "steps"}`
+      : "";
+  const staticChipLabel = running
+    ? "Working"
+    : `${elapsedLabel ? `Worked for ${elapsedLabel}` : "Worked"}${stepCount}`;
   const headerTimestampLabel = useMemo(() => {
     if (!headerTimestampIso) return "";
     const ms = Date.parse(headerTimestampIso);

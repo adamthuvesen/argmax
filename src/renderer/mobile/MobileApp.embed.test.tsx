@@ -261,7 +261,7 @@ describe("MobileApp embed mode", () => {
 
     // Compact first opens the grouped activity. The individual Write row then
     // opens the file change card, whose "Open" action is the file itself.
-    fireEvent.click(await screen.findByRole("button", { name: "Edited a file" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Edited a file(: |$)/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Edited panel.ts" }));
     fireEvent.click(
       await screen.findByRole("button", { name: "Open /tmp/worktrees/dashboard/src/panel.ts" })

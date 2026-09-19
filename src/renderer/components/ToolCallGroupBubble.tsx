@@ -1,7 +1,8 @@
 import { ChevronRight } from "lucide-react";
-import { Fragment, memo, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
+import { Fragment, memo, useContext, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
 import {
   buildGroupRows,
+  describeToolAction,
   parseMcpToolName,
   toolGroupKindKey,
   summarizeToolChangeCounts,
@@ -15,7 +16,7 @@ import type { TranscriptFollow } from "../hooks/useConversationScroll.js";
 import { useStableTailWindow } from "../hooks/useStableTailWindow.js";
 import { useReadingWave } from "../lib/readingWave.js";
 import { headlineClauses, usePacedHeadline } from "../lib/pacedHeadline.js";
-import { useOwnsActivityBeat } from "../lib/activityBeat.js";
+import { ActivityBeatContext, useOwnsActivityBeat } from "../lib/activityBeat.js";
 import { ActivityStat } from "./ActivityStat.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { ToolCallRow } from "./ToolCallRow.js";
@@ -178,7 +179,18 @@ function ToolCallGroupBubbleInner({
   } | null>(null);
   const [, setPreviewRevision] = useState(0);
   const lastPreviewRef = useRef<{ toolId: string; text: string; shownAt: number } | null>(null);
-  const summary = useMemo(() => summarizeToolGroup(group.tools), [group.tools]);
+  // The line holding the beat is the live one, so its tally waits: OpenCode,
+  // Grok and Codex settle each call instantly, and a counted headline there
+  // would tick "Ran 2…", "Ran 3…" in place while the run is still going.
+  const beatToolId = useContext(ActivityBeatContext);
+  const holdsBeat = useMemo(
+    () => group.tools.some((tool) => tool.id === beatToolId),
+    [group.tools, beatToolId]
+  );
+  const summary = useMemo(
+    () => summarizeToolGroup(group.tools, !holdsBeat),
+    [group.tools, holdsBeat]
+  );
   const firstTool = group.tools[0];
   const iconServer = firstTool && firstTool.activity?.kind !== "computer"
     ? parseMcpToolName(firstTool.name)?.server : null;
@@ -224,20 +236,24 @@ function ToolCallGroupBubbleInner({
   for (const tool of group.tools) {
     if (tool.status === "running") runningTool = tool;
   }
+  // The caption names the call that holds the beat. A running call holds it
+  // for Claude and Cursor; OpenCode, Grok and Codex report start and finish
+  // together, so their call is never seen running and the caption follows the
+  // beat owner instead (lib/activityBeat.ts), for as long as the line waves.
+  const beatTool = runningTool ?? group.tools.find((tool) => tool.id === beatToolId) ?? null;
+  const beatAction = runningTool ? summary.currentAction : beatTool ? describeToolAction(beatTool) : null;
   const livePreviewToolId =
-    !compact && !directTool && !expanded && runningTool && summary.currentAction
-      ? runningTool.id
-      : null;
-  const livePreviewText = livePreviewToolId ? summary.currentAction : null;
+    !directTool && !expanded && beatTool && beatAction ? beatTool.id : null;
+  const livePreviewText = livePreviewToolId ? beatAction : null;
   const retainedPreview = lastPreviewRef.current;
   const previewText = livePreviewText ?? (
-    !compact && !directTool && !expanded && retainedPreview && Date.now() - retainedPreview.shownAt < PREVIEW_DWELL_MS
+    !directTool && !expanded && retainedPreview && Date.now() - retainedPreview.shownAt < PREVIEW_DWELL_MS
       ? retainedPreview.text
       : null
   );
 
   useLayoutEffect(() => {
-    if (compact || directTool || expanded) {
+    if (directTool || expanded) {
       lastPreviewRef.current = null;
       return;
     }
@@ -268,7 +284,7 @@ function ToolCallGroupBubbleInner({
       }
     }, remaining);
     return () => window.clearTimeout(timer);
-  }, [compact, directTool, expanded, livePreviewText, livePreviewToolId]);
+  }, [directTool, expanded, livePreviewText, livePreviewToolId]);
 
   const handleSingletonExpanded = (value: boolean): void => {
     if (!directTool) return;

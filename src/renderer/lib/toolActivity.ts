@@ -43,9 +43,22 @@ function toolActivityState(tool: ToolCall): ActivityState {
   return tool.completionObserved === true ? "succeeded" : "unconfirmed";
 }
 
-function activityLabel(activity: ToolActivity, state: ActivityState, plural = false, target?: string): string {
-  const file = target || (plural ? "files" : "a file");
-  const image = target || (plural ? "images" : "an image");
+/**
+ * `count` shows only on a settled plural ("Ran 11 commands"). A running clause
+ * stays countless: a still-growing tally read as the finality of a result.
+ * Mirrored in the phone's `TranscriptToolActivity.label` (TranscriptModels.swift).
+ */
+function activityLabel(
+  activity: ToolActivity,
+  state: ActivityState,
+  plural = false,
+  target?: string,
+  count = 0
+): string {
+  const counted = (noun: string): string =>
+    state === "succeeded" && count > 1 ? `${count} ${noun}` : noun;
+  const file = target || (plural ? counted("files") : "a file");
+  const image = target || (plural ? counted("images") : "an image");
   const operation = activity.operation;
   let verbs: [string, string, string];
   switch (activity.kind) {
@@ -61,15 +74,17 @@ function activityLabel(activity: ToolActivity, state: ActivityState, plural = fa
     case "list": verbs = ["Listing files", "Listed files", "File listing"]; break;
     case "web-search": verbs = ["Searching the web", "Searched the web", "Web search"]; break;
     case "web-fetch": verbs = ["Fetching a URL", "Fetched a URL", "Web request"]; break;
+    // Discovery stays uncounted: the count here is calls, and two searches that
+    // loaded five tools each are not "Loaded 2 tools".
     case "discovery": verbs = ["Searching for tools", activity.toolCount ? `Loaded ${activity.toolCount === 1 && !plural ? "a tool" : "tools"}` : "Searched tools", "Tool discovery"]; break;
-    case "command": verbs = [plural ? "Running commands" : "Running a command", plural ? "Ran commands" : "Ran a command", "Command"]; break;
+    case "command": verbs = [plural ? "Running commands" : "Running a command", plural ? `Ran ${counted("commands")}` : "Ran a command", "Command"]; break;
     case "computer": verbs = ["Using a computer", "Used a computer", "Computer use"]; break;
-    case "agent": verbs = ["Starting an agent", plural ? "Started agents" : "Started an agent", "Agent launch"]; break;
-    case "agent-message": verbs = ["Messaging an agent", plural ? "Messaged agents" : "Messaged an agent", "Agent message"]; break;
-    case "agent-wait": verbs = ["Waiting for an agent", plural ? "Waited for agents" : "Waited for an agent", "Agent wait"]; break;
-    case "agent-stop": verbs = ["Stopping an agent", plural ? "Stopped agents" : "Stopped an agent", "Agent stop"]; break;
+    case "agent": verbs = ["Starting an agent", plural ? `Started ${counted("agents")}` : "Started an agent", "Agent launch"]; break;
+    case "agent-message": verbs = ["Messaging an agent", plural ? `Messaged ${counted("agents")}` : "Messaged an agent", "Agent message"]; break;
+    case "agent-wait": verbs = ["Waiting for an agent", plural ? `Waited for ${counted("agents")}` : "Waited for an agent", "Agent wait"]; break;
+    case "agent-stop": verbs = ["Stopping an agent", plural ? `Stopped ${counted("agents")}` : "Stopped an agent", "Agent stop"]; break;
     case "memory-recall": verbs = ["Recalling memory", "Recalled memory", "Memory recall"]; break;
-    case "memory-save": verbs = ["Saving a memory", plural ? "Saved memories" : "Saved a memory", "Memory save"]; break;
+    case "memory-save": verbs = ["Saving a memory", plural ? `Saved ${counted("memories")}` : "Saved a memory", "Memory save"]; break;
     case "git": {
       const subcommand = target ? `git ${target}` : "git commands";
       verbs = [`Running ${subcommand}`, `Ran ${subcommand}`, "Git command"]; break;
@@ -80,7 +95,7 @@ function activityLabel(activity: ToolActivity, state: ActivityState, plural = fa
       const named = plural ? "skills" : target ? `${target} skill` : "a skill";
       verbs = [`Activating ${named}`, `Activated ${named}`, "Skill activation"]; break;
     }
-    case "tool": verbs = [plural ? "Using tools" : "Using a tool", plural ? "Used tools" : "Used a tool", "Tool call"]; break;
+    case "tool": verbs = [plural ? "Using tools" : "Using a tool", plural ? `Used ${counted("tools")}` : "Used a tool", "Tool call"]; break;
   }
   if (state === "running") return verbs[0];
   if (state === "succeeded") return verbs[1];
@@ -94,7 +109,7 @@ export function describeActivity(tool: ToolCall): string | null {
   const target = raw === undefined
     ? undefined
     : activity.kind === "skill" ? skillTargetName(raw) : raw.split(/[\\/]/).pop();
-  return activityLabel(activity, toolActivityState(tool), activity.targets.length > 1, target);
+  return activityLabel(activity, toolActivityState(tool), activity.targets.length > 1, target, activity.targets.length);
 }
 
 /** Parent folder of `SKILL.md`, otherwise the last path component. */
@@ -105,7 +120,16 @@ function skillTargetName(target: string): string | undefined {
   return file;
 }
 
-export function summarizeActivities(tools: ToolCall[]): { headline: string; iconKind: ToolActivityKind } {
+/**
+ * `counting` is false while this line is the turn's live one: clauses are keyed
+ * by state, so a group with a call still running would otherwise read
+ * "Ran 2 commands, running a command" and tick its tally up in place. The count
+ * lands on the frame the work settles.
+ */
+export function summarizeActivities(
+  tools: ToolCall[],
+  counting = true
+): { headline: string; iconKind: ToolActivityKind } {
   const groups = new Map<string, { activity: ToolActivity; state: ActivityState; count: number; targets: Set<string> }>();
   const seen = new Set<string>();
   for (const tool of tools) {
@@ -120,11 +144,12 @@ export function summarizeActivities(tools: ToolCall[]): { headline: string; icon
       activity.targets.forEach((path) => group.targets.add(path));
     } else groups.set(key, { activity, state, count: 1, targets: new Set(activity.targets) });
   }
+  const settled = counting && ![...groups.values()].some(({ state }) => state === "running");
   const labels = [...groups.values()].map(({ activity, state, count, targets }) => {
     const plural = targets.size ? targets.size > 1 : count > 1;
     const raw = activity.kind === "skill" && !plural && targets.size === 1 ? [...targets][0] : undefined;
     const target = raw === undefined ? undefined : skillTargetName(raw);
-    return activityLabel(activity, state, plural, target);
+    return activityLabel(activity, state, plural, target, settled ? targets.size || count : 0);
   });
   return {
     headline: labels.map((label, index) => index ? label[0]?.toLowerCase() + label.slice(1) : label).join(", "),

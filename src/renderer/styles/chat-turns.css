@@ -317,7 +317,9 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-1_5);
-  flex: 0 1 auto;
+  /* The label never shrinks: it is two words, and sharing the squeeze with the
+     excerpt beside it clipped "Thought" to 23px of spilled text. */
+  flex: 0 0 auto;
   min-width: 0;
 }
 
@@ -338,6 +340,18 @@
   text-transform: none;
   color: var(--chip-ink);
   transition: color var(--duration-fast) var(--ease);
+}
+
+/* A folded thought keeps its first line beside the label, so a row of settled
+   reasoning is readable without opening it. */
+.thought-block-excerpt {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-base);
+  color: var(--muted);
 }
 
 .thought-block-chevron {
@@ -393,7 +407,7 @@
   font-size: var(--text-base);
 }
 
-/* Balanced bounds live reasoning without mounting its full markdown tree. */
+/* Steps bounds live reasoning without mounting its full markdown tree. */
 .thought-block-preview {
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -988,8 +1002,9 @@
 
 .tool-call-group-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 7px;
+  gap: 2px 7px;
   width: 100%;
   /* Same 1.9em pitch as the rows below, so a collapsed headline and an
      expanded run of rows sit on one continuous rhythm. */
@@ -1039,9 +1054,12 @@
   color: var(--tool-row-ink);
 }
 
+/* The live caption takes its own line under the headline, lined up with the
+   headline's text, so a long command never squeezes the summary beside it. */
 .tool-call-group-preview {
   min-width: 0;
-  flex: 1;
+  flex: 1 0 100%;
+  padding-left: calc(var(--activity-mark-size) + 7px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

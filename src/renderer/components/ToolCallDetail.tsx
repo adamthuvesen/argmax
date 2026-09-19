@@ -35,6 +35,10 @@ import {
 
 const MAX_INLINE_CONTENT_CHARS = 2400;
 const MAX_OUTPUT_CHARS = 3000;
+// Detailed opens every call on the latest turn, so an output shows its head and
+// Show all rather than a 16-line scroller per call: a turn of eleven calls read
+// five times taller than the same turn at Steps.
+const MAX_OUTPUT_LINES = 10;
 export function ToolCallDetail({
   tool,
   workspaceCwd,
@@ -167,8 +171,14 @@ export function ToolCallDetail({
   const showOutput =
     hasVisibleToolOutput(tool, outputBody) &&
     (!tool.error || outputBody.trim() !== tool.error.trim());
-  const truncated = showOutput && outputBody.length > MAX_OUTPUT_CHARS;
-  const shownOutput = truncated && !showFullOutput ? `${outputBody.slice(0, MAX_OUTPUT_CHARS)}\n…` : outputBody;
+  // A trailing newline is not an eleventh line, and CRLF must not leave a
+  // stray \r on every kept line — either one put "Show all" on output that was
+  // already whole.
+  const outputLines = outputBody.replace(/\r?\n$/, "").split(/\r?\n/);
+  const outputHead = outputLines.slice(0, MAX_OUTPUT_LINES).join("\n").slice(0, MAX_OUTPUT_CHARS);
+  const truncated =
+    showOutput && (outputLines.length > MAX_OUTPUT_LINES || outputHead.length < outputBody.trimEnd().length);
+  const shownOutput = truncated && !showFullOutput ? `${outputHead}\n…` : outputBody;
 
   const parts: (ReactNode | null)[] = [
     argumentList,

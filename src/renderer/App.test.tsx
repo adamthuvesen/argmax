@@ -559,7 +559,7 @@ describe("App", () => {
     const conversation = await screen.findByRole("region", { name: "Conversation" });
     await waitFor(() => expect(conversation).toHaveTextContent("I'll explore the codebase."));
     expect(conversation).toHaveTextContent("I've explored.");
-    expect(screen.getByRole("button", { name: "Read a file, searched" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Read a file, searched(: |$)/ })).toBeInTheDocument();
   });
 
   it("hides provider protocol JSON from the first-turn raw transcript fallback", async () => {

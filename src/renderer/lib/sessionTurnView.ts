@@ -485,11 +485,17 @@ export function assistantGroupHasVisibleChat(group: Pick<AssistantGroup, "text" 
  *
  * Reasoning reaches the renderer as a `message.delta` carrying `thinking: true`,
  * so it can be the newest event through a long silent stretch without any
- * visible answer text arriving. Before a turn produces an answer, that
- * reasoning renders expanded and labelled "Thinking" and is the progress cue.
- * Once an answer lands the block settles into quiet "Thought" history, and in
- * single-line verbosity it is dropped from the turn entirely, so it stops being
- * a cue and the generic indicator has to take the beat over.
+ * visible answer text arriving. While it is the newest thing the turn has
+ * produced, that reasoning renders labelled "Thinking" (and, at Steps, as a
+ * live preview) and is the progress cue. Anything after it — answer text, or a
+ * tool that started once it was written — makes it quiet "Thought" history,
+ * and the generic indicator or the tool line takes the beat over.
+ *
+ * Narration *earlier* in the turn no longer disqualifies it. That rule kept
+ * every thought after "I'll look at the code…" from ever reading as live, and
+ * Claude, Cursor and Grok narrate before almost every burst. Grok alternates
+ * tiny thinking/text pairs, so its cue moves between the two; each move is a
+ * real change of state.
  *
  * `SessionConversation` reads this to decide whether to show that generic
  * indicator and `SessionConversationTurn` reads it to decide whether to render
@@ -499,21 +505,24 @@ export function assistantGroupHasVisibleChat(group: Pick<AssistantGroup, "text" 
  */
 export function liveThoughtOwnsProgress(params: {
   assistantEvents: readonly TimelineEvent[];
+  toolItems: readonly TurnToolItem[];
   isLatestTurn: boolean;
   sessionRunning: boolean;
   isPausedOnUserInput: boolean;
 }): boolean {
   if (!params.isLatestTurn || !params.sessionRunning || params.isPausedOnUserInput) return false;
-  let hasThinkingText = false;
+  let newest: TimelineEvent | null = null;
   for (const event of params.assistantEvents) {
     if (event.message.trim().length === 0) continue;
-    // Any visible answer text in the turn hands the beat back to the generic
-    // indicator, whichever order the events arrived in.
-    const canonical = decodeTimelineEvent(event);
-    if (canonical.kind !== "message" || canonical.content !== "thinking") return false;
-    hasThinkingText = true;
+    if (newest === null || event.createdAt >= newest.createdAt) newest = event;
   }
-  return hasThinkingText;
+  if (newest === null) return false;
+  const canonical = decodeTimelineEvent(newest);
+  if (canonical.kind !== "message" || canonical.content !== "thinking") return false;
+  // A tool stamped in the same instant came after the reasoning in its
+  // envelope, so ties go to the tool.
+  const thoughtAt = newest.createdAt;
+  return !params.toolItems.some((item) => item.tool.createdAt >= thoughtAt);
 }
 
 /**

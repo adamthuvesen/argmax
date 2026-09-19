@@ -151,12 +151,13 @@ function SessionConversationTurnInner({
   );
   const { visibleAssistantGroups, hiddenToolIds, turnStartedAtMs, isPausedOnUserInput } = turnView;
   // A Thought block is "live" (shown expanded, labelled "Thinking", in place of
-  // the generic indicator) while this turn is actively working and hasn't
-  // produced its answer yet. Once any answer text lands the label settles, but
+  // the generic indicator) while it is the newest thing this working turn has
+  // produced (see liveThoughtOwnsProgress). Once anything follows it the label
+  // settles, but
   // the body stays open (`holdOpen`) for as long as this is the newest turn:
   // folding it right then would drop the whole reasoning out of a transcript
   // pinned to the bottom at the exact moment the answer starts arriving. An
-  // explicit fold from the turn chip still wins in Compact. Balanced previews
+  // explicit fold from the turn chip still wins in Compact. Steps previews
   // only live reasoning. Detailed keeps labelled thoughts inline.
   //
   // The beat belongs to the turn's newest reasoning burst, never to every burst
@@ -167,6 +168,7 @@ function SessionConversationTurnInner({
   // narrowing `live` alone changes nothing.
   const thinkingLive = liveThoughtOwnsProgress({
     assistantEvents: item.assistantEvents,
+    toolItems: item.toolItems,
     isLatestTurn,
     sessionRunning: sessionIsLive,
     isPausedOnUserInput
@@ -197,7 +199,7 @@ function SessionConversationTurnInner({
   const toolsExpanded = toolsExpandOverride ?? toolsExpandedDefault;
   // Detailed opens individual rows as well as groups. An agent
   // launch row follows that rather than the group level, because what its
-  // chevron reveals is the raw launch receipt — at Balanced the row names the
+  // chevron reveals is the raw launch receipt — at Steps the row names the
   // delegated work and the subagent's pane holds the rest.
   const toolRowsExpanded =
     !minimalActivity && (toolsExpandOverride ?? (isLatestTurn && defaultToolCallsDisplay === "expanded"));
@@ -242,7 +244,9 @@ function SessionConversationTurnInner({
             display={thinkingDisplay}
             previewText={group.text}
             defaultExpanded={toolsExpandOverride ?? false}
-            autoExpandWhileLive={!compactActivity}
+            // Minimal names the live thought without spelling it out; the
+            // block leaves the turn as soon as the next step lands.
+            autoExpandWhileLive={!compactActivity && !minimalActivity}
             live={groupLive}
             holdOpen={
               isLatestTurn && toolsExpandOverride !== false && group.id === liveThoughtGroupId

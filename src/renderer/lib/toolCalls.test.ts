@@ -390,7 +390,7 @@ describe("Task / sub-agent tools", () => {
       tool({ name: "Task", id: "1" }),
       tool({ name: "Task", id: "2" })
     ]);
-    expect(out.headline).toBe("Started agents");
+    expect(out.headline).toBe("Started 2 agents");
   });
 });
 
@@ -422,18 +422,26 @@ describe("opencode camelCase inputs", () => {
 });
 
 describe("summarizeToolGroup — single-bucket headlines", () => {
-  it("summarizes several reads without a numeric count", () => {
+  it("counts several settled reads", () => {
     const out = summarizeToolGroup([tool({ name: "Read" }), tool({ name: "read", id: "id-2" })]);
+    expect(out.headline).toBe("Read 2 files");
+  });
+
+  it("keeps a running group countless, since the tally is still growing", () => {
+    const out = summarizeToolGroup([
+      tool({ name: "Read" }),
+      tool({ name: "read", id: "id-2", status: "running" })
+    ]);
     expect(out.headline).toBe("Read files");
   });
 
-  it("summarizes several commands without a numeric count", () => {
+  it("counts several settled commands", () => {
     const out = summarizeToolGroup([
       tool({ name: "Bash" }),
       tool({ name: "shell", id: "id-2" }),
       tool({ name: "exec", id: "id-3" })
     ]);
-    expect(out.headline).toBe("Ran commands");
+    expect(out.headline).toBe("Ran 3 commands");
   });
 
   it("unwraps shell launchers from command previews", () => {
@@ -454,12 +462,12 @@ describe("summarizeToolGroup — single-bucket headlines", () => {
         inputPreview: "/bin/zsh -lc \"npm run lint\""
       })
     ]);
-    expect(out.headline).toBe("Ran commands");
+    expect(out.headline).toBe("Ran 3 commands");
   });
 
-  it("summarizes several edits without a numeric count", () => {
+  it("counts several settled edits", () => {
     const out = summarizeToolGroup([tool({ name: "Write" }), tool({ name: "Edit", id: "id-2" })]);
-    expect(out.headline).toBe("Edited files");
+    expect(out.headline).toBe("Edited 2 files");
   });
 
   it("uses an article for a single action", () => {
@@ -476,7 +484,7 @@ describe("summarizeToolGroup — mixed-bucket headlines", () => {
       tool({ name: "list_dir", id: "3" }),
       tool({ name: "Bash", id: "4" })
     ]);
-    expect(out.headline).toBe("Read a file, listed directories, ran a command");
+    expect(out.headline).toBe("Read a file, listed 2 directories, ran a command");
   });
 
   it("first clause is capitalized, subsequent clauses lowercase", () => {

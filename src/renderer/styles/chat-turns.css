@@ -154,12 +154,12 @@
   font-family: var(--font-prose);
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
-  opacity: 0.55;
+  opacity: 0.75;
   transition: opacity var(--duration-fast) var(--ease);
 }
 
 .turn-block:hover .turn-block-timestamp {
-  opacity: 0.9;
+  opacity: 1;
 }
 
 .turn-block-chip {
@@ -210,6 +210,14 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+}
+
+/* The header's small type sits high in its line box while a tool row's label
+   sits low in its padded row, so the turn's own 10px gap read tighter under
+   the header than the 16px body gap between a tool group and the next line.
+   The extra margin evens the two by eye. */
+.turn-block-header + .turn-block-body {
+  margin-top: var(--space-2_5);
 }
 
 .turn-block-tools {

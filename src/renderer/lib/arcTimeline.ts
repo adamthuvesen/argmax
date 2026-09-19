@@ -110,9 +110,7 @@ export function presentArcEvent(event: ArcTimelineEvent): ArcEventPresentation {
       return {
         ...base,
         verb: "Notes updated",
-        // The title is the first new line of NOTES.md — the coordinator's own
-        // heading — so it reads as a quotation, not as a member's name.
-        subject: event.title === "Notes updated" ? null : `“${event.title}”`,
+        subject: event.title === "Notes updated" ? null : notesSubject(event.title),
         glyph: "notes",
         tone: "notes",
         badge: event.status,
@@ -149,6 +147,21 @@ function presentStateChange(event: ArcTimelineEvent): ArcEventPresentation {
     default:
       return { ...shared, glyph: "resumed", tone: "quiet" };
   }
+}
+
+/**
+ * The title is the first new line of NOTES.md. Coordinators often keep a
+ * tracking table there, so a row like `| AV | Task … | id | DONE … |` reads
+ * as its first two cells joined, without the pipes. No quotation marks: the
+ * line is ellipsized, which would cut the closing one.
+ */
+function notesSubject(title: string): string {
+  if (!title.trimStart().startsWith("|")) return title;
+  const cells = title
+    .split("|")
+    .map((cell) => cell.trim())
+    .filter((cell) => cell !== "" && !/^:?-+:?$/.test(cell));
+  return cells.slice(0, 2).join(" · ") || title;
 }
 
 function prSubject(event: ArcTimelineEvent): string {

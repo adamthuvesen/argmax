@@ -730,9 +730,9 @@
 .arc-event-line {
   display: flex;
   align-items: baseline;
-  flex-wrap: wrap;
+  /* One line: the subject gives up width (ellipsis) so the project and the
+     badge stay beside it instead of wrapping onto a row of their own. */
   column-gap: 6px;
-  row-gap: 2px;
   min-width: 0;
   margin: 0;
   font-size: var(--text-sm);

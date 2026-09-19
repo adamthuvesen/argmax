@@ -73,7 +73,7 @@ enum TranscriptProjection {
 
             if event.type == "message.delta" {
                 if payload["thinking"]?.bool == true {
-                    appendThought(event, streaming: session?.state == .running && event.createdAt > lastUserAt, to: &items)
+                    appendThought(event, streaming: false, to: &items)
                 } else if let stream = payload["stream"]?.string,
                           stream == "stderr" || stream == "stdout" || stream == "pty" {
                     appendLog(event, stream: stream, to: &items)
@@ -211,6 +211,14 @@ enum TranscriptProjection {
         })
         for approval in pendingApprovals where !existingApprovalIDs.contains(approval.id) {
             items.append(.approval(approval))
+        }
+        if let liveID = TranscriptThinking.liveThoughtID(
+            in: items,
+            sessionIsWorking: session?.state == .running && session?.attention == .normal
+        ), let index = items.lastIndex(where: { $0.id == liveID }),
+           case .thought(var thought) = items[index] {
+            thought.isStreaming = true
+            items[index] = .thought(thought)
         }
         // Each item is appended when its first contributing event is visited,
         // and events are already in canonical cursor order. The synthetic

@@ -43,6 +43,7 @@ struct NativeTranscriptView: View {
         let rowIDs = allRows.map(\.id)
         let bounds = rowWindow.bounds(in: rowIDs, following: following)
         let rows = Array(allRows[bounds])
+        let latestTurnRowIDs = Set(rowIDs[(turnAnchorID.flatMap(rowIDs.lastIndex(of:)) ?? rowIDs.startIndex)...])
         return VStack(spacing: 0) {
             if case .failed(let message) = transcript.phase {
                 HStack(alignment: .top, spacing: Spacing.snug) {
@@ -77,6 +78,7 @@ struct NativeTranscriptView: View {
                                      onOpenSession: { navigator.awaitingSessionID = $0 })
                 }
                     .padding(.vertical, row.verticalPadding)
+                    .environment(\.transcriptRowInLatestTurn, latestTurnRowIDs.contains(row.id))
             } footer: {
                 TranscriptThinkingLabel(thinking: thinking, beatHolder: $beatHolder)
                     .id(thinking)

@@ -310,6 +310,25 @@ final class TranscriptProjectionTests: XCTestCase {
         XCTAssertFalse(answer.isStreaming)
     }
 
+    func testOnlyTheNewestThoughtOfAWorkingTurnStreams() {
+        let running = TranscriptSessionMetadata(
+            id: "session-1", workspaceId: "workspace-1", provider: "claude",
+            modelLabel: "Claude", modelId: "claude", prompt: "Go", state: .running,
+            attention: .normal, reasoningEffort: nil
+        )
+        let items = TranscriptProjection.project(events: [
+            event("user", "user.message", "Go", 1),
+            event("first", "message.delta", "Plan it.", 2, ["thinking": .bool(true)]),
+            event("prose", "message.completed", "Looking now.", 3),
+            event("second", "message.delta", "Check it.", 4, ["thinking": .bool(true)])
+        ], session: running)
+        let streaming = items.compactMap { item -> Bool? in
+            if case .thought(let thought) = item { return thought.isStreaming }
+            return nil
+        }
+        XCTAssertEqual(streaming, [false, true])
+    }
+
     func testClearDeduplicatesEditedRowsAndHidesChildProse() {
         let events = [
             event("old", "user.message", "Before clear", 1),

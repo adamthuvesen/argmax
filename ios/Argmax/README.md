@@ -127,10 +127,18 @@ same diff colors as the review screen. File reads and file links continue to
 open the current file contents.
 
 Settings → Chat detail controls this iPhone independently of the desktop.
-Compact is the default and folds thoughts and tool activity together between
-messages. Minimal also folds interim narration once an answer arrives.
-Balanced shows short thought previews inline. Detailed shows individual tool
-steps with longer thought previews, while raw inputs and outputs stay folded.
+The four levels are the desktop's ladder, each one step more than the last.
+Minimal folds each turn's work into one activity summary and also folds interim
+narration once an answer arrives. Compact, the default, folds thoughts and tool
+activity together between messages. Steps lists every call as its own row with
+short thought previews inline, while inputs and outputs stay folded. Detailed
+adds thoughts in full and opens the latest turn's outputs, each capped at eight
+lines until "Show all". A settled headline counts what it covers ("Read 3
+files", "Ran 11 commands"); a fold with a call still in flight, or one still
+holding the beat between calls, states what it is doing and leaves the numbers
+to the frame the work lands in. Only a working turn's
+newest thought, with nothing visible after it, reads as live "Thinking"; it
+and the generic thinking line never show at once.
 Session errors and requests for input remain visible at every level. A failed
 tool call is not one of them: the agent reads the error and tries again, so a
 recovered turn used to arrive as a screen of red. It folds with the rest of the

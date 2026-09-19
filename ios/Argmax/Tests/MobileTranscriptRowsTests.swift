@@ -69,7 +69,7 @@ final class MobileTranscriptRowsTests: XCTestCase {
 
     func testHigherLevelsKeepStepsIndividuallyInspectableAndEmptyInputIsEmpty() {
         let items = [thought("thought"), tools("tools"), message("answer")]
-        for detail in [MobileChatDetail.balanced, .detailed] {
+        for detail in [MobileChatDetail.steps, .detailed] {
             XCTAssertEqual(MobileTranscriptRow.rows(items, detail: detail), items.map(MobileTranscriptRow.item))
         }
         XCTAssertTrue(MobileTranscriptRow.rows([], detail: .compact).isEmpty)
@@ -91,9 +91,41 @@ final class MobileTranscriptRowsTests: XCTestCase {
 
         XCTAssertEqual(
             TranscriptToolActivity.summary(for: [read, command, failedEdit]).headline,
-            "Read files, ran a command, file change failed"
+            "Read 2 files, ran a command, file change failed"
         )
         XCTAssertEqual(TranscriptToolActivity.summary(for: [read, command]).iconKind, .read)
+    }
+
+    /// A settled plural clause says how many; a running one never does, since
+    /// its number would change under the reader.
+    func testSettledHeadlineCountsCallsOrDistinctTargets() {
+        let commands = (1...11).map { tool("command-\($0)", kind: .command, status: .done, completionObserved: true) }
+        XCTAssertEqual(TranscriptToolActivity.summary(for: commands).headline, "Ran 11 commands")
+        let reads = ["a", "b", "a"].enumerated().map { index, path in
+            tool("read-\(index)", kind: .read, status: .done, completionObserved: true, targets: [path])
+        }
+        let searches = (1...2).map { tool("search-\($0)", kind: .search, status: .done, completionObserved: true) }
+        XCTAssertEqual(TranscriptToolActivity.summary(for: reads + searches).headline, "Read 2 files, searched files")
+        let running = (1...2).map { tool("running-\($0)", kind: .command, status: .running, completionObserved: false) }
+        XCTAssertEqual(TranscriptToolActivity.summary(for: running).headline, "Running commands")
+        // One call still in flight and the fold states what it is doing: a
+        // count beside it would be a total of work that is not done.
+        XCTAssertEqual(
+            TranscriptToolActivity.summary(for: commands + running).headline,
+            "Ran commands, running commands"
+        )
+        XCTAssertEqual(TranscriptToolActivity.summary(for: commands, counting: false).headline, "Ran commands")
+        // Discovery counts calls, not the tools they loaded, so it says neither.
+        let discovery = (1...2).map {
+            tool("discovery-\($0)", kind: .discovery, status: .done, completionObserved: true, toolCount: 3)
+        }
+        XCTAssertEqual(TranscriptToolActivity.summary(for: discovery).headline, "Loaded tools")
+        // One call, several targets: the row says how many, like the fold.
+        XCTAssertEqual(reads[0].activitySummary, "Read a")
+        XCTAssertEqual(
+            tool("read-many", kind: .read, status: .done, completionObserved: true, targets: ["a", "b", "c"]).activitySummary,
+            "Read 3 files"
+        )
     }
 
     func testOnlyEditActivitiesOpenWorkspaceRelativeDiffs() {
@@ -126,7 +158,8 @@ final class MobileTranscriptRowsTests: XCTestCase {
         kind: TranscriptToolActivityKind,
         status: TranscriptToolStatus,
         completionObserved: Bool,
-        targets: [String] = []
+        targets: [String] = [],
+        toolCount: Int? = nil
     ) -> TranscriptTool {
         TranscriptTool(
             id: id, toolUseId: id, name: id, summary: "", input: nil, output: nil, error: nil,
@@ -134,7 +167,7 @@ final class MobileTranscriptRowsTests: XCTestCase {
             filePath: nil, fileLabel: nil,
             activity: TranscriptToolActivity(
                 version: 1, kind: kind, evidence: .native, targets: targets,
-                operation: nil, toolCount: nil
+                operation: nil, toolCount: toolCount
             ),
             completionObserved: completionObserved
         )

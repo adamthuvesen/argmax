@@ -142,7 +142,9 @@ struct TranscriptThoughtRow: View {
     @State private var showFullThought = false
 
     var body: some View {
-        if detail == .balanced || detail == .detailed {
+        if detail == .detailed {
+            TranscriptMarkdown(text: thought.text, client: client, onOpenFile: onOpenFile, isThinking: true)
+        } else if detail == .steps {
             VStack(alignment: .leading, spacing: Spacing.tight) {
                 TranscriptMarkdown(text: visibleText, client: client, onOpenFile: onOpenFile, isThinking: true)
                 if thought.text.count > previewLength {
@@ -182,7 +184,7 @@ struct TranscriptThoughtRow: View {
         }
     }
 
-    private var previewLength: Int { detail == .detailed ? 800 : 400 }
+    private var previewLength: Int { 400 }
     private var visibleText: String {
         showFullThought || thought.text.count <= previewLength
             ? thought.text : String(thought.text.prefix(previewLength)) + "…"
@@ -201,7 +203,7 @@ struct TranscriptToolsRow: View {
 
     /// The row that just did the work, when this group holds the beat between
     /// calls: the one whose completion the silence started at, the same stamp
-    /// `TranscriptThinking.settledBeat` reads. In `.detailed` and inside an
+    /// `TranscriptThinking.settledBeat` reads. From `.steps` up and inside an
     /// expanded fold the group shows bare rows, so the beat would otherwise
     /// publish here and nothing would claim it — the fold's headline gets it
     /// only where the fold exists. Static so the projection tests can pin it.
@@ -219,7 +221,7 @@ struct TranscriptToolsRow: View {
 
     var body: some View {
         // A row reserves its own height, so the rows stack without a gap.
-        if detail == .detailed || activityToolsAreRevealed {
+        if detail == .steps || detail == .detailed || activityToolsAreRevealed {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(group.tools) { tool in
                     TranscriptToolRow(tool: tool, holdsBeat: tool.id == beatToolID,
@@ -286,8 +288,17 @@ struct TranscriptFoldLabel: View {
     /// the second clause their folds never wave at all.
     private var live: Bool { running || (beat.map(lines.contains) ?? false) }
 
+    /// The live line drops its counts, whether it is running or holding the
+    /// beat between calls: a number that lands before the work does reads as
+    /// a total. Recomputed here rather than passed in, since only this view
+    /// knows which line the beat is on.
+    private var shownSummary: String {
+        guard live, !tools.isEmpty else { return summary }
+        return TranscriptToolActivity.summary(for: tools, counting: false).headline
+    }
+
     var body: some View {
-        TranscriptDwelledValue(value: Shown(summary: summary, live: live, icons: iconTools),
+        TranscriptDwelledValue(value: Shown(summary: shownSummary, live: live, icons: iconTools),
                                key: Self.kindKey(for: tools), running: running) { shown in
             HStack(spacing: Spacing.snug) {
                 ForEach(shown.icons) { tool in
@@ -444,8 +455,29 @@ private struct TranscriptToolRow: View {
     var holdsBeat = false
     let onOpenFile: (String) -> Void
     let onOpenDiff: ((String) -> Void)?
+    @Environment(\.mobileChatDetail) private var detail
+    @Environment(\.transcriptRowInLatestTurn) private var inLatestTurn
+    @State private var userExpanded: Bool?
+    @State private var showsAllOutput = false
+
+    /// How much of an output an opened Detailed row shows before "Show all".
+    static let outputPreviewLines = 8
 
     private var isCommand: Bool { tool.activity.kind == .command }
+
+    /// Detailed opens the latest turn's outputs, which is what the reader is
+    /// watching; older turns stay folded so scrolling back is not a wall of
+    /// payloads. A row the reader toggled keeps their choice.
+    private var opensByDefault: Bool {
+        guard detail == .detailed, inLatestTurn else { return false }
+        return [tool.output, tool.error].contains { text in
+            text.map { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? false
+        }
+    }
+
+    private var expanded: Binding<Bool> {
+        Binding(get: { userExpanded ?? opensByDefault }, set: { userExpanded = $0 })
+    }
 
     /// Live work marked on the words: a call in flight, or this row holding
     /// the beat between calls. Providers that report a call atomically never
@@ -478,7 +510,7 @@ private struct TranscriptToolRow: View {
             .buttonStyle(PressDim())
             .accessibilityHint("Opens this file's diff")
         } else if hasExpandableDetail {
-            DisclosureGroup {
+            DisclosureGroup(isExpanded: expanded) {
                 block
                     .padding(.leading, TranscriptActivityRow<EmptyView>.targetInset)
                     .padding(.top, Spacing.hair)
@@ -519,12 +551,16 @@ private struct TranscriptToolRow: View {
         let input = isCommand ? nil : tool.input?.trimmingCharacters(in: .whitespacesAndNewlines)
         let output = tool.output?.trimmingCharacters(in: .whitespacesAndNewlines)
         let error = tool.error?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let outputLines = output.map { $0.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) } ?? []
+        let capsOutput = detail == .detailed && !showsAllOutput && outputLines.count > Self.outputPreviewLines
         VStack(alignment: .leading, spacing: 0) {
             if let input, !input.isEmpty { payload(input, label: "Input") }
-            if let output, !output.isEmpty { payload(output, label: nil) }
+            if let output, !output.isEmpty {
+                payload(capsOutput ? outputLines.prefix(Self.outputPreviewLines).joined(separator: "\n") + "\n…" : output,
+                        label: nil)
+            }
             if let error, !error.isEmpty { payload(error, label: "Error", ink: Theme.rose) }
-            footer(lines: output.map { $0.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).count } ?? 0,
-                   copyText: output ?? input ?? error)
+            footer(lines: outputLines.count, copyText: output ?? input ?? error)
         }
         .background(Theme.raised, in: .rect(cornerRadius: Radius.control - Spacing.hair))
     }
@@ -553,7 +589,10 @@ private struct TranscriptToolRow: View {
 
     private func footer(lines: Int, copyText: String?) -> some View {
         HStack(spacing: Spacing.row) {
-            if lines > 1 {
+            if detail == .detailed && lines > Self.outputPreviewLines {
+                Button(showsAllOutput ? "Show less" : "Show all \(lines) lines") { showsAllOutput.toggle() }
+                    .monospacedDigit()
+            } else if lines > 1 {
                 Text("\(lines) lines").monospacedDigit()
             }
             if let path = tool.filePath {

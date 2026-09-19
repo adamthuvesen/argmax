@@ -143,6 +143,20 @@ extension EnvironmentValues {
     }
 }
 
+/// Whether a row belongs to the newest turn, the one Detailed opens outputs
+/// in. False outside the main transcript, so subagent and multitask details
+/// keep their steps folded.
+private struct TranscriptRowInLatestTurnKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var transcriptRowInLatestTurn: Bool {
+        get { self[TranscriptRowInLatestTurnKey.self] }
+        set { self[TranscriptRowInLatestTurnKey.self] = newValue }
+    }
+}
+
 /// Keep the whole row tappable without the system disclosure's extra insets.
 ///
 /// A group headline keeps its chevron: it is sometimes a turn's only

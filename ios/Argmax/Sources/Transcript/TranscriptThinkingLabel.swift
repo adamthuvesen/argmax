@@ -147,17 +147,8 @@ struct TranscriptThinking: Hashable {
 
     static func current(items: [TranscriptItem], session: NativeSession?) -> Self? {
         guard let session, session.state == .running, session.attention == .normal else { return nil }
-        let turn = items.suffix(from: items.lastIndex(where: {
-            if case .user(let message) = $0 { return !message.isSteering }
-            return false
-        }) ?? items.startIndex)
-        for item in turn {
-            switch item {
-            case .question(let card) where card.isOutstanding: return nil
-            case .approval(let card) where card.status == .pending: return nil
-            default: break
-            }
-        }
+        let turn = latestTurn(of: items)
+        guard !isPausedOnUser(turn) else { return nil }
         guard var beat = settledBeat(in: turn,
                                      gapWait: TranscriptThinkingWait.gap(measuring: gaps(in: turn)),
                                      fallbackID: session.sessionId)
@@ -177,9 +168,60 @@ struct TranscriptThinking: Hashable {
         return beat
     }
 
+    /// The newest turn: everything from the last prompt that started one. A
+    /// steering message belongs to the turn it was sent into.
+    private static func latestTurn(of items: [TranscriptItem]) -> ArraySlice<TranscriptItem> {
+        items.suffix(from: items.lastIndex(where: {
+            if case .user(let message) = $0 { return !message.isSteering }
+            return false
+        }) ?? items.startIndex)
+    }
+
+    /// The agent has handed the turn to the reader: it is waiting, not working.
+    private static func isPausedOnUser(_ turn: ArraySlice<TranscriptItem>) -> Bool {
+        turn.contains { item in
+            switch item {
+            case .question(let card): return card.isOutstanding
+            case .approval(let card): return card.status == .pending
+            default: return false
+            }
+        }
+    }
+
+    /// The thought that owns the turn's progress cue, if one does: the newest
+    /// reasoning of a working turn, while nothing visible — prose, a call, a
+    /// request addressed to the reader — has come after it. The desktop's
+    /// `liveThoughtOwnsProgress` rule. Only that one burst reads "Thinking";
+    /// every burst behind it is history, and prose earlier in the turn does
+    /// not take the beat back from reasoning that came after it. Items land in
+    /// the order their first event arrived, so a call started after the
+    /// thought's last delta sits after it here.
+    ///
+    /// An answered question or a settled approval counts as work after the
+    /// thought, the way the desktop counts the question tool: `settledBeat`
+    /// takes its beat from that card, and reasoning from before it would
+    /// otherwise wave beside the cue.
+    ///
+    /// The projection marks this thought streaming and `settledBeat` reads
+    /// that mark back, so the thought and the generic cue can never both
+    /// claim the beat, nor both leave it empty.
+    static func liveThoughtID(in items: [TranscriptItem], sessionIsWorking: Bool) -> String? {
+        guard sessionIsWorking else { return nil }
+        let turn = latestTurn(of: items)
+        guard !isPausedOnUser(turn) else { return nil }
+        for item in turn.reversed() {
+            switch item {
+            case .thought(let thought): return thought.id
+            case .assistant, .tools, .agents, .question, .approval, .error: return nil
+            default: continue
+            }
+        }
+        return nil
+    }
+
     /// Where the silence started: the last thing in the turn that finished.
-    /// Live content — an answer, reasoning, an error — is a progress cue of its
-    /// own and ends the beat outright.
+    /// Live content — an answer, live reasoning, an error — is a progress cue
+    /// of its own and ends the beat outright.
     ///
     /// `gapWait` is read only by a beat that is actually a mid-turn gap: the
     /// timestamp parsing behind it is wasted work on the renders that matter
@@ -193,7 +235,8 @@ struct TranscriptThinking: Hashable {
             switch item {
             case .user(let message) where message.isSteering: continue
             case .notice, .todo, .multitask: continue
-            case .thought, .assistant, .error: return nil
+            case .thought(let thought) where thought.isStreaming: return nil
+            case .assistant, .error: return nil
             case .user:
                 // Nothing has come back yet, so this is the turn's first beat
                 // and serves the floor rather than the turn's rhythm.

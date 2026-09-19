@@ -4,7 +4,8 @@ import SwiftUI
 enum MobileChatDetail: Int, CaseIterable, Identifiable, Sendable {
     case minimal = 1
     case compact = 2
-    case balanced = 3
+    /// Was "Balanced"; the raw value is what `argmax.phone.chatDetail` persists.
+    case steps = 3
     case detailed = 4
 
     var id: Int { rawValue }
@@ -13,7 +14,7 @@ enum MobileChatDetail: Int, CaseIterable, Identifiable, Sendable {
         switch self {
         case .minimal: return "Minimal"
         case .compact: return "Compact"
-        case .balanced: return "Balanced"
+        case .steps: return "Steps"
         case .detailed: return "Detailed"
         }
     }
@@ -21,13 +22,13 @@ enum MobileChatDetail: Int, CaseIterable, Identifiable, Sendable {
     var hint: String {
         switch self {
         case .minimal:
-            return "Answers, with one folded activity summary."
+            return "One activity line while it works. Finished turns keep the answer."
         case .compact:
-            return "Short grouped activity between messages."
-        case .balanced:
-            return "Adds thoughts inline."
+            return "One activity summary between messages."
+        case .steps:
+            return "Every step listed by name. Outputs stay folded."
         case .detailed:
-            return "Also shows tool steps. Outputs stay folded."
+            return "Steps and thoughts in full."
         }
     }
 }

@@ -51,6 +51,38 @@ final class TranscriptThinkingTests: XCTestCase {
         XCTAssertEqual(gap?.word, TranscriptThinking.current(items: [user, tool(.done)], session: session)?.word)
     }
 
+    /// Only the turn's newest reasoning is live, and only while nothing
+    /// visible has come after it; prose earlier in the turn does not stop it.
+    func testOnlyTheNewestUnansweredThoughtIsLive() {
+        let user = message("user", user: true)
+        let early = TranscriptItem.thought(.init(id: "early", text: "Plan", createdAt: "2", isStreaming: false))
+        let late = TranscriptItem.thought(.init(id: "late", text: "Check", createdAt: "4", isStreaming: false))
+        XCTAssertEqual(TranscriptThinking.liveThoughtID(in: [user, early, message("prose"), late], sessionIsWorking: true), "late")
+        XCTAssertNil(TranscriptThinking.liveThoughtID(in: [user, early, message("prose")], sessionIsWorking: true))
+        XCTAssertNil(TranscriptThinking.liveThoughtID(in: [user, late, tool(.running)], sessionIsWorking: true))
+        XCTAssertNil(TranscriptThinking.liveThoughtID(in: [user, late], sessionIsWorking: false))
+        XCTAssertNil(TranscriptThinking.liveThoughtID(in: [late, user], sessionIsWorking: true))
+        let question = TranscriptItem.question(.init(id: "question", toolUseId: "ask", createdAt: "3", questions: [], isOutstanding: true))
+        XCTAssertNil(TranscriptThinking.liveThoughtID(in: [user, question, late], sessionIsWorking: true))
+        // A thought that is not live does not hold the beat: the cue takes it.
+        XCTAssertNotNil(TranscriptThinking.current(items: [user, late], session: session))
+    }
+
+    /// A request addressed to the reader is work after the thought, so an
+    /// answered question leaves the reasoning behind it history — and the cue,
+    /// which takes its beat from the card, the turn's only live line.
+    func testAnsweredRequestsAndErrorsEndTheThought() {
+        let user = message("user", user: true)
+        let thought = TranscriptItem.thought(.init(id: "thought", text: "Ask first", createdAt: "2", isStreaming: false))
+        let answered = TranscriptItem.question(.init(id: "question", toolUseId: "ask", createdAt: "3", questions: [], isOutstanding: false))
+        let approved = TranscriptItem.approval(.init(id: "approval", provider: nil, command: "edit", workingDirectory: nil, riskLevel: nil, status: .approved, createdAt: "3"))
+        let failure = TranscriptItem.error(.init(id: "error", message: "Rate limited", code: nil, operation: nil, createdAt: "3"))
+        for after in [answered, approved, failure] {
+            XCTAssertNil(TranscriptThinking.liveThoughtID(in: [user, thought, after], sessionIsWorking: true))
+        }
+        XCTAssertNotNil(TranscriptThinking.current(items: [user, thought, answered], session: session))
+    }
+
     func testPreviousTurnAndSteeringDoNotRestartOrSuppressGap() {
         let user = message("user", user: true)
         let gap = TranscriptThinking.current(items: [user], session: session)

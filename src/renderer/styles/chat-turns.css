@@ -998,7 +998,7 @@
   border: 0;
   background: transparent;
   cursor: pointer;
-  color: var(--muted);
+  color: var(--tool-row-ink);
   font-size: var(--text-base);
   line-height: 1.4;
   transition: color var(--duration-fast) var(--ease);
@@ -1027,16 +1027,16 @@
   font-weight: calc(400 + var(--font-weight-offset));
   letter-spacing: 0;
   text-transform: none;
-  color: var(--tool-verb-ink);
+  color: var(--tool-row-ink);
 }
 
-/* Everything after the leading verb ("2 files, ran 1 command") steps back a
-   shade, the same way a row's target steps back from its verb. One grammar:
-   the verb says what happened, the dim remainder says to what. */
+/* Everything after the leading verb ("2 files, ran 1 command"). It shares the
+   verb's ink: a darker verb read as a second weight on a line meant to stand
+   back from the prose. */
 .tool-call-group-eyebrow-detail {
   font-family: var(--font-prose);
   font-size: var(--text-base);
-  color: var(--chip-ink);
+  color: var(--tool-row-ink);
 }
 
 .tool-call-group-preview {
@@ -1165,7 +1165,7 @@
   font-family: var(--font-prose);
   font-size: var(--text-base);
   line-height: 1.4;
-  color: var(--muted);
+  color: var(--tool-row-ink);
   transition: color var(--duration-fast) var(--ease);
 }
 
@@ -1205,12 +1205,12 @@ button.tool-call-row-button {
   transform: rotate(90deg);
 }
 
-/* The verb/target step is a token step, not an opacity fade. Dimming `--muted`
-   with opacity dropped the file name to 2.4:1 in the light theme, and the file
-   name is the one thing on the row you scan for. */
+/* Verb and target share one ink, set by token rather than an opacity fade:
+   dimming `--muted` with opacity dropped the file name to 2.4:1 in the light
+   theme, and the file name is the one thing on the row you scan for. */
 .tool-call-row-verb {
   flex: 0 0 auto;
-  color: var(--tool-verb-ink);
+  color: var(--tool-row-ink);
   font-weight: calc(400 + var(--font-weight-offset));
 }
 
@@ -1239,7 +1239,7 @@ button.tool-call-row-button {
   white-space: nowrap;
   font-family: var(--font-prose);
   font-size: var(--text-base);
-  color: var(--muted);
+  color: var(--tool-row-ink);
 }
 
 .tool-call-row[data-tool-type="bash"] .tool-call-row-target {
@@ -1260,10 +1260,9 @@ button.tool-call-row-button {
   text-overflow: clip;
 }
 
-/* Hovering brightens what the row is about, which is the useful feedback —
-   the verb is already at rest where it belongs. */
-.tool-call-row-button:hover .tool-call-row-target,
-.tool-call-group-header:hover .tool-call-group-eyebrow-detail {
+/* Hovering brightens the whole line at once, so it stays one ink. */
+.tool-call-row-button:hover :is(.tool-call-row-verb, .tool-call-row-target, .tool-call-row-chevron),
+.tool-call-group-header:hover :is(.tool-call-group-eyebrow-label, .tool-call-group-eyebrow-detail, .tool-call-row-chevron) {
   color: var(--muted-strong);
 }
 
@@ -1273,28 +1272,28 @@ button.tool-call-row-button {
 .tool-call-row-chevron {
   flex: 0 0 auto;
   align-self: center;
-  color: var(--muted);
+  color: var(--tool-row-ink);
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease),
     transform var(--duration-fast) var(--ease);
 }
 
 /* A group headline is sometimes the only thing a turn shows (single-line
-   verbosity), so its chevron keeps a faint resting presence — invisible there
+   verbosity), so its chevron stays at the line's ink — invisible there
    would make the whole run of tools undiscoverable. Individual rows sit inside
    an already-open group, so they can stay clean until hovered. */
 .tool-call-group-header .tool-call-row-chevron {
-  opacity: 0.28;
+  opacity: 1;
 }
 
 .tool-call-row-button:hover .tool-call-row-chevron,
 .tool-call-group-header:hover .tool-call-row-chevron {
-  opacity: 0.55;
+  opacity: 1;
 }
 
 .tool-call-row-button[aria-expanded="true"] .tool-call-row-chevron,
 .tool-call-group[data-expanded="true"] > .tool-call-group-header .tool-call-row-chevron {
-  opacity: 0.55;
+  opacity: 1;
   transform: rotate(90deg);
 }
 

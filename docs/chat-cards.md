@@ -357,10 +357,10 @@ Tool activity renders as text, not chrome. One grammar covers every row and ever
 
 | Part | Component | Styling |
 |---|---|---|
-| Verb (`Edited`, `Read`) | `splitLeadingVerb` in [toolCalls.ts](../src/renderer/lib/toolCalls.ts) | `--muted-strong`, UI font |
-| Target (file name, headline remainder) | `.tool-call-row-target`, `.tool-call-group-eyebrow-detail` | `--muted`, UI font; `--font-code` only for `data-tool-type="bash"` |
+| Verb (`Edited`, `Read`) | `splitLeadingVerb` in [toolCalls.ts](../src/renderer/lib/toolCalls.ts) | `--tool-row-ink`, UI font |
+| Target (file name, headline remainder) | `.tool-call-row-target`, `.tool-call-group-eyebrow-detail` | `--tool-row-ink`, UI font; `--font-code` only for `data-tool-type="bash"` |
 | Line stat | [ActivityStat.tsx](../src/renderer/components/ActivityStat.tsx) | `--diff-add-gutter-fg` / `--diff-del-gutter-fg`, tabular |
-| Chevron | `.tool-call-row-chevron` | Only on rows that expand to something. Hidden until hover; faint at rest on group headlines, which are sometimes a turn's only control |
+| Chevron | `.tool-call-row-chevron` | Only on rows that expand to something. Hidden until hover on rows; always shown on group headlines, which are sometimes a turn's only control. `--tool-row-ink` |
 
 Rules this surface holds to:
 
@@ -368,7 +368,7 @@ Rules this surface holds to:
 - Codex computer-use calls from `cua_repl` display **Computer use** with a monitor icon. Their arguments and output remain available in the expanded row.
 - Reads targeting only `SKILL.md` entrypoints display as skill activation, including historical rows. Supporting documents and mixed reads retain their file-read label.
 - **Invocation-scoped identity.** Provider tool IDs can repeat across turns. `buildSessionToolCalls` scopes them with `providerInvocationId` and uses chronological unmatched pairs for historical rows that predate that field, so a tool stays in the turn that ran it.
-- **Verb/target contrast is a token step, not an opacity fade.** Fading `--muted` drops the file name to 2.4:1 in the light theme; `--muted-strong` over `--muted` measures 6.9:1 / 3.6:1 (light) and 8.0:1 / 5.1:1 (dark). Pinned by `accentTokens.test.ts`.
+- **A tool line is one ink.** Verb, target, headline remainder, monochrome mark, and chevron all take `--tool-row-ink` (`--chip-ink`: 4.58:1 on paper, `--muted` in dark), and hover brightens them together to `--muted-strong`. A darker verb read as a second weight on a line meant to stand back from the prose. The ink is a token, never an opacity fade: fading `--muted` drops the file name to 2.4:1 in the light theme. Sub-agent rows keep their accent verb.
 - **Transport is never a row.** Codex's `wait`, `close_agent`, and `send_message_to_thread` name no work and carry only internal thread ids, so `foldCodexAgentControlTools` drops them unconditionally. Matching one to a spawn decides only whether its outcome settles that launch. When a name collides with a real tool, the Codex thread ids in the input are what identify the transport. Grok's `get_command_or_subagent_output` is the same poll for a spawned child and is hidden by `isHiddenToolName`. Leaving it visible split the parent sentence around "Get command or subagent output".
 - **A "Messaged an agent" row is not a dump.** Codex collab `send_message` stores a Fernet token (`gAAAAA…`) plus thread ids — those are not shown, so the row is the activity itself. Claude `SendMessage` keeps the readable body and drops the recipient id and `{resumedAgentId, pin}` receipt. Cursor, OpenCode, and Grok have no equivalent collab token; the Fernet detector is provider-blind so a future one still hides. A row whose leftover arguments are only ciphertext is not a control.
 - **Single calls respect the verbosity.** Compact keeps even a single call behind a short summary such as "Ran a command", so a long command cannot dominate the conversation. Other levels show a single call as its target row.

@@ -19,12 +19,10 @@ struct TranscriptAgentDetail: View {
         NavigationStack {
             Group {
                 if loading && items.isEmpty {
-                    VStack(spacing: Spacing.row) {
-                        WorkingNest(size: 24)
-                        Text("Loading agent activity…").typeMeta()
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .accessibilityElement(children: .combine)
+                    WorkingNest(size: 24)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .accessibilityElement()
+                        .accessibilityLabel("Loading agent activity")
                 } else if let failure, items.isEmpty {
                     EmptyState(
                         mark: .glyph("exclamationmark.triangle"),

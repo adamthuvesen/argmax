@@ -260,7 +260,8 @@ private struct TranscriptMultitaskDetail: View {
             VStack(spacing: 0) {
                 Group {
                     if loading && snapshot == nil {
-                        ProgressView("Loading multitask…")
+                        ProgressView()
+                            .accessibilityLabel("Loading multitask")
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if let snapshot {
                         ScrollView {

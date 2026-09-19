@@ -119,6 +119,12 @@
      same place. Dark keeps --muted: the same value clears 4.5:1 against
      --composer-surface there. */
   --chip-ink: color-mix(in oklab, var(--muted) 55%, var(--muted-strong));
+  /* Tool rows in chat ("Edited a file", "Ran commands"): the verb and the
+     detail after it. On paper they sit one step lighter than chrome labels so
+     a transcript's tool lines stand back from the prose around them; hovering
+     still brightens to --muted-strong. */
+  --tool-verb-ink: var(--chip-ink);
+  --tool-detail-ink: var(--muted);
 
   /* Ink for long-form rendered prose (`.markdown`): agent answers, plan cards,
      file previews. Held a step off --text on paper so a wall of text doesn't
@@ -548,6 +554,8 @@
   --muted: color-mix(in oklab, #8a857b, var(--ink-toward) var(--ink-pull));
   --muted-strong: color-mix(in oklab, #a5a198, var(--ink-toward) var(--ink-pull));
   --chip-ink: var(--muted);
+  --tool-verb-ink: var(--muted-strong);
+  --tool-detail-ink: var(--chip-ink);
 
   /* Prose runs brighter than chrome ink in dark, not softer. The bloom that
      rules out paper-white for labels is a weight problem at small sizes, and

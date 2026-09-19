@@ -1027,7 +1027,7 @@
   font-weight: calc(400 + var(--font-weight-offset));
   letter-spacing: 0;
   text-transform: none;
-  color: var(--muted-strong);
+  color: var(--tool-verb-ink);
 }
 
 /* Everything after the leading verb ("2 files, ran 1 command") steps back a
@@ -1036,7 +1036,7 @@
 .tool-call-group-eyebrow-detail {
   font-family: var(--font-prose);
   font-size: var(--text-base);
-  color: var(--chip-ink);
+  color: var(--tool-detail-ink);
 }
 
 .tool-call-group-preview {
@@ -1210,7 +1210,7 @@ button.tool-call-row-button {
    name is the one thing on the row you scan for. */
 .tool-call-row-verb {
   flex: 0 0 auto;
-  color: var(--muted-strong);
+  color: var(--tool-verb-ink);
   font-weight: calc(400 + var(--font-weight-offset));
 }
 

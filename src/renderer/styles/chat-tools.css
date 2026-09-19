@@ -142,7 +142,7 @@
      numbers does not match the impression: mono's ascender/descender span is
      1.30em against the sans 1.14em, and its advance is uniformly wider, so a
      block of it at the prose size reads visibly larger than the prose. */
-  font-size: var(--text-base);
+  font-size: var(--text-xs);
 }
 
 .file-change-card-body .diff-hunk {

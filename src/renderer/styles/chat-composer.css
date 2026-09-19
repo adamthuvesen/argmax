@@ -399,7 +399,7 @@
   border: 0;
   border-radius: 0;
   font-family: var(--font-code);
-  font-size: var(--text-sm-plus);
+  font-size: var(--text-xs);
   line-height: 1.58;
   color: var(--text);
   overflow-x: auto;

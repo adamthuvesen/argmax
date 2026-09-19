@@ -83,6 +83,10 @@ struct TranscriptScreen: View {
         }
         .onChange(of: scenePhase) {
             if scenePhase != .active { saveDraft(debounce: false) }
+            // iOS posts keyboard frames to a backgrounded app and can drop
+            // the matching hide, which left the composer floating at the old
+            // keyboard top on return. No focused field means no keyboard.
+            if scenePhase == .active, !UIResponder.isEditingText { keyboardInset = 0 }
         }
         .onDisappear {
             saveDraft(debounce: false)
@@ -304,4 +308,21 @@ func transcriptKeyboardInset(
     containerBottom: CGFloat
 ) -> CGFloat {
     max(0, containerBottom - keyboardTop)
+}
+
+extension UIResponder {
+    /// Whether a text input anywhere in the app holds first responder, found
+    /// by sending an action down the responder chain — UIKit has no getter.
+    @MainActor static var isEditingText: Bool {
+        firstResponder = nil
+        UIApplication.shared.sendAction(#selector(recordFirstResponder), to: nil, from: nil, for: nil)
+        defer { firstResponder = nil }
+        return firstResponder is UIKeyInput
+    }
+
+    @MainActor private static weak var firstResponder: UIResponder?
+
+    @objc private func recordFirstResponder() {
+        UIResponder.firstResponder = self
+    }
 }

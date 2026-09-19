@@ -319,6 +319,23 @@ final class TranscriptUITests: XCTestCase {
         XCTAssertEqual(anchor.frame.minY, y, accuracy: 3, "Updating content moved the reading position")
     }
 
+    func testStrandedKeyboardInsetClearsOnReturn() {
+        app.terminate()
+        app.launchArguments.append("-scenario-stranded-keyboard")
+        app.launch()
+        let composer = app.descendants(matching: .any).matching(identifier: "Message").firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+        let screenBottom = app.windows.firstMatch.frame.maxY
+        XCTAssertGreaterThan(screenBottom - composer.frame.maxY, 300, "The scenario strands the composer at a keyboard top")
+        XCUIDevice.shared.press(.home)
+        app.activate()
+        XCTAssertTrue(app.scrollViews["native-transcript"].waitForExistence(timeout: 5))
+        let returned = NSPredicate { _, _ in screenBottom - composer.frame.maxY < 150 }
+        wait(for: [XCTNSPredicateExpectation(predicate: returned, object: nil)], timeout: 5)
+        screenshot("stranded-keyboard-cleared")
+    }
+
     private func screenshot(_ name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name

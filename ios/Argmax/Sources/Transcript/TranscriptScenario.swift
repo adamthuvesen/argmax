@@ -14,6 +14,7 @@ struct TranscriptScenario: View {
     @State private var keyboardInset: CGFloat = 0
     @State private var dark = ProcessInfo.processInfo.arguments.contains("-scenario-dark")
     @State private var large = ProcessInfo.processInfo.arguments.contains("-scenario-large")
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         GeometryReader { geometry in
@@ -54,8 +55,24 @@ struct TranscriptScenario: View {
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
                 keyboardInset = 0
             }
+            .task {
+                // A keyboard frame whose hide never arrives, the way a
+                // backgrounded app can be left with one. Posted after the
+                // first frame so the observers above are subscribed.
+                guard ProcessInfo.processInfo.arguments.contains("-scenario-stranded-keyboard") else { return }
+                try? await Task.sleep(for: .milliseconds(300))
+                let bottom = geometry.frame(in: .global).maxY + geometry.safeAreaInsets.bottom
+                NotificationCenter.default.post(
+                    name: UIResponder.keyboardWillChangeFrameNotification,
+                    object: nil,
+                    userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(x: 0, y: bottom - 340, width: 400, height: 340)]
+                )
+            }
         }
         .ignoresSafeArea(.keyboard)
+        .onChange(of: scenePhase) {
+            if scenePhase == .active, !UIResponder.isEditingText { keyboardInset = 0 }
+        }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { screenHeight = $0 }
         .background(Theme.ground)
         .environmentObject(scenario.transcript)

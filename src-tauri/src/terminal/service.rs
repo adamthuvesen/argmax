@@ -259,11 +259,31 @@ pub type ShellFactory = Arc<dyn Fn(&str) -> CommandBuilder + Send + Sync>;
 struct TerminalEntry {
     workspace_id: String,
     master: Box<dyn MasterPty + Send>,
-    // Behind its own mutex so a blocking PTY write never holds the shared
-    // `terminals` map lock (which every other terminal op contends on).
-    writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    input: TerminalInput,
     pid: Option<u32>,
     reaped: Arc<AtomicBool>,
+}
+
+/// The queue in front of one PTY's writer.
+///
+/// A PTY master write blocks once the child stops draining its tty input
+/// queue, so the write cannot happen on the caller's thread. Handing each
+/// keystroke to its own task instead (what `terminal:write` used to do) loses
+/// the one property input has to have: order. Two keystrokes in flight raced,
+/// and a `\r` that won the race made zsh run a fragment of the word — `open .`
+/// typed quickly executed as `en`, with the stragglers landing on the next
+/// prompt.
+///
+/// So the caller only enqueues, which never blocks, and one thread per
+/// terminal drains the queue in send order.
+#[derive(Clone)]
+struct TerminalInput {
+    sender: std::sync::mpsc::Sender<Vec<u8>>,
+    /// Set by the writer thread when a write against a live PTY fails, and
+    /// reported to the next caller. The write itself is already off the
+    /// caller's thread by then, so this is the only way that error reaches
+    /// the renderer.
+    failure: Arc<Mutex<Option<String>>>,
 }
 
 struct TerminalProcessScope {
@@ -390,7 +410,7 @@ impl TerminalService {
                 TerminalEntry {
                     workspace_id: workspace.id.clone(),
                     master,
-                    writer: Arc::new(Mutex::new(writer)),
+                    input: spawn_writer_thread(terminal_id.clone(), writer),
                     pid,
                     reaped: Arc::clone(&reaped),
                 },
@@ -491,28 +511,35 @@ impl TerminalService {
         }
     }
 
-    /// Forward `data` to the PTY. A failed write or flush is an error — a
-    /// keystroke swallowed by a live PTY is a bug worth seeing. An unknown id
-    /// stays a no-op: `spawn_reader_thread` removes the entry before it emits
-    /// `terminal:exit`, so every keystroke between a shell exiting and the
-    /// renderer disposing its input handler would otherwise raise one.
+    /// Queue `data` for the PTY, preserving the order calls arrive in. Returns
+    /// as soon as the bytes are queued; [`TerminalInput`] explains why the
+    /// write itself belongs to the terminal's own thread.
+    ///
+    /// A write that failed against a live PTY is reported here on the next
+    /// call — a keystroke swallowed by a live PTY is a bug worth seeing. An
+    /// unknown id stays a no-op: `spawn_reader_thread` removes the entry
+    /// before it emits `terminal:exit`, so every keystroke between a shell
+    /// exiting and the renderer disposing its input handler would otherwise
+    /// raise one.
     pub fn write(&self, terminal_id: &str, data: &[u8]) -> ArgmaxResult<()> {
-        // Take a handle to the writer and drop the map lock before writing:
-        // the PTY master write blocks once the child stops draining its tty
-        // input queue, and holding `terminals` across that stalls every other
-        // terminal's output, resize, and terminate.
-        let writer = {
+        // Clone the queue handle and drop the map lock before sending, so this
+        // never contends with another terminal's output, resize, or terminate.
+        let input = {
             let terminals = self.terminals.lock_or_recover("terminals");
-            terminals
-                .get(terminal_id)
-                .map(|entry| Arc::clone(&entry.writer))
+            terminals.get(terminal_id).map(|entry| entry.input.clone())
         };
-        let Some(writer) = writer else { return Ok(()) };
-        let mut writer = writer.lock_or_recover("terminal writer");
-        writer
-            .write_all(data)
-            .and_then(|()| writer.flush())
-            .map_err(|error| ArgmaxError::service("TERMINAL_WRITE_FAILED", error.to_string()))
+        let Some(input) = input else { return Ok(()) };
+        if let Some(error) = input
+            .failure
+            .lock_or_recover("terminal write failure")
+            .take()
+        {
+            return Err(ArgmaxError::service("TERMINAL_WRITE_FAILED", error));
+        }
+        // A closed queue means the writer thread is gone — the shell exited
+        // between the lookup and the send. Same no-op as an unknown id.
+        let _ = input.sender.send(data.to_vec());
+        Ok(())
     }
 
     /// Resize the PTY for the live terminal. No-op on unknown ids.
@@ -674,6 +701,29 @@ fn terminal_process_scope(entry: &TerminalEntry) -> Option<TerminalProcessScope>
         session_id: shell_process_group,
         fallback_process_groups: groups,
     })
+}
+
+/// Drain one terminal's input queue into its PTY, in send order. The thread
+/// ends when the queue closes, which happens when the live entry is dropped —
+/// so a closed shell stops its writer without anyone joining it.
+fn spawn_writer_thread(terminal_id: String, mut writer: Box<dyn Write + Send>) -> TerminalInput {
+    let (sender, receiver) = std::sync::mpsc::channel::<Vec<u8>>();
+    let failure = Arc::new(Mutex::new(None::<String>));
+    let thread_failure = Arc::clone(&failure);
+    thread::spawn(move || {
+        for data in receiver {
+            if let Err(error) = writer.write_all(&data).and_then(|()| writer.flush()) {
+                tracing::warn!(
+                    terminal_id = %terminal_id,
+                    error = %error,
+                    "terminal write failed; stopping writer"
+                );
+                *thread_failure.lock_or_recover("terminal write failure") = Some(error.to_string());
+                return;
+            }
+        }
+    });
+    TerminalInput { sender, failure }
 }
 
 fn spawn_reader_thread(
@@ -1521,6 +1571,43 @@ mod tests {
         assert!(
             combined.contains("got:bye"),
             "expected echo of bye, got: {combined:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn write_returns_while_the_child_ignores_its_input() {
+        // What lets `terminal:write` resolve inline — in the order the webview
+        // sent its keystrokes — instead of on a task per keystroke. A child
+        // that never reads fills the tty input queue, and before the writer
+        // thread that write blocked its caller.
+        let (database, workspace_id, _db, _cwd) = setup();
+        let on_data: OutputSink = Arc::new(|_chunk| {});
+        let on_exit: ExitSink = Arc::new(|_info| {});
+        let svc = TerminalService::with_shell_factory(
+            database,
+            on_data,
+            on_exit,
+            script_factory("sleep 30"),
+        );
+        let result = svc
+            .spawn(TerminalSpawnInput {
+                workspace_id,
+                cols: 80,
+                rows: 24,
+            })
+            .unwrap();
+        sleep(Duration::from_millis(150)).await;
+
+        let started = std::time::Instant::now();
+        // Well past any tty input queue (macOS holds a few KiB).
+        for _ in 0..512 {
+            svc.write(&result.terminal_id, &[b'x'; 1024])
+                .expect("write should queue");
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "writes blocked on the undrained child: {:?}",
+            started.elapsed()
         );
     }
 

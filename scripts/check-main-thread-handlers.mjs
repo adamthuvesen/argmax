@@ -44,6 +44,10 @@ const MAIN_THREAD_ALLOWLIST = new Map([
   ["providers:resize", "in-memory PTY size update"],
   ["providers:cancel-queued-message", "in-memory queue edit"],
   ["terminal:resize", "in-memory PTY size update"],
+  [
+    "terminal:write",
+    "queues bytes for the terminal's writer thread; inline resolution is what keeps keystrokes in order"
+  ],
   ["prs:list-for-session", "indexed read of one session's PR rows"],
   ["skills:list", "small read plus a cached registry lookup"],
   ["learnings:update", "single-row write"],

@@ -231,10 +231,11 @@ export function attachTerminalTab(
       if (pendingExit) writeExitLine(term, pendingExit);
 
       const inputSub = term.onData((data) => {
-        // `terminal:write` rejects only on a real failure against a live PTY
-        // (writes during teardown answer ok), and a dropped keystroke would
-        // otherwise be an unhandled rejection nobody sees. Report it the way a
-        // failed spawn is reported and keep the tab alive.
+        // `terminal:write` queues the keystroke and rejects only on a real
+        // failure against a live PTY — reported by the call after the one that
+        // failed, and never for writes during teardown. A dropped keystroke
+        // would otherwise be an unhandled rejection nobody sees, so report it
+        // the way a failed spawn is reported and keep the tab alive.
         void window.argmax?.terminal.write({ terminalId, data }).catch((error: unknown) => {
           const message = errorMessage(error) || "Unknown error";
           term.write(`\r\n\x1b[31m[terminal write failed: ${message}]\x1b[0m\r\n`);

@@ -224,20 +224,6 @@ export function SessionActionsMenu({
                   Open browser
                 </button>
               </li>
-              {onOpenInIde && ideChoices.length === 0 ? (
-                <li role="none">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="project-picker-item"
-                    disabled
-                    title="No supported IDEs found. Install VS Code, Cursor, Windsurf, or Zed."
-                  >
-                    <SquareArrowOutUpRight size={14} aria-hidden="true" />
-                    Open in IDE
-                  </button>
-                </li>
-              ) : null}
               {onOpenInIde
                 ? ideChoices.map((entry) => (
                     <li role="none" key={entry.id}>
@@ -248,8 +234,8 @@ export function SessionActionsMenu({
                         disabled={!workspace}
                         title={
                           pinnedIde
-                            ? "Open this workspace in your default IDE (set in Settings → Integrations)"
-                            : "Open this workspace in this IDE (pin a default in Settings → Integrations)"
+                            ? "Open this workspace in your default IDE (set in Settings → Handoff)"
+                            : "Open this workspace in this IDE (pin a default in Settings → Handoff)"
                         }
                         onClick={() => {
                           closeActions();

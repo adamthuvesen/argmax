@@ -1304,6 +1304,15 @@ button.tool-call-row-button {
   opacity: 1;
 }
 
+/* Minimal is the exception: there the headline is a status line for work the
+   reader chose not to read, so the standing chevron offered exactly the detail
+   the level hides. The header is still the hit target, and hovering or opening
+   it brings the chevron back. */
+.tool-call-group[data-chevron="hover"]:not([data-expanded="true"])
+  > .tool-call-group-header:not(:hover):not(:focus-visible) .tool-call-row-chevron {
+  opacity: 0;
+}
+
 .tool-call-row-button:hover .tool-call-row-chevron,
 .tool-call-group-header:hover .tool-call-row-chevron {
   opacity: 1;

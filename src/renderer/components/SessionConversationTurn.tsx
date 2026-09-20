@@ -412,6 +412,7 @@ function SessionConversationTurnInner({
       activityMembers={members}
       disclosureId={`session-${session?.id ?? "unknown"}-${item.id}`}
       compact={compactToolSummaries}
+      chevronOnHover={minimalActivity}
       defaultExpanded={!minimalActivity && toolsExpanded}
       defaultToolsExpanded={toolRowsExpanded}
       follow={follow}

@@ -997,6 +997,46 @@ describe("SessionConversation — single-line activity mode", () => {
     expect(screen.getByRole("button", { name: /^Read a file, searched/ })).toBeInTheDocument();
   });
 
+  it("leaves the live summary's chevron to a hover, and still opens on a click", () => {
+    const runningTools = [
+      event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z"),
+      event("read-start", "command.started", "Read", "2026-05-12T15:00:01.000Z", {
+        id: "read",
+        name: "Read",
+        input: { file_path: "README.md" }
+      }),
+      event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
+        tool_use_id: "read",
+        content: "readme"
+      }),
+      event("glob-start", "command.started", "Glob", "2026-05-12T15:00:02.500Z", {
+        id: "glob",
+        name: "Glob",
+        input: { pattern: "src/**/*.ts" }
+      })
+    ];
+    renderConversation(baseSession({ state: "running" }), runningTools, {
+      defaultToolCallsDisplay: "single-line"
+    });
+
+    // Minimal's headline is a status line for work the reader chose to hide,
+    // so the chevron stands down until the pointer asks for it. The headline
+    // is still the control.
+    const headline = screen.getByRole("button", { name: /^Read a file, searched/ });
+    expect(headline.closest(".tool-call-group")).toHaveAttribute("data-chevron", "hover");
+    fireEvent.click(headline);
+    expect(headline).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
+
+    cleanup();
+    renderConversation(baseSession({ state: "running" }), runningTools, {
+      defaultToolCallsDisplay: "collapsed"
+    });
+    expect(
+      screen.getByRole("button", { name: /^Read a file, searched/ }).closest(".tool-call-group")
+    ).not.toHaveAttribute("data-chevron");
+  });
+
   it("hides failed attempts with successful tools after a Minimal turn finishes", () => {
     renderConversation(
       baseSession({ state: "complete" }),

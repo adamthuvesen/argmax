@@ -31,6 +31,8 @@ type ToolCallGroupBubbleProps = {
   /** Optional namespace so simultaneously mounted surfaces get unique ids. */
   disclosureId?: string;
   compact?: boolean;
+  /** Minimal: the chevron waits for a hover instead of standing on the line. */
+  chevronOnHover?: boolean;
   defaultExpanded?: boolean;
   defaultToolsExpanded?: boolean;
   follow?: TranscriptFollow;
@@ -164,6 +166,7 @@ function ToolCallGroupBubbleInner({
   activityMembers,
   disclosureId,
   compact = false,
+  chevronOnHover = false,
   defaultExpanded,
   defaultToolsExpanded,
   follow,
@@ -357,6 +360,7 @@ function ToolCallGroupBubbleInner({
     <div
       className="tool-call-group activity-summary-line"
       data-status={activityStatus}
+      data-chevron={chevronOnHover ? "hover" : undefined}
       data-expanded={directTool ? undefined : expanded}
     >
       {directTool ? (
@@ -448,6 +452,7 @@ export const ToolCallGroupBubble = memo(ToolCallGroupBubbleInner, (prev, next) =
   if (prev.activityMembers !== next.activityMembers) return false;
   if (prev.disclosureId !== next.disclosureId) return false;
   if (prev.compact !== next.compact) return false;
+  if (prev.chevronOnHover !== next.chevronOnHover) return false;
   if (prev.defaultExpanded !== next.defaultExpanded) return false;
   if (prev.defaultToolsExpanded !== next.defaultToolsExpanded) return false;
   if (prev.follow !== next.follow) return false;

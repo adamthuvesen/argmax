@@ -215,6 +215,12 @@
   background: transparent;
   font-family: var(--font-prose);
   font-size: var(--text-base);
+  /* The UA sheet's `font` shorthand resets this on form controls, so a field
+     shapes Geist without the `calt`/`ss01`/`tnum` every div inherits from
+     :root. That costs under a pixel per line — enough to break the line one
+     word earlier than the slash-highlight mirror painting behind it, which
+     strands the caret a word to the right of the text. */
+  font-feature-settings: inherit;
   line-height: 1.55;
   resize: none;
   overflow-x: hidden;

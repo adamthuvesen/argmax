@@ -22,7 +22,10 @@ enum MobileChatDetail: Int, CaseIterable, Identifiable, Sendable {
     var hint: String {
         switch self {
         case .minimal:
-            return "One activity line while it works. Finished turns keep the answer."
+            // The desktop also hides finished work behind a "Worked for" chip.
+            // The phone has no chip yet, so saying so here would promise a
+            // level it does not have.
+            return "One activity line with a single icon. Finished turns fold in the remarks before each call."
         case .compact:
             return "One activity summary between messages."
         case .steps:

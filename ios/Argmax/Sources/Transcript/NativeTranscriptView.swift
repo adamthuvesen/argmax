@@ -20,7 +20,13 @@ struct NativeTranscriptView: View {
         MobileTranscriptRow.rows(transcript.items.filter { item in
             if case .question = item { return false }
             return true
-        }, detail: appearance.chatDetail)
+        }, detail: appearance.chatDetail, latestTurnIsLive: sessionIsWorking)
+    }
+
+    /// The newest turn is still going, so Minimal keeps its narration on
+    /// screen. The same reading `TranscriptTodoRow` takes for a live plan.
+    private var sessionIsWorking: Bool {
+        transcript.session?.state == .running && transcript.connection == .live
     }
 
     /// A steering message belongs to the active turn. Only a regular user

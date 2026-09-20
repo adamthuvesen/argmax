@@ -54,7 +54,10 @@ struct TranscriptAgentDetail: View {
                                 )
                                 .containerRelativeFrame(.vertical)
                             }
-                            ForEach(MobileTranscriptRow.rows(items, detail: detail)) { row in
+                            ForEach(MobileTranscriptRow.rows(
+                                items, detail: detail,
+                                latestTurnIsLive: agent.status == .running
+                            )) { row in
                                 MobileTranscriptRowView(row: row) { item in
                                     TranscriptAgentActivityRow(
                                         item: item,

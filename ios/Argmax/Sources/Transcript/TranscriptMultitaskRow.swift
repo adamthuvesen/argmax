@@ -272,7 +272,10 @@ private struct TranscriptMultitaskDetail: View {
                                         .foregroundStyle(Theme.rose)
                                         .accessibilityLabel("Action failed. \(displayedFailure)")
                                 }
-                                ForEach(MobileTranscriptRow.rows(snapshot.items, detail: detail)) { row in
+                                ForEach(MobileTranscriptRow.rows(
+                                    snapshot.items, detail: detail,
+                                    latestTurnIsLive: snapshot.sendContext.isRunning
+                                )) { row in
                                     MobileTranscriptRowView(row: row) { item in
                                         detailRow(item, context: snapshot.sendContext)
                                     }

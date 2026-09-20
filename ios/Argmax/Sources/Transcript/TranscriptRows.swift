@@ -139,55 +139,60 @@ struct TranscriptThoughtRow: View {
     let onOpenFile: (String) -> Void
     @Environment(\.mobileChatDetail) private var detail
     @Environment(\.activityIconColorMode) private var activityIconColorMode
-    @State private var showFullThought = false
 
     var body: some View {
         if detail == .detailed {
             TranscriptMarkdown(text: thought.text, client: client, onOpenFile: onOpenFile, isThinking: true)
-        } else if detail == .steps {
-            VStack(alignment: .leading, spacing: Spacing.tight) {
-                TranscriptMarkdown(text: visibleText, client: client, onOpenFile: onOpenFile, isThinking: true)
-                if thought.text.count > previewLength {
-                    Button(showFullThought ? "Show less thinking" : "Show more thinking") {
-                        showFullThought.toggle()
-                    }
-                    .typeStyle(.footnote)
-                    .frame(minHeight: 44)
+        } else {
+        // Steps previews the burst still being written and folds every settled
+        // one to its header, the way `ThoughtBlock` does at `display: "preview"`
+        // (`display === "preview" && live && !expanded`). Printed inline, a
+        // finished twenty-burst Codex turn was eight thousand characters of
+        // reasoning where the desktop shows twenty one-line titles.
+        VStack(alignment: .leading, spacing: Spacing.tight) {
+            DisclosureGroup {
+                TranscriptMarkdown(text: thought.text, client: client, onOpenFile: onOpenFile, isThinking: true)
+                    .padding(.top, Spacing.tight)
+                    .padding(.bottom, Spacing.snug)
+                    .padding(.leading, TranscriptActivityRow<EmptyView>.targetInset)
+            } label: {
+                // The row names itself from the reasoning's first line — a model
+                // titles each burst ("Checking deletion history") — so nine rows
+                // in a fold are nine different things rather than nine copies of
+                // "Thought process".
+                TranscriptActivityRow(
+                    verb: thought.isStreaming ? "Thinking" : "Thought",
+                    target: thought.isStreaming ? nil : TranscriptThought.title(of: thought.text),
+                    // Reasoning in flight is the turn's progress cue. Without
+                    // the wave here the row stated "Thinking" and then sat
+                    // still for the whole burst.
+                    live: thought.isStreaming
+                ) {
+                    Image(systemName: "brain")
+                        .typeSymbol(size: 14)
+                        .foregroundStyle(
+                            (activityIconColorMode == .color ? Theme.activityPurple : Theme.muted)
+                                .opacity(thought.isStreaming ? 1 : 0.78)
+                        )
+                        .frame(width: 16, height: 16)
                 }
             }
-        } else {
-        DisclosureGroup {
-            TranscriptMarkdown(text: thought.text, client: client, onOpenFile: onOpenFile, isThinking: true)
-                .padding(.top, Spacing.tight)
-                .padding(.bottom, Spacing.snug)
-                .padding(.leading, TranscriptActivityRow<EmptyView>.targetInset)
-        } label: {
-            // The row names itself from the reasoning's first line — a model
-            // titles each burst ("Checking deletion history") — so nine rows
-            // in a fold are nine different things rather than nine copies of
-            // "Thought process".
-            TranscriptActivityRow(
-                verb: thought.isStreaming ? "Thinking" : "Thought",
-                target: thought.isStreaming ? nil : TranscriptThought.title(of: thought.text)
-            ) {
-                Image(systemName: "brain")
-                    .typeSymbol(size: 14)
-                    .foregroundStyle(
-                        (activityIconColorMode == .color ? Theme.activityPurple : Theme.muted)
-                            .opacity(thought.isStreaming ? 1 : 0.78)
-                    )
-                    .frame(width: 16, height: 16)
+            .disclosureGroupStyle(TranscriptDisclosureStyle(chevron: false, minHeight: TranscriptActivityRow<EmptyView>.height))
+            .tint(Theme.muted)
+            if detail == .steps, thought.isStreaming {
+                // Plain text, not Markdown: three lines of the reasoning's tail
+                // are a progress cue, and mounting a Markdown tree per delta
+                // for them is what made a long burst cost O(n²).
+                Text(TranscriptThought.previewTail(of: thought.text))
+                    .typeStyle(.body)
+                    .foregroundStyle(Theme.mutedStrong)
+                    .lineLimit(3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, TranscriptActivityRow<EmptyView>.targetInset)
+                    .accessibilityLabel("Thinking preview")
             }
         }
-        .disclosureGroupStyle(TranscriptDisclosureStyle(chevron: false, minHeight: TranscriptActivityRow<EmptyView>.height))
-        .tint(Theme.muted)
         }
-    }
-
-    private var previewLength: Int { 400 }
-    private var visibleText: String {
-        showFullThought || thought.text.count <= previewLength
-            ? thought.text : String(thought.text.prefix(previewLength)) + "…"
     }
 }
 

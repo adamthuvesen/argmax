@@ -135,6 +135,14 @@ struct TranscriptThought: Hashable, Sendable, Identifiable {
             .trimmingCharacters(in: .whitespaces.union(.punctuationCharacters))
         return stripped.isEmpty ? nil : stripped
     }
+
+    /// The tail of a burst still being written, bounded the way `ThoughtBlock`
+    /// bounds its Steps preview: the last 600 characters, marked as a cut. The
+    /// desktop slices UTF-16 and then guards the lone low surrogate that can
+    /// leave; a Swift suffix counts grapheme clusters and cannot split one.
+    static func previewTail(of text: String, limit: Int = 600) -> String {
+        text.count > limit ? "…" + String(text.suffix(limit)) : text
+    }
 }
 
 enum TranscriptToolStatus: String, Hashable, Sendable {

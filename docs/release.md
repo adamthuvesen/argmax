@@ -176,12 +176,20 @@ npm run tauri:build            # this machine's architecture only
 npm run tauri:build:universal  # Intel + Apple silicon, what a release ships
 ```
 
-Build outputs are placed in `src-tauri/target/release/bundle/`. The current
-configuration creates the DMG and app bundle. The universal build needs both
-`aarch64-apple-darwin` and `x86_64-apple-darwin` Rust targets installed; the
-plain build is the faster one for local checks, and the one a release publishes
-is always universal, because a release built on Apple silicon otherwise ships
-nothing an Intel Mac can run.
+Build outputs are placed in `src-tauri/target/release/bundle/`, named
+`Argmax_<version>_<arch>.dmg`. The plain build is the faster one for local
+checks; what a release publishes is always universal, because a release built
+on Apple silicon otherwise ships nothing an Intel Mac can run.
+
+The universal build needs both Rust targets. A Mac that has only ever built
+for itself has one, and `tauri build` does not say so until it has finished
+compiling the first architecture and failed on the second:
+
+```bash
+rustup target add x86_64-apple-darwin
+```
+
+The release workflow installs both, so this is a local-only trap.
 
 Argmax → Check for Updates… opens the GitHub Releases page, because that is
 where a build actually comes from today. The checked-in updater configuration

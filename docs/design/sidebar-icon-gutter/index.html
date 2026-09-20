@@ -96,6 +96,25 @@
         background: var(--muted); opacity: 0.45;
       }
 
+      /* ---------- B3/B4/B5 · the placeholder as a ring, not a disc ----------
+         All three run B2's geometry (14px glyph, 16px column); only the mark
+         in the calm cell changes. A ring is hollow, so it reads as "nothing
+         here yet" rather than as the filled accent dot unread already owns. */
+      .v-ring1 .row, .v-ring2 .row, .v-ring3 .row { grid-template-columns: 16px minmax(0, 1fr); gap: 9px; }
+      .v-ring1 .lead, .v-ring2 .lead, .v-ring3 .lead { width: 14px; height: 14px; }
+      .v-ring1 .g, .v-ring2 .g, .v-ring3 .g { width: 14px; height: 14px; }
+      .v-ring1 .nest, .v-ring2 .nest, .v-ring3 .nest {
+        grid-template-columns: 5px 5px; grid-template-rows: 5px 5px; gap: 1px;
+      }
+      .v-ring1 .lead:empty::before,
+      .v-ring2 .lead:empty::before,
+      .v-ring3 .lead:empty::before {
+        content: ""; border-radius: 50%; border-style: solid; border-color: var(--muted);
+      }
+      .v-ring1 .lead:empty::before { width: 6px; height: 6px; border-width: 1px; opacity: 0.55; }
+      .v-ring2 .lead:empty::before { width: 8px; height: 8px; border-width: 1px; opacity: 0.5; }
+      .v-ring3 .lead:empty::before { width: 8px; height: 8px; border-width: 1.5px; opacity: 0.7; }
+
       /* ---------- C · smaller glyph, narrower column ---------- */
       .v-small .row { grid-template-columns: 13px minmax(0, 1fr); gap: 8px; }
       .v-small .lead { width: 13px; height: 13px; }
@@ -208,6 +227,9 @@
         ["flush", "A · Flush left", "No reserved column. A row without a glyph starts at the gutter; a row with one indents itself. Ragged left edge, but no dead space."],
         ["dot", "B · Dot placeholder", "The calm row fills the column with a 6px muted dot. Titles stay aligned and the column always means something, at the cost of a lot of dots."],
         ["dot2", "B2 · Dot, smaller glyph", "The same 6px dot, glyph down from 16px to 14px in a 16px column. The icons stop out-weighing the titles and the indent drops from 28px to 26px."],
+        ["ring1", "B3 · Ring, 6px", "B2's geometry with the disc hollowed out: a 6px circle, 1px stroke. Same footprint as the dot, a lot less ink — at this size the hole nearly closes."],
+        ["ring2", "B4 · Ring, 8px", "The ring opened to 8px so the hole actually reads. Bigger than the unread dot, which helps tell them apart, but it starts to look like a glyph of its own."],
+        ["ring3", "B5 · Ring, 8px heavier", "The same 8px ring at 1.5px and a stronger ink. The most visible of the three — closer to an empty checkbox than to a placeholder."],
         ["small", "C · Smaller glyph", "Same idea as shipped, 13px glyph in a 13px column. The indent drops from 28px to 21px, so an empty column costs less."],
         ["meta", "D · On the meta line", "Titles on the gutter; the glyph leads the project name at 12px. A missing glyph is a missing word, not a hole."],
         ["trail", "E · Trailing glyph", "Titles on the gutter; the glyph sits on the right edge, where the eye already goes for state."],

@@ -84,24 +84,25 @@
 }
 
 /* Calm rows have no live signal and no picked icon, so they fill the marker
-   column with a dot instead: the column always carries a mark, and every title
-   in the list starts at the same x. Muted and half-strength on purpose — the
-   unread marker below is the same 6px circle in the accent, and this must not
-   be mistaken for it. */
-.session-link-lead-dot {
+   column with a ring instead: the column always carries a mark, and every title
+   in the list starts at the same x. Hollow on purpose. The unread marker below
+   is a filled 6px circle in the accent, and a ring cannot be mistaken for it —
+   the difference is categorical rather than a matter of tint, which is what
+   holds up at 8px. */
+.session-link-lead-ring {
   display: grid;
   place-items: center;
   width: 14px;
   height: 18px;
 }
 
-.session-link-lead-dot::before {
+.session-link-lead-ring::before {
   content: "";
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--muted);
   border-radius: 50%;
-  background: var(--muted);
-  opacity: 0.45;
+  opacity: 0.5;
 }
 
 .session-unread-marker {

@@ -435,7 +435,7 @@ function SidebarSessionRowInner({
   // leading glyph except a turn in flight: the working nest stays so live
   // activity still reads, and the accent dot takes the cell the moment it
   // ends. Opening the chat clears unread and the icon or status marker
-  // returns. Without a custom icon, a calm row draws the muted lead dot and
+  // returns. Without a custom icon, a calm row draws the muted lead ring and
   // only a live signal (running, awaiting input, failed, open or merged PR)
   // earns a glyph. The marker column is the same width either way so every
   // title lines up.
@@ -480,7 +480,7 @@ function SidebarSessionRowInner({
           className={`session-link session-link-renaming${subtitle ? " session-link-stacked" : ""}${prCountBadge ? " session-link-has-pr-count" : ""}`}
           data-status={workspace.state}
         >
-          {leadingGlyph ?? <span className="session-link-lead-dot" aria-hidden="true" />}
+          {leadingGlyph ?? <span className="session-link-lead-ring" aria-hidden="true" />}
           <span className={subtitle ? "session-link-text" : undefined}>
             <input
               ref={renameInputRef}
@@ -544,7 +544,7 @@ function SidebarSessionRowInner({
               });
             }}
           >
-            {leadingGlyph ?? <span className="session-link-lead-dot" aria-hidden="true" />}
+            {leadingGlyph ?? <span className="session-link-lead-ring" aria-hidden="true" />}
             {subtitle || importedProvider || launchedByLabel || arcLabel ? (
               <span className="session-link-text">
                 <span>{displayLabel}</span>

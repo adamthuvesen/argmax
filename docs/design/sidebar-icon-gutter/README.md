@@ -28,6 +28,10 @@ PR, five calm rows.
   Alignment kept; the list gains a column of dots.
 - **B2 · Dot, smaller glyph** — the same dot with the glyph at 14px in a 16px
   column, so the icons stop out-weighing the titles.
+- **B3 / B4 / B5 · Ring instead of disc** — B2's geometry with the placeholder
+  hollowed out: 6px at 1px, 8px at 1px, 8px at 1.5px in a stronger ink. A ring
+  reads as "nothing here yet" and cannot be confused with the filled accent
+  dot that marks an unread response.
 - **C · Smaller glyph** — same structure at 13px, so the indent is 21px not
   28px and the empty column costs less.
 - **D · On the meta line** — titles on the gutter, the glyph leads the project
@@ -50,9 +54,10 @@ frame each at 2x.
 
 ## Decision
 
-**B2 · Dot, smaller glyph**, chosen 2026-09-20 and shipped in the same change:
-`.session-link` runs a 14px lead column with a 9px gap, every marker glyph
-dropped from 16px to 14px, and `.session-link-lead-spacer` became
-`.session-link-lead-dot` — a 6px muted circle at 45% opacity. The unread marker
-is the same circle in the accent at full strength, which is the one pair a
-future change has to keep apart.
+**B4 · Ring, 8px**, chosen 2026-09-20 and shipped: `.session-link` runs a 14px
+lead column with a 9px gap, every marker glyph dropped from 16px to 14px, and
+the old `.session-link-lead-spacer` became `.session-link-lead-ring` — an 8px
+circle, 1px `--muted` stroke, 50% opacity. B2's filled 6px dot shipped first
+and was replaced the same day: it was the same shape as the unread marker, so
+the two were separated only by tint. Hollow versus filled is the difference
+that survives at this size.

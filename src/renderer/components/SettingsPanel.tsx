@@ -216,7 +216,7 @@ export function SettingsPanel({
       return window.argmax!.providers.discover(force);
     },
     {
-      missingApiMessage: "Open the Tauri app window to detect providers.",
+      missingApiMessage: "Open Argmax on your Mac to detect providers.",
       fallbackMessage: "Provider discovery failed."
     }
   );

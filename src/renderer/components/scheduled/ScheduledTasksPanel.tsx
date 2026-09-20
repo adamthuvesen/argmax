@@ -154,7 +154,7 @@ export function ScheduledTasksPanel({
 
   const reload = useCallback(async (): Promise<void> => {
     if (!window.argmax) {
-      setLoadError("Open the Tauri app window to manage scheduled tasks.");
+      setLoadError("Open Argmax on your Mac to manage scheduled tasks.");
       return;
     }
     try {

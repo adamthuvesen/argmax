@@ -31,7 +31,7 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
 
   const refresh = useCallback(async (force: boolean): Promise<void> => {
     if (!window.argmax) {
-      setLoadError("Open the Tauri app window to detect providers.");
+      setLoadError("Open Argmax on your Mac to detect providers.");
       return;
     }
     setRefreshing(true);

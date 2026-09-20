@@ -47,6 +47,25 @@ function copyWithCommand(text: string): boolean {
 }
 
 /**
+ * Write to the clipboard, async API first and the command path second.
+ * Resolves whether anything reached the clipboard. Separate from the hook
+ * below so a class component — the error boundary — can copy too.
+ */
+export async function copyTextToClipboard(text: string): Promise<boolean> {
+  if (typeof navigator !== "undefined" && typeof navigator.clipboard?.writeText === "function") {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Permission denied, no document focus, secure-context mismatch — fall
+      // through to the command below rather than reporting a failure the
+      // reader can do nothing about.
+    }
+  }
+  return copyWithCommand(text);
+}
+
+/**
  * Shared "copy to clipboard with brief flash" helper.
  *
  * Returns `[flash, copy]`. `flash` flips to "copied" or "failed" for
@@ -83,18 +102,7 @@ export function useCopyToClipboard(
         if (timer.current) clearTimeout(timer.current);
         timer.current = setTimeout(() => setFlash("idle"), flashMs);
       };
-      if (typeof navigator !== "undefined" && typeof navigator.clipboard?.writeText === "function") {
-        try {
-          await navigator.clipboard.writeText(text);
-          settle("copied");
-          return true;
-        } catch {
-          // Permission denied, no document focus, secure-context mismatch —
-          // fall through to the command below rather than reporting a failure
-          // the reader can do nothing about.
-        }
-      }
-      const copied = copyWithCommand(text);
+      const copied = await copyTextToClipboard(text);
       settle(copied ? "copied" : "failed");
       return copied;
     },

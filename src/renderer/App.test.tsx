@@ -1340,7 +1340,7 @@ describe("App without Tauri bridge", () => {
     try {
       render(<App />);
       expect(
-        await screen.findByText(/Tauri bridge unavailable; running on demo data/)
+        await screen.findByText(/Preview mode — showing sample data/)
       ).toBeInTheDocument();
     } finally {
       Object.defineProperty(window, "location", {
@@ -1367,7 +1367,7 @@ describe("App without Tauri bridge", () => {
       render(<App />);
 
       expect(
-        screen.queryByText(/Tauri bridge unavailable; running on demo data/)
+        screen.queryByText(/Preview mode — showing sample data/)
       ).not.toBeInTheDocument();
       expect(await screen.findByText("Design parallel agent board")).toBeInTheDocument();
     } finally {

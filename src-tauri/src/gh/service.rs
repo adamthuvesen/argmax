@@ -9,13 +9,16 @@ use rusqlite::OptionalExtension;
 use serde_json::Value;
 
 use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::git::ops::{extract_github_remote_from_url, extract_pr_number, extract_pr_url};
+use crate::git::exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
+use crate::git::ops::{
+    extract_github_remote_from_url, extract_pr_number, extract_pr_url, parse_github_remote,
+};
 use crate::persistence::database::Database;
 use crate::persistence::gh::{
     list_gh_pr_for_session, list_refreshable_pr_numbers_for_session, pr_branch_for_session,
     record_gh_pr_observation, record_pr_refresh_error, record_session_pr_evidence,
-    store_gh_pr_observation, store_pr_metadata, GhPrRecord, PrAttribution,
-    SESSION_PR_EVIDENCE_PARSER_VERSION,
+    retract_stale_inferred_branch_prs, store_gh_pr_observation, store_pr_metadata, GhPrRecord,
+    PrAttribution, SESSION_PR_EVIDENCE_PARSER_VERSION,
 };
 use crate::persistence::projects::{get_project_remote, ProjectRemote};
 use crate::persistence::sessions::find_session_by_id;
@@ -23,8 +26,9 @@ use crate::persistence::time::now_iso;
 use crate::persistence::workspaces::find_workspace_by_id;
 use crate::util::gh_runner::{default_gh_runner, GhRunner};
 
-const PR_VIEW_JSON_FIELDS: &str =
-    "number,title,headRefOid,headRefName,state,statusCheckRollup,createdAt,mergedAt,url";
+const PR_JSON_FIELDS: &str =
+    "number,title,headRefOid,headRefName,headRepositoryOwner,state,statusCheckRollup,createdAt,mergedAt,url";
+const MAX_BRANCH_PRS: usize = 10;
 /// Bound on extra `gh pr view <number>` calls per refresh, after the branch
 /// view. A session that accumulated many OPEN rows still finishes a tick.
 const MAX_OPEN_PR_NUMBER_VIEWS: usize = 8;
@@ -72,27 +76,38 @@ impl GhService {
         list_gh_pr_for_session(&conn, session_id)
     }
 
-    /// Runs `gh pr view --json …` against the session's workspace and upserts
-    /// the result. On `gh` failure (no PR / auth / transport) returns the
-    /// existing cached rows — historical rows are never deleted because the
-    /// timeline still wants to render them.
+    /// Discovers branch PRs through `gh pr list --json …` against the session's
+    /// workspace and upserts the best match. On `gh` failure (no PR / auth /
+    /// transport) returns the existing cached rows because the timeline still
+    /// wants to render attributed historical rows.
     ///
-    /// After the branch view, re-views this session's already-cached OPEN rows
-    /// by number. `gh pr view <branch>` cannot see a PR whose head the
-    /// checkout has left, so without the number pass those rows stay OPEN
-    /// forever and a PR the agent opened on another branch is never refreshed.
+    /// After branch discovery, re-views this session's already-cached OPEN rows
+    /// by number. Branch discovery cannot see a PR whose head the checkout has
+    /// left, so without the number pass those rows stay OPEN forever and a PR
+    /// the agent opened on another branch is never refreshed.
     pub async fn refresh(&self, session_id: &str) -> ArgmaxResult<Vec<GhPrRecord>> {
-        let (workspace_project_id, workspace_path, branch, cached_numbers) = {
+        let (workspace_project_id, workspace_path, branch, cached_numbers, linked_numbers) = {
             let conn = self.database.connection();
             let session = find_session_by_id(&conn, session_id)?;
             let workspace = find_workspace_by_id(&conn, &session.workspace_id)?;
+            retract_stale_inferred_branch_prs(&conn, session_id)?;
             // CLOSED is refreshable because GitHub permits reopening it.
             // Ordering by the last attempt keeps this bounded pass fair even
             // when a session has accumulated more associations than one tick
             // can view.
             let cached_numbers = list_refreshable_pr_numbers_for_session(&conn, session_id)?;
+            let linked_numbers = list_gh_pr_for_session(&conn, session_id)?
+                .into_iter()
+                .map(|pr| pr.pr_number)
+                .collect::<HashSet<_>>();
             let branch = pr_branch_for_session(&conn, session_id)?;
-            (workspace.project_id, workspace.path, branch, cached_numbers)
+            (
+                workspace.project_id,
+                workspace.path,
+                branch,
+                cached_numbers,
+                linked_numbers,
+            )
         };
         if workspace_path.is_empty() {
             // A persisted workspace always has a path; an empty one signals
@@ -105,6 +120,11 @@ impl GhService {
             let conn = self.database.connection();
             scan_session_pr_evidence(&conn, session_id, &workspace_project_id)?
         };
+        let (checkout_head, checkout_owner) = if branch.is_some() {
+            checkout_pr_identity(&workspace_path).await
+        } else {
+            (None, None)
+        };
 
         let mut viewed = HashSet::new();
         // A shared checkout's live branch can change after the session ends.
@@ -114,11 +134,24 @@ impl GhService {
             let lock = refresh_lock(format!("{workspace_project_id}:branch:{branch}"));
             let _guard = lock.lock().await;
             let request_started_at = now_iso();
-            if let Ok(Some(parsed)) = self
-                .view_pr(&workspace_path, Some(branch.as_str()), session_id)
+            if let Ok(mut candidates) = self
+                .list_branch_prs(&workspace_path, &branch, session_id)
                 .await
             {
-                if let Some(pr_number) = parsed.number {
+                candidates.retain(|candidate| {
+                    matches_checkout_owner(candidate, checkout_owner.as_deref())
+                });
+                candidates.sort_by(|left, right| {
+                    compare_branch_prs(left, right, checkout_head.as_deref())
+                });
+                let selected_number = candidates.last().and_then(|candidate| candidate.number);
+                for parsed in candidates {
+                    let Some(pr_number) = parsed.number else {
+                        continue;
+                    };
+                    if Some(pr_number) != selected_number && !linked_numbers.contains(&pr_number) {
+                        continue;
+                    }
                     viewed.insert(pr_number);
                     let pr_lock = refresh_lock(format!("{workspace_project_id}:pr:{pr_number}"));
                     let _pr_guard = pr_lock.lock().await;
@@ -134,8 +167,6 @@ impl GhService {
                     if !stale {
                         self.record_view(session_id, &workspace_project_id, parsed, true)?;
                     }
-                } else {
-                    self.record_view(session_id, &workspace_project_id, parsed, true)?;
                 }
             }
         }
@@ -202,7 +233,62 @@ impl GhService {
             }
         }
 
+        // A legacy merged observation may lack `mergedAt`. Its number refresh
+        // above can backfill the timestamp needed to decide whether the
+        // synthetic branch association predates this shared-checkout session.
+        {
+            let conn = self.database.connection();
+            retract_stale_inferred_branch_prs(&conn, session_id)?;
+        }
+
         self.list_for_session(session_id)
+    }
+
+    async fn list_branch_prs(
+        &self,
+        workspace_path: &str,
+        branch: &str,
+        session_id: &str,
+    ) -> Result<Vec<PrViewResponse>, String> {
+        let args = vec![
+            "pr".into(),
+            "list".into(),
+            "--head".into(),
+            branch.to_string(),
+            "--state".into(),
+            "all".into(),
+            "--limit".into(),
+            MAX_BRANCH_PRS.to_string(),
+            "--json".into(),
+            PR_JSON_FIELDS.into(),
+        ];
+        let stdout = match (self.runner)(workspace_path.to_string(), args).await {
+            Ok(text) => text,
+            Err(error) => {
+                let category = gh_error_category(&error);
+                if category == GhErrorCategory::Unknown {
+                    tracing::info!(
+                        session_id = %session_id,
+                        error = %error,
+                        "gh.refresh: branch PR listing failed with unknown error"
+                    );
+                } else if category != GhErrorCategory::NoPr {
+                    tracing::warn!(
+                        session_id = %session_id,
+                        error = %error,
+                        category = ?category,
+                        "gh.refresh: branch PR listing failed"
+                    );
+                }
+                if category == GhErrorCategory::NoPr {
+                    return Ok(Vec::new());
+                }
+                return Err(error.to_string());
+            }
+        };
+        serde_json::from_str::<PrListResponse>(stdout.trim())
+            .map(PrListResponse::into_candidates)
+            .map_err(|error| format!("invalid gh pr list response: {error}"))
     }
 
     /// `gh pr view <number>` against the session's workspace. The number is
@@ -272,7 +358,7 @@ impl GhService {
         if let Some(reference) = reference.filter(|name| !name.is_empty()) {
             args.push(reference.to_string());
         }
-        args.extend(["--json".into(), PR_VIEW_JSON_FIELDS.into()]);
+        args.extend(["--json".into(), PR_JSON_FIELDS.into()]);
 
         let stdout = match (self.runner)(workspace_path.to_string(), args).await {
             Ok(text) => text,
@@ -1338,6 +1424,8 @@ struct PrViewResponse {
     head_ref_oid: Option<String>,
     #[serde(default, rename = "headRefName")]
     head_ref_name: Option<String>,
+    #[serde(default, rename = "headRepositoryOwner")]
+    head_repository_owner: Option<PrHeadRepositoryOwner>,
     #[serde(default)]
     state: Option<String>,
     #[serde(default, rename = "createdAt")]
@@ -1346,6 +1434,27 @@ struct PrViewResponse {
     merged_at: Option<String>,
     #[serde(default, rename = "statusCheckRollup")]
     status_check_rollup: Option<Vec<RollupEntry>>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct PrHeadRepositoryOwner {
+    login: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(untagged)]
+enum PrListResponse {
+    Candidates(Vec<PrViewResponse>),
+    Candidate(Box<PrViewResponse>),
+}
+
+impl PrListResponse {
+    fn into_candidates(self) -> Vec<PrViewResponse> {
+        match self {
+            Self::Candidates(candidates) => candidates,
+            Self::Candidate(candidate) => vec![*candidate],
+        }
+    }
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -1463,6 +1572,50 @@ fn normalize_pr_state(raw: Option<&str>) -> Option<String> {
     let raw = raw?;
     let upper = raw.to_uppercase();
     matches!(upper.as_str(), "OPEN" | "CLOSED" | "MERGED").then_some(upper)
+}
+
+async fn checkout_pr_identity(workspace_path: &str) -> (Option<String>, Option<String>) {
+    let (head, origin) = tokio::join!(
+        run_git_text(workspace_path, ["rev-parse", "HEAD"], GIT_DEFAULT_TIMEOUT),
+        run_git_text(
+            workspace_path,
+            ["remote", "get-url", "origin"],
+            GIT_DEFAULT_TIMEOUT
+        )
+    );
+    let head = head.ok().map(|value| value.trim().to_owned());
+    let owner = origin
+        .ok()
+        .and_then(|url| parse_github_remote(url.trim()))
+        .map(|remote| remote.owner);
+    (head, owner)
+}
+
+fn compare_branch_prs(
+    left: &PrViewResponse,
+    right: &PrViewResponse,
+    checkout_head: Option<&str>,
+) -> std::cmp::Ordering {
+    let left_matches_head =
+        checkout_head.is_some_and(|head| left.head_ref_oid.as_deref() == Some(head));
+    let right_matches_head =
+        checkout_head.is_some_and(|head| right.head_ref_oid.as_deref() == Some(head));
+    let left_open = normalize_pr_state(left.state.as_deref()).as_deref() == Some("OPEN");
+    let right_open = normalize_pr_state(right.state.as_deref()).as_deref() == Some("OPEN");
+    left_matches_head
+        .cmp(&right_matches_head)
+        .then_with(|| left_open.cmp(&right_open))
+        .then_with(|| left.created_at.cmp(&right.created_at))
+        .then_with(|| left.number.cmp(&right.number))
+}
+
+fn matches_checkout_owner(candidate: &PrViewResponse, checkout_owner: Option<&str>) -> bool {
+    checkout_owner.is_none_or(|owner| {
+        candidate
+            .head_repository_owner
+            .as_ref()
+            .is_some_and(|candidate_owner| candidate_owner.login.eq_ignore_ascii_case(owner))
+    })
 }
 
 #[cfg(test)]
@@ -1587,7 +1740,7 @@ mod tests {
 
     fn success_payload(pr_number: i64, head_sha: &str, rollup_state: &str) -> String {
         format!(
-            r#"{{
+            r#"[{{
                 "number": {pr_number},
                 "headRefOid": "{head_sha}",
                 "headRefName": "feature/x",
@@ -1595,8 +1748,48 @@ mod tests {
                 "createdAt": "2026-05-24T10:00:00Z",
                 "mergedAt": "2026-05-24T11:00:00Z",
                 "statusCheckRollup": [{{"conclusion": "{rollup_state}"}}]
-            }}"#
+            }}]"#
         )
+    }
+
+    #[test]
+    fn branch_selection_stays_with_origin_and_prefers_checkout_head() {
+        let response = serde_json::from_str::<PrListResponse>(
+            r#"[
+                {
+                    "number": 109,
+                    "headRefOid": "checkout-head",
+                    "headRepositoryOwner": {"login": "fork-owner"},
+                    "state": "OPEN",
+                    "createdAt": "2026-09-20T10:30:00Z"
+                },
+                {
+                    "number": 210,
+                    "headRefOid": "newer-head",
+                    "headRepositoryOwner": {"login": "mentimeter"},
+                    "state": "OPEN",
+                    "createdAt": "2026-09-20T10:20:00Z"
+                },
+                {
+                    "number": 211,
+                    "headRefOid": "checkout-head",
+                    "headRepositoryOwner": {"login": "Mentimeter"},
+                    "state": "MERGED",
+                    "createdAt": "2026-09-20T10:10:00Z"
+                }
+            ]"#,
+        )
+        .expect("parse candidates");
+        let mut candidates = response.into_candidates();
+
+        candidates.retain(|candidate| matches_checkout_owner(candidate, Some("mentimeter")));
+        candidates.sort_by(|left, right| compare_branch_prs(left, right, Some("checkout-head")));
+
+        assert_eq!(candidates.len(), 2);
+        assert_eq!(
+            candidates.last().and_then(|candidate| candidate.number),
+            Some(211)
+        );
     }
 
     #[tokio::test]
@@ -1661,10 +1854,15 @@ mod tests {
             stub.last_args(),
             vec![
                 "pr",
-                "view",
+                "list",
+                "--head",
                 "feature/x",
+                "--state",
+                "all",
+                "--limit",
+                "10",
                 "--json",
-                "number,title,headRefOid,headRefName,state,statusCheckRollup,createdAt,mergedAt,url",
+                "number,title,headRefOid,headRefName,headRepositoryOwner,state,statusCheckRollup,createdAt,mergedAt,url",
             ]
         );
 
@@ -1682,14 +1880,14 @@ mod tests {
     async fn refresh_populates_project_remote_from_url() {
         let (_dir, database) = open_db();
         let (session_id, _) = fixture(&database, "/tmp/argmax-gh-remote");
-        let payload = r#"{
+        let payload = r#"[{
             "number": 15,
             "headRefOid": "abcd1234",
             "headRefName": "feature/x",
             "state": "OPEN",
             "createdAt": "2026-05-24T10:00:00Z",
             "url": "https://github.com/my-org/my-repo/pull/15"
-        }"#;
+        }]"#;
         let stub = StubRunner::new(vec![Ok(payload.to_string())]);
         let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
         let rows = service.refresh(&session_id).await.expect("refresh");
@@ -1703,6 +1901,133 @@ mod tests {
                 name: "my-repo".to_string(),
             })
         );
+    }
+
+    #[tokio::test]
+    async fn refresh_prefers_open_pr_when_github_reused_the_branch_name() {
+        let (_dir, database) = open_db();
+        let (session_id, _) = fixture(&database, "/tmp/argmax-gh-reused-branch");
+        {
+            let conn = database.connection();
+            conn.execute(
+                "UPDATE workspaces SET shared_workspace = 1 WHERE id = 'w1'",
+                [],
+            )
+            .expect("mark workspace shared");
+            conn.execute(
+                "UPDATE sessions SET started_at = '2026-09-20T10:08:18.756Z', pr_branch_at_start = 'feature/x', pr_branch_last_active = 'feature/x' WHERE id = 's1'",
+                [],
+            )
+            .expect("capture session branch");
+            let stale = GhPrRecord {
+                session_id: session_id.clone(),
+                pr_number: 109,
+                head_sha: "old-head".to_owned(),
+                last_seen_check_state: "success".to_owned(),
+                updated_at: "2026-09-20T10:15:50.935Z".to_owned(),
+                pr_state: Some("MERGED".to_owned()),
+                notified_at: None,
+                pr_created_at: Some("2026-08-30T12:31:36Z".to_owned()),
+                pr_merged_at: Some("2026-08-30T12:34:57Z".to_owned()),
+                head_ref_name: Some("feature/x".to_owned()),
+            };
+            store_gh_pr_observation(&conn, &stale).expect("seed stale canonical PR");
+            record_session_pr_evidence(
+                &conn,
+                &session_id,
+                109,
+                "unverified",
+                "observation:s1:109:unverified",
+                "2026-09-20T10:15:50.935Z",
+            )
+            .expect("seed stale branch association");
+        }
+        let stub = StubRunner::new(vec![Ok(r#"[
+            {
+                "number": 109,
+                "headRefOid": "old-head",
+                "headRefName": "feature/x",
+                "state": "MERGED",
+                "createdAt": "2026-08-30T12:31:36Z",
+                "mergedAt": "2026-08-30T12:34:57Z"
+            },
+            {
+                "number": 210,
+                "headRefOid": "current-head",
+                "headRefName": "feature/x",
+                "state": "OPEN",
+                "createdAt": "2026-09-20T10:23:34Z"
+            }
+        ]"#
+        .to_string())]);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
+
+        let rows = service.refresh(&session_id).await.expect("refresh");
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].pr_number, 210);
+        assert_eq!(rows[0].pr_state.as_deref(), Some("OPEN"));
+        let conn = database.connection();
+        let prs =
+            crate::persistence::gh::list_session_prs(&conn, &session_id).expect("list session PRs");
+        assert_eq!(prs.len(), 1);
+        assert_eq!(prs[0].pr_number, 210);
+    }
+
+    #[tokio::test]
+    async fn refresh_backfills_merge_time_before_retracting_a_legacy_association() {
+        let (_dir, database) = open_db();
+        let (session_id, _) = fixture(&database, "/tmp/argmax-gh-legacy-merge-time");
+        {
+            let conn = database.connection();
+            conn.execute(
+                "UPDATE workspaces SET shared_workspace = 1 WHERE id = 'w1'",
+                [],
+            )
+            .expect("mark workspace shared");
+            conn.execute(
+                "UPDATE sessions SET started_at = '2026-09-20T10:08:18.756Z', pr_branch_at_start = 'feature/x', pr_branch_last_active = 'feature/x' WHERE id = 's1'",
+                [],
+            )
+            .expect("capture session branch");
+            let stale = GhPrRecord {
+                session_id: session_id.clone(),
+                pr_number: 109,
+                head_sha: "old-head".to_owned(),
+                last_seen_check_state: "success".to_owned(),
+                updated_at: "2026-09-20T10:15:50.935Z".to_owned(),
+                pr_state: Some("MERGED".to_owned()),
+                notified_at: None,
+                pr_created_at: Some("2026-08-30T12:31:36Z".to_owned()),
+                pr_merged_at: None,
+                head_ref_name: Some("feature/x".to_owned()),
+            };
+            record_gh_pr_observation(&conn, &stale, PrAttribution::Inferred)
+                .expect("seed timestamp-less association")
+                .expect("association accepted before timestamp is known");
+        }
+        let stub = StubRunner::new(vec![
+            Ok("[]".to_owned()),
+            Ok(r#"{
+                "number": 109,
+                "headRefOid": "old-head",
+                "headRefName": "feature/x",
+                "state": "MERGED",
+                "createdAt": "2026-08-30T12:31:36Z",
+                "mergedAt": "2026-08-30T12:34:57Z"
+            }"#
+            .to_owned()),
+        ]);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
+
+        let rows = service.refresh(&session_id).await.expect("refresh");
+
+        assert!(rows.is_empty());
+        assert_eq!(stub.call_count(), 2);
+        let conn = database.connection();
+        assert!(crate::persistence::gh::list_session_prs(&conn, &session_id)
+            .expect("list session PRs")
+            .is_empty());
     }
 
     #[tokio::test]
@@ -1800,7 +2125,7 @@ mod tests {
                 "view",
                 "568",
                 "--json",
-                "number,title,headRefOid,headRefName,state,statusCheckRollup,createdAt,mergedAt,url",
+                "number,title,headRefOid,headRefName,headRepositoryOwner,state,statusCheckRollup,createdAt,mergedAt,url",
             ]
         );
     }
@@ -1899,7 +2224,7 @@ mod tests {
             )
             .expect("mark workspace shared");
             conn.execute(
-                "UPDATE sessions SET pr_branch_at_start = 'feature/x', pr_branch_last_active = 'feature/x' WHERE id = 's1'",
+                "UPDATE sessions SET started_at = '2026-05-24T07:00:00Z', pr_branch_at_start = 'feature/x', pr_branch_last_active = 'feature/x' WHERE id = 's1'",
                 [],
             )
             .expect("capture session branch");
@@ -2020,7 +2345,7 @@ mod tests {
                 "view",
                 "566",
                 "--json",
-                "number,title,headRefOid,headRefName,state,statusCheckRollup,createdAt,mergedAt,url",
+                "number,title,headRefOid,headRefName,headRepositoryOwner,state,statusCheckRollup,createdAt,mergedAt,url",
             ]
         );
     }

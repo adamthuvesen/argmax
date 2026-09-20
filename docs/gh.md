@@ -69,7 +69,12 @@ discovery. A successful PR creation or mutation can establish work. Viewing a
 PR establishes a reference. A URL printed by an unrelated command does not
 prove work. Shared-checkout branch observations cannot establish attribution:
 another session can move the same checkout while this session is active.
-Isolated workspaces retain discovery on their owned branch.
+Branch discovery stays within the checkout's origin owner, prefers an exact
+HEAD match, then an open PR, and otherwise uses the newest candidate when
+GitHub has reused the branch name. On a shared checkout, closed branch-only
+candidates and merged candidates whose merge predates the session are rejected.
+Their synthetic unverified associations are retracted. Isolated workspaces
+retain discovery on their owned branch.
 
 Migration v49 preserves historical links as unverified and retains the cached
 GitHub state. Incremental event repair uses original event identities and times

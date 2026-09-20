@@ -141,8 +141,8 @@ struct ArcScreen: View {
             )
             .padding(.top, 120)
         } else {
-            ProgressView()
-                .tint(Theme.muted)
+            WorkingNest(size: 24, tint: Theme.muted)
+                .accessibilityLabel("Loading arc…")
                 .frame(maxWidth: .infinity)
                 .padding(.top, 120)
         }
@@ -370,8 +370,8 @@ struct ArcScreen: View {
                     .padding(.top, Spacing.row)
                 }
             } else if arc.timelineFailure == nil {
-                ProgressView()
-                    .tint(Theme.muted)
+                WorkingNest(size: 24, tint: Theme.muted)
+                    .accessibilityLabel("Loading timeline…")
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, Spacing.gutter)
             }

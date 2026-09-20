@@ -180,7 +180,8 @@ private struct TranscriptImageTile: View {
             } else if failed {
                 TranscriptFileFallback(source: source, onOpenFile: onOpenFile)
             } else {
-                ProgressView().tint(Theme.muted)
+                WorkingNest(size: 20, tint: Theme.muted)
+                    .accessibilityLabel("Loading attachment…")
             }
         }
         .background(Theme.raised, in: RoundedRectangle(cornerRadius: compact ? 10 : 12, style: .continuous))

@@ -436,8 +436,8 @@ struct ChatListView: View {
         case .connecting:
             // No copy: this state lasts about a second on a live pairing,
             // and a sentence that flashes is worse than nothing.
-            ProgressView()
-                .tint(Theme.muted)
+            WorkingNest(size: 24, tint: Theme.muted)
+                .accessibilityLabel("Connecting…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .noChats:
             EmptyState(message: "No chats yet.", action: ("Start one", { navigator.newChat = NewChatRequest() }))

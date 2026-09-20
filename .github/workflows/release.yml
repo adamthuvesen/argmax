@@ -63,7 +63,7 @@ jobs:
       # step leaves APPLE_API_KEY_PATH unset and the build simply skips
       # notarization instead of failing.
       - name: Stage the notarization key
-        id: apns-key
+        id: notary-key
         env:
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
         run: |
@@ -71,7 +71,7 @@ jobs:
             echo "No App Store Connect key configured — building without notarization."
             exit 0
           fi
-          key_path="$RUNNER_TEMP/apple-api-key.p8"
+          key_path="$RUNNER_TEMP/notary-api-key.p8"
           printf '%s' "$APPLE_API_KEY_P8" | base64 --decode > "$key_path"
           chmod 600 "$key_path"
           echo "path=$key_path" >> "$GITHUB_OUTPUT"
@@ -89,7 +89,7 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_PATH: ${{ steps.apns-key.outputs.path }}
+          APPLE_API_KEY_PATH: ${{ steps.notary-key.outputs.path }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: Argmax ${{ github.ref_name }}

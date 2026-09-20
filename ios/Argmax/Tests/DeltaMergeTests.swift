@@ -33,6 +33,18 @@ final class DeltaMergeTests: XCTestCase {
         XCTAssertEqual(merged.sessions[0].state, .running)
     }
 
+    func testDelayedArchivingDeltaCannotReviveArchivedWorkspace() {
+        var archived = makeWorkspace(id: "w-1")
+        archived.state = .archived
+        var archiving = archived
+        archiving.state = .archiving
+        let snapshot = DashboardSnapshot(workspaces: [archived])
+
+        let merged = mergeDashboardDelta(snapshot, DashboardDelta(workspaces: [archiving]))
+
+        XCTAssertEqual(merged.workspaces[0].state, .archived)
+    }
+
     func testANewRowIsSortedInNewestFirst() {
         let older = makeSession(
             id: "s-0",

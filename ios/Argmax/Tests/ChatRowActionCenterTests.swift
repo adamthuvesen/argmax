@@ -75,6 +75,57 @@ final class ChatRowActionCenterTests: XCTestCase {
         await client.disconnect()
     }
 
+    @MainActor
+    func testArchiveAppliesFinalResponseAfterOnlyIntermediateDeltaArrives() async throws {
+        let socket = TestBridgeSocket()
+        let (client, directory) = try makeClient(socket)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let (store, center, row) = try makeCenter(client: client, directory: directory)
+
+        center.archive(row)
+        let request = try await waitForRequest(on: socket, channel: "workspaces:archive")
+        var archiving = row.workspace
+        archiving.state = .archiving
+        store.ingest(delta: DashboardDelta(workspaces: [archiving]))
+
+        var archived = archiving
+        archived.state = .archived
+        socket.reply(to: request, ok: [
+            "workspace": try jsonObject(archived),
+            "recoveryPath": NSNull(),
+        ])
+
+        try await waitForBusyToClear(center, row)
+        XCTAssertFalse(store.sections.chats.contains { $0.id == row.id })
+        XCTAssertFalse(socket.requests.contains { $0["channel"] as? String == "dashboard:list" })
+        await client.disconnect()
+    }
+
+    @MainActor
+    func testDelayedIntermediateDeltaCannotReviveArchivedRow() async throws {
+        let socket = TestBridgeSocket()
+        let (client, directory) = try makeClient(socket)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let (store, center, row) = try makeCenter(client: client, directory: directory)
+
+        center.archive(row)
+        let request = try await waitForRequest(on: socket, channel: "workspaces:archive")
+        var archived = row.workspace
+        archived.state = .archived
+        socket.reply(to: request, ok: [
+            "workspace": try jsonObject(archived),
+            "recoveryPath": NSNull(),
+        ])
+        try await waitForBusyToClear(center, row)
+
+        var delayed = archived
+        delayed.state = .archiving
+        store.ingest(delta: DashboardDelta(workspaces: [delayed]))
+
+        XCTAssertFalse(store.sections.chats.contains { $0.id == row.id })
+        await client.disconnect()
+    }
+
     // MARK: - Helpers
 
     private func makeClient(_ socket: TestBridgeSocket) throws -> (BridgeClient, URL) {

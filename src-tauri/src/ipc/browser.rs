@@ -28,6 +28,7 @@ use crate::browser::automation::{
     self, ActionOutcome, PageExtraction, PageFindResult, PageSnapshot, PageText, TabTarget,
 };
 use crate::browser::registry::{self, BrowserAgentOpenEvent, BrowserTabRegistry, BrowserTabsEvent};
+use crate::browser::user_scripts::PageScript;
 use crate::browser::{encode_base64, eval, snapshot_image, CaptureRect};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::state::AppState;
@@ -267,6 +268,10 @@ const BROWSER_CAPTURE_SCRIPT: &str = include_str!("../browser/capture.js");
 /// a common host for the accept button.
 const BROWSER_COOKIE_SCRIPT: &str = include_str!("../browser/cookie.js");
 
+/// Marks a popup window's pages, so the panel shortcuts and new-tab routing
+/// inherited from the opener stay out of a window that has no tab strip.
+const BROWSER_POPUP_MARKER_SCRIPT: &str = "window.__argmaxBrowserPopup = true;";
+
 /// The initialization script one tab gets. Three documents' worth, because the
 /// agent-only halves must be in place before the page's first statement runs
 /// and an initialization script is fixed when the webview is created.
@@ -276,6 +281,30 @@ fn init_script(owned_by_session: bool) -> String {
     } else {
         BROWSER_INIT_SCRIPT.to_string()
     }
+}
+
+/// Every script a tab's page runs before its own first statement, in
+/// injection order. The builder installs these, and on macOS
+/// `browser::user_scripts` reinstalls exactly this list so Wry's `window.ipc`
+/// definition does not travel with them into a third-party page.
+fn page_scripts(owned_by_session: bool, popup: bool) -> Vec<PageScript> {
+    let mut scripts = vec![PageScript {
+        source: init_script(owned_by_session),
+        all_frames: false,
+    }];
+    if owned_by_session {
+        scripts.push(PageScript {
+            source: BROWSER_COOKIE_SCRIPT.to_string(),
+            all_frames: true,
+        });
+    }
+    if popup {
+        scripts.push(PageScript {
+            source: BROWSER_POPUP_MARKER_SCRIPT.to_string(),
+            all_frames: false,
+        });
+    }
+    scripts
 }
 
 fn validated_browser_url(raw: &str) -> ArgmaxResult<Url> {
@@ -656,7 +685,7 @@ fn open_tab_with_url(
             let window = popup_builder
                 // Check the marker at event time, since OAuth redirects can sever
                 // window.opener.
-                .initialization_script("window.__argmaxBrowserPopup = true;")
+                .initialization_script(BROWSER_POPUP_MARKER_SCRIPT)
                 .on_navigation(|url| matches!(url.scheme(), "http" | "https" | "about" | "blob"))
                 .on_document_title_changed(|window, title| {
                     let _ = window.set_title(&title);
@@ -664,6 +693,14 @@ fn open_tab_with_url(
                 .build();
             match window {
                 Ok(window) => {
+                    if let Err(error) = crate::browser::user_scripts::replace(
+                        window.as_ref(),
+                        &page_scripts(popup_owned_by_session, true),
+                    ) {
+                        tracing::error!(%error, "could not install browser popup scripts");
+                        let _ = window.close();
+                        return tauri::webview::NewWindowResponse::Deny;
+                    }
                     let browser_theme = *popup_app
                         .state::<AppState>()
                         .browser_theme
@@ -766,6 +803,10 @@ fn open_tab_with_url(
             LogicalSize::new(bounds.width.max(1.0), bounds.height.max(1.0)),
         )
         .map_err(|error| ArgmaxError::service("BROWSER_CREATE_FAILED", error.to_string()))?;
+    // Before WebKit creates the first document: this call is inline on the
+    // main thread, and the navigation started above cannot produce a document
+    // until the run loop turns again.
+    crate::browser::user_scripts::replace(&created, &page_scripts(owned, false))?;
     let browser_theme = *app
         .state::<AppState>()
         .browser_theme
@@ -1494,6 +1535,28 @@ mod tests {
         assert!(
             user.contains("argmax-newtab"),
             "ordinary browser behavior is still installed"
+        );
+    }
+
+    #[test]
+    fn page_scripts_carry_the_cookie_dismisser_into_every_frame() {
+        let user = page_scripts(false, false);
+        assert_eq!(user.len(), 1, "a user tab only gets the panel script");
+        assert!(!user[0].all_frames);
+
+        let agent = page_scripts(true, false);
+        assert_eq!(agent.len(), 2);
+        assert!(agent[1].source.contains("__argmaxCookies"));
+        assert!(
+            agent[1].all_frames,
+            "a consent button often lives in an iframe"
+        );
+
+        let popup = page_scripts(true, true);
+        assert_eq!(
+            popup.last().expect("popup marker").source,
+            BROWSER_POPUP_MARKER_SCRIPT,
+            "a popup window has no tab strip to shortcut into"
         );
     }
 

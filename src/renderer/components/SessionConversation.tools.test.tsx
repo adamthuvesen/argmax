@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderId, TimelineEvent } from "../../shared/types.js";
 import {
@@ -8,6 +8,8 @@ import {
 } from "../../test/sessionConversationTestHarness.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { startedAgentName, toggleAgentDetailsName } from "../../test/agentRowName.js";
+import { conversationElement } from "../../test/sessionConversationTestHarness.js";
+import { DeveloperToolsContext } from "../lib/uiPreferences.js";
 
 const SAME_ENVELOPE_WORK = "I'll inspect the layout before answering.";
 const SAME_ENVELOPE_THINKING = "Considering the repo structure.";
@@ -835,16 +837,29 @@ describe("SessionConversation — tools & chrome", () => {
     // None of the consolidated actions are visible until the picker is opened.
     expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
     expect(screen.queryByRole("menuitem", { name: "Git actions" })).toBeNull();
-    expect(screen.queryByRole("menuitemcheckbox", { name: "Toggle debug log" })).toBeNull();
+    expect(screen.queryByRole("menuitemcheckbox", { name: "Debug log" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
 
     expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Git actions" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitemcheckbox", { name: "Toggle debug log" })).toHaveAttribute(
+    expect(screen.getByRole("menuitemcheckbox", { name: "Debug log" })).toHaveAttribute(
       "aria-checked",
       "false"
     );
+  });
+
+  it("drops the debug log from chat actions when developer tools are off", () => {
+    render(
+      <DeveloperToolsContext.Provider value={false}>
+        {conversationElement(baseSession({ state: "complete" }), [], {})}
+      </DeveloperToolsContext.Provider>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
+
+    expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitemcheckbox", { name: "Debug log" })).toBeNull();
   });
 
   it("dismisses the session actions popover on a mousedown outside the popover", () => {
@@ -871,7 +886,7 @@ describe("SessionConversation — tools & chrome", () => {
   it("dismisses the session actions popover after toggling the debug log", () => {
     renderConversation(baseSession({ state: "complete" }));
     fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Toggle debug log" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Debug log" }));
 
     expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
   });
@@ -884,7 +899,7 @@ describe("SessionConversation — tools & chrome", () => {
 
     // Main menu items are no longer in the DOM; git actions take their place.
     expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
-    expect(screen.queryByRole("menuitemcheckbox", { name: "Toggle debug log" })).toBeNull();
+    expect(screen.queryByRole("menuitemcheckbox", { name: "Debug log" })).toBeNull();
     expect(screen.getByRole("menuitem", { name: "Push" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Create PR for checkout branch" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Create branch" })).toBeInTheDocument();

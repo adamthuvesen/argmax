@@ -160,6 +160,8 @@ import {
   SIDEBAR_TRANSLUCENCY_MAX,
   SIDEBAR_TRANSLUCENCY_MIN,
   WORKSPACE_CARD_KEY,
+  DEVELOPER_TOOLS_KEY,
+  DeveloperToolsContext,
   PrMilestoneCelebrationContext,
   resolveChatVerbosity,
   useBooleanUiPreference,
@@ -248,6 +250,12 @@ export function App(): JSX.Element {
     hideArcPage();
   }, [setIsBrowserPageOpen]);
   const [workspaceCardVisible, setWorkspaceCardVisible] = useBooleanUiPreference(WORKSPACE_CARD_KEY, true);
+  // A dev build starts with the diagnostic surfaces on; a packaged build does
+  // not, until the user turns them on in Settings → Advanced.
+  const [developerToolsEnabled, setDeveloperToolsEnabled] = useBooleanUiPreference(
+    DEVELOPER_TOOLS_KEY,
+    import.meta.env.DEV
+  );
   const [fastModeEnabled, setFastModeEnabled] = useBooleanUiPreference(FAST_MODE_KEY, false);
   const [turnChangesExpanded, setTurnChangesExpanded] = useBooleanUiPreference(
     TURN_CHANGES_EXPANDED_KEY,
@@ -1959,6 +1967,7 @@ export function App(): JSX.Element {
 
   return (
     <PrMilestoneCelebrationContext.Provider value={prMilestoneCelebrationEnabled}>
+    <DeveloperToolsContext.Provider value={developerToolsEnabled}>
     <SessionTimelineProvider store={timelines}>
     <main
       className="app-shell"
@@ -2174,6 +2183,8 @@ export function App(): JSX.Element {
                 onSidebarTranslucencyChange={setSidebarTranslucency}
                 workspaceCardVisible={workspaceCardVisible}
                 onWorkspaceCardVisibleChange={setWorkspaceCardVisible}
+                developerToolsEnabled={developerToolsEnabled}
+                onDeveloperToolsEnabledChange={setDeveloperToolsEnabled}
                 contextIndicatorEnabled={contextIndicatorEnabled}
                 onContextIndicatorEnabledChange={setContextIndicatorEnabled}
                 prMilestoneCelebrationEnabled={prMilestoneCelebrationEnabled}
@@ -2344,6 +2355,7 @@ export function App(): JSX.Element {
       </section>
     </main>
     </SessionTimelineProvider>
+    </DeveloperToolsContext.Provider>
     </PrMilestoneCelebrationContext.Provider>
   );
 }

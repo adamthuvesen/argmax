@@ -302,7 +302,7 @@
 }
 
 /* Disclosure trigger: no chrome until hover, so revealing detail does not read
-   as an action of the same weight as Copy or Vacuum. */
+   as an action of the same weight as Copy or Compact. */
 .settings-button-quiet {
   border-color: transparent;
   background: transparent;

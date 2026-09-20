@@ -5,6 +5,7 @@ import { LINK_TARGET_KEY } from "../lib/linkTarget.js";
 import type * as MermaidRuntime from "../lib/mermaidRuntime.js";
 import { ATTACHMENT_PROTOCOL_SCHEME } from "../../shared/attachmentProtocol.js";
 import { WORKSPACE_ASSET_PROTOCOL_SCHEME } from "../../shared/assetProtocol.js";
+import { FRESH_RUN_FADE_MS } from "../lib/streamFreshRuns.js";
 import { StreamingMarkdown } from "./StreamingMarkdown.js";
 
 const STREAM_TICK_MS = 64;
@@ -210,7 +211,62 @@ describe("<StreamingMarkdown />", () => {
     act(() => {
       vi.advanceTimersByTime(5_000);
     });
+    // The last runs are still fading, so the paragraph is still cut into spans;
+    // one more beat and the block is one settled piece of text again.
+    act(() => {
+      vi.advanceTimersByTime(FRESH_RUN_FADE_MS + 100);
+    });
     expect(screen.getByText(text)).toBeInTheDocument();
+  });
+
+  it("marks each tick's words so they fade up, and settles the block once they have", () => {
+    vi.useFakeTimers();
+    const text = "A".repeat(200);
+
+    const { container } = render(<StreamingMarkdown text={text} streaming />);
+    act(() => {
+      vi.advanceTimersByTime(STREAM_TICK_MS * 3);
+    });
+
+    const runs = [...container.querySelectorAll(".stream-fresh")];
+    // Three ticks inside one `act` paint once, so they are one run: a fresh run
+    // is what arrived since the reader last saw the block, not a fixed slice.
+    expect(runs.map((run) => run.textContent)).toEqual(["A".repeat(30)]);
+    // Each run carries when it was revealed: the fade is anchored to that, not
+    // to the span, which changes hands as the markdown is re-parsed.
+    expect(Number(runs[0]?.getAttribute("data-at"))).toBeGreaterThan(0);
+
+    act(() => {
+      vi.advanceTimersByTime(5_000);
+    });
+    act(() => {
+      vi.advanceTimersByTime(FRESH_RUN_FADE_MS + 100);
+    });
+    expect(container.querySelectorAll(".stream-fresh")).toHaveLength(0);
+  });
+
+  it("leaves an unpaced block — a live thought — unmarked", () => {
+    vi.useFakeTimers();
+    const { container, rerender } = render(
+      <StreamingMarkdown text={"A".repeat(120)} streaming paced={false} />
+    );
+    rerender(<StreamingMarkdown text={"A".repeat(240)} streaming paced={false} />);
+    act(() => {
+      vi.advanceTimersByTime(STREAM_TICK_MS * 2);
+    });
+    expect(container.querySelectorAll(".stream-fresh")).toHaveLength(0);
+  });
+
+  it("does not mark a block that is being restored into the pane", () => {
+    vi.useFakeTimers();
+    const { container, rerender } = render(
+      <StreamingMarkdown text={"A".repeat(120)} streaming restoring />
+    );
+    rerender(<StreamingMarkdown text={"A".repeat(240)} streaming restoring />);
+    act(() => {
+      vi.advanceTimersByTime(STREAM_TICK_MS * 2);
+    });
+    expect(container.querySelectorAll(".stream-fresh")).toHaveLength(0);
   });
 
   it("drives every revealing block from one shared interval", () => {

@@ -24,6 +24,7 @@ export const GOAL_ENABLED_KEY = "argmax.goal.enabled";
 export const TURN_REVERT_ENABLED_KEY = "argmax.turnRevert.enabled";
 export const GOAL_MAX_TURNS_KEY = "argmax.goal.maxTurns";
 export const FOLLOW_UP_DELIVERY_KEY = "argmax.followUp.delivery";
+export const DEVELOPER_TOOLS_KEY = "argmax.developerTools.enabled";
 
 /** What Send does while an agent is still working. */
 export type FollowUpDelivery = "queue" | "steer";
@@ -52,6 +53,15 @@ export const GOAL_MAX_TURNS_MAX = 50;
 export const GOAL_MAX_TURNS_DEFAULT = 20;
 
 export const PrMilestoneCelebrationContext = createContext(false);
+
+/**
+ * Whether the diagnostic surfaces — the per-chat debug log and the performance
+ * panel in Settings → Advanced — are offered. Off for everyone who has not
+ * asked for them; a dev build starts with them on, because that is the build
+ * they exist for. The native Help → Debug Log item ignores this: it is the
+ * escape hatch for a user who needs the log before finding the toggle.
+ */
+export const DeveloperToolsContext = createContext(import.meta.env.DEV);
 
 function readBooleanPreference(key: string, fallback: boolean): boolean {
   if (typeof window === "undefined") return fallback;

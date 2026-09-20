@@ -261,6 +261,8 @@ JS loops that CSS pausing cannot reach check `document.hidden` themselves:
   interval, started by the first and cleared with the last, so React batches
   all of their advances into one render per tick. The 64 ms cadence halves the
   maximum React and Markdown render rate while keeping reveal throughput steady.
+  The fresh-run fade on top of it animates opacity only, on the handful of spans
+  still fading (see [chat-cards.md](chat-cards.md)); nothing under them repaints.
 - The 1.5 s open-agent poll in
   [AgentActivity](../src/renderer/components/AgentActivity.tsx) runs only for
   the Agents dock tab that is shown, and still skips ticks while the document is

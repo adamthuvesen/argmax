@@ -17,7 +17,8 @@ import {
   SettingGroup,
   SettingNote,
   SettingRow,
-  SettingValueRow
+  SettingValueRow,
+  Toggle
 } from "./settingsPrimitives.js";
 
 export function AdvancedSettings({
@@ -28,7 +29,9 @@ export function AdvancedSettings({
   copyDiagnostics,
   revealDatabase,
   openArchiveRecovery,
-  vacuumDatabase
+  vacuumDatabase,
+  developerToolsEnabled,
+  onDeveloperToolsEnabledChange
 }: {
   projects: ProjectSummary[];
   diagnostics: DiagnosticsReport | null;
@@ -38,6 +41,8 @@ export function AdvancedSettings({
   revealDatabase: () => Promise<void>;
   openArchiveRecovery: () => Promise<void>;
   vacuumDatabase: () => Promise<void>;
+  developerToolsEnabled: boolean;
+  onDeveloperToolsEnabledChange: (value: boolean) => void;
 }): JSX.Element {
   const [performanceOpen, setPerformanceOpen] = useState(false);
   const [performanceStatus, setPerformanceStatus] = useState<PerformanceStatus | null>(null);
@@ -150,17 +155,17 @@ export function AdvancedSettings({
           label="Database"
           description={
             stats
-              ? `${totalRows(stats).toLocaleString()} rows · WAL ${formatBytes(stats.walBytes)}`
-              : diagnostics?.databasePath
+              ? `${totalRows(stats).toLocaleString()} rows · ${formatBytes(stats.walBytes)} of pending writes. Compacting reclaims space from deleted chats.`
+              : "Everything Argmax stores lives in one file on this Mac."
           }
           control={
             <button
               type="button"
               className="settings-button"
               onClick={() => void vacuumDatabase()}
-              aria-label="Vacuum database"
+              aria-label="Compact database"
             >
-              Vacuum
+              Compact
             </button>
           }
         />
@@ -186,8 +191,8 @@ export function AdvancedSettings({
           label="Logs"
           description={
             diagnostics?.recentLogs.length
-              ? `Main-process ring buffer, last ${diagnostics.recentLogs.length} entries.`
-              : "Main-process ring buffer."
+              ? `The last ${diagnostics.recentLogs.length} log entries from this launch.`
+              : "Log entries from this launch."
           }
           control={
             <button
@@ -202,12 +207,13 @@ export function AdvancedSettings({
           }
         />
 
+        {developerToolsEnabled ? (
         <SettingRow
           label="Performance"
           description={
             readyPhase
-              ? `Cold start ${readyPhase.elapsedMs.toFixed(0)} ms of a ${COLD_START_BUDGET_MS.toLocaleString()} ms budget.`
-              : "Startup phases, IPC latency, and row counts for this boot."
+              ? `Started in ${readyPhase.elapsedMs.toFixed(0)} ms of a ${COLD_START_BUDGET_MS.toLocaleString()} ms budget.`
+              : "Startup timings, request latency, and stored row counts for this launch."
           }
           control={
             <button
@@ -221,6 +227,19 @@ export function AdvancedSettings({
             </button>
           }
         />
+        ) : null}
+
+        <SettingRow
+          label="Developer tools"
+          description="Show the debug log in chat menus and the performance details here. Off unless you are working on Argmax itself."
+          control={
+            <Toggle
+              ariaLabel="Developer tools"
+              checked={developerToolsEnabled}
+              onChange={onDeveloperToolsEnabledChange}
+            />
+          }
+        />
 
         {diagnosticsStatus ? (
           <p className="settings-note settings-diagnostics-status" role="status">
@@ -230,7 +249,7 @@ export function AdvancedSettings({
         ) : null}
       </SettingGroup>
 
-      {performanceOpen ? (
+      {developerToolsEnabled && performanceOpen ? (
         <div className="settings-performance">
           <div className="settings-card">
             <h4 className="settings-card-title">Performance recorder</h4>

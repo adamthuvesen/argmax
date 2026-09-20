@@ -1,4 +1,4 @@
-import { createContext, useContext, lazy, memo, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
+import { createContext, useContext, lazy, memo, Suspense, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type JSX } from "react";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { WorkspaceSummary } from "../../shared/types.js";
@@ -12,6 +12,14 @@ import {
   sliceCodePointPrefix,
   type CodePointSliceCursor
 } from "../lib/streamingText.js";
+import {
+  FRESH_RUN_FADE_MS,
+  NO_FRESH_RUNS,
+  paintFreshRuns,
+  rehypeFreshRuns,
+  trackFreshRuns,
+  type FreshRun
+} from "../lib/streamFreshRuns.js";
 import { CodeBlock } from "./CodeBlock.js";
 import { FileChip, type FileChipOpenOptions } from "./FileChip.js";
 import { LogBlock } from "./LogBlock.js";
@@ -297,6 +305,40 @@ function useSmoothStreamingText(
   return { text: visiblePrefix.text, revealing };
 }
 
+/**
+ * The runs of this block still fading up. Tracked during render, not in an
+ * effect: the tick that reveals a run has to render it already marked, or its
+ * characters land at full ink for a frame before the fade takes them back.
+ */
+function useFreshRuns(end: number, active: boolean): readonly FreshRun[] {
+  const runsRef = useRef<readonly FreshRun[]>(NO_FRESH_RUNS);
+  const lastEndRef = useRef<number | null>(null);
+  const [, settle] = useReducer((count: number) => count + 1, 0);
+  const runs = active
+    ? trackFreshRuns(runsRef.current, lastEndRef.current, end, performance.now())
+    // A block whose reveal just ended keeps its last runs until they have
+    // finished; dropping them with the reveal would snap the final words to
+    // full ink.
+    : runsRef.current;
+  runsRef.current = runs;
+  lastEndRef.current = active ? end : null;
+
+  // Nothing else re-renders a block once its stream is over, so the last runs
+  // would stay in the tree. One wake-up, after the newest run has finished,
+  // clears them all.
+  const newest = runs.at(-1)?.at ?? null;
+  useEffect(() => {
+    if (newest === null) return;
+    const timer = window.setTimeout(() => {
+      runsRef.current = NO_FRESH_RUNS;
+      settle();
+    }, Math.max(newest + FRESH_RUN_FADE_MS - performance.now(), 0) + 16);
+    return () => window.clearTimeout(timer);
+  }, [newest]);
+
+  return runs;
+}
+
 function MermaidDiagramFallback(): JSX.Element {
   return (
     <figure className="mermaid-diagram" data-state="pending" aria-label="Diagram">
@@ -432,14 +474,22 @@ const markdownComponents: Components = {
 // Keep the plain render visible while the optional math chunk loads.
 const MarkdownBody = memo(function MarkdownBody({
   text,
+  freshRuns,
   workspace,
   onOpenFile
-}: MarkdownContextValue & { text: string }): JSX.Element {
+}: MarkdownContextValue & { text: string; freshRuns?: readonly FreshRun[] }): JSX.Element {
   const context = useMemo(() => ({ workspace, onOpenFile }), [workspace, onOpenFile]);
   const withMath = needsMath(text);
+  // Math renders through its own pipeline, where a span cut into a formula's
+  // source would be a rendering bug rather than a fade.
+  const rehypePlugins = useMemo(
+    () => (freshRuns && freshRuns.length > 0 && !withMath ? [rehypeFreshRuns(freshRuns)] : undefined),
+    [freshRuns, withMath]
+  );
   const plain = (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
+      rehypePlugins={rehypePlugins}
       urlTransform={chatUrlTransform}
       components={markdownComponents}
     >
@@ -492,12 +542,29 @@ export function StreamingMarkdown({
   // highlighting — until the last character lands.
   const live = streaming || revealing;
   const segments = useMemo(() => splitLogSegments(visibleText), [visibleText]);
-  if (segments.length === 0 && visibleText.length > 0) return null;
   const hasLogs = segments.some((segment) => segment.kind === "log");
   const markdownText = hasLogs ? visibleText : segments.map((segment) => segment.text).join("");
+  // A fresh run is an offset into the markdown the parser sees. Lifting a log
+  // dump out of the prose moves every offset after it, so a block with logs in
+  // it reveals the way it always did.
+  const freshRuns = useFreshRuns(
+    visibleText.length,
+    // Only the typewriter's own output fades. An unpaced block — a live thought
+    // — still drains its remainder through `revealing`, and its words are not
+    // the answer being written.
+    revealing && paced && markdownText.length === visibleText.length
+  );
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  // After the paint that adds a run, never before it: the fade has to be on the
+  // span in the same frame its characters appear.
+  useLayoutEffect(() => {
+    if (freshRuns.length > 0) paintFreshRuns(bodyRef.current);
+  });
+  if (segments.length === 0 && visibleText.length > 0) return null;
 
   return (
     <div
+      ref={bodyRef}
       className={
         hasLogs
           ? `markdown-with-logs${live ? " markdown-streaming" : ""}`
@@ -518,6 +585,7 @@ export function StreamingMarkdown({
           : (
             <MarkdownBody
               text={markdownText}
+              freshRuns={freshRuns}
               workspace={workspace}
               onOpenFile={onOpenFile}
             />

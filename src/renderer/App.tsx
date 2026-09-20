@@ -2069,7 +2069,10 @@ export function App(): JSX.Element {
           aria-hidden={toast === null ? true : undefined}
           onAnimationEnd={toastMotion.onMotionEnd}
         >
-          <span>{paintedToast.message}</span>
+          <span className="toast-text">
+            {paintedToast.message}
+            {paintedToast.detail ? <span className="toast-detail">{paintedToast.detail}</span> : null}
+          </span>
           <button type="button" onClick={() => dismissToast()} aria-label="Dismiss">
             ×
           </button>

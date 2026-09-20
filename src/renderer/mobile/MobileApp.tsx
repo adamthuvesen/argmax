@@ -1491,7 +1491,10 @@ export function MobileApp(): JSX.Element {
       ) : null}
       {toast ? (
         <div className={`mobile-toast mobile-toast-${toast.kind}`} role="status">
-          {toast.message}
+          <span className="toast-text">
+            {toast.message}
+            {toast.detail ? <span className="toast-detail">{toast.detail}</span> : null}
+          </span>
         </div>
       ) : null}
     </div>

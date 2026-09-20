@@ -279,6 +279,19 @@
   animation: msg-in 220ms var(--ease);
 }
 
+/* The action on the first line, what the backend said under it. */
+.toast-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.toast-detail {
+  font-size: var(--text-sm);
+  opacity: 0.75;
+}
+
 .toast-error {
   color: var(--rose);
   background: var(--rose-soft);

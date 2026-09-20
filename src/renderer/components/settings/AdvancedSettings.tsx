@@ -1,18 +1,21 @@
-import { ChevronRight, ClipboardCopy, FolderOpen } from "lucide-react";
+import { ChevronRight, ClipboardCopy, ExternalLink, FolderOpen } from "lucide-react";
 import { useEffect, useState, type JSX } from "react";
 import type { DiagnosticsReport, PerformanceStatus, ProjectSummary } from "../../../shared/types.js";
 import { APP_VERSION_LABEL } from "../../../shared/appVersion.js";
+import { ISSUES_URL, REPO_URL } from "../../../shared/appLinks.js";
 import { formatBytes } from "../../lib/formatBytes.js";
 import { saveLogsFile } from "../../lib/logDownload.js";
 import { savePerformanceCapture } from "../../lib/performanceDownload.js";
 import { LoadingLine } from "../LoadingLine.js";
 import { ProjectKnowledgePanel } from "../ProjectKnowledgePanel.js";
+import { WebLink } from "../WebLink.js";
 import { ChatHistorySettings } from "./ChatHistorySettings.js";
 import {
   COLD_START_BUDGET_MS,
   ColdStartSummary,
   RendererPaintRow,
   SettingGroup,
+  SettingNote,
   SettingRow,
   SettingValueRow
 } from "./settingsPrimitives.js";
@@ -448,10 +451,30 @@ export function AdvancedSettings({
 
       <SettingGroup id="settings-about" label="About">
         <SettingValueRow label="Version" value={APP_VERSION_LABEL} />
-        <SettingValueRow label="Runtime" value="Tauri · local, single user" />
+        <SettingValueRow label="Runs" value="On this Mac, for one person" />
         <SettingValueRow label="Storage" value="SQLite, on this device" />
-        <SettingValueRow label="Network" value="Provider calls only" />
-        <SettingValueRow label="Providers" value="Claude · Codex · Cursor · OpenCode · Grok" />
+        <SettingValueRow label="Network" value="Only the calls your agents make" />
+        <SettingValueRow label="Agents" value="Claude · Codex · Cursor · OpenCode · Grok" />
+        <SettingRow
+          label="Source and issues"
+          description="Argmax is open source under the MIT license."
+          control={
+            <>
+              <WebLink className="settings-button" href={REPO_URL}>
+                Source <ExternalLink size={13} aria-hidden="true" />
+              </WebLink>
+              <WebLink className="settings-button" href={ISSUES_URL}>
+                Report an issue <ExternalLink size={13} aria-hidden="true" />
+              </WebLink>
+            </>
+          }
+        />
+        <SettingNote>
+          Argmax is pre-1.0 and under active development, so expect rough edges. It sends no
+          telemetry — the only traffic it makes on its own is to GitHub, for the pull request and
+          check status on your own branches.
+        </SettingNote>
+        <SettingNote>© 2026 Adam Thuvesen</SettingNote>
       </SettingGroup>
     </>
   );

@@ -61,7 +61,7 @@ export function FileChangeCard({
         {change.kind === "delete" ? (
           <p className="file-change-card-empty">File removed.</p>
         ) : change.hunks.length === 0 ? (
-          <p className="file-change-card-empty">{note ?? "No content to display."}</p>
+          <p className="file-change-card-empty">{note ?? "This file is empty."}</p>
         ) : (
           <>
             <DiffBlocks blocks={change.hunks} filePath={change.path} />

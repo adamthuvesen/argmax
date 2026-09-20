@@ -102,6 +102,6 @@ describe("ChatBubble", () => {
     const button = screen.getByRole("button", { name: "Copy bubble" });
     fireEvent.click(button);
     expect(writeText).toHaveBeenCalledWith("**bold**");
-    await waitFor(() => expect(button).toHaveAttribute("title", "Copied!"));
+    await waitFor(() => expect(button).toHaveAttribute("title", "Copied"));
   });
 });

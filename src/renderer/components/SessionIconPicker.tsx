@@ -111,7 +111,7 @@ export function SessionIconPicker({
         type="search"
         autoFocus
         aria-label="Search icons"
-        placeholder="Search icons..."
+        placeholder="Search icons…"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
       />

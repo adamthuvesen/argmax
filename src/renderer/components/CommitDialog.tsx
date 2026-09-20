@@ -142,7 +142,7 @@ export function CommitDialog({
       if (requestGeneration.current !== request || !isOpenRef.current) return;
       setFeedback({
         kind: "error",
-        message: error instanceof Error ? error.message : "Commit failed."
+        message: error instanceof Error ? error.message : "Could not commit."
       });
     } finally {
       // Only one request can run, even across controlled close/reopen. Its

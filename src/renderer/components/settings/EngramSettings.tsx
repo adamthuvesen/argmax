@@ -132,7 +132,7 @@ function CopySetup({ content, kind }: { content: string; kind: "command" | "json
       onClick={() => void copy(content)}
     >
       {flash === "copied" ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
-      {flash === "copied" ? "Copied" : flash === "failed" ? "Couldn’t copy" : "Copy"}
+      {flash === "copied" ? "Copied" : flash === "failed" ? "Couldn't copy" : "Copy"}
     </button>
   );
 }

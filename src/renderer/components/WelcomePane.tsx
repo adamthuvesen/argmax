@@ -40,7 +40,7 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
       const discovered = await window.argmax.providers.discover(force);
       setProviders(discovered);
     } catch (error) {
-      setLoadError(error instanceof Error ? error.message : "Provider discovery failed.");
+      setLoadError(error instanceof Error ? error.message : "Could not check which agents are installed.");
     } finally {
       setRefreshing(false);
     }

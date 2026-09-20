@@ -748,7 +748,7 @@ export function App(): JSX.Element {
       }
       result = await api.workspaces.archive({ workspaceId, force });
     } catch (error) {
-      showErrorToast(error instanceof Error ? error.message : "Workspace archive failed.");
+      showErrorToast(error instanceof Error ? error.message : "Could not archive the workspace.");
       return;
     }
     // Without force a dirty worktree comes back as "kept" — the backend's
@@ -763,7 +763,7 @@ export function App(): JSX.Element {
         }
         result = await api.workspaces.archive({ workspaceId, force: true });
       } catch (error) {
-        showErrorToast(error instanceof Error ? error.message : "Workspace archive failed.");
+        showErrorToast(error instanceof Error ? error.message : "Could not archive the workspace.");
         return;
       }
     }

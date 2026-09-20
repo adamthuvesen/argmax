@@ -322,7 +322,7 @@ function TurnFooter({
           className="turn-block-footer-action"
           aria-label="Copy reply"
           title={
-            copyFlash === "copied" ? "Copied!" : copyFlash === "failed" ? "Couldn't copy" : "Copy reply"
+            copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy reply"
           }
           onClick={() => void copy(turnMarkdown)}
         >

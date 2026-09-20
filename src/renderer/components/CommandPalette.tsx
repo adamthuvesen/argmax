@@ -308,7 +308,7 @@ export function CommandPalette({
           // which is a lie in a search UI. Say it failed.
           if (token !== messageTokenRef.current) return;
           setMessageHits([]);
-          setMessageError(caught instanceof Error ? caught.message : "Message search failed.");
+          setMessageError(caught instanceof Error ? caught.message : "Could not search your messages.");
         })
         .finally(() => {
           if (token === messageTokenRef.current) {
@@ -350,7 +350,7 @@ export function CommandPalette({
         .catch((caught: unknown) => {
           if (token !== contentTokenRef.current) return;
           setContentResult(EMPTY_CONTENT_RESULT);
-          setContentError(caught instanceof Error ? caught.message : "Search failed.");
+          setContentError(caught instanceof Error ? caught.message : "Could not search this workspace.");
         })
         .finally(() => {
           if (token === contentTokenRef.current) {

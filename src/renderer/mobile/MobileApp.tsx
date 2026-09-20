@@ -644,7 +644,7 @@ export function MobileApp(): JSX.Element {
       } catch (error) {
         showToast({
           kind: "error",
-          message: error instanceof Error ? error.message : "Workspace archive failed."
+          message: error instanceof Error ? error.message : "Could not archive the workspace."
         });
       }
       await refresh();

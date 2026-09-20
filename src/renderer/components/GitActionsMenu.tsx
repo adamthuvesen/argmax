@@ -67,7 +67,7 @@ export function GitActionsMenu({
           : `Pushed ${result.branch} to origin.`
       });
     } catch (error) {
-      setFeedback(errorFeedback(error, "Push failed."));
+      setFeedback(errorFeedback(error, "Could not push."));
     } finally {
       setBusy(false);
     }

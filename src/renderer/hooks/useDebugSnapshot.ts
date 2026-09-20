@@ -53,7 +53,7 @@ export function useDebugSnapshot(enabled: boolean): DebugSnapshotState {
         }
       } catch (cause) {
         if (!alive) return;
-        setError(cause instanceof Error ? cause.message : "Debug snapshot failed.");
+        setError(cause instanceof Error ? cause.message : "Could not take a debug snapshot.");
       } finally {
         inFlight = false;
       }

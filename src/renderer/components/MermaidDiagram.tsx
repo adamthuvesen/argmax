@@ -139,7 +139,7 @@ export function MermaidDiagram({ source }: { source: string }): JSX.Element {
   const trimmed = source.trim();
   const drawing = Boolean(trimmed) && !svg && !error;
   const copyTitle =
-    copyFlash === "copied" ? "Copied!" : copyFlash === "failed" ? "Couldn't copy" : "Copy source";
+    copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy source";
   const showCanvas = Boolean(svg) && !sourceOpen && !error && !expanded;
 
   const handleCopy = (): void => {

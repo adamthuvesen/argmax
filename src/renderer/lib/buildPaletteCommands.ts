@@ -66,7 +66,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
   const actions: PaletteCommand[] = [
     {
       id: "action:new-session",
-      label: "New Chat",
+      label: "New chat",
       subtitle: "Open the launcher",
       group: "Actions",
       icon: Plus,
@@ -74,7 +74,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
     },
     {
       id: "action:open-settings",
-      label: "Open Settings",
+      label: "Open settings",
       subtitle: "Defaults, providers, tools",
       group: "Actions",
       icon: Settings,
@@ -82,7 +82,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
     },
     {
       id: "action:open-scheduled-tasks",
-      label: "Open Schedule",
+      label: "Open schedule",
       subtitle: "Prompts Argmax runs on a schedule",
       group: "Actions",
       icon: Clock,
@@ -92,7 +92,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
       ? [
           {
             id: "action:open-browser",
-            label: "Open Browser",
+            label: "Open browser",
             subtitle: "Browse in the workspace",
             group: "Actions" as const,
             icon: Globe,
@@ -102,7 +102,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
       : []),
     {
       id: "action:open-usage",
-      label: "Open Usage",
+      label: "Open usage",
       subtitle: "Tokens and cost per provider",
       group: "Actions",
       icon: ChartNoAxesColumn,
@@ -110,7 +110,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
     },
     {
       id: "action:open-activity",
-      label: "Open Activity",
+      label: "Open activity",
       subtitle: "Commits, pull requests, and reviews",
       group: "Actions",
       icon: GitCommitHorizontal,
@@ -118,7 +118,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
     },
     {
       id: "action:search-sessions",
-      label: "Search Messages",
+      label: "Search messages",
       subtitle: "Full-text search across every chat timeline (⌘F)",
       group: "Actions",
       icon: Search,
@@ -128,7 +128,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
       ? [
           {
             id: "action:stop-session",
-            label: "Stop Current Chat",
+            label: "Stop current chat",
             subtitle: selectedSession.modelLabel,
             group: "Actions" as const,
             icon: Square,

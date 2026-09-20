@@ -184,7 +184,7 @@ export function CodeBlock({
             type="button"
             className="code-block-action code-block-copy"
             aria-label="Copy code"
-            title={copyFlash === "copied" ? "Copied!" : copyFlash === "failed" ? "Couldn't copy" : "Copy code"}
+            title={copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy code"}
             onClick={handleCopy}
           >
             {copyFlash === "copied" ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}

@@ -149,7 +149,7 @@ export function AgentRosterPopover({
             );
           })}
           {filter.matches.length === 0 ? (
-            <li className="agent-roster-empty" role="presentation">No matching agents</li>
+            <li className="agent-roster-empty" role="presentation">No agents match</li>
           ) : null}
         </ul>,
         document.body

@@ -217,7 +217,7 @@ export function SettingsPanel({
     },
     {
       missingApiMessage: "Open Argmax on your Mac to detect providers.",
-      fallbackMessage: "Provider discovery failed."
+      fallbackMessage: "Could not check which agents are installed."
     }
   );
 

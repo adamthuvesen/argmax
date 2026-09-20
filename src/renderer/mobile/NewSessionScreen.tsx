@@ -329,7 +329,7 @@ export function NewSessionScreen({
       clearAttachments();
       onLaunched(workspace, session);
     } catch (error) {
-      onError(error instanceof Error ? error.message : "Starting the chat failed.");
+      onError(error instanceof Error ? error.message : "Could not start the chat.");
       setLaunching(false);
     }
   }, [

@@ -37,7 +37,7 @@ describe("App browser page", () => {
 
     fireEvent.keyDown(document, { key: "k", metaKey: true });
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
-    fireEvent.mouseDown(within(palette).getByText("Open Browser"));
+    fireEvent.mouseDown(within(palette).getByText("Open browser"));
 
     expect(await screen.findByRole("region", { name: "Browser" })).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();

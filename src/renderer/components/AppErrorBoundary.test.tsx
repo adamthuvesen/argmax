@@ -32,8 +32,9 @@ describe("AppErrorBoundary", () => {
     }
     expect(screen.getByRole("alert", { name: "Argmax encountered an error" })).toBeInTheDocument();
     expect(screen.getByText("Synthetic renderer crash")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Reload renderer" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open data folder" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reload Argmax" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy report" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Report this" })).toBeInTheDocument();
     errSpy.mockRestore();
   });
 });

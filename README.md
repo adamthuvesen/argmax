@@ -25,25 +25,39 @@ Argmax stores chats and app state locally and uses your installed provider CLIs 
 - Import and resume external Claude Code chats with [chat sync](docs/session-sync.md).
 - Optional [mobile access over Tailscale](docs/remote.md).
 
-## Status
+## Install
 
-macOS is the primary release target. See [CHANGELOG.md](CHANGELOG.md) for release history.
+macOS 11 or later. Download the latest DMG from [Releases](https://github.com/adamthuvesen/argmax/releases) and drag Argmax to Applications.
 
-## Setup & Run
+Argmax runs the coding agent CLIs you already have, so install and log into at least one first — it detects `claude`, `codex`, `cursor-agent`, `opencode`, and `grok` from your shell environment:
+
+```bash
+curl -fsSL https://claude.ai/install.sh | bash   # or any of the others
+```
+
+See [providers](docs/providers.md) for what each one supports. GitHub PR / CI tracking also wants an authenticated `gh` CLI.
+
+Then add a local Git project, choose a provider and model, and send your first prompt. Turn on **Worktree** for an isolated checkout, or leave it off to work in the shared checkout. Configure project setup and check commands in Settings.
+
+> Releases are not yet signed with an Apple Developer ID, so macOS will say the developer cannot be verified. Until that changes, right-click the app and choose **Open**, or clear it with `xattr -dr com.apple.quarantine /Applications/Argmax.app`.
+
+See [CHANGELOG.md](CHANGELOG.md) for release history.
+
+## Build from Source
+
+For contributing, or to run an unreleased `main`:
 
 - Node.js 20.19+ or 22.12+ and npm
 - Rust 1.95+
 - macOS with Xcode Command Line Tools and Git
-- At least one supported provider CLI installed and configured
+- At least one supported provider CLI, as above
 
 ```bash
 npm install
 npm run tauri:dev
 ```
 
-Add a local Git project, choose a provider and model, and send your first prompt. Turn on **Worktree** for an isolated checkout, or leave it off to work in the shared checkout. Configure project setup and check commands in Settings.
-
-Argmax detects `claude`, `codex`, `cursor-agent`, `opencode`, and `grok` from your shell environment. Configure the CLI you want to use in your terminal first. See [providers](docs/providers.md) for capabilities and limitations. GitHub PR / CI integration also requires an authenticated `gh` CLI.
+`npm run tauri:build` produces a DMG for your own architecture; `npm run tauri:build:universal` produces the Intel + Apple silicon bundle a release ships. See [release](docs/release.md) for signing and the tag-driven release flow.
 
 ### Static UI Demo
 

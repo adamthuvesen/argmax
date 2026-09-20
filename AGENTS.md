@@ -89,6 +89,7 @@ Before editing a subsystem, read the matching `docs/*.md`:
 - **Verifying a change end to end** → [verification.md](docs/verification.md)
 - **Perf budgets** → [performance.md](docs/performance.md)
 - **Release** → [release.md](docs/release.md)
+- **Homebrew cask / tap** → [homebrew.md](docs/homebrew.md)
 
 If a doc disagrees with code, fix the doc in the same change.
 

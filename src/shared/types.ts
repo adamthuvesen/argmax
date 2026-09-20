@@ -986,6 +986,8 @@ export type MenuCommand =
   | "open-command-palette"
   | "open-cheat-sheet"
   | "check-for-updates"
+  | "open-docs"
+  | "report-issue"
   | "close-surface";
 
 declare global {

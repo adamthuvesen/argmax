@@ -1,8 +1,14 @@
 use crate::util::sync::LockOrRecover;
 use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
+use tauri_plugin_shell::ShellExt;
 
 const APP_NAME: &str = "Argmax";
+// Mirrored in src/shared/appLinks.ts, which the in-app links read. The menu is
+// built before the renderer loads, so it cannot import them.
+const DOCS_URL: &str = "https://github.com/adamthuvesen/argmax/blob/main/README.md";
+const ISSUES_URL: &str = "https://github.com/adamthuvesen/argmax/issues";
+const RELEASES_URL: &str = "https://github.com/adamthuvesen/argmax/releases";
 const MENU_COMMAND_EVENT: &str = "menu:command";
 /// Page zoom is broadcast on this channel so the renderer can undo it where
 /// the page meets native pixels: the traffic-light band it reserves, and the
@@ -25,11 +31,13 @@ pub enum MenuCommand {
     OpenCommandPalette,
     OpenCheatSheet,
     CheckForUpdates,
+    OpenDocs,
+    ReportIssue,
     CloseSurface,
 }
 
 impl MenuCommand {
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 13] = [
         Self::NewSession,
         Self::NextChat,
         Self::PreviousChat,
@@ -40,6 +48,8 @@ impl MenuCommand {
         Self::OpenCommandPalette,
         Self::OpenCheatSheet,
         Self::CheckForUpdates,
+        Self::OpenDocs,
+        Self::ReportIssue,
         Self::CloseSurface,
     ];
 
@@ -55,6 +65,8 @@ impl MenuCommand {
             Self::OpenCommandPalette => "open-command-palette",
             Self::OpenCheatSheet => "open-cheat-sheet",
             Self::CheckForUpdates => "check-for-updates",
+            Self::OpenDocs => "open-docs",
+            Self::ReportIssue => "report-issue",
             Self::CloseSurface => "close-surface",
         }
     }
@@ -139,11 +151,6 @@ pub fn app_menu_spec(is_dev: bool) -> Vec<MenuSpec> {
             "Toggle Left Sidebar",
             Some("CmdOrCtrl+Shift+B"),
         ),
-        command(
-            MenuCommand::ToggleDebugLog,
-            "Toggle Debug Log",
-            Some("CmdOrCtrl+Shift+D"),
-        ),
         MenuEntry::Separator,
     ];
 
@@ -223,11 +230,24 @@ pub fn app_menu_spec(is_dev: bool) -> Vec<MenuSpec> {
         },
         MenuSpec {
             label: "Help",
-            items: vec![command(
-                MenuCommand::OpenCheatSheet,
-                "Keyboard Shortcuts",
-                Some("CmdOrCtrl+/"),
-            )],
+            items: vec![
+                command(MenuCommand::OpenDocs, "Argmax Documentation", None),
+                command(MenuCommand::ReportIssue, "Report an Issue…", None),
+                MenuEntry::Separator,
+                command(
+                    MenuCommand::OpenCheatSheet,
+                    "Keyboard Shortcuts",
+                    Some("CmdOrCtrl+/"),
+                ),
+                // Troubleshooting, not a feature: it belongs with the other
+                // things you reach for when something is wrong, and the
+                // Settings → Advanced toggle governs the in-chat entry points.
+                command(
+                    MenuCommand::ToggleDebugLog,
+                    "Debug Log",
+                    Some("CmdOrCtrl+Shift+D"),
+                ),
+            ],
         },
     ]
 }
@@ -247,8 +267,16 @@ pub fn install_app_menu<R: Runtime>(app: &AppHandle<R>, is_dev: bool) -> tauri::
 }
 
 pub fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
-    if id == MenuCommand::CheckForUpdates.as_str() {
-        crate::updater::run_menu_update_check(app.clone());
+    // Argmax is distributed by hand, so "check for updates" means "here is
+    // where the builds are". `updater.rs` stays for the day there is a signed
+    // feed; see docs/release.md.
+    if let Some(url) = match MenuCommand::from_id(id) {
+        Some(MenuCommand::CheckForUpdates) => Some(RELEASES_URL),
+        Some(MenuCommand::OpenDocs) => Some(DOCS_URL),
+        Some(MenuCommand::ReportIssue) => Some(ISSUES_URL),
+        _ => None,
+    } {
+        open_url(app, url);
         return;
     }
 
@@ -509,6 +537,13 @@ pub fn main_window_zoom() -> f64 {
 /// otherwise, so a reload has to restate both.
 pub fn restore_main_window_zoom<R: Runtime>(app: &AppHandle<R>) {
     apply_main_window_zoom(app, main_window_zoom());
+}
+
+fn open_url<R: Runtime>(app: &AppHandle<R>, url: &str) {
+    #[allow(deprecated)]
+    if let Err(error) = app.shell().open(url.to_string(), None) {
+        tracing::warn!(url, ?error, "failed to open a menu link");
+    }
 }
 
 #[cfg(debug_assertions)]

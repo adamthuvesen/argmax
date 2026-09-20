@@ -82,6 +82,11 @@ pub struct SessionLaunchParams {
     /// when the work touches something you would want a person to see first.
     #[serde(rename = "permissionMode", alias = "permission_mode")]
     pub permission_mode: Option<String>,
+    /// Wake this chat after that many minutes if the new session is still
+    /// running, with a prompt that names it. Dropped automatically when the
+    /// session's completion notice is delivered, so use it instead of
+    /// schedule_followup for work you launched.
+    pub check_in_minutes: Option<u32>,
 }
 
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
@@ -422,6 +427,7 @@ turn. Capped at two levels deep and ten launches per session."
             task_label: params.task_label,
             reasoning,
             permission_mode,
+            check_in_minutes: params.check_in_minutes,
         }))
         .await
     }

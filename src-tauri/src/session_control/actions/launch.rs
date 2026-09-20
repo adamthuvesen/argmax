@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use chrono::{Duration, Utc};
+
 use super::super::{
     argmax_protocol_error, invalid_input_error,
     protocol::{
@@ -10,7 +12,10 @@ use super::super::{
     registry::ParentLaunchSettings,
     MAX_LAUNCHES_PER_SESSION, MAX_LAUNCH_DEPTH,
 };
-use super::{resolve_or_register_project, task_label, terminal_cols, terminal_rows};
+use super::{
+    project_tools::{schedule_same_session_wake, SameSessionWake},
+    resolve_or_register_project, task_label, terminal_cols, terminal_rows,
+};
 use crate::{
     arcs::member_preamble,
     ipc::{
@@ -242,6 +247,9 @@ pub(super) async fn launch_session(
     workspaces: Arc<WorkspaceService>,
     providers: Arc<ProviderSessionService>,
 ) -> Result<SessionControlResponse, SessionControlError> {
+    // Before the workspace, the worktree and the provider process: a bad
+    // check-in is worth refusing while nothing has been spent on it.
+    let check_in_minutes = check_in_minutes(action.check_in_minutes)?;
     let (parent_project_id, lineage, parent_arc) = {
         let connection = database.connection();
         let parent_session =
@@ -307,6 +315,13 @@ pub(super) async fn launch_session(
                 )
             }
         };
+    // The sidebar label the new session is about to get, read here as well so
+    // a check-in wake can name the work rather than quote its whole prompt.
+    let label = action
+        .task_label
+        .as_deref()
+        .map(task_label)
+        .unwrap_or_else(|| task_label(&action.prompt));
     // A session launched from inside an Arc carries the Arc's member
     // preamble: the folder to read before starting, and the "do not write
     // there" rule that keeps the coordinator the only writer.
@@ -356,6 +371,16 @@ pub(super) async fn launch_session(
         )
         .map_err(argmax_protocol_error)?;
     }
+    if let Some(minutes) = check_in_minutes {
+        schedule_check_in(
+            &database,
+            &parent,
+            &parent_project_id,
+            &outcome.session_id,
+            &label,
+            minutes,
+        )?;
+    }
     Ok(SessionControlResponse::new(SessionControlResult::Launched(
         LaunchedSession {
             session_id: outcome.session_id,
@@ -366,6 +391,76 @@ pub(super) async fn launch_session(
             branch: outcome.branch,
         },
     )))
+}
+
+/// A check-in may land no sooner than the next minute and no further out than
+/// a day: past that the launched session has either finished — dropping the
+/// wake — or is stuck in a way a calendar reminder will not rescue.
+const CHECK_IN_MAX_MINUTES: u32 = 24 * 60;
+
+/// The check-in delay a launch asked for, refused rather than clamped: a
+/// caller that wrote 0 or 2000 meant something the wake cannot deliver, and
+/// silently rounding it would wake the chat at a time nobody chose.
+fn check_in_minutes(requested: Option<u32>) -> Result<Option<u32>, SessionControlError> {
+    let Some(minutes) = requested else {
+        return Ok(None);
+    };
+    if minutes == 0 || minutes > CHECK_IN_MAX_MINUTES {
+        return Err(protocol_error(
+            "CHECK_IN_OUT_OF_RANGE",
+            format!(
+                "check_in_minutes is 1 to {CHECK_IN_MAX_MINUTES} minutes; {minutes} is outside it. Omit it for no check-in."
+            ),
+        ));
+    }
+    Ok(Some(minutes))
+}
+
+/// The routine id a check-in takes. Deterministic on the launched session, so
+/// the completion notice can drop the wake knowing only the session that
+/// finished, and a re-launch can never leave two wakes for one session.
+pub(crate) fn check_in_routine_id(session_id: &str) -> String {
+    format!("check-in:{session_id}")
+}
+
+/// Wake the launcher if the session it just started has not reported back.
+/// A launch into the scratch project has no repository to wake up in, so the
+/// wake is skipped rather than refused — the session itself launched fine,
+/// and failing the call now would leave it running with nothing said.
+fn schedule_check_in(
+    database: &Database,
+    parent: &ParentLaunchSettings,
+    parent_project_id: &str,
+    launched_session_id: &str,
+    label: &str,
+    minutes: u32,
+) -> Result<(), SessionControlError> {
+    if parent_project_id == crate::workspaces::SCRATCH_PROJECT_ID {
+        tracing::info!(
+            session_id = launched_session_id,
+            "a side chat has no repository to hold a check-in; skipping the wake"
+        );
+        return Ok(());
+    }
+    let id = check_in_routine_id(launched_session_id);
+    let run_at = crate::routines::schedule::format_rfc3339(
+        Utc::now() + Duration::minutes(i64::from(minutes)),
+    );
+    schedule_same_session_wake(
+        database,
+        parent,
+        SameSessionWake {
+            id: id.clone(),
+            name: task_label(&format!("Check in: {label}")),
+            project_id: parent_project_id.to_string(),
+            prompt: format!(
+                "Check-in: session {launched_session_id} (\"{label}\") was launched {minutes} minutes ago and has not reported finishing. Read its state with session_status, its latest answer with session_read, and decide: wait longer, steer it with session_message, or stop it. Argmax drops this wake when the session finishes, so it fired because the session is still running or stalled."
+            ),
+            run_at: run_at.clone(),
+        },
+    )?;
+    tracing::info!(routine_id = %id, run_at = %run_at, "scheduled a launch check-in");
+    Ok(())
 }
 
 /// The fast-path rejection: the same three Arc-scoped refusals

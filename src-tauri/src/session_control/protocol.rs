@@ -263,6 +263,11 @@ pub struct LaunchAction {
     /// calling session's own, which is auto-approve unless the user changed it.
     #[serde(default)]
     pub permission_mode: Option<crate::providers::PermissionMode>,
+    /// Wake the calling session after this many minutes if the launched
+    /// session has not finished by then. The wake is dropped the moment the
+    /// completion notice is delivered, so a finished session never fires it.
+    #[serde(default)]
+    pub check_in_minutes: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
@@ -1042,6 +1047,7 @@ mod tests {
             serde_json::from_value::<SessionControlRequest>(encoded).expect("decode"),
             request
         );
+                check_in_minutes: Some(45),
 
         for action in [
             SessionControlAction::Move(MoveAction {
@@ -1052,6 +1058,7 @@ mod tests {
                 keep_source: true,
             }),
             SessionControlAction::List(ListAction::default()),
+        assert_eq!(encoded["action"]["launch"]["checkInMinutes"], 45);
             SessionControlAction::Message(MessageAction {
                 session_id: "s1".to_string(),
                 message: "ping".to_string(),

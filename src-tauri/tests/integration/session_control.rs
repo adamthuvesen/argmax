@@ -2557,6 +2557,129 @@ async fn a_scheduled_followup_is_a_one_shot_task_aimed_at_the_caller() {
     }
 }
 
+/// `check_in_minutes` collapses the schedule_followup-then-schedule_cancel
+/// dance around every launch into one argument. The wake is keyed on the
+/// session it is about, so whoever delivers that session's completion notice
+/// can drop it knowing only the session id.
+#[tokio::test]
+async fn a_launch_check_in_leaves_a_wake_keyed_on_the_launched_session() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo.path().display().to_string(),
+        &[("session-agent", "Parent", SessionState::Running)],
+    );
+    let harness = ToolHarness::open(Arc::clone(&database), repo.path(), "session-agent");
+
+    let before = chrono::Utc::now();
+    let response = harness
+        .ask(json!({
+            "launch": {
+                "prompt": "Port the importer to the new schema",
+                "taskLabel": "Port the importer",
+                "checkInMinutes": 30,
+            }
+        }))
+        .await;
+    assert!(response["error"].is_null(), "launch response: {response}");
+    let launched_id = response["launched"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let routine_id = format!("check-in:{launched_id}");
+    let routine = {
+        let connection = harness.database.read_connection();
+        argmax_lib::persistence::routines::find_routine_by_id(&connection, &routine_id)
+            .expect("the launch left a check-in under the launched session's id")
+    };
+    assert_eq!(
+        routine.run_target,
+        argmax_lib::persistence::routines::RoutineRunTarget::SameSession
+    );
+    assert_eq!(
+        routine.created_by,
+        argmax_lib::persistence::routines::RoutineAuthor::Agent,
+        "a spent wake is deleted, not left paused in the user's task list"
+    );
+    assert_eq!(
+        routine.last_session_id.as_deref(),
+        Some("session-agent"),
+        "the check-in wakes the launcher, not the session it is about"
+    );
+    assert_eq!(routine.name, "Check in: Port the importer");
+    assert!(
+        routine.prompt.contains(&launched_id)
+            && routine.prompt.contains("was launched 30 minutes ago"),
+        "the wake names the session and how long it has been running: {}",
+        routine.prompt
+    );
+    let run_once_at = chrono::DateTime::parse_from_rfc3339(
+        routine
+            .run_once_at
+            .as_deref()
+            .expect("a check-in is a one-shot"),
+    )
+    .expect("rfc 3339")
+    .with_timezone(&chrono::Utc);
+    let seconds_out = (run_once_at - before).num_seconds();
+    assert!(
+        (1_750..=1_850).contains(&seconds_out),
+        "the wake lands about thirty minutes out, not {seconds_out}s"
+    );
+    assert_eq!(
+        routine.next_run_at.as_deref(),
+        routine.run_once_at.as_deref(),
+        "a check-in is due at the time it was written for"
+    );
+
+    // What the completion notice does the moment the session reports back.
+    {
+        let connection = harness.database.connection();
+        argmax_lib::persistence::routines::delete_routine(&connection, &routine_id)
+            .expect("drop the wake");
+    }
+    let connection = harness.database.read_connection();
+    assert!(
+        argmax_lib::persistence::routines::find_routine_by_id(&connection, &routine_id).is_err(),
+        "a delivered completion notice leaves no wake behind"
+    );
+}
+
+/// A check-in the wake cannot honor is refused before the launch spends a
+/// workspace on it.
+#[tokio::test]
+async fn a_check_in_outside_the_allowed_window_refuses_the_launch() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo.path().display().to_string(),
+        &[("session-agent", "Parent", SessionState::Running)],
+    );
+    let harness = ToolHarness::open(Arc::clone(&database), repo.path(), "session-agent");
+
+    for minutes in [0, 24 * 60 + 1] {
+        let response = harness
+            .ask(json!({ "launch": { "prompt": "Do it", "checkInMinutes": minutes } }))
+            .await;
+        assert_eq!(
+            response["error"]["code"], "CHECK_IN_OUT_OF_RANGE",
+            "a check-in of {minutes} minutes says why it is refused: {response}"
+        );
+    }
+    assert!(
+        harness
+            .launcher
+            .launches
+            .lock()
+            .expect("launches poisoned")
+            .is_empty(),
+        "a refused check-in costs no provider launch"
+    );
+}
+
 /// Managing a project's scheduled tasks: a wake this chat set can be paused,
 /// which leaves the row for the user (or a later resume) to switch back on,
 /// and deleted, which takes it away. A routine in another project is refused

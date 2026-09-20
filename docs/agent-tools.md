@@ -16,7 +16,7 @@ Namespace `argmax`; Claude, Codex, and Cursor show them as
 | Tool | Arguments | Returns |
 |---|---|---|
 | `session_list` | `project?`, `all?` | `{sessions: [{sessionId, projectId, projectName, taskLabel, provider, state, attention, lastActivityAt, launchedBySessionId?}], truncated}` — newest activity first, the caller excluded, capped at 40 rows |
-| `session_launch` | `prompt`, `project?`, `path?`, `branch?`, `provider?`, `model?`, `worktree?`, `taskLabel?`, `reasoning?`, `permissionMode?` | `{sessionId, workspaceId, projectId, projectName, path, branch}` |
+| `session_launch` | `prompt`, `project?`, `path?`, `branch?`, `provider?`, `model?`, `worktree?`, `taskLabel?`, `reasoning?`, `permissionMode?`, `checkInMinutes?` | `{sessionId, workspaceId, projectId, projectName, path, branch}`. `checkInMinutes` (1 to 1440, else `CHECK_IN_OUT_OF_RANGE`) schedules a `same_session` wake for the caller, routine id `check-in:<sessionId>`, that Argmax deletes when the launched session's completion notice is built, so it fires only while the session is still running. |
 | `session_message` | `session`, `message` | `{sessionId, queued}` — `queued` is true when the target was mid-turn and could not be steered |
 | `session_status` | `session` | `{sessionId, taskLabel, provider, modelId, state, attention, turnAgeSeconds?, lastActivityAt, lastAssistantText?, unreadInbox, launchedBySessionId?, launchDepth}` |
 | `session_read` | `session`, `cursor?`, `maxChars?` | `{sessionId, entries: [{at, kind, text}], nextCursor, truncated}` |

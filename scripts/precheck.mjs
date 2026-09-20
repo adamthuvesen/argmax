@@ -116,9 +116,20 @@ function changedFiles(base) {
 }
 
 const IOS_PATHS = [/^ios\//];
-const RUST_PATHS = [/^src-tauri\/(?!target\/)/, /^rust-toolchain\.toml$/, /^\.github\/workflows\//];
+const RUST_PATHS = [
+  /^src-tauri\/(?!target\/)/,
+  /^assets\/browser-blocking\//,
+  /^\.cargo\//,
+  /^rust-toolchain\.toml$/,
+  /^\.github\/workflows\//
+];
 const JS_PATHS = [
   /^src\//,
+  /^src-tauri\/(?!target\/)/,
+  /^ios\//,
+  /^assets\//,
+  /^public\//,
+  /^(index|mobile)\.html$/,
   /^package(-lock)?\.json$/,
   /^tsconfig\.json$/,
   /^vite(st)?(\.[\w-]+)?\.config\.ts$/,
@@ -126,12 +137,36 @@ const JS_PATHS = [
   /^scripts\//,
   /^\.github\/workflows\//
 ];
+const INERT_PATHS = [
+  /^docs\//,
+  /^\.githooks\//,
+  /^[^/]*\.md$/,
+  /^LICENSE$/,
+  /^\.gitignore$/,
+  /^\.gitattributes$/
+];
 
 function touches(files, patterns) {
   for (const file of files) {
     if (patterns.some((pattern) => pattern.test(file))) return true;
   }
   return false;
+}
+
+function scopeForFiles(files, reason, vitestBase) {
+  const hasUnclassifiedPath = files.size === 0 || [...files].some((file) =>
+    !touches([file], [...RUST_PATHS, ...JS_PATHS, ...IOS_PATHS, ...INERT_PATHS])
+  );
+  const rust = hasUnclassifiedPath || touches(files, RUST_PATHS);
+  const js = hasUnclassifiedPath || touches(files, JS_PATHS);
+  return {
+    rust,
+    js,
+    bundle: js,
+    ios: touches(files, IOS_PATHS),
+    reason: hasUnclassifiedPath ? `${reason}; unclassified path` : reason,
+    vitestBase
+  };
 }
 
 function decideScope() {
@@ -187,14 +222,11 @@ function decideScope() {
       }
     }
 
-    return {
-      rust: touches(files, RUST_PATHS),
-      js: touches(files, JS_PATHS),
-      bundle: touches(files, JS_PATHS),
-      ios: touches(files, IOS_PATHS),
-      reason: `${files.size} file(s) differ across ${activeEntries.length} push ref(s)`,
+    return scopeForFiles(
+      files,
+      `${files.size} file(s) differ across ${activeEntries.length} push ref(s)`,
       vitestBase
-    };
+    );
   }
 
   const base = mergeBase("HEAD", targetRemote);
@@ -202,14 +234,7 @@ function decideScope() {
     return { rust: true, js: true, bundle: true, ios: true, reason: "no main to diff against", vitestBase: null };
   }
   const files = changedFiles(base);
-  return {
-    rust: touches(files, RUST_PATHS),
-    js: touches(files, JS_PATHS),
-    bundle: touches(files, JS_PATHS),
-    ios: touches(files, IOS_PATHS),
-    reason: `${files.size} file(s) differ from ${base.ref}`,
-    vitestBase: base.sha
-  };
+  return scopeForFiles(files, `${files.size} file(s) differ from ${base.ref}`, base.sha);
 }
 
 function step(label, command, commandArgs) {

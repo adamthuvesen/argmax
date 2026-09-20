@@ -30,7 +30,12 @@ function fixture() {
   for (const command of ["npx", "cargo"]) writeFileSync(path.join(bin, command), stub, { mode: 0o755 });
   const files = ["src/café.ts", "vite.config.ts", ".github/workflows/ci.yml"];
   for (const name of files) writeFileSync(path.join(repository, name), "initial\n");
-  for (const name of ["check-tauri-bridge.mjs", "check-main-thread-handlers.mjs", "check-bundle.mjs"]) {
+  for (const name of [
+    "check-tauri-bridge.mjs",
+    "check-main-thread-handlers.mjs",
+    "check-bundle.mjs",
+    "check-ios-fonts.mjs"
+  ]) {
     writeFileSync(path.join(repository, "scripts", name), stub);
   }
   writeFileSync(path.join(repository, "scripts/precheck.mjs"), readFileSync(new URL("../../scripts/precheck.mjs", import.meta.url)));
@@ -43,7 +48,11 @@ function fixture() {
     expect(result.status, result.stderr).toBe(0);
   }
   return {
-    change(name: string) { writeFileSync(path.join(repository, name), "changed\n"); },
+    change(name: string) {
+      const target = path.join(repository, name);
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(target, "changed\n");
+    },
     commit(message: string) {
       const result = spawnSync(
         "git",
@@ -77,12 +86,26 @@ describe("precheck CLI", () => {
     ["src/café.ts", ["eslint", "vite build", "check-bundle.mjs"]],
     [".github/workflows/ci.yml", ["eslint", "cargo test", "check-bundle.mjs"]],
     ["vite.config.ts", ["vite build", "check-bundle.mjs"]],
+    ["src-tauri/src/lib.rs", ["eslint", "cargo test", "check-bundle.mjs"]],
+    ["ios/Argmax/Sources/App.swift", ["eslint", "check-ios-fonts.mjs", "check-bundle.mjs"]],
+    ["assets/browser-blocking/light.txt", ["eslint", "cargo test", "check-bundle.mjs"]],
+    ["index.html", ["eslint", "vite build", "check-bundle.mjs"]],
+    ["Dockerfile", ["eslint", "cargo test", "check-bundle.mjs"]],
   ])("selects checks for %s in a checkout with spaces and #", (name, checks) => {
     const repo = fixture();
     repo.change(name);
     const result = repo.run();
     expect(result.status, result.stderr).toBe(0);
     for (const check of checks) expect(result.checks).toContain(check);
+  });
+
+  it("skips checks for documentation-only changes", () => {
+    const repo = fixture();
+    repo.change("docs/testing.md");
+    const result = repo.run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("nothing to check");
+    expect(result.checks).toBe("");
   });
 
   it("rejects an invalid explicit base before running checks", () => {

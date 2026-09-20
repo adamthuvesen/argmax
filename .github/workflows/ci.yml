@@ -20,7 +20,6 @@ jobs:
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       js: ${{ steps.filter.outputs.js }}
-      deps: ${{ steps.filter.outputs.deps }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -40,9 +39,19 @@ jobs:
           changed=$(git diff --name-only "origin/$BASE_REF...HEAD")
           printf '%s\n' "$changed"
           match() { printf '%s\n' "$changed" | grep -Eq "$1" && echo true || echo false; }
-          echo "rust=$(match '^(src-tauri/|rust-toolchain\.toml|\.github/workflows/)')" >> "$GITHUB_OUTPUT"
-          echo "js=$(match '^(src/|package(-lock)?\.json|tsconfig\.json|vite.*\.config\.ts|eslint\.config\.js|scripts/|\.github/workflows/)')" >> "$GITHUB_OUTPUT"
-          echo "deps=$(match '^(package-lock\.json|src-tauri/Cargo\.lock)$')" >> "$GITHUB_OUTPUT"
+          rust_pattern='^(src-tauri/|assets/browser-blocking/|\.cargo/|rust-toolchain\.toml|\.github/workflows/)'
+          js_pattern='^(src/|src-tauri/|ios/|assets/|public/|index\.html$|mobile\.html$|package(-lock)?\.json$|tsconfig\.json$|vite.*\.config\.ts$|eslint\.config\.js$|scripts/|\.github/workflows/)'
+          inert_pattern='^(docs/|\.githooks/|[^/]*\.md$|LICENSE$|\.gitignore$|\.gitattributes$)'
+          rust=$(match "$rust_pattern")
+          js=$(match "$js_pattern")
+          unmatched=$(printf '%s\n' "$changed" | grep -Ev "$rust_pattern|$js_pattern|$inert_pattern" || true)
+          if [ -z "$changed" ] || [ -n "$unmatched" ]; then
+            printf 'Unclassified paths run both lanes:\n%s\n' "$unmatched"
+            rust=true
+            js=true
+          fi
+          echo "rust=$rust" >> "$GITHUB_OUTPUT"
+          echo "js=$js" >> "$GITHUB_OUTPUT"
 
   rust:
     name: rust ${{ matrix.check }}
@@ -158,6 +167,8 @@ jobs:
 
       - run: npm run check:main-thread
 
+      - run: npm run check:ios-fonts
+
       - if: ${{ steps.eslint-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
@@ -216,9 +227,8 @@ jobs:
   dependency-audit:
     name: dependency audit
     needs: changes
-    # Advisories change on their own clock, not per PR: run on main and on
-    # PRs that touch a lockfile. Cheap and platform-agnostic, so Linux.
-    if: ${{ needs.changes.outputs.deps == 'true' }}
+    # Advisories change on their own clock. Run on every PR so a new advisory
+    # cannot first appear in the full push-to-main build after merge.
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:

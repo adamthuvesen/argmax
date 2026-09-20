@@ -1059,6 +1059,84 @@ mod tests {
         assert_eq!(normalized.events[0].message, "Final answer");
     }
 
+    // The shape a real ACP turn takes: two answer bursts with a tool call
+    // between them, then the closing result carrying both bursts concatenated.
+    // Each burst is its own bubble, so the result has to stay silent — it is
+    // the fallback for a turn whose answer never streamed, not a second copy.
+    #[test]
+    fn grok_answer_deltas_silence_the_trailing_result() {
+        use crate::providers::normalizer::{
+            normalize_provider_event, NormalizerSessionContext, ProviderOutputEvent,
+        };
+
+        let mut translation = GrokTurnTranslation::default();
+        let mut lines = Vec::new();
+        lines.extend(translation.translate(
+            &json!({"update": {"sessionUpdate": "agent_thought_chunk",
+                "content": {"type": "text", "text": "The port lives in the config."}}}),
+            "g1",
+        ));
+        lines.extend(translation.translate(
+            &json!({"update": {"sessionUpdate": "agent_message_chunk",
+                "content": {"type": "text", "text": "Checking the config."}}}),
+            "g1",
+        ));
+        lines.extend(translation.translate(
+            &json!({"update": {"sessionUpdate": "tool_call", "toolCallId": "call-1",
+                "title": "read_file", "status": "pending",
+                "rawInput": {"path": "/repo/remote.json"}}}),
+            "g1",
+        ));
+        lines.extend(translation.translate(
+            &json!({"update": {"sessionUpdate": "tool_call_update",
+                "toolCallId": "call-1", "status": "completed"}}),
+            "g1",
+        ));
+        lines.extend(translation.translate(
+            &json!({"update": {"sessionUpdate": "agent_message_chunk",
+                "content": {"type": "text", "text": "The port is 8790."}}}),
+            "g1",
+        ));
+        lines.push(translation.success_result("g1"));
+
+        let mut context = NormalizerSessionContext::for_provider(ProviderId::Grok, "grok-4.6");
+        let events: Vec<_> = lines
+            .iter()
+            .flat_map(|line| {
+                normalize_provider_event(
+                    ProviderId::Grok,
+                    &ProviderOutputEvent {
+                        session_id: "argmax-1".to_string(),
+                        stream: ProviderOutputStream::Stdout,
+                        message: format!("{line}\n"),
+                        created_at: "2026-09-07T10:00:00.000Z".to_string(),
+                    },
+                    &mut context,
+                )
+                .events
+            })
+            .collect();
+
+        let answers: Vec<_> = events
+            .iter()
+            .filter(|event| {
+                event.r#type == "message.delta" && event.payload.get("thinking").is_none()
+            })
+            .map(|event| event.message.as_str())
+            .collect();
+        assert_eq!(answers, vec!["Checking the config.", "The port is 8790."]);
+        assert!(
+            !events
+                .iter()
+                .any(|event| event.r#type == "message.completed"),
+            "the result must not re-emit the streamed answer: {:?}",
+            events
+                .iter()
+                .map(|event| (event.r#type.as_str(), event.message.as_str()))
+                .collect::<Vec<_>>()
+        );
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn shutdown_does_not_wait_for_a_workspace_boot_lock() {
         let pool = Arc::new(GrokAcpSessions::new());

@@ -245,6 +245,8 @@ or a URL flow such as connector reauthentication. Argmax returns the protocol's
 result remains visible with its actionable failure, while the redundant
 app-server diagnostic is suppressed in current and historical transcripts.
 
+**Grok closes a turn with a `result`, not an `assistant` envelope.** Its ACP bursts arrive as `text_delta`, so an answer delta — never a `thinking_delta` — arms the same turn-answer guard Claude's `message.completed` arms ([normalizer/mod.rs](../src-tauri/src/providers/normalizer/mod.rs)). The trailing `result` then speaks only when no answer streamed; otherwise it stays silent instead of repeating every burst as one concatenated bubble at the end of the turn.
+
 **Grok's `ask_user_question` is not exposed over ACP.** The binary carries the
 tool and documents it, and `features.ask_user_question` defaults to true, but
 over `grok agent stdio` — the only transport Argmax uses — Grok reports the tool

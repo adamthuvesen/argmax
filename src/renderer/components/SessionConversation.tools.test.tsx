@@ -997,7 +997,7 @@ describe("SessionConversation — single-line activity mode", () => {
     expect(screen.getByRole("button", { name: /^Read a file, searched/ })).toBeInTheDocument();
   });
 
-  it("leaves the live summary's chevron to a hover, and still opens on a click", () => {
+  it("leaves Minimal's live summary alone: no caption, no standing chevron", () => {
     const runningTools = [
       event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z"),
       event("read-start", "command.started", "Read", "2026-05-12T15:00:01.000Z", {
@@ -1019,22 +1019,24 @@ describe("SessionConversation — single-line activity mode", () => {
       defaultToolCallsDisplay: "single-line"
     });
 
-    // Minimal's headline is a status line for work the reader chose to hide,
-    // so the chevron stands down until the pointer asks for it. The headline
-    // is still the control.
-    const headline = screen.getByRole("button", { name: /^Read a file, searched/ });
+    // Minimal reports that work is happening, not what is running: the
+    // headline is the whole line, and the chevron waits for a hover. The
+    // headline is still the control that opens it.
+    const headline = screen.getByRole("button", { name: "Read a file, searched" });
     expect(headline.closest(".tool-call-group")).toHaveAttribute("data-chevron", "hover");
     fireEvent.click(headline);
     expect(headline).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
 
+    // Every level above it keeps the caption and the standing chevron.
     cleanup();
     renderConversation(baseSession({ state: "running" }), runningTools, {
       defaultToolCallsDisplay: "collapsed"
     });
-    expect(
-      screen.getByRole("button", { name: /^Read a file, searched/ }).closest(".tool-call-group")
-    ).not.toHaveAttribute("data-chevron");
+    const compact = screen.getByRole("button", {
+      name: "Read a file, searched: Searched for src/**/*.ts"
+    });
+    expect(compact.closest(".tool-call-group")).not.toHaveAttribute("data-chevron");
   });
 
   it("hides failed attempts with successful tools after a Minimal turn finishes", () => {

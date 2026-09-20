@@ -468,7 +468,7 @@ function AgentActivityRun({
         activityMembers={members}
         disclosureId={`agent-${agentKey ?? parentToolUseId}`}
         compact={compactToolSummaries}
-        chevronOnHover={minimalActivity}
+        minimal={minimalActivity}
         defaultExpanded={!minimalActivity && activityExpanded}
         defaultToolsExpanded={toolRowsExpanded}
         workspaceCwd={workspace?.path ?? null}

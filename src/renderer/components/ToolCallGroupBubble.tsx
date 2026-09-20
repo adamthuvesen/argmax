@@ -31,8 +31,10 @@ type ToolCallGroupBubbleProps = {
   /** Optional namespace so simultaneously mounted surfaces get unique ids. */
   disclosureId?: string;
   compact?: boolean;
-  /** Minimal: the chevron waits for a hover instead of standing on the line. */
-  chevronOnHover?: boolean;
+  /** Minimal: the headline stands alone — no live caption, and the chevron
+      waits for a hover. The level exists to not read the work, and naming the
+      command running right now is reading it. */
+  minimal?: boolean;
   defaultExpanded?: boolean;
   defaultToolsExpanded?: boolean;
   follow?: TranscriptFollow;
@@ -166,7 +168,7 @@ function ToolCallGroupBubbleInner({
   activityMembers,
   disclosureId,
   compact = false,
-  chevronOnHover = false,
+  minimal = false,
   defaultExpanded,
   defaultToolsExpanded,
   follow,
@@ -246,17 +248,17 @@ function ToolCallGroupBubbleInner({
   const beatTool = runningTool ?? group.tools.find((tool) => tool.id === beatToolId) ?? null;
   const beatAction = runningTool ? summary.currentAction : beatTool ? describeToolAction(beatTool) : null;
   const livePreviewToolId =
-    !directTool && !expanded && beatTool && beatAction ? beatTool.id : null;
+    !minimal && !directTool && !expanded && beatTool && beatAction ? beatTool.id : null;
   const livePreviewText = livePreviewToolId ? beatAction : null;
   const retainedPreview = lastPreviewRef.current;
   const previewText = livePreviewText ?? (
-    !directTool && !expanded && retainedPreview && Date.now() - retainedPreview.shownAt < PREVIEW_DWELL_MS
+    !minimal && !directTool && !expanded && retainedPreview && Date.now() - retainedPreview.shownAt < PREVIEW_DWELL_MS
       ? retainedPreview.text
       : null
   );
 
   useLayoutEffect(() => {
-    if (directTool || expanded) {
+    if (minimal || directTool || expanded) {
       lastPreviewRef.current = null;
       return;
     }
@@ -287,7 +289,7 @@ function ToolCallGroupBubbleInner({
       }
     }, remaining);
     return () => window.clearTimeout(timer);
-  }, [directTool, expanded, livePreviewText, livePreviewToolId]);
+  }, [minimal, directTool, expanded, livePreviewText, livePreviewToolId]);
 
   const handleSingletonExpanded = (value: boolean): void => {
     if (!directTool) return;
@@ -360,7 +362,7 @@ function ToolCallGroupBubbleInner({
     <div
       className="tool-call-group activity-summary-line"
       data-status={activityStatus}
-      data-chevron={chevronOnHover ? "hover" : undefined}
+      data-chevron={minimal ? "hover" : undefined}
       data-expanded={directTool ? undefined : expanded}
     >
       {directTool ? (
@@ -452,7 +454,7 @@ export const ToolCallGroupBubble = memo(ToolCallGroupBubbleInner, (prev, next) =
   if (prev.activityMembers !== next.activityMembers) return false;
   if (prev.disclosureId !== next.disclosureId) return false;
   if (prev.compact !== next.compact) return false;
-  if (prev.chevronOnHover !== next.chevronOnHover) return false;
+  if (prev.minimal !== next.minimal) return false;
   if (prev.defaultExpanded !== next.defaultExpanded) return false;
   if (prev.defaultToolsExpanded !== next.defaultToolsExpanded) return false;
   if (prev.follow !== next.follow) return false;

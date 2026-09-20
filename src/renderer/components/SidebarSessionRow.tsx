@@ -37,7 +37,7 @@ import type { PriorityReasonKind } from "../lib/priority.js";
 import {
   verifiedWorkspacePrs,
   workspacePrCountLabel,
-  workspacePrSummaryState
+  workspacePrimaryPrState
 } from "../lib/sessionPrs.js";
 import { resolveSessionIcon, resolveSessionIconColor } from "../lib/sessionIcons.js";
 import { stableHash32 } from "../lib/stableHash.js";
@@ -322,7 +322,10 @@ function SidebarSessionRowInner({
       : null;
 
   const displayLabel = workspace.taskLabel.trim() || workspace.branch || "Untitled chat";
-  const summaryPrState = workspacePrSummaryState(workspace);
+  // The marker and title name the session's primary PR — the same one the
+  // card header and the git menu act on — so pinning a PR there moves this
+  // glyph too.
+  const primaryPrState = workspacePrimaryPrState(workspace);
   const verifiedPrs = verifiedWorkspacePrs(workspace);
   const primaryPr = verifiedPrs.find((pr) => pr.isPrimary) ?? verifiedPrs[0] ?? null;
   const prCountLabel = workspacePrCountLabel(workspace);
@@ -341,8 +344,8 @@ function SidebarSessionRowInner({
   const prTitle =
     verifiedPrs.length > 1 && prCountLabel
       ? ` — pull requests: ${prCountLabel}`
-      : summaryPrState && (primaryPr?.prNumber ?? workspace.prNumber) != null
-        ? ` — ${summaryPrState.toLowerCase()} pull request #${primaryPr?.prNumber ?? workspace.prNumber}`
+      : primaryPrState && (primaryPr?.prNumber ?? workspace.prNumber) != null
+        ? ` — ${primaryPrState.toLowerCase()} pull request #${primaryPr?.prNumber ?? workspace.prNumber}`
         : "";
   const priorityTitle = priorityReason ? ` — ${PRIORITY_TITLE[priorityReason]}` : "";
   // A turn in flight takes the marker cell; unread waits until it ends.
@@ -442,7 +445,7 @@ function SidebarSessionRowInner({
   const statusOverlay = statusOverlayFor({
     working,
     state: workspace.state,
-    prState: summaryPrState,
+    prState: primaryPrState,
     priorityReason
   });
   const hasCustomIcon = workspace.icon ? resolveSessionIcon(workspace.icon) !== null : false;
@@ -458,7 +461,7 @@ function SidebarSessionRowInner({
     ) : statusOverlay ? (
       <StatusMarker
         working={working}
-        prState={summaryPrState}
+        prState={primaryPrState}
         priorityReason={priorityReason}
         phaseKey={workspace.id}
       />
@@ -802,7 +805,6 @@ export function sidebarSessionRowEqual(
     pw.pinned !== nw.pinned ||
     pw.prState !== nw.prState ||
     pw.prNumber !== nw.prNumber ||
-    workspacePrSummaryState(pw) !== workspacePrSummaryState(nw) ||
     !sidebarPrsEqual(verifiedWorkspacePrs(pw), verifiedWorkspacePrs(nw)) ||
     pw.icon !== nw.icon ||
     pw.iconColor !== nw.iconColor

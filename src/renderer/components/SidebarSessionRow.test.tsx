@@ -519,6 +519,28 @@ describe("SidebarSessionRow", () => {
     expect(screen.getByLabelText("2 pull requests: 1 open · 1 merged")).toHaveTextContent("2");
   });
 
+  it("follows the primary PR, not the aggregate, when siblings disagree", () => {
+    // The session's pinned primary merged while an earlier sibling was closed:
+    // the aggregate reads CLOSED, but the card and the git menu both name #213
+    // as merged, so the row marker has to say merged too.
+    render(
+      <SidebarSessionRow
+        workspace={workspaceWithPrSummary(
+          [
+            pr({ prNumber: 213, prState: "MERGED", isPinned: true }),
+            pr({ prNumber: 211, prState: "CLOSED", isPrimary: false })
+          ],
+          "CLOSED"
+        )}
+        {...rowProps()}
+      />
+    );
+
+    const row = screen.getByTitle(/pull requests: 1 merged · 1 closed/);
+    expect(row.querySelector('[data-pr="merged"]')).not.toBeNull();
+    expect(row.querySelector('[data-pr="closed"]')).toBeNull();
+  });
+
   it("gives an idle completed row the lead ring, with the state still in its title", () => {
     render(
       <SidebarSessionRow

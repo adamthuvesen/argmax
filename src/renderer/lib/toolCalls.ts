@@ -2,7 +2,7 @@ import { safeJsonParse, safeJsonParseRecord } from "../../shared/safeJson.js";
 import type { TimelineEvent } from "../../shared/types.js";
 import { interpretFileChange, summarizeFileChanges, type ChangeCounts } from "./fileChange.js";
 import { isOpaqueCiphertext } from "./toolArguments.js";
-import { describeActivity, summarizeActivities, type ToolActivity, type ToolActivityKind } from "./toolActivity.js";
+import { describeActivity, joinClauses, summarizeActivities, type ToolActivity, type ToolActivityKind } from "./toolActivity.js";
 
 export type ToolCall = {
   id: string;
@@ -469,7 +469,7 @@ export function summarizeToolGroup(tools: ToolCall[], counting = true): {
     clauses.push(clauseForBucket(bucket, n, first, counting && tools.every((tool) => tool.status === "done")));
     first = false;
   }
-  const headline = clauses.length > 0 ? clauses.join(", ") : "Used tools";
+  const headline = clauses.length > 0 ? joinClauses(clauses) : "Used tools";
   const status: ToolCall["status"] = allErrors ? "error" : latestRunning ? "running" : "done";
 
   // While the group is still running, surface the most recent live tool's

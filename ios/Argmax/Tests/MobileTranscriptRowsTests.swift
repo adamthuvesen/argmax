@@ -96,6 +96,18 @@ final class MobileTranscriptRowsTests: XCTestCase {
         XCTAssertEqual(TranscriptToolActivity.summary(for: [read, command]).iconKind, .read)
     }
 
+    /// Past four kinds of work the fold counts instead of listing.
+    func testHeadlineCapsNamedClauses() {
+        let kinds: [TranscriptToolActivityKind] = [.read, .command, .search, .image, .browser, .skill, .git]
+        let tools = kinds.enumerated().map { index, kind in
+            tool("t\(index)", kind: kind, status: .done, completionObserved: true)
+        }
+        XCTAssertEqual(
+            TranscriptToolActivity.summary(for: tools).headline,
+            "Read a file, ran a command, searched files, viewed an image, and 3 more"
+        )
+    }
+
     /// A settled plural clause says how many; a running one never does, since
     /// its number would change under the reader.
     func testSettledHeadlineCountsCallsOrDistinctTargets() {

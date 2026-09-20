@@ -418,11 +418,16 @@ extension TranscriptToolActivity {
             return group.activity.label(state: group.state, plural: plural, target: target,
                                         count: settled ? count : nil)
         }
-        let headline = labels.enumerated().map { index, label in
+        // A fold names at most four kinds of work and counts the rest: past
+        // that the line stops being a summary and is truncated anyway.
+        // Mirrored in the web's `joinClauses` (lib/toolActivity.ts).
+        var clauses = labels.prefix(4).enumerated().map { index, label -> String in
             guard index > 0, let first = label.first else { return label }
             return first.lowercased() + label.dropFirst()
-        }.joined(separator: ", ")
-        return (headline, groups.first?.activity.kind ?? .tool)
+        }
+        let rest = labels.count - clauses.count
+        if rest > 0 { clauses.append("and \(rest) more") }
+        return (clauses.joined(separator: ", "), groups.first?.activity.kind ?? .tool)
     }
 }
 

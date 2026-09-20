@@ -152,7 +152,24 @@ export function summarizeActivities(
     return activityLabel(activity, state, plural, target, settled ? targets.size || count : 0);
   });
   return {
-    headline: labels.map((label, index) => index ? label[0]?.toLowerCase() + label.slice(1) : label).join(", "),
+    headline: joinClauses(labels),
     iconKind: groups.values().next().value?.activity.kind ?? "tool"
   };
+}
+
+/**
+ * A fold names at most four kinds of work and counts the rest: past that the
+ * line stops being a summary and gets cut off mid-word by the column anyway.
+ * Mirrored in the phone's `TranscriptTool.summary` (TranscriptModels.swift).
+ */
+const MAX_NAMED_CLAUSES = 4;
+
+/** First clause keeps its capital; the rest run on as one sentence. */
+export function joinClauses(labels: string[]): string {
+  const clauses = labels
+    .slice(0, MAX_NAMED_CLAUSES)
+    .map((label, index) => index ? label[0]?.toLowerCase() + label.slice(1) : label);
+  const rest = labels.length - clauses.length;
+  if (rest > 0) clauses.push(`and ${rest} more`);
+  return clauses.join(", ");
 }

@@ -250,7 +250,7 @@ final class TranscriptUITests: XCTestCase {
         app.launchArguments.append("-scenario-activity")
         app.launch()
 
-        let summary = "Read files, edited a file, searched files, viewed an image, loaded tools, activated a skill, ran a command, used a computer, used a tool"
+        let summary = "Read files, edited a file, searched files, viewed an image, and 5 more"
         let summaryButton = app.buttons.matching(NSPredicate(format: "label == %@", summary))
         let collapsed = summaryButton.firstMatch
         XCTAssertTrue(collapsed.waitForExistence(timeout: 10))

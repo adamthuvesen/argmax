@@ -10,7 +10,6 @@ import {
   Keyboard,
   MoreHorizontal,
   Plus,
-  Search,
   Settings,
   Settings2,
   Trash2,
@@ -1169,19 +1168,6 @@ export function Sidebar({
           </span>
           <span className="rail-nav-label">New chat</span>
           <kbd aria-hidden="true">⌘N</kbd>
-        </button>
-        <button
-          className="rail-nav-item"
-          type="button"
-          title="Search"
-          aria-label="Search"
-          onClick={openCommandPalette}
-        >
-          <span className="rail-nav-glyph" aria-hidden="true">
-            <Search size={14} />
-          </span>
-          <span className="rail-nav-label">Search</span>
-          <kbd aria-hidden="true">⌘K</kbd>
         </button>
         <button
           className="rail-nav-item"

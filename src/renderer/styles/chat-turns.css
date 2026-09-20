@@ -1070,7 +1070,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--font-code);
+  /* The headline's face, not code: beside the summary the caption is the same
+     sentence continued, and a mono run there read as a second kind of line. */
+  font-family: var(--font-prose);
   font-size: var(--text-base);
   color: var(--muted);
   opacity: 0.86;

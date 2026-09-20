@@ -9,6 +9,7 @@
     "tauri:dev": "tauri dev",
     "tauri:dev:isolated": "ARGMAX_DATA_DIR=\"${ARGMAX_DATA_DIR:-$HOME/.argmax-dev}\" tauri dev",
     "tauri:build": "tauri build",
+    "tauri:build:universal": "tauri build --target universal-apple-darwin",
     "build:renderer": "vite build",
     "build:icons": "node scripts/build-icons.mjs",
     "export:provider-models": "node scripts/export-provider-models.mjs",

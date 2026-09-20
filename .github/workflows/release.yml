@@ -1,0 +1,112 @@
+name: Release
+
+# Cutting a release is pushing a tag. CI already gated the commit that tag
+# points at, so this workflow builds and publishes — it does not re-run the
+# test matrix. The release it opens is a draft: the DMG is reviewable, and
+# nothing is downloadable until you publish it by hand.
+on:
+  push:
+    tags: ["v*"]
+  # Dispatch from a tag to re-run a failed publish. A branch is refused below.
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  macos:
+    name: macOS universal
+    runs-on: macos-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - name: Refuse to release from a branch
+        if: ${{ github.ref_type != 'tag' }}
+        run: |
+          echo "This workflow releases a tag. Re-run it with a v* tag selected as the ref."
+          exit 1
+
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+
+      # Both halves of the universal binary. Without the x86_64 target the
+      # lipo step at the end of `tauri build` has nothing to fuse.
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.95"
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      # A release build shares no artifacts with CI's debug lanes, so it keeps
+      # its own cache keyed the same way: lockfiles plus this workflow.
+      - id: rust-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: rust-release-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'rust-toolchain.toml', '.github/workflows/release.yml') }}
+          restore-keys: |
+            rust-release-${{ runner.os }}-
+
+      - run: npm ci
+
+      # Notarization reads the App Store Connect key from a file, so the .p8
+      # has to land on disk. It is written under the runner's temp directory,
+      # which is discarded with the runner. When the secret is absent this
+      # step leaves APPLE_API_KEY_PATH unset and the build simply skips
+      # notarization instead of failing.
+      - name: Stage the notarization key
+        id: apns-key
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          if [ -z "$APPLE_API_KEY_P8" ]; then
+            echo "No App Store Connect key configured — building without notarization."
+            exit 0
+          fi
+          key_path="$RUNNER_TEMP/apple-api-key.p8"
+          printf '%s' "$APPLE_API_KEY_P8" | base64 --decode > "$key_path"
+          chmod 600 "$key_path"
+          echo "path=$key_path" >> "$GITHUB_OUTPUT"
+
+      # Every Apple variable is optional. With none of them set, Tauri falls
+      # back to the ad-hoc `signingIdentity: "-"` in tauri.conf.json and
+      # produces an unsigned DMG that Gatekeeper will refuse — useful for
+      # testing the pipeline, not for handing to anyone. Adding the secrets
+      # turns on real signing and notarization with no further change here.
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ steps.apns-key.outputs.path }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Argmax ${{ github.ref_name }}
+          releaseDraft: true
+          prerelease: false
+          # Self-update is deferred: there is no signing key and no feed, so
+          # a latest.json here would advertise a channel that does not exist.
+          # See docs/release.md.
+          uploadUpdaterJson: false
+          uploadUpdaterSignatures: false
+          args: --target universal-apple-darwin
+
+      - if: ${{ always() && steps.rust-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ steps.rust-cache.outputs.cache-primary-key }}

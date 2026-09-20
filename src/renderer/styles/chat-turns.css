@@ -1054,11 +1054,18 @@
   color: var(--tool-row-ink);
 }
 
-/* The live caption takes its own line under the headline, lined up with the
-   headline's text, so a long command never squeezes the summary beside it. */
+/* The live caption rides beside the headline and takes whatever width is left,
+   clipping to an ellipsis rather than folding the activity onto a second line.
+   Basis 0 is what keeps the summary whole: the caption contributes nothing to
+   the overflow, so it absorbs the shortfall instead of squeezing the headline. */
 .tool-call-group-preview {
-  min-width: 0;
-  flex: 1 0 100%;
+  /* The floor is what keeps the inline caption honest: a pane too narrow to
+     show a readable stub wraps it back under the headline instead of printing
+     three characters and an ellipsis. */
+  min-width: 18ch;
+  flex: 1 1 0;
+  /* Inline this is the gap that separates caption from headline; wrapped onto
+     its own line it lines the caption up with the headline's text. */
   padding-left: calc(var(--activity-mark-size) + 7px);
   overflow: hidden;
   text-overflow: ellipsis;

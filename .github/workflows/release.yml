@@ -94,7 +94,10 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: Argmax ${{ github.ref_name }}
           releaseDraft: true
-          prerelease: false
+          # Everything before 1.0 is a pre-release, and GitHub says so on the
+          # release, in the sidebar, and in the API. Flip this to false with
+          # the tag that earns it.
+          prerelease: true
           # Self-update is deferred: there is no signing key and no feed, so
           # a latest.json here would advertise a channel that does not exist.
           # See docs/release.md.

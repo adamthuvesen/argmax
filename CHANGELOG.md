@@ -1,10 +1,19 @@
 # Changelog
 
-Notable changes to Argmax. There are no git tags yet, so each section lists
-the changes made while `package.json` carried that version, and the date
-marks the commit that set it. "Unreleased" covers work not yet on `main`.
+Notable changes to Argmax. Sections up to and including 0.5.0 predate tagging,
+so each lists the changes made while `package.json` carried that version, with
+the date of the commit that set it. From the first `v*` tag onward a section
+corresponds to a release, and its text is what goes in the GitHub Release
+notes — see [docs/release.md](docs/release.md). "Unreleased" covers work not
+yet on `main`.
 
 ## Unreleased
+
+### Added
+
+- A tag-driven release: pushing `v*` builds a universal macOS DMG and opens a
+  draft GitHub Release with it attached. Installing no longer means cloning
+  the repo. A Homebrew cask is ready for a personal tap.
 
 ### Changed
 

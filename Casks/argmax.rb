@@ -18,7 +18,8 @@ cask "argmax" do
     strategy :github_latest
   end
 
-  depends_on macos: ">= :big_sur"
+  # Matches minimumSystemVersion in src-tauri/tauri.conf.json.
+  depends_on macos: :big_sur
 
   app "Argmax.app"
 

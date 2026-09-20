@@ -127,7 +127,7 @@ A long-lived body of work — a feature, a migration, an app — that outlives a
 _Avoid_: Project, mission, workstream, epic, initiative
 
 **Coordinator**:
-The arc's current planning chat, named by `arcs.coordinator_session_id`. It plans, launches members, reviews what comes back, and keeps `NOTES.md` current; that it does not write code itself is an instruction in its prompt, not a permission. It is disposable: starting a new one repoints the arc, and the old chat stays as history.
+The arc's current planning chat, named by `arcs.coordinator_session_id`. It plans, launches members, reviews what comes back, keeps `NOTES.md` current and short, and appends history to `LOG.md`; that it does not write code itself is an instruction in its prompt, not a permission. It is disposable: starting a new one repoints the arc, and the old chat stays as history.
 _Avoid_: Orchestrator, manager, lead agent, parent
 
 **Member**:
@@ -135,7 +135,7 @@ A session that belongs to an arc (`sessions.arc_id`), usually one a coordinator 
 _Avoid_: Child, worker, subagent
 
 **Arc folder**:
-The directory holding an arc's shared context: `BRIEF.md` and `NOTES.md`, plus whatever the coordinator adds. Argmax creates one under its data directory unless the user points the arc at an existing folder. The coordinator is its only writer.
+The directory holding an arc's shared context: `BRIEF.md`, `NOTES.md` (the current state, read by every member) and `LOG.md` (append-only history, read only when pointed at), plus the report files the coordinator adds. Argmax creates one under its data directory unless the user points the arc at an existing folder. The coordinator is its only writer.
 _Avoid_: Arc memory, workspace, context files
 
 ### What a session produced

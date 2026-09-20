@@ -43,7 +43,7 @@ Namespace `argmax`; Claude, Codex, and Cursor show them as
 | `schedule_list` | `project?` | `{projectId, schedules: [{scheduleId, name, prompt, enabled, cronExpr?, runOnceAt?, runTarget, createdBy, sessionId?, nextRunAt?, lastRunAt?, lastError?}], truncated}` |
 | `schedule_cancel` | `scheduleId`, `disable?` | `{scheduleId, name, deleted}` |
 | `schedule_resume` | `scheduleId` | `{scheduleId, name, nextRunAt?}` |
-| `arc_status` | — | The caller's Arc: `{arcId, name, state, dir, brief, briefTruncated, coordinatorSessionId?, callerIsCoordinator, members: [{sessionId, taskLabel, projectName, state, prNumber?, prState?}], truncated, launchesLast24h, limits: {maxActiveMembers, maxLaunchesPerDay}}`. `NOT_IN_ARC` if the caller is not attached to one. |
+| `arc_status` | — | The caller's Arc: `{arcId, name, state, dir, brief, briefTruncated, coordinatorSessionId?, callerIsCoordinator, members: [{sessionId, taskLabel, projectName, state, prNumber?, prState?}], truncated, launchesLast24h, limits: {maxActiveMembers, maxLaunchesPerDay}, now, notesBytes?, notesApproxTokens?, notesOversized, logBytes?}`. `now` is the local clock; `notesOversized` is true above 24 KB of `NOTES.md`. `NOT_IN_ARC` if the caller is not attached to one. |
 
 A goal makes this session keep working until a separate evaluator judges the
 condition met. Set one when the user describes work with a verifiable end
@@ -576,14 +576,39 @@ When a session that was launched by another one ends a turn — complete, failed
 or cancelled — Argmax writes one `completion` message to the launching session:
 
 ```
-Session <id> (<label>) finished with state <state>. Final answer:
-<the session's last assistant message, capped at 4 KB>
+Session <id> (<label>) finished with state <state> at <local time>. Final answer:
+<the session's last assistant message>
 ```
+
+The answer is capped at 4 KB of head. When it is longer and ends with a
+"Learnings for the arc" heading past the cut, the notice keeps that section
+too (itself capped at 2 KB) with a `(… middle truncated …)` marker between, so
+the learnings an Arc member is asked to end with reach the coordinator. The
+query behind it is `latest_agent_answer`, the unclamped sibling of the 4,000
+character `latest_agent_message` every preview uses.
 
 It is delivered like any other message, so an idle launcher **wakes up on a new
 turn** carrying its child's answer, the way Claude Code's Agent Teams
 idle-notification works. A notice that queued behind the launcher's running
 turn is not delivered, and stays collectable from its inbox.
+
+**A turn the person started in the launched chat's own tab does not wake the
+launcher at once.** The `user.message` that started the turn tells them apart:
+one from another session carries `origin`, one from a Goal or the scheduler
+carries `starter`, the session's first message is the launch prompt, and
+anything else was typed by the person. Such a turn ending only bumps a
+per-session digest; after 15 quiet minutes with no further turn, one notice
+goes out as `Session <id> (<label>) answered the user directly <n> time(s)
+since <time> and has been quiet for 15 minutes; latest answer at <time>:`. A
+launcher-driven turn ending while a digest is pending cancels it and folds the
+count into its own notice (`... (the user also had <n> direct exchange(s) with
+it since <time>)`). The pending digest lives in memory, so a restart drops it;
+the exchanges are still readable with `session_read`. On the first Arc, 36 of
+93 notices were replies to the person in a member's tab, each one a full
+coordinator turn.
+
+Building a notice also deletes the launcher's `check-in:<session>` wake, if
+`session_launch` scheduled one.
 
 **The rule, and why it cannot ping-pong.** A session emits a notice on every
 turn end *if and only if it has a launcher*. `launched_by_session_id` is a

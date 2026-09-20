@@ -1339,14 +1339,39 @@ pub fn list_all_session_events(
 /// spends a model call on this text, and four of the five providers carry it
 /// in argv, where a pasted log would cost real tokens and eventually exceed
 /// `ARG_MAX`. The opening characters are all a follow-up needs to reply to.
+/// The session's newest assistant message, clamped to 4,000 characters: a
+/// preview for the sidebar, a wait result, or a multitask row.
 pub fn latest_agent_message(
     connection: &Connection,
     session_id: &str,
 ) -> ArgmaxResult<Option<String>> {
+    latest_agent_message_within(connection, session_id, Some(LATEST_AGENT_MESSAGE_CHARS))
+}
+
+/// The same message whole. The completion notice caps it itself and keeps the
+/// "Learnings for the arc" tail, which a clamp at the head would cut off.
+pub fn latest_agent_answer(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Option<String>> {
+    latest_agent_message_within(connection, session_id, None)
+}
+
+const LATEST_AGENT_MESSAGE_CHARS: usize = 4000;
+
+fn latest_agent_message_within(
+    connection: &Connection,
+    session_id: &str,
+    max_chars: Option<usize>,
+) -> ArgmaxResult<Option<String>> {
+    let selected = match max_chars {
+        Some(max_chars) => format!("substr(message, 1, {max_chars})"),
+        None => "message".to_string(),
+    };
     let mut statement = connection
         .prepare_cached(&format!(
             r#"
-            SELECT substr(message, 1, 4000)
+            SELECT {selected}
             FROM events
             WHERE session_id = ?
               AND type = 'message.completed'

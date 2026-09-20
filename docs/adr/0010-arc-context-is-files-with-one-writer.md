@@ -6,4 +6,6 @@ The alternative was database rows behind `arc_note` and `arc_read` agent tools. 
 
 Files bring one real hazard: several agents appending to `NOTES.md` at once, from CLIs with different write strategies, truncate each other. The rule that removes it is a single writer. The coordinator is the only session that writes to the arc folder. Members read `BRIEF.md` and `NOTES.md` and end their final answer with the learnings worth keeping; the completion notice carries that answer to the coordinator, which decides what goes into the notes. The rule is stated in both preambles. It also removes the question of whether a member's sandbox allows writes outside its checkout, since members only read there.
 
+Amended by [ADR 0012](0012-arc-notes-are-state-and-member-turns-batch.md): the folder also holds `LOG.md`, and `NOTES.md` is the current state rather than the record.
+
 The brief has one source of truth. When an Arc adopts a folder that already has a `BRIEF.md`, the file wins and a typed brief is refused rather than silently diverging from it.

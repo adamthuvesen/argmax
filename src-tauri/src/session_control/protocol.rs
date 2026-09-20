@@ -654,6 +654,10 @@ pub struct ArcStatusOutcome {
     pub name: String,
     pub state: crate::persistence::arcs::ArcState,
     pub dir: String,
+    /// The local wall clock when the call was answered, `%Y-%m-%d %H:%M %Z`.
+    /// A long-running coordinator has no clock of its own and will otherwise
+    /// date its notes from whenever its context started.
+    pub now: String,
     /// Capped at 4 KB; `briefTruncated` says whether that cut it short.
     pub brief: String,
     pub brief_truncated: bool,
@@ -663,6 +667,16 @@ pub struct ArcStatusOutcome {
     pub members: Vec<ArcStatusMember>,
     pub truncated: bool,
     pub launches_last_24h: i64,
+    /// `NOTES.md` on disk: its size, roughly what it costs a member that reads
+    /// it, and whether it has outgrown what a member should be made to read.
+    /// `None` when the file is missing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notes_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notes_approx_tokens: Option<u64>,
+    pub notes_oversized: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub log_bytes: Option<u64>,
     pub limits: ArcStatusLimits,
 }
 
@@ -1033,6 +1047,7 @@ mod tests {
                 task_label: Some("Side quest".to_string()),
                 reasoning: Some(crate::providers::ReasoningEffort::High),
                 permission_mode: Some(crate::providers::PermissionMode::AskEachTime),
+                check_in_minutes: Some(45),
             }),
         };
         let encoded = serde_json::to_value(&request).expect("encode");
@@ -1043,11 +1058,11 @@ mod tests {
             encoded["action"]["launch"]["permissionMode"],
             "ask-each-time"
         );
+        assert_eq!(encoded["action"]["launch"]["checkInMinutes"], 45);
         assert_eq!(
             serde_json::from_value::<SessionControlRequest>(encoded).expect("decode"),
             request
         );
-                check_in_minutes: Some(45),
 
         for action in [
             SessionControlAction::Move(MoveAction {
@@ -1058,7 +1073,6 @@ mod tests {
                 keep_source: true,
             }),
             SessionControlAction::List(ListAction::default()),
-        assert_eq!(encoded["action"]["launch"]["checkInMinutes"], 45);
             SessionControlAction::Message(MessageAction {
                 session_id: "s1".to_string(),
                 message: "ping".to_string(),

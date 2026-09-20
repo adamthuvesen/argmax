@@ -25,11 +25,13 @@ A brief is required. When the chosen folder already has a `BRIEF.md`, leave the 
 | Scheduled runs into the coordinator | [scheduled-tasks.md](scheduled-tasks.md) |
 | Sidebar section, Arc page, New arc dialog | [components/arcs](../src/renderer/components/arcs) |
 
-**The coordinator is a pointer.** `arcs.coordinator_session_id` names an ordinary session. Its prompt tells it to plan and delegate, keep `NOTES.md`, and leave implementation to members. New coordinator launches a fresh chat seeded from `BRIEF.md` and `NOTES.md` and repoints the Arc; the old chat keeps its `arc_id` as history. Expect to rotate a coordinator after weeks of work, since its context degrades. See [ADR 0009](adr/0009-a-coordinator-is-a-disposable-session.md).
+**The coordinator is a pointer.** `arcs.coordinator_session_id` names an ordinary session. Its prompt tells it to plan and delegate, keep `NOTES.md` current and short, append history to `LOG.md`, and leave implementation and integration (merges, checks, rebuilding derived artifacts) to members. New coordinator launches a fresh chat seeded from `BRIEF.md` and `NOTES.md` and repoints the Arc; the old chat keeps its `arc_id` as history. Expect to rotate a coordinator after weeks of work, since its context degrades. See [ADR 0009](adr/0009-a-coordinator-is-a-disposable-session.md).
 
 **Members inherit.** `session_launch` and `/multitask` from an Arc session carry `arc_id` onto the new session and prepend the member preamble. `session_move` carries it and repoints the coordinator if the coordinator moved. A fork leaves the Arc.
 
-**One writer.** The coordinator is the only writer of the arc folder. Members read `BRIEF.md` and `NOTES.md` and end their final answer with learnings, which reach the coordinator in the completion notice. See [ADR 0010](adr/0010-arc-context-is-files-with-one-writer.md).
+**One writer, two files.** The coordinator is the only writer of the arc folder. `NOTES.md` is the current state and `LOG.md` the append-only history; the folder gets both empty at creation (an adopted folder keeps what it has). Members read `BRIEF.md` and `NOTES.md`, read `LOG.md` and report files only when their prompt points at them, and end their final answer with a short "Learnings for the arc" section, which the completion notice keeps even when it caps the answer ([agent-tools.md](agent-tools.md#completion-notices)). `arc_status` reports the clock, `NOTES.md`'s size and whether it is past the 24 KB advisory, so a coordinator can see the file bloating. See [ADR 0010](adr/0010-arc-context-is-files-with-one-writer.md) and [ADR 0012](adr/0012-arc-notes-are-state-and-member-turns-batch.md).
+
+**Waking the coordinator.** A member's finish wakes the coordinator through the ordinary completion notice, stamped with the local time. A turn the person starts in a member's own tab does not: those batch into one digest after 15 quiet minutes, or fold into the next launcher-driven notice. For long work the coordinator passes `checkInMinutes` on `session_launch` instead of scheduling and cancelling a follow-up per launch; the wake is deleted when the notice is built.
 
 **Caps.** An Arc allows 8 active members and 40 launches in a rolling 24 hours. The current coordinator is exempt from the ordinary ten-launches-per-session cap. The checks run in the same write as the session insert, so parallel launches cannot overrun them. A done Arc refuses launches.
 
@@ -53,3 +55,4 @@ Slack triggers and agents writing recurring schedules.
 
 - A member whose workspace is archived before its PR resolves leaves the poll set, so the coordinator does not hear about that PR's later transitions.
 - The Arc page opens only member chats still in the sidebar's recent list; older members are listed without an open action.
+- A pending user-turn digest is in memory only: a restart drops it, and the coordinator learns of those exchanges from `session_read` or the next notice.

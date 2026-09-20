@@ -27,7 +27,10 @@
   padding: var(--workspace-card-inset);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-xl);
+  /* The same corner as the launcher, the composer shell and every popover:
+     this card is floating chrome, and at 14px it read tighter than the
+     surfaces it sits beside. */
+  border-radius: var(--radius-2xl);
   box-shadow: var(--shadow-2);
   animation: surface-in var(--motion-base) var(--ease-out);
 }

@@ -615,7 +615,7 @@ struct ChatListRow: View {
             HStack(alignment: .top, spacing: 0) {
                 let glyph = ChatRowGlyph(row: row, chatIcons: chatIcons, providerMarks: providerMarks)
                 if glyph != .empty {
-                    ChatRowGlyphView(glyph: glyph, size: 14)
+                    ChatRowGlyphView(glyph: glyph, size: 16)
                         .frame(width: 16, height: titleLineHeight)
                         .padding(.trailing, Spacing.snug)
                 }

@@ -570,10 +570,10 @@ struct ArcListRow: View {
             HStack(alignment: .top, spacing: 0) {
                 Group {
                     if sessions.contains(where: { $0.state == .running }) {
-                        WorkingNest(size: 14)
+                        WorkingNest(size: 16)
                     } else {
                         Image(systemName: "point.3.connected.trianglepath.dotted")
-                            .typeSymbol(.caption, weight: .medium)
+                            .typeSymbol(size: 14, weight: .medium)
                             .foregroundStyle(Theme.muted)
                     }
                 }

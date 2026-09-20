@@ -100,19 +100,52 @@ base64 -i /path/to/AuthKey_XXXXXXXXXX.p8 | gh secret set APPLE_API_KEY_P8
 gh secret list                                  # expect six rows
 ```
 
-Store the `.p12`, its password, and the `.p8` in 1Password at the same time.
-The `.p8` is unrecoverable, and a lost Developer ID key means revoking the
-certificate and starting over.
+Store the `.p12`, its password, and the `.p8` in 1Password at the same time —
+see *Where the credentials live* below. The `.p8` is unrecoverable, and a lost
+Developer ID key means revoking the certificate and burning one of the five
+Developer ID slots an account ever gets.
 
-For a local signed build, load the same values from 1Password first:
+### Where the credentials live
+
+Everything is in the personal 1Password account, item **Argmax code signing**
+(vault `Personal`): the `.p12` and its password, the Developer ID private key,
+the notarization `.p8`, the team ID, the signing identity, and the App Store
+Connect issuer and key IDs. Nothing here needs to sit in the repository, and
+the `.p8` in particular cannot be downloaded from Apple a second time.
+
+For a local signed build, load them from there. `APPLE_API_KEY_PATH` wants a
+file, so the key is written to a temporary one and removed afterwards:
 
 ```bash
-export APPLE_SIGNING_IDENTITY="$(op read 'op://<vault>/Argmax signing/signing identity')"
-export APPLE_API_ISSUER="$(op read 'op://<vault>/Argmax notarization/issuer id')"
-export APPLE_API_KEY="$(op read 'op://<vault>/Argmax notarization/key id')"
-export APPLE_API_KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_XXXXXXXXXX.p8"
+ACC=my.1password.com
+KEY_FILE="$(mktemp -t argmax-notary)"
+trap 'rm -f "$KEY_FILE"' EXIT
+op read --account "$ACC" --out-file "$KEY_FILE" --force \
+  "op://Personal/Argmax code signing/Notarization key p8"
+
+export APPLE_SIGNING_IDENTITY="$(op read --account "$ACC" 'op://Personal/Argmax code signing/Signing identity')"
+export APPLE_API_ISSUER="$(op read --account "$ACC" 'op://Personal/Argmax code signing/App Store Connect issuer ID')"
+export APPLE_API_KEY="$(op read --account "$ACC" 'op://Personal/Argmax code signing/App Store Connect key ID')"
+export APPLE_API_KEY_PATH="$KEY_FILE"
+
 npm run tauri:build:universal
 ```
+
+Local signing also needs the certificate and key in the login keychain, which
+the `.p12` does in one step:
+
+```bash
+op read --account "$ACC" --out-file /tmp/argmax-signing.p12 --force \
+  "op://Personal/Argmax code signing/Developer ID p12"
+security import /tmp/argmax-signing.p12 -k ~/Library/Keychains/login.keychain-db \
+  -P "$(op read --account "$ACC" 'op://Personal/Argmax code signing/p12 password')" \
+  -T /usr/bin/codesign
+rm -f /tmp/argmax-signing.p12
+```
+
+A 1Password item title used in an `op://` reference must not contain
+parentheses — the CLI rejects the reference rather than the title, which is
+why the item is named plainly.
 
 ## App Icons
 

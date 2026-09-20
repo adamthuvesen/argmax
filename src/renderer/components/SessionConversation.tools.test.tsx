@@ -4,7 +4,8 @@ import type { ProviderId, TimelineEvent } from "../../shared/types.js";
 import {
   baseSession,
   event,
-  renderConversation
+  renderConversation,
+  rerenderConversation
 } from "../../test/sessionConversationTestHarness.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { startedAgentName, toggleAgentDetailsName } from "../../test/agentRowName.js";
@@ -1017,6 +1018,180 @@ describe("SessionConversation — single-line activity mode", () => {
     expect(screen.getByText("What gets built")).toBeInTheDocument();
     expect(screen.getByText("Plan saved to the Arc folder.")).toBeInTheDocument();
     expect(screen.queryByText("docs/plan.md")).toBeNull();
+  });
+
+  it("keeps a short plain answer whose turn ends in a closing tool call", () => {
+    // Shape alone cannot tell this answer from a remark. What marks it is the
+    // tail: one word acknowledging the write, against a sentence of substance.
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event("u1", "user.message", "does foo exist", "2026-05-12T15:00:00.000Z"),
+        event("a1", "message.completed", "No, foo.ts does not exist anywhere in the repo.", "2026-05-12T15:00:01.000Z"),
+        event("note-start", "command.started", "Bash", "2026-05-12T15:00:02.000Z", {
+          id: "note",
+          name: "Bash",
+          input: { command: "echo noted >> log" }
+        }),
+        event("note-end", "command.completed", "tool_result", "2026-05-12T15:00:03.000Z", {
+          tool_use_id: "note",
+          content: ""
+        }),
+        event("a2", "message.completed", "Done.", "2026-05-12T15:00:04.000Z")
+      ],
+      { defaultToolCallsDisplay: "single-line" }
+    );
+
+    expect(screen.getByText("No, foo.ts does not exist anywhere in the repo.")).toBeInTheDocument();
+    expect(screen.getByText("Done.")).toBeInTheDocument();
+  });
+
+  it("leaves a reasoning-only turn a chip to open instead of an empty block", () => {
+    // Minimal drops settled thoughts before the body is built, so this turn
+    // arrived at TurnBlock with nothing in it at all — no chip, no content,
+    // no way back to what was hidden.
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event("u1", "user.message", "think about it", "2026-05-12T15:00:00.000Z"),
+        event("t1", "message.delta", "Weighing the options carefully.", "2026-05-12T15:00:01.000Z", {
+          thinking: true
+        })
+      ],
+      { defaultToolCallsDisplay: "single-line" }
+    );
+
+    expect(screen.queryByText("Weighing the options carefully.")).toBeNull();
+    const chip = screen.getByRole("button", { name: /Worked/ });
+    fireEvent.click(chip);
+    expect(screen.getByText("Weighing the options carefully.")).toBeInTheDocument();
+  });
+
+  it("reports that work is happening at Minimal where Compact names the command", () => {
+    // Minimal used to render a lone call as its own row, command text and
+    // all, while Compact bucketed it — level 1 showing more than level 2.
+    const events = [
+      event("u1", "user.message", "run it", "2026-05-12T15:00:00.000Z"),
+      event("b-start", "command.started", "Bash", "2026-05-12T15:00:01.000Z", {
+        id: "b1",
+        name: "Bash",
+        input: { command: "git status --short" }
+      })
+    ];
+    renderConversation(baseSession({ state: "running" }), events, {
+      defaultToolCallsDisplay: "single-line"
+    });
+    expect(screen.queryByText("git status --short")).toBeNull();
+    expect(screen.getByRole("button", { name: "Ran a command" })).toBeInTheDocument();
+
+    cleanup();
+    renderConversation(baseSession({ state: "running" }), events, {
+      defaultToolCallsDisplay: "collapsed"
+    });
+    expect(screen.queryByText("git status --short")).toBeNull();
+  });
+
+  it("drops a turn's expand choice when the verbosity changes under it", () => {
+    const session = baseSession({ state: "complete" });
+    const events = [
+      event("u1", "user.message", "run it", "2026-05-12T15:00:00.000Z"),
+      event("b-start", "command.started", "Bash", "2026-05-12T15:00:01.000Z", {
+        id: "b1",
+        name: "Bash",
+        input: { command: "git status --short" }
+      }),
+      event("b-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
+        tool_use_id: "b1",
+        content: ""
+      }),
+      event("a1", "message.completed", "All clean.", "2026-05-12T15:00:03.000Z")
+    ];
+    const { rerender } = renderConversation(session, events, {
+      defaultToolCallsDisplay: "single-line"
+    });
+
+    // Opening the chip at Minimal is a choice about Minimal. Carried into
+    // Compact it rendered every row expanded with its raw output.
+    fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
+    expect(screen.getByText("git status --short")).toBeInTheDocument();
+
+    rerenderConversation(rerender, session, events, { defaultToolCallsDisplay: "collapsed" });
+    expect(screen.queryByText("git status --short")).toBeNull();
+  });
+
+  it("adds detail at every step of the ladder and never takes it away", () => {
+    // The ladder's one invariant: each level is a superset of the one below.
+    // Minimal once showed more live detail than Compact, and Compact differed
+    // from Steps by an empty Thought row.
+    const events = [
+      event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z"),
+      event("t1", "message.delta", "Weighing options.", "2026-05-12T15:00:01.000Z", { thinking: true }),
+      event("n1", "message.completed", "Reading the repo now.", "2026-05-12T15:00:02.000Z"),
+      event("read-start", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
+        id: "read",
+        name: "Read",
+        input: { file_path: "README.md" }
+      }),
+      event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:04.000Z", {
+        tool_use_id: "read",
+        content: "readme"
+      }),
+      event("glob-start", "command.started", "Glob", "2026-05-12T15:00:05.000Z", {
+        id: "glob",
+        name: "Glob",
+        input: { pattern: "src/**/*.ts" }
+      }),
+      event("glob-end", "command.completed", "tool_result", "2026-05-12T15:00:06.000Z", {
+        tool_use_id: "glob",
+        content: "[]"
+      }),
+      event("n2", "message.completed", "Checking the tree.", "2026-05-12T15:00:07.000Z"),
+      event("bash-start", "command.started", "Bash", "2026-05-12T15:00:08.000Z", {
+        id: "bash",
+        name: "Bash",
+        input: { command: "git status --short" }
+      }),
+      event("bash-end", "command.completed", "tool_result", "2026-05-12T15:00:09.000Z", {
+        tool_use_id: "bash",
+        content: ""
+      }),
+      event("a1", "message.completed", "The vault is markdown notes.", "2026-05-12T15:00:10.000Z")
+    ];
+    const levels = [
+      { label: "Minimal", options: { defaultToolCallsDisplay: "single-line" as const } },
+      { label: "Compact", options: { defaultToolCallsDisplay: "collapsed" as const } },
+      {
+        label: "Steps",
+        options: { defaultToolCallsDisplay: "collapsed" as const, defaultToolCallGroupsExpanded: true }
+      },
+      { label: "Detailed", options: { defaultToolCallsDisplay: "expanded" as const } }
+    ];
+
+    // The turn body only: the chip's own label is deliberately not monotonic
+    // (Minimal alone counts the steps it hid), and that is chrome, not content.
+    const seen = levels.map(({ options }) => {
+      cleanup();
+      renderConversation(baseSession({ state: "complete" }), events, options);
+      // Leaf nodes only, and never a group headline. A container's
+      // concatenated `textContent` changes whenever a level adds a child to
+      // it, and a headline is *meant* to change: Compact buckets a lone call
+      // as "Ran a command" where Steps names it. What must never go missing is
+      // the substance — prose, reasoning, and the calls themselves.
+      return new Set(
+        Array.from(document.querySelectorAll(".turn-block-body *"))
+          .filter((node) => node.children.length === 0 && !node.closest(".tool-call-group-header"))
+          .map((node) => node.textContent?.trim() ?? "")
+          .filter((text) => text.length > 0)
+      );
+    });
+
+    for (let index = 1; index < levels.length; index += 1) {
+      const lost = [...seen[index - 1]].filter((text) => !seen[index].has(text));
+      expect(
+        lost,
+        `${levels[index].label} dropped what ${levels[index - 1].label} showed`
+      ).toEqual([]);
+    }
   });
 
   it("keeps the live summary line visible while the session is still running", () => {

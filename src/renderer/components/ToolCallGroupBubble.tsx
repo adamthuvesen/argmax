@@ -234,7 +234,12 @@ function ToolCallGroupBubbleInner({
   const expanded = localExpanded ?? (defaultExpanded ?? false);
   const toggleExpanded = (value: boolean): void => setUserToggle({ value, defaultExpanded });
 
-  const directTool = !hasActivityMembers && !compact && group.tools.length === 1
+  // One call in a gap renders as its own row rather than a headline over a
+  // single child — except at Minimal, where the whole point is that the line
+  // reports that work happened, not what ran. Without `!minimal`, a lone
+  // `git status --short` was named in full at Minimal and bucketed to "Ran a
+  // command" at Compact: level 1 showing more than level 2.
+  const directTool = !hasActivityMembers && !compact && !minimal && group.tools.length === 1
     ? group.tools[0]
     : undefined;
   let runningTool: ToolCall | null = null;

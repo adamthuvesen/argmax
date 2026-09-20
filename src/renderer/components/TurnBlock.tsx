@@ -63,6 +63,7 @@ export function TurnBlock({
   toolsExpanded,
   onToggleTools,
   hasCollapsibleActivity = false,
+  hasHiddenWork = false,
   hideWorkingWhenCollapsed,
   hiddenEarlierBodyCount = 0,
   onShowEarlierBody,
@@ -95,6 +96,12 @@ export function TurnBlock({
   onToggleTools?: () => void;
   /** True when a Compact thought-only activity run still has a disclosure. */
   hasCollapsibleActivity?: boolean;
+  /** The turn hid content that only this chip can bring back. Minimal drops
+   *  settled reasoning and pre-tool remarks before the body is built, so a
+   *  turn made of nothing else arrives here empty — and without this it would
+   *  render as a bare `turn-block` with no chip and no way back to what it
+   *  hid. The parent knows what it dropped; `body` no longer does. */
+  hasHiddenWork?: boolean;
   hideWorkingWhenCollapsed?: boolean;
   /** Rows kept out of the DOM by the turn's render window. */
   hiddenEarlierBodyCount?: number;
@@ -199,8 +206,8 @@ export function TurnBlock({
   // Show a quiet turn marker for every assistant turn so long chats get the
   // same visual reset as Codex. Tool turns remain clickable/collapsible; pure
   // text turns render static metadata.
-  const showChip = running || hasTools || body.length > 0;
-  const hasDisclosure = hasTools || hasCollapsibleActivity;
+  const showChip = running || hasTools || hasHiddenWork || body.length > 0;
+  const hasDisclosure = hasTools || hasCollapsibleActivity || hasHiddenWork;
   const interactiveChip = running || hasDisclosure;
 
   const liveStartMs = running && startedAtMs > 0 ? startedAtMs : null;

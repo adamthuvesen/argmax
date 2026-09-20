@@ -62,21 +62,54 @@ export function isProgressNarration(text: string): boolean {
   return !/^ {0,3}(#{1,6} |[-*+] |\d+[.)] |> |\||```|~~~)/m.test(trimmed);
 }
 
+/** Past this, prose after the turn's last tool is an answer, not a sign-off. */
+const CLOSING_REMARK_MAX_CHARS = 160;
+
+/**
+ * Does the prose after the turn's last tool read as an acknowledgement of that
+ * tool rather than as the turn's answer?
+ *
+ * Both halves are load-bearing and both are deliberately strict, because the
+ * cost of guessing wrong in this direction is showing narration the reader
+ * asked to hide, while the cost of guessing wrong in the other is losing the
+ * answer entirely. A real turn that narrates, works, and then answers —
+ * "Chronicle isn't available, so I'll fall back to the repository." → `Bash` →
+ * "The last two published runs both landed at 9/10." — has a tail of 48
+ * against 78, nowhere near half, and folds as it always did.
+ */
+function isClosingRemark(candidateLength: number, tailLength: number): boolean {
+  if (tailLength === 0 || tailLength >= CLOSING_REMARK_MAX_CHARS) return false;
+  return tailLength * 2 < candidateLength;
+}
+
 /**
  * Minimal verbosity, finished and collapsed: the prose Claude, Codex, Grok,
  * and OpenCode write before each tool is progress, not the answer, so it hides
- * with the tools it narrates. Returns the group ids to drop — every *remark* at
- * or before the last tool except the last prose group, which is kept so
- * collapsing can never leave the chip standing over nothing.
+ * with the tools it narrates. Returns the group ids to drop.
  *
- * Only remarks: an agent that writes its answer and then records it with one
- * last tool call (an edit, a memory write) used to be left showing nothing but
- * its sign-off, because the answer sat before that final tool. `isProgress-
- * Narration` is what separates the two.
+ * Two groups are always kept, and between them they are what "the answer"
+ * means here:
+ *
+ * - **The last prose group**, so collapsing can never leave the chip standing
+ *   over nothing.
+ * - **The prose before the last tool, when what follows that tool is only a
+ *   sign-off.** Shape alone cannot tell a one-line answer from a one-line
+ *   remark — "No, that file does not exist." and "Reading the repo now." are
+ *   the same object to any predicate, and nothing in the event stream marks
+ *   which is which. What does separate them is the tail: an agent that
+ *   answers, records the answer with one closing edit or memory write, and
+ *   signs off ("Done.") leaves a tail far shorter than the answer it
+ *   acknowledges. `isClosingRemark` draws that line deliberately tight —
+ *   a turn whose post-tool prose is half the writing of its pre-tool prose is
+ *   a turn that narrated and then answered, and it folds as before.
+ *
+ * Everything else at or before the last tool hides, provided it reads as a
+ * remark: `isProgressNarration` keeps a second block of real writing — a turn
+ * that writes section one, edits, writes section two — out of the fold.
  *
  * A surface that renders the answer itself (the agent pane's result panel)
  * passes `separateAnswer`: there the answer has its own home, so everything
- * left in the turn really is work and all of it hides.
+ * left in the turn really is work and all of it hides, longest included.
  *
  * Claude and Grok emit that text and the following `command.started` from one
  * envelope, so they share a timestamp: same-timestamp prose counts as work.
@@ -88,12 +121,20 @@ export function preToolNarrationGroupIds(
 ): ReadonlySet<string> {
   const hidden = new Set<string>();
   if (lastToolCreatedAt === null) return hidden;
-  const lastAnswerId = options.separateAnswer
-    ? undefined
-    : [...groups].reverse().find((group) => !group.thinking && !group.error)?.id;
-  for (const group of groups) {
-    if (group.thinking || group.error) continue;
-    if (group.id === lastAnswerId) continue;
+  const prose = groups.filter((group) => !group.thinking && !group.error);
+  const kept = new Set<string>();
+  if (!options.separateAnswer) {
+    const last = prose[prose.length - 1];
+    if (last) kept.add(last.id);
+    const beforeLastTool = prose.filter((group) => group.lastActivityAt <= lastToolCreatedAt);
+    const candidate = beforeLastTool[beforeLastTool.length - 1];
+    const tail = prose
+      .filter((group) => group.lastActivityAt > lastToolCreatedAt)
+      .reduce((total, group) => total + group.text.trim().length, 0);
+    if (candidate && isClosingRemark(candidate.text.trim().length, tail)) kept.add(candidate.id);
+  }
+  for (const group of prose) {
+    if (kept.has(group.id)) continue;
     if (!options.separateAnswer && !isProgressNarration(group.text)) continue;
     if (group.lastActivityAt <= lastToolCreatedAt) hidden.add(group.id);
   }

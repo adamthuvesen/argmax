@@ -195,7 +195,21 @@ function SessionConversationTurnInner({
     isLatestTurn && !minimalActivity
       ? (defaultToolCallGroupsExpanded ?? defaultToolCallsDisplay === "expanded")
       : false;
-  const [toolsExpandOverride, setToolsExpandOverride] = useState<boolean | null>(null);
+  // The chip's own open/closed choice, tagged with the verbosity it was made
+  // under. Untagged, it outlived a level change: a chip opened at Minimal to
+  // inspect the work left Compact rendering every row with its raw output,
+  // and a chip closed at Steps left Detailed folded below Compact. Same
+  // invalidation `ToolCallGroupBubble` already applies to its own toggle.
+  const verbosityKey = `${defaultToolCallsDisplay}:${defaultToolCallGroupsExpanded ?? "auto"}`;
+  const [toolsExpandChoice, setToolsExpandChoice] = useState<
+    { value: boolean; verbosity: string } | null
+  >(null);
+  const toolsExpandOverride =
+    toolsExpandChoice && toolsExpandChoice.verbosity === verbosityKey
+      ? toolsExpandChoice.value
+      : null;
+  const setToolsExpandOverride = (value: boolean): void =>
+    setToolsExpandChoice({ value, verbosity: verbosityKey });
   const toolsExpanded = toolsExpandOverride ?? toolsExpandedDefault;
   // Detailed opens individual rows as well as groups. An agent
   // launch row follows that rather than the group level, because what its
@@ -229,12 +243,29 @@ function SessionConversationTurnInner({
     visibleAssistantGroups,
     minimalActivity && !isStreamingTurn && !toolsExpanded ? lastToolCreatedAt : null
   );
+  // Settled reasoning folds away at Minimal — but only while the chip is
+  // closed, so opening it brings the thought back the way it brings back the
+  // narration and the tools.
+  const hidesSettledThoughts = minimalActivity && !toolsExpanded;
+  // Content only the chip can bring back. Without this the chip could be the
+  // one thing the turn needed and the one thing it did not render: a turn
+  // whose only content is reasoning drops every group here, leaving an empty
+  // `turn-block` with no handle — the whole turn gone. Same for a turn whose
+  // only tool is a question card, where `visibleToolItems` is empty but the
+  // narration before it still hid.
+  const hasHiddenWork =
+    hiddenNarrationIds.size > 0 ||
+    (hidesSettledThoughts &&
+      visibleAssistantGroups.some(
+        (group) => group.thinking && !(thinkingLive && group.id === liveThoughtGroupId)
+      ));
   const assistantChildren: AnnotatedChild[] = visibleAssistantGroups
     .map((group): AnnotatedChild | null => {
       const groupLive = thinkingLive && group.id === liveThoughtGroupId;
       // Single-line mode folds completed Thought blocks away entirely — only
-      // the live "Thinking" indicator (governed by groupLive) survives.
-      if (minimalActivity && group.thinking && !groupLive) return null;
+      // the live "Thinking" indicator (governed by groupLive) survives, until
+      // the chip is opened to inspect what the level hid.
+      if (hidesSettledThoughts && group.thinking && !groupLive) return null;
       if (hiddenNarrationIds.has(group.id)) {
         return { kind: "assistant", id: group.id, node: null, createdAt: group.createdAt, sortAt: group.lastActivityAt };
       }
@@ -413,7 +444,10 @@ function SessionConversationTurnInner({
       activityMembers={members}
       disclosureId={`session-${session?.id ?? "unknown"}-${item.id}`}
       compact={compactToolSummaries}
-      minimal={minimalActivity}
+      // Minimal's resting state, not the level: once the chip is open the
+      // reader asked to inspect the work, so the group reads like Compact's —
+      // captions, standing chevrons, and a lone call as its own named row.
+      minimal={minimalActivity && !toolsExpanded}
       defaultExpanded={!minimalActivity && toolsExpanded}
       defaultToolsExpanded={toolRowsExpanded}
       follow={follow}
@@ -538,6 +572,7 @@ function SessionConversationTurnInner({
       toolsExpanded={toolsExpanded}
       onToggleTools={() => setToolsExpandOverride(!toolsExpanded)}
       hasCollapsibleActivity={compactActivity && bodyChildren.some((child) => child.kind === "tool")}
+      hasHiddenWork={hasHiddenWork}
       hideWorkingWhenCollapsed={minimalActivity}
       body={mountedBodyChildren}
       hiddenEarlierBodyCount={hiddenEarlierBodyCount}

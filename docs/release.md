@@ -32,8 +32,9 @@ Without Apple credentials the build falls back to the ad-hoc
 refuses to open with *"the developer cannot be verified"*, which is fine for
 testing the pipeline and useless for distribution.
 
-A public release needs an Apple Developer Program membership, a Developer ID
-Application certificate, and these repository secrets:
+A public release needs an Apple Developer Program membership (team
+`QPUG98H89L`, Individual), a Developer ID Application certificate, and these
+repository secrets:
 
 | Secret | What it is |
 |---|---|
@@ -59,6 +60,49 @@ app-specific password. Note the variable is `APPLE_PASSWORD`, not
 in one pass only when the variables are present while it runs. Building first
 and exporting the credentials afterwards produces an unnotarized bundle; the
 build has to be repeated.
+
+### First-time setup
+
+Once per machine, plus once per certificate expiry (Developer ID certificates
+last five years).
+
+**1. Issue the certificate.** In Keychain Access → Certificate Assistant →
+*Request a Certificate from a Certificate Authority*, save a CSR to disk. At
+[developer.apple.com/account](https://developer.apple.com/account) →
+Certificates → **+** → **Developer ID Application**, upload the CSR, download
+the `.cer`, and double-click it. Confirm it landed under the right team — an
+`Apple Development` certificate is a different thing and cannot sign for
+distribution:
+
+```bash
+security find-identity -v -p codesigning | grep "Developer ID Application"
+# 1) ABC… "Developer ID Application: Adam Thuvesen (QPUG98H89L)"
+```
+
+**2. Export it.** In Keychain Access, select the *private key* under that
+certificate, right-click → Export, save as `.p12` with a password.
+
+**3. Create the notarization key.** App Store Connect → Users and Access →
+Integrations → Keys → **+**, role **Developer**. Keep the issuer ID and key
+ID; the `.p8` downloads once and cannot be downloaded again.
+
+**4. Load the secrets.** Run from the repository, with the `.p12` and `.p8`
+paths substituted. Every value is read from a file or typed at the prompt, so
+none of it lands in shell history:
+
+```bash
+base64 -i /path/to/DeveloperID.p12 | gh secret set APPLE_CERTIFICATE
+gh secret set APPLE_CERTIFICATE_PASSWORD        # prompts
+gh secret set APPLE_SIGNING_IDENTITY --body "Developer ID Application: Adam Thuvesen (QPUG98H89L)"
+gh secret set APPLE_API_ISSUER                  # prompts, the issuer UUID
+gh secret set APPLE_API_KEY                     # prompts, the 10-character key ID
+base64 -i /path/to/AuthKey_XXXXXXXXXX.p8 | gh secret set APPLE_API_KEY_P8
+gh secret list                                  # expect six rows
+```
+
+Store the `.p12`, its password, and the `.p8` in 1Password at the same time.
+The `.p8` is unrecoverable, and a lost Developer ID key means revoking the
+certificate and starting over.
 
 For a local signed build, load the same values from 1Password first:
 

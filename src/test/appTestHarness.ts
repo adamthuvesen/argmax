@@ -594,6 +594,7 @@ export function setupAppTestMocks(): void {
     },
     system: {
       confirm: (message) => Promise.resolve(window.confirm(message)),
+      onZoom: () => () => undefined,
       openPath: () => Promise.resolve({ ok: true }),
       openFileIn: () => Promise.resolve({ ok: true }),
       listDetectedIdes: listDetectedIdes,

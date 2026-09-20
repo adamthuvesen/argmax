@@ -35,5 +35,24 @@ function installDocumentVisibility(): void {
   sync();
 }
 
+/**
+ * ⌘+/⌘− zoom the page, and page zoom scales CSS px — but the traffic lights are
+ * AppKit's and stay the same size in window points whatever the page does. The
+ * band the sidebar reserves for them is therefore expressed in CSS px divided
+ * by this factor (styles/shell-layout.css), so it stays 44 points tall at every
+ * zoom instead of shrinking under the buttons. The backend owns the value
+ * (menu.rs) and restates it on every load, so a reload never leaves a stale one
+ * behind.
+ */
+export function applyWindowZoom(factor: number): void {
+  const safe = Number.isFinite(factor) && factor > 0 ? factor : 1;
+  document.documentElement.style.setProperty("--app-zoom", String(safe));
+}
+
+function installWindowZoom(): void {
+  window.argmax?.system?.onZoom?.(applyWindowZoom);
+}
+
 installWindowChrome();
 installDocumentVisibility();
+installWindowZoom();

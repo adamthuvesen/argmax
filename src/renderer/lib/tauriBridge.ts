@@ -469,6 +469,7 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       performanceCapture: () => invokeCommand<PerformanceCapture>("system:performance-capture"),
       reportRendererStall: (durationMs) =>
         invokeCommand<{ ok: true }>("system:renderer-stall", { durationMs }),
+      onZoom: (listener) => subscribe<number>("ui:zoom", listener),
       vacuumDatabase: () => invokeCommand<{ ok: true }>("system:vacuum-database"),
       setTheme: (mode) => invokeCommand<{ ok: true }>("system:set-theme", { mode }),
       setDefaultAgent: (input) =>

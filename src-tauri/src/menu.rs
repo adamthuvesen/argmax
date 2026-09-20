@@ -4,6 +4,10 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 const APP_NAME: &str = "Argmax";
 const MENU_COMMAND_EVENT: &str = "menu:command";
+/// Page zoom is broadcast on this channel so the renderer can undo it where
+/// the page meets native pixels: the traffic-light band it reserves, and the
+/// bounds it measures for a browser tab's child webview.
+const ZOOM_EVENT: &str = "ui:zoom";
 const ZOOM_MIN: f64 = 0.5;
 const ZOOM_MAX: f64 = 2.0;
 const ZOOM_STEP: f64 = 0.1;
@@ -487,6 +491,24 @@ fn apply_main_window_zoom<R: Runtime>(app: &AppHandle<R>, zoom: f64) {
             tracing::warn!(?error, zoom, "failed to set webview zoom");
         }
     }
+    if let Err(error) = app.emit(ZOOM_EVENT, zoom) {
+        tracing::warn!(?error, zoom, "failed to publish webview zoom");
+    }
+}
+
+/// The main webview's page zoom. CSS px are window points multiplied by this,
+/// so anything the page hands to AppKit — a child webview's bounds — has to be
+/// scaled by it, and anything the page reserves *for* AppKit — the traffic
+/// lights' band — has to be divided by it.
+pub fn main_window_zoom() -> f64 {
+    *WEBVIEW_ZOOM.lock_or_recover("webview zoom")
+}
+
+/// Re-assert the zoom after the renderer loads. WebKit resets page zoom on a
+/// fresh document, and the renderer boots assuming 1.0 until it is told
+/// otherwise, so a reload has to restate both.
+pub fn restore_main_window_zoom<R: Runtime>(app: &AppHandle<R>) {
+    apply_main_window_zoom(app, main_window_zoom());
 }
 
 #[cfg(debug_assertions)]

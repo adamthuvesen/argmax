@@ -1,6 +1,6 @@
 # IPC
 
-Renderer IPC talks to Rust through `window.argmax`. Commands use explicit names (`"providers:launch"`, `"session:events-since"`, etc.). Window drag and zoom controls use Tauri's window API directly via [windowChrome.ts](../src/renderer/lib/windowChrome.ts).
+Renderer IPC talks to Rust through `window.argmax`. Commands use explicit names (`"providers:launch"`, `"session:events-since"`, etc.). Window drag and zoom controls use Tauri's window API directly via [windowChrome.ts](../src/renderer/lib/windowChrome.ts). ⌘+/⌘− run through the menu ([menu.rs](../src-tauri/src/menu.rs)), which sets the webview's page zoom and publishes the factor on the `ui:zoom` event — restated on every page load. The renderer mirrors it onto `--app-zoom`, and the CSS that reserves the native traffic lights' band divides it back out ([shell-layout.css](../src/renderer/styles/shell-layout.css)): page zoom scales CSS px, AppKit's buttons keep their size in window points.
 
 `window.argmax.system.confirm(message)` resolves to a boolean. The desktop
 bridge uses the official dialog plugin's message command with OK and Cancel

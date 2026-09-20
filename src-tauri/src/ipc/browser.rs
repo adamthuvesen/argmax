@@ -342,10 +342,31 @@ pub(crate) fn browser_webview(app: &AppHandle, tab_id: &str) -> ArgmaxResult<Web
         .ok_or_else(|| ArgmaxError::service("BROWSER_NOT_OPEN", "browser tab is not open"))
 }
 
+/// A tab's surface is measured in the renderer, in CSS px; `add_child` and
+/// `set_bounds` take window points. Page zoom is the ratio between them, so a
+/// zoomed-out window would otherwise glue the page to a webview that overhangs
+/// it by 1/zoom.
+fn scaled_bounds(bounds: &BrowserBounds) -> (LogicalPosition<f64>, LogicalSize<f64>) {
+    let (x, y, width, height) = scale_bounds(bounds, crate::menu::main_window_zoom());
+    (LogicalPosition::new(x, y), LogicalSize::new(width, height))
+}
+
+/// CSS px times the window's page zoom, floored at one point so a collapsed
+/// panel still leaves the webview something to be.
+fn scale_bounds(bounds: &BrowserBounds, zoom: f64) -> (f64, f64, f64, f64) {
+    (
+        bounds.x * zoom,
+        bounds.y * zoom,
+        (bounds.width * zoom).max(1.0),
+        (bounds.height * zoom).max(1.0),
+    )
+}
+
 fn bounds_rect(bounds: &BrowserBounds) -> tauri::Rect {
+    let (position, size) = scaled_bounds(bounds);
     tauri::Rect {
-        position: LogicalPosition::new(bounds.x, bounds.y).into(),
-        size: LogicalSize::new(bounds.width.max(1.0), bounds.height.max(1.0)).into(),
+        position: position.into(),
+        size: size.into(),
     }
 }
 
@@ -796,12 +817,9 @@ fn open_tab_with_url(
             });
         });
 
+    let (position, size) = scaled_bounds(&bounds);
     let created = window
-        .add_child(
-            builder,
-            LogicalPosition::new(bounds.x, bounds.y),
-            LogicalSize::new(bounds.width.max(1.0), bounds.height.max(1.0)),
-        )
+        .add_child(builder, position, size)
         .map_err(|error| ArgmaxError::service("BROWSER_CREATE_FAILED", error.to_string()))?;
     // Before WebKit creates the first document: this call is inline on the
     // main thread, and the navigation started above cannot produce a document
@@ -1464,6 +1482,33 @@ mod tests {
             tab_id: tab_id.to_string(),
             owner_session_id: None,
         }
+    }
+
+    // The renderer measures the panel in CSS px. At 80% zoom the same surface
+    // is 0.8 window points per CSS px, and a webview placed at face value
+    // overhangs the window by a quarter of its size.
+    #[test]
+    fn bounds_are_scaled_from_css_px_to_window_points() {
+        let bounds = BrowserBounds {
+            x: 100.0,
+            y: 50.0,
+            width: 800.0,
+            height: 600.0,
+        };
+        assert_eq!(scale_bounds(&bounds, 0.8), (80.0, 40.0, 640.0, 480.0));
+        assert_eq!(scale_bounds(&bounds, 1.0), (100.0, 50.0, 800.0, 600.0));
+    }
+
+    // A hidden or collapsed panel measures zero; the webview still needs a size.
+    #[test]
+    fn a_collapsed_surface_keeps_one_point_of_webview() {
+        let bounds = BrowserBounds {
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+        };
+        assert_eq!(scale_bounds(&bounds, 0.5), (0.0, 0.0, 1.0, 1.0));
     }
 
     #[test]

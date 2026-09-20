@@ -2,8 +2,16 @@
 .app-shell {
   /* Shared macOS titlebar geometry. The toggle is `position: fixed`, so any
      surface that borrows the titlebar strip must read these tokens rather than
-     hard-coding a px inset that drifts when trafficLightPosition changes. */
-  --titlebar-toggle-left: 85px;
+     hard-coding a px inset that drifts when trafficLightPosition changes.
+
+     Every length here is divided by `--app-zoom` (lib/windowChrome.ts publishes
+     the window's ⌘+/⌘− factor). The traffic lights are AppKit's: they keep
+     their size and position in window points whatever the page does, while
+     page zoom scales CSS px. Without the division a zoomed-out window reserves
+     a proportionally smaller band and the buttons land on top of the first nav
+     row. Our own glyph sizes are left alone — they are page chrome and are
+     meant to zoom. */
+  --titlebar-toggle-left: calc(85px / var(--app-zoom, 1));
   --titlebar-toggle-width: 30px;
   --titlebar-toggle-gap: 14px;
   --titlebar-leading-inset: calc(
@@ -12,8 +20,8 @@
   /* Measured centreline of the native traffic lights — NOT trafficLightPosition.y
      verbatim. Tuned by eye; the toggle top and collapsed titlebar strip derive
      from this one value. */
-  --titlebar-center: 22px;
-  --titlebar-strip-height: 44px;
+  --titlebar-center: calc(22px / var(--app-zoom, 1));
+  --titlebar-strip-height: calc(44px / var(--app-zoom, 1));
   display: grid;
   grid-template-columns: 272px minmax(0, 1fr);
   height: 100dvh;
@@ -75,7 +83,7 @@ body:has(.app-shell[data-sidebar-translucent="true"]) {
    of the overflow and collapse, dragging the nav up under the buttons. */
 .window-controls {
   flex: 0 0 auto;
-  height: 44px;
+  height: var(--titlebar-strip-height);
   margin-bottom: 2px;
 }
 

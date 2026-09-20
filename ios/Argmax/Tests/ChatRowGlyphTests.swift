@@ -39,7 +39,7 @@ final class ChatRowGlyphTests: XCTestCase {
     /// picked icon and a PR are the chat's own state, not the CLI's badge.
     func testProviderMarksOffHidesTheMarkAlone() {
         let unpicked = makeRow()
-        XCTAssertEqual(ChatRowGlyph(row: unpicked, chatIcons: true, providerMarks: false), .empty)
+        XCTAssertEqual(ChatRowGlyph(row: unpicked, chatIcons: true, providerMarks: false), .idle)
 
         let picked = makeRow(icon: "Flame", iconColor: "clay")
         XCTAssertEqual(

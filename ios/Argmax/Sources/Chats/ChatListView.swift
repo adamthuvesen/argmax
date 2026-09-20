@@ -600,32 +600,31 @@ struct ChatListRow: View {
     var stagger = 0
     let open: () -> Void
 
-    /// Settings → Appearance. With icons off the meta line leads with only a
-    /// running chat's nest; with marks off it drops the bare CLI badge.
+    /// Settings → Appearance controls the leading glyph, keeping running
+    /// chats visible even when custom icons are hidden.
     @Environment(\.chatIcons) private var chatIcons
     @Environment(\.providerMarks) private var providerMarks
     /// The branch is drawn inside a concatenated `Text`, which takes a `Font`
     /// rather than a view modifier — so this row resolves the face itself.
     @Environment(\.typeScale) private var typeScale
 
+    @ScaledMetric(relativeTo: .body) private var titleLineHeight: CGFloat = 22
+
     var body: some View {
         Button(action: open) {
             HStack(alignment: .top, spacing: 0) {
+                let glyph = ChatRowGlyph(row: row, chatIcons: chatIcons, providerMarks: providerMarks)
+                if glyph != .empty {
+                    ChatRowGlyphView(glyph: glyph, size: 14)
+                        .frame(width: 16, height: titleLineHeight)
+                        .padding(.trailing, Spacing.snug)
+                }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(row.workspace.taskLabel)
                         .typeRowTitle()
                         .lineLimit(1)
                         .truncationMode(.tail)
-                    // The glyph leads the second line rather than owning a
-                    // column of its own: a chat with nothing to show is then
-                    // missing a word, not indented past a hole, and the
-                    // title sits on the gutter whether or not a turn is in
-                    // flight. See docs/design/chat-list-glyphs.
                     HStack(spacing: Spacing.snug - Spacing.hair) {
-                        let glyph = ChatRowGlyph(row: row, chatIcons: chatIcons, providerMarks: providerMarks)
-                        if glyph != .empty {
-                            ChatRowGlyphView(glyph: glyph)
-                        }
                         subtitle
                         if let arcName = row.arcName {
                             Image(systemName: "point.3.connected.trianglepath.dotted")

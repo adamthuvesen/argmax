@@ -1,37 +1,8 @@
 import SwiftUI
 
-// The glyph that leads a chat row's second line: one glyph, chosen in one
-// order.
-//
-//   1. Running wins over everything. A turn in flight is the most perishable
-//      thing a list of a hundred chats has to say, and the nest is how every
-//      surface in Argmax says it. It wears the chat's own icon colour when
-//      there is one, so a row keeps its identity while it works.
-//   2. Otherwise the chat's own icon, if it picked one on the Mac.
-//   3. Otherwise the workspace's pull request, merged or open — the
-//      sidebar's own precedence (`statusOverlayFor` in
-//      `SidebarSessionRow.tsx`): a custom icon wins, a PR beats the bare
-//      provider mark. The desktop also rides a live PR as a small corner dot
-//      *on* a custom icon; this build doesn't draw that overlay yet, so a
-//      chat with both a picked icon and an open PR shows only the icon.
-//   4. Otherwise the provider's mark.
-//
-// Settings → Appearance holds two switches over this order. "Chat icons"
-// reaches steps 2 through 4: off, a row draws nothing but the nest, because a
-// turn in flight is the one thing the glyph says that a title cannot.
-// "Provider marks", under it, reaches step 4 alone — the bare CLI badge on
-// chats that picked nothing.
-//
-// The glyph sits in the meta line, before the project, at the meta size. It
-// used to own a 36pt leading column, which had to stand whether or not a row
-// had anything to put in it so the titles would not move when a turn
-// started; with marks off, that left most of the list indented past a hole.
-// A word-sized glyph in the second line costs nothing when it is missing
-// (docs/design/chat-list-glyphs, variant A).
-//
-// The choice is a value rather than a `ViewBuilder` so the order can be
-// tested without a renderer; `ChatRowGlyphView` is the only thing that turns
-// it into pixels.
+// The leading glyph follows the desktop sidebar: running nest, custom icon,
+// pull request, provider mark, then a quiet hollow circle. Chat icons off
+// hides the column except while running. Provider marks off keeps the circle.
 enum ChatRowGlyph: Equatable {
     /// A turn is in flight. The payload is the chat's `iconColor` token, or
     /// nil for the accent.
@@ -44,8 +15,8 @@ enum ChatRowGlyph: Equatable {
     /// The workspace's most recent PR still open, in `--pr-open` sage.
     case prOpen(number: Int?)
     case providerMark(provider: String)
-    /// Nothing to show: the icons are switched off, or there was never
-    /// anything to draw. The row leaves the slot out.
+    case idle
+    /// Chat icons are switched off. The row leaves the slot out.
     case empty
 
     init(row: ChatRow, chatIcons: Bool, providerMarks: Bool) {
@@ -62,7 +33,7 @@ enum ChatRowGlyph: Equatable {
         } else if providerMarks {
             self = .providerMark(provider: row.session.provider)
         } else {
-            self = .empty
+            self = .idle
         }
     }
 }
@@ -78,11 +49,8 @@ struct ChatRowGlyphView: View {
                 WorkingNest(size: size, tint: SessionIcon.color(for: tint))
             case .icon(let name, let tint):
                 Image(systemName: SessionIcon.symbol(for: name) ?? "circle")
-                    // A symbol's point size is its font size, and the glyph
-                    // draws taller and wider than that: at the slot's own
-                    // size a Brain overran the meta text beside it by a
-                    // third. Four-fifths puts its cap height on the text's
-                    // and the PR mark's.
+                    // SF Symbols extend beyond their point size. Keep them
+                    // inside the same compact slot as the PR and status marks.
                     .typeSymbol(size: size * 0.8, weight: .medium)
                     .symbolRenderingMode(.hierarchical)
                     // An icon with no colour is still a deliberate pick, so
@@ -98,6 +66,11 @@ struct ChatRowGlyphView: View {
                     .accessibilityLabel(number.map { "Pull request #\($0) open" } ?? "Pull request open")
             case .providerMark(let provider):
                 ProviderMark(provider: provider, size: size)
+            case .idle:
+                Circle()
+                    .strokeBorder(Theme.muted.opacity(0.5), lineWidth: 1)
+                    .frame(width: size * 0.65, height: size * 0.65)
+                    .accessibilityHidden(true)
             case .empty:
                 Color.clear
             }

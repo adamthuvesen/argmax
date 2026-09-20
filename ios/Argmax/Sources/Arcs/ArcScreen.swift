@@ -563,26 +563,30 @@ struct ArcListRow: View {
     let separated: Bool
     let open: () -> Void
 
+    @ScaledMetric(relativeTo: .body) private var titleLineHeight: CGFloat = 22
+
     var body: some View {
         Button(action: open) {
             HStack(alignment: .top, spacing: 0) {
+                Group {
+                    if sessions.contains(where: { $0.state == .running }) {
+                        WorkingNest(size: 14)
+                    } else {
+                        Image(systemName: "point.3.connected.trianglepath.dotted")
+                            .typeSymbol(.caption, weight: .medium)
+                            .foregroundStyle(Theme.muted)
+                    }
+                }
+                .frame(width: 16, height: titleLineHeight)
+                .padding(.trailing, Spacing.snug)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(arc.name)
                         .typeRowTitle()
                         .lineLimit(1)
                         .truncationMode(.tail)
-                    HStack(spacing: Spacing.snug - Spacing.hair) {
-                        if sessions.contains(where: { $0.state == .running }) {
-                            WorkingNest(size: 14)
-                        } else {
-                            Image(systemName: "point.3.connected.trianglepath.dotted")
-                                .typeSymbol(.caption, weight: .medium)
-                                .foregroundStyle(Theme.muted)
-                        }
-                        Text(status)
-                            .typeSubtitle(ink: Theme.muted)
-                            .lineLimit(1)
-                    }
+                    Text(status)
+                        .typeSubtitle(ink: Theme.muted)
+                        .lineLimit(1)
                 }
                 Spacer(minLength: Spacing.row)
                 VStack(alignment: .trailing, spacing: Spacing.tight) {

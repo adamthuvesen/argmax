@@ -190,16 +190,13 @@ The Usage page carries the desktop's remaining read:
   above it on the desktop, spend per provider, is not here: it is a page, and
   it reads no better for being squeezed into a group.
 
-The glyph that leads a list row's second line is its own pair of files,
-because what goes in it is a rule rather than a glyph:
+Chat and arc rows place a compact glyph beside the title, with the subtitle
+aligned beneath the title, matching the desktop sidebar.
 
-- `Sources/Chats/ChatRowGlyph.swift` — the order it resolves in. A running
-  chat shows the working nest, in its own icon colour when it has one; a
-  quiet one shows the icon the desktop's picker gave it; failing both, the
-  provider's mark, which is the only thing Settings → Appearance's "Provider
-  marks" switch hides. A row with nothing to show leaves the slot out; the
-  glyph gave up its leading column so an empty one could not indent the
-  title (`docs/design/chat-list-glyphs`).
+- `Sources/Chats/ChatRowGlyph.swift` resolves running nests, custom icons,
+  pull requests, then provider marks. With provider marks hidden, ordinary
+  chats show a quiet hollow circle. Turning Chat icons off removes the
+  column except for running chats.
 - `Sources/Design/SessionIcon.swift` — the wire vocabulary that rule reads:
   the desktop's curated Lucide names mapped to SF Symbols, and its nine
   palette *tokens* ("violet", not a hex value) resolved per appearance from

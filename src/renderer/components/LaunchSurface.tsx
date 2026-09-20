@@ -681,6 +681,7 @@ export function LaunchSurface({
         label: "Goal",
         hint: "Keep working until a condition holds",
         icon: Target,
+        writesDraft: true,
         run: () => setPrompt("/goal ")
       });
     }

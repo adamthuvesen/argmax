@@ -15,6 +15,14 @@ export interface ComposerCommand {
   hint: string;
   icon: LucideIcon;
   run: () => void;
+  /**
+   * The command rewrites the draft rather than acting on the surface — it
+   * writes its own `/name ` opener and the submit branch that dispatches it
+   * only reads a leading token. The menu offers it while the `/` opens the
+   * draft and nowhere else: picked mid-sentence it would replace everything
+   * already typed with a token that could not have run there anyway.
+   */
+  writesDraft?: boolean;
 }
 
 /**

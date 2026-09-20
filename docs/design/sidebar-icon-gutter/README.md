@@ -56,8 +56,9 @@ frame each at 2x.
 
 **B4 · Ring, 8px**, chosen 2026-09-20 and shipped: `.session-link` runs a 14px
 lead column with a 9px gap, every marker glyph dropped from 16px to 14px, and
-the old `.session-link-lead-spacer` became `.session-link-lead-ring` — an 8px
-circle, 1px `--muted` stroke, 50% opacity. B2's filled 6px dot shipped first
+the old `.session-link-lead-spacer` became `.session-link-lead-ring` — a 1px
+`--muted` circle at 50% opacity, 8px at first and 7px once
+`docs/design/sidebar-marker-scale` settled the column's size ladder. B2's filled 6px dot shipped first
 and was replaced the same day: it was the same shape as the unread marker, so
 the two were separated only by tint. Hollow versus filled is the difference
 that survives at this size.

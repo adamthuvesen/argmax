@@ -250,7 +250,9 @@ enum SessionIcon {
     }
 
     /// The nine palette tokens, light then dark, from
-    /// `--session-icon-<name>` in `tokens.css`. Copied rather than derived:
+    /// `--session-icon-<name>` in `tokens.css`. The chat icon picker and the
+    /// subagent emblems share them, so a hue lives in one place here too.
+    /// Copied rather than derived:
     /// dark is not a formula applied to light there either — the hues are
     /// re-lit for charcoal — so a generated pair would disagree with the Mac.
     private static let palette: [String: UIColor] = [
@@ -269,7 +271,13 @@ enum SessionIcon {
     /// the desktop's blue default: the caller's fallback is the accent, and
     /// substituting a colour here would make every row look chosen.
     static func color(for token: String?) -> Color? {
-        guard let token, let color = palette[token] else { return nil }
-        return Color(color)
+        uiColor(for: token).map(Color.init)
+    }
+
+    /// The same nine, as a `UIColor`. Subagent emblems mix their rim and sheet
+    /// out of the face (`AgentEmblemPalette`), and a mix needs channels.
+    static func uiColor(for token: String?) -> UIColor? {
+        guard let token else { return nil }
+        return palette[token]
     }
 }

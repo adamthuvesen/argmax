@@ -730,6 +730,15 @@ describe("SidebarSessionRow", () => {
     expect(reduceBlock, "expected reduced-motion override for the working parts").not.toBeNull();
   });
 
+  it("reserves both action slots for PR count badges even without an archive button", () => {
+    const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), "../styles.css");
+    const css = readBundledCss(cssPath);
+
+    expect(css).toMatch(
+      /\.session-row \.session-link\.session-link-has-pr-count\s*\{[^}]*padding-right:\s*70px/i
+    );
+  });
+
   it("ships sidebar action CSS that reveals on hover and stays keyboard-reachable", () => {
     const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), "../styles.css");
     const css = readBundledCss(cssPath);

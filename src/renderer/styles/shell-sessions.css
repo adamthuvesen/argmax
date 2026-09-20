@@ -270,8 +270,14 @@
 
 /* The pin / archive actions are hidden until hover or focus. A single action
    fits inside the base padding (which already clears the tokens badge);
-   PR counts reserve both action slots at rest so the badge never shifts. */
-.session-row:has(.session-pin-btn):has(.session-archive-btn) .session-link-has-pr-count,
+   PR counts reserve both action slots at rest so the badge never shifts.
+   Priority rows often mount only the pin (running sessions have no archive
+   button), so the wider inset keys off the badge class alone — not on both
+   actions being in the DOM. */
+.session-row .session-link.session-link-has-pr-count {
+  padding-right: 70px;
+}
+
 .session-row:hover:has(.session-pin-btn):has(.session-archive-btn) .session-link,
 .session-row:focus-within:has(.session-pin-btn):has(.session-archive-btn) .session-link {
   padding-right: 70px;

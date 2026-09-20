@@ -250,6 +250,25 @@ export function AgentsView({
     // owns that, and sorting here would only move DOM nodes.
     return openOrder;
   }, [codenames, events, multitasks, parentSession?.provider, parentSession?.state, tabIds, tools]);
+  // A subagent's native identity is encoded in its tab id, so it changes only
+  // when the tab list does. Building it inline in the pane's props handed
+  // every pane a fresh object on every render instead, and the panes key their
+  // loads on it.
+  const nativeIdentities = useMemo(
+    () => new Map(tabIds.map((id): [string, NativeAgentIdentity | null] => {
+      const tab = readAgentTab(id);
+      return [
+        id,
+        tab.kind === "subagent" && tab.providerParentConversationId && tab.providerChildSessionId
+          ? {
+              providerParentConversationId: tab.providerParentConversationId,
+              providerChildSessionId: tab.providerChildSessionId
+            }
+          : null
+      ];
+    })),
+    [tabIds]
+  );
   // Launch order, oldest leftmost: a new agent appends on the right and the
   // tabs already there stay put. Completed work leaves the strip once it is no
   // longer selected, but the selection itself never changes anyone's position.
@@ -468,15 +487,7 @@ export function AgentsView({
                   onOpenReview={onOpenReview}
                   parentSession={parentSession}
                   parentToolUseId={tab.rootToolUseId ?? tab.id}
-                  nativeIdentity={(() => {
-                    const parsed = readAgentTab(tab.id);
-                    return parsed.kind === "subagent" && parsed.providerParentConversationId && parsed.providerChildSessionId
-                      ? {
-                          providerParentConversationId: parsed.providerParentConversationId,
-                          providerChildSessionId: parsed.providerChildSessionId
-                        }
-                      : null;
-                  })()}
+                  nativeIdentity={nativeIdentities.get(tab.id) ?? null}
                   workspace={workspace}
                 />
               )}

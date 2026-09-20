@@ -634,37 +634,53 @@ function AgentActivityRun({
     }
   }, [activity.parentTool?.providerChildSessionId, activity.parentTool?.providerParentConversationId, agentKey, nativeIdentity, onLoadAgentEvents, parentSessionId, parentToolUseId]);
 
+  // Both load effects below run for *this agent*, not for whatever identity
+  // the callbacks happen to have. Depending on the callbacks made the pane
+  // feed itself: a load merges into the session timeline, the new `events`
+  // array rebuilds `activity`, the rebuilt callback re-fired the effect, and
+  // the dock then read `session:agent-events` and `session:events-since` as
+  // fast as the IPC could answer (~46 and ~230 calls a second, measured) for
+  // as long as the parent session was running. The refs keep the newest
+  // callback without putting it in the dependency list.
+  const loadAgentEventsRef = useRef(loadAgentEventsGuarded);
+  const loadSessionEventsRef = useRef(onLoadSessionEvents);
+  useEffect(() => {
+    loadAgentEventsRef.current = loadAgentEventsGuarded;
+    loadSessionEventsRef.current = onLoadSessionEvents;
+  });
+
   useEffect(() => {
     if (!parentSessionId) return;
-    void onLoadSessionEvents?.(parentSessionId);
-    void loadAgentEventsGuarded();
-  }, [loadAgentEventsGuarded, onLoadSessionEvents, parentSessionId]);
+    void loadSessionEventsRef.current?.(parentSessionId);
+    void loadAgentEventsRef.current();
+  }, [agentKey, parentSessionId]);
 
   // Set when this pane stopped polling a live run because another tab was
   // shown. Codex and Cursor child traces are imported by the agent-events read
   // itself, so a run that finished out of sight would otherwise stay on
   // whatever it last loaded.
   const missedPollRef = useRef(false);
+  const canLoadAgentEvents = Boolean(onLoadAgentEvents);
+  const shouldPoll = parentSession?.state === "running" || activity.status === "running";
   useEffect(() => {
-    if (!parentSessionId || !onLoadAgentEvents) return;
-    const shouldPoll = parentSession?.state === "running" || activity.status === "running";
+    if (!parentSessionId || !canLoadAgentEvents) return;
     if (!visible) {
       if (shouldPoll) missedPollRef.current = true;
       return;
     }
     if (missedPollRef.current) {
       missedPollRef.current = false;
-      void loadAgentEventsGuarded();
+      void loadAgentEventsRef.current();
     }
     if (!shouldPoll) return;
     const interval = window.setInterval(() => {
       // A backgrounded window resumes polling on refocus (dashboard deltas
       // keep state fresh meanwhile); skip ticks for invisible windows.
       if (document.hidden) return;
-      void loadAgentEventsGuarded();
+      void loadAgentEventsRef.current();
     }, 1500);
     return () => window.clearInterval(interval);
-  }, [activity.status, loadAgentEventsGuarded, onLoadAgentEvents, parentSession?.state, parentSessionId, visible]);
+  }, [agentKey, canLoadAgentEvents, parentSessionId, shouldPoll, visible]);
 
   // The launch is when the run started, so the chip's clock counts from there
   // rather than from the subagent's first visible event.

@@ -348,8 +348,14 @@ function ToolCallGroupBubbleInner({
         />
       );
   const activityStatus = activityStatusIsRunning ? "running" : summary.status;
-  const headerRef = useRef<HTMLButtonElement | null>(null);
-  useReadingWave(headerRef, activityStatus === "running" || ownsBeat, activityHeadline);
+  // State, not a ref: the header only mounts once the group has a second call,
+  // and the wave has to measure the line the frame it appears.
+  const [header, setHeader] = useState<HTMLButtonElement | null>(null);
+  // Keyed on the wording actually on screen, not the newest one: the dwell in
+  // `usePacedHeadline` lands a clause a beat after the summary changed, and
+  // remeasuring on the summary leaves that clause's span without an offset —
+  // it then paints the band from the line's left edge, a second head.
+  useReadingWave(header, activityStatus === "running" || ownsBeat, paced.shown);
   // A delete is a file change, not a failure; see ToolCallRow.
   const iconIsDanger = activityStatus === "error"
     || firstTool?.cancelled === true
@@ -382,7 +388,7 @@ function ToolCallGroupBubbleInner({
               already runs its own tick animation on every change, and one
               `animation` declaration cannot hold both. */}
           <button
-            ref={headerRef}
+            ref={setHeader}
             className="tool-call-group-header"
             data-reading-wave={activityStatus === "running" || ownsBeat ? "true" : undefined}
             type="button"

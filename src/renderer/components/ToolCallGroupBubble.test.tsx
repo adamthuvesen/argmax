@@ -4,6 +4,7 @@ import { buildToolCallGroup, type ToolCall } from "../lib/toolCalls.js";
 import type { ActivityMember } from "../lib/turnChildren.js";
 import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
 import { ActivityBeatContext } from "../lib/activityBeat.js";
+import { CLAUSE_DWELL_MS } from "../lib/pacedHeadline.js";
 import { ThoughtBlock } from "./ThoughtBlock.js";
 
 afterEach(() => {
@@ -471,6 +472,28 @@ describe("the beat between calls", () => {
     expect(container.querySelector('[data-reading-wave="true"]')).not.toBeNull();
   });
 
+  // One head, whatever the line does. A span without its own offset paints the
+  // band from its own left edge, so an unmeasured line shows a lighter spot per
+  // span: the headline appears only once a group has a second call, and a new
+  // clause lands a beat after the summary changed (lib/pacedHeadline.ts).
+  it("gives every word of the headline its place in the one pass", () => {
+    vi.useFakeTimers();
+    const read = tool("read", { status: "running", completedAt: null });
+    const second = tool("second", { status: "running", completedAt: null });
+    const { container, rerender } = render(
+      <ToolCallGroupBubble group={buildToolCallGroup([read])} />
+    );
+    rerender(<ToolCallGroupBubble group={buildToolCallGroup([read, second])} />);
+    expectMeasuredWave(container);
+    const ran = tool("ran", { name: "Bash", status: "running", completedAt: null, inputPreview: "npm test", inputFull: { command: "npm test" } });
+    rerender(<ToolCallGroupBubble group={buildToolCallGroup([read, second, ran])} />);
+    // The new clause waits out the dwell, so the line is re-worded well after
+    // the summary that named it changed.
+    act(() => { vi.advanceTimersByTime(CLAUSE_DWELL_MS); });
+    expect(container.querySelector(".tool-call-group-eyebrow")?.textContent).toContain("command");
+    expectMeasuredWave(container);
+  });
+
   it("leaves a group alone once the beat has moved on", () => {
     const { container } = render(
       <ActivityBeatContext.Provider value="elsewhere">
@@ -480,3 +503,12 @@ describe("the beat between calls", () => {
     expect(container.querySelector('[data-reading-wave="true"]')).toBeNull();
   });
 });
+
+/** Every word of a waving line has to know where it starts in the pass. */
+function expectMeasuredWave(container: HTMLElement): void {
+  const spans = Array.from(container.querySelectorAll<HTMLElement>(".reading-wave-text"));
+  expect(spans.length).toBeGreaterThan(1);
+  for (const span of spans) {
+    expect(span.style.getPropertyValue("--reading-wave-offset")).not.toBe("");
+  }
+}

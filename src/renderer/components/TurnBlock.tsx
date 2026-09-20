@@ -68,6 +68,7 @@ export function TurnBlock({
   onShowEarlierBody,
   headerTimestampIso,
   turnMarkdown,
+  brief,
   changes,
   onFork,
   revert
@@ -106,6 +107,12 @@ export function TurnBlock({
   // The turn's assistant prose, for the hover footer's Copy action. The
   // footer renders only after the turn finishes and only while hovered.
   turnMarkdown?: string;
+  // What the turn was asked to do, when the surface has something to show.
+  // Only a subagent run does: its brief is the launch prompt. `control` joins
+  // the header row so the brief's toggle and the turn's elapsed share one
+  // hairline instead of stacking two, and `quote` sits between them and the
+  // body. A chat turn has no brief and renders exactly as before.
+  brief?: { control: JSX.Element; quote: JSX.Element | null };
   // Summary of the files this turn wrote, rendered under the body once the
   // turn settles. A summary of a turn still in progress would be a moving
   // number, so the parent only supplies it for a finished turn.
@@ -236,7 +243,8 @@ export function TurnBlock({
 
   return (
     <div className="turn-block" data-running={running ? "true" : undefined}>
-      <div className="turn-block-header">
+      <div className="turn-block-header" data-brief={brief ? "true" : undefined}>
+        {brief?.control ?? null}
         {headerTimestampLabel ? (
           <span
             className="turn-block-timestamp"
@@ -275,6 +283,7 @@ export function TurnBlock({
           <span className="turn-block-chip turn-block-chip-static">{staticChipLabel}</span>
         ) : null}
       </div>
+      {brief?.quote ?? null}
       {visibleBody.length > 0 ? (
         <div
           className="turn-block-body"

@@ -527,13 +527,13 @@ describe("App grid", () => {
     // The panel's tab carries the spawn's codename ("task-1" hashes to Gauss).
     expect(screen.getByRole("tab", { name: /Gauss/ })).toBeInTheDocument();
     expect(within(pane).getByRole("heading", { name: "Map renderer" })).toBeInTheDocument();
-    // The brief folds behind its chip until asked for.
-    expect(within(pane).queryByText(promptText)).toBeNull();
-    const expandInstructions = within(pane).getByRole("button", { name: "Expand instructions" });
-    expect(expandInstructions).toHaveAttribute("aria-expanded", "false");
-    fireEvent.click(expandInstructions);
-    expect(within(pane).getByRole("button", { name: "Collapse instructions" })).toHaveAttribute("aria-expanded", "true");
+    // The brief shows on open, capped, and its chip folds it away.
     expect(within(pane).getAllByText(promptText)).toHaveLength(1);
+    const collapseInstructions = within(pane).getByRole("button", { name: "Collapse instructions" });
+    expect(collapseInstructions).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(collapseInstructions);
+    expect(within(pane).queryByText(promptText)).toBeNull();
+    expect(within(pane).getByRole("button", { name: "Expand instructions" })).toHaveAttribute("aria-expanded", "false");
     const childMessage = within(pane).getByText("Subagent found parser.");
     const result = within(pane).getByRole("region", { name: "Agent result" });
     expect(childMessage.compareDocumentPosition(result) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
@@ -898,7 +898,6 @@ describe("App grid", () => {
     fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
 
     const pane = await screen.findByRole("region", { name: /^Agent activity: / });
-    fireEvent.click(within(pane).getByRole("button", { name: "Expand instructions" }));
     expect(within(pane).getByText("renderer").tagName).toBe("STRONG");
     expect(within(pane).getByRole("button", { name: "Open src/renderer/App.tsx" })).toBeInTheDocument();
     expect(within(pane).getByText("Keep it short.").tagName).toBe("LI");

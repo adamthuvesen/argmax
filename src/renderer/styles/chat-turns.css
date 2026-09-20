@@ -215,9 +215,35 @@
 /* The header's small type sits high in its line box while a tool row's label
    sits low in its padded row, so the turn's own 10px gap read tighter under
    the header than the 16px body gap between a tool group and the next line.
-   The extra margin evens the two by eye. */
+   The extra margin evens the two by eye. A brief sits between the two and
+   owns that space instead. */
 .turn-block-header + .turn-block-body {
   margin-top: var(--space-2_5);
+}
+
+/* A brief sits between the header and the body and owns both seams, so the
+   run reads on one rhythm: ~19px of ink-to-ink space from the band down
+   through the answer. The label under the brief is taller in its line box
+   than the header's chip, so it needs 2px less below it. */
+.turn-block-header[data-brief] + .agent-activity-brief {
+  margin-top: var(--space-1_5);
+}
+
+.agent-activity-brief + .turn-block-body {
+  margin-top: var(--space-2);
+}
+
+/* A run's header is a band: the brief's toggle on the left, the turn's
+   elapsed on the right, and the hairline running between them. `::after`
+   always generates after the real children, so the elapsed is ordered past
+   it rather than moved in the DOM. */
+.turn-block-header[data-brief] > .turn-block-chip:last-child:not(:first-child) {
+  order: 1;
+  padding-right: 0;
+}
+
+.turn-block-header[data-brief] {
+  gap: var(--space-3);
 }
 
 .turn-block-tools {

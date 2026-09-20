@@ -1,5 +1,5 @@
 import { ChevronRight } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
 import type { NativeAgentIdentity, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
 import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
 import { useConversationScroll } from "../hooks/useConversationScroll.js";
@@ -201,6 +201,96 @@ function AgentResult({
   );
 }
 
+/**
+ * The launch prompt, quoted back above the run it produced.
+ *
+ * It is reference material, not the agent's answer, so it reads as a
+ * quotation — a left rule and muted `--text-sm` prose — rather than a panel:
+ * a bordered, filled card is this app's vocabulary for *output*, and dressing
+ * the input in it made a forty-line brief outweigh the work it asked for. It
+ * shows by default, capped at `--agent-brief-lines`, and says how much it is
+ * holding back. While clipped the quote itself lifts the cap, so the fading
+ * text is the affordance; a click that ends a text selection is a read, not a
+ * request to expand, and is left alone.
+ */
+function AgentBrief({
+  prompt,
+  expanded,
+  onExpand,
+  workspace,
+  onOpenFile
+}: {
+  prompt: string;
+  expanded: boolean;
+  onExpand: () => void;
+  workspace: WorkspaceSummary | null;
+  onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
+}): JSX.Element {
+  const quoteRef = useRef<HTMLDivElement | null>(null);
+  const [hiddenLines, setHiddenLines] = useState(0);
+  // Measured, not counted from the source: what the reader cannot see is
+  // rendered lines after wrapping, and a brief of three long paragraphs hides
+  // far more than three lines.
+  useLayoutEffect(() => {
+    const node = quoteRef.current;
+    if (!node) return;
+    const measure = (): void => {
+      if (expanded) {
+        setHiddenLines(0);
+        return;
+      }
+      const lineHeight = parseFloat(getComputedStyle(node).lineHeight);
+      const overflow = node.scrollHeight - node.clientHeight;
+      setHiddenLines(
+        overflow > 1 && lineHeight > 0 ? Math.max(1, Math.round(overflow / lineHeight)) : 0
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    // The quote is capped, so its own box stops changing once the content
+    // overflows it — watch the prose inside as well, or a late web font or a
+    // loaded image reflows the brief without ever re-measuring it.
+    observer.observe(node);
+    const content = node.firstElementChild;
+    if (content) observer.observe(content);
+    return () => observer.disconnect();
+  }, [expanded, prompt]);
+
+  const clipped = !expanded && hiddenLines > 0;
+  return (
+    <div
+      className="agent-activity-brief"
+      data-expanded={expanded ? "true" : undefined}
+      data-clipped={clipped ? "true" : undefined}
+    >
+      <div
+        className="agent-activity-brief-quote"
+        ref={quoteRef}
+        onClick={clipped ? (event) => {
+          // A click that lands at the end of a drag-select is the reader
+          // copying a line out of the brief, not asking for the rest of it.
+          if (!document.getSelection()?.isCollapsed) return;
+          // Links and file chips inside the brief keep their own click.
+          if ((event.target as HTMLElement).closest("a, button")) return;
+          onExpand();
+        } : undefined}
+      >
+        <StreamingMarkdown
+          text={prompt}
+          streaming={false}
+          workspace={workspace}
+          onOpenFile={onOpenFile}
+        />
+      </div>
+      {clipped ? (
+        <button type="button" className="agent-activity-brief-more" onClick={onExpand}>
+          Show all ({hiddenLines} more {hiddenLines === 1 ? "line" : "lines"})
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function AgentActivityRun({
   events,
   codename,
@@ -282,7 +372,11 @@ function AgentActivityRun({
   // Resetting it in an effect instead cost the first click after the pane
   // opened — the mount's passive effects can still be queued when it lands, and
   // they then flush over the click's update.
-  const [instructionsExpanded, setInstructionsExpanded] = useState(false);
+  // The brief shows on open. It is what the reader needs to judge everything
+  // under it, and the height cap keeps it from costing more than a few lines;
+  // the chip folds it away for a run whose brief is already known.
+  const [briefShown, setBriefShown] = useState(true);
+  const [briefExpanded, setBriefExpanded] = useState(false);
   const agentKey = parentSessionId
     ? `${parentSessionId}:${parentToolUseId}:${agentRunId ?? "legacy"}`
     : null;
@@ -593,6 +687,38 @@ function AgentActivityRun({
     !showLoadFailureNotice
   );
   const showLimitedNotice = activity.limited && !showAgentActivityThinking && !showLoadFailureNotice;
+  const hasRun = activityChildren.length > 0 || toolItems.length > 0;
+  // The brief's toggle joins the run's header row rather than drawing a
+  // second hairline above it: one band, the control on the left and the
+  // elapsed on the right. See `TurnBlock`'s `brief` prop.
+  const brief = activity.prompt ? {
+    control: (
+      <button
+        type="button"
+        className="turn-block-chip"
+        aria-label={briefShown ? "Collapse instructions" : "Expand instructions"}
+        title={briefShown ? "Collapse instructions" : "Expand instructions"}
+        aria-expanded={briefShown}
+        onClick={() => setBriefShown((shown) => !shown)}
+      >
+        <span>Instructions</span>
+        <ChevronRight
+          size={11}
+          className={`turn-block-chevron${briefShown ? " expanded" : ""}`}
+          aria-hidden="true"
+        />
+      </button>
+    ),
+    quote: briefShown ? (
+      <AgentBrief
+        prompt={activity.prompt}
+        expanded={briefExpanded}
+        onExpand={() => setBriefExpanded(true)}
+        workspace={workspace}
+        {...(onOpenFile ? { onOpenFile } : {})}
+      />
+    ) : null
+  } : null;
   const runChanges = useMemo(() => collectTurnFileChanges(toolItems), [toolItems]);
 
   return (
@@ -618,38 +744,12 @@ function AgentActivityRun({
           tabIndex={ownsScroll ? 0 : undefined}
         >
           <div className="agent-activity-content" ref={contentRef}>
-            {activity.prompt ? (
-              // The brief folds behind the same chip the run's activity uses, so
-              // the pane opens on two quiet lines — Instructions, Worked for — and
-              // the header above already says what the agent was asked to do.
+            {brief && !hasRun ? (
+              // Before the first child event there is no turn to hang the
+              // brief's control on, so it keeps its own row until one arrives.
               <section className="agent-activity-summary" aria-label="Agent instructions">
-                <div className="turn-block-header">
-                  <button
-                    type="button"
-                    className="turn-block-chip"
-                    aria-label={instructionsExpanded ? "Collapse instructions" : "Expand instructions"}
-                    title={instructionsExpanded ? "Collapse instructions" : "Expand instructions"}
-                    aria-expanded={instructionsExpanded}
-                    onClick={() => setInstructionsExpanded((expanded) => !expanded)}
-                  >
-                    <span>Instructions</span>
-                    <ChevronRight
-                      size={11}
-                      className={`turn-block-chevron${instructionsExpanded ? " expanded" : ""}`}
-                      aria-hidden="true"
-                    />
-                  </button>
-                </div>
-                {instructionsExpanded ? (
-                  <div className="agent-activity-prompt">
-                    <StreamingMarkdown
-                      text={activity.prompt}
-                      streaming={false}
-                      workspace={workspace}
-                      onOpenFile={onOpenFile}
-                    />
-                  </div>
-                ) : null}
+                <div className="turn-block-header">{brief.control}</div>
+                {brief.quote}
               </section>
             ) : null}
 
@@ -675,10 +775,10 @@ function AgentActivityRun({
               </div>
             ) : null}
 
-            {activityChildren.length > 0 || toolItems.length > 0 ? (
+            {hasRun ? (
               // The same block the transcript wraps a turn in, so the run carries
               // the same "Worked for Xs" chip: one control over every tool group
-              // and Thought block below it.
+              // and Thought block below it, and the brief's toggle beside it.
               <TurnBlock
                 toolItems={toolItems}
                 assistantTimestamps={assistantTimestamps}
@@ -689,6 +789,7 @@ function AgentActivityRun({
                 hasCollapsibleActivity={compactActivity && activityChildren.some((child) => child.kind === "tool")}
                 hideWorkingWhenCollapsed={minimalActivity}
                 body={activityChildren}
+                {...(brief ? { brief } : {})}
               />
             ) : !showLimitedNotice && !showAgentActivityThinking ? (
               <div className="agent-activity-empty" role="status">

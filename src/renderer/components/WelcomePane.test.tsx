@@ -102,7 +102,7 @@ describe("WelcomePane — provider discovery", () => {
 
     render(<WelcomePane onAddProject={vi.fn()} />);
 
-    await screen.findByText("Claude Code");
+    await within(await screen.findByLabelText("Detected providers")).findByText("Claude Code");
     expect(screen.getByText("claude auth login")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Copy Claude Code login command" })).toBeInTheDocument();
   });
@@ -143,9 +143,11 @@ describe("WelcomePane — provider discovery", () => {
 
     render(<WelcomePane onAddProject={vi.fn()} />);
 
-    await screen.findByText("Claude Code");
+    await within(await screen.findByLabelText("Detected providers")).findByText("Claude Code");
+    // Only installed agents get a row: a config path for a CLI the user does
+    // not have is trivia, not a next step.
     expect(screen.getByText("claude mcp add <name> -- <command>")).toBeInTheDocument();
-    expect(screen.getByText("codex mcp add <name> -- <command>")).toBeInTheDocument();
-    expect(screen.getByText("opencode mcp add")).toBeInTheDocument();
+    expect(screen.queryByText("codex mcp add <name> -- <command>")).toBeNull();
+    expect(screen.queryByText("opencode mcp add")).toBeNull();
   });
 });

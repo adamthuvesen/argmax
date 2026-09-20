@@ -52,6 +52,9 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
   }, [refresh]);
 
   const anyInstalled = providers !== null && providers.some((p) => p.installed);
+  const installedSetupOrder = PROVIDER_SETUP_ORDER.filter((providerId) =>
+    providers?.some((entry) => entry.provider === providerId && entry.installed)
+  );
   const allReady =
     providers !== null &&
     providers.length > 0 &&
@@ -182,6 +185,7 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
         )}
       </section>
 
+      {installedSetupOrder.length > 0 ? (
       <section className="welcome-section" aria-labelledby="welcome-mcp">
         <details className="welcome-mcp">
           <summary>
@@ -190,10 +194,12 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
           </summary>
           <p className="welcome-hint">
             Argmax launches each agent with your existing configuration, so MCP servers you add to a
-            CLI show up in Argmax chats automatically — nothing to configure here.
+            CLI show up in Argmax chats automatically. Each agent keeps its own list here:
           </p>
           <ul className="welcome-mcp-list">
-            {PROVIDER_SETUP_ORDER.map((providerId) => {
+            {/* Only the agents actually on this Mac: a config path for a CLI
+                the user does not have is trivia, not a next step. */}
+            {installedSetupOrder.map((providerId) => {
               const setup = PROVIDER_SETUP[providerId];
               return (
                 <li key={providerId} className="welcome-mcp-row">
@@ -211,6 +217,7 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
           </ul>
         </details>
       </section>
+      ) : null}
 
       <section className="welcome-section welcome-cta" aria-labelledby="welcome-project">
         <div className="welcome-section-heading">

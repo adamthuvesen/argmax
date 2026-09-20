@@ -44,10 +44,10 @@ describe("loading shapes", () => {
     for (const span of usageSpans) expect(span).toHaveClass("loading-block");
   });
 
-  it("puts the working nest beside the phrase, so a wait never reads as content", () => {
+  it("shows only the working nest, naming the wait for assistive tech", () => {
     const { container } = render(<LoadingLine label="Reading remaining usage." />);
 
-    expect(screen.getByRole("status", { name: "Reading remaining usage." })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Reading remaining usage." })).not.toHaveTextContent(/\S/);
     expect(container.querySelector(".working-nest")).toHaveAttribute("data-active", "true");
   });
 });

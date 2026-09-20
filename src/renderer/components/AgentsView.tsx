@@ -32,7 +32,10 @@ type AgentStatus = "running" | "done" | "error" | "missing";
 
 const ACTIVE_STRIP_LIMIT = 4;
 
-function stripPriority(entry: AgentRosterEntry, activeId: string | null): number {
+/** Which entries earn the strip's limited slots once the roster outgrows
+ *  them. This decides membership only: the strip draws the survivors in
+ *  launch order, so selecting a tab never moves it. */
+function slotPriority(entry: AgentRosterEntry, activeId: string | null): number {
   if (entry.id === activeId) return 0;
   if (entry.status === "error") return 1;
   return 2;
@@ -242,28 +245,38 @@ export function AgentsView({
         rootToolUseId: tab.toolUseId
       };
     });
-    // Newest launch leftmost, with everything still running ahead of the rest,
-    // so what is active is visible without scrolling the strip once it fills.
-    // `tabIds` is discovery order, oldest first; sorting is stable so ties keep it.
-    const launchIndex = new Map(openOrder.map((tab, index) => [tab.id, index]));
-    return [...openOrder].sort((a, b) => {
-      const activeFirst = Number(b.status === "running") - Number(a.status === "running");
-      if (activeFirst !== 0) return activeFirst;
-      return (launchIndex.get(b.id) ?? 0) - (launchIndex.get(a.id) ?? 0);
-    });
+    // Discovery order, oldest first. These panels are stacked and shown one at
+    // a time, so their order is not something the reader sees; the strip above
+    // owns that, and sorting here would only move DOM nodes.
+    return openOrder;
   }, [codenames, events, multitasks, parentSession?.provider, parentSession?.state, tabIds, tools]);
-  const stripEntries = useMemo(() => roster.entries
-    .filter((entry) => entry.status !== "done" || entry.id === activeId)
-    .sort((a, b) => {
-      const priority = stripPriority(a, activeId) - stripPriority(b, activeId);
-      return priority || newestAgentFirst(a, b);
-    }), [activeId, roster.entries]);
-  const visibleStripEntries = stripEntries.slice(0, stripLimit);
+  // Launch order, oldest leftmost: a new agent appends on the right and the
+  // tabs already there stay put. Completed work leaves the strip once it is no
+  // longer selected, but the selection itself never changes anyone's position.
+  const stripCandidates = useMemo(
+    () => roster.entries.filter((entry) => entry.status !== "done" || entry.id === activeId),
+    [activeId, roster.entries]
+  );
+  // Over the limit, slots go to the selection, then failures, then the newest
+  // work; the survivors are still drawn in launch order, so switching tabs
+  // shifts at most the one entry that had to make room.
+  const visibleStripEntries = useMemo(() => {
+    if (stripCandidates.length <= stripLimit) return stripCandidates;
+    const launchIndex = new Map(stripCandidates.map((entry, index) => [entry.id, index]));
+    const kept = new Set([...stripCandidates]
+      .sort((a, b) => (
+        slotPriority(a, activeId) - slotPriority(b, activeId) ||
+        (launchIndex.get(b.id) ?? 0) - (launchIndex.get(a.id) ?? 0)
+      ))
+      .slice(0, stripLimit)
+      .map((entry) => entry.id));
+    return stripCandidates.filter((entry) => kept.has(entry.id));
+  }, [activeId, stripCandidates, stripLimit]);
   // Keyboard navigation walks only the tabs that are actually drawn. The full
   // roster has its own vertical listbox navigation.
   const orderedTabIds = visibleStripEntries.map((entry) => entry.id);
   const visibleStripIds = new Set(visibleStripEntries.map((entry) => entry.id));
-  const activeOverflow = Math.max(0, stripEntries.length - visibleStripEntries.length);
+  const activeOverflow = Math.max(0, stripCandidates.length - visibleStripEntries.length);
   const selectRosterEntry = useCallback((id: string): void => {
     agentTabs.openTabs?.([id]);
     agentTabs.selectTab(id);

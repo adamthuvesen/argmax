@@ -114,6 +114,25 @@ describe("tauriBridge", () => {
     expect(unlisten).toHaveBeenCalledTimes(1);
   });
 
+  it("carries the window's zoom to the page that has to undo it", async () => {
+    // styles/shell-layout.css divides the traffic lights' band by this factor,
+    // and browser.rs multiplies a tab's bounds by it.
+    window.__TAURI_INTERNALS__ = {};
+    mocks.listen.mockResolvedValue(vi.fn());
+    const { installTauriBridge } = await import("./tauriBridge.js");
+
+    installTauriBridge();
+    const listener = vi.fn();
+    window.argmax!.system.onZoom(listener);
+    await Promise.resolve();
+
+    expect(mocks.listen).toHaveBeenCalledWith("ui:zoom", expect.any(Function));
+    const zoomCall = mocks.listen.mock.calls.find((call) => call[0] === "ui:zoom");
+    const deliver = zoomCall?.[1] as ((event: { payload: number }) => void) | undefined;
+    deliver?.({ payload: 0.8 });
+    expect(listener).toHaveBeenCalledWith(0.8);
+  });
+
   it("fans one dashboard:delta subscription out to every listener", async () => {
     // The burst diagnostic counts arrivals; a wrapper per listener made the
     // count depend on how many panes were mounted and warned about a delivery

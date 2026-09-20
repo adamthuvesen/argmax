@@ -148,7 +148,7 @@ type ConversationOptions = {
   eventsBackfilled?: boolean;
 };
 
-function conversationElement(
+export function conversationElement(
   session: SessionSummary,
   events: TimelineEvent[],
   options: ConversationOptions

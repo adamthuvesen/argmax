@@ -379,8 +379,8 @@ describe("SessionConversation — streaming & composer", () => {
     expect(container.querySelectorAll(".streaming-caret")).toHaveLength(0);
   });
 
-  it("renders settled Balanced thinking as a collapsed Thought block beside the answer", () => {
-    const thinking = "The user is asking me to read files. Let me start with the README.";
+  it("renders settled Steps thinking as a collapsed Thought block beside the answer", () => {
+    const thinking = "The user is asking me to read files.\n\nLet me start with the README.";
     const answer = "Here's the repo overview.";
 
     renderConversation(
@@ -402,12 +402,14 @@ describe("SessionConversation — streaming & composer", () => {
     expect(toggle.textContent).toContain("Thought");
     expect(screen.getByText(answer)).toBeTruthy();
     expect(screen.queryByLabelText("Thinking preview")).not.toBeInTheDocument();
-    // Collapsed by default — the reasoning text is not shown until expanded.
-    expect(screen.queryByText(thinking)).toBeNull();
+    // Collapsed by default: only the first line rides along in the header, the
+    // rest of the reasoning waits for the disclosure.
+    expect(within(toggle).getByText("The user is asking me to read files.")).toBeInTheDocument();
+    expect(screen.queryByText("Let me start with the README.")).toBeNull();
 
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText(thinking)).toBeTruthy();
+    expect(screen.getByText("Let me start with the README.")).toBeTruthy();
   });
 
   it("labels a finished thought with its duration when the fragments span seconds", () => {
@@ -473,8 +475,11 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.queryByRole("button", { name: "Thought" })).not.toBeInTheDocument();
 
     rerenderConversation(rerender, session, history, { ...options, thinkingDisplay: "collapsed" });
-    expect(screen.getByRole("button", { name: "Thought" })).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText(thinking)).not.toBeInTheDocument();
+    const folded = screen.getByRole("button", { name: "Thought" });
+    expect(folded).toHaveAttribute("aria-expanded", "false");
+    // Folded to its header: the one-line excerpt is all that remains.
+    expect(screen.getAllByText(thinking)).toHaveLength(1);
+    expect(within(folded).getByText(thinking)).toBeInTheDocument();
 
     rerenderConversation(rerender, session, history, options);
     expect(screen.getByText(thinking)).toBeInTheDocument();
@@ -501,7 +506,7 @@ describe("SessionConversation — streaming & composer", () => {
 
   // A tool boundary flushes a fresh thinking group, so a model that reasons
   // between calls without narrating holds one per call. A Gemini turn through
-  // Cursor produced 272 reasoning bursts. Balanced previews only the current
+  // Cursor produced 272 reasoning bursts. Steps previews only the current
   // one and keeps every superseded burst folded.
   it("previews only Cursor's newest reasoning burst and keeps a manual expansion through completion", () => {
     const earlier = "First I should look at the normalizer.";
@@ -543,7 +548,8 @@ describe("SessionConversation — streaming & composer", () => {
     // is out of the transcript rather than stacked above the live one.
     const settled = screen.getByRole("button", { name: /^Thought/ });
     expect(settled).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText(earlier)).toBeNull();
+    expect(screen.getAllByText(earlier)).toHaveLength(1);
+    expect(within(settled).getByText(earlier)).toBeInTheDocument();
 
     fireEvent.click(live[0]);
     expect(live[0]).toHaveAttribute("aria-expanded", "true");
@@ -567,15 +573,16 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByText("Here is the answer.")).toBeInTheDocument();
   });
 
-  // Reasoning is normalized as a `message.delta` (`thinking: true`), so before
-  // this the newest event during a reasoning pause looked like streaming answer
-  // text and suppressed the generic indicator. Post-answer that reasoning is a
-  // collapsed Thought, so nothing on screen said the agent was still working:
-  // observed as a 20 s dead transcript on a running Codex turn.
+  // Reasoning is normalized as a `message.delta` (`thinking: true`). Reasoning
+  // that follows an answer and a tool is the newest thing the turn produced, so
+  // it owns the beat: the live Thought (Minimal) or the activity line holding
+  // it (Compact) says the agent is working, and the generic line stays down.
+  // Before, any earlier answer text made it history and a running Codex turn
+  // could sit behind the generic cue with its reasoning filed away.
   it.each([
     { label: "compact", display: "collapsed" as const, thinkingDisplay: "collapsed" as const },
     { label: "minimal", display: "single-line" as const, thinkingDisplay: "collapsed" as const }
-  ])("shows the generic indicator while reasoning continues after an answer ($label)", ({ display, thinkingDisplay }) => {
+  ])("gives the beat to reasoning that continues after an answer ($label)", ({ display, thinkingDisplay, label }) => {
     vi.useFakeTimers();
     // The cue's waits count from the newest event, so a pane that watches it
     // land has its clock sitting on that event's timestamp.
@@ -605,20 +612,21 @@ describe("SessionConversation — streaming & composer", () => {
       { defaultToolCallsDisplay: display, thinkingDisplay }
     );
 
-    expect(screen.queryByRole("article", { name: "Thinking" })).not.toBeInTheDocument();
-    // This turn has shown no gap yet, so the mid-turn wait is its default.
     act(() => {
-      vi.advanceTimersByTime(1000);
+      vi.advanceTimersByTime(3000);
     });
-    expect(screen.getByRole("article", { name: "Thinking" })).toBeInTheDocument();
-    // The reasoning is history here, not the cue: no live Thought block claims
-    // the beat alongside the generic line.
-    expect(screen.queryByRole("button", { name: "Thinking" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("article", { name: "Thinking" })).not.toBeInTheDocument();
+    if (label === "minimal") {
+      expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute("aria-expanded", "false");
+    } else {
+      // Compact folds the thought into the run it ends; that line carries the beat.
+      expect(screen.getByRole("button", { name: /^Ran a command/ })).toHaveAttribute("aria-busy", "true");
+    }
   });
 
   it.each([
     { label: "compact", display: "collapsed" as const, thinkingDisplay: "collapsed" as const },
-    { label: "balanced", display: "collapsed" as const, thinkingDisplay: "preview" as const },
+    { label: "steps", display: "collapsed" as const, thinkingDisplay: "preview" as const },
     { label: "minimal", display: "single-line" as const, thinkingDisplay: "collapsed" as const }
   ])("leaves the pre-answer beat to the live Thought block alone ($label)", ({ display, thinkingDisplay, label }) => {
     vi.useFakeTimers();
@@ -637,16 +645,16 @@ describe("SessionConversation — streaming & composer", () => {
       vi.advanceTimersByTime(3000);
     });
 
-    // Compact keeps the live activity disclosure collapsed, Balanced shows a
-    // capped preview behind a closed disclosure, and Minimal retains its
-    // expanded live Thought block.
+    // Compact keeps the live activity disclosure collapsed, Steps shows a
+    // capped preview behind a closed disclosure, and Minimal names the live
+    // thought without spelling it out.
     if (label === "compact") {
       expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute("aria-expanded", "false");
-    } else if (label === "balanced") {
+    } else if (label === "steps") {
       expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute("aria-expanded", "false");
       expect(screen.getByLabelText("Thinking preview")).toHaveTextContent("**Mapping the renderer**");
     } else {
-      expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute("aria-expanded", "false");
     }
     expect(screen.queryByRole("article", { name: "Thinking" })).not.toBeInTheDocument();
   });
@@ -711,8 +719,10 @@ describe("SessionConversation — streaming & composer", () => {
       renderWith([...answering, event("u2", "user.message", "now ship it", "2026-05-12T15:00:03.000Z")])
     );
 
-    expect(screen.getByRole("button", { name: "Thought" })).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText(thinking)).toBeNull();
+    const folded = screen.getByRole("button", { name: "Thought" });
+    expect(folded).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getAllByText(thinking)).toHaveLength(1);
+    expect(within(folded).getByText(thinking)).toBeInTheDocument();
   });
 
   it("keeps inline thoughts visible when Detailed tool activity is folded", () => {
@@ -1038,7 +1048,7 @@ describe("SessionConversation — streaming & composer", () => {
 
     // Assistant prose is a real boundary: the first command belongs above the
     // prose, while the later adjacent commands fold together below it.
-    const commandGroups = screen.getAllByRole("button", { name: "Ran commands" });
+    const commandGroups = screen.getAllByRole("button", { name: /^Ran 2 commands/ });
     expect(commandGroups).toHaveLength(1);
     const groupedBurst = commandGroups[0];
     const firstUpdate = screen.getByText("Checking the surrounding code.");

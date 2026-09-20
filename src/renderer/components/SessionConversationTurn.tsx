@@ -151,12 +151,13 @@ function SessionConversationTurnInner({
   );
   const { visibleAssistantGroups, hiddenToolIds, turnStartedAtMs, isPausedOnUserInput } = turnView;
   // A Thought block is "live" (shown expanded, labelled "Thinking", in place of
-  // the generic indicator) while this turn is actively working and hasn't
-  // produced its answer yet. Once any answer text lands the label settles, but
+  // the generic indicator) while it is the newest thing this working turn has
+  // produced (see liveThoughtOwnsProgress). Once anything follows it the label
+  // settles, but
   // the body stays open (`holdOpen`) for as long as this is the newest turn:
   // folding it right then would drop the whole reasoning out of a transcript
   // pinned to the bottom at the exact moment the answer starts arriving. An
-  // explicit fold from the turn chip still wins in Compact. Balanced previews
+  // explicit fold from the turn chip still wins in Compact. Steps previews
   // only live reasoning. Detailed keeps labelled thoughts inline.
   //
   // The beat belongs to the turn's newest reasoning burst, never to every burst
@@ -167,6 +168,7 @@ function SessionConversationTurnInner({
   // narrowing `live` alone changes nothing.
   const thinkingLive = liveThoughtOwnsProgress({
     assistantEvents: item.assistantEvents,
+    toolItems: item.toolItems,
     isLatestTurn,
     sessionRunning: sessionIsLive,
     isPausedOnUserInput
@@ -193,11 +195,25 @@ function SessionConversationTurnInner({
     isLatestTurn && !minimalActivity
       ? (defaultToolCallGroupsExpanded ?? defaultToolCallsDisplay === "expanded")
       : false;
-  const [toolsExpandOverride, setToolsExpandOverride] = useState<boolean | null>(null);
+  // The chip's own open/closed choice, tagged with the verbosity it was made
+  // under. Untagged, it outlived a level change: a chip opened at Minimal to
+  // inspect the work left Compact rendering every row with its raw output,
+  // and a chip closed at Steps left Detailed folded below Compact. Same
+  // invalidation `ToolCallGroupBubble` already applies to its own toggle.
+  const verbosityKey = `${defaultToolCallsDisplay}:${defaultToolCallGroupsExpanded ?? "auto"}`;
+  const [toolsExpandChoice, setToolsExpandChoice] = useState<
+    { value: boolean; verbosity: string } | null
+  >(null);
+  const toolsExpandOverride =
+    toolsExpandChoice && toolsExpandChoice.verbosity === verbosityKey
+      ? toolsExpandChoice.value
+      : null;
+  const setToolsExpandOverride = (value: boolean): void =>
+    setToolsExpandChoice({ value, verbosity: verbosityKey });
   const toolsExpanded = toolsExpandOverride ?? toolsExpandedDefault;
   // Detailed opens individual rows as well as groups. An agent
   // launch row follows that rather than the group level, because what its
-  // chevron reveals is the raw launch receipt — at Balanced the row names the
+  // chevron reveals is the raw launch receipt — at Steps the row names the
   // delegated work and the subagent's pane holds the rest.
   const toolRowsExpanded =
     !minimalActivity && (toolsExpandOverride ?? (isLatestTurn && defaultToolCallsDisplay === "expanded"));
@@ -214,11 +230,12 @@ function SessionConversationTurnInner({
     sortPriority?: number;
   };
   const lastToolCreatedAt = latestToolCreatedAt(item.toolItems);
-  // Finished Minimal keeps the answer: assistant text after the last tool.
+  // Finished Minimal keeps the answer and folds away the remarks around it.
   // Claude, Codex, Grok, and OpenCode write progress as `message.completed`
-  // before each tool. Expanding the chip restores the narration with the
-  // tools. Live turns keep it so the user can watch the agent talk while tools
-  // run.
+  // before each tool; only that short narration hides, never a block of
+  // writing that happens to precede a closing tool call. Expanding the chip
+  // restores the narration with the tools. Live turns keep it so the user can
+  // watch the agent talk while tools run.
   // `isStreamingTurn` is this turn's own liveness, not the session's: keying
   // off `sessionIsLive` alone re-expanded every finished turn the moment a new
   // turn started.
@@ -226,12 +243,29 @@ function SessionConversationTurnInner({
     visibleAssistantGroups,
     minimalActivity && !isStreamingTurn && !toolsExpanded ? lastToolCreatedAt : null
   );
+  // Settled reasoning folds away at Minimal — but only while the chip is
+  // closed, so opening it brings the thought back the way it brings back the
+  // narration and the tools.
+  const hidesSettledThoughts = minimalActivity && !toolsExpanded;
+  // Content only the chip can bring back. Without this the chip could be the
+  // one thing the turn needed and the one thing it did not render: a turn
+  // whose only content is reasoning drops every group here, leaving an empty
+  // `turn-block` with no handle — the whole turn gone. Same for a turn whose
+  // only tool is a question card, where `visibleToolItems` is empty but the
+  // narration before it still hid.
+  const hasHiddenWork =
+    hiddenNarrationIds.size > 0 ||
+    (hidesSettledThoughts &&
+      visibleAssistantGroups.some(
+        (group) => group.thinking && !(thinkingLive && group.id === liveThoughtGroupId)
+      ));
   const assistantChildren: AnnotatedChild[] = visibleAssistantGroups
     .map((group): AnnotatedChild | null => {
       const groupLive = thinkingLive && group.id === liveThoughtGroupId;
       // Single-line mode folds completed Thought blocks away entirely — only
-      // the live "Thinking" indicator (governed by groupLive) survives.
-      if (minimalActivity && group.thinking && !groupLive) return null;
+      // the live "Thinking" indicator (governed by groupLive) survives, until
+      // the chip is opened to inspect what the level hid.
+      if (hidesSettledThoughts && group.thinking && !groupLive) return null;
       if (hiddenNarrationIds.has(group.id)) {
         return { kind: "assistant", id: group.id, node: null, createdAt: group.createdAt, sortAt: group.lastActivityAt };
       }
@@ -242,7 +276,9 @@ function SessionConversationTurnInner({
             display={thinkingDisplay}
             previewText={group.text}
             defaultExpanded={toolsExpandOverride ?? false}
-            autoExpandWhileLive={!compactActivity}
+            // Minimal names the live thought without spelling it out; the
+            // block leaves the turn as soon as the next step lands.
+            autoExpandWhileLive={!compactActivity && !minimalActivity}
             live={groupLive}
             holdOpen={
               isLatestTurn && toolsExpandOverride !== false && group.id === liveThoughtGroupId
@@ -408,6 +444,10 @@ function SessionConversationTurnInner({
       activityMembers={members}
       disclosureId={`session-${session?.id ?? "unknown"}-${item.id}`}
       compact={compactToolSummaries}
+      // Minimal's resting state, not the level: once the chip is open the
+      // reader asked to inspect the work, so the group reads like Compact's —
+      // captions, standing chevrons, and a lone call as its own named row.
+      minimal={minimalActivity && !toolsExpanded}
       defaultExpanded={!minimalActivity && toolsExpanded}
       defaultToolsExpanded={toolRowsExpanded}
       follow={follow}
@@ -532,6 +572,7 @@ function SessionConversationTurnInner({
       toolsExpanded={toolsExpanded}
       onToggleTools={() => setToolsExpandOverride(!toolsExpanded)}
       hasCollapsibleActivity={compactActivity && bodyChildren.some((child) => child.kind === "tool")}
+      hasHiddenWork={hasHiddenWork}
       hideWorkingWhenCollapsed={minimalActivity}
       body={mountedBodyChildren}
       hiddenEarlierBodyCount={hiddenEarlierBodyCount}

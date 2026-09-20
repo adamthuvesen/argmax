@@ -23,8 +23,8 @@
   scrollbar-gutter: stable;
 }
 
-/* Standalone pages (settings, usage, schedule) dissolve into `--bg` the
-   same way a chat dissolves into the pane. This is a sibling overlay,
+/* Standalone pages (settings, usage, schedule) and the Arc page dissolve
+   into `--bg` the same way a chat dissolves into the pane. This is a sibling overlay,
    not `.workspace` itself: `.workspace::before` is already a 52px
    highlight strip, and a second `::before` on the same node would
    collapse the two. The fade height matches the drag strip so at rest

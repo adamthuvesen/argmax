@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-font-size="5" data-accent="green">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Argmax — sidebar, where the session icon goes</title>
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-400.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-500.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-700.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource-variable/geist-mono/wght.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/tokens.css" />
+    <style>
+      html { background: var(--bg); }
+      body {
+        margin: 0; background: var(--bg); color: var(--text);
+        font-family: var(--font-ui); -webkit-font-smoothing: antialiased;
+        /* tokens.css is the app shell's stylesheet and pins `body` to
+           `overflow: hidden`. With `html` at `visible` that value propagates to
+           the viewport, so this sheet cannot be scrolled by wheel or trackpad —
+           only programmatically. Hand scrolling back. */
+        overflow: auto;
+      }
+      .page-head {
+        position: sticky; top: 0; z-index: 1; background: var(--bg);
+        display: flex; gap: 16px; align-items: baseline; padding: 14px 24px;
+        border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted);
+      }
+      .page-head h1 { font-size: 13px; font-weight: 500; margin: 0; color: var(--text); }
+      .frames {
+        display: grid; grid-template-columns: repeat(5, 272px);
+        gap: 24px 20px; padding: 24px; align-items: start; justify-content: start;
+      }
+      body[data-only] .frames { grid-template-columns: repeat(auto-fit, 272px); }
+      .frame h2 { font-size: 12px; font-weight: 500; margin: 0 0 3px; color: var(--text); }
+      .frame p { font-size: 11px; line-height: 1.45; margin: 0 0 10px; color: var(--muted); min-height: 46px; }
+      .panel {
+        background: var(--panel); border: 1px solid var(--line);
+        border-radius: 10px; padding: 8px 8px 12px; overflow: hidden;
+      }
+
+      /* ---- the list, mirroring .session-link / SidebarSessionRow ---- */
+      .sec {
+        padding: 0 10px; margin: 12px 0 2px; color: var(--muted);
+        font-size: var(--text-xs); font-weight: 500;
+      }
+      .sec:first-child { margin-top: 2px; }
+      .row {
+        display: grid; grid-template-columns: 18px minmax(0, 1fr);
+        gap: var(--space-2_5); align-items: start;
+        padding: 7px var(--space-2_5); border-radius: var(--radius-md);
+        color: var(--text-soft); font-size: var(--text-sm);
+      }
+      .row.sel { background: var(--row-selected); color: var(--text); }
+      .lead { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; position: relative; top: 1px; flex: 0 0 auto; }
+      .txt { display: grid; gap: 2px; line-height: 18px; min-width: 0; }
+      .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .meta {
+        display: inline-flex; align-items: center; gap: 5px; min-width: 0;
+        color: var(--muted); font-size: var(--text-xs); line-height: 1.25;
+      }
+      .meta .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .tail { display: none; }
+
+      .g { width: 16px; height: 16px; display: block; }
+      .g svg { width: 100%; height: 100%; }
+      .ic { color: var(--session-icon-blue); }
+      .ic[data-c="clay"] { color: var(--session-icon-clay); }
+      .ic[data-c="violet"] { color: var(--session-icon-violet); }
+      .ic[data-c="pink"] { color: var(--session-icon-pink); }
+      .ic[data-c="teal"] { color: var(--session-icon-teal); }
+      .pr { color: var(--pr-open); }
+      .nest { display: grid; grid-template-columns: 5px 5px; grid-template-rows: 5px 5px; gap: 2px; }
+      .nest i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+      .nest i:nth-child(2) { opacity: 0.55; }
+      .nest i:nth-child(3) { opacity: 0.75; }
+      .nest i:nth-child(4) { opacity: 0.35; }
+
+      /* ---------- A · flush left: no reserved column ---------- */
+      .v-flush .row { grid-template-columns: auto minmax(0, 1fr); }
+      .v-flush .lead:empty { display: none; }
+      .v-flush .row:has(.lead:empty) { grid-template-columns: minmax(0, 1fr); }
+
+      /* ---------- B · dot placeholder ---------- */
+      .v-dot .lead:empty::before {
+        content: ""; width: 6px; height: 6px; border-radius: 50%;
+        background: var(--muted); opacity: 0.45;
+      }
+
+      /* ---------- B2 · dot placeholder, glyph one step down ---------- */
+      .v-dot2 .row { grid-template-columns: 16px minmax(0, 1fr); gap: 9px; }
+      .v-dot2 .lead { width: 14px; height: 14px; }
+      .v-dot2 .g { width: 14px; height: 14px; }
+      .v-dot2 .nest { grid-template-columns: 5px 5px; grid-template-rows: 5px 5px; gap: 1px; }
+      .v-dot2 .lead:empty::before {
+        content: ""; width: 6px; height: 6px; border-radius: 50%;
+        background: var(--muted); opacity: 0.45;
+      }
+
+      /* ---------- B3/B4/B5 · the placeholder as a ring, not a disc ----------
+         All three run B2's geometry (14px glyph, 16px column); only the mark
+         in the calm cell changes. A ring is hollow, so it reads as "nothing
+         here yet" rather than as the filled accent dot unread already owns. */
+      .v-ring1 .row, .v-ring2 .row, .v-ring3 .row { grid-template-columns: 16px minmax(0, 1fr); gap: 9px; }
+      .v-ring1 .lead, .v-ring2 .lead, .v-ring3 .lead { width: 14px; height: 14px; }
+      .v-ring1 .g, .v-ring2 .g, .v-ring3 .g { width: 14px; height: 14px; }
+      .v-ring1 .nest, .v-ring2 .nest, .v-ring3 .nest {
+        grid-template-columns: 5px 5px; grid-template-rows: 5px 5px; gap: 1px;
+      }
+      .v-ring1 .lead:empty::before,
+      .v-ring2 .lead:empty::before,
+      .v-ring3 .lead:empty::before {
+        content: ""; border-radius: 50%; border-style: solid; border-color: var(--muted);
+      }
+      .v-ring1 .lead:empty::before { width: 6px; height: 6px; border-width: 1px; opacity: 0.55; }
+      .v-ring2 .lead:empty::before { width: 8px; height: 8px; border-width: 1px; opacity: 0.5; }
+      .v-ring3 .lead:empty::before { width: 8px; height: 8px; border-width: 1.5px; opacity: 0.7; }
+
+      /* ---------- C · smaller glyph, narrower column ---------- */
+      .v-small .row { grid-template-columns: 13px minmax(0, 1fr); gap: 8px; }
+      .v-small .lead { width: 13px; height: 13px; }
+      .v-small .g { width: 13px; height: 13px; }
+      .v-small .nest { grid-template-columns: 4px 4px; grid-template-rows: 4px 4px; gap: 2px; }
+      .v-small .nest i { width: 4px; height: 4px; }
+
+      /* ---------- D · glyph on the meta line ---------- */
+      .v-meta .row { grid-template-columns: minmax(0, 1fr); }
+      .v-meta .row > .lead { display: none; }
+      .v-meta .meta .lead { display: inline-flex; width: 12px; height: 12px; top: 0; }
+      .v-meta .meta .g { width: 12px; height: 12px; }
+      .v-meta .meta .nest { grid-template-columns: 4px 4px; grid-template-rows: 4px 4px; gap: 1px; }
+      .v-meta .meta .nest i { width: 4px; height: 4px; }
+
+      /* ---------- E · trailing glyph ---------- */
+      .v-trail .row { grid-template-columns: minmax(0, 1fr) auto; }
+      .v-trail .row > .lead { display: none; }
+      .v-trail .tail { display: inline-flex; align-items: center; height: 18px; }
+      .v-trail .tail .g { width: 14px; height: 14px; }
+
+      /* ---------- F · never-empty tile ---------- */
+      .v-tile .row { grid-template-columns: 22px minmax(0, 1fr); gap: 9px; }
+      .v-tile .lead { width: 22px; height: 22px; top: 0; border-radius: 6px; }
+      .v-tile .lead > * {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 22px; height: 22px; border-radius: 6px;
+        background: color-mix(in oklab, currentcolor 16%, transparent);
+      }
+      .v-tile .lead > .nest { background: color-mix(in oklab, var(--accent) 14%, transparent); }
+      .v-tile .lead:empty { background: var(--panel-soft); color: var(--muted); }
+      .v-tile .lead:empty::before {
+        content: attr(data-initial); font-size: 10px; font-weight: 500;
+        letter-spacing: 0.02em; text-transform: uppercase;
+      }
+      .v-tile .g { width: 13px; height: 13px; }
+      .v-tile .nest { grid-template-columns: 4px 4px; grid-template-rows: 4px 4px; gap: 2px; }
+      .v-tile .nest i { width: 4px; height: 4px; }
+
+      /* ---------- G · bare project initial ---------- */
+      .v-initial .lead:empty::before {
+        content: attr(data-initial); color: var(--muted); opacity: 0.7;
+        font-family: var(--font-mono); font-size: 10px; text-transform: uppercase;
+      }
+
+      /* ---------- H · hairline tick ---------- */
+      .v-tick .lead:empty::before {
+        content: ""; width: 1px; height: 12px; border-radius: 1px;
+        background: var(--line-strong);
+      }
+
+      /* ---------- J · dot for calm, icon shrinks to the dot's column ---------- */
+      .v-rail .row { grid-template-columns: 10px minmax(0, 1fr); gap: 8px; }
+      .v-rail .lead { width: 10px; height: 10px; top: 3px; }
+      .v-rail .g { width: 10px; height: 10px; }
+      .v-rail .nest { grid-template-columns: 4px 4px; grid-template-rows: 4px 4px; gap: 1px; }
+      .v-rail .nest i { width: 4px; height: 4px; }
+      .v-rail .lead:empty::before {
+        content: ""; width: 3px; height: 3px; border-radius: 50%;
+        background: var(--muted); opacity: 0.4;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page-head">
+      <h1>Sidebar — where the session icon goes</h1>
+      <span>Most rows carry no icon, so the reserved column is empty ink. Ten ways to spend it.</span>
+    </div>
+    <div class="frames" id="frames"></div>
+
+    <script type="module">
+      const ICONS = {
+        rocket: `<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>`,
+        brain: `<path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M17.599 6.5a3 3 0 0 0 .399-1.375"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M19.938 10.5a4 4 0 0 1 .585.396"/><path d="M6 18a4 4 0 0 1-1.967-.516"/><path d="M19.967 17.484A4 4 0 0 1 18 18"/>`,
+        box: `<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>`,
+        workflow: `<rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/>`,
+        pr: `<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" x2="6" y1="9" y2="21"/>`
+      };
+
+      function svg(name) {
+        return `<span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg></span>`;
+      }
+      function glyph(row) {
+        if (row.icon) return `<span class="ic" data-c="${row.color}">${svg(row.icon)}</span>`;
+        if (row.working) return `<span class="nest"><i></i><i></i><i></i><i></i></span>`;
+        if (row.pr) return `<span class="pr">${svg("pr")}</span>`;
+        return "";
+      }
+
+      // The list from the screenshot: three picked icons, one running turn, one
+      // open PR, and five calm rows carrying nothing.
+      const LIST = [
+        { sec: "Arcs" },
+        { title: "Forecasting: Self service ARR and M…", icon: "workflow", color: "teal", who: "tealeaves" },
+        { sec: "Pinned" },
+        { title: "Forecasting: Self service ARR an…", icon: "rocket", color: "clay", who: "tealeaves" },
+        { title: "Chief of Brain", icon: "brain", color: "violet", who: "brain" },
+        { title: "Chief of Staff", icon: "box", color: "pink", who: "hq" },
+        { sec: "Today" },
+        { title: "tealeaves: deck shows two MAR…", who: "tealeaves", extra: "launched by Forecastin…", working: true },
+        { sec: "Yesterday" },
+        { title: "Adjust Chat Spacing and Timest…", who: "argmax", sel: true },
+        { title: "Checking and Trying Out Jev", who: "dotfiles", pr: true },
+        { title: "Fix Arc Page Wrapping Diff Cou…", who: "argmax" },
+        { title: "Remove Loading Text From Spin…", who: "argmax" }
+      ];
+
+      const VARIANTS = [
+        ["shipped", "Shipped · reserved column", "An 18px marker column on every row, blank unless the row carries an icon or a live signal. Titles all line up; most of the column is empty."],
+        ["flush", "A · Flush left", "No reserved column. A row without a glyph starts at the gutter; a row with one indents itself. Ragged left edge, but no dead space."],
+        ["dot", "B · Dot placeholder", "The calm row fills the column with a 6px muted dot. Titles stay aligned and the column always means something, at the cost of a lot of dots."],
+        ["dot2", "B2 · Dot, smaller glyph", "The same 6px dot, glyph down from 16px to 14px in a 16px column. The icons stop out-weighing the titles and the indent drops from 28px to 26px."],
+        ["ring1", "B3 · Ring, 6px", "B2's geometry with the disc hollowed out: a 6px circle, 1px stroke. Same footprint as the dot, a lot less ink — at this size the hole nearly closes."],
+        ["ring2", "B4 · Ring, 8px", "The ring opened to 8px so the hole actually reads. Bigger than the unread dot, which helps tell them apart, but it starts to look like a glyph of its own."],
+        ["ring3", "B5 · Ring, 8px heavier", "The same 8px ring at 1.5px and a stronger ink. The most visible of the three — closer to an empty checkbox than to a placeholder."],
+        ["small", "C · Smaller glyph", "Same idea as shipped, 13px glyph in a 13px column. The indent drops from 28px to 21px, so an empty column costs less."],
+        ["meta", "D · On the meta line", "Titles on the gutter; the glyph leads the project name at 12px. A missing glyph is a missing word, not a hole."],
+        ["trail", "E · Trailing glyph", "Titles on the gutter; the glyph sits on the right edge, where the eye already goes for state."],
+        ["tile", "F · Never-empty tile", "A 22px tile on every row: picked icon on its tint, else the project's initial. Densest and most colourful; the list reads as an app switcher."],
+        ["initial", "G · Project initial", "Same column, no tile: the icon when there is one, otherwise the project's initial in mono. The column is always informative."],
+        ["tick", "H · Hairline tick", "A 1px rule instead of a dot — the quietest possible placeholder. Alignment kept, almost no ink added."],
+        ["rail", "J · Narrow rail", "Everything shrinks to a 10px column: icons at 10px, calm rows a 3px dot. Titles indent 18px instead of 28px."]
+      ];
+
+      const params = new URLSearchParams(location.search);
+      const only = params.get("only");
+      if (params.get("theme") === "light") document.documentElement.dataset.theme = "light";
+      if (only) document.body.dataset.only = only;
+
+      const frames = document.getElementById("frames");
+      const onlyKeys = only ? only.toLowerCase().split(",").map((k) => k.trim()) : null;
+      for (const [key, heading, note] of VARIANTS) {
+        if (onlyKeys && !onlyKeys.includes(key)) continue;
+        const rows = LIST.map((row) => {
+          if (row.sec) return `<div class="sec">${row.sec}</div>`;
+          const g = glyph(row);
+          const initial = (row.who || row.title).trim()[0] || "•";
+          const meta = row.who || row.extra
+            ? `<span class="meta">${key === "meta" ? `<span class="lead" data-initial="${initial}">${g}</span>` : ""}<span class="who">${row.who}</span>${row.extra ? `<span class="who">${row.extra}</span>` : ""}</span>`
+            : "";
+          return `<div class="row${row.sel ? " sel" : ""}"><span class="lead" data-initial="${initial}">${g}</span><span class="txt"><span class="title">${row.title}</span>${meta}</span><span class="tail">${g}</span></div>`;
+        }).join("");
+        frames.insertAdjacentHTML(
+          "beforeend",
+          `<div class="frame"><h2>${heading}</h2><p>${note}</p><div class="panel v-${key}">${rows}</div></div>`
+        );
+      }
+    </script>
+  </body>
+</html>

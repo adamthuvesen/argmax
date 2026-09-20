@@ -403,7 +403,8 @@ describe("useConversationScroll", () => {
       if (order === "scroll first") scroll.dispatchEvent(new Event("scroll"));
       act(() => flushResize());
 
-      expect(content.style.minHeight).toBe("1291px");
+      // The floor reaches the restored viewport's bottom, not the old range.
+      expect(content.style.minHeight).toBe("1279px");
       expect(geometry.top).toBe(939);
       expect(geometry.blockTop - geometry.top).toBe(blockViewportTop);
       expect(controller.follow.isDetached()).toBe(true);
@@ -432,7 +433,8 @@ describe("useConversationScroll", () => {
     geometry.naturalHeight = 950;
     act(() => flushResize());
 
-    expect(scroll.scrollHeight).toBe(1300);
+    // Held to the reader's viewport bottom; the collapsed 12px below is gone.
+    expect(scroll.scrollHeight).toBe(1288);
     expect(geometry.top).toBe(788);
     expect(controller.follow.isDetached()).toBe(true);
   });
@@ -539,13 +541,12 @@ describe("useConversationScroll", () => {
       blockTop: 750,
       turnTop: 0
     };
-    const { block, content } = installGeometry(geometry);
+    const { block } = installGeometry(geometry);
     act(() => view.rerender(<Harness {...props} />));
 
     act(() => controller.scrollToElement(block));
 
     expect(geometry.top).toBe(750);
-    expect(content.style.minHeight).toBe("1300px");
     expect(controller.follow.isDetached()).toBe(true);
   });
 

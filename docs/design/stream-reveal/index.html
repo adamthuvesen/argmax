@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Argmax — streaming prose reveal (real component)</title>
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-400.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-500.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/geist-sans/latin-700.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource-variable/geist-mono/wght.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/tokens.css" />
+    <link rel="stylesheet" href="/src/renderer/styles/chat-conversation.css" />
+    <style>
+      html, body { background: var(--bg); margin: 0; }
+      body { font-family: var(--font-ui); color: var(--text); -webkit-font-smoothing: antialiased; }
+      #root { max-width: 720px; padding: 32px; }
+      .harness-head { display: flex; gap: 16px; align-items: baseline; padding: 12px 32px; border-bottom: 1px solid var(--line); }
+      .harness-head h1 { margin: 0; font-size: var(--text-sm); font-weight: 500; color: var(--text-soft); }
+      .harness-head button, .harness-head select { font: inherit; font-size: var(--text-xs); background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 3px 8px; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/docs/design/stream-reveal/reveal.tsx"></script>
+  </body>
+</html>

@@ -192,7 +192,7 @@ export function FilePreview({
   }
   const preview = state.preview;
   if (!preview) {
-    return <p className="review-empty">No preview available.</p>;
+    return <p className="review-empty">Argmax can't preview this kind of file.</p>;
   }
   const showRendered = (markdownFile || svgFile) && mode === "rendered";
   // A raster image never has a text side to fall back to, so it replaces the

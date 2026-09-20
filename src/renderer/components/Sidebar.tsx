@@ -10,7 +10,6 @@ import {
   Keyboard,
   MoreHorizontal,
   Plus,
-  Search,
   Settings,
   Settings2,
   Trash2,
@@ -31,7 +30,7 @@ import {
 import { createPortal } from "react-dom";
 import type { DashboardSnapshot, DetectedIde, IdeId, ProjectSummary } from "../../shared/types.js";
 import { SCRATCH_PROJECT_ID } from "../../shared/types.js";
-import { APP_VERSION_LABEL } from "../../shared/appVersion.js";
+import { APP_VERSION } from "../../shared/appVersion.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { PickerLead } from "./PickerLead.js";
 import { WORKSPACE_DRAG_MIME } from "../lib/gridState.js";
@@ -931,10 +930,10 @@ export function Sidebar({
   }, []);
 
   const identitySubLabel = loadState === "loading"
-    ? "Booting..."
+    ? "Starting…"
     : loadState === "error"
-      ? "Needs attention"
-      : APP_VERSION_LABEL;
+      ? "Couldn't load local data"
+      : APP_VERSION;
   const runIdentityAction = useCallback((action: () => void): void => {
     setIdentityMenuOpen(false);
     action();
@@ -1169,19 +1168,6 @@ export function Sidebar({
           </span>
           <span className="rail-nav-label">New chat</span>
           <kbd aria-hidden="true">⌘N</kbd>
-        </button>
-        <button
-          className="rail-nav-item"
-          type="button"
-          title="Search"
-          aria-label="Search"
-          onClick={openCommandPalette}
-        >
-          <span className="rail-nav-glyph" aria-hidden="true">
-            <Search size={14} />
-          </span>
-          <span className="rail-nav-label">Search</span>
-          <kbd aria-hidden="true">⌘K</kbd>
         </button>
         <button
           className="rail-nav-item"
@@ -1715,7 +1701,7 @@ export function Sidebar({
             <ul className="project-picker-popover identity-menu-popover" role="menu" aria-label="Argmax menu">
               <li className="identity-menu-header" role="presentation">
                 <span className="identity-menu-title">Argmax</span>
-                <span className="identity-menu-subtitle">Local workspace · {APP_VERSION_LABEL}</span>
+                <span className="identity-menu-subtitle">Local workspace · {APP_VERSION}</span>
               </li>
               <li className="project-picker-divider" role="separator" />
               <li role="none">

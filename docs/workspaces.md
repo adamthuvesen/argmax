@@ -97,6 +97,8 @@ An attributed pull request replaces the default status marker with a GitHub PR g
 
 The review panel can show two views stacked vertically. Right-click a view tab and choose **Split below**, or drag a tab onto the upper or lower half of the panel. Drag the divider to resize the views, or focus it and use the arrow keys. Each view appears once. Selecting a tab already shown in the other half swaps the views. Actions from the chat use the half where the requested view is already visible. Closing either half expands the remaining view.
 
+The dock's width is a third of the pane (floored at its 360px minimum, capped at 560px) until the user drags its inner edge, which pins a pixel width in `argmax.session.rightPanel.pinnedWidth` and holds it from then on. Opening a subagent, Changes, Files, Browser or the Terminal all land on that one width — the dock is one column whichever view is in it.
+
 The session review panel remembers its visibility, view arrangement, and divider position per session in localStorage. Returning to a chat or restarting the app restores them. Closing the whole sidebar preserves the arrangement for its next open. Full-screen review surfaces keep their explicit initial visibility and a single view.
 
 Layouts live in `argmax.reviewPanel.layout.<sessionId>`. The Files view's open tabs and active tab are kept per session in `argmax.reviewPanel.files.<sessionId>`: returning to a chat reopens them and reloads the active file from disk, and closing the last tab clears the entry. The launcher uses one shared `argmax.reviewPanel.layout.launcher` preference across projects. Existing single-mode session preferences remain the fallback until a layout is saved.

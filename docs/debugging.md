@@ -8,9 +8,16 @@ evidence under `scratch/verification/<run-id>/` by default. The report records
 the source fingerprint, build identity, assertions, and cleanup outcome.
 See [verification.md](verification.md) for scenarios and coverage boundaries.
 
+Settings → Advanced → **Developer tools** gates the surfaces below that a
+normal user has no use for: the chat-actions debug row and the performance
+details. It defaults on in a dev build and off in a packaged one, so the
+installed app starts clean and you flip it once. `⌘⇧D` and Help → Debug Log
+ignore the toggle — they are the escape hatch for someone who needs the log
+before finding the switch.
+
 | Surface | Opened by | Shows |
 |---|---|---|
-| Debug panel | `⌘⇧D`, or View → Toggle Debug Log | Live: this session's trace, the backend log tail, IPC latency |
+| Debug panel | `⌘⇧D`, or Help → Debug Log | Live: this session's trace, the backend log tail, IPC latency |
 | Settings → Advanced → Diagnostics | `⌘,` | Static diagnostics plus start, stop, and JSON download for the opt-in performance recorder |
 | Perf HUD | `localStorage["argmax.perfOverlay"] = "1"` | Whole-process CPU and memory, running chats, renderer stalls, and five hot IPC channels |
 

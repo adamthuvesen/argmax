@@ -22,6 +22,8 @@ pub mod popup;
 pub mod registry;
 pub mod snapshot_image;
 pub mod theme;
+pub mod user_agent;
+pub mod user_scripts;
 
 /// Rect in the tab's own view coordinates (CSS pixels, origin top-left).
 #[derive(Debug, Clone, Copy, PartialEq)]

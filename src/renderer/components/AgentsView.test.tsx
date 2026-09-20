@@ -64,8 +64,8 @@ const workspace: WorkspaceSummary = {
   prActivityAt: null
 };
 
-function launch(id: string, description: string): TimelineEvent {
-  return event(`start-${id}`, "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+function launch(id: string, description: string, at = "2026-05-12T15:00:01.000Z"): TimelineEvent {
+  return event(`start-${id}`, "command.started", at, "Task", {
     id,
     name: "Task",
     input: { description, prompt: `Do ${description}.` }
@@ -310,37 +310,40 @@ describe("AgentsView", () => {
   it("names each open subagent in the tab strip and shows the active one", () => {
     renderView(
       agentTabs({ tabIds: ["task-1", "task-2"], activeTabId: "task-2" }),
-      [launch("task-1", "Explore repo"), launch("task-2", "Write tests")]
+      [
+        launch("task-1", "Explore repo", "2026-05-12T15:00:01.000Z"),
+        launch("task-2", "Write tests", "2026-05-12T15:00:02.000Z")
+      ]
     );
 
     const tabs = screen.getAllByRole("tab");
     expect(tabs).toHaveLength(2);
-    // The newer launch sits leftmost.
-    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
-    expect(tabs[1]).toHaveAttribute("aria-selected", "false");
+    // Launch order, oldest leftmost; selecting the newer one does not move it.
+    expect(tabs[0]).toHaveAttribute("aria-selected", "false");
+    expect(tabs[1]).toHaveAttribute("aria-selected", "true");
     // Both stay mounted so switching back is instant; only the active one is shown.
     expect(document.getElementById("review-agent-task-1")).toHaveAttribute("aria-hidden", "true");
     expect(document.getElementById("review-agent-task-2")).not.toHaveAttribute("aria-hidden");
   });
 
-  it("puts running subagents first and the newest launch leftmost", () => {
+  it("keeps the strip in launch order whichever agent is selected", () => {
     const finished = (id: string) => event(`done-${id}`, "command.completed", "2026-05-12T15:00:05.000Z", "Task", {
       id, name: "Task", status: "completed"
     });
     renderView(
       agentTabs({ tabIds: ["task-1", "task-2", "task-3", "task-4"], activeTabId: "task-1" }),
       [
-        launch("task-1", "Explore repo"), finished("task-1"),
-        launch("task-2", "Write tests"),
-        launch("task-3", "Review diff"), finished("task-3"),
-        launch("task-4", "Fix lint")
+        launch("task-1", "Explore repo", "2026-05-12T15:00:01.000Z"), finished("task-1"),
+        launch("task-2", "Write tests", "2026-05-12T15:00:02.000Z"),
+        launch("task-3", "Review diff", "2026-05-12T15:00:03.000Z"), finished("task-3"),
+        launch("task-4", "Fix lint", "2026-05-12T15:00:04.000Z")
       ]
     );
 
     // The selected completed agent stays available; the other completed agent
-    // moves into the roster. Running work follows the selection.
+    // moves into the roster. The rest keep the order they launched in.
     expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("title")))
-      .toEqual(["Explore repo", "Fix lint", "Write tests"]);
+      .toEqual(["Explore repo", "Write tests", "Fix lint"]);
   });
 
   it("moves the same native child back to running for a follow-up assignment", () => {
@@ -377,13 +380,17 @@ describe("AgentsView", () => {
   });
 
   it("caps the active strip and exposes excess running agents through the roster", () => {
-    const events = Array.from({ length: 6 }, (_, index) => launch(`task-${index + 1}`, `Task ${index + 1}`));
+    const events = Array.from({ length: 6 }, (_, index) =>
+      launch(`task-${index + 1}`, `Task ${index + 1}`, `2026-05-12T15:00:0${index + 1}.000Z`));
     renderView(agentTabs({
       tabIds: events.map((_, index) => `task-${index + 1}`),
       activeTabId: "task-1"
     }), events);
 
-    expect(screen.getAllByRole("tab")).toHaveLength(4);
+    // The selection holds a slot and the newest launches take the rest, but
+    // the survivors are still drawn oldest first.
+    expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("title")))
+      .toEqual(["Task 1", "Task 4", "Task 5", "Task 6"]);
     expect(screen.getByRole("button", { name: "+2 active" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "All agents 6" })).toBeInTheDocument();
   });

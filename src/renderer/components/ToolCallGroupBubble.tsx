@@ -1,7 +1,8 @@
 import { ChevronRight } from "lucide-react";
-import { Fragment, memo, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
+import { Fragment, memo, useContext, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
 import {
   buildGroupRows,
+  describeToolAction,
   parseMcpToolName,
   toolGroupKindKey,
   summarizeToolChangeCounts,
@@ -15,7 +16,7 @@ import type { TranscriptFollow } from "../hooks/useConversationScroll.js";
 import { useStableTailWindow } from "../hooks/useStableTailWindow.js";
 import { useReadingWave } from "../lib/readingWave.js";
 import { headlineClauses, usePacedHeadline } from "../lib/pacedHeadline.js";
-import { useOwnsActivityBeat } from "../lib/activityBeat.js";
+import { ActivityBeatContext, useOwnsActivityBeat } from "../lib/activityBeat.js";
 import { ActivityStat } from "./ActivityStat.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { ToolCallRow } from "./ToolCallRow.js";
@@ -30,6 +31,10 @@ type ToolCallGroupBubbleProps = {
   /** Optional namespace so simultaneously mounted surfaces get unique ids. */
   disclosureId?: string;
   compact?: boolean;
+  /** Minimal: the headline stands alone — no live caption, and the chevron
+      waits for a hover. The level exists to not read the work, and naming the
+      command running right now is reading it. */
+  minimal?: boolean;
   defaultExpanded?: boolean;
   defaultToolsExpanded?: boolean;
   follow?: TranscriptFollow;
@@ -163,6 +168,7 @@ function ToolCallGroupBubbleInner({
   activityMembers,
   disclosureId,
   compact = false,
+  minimal = false,
   defaultExpanded,
   defaultToolsExpanded,
   follow,
@@ -178,7 +184,18 @@ function ToolCallGroupBubbleInner({
   } | null>(null);
   const [, setPreviewRevision] = useState(0);
   const lastPreviewRef = useRef<{ toolId: string; text: string; shownAt: number } | null>(null);
-  const summary = useMemo(() => summarizeToolGroup(group.tools), [group.tools]);
+  // The line holding the beat is the live one, so its tally waits: OpenCode,
+  // Grok and Codex settle each call instantly, and a counted headline there
+  // would tick "Ran 2…", "Ran 3…" in place while the run is still going.
+  const beatToolId = useContext(ActivityBeatContext);
+  const holdsBeat = useMemo(
+    () => group.tools.some((tool) => tool.id === beatToolId),
+    [group.tools, beatToolId]
+  );
+  const summary = useMemo(
+    () => summarizeToolGroup(group.tools, !holdsBeat),
+    [group.tools, holdsBeat]
+  );
   const firstTool = group.tools[0];
   const iconServer = firstTool && firstTool.activity?.kind !== "computer"
     ? parseMcpToolName(firstTool.name)?.server : null;
@@ -217,27 +234,36 @@ function ToolCallGroupBubbleInner({
   const expanded = localExpanded ?? (defaultExpanded ?? false);
   const toggleExpanded = (value: boolean): void => setUserToggle({ value, defaultExpanded });
 
-  const directTool = !hasActivityMembers && !compact && group.tools.length === 1
+  // One call in a gap renders as its own row rather than a headline over a
+  // single child — except at Minimal, where the whole point is that the line
+  // reports that work happened, not what ran. Without `!minimal`, a lone
+  // `git status --short` was named in full at Minimal and bucketed to "Ran a
+  // command" at Compact: level 1 showing more than level 2.
+  const directTool = !hasActivityMembers && !compact && !minimal && group.tools.length === 1
     ? group.tools[0]
     : undefined;
   let runningTool: ToolCall | null = null;
   for (const tool of group.tools) {
     if (tool.status === "running") runningTool = tool;
   }
+  // The caption names the call that holds the beat. A running call holds it
+  // for Claude and Cursor; OpenCode, Grok and Codex report start and finish
+  // together, so their call is never seen running and the caption follows the
+  // beat owner instead (lib/activityBeat.ts), for as long as the line waves.
+  const beatTool = runningTool ?? group.tools.find((tool) => tool.id === beatToolId) ?? null;
+  const beatAction = runningTool ? summary.currentAction : beatTool ? describeToolAction(beatTool) : null;
   const livePreviewToolId =
-    !compact && !directTool && !expanded && runningTool && summary.currentAction
-      ? runningTool.id
-      : null;
-  const livePreviewText = livePreviewToolId ? summary.currentAction : null;
+    !minimal && !directTool && !expanded && beatTool && beatAction ? beatTool.id : null;
+  const livePreviewText = livePreviewToolId ? beatAction : null;
   const retainedPreview = lastPreviewRef.current;
   const previewText = livePreviewText ?? (
-    !compact && !directTool && !expanded && retainedPreview && Date.now() - retainedPreview.shownAt < PREVIEW_DWELL_MS
+    !minimal && !directTool && !expanded && retainedPreview && Date.now() - retainedPreview.shownAt < PREVIEW_DWELL_MS
       ? retainedPreview.text
       : null
   );
 
   useLayoutEffect(() => {
-    if (compact || directTool || expanded) {
+    if (minimal || directTool || expanded) {
       lastPreviewRef.current = null;
       return;
     }
@@ -268,7 +294,7 @@ function ToolCallGroupBubbleInner({
       }
     }, remaining);
     return () => window.clearTimeout(timer);
-  }, [compact, directTool, expanded, livePreviewText, livePreviewToolId]);
+  }, [minimal, directTool, expanded, livePreviewText, livePreviewToolId]);
 
   const handleSingletonExpanded = (value: boolean): void => {
     if (!directTool) return;
@@ -327,8 +353,14 @@ function ToolCallGroupBubbleInner({
         />
       );
   const activityStatus = activityStatusIsRunning ? "running" : summary.status;
-  const headerRef = useRef<HTMLButtonElement | null>(null);
-  useReadingWave(headerRef, activityStatus === "running" || ownsBeat, activityHeadline);
+  // State, not a ref: the header only mounts once the group has a second call,
+  // and the wave has to measure the line the frame it appears.
+  const [header, setHeader] = useState<HTMLButtonElement | null>(null);
+  // Keyed on the wording actually on screen, not the newest one: the dwell in
+  // `usePacedHeadline` lands a clause a beat after the summary changed, and
+  // remeasuring on the summary leaves that clause's span without an offset —
+  // it then paints the band from the line's left edge, a second head.
+  useReadingWave(header, activityStatus === "running" || ownsBeat, paced.shown);
   // A delete is a file change, not a failure; see ToolCallRow.
   const iconIsDanger = activityStatus === "error"
     || firstTool?.cancelled === true
@@ -341,6 +373,7 @@ function ToolCallGroupBubbleInner({
     <div
       className="tool-call-group activity-summary-line"
       data-status={activityStatus}
+      data-chevron={minimal ? "hover" : undefined}
       data-expanded={directTool ? undefined : expanded}
     >
       {directTool ? (
@@ -360,7 +393,7 @@ function ToolCallGroupBubbleInner({
               already runs its own tick animation on every change, and one
               `animation` declaration cannot hold both. */}
           <button
-            ref={headerRef}
+            ref={setHeader}
             className="tool-call-group-header"
             data-reading-wave={activityStatus === "running" || ownsBeat ? "true" : undefined}
             type="button"
@@ -432,6 +465,7 @@ export const ToolCallGroupBubble = memo(ToolCallGroupBubbleInner, (prev, next) =
   if (prev.activityMembers !== next.activityMembers) return false;
   if (prev.disclosureId !== next.disclosureId) return false;
   if (prev.compact !== next.compact) return false;
+  if (prev.minimal !== next.minimal) return false;
   if (prev.defaultExpanded !== next.defaultExpanded) return false;
   if (prev.defaultToolsExpanded !== next.defaultToolsExpanded) return false;
   if (prev.follow !== next.follow) return false;

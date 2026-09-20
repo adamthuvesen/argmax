@@ -93,6 +93,19 @@ describe("activity-aware summaries", () => {
     expect(describeToolAction({ ...call, status: "error" })).toBe("Computer use failed");
     expect(describeToolAction({ ...call, completionObserved: false })).toBe("Computer use");
   });
+  it("names four kinds of work and counts the rest", () => {
+    const kinds: ToolActivityKind[] = ["read", "command", "search", "image", "browser", "skill", "git"];
+    const headline = summarizeToolGroup(
+      kinds.map((kind, index) => tool({
+        name: `t${index}`,
+        id: `t${index}`,
+        toolUseId: `tu-${index}`,
+        activity: { version: 1, kind, evidence: "tool", targets: [] }
+      }))
+    ).headline;
+    expect(headline).toBe("Read a file, ran a command, searched files, viewed an image, and 3 more");
+  });
+
   it("dedupes duplicate tool ids in a group", () => {
     const a = tool({ name: "Read", id: "dup", toolUseId: "tu-dup" });
     expect(summarizeToolGroup([a, { ...a }])).toEqual(summarizeToolGroup([a]));

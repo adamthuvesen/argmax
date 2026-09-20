@@ -6,10 +6,10 @@
 
 /* ---------- Sidebar: Arcs section row ---------- */
 
-/* Same grid as `.session-link` (18px lead, flexible label) plus a trailing
+/* Same grid as `.session-link` (14px lead, flexible label) plus a trailing
    auto column for the state pill, matching `.session-link-has-pr-count`. */
 .arc-row {
-  grid-template-columns: 18px minmax(0, 1fr) auto;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
 }
 
 .arc-row-state {
@@ -628,7 +628,7 @@
   border-bottom: 0.5px solid var(--line);
 }
 
-/* The filter menu opens downward over the first day; the trigger keeps the
+/* The filter menu opens downward over the first rows; the trigger keeps the
    chip's own width rather than the settings control measure. */
 .arc-timeline-header .settings-picker {
   --sched-control-width: 220px;
@@ -649,29 +649,8 @@
   line-height: 1.5;
 }
 
-.arc-timeline-day {
-  margin-top: 12px;
-}
-
-.arc-timeline-day + .arc-timeline-day {
-  margin-top: 18px;
-}
-
-.arc-timeline-day-label {
-  position: sticky;
-  top: var(--settings-topbar-height);
-  z-index: 2;
-  margin: 0;
-  padding: 6px 0;
-  background: var(--bg);
-  color: var(--muted);
-  font-size: var(--text-2xs);
-  font-weight: calc(500 + var(--font-weight-offset));
-  letter-spacing: 0.012em;
-}
-
 .arc-timeline-list {
-  margin: 0;
+  margin: 12px 0 0;
   padding: 0;
   list-style: none;
 }
@@ -730,9 +709,9 @@
 .arc-event-line {
   display: flex;
   align-items: baseline;
-  flex-wrap: wrap;
+  /* One line: the subject gives up width (ellipsis) so the project and the
+     badge stay beside it instead of wrapping onto a row of their own. */
   column-gap: 6px;
-  row-gap: 2px;
   min-width: 0;
   margin: 0;
   font-size: var(--text-sm);

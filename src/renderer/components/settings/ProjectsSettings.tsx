@@ -86,7 +86,7 @@ function ProjectSettingsForm({
 
   const save = useCallback(async (): Promise<void> => {
     if (!window.argmax) {
-      setStatus({ kind: "error", message: "Open the Tauri app window to edit project settings." });
+      setStatus({ kind: "error", message: "Open Argmax on your Mac to edit project settings." });
       return;
     }
     const location = worktreeLocation.trim();

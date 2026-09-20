@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { JSX } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionSummary } from "../../shared/types.js";
@@ -350,9 +350,12 @@ describe("SessionConversationTurn", () => {
     const disclosures = screen.getAllByRole("button", { name: "Thought" });
     expect(disclosures).toHaveLength(2);
     fireEvent.click(disclosures[0]);
+    expect(within(disclosures[0]).queryByText("Reviewing the first request.")).toBeNull();
     expect(screen.getByText("Reviewing the first request.")).toBeInTheDocument();
-    expect(screen.queryByText("Reviewing the second request.")).toBeNull();
+    // The other turn's thought stays folded to its one-line excerpt.
+    expect(within(disclosures[1]).getByText("Reviewing the second request.")).toBeInTheDocument();
     fireEvent.click(disclosures[1]);
+    expect(within(disclosures[1]).queryByText("Reviewing the second request.")).toBeNull();
     expect(screen.getByText("Reviewing the second request.")).toBeInTheDocument();
   });
 });

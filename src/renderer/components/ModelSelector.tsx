@@ -190,6 +190,9 @@ export function ModelSelector({
       open={open}
       options={options}
       reasoningEffortsForValue={(model) => reasoningEffortsForModel(provider, model.modelId)}
+      // Only the mid-turn chip uses this picker, where the provider is locked:
+      // a Recent block would just repeat rows from the one catalog below it.
+      showRecent={false}
       withEffortSlider={withEffortSlider}
       effortOpen={effortOpen}
       onEffortOpenChange={onEffortOpenChange}
@@ -570,6 +573,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   portaled = false,
   options,
   reasoningEffortsForValue,
+  showRecent = true,
   withEffortSlider = false,
   effortOpen,
   onEffortOpenChange,
@@ -593,6 +597,8 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   /** Effort levels for a given value's provider, low → high. Claude and Codex
    *  Astra/Sol/Terra run the full low→ultra list; other models stop earlier. */
   reasoningEffortsForValue: (value: T) => readonly ReasoningEffort[];
+  /** Lead with the recently picked models under a "Recent" header. */
+  showRecent?: boolean;
   /** Show a standalone effort slider beside the chip. Off in settings, which
    *  has no per-session effort control — the model's default effort applies. */
   withEffortSlider?: boolean;
@@ -655,7 +661,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   const selectedShowsEffort =
     value.reasoningEffort != null && (selectedOption ? selectedOption.supportsReasoningEffort : true);
   const showEffortSlider = withEffortSlider && selectedShowsEffort;
-  const orderedOptions = orderOptionsByRecency(options);
+  const orderedOptions = showRecent ? orderOptionsByRecency(options) : options;
 
   const selectionForOption = (option: ChipModelOption<T>): T => {
     // Fast/no-effort models carry no effort. Otherwise the current effort is

@@ -260,7 +260,8 @@ private struct TranscriptMultitaskDetail: View {
             VStack(spacing: 0) {
                 Group {
                     if loading && snapshot == nil {
-                        ProgressView("Loading multitask…")
+                        ProgressView()
+                            .accessibilityLabel("Loading multitask")
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if let snapshot {
                         ScrollView {
@@ -271,7 +272,10 @@ private struct TranscriptMultitaskDetail: View {
                                         .foregroundStyle(Theme.rose)
                                         .accessibilityLabel("Action failed. \(displayedFailure)")
                                 }
-                                ForEach(MobileTranscriptRow.rows(snapshot.items, detail: detail)) { row in
+                                ForEach(MobileTranscriptRow.rows(
+                                    snapshot.items, detail: detail,
+                                    latestTurnIsLive: snapshot.sendContext.isRunning
+                                )) { row in
                                     MobileTranscriptRowView(row: row) { item in
                                         detailRow(item, context: snapshot.sendContext)
                                     }

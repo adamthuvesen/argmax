@@ -656,13 +656,15 @@
   white-space: nowrap;
 }
 
+/* The pane's metadata reads at one size. --text-xs-plus put this line half a
+   pixel off the chips below it, which reads as a slip rather than a step. */
 .agent-activity-facts {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   margin: 0;
   color: var(--muted);
-  font-size: var(--text-xs-plus);
+  font-size: var(--text-xs);
   line-height: 1.3;
 }
 
@@ -699,7 +701,11 @@
   display: flex;
   box-sizing: border-box;
   flex-direction: column;
-  gap: var(--space-6);
+  /* One rhythm for the pane, measured on ink rather than boxes. A tool row
+     carries ~6px of its own padding and the prose and thinking rows around it
+     carry none, so the old 24px box gap read as 20px above a tool group and
+     27px below it. 16px lands both at ~19px of visible space. */
+  gap: var(--space-4);
   padding: var(--space-6) var(--session-inline-padding) var(--space-8);
 }
 
@@ -707,87 +713,138 @@
   flex-shrink: 0;
 }
 
-/* The brief sits behind a chip in the same row style as the run's "Worked
-   for" chip, so the pane opens on two quiet lines rather than a card. */
+/* Only a run whose first child event has not landed yet keeps the brief in a
+   row of its own; once there is a turn to hang it on, its control joins the
+   turn's header band. */
 .agent-activity-summary {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-2_5);
+}
+
+/* The brief is the launch prompt quoted back, so it is drawn as a quotation:
+   a left rule and an indent, no fill and no border. The bordered, filled card
+   next door is this pane's word for the agent's *answer*, and lending it to
+   the input made a forty-line brief outweigh the work it asked for. */
+.agent-activity-brief {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1_5);
+  /* Nine lines is about a screenful of brief at --text-sm: enough to read the
+     task, short enough that the run below it still owns the pane. */
+  --agent-brief-lines: 9;
+  --agent-brief-leading: 1.65;
+  --agent-brief-rule: 2px;
+  --agent-brief-indent: 16px;
+}
+
+.agent-activity-brief-quote {
+  min-width: 0;
+  padding-left: var(--agent-brief-indent);
+  border-left: var(--agent-brief-rule) solid color-mix(in oklab, var(--line-strong) 70%, var(--muted));
+  color: var(--muted);
+  font-size: var(--text-sm);
+  line-height: var(--agent-brief-leading);
+}
+
+/* The cap is not conditional on the brief being clipped — that is what the
+   measurement reads to decide *whether* it is clipped, so gating it on the
+   answer leaves every brief full height. */
+.agent-activity-brief:not([data-expanded="true"]) .agent-activity-brief-quote {
+  max-height: calc(var(--agent-brief-lines) * var(--agent-brief-leading) * var(--text-sm));
+  overflow: hidden;
+}
+
+.agent-activity-brief[data-clipped="true"] .agent-activity-brief-quote {
+  cursor: pointer;
+  /* The ramp spans one line, not two: fading a second line wastes the space
+     under it and leaves the control floating in the gap. */
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - var(--agent-brief-leading) * var(--text-sm)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - var(--agent-brief-leading) * var(--text-sm)),
+    transparent 100%
+  );
+}
+
+.agent-activity-brief-quote .markdown {
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+}
+
+.agent-activity-brief-quote
+  .markdown
+  > :where(p, ul, ol, blockquote, h1, h2, h3, h4, pre, .markdown-table-scroll) {
+  max-width: none;
+}
+
+.agent-activity-brief-quote .markdown strong {
+  color: var(--muted-strong);
+  font-weight: calc(500 + var(--font-weight-offset));
+}
+
+.agent-activity-brief-quote .markdown p {
+  margin-bottom: var(--space-2);
+}
+
+/* The quote ends where its text ends; the seam below belongs to the run. */
+.agent-activity-brief-quote .markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.agent-activity-brief-quote .markdown ul,
+.agent-activity-brief-quote .markdown ol {
+  margin-top: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+
+.agent-activity-brief-quote .markdown pre,
+.agent-activity-brief-quote .markdown .markdown-table-scroll,
+.agent-activity-brief-quote .markdown blockquote {
+  margin-top: var(--space-1_5);
+  margin-bottom: var(--space-2);
+}
+
+/* Aligned with the quote's text, not its rule: the control belongs to the
+   quotation rather than to the transcript column. */
+.agent-activity-brief-more {
+  align-self: flex-start;
+  /* The rule counts: the quote's text starts past both it and the indent. */
+  margin-left: calc(var(--agent-brief-rule) + var(--agent-brief-indent));
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-prose);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease);
+}
+
+.agent-activity-brief-more:hover {
+  color: var(--muted-strong);
 }
 
 /* Same corner as the composer and the user bubble: a full-width surface in
    the pane, not the tight chip --radius-md is for. Padding is pulled out with
    the radius so the prose clears the curve at the corners. */
-.agent-activity-prompt,
 .agent-activity-final {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: var(--space-2);
   padding: 14px 18px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-2xl);
-  background: var(--panel-soft);
-}
-
-.agent-activity-final {
-  border-color: var(--line-strong);
   background: var(--panel);
-}
-
-/* The brief is reference material the pane opens folded, not the agent's
-   answer: it sits a step below prose so it reads with the tool rows and chips
-   around it rather than shouting over them. Code steps down with it to keep
-   the usual one-notch gap between prose and mono. */
-.agent-activity-prompt .markdown {
-  font-size: var(--text-sm);
-  line-height: 1.7;
-}
-
-.agent-activity-prompt .markdown :is(code, pre) {
-  font-size: var(--text-xs);
-}
-
-/* Headings carry absolute tokens, so leaving them alone would put an `h2` five
-   steps above the body it introduces. Each drops the same notch the prose did. */
-.agent-activity-prompt .markdown h1 {
-  font-size: var(--text-md-plus);
-}
-
-.agent-activity-prompt .markdown h2 {
-  font-size: var(--text-base-plus);
-}
-
-.agent-activity-prompt .markdown h3 {
-  font-size: var(--text-base);
-}
-
-.agent-activity-prompt .markdown h4 {
-  font-size: var(--text-xs);
-}
-
-.agent-activity-prompt
-  .markdown
-  > :where(p, ul, ol, blockquote, h1, h2, h3, h4, pre, .markdown-table-scroll) {
-  max-width: none;
-}
-
-.agent-activity-prompt .markdown p {
-  margin-bottom: var(--space-2_5);
-}
-
-.agent-activity-prompt .markdown ul,
-.agent-activity-prompt .markdown ol {
-  margin-top: var(--space-1_5);
-  margin-bottom: var(--space-2_5);
-}
-
-.agent-activity-prompt .markdown pre,
-.agent-activity-prompt .markdown .markdown-table-scroll,
-.agent-activity-prompt .markdown blockquote {
-  margin-top: var(--space-2);
-  margin-bottom: var(--space-2_5);
 }
 
 .agent-activity-empty {
@@ -1140,7 +1197,7 @@
   background: var(--panel-sunken);
   border: 1px solid var(--line);
   overflow-x: auto;
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   line-height: 1.55;
 }
 

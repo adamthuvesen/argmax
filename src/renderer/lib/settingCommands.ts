@@ -55,7 +55,7 @@ import { CHAT_VERBOSITY_HINTS, CHAT_VERBOSITY_LABELS, type ChatVerbosity } from 
 
 /**
  * The settings a user flips often enough to deserve a palette row of their own.
- * Every value gets a one-shot row ("Dark theme", "Chat detail 3: Balanced") so
+ * Every value gets a one-shot row ("Dark theme", "Chat detail 3: Steps") so
  * typing the value applies it; the two font sizes also get larger/smaller
  * steps that keep the palette open, since a size is tuned by eye, one notch at
  * a time. Values and callbacks mirror the Appearance and Conversation panels.

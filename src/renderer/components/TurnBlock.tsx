@@ -63,11 +63,13 @@ export function TurnBlock({
   toolsExpanded,
   onToggleTools,
   hasCollapsibleActivity = false,
+  hasHiddenWork = false,
   hideWorkingWhenCollapsed,
   hiddenEarlierBodyCount = 0,
   onShowEarlierBody,
   headerTimestampIso,
   turnMarkdown,
+  brief,
   changes,
   onFork,
   revert
@@ -94,6 +96,12 @@ export function TurnBlock({
   onToggleTools?: () => void;
   /** True when a Compact thought-only activity run still has a disclosure. */
   hasCollapsibleActivity?: boolean;
+  /** The turn hid content that only this chip can bring back. Minimal drops
+   *  settled reasoning and pre-tool remarks before the body is built, so a
+   *  turn made of nothing else arrives here empty — and without this it would
+   *  render as a bare `turn-block` with no chip and no way back to what it
+   *  hid. The parent knows what it dropped; `body` no longer does. */
+  hasHiddenWork?: boolean;
   hideWorkingWhenCollapsed?: boolean;
   /** Rows kept out of the DOM by the turn's render window. */
   hiddenEarlierBodyCount?: number;
@@ -106,6 +114,12 @@ export function TurnBlock({
   // The turn's assistant prose, for the hover footer's Copy action. The
   // footer renders only after the turn finishes and only while hovered.
   turnMarkdown?: string;
+  // What the turn was asked to do, when the surface has something to show.
+  // Only a subagent run does: its brief is the launch prompt. `control` joins
+  // the header row so the brief's toggle and the turn's elapsed share one
+  // hairline instead of stacking two, and `quote` sits between them and the
+  // body. A chat turn has no brief and renders exactly as before.
+  brief?: { control: JSX.Element; quote: JSX.Element | null };
   // Summary of the files this turn wrote, rendered under the body once the
   // turn settles. A summary of a turn still in progress would be a moving
   // number, so the parent only supplies it for a finished turn.
@@ -164,8 +178,16 @@ export function TurnBlock({
       : body;
 
   const elapsedLabel = formatElapsedSeconds(elapsedMs);
-  const staticChipLabel = running ? "Working" : elapsedLabel ? `Worked for ${elapsedLabel}` : "Worked";
   const hasTools = toolItems.length > 0;
+  // Minimal hides a finished turn's work behind this chip, so the chip says how
+  // much is there to open.
+  const stepCount =
+    hideWorkingWhenCollapsed && !running && hasTools
+      ? ` · ${toolItems.length} ${toolItems.length === 1 ? "step" : "steps"}`
+      : "";
+  const staticChipLabel = running
+    ? "Working"
+    : `${elapsedLabel ? `Worked for ${elapsedLabel}` : "Worked"}${stepCount}`;
   const headerTimestampLabel = useMemo(() => {
     if (!headerTimestampIso) return "";
     const ms = Date.parse(headerTimestampIso);
@@ -184,8 +206,8 @@ export function TurnBlock({
   // Show a quiet turn marker for every assistant turn so long chats get the
   // same visual reset as Codex. Tool turns remain clickable/collapsible; pure
   // text turns render static metadata.
-  const showChip = running || hasTools || body.length > 0;
-  const hasDisclosure = hasTools || hasCollapsibleActivity;
+  const showChip = running || hasTools || hasHiddenWork || body.length > 0;
+  const hasDisclosure = hasTools || hasCollapsibleActivity || hasHiddenWork;
   const interactiveChip = running || hasDisclosure;
 
   const liveStartMs = running && startedAtMs > 0 ? startedAtMs : null;
@@ -228,7 +250,8 @@ export function TurnBlock({
 
   return (
     <div className="turn-block" data-running={running ? "true" : undefined}>
-      <div className="turn-block-header">
+      <div className="turn-block-header" data-brief={brief ? "true" : undefined}>
+        {brief?.control ?? null}
         {headerTimestampLabel ? (
           <span
             className="turn-block-timestamp"
@@ -267,6 +290,7 @@ export function TurnBlock({
           <span className="turn-block-chip turn-block-chip-static">{staticChipLabel}</span>
         ) : null}
       </div>
+      {brief?.quote ?? null}
       {visibleBody.length > 0 ? (
         <div
           className="turn-block-body"
@@ -314,7 +338,7 @@ function TurnFooter({
           className="turn-block-footer-action"
           aria-label="Copy reply"
           title={
-            copyFlash === "copied" ? "Copied!" : copyFlash === "failed" ? "Couldn't copy" : "Copy reply"
+            copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy reply"
           }
           onClick={() => void copy(turnMarkdown)}
         >

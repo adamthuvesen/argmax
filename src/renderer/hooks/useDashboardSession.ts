@@ -287,7 +287,7 @@ export function useDashboardSession(
       }
       if (!propagateError || snapshotRef.current.projects.length === 0) {
         setLoadState("error");
-        setLoadError(errorMessage(error) || "Dashboard load failed");
+        setLoadError(errorMessage(error) || "Could not load your chats.");
       }
       if (propagateError) throw error;
     } finally {
@@ -390,7 +390,7 @@ export function useDashboardSession(
   const refresh = useCallback(async (): Promise<void> => {
     if (metadataHintsEnabled.current) {
       await loadMetadata().catch((error: unknown) => {
-        onErrorToastRef.current?.(errorMessage(error) || "Dashboard refresh failed");
+        onErrorToastRef.current?.(errorMessage(error) || "Could not refresh your chats.");
       });
       return;
     }
@@ -460,7 +460,7 @@ export function useDashboardSession(
       const current = snapshotRef.current;
       const hasSnapshot =
         current.projects.length > 0 || current.workspaces.length > 0 || current.sessions.length > 0;
-      const message = errorMessage(error) || "Dashboard refresh failed";
+      const message = errorMessage(error) || "Could not refresh your chats.";
       if (hasSnapshot) {
         logger.warn("renderer.dashboard", "refresh failed; keeping last-good snapshot", {
           error: errorMessage(error)

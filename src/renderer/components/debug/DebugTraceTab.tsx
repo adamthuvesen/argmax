@@ -139,7 +139,7 @@ function TraceRowView({ row }: { row: TraceRow }): JSX.Element {
           ) : null}
           <button type="button" className="debug-copy" onClick={() => void copy(row.raw)} aria-label="Copy row">
             <Copy size={12} aria-hidden="true" />
-            <span>{flash === "copied" ? "Copied" : flash === "failed" ? "Failed" : "Copy"}</span>
+            <span>{flash === "copied" ? "Copied" : flash === "failed" ? "Couldn't copy" : "Copy"}</span>
           </button>
         </div>
       ) : null}

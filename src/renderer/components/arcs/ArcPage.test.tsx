@@ -413,8 +413,7 @@ describe("ArcPage", () => {
     render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={onOpenSession} onClose={vi.fn()} />);
 
     const timeline = await screen.findByRole("region", { name: "Timeline" });
-    expect(await within(timeline).findByRole("heading", { name: "Today" })).toBeInTheDocument();
-    expect(within(timeline).getByText("Checks failing")).toBeInTheDocument();
+    expect(await within(timeline).findByText("Checks failing")).toBeInTheDocument();
     expect(within(timeline).getByText("abc1234")).toBeInTheDocument();
     expect(within(timeline).getByText("Built the pricing page.")).toBeInTheDocument();
     expect(within(timeline).getByText("Arc created")).toBeInTheDocument();

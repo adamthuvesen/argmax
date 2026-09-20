@@ -268,11 +268,11 @@ export function RemoteSettings(): JSX.Element {
             }
           />
 
-          <h4 className="settings-remote-subhead">Push notifications</h4>
+          <h4 className="settings-remote-subhead">Push notifications (self-built phone app)</h4>
 
           <SettingRow
             label="APNs key file"
-            description="Push straight from this Mac to Apple, for the native Argmax app. Download the .p8 from Apple Developer → Keys and give its full path here."
+            description="Only needed if you build and install the phone app yourself: this Mac then pushes straight to Apple with your own key. Download the .p8 from Apple Developer → Keys and give its full path here. Leave empty to use ntfy above instead."
             htmlFor="settings-remote-apns-key-path"
             control={
               <input
@@ -314,11 +314,11 @@ export function RemoteSettings(): JSX.Element {
           />
 
           <SettingRow
-            label="Apple sandbox"
-            description="Send to Apple's development host. A token from a debug build of the phone app only works there."
+            label="Apple development server"
+            description="Where a debug build of the phone app registers. Leave off unless you installed that build yourself."
             control={
               <Toggle
-                ariaLabel="Use the Apple sandbox host"
+                ariaLabel="Use Apple's development server"
                 checked={status.apns.sandbox}
                 onChange={(next) => void saveApnsConfig(next)}
               />

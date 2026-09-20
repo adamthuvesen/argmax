@@ -30,7 +30,7 @@ describe("EngramSettings", () => {
     render(<EngramSettings provider="codex" onProviderChange={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Set up Engram" }));
 
-    const directory = screen.getByLabelText("Engram installation folder");
+    const directory = screen.getByLabelText("Where Engram is installed");
     fireEvent.change(directory, { target: { value: "relative/path" } });
 
     expect(directory).toHaveAttribute("aria-invalid", "true");
@@ -53,7 +53,7 @@ describe("EngramSettings", () => {
     render(<EngramSettings provider="codex" onProviderChange={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Set up Engram" }));
 
-    fireEvent.change(screen.getByLabelText("Engram installation folder"), {
+    fireEvent.change(screen.getByLabelText("Where Engram is installed"), {
       target: { value: "/Users/dev/argmax" }
     });
 
@@ -69,12 +69,12 @@ describe("EngramSettings", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Set up Engram" }));
 
-    fireEvent.change(screen.getByLabelText("Engram installation folder"), { target: { value: path } });
+    fireEvent.change(screen.getByLabelText("Where Engram is installed"), { target: { value: path } });
     const codexCommand = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "3. Connect Codex" }).value;
 
     rerender(<EngramSettings provider="cursor" onProviderChange={vi.fn()} />);
 
-    expect(screen.getByLabelText("Engram installation folder")).toHaveValue(path);
+    expect(screen.getByLabelText("Where Engram is installed")).toHaveValue(path);
     const cursorCommand = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "3. Connect Cursor" }).value;
     expect(cursorCommand).not.toBe(codexCommand);
     expect(cursorCommand).toMatch(/^\s*\{/);
@@ -87,7 +87,7 @@ describe("EngramSettings", () => {
     render(<EngramSettings provider="codex" onProviderChange={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Set up Engram" }));
 
-    fireEvent.change(screen.getByLabelText("Engram installation folder"), {
+    fireEvent.change(screen.getByLabelText("Where Engram is installed"), {
       target: { value: "/Users/dev/argmax" }
     });
     const command = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "3. Connect Codex" });

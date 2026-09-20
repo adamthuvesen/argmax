@@ -93,17 +93,17 @@ export const MENU_KEYBINDINGS: readonly MenuKeybinding[] = [
     menuLocation: "view"
   },
   {
-    command: "toggle-debug-log",
-    accelerator: "CmdOrCtrl+Shift+D",
-    displayAccelerator: "⌘⇧D",
-    label: "Toggle debug log",
-    menuLocation: "view"
-  },
-  {
     command: "open-cheat-sheet",
     accelerator: "CmdOrCtrl+/",
     displayAccelerator: "⌘/",
     label: "Show keyboard shortcuts",
+    menuLocation: "help"
+  },
+  {
+    command: "toggle-debug-log",
+    accelerator: "CmdOrCtrl+Shift+D",
+    displayAccelerator: "⌘⇧D",
+    label: "Debug log",
     menuLocation: "help"
   }
 ] as const;

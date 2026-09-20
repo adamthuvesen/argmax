@@ -135,6 +135,14 @@ struct TranscriptThought: Hashable, Sendable, Identifiable {
             .trimmingCharacters(in: .whitespaces.union(.punctuationCharacters))
         return stripped.isEmpty ? nil : stripped
     }
+
+    /// The tail of a burst still being written, bounded the way `ThoughtBlock`
+    /// bounds its Steps preview: the last 600 characters, marked as a cut. The
+    /// desktop slices UTF-16 and then guards the lone low surrogate that can
+    /// leave; a Swift suffix counts grapheme clusters and cannot split one.
+    static func previewTail(of text: String, limit: Int = 600) -> String {
+        text.count > limit ? "…" + String(text.suffix(limit)) : text
+    }
 }
 
 enum TranscriptToolStatus: String, Hashable, Sendable {
@@ -270,7 +278,8 @@ struct TranscriptTool: Hashable, Sendable, Identifiable {
         let target: String? = activity.targets.count == 1
             ? TranscriptToolActivity.displayTarget(activity.targets[0], kind: activity.kind)
             : nil
-        return activity.label(state: activityState, plural: activity.targets.count > 1, target: target)
+        return activity.label(state: activityState, plural: activity.targets.count > 1, target: target,
+                              count: activity.targets.count)
     }
 }
 
@@ -293,13 +302,20 @@ extension TranscriptToolActivity {
         return file
     }
 
-    func label(state: TranscriptToolActivityState, plural: Bool = false, target: String? = nil) -> String {
+    /// `count` is how many a settled plural clause covers ("Read 3 files").
+    /// A running clause never carries one: its number changes under the
+    /// reader, so it re-words on kinds of work instead.
+    func label(state: TranscriptToolActivityState, plural: Bool = false, target: String? = nil,
+               count: Int? = nil) -> String {
+        let counted = plural ? count.map { "\($0) " } ?? "" : ""
         let file = target ?? (plural ? "files" : "a file")
         let image = target ?? (plural ? "images" : "an image")
+        let settledFile = target ?? (plural ? "\(counted)files" : "a file")
+        let settledImage = target ?? (plural ? "\(counted)images" : "an image")
         let labels: (running: String, succeeded: String, neutral: String)
         switch kind {
         case .read:
-            labels = ("Reading \(file)", "Read \(file)", "File read")
+            labels = ("Reading \(file)", "Read \(settledFile)", "File read")
         case .edit:
             let verbs: (String, String)
             switch operation {
@@ -308,13 +324,13 @@ extension TranscriptToolActivity {
             case .move: verbs = ("Moving", "Moved")
             default: verbs = ("Editing", "Edited")
             }
-            labels = ("\(verbs.0) \(file)", "\(verbs.1) \(file)", "File change")
+            labels = ("\(verbs.0) \(file)", "\(verbs.1) \(settledFile)", "File change")
         case .image:
-            labels = ("Viewing \(image)", "Viewed \(image)", "Image view")
+            labels = ("Viewing \(image)", "Viewed \(settledImage)", "Image view")
         case .imageCapture:
             labels = ("Capturing a screenshot", "Captured a screenshot", "Screenshot capture")
         case .imageGenerate:
-            labels = ("Generating \(image)", "Generated \(image)", "Image generation")
+            labels = ("Generating \(image)", "Generated \(settledImage)", "Image generation")
         case .search:
             labels = ("Searching files", "Searched files", "File search")
         case .list:
@@ -330,21 +346,21 @@ extension TranscriptToolActivity {
             labels = ("Searching for tools", loaded, "Tool discovery")
         case .command:
             labels = (plural ? "Running commands" : "Running a command",
-                      plural ? "Ran commands" : "Ran a command", "Command")
+                      plural ? "Ran \(counted)commands" : "Ran a command", "Command")
         case .computer:
             labels = ("Using a computer", "Used a computer", "Computer use")
         case .agent:
-            labels = ("Starting an agent", plural ? "Started agents" : "Started an agent", "Agent launch")
+            labels = ("Starting an agent", plural ? "Started \(counted)agents" : "Started an agent", "Agent launch")
         case .agentMessage:
-            labels = ("Messaging an agent", plural ? "Messaged agents" : "Messaged an agent", "Agent message")
+            labels = ("Messaging an agent", plural ? "Messaged \(counted)agents" : "Messaged an agent", "Agent message")
         case .agentWait:
-            labels = ("Waiting for an agent", plural ? "Waited for agents" : "Waited for an agent", "Agent wait")
+            labels = ("Waiting for an agent", plural ? "Waited for \(counted)agents" : "Waited for an agent", "Agent wait")
         case .agentStop:
-            labels = ("Stopping an agent", plural ? "Stopped agents" : "Stopped an agent", "Agent stop")
+            labels = ("Stopping an agent", plural ? "Stopped \(counted)agents" : "Stopped an agent", "Agent stop")
         case .memoryRecall:
             labels = ("Recalling memory", "Recalled memory", "Memory recall")
         case .memorySave:
-            labels = ("Saving a memory", plural ? "Saved memories" : "Saved a memory", "Memory save")
+            labels = ("Saving a memory", plural ? "Saved \(counted)memories" : "Saved a memory", "Memory save")
         case .git:
             let subcommand = target.map { "git \($0)" } ?? "git commands"
             labels = ("Running \(subcommand)", "Ran \(subcommand)", "Git command")
@@ -357,7 +373,7 @@ extension TranscriptToolActivity {
             labels = ("Activating \(named)", "Activated \(named)", "Skill activation")
         case .tool:
             labels = (plural ? "Using tools" : "Using a tool",
-                      plural ? "Used tools" : "Used a tool", "Tool call")
+                      plural ? "Used \(counted)tools" : "Used a tool", "Tool call")
         }
         switch state {
         case .running: return labels.running
@@ -368,7 +384,12 @@ extension TranscriptToolActivity {
         }
     }
 
-    static func summary(for tools: [TranscriptTool]) -> (headline: String, iconKind: TranscriptToolActivityKind) {
+    /// The one line a fold collapses to. `counting` is the caller's say over
+    /// the counts a settled clause carries: the line that is live — a call in
+    /// flight, or the beat between calls — states what it is doing and leaves
+    /// the numbers to the frame the work lands in.
+    static func summary(for tools: [TranscriptTool], counting: Bool = true)
+        -> (headline: String, iconKind: TranscriptToolActivityKind) {
         struct Group: Hashable {
             var activity: TranscriptToolActivity
             var state: TranscriptToolActivityState
@@ -392,18 +413,29 @@ extension TranscriptToolActivity {
                 groups.append(Group(activity: activity, state: state, count: 1, targets: Set(activity.targets)))
             }
         }
+        // A fold with a call still in flight has a number that changes under
+        // the reader, and a clause that settled beside it would date the line
+        // rather than sum it up. The counts land when the whole fold has.
+        let settled = counting && !groups.contains { $0.state == .running }
         let labels = groups.map { group in
             let plural = group.targets.isEmpty ? group.count > 1 : group.targets.count > 1
             let target: String? = group.activity.kind == .skill && !plural && group.targets.count == 1
                 ? group.targets.first.flatMap { TranscriptToolActivity.displayTarget($0, kind: .skill) }
                 : nil
-            return group.activity.label(state: group.state, plural: plural, target: target)
+            let count = group.targets.isEmpty ? group.count : group.targets.count
+            return group.activity.label(state: group.state, plural: plural, target: target,
+                                        count: settled ? count : nil)
         }
-        let headline = labels.enumerated().map { index, label in
+        // A fold names at most four kinds of work and counts the rest: past
+        // that the line stops being a summary and is truncated anyway.
+        // Mirrored in the web's `joinClauses` (lib/toolActivity.ts).
+        var clauses = labels.prefix(4).enumerated().map { index, label -> String in
             guard index > 0, let first = label.first else { return label }
             return first.lowercased() + label.dropFirst()
-        }.joined(separator: ", ")
-        return (headline, groups.first?.activity.kind ?? .tool)
+        }
+        let rest = labels.count - clauses.count
+        if rest > 0 { clauses.append("and \(rest) more") }
+        return (clauses.joined(separator: ", "), groups.first?.activity.kind ?? .tool)
     }
 }
 

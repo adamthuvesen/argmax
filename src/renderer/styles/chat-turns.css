@@ -154,12 +154,12 @@
   font-family: var(--font-prose);
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
-  opacity: 0.55;
+  opacity: 0.75;
   transition: opacity var(--duration-fast) var(--ease);
 }
 
 .turn-block:hover .turn-block-timestamp {
-  opacity: 0.9;
+  opacity: 1;
 }
 
 .turn-block-chip {
@@ -210,6 +210,40 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+}
+
+/* The header's small type sits high in its line box while a tool row's label
+   sits low in its padded row, so the turn's own 10px gap read tighter under
+   the header than the 16px body gap between a tool group and the next line.
+   The extra margin evens the two by eye. A brief sits between the two and
+   owns that space instead. */
+.turn-block-header + .turn-block-body {
+  margin-top: var(--space-2_5);
+}
+
+/* A brief sits between the header and the body and owns both seams, so the
+   run reads on one rhythm: ~19px of ink-to-ink space from the band down
+   through the answer. The label under the brief is taller in its line box
+   than the header's chip, so it needs 2px less below it. */
+.turn-block-header[data-brief] + .agent-activity-brief {
+  margin-top: var(--space-1_5);
+}
+
+.agent-activity-brief + .turn-block-body {
+  margin-top: var(--space-2);
+}
+
+/* A run's header is a band: the brief's toggle on the left, the turn's
+   elapsed on the right, and the hairline running between them. `::after`
+   always generates after the real children, so the elapsed is ordered past
+   it rather than moved in the DOM. */
+.turn-block-header[data-brief] > .turn-block-chip:last-child:not(:first-child) {
+  order: 1;
+  padding-right: 0;
+}
+
+.turn-block-header[data-brief] {
+  gap: var(--space-3);
 }
 
 .turn-block-tools {
@@ -296,7 +330,7 @@
   background: transparent;
   cursor: pointer;
   color: var(--muted-strong);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   line-height: 1.4;
   transition: color var(--duration-fast) var(--ease);
 }
@@ -309,7 +343,9 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-1_5);
-  flex: 0 1 auto;
+  /* The label never shrinks: it is two words, and sharing the squeeze with the
+     excerpt beside it clipped "Thought" to 23px of spilled text. */
+  flex: 0 0 auto;
   min-width: 0;
 }
 
@@ -324,12 +360,24 @@
 
 .thought-block-eyebrow-label {
   font-family: var(--font-ui);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   font-weight: calc(400 + var(--font-weight-offset));
   letter-spacing: 0;
   text-transform: none;
   color: var(--chip-ink);
   transition: color var(--duration-fast) var(--ease);
+}
+
+/* A folded thought keeps its first line beside the label, so a row of settled
+   reasoning is readable without opening it. */
+.thought-block-excerpt {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-base);
+  color: var(--muted);
 }
 
 .thought-block-chevron {
@@ -385,7 +433,7 @@
   font-size: var(--text-base);
 }
 
-/* Balanced bounds live reasoning without mounting its full markdown tree. */
+/* Steps bounds live reasoning without mounting its full markdown tree. */
 .thought-block-preview {
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -575,7 +623,7 @@
    as the seconds tick. */
 .thinking-elapsed {
   font-family: var(--font-ui);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   line-height: 1.2;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
@@ -980,8 +1028,9 @@
 
 .tool-call-group-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 7px;
+  gap: 2px 7px;
   width: 100%;
   /* Same 1.9em pitch as the rows below, so a collapsed headline and an
      expanded run of rows sit on one continuous rhythm. */
@@ -990,8 +1039,8 @@
   border: 0;
   background: transparent;
   cursor: pointer;
-  color: var(--muted);
-  font-size: var(--text-sm);
+  color: var(--tool-row-ink);
+  font-size: var(--text-base);
   line-height: 1.4;
   transition: color var(--duration-fast) var(--ease);
 }
@@ -1015,30 +1064,42 @@
 
 .tool-call-group-eyebrow-label {
   font-family: var(--font-prose);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   font-weight: calc(400 + var(--font-weight-offset));
   letter-spacing: 0;
   text-transform: none;
-  color: var(--muted-strong);
+  color: var(--tool-row-ink);
 }
 
-/* Everything after the leading verb ("2 files, ran 1 command") steps back a
-   shade, the same way a row's target steps back from its verb. One grammar:
-   the verb says what happened, the dim remainder says to what. */
+/* Everything after the leading verb ("2 files, ran 1 command"). It shares the
+   verb's ink: a darker verb read as a second weight on a line meant to stand
+   back from the prose. */
 .tool-call-group-eyebrow-detail {
   font-family: var(--font-prose);
-  font-size: var(--text-sm);
-  color: var(--chip-ink);
+  font-size: var(--text-base);
+  color: var(--tool-row-ink);
 }
 
+/* The live caption rides beside the headline and takes whatever width is left,
+   clipping to an ellipsis rather than folding the activity onto a second line.
+   Basis 0 is what keeps the summary whole: the caption contributes nothing to
+   the overflow, so it absorbs the shortfall instead of squeezing the headline. */
 .tool-call-group-preview {
-  min-width: 0;
-  flex: 1;
+  /* The floor is what keeps the inline caption honest: a pane too narrow to
+     show a readable stub wraps it back under the headline instead of printing
+     three characters and an ellipsis. */
+  min-width: 18ch;
+  flex: 1 1 0;
+  /* Inline this is the gap that separates caption from headline; wrapped onto
+     its own line it lines the caption up with the headline's text. */
+  padding-left: calc(var(--activity-mark-size) + 7px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--font-code);
-  font-size: var(--text-sm);
+  /* The headline's face, not code: beside the summary the caption is the same
+     sentence continued, and a mono run there read as a second kind of line. */
+  font-family: var(--font-prose);
+  font-size: var(--text-base);
   color: var(--muted);
   opacity: 0.86;
 }
@@ -1155,9 +1216,9 @@
   background: transparent;
   cursor: default;
   font-family: var(--font-prose);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   line-height: 1.4;
-  color: var(--muted);
+  color: var(--tool-row-ink);
   transition: color var(--duration-fast) var(--ease);
 }
 
@@ -1197,12 +1258,12 @@ button.tool-call-row-button {
   transform: rotate(90deg);
 }
 
-/* The verb/target step is a token step, not an opacity fade. Dimming `--muted`
-   with opacity dropped the file name to 2.4:1 in the light theme, and the file
-   name is the one thing on the row you scan for. */
+/* Verb and target share one ink, set by token rather than an opacity fade:
+   dimming `--muted` with opacity dropped the file name to 2.4:1 in the light
+   theme, and the file name is the one thing on the row you scan for. */
 .tool-call-row-verb {
   flex: 0 0 auto;
-  color: var(--muted-strong);
+  color: var(--tool-row-ink);
   font-weight: calc(400 + var(--font-weight-offset));
 }
 
@@ -1230,8 +1291,8 @@ button.tool-call-row-button {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--font-prose);
-  font-size: var(--text-sm);
-  color: var(--muted);
+  font-size: var(--text-base);
+  color: var(--tool-row-ink);
 }
 
 .tool-call-row[data-tool-type="bash"] .tool-call-row-target {
@@ -1252,10 +1313,9 @@ button.tool-call-row-button {
   text-overflow: clip;
 }
 
-/* Hovering brightens what the row is about, which is the useful feedback —
-   the verb is already at rest where it belongs. */
-.tool-call-row-button:hover .tool-call-row-target,
-.tool-call-group-header:hover .tool-call-group-eyebrow-detail {
+/* Hovering brightens the whole line at once, so it stays one ink. */
+.tool-call-row-button:hover :is(.tool-call-row-verb, .tool-call-row-target, .tool-call-row-chevron),
+.tool-call-group-header:hover :is(.tool-call-group-eyebrow-label, .tool-call-group-eyebrow-detail, .tool-call-row-chevron) {
   color: var(--muted-strong);
 }
 
@@ -1265,28 +1325,37 @@ button.tool-call-row-button {
 .tool-call-row-chevron {
   flex: 0 0 auto;
   align-self: center;
-  color: var(--muted);
+  color: var(--tool-row-ink);
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease),
     transform var(--duration-fast) var(--ease);
 }
 
 /* A group headline is sometimes the only thing a turn shows (single-line
-   verbosity), so its chevron keeps a faint resting presence — invisible there
+   verbosity), so its chevron stays at the line's ink — invisible there
    would make the whole run of tools undiscoverable. Individual rows sit inside
    an already-open group, so they can stay clean until hovered. */
 .tool-call-group-header .tool-call-row-chevron {
-  opacity: 0.28;
+  opacity: 1;
+}
+
+/* Minimal is the exception: there the headline is a status line for work the
+   reader chose not to read, so the standing chevron offered exactly the detail
+   the level hides. The header is still the hit target, and hovering or opening
+   it brings the chevron back. */
+.tool-call-group[data-chevron="hover"]:not([data-expanded="true"])
+  > .tool-call-group-header:not(:hover):not(:focus-visible) .tool-call-row-chevron {
+  opacity: 0;
 }
 
 .tool-call-row-button:hover .tool-call-row-chevron,
 .tool-call-group-header:hover .tool-call-row-chevron {
-  opacity: 0.55;
+  opacity: 1;
 }
 
 .tool-call-row-button[aria-expanded="true"] .tool-call-row-chevron,
 .tool-call-group[data-expanded="true"] > .tool-call-group-header .tool-call-row-chevron {
-  opacity: 0.55;
+  opacity: 1;
   transform: rotate(90deg);
 }
 
@@ -1573,7 +1642,7 @@ button.tool-call-row-button {
 
 .turn-changes-title {
   color: var(--muted-strong);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
 }
 
 .turn-changes-review {
@@ -1667,7 +1736,7 @@ button.tool-call-row-button {
   /* The name is what the row is for, so it sits on chrome ink rather than the
      muted step the directory beside it takes. */
   color: var(--text-soft);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

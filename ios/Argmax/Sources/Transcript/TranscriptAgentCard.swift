@@ -100,18 +100,23 @@ struct TranscriptAgentGroupView: View {
         }
     }
 
+    /// The agent's emblem, whatever the row is doing — the same mark the Mac's
+    /// launch row, dock tab and pane masthead carry, so a codename has one
+    /// face across both screens. Liveness is already on the row: a running
+    /// agent's words carry the reading wave, and a mark that also said
+    /// "running" would say it twice.
+    ///
+    /// The nest is the one mark left to a backgrounded launch: no completion
+    /// for one ever arrives, so its words never wave, and a status mark is the
+    /// honest reading — alive, somewhere else. It waits in the emblem's own
+    /// hue, the colour the mark is about to take.
     @ViewBuilder
     private func agentMark(_ agent: TranscriptAgent) -> some View {
-        // The nest is the one mark left to a backgrounded launch: no
-        // completion for one ever arrives, so its words never wave, and a
-        // status mark is the honest reading — alive, somewhere else.
+        let emblem = agentEmblem(agent)
         if agent.status == .running && agent.backgroundLaunch {
-            WorkingNest(size: 18)
+            WorkingNest(size: 18, tint: Color(AgentEmblemPalette.face(emblem.hue)))
         } else {
-            Image(systemName: agent.status == .failed ? "exclamationmark.circle.fill" : "circle.hexagongrid.fill")
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(agentStatusColor(agent.status))
-                .accessibilityHidden(true)
+            AgentEmblem(emblem: emblem, size: 18, failed: agent.status == .failed)
         }
     }
 }
@@ -136,6 +141,15 @@ func agentStatusLabel(_ status: TranscriptToolStatus) -> String {
     case .done: return "Completed"
     case .failed: return "Failed"
     }
+}
+
+/// The mark a spawn wears. A launch whose codename has not reached the phone
+/// yet falls back through the same hash the desktop uses, so the emblem does
+/// not change when the name arrives.
+func agentEmblem(_ agent: TranscriptAgent) -> Emblem {
+    let codename = agent.agentCodename.flatMap { $0.isEmpty ? nil : $0 }
+        ?? AgentEmblemCatalog.fallbackCodename(agent.toolUseId)
+    return AgentEmblemCatalog.emblem(forCodename: codename)
 }
 
 func agentStatusColor(_ status: TranscriptToolStatus) -> Color {

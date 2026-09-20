@@ -213,8 +213,8 @@ struct InsightsScreen: View {
     private var showingSkeleton: Bool {
         // Bones only when there is nothing truthful to show: no data at all,
         // or data for a different window or provider than the pickers name.
-        // Same-picker stale numbers stay up behind a refresh — the "Updating…"
-        // line says so — because a blank page is never faster than an old one.
+        // Same-picker stale numbers stay up behind a refresh — the updating
+        // spinner says so — because a blank page is never faster than an old one.
         if store.tab == .usage {
             guard let usage = store.usage else { return true }
             return usage.window != store.usageWindow
@@ -223,18 +223,14 @@ struct InsightsScreen: View {
         return store.activity == nil || store.activity?.window != store.activityWindow
     }
 
-    /// A quiet line under the filters while a background refresh lands. The
+    /// A quiet spinner under the filters while a background refresh lands. The
     /// numbers above it are the previous window's until the new one paints.
     private var updatingLine: some View {
         Group {
             if store.isLoading(store.tab), !showingSkeleton {
-                HStack(spacing: 6) {
-                    ProgressView()
-                        .controlSize(.mini)
-                    Text("Updating…")
-                        .typeMeta().foregroundStyle(Theme.muted)
-                }
-                .accessibilityLabel("Updating insights")
+                ProgressView()
+                    .controlSize(.mini)
+                    .accessibilityLabel("Updating insights")
             }
         }
     }

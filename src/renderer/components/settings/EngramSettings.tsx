@@ -41,7 +41,7 @@ export function EngramSettings({
         <div id="settings-engram-setup">
           <SettingRow
             label="1. Install Engram"
-            description="Follow the Engram guide to install it with uv and configure its model credentials."
+            description="Optional. Follow the Engram guide to install it and set up its model credentials."
             control={
               <WebLink
                 className="settings-button"
@@ -71,7 +71,7 @@ export function EngramSettings({
           <div className="settings-engram-fields">
             <div className="settings-field">
               <label className="settings-field-label" htmlFor="settings-engram-directory">
-                Engram installation folder
+                Where Engram is installed
               </label>
               <input
                 id="settings-engram-directory"
@@ -87,7 +87,7 @@ export function EngramSettings({
               <p className="settings-note" id="settings-engram-directory-help">
                 {directory.length > 0 && error !== null
                   ? error
-                  : "The full path to your Engram clone, not the project you are working on."}
+                  : "The full path to the Engram folder itself, not the project you are working on."}
               </p>
             </div>
             {setup ? (
@@ -132,7 +132,7 @@ function CopySetup({ content, kind }: { content: string; kind: "command" | "json
       onClick={() => void copy(content)}
     >
       {flash === "copied" ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
-      {flash === "copied" ? "Copied" : flash === "failed" ? "Couldn’t copy" : "Copy"}
+      {flash === "copied" ? "Copied" : flash === "failed" ? "Couldn't copy" : "Copy"}
     </button>
   );
 }

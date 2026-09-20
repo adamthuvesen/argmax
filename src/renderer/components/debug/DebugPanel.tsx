@@ -170,7 +170,7 @@ function DebugIdentity({
         )}
       </span>
       <button type="button" onClick={() => void copy(ids)} title={ids} aria-label="Copy session and workspace ids">
-        {flash === "copied" ? "Copied ids" : flash === "failed" ? "Copy failed" : "Copy ids"}
+        {flash === "copied" ? "Copied ids" : flash === "failed" ? "Couldn't copy" : "Copy ids"}
       </button>
     </footer>
   );

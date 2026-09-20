@@ -14,6 +14,17 @@ Integrated terminal instances run independently from provider PTYs under [src-ta
 
 The backend uses `portable-pty` for process execution and event chunk emission. Subscriptions require `core:event:default` in `src-tauri/capabilities/default.json`.
 
+Input is a stream, so `terminal:write` has to preserve order. Each PTY owns a
+writer thread draining a queue, and the command only enqueues — which is why it
+is the one synchronous handler that touches a PTY: Tauri resolves a synchronous
+command inline, in the order the webview sent its messages, while an `async` one
+spawns a task per call. When it was `async`, two keystrokes in flight raced and a
+`\r` that won made the shell run a fragment: `open .` typed quickly executed as
+`en`. A write that fails against a live PTY is reported to the next caller, since
+by then the failing write is on the terminal's own thread. The remote bridge
+dispatches each request on its own task, so a bridge client that wants ordered
+input has to await one write before sending the next.
+
 The backend prepares the PTY reader and writer before starting the shell, so a
 setup failure cannot leave an untracked child. Closing a live terminal signals
 every process group still in the shell's PTY session, then escalates from

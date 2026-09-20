@@ -45,7 +45,7 @@ export function FilePopover({
       aria-label="File suggestions"
       onWheel={(event) => event.stopPropagation()}
     >
-      {state.filteredEntries.length === 0 ? <li className="file-popover-empty">No matches</li> : null}
+      {state.filteredEntries.length === 0 ? <li className="file-popover-empty">No files match</li> : null}
       {state.filteredEntries.map((entry, index) => {
         const { name, folder } = splitEntryPath(entry);
         const label = entry.kind === "dir" ? `${name}/` : name;

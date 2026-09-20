@@ -628,10 +628,60 @@ async function runChecks() {
       before: localResizeBefore,
       after: localResizeAfter,
       movement: movement(localResizeBefore, localResizeAfter),
-      floorBefore: localResizeBefore.contentMinHeight,
-      floorAfter: localResizeAfter.contentMinHeight,
-      extraOk: localResizeBefore.contentMinHeight === localResizeAfter.contentMinHeight,
       tolerance: 2
+    });
+
+    // The floor only has to hold the reader's viewport in place. Holding the
+    // whole pre-collapse range left blank space to scroll into below it. The
+    // latest turn outgrows the viewport so the prompt-at-top reservation is
+    // not what's measured.
+    await mount(surface, { initialLiveHeight: 1000 });
+    const collapseDetached = await active.scrollUp(12);
+    const collapseBefore = active.measureAnchor(collapseDetached.anchorId);
+    await active.collapseBelow(400);
+    const collapseAfter = active.measureAnchor(collapseBefore.anchorId);
+    results.push({
+      name: surface + ": collapse below a detached reader leaves no blank range under the viewport",
+      surface,
+      before: collapseBefore,
+      after: collapseAfter,
+      movement: movement(collapseBefore, collapseAfter),
+      extraOk: collapseAfter.scrollHeight <= collapseBefore.scrollTop + collapseBefore.clientHeight + 1,
+      tolerance: 2
+    });
+    // That reader now sits at the physical bottom, where scrolling down moves
+    // nothing and raises no scroll event. The wheel itself has to resume.
+    dispatchWheel(document.querySelector(".conversation-list, .agent-activity-scroll"), 40);
+    await nextFrame();
+    const resumeAfter = active.measure();
+    results.push({
+      name: surface + ": wheel down at the bottom after a collapse resumes follow",
+      surface,
+      before: collapseAfter,
+      after: resumeAfter,
+      movement: 0,
+      extraOk: !resumeAfter.showFab && resumeAfter.distanceFromBottom <= 1,
+      tolerance: 0
+    });
+
+    // Composer, terminal and window resizes shrink and regrow the viewport
+    // while the reader is detached. None of that may grow the scroll range.
+    await mount(surface);
+    await active.scrollUp(12);
+    const cycleBefore = active.measure();
+    for (let cycle = 0; cycle < 3; cycle += 1) {
+      await active.resizeViewport(-120);
+      await active.resizeViewport(120);
+    }
+    const cycleAfter = active.measure();
+    results.push({
+      name: surface + ": viewport resize cycles do not grow a detached reader's range",
+      surface,
+      before: cycleBefore,
+      after: cycleAfter,
+      movement: 0,
+      extraOk: cycleAfter.scrollHeight <= cycleBefore.scrollHeight + 1,
+      tolerance: 0
     });
 
     await mount(surface, { sameTurnScenario: true, initialAboveHeight: 300 });

@@ -23,6 +23,9 @@ export default tseslint.config(
       "scripts/**/*.mjs",
       // Design-concept render scripts, plain Node with no tsconfig behind them.
       "docs/design/**/*.mjs",
+      // Mockup pages vite serves straight from the repo; they import the real
+      // components but are not part of the renderer's TS program.
+      "docs/design/**/*.tsx",
       "vitest.perf.config.ts",
       // Local throwaways. The directory is gitignored, but `eslint .` still
       // walks it and type-aware rules have no tsconfig for those files.

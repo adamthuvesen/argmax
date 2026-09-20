@@ -185,7 +185,7 @@ describe("RemoteSettings", () => {
     });
     render(<RemoteSettings />);
 
-    fireEvent.click(await screen.findByRole("checkbox", { name: "Use the Apple sandbox host" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Use Apple's development server" }));
 
     await waitFor(() => {
       expect(setApnsConfig).toHaveBeenCalledWith({

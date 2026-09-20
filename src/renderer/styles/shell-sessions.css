@@ -1,8 +1,13 @@
+/* The marker column runs one size ladder, 2:1 (docs/design/sidebar-marker-scale):
+   14px for any mark with a shape — a picked icon, a status glyph, the working
+   nest — and 7px for any mark that is only a circle, which is the unread dot
+   and the calm row's ring. A new mark picks the step its shape belongs to
+   rather than a size of its own. */
 .session-link {
   position: relative;
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  gap: var(--space-2_5);
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 9px;
   align-items: center;
   width: 100%;
   min-height: 34px;
@@ -21,7 +26,7 @@
 }
 
 .session-link.session-link-has-pr-count {
-  grid-template-columns: 18px minmax(0, 1fr) auto;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
 }
 
 .session-pr-count {
@@ -83,24 +88,40 @@
   padding-bottom: 7px;
 }
 
-/* Calm rows draw no glyph, but they keep the marker column so every title in
-   the list starts at the same x. */
-.session-link-lead-spacer {
-  width: 16px;
+/* Calm rows have no live signal and no picked icon, so they fill the marker
+   column with a ring instead: the column always carries a mark, and every title
+   in the list starts at the same x. Hollow on purpose. The unread marker below
+   is the same 7px circle filled in the accent, and a ring cannot be mistaken
+   for it — the difference is categorical rather than a matter of tint or size,
+   which is what holds up this small. */
+.session-link-lead-ring {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 18px;
+}
+
+.session-link-lead-ring::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--muted);
+  border-radius: 50%;
+  opacity: 0.5;
 }
 
 .session-unread-marker {
   display: grid;
   place-items: center;
-  width: 16px;
+  width: 14px;
   height: 18px;
   flex-shrink: 0;
 }
 
 .session-unread-marker::before {
   content: "";
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--accent);
 }

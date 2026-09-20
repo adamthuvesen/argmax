@@ -12,7 +12,7 @@ interface AsyncLoadOptions {
    * Fallback error string when the fetcher throws a non-Error. Most callers
    * leave this at the default — `errorMessage()` already handles the common
    * shapes — but providing a custom fallback lets the UI read in domain
-   * language ("Provider discovery failed.") instead of a stringified value.
+   * language ("Could not check which agents are installed.") instead of a stringified value.
    */
   fallbackMessage?: string;
 }
@@ -77,7 +77,7 @@ export function useAsyncLoad<T>(
       setData(result);
     } catch (caught) {
       if (!mounted.current || id !== requestId.current) return;
-      setError(errorMessage(caught) || options?.fallbackMessage || "Request failed.");
+      setError(errorMessage(caught) || options?.fallbackMessage || "Could not load that.");
     } finally {
       if (mounted.current && id === requestId.current) {
         setIsLoading(false);

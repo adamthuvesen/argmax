@@ -190,8 +190,10 @@ pub struct NormalizerSessionContext {
     /// Set when Cursor emits `result/success` or we synthesize a turn-ending
     /// `message.completed` on process exit.
     pub cursor_turn_completed_emitted: bool,
-    /// Set when Claude emits a `message.completed` for the current turn so a
-    /// trailing `result` line does not synthesize a duplicate bubble.
+    /// Set when the turn has already put its answer on the timeline so a
+    /// trailing `result` line does not synthesize a duplicate bubble: Claude's
+    /// closing `message.completed`, or — since Grok's turns are `text_delta`
+    /// bursts with no closing envelope — Grok's first answer delta.
     pub claude_turn_answer_emitted: bool,
     /// Claude uses the same task lifecycle envelopes for background Bash jobs
     /// and native agents. Notifications omit the start's `task_type`, so keep
@@ -803,6 +805,21 @@ fn normalize_json_payload(
     };
     let timeline_type = mapped_type.unwrap_or("message.delta");
     if speaks_claude_stream_json(provider) && timeline_type == "message.completed" {
+        context.claude_turn_answer_emitted = true;
+    }
+    // Grok never closes a turn with the `assistant` envelope that arms the
+    // guard above (see claude.rs::streamed_tool_use_block) — its answer exists
+    // only as `text_delta` bursts — so the trailing `result` used to synthesize
+    // a second bubble holding every burst concatenated. An answer delta arms it
+    // instead: the result only speaks when the deltas did not. A `thinking_delta`
+    // is reasoning, not an answer, so a turn that only reasons and then answers
+    // through `result` alone keeps that fallback.
+    if provider == ProviderId::Grok
+        && timeline_type == "message.delta"
+        && provider_type.as_deref() == Some("content_block_delta")
+        && !is_claude_thinking_delta
+        && text.as_deref().is_some_and(|text| !text.trim().is_empty())
+    {
         context.claude_turn_answer_emitted = true;
     }
     // Flag streamed extended-thinking deltas so the renderer routes them to the

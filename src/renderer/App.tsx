@@ -160,6 +160,8 @@ import {
   SIDEBAR_TRANSLUCENCY_MAX,
   SIDEBAR_TRANSLUCENCY_MIN,
   WORKSPACE_CARD_KEY,
+  DEVELOPER_TOOLS_KEY,
+  DeveloperToolsContext,
   PrMilestoneCelebrationContext,
   resolveChatVerbosity,
   useBooleanUiPreference,
@@ -248,6 +250,12 @@ export function App(): JSX.Element {
     hideArcPage();
   }, [setIsBrowserPageOpen]);
   const [workspaceCardVisible, setWorkspaceCardVisible] = useBooleanUiPreference(WORKSPACE_CARD_KEY, true);
+  // A dev build starts with the diagnostic surfaces on; a packaged build does
+  // not, until the user turns them on in Settings → Advanced.
+  const [developerToolsEnabled, setDeveloperToolsEnabled] = useBooleanUiPreference(
+    DEVELOPER_TOOLS_KEY,
+    import.meta.env.DEV
+  );
   const [fastModeEnabled, setFastModeEnabled] = useBooleanUiPreference(FAST_MODE_KEY, false);
   const [turnChangesExpanded, setTurnChangesExpanded] = useBooleanUiPreference(
     TURN_CHANGES_EXPANDED_KEY,
@@ -718,7 +726,7 @@ export function App(): JSX.Element {
   const handleArchiveWorkspace = useCallback(async (workspaceId: string): Promise<void> => {
     const api = window.argmax;
     if (!api) {
-      showErrorToast("Open the Tauri app window to archive workspaces.");
+      showErrorToast("Open Argmax on your Mac to archive workspaces.");
       return;
     }
     const confirmDirtyArchive = (target: WorkspaceSummary): Promise<boolean> => {
@@ -740,7 +748,7 @@ export function App(): JSX.Element {
       }
       result = await api.workspaces.archive({ workspaceId, force });
     } catch (error) {
-      showErrorToast(error instanceof Error ? error.message : "Workspace archive failed.");
+      showErrorToast(error instanceof Error ? error.message : "Could not archive the workspace.");
       return;
     }
     // Without force a dirty worktree comes back as "kept" — the backend's
@@ -755,7 +763,7 @@ export function App(): JSX.Element {
         }
         result = await api.workspaces.archive({ workspaceId, force: true });
       } catch (error) {
-        showErrorToast(error instanceof Error ? error.message : "Workspace archive failed.");
+        showErrorToast(error instanceof Error ? error.message : "Could not archive the workspace.");
         return;
       }
     }
@@ -777,7 +785,7 @@ export function App(): JSX.Element {
   const handleOpenInIde = useCallback(
     async (workspaceId: string, ide: IdeId, options?: { pinAsDefault?: boolean }): Promise<void> => {
       if (!window.argmax) {
-        showErrorToast("Open the Tauri app window to launch an IDE.");
+        showErrorToast("Open Argmax on your Mac to launch an IDE.");
         return;
       }
       try {
@@ -799,7 +807,7 @@ export function App(): JSX.Element {
 
   const addProject = useCallback(async (): Promise<void> => {
     if (!window.argmax) {
-      showErrorToast("Open the Tauri app window to add a project.");
+      showErrorToast("Open Argmax on your Mac to add a project.");
       return;
     }
 
@@ -828,7 +836,7 @@ export function App(): JSX.Element {
 
   const removeProject = useCallback(async (projectId: string): Promise<void> => {
     if (!window.argmax) {
-      showErrorToast("Open the Tauri app window to remove a project.");
+      showErrorToast("Open Argmax on your Mac to remove a project.");
       return;
     }
     const projectName = snapshot.projects.find((p) => p.id === projectId)?.name ?? "project";
@@ -916,20 +924,20 @@ export function App(): JSX.Element {
   // bust the memo.
   const onToggleWorkspacePinnedRow = useCallback(
     (workspaceId: string, pinned: boolean): void =>
-      runRowCommand("Open the Tauri app window to pin a chat.", "Could not toggle pin.", (api) =>
+      runRowCommand("Open Argmax on your Mac to pin a chat.", "Could not toggle pin.", (api) =>
         api.workspaces.setPinned({ workspaceId, pinned })),
     [runRowCommand]
   );
   const onRenameWorkspaceRow = useCallback(
     (workspaceId: string, taskLabel: string): void =>
-      runRowCommand("Open the Tauri app window to rename a chat.", "Could not rename chat.", (api) =>
+      runRowCommand("Open Argmax on your Mac to rename a chat.", "Could not rename chat.", (api) =>
         api.workspaces.setLabel({ workspaceId, taskLabel })),
     [runRowCommand]
   );
   const onRemoveFromPriorityRow = useCallback(
     (workspaceId: string): void =>
       runRowCommand(
-        "Open the Tauri app window to change priority.",
+        "Open Argmax on your Mac to change priority.",
         "Could not remove the chat from priority.",
         (api) => api.workspaces.setPriorityDismissed({ workspaceId, dismissed: true })
       ),
@@ -938,7 +946,7 @@ export function App(): JSX.Element {
   const onAddToPriorityRow = useCallback(
     (workspaceId: string): void =>
       runRowCommand(
-        "Open the Tauri app window to change priority.",
+        "Open Argmax on your Mac to change priority.",
         "Could not add the chat to priority.",
         (api) => api.workspaces.setPriorityAdded({ workspaceId, added: true })
       ),
@@ -950,7 +958,7 @@ export function App(): JSX.Element {
   const onClearPrioritySection = useCallback(
     (workspaceIds: string[]): void =>
       runRowCommand(
-        "Open the Tauri app window to change priority.",
+        "Open Argmax on your Mac to change priority.",
         "Could not clear priority.",
         (api) =>
           Promise.all(
@@ -964,7 +972,7 @@ export function App(): JSX.Element {
   const onSetWorkspaceIconRow = useCallback(
     (workspaceId: string, icon: string | null, iconColor: string | null): void =>
       runRowCommand(
-        "Open the Tauri app window to change a chat icon.",
+        "Open Argmax on your Mac to change a chat icon.",
         "Could not change the chat icon.",
         (api) => api.workspaces.setIcon({ workspaceId, icon, iconColor })
       ),
@@ -975,7 +983,7 @@ export function App(): JSX.Element {
   // row's conversation updates without a reopen.
   const onSyncNowWorkspaceRow = useCallback((): void => {
     if (!window.argmax) {
-      showErrorToast("Open the Tauri app window to sync chats.");
+      showErrorToast("Open Argmax on your Mac to sync chats.");
       return;
     }
     void withToast(
@@ -1328,7 +1336,7 @@ export function App(): JSX.Element {
       }
     ): Promise<void> => {
       const api = window.argmax;
-      if (!api) throw new Error("Open the Tauri app window to launch local agents.");
+      if (!api) throw new Error("Open Argmax on your Mac to launch local agents.");
       let workspace = created;
       let launchedSession: SessionSummary;
       try {
@@ -1402,7 +1410,7 @@ export function App(): JSX.Element {
       goalCondition?: string
     ): Promise<void> => {
       if (!window.argmax) {
-        throw new Error("Open the Tauri app window to launch local agents.");
+        throw new Error("Open Argmax on your Mac to launch local agents.");
       }
 
       const projectId = projectIdOverride ?? selectedProject?.id;
@@ -1455,7 +1463,7 @@ export function App(): JSX.Element {
       }
     ): Promise<void> => {
       if (!window.argmax) {
-        throw new Error("Open the Tauri app window to launch local agents.");
+        throw new Error("Open Argmax on your Mac to launch local agents.");
       }
       const workspace = await window.argmax.workspaces.createScratch({
         taskLabel: titleFromPrompt(prompt),
@@ -1538,7 +1546,7 @@ export function App(): JSX.Element {
   const launchDetailsPopup = useCallback(
     async (prompt: string, context?: { attachToChat?: () => void }): Promise<void> => {
       if (!window.argmax) {
-        throw new Error("Open the Tauri app window to launch local agents.");
+        throw new Error("Open Argmax on your Mac to launch local agents.");
       }
       const api = window.argmax;
       popupCreationsInFlight.current += 1;
@@ -1959,6 +1967,7 @@ export function App(): JSX.Element {
 
   return (
     <PrMilestoneCelebrationContext.Provider value={prMilestoneCelebrationEnabled}>
+    <DeveloperToolsContext.Provider value={developerToolsEnabled}>
     <SessionTimelineProvider store={timelines}>
     <main
       className="app-shell"
@@ -2018,7 +2027,7 @@ export function App(): JSX.Element {
       ) : null}
       {bridgeMissing && !isBrowserPreview() ? (
         <div className="bridge-banner" role="alert">
-          Tauri bridge unavailable; running on demo data.
+          Preview mode — showing sample data. Open Argmax on your Mac for your own chats.
         </div>
       ) : null}
       {/*
@@ -2060,7 +2069,10 @@ export function App(): JSX.Element {
           aria-hidden={toast === null ? true : undefined}
           onAnimationEnd={toastMotion.onMotionEnd}
         >
-          <span>{paintedToast.message}</span>
+          <span className="toast-text">
+            {paintedToast.message}
+            {paintedToast.detail ? <span className="toast-detail">{paintedToast.detail}</span> : null}
+          </span>
           <button type="button" onClick={() => dismissToast()} aria-label="Dismiss">
             ×
           </button>
@@ -2137,7 +2149,7 @@ export function App(): JSX.Element {
       )}
 
       <section className="workspace" ref={workspaceRef}>
-        {standalonePageOpen ? (
+        {standalonePageOpen || isArcPageOpen ? (
           <div className="standalone-page-fade scroll-fade" aria-hidden="true" />
         ) : null}
         <div className={
@@ -2174,6 +2186,8 @@ export function App(): JSX.Element {
                 onSidebarTranslucencyChange={setSidebarTranslucency}
                 workspaceCardVisible={workspaceCardVisible}
                 onWorkspaceCardVisibleChange={setWorkspaceCardVisible}
+                developerToolsEnabled={developerToolsEnabled}
+                onDeveloperToolsEnabledChange={setDeveloperToolsEnabled}
                 contextIndicatorEnabled={contextIndicatorEnabled}
                 onContextIndicatorEnabledChange={setContextIndicatorEnabled}
                 prMilestoneCelebrationEnabled={prMilestoneCelebrationEnabled}
@@ -2344,6 +2358,7 @@ export function App(): JSX.Element {
       </section>
     </main>
     </SessionTimelineProvider>
+    </DeveloperToolsContext.Provider>
     </PrMilestoneCelebrationContext.Provider>
   );
 }

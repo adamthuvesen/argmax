@@ -49,8 +49,9 @@ npm run tauri:build
 Build outputs are placed in `src-tauri/target/release/bundle/`. The current
 configuration creates the DMG and app bundle required for manual distribution.
 
-The checked-in updater configuration is incomplete and is not an active release
-channel. If automatic self-update becomes a requirement later, it needs a
+Argmax → Check for Updates… opens the GitHub Releases page, because that is
+where a build actually comes from today. The checked-in updater configuration
+is incomplete and is not an active release channel. If automatic self-update becomes a requirement later, it needs a
 dedicated signing key, updater artifacts and a published feed. See
 [Tauri's updater guide](https://v2.tauri.app/plugin/updater/) for that optional
 artifact and feed contract.

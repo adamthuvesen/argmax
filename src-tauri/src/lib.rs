@@ -466,6 +466,11 @@ pub fn run() {
         // docs/performance.md). Marked once — a later reload must not restamp.
         .on_page_load(|webview, payload| {
             if payload.event() == tauri::webview::PageLoadEvent::Finished {
+                // A reload starts the document back at 1.0 and the renderer
+                // back at "no zoom"; restate what the user chose.
+                if webview.label() == "main" {
+                    menu::restore_main_window_zoom(webview.app_handle());
+                }
                 let state = tauri::Manager::state::<state::AppState>(webview.app_handle());
                 if state.startup_timer.mark_once("window.ready-to-show") {
                     tracing::info!(

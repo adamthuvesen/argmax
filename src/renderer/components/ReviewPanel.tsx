@@ -324,7 +324,7 @@ function FileTabStrip({ state }: { state: WorkspaceFilesState }): JSX.Element | 
               onClick={() => void state.saveDirtyTabAndClose()}
               disabled={state.saveState === "saving"}
             >
-              {state.saveState === "saving" ? "Saving..." : "Save"}
+              {state.saveState === "saving" ? "Saving…" : "Save"}
             </button>
             <button type="button" onClick={state.discardDirtyTabAndClose}>
               Discard
@@ -566,7 +566,7 @@ function ReviewPanelPane({
     reviewActionBusy.current = true;
     setReviewActionPending(true);
     setReviewActionError(null);
-    void action().catch((error: unknown) => setReviewActionError(error instanceof Error ? error.message : "Review action failed.")).finally(() => {
+    void action().catch((error: unknown) => setReviewActionError(error instanceof Error ? error.message : "Could not run that review action.")).finally(() => {
       reviewActionBusy.current = false;
       setReviewActionPending(false);
     });

@@ -13,6 +13,7 @@
     "build:icons": "node scripts/build-icons.mjs",
     "export:provider-models": "node scripts/export-provider-models.mjs",
     "export:ios-tool-icons": "node scripts/export-ios-tool-icons.mjs",
+    "export:ios-agent-emblems": "node scripts/export-ios-agent-emblems.mjs",
     "build:ios-fonts": "uv run scripts/build-ios-fonts.py",
     "install:ios": "node scripts/install-ios.mjs",
     "lint": "eslint .",

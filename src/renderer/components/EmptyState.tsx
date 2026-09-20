@@ -11,10 +11,10 @@ export function EmptyState({
   return (
     <section className="empty-state">
       <Mascot mood="sad" size={72} />
-      <h2>Local state could not be loaded</h2>
+      <h2>Argmax couldn't open your data</h2>
       <p>
         {message ??
-          "Argmax keeps working from local storage, but the database needs attention before the dashboard can render."}
+          "Your projects and chats are still on this Mac. Try again — if this keeps happening, Settings → Advanced can copy a diagnostics report."}
       </p>
       {onRetry ? (
         <button className="empty-state-retry" type="button" onClick={onRetry}>

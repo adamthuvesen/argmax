@@ -55,6 +55,8 @@ export function SettingsPanel({
   onSidebarTranslucencyChange,
   workspaceCardVisible,
   onWorkspaceCardVisibleChange,
+  developerToolsEnabled,
+  onDeveloperToolsEnabledChange,
   contextIndicatorEnabled,
   onContextIndicatorEnabledChange,
   prMilestoneCelebrationEnabled,
@@ -132,6 +134,8 @@ export function SettingsPanel({
   onSidebarTranslucencyChange: (v: number) => void;
   workspaceCardVisible: boolean;
   onWorkspaceCardVisibleChange: (v: boolean) => void;
+  developerToolsEnabled: boolean;
+  onDeveloperToolsEnabledChange: (v: boolean) => void;
   contextIndicatorEnabled: boolean;
   onContextIndicatorEnabledChange: (v: boolean) => void;
   prMilestoneCelebrationEnabled: boolean;
@@ -212,8 +216,8 @@ export function SettingsPanel({
       return window.argmax!.providers.discover(force);
     },
     {
-      missingApiMessage: "Open the Tauri app window to detect providers.",
-      fallbackMessage: "Provider discovery failed."
+      missingApiMessage: "Open Argmax on your Mac to detect providers.",
+      fallbackMessage: "Could not check which agents are installed."
     }
   );
 
@@ -268,12 +272,12 @@ export function SettingsPanel({
 
   const vacuumDatabase = useCallback(async (): Promise<void> => {
     if (!window.argmax) return;
-    setDiagnosticsStatus("Vacuuming…");
+    setDiagnosticsStatus("Compacting…");
     try {
       await window.argmax.system.vacuumDatabase();
-      setDiagnosticsStatus("Database vacuum complete.");
+      setDiagnosticsStatus("Storage compacted.");
     } catch (error) {
-      setDiagnosticsStatus(error instanceof Error ? error.message : "Vacuum failed.");
+      setDiagnosticsStatus(error instanceof Error ? error.message : "Could not compact storage.");
     }
   }, []);
 
@@ -444,6 +448,8 @@ export function SettingsPanel({
             revealDatabase={revealDatabase}
             openArchiveRecovery={openArchiveRecovery}
             vacuumDatabase={vacuumDatabase}
+            developerToolsEnabled={developerToolsEnabled}
+            onDeveloperToolsEnabledChange={onDeveloperToolsEnabledChange}
           />
         ) : null}
       </div>

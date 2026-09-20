@@ -504,24 +504,35 @@ pub fn record_gh_pr_observation(
         .optional()
         .map_err(sqlite_error)?;
 
+    let inferred_eligible = match (attribution, existing_attribution.as_deref()) {
+        (PrAttribution::Inferred, Some("explicit")) => true,
+        (PrAttribution::Inferred, _) => {
+            inferred_association_is_eligible(&transaction, &context, &effective_input)?
+        }
+        (PrAttribution::Explicit, _) => true,
+    };
+    if attribution == PrAttribution::Inferred && !inferred_eligible {
+        retract_inferred_branch_evidence(
+            &transaction,
+            &effective_input.session_id,
+            effective_input.pr_number,
+        )?;
+    }
+
     let accepted_attribution = match (attribution, existing_attribution.as_deref()) {
         (PrAttribution::Explicit, _) => Some("explicit"),
         (PrAttribution::Inferred, Some("explicit")) => Some("explicit"),
-        (PrAttribution::Inferred, Some("inferred")) => Some("inferred"),
+        (PrAttribution::Inferred, Some("inferred")) if inferred_eligible => Some("inferred"),
+        (PrAttribution::Inferred, Some("inferred")) => None,
         // A cached refresh carries no new attribution evidence. In particular,
         // it must not launder a pre-v37 shared row into a trusted association.
         (PrAttribution::Inferred, Some("legacy"))
-            if !context.shared_workspace
-                && inferred_association_is_eligible(&transaction, &context, &effective_input)? =>
+            if !context.shared_workspace && inferred_eligible =>
         {
             Some("inferred")
         }
         (PrAttribution::Inferred, Some("legacy")) => None,
-        (PrAttribution::Inferred, None)
-            if inferred_association_is_eligible(&transaction, &context, &effective_input)? =>
-        {
-            Some(attribution.as_str())
-        }
+        (PrAttribution::Inferred, None) if inferred_eligible => Some(attribution.as_str()),
         (PrAttribution::Inferred, None) => None,
         (PrAttribution::Inferred, Some(_)) => None,
     };
@@ -552,6 +563,124 @@ pub fn record_gh_pr_observation(
     };
     transaction.commit().map_err(sqlite_error)?;
     Ok(result)
+}
+
+fn retract_inferred_branch_evidence(
+    connection: &Connection,
+    session_id: &str,
+    pr_number: i64,
+) -> ArgmaxResult<()> {
+    let source_id = format!("observation:{session_id}:{pr_number}:unverified");
+    connection
+        .prepare_cached(
+            r#"
+            DELETE FROM session_pr_evidence
+            WHERE session_id = ?1 AND pr_number = ?2 AND source_id = ?3
+            "#,
+        )
+        .map_err(sqlite_error)?
+        .execute((session_id, pr_number, source_id))
+        .map_err(sqlite_error)?;
+
+    let latest_evidence = connection
+        .prepare_cached(
+            r#"
+            SELECT MAX(occurred_at)
+            FROM session_pr_evidence
+            WHERE session_id = ?1 AND pr_number = ?2
+            "#,
+        )
+        .map_err(sqlite_error)?
+        .query_row((session_id, pr_number), |row| {
+            row.get::<_, Option<String>>(0)
+        })
+        .map_err(sqlite_error)?;
+    if let Some(activity_at) = latest_evidence {
+        connection
+            .prepare_cached(
+                r#"
+                UPDATE session_pr_links
+                SET activity_at = ?3, updated_at = ?4
+                WHERE session_id = ?1 AND pr_number = ?2
+                  AND relationship = 'unverified'
+                "#,
+            )
+            .map_err(sqlite_error)?
+            .execute((session_id, pr_number, activity_at, now_iso()))
+            .map_err(sqlite_error)?;
+    } else {
+        connection
+            .prepare_cached(
+                r#"
+                DELETE FROM session_pr_links
+                WHERE session_id = ?1 AND pr_number = ?2
+                  AND relationship = 'unverified' AND is_pinned = 0
+                  AND dismissed_at IS NULL
+                "#,
+            )
+            .map_err(sqlite_error)?
+            .execute((session_id, pr_number))
+            .map_err(sqlite_error)?;
+    }
+    connection
+        .prepare_cached(
+            r#"
+            DELETE FROM gh_pr
+            WHERE session_id = ?1 AND pr_number = ?2 AND attribution = 'inferred'
+            "#,
+        )
+        .map_err(sqlite_error)?
+        .execute((session_id, pr_number))
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
+pub fn retract_stale_inferred_branch_prs(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<usize> {
+    let context = session_pr_context(connection, session_id)?;
+    if !context.shared_workspace {
+        return Ok(0);
+    }
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+            SELECT evidence.pr_number
+            FROM session_pr_evidence evidence
+            JOIN gh_pull_requests prs
+              ON prs.project_id = evidence.project_id
+             AND prs.pr_number = evidence.pr_number
+            WHERE evidence.session_id = ?1
+              AND evidence.relationship = 'unverified'
+              AND evidence.source_id =
+                'observation:' || evidence.session_id || ':' || evidence.pr_number || ':unverified'
+              AND (
+                prs.pr_state = 'CLOSED'
+                OR (
+                  prs.pr_state = 'MERGED'
+                  AND julianday(prs.pr_merged_at) IS NOT NULL
+                  AND julianday(prs.pr_merged_at) < julianday(?2)
+                )
+              )
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let pr_numbers = statement
+        .query_map((session_id, context.started_at.as_str()), |row| {
+            row.get::<_, i64>(0)
+        })
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    drop(statement);
+
+    let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+    for pr_number in &pr_numbers {
+        retract_inferred_branch_evidence(&transaction, session_id, *pr_number)?;
+    }
+    transaction.commit().map_err(sqlite_error)?;
+    Ok(pr_numbers.len())
 }
 
 /// Update canonical GitHub state without creating or promoting a session
@@ -774,6 +903,7 @@ struct SessionPrContext {
     project_id: String,
     shared_workspace: bool,
     state: String,
+    started_at: String,
     completed_at: Option<String>,
     trusted_branch: Option<String>,
 }
@@ -785,6 +915,7 @@ fn session_pr_context(connection: &Connection, session_id: &str) -> ArgmaxResult
             SELECT workspaces.project_id,
                    workspaces.shared_workspace,
                    sessions.state,
+                   sessions.started_at,
                    sessions.completed_at,
                    CASE
                      WHEN workspaces.shared_workspace = 0 THEN NULLIF(workspaces.branch, '')
@@ -801,6 +932,7 @@ fn session_pr_context(connection: &Connection, session_id: &str) -> ArgmaxResult
             project_id: row.get("project_id")?,
             shared_workspace: row.get::<_, i64>("shared_workspace")? != 0,
             state: row.get("state")?,
+            started_at: row.get("started_at")?,
             completed_at: row.get("completed_at")?,
             trusted_branch: row.get("trusted_branch")?,
         })
@@ -828,6 +960,30 @@ fn inferred_association_is_eligible(
     }
     if !context.shared_workspace {
         return Ok(true);
+    }
+
+    if input.pr_state.as_deref() == Some("CLOSED") {
+        return Ok(false);
+    }
+
+    if input.pr_state.as_deref() == Some("MERGED") {
+        let merged_before_session = match input.pr_merged_at.as_deref() {
+            Some(merged_at) => connection
+                .query_row(
+                    r#"
+                    SELECT julianday(?1) IS NOT NULL
+                       AND julianday(?2) IS NOT NULL
+                       AND julianday(?1) < julianday(?2)
+                    "#,
+                    (merged_at, context.started_at.as_str()),
+                    |row| row.get::<_, bool>(0),
+                )
+                .map_err(sqlite_error)?,
+            None => false,
+        };
+        if merged_before_session {
+            return Ok(false);
+        }
     }
 
     let is_active = matches!(context.state.as_str(), "running" | "waiting" | "blocked");
@@ -974,7 +1130,22 @@ pub fn list_refreshable_pr_numbers_for_session(
              AND prs.pr_number = links.pr_number
             WHERE links.session_id = ?1
               AND links.dismissed_at IS NULL
-              AND (prs.pr_state IS NULL OR prs.pr_state != 'MERGED')
+              AND (
+                prs.pr_state IS NULL
+                OR prs.pr_state != 'MERGED'
+                OR (
+                  julianday(prs.pr_merged_at) IS NULL
+                  AND EXISTS (
+                    SELECT 1
+                    FROM session_pr_evidence evidence
+                    WHERE evidence.session_id = links.session_id
+                      AND evidence.pr_number = links.pr_number
+                      AND evidence.relationship = 'unverified'
+                      AND evidence.source_id =
+                        'observation:' || evidence.session_id || ':' || evidence.pr_number || ':unverified'
+                  )
+                )
+              )
             ORDER BY prs.refreshed_at ASC, links.pr_number ASC
             "#,
         )
@@ -1577,6 +1748,108 @@ mod tests {
         assert!(list_gh_pr_for_session(&connection, "s2")
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn shared_attribution_retracts_a_branch_pr_merged_before_the_session() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        add_project(&connection, "p1");
+        add_session(&connection, "p1", "w1", "s1", "feature/pr", true);
+        connection
+            .execute(
+                "UPDATE sessions SET started_at = '2026-09-20T10:08:18.756Z' WHERE id = 's1'",
+                [],
+            )
+            .expect("set session start");
+
+        let mut stale = pr("s1", "MERGED", "old-head");
+        stale.pr_created_at = Some("2026-08-30T12:31:36Z".to_owned());
+        stale.pr_merged_at = Some("2026-08-30T12:34:57Z".to_owned());
+        store_gh_pr_observation(&connection, &stale).expect("seed canonical PR");
+        upsert_gh_pr_with_attribution(&connection, &stale, "inferred")
+            .expect("seed inferred legacy row");
+        record_session_pr_evidence(
+            &connection,
+            "s1",
+            stale.pr_number,
+            "unverified",
+            "observation:s1:7:unverified",
+            "2026-09-20T10:15:50.935Z",
+        )
+        .expect("seed stale branch evidence");
+        assert_eq!(list_session_prs(&connection, "s1").unwrap().len(), 1);
+
+        let accepted = record_gh_pr_observation(&connection, &stale, PrAttribution::Inferred)
+            .expect("refresh stale PR");
+
+        assert!(accepted.is_none());
+        assert!(list_session_prs(&connection, "s1").unwrap().is_empty());
+        assert!(list_gh_pr_for_session(&connection, "s1")
+            .unwrap()
+            .is_empty());
+
+        let mut current = pr("s1", "MERGED", "current-head");
+        current.pr_number = 8;
+        current.pr_created_at = Some("2026-09-20T10:10:00Z".to_owned());
+        current.pr_merged_at = Some("2026-09-20T10:20:00Z".to_owned());
+        assert!(
+            record_gh_pr_observation(&connection, &current, PrAttribution::Inferred,)
+                .expect("record current merge")
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn shared_cleanup_retracts_closed_branch_only_associations() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        add_project(&connection, "p1");
+        add_session(&connection, "p1", "w1", "s1", "feature/pr", true);
+
+        let mut closed = pr("s1", "CLOSED", "closed-head");
+        closed.pr_number = 9;
+        store_gh_pr_observation(&connection, &closed).expect("seed canonical PR");
+        upsert_gh_pr_with_attribution(&connection, &closed, "inferred").expect("seed inferred row");
+        record_session_pr_evidence(
+            &connection,
+            "s1",
+            closed.pr_number,
+            "unverified",
+            "observation:s1:9:unverified",
+            "2026-09-20T10:15:50.935Z",
+        )
+        .expect("seed branch evidence");
+        dismiss_session_pr(&connection, "s1", closed.pr_number).expect("dismiss branch card");
+
+        let removed = retract_stale_inferred_branch_prs(&connection, "s1")
+            .expect("retract closed branch association");
+
+        assert_eq!(removed, 1);
+        assert!(list_session_prs(&connection, "s1").unwrap().is_empty());
+        assert!(list_gh_pr_for_session(&connection, "s1")
+            .unwrap()
+            .is_empty());
+        let dismissed_at = connection
+            .query_row(
+                "SELECT dismissed_at FROM session_pr_links WHERE session_id = 's1' AND pr_number = 9",
+                [],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .expect("dismissal tombstone");
+        assert!(dismissed_at.is_some());
+
+        let mut reopened = pr("s1", "OPEN", "reopened-head");
+        reopened.pr_number = 9;
+        assert!(
+            record_gh_pr_observation(&connection, &reopened, PrAttribution::Inferred)
+                .expect("record reopened branch")
+                .is_some()
+        );
+        assert!(
+            list_session_prs(&connection, "s1").unwrap().is_empty(),
+            "reopening must not discard the user's dismissal"
+        );
     }
 
     #[test]

@@ -644,7 +644,7 @@ export function MobileApp(): JSX.Element {
       } catch (error) {
         showToast({
           kind: "error",
-          message: error instanceof Error ? error.message : "Workspace archive failed."
+          message: error instanceof Error ? error.message : "Could not archive the workspace."
         });
       }
       await refresh();
@@ -1491,7 +1491,10 @@ export function MobileApp(): JSX.Element {
       ) : null}
       {toast ? (
         <div className={`mobile-toast mobile-toast-${toast.kind}`} role="status">
-          {toast.message}
+          <span className="toast-text">
+            {toast.message}
+            {toast.detail ? <span className="toast-detail">{toast.detail}</span> : null}
+          </span>
         </div>
       ) : null}
     </div>

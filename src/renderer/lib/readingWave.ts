@@ -21,14 +21,19 @@ const PAUSE_SECONDS = 0.4;
  * the visible width of the `.reading-wave-text` spans inside it, and each span
  * learns where it starts so the pass runs through them as one line. `measureKey`
  * is whatever changes the line's text; a resize remeasures on its own.
+ *
+ * A line that only appears later — a group's headline replaces its single row
+ * as the second call lands — has to be passed as the element itself, not a ref:
+ * a ref filling in is not a render, so nothing would measure the new spans and
+ * they would each paint the band from their own left edge, one head per span.
  */
 export function useReadingWave(
-  container: RefObject<HTMLElement | null>,
+  container: RefObject<HTMLElement | null> | HTMLElement | null,
   active: boolean,
   measureKey: string
 ): void {
   useLayoutEffect(() => {
-    const node = container.current;
+    const node = container && "current" in container ? container.current : container;
     if (!active || !node) return;
 
     const measure = (): void => {

@@ -559,7 +559,7 @@ describe("App", () => {
     const conversation = await screen.findByRole("region", { name: "Conversation" });
     await waitFor(() => expect(conversation).toHaveTextContent("I'll explore the codebase."));
     expect(conversation).toHaveTextContent("I've explored.");
-    expect(screen.getByRole("button", { name: "Read a file, searched" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Read a file, searched(: |$)/ })).toBeInTheDocument();
   });
 
   it("hides provider protocol JSON from the first-turn raw transcript fallback", async () => {
@@ -1340,7 +1340,7 @@ describe("App without Tauri bridge", () => {
     try {
       render(<App />);
       expect(
-        await screen.findByText(/Tauri bridge unavailable; running on demo data/)
+        await screen.findByText(/Preview mode — showing sample data/)
       ).toBeInTheDocument();
     } finally {
       Object.defineProperty(window, "location", {
@@ -1367,7 +1367,7 @@ describe("App without Tauri bridge", () => {
       render(<App />);
 
       expect(
-        screen.queryByText(/Tauri bridge unavailable; running on demo data/)
+        screen.queryByText(/Preview mode — showing sample data/)
       ).not.toBeInTheDocument();
       expect(await screen.findByText("Design parallel agent board")).toBeInTheDocument();
     } finally {

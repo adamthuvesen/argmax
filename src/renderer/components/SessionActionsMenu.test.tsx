@@ -340,7 +340,7 @@ describe("SessionActionsMenu — Open in IDE", () => {
     expect(onOpenInIde).toHaveBeenCalledWith("cursor");
   });
 
-  it("hides the action without a handler and disables it without IDEs", async () => {
+  it("leaves the action out with no handler and with no IDE installed", async () => {
     const { unmount } = render(
       <SessionActionsMenu
         isLogOpen={false}
@@ -367,7 +367,9 @@ describe("SessionActionsMenu — Open in IDE", () => {
       />
     );
     await openMenu();
-    expect(screen.getByRole("menuitem", { name: "Open in IDE" })).toBeDisabled();
+    // A greyed-out row nobody can ever click explains nothing; with no IDE
+    // installed there is simply no row.
+    expect(screen.queryByRole("menuitem", { name: /Open in/ })).toBeNull();
   });
 });
 

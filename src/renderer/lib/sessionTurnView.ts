@@ -44,14 +44,72 @@ export type AssistantGroup = {
   error?: boolean;
 };
 
+/** A remark about the work runs to about three sentences; past that it is writing. */
+const NARRATION_MAX_CHARS = 400;
+
+/**
+ * Is this prose a passing remark about the work, or writing meant to be read?
+ *
+ * "Let me check the docs." and "First part done." are remarks: one short
+ * paragraph of plain sentences. Anything that carries structure — a heading, a
+ * list, a table, a code fence, a quote — or runs past a few sentences or a
+ * blank line is the answer itself, whatever tool call happens to follow it.
+ */
+export function isProgressNarration(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.length > NARRATION_MAX_CHARS) return false;
+  if (/\n\s*\n/.test(trimmed)) return false;
+  return !/^ {0,3}(#{1,6} |[-*+] |\d+[.)] |> |\||```|~~~)/m.test(trimmed);
+}
+
+/** Past this, prose after the turn's last tool is an answer, not a sign-off. */
+const CLOSING_REMARK_MAX_CHARS = 160;
+
+/**
+ * Does the prose after the turn's last tool read as an acknowledgement of that
+ * tool rather than as the turn's answer?
+ *
+ * Both halves are load-bearing and both are deliberately strict, because the
+ * cost of guessing wrong in this direction is showing narration the reader
+ * asked to hide, while the cost of guessing wrong in the other is losing the
+ * answer entirely. A real turn that narrates, works, and then answers —
+ * "Chronicle isn't available, so I'll fall back to the repository." → `Bash` →
+ * "The last two published runs both landed at 9/10." — has a tail of 48
+ * against 78, nowhere near half, and folds as it always did.
+ */
+function isClosingRemark(candidateLength: number, tailLength: number): boolean {
+  if (tailLength === 0 || tailLength >= CLOSING_REMARK_MAX_CHARS) return false;
+  return tailLength * 2 < candidateLength;
+}
+
 /**
  * Minimal verbosity, finished and collapsed: the prose Claude, Codex, Grok,
  * and OpenCode write before each tool is progress, not the answer, so it hides
- * with the tools it narrates. Returns the group ids to drop — everything at or
- * before the last tool except the last prose group, which is kept so collapsing
- * can never leave the chip standing over nothing. A surface that renders the
- * answer itself (the agent pane's result panel) passes `separateAnswer` and
- * keeps nothing.
+ * with the tools it narrates. Returns the group ids to drop.
+ *
+ * Two groups are always kept, and between them they are what "the answer"
+ * means here:
+ *
+ * - **The last prose group**, so collapsing can never leave the chip standing
+ *   over nothing.
+ * - **The prose before the last tool, when what follows that tool is only a
+ *   sign-off.** Shape alone cannot tell a one-line answer from a one-line
+ *   remark — "No, that file does not exist." and "Reading the repo now." are
+ *   the same object to any predicate, and nothing in the event stream marks
+ *   which is which. What does separate them is the tail: an agent that
+ *   answers, records the answer with one closing edit or memory write, and
+ *   signs off ("Done.") leaves a tail far shorter than the answer it
+ *   acknowledges. `isClosingRemark` draws that line deliberately tight —
+ *   a turn whose post-tool prose is half the writing of its pre-tool prose is
+ *   a turn that narrated and then answered, and it folds as before.
+ *
+ * Everything else at or before the last tool hides, provided it reads as a
+ * remark: `isProgressNarration` keeps a second block of real writing — a turn
+ * that writes section one, edits, writes section two — out of the fold.
+ *
+ * A surface that renders the answer itself (the agent pane's result panel)
+ * passes `separateAnswer`: there the answer has its own home, so everything
+ * left in the turn really is work and all of it hides, longest included.
  *
  * Claude and Grok emit that text and the following `command.started` from one
  * envelope, so they share a timestamp: same-timestamp prose counts as work.
@@ -63,12 +121,21 @@ export function preToolNarrationGroupIds(
 ): ReadonlySet<string> {
   const hidden = new Set<string>();
   if (lastToolCreatedAt === null) return hidden;
-  const lastAnswerId = options.separateAnswer
-    ? undefined
-    : [...groups].reverse().find((group) => !group.thinking && !group.error)?.id;
-  for (const group of groups) {
-    if (group.thinking || group.error) continue;
-    if (group.id === lastAnswerId) continue;
+  const prose = groups.filter((group) => !group.thinking && !group.error);
+  const kept = new Set<string>();
+  if (!options.separateAnswer) {
+    const last = prose[prose.length - 1];
+    if (last) kept.add(last.id);
+    const beforeLastTool = prose.filter((group) => group.lastActivityAt <= lastToolCreatedAt);
+    const candidate = beforeLastTool[beforeLastTool.length - 1];
+    const tail = prose
+      .filter((group) => group.lastActivityAt > lastToolCreatedAt)
+      .reduce((total, group) => total + group.text.trim().length, 0);
+    if (candidate && isClosingRemark(candidate.text.trim().length, tail)) kept.add(candidate.id);
+  }
+  for (const group of prose) {
+    if (kept.has(group.id)) continue;
+    if (!options.separateAnswer && !isProgressNarration(group.text)) continue;
     if (group.lastActivityAt <= lastToolCreatedAt) hidden.add(group.id);
   }
   return hidden;
@@ -485,11 +552,17 @@ export function assistantGroupHasVisibleChat(group: Pick<AssistantGroup, "text" 
  *
  * Reasoning reaches the renderer as a `message.delta` carrying `thinking: true`,
  * so it can be the newest event through a long silent stretch without any
- * visible answer text arriving. Before a turn produces an answer, that
- * reasoning renders expanded and labelled "Thinking" and is the progress cue.
- * Once an answer lands the block settles into quiet "Thought" history, and in
- * single-line verbosity it is dropped from the turn entirely, so it stops being
- * a cue and the generic indicator has to take the beat over.
+ * visible answer text arriving. While it is the newest thing the turn has
+ * produced, that reasoning renders labelled "Thinking" (and, at Steps, as a
+ * live preview) and is the progress cue. Anything after it — answer text, or a
+ * tool that started once it was written — makes it quiet "Thought" history,
+ * and the generic indicator or the tool line takes the beat over.
+ *
+ * Narration *earlier* in the turn no longer disqualifies it. That rule kept
+ * every thought after "I'll look at the code…" from ever reading as live, and
+ * Claude, Cursor and Grok narrate before almost every burst. Grok alternates
+ * tiny thinking/text pairs, so its cue moves between the two; each move is a
+ * real change of state.
  *
  * `SessionConversation` reads this to decide whether to show that generic
  * indicator and `SessionConversationTurn` reads it to decide whether to render
@@ -499,21 +572,24 @@ export function assistantGroupHasVisibleChat(group: Pick<AssistantGroup, "text" 
  */
 export function liveThoughtOwnsProgress(params: {
   assistantEvents: readonly TimelineEvent[];
+  toolItems: readonly TurnToolItem[];
   isLatestTurn: boolean;
   sessionRunning: boolean;
   isPausedOnUserInput: boolean;
 }): boolean {
   if (!params.isLatestTurn || !params.sessionRunning || params.isPausedOnUserInput) return false;
-  let hasThinkingText = false;
+  let newest: TimelineEvent | null = null;
   for (const event of params.assistantEvents) {
     if (event.message.trim().length === 0) continue;
-    // Any visible answer text in the turn hands the beat back to the generic
-    // indicator, whichever order the events arrived in.
-    const canonical = decodeTimelineEvent(event);
-    if (canonical.kind !== "message" || canonical.content !== "thinking") return false;
-    hasThinkingText = true;
+    if (newest === null || event.createdAt >= newest.createdAt) newest = event;
   }
-  return hasThinkingText;
+  if (newest === null) return false;
+  const canonical = decodeTimelineEvent(newest);
+  if (canonical.kind !== "message" || canonical.content !== "thinking") return false;
+  // A tool stamped in the same instant came after the reasoning in its
+  // envelope, so ties go to the tool.
+  const thoughtAt = newest.createdAt;
+  return !params.toolItems.some((item) => item.tool.createdAt >= thoughtAt);
 }
 
 /**

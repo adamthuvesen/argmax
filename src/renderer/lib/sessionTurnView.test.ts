@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TimelineEvent } from "../../shared/types.js";
-import { coalesceAssistantGroups } from "./sessionTurnView.js";
+import { coalesceAssistantGroups, isProgressNarration, liveThoughtOwnsProgress } from "./sessionTurnView.js";
+import type { ToolCall, TurnToolItem } from "./toolCalls.js";
 
 function assistantEvent(
   id: string,
@@ -524,5 +525,61 @@ describe("reasoning bursts", () => {
     ]);
 
     expect(groups[0].text).toBe("**Planning the patch**");
+  });
+});
+
+describe("liveThoughtOwnsProgress", () => {
+  const thought = (id: string, at: string): TimelineEvent =>
+    assistantEvent(id, "message.delta", "Weighing it.", `2026-05-12T15:00:0${at}.000Z`, { thinking: true });
+  const prose = (id: string, at: string): TimelineEvent =>
+    assistantEvent(id, "message.completed", "I'll look.", `2026-05-12T15:00:0${at}.000Z`);
+  const toolAt = (at: string): TurnToolItem => ({
+    kind: "tool",
+    tool: { id: `tool-${at}`, createdAt: `2026-05-12T15:00:0${at}.000Z` } as ToolCall
+  });
+  const live = (assistantEvents: TimelineEvent[], toolItems: TurnToolItem[] = []): boolean =>
+    liveThoughtOwnsProgress({
+      assistantEvents,
+      toolItems,
+      isLatestTurn: true,
+      sessionRunning: true,
+      isPausedOnUserInput: false
+    });
+
+  it.each([
+    // Claude and Cursor narrate before a burst; the burst is still the cue.
+    { name: "a thought after narration", events: [prose("p", "1"), thought("t", "2")], tools: [], expected: true },
+    { name: "a thought after narration and a settled tool", events: [prose("p", "1"), thought("t", "3")], tools: [toolAt("2")], expected: true },
+    { name: "a thought a tool started after", events: [thought("t", "1")], tools: [toolAt("2")], expected: false },
+    // Claude envelopes carry thinking and tool_use under one timestamp.
+    { name: "a thought sharing its instant with a tool", events: [thought("t", "1")], tools: [toolAt("1")], expected: false },
+    { name: "a thought answer text followed", events: [thought("t", "1"), prose("p", "2")], tools: [], expected: false },
+    // Grok alternates tiny thinking/text pairs; the newest one decides.
+    { name: "Grok alternation ending on thinking", events: [thought("a", "1"), prose("b", "2"), thought("c", "3")], tools: [], expected: true }
+  ])("$name → $expected", ({ events, tools, expected }) => {
+    expect(live(events, tools)).toBe(expected);
+  });
+
+  it("never claims the beat for a finished or paused turn", () => {
+    const events = [thought("t", "1")];
+    expect(liveThoughtOwnsProgress({ assistantEvents: events, toolItems: [], isLatestTurn: true, sessionRunning: false, isPausedOnUserInput: false })).toBe(false);
+    expect(liveThoughtOwnsProgress({ assistantEvents: events, toolItems: [], isLatestTurn: true, sessionRunning: true, isPausedOnUserInput: true })).toBe(false);
+  });
+});
+
+describe("isProgressNarration", () => {
+  // The rule Minimal folds on, mirrored in MobileTranscriptRows.swift.
+  it.each([
+    ["a passing remark", "First part done.", true],
+    ["two sentences on two lines", "Reading the repo now.\nThen I will run the tests.", true],
+    ["a heading", "## What gets built\nOne function.", false],
+    ["a bullet list", "The levers:\n- aov\n- registrations", false],
+    ["a numbered list", "1. Build it\n2. Review it", false],
+    ["a table row", "| Lever | Unit |\n| --- | --- |", false],
+    ["a code fence", "Run this:\n```\njust whatif\n```", false],
+    ["two paragraphs", "Here is the plan.\n\nIt has two parts.", false],
+    ["a long single paragraph", "x".repeat(401), false]
+  ])("%s", (_name, text, expected) => {
+    expect(isProgressNarration(text)).toBe(expected);
   });
 });

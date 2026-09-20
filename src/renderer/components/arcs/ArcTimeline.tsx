@@ -21,8 +21,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "rea
 import type { ArcTimelineCursor, ArcTimelineEvent } from "../../../shared/types.js";
 import {
   ARC_TIMELINE_FILTERS,
+  formatArcEventStamp,
   formatArcEventTime,
-  groupArcTimelineByDay,
   matchesArcTimelineFilter,
   presentArcEvent,
   showsProject,
@@ -56,7 +56,7 @@ const GLYPHS: Record<ArcEventGlyph, LucideIcon> = {
 };
 
 /**
- * The Arc's story, newest first, grouped by day. It loads a page at a time
+ * The Arc's story, newest first. It loads a page at a time
  * and refetches the newest page whenever `refreshKey` moves, keeping as many
  * rows as the person has already scrolled through.
  */
@@ -127,8 +127,8 @@ export function ArcTimeline({
     }
   }, [arcId, cursor]);
 
-  const days = useMemo(
-    () => groupArcTimelineByDay((events ?? []).filter((event) => matchesArcTimelineFilter(event, filter))),
+  const shown = useMemo(
+    () => (events ?? []).filter((event) => matchesArcTimelineFilter(event, filter)),
     [events, filter]
   );
 
@@ -153,7 +153,7 @@ export function ArcTimeline({
 
       {events === null ? (
         <p className="arc-timeline-empty">Loading…</p>
-      ) : days.length === 0 ? (
+      ) : shown.length === 0 ? (
         <p className="arc-timeline-empty">
           {filter === "all"
             ? "Nothing has happened yet. Members, pull requests, and notes show up here as the coordinator works."
@@ -162,21 +162,16 @@ export function ArcTimeline({
               : "Nothing of this kind yet."}
         </p>
       ) : (
-        days.map((day) => (
-          <div key={day.key} className="arc-timeline-day">
-            <h3 className="arc-timeline-day-label">{day.label}</h3>
-            <ol className="arc-timeline-list">
-              {day.events.map((event) => (
-                <ArcTimelineRow
-                  key={event.id}
-                  event={event}
-                  canOpenSession={canOpenSession}
-                  onOpenSession={onOpenSession}
-                />
-              ))}
-            </ol>
-          </div>
-        ))
+        <ol className="arc-timeline-list">
+          {shown.map((event) => (
+            <ArcTimelineRow
+              key={event.id}
+              event={event}
+              canOpenSession={canOpenSession}
+              onOpenSession={onOpenSession}
+            />
+          ))}
+        </ol>
       )}
 
       {cursor ? (
@@ -225,7 +220,7 @@ function ArcTimelineRow({
   // every row starts at the same edge and the eye reads down one line.
   return (
     <li className="arc-event" data-tone={presentation.tone}>
-      <time className="arc-event-time" dateTime={event.occurredAt}>
+      <time className="arc-event-time" dateTime={event.occurredAt} title={formatArcEventStamp(event.occurredAt)}>
         {formatArcEventTime(event.occurredAt)}
       </time>
       <span className="arc-event-glyph" aria-hidden="true">

@@ -1,13 +1,16 @@
-import { cleanup, fireEvent, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderId, TimelineEvent } from "../../shared/types.js";
 import {
   baseSession,
   event,
-  renderConversation
+  renderConversation,
+  rerenderConversation
 } from "../../test/sessionConversationTestHarness.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { startedAgentName, toggleAgentDetailsName } from "../../test/agentRowName.js";
+import { conversationElement } from "../../test/sessionConversationTestHarness.js";
+import { DeveloperToolsContext } from "../lib/uiPreferences.js";
 
 const SAME_ENVELOPE_WORK = "I'll inspect the layout before answering.";
 const SAME_ENVELOPE_THINKING = "Considering the repo structure.";
@@ -492,11 +495,11 @@ describe("SessionConversation — tools & chrome", () => {
   // The chevron on a launch row reveals the raw launch receipt — for a
   // backgrounded agent, a wall of internal instructions addressed to the
   // parent. So it follows the individual-row level rather than the group
-  // level: Balanced names the delegated work and stops there.
+  // level: Steps names the delegated work and stops there.
   it.each([
-    { label: "Balanced", display: "collapsed" as const, open: false },
+    { label: "Steps", display: "collapsed" as const, open: false },
     { label: "Detailed", display: "expanded" as const, open: true }
-  ])("opens a launch row's receipt from Detailed up, not at Balanced ($label)", ({ display, open }) => {
+  ])("opens a launch row's receipt from Detailed up, not at Steps ($label)", ({ display, open }) => {
     const task = "Explore repo quickly and report key files.";
     renderConversation(
       baseSession({ provider: "codex", modelLabel: "GPT-5.6 Sol", state: "complete" }),
@@ -698,6 +701,36 @@ describe("SessionConversation — tools & chrome", () => {
     expect(screen.getByRole("button", { name: "Edited chat-chrome.css" })).toBeInTheDocument();
   });
 
+  it("lists the latest turn's steps by name at Steps, outputs closed, older turns folded", () => {
+    const command = (id: string, text: string, at: string) => [
+      event(`${id}-start`, "command.started", "Bash", at, { id, name: "Bash", input: { command: text } }),
+      event(`${id}-end`, "command.completed", "tool_result", at, { tool_use_id: id, content: `${text} output` })
+    ];
+    renderConversation(
+      baseSession({ provider: "claude", state: "complete" }),
+      [
+        event("u1", "user.message", "first", "2026-07-01T08:30:00.000Z"),
+        ...command("old-1", "git status", "2026-07-01T08:30:01.000Z"),
+        ...command("old-2", "git log", "2026-07-01T08:30:02.000Z"),
+        event("a1", "message.completed", "Done.", "2026-07-01T08:30:03.000Z"),
+        event("u2", "user.message", "second", "2026-07-01T08:31:00.000Z"),
+        ...command("new-1", "npm test", "2026-07-01T08:31:01.000Z"),
+        ...command("new-2", "npm run lint", "2026-07-01T08:31:02.000Z"),
+        event("a2", "message.completed", "Clean.", "2026-07-01T08:31:03.000Z")
+      ],
+      { defaultToolCallsDisplay: "collapsed", defaultToolCallGroupsExpanded: true, thinkingDisplay: "preview" }
+    );
+
+    const [older, latest] = screen.getAllByRole("button", { name: "Ran 2 commands" });
+    expect(older).toHaveAttribute("aria-expanded", "false");
+    expect(latest).toHaveAttribute("aria-expanded", "true");
+    // Each call is named in the open group; its output stays behind the row.
+    expect(screen.getByText("npm test")).toBeInTheDocument();
+    expect(screen.getByText("npm run lint")).toBeInTheDocument();
+    expect(screen.queryByText("npm test output")).toBeNull();
+    expect(screen.queryByText("git status")).toBeNull();
+  });
+
   it("keeps command bursts separated by assistant prose as separate groups", () => {
     const commandEvents = (
       id: string,
@@ -743,7 +776,7 @@ describe("SessionConversation — tools & chrome", () => {
       ]
     );
 
-    const commandGroups = screen.getAllByRole("button", { name: "Ran commands" });
+    const commandGroups = screen.getAllByRole("button", { name: /^Ran \d+ commands$/ });
     expect(commandGroups).toHaveLength(1);
     const groupedBurst = commandGroups[0];
     const firstUpdate = screen.getByText("Pass 1A.");
@@ -805,16 +838,29 @@ describe("SessionConversation — tools & chrome", () => {
     // None of the consolidated actions are visible until the picker is opened.
     expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
     expect(screen.queryByRole("menuitem", { name: "Git actions" })).toBeNull();
-    expect(screen.queryByRole("menuitemcheckbox", { name: "Toggle debug log" })).toBeNull();
+    expect(screen.queryByRole("menuitemcheckbox", { name: "Debug log" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
 
     expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Git actions" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitemcheckbox", { name: "Toggle debug log" })).toHaveAttribute(
+    expect(screen.getByRole("menuitemcheckbox", { name: "Debug log" })).toHaveAttribute(
       "aria-checked",
       "false"
     );
+  });
+
+  it("drops the debug log from chat actions when developer tools are off", () => {
+    render(
+      <DeveloperToolsContext.Provider value={false}>
+        {conversationElement(baseSession({ state: "complete" }), [], {})}
+      </DeveloperToolsContext.Provider>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
+
+    expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitemcheckbox", { name: "Debug log" })).toBeNull();
   });
 
   it("dismisses the session actions popover on a mousedown outside the popover", () => {
@@ -841,7 +887,7 @@ describe("SessionConversation — tools & chrome", () => {
   it("dismisses the session actions popover after toggling the debug log", () => {
     renderConversation(baseSession({ state: "complete" }));
     fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Toggle debug log" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Debug log" }));
 
     expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
   });
@@ -854,7 +900,7 @@ describe("SessionConversation — tools & chrome", () => {
 
     // Main menu items are no longer in the DOM; git actions take their place.
     expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
-    expect(screen.queryByRole("menuitemcheckbox", { name: "Toggle debug log" })).toBeNull();
+    expect(screen.queryByRole("menuitemcheckbox", { name: "Debug log" })).toBeNull();
     expect(screen.getByRole("menuitem", { name: "Push" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Create PR for checkout branch" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Create branch" })).toBeInTheDocument();
@@ -941,6 +987,213 @@ describe("SessionConversation — single-line activity mode", () => {
     expect(screen.getByRole("button", { name: "Searched for src/**/*.ts" })).toBeInTheDocument();
   });
 
+  it("keeps a written answer that lands before the turn's closing tool call", () => {
+    // The shape that used to lose the answer: the agent writes the whole plan,
+    // saves it with one last edit, then signs off in a sentence. Minimal showed
+    // only the sign-off, because the plan sat before the last tool.
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event("u1", "user.message", "plan it out", "2026-05-12T15:00:00.000Z"),
+        event(
+          "plan",
+          "message.completed",
+          "## What gets built\n\n- One function, one command.\n- One file per forecast.",
+          "2026-05-12T15:00:01.000Z"
+        ),
+        event("edit-start", "command.started", "Edit", "2026-05-12T15:00:02.000Z", {
+          id: "edit",
+          name: "Edit",
+          input: { file_path: "docs/plan.md" }
+        }),
+        event("edit-end", "command.completed", "tool_result", "2026-05-12T15:00:03.000Z", {
+          tool_use_id: "edit",
+          content: "ok"
+        }),
+        event("signoff", "message.completed", "Plan saved to the Arc folder.", "2026-05-12T15:00:04.000Z")
+      ],
+      { defaultToolCallsDisplay: "single-line" }
+    );
+
+    expect(screen.getByText("What gets built")).toBeInTheDocument();
+    expect(screen.getByText("Plan saved to the Arc folder.")).toBeInTheDocument();
+    expect(screen.queryByText("docs/plan.md")).toBeNull();
+  });
+
+  it("keeps a short plain answer whose turn ends in a closing tool call", () => {
+    // Shape alone cannot tell this answer from a remark. What marks it is the
+    // tail: one word acknowledging the write, against a sentence of substance.
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event("u1", "user.message", "does foo exist", "2026-05-12T15:00:00.000Z"),
+        event("a1", "message.completed", "No, foo.ts does not exist anywhere in the repo.", "2026-05-12T15:00:01.000Z"),
+        event("note-start", "command.started", "Bash", "2026-05-12T15:00:02.000Z", {
+          id: "note",
+          name: "Bash",
+          input: { command: "echo noted >> log" }
+        }),
+        event("note-end", "command.completed", "tool_result", "2026-05-12T15:00:03.000Z", {
+          tool_use_id: "note",
+          content: ""
+        }),
+        event("a2", "message.completed", "Done.", "2026-05-12T15:00:04.000Z")
+      ],
+      { defaultToolCallsDisplay: "single-line" }
+    );
+
+    expect(screen.getByText("No, foo.ts does not exist anywhere in the repo.")).toBeInTheDocument();
+    expect(screen.getByText("Done.")).toBeInTheDocument();
+  });
+
+  it("leaves a reasoning-only turn a chip to open instead of an empty block", () => {
+    // Minimal drops settled thoughts before the body is built, so this turn
+    // arrived at TurnBlock with nothing in it at all — no chip, no content,
+    // no way back to what was hidden.
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event("u1", "user.message", "think about it", "2026-05-12T15:00:00.000Z"),
+        event("t1", "message.delta", "Weighing the options carefully.", "2026-05-12T15:00:01.000Z", {
+          thinking: true
+        })
+      ],
+      { defaultToolCallsDisplay: "single-line" }
+    );
+
+    expect(screen.queryByText("Weighing the options carefully.")).toBeNull();
+    const chip = screen.getByRole("button", { name: /Worked/ });
+    fireEvent.click(chip);
+    expect(screen.getByText("Weighing the options carefully.")).toBeInTheDocument();
+  });
+
+  it("reports that work is happening at Minimal where Compact names the command", () => {
+    // Minimal used to render a lone call as its own row, command text and
+    // all, while Compact bucketed it — level 1 showing more than level 2.
+    const events = [
+      event("u1", "user.message", "run it", "2026-05-12T15:00:00.000Z"),
+      event("b-start", "command.started", "Bash", "2026-05-12T15:00:01.000Z", {
+        id: "b1",
+        name: "Bash",
+        input: { command: "git status --short" }
+      })
+    ];
+    renderConversation(baseSession({ state: "running" }), events, {
+      defaultToolCallsDisplay: "single-line"
+    });
+    expect(screen.queryByText("git status --short")).toBeNull();
+    expect(screen.getByRole("button", { name: "Ran a command" })).toBeInTheDocument();
+
+    cleanup();
+    renderConversation(baseSession({ state: "running" }), events, {
+      defaultToolCallsDisplay: "collapsed"
+    });
+    expect(screen.queryByText("git status --short")).toBeNull();
+  });
+
+  it("drops a turn's expand choice when the verbosity changes under it", () => {
+    const session = baseSession({ state: "complete" });
+    const events = [
+      event("u1", "user.message", "run it", "2026-05-12T15:00:00.000Z"),
+      event("b-start", "command.started", "Bash", "2026-05-12T15:00:01.000Z", {
+        id: "b1",
+        name: "Bash",
+        input: { command: "git status --short" }
+      }),
+      event("b-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
+        tool_use_id: "b1",
+        content: ""
+      }),
+      event("a1", "message.completed", "All clean.", "2026-05-12T15:00:03.000Z")
+    ];
+    const { rerender } = renderConversation(session, events, {
+      defaultToolCallsDisplay: "single-line"
+    });
+
+    // Opening the chip at Minimal is a choice about Minimal. Carried into
+    // Compact it rendered every row expanded with its raw output.
+    fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
+    expect(screen.getByText("git status --short")).toBeInTheDocument();
+
+    rerenderConversation(rerender, session, events, { defaultToolCallsDisplay: "collapsed" });
+    expect(screen.queryByText("git status --short")).toBeNull();
+  });
+
+  it("adds detail at every step of the ladder and never takes it away", () => {
+    // The ladder's one invariant: each level is a superset of the one below.
+    // Minimal once showed more live detail than Compact, and Compact differed
+    // from Steps by an empty Thought row.
+    const events = [
+      event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z"),
+      event("t1", "message.delta", "Weighing options.", "2026-05-12T15:00:01.000Z", { thinking: true }),
+      event("n1", "message.completed", "Reading the repo now.", "2026-05-12T15:00:02.000Z"),
+      event("read-start", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
+        id: "read",
+        name: "Read",
+        input: { file_path: "README.md" }
+      }),
+      event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:04.000Z", {
+        tool_use_id: "read",
+        content: "readme"
+      }),
+      event("glob-start", "command.started", "Glob", "2026-05-12T15:00:05.000Z", {
+        id: "glob",
+        name: "Glob",
+        input: { pattern: "src/**/*.ts" }
+      }),
+      event("glob-end", "command.completed", "tool_result", "2026-05-12T15:00:06.000Z", {
+        tool_use_id: "glob",
+        content: "[]"
+      }),
+      event("n2", "message.completed", "Checking the tree.", "2026-05-12T15:00:07.000Z"),
+      event("bash-start", "command.started", "Bash", "2026-05-12T15:00:08.000Z", {
+        id: "bash",
+        name: "Bash",
+        input: { command: "git status --short" }
+      }),
+      event("bash-end", "command.completed", "tool_result", "2026-05-12T15:00:09.000Z", {
+        tool_use_id: "bash",
+        content: ""
+      }),
+      event("a1", "message.completed", "The vault is markdown notes.", "2026-05-12T15:00:10.000Z")
+    ];
+    const levels = [
+      { label: "Minimal", options: { defaultToolCallsDisplay: "single-line" as const } },
+      { label: "Compact", options: { defaultToolCallsDisplay: "collapsed" as const } },
+      {
+        label: "Steps",
+        options: { defaultToolCallsDisplay: "collapsed" as const, defaultToolCallGroupsExpanded: true }
+      },
+      { label: "Detailed", options: { defaultToolCallsDisplay: "expanded" as const } }
+    ];
+
+    // The turn body only: the chip's own label is deliberately not monotonic
+    // (Minimal alone counts the steps it hid), and that is chrome, not content.
+    const seen = levels.map(({ options }) => {
+      cleanup();
+      renderConversation(baseSession({ state: "complete" }), events, options);
+      // Leaf nodes only, and never a group headline. A container's
+      // concatenated `textContent` changes whenever a level adds a child to
+      // it, and a headline is *meant* to change: Compact buckets a lone call
+      // as "Ran a command" where Steps names it. What must never go missing is
+      // the substance — prose, reasoning, and the calls themselves.
+      return new Set(
+        Array.from(document.querySelectorAll(".turn-block-body *"))
+          .filter((node) => node.children.length === 0 && !node.closest(".tool-call-group-header"))
+          .map((node) => node.textContent?.trim() ?? "")
+          .filter((text) => text.length > 0)
+      );
+    });
+
+    for (let index = 1; index < levels.length; index += 1) {
+      const lost = [...seen[index - 1]].filter((text) => !seen[index].has(text));
+      expect(
+        lost,
+        `${levels[index].label} dropped what ${levels[index - 1].label} showed`
+      ).toEqual([]);
+    }
+  });
+
   it("keeps the live summary line visible while the session is still running", () => {
     renderConversation(
       baseSession({ state: "running" }),
@@ -965,6 +1218,48 @@ describe("SessionConversation — single-line activity mode", () => {
     );
 
     expect(screen.getByRole("button", { name: /^Read a file, searched/ })).toBeInTheDocument();
+  });
+
+  it("leaves Minimal's live summary alone: no caption, no standing chevron", () => {
+    const runningTools = [
+      event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z"),
+      event("read-start", "command.started", "Read", "2026-05-12T15:00:01.000Z", {
+        id: "read",
+        name: "Read",
+        input: { file_path: "README.md" }
+      }),
+      event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
+        tool_use_id: "read",
+        content: "readme"
+      }),
+      event("glob-start", "command.started", "Glob", "2026-05-12T15:00:02.500Z", {
+        id: "glob",
+        name: "Glob",
+        input: { pattern: "src/**/*.ts" }
+      })
+    ];
+    renderConversation(baseSession({ state: "running" }), runningTools, {
+      defaultToolCallsDisplay: "single-line"
+    });
+
+    // Minimal reports that work is happening, not what is running: the
+    // headline is the whole line, and the chevron waits for a hover. The
+    // headline is still the control that opens it.
+    const headline = screen.getByRole("button", { name: "Read a file, searched" });
+    expect(headline.closest(".tool-call-group")).toHaveAttribute("data-chevron", "hover");
+    fireEvent.click(headline);
+    expect(headline).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
+
+    // Every level above it keeps the caption and the standing chevron.
+    cleanup();
+    renderConversation(baseSession({ state: "running" }), runningTools, {
+      defaultToolCallsDisplay: "collapsed"
+    });
+    const compact = screen.getByRole("button", {
+      name: "Read a file, searched: Searched for src/**/*.ts"
+    });
+    expect(compact.closest(".tool-call-group")).not.toHaveAttribute("data-chevron");
   });
 
   it("hides failed attempts with successful tools after a Minimal turn finishes", () => {

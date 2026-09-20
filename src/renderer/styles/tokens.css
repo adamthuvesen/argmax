@@ -55,7 +55,7 @@
   /* Greige selection fill — sidebar rows, panel tabs, neutral bubbles, active
      file tabs, and the review mode sliding indicator. Same weight as the old
      cool gray mix, with the blue cast traded for a hint of paper warmth. */
-  --row-selected: #edecea;
+  --row-selected: #f1f0ee;
   /* Code/terminal block fill in chat. Lighter than --panel-sunken in light
      mode so output blocks read airier; dark reuses its sunken surface. */
   --code-surface: #f4f6f7;
@@ -119,6 +119,11 @@
      same place. Dark keeps --muted: the same value clears 4.5:1 against
      --composer-surface there. */
   --chip-ink: color-mix(in oklab, var(--muted) 55%, var(--muted-strong));
+  /* One ink for a whole chat tool line ("Edited a file, ran 2 commands"): the
+     verb, the detail, the monochrome mark, and the chevron. It sits on
+     --chip-ink so the line stands back from the prose around it while
+     clearing 4.5:1 on paper; hovering brightens it to --muted-strong. */
+  --tool-row-ink: var(--chip-ink);
 
   /* Ink for long-form rendered prose (`.markdown`): agent answers, plan cards,
      file previews. Held a step off --text on paper so a wall of text doesn't

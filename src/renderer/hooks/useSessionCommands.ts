@@ -72,7 +72,7 @@ export function useSessionCommands({
       delivery: FollowUpDelivery = "queue"
     ): Promise<void> => {
       if (!window.argmax) {
-        throw new Error("Open the Tauri app window to send input to a live chat.");
+        throw new Error("Open Argmax on your Mac to send input to a live chat.");
       }
 
       const sendInput = delivery === "steer" ? window.argmax.providers.steerInput : window.argmax.providers.sendInput;
@@ -118,7 +118,7 @@ export function useSessionCommands({
       delivery: QueuedMessageDelivery = "interrupt"
     ): Promise<void> => {
       if (!window.argmax) {
-        throw new Error("Open the Tauri app window to send a queued follow-up.");
+        throw new Error("Open Argmax on your Mac to send a queued follow-up.");
       }
       try {
         await window.argmax.providers.sendQueuedMessageNow({ sessionId, messageId, delivery });
@@ -143,7 +143,7 @@ export function useSessionCommands({
       pendingMessageId?: string
     ): Promise<void> => {
       if (!window.argmax) {
-        throw new Error("Open the Tauri app window to run a multitask.");
+        throw new Error("Open Argmax on your Mac to run a multitask.");
       }
       const launched = await window.argmax.session.multitask({
         sessionId,
@@ -171,7 +171,7 @@ export function useSessionCommands({
   const runCheck = useCallback(
     async (workspaceId: string, command: string): Promise<void> => {
       if (!window.argmax) {
-        setToast({ kind: "error", message: "Open the Tauri app window to run a check." });
+        setToast({ kind: "error", message: "Open Argmax on your Mac to run a check." });
         return;
       }
       const ok = await withToast(
@@ -187,7 +187,7 @@ export function useSessionCommands({
   const terminateSession = useCallback(
     async (sessionId: string, options?: TerminateSessionOptions): Promise<void> => {
       if (!window.argmax) {
-        throw new Error("Open the Tauri app window to stop a live chat.");
+        throw new Error("Open Argmax on your Mac to stop a live chat.");
       }
       let workspaceToArchive: string | undefined;
       if (options?.restoreLauncherOnEarlyStop !== false) {
@@ -219,7 +219,7 @@ export function useSessionCommands({
   const clearSession = useCallback(
     async (sessionId: string): Promise<void> => {
       if (!window.argmax) {
-        throw new Error("Open the Tauri app window to clear a chat.");
+        throw new Error("Open Argmax on your Mac to clear a chat.");
       }
       const ok = await withToast(
         () => window.argmax!.session.clear({ sessionId }),

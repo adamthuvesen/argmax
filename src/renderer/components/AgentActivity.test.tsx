@@ -521,7 +521,9 @@ describe("AgentActivity", () => {
       expect(within(pane).getByText("Weighing options.")).toBeInTheDocument();
       expect(within(pane).queryByRole("button", { name: "Thought" })).not.toBeInTheDocument();
     } else {
-      expect(within(pane).queryByText("Weighing options.")).toBeNull();
+      // Folded: the thought's first line rides in its header, nothing more.
+      expect(within(pane).getAllByText("Weighing options.")).toHaveLength(1);
+      expect(within(within(pane).getByRole("button", { name: "Thought" })).getByText("Weighing options.")).toBeInTheDocument();
     }
 
     fireEvent.click(chip);
@@ -537,7 +539,9 @@ describe("AgentActivity", () => {
     if (thinkingDisplay === "inline") {
       expect(within(pane).getByText("Weighing options.")).toBeInTheDocument();
     } else {
-      expect(within(pane).queryByText("Weighing options.")).toBeNull();
+      // Folded: the thought's first line rides in its header, nothing more.
+      expect(within(pane).getAllByText("Weighing options.")).toHaveLength(1);
+      expect(within(within(pane).getByRole("button", { name: "Thought" })).getByText("Weighing options.")).toBeInTheDocument();
     }
   });
 
@@ -589,7 +593,7 @@ describe("AgentActivity", () => {
     );
 
     const pane = screen.getByRole("region", { name: "Agent activity: Explore repo" });
-    const group = within(pane).getByRole("button", { name: "Ran commands" });
+    const group = within(pane).getByRole("button", { name: /^Ran \d+ commands$/ });
     expect(within(pane).queryByRole("button", { name: "Thought" })).toBeNull();
 
     fireEvent.click(group);

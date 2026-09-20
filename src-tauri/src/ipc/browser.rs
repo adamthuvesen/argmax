@@ -28,13 +28,13 @@ use crate::browser::automation::{
     self, ActionOutcome, PageExtraction, PageFindResult, PageSnapshot, PageText, TabTarget,
 };
 use crate::browser::registry::{self, BrowserAgentOpenEvent, BrowserTabRegistry, BrowserTabsEvent};
+use crate::browser::user_agent;
+use crate::browser::user_scripts::PageScript;
 use crate::browser::{encode_base64, eval, snapshot_image, CaptureRect};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::state::AppState;
 
 pub const BROWSER_WEBVIEW_LABEL_PREFIX: &str = "browser-";
-const BROWSER_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
-    AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Safari/605.1.15";
 
 /// Event pushed to the main webview whenever a tab navigates, starts loading,
 /// or finishes loading. `title` is only present on load-finish.
@@ -267,6 +267,10 @@ const BROWSER_CAPTURE_SCRIPT: &str = include_str!("../browser/capture.js");
 /// a common host for the accept button.
 const BROWSER_COOKIE_SCRIPT: &str = include_str!("../browser/cookie.js");
 
+/// Marks a popup window's pages, so the panel shortcuts and new-tab routing
+/// inherited from the opener stay out of a window that has no tab strip.
+const BROWSER_POPUP_MARKER_SCRIPT: &str = "window.__argmaxBrowserPopup = true;";
+
 /// The initialization script one tab gets. Three documents' worth, because the
 /// agent-only halves must be in place before the page's first statement runs
 /// and an initialization script is fixed when the webview is created.
@@ -276,6 +280,30 @@ fn init_script(owned_by_session: bool) -> String {
     } else {
         BROWSER_INIT_SCRIPT.to_string()
     }
+}
+
+/// Every script a tab's page runs before its own first statement, in
+/// injection order. The builder installs these, and on macOS
+/// `browser::user_scripts` reinstalls exactly this list so Wry's `window.ipc`
+/// definition does not travel with them into a third-party page.
+fn page_scripts(owned_by_session: bool, popup: bool) -> Vec<PageScript> {
+    let mut scripts = vec![PageScript {
+        source: init_script(owned_by_session),
+        all_frames: false,
+    }];
+    if owned_by_session {
+        scripts.push(PageScript {
+            source: BROWSER_COOKIE_SCRIPT.to_string(),
+            all_frames: true,
+        });
+    }
+    if popup {
+        scripts.push(PageScript {
+            source: BROWSER_POPUP_MARKER_SCRIPT.to_string(),
+            all_frames: false,
+        });
+    }
+    scripts
 }
 
 fn validated_browser_url(raw: &str) -> ArgmaxResult<Url> {
@@ -313,10 +341,31 @@ pub(crate) fn browser_webview(app: &AppHandle, tab_id: &str) -> ArgmaxResult<Web
         .ok_or_else(|| ArgmaxError::service("BROWSER_NOT_OPEN", "browser tab is not open"))
 }
 
+/// A tab's surface is measured in the renderer, in CSS px; `add_child` and
+/// `set_bounds` take window points. Page zoom is the ratio between them, so a
+/// zoomed-out window would otherwise glue the page to a webview that overhangs
+/// it by 1/zoom.
+fn scaled_bounds(bounds: &BrowserBounds) -> (LogicalPosition<f64>, LogicalSize<f64>) {
+    let (x, y, width, height) = scale_bounds(bounds, crate::menu::main_window_zoom());
+    (LogicalPosition::new(x, y), LogicalSize::new(width, height))
+}
+
+/// CSS px times the window's page zoom, floored at one point so a collapsed
+/// panel still leaves the webview something to be.
+fn scale_bounds(bounds: &BrowserBounds, zoom: f64) -> (f64, f64, f64, f64) {
+    (
+        bounds.x * zoom,
+        bounds.y * zoom,
+        (bounds.width * zoom).max(1.0),
+        (bounds.height * zoom).max(1.0),
+    )
+}
+
 fn bounds_rect(bounds: &BrowserBounds) -> tauri::Rect {
+    let (position, size) = scaled_bounds(bounds);
     tauri::Rect {
-        position: LogicalPosition::new(bounds.x, bounds.y).into(),
-        size: LogicalSize::new(bounds.width.max(1.0), bounds.height.max(1.0)).into(),
+        position: position.into(),
+        size: size.into(),
     }
 }
 
@@ -565,6 +614,7 @@ fn open_tab_with_url(
     if let Some(webview) = app.get_webview(&label) {
         #[cfg(target_os = "macos")]
         crate::browser::content_blocking_macos::apply(&webview, blocking_identifier.clone())?;
+        user_agent::apply(&webview, user_agent::for_url(&url))?;
         if visible {
             webview
                 .set_bounds(bounds_rect(&bounds))
@@ -590,6 +640,8 @@ fn open_tab_with_url(
     let load_tab = tab_id.to_string();
     let popup_app = app.clone();
     let popup_owned_by_session = owner_session_id.is_some();
+    let nav_label = label.clone();
+    let tab_user_agent = user_agent::for_url(&url);
     let builder = tauri::webview::WebviewBuilder::new(&label, WebviewUrl::External(url));
     #[cfg(target_os = "macos")]
     let builder = if let Some(identifier) = blocking_identifier.as_deref() {
@@ -603,10 +655,7 @@ fn open_tab_with_url(
     let _ = blocking_identifier;
     let owned = owner_session_id.is_some();
     let builder = builder
-        // WKWebView's default UA reads as an embedded webview; Google (and
-        // others) then warn "browser no longer supported" and refuse OAuth.
-        // Present as desktop Safari, which is what this engine actually is.
-        .user_agent(BROWSER_USER_AGENT)
+        .user_agent(tab_user_agent)
         .initialization_script(init_script(owned));
     let builder = if owned {
         builder.initialization_script_for_all_frames(BROWSER_COOKIE_SCRIPT)
@@ -643,7 +692,7 @@ fn open_tab_with_url(
             .title("Browser")
             .inner_size(600.0, 720.0)
             .window_features(features)
-            .user_agent(BROWSER_USER_AGENT)
+            .user_agent(user_agent::SAFARI)
             // The popup gets a fresh WKUserContentController on macOS, so
             // explicitly restore the panel scripts Wry would otherwise see
             // through the inherited controller.
@@ -656,7 +705,7 @@ fn open_tab_with_url(
             let window = popup_builder
                 // Check the marker at event time, since OAuth redirects can sever
                 // window.opener.
-                .initialization_script("window.__argmaxBrowserPopup = true;")
+                .initialization_script(BROWSER_POPUP_MARKER_SCRIPT)
                 .on_navigation(|url| matches!(url.scheme(), "http" | "https" | "about" | "blob"))
                 .on_document_title_changed(|window, title| {
                     let _ = window.set_title(&title);
@@ -664,6 +713,14 @@ fn open_tab_with_url(
                 .build();
             match window {
                 Ok(window) => {
+                    if let Err(error) = crate::browser::user_scripts::replace(
+                        window.as_ref(),
+                        &page_scripts(popup_owned_by_session, true),
+                    ) {
+                        tracing::error!(%error, "could not install browser popup scripts");
+                        let _ = window.close();
+                        return tauri::webview::NewWindowResponse::Deny;
+                    }
                     let browser_theme = *popup_app
                         .state::<AppState>()
                         .browser_theme
@@ -726,6 +783,16 @@ fn open_tab_with_url(
                 }
                 return false;
             }
+            // A link, not the address bar, can walk a tab into a Docs
+            // editor. Upgrade only: this callback fires for iframes too, and
+            // a consent frame must not take the grid's resolution with it.
+            if user_agent::needs_docs_editor(url) {
+                if let Some(webview) = nav_app.get_webview(&nav_label) {
+                    if let Err(error) = user_agent::apply(&webview, user_agent::DOCS_EDITOR) {
+                        tracing::warn!(%error, tab = %nav_tab, "could not set the editor user agent");
+                    }
+                }
+            }
             // No emit_state here: this callback also fires for iframe
             // navigations (with the iframe's URL), which would leak into the
             // address bar and strand the tab spinner. Loading state comes
@@ -759,13 +826,14 @@ fn open_tab_with_url(
             });
         });
 
+    let (position, size) = scaled_bounds(&bounds);
     let created = window
-        .add_child(
-            builder,
-            LogicalPosition::new(bounds.x, bounds.y),
-            LogicalSize::new(bounds.width.max(1.0), bounds.height.max(1.0)),
-        )
+        .add_child(builder, position, size)
         .map_err(|error| ArgmaxError::service("BROWSER_CREATE_FAILED", error.to_string()))?;
+    // Before WebKit creates the first document: this call is inline on the
+    // main thread, and the navigation started above cannot produce a document
+    // until the run loop turns again.
+    crate::browser::user_scripts::replace(&created, &page_scripts(owned, false))?;
     let browser_theme = *app
         .state::<AppState>()
         .browser_theme
@@ -806,7 +874,9 @@ pub fn browser_navigate(app: AppHandle, input: BrowserNavigateInput) -> ArgmaxRe
 
 pub(crate) fn navigate_tab(app: &AppHandle, tab_id: &str, raw_url: &str) -> ArgmaxResult<()> {
     let url = validated_browser_url(raw_url)?;
-    browser_webview(app, tab_id)?
+    let webview = browser_webview(app, tab_id)?;
+    user_agent::apply(&webview, user_agent::for_url(&url))?;
+    webview
         .navigate(url)
         .map_err(|error| ArgmaxError::service("BROWSER_NAVIGATE_FAILED", error.to_string()))
 }
@@ -1425,6 +1495,33 @@ mod tests {
         }
     }
 
+    // The renderer measures the panel in CSS px. At 80% zoom the same surface
+    // is 0.8 window points per CSS px, and a webview placed at face value
+    // overhangs the window by a quarter of its size.
+    #[test]
+    fn bounds_are_scaled_from_css_px_to_window_points() {
+        let bounds = BrowserBounds {
+            x: 100.0,
+            y: 50.0,
+            width: 800.0,
+            height: 600.0,
+        };
+        assert_eq!(scale_bounds(&bounds, 0.8), (80.0, 40.0, 640.0, 480.0));
+        assert_eq!(scale_bounds(&bounds, 1.0), (100.0, 50.0, 800.0, 600.0));
+    }
+
+    // A hidden or collapsed panel measures zero; the webview still needs a size.
+    #[test]
+    fn a_collapsed_surface_keeps_one_point_of_webview() {
+        let bounds = BrowserBounds {
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+        };
+        assert_eq!(scale_bounds(&bounds, 0.5), (0.0, 0.0, 1.0, 1.0));
+    }
+
     #[test]
     fn pending_open_cancellation_prevents_late_creation() {
         let mut pending = PendingBrowserOpens::default();
@@ -1494,6 +1591,28 @@ mod tests {
         assert!(
             user.contains("argmax-newtab"),
             "ordinary browser behavior is still installed"
+        );
+    }
+
+    #[test]
+    fn page_scripts_carry_the_cookie_dismisser_into_every_frame() {
+        let user = page_scripts(false, false);
+        assert_eq!(user.len(), 1, "a user tab only gets the panel script");
+        assert!(!user[0].all_frames);
+
+        let agent = page_scripts(true, false);
+        assert_eq!(agent.len(), 2);
+        assert!(agent[1].source.contains("__argmaxCookies"));
+        assert!(
+            agent[1].all_frames,
+            "a consent button often lives in an iframe"
+        );
+
+        let popup = page_scripts(true, true);
+        assert_eq!(
+            popup.last().expect("popup marker").source,
+            BROWSER_POPUP_MARKER_SCRIPT,
+            "a popup window has no tab strip to shortcut into"
         );
     }
 

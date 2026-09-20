@@ -24,6 +24,7 @@ export const GOAL_ENABLED_KEY = "argmax.goal.enabled";
 export const TURN_REVERT_ENABLED_KEY = "argmax.turnRevert.enabled";
 export const GOAL_MAX_TURNS_KEY = "argmax.goal.maxTurns";
 export const FOLLOW_UP_DELIVERY_KEY = "argmax.followUp.delivery";
+export const DEVELOPER_TOOLS_KEY = "argmax.developerTools.enabled";
 
 /** What Send does while an agent is still working. */
 export type FollowUpDelivery = "queue" | "steer";
@@ -52,6 +53,15 @@ export const GOAL_MAX_TURNS_MAX = 50;
 export const GOAL_MAX_TURNS_DEFAULT = 20;
 
 export const PrMilestoneCelebrationContext = createContext(false);
+
+/**
+ * Whether the diagnostic surfaces — the per-chat debug log and the performance
+ * panel in Settings → Advanced — are offered. Off for everyone who has not
+ * asked for them; a dev build starts with them on, because that is the build
+ * they exist for. The native Help → Debug Log item ignores this: it is the
+ * escape hatch for a user who needs the log before finding the toggle.
+ */
+export const DeveloperToolsContext = createContext(import.meta.env.DEV);
 
 function readBooleanPreference(key: string, fallback: boolean): boolean {
   if (typeof window === "undefined") return fallback;
@@ -138,17 +148,23 @@ interface ResolvedVerbosity {
 export const CHAT_VERBOSITY_LABELS: Record<ChatVerbosity, string> = {
   1: "Minimal",
   2: "Compact",
-  3: "Balanced",
+  3: "Steps",
   4: "Detailed"
 };
 
 export const CHAT_VERBOSITY_HINTS: Record<ChatVerbosity, string> = {
-  1: "Activity summaries while working. Finished turns keep the answer. Expand Worked to inspect all tool activity, including failed attempts.",
-  2: "One short activity summary between messages. Expand to see commands, files, and agent activity.",
-  3: "Activity summaries with a short preview of current thinking. Expand thoughts to read more.",
-  4: "Tool calls and groups open on the latest turn, with full, labelled thoughts."
+  1: "One activity line while working. Finished turns keep the answer. Expand Worked to inspect every step, including failed attempts.",
+  2: "One short activity summary between messages, naming the current step while it runs.",
+  3: "Every step listed by name with its output closed, and a live preview of the current thought.",
+  4: "Steps open with their output on the latest turn, and thoughts in full."
 };
 
+/**
+ * Each level adds one thing: Minimal drops finished work, Compact keeps one
+ * summary per stretch of work, Steps lists every call by name (groups open,
+ * rows closed), Detailed opens the rows. Steps is the pair the legacy
+ * "collapsed calls + expanded groups" preference already migrated to.
+ */
 export function resolveChatVerbosity(verbosity: ChatVerbosity): ResolvedVerbosity {
   switch (verbosity) {
     case 1:
@@ -156,7 +172,7 @@ export function resolveChatVerbosity(verbosity: ChatVerbosity): ResolvedVerbosit
     case 2:
       return { toolCallsDisplay: "collapsed", toolCallGroupsExpanded: false, thinkingDisplay: "collapsed" };
     case 3:
-      return { toolCallsDisplay: "collapsed", toolCallGroupsExpanded: false, thinkingDisplay: "preview" };
+      return { toolCallsDisplay: "collapsed", toolCallGroupsExpanded: true, thinkingDisplay: "preview" };
     case 4:
       return { toolCallsDisplay: "expanded", toolCallGroupsExpanded: true, thinkingDisplay: "inline" };
   }

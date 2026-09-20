@@ -19,7 +19,7 @@ export function ChatBubble({ kind, rawMarkdown, children }: ChatBubbleProps): JS
         className="chat-bubble-copy"
         aria-label="Copy bubble"
         title={
-          copyFlash === "copied" ? "Copied!" : copyFlash === "failed" ? "Couldn't copy" : "Copy markdown"
+          copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy markdown"
         }
         onClick={() => void copy(rawMarkdown)}
       >

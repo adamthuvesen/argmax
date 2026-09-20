@@ -54,7 +54,7 @@ describe("CodeBlock", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(button).toHaveAttribute("title", "Copied!");
+    expect(button).toHaveAttribute("title", "Copied");
     expect(screen.getByRole("status")).toHaveTextContent("Code copied.");
     act(() => {
       vi.advanceTimersByTime(1500);

@@ -14,7 +14,7 @@ export function useProviderAvailability(): {
   discovered: DiscoveredProvider[] | null;
 } {
   const { data: discovered } = useAsyncLoad<DiscoveredProvider[]>(() => window.argmax!.providers.discover(), {
-    fallbackMessage: "Provider discovery failed."
+    fallbackMessage: "Could not check which agents are installed."
   });
   const availability = useMemo<ProviderAvailability | undefined>(() => {
     if (!discovered) return undefined;

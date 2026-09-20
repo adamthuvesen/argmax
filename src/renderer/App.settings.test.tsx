@@ -21,7 +21,7 @@ import {
 } from "./lib/uiPreferences.js";
 import { USER_BUBBLE_TINT_STORAGE_KEY } from "./lib/userBubbleTint.js";
 import * as tauriBridge from "./lib/tauriBridge.js";
-import { APP_VERSION_LABEL } from "../shared/appVersion.js";
+import { APP_VERSION, APP_VERSION_LABEL } from "../shared/appVersion.js";
 import {
   diagnosticsStub,
   launchProvider,
@@ -90,7 +90,9 @@ describe("App settings", () => {
 
     const trigger = screen.getByRole("button", { name: "Argmax menu" });
     expect(trigger).toHaveTextContent("Argmax");
-    expect(trigger).toHaveTextContent(APP_VERSION_LABEL);
+    expect(trigger).toHaveTextContent(APP_VERSION);
+    // The stage word lives in About alone, so the chrome shows a bare version.
+    expect(trigger).not.toHaveTextContent(APP_VERSION_LABEL);
     expect(trigger).not.toHaveTextContent("Local workspace");
     expect(within(trigger).queryByText(/ready/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();

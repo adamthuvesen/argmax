@@ -645,6 +645,11 @@ export interface ArgmaxApi {
     performanceStatus: () => Promise<PerformanceStatus>;
     performanceCapture: () => Promise<PerformanceCapture>;
     reportRendererStall: (durationMs: number) => Promise<{ ok: true }>;
+    /** The window's page zoom (⌘+/⌘−), published whenever it changes and
+     *  restated on every load. CSS px are window points times this factor, so
+     *  the band the page reserves for the native traffic lights divides it
+     *  back out — see lib/windowChrome.ts and styles/shell-layout.css. */
+    onZoom: (listener: (factor: number) => void) => EventSubscription;
     vacuumDatabase: () => Promise<{ ok: true }>;
     setTheme: (mode: "light" | "dark" | "system") => Promise<{ ok: true }>;
     setDefaultAgent: (input: {
@@ -981,6 +986,8 @@ export type MenuCommand =
   | "open-command-palette"
   | "open-cheat-sheet"
   | "check-for-updates"
+  | "open-docs"
+  | "report-issue"
   | "close-surface";
 
 declare global {

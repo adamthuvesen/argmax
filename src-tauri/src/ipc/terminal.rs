@@ -44,36 +44,25 @@ fn terminal_spawn_with(
     })
 }
 
-// `spawn_blocking`, not `#[tauri::command(async)]`: that flag is a
-// `tokio::spawn`, and the PTY write blocks once the child stops draining its
-// tty input queue. One suspended child plus continued typing would park a
-// tokio worker per keystroke until nothing else — provider IO, git, the remote
-// bridge, `dashboard:delta` — could run.
+// Synchronous on purpose, and the one place that is not a blocking-work
+// mistake: the body only queues the bytes (see `TerminalInput`), and Tauri
+// resolves a synchronous command inline, in the order the webview sent its
+// messages. That ordering *is* the feature — typing is a stream, and a
+// keystroke handed to its own task can overtake the one before it.
 #[tauri::command(rename = "terminal:write")]
 #[specta::specta]
-pub async fn terminal_write(
+pub fn terminal_write(
     state: State<'_, AppState>,
     input: TerminalWriteInput,
 ) -> ArgmaxResult<SystemOk> {
-    let terminals = live_terminals(&state)?;
-    tauri::async_runtime::spawn_blocking(move || terminal_write_with(&terminals, input))
-        .await
-        .map_err(|error| ArgmaxError::service("TERMINAL_WRITE_JOIN", error.to_string()))?
+    terminal_write_impl(&state, input)
 }
 
 pub(crate) fn terminal_write_impl(
     state: &AppState,
     input: TerminalWriteInput,
 ) -> ArgmaxResult<SystemOk> {
-    let terminals = live_terminals(state)?;
-    terminal_write_with(&terminals, input)
-}
-
-fn terminal_write_with(
-    terminals: &TerminalService,
-    input: TerminalWriteInput,
-) -> ArgmaxResult<SystemOk> {
-    terminals.write(input.terminal_id.as_str(), input.data.as_str().as_bytes())?;
+    live_terminals(state)?.write(input.terminal_id.as_str(), input.data.as_str().as_bytes())?;
     Ok(SystemOk { ok: true })
 }
 

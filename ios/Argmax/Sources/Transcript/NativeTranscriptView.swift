@@ -20,7 +20,13 @@ struct NativeTranscriptView: View {
         MobileTranscriptRow.rows(transcript.items.filter { item in
             if case .question = item { return false }
             return true
-        }, detail: appearance.chatDetail)
+        }, detail: appearance.chatDetail, latestTurnIsLive: sessionIsWorking)
+    }
+
+    /// The newest turn is still going, so Minimal keeps its narration on
+    /// screen. The same reading `TranscriptTodoRow` takes for a live plan.
+    private var sessionIsWorking: Bool {
+        transcript.session?.state == .running && transcript.connection == .live
     }
 
     /// A steering message belongs to the active turn. Only a regular user
@@ -43,6 +49,7 @@ struct NativeTranscriptView: View {
         let rowIDs = allRows.map(\.id)
         let bounds = rowWindow.bounds(in: rowIDs, following: following)
         let rows = Array(allRows[bounds])
+        let latestTurnRowIDs = Set(rowIDs[(turnAnchorID.flatMap(rowIDs.lastIndex(of:)) ?? rowIDs.startIndex)...])
         return VStack(spacing: 0) {
             if case .failed(let message) = transcript.phase {
                 HStack(alignment: .top, spacing: Spacing.snug) {
@@ -77,6 +84,7 @@ struct NativeTranscriptView: View {
                                      onOpenSession: { navigator.awaitingSessionID = $0 })
                 }
                     .padding(.vertical, row.verticalPadding)
+                    .environment(\.transcriptRowInLatestTurn, latestTurnRowIDs.contains(row.id))
             } footer: {
                 TranscriptThinkingLabel(thinking: thinking, beatHolder: $beatHolder)
                     .id(thinking)
@@ -132,11 +140,10 @@ struct NativeTranscriptView: View {
         .accessibilityHidden(transcript.phase == .loading)
         .overlay {
             if transcript.phase == .loading {
-                ProgressView {
-                    Text("Loading chat…").typeStyle(.footnote)
-                }
-                .foregroundStyle(Theme.muted)
-                .accessibilityIdentifier("transcript-loading")
+                ProgressView()
+                    .tint(Theme.muted)
+                    .accessibilityLabel("Loading chat…")
+                    .accessibilityIdentifier("transcript-loading")
             }
         }
         .onChange(of: transcript.session?.sessionId) { following = true }

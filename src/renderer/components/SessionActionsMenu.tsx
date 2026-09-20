@@ -12,10 +12,11 @@ import {
   SquarePen,
   Workflow
 } from "lucide-react";
-import { useCallback, useEffect, useState, type JSX } from "react";
+import { useCallback, useContext, useEffect, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
 import type { DetectedIde, IdeId, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { openBrowserPanel } from "../lib/browserPanel.js";
+import { DeveloperToolsContext } from "../lib/uiPreferences.js";
 import { refreshSessionPrs } from "../lib/sessionPrs.js";
 import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
@@ -68,6 +69,7 @@ export function SessionActionsMenu({
 }): JSX.Element {
   const [actionsOpen, setActionsOpen] = useState(false);
   const [actionsMode, setActionsMode] = useState<"main" | "git">("main");
+  const developerToolsEnabled = useContext(DeveloperToolsContext);
   const closeActions = useCallback(() => {
     setActionsOpen(false);
     setActionsMode("main");
@@ -222,20 +224,6 @@ export function SessionActionsMenu({
                   Open browser
                 </button>
               </li>
-              {onOpenInIde && ideChoices.length === 0 ? (
-                <li role="none">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="project-picker-item"
-                    disabled
-                    title="No supported IDEs found. Install VS Code, Cursor, Windsurf, or Zed."
-                  >
-                    <SquareArrowOutUpRight size={14} aria-hidden="true" />
-                    Open in IDE
-                  </button>
-                </li>
-              ) : null}
               {onOpenInIde
                 ? ideChoices.map((entry) => (
                     <li role="none" key={entry.id}>
@@ -246,8 +234,8 @@ export function SessionActionsMenu({
                         disabled={!workspace}
                         title={
                           pinnedIde
-                            ? "Open this workspace in your default IDE (set in Settings → Integrations)"
-                            : "Open this workspace in this IDE (pin a default in Settings → Integrations)"
+                            ? "Open this workspace in your default IDE (set in Settings → Handoff)"
+                            : "Open this workspace in this IDE (pin a default in Settings → Handoff)"
                         }
                         onClick={() => {
                           closeActions();
@@ -291,21 +279,23 @@ export function SessionActionsMenu({
                   Workspace card
                 </button>
               </li>
-              <li role="none">
-                <button
-                  type="button"
-                  role="menuitemcheckbox"
-                  className="project-picker-item"
-                  aria-checked={isLogOpen}
-                  onClick={() => {
-                    closeActions();
-                    onToggleLog();
-                  }}
-                >
-                  <Bug size={14} aria-hidden="true" />
-                  Toggle debug log
-                </button>
-              </li>
+              {developerToolsEnabled ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitemcheckbox"
+                    className="project-picker-item"
+                    aria-checked={isLogOpen}
+                    onClick={() => {
+                      closeActions();
+                      onToggleLog();
+                    }}
+                  >
+                    <Bug size={14} aria-hidden="true" />
+                    Debug log
+                  </button>
+                </li>
+              ) : null}
             </ul>
           )}
           {actionsMode === "git" && (

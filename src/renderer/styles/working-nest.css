@@ -39,9 +39,21 @@
      to track something else (the mark in a row that follows the chat type
      scale) sets `--working-nest-size-override`, which is consulted first. The
      old `<svg width>` was a presentation attribute that any rule outranked;
-     this restores that ordering explicitly. */
-  width: var(--working-nest-size-override, var(--working-nest-size));
-  height: var(--working-nest-size-override, var(--working-nest-size));
+     this restores that ordering explicitly.
+
+     Every style sizes its parts off this box in whole pixels rather than in
+     percentages of it. A percentage of a 14px box lands at 1.68px and 4.76px —
+     fractional at any device ratio — so two shapes that are concentric on
+     paper rasterize onto different grids: halo's core came out half a device
+     pixel down and right of its ring, because the core's rounded diameter was
+     odd and the ring's was even, and each parity wants its centre somewhere
+     else (a pixel's middle, a pixel's edge). Rounding the *inset* rather than
+     the part is what fixes that: the part's size stays `box - 2 * inset`, so
+     it always carries the box's parity, and the parts of one mark can never
+     disagree about where the middle is. */
+  --working-nest-box: var(--working-nest-size-override, var(--working-nest-size));
+  width: var(--working-nest-box);
+  height: var(--working-nest-box);
   flex: 0 0 auto;
   color: color-mix(in oklab, var(--muted) 78%, transparent);
   transform-origin: center;
@@ -78,17 +90,30 @@
    rises quickly, holds, then gives way more slowly than it arrived; the next
    dot starts before the outgoing one settles. */
 
+.working-nest[data-mark="nest"] {
+  /* The dot rounds *down* where the others round to nearest: the gap between
+     the two dots of a row is only ~0.09 of the box, so at 12px and 18px the
+     nearest whole pixel closed it and the cluster fused into a blob. Rounding
+     down costs at most a pixel of dot and always leaves the gap standing. */
+  --working-nest-dot: round(down, calc(var(--working-nest-box) * 0.314), 1px);
+  --working-nest-dot-edge: round(calc(var(--working-nest-box) * 0.143), 1px);
+}
+
 .working-nest[data-mark="nest"] .working-nest-part {
-  width: 31.4%;
-  height: 31.4%;
+  width: var(--working-nest-dot);
+  height: var(--working-nest-dot);
   border-radius: 50%;
   background: var(--working-nest-rest, currentColor);
 }
 
-.working-nest[data-mark="nest"] .working-nest-part[data-dot="1"] { left: 14.3%; top: 14.3%; }
-.working-nest[data-mark="nest"] .working-nest-part[data-dot="2"] { left: 54.3%; top: 14.3%; }
-.working-nest[data-mark="nest"] .working-nest-part[data-dot="3"] { left: 54.3%; top: 54.3%; }
-.working-nest[data-mark="nest"] .working-nest-part[data-dot="4"] { left: 14.3%; top: 54.3%; }
+/* Each dot is pinned to the two box edges it sits nearest rather than to a
+   left/top pair, so the 2x2 is symmetric by construction. Positioning all four
+   from the left and top meant the far side's offset was the box minus two
+   rounded numbers, and the cluster could sit a pixel off its own centre. */
+.working-nest[data-mark="nest"] .working-nest-part[data-dot="1"] { left: var(--working-nest-dot-edge); top: var(--working-nest-dot-edge); }
+.working-nest[data-mark="nest"] .working-nest-part[data-dot="2"] { right: var(--working-nest-dot-edge); top: var(--working-nest-dot-edge); }
+.working-nest[data-mark="nest"] .working-nest-part[data-dot="3"] { right: var(--working-nest-dot-edge); bottom: var(--working-nest-dot-edge); }
+.working-nest[data-mark="nest"] .working-nest-part[data-dot="4"] { left: var(--working-nest-dot-edge); bottom: var(--working-nest-dot-edge); }
 
 /* The relay's colours, stacked over the dot's rest fill: `::before` in the
    accent the leader passes through, `::after` in the leader's own colour. At
@@ -328,6 +353,18 @@
    animation — the cheapest style here, and the smoothest, because a linear
    rotation has nothing to stutter on. */
 
+.working-nest[data-mark="orbit"] {
+  /* Orbit is the one style a pixel grid cannot help: the figure is under
+     continuous rotation, so every frame but two is off-grid whatever the
+     geometry says. The invariant that does matter here is the one below —
+     each dot's centre exactly on the axis the group turns about — so the
+     diameter rounds to nearest for the truest size rather than through an
+     inset for parity. What this buys is a comet whose five dots are all the
+     same size: at 28% of a 14px box they were 3.92px and rasterized as 4px
+     next to 3px depending on where each landed. */
+  --working-nest-comet: round(calc(var(--working-nest-box) * 0.28), 1px);
+}
+
 .working-nest[data-mark="orbit"] .working-nest-part {
   inset: 0;
 }
@@ -350,9 +387,11 @@
   content: "";
   position: absolute;
   top: 0;
-  left: 36%;
-  width: 28%;
-  height: 28%;
+  /* Centred on the track's axis by arithmetic instead of by a matching pair of
+     percentages, so the dot stays on the axis at whatever size it rounds to. */
+  left: calc(50% - var(--working-nest-comet) / 2);
+  width: var(--working-nest-comet);
+  height: var(--working-nest-comet);
   border-radius: 50%;
   background: currentColor;
   opacity: calc(1 - var(--working-nest-trail) * 0.21);
@@ -380,16 +419,24 @@
    Halo does not use the per-job phase offset. Separate jobs need distinct
    phases when a fast mark shows progress, but slow rings moving out of step
    turn a column of running sessions into a shimmer. */
+.working-nest[data-mark="halo"] {
+  --working-nest-ring-inset: round(calc(var(--working-nest-box) * 0.12), 1px);
+  --working-nest-core-inset: round(calc(var(--working-nest-box) * 0.34), 1px);
+}
+
 .working-nest[data-mark="halo"] .working-nest-part[data-dot="1"] {
-  inset: 12%;
+  inset: var(--working-nest-ring-inset);
   box-sizing: border-box;
-  border: 1.25px solid currentColor;
+  /* A whole pixel, where this used to ask for 1.25px. At 2x that was 2.5 device
+     pixels, so the stroke straddled a half pixel the whole way round and the
+     ring read soft against a core with hard edges. */
+  border: 1px solid currentColor;
   border-radius: 50%;
   opacity: 0.35;
 }
 
 .working-nest[data-mark="halo"] .working-nest-part[data-dot="2"] {
-  inset: 34%;
+  inset: var(--working-nest-core-inset);
   border-radius: 50%;
   background: var(--working-nest-lead, currentColor);
 }

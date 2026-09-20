@@ -1,13 +1,20 @@
 # Changelog
 
-Notable changes to Argmax. Sections up to and including 0.5.0 predate tagging,
-so each lists the changes made while `package.json` carried that version, with
-the date of the commit that set it. From the first `v*` tag onward a section
-corresponds to a release, and its text is what goes in the GitHub Release
-notes — see [docs/release.md](docs/release.md). "Unreleased" covers work not
-yet on `main`.
+Notable changes to Argmax. Sections up to 0.3.0 predate tagging, so each lists
+the changes made while `package.json` carried that version, with the date of
+the commit that set it. From `v0.5.0` on, a section is a release and its text
+is what goes in the GitHub Release notes — see
+[docs/release.md](docs/release.md). "Unreleased" covers work on `main` that no
+tag has shipped yet.
+
+Argmax is pre-1.0 and every release is marked a pre-release on GitHub.
 
 ## Unreleased
+
+## 0.5.0 — 2026-09-20
+
+First tagged release, and the first installable one: a signed, notarized
+universal DMG rather than a repository to clone.
 
 ### Added
 

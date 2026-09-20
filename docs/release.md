@@ -25,6 +25,26 @@ as the release notes.
 `workflow_dispatch` re-runs a failed publish. Select a tag as the ref — the
 workflow refuses to release from a branch.
 
+### Releases are rarer than changes
+
+Nothing about ordinary work triggers a release. Merging to `main` runs CI and
+stops there; the release workflow is bound to `tags: ["v*"]` and to nothing
+else, so the 40 minutes it costs are spent only when you type `git tag`.
+Release on whatever cadence suits — weekly, monthly, when something is worth
+downloading — and keep merging in between.
+
+To exercise the pipeline without publishing anything, tag a throwaway version
+(`v0.0.0-test`), let the draft appear, then delete the draft release and the
+tag. A draft is invisible to everyone but you.
+
+### Pre-1.0
+
+Every release is marked a **pre-release** on GitHub
+(`prerelease: true` in the workflow), and the app labels itself Alpha in
+Settings → Advanced → About. Both say the same thing in the two places
+somebody looks. Flip the workflow flag and drop the stage word from
+`src/shared/appVersion.ts` with the tag that earns 1.0.
+
 ## Signing and Notarization
 
 Without Apple credentials the build falls back to the ad-hoc

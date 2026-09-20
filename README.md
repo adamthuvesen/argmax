@@ -39,7 +39,7 @@ See [providers](docs/providers.md) for what each one supports. GitHub PR / CI tr
 
 Then add a local Git project, choose a provider and model, and send your first prompt. Turn on **Worktree** for an isolated checkout, or leave it off to work in the shared checkout. Configure project setup and check commands in Settings.
 
-> Releases are not yet signed with an Apple Developer ID, so macOS will say the developer cannot be verified. Until that changes, right-click the app and choose **Open**, or clear it with `xattr -dr com.apple.quarantine /Applications/Argmax.app`.
+> Argmax is pre-1.0 and released as an alpha. Releases are signed and notarized, so they open without a Gatekeeper warning — but expect rough edges, and expect them to change. [Report anything you hit.](https://github.com/adamthuvesen/argmax/issues)
 
 See [CHANGELOG.md](CHANGELOG.md) for release history.
 

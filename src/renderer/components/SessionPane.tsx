@@ -79,11 +79,41 @@ import { SessionConversation } from "./SessionConversation.js";
 // warm-up effect below) and the first ⌘J paints straight away.
 const importTerminalView = () => import("./TerminalTabsPanel.js");
 
-const SESSION_RIGHT_PANEL_WIDTH_KEY = "argmax.session.rightPanel.width";
+/** Only written once the user drags the handle. The old key held the width on
+ *  every mount, default included, so a stored value there could not be told
+ *  from a chosen one; this key means "the user picked this". */
+const SESSION_RIGHT_PANEL_WIDTH_KEY = "argmax.session.rightPanel.pinnedWidth";
 const SESSION_RIGHT_PANEL_MIN = 360;
 const SESSION_RIGHT_PANEL_MAX = 2000;
-const SESSION_RIGHT_PANEL_DEFAULT = 420;
+/** Until the handle is dragged the dock takes a third of the pane rather than
+ *  a fixed 420px — on a pane under a thousand pixels that fixed width read as
+ *  an even split with the chat, which is more than a subagent transcript or a
+ *  file list needs. The floor is the drag minimum, so the automatic width is
+ *  always one the handle can return to; the ceiling keeps a very wide window
+ *  from handing the dock a third of the screen. */
+const SESSION_RIGHT_PANEL_AUTO_WIDTH = `clamp(${SESSION_RIGHT_PANEL_MIN}px, 33.3%, 560px)`;
 const SESSION_LOG_PANEL_MIN = 300;
+
+/** Null when the user has never dragged the handle, which leaves the dock on
+ *  `SESSION_RIGHT_PANEL_AUTO_WIDTH` instead of freezing it at a stored width. */
+function readPinnedPanelWidth(): number | null {
+  if (typeof window === "undefined") return null;
+  if (window.localStorage.getItem(SESSION_RIGHT_PANEL_WIDTH_KEY) === null) return null;
+  return readBoundedNumberPreference(SESSION_RIGHT_PANEL_WIDTH_KEY, {
+    min: SESSION_RIGHT_PANEL_MIN,
+    max: SESSION_RIGHT_PANEL_MAX,
+    fallback: SESSION_RIGHT_PANEL_MIN
+  });
+}
+
+function writePinnedPanelWidth(width: number): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(SESSION_RIGHT_PANEL_WIDTH_KEY, String(width));
+  } catch {
+    // Quota or private-mode failures are non-fatal for a panel width.
+  }
+}
 
 export function SessionPane({
   approvals,
@@ -296,13 +326,9 @@ export function SessionPane({
   });
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [isPanelResizing, setIsPanelResizing] = useState(false);
-  const [rightPanelWidth, setRightPanelWidth] = useState<number>(() =>
-    readBoundedNumberPreference(SESSION_RIGHT_PANEL_WIDTH_KEY, {
-      min: SESSION_RIGHT_PANEL_MIN,
-      max: SESSION_RIGHT_PANEL_MAX,
-      fallback: SESSION_RIGHT_PANEL_DEFAULT
-    })
-  );
+  // Null while the dock is on its automatic share of the pane; a pixel width
+  // once the user has dragged the handle.
+  const [pinnedPanelWidth, setPinnedPanelWidth] = useState<number | null>(readPinnedPanelWidth);
   const toggleLog = useCallback(() => setIsLogOpen((v) => !v), []);
   // The card's own dismiss and the session menu's checkbox write the same
   // app-level preference, so hiding it here keeps it hidden everywhere.
@@ -321,8 +347,9 @@ export function SessionPane({
   ]
     .filter(Boolean)
     .join(" ");
-  const reviewColumnWidth = `${rightPanelWidth}px`;
-  const logColumnWidth = reviewState.isPanelOpen ? "clamp(300px, 32vw, 480px)" : `${rightPanelWidth}px`;
+  const reviewColumnWidth =
+    pinnedPanelWidth === null ? SESSION_RIGHT_PANEL_AUTO_WIDTH : `${pinnedPanelWidth}px`;
+  const logColumnWidth = reviewState.isPanelOpen ? "clamp(300px, 32vw, 480px)" : reviewColumnWidth;
   // The terminal is a review-panel view, so "open" is that panel showing it.
   const terminalOpen = reviewState.isPanelOpen && reviewState.layout.modes.includes("terminal");
   const gridStyle = {
@@ -330,11 +357,6 @@ export function SessionPane({
     "--session-review-panel-width": reviewColumnWidth,
     "--session-log-panel-width": logColumnWidth
   } as CSSProperties;
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(SESSION_RIGHT_PANEL_WIDTH_KEY, String(rightPanelWidth));
-  }, [rightPanelWidth]);
 
   // Destructure so the effect's dep is the stable useCallback from inside
   // useReviewState — not the parent object, which would expand the effect's
@@ -351,9 +373,14 @@ export function SessionPane({
   useEffect(() => {
     onRightPanelWidthChangeRef.current = onRightPanelWidthChange;
   }, [onRightPanelWidthChange]);
+  // What a grid cell has to reserve for the dock. An automatic width is a
+  // share of whatever the cell ends up with, so it reserves the floor: the
+  // narrowest the dock can be, which is the width it takes in a cell that
+  // small anyway.
+  const reservedPanelWidth = pinnedPanelWidth ?? SESSION_RIGHT_PANEL_MIN;
   const dockedRightPanelWidth =
-    (reviewIsPanelOpen ? rightPanelWidth : 0) +
-    (isLogOpen ? (reviewIsPanelOpen ? SESSION_LOG_PANEL_MIN : rightPanelWidth) : 0);
+    (reviewIsPanelOpen ? reservedPanelWidth : 0) +
+    (isLogOpen ? (reviewIsPanelOpen ? SESSION_LOG_PANEL_MIN : reservedPanelWidth) : 0);
   useEffect(() => {
     onRightPanelWidthChangeRef.current?.(dockedRightPanelWidth > 0 ? dockedRightPanelWidth : null);
   }, [dockedRightPanelWidth]);
@@ -685,7 +712,14 @@ export function SessionPane({
     (event: ReactMouseEvent, dock: "left" | "right"): void => {
       event.preventDefault();
       const startX = event.clientX;
-      const startWidth = rightPanelWidth;
+      // Measure the panel the handle sits in rather than reading the stored
+      // width: on an automatic width there is no stored number, and the drag
+      // has to start from what the user can see.
+      const panel = event.currentTarget.parentElement;
+      const startWidth = panel
+        ? Math.round(panel.getBoundingClientRect().width)
+        : SESSION_RIGHT_PANEL_MIN;
+      let pinned = startWidth;
       setIsPanelResizing(true);
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
@@ -695,13 +729,19 @@ export function SessionPane({
         // dock side widens it: right-docked grows leftwards, left-docked grows
         // rightwards.
         const delta = e.clientX - startX;
-        const next = Math.max(
-          SESSION_RIGHT_PANEL_MIN,
-          Math.min(SESSION_RIGHT_PANEL_MAX, dock === "left" ? startWidth + delta : startWidth - delta)
+        const next = Math.round(
+          Math.max(
+            SESSION_RIGHT_PANEL_MIN,
+            Math.min(SESSION_RIGHT_PANEL_MAX, dock === "left" ? startWidth + delta : startWidth - delta)
+          )
         );
-        setRightPanelWidth(next);
+        pinned = next;
+        setPinnedPanelWidth(next);
       };
       const cleanup = (): void => {
+        // Written once the drag settles: a width the user chose, which from
+        // here on outranks the automatic share.
+        if (pinned !== startWidth) writePinnedPanelWidth(pinned);
         setIsPanelResizing(false);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
@@ -714,7 +754,7 @@ export function SessionPane({
       document.addEventListener("mouseup", onMouseUp);
       dragCleanupRef.current = cleanup;
     },
-    [rightPanelWidth]
+    []
   );
 
   // Read the dock side at mousedown so a setting change mid-session takes

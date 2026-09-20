@@ -22,6 +22,11 @@ function goal(overrides: Partial<Goal> = {}): Goal {
   };
 }
 
+/** Captures the dashboard subscriber so a test can push one delta. */
+const onDelta = vi.fn<(listener: (delta: { changedSessionIds?: string[]; goalChangedIds?: string[] }) => void) => () => void>(
+  () => () => undefined
+);
+
 const goals = {
   set: vi.fn<ArgmaxApi["goals"]["set"]>(),
   get: vi.fn<ArgmaxApi["goals"]["get"]>(),
@@ -33,7 +38,8 @@ beforeEach(() => {
   Object.values(goals).forEach((method) => method.mockReset());
   goals.get.mockResolvedValue(goal());
   goals.clear.mockResolvedValue(goal({ state: "stopped" }));
-  window.argmax = { goals } as unknown as ArgmaxApi;
+  onDelta.mockReset();
+  window.argmax = { goals, dashboard: { onDelta } } as unknown as ArgmaxApi;
 });
 
 afterEach(() => { delete (window as { argmax?: ArgmaxApi }).argmax; });
@@ -47,6 +53,22 @@ describe("GoalStatus", () => {
     fireEvent.click(screen.getByRole("button", { name: /Goal every test/ }));
     expect(screen.getByRole("button", { name: /Goal every test/ })).toHaveAttribute("aria-expanded", "true");
     expect(screen.queryByText("Two auth tests still fail on timeout.")).not.toBeInTheDocument();
+  });
+
+  it("re-reads on a goal delta, not on every delta that touches the session", async () => {
+    // Streamed deltas land many times a second; a goal row changes a handful
+    // of times a turn.
+    render(<GoalStatus session={session} />);
+    await waitFor(() => expect(goals.get).toHaveBeenCalledTimes(1));
+    const notify = onDelta.mock.calls[0]?.[0];
+    expect(notify).toBeDefined();
+
+    notify?.({ changedSessionIds: [session.id] });
+    notify?.({ changedSessionIds: [session.id] });
+    expect(goals.get).toHaveBeenCalledTimes(1);
+
+    notify?.({ goalChangedIds: ["goal-1"] });
+    await waitFor(() => expect(goals.get).toHaveBeenCalledTimes(2));
   });
 
   it("shows nothing when the session has no goal", async () => {

@@ -293,18 +293,25 @@ export function SessionPane({
       .filter((tool) => tool.backgroundLaunch && tool.status === "running")
       .map((tool) => tool.toolUseId);
   }, [session?.provider, session?.state, visibleEvents]);
+  // Keyed by value, and the poll reads the ids and the callback through refs:
+  // every read merges into the timeline, which rebuilds the id array, and an
+  // effect keyed on that array tore down its own timer and polled again on
+  // every merge — one read per round trip instead of one per tick.
+  const cursorBackgroundAgentKey = cursorBackgroundAgentIds.join(",");
+  const cursorPollRef = useRef({ ids: cursorBackgroundAgentIds, onLoadAgentEvents });
   useEffect(() => {
-    if (!sessionId || !onLoadAgentEvents || cursorBackgroundAgentIds.length === 0) return;
+    cursorPollRef.current = { ids: cursorBackgroundAgentIds, onLoadAgentEvents };
+  });
+  useEffect(() => {
+    if (!sessionId || !onLoadAgentEvents || cursorBackgroundAgentKey === "") return;
     let inFlight = false;
     const poll = async (): Promise<void> => {
       if (document.hidden || inFlight) return;
+      const { ids, onLoadAgentEvents: load } = cursorPollRef.current;
+      if (!load) return;
       inFlight = true;
       try {
-        await Promise.all(
-          cursorBackgroundAgentIds.map((parentToolUseId) =>
-            onLoadAgentEvents(sessionId, parentToolUseId)
-          )
-        );
+        await Promise.all(ids.map((parentToolUseId) => load(sessionId, parentToolUseId)));
       } catch {
         // The next tick retries transient trace-read or IPC failures.
       } finally {
@@ -314,7 +321,7 @@ export function SessionPane({
     void poll();
     const interval = window.setInterval(() => void poll(), 1500);
     return () => window.clearInterval(interval);
-  }, [cursorBackgroundAgentIds, onLoadAgentEvents, sessionId]);
+  }, [cursorBackgroundAgentKey, onLoadAgentEvents, sessionId]);
   // Which files the agent wrote in its newest turn, for the review panel's
   // "Last turn" scope. Null without a session: there is no turn to scope to.
   const lastTurnPaths = useMemo(() => lastTurnEditedPaths(visibleEvents), [visibleEvents]);

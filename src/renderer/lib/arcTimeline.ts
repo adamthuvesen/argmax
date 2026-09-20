@@ -168,51 +168,6 @@ function prSubject(event: ArcTimelineEvent): string {
   return event.prNumber === null ? event.title : `#${event.prNumber} ${event.title}`;
 }
 
-export interface ArcTimelineDay {
-  key: string;
-  label: string;
-  events: ArcTimelineEvent[];
-}
-
-/** Newest-first events grouped by local calendar day: Today, Yesterday, then
- *  the weekday and date, with the year only when it is not this one. */
-export function groupArcTimelineByDay(
-  events: ReadonlyArray<ArcTimelineEvent>,
-  now: Date = new Date()
-): ArcTimelineDay[] {
-  const days: ArcTimelineDay[] = [];
-  for (const event of events) {
-    const when = new Date(event.occurredAt);
-    const key = Number.isNaN(when.getTime()) ? "unknown" : localDayKey(when);
-    const last = days.at(-1);
-    if (last?.key === key) {
-      last.events.push(event);
-    } else {
-      days.push({ key, label: dayLabel(when, now), events: [event] });
-    }
-  }
-  return days;
-}
-
-function localDayKey(date: Date): string {
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-}
-
-function dayLabel(date: Date, now: Date): string {
-  if (Number.isNaN(date.getTime())) return "Earlier";
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const day = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const daysAgo = Math.round((today.getTime() - day.getTime()) / 86_400_000);
-  if (daysAgo === 0) return "Today";
-  if (daysAgo === 1) return "Yesterday";
-  return date.toLocaleDateString(undefined, {
-    weekday: "long",
-    month: "short",
-    day: "numeric",
-    ...(date.getFullYear() === now.getFullYear() ? {} : { year: "numeric" })
-  });
-}
-
 /** "just now", "12 min ago", "3 h ago", then a date. For moments in the past;
  *  the schedule helpers phrase future times. */
 export function formatTimeAgo(iso: string, now: number = Date.now()): string {
@@ -254,4 +209,19 @@ export function formatArcEventTime(occurredAt: string): string {
   const when = new Date(occurredAt);
   if (Number.isNaN(when.getTime())) return "";
   return when.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
+/** The full local date and time, for a row's hover title: the list shows only
+ *  the clock, so this is where the day lives. */
+export function formatArcEventStamp(occurredAt: string): string {
+  const when = new Date(occurredAt);
+  if (Number.isNaN(when.getTime())) return "";
+  return when.toLocaleString(undefined, {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 }

@@ -2,19 +2,13 @@ import type { JSX } from "react";
 import type { UsageLimitWindow, UsageProviderRemaining, UsageRemaining } from "../../../shared/types.js";
 import { WebLink } from "../WebLink.js";
 import { LoadingLine } from "../LoadingLine.js";
-import { formatResetIn } from "./usageFormat.js";
+import { RemainingBar } from "./RemainingBar.js";
+import { formatRemainingPercent, formatResetIn } from "./usageFormat.js";
 import { providerLabel } from "./usagePresentation.js";
 
-function barWidth(remaining: number): number {
-  if (!Number.isFinite(remaining) || remaining <= 0) return 0;
-  return Math.min(100, Math.max(0.8, remaining));
-}
-
 function formatLeft(percent: number): string {
-  if (!Number.isFinite(percent)) return "—";
-  if (percent > 0 && percent < 0.1) return "<0.1% left";
-  if (percent >= 10) return `${Math.round(percent)}% left`;
-  return `${percent.toFixed(1)}% left`;
+  const figure = formatRemainingPercent(percent);
+  return figure === "—" ? figure : `${figure} left`;
 }
 
 function kindLabel(row: UsageProviderRemaining): string {
@@ -38,22 +32,7 @@ function WindowMeter({ window }: { window: UsageLimitWindow }): JSX.Element {
         <span className="usage-remaining-window-left">{formatLeft(window.remainingPercent)}</span>
         {reset ? <span className="usage-remaining-window-reset">{reset}</span> : null}
       </div>
-      <svg
-        className="usage-remaining-bar"
-        viewBox="0 0 100 3"
-        preserveAspectRatio="none"
-        aria-hidden="true"
-        focusable="false"
-      >
-        <rect className="usage-remaining-bar-track" x="0" y="1" width="100" height="1" />
-        <rect
-          className="usage-remaining-bar-fill"
-          x="0"
-          y="0"
-          width={barWidth(window.remainingPercent)}
-          height="3"
-        />
-      </svg>
+      <RemainingBar remaining={window.remainingPercent} />
     </div>
   );
 }

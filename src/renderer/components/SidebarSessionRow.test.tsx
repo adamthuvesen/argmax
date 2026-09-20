@@ -757,8 +757,48 @@ describe("SidebarSessionRow", () => {
     const css = readBundledCss(cssPath);
 
     expect(css).toMatch(
-      /\.session-row \.session-link\.session-link-has-pr-count\s*\{[^}]*padding-right:\s*70px/i
+      /\.session-row-actions\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*var\(--sidebar-action-size\)\)/i
     );
+    expect(css).toMatch(
+      /\.session-archive-btn\s*\{[^}]*grid-column:\s*2/i
+    );
+  });
+
+  it("renders a persistent session-row-actions container with pin and archive buttons", () => {
+    const onTogglePin = vi.fn();
+    const onArchive = vi.fn();
+    const workspace = workspaceWithPrSummary(
+      [pr({ prNumber: 10, isPrimary: true }), pr({ prNumber: 11, sessionId: "session-2" })],
+      "OPEN"
+    );
+
+    const { container, rerender } = render(
+      <SidebarSessionRow
+        workspace={workspace}
+        {...rowProps()}
+        onTogglePin={onTogglePin}
+        onArchiveWorkspace={onArchive}
+      />
+    );
+
+    const actions = container.querySelector(".session-row-actions");
+    expect(actions).not.toBeNull();
+    expect(actions?.querySelector(".session-pin-btn")).not.toBeNull();
+    expect(actions?.querySelector(".session-archive-btn")).not.toBeNull();
+    expect(container.querySelector(".session-pr-count")).not.toBeNull();
+
+    // On running chats without an archive button, the container still renders with the pin
+    rerender(
+      <SidebarSessionRow
+        workspace={{ ...workspace, state: "running" }}
+        {...rowProps()}
+        onTogglePin={onTogglePin}
+        onArchiveWorkspace={onArchive}
+      />
+    );
+    expect(container.querySelector(".session-row-actions")).not.toBeNull();
+    expect(container.querySelector(".session-pin-btn")).not.toBeNull();
+    expect(container.querySelector(".session-archive-btn")).toBeNull();
   });
 
   it("ships sidebar action CSS that reveals on hover and stays keyboard-reachable", () => {

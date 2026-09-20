@@ -473,7 +473,22 @@ function SidebarSessionRowInner({
     <div
       className="session-row"
       data-workspace-id={workspace.id}
+      data-active={isSelected ? "true" : undefined}
+      data-open={isOpenInGrid ? "true" : undefined}
       data-icon-color={hasCustomIcon ? resolveSessionIconColor(workspace.iconColor) : undefined}
+      onClick={(event) => {
+        if (
+          event.target === event.currentTarget ||
+          (event.target as HTMLElement).classList.contains("session-row-actions")
+        ) {
+          if (consumeWorkspaceDragClick(workspace.id)) return;
+          onOpenWorkspaceChat(workspace.id, {
+            ctrlOrMeta: event.metaKey || event.ctrlKey,
+            alt: event.altKey
+          });
+        }
+      }}
+      onContextMenu={isEditing ? undefined : handleContextMenu}
     >
       {isEditing ? (
         // The row keeps its glyph, layout, and subtitle; only the title text
@@ -579,32 +594,37 @@ function SidebarSessionRowInner({
             )}
             {prCountBadge}
           </button>
-      {onTogglePin ? (
-        <button
-          className="session-row-action session-pin-btn"
-          title={workspace.pinned ? "Unpin chat" : "Pin chat"}
-          aria-label={workspace.pinned ? "Unpin chat" : "Pin chat"}
-          aria-pressed={workspace.pinned}
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onTogglePin(workspace.id, !workspace.pinned);
-          }}
-        >
-          {workspace.pinned ? <PinOff size={12} /> : <Pin size={12} />}
-        </button>
-      ) : null}
-          {showArchive && (
-            <button
-              className="session-archive-btn"
-              title="Archive chat"
-              aria-label="Archive chat"
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onArchiveWorkspace(workspace.id); }}
-            >
-              <Archive size={12} />
-            </button>
-          )}
+          <div className="session-row-actions">
+            {onTogglePin ? (
+              <button
+                className="session-row-action session-pin-btn"
+                title={workspace.pinned ? "Unpin chat" : "Pin chat"}
+                aria-label={workspace.pinned ? "Unpin chat" : "Pin chat"}
+                aria-pressed={workspace.pinned}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onTogglePin(workspace.id, !workspace.pinned);
+                }}
+              >
+                {workspace.pinned ? <PinOff size={12} /> : <Pin size={12} />}
+              </button>
+            ) : null}
+            {showArchive && (
+              <button
+                className="session-row-action session-archive-btn"
+                title="Archive chat"
+                aria-label="Archive chat"
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onArchiveWorkspace(workspace.id);
+                }}
+              >
+                <Archive size={12} />
+              </button>
+            )}
+          </div>
         </>
       )}
       {contextMenuPoint

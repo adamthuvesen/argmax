@@ -1,8 +1,8 @@
 .session-link {
   position: relative;
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  gap: var(--space-2_5);
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 9px;
   align-items: center;
   width: 100%;
   min-height: 34px;
@@ -21,7 +21,7 @@
 }
 
 .session-link.session-link-has-pr-count {
-  grid-template-columns: 18px minmax(0, 1fr) auto;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
 }
 
 .session-pr-count {
@@ -83,16 +83,31 @@
   padding-bottom: 7px;
 }
 
-/* Calm rows draw no glyph, but they keep the marker column so every title in
-   the list starts at the same x. */
-.session-link-lead-spacer {
-  width: 16px;
+/* Calm rows have no live signal and no picked icon, so they fill the marker
+   column with a dot instead: the column always carries a mark, and every title
+   in the list starts at the same x. Muted and half-strength on purpose — the
+   unread marker below is the same 6px circle in the accent, and this must not
+   be mistaken for it. */
+.session-link-lead-dot {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 18px;
+}
+
+.session-link-lead-dot::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+  opacity: 0.45;
 }
 
 .session-unread-marker {
   display: grid;
   place-items: center;
-  width: 16px;
+  width: 14px;
   height: 18px;
   flex-shrink: 0;
 }

@@ -6,10 +6,10 @@
 
 /* ---------- Sidebar: Arcs section row ---------- */
 
-/* Same grid as `.session-link` (18px lead, flexible label) plus a trailing
+/* Same grid as `.session-link` (14px lead, flexible label) plus a trailing
    auto column for the state pill, matching `.session-link-has-pr-count`. */
 .arc-row {
-  grid-template-columns: 18px minmax(0, 1fr) auto;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
 }
 
 .arc-row-state {

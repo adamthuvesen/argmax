@@ -150,23 +150,23 @@ function StatusMarker({
   // mid-turn. It keeps the default muted marker color on purpose — the
   // fallback check ring would read "done", but this isn't a warning either.
   if (isAwaitingReply(priorityReason)) {
-    return <CircleEllipsis size={16} aria-hidden className="status-marker" data-attention={priorityReason} />;
+    return <CircleEllipsis size={14} aria-hidden className="status-marker" data-attention={priorityReason} />;
   }
   if (working) {
-    // The shared working nest, sized to the 16px marker box. It is the same mark
+    // The shared working nest, sized to the 14px marker box. It is the same mark
     // and motion an agent tab and a sub-agent launch row show while they run.
-    return <WorkingNest active className="status-marker" size={16} phaseKey={phaseKey} />;
+    return <WorkingNest active className="status-marker" size={14} phaseKey={phaseKey} />;
   }
   if (prState === "MERGED") {
-    return <GitMerge size={16} aria-hidden className="status-marker" data-pr="merged" />;
+    return <GitMerge size={14} aria-hidden className="status-marker" data-pr="merged" />;
   }
   if (prState === "OPEN") {
-    return <GitPullRequest size={16} aria-hidden className="status-marker" data-pr="open" />;
+    return <GitPullRequest size={14} aria-hidden className="status-marker" data-pr="open" />;
   }
   if (prState === "CLOSED") {
-    return <GitPullRequestClosed size={16} aria-hidden className="status-marker" data-pr="closed" />;
+    return <GitPullRequestClosed size={14} aria-hidden className="status-marker" data-pr="closed" />;
   }
-  return <CircleX size={16} aria-hidden className="status-marker" />;
+  return <CircleX size={14} aria-hidden className="status-marker" />;
 }
 
 /**
@@ -221,7 +221,7 @@ function CustomIconMarker({
       data-icon-color={resolveSessionIconColor(iconColor)}
       aria-hidden="true"
     >
-      <Glyph size={16} />
+      <Glyph size={14} />
       {overlay ? (
         <span className="session-custom-icon-overlay" data-overlay={overlay} />
       ) : null}
@@ -435,10 +435,10 @@ function SidebarSessionRowInner({
   // leading glyph except a turn in flight: the working nest stays so live
   // activity still reads, and the accent dot takes the cell the moment it
   // ends. Opening the chat clears unread and the icon or status marker
-  // returns. Without a custom icon, a calm row stays text-only and only a
-  // live signal (running, awaiting input, failed, open or merged PR) earns
-  // a glyph. The marker column stays reserved either way so every title
-  // lines up.
+  // returns. Without a custom icon, a calm row draws the muted lead dot and
+  // only a live signal (running, awaiting input, failed, open or merged PR)
+  // earns a glyph. The marker column is the same width either way so every
+  // title lines up.
   const statusOverlay = statusOverlayFor({
     working,
     state: workspace.state,
@@ -480,7 +480,7 @@ function SidebarSessionRowInner({
           className={`session-link session-link-renaming${subtitle ? " session-link-stacked" : ""}${prCountBadge ? " session-link-has-pr-count" : ""}`}
           data-status={workspace.state}
         >
-          {leadingGlyph ?? <span className="session-link-lead-spacer" aria-hidden="true" />}
+          {leadingGlyph ?? <span className="session-link-lead-dot" aria-hidden="true" />}
           <span className={subtitle ? "session-link-text" : undefined}>
             <input
               ref={renameInputRef}
@@ -544,7 +544,7 @@ function SidebarSessionRowInner({
               });
             }}
           >
-            {leadingGlyph ?? <span className="session-link-lead-spacer" aria-hidden="true" />}
+            {leadingGlyph ?? <span className="session-link-lead-dot" aria-hidden="true" />}
             {subtitle || importedProvider || launchedByLabel || arcLabel ? (
               <span className="session-link-text">
                 <span>{displayLabel}</span>

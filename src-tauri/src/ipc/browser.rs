@@ -28,14 +28,13 @@ use crate::browser::automation::{
     self, ActionOutcome, PageExtraction, PageFindResult, PageSnapshot, PageText, TabTarget,
 };
 use crate::browser::registry::{self, BrowserAgentOpenEvent, BrowserTabRegistry, BrowserTabsEvent};
+use crate::browser::user_agent;
 use crate::browser::user_scripts::PageScript;
 use crate::browser::{encode_base64, eval, snapshot_image, CaptureRect};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::state::AppState;
 
 pub const BROWSER_WEBVIEW_LABEL_PREFIX: &str = "browser-";
-const BROWSER_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
-    AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Safari/605.1.15";
 
 /// Event pushed to the main webview whenever a tab navigates, starts loading,
 /// or finishes loading. `title` is only present on load-finish.
@@ -615,6 +614,7 @@ fn open_tab_with_url(
     if let Some(webview) = app.get_webview(&label) {
         #[cfg(target_os = "macos")]
         crate::browser::content_blocking_macos::apply(&webview, blocking_identifier.clone())?;
+        user_agent::apply(&webview, user_agent::for_url(&url))?;
         if visible {
             webview
                 .set_bounds(bounds_rect(&bounds))
@@ -640,6 +640,8 @@ fn open_tab_with_url(
     let load_tab = tab_id.to_string();
     let popup_app = app.clone();
     let popup_owned_by_session = owner_session_id.is_some();
+    let nav_label = label.clone();
+    let tab_user_agent = user_agent::for_url(&url);
     let builder = tauri::webview::WebviewBuilder::new(&label, WebviewUrl::External(url));
     #[cfg(target_os = "macos")]
     let builder = if let Some(identifier) = blocking_identifier.as_deref() {
@@ -653,10 +655,7 @@ fn open_tab_with_url(
     let _ = blocking_identifier;
     let owned = owner_session_id.is_some();
     let builder = builder
-        // WKWebView's default UA reads as an embedded webview; Google (and
-        // others) then warn "browser no longer supported" and refuse OAuth.
-        // Present as desktop Safari, which is what this engine actually is.
-        .user_agent(BROWSER_USER_AGENT)
+        .user_agent(tab_user_agent)
         .initialization_script(init_script(owned));
     let builder = if owned {
         builder.initialization_script_for_all_frames(BROWSER_COOKIE_SCRIPT)
@@ -693,7 +692,7 @@ fn open_tab_with_url(
             .title("Browser")
             .inner_size(600.0, 720.0)
             .window_features(features)
-            .user_agent(BROWSER_USER_AGENT)
+            .user_agent(user_agent::SAFARI)
             // The popup gets a fresh WKUserContentController on macOS, so
             // explicitly restore the panel scripts Wry would otherwise see
             // through the inherited controller.
@@ -784,6 +783,16 @@ fn open_tab_with_url(
                 }
                 return false;
             }
+            // A link, not the address bar, can walk a tab into a Docs
+            // editor. Upgrade only: this callback fires for iframes too, and
+            // a consent frame must not take the grid's resolution with it.
+            if user_agent::needs_docs_editor(url) {
+                if let Some(webview) = nav_app.get_webview(&nav_label) {
+                    if let Err(error) = user_agent::apply(&webview, user_agent::DOCS_EDITOR) {
+                        tracing::warn!(%error, tab = %nav_tab, "could not set the editor user agent");
+                    }
+                }
+            }
             // No emit_state here: this callback also fires for iframe
             // navigations (with the iframe's URL), which would leak into the
             // address bar and strand the tab spinner. Loading state comes
@@ -865,7 +874,9 @@ pub fn browser_navigate(app: AppHandle, input: BrowserNavigateInput) -> ArgmaxRe
 
 pub(crate) fn navigate_tab(app: &AppHandle, tab_id: &str, raw_url: &str) -> ArgmaxResult<()> {
     let url = validated_browser_url(raw_url)?;
-    browser_webview(app, tab_id)?
+    let webview = browser_webview(app, tab_id)?;
+    user_agent::apply(&webview, user_agent::for_url(&url))?;
+    webview
         .navigate(url)
         .map_err(|error| ArgmaxError::service("BROWSER_NAVIGATE_FAILED", error.to_string()))
 }

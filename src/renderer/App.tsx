@@ -2137,7 +2137,7 @@ export function App(): JSX.Element {
       )}
 
       <section className="workspace" ref={workspaceRef}>
-        {standalonePageOpen ? (
+        {standalonePageOpen || isArcPageOpen ? (
           <div className="standalone-page-fade scroll-fade" aria-hidden="true" />
         ) : null}
         <div className={

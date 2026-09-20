@@ -29,6 +29,7 @@ use crate::util::gh_runner::{default_gh_runner, GhRunner};
 use crate::util::sync::LockOrRecover;
 
 const GIT_TIMEOUT: Duration = Duration::from_secs(60);
+const GIT_PUSH_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
 // IPC creates a GitOpsService for each request. Git's own lockfiles protect
 // correctness, but they turn concurrent in-app writes into avoidable failures.
@@ -287,7 +288,7 @@ impl GitOpsService {
             branch
         };
 
-        match run_git_text(&workspace.path, ["push"], GIT_TIMEOUT).await {
+        match run_git_text(&workspace.path, ["push"], GIT_PUSH_TIMEOUT).await {
             Ok(_) => Ok(GitPushResult {
                 branch,
                 upstream_set: false,
@@ -298,7 +299,7 @@ impl GitOpsService {
                 run_git_text(
                     &workspace.path,
                     ["push", "-u", "origin", branch.as_str()],
-                    GIT_TIMEOUT,
+                    GIT_PUSH_TIMEOUT,
                 )
                 .await?;
                 Ok(GitPushResult {

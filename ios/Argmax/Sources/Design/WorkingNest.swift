@@ -1,13 +1,13 @@
 import SwiftUI
 
 /// The app's "this is running right now" mark, ported from
-/// `src/renderer/styles/working-nest.css`: four dots in a 2×2 where emphasis
-/// passes clockwise, so the cluster reads as rearranging rather than
-/// blinking. One mark on every surface that shows live work, and the one
-/// piece of custom motion the list is allowed.
+/// `src/renderer/styles/working-nest.css`: a still core with one breathing
+/// ring (`halo` style) on the shared 2.6s cadence. The core keeps a fixed
+/// anchor while the ring carries the live signal. One mark on every surface
+/// that shows live work or loading states.
 struct WorkingNest: View {
-    /// The web's `--working-nest-cycle`.
-    static let cycle: TimeInterval = 0.9
+    /// The halo cadence: 2.6s shared with the thought eyebrow and compaction notice.
+    static let cycle: TimeInterval = 2.6
 
     var size: CGFloat = 18
     /// Live work moves; a settled mark holds the still frame. The desktop
@@ -23,62 +23,84 @@ struct WorkingNest: View {
     var body: some View {
         TimelineView(.animation(paused: reduceMotion || !active)) { context in
             let elapsed = context.date.timeIntervalSinceReferenceDate
+            let (scale, opacity) = Self.ringDynamics(
+                elapsed: elapsed,
+                active: active,
+                reduceMotion: reduceMotion
+            )
             Canvas { canvas, canvasSize in
-                for dot in 0..<4 {
-                    // A quarter-cycle apart, top-left → top-right →
-                    // bottom-right → bottom-left.
-                    let phase = reduceMotion || !active
-                        ? (dot == 0 ? 0 : 0.5)
-                        : (elapsed / Self.cycle - Double(dot) * 0.25)
-                            .truncatingRemainder(dividingBy: 1)
-                    let relay = Relay(phase: phase < 0 ? phase + 1 : phase)
-                    let side = canvasSize.width * 0.314 * relay.scale
-                    let origin = CGPoint(
-                        x: canvasSize.width * (dot == 1 || dot == 2 ? 0.543 : 0.143),
-                        y: canvasSize.height * (dot == 2 || dot == 3 ? 0.543 : 0.143)
-                    )
-                    let inset = (canvasSize.width * 0.314 - side) / 2
-                    canvas.fill(
-                        Path(ellipseIn: CGRect(
-                            x: origin.x + inset,
-                            y: origin.y + inset,
-                            width: side,
-                            height: side
-                        )),
-                        with: .color((tint ?? accent.color).opacity(relay.opacity))
-                    )
-                }
+                let color = tint ?? accent.color
+                let metrics = Self.metrics(for: canvasSize.width)
+
+                // 1. Core: still anchor at the centre
+                let coreOrigin = CGPoint(
+                    x: (canvasSize.width - metrics.coreDiameter) / 2,
+                    y: (canvasSize.height - metrics.coreDiameter) / 2
+                )
+                canvas.fill(
+                    Path(ellipseIn: CGRect(
+                        origin: coreOrigin,
+                        size: CGSize(width: metrics.coreDiameter, height: metrics.coreDiameter)
+                    )),
+                    with: .color(color)
+                )
+
+                // 2. Ring: breathing halo
+                let ringDiameter = metrics.baseRingDiameter * scale
+                let ringRect = CGRect(
+                    x: (canvasSize.width - ringDiameter) / 2,
+                    y: (canvasSize.height - ringDiameter) / 2,
+                    width: ringDiameter,
+                    height: ringDiameter
+                ).insetBy(dx: 0.5, dy: 0.5)
+
+                canvas.stroke(
+                    Path(ellipseIn: ringRect),
+                    with: .color(color.opacity(opacity)),
+                    lineWidth: 1
+                )
             }
             .frame(width: size, height: size)
         }
         .frame(width: size, height: size)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("Running")
     }
 
-    /// One dot's place in the relay: up fast, hold dim, back up. The web's
-    /// keyframes, minus the two-tone hand-off, which needs a second colour
-    /// token this app does not have.
-    private struct Relay {
-        let opacity: Double
-        let scale: Double
+    struct Metrics: Equatable {
+        let ringInset: CGFloat
+        let coreInset: CGFloat
+        let baseRingDiameter: CGFloat
+        let coreDiameter: CGFloat
+    }
 
-        init(phase: Double) {
-            switch phase {
-            case ..<0.05:
-                opacity = 1
-                scale = 1.2
-            case ..<0.30:
-                let fall = (phase - 0.05) / 0.25
-                opacity = 1 - 0.7 * fall
-                scale = 1.2 - 0.42 * fall
-            case ..<0.9125:
-                opacity = 0.3
-                scale = 0.78
-            default:
-                let rise = (phase - 0.9125) / 0.0875
-                opacity = 0.3 + 0.7 * rise
-                scale = 0.78 + 0.42 * rise
-            }
+    static func metrics(for box: CGFloat) -> Metrics {
+        let ringInset = (box * 0.12).rounded()
+        let coreInset = (box * 0.34).rounded()
+        return Metrics(
+            ringInset: ringInset,
+            coreInset: coreInset,
+            baseRingDiameter: box - 2 * ringInset,
+            coreDiameter: box - 2 * coreInset
+        )
+    }
+
+    static func ringDynamics(
+        elapsed: TimeInterval,
+        active: Bool,
+        reduceMotion: Bool
+    ) -> (scale: CGFloat, opacity: Double) {
+        if reduceMotion {
+            return (1.0, active ? 0.9 : 0.35)
         }
+        guard active else {
+            return (1.0, 0.9)
+        }
+        let phase = (elapsed / cycle).truncatingRemainder(dividingBy: 1)
+        let normalized = phase < 0 ? phase + 1 : phase
+        let breath = 0.5 - 0.5 * cos(2 * .pi * normalized)
+        let scale = 0.8 + 0.2 * CGFloat(breath)
+        let opacity = 0.35 + 0.55 * breath
+        return (scale, opacity)
     }
 }

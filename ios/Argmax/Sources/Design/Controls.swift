@@ -211,9 +211,7 @@ struct ReconnectingStrip: View {
 
     var body: some View {
         HStack(spacing: Spacing.snug) {
-            ProgressView()
-                .controlSize(.mini)
-                .tint(Theme.muted)
+            WorkingNest(size: 11, tint: Theme.muted)
             Text(message)
                 .typeStyle(.caption2)
                 .foregroundStyle(Theme.muted)

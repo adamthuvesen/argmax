@@ -141,14 +141,18 @@ export function useSlashAutocomplete({
     if (!slashQuery) {
       return NO_COMMANDS;
     }
+    // A draft-writing command replaces the draft with its own opener, so it is
+    // offered only while the token opens the draft. Mid-sentence it would eat
+    // the message already typed.
+    const offered = slashQuery.start === 0 ? commands : commands.filter((command) => !command.writesDraft);
     const needle = slashQuery.query.toLowerCase();
     if (!needle) {
-      return commands;
+      return offered;
     }
     // Prefix, not substring: commands are a short curated list invoked by
     // name, and a substring rule would leave "Auto" and "Stop" sitting on top
     // of a `/o…` skill query long after the user stopped meaning them.
-    return commands.filter(
+    return offered.filter(
       (command) => command.name.startsWith(needle) || command.label.toLowerCase().startsWith(needle)
     );
   }, [commands, slashQuery]);

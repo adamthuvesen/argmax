@@ -140,10 +140,12 @@ struct NativeTranscriptView: View {
         .accessibilityHidden(transcript.phase == .loading)
         .overlay {
             if transcript.phase == .loading {
-                ProgressView()
-                    .tint(Theme.muted)
-                    .accessibilityLabel("Loading chat…")
-                    .accessibilityIdentifier("transcript-loading")
+                WorkingNest(size: 24, tint: Theme.muted)
+                    .accessibilityRepresentation {
+                        ProgressView()
+                            .accessibilityLabel("Loading chat…")
+                            .accessibilityIdentifier("transcript-loading")
+                    }
             }
         }
         .onChange(of: transcript.session?.sessionId) { following = true }

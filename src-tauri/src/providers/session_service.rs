@@ -67,9 +67,9 @@ use crate::{
         arcs,
         database::Database,
         events::{
-            find_event_by_id, latest_agent_message, list_session_events_since, persist_raw_output,
-            persist_timeline_event, update_event_payload, PersistRawOutputInput,
-            PersistTimelineEventInput, TimelineEvent,
+            find_event_by_id, latest_agent_answer, latest_agent_message, latest_user_message_id,
+            list_session_events_since, persist_raw_output, persist_timeline_event,
+            update_event_payload, PersistRawOutputInput, PersistTimelineEventInput, TimelineEvent,
         },
         pending_messages::{
             clear_session_queue, delete_message as delete_pending_message,
@@ -122,6 +122,18 @@ const STREAM_IDLE_FLUSH_MS: u64 = 16;
 /// is a summary handed back through the inbox, which has its own reply ceiling
 /// — a whole transcript-length answer belongs to `session_read`.
 const NOTICE_ANSWER_CHARS: usize = 4 * 1024;
+/// How much of the learnings section a capped notice keeps. The head already
+/// spent the budget; this is the tail that made the answer worth reading.
+const NOTICE_LEARNINGS_CHARS: usize = 2 * 1024;
+/// The section an Arc member is asked to end its final answer with. The
+/// coordinator is the only writer of the arc folder, so the notice is the one
+/// channel a member's learnings travel on — a cap that drops it costs the Arc
+/// the whole point of the turn. See docs/arcs.md.
+const LEARNINGS_HEADING: &str = "Learnings for the arc";
+/// How long a launched chat the user is talking to in its own tab must stay
+/// quiet before its launcher hears about it, as one digest rather than a turn
+/// per reply.
+const USER_TURN_DIGEST_QUIET_SECS: u64 = 900;
 
 fn ensure_permission_mode_supported(
     provider: ProviderId,
@@ -152,13 +164,138 @@ fn has_steering_context_headroom(session: &SessionSummary) -> bool {
         < context_window.saturating_mul(CODEX_STEER_MAX_CONTEXT_PERCENT)
 }
 
+/// The head of a long answer plus, when the answer ends with one, its
+/// learnings section. A member's most valuable paragraph is its last, and a
+/// plain head cut threw it away: over the first real Arc only 31 of 86
+/// notices still carried the section the member wrote it for.
 fn cap_notice_answer(answer: &str) -> String {
     if answer.chars().count() <= NOTICE_ANSWER_CHARS {
         return answer.to_string();
     }
-    let mut capped: String = answer.chars().take(NOTICE_ANSWER_CHARS).collect();
-    capped.push_str("\n\n(truncated)");
-    capped
+    let cut = char_offset(answer, NOTICE_ANSWER_CHARS);
+    // Cut on a line boundary so the head does not end mid-sentence.
+    let head = answer[..cut]
+        .rfind('\n')
+        .map(|end| &answer[..end])
+        .unwrap_or(&answer[..cut])
+        .trim_end();
+    match learnings_offset(answer, cut) {
+        Some(start) => format!(
+            "{head}\n\n(… middle truncated …)\n\n{}",
+            cap_learnings_section(&answer[start..])
+        ),
+        None => format!("{head}\n\n(truncated)"),
+    }
+}
+
+/// Where the learnings section starts, if it starts past `after` — a heading
+/// already inside the head needs no second copy.
+fn learnings_offset(answer: &str, after: usize) -> Option<usize> {
+    let mut start = 0;
+    for line in answer.split_inclusive('\n') {
+        if start >= after && is_learnings_heading(line) {
+            return Some(start);
+        }
+        start += line.len();
+    }
+    None
+}
+
+/// `## Learnings for the arc`, `**Learnings for the arc**`, or the bare line —
+/// members write all three.
+fn is_learnings_heading(line: &str) -> bool {
+    let line = line.trim();
+    let line = line.trim_start_matches('#').trim();
+    let line = line.trim_start_matches("**").trim_end_matches("**").trim();
+    let line = line.trim_end_matches([':', '.']).trim();
+    line.eq_ignore_ascii_case(LEARNINGS_HEADING)
+}
+
+fn cap_learnings_section(section: &str) -> String {
+    if section.chars().count() <= NOTICE_LEARNINGS_CHARS {
+        return section.to_string();
+    }
+    let cut = char_offset(section, NOTICE_LEARNINGS_CHARS);
+    format!("{}\n\n(truncated)", section[..cut].trim_end())
+}
+
+/// The byte offset of the `chars`th character, or the end of the string.
+fn char_offset(text: &str, chars: usize) -> usize {
+    text.char_indices()
+        .nth(chars)
+        .map(|(index, _)| index)
+        .unwrap_or(text.len())
+}
+
+/// The sentence the launcher reads above the answer. The two shapes differ
+/// only here, so the lookups that fill them stay in one place.
+fn notice_body(
+    shape: &NoticeShape,
+    session_id: &str,
+    label: &str,
+    state: SessionState,
+    at: &str,
+    answer: &str,
+) -> String {
+    let when = notice_local_time(at);
+    match shape {
+        NoticeShape::Finished { direct_exchanges } => {
+            let aside = direct_exchanges
+                .as_ref()
+                .map(|exchanges| {
+                    format!(
+                        " (the user also had {} direct exchange(s) with it since {})",
+                        exchanges.count, exchanges.since
+                    )
+                })
+                .unwrap_or_default();
+            format!(
+                "Session {session_id} ({label}) finished with state {state} at {when}.{aside} Final answer:\n{answer}"
+            )
+        }
+        NoticeShape::UserTurnDigest(exchanges) => format!(
+            "Session {session_id} ({label}) answered the user directly {} time(s) since {} and has been quiet for {} minutes; latest answer at {when}:\n{answer}",
+            exchanges.count,
+            exchanges.since,
+            USER_TURN_DIGEST_QUIET_SECS / 60,
+        ),
+    }
+}
+
+/// Whether the newest `user.message` is one the person typed in the chat's own
+/// tab: a turn from another session carries an `origin`, a Goal's or the
+/// scheduler's carries a `starter`, and the session's first message is the
+/// prompt its launcher sent.
+fn turn_was_user_driven(latest_payload: &Value, is_first: bool) -> bool {
+    !is_first && latest_payload.get("origin").is_none() && latest_payload.get("starter").is_none()
+}
+
+/// Every prompt the session has ever taken, clear boundaries included — only
+/// the very first one can be the launch prompt.
+fn count_user_messages(connection: &rusqlite::Connection, session_id: &str) -> ArgmaxResult<i64> {
+    connection
+        .prepare_cached(
+            "SELECT COUNT(*) FROM events WHERE session_id = ? AND type = 'user.message'",
+        )
+        .map_err(sqlite_error)?
+        .query_row([session_id], |row| row.get::<_, i64>(0))
+        .map_err(sqlite_error)
+}
+
+/// The moment a notice reports, in the machine's zone. A coordinator reads
+/// its members' notices with no clock of its own and dates its notes from
+/// them; over a multi-day Arc that drifted by hours. chrono's `Local` offset
+/// carries no zone name, so this prints the numeric offset rather than an
+/// abbreviation like `CEST`.
+fn notice_local_time(at: &str) -> String {
+    chrono::DateTime::parse_from_rfc3339(at)
+        .map(|moment| {
+            moment
+                .with_timezone(&chrono::Local)
+                .format("%Y-%m-%d %H:%M %:z")
+                .to_string()
+        })
+        .unwrap_or_else(|_| at.to_string())
 }
 
 /// Whether a send may fall into the chat's follow-up queue.
@@ -252,6 +389,36 @@ pub struct MessageOrigin {
     pub message_id: Option<String>,
 }
 
+/// Who started a turn that carries no [`MessageOrigin`]: the person at the
+/// composer, a Goal's evaluator, or the scheduler. The two automatic ones are
+/// written onto the `user.message` payload as `starter`, so the completion
+/// notice path can tell a wake apart from the person typing into a launched
+/// chat — the payloads are otherwise identical.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum TurnStarter {
+    Person,
+    Goal,
+    Schedule,
+}
+
+/// Where a turn's prompt came from, for the `user.message` payload: another
+/// session (an `origin`) and, failing that, which starter wrote it.
+#[derive(Debug, Clone, Copy)]
+struct TurnAuthorship<'a> {
+    origin: Option<&'a MessageOrigin>,
+    starter: TurnStarter,
+}
+
+impl TurnStarter {
+    fn payload_marker(self) -> Option<&'static str> {
+        match self {
+            TurnStarter::Person => None,
+            TurnStarter::Goal => Some("goal"),
+            TurnStarter::Schedule => Some("schedule"),
+        }
+    }
+}
+
 /// A recorded completion notice, on its way to the launching session as a
 /// turn. The row is already in `session_messages`; this is the delivery.
 struct CompletionNotice {
@@ -259,6 +426,33 @@ struct CompletionNotice {
     to_session_id: String,
     body: String,
     origin: MessageOrigin,
+}
+
+/// What a completion notice is reporting, which is the one thing that differs
+/// between the two bodies the launcher can receive.
+enum NoticeShape {
+    /// A turn the launcher itself set off. `direct_exchanges` folds in a
+    /// digest the user's own replies had opened and this turn cancels.
+    Finished {
+        direct_exchanges: Option<DirectExchanges>,
+    },
+    /// The user had been replying in the launched chat's own tab, and it has
+    /// now been quiet for `USER_TURN_DIGEST_QUIET_SECS`.
+    UserTurnDigest(DirectExchanges),
+}
+
+/// Turns the person drove in a launched chat themselves, since `since`.
+#[derive(Debug, Clone, PartialEq)]
+struct DirectExchanges {
+    count: u32,
+    since: String,
+}
+
+/// A launched chat's open quiet window. `token` is unique per scheduling, so
+/// the timer that wakes to a replaced or cancelled window does nothing.
+struct UserTurnDigest {
+    token: String,
+    exchanges: DirectExchanges,
 }
 
 /// A session's state as it was just written. Broadcast in-process so a blocked
@@ -330,6 +524,10 @@ pub struct ProviderSessionService {
     /// Installed by `GoalService::new`. Kept weak because the Goal service
     /// owns this provider service while its driver is alive.
     goals: OnceLock<Weak<GoalService>>,
+    /// Launched chats the user is talking to in their own tab, with the turns
+    /// counted so far. Each such turn restarts a quiet window instead of
+    /// waking the launcher; see `schedule_user_turn_digest`.
+    user_turn_digests: Arc<Mutex<HashMap<String, UserTurnDigest>>>,
     /// Per-turn git marks, for providers that report a file write without
     /// saying what changed. See `measured_diffs`.
     measured_diffs: Arc<MeasuredDiffs>,
@@ -455,6 +653,7 @@ impl ProviderSessionService {
             terminating: Arc::new(Mutex::new(HashSet::new())),
             send_generations: Arc::new(Mutex::new(HashMap::new())),
             termination_jobs: Arc::new(Mutex::new(HashMap::new())),
+            user_turn_digests: Arc::new(Mutex::new(HashMap::new())),
             lifecycle,
             approvals,
             questions: OnceLock::new(),
@@ -1077,8 +1276,15 @@ impl ProviderSessionService {
         self: &Arc<Self>,
         input: ProvidersSendInput,
     ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(input, None, None, Queueing::Allowed, MidTurnDelivery::Queue)
-            .await
+        self.send_input_scoped(
+            input,
+            None,
+            None,
+            TurnStarter::Person,
+            Queueing::Allowed,
+            MidTurnDelivery::Queue,
+        )
+        .await
     }
 
     /// Deliver a composer follow-up as guidance inside an active turn. This
@@ -1089,8 +1295,15 @@ impl ProviderSessionService {
         self: &Arc<Self>,
         input: ProvidersSendInput,
     ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(input, None, None, Queueing::Allowed, MidTurnDelivery::Steer)
-            .await
+        self.send_input_scoped(
+            input,
+            None,
+            None,
+            TurnStarter::Person,
+            Queueing::Allowed,
+            MidTurnDelivery::Steer,
+        )
+        .await
     }
 
     /// The same turn, tagged with the session that wrote it. Everything the
@@ -1107,6 +1320,7 @@ impl ProviderSessionService {
             input,
             origin,
             None,
+            TurnStarter::Person,
             Queueing::Allowed,
             MidTurnDelivery::Queue,
         )
@@ -1127,6 +1341,7 @@ impl ProviderSessionService {
             input,
             Some(origin),
             None,
+            TurnStarter::Person,
             Queueing::Allowed,
             MidTurnDelivery::SteerOrQueue,
         )
@@ -1142,6 +1357,7 @@ impl ProviderSessionService {
             input,
             None,
             Some(identity),
+            TurnStarter::Goal,
             Queueing::Refused,
             MidTurnDelivery::Queue,
         )
@@ -1155,8 +1371,15 @@ impl ProviderSessionService {
         self: &Arc<Self>,
         input: ProvidersSendInput,
     ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(input, None, None, Queueing::Refused, MidTurnDelivery::Queue)
-            .await
+        self.send_input_scoped(
+            input,
+            None,
+            None,
+            TurnStarter::Schedule,
+            Queueing::Refused,
+            MidTurnDelivery::Queue,
+        )
+        .await
     }
 
     async fn send_input_scoped(
@@ -1164,6 +1387,7 @@ impl ProviderSessionService {
         input: ProvidersSendInput,
         origin: Option<MessageOrigin>,
         goal_turn: Option<GoalTurnIdentity>,
+        starter: TurnStarter,
         queueing: Queueing,
         mid_turn_delivery: MidTurnDelivery,
     ) -> ArgmaxResult<SendInputResult> {
@@ -1531,7 +1755,10 @@ impl ProviderSessionService {
                 &message,
                 agent_mode,
                 input.attachments.as_deref(),
-                origin.as_ref(),
+                TurnAuthorship {
+                    origin: origin.as_ref(),
+                    starter,
+                },
             )?;
             let running_session = update_session_state(
                 &connection,
@@ -2872,6 +3099,12 @@ impl ProviderSessionService {
     /// the answer to "does the parent's completion-triggered turn notify the
     /// grandparent?" — it does, but only when the parent was itself launched,
     /// because otherwise it has no launcher to notify.
+    ///
+    /// A turn the person drove in the launched chat's own tab is the one that
+    /// does not wake the launcher at once. Over the first real Arc that cost
+    /// 93 notices for 57 launches — one member alone produced 18 coordinator
+    /// turns because the user was talking to it. Those fold into a single
+    /// digest once the chat has been quiet; see `schedule_user_turn_digest`.
     fn notify_launcher_of_turn_end(
         self: &Arc<Self>,
         session_id: &str,
@@ -2898,7 +3131,119 @@ impl ProviderSessionService {
             self.record_multitask_finish(session_id, state, at);
             return;
         }
-        match self.build_completion_notice(session_id, state, at) {
+        // Nothing below has anyone to tell. Checking here also keeps every
+        // ordinary chat out of the digest bookkeeping.
+        if !self.session_has_launcher(session_id) {
+            return;
+        }
+        if self.turn_was_driven_by_the_user(session_id) {
+            self.schedule_user_turn_digest(session_id, state, at);
+            return;
+        }
+        let direct_exchanges = self.take_user_turn_digest(session_id);
+        self.emit_completion_notice(
+            session_id,
+            state,
+            at,
+            NoticeShape::Finished { direct_exchanges },
+        );
+    }
+
+    fn session_has_launcher(&self, session_id: &str) -> bool {
+        let connection = self.database.read_connection();
+        find_session_by_id(&connection, session_id).is_ok_and(|session| {
+            session
+                .launched_by_session_id
+                .is_some_and(|parent| parent != session_id)
+        })
+    }
+
+    /// Whether the turn that just ended is one the person typed in this
+    /// chat's own tab. The launch prompt is the session's first `user.message`
+    /// and belongs to the launcher; every later automatic turn — an agent's
+    /// `session_message`, a completion notice — carries an `origin`. What is
+    /// left is the person.
+    fn turn_was_driven_by_the_user(&self, session_id: &str) -> bool {
+        let connection = self.database.read_connection();
+        let latest = latest_user_message_id(&connection, session_id)
+            .ok()
+            .flatten()
+            .and_then(|id| find_event_by_id(&connection, &id).ok().flatten());
+        let Some(latest) = latest else {
+            return false;
+        };
+        let is_first = match count_user_messages(&connection, session_id) {
+            Ok(count) => count <= 1,
+            Err(_) => return false,
+        };
+        turn_was_user_driven(&latest.payload, is_first)
+    }
+
+    /// Restart the launched chat's quiet window. Only the timer that still
+    /// owns the window delivers, so a burst of replies costs the launcher one
+    /// turn rather than one per reply.
+    fn schedule_user_turn_digest(
+        self: &Arc<Self>,
+        session_id: &str,
+        state: SessionState,
+        at: &str,
+    ) {
+        let token = Uuid::new_v4().to_string();
+        let exchanges = {
+            let mut digests = self.user_turn_digests.lock_or_recover("user turn digests");
+            let digest = digests
+                .entry(session_id.to_string())
+                .or_insert_with(|| UserTurnDigest {
+                    token: token.clone(),
+                    exchanges: DirectExchanges {
+                        count: 0,
+                        since: notice_local_time(at),
+                    },
+                });
+            digest.token = token.clone();
+            digest.exchanges.count = digest.exchanges.count.saturating_add(1);
+            digest.exchanges.clone()
+        };
+        let service = Arc::clone(self);
+        let session_id = session_id.to_string();
+        let at = at.to_string();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(USER_TURN_DIGEST_QUIET_SECS)).await;
+            {
+                let mut digests = service
+                    .user_turn_digests
+                    .lock_or_recover("user turn digests");
+                if digests.get(&session_id).map(|digest| digest.token.as_str()) != Some(&token) {
+                    return;
+                }
+                digests.remove(&session_id);
+            }
+            service.emit_completion_notice(
+                &session_id,
+                state,
+                &at,
+                NoticeShape::UserTurnDigest(exchanges),
+            );
+        });
+    }
+
+    /// Close an open quiet window, so the turn that closed it reports the
+    /// user's exchanges rather than leaving a second notice behind.
+    fn take_user_turn_digest(&self, session_id: &str) -> Option<DirectExchanges> {
+        self.user_turn_digests
+            .lock_or_recover("user turn digests")
+            .remove(session_id)
+            .map(|digest| digest.exchanges)
+    }
+
+    fn emit_completion_notice(
+        self: &Arc<Self>,
+        session_id: &str,
+        state: SessionState,
+        at: &str,
+        shape: NoticeShape,
+    ) {
+        match self.build_completion_notice(session_id, state, at, shape) {
             Ok(Some(notice)) => {
                 if let Some(registry) = self.session_control.get() {
                     registry.notify_inbox(&notice.to_session_id);
@@ -3033,6 +3378,7 @@ impl ProviderSessionService {
         session_id: &str,
         state: SessionState,
         at: &str,
+        shape: NoticeShape,
     ) -> ArgmaxResult<Option<CompletionNotice>> {
         let connection = self.database.connection();
         let session = find_session_by_id(&connection, session_id)?;
@@ -3055,13 +3401,19 @@ impl ProviderSessionService {
         let label = find_workspace_by_id(&connection, &session.workspace_id)
             .map(|workspace| workspace.task_label)
             .unwrap_or_else(|_| session_id.to_string());
-        let answer = latest_agent_message(&connection, session_id)?
+        let answer = latest_agent_answer(&connection, session_id)?
             .filter(|text| !text.trim().is_empty())
             .map(|text| cap_notice_answer(&text))
             .unwrap_or_else(|| "(the session produced no assistant message)".to_string());
-        let body = format!(
-            "Session {session_id} ({label}) finished with state {state}. Final answer:\n{answer}"
-        );
+        let body = notice_body(&shape, session_id, &label, state, at, &answer);
+        // A check-in wake exists to poke a chat that has not reported back.
+        // This one just did, so the routine has nothing left to ask.
+        if let Err(error) = crate::persistence::routines::delete_routine(
+            &connection,
+            &crate::session_control::check_in_routine_id(session_id),
+        ) {
+            tracing::debug!(session_id, ?error, "no check-in routine to clear");
+        }
         let message = NewSessionMessage {
             // Deterministic, so a retry of the same turn end writes the same
             // row rather than a second notice.
@@ -3363,7 +3715,10 @@ impl ProviderSessionService {
             message,
             agent_mode,
             attachments,
-            origin,
+            TurnAuthorship {
+                origin,
+                starter: TurnStarter::Person,
+            },
         )?;
         self.publish(DashboardDelta {
             events: vec![event],
@@ -3379,11 +3734,14 @@ impl ProviderSessionService {
         message: &str,
         agent_mode: AgentMode,
         attachments: Option<&[ComposerAttachmentInput]>,
-        origin: Option<&MessageOrigin>,
+        authorship: TurnAuthorship<'_>,
     ) -> ArgmaxResult<crate::persistence::events::TimelineEvent> {
         let mut payload = composer_payload(agent_mode, attachments);
-        if let Some(origin) = origin {
+        if let Some(origin) = authorship.origin {
             payload["origin"] = serde_json::to_value(origin).unwrap_or(Value::Null);
+        }
+        if let Some(marker) = authorship.starter.payload_marker() {
+            payload["starter"] = json!(marker);
         }
         persist_timeline_event(
             connection,
@@ -4730,6 +5088,170 @@ mod tests {
             .unwrap()
             .is_empty()
         );
+    }
+
+    fn long_answer(marker: &str) -> String {
+        let mut answer = String::new();
+        while answer.chars().count() <= NOTICE_ANSWER_CHARS {
+            answer.push_str(marker);
+            answer.push('\n');
+        }
+        answer
+    }
+
+    #[test]
+    fn a_notice_answer_within_the_cap_is_untouched() {
+        let answer = "Done.\n\n## Learnings for the arc\n\n- The hook runs twice.\n";
+        assert_eq!(cap_notice_answer(answer), answer);
+    }
+
+    #[test]
+    fn a_long_answer_without_learnings_keeps_the_head() {
+        let capped = cap_notice_answer(&long_answer("body line"));
+        assert!(capped.starts_with("body line\n"));
+        assert!(capped.ends_with("\n\n(truncated)"));
+        assert!(!capped.contains("(… middle truncated …)"));
+        // The head stops on a line boundary rather than mid-word.
+        assert!(capped.trim_end_matches("\n\n(truncated)").ends_with("line"));
+    }
+
+    #[test]
+    fn a_long_answer_keeps_a_learnings_section_past_the_cut() {
+        let answer = format!(
+            "{}## Learnings for the arc\n\n- Worktrees vanish mid-task.\n- The hook runs twice.\n",
+            long_answer("body line")
+        );
+        let capped = cap_notice_answer(&answer);
+        assert!(capped.starts_with("body line\n"));
+        assert!(capped.contains("(… middle truncated …)"));
+        assert!(capped.contains("## Learnings for the arc"));
+        assert!(capped.contains("- Worktrees vanish mid-task."));
+        assert!(capped.ends_with("- The hook runs twice.\n"));
+    }
+
+    #[test]
+    fn a_bold_learnings_heading_past_the_cut_counts() {
+        let answer = format!(
+            "{}**learnings for the arc**\n\n- Grok announces then acts.\n",
+            long_answer("body line")
+        );
+        let capped = cap_notice_answer(&answer);
+        assert!(capped.contains("**learnings for the arc**"));
+        assert!(capped.contains("- Grok announces then acts."));
+    }
+
+    #[test]
+    fn learnings_already_inside_the_head_are_not_repeated() {
+        let answer = format!(
+            "## Learnings for the arc\n\n- Said once.\n{}",
+            long_answer("body line")
+        );
+        let capped = cap_notice_answer(&answer);
+        assert_eq!(capped.matches("Learnings for the arc").count(), 1);
+        assert_eq!(capped.matches("- Said once.").count(), 1);
+        assert!(capped.ends_with("\n\n(truncated)"));
+    }
+
+    #[test]
+    fn an_overlong_learnings_section_is_itself_capped() {
+        let mut learnings = String::from("## Learnings for the arc\n");
+        while learnings.chars().count() <= NOTICE_LEARNINGS_CHARS {
+            learnings.push_str("- one more thing\n");
+        }
+        let capped = cap_notice_answer(&format!("{}{learnings}", long_answer("body line")));
+        assert!(capped.contains("## Learnings for the arc"));
+        assert!(capped.ends_with("\n\n(truncated)"));
+        assert!(capped.chars().count() < NOTICE_ANSWER_CHARS + NOTICE_LEARNINGS_CHARS + 64);
+    }
+
+    #[test]
+    fn a_composer_turn_after_the_launch_prompt_is_user_driven() {
+        let composer = json!({ "source": "composer", "agentMode": "auto" });
+        assert!(turn_was_user_driven(&composer, false));
+        // The launch prompt looks the same and belongs to the launcher.
+        assert!(!turn_was_user_driven(&composer, true));
+    }
+
+    #[test]
+    fn a_turn_with_an_origin_is_not_user_driven() {
+        let from_agent = json!({
+            "source": "composer",
+            "agentMode": "auto",
+            "origin": { "sessionId": "parent", "label": "Coordinator", "kind": "message" },
+        });
+        assert!(!turn_was_user_driven(&from_agent, false));
+    }
+
+    #[test]
+    fn a_scheduled_or_goal_wake_is_not_user_driven() {
+        let from_schedule =
+            json!({ "source": "composer", "agentMode": "auto", "starter": "schedule" });
+        let from_goal = json!({ "source": "composer", "agentMode": "auto", "starter": "goal" });
+        assert!(!turn_was_user_driven(&from_schedule, false));
+        assert!(!turn_was_user_driven(&from_goal, false));
+    }
+
+    #[test]
+    fn a_finished_notice_carries_the_local_time() {
+        let body = notice_body(
+            &NoticeShape::Finished {
+                direct_exchanges: None,
+            },
+            "session-1",
+            "Fix the cap",
+            SessionState::Complete,
+            "2026-09-20T12:32:10.123Z",
+            "All done.",
+        );
+        assert!(
+            body.starts_with("Session session-1 (Fix the cap) finished with state complete at ")
+        );
+        assert!(body.contains("2026-09-20 ") || body.contains("2026-09-19 "));
+        assert!(body.ends_with(". Final answer:\nAll done."));
+    }
+
+    #[test]
+    fn a_finished_notice_folds_in_the_users_own_exchanges() {
+        let body = notice_body(
+            &NoticeShape::Finished {
+                direct_exchanges: Some(DirectExchanges {
+                    count: 3,
+                    since: "2026-09-20 09:05 +02:00".to_string(),
+                }),
+            },
+            "session-1",
+            "Fix the cap",
+            SessionState::Complete,
+            "2026-09-20T12:32:10.123Z",
+            "All done.",
+        );
+        assert!(body.contains(
+            " (the user also had 3 direct exchange(s) with it since 2026-09-20 09:05 +02:00) Final answer:"
+        ));
+    }
+
+    #[test]
+    fn a_digest_notice_names_the_count_and_the_quiet_window() {
+        let body = notice_body(
+            &NoticeShape::UserTurnDigest(DirectExchanges {
+                count: 18,
+                since: "2026-09-20 09:05 +02:00".to_string(),
+            }),
+            "session-1",
+            "Fix the cap",
+            SessionState::Complete,
+            "2026-09-20T12:32:10.123Z",
+            "All done.",
+        );
+        assert!(body.starts_with(
+            "Session session-1 (Fix the cap) answered the user directly 18 time(s) since 2026-09-20 09:05 +02:00 and has been quiet for 15 minutes; latest answer at "
+        ));
+        assert!(body.ends_with(":\nAll done."));
+    }
+
+    #[test]
+    fn an_unparseable_turn_end_time_falls_back_to_the_raw_stamp() {
+        assert_eq!(notice_local_time("not a time"), "not a time");
     }
 
     #[test]

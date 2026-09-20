@@ -23,10 +23,27 @@ export function primaryWorkspacePr(workspace: WorkspaceSummary | null): Workspac
   return prs.find((pr) => pr.isPrimary) ?? prs[0] ?? null;
 }
 
-/** State used by both the sidebar marker and Priority placement. */
+/** Aggregate over the verified associations — Priority placement asks this
+ *  ("does this session still have open PR work?"), not the row marker. */
 export function workspacePrSummaryState(workspace: WorkspaceSummary): string | null {
   const summary = workspace.prSummaryState;
   return summary === undefined ? workspace.prState : summary;
+}
+
+/**
+ * The state the sidebar marker and row title speak for: the session's primary
+ * PR, the same one the card header, the git menu, and the phone row name. The
+ * aggregate can't stand in — a session whose pinned primary merged while a
+ * sibling was closed aggregates to CLOSED, and the sidebar would then show a
+ * state no PR in the session holds.
+ *
+ * Hosts that predate the `prs` projection keep the legacy scalar. With the
+ * projection present only a flagged primary speaks: rows that are all
+ * unverified discoveries stay in the card for repair and leave the row calm.
+ */
+export function workspacePrimaryPrState(workspace: WorkspaceSummary): string | null {
+  if (workspace.prs === undefined) return workspace.prState;
+  return workspaceSessionPrs(workspace).find((pr) => pr.isPrimary)?.prState ?? null;
 }
 
 /** Unverified discoveries stay in the card for repair, but do not speak for the sidebar. */

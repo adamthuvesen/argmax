@@ -157,8 +157,8 @@ export function formatRangeLabel(
   return `${day.format(start)} to ${day.format(lastInside)}`;
 }
 
-/** A relative account-clock label such as `resets in 2h` or `resets in 17d`. */
-export function formatResetIn(
+/** `2h`, `17d`, `now` — the bare distance to a window's reset. */
+export function formatResetShort(
   value: string | null,
   now: Date = new Date()
 ): string | null {
@@ -166,13 +166,37 @@ export function formatResetIn(
   const at = parseInstant(value);
   if (!at) return null;
   const deltaMs = at.getTime() - now.getTime();
-  if (deltaMs <= 0) return "resets now";
+  if (deltaMs <= 0) return "now";
   const minutes = Math.round(deltaMs / 60_000);
-  if (minutes < 60) return `resets in ${Math.max(1, minutes)}m`;
+  if (minutes < 60) return `${Math.max(1, minutes)}m`;
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `resets in ${hours}h`;
+  if (hours < 24) return `${hours}h`;
   const days = Math.round(hours / 24);
-  return `resets in ${days}d`;
+  return `${days}d`;
+}
+
+/** A relative account-clock label such as `resets in 2h` or `resets in 17d`. */
+export function formatResetIn(
+  value: string | null,
+  now: Date = new Date()
+): string | null {
+  const distance = formatResetShort(value, now);
+  if (!distance) return null;
+  return distance === "now" ? "resets now" : `resets in ${distance}`;
+}
+
+/** `48%`, `<0.1%`, `—` — how much of a limit window is still left. */
+export function formatRemainingPercent(percent: number): string {
+  if (!Number.isFinite(percent)) return "—";
+  if (percent > 0 && percent < 0.1) return "<0.1%";
+  if (percent >= 10) return `${Math.round(percent)}%`;
+  return `${percent.toFixed(1)}%`;
+}
+
+/** Bar length for a remaining percent: a spent window keeps a visible sliver. */
+export function remainingBarWidth(remaining: number): number {
+  if (!Number.isFinite(remaining) || remaining <= 0) return 0;
+  return Math.min(100, Math.max(0.8, remaining));
 }
 
 /** `Sep 3, 14:02` — when the numbers were last refreshed from disk. */

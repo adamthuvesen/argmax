@@ -427,6 +427,9 @@ body:has(.app-shell[data-sidebar-translucent="true"]) {
 .project-group {
   position: relative;
   display: grid;
+  /* Offscreen session rows remember their intrinsic width. Keep that cached
+     width from setting the whole group's minimum when the sidebar narrows. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0;
   /* Room to breathe between groups — projects and date buckets share this.
      Kept just under the nav's row rhythm so a column of collapsed section

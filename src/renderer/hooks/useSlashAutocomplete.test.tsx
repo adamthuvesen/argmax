@@ -202,6 +202,28 @@ describe("useSlashAutocomplete — composer commands", () => {
     expect(probe.value).toBe("tidy this up ");
   });
 
+  it("offers a draft-writing command only while the token opens the draft", async () => {
+    // `/goal` replaces the draft with its own opener, and its submit branch
+    // only reads a leading token. Offered mid-sentence, picking it would eat
+    // the message already typed for a token that could not have run there.
+    const goal: ComposerCommand = {
+      name: "goal",
+      label: "Goal",
+      hint: "Keep working until a condition holds",
+      icon: ListChecks,
+      writesDraft: true,
+      run
+    };
+
+    const { unmount } = render(<Harness commands={[goal]} initialInput="check the data /go" />);
+    await waitFor(() => expect(screen.getByTestId("open").textContent).toBe("false"));
+    expect(screen.getByTestId("labels").textContent).toBe("");
+    unmount();
+
+    render(<Harness commands={[goal]} initialInput="/go" />);
+    await waitFor(() => expect(screen.getByTestId("labels").textContent).toBe("Goal"));
+  });
+
   it("drops commands from the list once the query stops prefixing one", async () => {
     render(<Harness commands={commands} initialInput="/rev" />);
 

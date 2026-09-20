@@ -23,9 +23,10 @@ import SwiftUI
 // stayed on screen after the tap.
 //
 // Nothing here paints an optimistic row. Each call is a mutation the host
-// records and answers with a `dashboard:delta`, so the list corrects itself;
-// what a caller does need is for the control not to fire twice, which is what
-// `inFlight` is for.
+// records and answers with a `dashboard:delta`, so the list corrects itself.
+// Archive also applies its final response because the host publishes an
+// intermediate `archiving` row first and that delta may be the only one the
+// phone receives. `inFlight` keeps each control from firing twice.
 
 /// The screen's single owner of row-action state and mutations.
 @MainActor
@@ -62,6 +63,7 @@ final class ChatRowActionCenter: ObservableObject {
             // the worktree keeps every file in recovery storage either way.
             let force = row.workspace.dirty && !row.workspace.sharedWorkspace
             let result = try await client.archiveWorkspace(workspaceID: row.workspace.id, force: force)
+            self?.store.ingest(delta: DashboardDelta(workspaces: [result.workspace]))
             if result.workspace.state != .archived {
                 self?.failure = "Uncommitted changes turned up, so the worktree is kept. Commit or discard, then archive again."
             }

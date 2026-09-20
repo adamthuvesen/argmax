@@ -43,22 +43,27 @@
   line-height: 1;
 }
 
+.session-row:hover {
+  background: var(--row-hover);
+}
+
+.session-row[data-open="true"]:not([data-active="true"]) {
+  background: var(--row-hover);
+}
+
+.session-row[data-active="true"] {
+  background: var(--row-selected);
+}
+
+.session-row:hover .session-link,
 .session-link:hover {
   color: var(--text);
-  background: var(--row-hover);
 }
 
-/* Three steps, lightest for the row you are on: transparent, then the faint
-   hover wash for a row open in another pane, then the selection gray. An open
-   row is marked by its surface, not by ink — the selected row stays the only
-   bright label in the list. */
-.session-link[data-open="true"]:not(.active) {
-  background: var(--row-hover);
-}
-
+.session-row[data-active="true"] .session-link,
 .session-link.active {
   color: var(--text);
-  background: var(--row-selected);
+  font-weight: calc(500 + var(--font-weight-offset));
 }
 
 /* Keyboard focus inside the sidebar — use an inset shadow instead of the
@@ -220,6 +225,10 @@
 
 .session-row {
   position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+  transition: background var(--duration-fast) var(--ease);
   /* Off-screen rows skip layout + paint — a no-JS, no-dependency windowing for
      long session lists. Rows stay in the DOM, so keyboard nav and the sidebar's
      `.session-link` queries still work; hover popovers/menus are portaled to the
@@ -232,7 +241,13 @@
 }
 
 .session-row .session-link {
-  padding-right: 46px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: var(--space-1_5);
+}
+
+.session-row .session-link.session-link-renaming {
+  padding-right: var(--space-2_5);
 }
 
 /* Inline rename — the row keeps its .session-link shell (glyph, subtitle,
@@ -268,13 +283,22 @@
   min-width: 140px;
 }
 
-/* The pin / archive actions are hidden until hover or focus. A single action
-   fits inside the base padding (which already clears the tokens badge);
-   PR counts reserve both action slots at rest so the badge never shifts. */
-.session-row:has(.session-pin-btn):has(.session-archive-btn) .session-link-has-pr-count,
-.session-row:hover:has(.session-pin-btn):has(.session-archive-btn) .session-link,
-.session-row:focus-within:has(.session-pin-btn):has(.session-archive-btn) .session-link {
-  padding-right: 70px;
+/* Two action slots reserved at rest so the badge and actions align across every
+   row without shifting on hover. A running chat mounts no archive button, but
+   the second slot remains reserved so its badge column matches completed rows. */
+.session-row-actions {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(2, var(--sidebar-action-size));
+  width: calc(2 * var(--sidebar-action-size) + 2px);
+  gap: 2px;
+  align-items: center;
+  margin-right: var(--sidebar-action-inset);
+  pointer-events: none;
+}
+
+.session-row-actions .session-row-action {
+  pointer-events: auto;
 }
 
 .session-row-action {
@@ -291,6 +315,15 @@
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: opacity var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
+}
+
+.session-pin-btn {
+  grid-column: 1;
+}
+
+.session-archive-btn {
+  grid-column: 2;
+  opacity: 0;
 }
 
 .session-row-action:focus-visible {
@@ -320,66 +353,6 @@
 .session-row:hover .session-row-action:disabled,
 .session-row:focus-within .session-row-action:disabled {
   opacity: 0.4;
-}
-
-.session-archive-btn {
-  position: absolute;
-  right: var(--sidebar-action-inset);
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--sidebar-action-size);
-  height: var(--sidebar-action-size);
-  padding: 0;
-  opacity: 0;
-  color: var(--muted);
-  background: transparent;
-  border: 0;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: opacity var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
-}
-
-.session-row:hover .session-archive-btn,
-.session-row:focus-within .session-archive-btn {
-  opacity: 0.85;
-}
-
-.session-archive-btn:focus-visible {
-  opacity: 1;
-}
-
-.session-archive-btn:hover {
-  opacity: 1;
-  color: var(--text);
-  background: var(--overlay-med);
-}
-
-.session-pin-btn {
-  position: absolute;
-  right: var(--sidebar-action-inset);
-  top: 50%;
-  transform: translateY(-50%);
-}
-
-/*
- * The pin is hidden at rest and revealed on hover/focus as a discoverable
- * action — for pinned rows too. The dedicated Pinned section at the top of the
- * list is what signals a session is pinned, so the row keeps no standing badge.
- */
-.session-pin-btn {
-  opacity: 0;
-}
-
-.session-row:hover .session-pin-btn,
-.session-row:focus-within .session-pin-btn {
-  opacity: 0.85;
-}
-
-.session-row:has(.session-pin-btn):has(.session-archive-btn) .session-pin-btn {
-  right: calc(var(--sidebar-action-step) + var(--sidebar-action-inset));
 }
 
 .sidebar-resizer {
@@ -513,12 +486,15 @@
   transform: rotate(180deg);
 }
 
-.identity-menu-popover {
+/* Doubled up on `.project-picker-popover` so the taller cap wins over the
+   primitive's `min(440px, 60dvh)`: this menu carries the plan meters and a
+   one-class rule would lose the cascade to chat-chrome.css. */
+.project-picker-popover.identity-menu-popover {
   left: 0;
   right: 0;
   min-width: 0;
   width: 100%;
-  max-height: min(320px, calc(100dvh - 96px));
+  max-height: min(640px, calc(100dvh - 96px));
   overflow-y: auto;
 }
 
@@ -561,6 +537,126 @@
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
+}
+
+/* Plans left — the Usage page's remaining card, shrunk to the menu's width:
+   one meter per limit window, grouped by the login that reported it. The row
+   carries `usage-series`, so a provider is the same colour here as on the
+   page, and the meter is the page's own `RemainingBar`. Providers whose
+   account reports no window never reach this list. */
+.identity-plans {
+  display: grid;
+  gap: var(--space-1_5);
+  padding: 3px 9px 6px 7px;
+}
+
+.identity-plans-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.identity-plans-label {
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.identity-plans-more {
+  padding: 0;
+  color: var(--muted);
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-size: var(--text-2xs);
+  transition: color var(--duration-fast) var(--ease);
+}
+
+.identity-plans-more:hover {
+  color: var(--text-soft);
+}
+
+.identity-plans-list {
+  display: grid;
+  gap: 11px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A meter belongs to the label above it, so the gap inside a window is
+   smaller than the gap between windows; at equal gaps the bars read as
+   underlines for the line below. */
+.identity-plans-row {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.identity-plans-provider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1_5);
+  min-width: 0;
+}
+
+/* The page's dot is an 8px legend mark; at menu scale it would outweigh the
+   name beside it. */
+.identity-plans .usage-series-dot {
+  width: 5px;
+  height: 5px;
+}
+
+.identity-plans-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.identity-plans-plan {
+  margin-left: auto;
+  flex: none;
+  color: var(--muted);
+  font-size: var(--text-2xs);
+}
+
+/* Label and figure share a line; the meter spans both underneath, so the bar
+   is as long as the row no matter how long the window's name is. */
+.identity-plans-window {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  column-gap: var(--space-2);
+  row-gap: 3px;
+  min-width: 0;
+}
+
+.identity-plans-window-label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-soft);
+  font-size: var(--text-2xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.identity-plans-window-reset {
+  color: var(--muted);
+}
+
+.identity-plans-window-left {
+  color: var(--text-soft);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.identity-plans-window .usage-remaining-bar {
+  grid-column: 1 / -1;
 }
 
 .workspace::before {

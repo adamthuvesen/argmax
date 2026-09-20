@@ -228,8 +228,7 @@ struct InsightsScreen: View {
     private var updatingLine: some View {
         Group {
             if store.isLoading(store.tab), !showingSkeleton {
-                ProgressView()
-                    .controlSize(.mini)
+                WorkingNest(size: 12, tint: Theme.muted)
                     .accessibilityLabel("Updating insights")
             }
         }

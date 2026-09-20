@@ -368,6 +368,7 @@ export function SessionComposer({
         label: "Multitask",
         hint: "Run something alongside this chat's turn",
         icon: Columns2,
+        writesDraft: true,
         run: () => setInput("/multitask ")
       });
     }
@@ -377,6 +378,7 @@ export function SessionComposer({
         label: "Goal",
         hint: "Keep working until a condition holds",
         icon: Target,
+        writesDraft: true,
         run: () => setInput("/goal ")
       });
     }

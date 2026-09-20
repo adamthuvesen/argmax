@@ -34,7 +34,14 @@ func mergeDashboardDelta(_ incoming: DashboardSnapshot, _ delta: DashboardDelta)
     // Projects sort on their own field, and a null last activity sorts last —
     // `latestActivityAt ?? ""` in the renderer.
     snapshot.projects = mergeSlice(snapshot.projects, delta.projects) { $0.latestActivityAt ?? "" }
-    snapshot.workspaces = mergeSlice(snapshot.workspaces, delta.workspaces) { $0.lastActivityAt }
+    // Archive responses and pushed deltas use independent WebSocket queues.
+    // A delayed `archiving` delta must not revive a row after the final
+    // `archived` response has removed it from the list.
+    let archivedWorkspaceIDs = Set(snapshot.workspaces.filter { $0.state == .archived }.map(\.id))
+    let workspaceUpdates = delta.workspaces?.filter {
+        !archivedWorkspaceIDs.contains($0.id) || $0.state == .archived
+    }
+    snapshot.workspaces = mergeSlice(snapshot.workspaces, workspaceUpdates) { $0.lastActivityAt }
     snapshot.sessions = mergeSlice(snapshot.sessions, delta.sessions) { $0.lastActivityAt }
     return snapshot
 }

@@ -927,6 +927,10 @@
   background: transparent;
   font-family: var(--font-prose);
   font-size: var(--text-base);
+  /* See .composer-input: form controls drop the inherited OpenType features,
+     and the sub-pixel difference moves this field's line breaks off the
+     mirror's. */
+  font-feature-settings: inherit;
   line-height: 1.55;
   resize: none;
   overflow-y: hidden;
@@ -953,8 +957,11 @@
    transparent (caret stays visible). Every /command token that maps to a real
    skill is tinted — leading or mid-message; the rest is painted in the normal
    text colour so the visible text still reads through. Every metric here MUST
-   match the textarea box (font, padding, line-height, wrapping) or the
-   painted text drifts from the caret — which is also why the token gets no
+   match the textarea box (font, OpenType features, padding, line-height,
+   wrapping) or the painted text drifts from the caret. Line breaking is a
+   cliff, so the tolerance is sub-pixel: a fraction of a pixel per line moves
+   one word to the next line in one layer only, and the caret ends up a whole
+   word away from the text. That is also why the token gets no
    font-weight change: bolder glyphs are wider, and everything painted after a
    mid-message token would drift off the invisible text. The overlay is
    mounted only while a real skill is typed, so this never affects ordinary

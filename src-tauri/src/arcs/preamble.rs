@@ -36,18 +36,42 @@ Read `{dir}/NOTES.md` before you plan anything. If it is not empty, a previous c
 already have worked on this Arc — treat NOTES.md as the durable state and build on it rather than \
 starting over.\n\
 \n\
+NOTES.md is the current state, not the history: standing instructions, the current direction, what \
+is in flight, what is decided, and what the next coordinator needs. Keep it under about 4,000 \
+words. A member reads all of it on every launch and pays for it on every turn after, so when \
+something is done, shorten its entry to one line and move the detail to `{dir}/LOG.md`.\n\
+\n\
+LOG.md is append-only history: one dated entry per event — a launch, a result, a merge, a \
+decision. Nobody reads it unless you point them at it. A member's report goes in its own file in \
+the folder, named after the piece.\n\
+\n\
+Read the clock with `date` before you write any time down; never estimate one. Notices from Argmax \
+carry the time they were sent.\n\
+\n\
 Your job is to plan and delegate, not to implement. Break the work into pieces and launch a \
 session per piece with session_launch; a member does not have to run in this Arc's home project — \
 pass `project` to put it in any registered project. Review what each one reports back, and keep \
-`{dir}/NOTES.md` current with what is done, what is in flight, and anything the next coordinator or \
-a member needs to know. You are the only writer of files in this folder; do not implement code \
+`{dir}/NOTES.md` current. You are the only writer of files in this folder; do not implement code \
 yourself, here or anywhere else.\n\
 \n\
-A completion notice reaches you only from a session you launched directly, never from one it \
-launched in turn — do not session_wait on a grandchild, since it will not report to you. Use \
-schedule_followup to check back on longer-running work instead of blocking on it. Call arc_status \
-to see this Arc's current members, your own coordinator id, and how much of the launch budget is \
-left."
+Integration is a member's job too: merging a branch, running the project's checks, rebuilding \
+derived artifacts. Launch a small session for it rather than doing it here, so this chat's context \
+is spent on judgement.\n\
+\n\
+Pick the model per piece. Docs, wording, deck and cleanup passes go on a cheaper model — pass \
+`model: \"claude-sonnet-5\"` on session_launch — and the strong model is for method or analysis \
+work.\n\
+\n\
+Record durable repo facts with learnings_add as you get them, and check learnings_search before \
+you brief a member on an area you do not know. A member's \"Learnings for the arc\" belong in \
+NOTES.md only while they are still current.\n\
+\n\
+You do not need a follow-up per launch: the completion notice arrives on its own when a member \
+finishes. For long work pass `check_in_minutes` on session_launch instead of schedule_followup; it \
+fires only if the member is still running. A completion notice reaches you only from a session you \
+launched directly, never from one it launched in turn — do not session_wait on a grandchild, since \
+it will not report to you. Call arc_status to see this Arc's current members, the clock, how large \
+NOTES.md has grown, your own coordinator id, and how much of the launch budget is left."
     )
 }
 
@@ -69,15 +93,37 @@ pub fn promoted_coordinator_preamble(arc: &ArcRecord, adopted_members: usize) ->
         "This chat now coordinates Arc \"{name}\". Its shared folder is `{dir}`, and `{dir}/BRIEF.md` \
 holds the brief drafted from this conversation.{adopted}\n\
 \n\
-Start by writing what you already know into `{dir}/NOTES.md`: what is done, what is in flight, the \
-decisions made so far, and anything a member or a later coordinator would need. You are the only \
-writer of files in that folder.\n\
+Start by writing what you already know into `{dir}/NOTES.md`: the standing instructions, the \
+current direction, what is in flight, what is decided, and anything a member or a later \
+coordinator would need. NOTES.md is the current state, not the history. Keep it under about 4,000 \
+words — a member reads all of it on every launch and pays for it on every turn after — so when \
+something is done, shorten its entry to one line and move the detail to `{dir}/LOG.md`.\n\
+\n\
+LOG.md is append-only history: one dated entry per event — a launch, a result, a merge, a \
+decision. Nobody reads it unless you point them at it. You are the only writer of files in that \
+folder, and a member's report goes in its own file there, named after the piece.\n\
+\n\
+Read the clock with `date` before you write any time down; never estimate one. Notices from Argmax \
+carry the time they were sent.\n\
 \n\
 From here on, plan and delegate rather than implement. Launch a session per piece of work with \
 session_launch (pass `project` to put it in any registered project), review what each one reports \
-back, and keep NOTES.md current. A completion notice reaches you only from a session you launched \
-directly. Use schedule_followup to check back on longer work, and arc_status to see members and \
-limits."
+back, and keep NOTES.md current; do not implement code yourself. Integration is a member's job \
+too: merging a branch, running the project's checks, rebuilding derived artifacts. Launch a small \
+session for it rather than doing it here, so this chat's context is spent on judgement.\n\
+\n\
+Pick the model per piece. Docs, wording, deck and cleanup passes go on a cheaper model — pass \
+`model: \"claude-sonnet-5\"` on session_launch — and the strong model is for method or analysis \
+work.\n\
+\n\
+Record durable repo facts with learnings_add as you get them, and check learnings_search before \
+you brief a member on an area you do not know. A member's \"Learnings for the arc\" belong in \
+NOTES.md only while they are still current.\n\
+\n\
+You do not need a follow-up per launch: the completion notice arrives on its own when a member \
+finishes, and it reaches you only from a session you launched directly. For long work pass \
+`check_in_minutes` on session_launch instead of schedule_followup; it fires only if the member is \
+still running. Call arc_status to see members, the clock, how large NOTES.md has grown, and limits."
     )
 }
 
@@ -89,10 +135,12 @@ pub fn member_preamble(arc: &ArcRecord) -> String {
     let dir = &arc.dir;
     format!(
         "You are working as part of Arc \"{name}\". Read `{dir}/BRIEF.md` and `{dir}/NOTES.md` \
-first for the Arc's goal and its current state. Do not write to files in `{dir}` — the coordinator \
-is the only writer there. End your final answer with any durable learnings (how to run or test \
-things, conventions, pitfalls) under a \"Learnings for the arc\" heading, so the coordinator can \
-record them in NOTES.md."
+first for the Arc's goal and its current state. Read `{dir}/LOG.md` or any report file in that \
+folder only if your prompt points you at it. Do not write to files in `{dir}` — the coordinator \
+is the only writer there. File durable repo facts with learnings_add as you go. End your final \
+answer with a short \"Learnings for the arc\" section: a few bullets, only what is not already in \
+NOTES.md (how to run or test things, conventions, pitfalls). The coordinator sees the head of your \
+answer and that section."
     )
 }
 
@@ -134,6 +182,36 @@ mod tests {
         assert!(preamble.contains("do not implement code yourself"));
         assert!(preamble.contains("do not session_wait on a grandchild"));
         assert!(preamble.contains("arc_status"));
+        assert!(preamble.contains("pass `project` to put it in any registered project"));
+    }
+
+    #[test]
+    fn coordinator_preamble_splits_current_state_from_the_log() {
+        let preamble = coordinator_preamble(&arc("Ship the thing."));
+        assert!(preamble.contains("NOTES.md is the current state, not the history"));
+        assert!(preamble.contains("under about 4,000 words"));
+        assert!(preamble.contains("/tmp/arcs/arc-1/LOG.md"));
+        assert!(preamble.contains("LOG.md is append-only history"));
+        assert!(preamble.contains("its own file in the folder, named after the piece"));
+    }
+
+    #[test]
+    fn coordinator_preamble_gives_a_clock_a_model_rule_and_learnings() {
+        let preamble = coordinator_preamble(&arc("Ship the thing."));
+        assert!(preamble.contains("Read the clock with `date`"));
+        assert!(preamble.contains("carry the time they were sent"));
+        assert!(preamble.contains("claude-sonnet-5"));
+        assert!(preamble.contains("learnings_add"));
+        assert!(preamble.contains("learnings_search"));
+    }
+
+    #[test]
+    fn coordinator_preamble_delegates_integration_and_drops_the_per_launch_followup() {
+        let preamble = coordinator_preamble(&arc("Ship the thing."));
+        assert!(preamble.contains("Integration is a member's job too"));
+        assert!(preamble.contains("rebuilding derived artifacts"));
+        assert!(preamble.contains("You do not need a follow-up per launch"));
+        assert!(preamble.contains("`check_in_minutes` on session_launch"));
     }
 
     #[test]
@@ -150,6 +228,21 @@ mod tests {
     }
 
     #[test]
+    fn promoted_coordinator_preamble_carries_the_same_rules() {
+        let preamble = promoted_coordinator_preamble(&arc("Ship the thing."), 2);
+        assert!(preamble.contains("The 2 sessions you launched earlier"));
+        assert!(preamble.contains("NOTES.md is the current state, not the history"));
+        assert!(preamble.contains("under about 4,000 words"));
+        assert!(preamble.contains("LOG.md is append-only history"));
+        assert!(preamble.contains("Read the clock with `date`"));
+        assert!(preamble.contains("Integration is a member's job too"));
+        assert!(preamble.contains("claude-sonnet-5"));
+        assert!(preamble.contains("learnings_add"));
+        assert!(preamble.contains("`check_in_minutes` on session_launch"));
+        assert!(preamble.contains("do not implement code yourself"));
+    }
+
+    #[test]
     fn member_preamble_points_at_the_shared_files_and_asks_for_learnings() {
         let preamble = member_preamble(&arc("Ship the thing."));
         assert!(preamble.contains("part of Arc \"Ragnar rollout\""));
@@ -157,5 +250,14 @@ mod tests {
         assert!(preamble.contains("NOTES.md"));
         assert!(preamble.contains("Do not write to files in `/tmp/arcs/arc-1`"));
         assert!(preamble.contains("Learnings for the arc"));
+    }
+
+    #[test]
+    fn member_preamble_reads_the_log_only_when_pointed_at_it() {
+        let preamble = member_preamble(&arc("Ship the thing."));
+        assert!(preamble.contains("only if your prompt points you at it"));
+        assert!(preamble.contains("/tmp/arcs/arc-1/LOG.md"));
+        assert!(preamble.contains("learnings_add"));
+        assert!(preamble.contains("a few bullets, only what is not already in NOTES.md"));
     }
 }

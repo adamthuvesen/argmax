@@ -16,6 +16,7 @@
 // terminal — nothing here pipes a build through `tail`, which would hide its
 // exit code.
 
+import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,6 +38,7 @@ for (const key of [
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const CARGO_MANIFEST = "src-tauri/Cargo.toml";
+const ZERO_SHA = "0000000000000000000000000000000000000000";
 
 const args = process.argv.slice(2);
 const runEverything = args.includes("--all");
@@ -47,15 +49,53 @@ if (baseIndex >= 0 && !requestedBase) {
   process.exit(2);
 }
 
+// When called from git's pre-push hook, positional args are [remote_name, remote_url].
+const targetRemote = args[0] && !args[0].startsWith("-") ? args[0] : null;
+
 function git(...gitArgs) {
   const run = spawnSync("git", gitArgs, { cwd: ROOT, encoding: "utf8" });
   return run.status === 0 ? run.stdout : null;
 }
 
-function mergeBase() {
-  const candidates = requestedBase ? [requestedBase] : ["origin/main", "main"];
+function parsePushStdin() {
+  if (process.stdin.isTTY) return null;
+  let input = "";
+  try {
+    input = readFileSync(0, "utf8");
+  } catch {
+    return null;
+  }
+  if (!input.trim()) {
+    // If called with a target remote argument from git, git invoked the hook
+    // with 0 refs (e.g. non-fast-forward rejected ref updates or empty push).
+    return targetRemote ? [] : null;
+  }
+  const lines = input.trim().split("\n").map((line) => line.trim()).filter(Boolean);
+  const entries = [];
+  for (const line of lines) {
+    const parts = line.split(/\s+/);
+    if (parts.length >= 4) {
+      entries.push({
+        localRef: parts[0],
+        localSha: parts[1],
+        remoteRef: parts[2],
+        remoteSha: parts[3]
+      });
+    }
+  }
+  return entries;
+}
+
+function mergeBase(headRef = "HEAD", remote = null) {
+  const primaryRemote = remote || "origin";
+  const candidates = requestedBase
+    ? [requestedBase]
+    : [`${primaryRemote}/main`, "origin/main", "main"];
+  const seen = new Set();
   for (const candidate of candidates) {
-    const base = git("merge-base", "HEAD", candidate);
+    if (seen.has(candidate)) continue;
+    seen.add(candidate);
+    const base = git("merge-base", headRef, candidate);
     if (base) return { ref: candidate, sha: base.trim() };
   }
   if (requestedBase) {
@@ -76,15 +116,34 @@ function changedFiles(base) {
 }
 
 const IOS_PATHS = [/^ios\//];
-const RUST_PATHS = [/^src-tauri\/(?!target\/)/, /^rust-toolchain\.toml$/, /^\.github\/workflows\//];
+const RUST_PATHS = [
+  /^src-tauri\/(?!target\/)/,
+  /^assets\/browser-blocking\//,
+  /^\.cargo\//,
+  /^rust-toolchain\.toml$/,
+  /^\.github\/workflows\//
+];
 const JS_PATHS = [
   /^src\//,
+  /^src-tauri\/(?!target\/)/,
+  /^ios\//,
+  /^assets\//,
+  /^public\//,
+  /^(index|mobile)\.html$/,
   /^package(-lock)?\.json$/,
   /^tsconfig\.json$/,
   /^vite(st)?(\.[\w-]+)?\.config\.ts$/,
   /^eslint\.config\.js$/,
   /^scripts\//,
   /^\.github\/workflows\//
+];
+const INERT_PATHS = [
+  /^docs\//,
+  /^\.githooks\//,
+  /^[^/]*\.md$/,
+  /^LICENSE$/,
+  /^\.gitignore$/,
+  /^\.gitattributes$/
 ];
 
 function touches(files, patterns) {
@@ -94,28 +153,94 @@ function touches(files, patterns) {
   return false;
 }
 
+function scopeForFiles(files, reason, vitestBase) {
+  const hasUnclassifiedPath = files.size === 0 || [...files].some((file) =>
+    !touches([file], [...RUST_PATHS, ...JS_PATHS, ...IOS_PATHS, ...INERT_PATHS])
+  );
+  const rust = hasUnclassifiedPath || touches(files, RUST_PATHS);
+  const js = hasUnclassifiedPath || touches(files, JS_PATHS);
+  return {
+    rust,
+    js,
+    bundle: js,
+    ios: touches(files, IOS_PATHS),
+    reason: hasUnclassifiedPath ? `${reason}; unclassified path` : reason,
+    vitestBase
+  };
+}
+
 function decideScope() {
   if (runEverything) {
-    return { rust: true, js: true, bundle: true, ios: true, reason: "--all" };
+    return { rust: true, js: true, bundle: true, ios: true, reason: "--all", vitestBase: null };
   }
-  const base = mergeBase();
+
+  const pushEntries = parsePushStdin();
+  if (pushEntries !== null) {
+    if (pushEntries.length === 0) {
+      console.log("precheck: no refs to push, skipping checks.");
+      process.exit(0);
+    }
+
+    const isDelete = (entry) =>
+      entry.localSha === ZERO_SHA || entry.localRef === "(delete)" || !entry.localRef;
+    if (pushEntries.every(isDelete)) {
+      console.log("precheck: deleting remote ref, skipping checks.");
+      process.exit(0);
+    }
+
+    const activeEntries = pushEntries.filter((entry) => !isDelete(entry));
+    const files = new Set();
+    let vitestBase = null;
+
+    for (const entry of activeEntries) {
+      let baseSha = null;
+      if (entry.remoteSha && entry.remoteSha !== ZERO_SHA) {
+        const common = git("merge-base", entry.localSha, entry.remoteSha);
+        baseSha = common ? common.trim() : entry.remoteSha;
+      } else {
+        const base = mergeBase(entry.localSha, targetRemote);
+        baseSha = base?.sha ?? null;
+      }
+
+      if (baseSha) {
+        if (!vitestBase) vitestBase = baseSha;
+        const tracked = git("diff", "--name-only", "-z", baseSha, entry.localSha);
+        if (tracked !== null) {
+          for (const file of tracked.split("\0").filter(Boolean)) {
+            files.add(file);
+          }
+        }
+      } else {
+        return {
+          rust: true,
+          js: true,
+          bundle: true,
+          ios: true,
+          reason: `cannot find merge base for ${entry.localRef}`,
+          vitestBase: null
+        };
+      }
+    }
+
+    return scopeForFiles(
+      files,
+      `${files.size} file(s) differ across ${activeEntries.length} push ref(s)`,
+      vitestBase
+    );
+  }
+
+  const base = mergeBase("HEAD", targetRemote);
   if (!base) {
-    return { rust: true, js: true, bundle: true, ios: true, reason: "no main to diff against" };
+    return { rust: true, js: true, bundle: true, ios: true, reason: "no main to diff against", vitestBase: null };
   }
   const files = changedFiles(base);
-  return {
-    rust: touches(files, RUST_PATHS),
-    js: touches(files, JS_PATHS),
-    bundle: touches(files, JS_PATHS),
-    ios: touches(files, IOS_PATHS),
-    reason: `${files.size} file(s) differ from ${base.ref}`
-  };
+  return scopeForFiles(files, `${files.size} file(s) differ from ${base.ref}`, base.sha);
 }
 
 function step(label, command, commandArgs) {
   const started = Date.now();
   process.stdout.write(`\n▶ ${label}\n`);
-  const run = spawnSync(command, commandArgs, { cwd: ROOT, stdio: "inherit" });
+  const run = spawnSync(command, commandArgs, { cwd: ROOT, stdio: ["ignore", "inherit", "inherit"] });
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
   if (run.status !== 0) {
     console.error(`\nerror: ${label} failed after ${seconds}s (${command} ${commandArgs.join(" ")})`);
@@ -133,7 +258,7 @@ if (lanes.length === 0) {
   process.exit(0);
 }
 console.log(`precheck: ${lanes.join(" + ")} (${scope.reason})`);
-const vitestBase = runEverything ? null : (mergeBase()?.sha ?? null);
+const vitestBase = runEverything ? null : scope.vitestBase;
 
 // Contract checks are sub-second and cross the Rust/TS boundary, so they run
 // whenever either side changed.
@@ -141,7 +266,7 @@ step("IPC channel parity", "node", ["scripts/check-tauri-bridge.mjs"]);
 step("main-thread handler allowlist", "node", ["scripts/check-main-thread-handlers.mjs"]);
 
 if (scope.js) {
-  step("eslint", "npx", ["eslint", "."]);
+  step("eslint", "npx", ["eslint", ".", "--cache", "--cache-location", "node_modules/.cache/eslint/"]);
   step("tsc", "npx", ["tsc", "--noEmit"]);
   // `--changed` runs only the test files whose import graph reaches a
   // changed file; a config or setup change widens it to the full suite.

@@ -9,7 +9,7 @@ mod resume;
 mod wait;
 mod workspace_tools;
 
-pub(crate) use launch::{launch_with_spec, AlongsideCheckout, LaunchSpec};
+pub(crate) use launch::{check_in_routine_id, launch_with_spec, AlongsideCheckout, LaunchSpec};
 pub use resume::resume_after_turn_actions;
 
 use std::path::{Path, PathBuf};

@@ -206,6 +206,7 @@
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
+  overflow: hidden;
   color: var(--muted);
 }
 
@@ -218,9 +219,13 @@
 
 /* The basename is the file and the directories ahead of it are context, but
    color alone is enough to split the two here: bold in a 38px chrome bar read
-   as a heading competing with the diff under it. */
+   as a heading competing with the diff under it. Both segments shrink when the
+   pane narrows so the count and actions stay put; the full path is on title. */
 .review-diff-heading-path strong {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--text);
   font-weight: inherit;
   white-space: nowrap;

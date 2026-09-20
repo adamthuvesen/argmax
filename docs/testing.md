@@ -34,18 +34,21 @@ touches:
 
 | Touched | Runs |
 |---|---|
-| anything | `check:tauri-bridge`, `check:main-thread` |
-| `src/**`, package or tool config, `scripts/**` | eslint, tsc, `vitest run --changed <merge-base>`, perf budgets |
-| `src-tauri/**` | `cargo fmt --check`, `cargo test`, `cargo clippy -D warnings` |
+| JS, Rust, iOS, assets, or unclassified paths | `check:tauri-bridge`, `check:main-thread` |
+| `src/**`, `src-tauri/**`, `ios/**`, assets, HTML entrypoints, package or tool config, `scripts/**` | eslint, tsc, `vitest run --changed <merge-base>`, perf budgets |
+| `src-tauri/**`, browser-blocking assets, Cargo or workflow config | `cargo fmt --check`, `cargo test`, `cargo clippy -D warnings` |
+| `ios/**` | `check:ios-fonts` |
 | any JS lane change | `vite build` + the bundle budget |
 
 Workflow changes run both language lanes. Paths are read from Git without quoting,
-so spaces and non-ASCII filenames cannot hide a change.
+so spaces and non-ASCII filenames cannot hide a change. Documentation-only
+changes skip checks. An unclassified path runs both language lanes until it is
+deliberately classified.
 
 CI runs the same lanes with the same path filter, so a push that passes the
 hook should not be failed by CI for a reason the hook could have caught.
 Never bypass the hook with `--no-verify`; if a lane is wrong for the change,
-fix the filter in `precheck.mjs`.
+fix the filters in `precheck.mjs` and `.github/workflows/ci.yml`.
 
 ### CI execution
 
@@ -70,6 +73,11 @@ state. Keys include the lane, platform, Cargo manifest and lockfile, toolchain
 file, and workflow. Each successful main build refreshes the cache under its commit
 SHA. A PR with no compatible cache can seed a cache scoped to that PR, which
 allows measuring warm runs before merging the workflow change.
+
+The dependency audit runs on every pull request and every push to `main`.
+Advisories can appear without a lockfile change, so limiting the PR audit to
+dependency updates lets an unrelated merge discover a new advisory only after
+it lands.
 
 ## TypeScript Tests
 

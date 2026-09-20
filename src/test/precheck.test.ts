@@ -30,7 +30,12 @@ function fixture() {
   for (const command of ["npx", "cargo"]) writeFileSync(path.join(bin, command), stub, { mode: 0o755 });
   const files = ["src/café.ts", "vite.config.ts", ".github/workflows/ci.yml"];
   for (const name of files) writeFileSync(path.join(repository, name), "initial\n");
-  for (const name of ["check-tauri-bridge.mjs", "check-main-thread-handlers.mjs", "check-bundle.mjs"]) {
+  for (const name of [
+    "check-tauri-bridge.mjs",
+    "check-main-thread-handlers.mjs",
+    "check-bundle.mjs",
+    "check-ios-fonts.mjs"
+  ]) {
     writeFileSync(path.join(repository, "scripts", name), stub);
   }
   writeFileSync(path.join(repository, "scripts/precheck.mjs"), readFileSync(new URL("../../scripts/precheck.mjs", import.meta.url)));
@@ -43,9 +48,34 @@ function fixture() {
     expect(result.status, result.stderr).toBe(0);
   }
   return {
-    change(name: string) { writeFileSync(path.join(repository, name), "changed\n"); },
+    change(name: string) {
+      const target = path.join(repository, name);
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(target, "changed\n");
+    },
+    commit(message: string) {
+      const result = spawnSync(
+        "git",
+        ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-am", message, "--no-gpg-sign", "-q"],
+        { cwd: repository, env, encoding: "utf8" }
+      );
+      expect(result.status, result.stderr).toBe(0);
+      return spawnSync("git", ["rev-parse", "HEAD"], { cwd: repository, env, encoding: "utf8" }).stdout.trim();
+    },
+    head() {
+      return spawnSync("git", ["rev-parse", "HEAD"], { cwd: repository, env, encoding: "utf8" }).stdout.trim();
+    },
     run(base = "HEAD") {
       const result = spawnSync(process.execPath, ["scripts/precheck.mjs", "--base", base], { cwd: repository, env, encoding: "utf8" });
+      return { ...result, checks: readFileSync(log, "utf8") };
+    },
+    runWithPush(input: string, remote = "origin") {
+      const result = spawnSync(process.execPath, ["scripts/precheck.mjs", remote, "git@example.invalid:test/repo.git"], {
+        cwd: repository,
+        env,
+        input,
+        encoding: "utf8",
+      });
       return { ...result, checks: readFileSync(log, "utf8") };
     },
   };
@@ -56,6 +86,11 @@ describe("precheck CLI", () => {
     ["src/café.ts", ["eslint", "vite build", "check-bundle.mjs"]],
     [".github/workflows/ci.yml", ["eslint", "cargo test", "check-bundle.mjs"]],
     ["vite.config.ts", ["vite build", "check-bundle.mjs"]],
+    ["src-tauri/src/lib.rs", ["eslint", "cargo test", "check-bundle.mjs"]],
+    ["ios/Argmax/Sources/App.swift", ["eslint", "check-ios-fonts.mjs", "check-bundle.mjs"]],
+    ["assets/browser-blocking/light.txt", ["eslint", "cargo test", "check-bundle.mjs"]],
+    ["index.html", ["eslint", "vite build", "check-bundle.mjs"]],
+    ["Dockerfile", ["eslint", "cargo test", "check-bundle.mjs"]],
   ])("selects checks for %s in a checkout with spaces and #", (name, checks) => {
     const repo = fixture();
     repo.change(name);
@@ -64,11 +99,71 @@ describe("precheck CLI", () => {
     for (const check of checks) expect(result.checks).toContain(check);
   });
 
+  it("skips checks for documentation-only changes", () => {
+    const repo = fixture();
+    repo.change("docs/testing.md");
+    const result = repo.run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("nothing to check");
+    expect(result.checks).toBe("");
+  });
+
   it("rejects an invalid explicit base before running checks", () => {
     const repo = fixture();
     const result = repo.run("does-not-exist");
     expect(result.status).toBe(2);
     expect(result.stderr).toContain("cannot find a merge base");
     expect(result.checks).toBe("");
+  });
+
+  it("skips checks when deleting a remote branch via git push stdin", () => {
+    const repo = fixture();
+    repo.change(".github/workflows/ci.yml");
+    const result = repo.runWithPush(
+      "(delete) 0000000000000000000000000000000000000000 refs/heads/feature-old 1111111111111111111111111111111111111111\n"
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("deleting remote ref, skipping checks");
+    expect(result.checks).toBe("");
+  });
+
+  it("scopes checks to the pushed commits when git push stdin is provided, ignoring unrelated working-tree edits", () => {
+    const repo = fixture();
+    const initialSha = repo.head();
+
+    // Commit only a JS change
+    repo.change("src/café.ts");
+    const commitSha = repo.commit("update café");
+
+    // Dirty an unrelated workflow file in the working tree without committing
+    repo.change(".github/workflows/ci.yml");
+
+    // Push stdin indicates pushing only initialSha..commitSha
+    const result = repo.runWithPush(
+      `refs/heads/main ${commitSha} refs/heads/main ${initialSha}\n`
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.checks).toContain("eslint");
+    expect(result.checks).toContain("vite build");
+    // cargo test must NOT be triggered because the pushed commit only changed JS,
+    // even though .github/workflows/ci.yml is dirty in the working tree.
+    expect(result.checks).not.toContain("cargo test");
+  });
+
+  it("skips checks when git push hook receives no refs to push (e.g. non-fast-forward rejection)", () => {
+    const repo = fixture();
+    repo.change(".github/workflows/ci.yml");
+    const result = repo.runWithPush("");
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("no refs to push, skipping checks");
+    expect(result.checks).toBe("");
+  });
+
+  it("passes --cache and --cache-location to eslint", () => {
+    const repo = fixture();
+    repo.change("src/café.ts");
+    const result = repo.run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.checks).toContain("eslint . --cache --cache-location node_modules/.cache/eslint/");
   });
 });

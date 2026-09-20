@@ -1,8 +1,9 @@
 //! An Arc is a long-lived body of work that can span several registered
 //! projects: a name, a brief, a state, a home project, a coordinator session
 //! pointer, and a folder of shared files. This module is persistence plus the
-//! small domain rules around it (validation, the on-disk `BRIEF.md`/`NOTES.md`
-//! pair); it deliberately does not launch sessions — that is a later phase.
+//! small domain rules around it (validation, the on-disk `BRIEF.md`,
+//! `NOTES.md` and `LOG.md` trio); it deliberately does not launch sessions —
+//! that is a later phase.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -42,6 +43,9 @@ CREATE INDEX idx_sessions_arc_id ON sessions(arc_id);
 
 const BRIEF_FILE_NAME: &str = "BRIEF.md";
 const NOTES_FILE_NAME: &str = "NOTES.md";
+/// The append-only companion to `NOTES.md`: history the coordinator writes and
+/// nobody reads by default, so the notes can stay the current state.
+const LOG_FILE_NAME: &str = "LOG.md";
 
 /// How many of an Arc's sessions may be active (not complete, failed, or
 /// cancelled) at once, the coordinator excluded — the coordinator plans and
@@ -263,6 +267,26 @@ pub fn set_notes_snapshot(connection: &Connection, arc_id: &str, notes: &str) ->
 
 pub fn notes_path(arc: &ArcRecord) -> PathBuf {
     PathBuf::from(&arc.dir).join(NOTES_FILE_NAME)
+}
+
+pub fn log_path(arc: &ArcRecord) -> PathBuf {
+    PathBuf::from(&arc.dir).join(LOG_FILE_NAME)
+}
+
+/// `NOTES.md`'s size in bytes, `None` when there is no file — what
+/// `arc_status` reports so a coordinator can see its notes growing instead of
+/// discovering it from a member's context bill.
+pub fn notes_size(arc: &ArcRecord) -> Option<u64> {
+    file_size(&notes_path(arc))
+}
+
+/// `LOG.md`'s size in bytes, `None` when there is no file.
+pub fn log_size(arc: &ArcRecord) -> Option<u64> {
+    file_size(&log_path(arc))
+}
+
+fn file_size(path: &Path) -> Option<u64> {
+    fs::metadata(path).ok().map(|metadata| metadata.len())
 }
 
 pub fn get_arc(connection: &Connection, arc_id: &str) -> ArgmaxResult<ArcRecord> {
@@ -593,8 +617,8 @@ fn validate_name(name: &str) -> ArgmaxResult<String> {
 ///
 /// A default dir is created under the app data dir and always starts from the
 /// caller's brief. A user-supplied dir must already exist; its own
-/// `BRIEF.md`/`NOTES.md` are never overwritten, and an empty caller brief
-/// reads back whatever `BRIEF.md` is already there.
+/// `BRIEF.md`, `NOTES.md` and `LOG.md` are never overwritten, and an empty
+/// caller brief reads back whatever `BRIEF.md` is already there.
 fn resolve_create_dir(
     app_data_dir: &Path,
     id: &str,
@@ -657,10 +681,8 @@ fn resolve_create_dir(
             if !brief_exists {
                 write_file(&brief_path, &effective_brief)?;
             }
-            let notes_path = dir.join(NOTES_FILE_NAME);
-            if !notes_path.exists() {
-                write_file(&notes_path, "")?;
-            }
+            create_empty_if_missing(&dir.join(NOTES_FILE_NAME))?;
+            create_empty_if_missing(&dir.join(LOG_FILE_NAME))?;
             Ok((dir, effective_brief))
         }
         None => {
@@ -679,10 +701,20 @@ fn resolve_create_dir(
                 )
             })?;
             write_file(&dir.join(BRIEF_FILE_NAME), brief)?;
-            write_file(&dir.join(NOTES_FILE_NAME), "")?;
+            create_empty_if_missing(&dir.join(NOTES_FILE_NAME))?;
+            create_empty_if_missing(&dir.join(LOG_FILE_NAME))?;
             Ok((dir, brief.to_string()))
         }
     }
+}
+
+/// `NOTES.md` and `LOG.md` are started empty but never replaced: adopting a
+/// folder that already holds either one leaves it exactly as it is.
+fn create_empty_if_missing(path: &Path) -> ArgmaxResult<()> {
+    if path.exists() {
+        return Ok(());
+    }
+    write_file(path, "")
 }
 
 fn write_file(path: &Path, content: &str) -> ArgmaxResult<()> {
@@ -850,7 +882,7 @@ mod tests {
     }
 
     #[test]
-    fn default_dir_writes_brief_and_notes() {
+    fn default_dir_writes_brief_notes_and_log() {
         let database = database_with_project();
         let connection = database.connection();
         let data_dir = tempfile::tempdir().unwrap();
@@ -864,8 +896,76 @@ mod tests {
             "Ship the thing."
         );
         assert_eq!(fs::read_to_string(dir.join("NOTES.md")).unwrap(), "");
+        assert_eq!(fs::read_to_string(dir.join("LOG.md")).unwrap(), "");
+        assert_eq!(notes_path(&arc), dir.join("NOTES.md"));
+        assert_eq!(log_path(&arc), dir.join("LOG.md"));
+        assert_eq!(notes_size(&arc), Some(0));
+        assert_eq!(log_size(&arc), Some(0));
         assert_eq!(arc.brief, "Ship the thing.");
         assert_eq!(arc.state, ArcState::Active);
+    }
+
+    #[test]
+    fn existing_notes_and_log_in_a_user_dir_are_left_alone() {
+        let database = database_with_project();
+        let connection = database.connection();
+        let data_dir = tempfile::tempdir().unwrap();
+        let user_dir = tempfile::tempdir().unwrap();
+        fs::write(user_dir.path().join("NOTES.md"), "Carried over.").unwrap();
+        fs::write(user_dir.path().join("LOG.md"), "2026-01-01 started.\n").unwrap();
+
+        let input = create_input(Some(user_dir.path().to_string_lossy().into_owned()));
+        let arc = create_arc(&connection, data_dir.path(), &input).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(user_dir.path().join("NOTES.md")).unwrap(),
+            "Carried over."
+        );
+        assert_eq!(
+            fs::read_to_string(user_dir.path().join("LOG.md")).unwrap(),
+            "2026-01-01 started.\n"
+        );
+        assert_eq!(notes_size(&arc), Some("Carried over.".len() as u64));
+        assert_eq!(log_size(&arc), Some("2026-01-01 started.\n".len() as u64));
+    }
+
+    #[test]
+    fn a_user_dir_without_notes_or_log_gets_empty_ones() {
+        let database = database_with_project();
+        let connection = database.connection();
+        let data_dir = tempfile::tempdir().unwrap();
+        let user_dir = tempfile::tempdir().unwrap();
+
+        let input = create_input(Some(user_dir.path().to_string_lossy().into_owned()));
+        let arc = create_arc(&connection, data_dir.path(), &input).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(user_dir.path().join("NOTES.md")).unwrap(),
+            ""
+        );
+        assert_eq!(
+            fs::read_to_string(user_dir.path().join("LOG.md")).unwrap(),
+            ""
+        );
+        assert_eq!(notes_size(&arc), Some(0));
+        assert_eq!(log_size(&arc), Some(0));
+    }
+
+    #[test]
+    fn sizes_are_none_when_the_folder_is_gone() {
+        let arc = ArcRecord {
+            id: "arc-missing".to_string(),
+            name: "Gone".to_string(),
+            brief: String::new(),
+            state: ArcState::Active,
+            home_project_id: "p1".to_string(),
+            coordinator_session_id: None,
+            dir: "/nonexistent/argmax-arc-dir".to_string(),
+            created_at: "2026-01-01T00:00:00.000Z".to_string(),
+            updated_at: "2026-01-01T00:00:00.000Z".to_string(),
+        };
+        assert_eq!(notes_size(&arc), None);
+        assert_eq!(log_size(&arc), None);
     }
 
     #[test]

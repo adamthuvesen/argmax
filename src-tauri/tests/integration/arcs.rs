@@ -959,6 +959,21 @@ async fn arc_status_answers_for_a_member_and_refuses_a_session_outside_any_arc()
     assert!(members
         .iter()
         .any(|member| member["sessionId"] == "session-member"));
+    // A coordinator with no clock of its own dates NOTES.md from this.
+    let now = outcome["now"].as_str().expect("now");
+    assert!(
+        now.len() >= "2026-01-01 00:00".len() && now.starts_with("20"),
+        "{status}"
+    );
+    // A freshly created arc folder has an empty NOTES.md and LOG.md.
+    assert_eq!(outcome["notesBytes"], 0, "{status}");
+    assert_eq!(outcome["notesApproxTokens"], 0, "{status}");
+    assert_eq!(outcome["notesOversized"], false, "{status}");
+    assert_eq!(outcome["logBytes"], 0, "{status}");
+    assert_eq!(
+        std::fs::read_to_string(std::path::Path::new(&arc.dir).join("LOG.md")).expect("LOG.md"),
+        ""
+    );
 
     let (outsider_socket, outsider_token) = credential(
         &control.registry,

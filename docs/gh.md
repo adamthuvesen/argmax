@@ -89,10 +89,14 @@ tie-breaker. Refresh timestamps never select a PR. A workspace projects the
 same most recently active session that its chat displays.
 
 The workspace card shows the primary PR and expandable history, including
-individual state, branch, and exact links. The sidebar aggregates verified
-associations: any open PR wins, all merged shows merged, and other terminal
-combinations show closed. Running and awaiting-input markers retain their
-precedence. Priority uses actual PR changes rather than polling freshness.
+individual state, branch, and exact links. The sidebar marker names that same
+primary PR, so pinning one in the card moves the row glyph with it; a row with
+several verified associations also carries their count. Running and
+awaiting-input markers retain their precedence. Priority placement asks the
+aggregate instead — any open PR wins, all merged shows merged, and other
+terminal combinations show closed — because an open PR is outstanding work
+even when the primary has already merged. Priority uses actual PR changes
+rather than polling freshness.
 
 Existing PR links open their exact stored URL. The separate create action
 validates the displayed checkout branch against Git and supplies `--head` to

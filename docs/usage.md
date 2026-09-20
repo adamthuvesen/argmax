@@ -18,6 +18,17 @@ Refresh on that card retries remaining only. The iPhone app shows the same
 read as a card on its Usage page
 ([ios/Argmax/README.md](../ios/Argmax/README.md)).
 
+The same read has a second, smaller home: **Plans left** at the top of the
+sidebar's Argmax menu ([IdentityPlans.tsx](../src/renderer/components/IdentityPlans.tsx)),
+so the figures are one click away from any chat. It draws one meter per
+reported window, grouped by provider, using the page's own `RemainingBar` and
+series colours. A login that reports no window — Cursor, an API key, a
+signed-out CLI — is left out instead of shown empty; when no login reports one
+the block disappears and the menu keeps the shape it has always had, and the
+Usage page remains the place a failed read is explained. Opening the menu
+paints the cached figures and re-reads the accounts only once they are more
+than five minutes old, so repeated opens do not poll provider endpoints.
+
 The page arrives in one piece: the ledger and the remaining read are separate
 fetches, and the skeleton covers both until the slower one lands, so no part
 of the page paints alone and reflows a beat later. The wait is capped at

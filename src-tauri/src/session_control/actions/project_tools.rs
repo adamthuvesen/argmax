@@ -179,33 +179,17 @@ pub(super) fn schedule_followup(
         .map(task_label)
         .unwrap_or_else(|| task_label(&action.prompt));
     let followup_id = Uuid::new_v4().to_string();
-    let connection = database.connection();
-    upsert_routine(
-        &connection,
-        &UpsertRoutineInput {
+    schedule_same_session_wake(
+        &database,
+        &parent,
+        SameSessionWake {
             id: followup_id.clone(),
             name: name.clone(),
             project_id: target.project.id,
             prompt: action.prompt,
-            provider: parent.provider.as_str().to_string(),
-            model_label: parent.model_label.clone(),
-            model_id: parent.model_id.clone(),
-            // The whole point is to wake *this* chat, with its transcript: the
-            // scheduler sends a `same_session` prompt as a follow-up turn.
-            run_target: RoutineRunTarget::SameSession,
-            arc_id: None,
-            cron_expr: None,
-            run_once_at: Some(run_at.clone()),
-            enabled: true,
-            // A wake, not a routine: once it fires, the scheduler clears the
-            // row instead of leaving it paused in the user's task list.
-            created_by: RoutineAuthor::Agent,
+            run_at: run_at.clone(),
         },
-        Some(run_at.clone()),
-    )
-    .map_err(argmax_protocol_error)?;
-    set_routine_last_session(&connection, &followup_id, Some(&parent.session_id))
-        .map_err(argmax_protocol_error)?;
+    )?;
     Ok(SessionControlResponse::new(SessionControlResult::Followup(
         ScheduledFollowup {
             followup_id,
@@ -214,6 +198,55 @@ pub(super) fn schedule_followup(
             run_at,
         },
     )))
+}
+
+/// One wake aimed at the chat that asked for it.
+pub(super) struct SameSessionWake {
+    pub id: String,
+    pub name: String,
+    pub project_id: String,
+    pub prompt: String,
+    /// RFC 3339, already floored to the scheduler's tick by the caller.
+    pub run_at: String,
+}
+
+/// Store a one-shot `same_session` routine pointed at `parent`'s chat: the
+/// shape both `schedule_followup` and a launch's check-in take, so the two
+/// wakes stay identical rows that `schedule_list` and `schedule_cancel` treat
+/// alike. Takes the write connection itself, so callers must not be holding a
+/// read guard when they call it (see `own_project_routine`).
+pub(super) fn schedule_same_session_wake(
+    database: &Database,
+    parent: &ParentLaunchSettings,
+    wake: SameSessionWake,
+) -> Result<(), SessionControlError> {
+    let connection = database.connection();
+    upsert_routine(
+        &connection,
+        &UpsertRoutineInput {
+            id: wake.id.clone(),
+            name: wake.name,
+            project_id: wake.project_id,
+            prompt: wake.prompt,
+            provider: parent.provider.as_str().to_string(),
+            model_label: parent.model_label.clone(),
+            model_id: parent.model_id.clone(),
+            // The whole point is to wake *this* chat, with its transcript: the
+            // scheduler sends a `same_session` prompt as a follow-up turn.
+            run_target: RoutineRunTarget::SameSession,
+            arc_id: None,
+            cron_expr: None,
+            run_once_at: Some(wake.run_at.clone()),
+            enabled: true,
+            // A wake, not a routine: once it fires, the scheduler clears the
+            // row instead of leaving it paused in the user's task list.
+            created_by: RoutineAuthor::Agent,
+        },
+        Some(wake.run_at),
+    )
+    .map_err(argmax_protocol_error)?;
+    set_routine_last_session(&connection, &wake.id, Some(&parent.session_id))
+        .map_err(argmax_protocol_error)
 }
 
 pub(super) fn list_schedules(

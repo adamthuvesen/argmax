@@ -35,7 +35,7 @@ export function GoalStatus({ session }: { session: SessionSummary }): JSX.Elemen
       setGoal(await api.get({ sessionId: session.id }));
     } catch {
       // A goal that cannot be read is not worth an error in the lane; the next
-      // delta re-reads it.
+      // goal delta re-reads it.
     }
   }, [session.id]);
 
@@ -46,12 +46,17 @@ export function GoalStatus({ session }: { session: SessionSummary }): JSX.Elemen
   useEffect(() => {
     const dashboard = window.argmax?.dashboard;
     if (!dashboard) return;
+    // Goal writes always publish `goalChangedIds` (`publish_goal_changed`), so
+    // that plus a resync is the whole signal. Reading on any delta touching
+    // this session meant a `goal:get` per streamed delta — measured at ~15 a
+    // second on a running chat, for a row that changes a handful of times a
+    // turn.
     return dashboard.onDelta((delta) => {
-      if (delta.resyncRequired || delta.goalChangedIds?.length || delta.changedSessionIds?.includes(session.id)) {
+      if (delta.resyncRequired || delta.goalChangedIds?.length) {
         void refresh();
       }
     });
-  }, [refresh, session.id]);
+  }, [refresh]);
 
   if (!goal || goal.id === dismissed) return null;
 

@@ -77,6 +77,7 @@ import { warmLedgerPagesOnIntent } from "../lib/ledgerPrefetch.js";
 import { useUnreadWorkspaceIds } from "../lib/sessionUnread.js";
 import { chatSessionByWorkspace } from "../lib/workspaceChat.js";
 import { useMascotVisible } from "../lib/mascotVisibility.js";
+import { IdentityPlans } from "./IdentityPlans.js";
 import { Mascot } from "./Mascot.js";
 import { SidebarSessionRow, type WorkspaceClickModifiers } from "./SidebarSessionRow.js";
 
@@ -1704,6 +1705,7 @@ export function Sidebar({
                 <span className="identity-menu-subtitle">Local workspace · {APP_VERSION}</span>
               </li>
               <li className="project-picker-divider" role="separator" />
+              <IdentityPlans onOpenUsage={() => runIdentityAction(showUsagePage)} />
               <li role="none">
                 <button
                   type="button"

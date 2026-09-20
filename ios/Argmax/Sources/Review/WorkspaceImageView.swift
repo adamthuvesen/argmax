@@ -48,7 +48,8 @@ struct WorkspaceImageView: View {
             } else if let failure {
                 EmptyState(mark: .glyph("photo"), message: failure)
             } else {
-                ProgressView().tint(Theme.muted)
+                WorkingNest(size: 24, tint: Theme.muted)
+                    .accessibilityLabel("Loading image…")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

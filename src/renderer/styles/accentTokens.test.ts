@@ -382,6 +382,27 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     }
   });
 
+  it("shapes composer fields with the same OpenType features as their highlight mirror", () => {
+    // The UA sheet's `font` shorthand resets font-feature-settings on form
+    // controls, so a composer textarea drops the `calt`/`ss01`/`tnum` that
+    // :root hands every div — including the mirror painting behind it. The
+    // cost is a fraction of a pixel per line, but line breaking is a cliff:
+    // in the width window between the two, the textarea breaks one word
+    // earlier than the mirror and the caret strands a word to the right of
+    // the painted text.
+    const fields: [string, string][] = [
+      ["src/renderer/styles/chat-chrome.css", ".composer-input input,\n.composer-input textarea"],
+      ["src/renderer/styles/chat-composer-chips.css", ".session-input input,\n.session-input textarea"]
+    ];
+    for (const [file, selector] of fields) {
+      expect(cssRuleBody(readSource(file), selector)).toContain("font-feature-settings: inherit;");
+    }
+
+    // The mirror declares none, so it keeps inheriting the app's features.
+    const chips = readSource("src/renderer/styles/chat-composer-chips.css");
+    expect(cssRuleBody(chips, ".composer-highlight-backdrop")).not.toContain("font-feature-settings");
+  });
+
   it("keeps markdown table labels in intrinsic column sizing", () => {
     const conversation = readSource("src/renderer/styles/chat-conversation.css");
     const tableCells = cssRuleBody(conversation, ".markdown th,\n.markdown td");

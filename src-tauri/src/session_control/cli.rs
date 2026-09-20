@@ -646,6 +646,7 @@ mod tests {
                 task_label: None,
                 reasoning: None,
                 permission_mode: None,
+                check_in_minutes: None,
             })
         );
 

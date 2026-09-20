@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import type { JSX } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EventType, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
 import { useAgentTabs, type AgentTabsState } from "../hooks/useAgentTabs.js";
@@ -263,6 +264,48 @@ describe("AgentsView", () => {
     });
     expect(loadsFor("task-1")).toBe(3);
     expect(loadsFor("task-2")).toBe(4);
+  });
+
+  it("does not reload panes when the session timeline hands it a new events array", async () => {
+    // The dock's own read merges into the session timeline, so `events`
+    // arrives as a fresh array seconds apart while the parent runs. Keying a
+    // load on that made each pane read again the moment its own read landed.
+    const onLoadAgentEvents = vi.fn(() => Promise.resolve());
+    const events = [
+      event("native-start", "agent.started", "2026-05-12T15:00:02.000Z", "Agent started", {
+        providerInvocationId: "invocation-1",
+        providerChildSessionId: "child-native",
+        providerParentConversationId: "parent-native",
+        agentRootToolUseId: "task-1",
+        agentRunId: "task-1"
+      }),
+      launch("task-1", "Explore repo"),
+      launch("task-2", "Write tests")
+    ];
+    const tabIds = ["native-agent:task-1:parent-native:child-native", "task-2"];
+    const dock = (): JSX.Element => (
+      <AgentsView
+        events={[...events]}
+        parentSession={session}
+        agentTabs={agentTabs({ tabIds, activeTabId: tabIds[0] ?? null })}
+        workspace={workspace}
+        onLoadAgentEvents={onLoadAgentEvents}
+      />
+    );
+
+    const { rerender } = render(dock());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(onLoadAgentEvents).toHaveBeenCalledTimes(2);
+
+    for (let tail = 0; tail < 5; tail += 1) {
+      rerender(dock());
+      await act(async () => {
+        await Promise.resolve();
+      });
+    }
+    expect(onLoadAgentEvents).toHaveBeenCalledTimes(2);
   });
 
   it("reloads a subagent that finished while its tab was hidden", async () => {

@@ -37,7 +37,7 @@ import type { PriorityReasonKind } from "../lib/priority.js";
 import {
   verifiedWorkspacePrs,
   workspacePrCountLabel,
-  workspacePrSummaryState
+  workspacePrimaryPrState
 } from "../lib/sessionPrs.js";
 import { resolveSessionIcon, resolveSessionIconColor } from "../lib/sessionIcons.js";
 import { stableHash32 } from "../lib/stableHash.js";
@@ -322,7 +322,10 @@ function SidebarSessionRowInner({
       : null;
 
   const displayLabel = workspace.taskLabel.trim() || workspace.branch || "Untitled chat";
-  const summaryPrState = workspacePrSummaryState(workspace);
+  // The marker and title name the session's primary PR — the same one the
+  // card header and the git menu act on — so pinning a PR there moves this
+  // glyph too.
+  const primaryPrState = workspacePrimaryPrState(workspace);
   const verifiedPrs = verifiedWorkspacePrs(workspace);
   const primaryPr = verifiedPrs.find((pr) => pr.isPrimary) ?? verifiedPrs[0] ?? null;
   const prCountLabel = workspacePrCountLabel(workspace);
@@ -341,8 +344,8 @@ function SidebarSessionRowInner({
   const prTitle =
     verifiedPrs.length > 1 && prCountLabel
       ? ` — pull requests: ${prCountLabel}`
-      : summaryPrState && (primaryPr?.prNumber ?? workspace.prNumber) != null
-        ? ` — ${summaryPrState.toLowerCase()} pull request #${primaryPr?.prNumber ?? workspace.prNumber}`
+      : primaryPrState && (primaryPr?.prNumber ?? workspace.prNumber) != null
+        ? ` — ${primaryPrState.toLowerCase()} pull request #${primaryPr?.prNumber ?? workspace.prNumber}`
         : "";
   const priorityTitle = priorityReason ? ` — ${PRIORITY_TITLE[priorityReason]}` : "";
   // A turn in flight takes the marker cell; unread waits until it ends.
@@ -442,7 +445,7 @@ function SidebarSessionRowInner({
   const statusOverlay = statusOverlayFor({
     working,
     state: workspace.state,
-    prState: summaryPrState,
+    prState: primaryPrState,
     priorityReason
   });
   const hasCustomIcon = workspace.icon ? resolveSessionIcon(workspace.icon) !== null : false;
@@ -458,7 +461,7 @@ function SidebarSessionRowInner({
     ) : statusOverlay ? (
       <StatusMarker
         working={working}
-        prState={summaryPrState}
+        prState={primaryPrState}
         priorityReason={priorityReason}
         phaseKey={workspace.id}
       />
@@ -470,7 +473,22 @@ function SidebarSessionRowInner({
     <div
       className="session-row"
       data-workspace-id={workspace.id}
+      data-active={isSelected ? "true" : undefined}
+      data-open={isOpenInGrid ? "true" : undefined}
       data-icon-color={hasCustomIcon ? resolveSessionIconColor(workspace.iconColor) : undefined}
+      onClick={(event) => {
+        if (
+          event.target === event.currentTarget ||
+          (event.target as HTMLElement).classList.contains("session-row-actions")
+        ) {
+          if (consumeWorkspaceDragClick(workspace.id)) return;
+          onOpenWorkspaceChat(workspace.id, {
+            ctrlOrMeta: event.metaKey || event.ctrlKey,
+            alt: event.altKey
+          });
+        }
+      }}
+      onContextMenu={isEditing ? undefined : handleContextMenu}
     >
       {isEditing ? (
         // The row keeps its glyph, layout, and subtitle; only the title text
@@ -576,32 +594,37 @@ function SidebarSessionRowInner({
             )}
             {prCountBadge}
           </button>
-      {onTogglePin ? (
-        <button
-          className="session-row-action session-pin-btn"
-          title={workspace.pinned ? "Unpin chat" : "Pin chat"}
-          aria-label={workspace.pinned ? "Unpin chat" : "Pin chat"}
-          aria-pressed={workspace.pinned}
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onTogglePin(workspace.id, !workspace.pinned);
-          }}
-        >
-          {workspace.pinned ? <PinOff size={12} /> : <Pin size={12} />}
-        </button>
-      ) : null}
-          {showArchive && (
-            <button
-              className="session-archive-btn"
-              title="Archive chat"
-              aria-label="Archive chat"
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onArchiveWorkspace(workspace.id); }}
-            >
-              <Archive size={12} />
-            </button>
-          )}
+          <div className="session-row-actions">
+            {onTogglePin ? (
+              <button
+                className="session-row-action session-pin-btn"
+                title={workspace.pinned ? "Unpin chat" : "Pin chat"}
+                aria-label={workspace.pinned ? "Unpin chat" : "Pin chat"}
+                aria-pressed={workspace.pinned}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onTogglePin(workspace.id, !workspace.pinned);
+                }}
+              >
+                {workspace.pinned ? <PinOff size={12} /> : <Pin size={12} />}
+              </button>
+            ) : null}
+            {showArchive && (
+              <button
+                className="session-row-action session-archive-btn"
+                title="Archive chat"
+                aria-label="Archive chat"
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onArchiveWorkspace(workspace.id);
+                }}
+              >
+                <Archive size={12} />
+              </button>
+            )}
+          </div>
         </>
       )}
       {contextMenuPoint
@@ -802,7 +825,6 @@ export function sidebarSessionRowEqual(
     pw.pinned !== nw.pinned ||
     pw.prState !== nw.prState ||
     pw.prNumber !== nw.prNumber ||
-    workspacePrSummaryState(pw) !== workspacePrSummaryState(nw) ||
     !sidebarPrsEqual(verifiedWorkspacePrs(pw), verifiedWorkspacePrs(nw)) ||
     pw.icon !== nw.icon ||
     pw.iconColor !== nw.iconColor

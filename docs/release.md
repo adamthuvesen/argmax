@@ -1,22 +1,74 @@
 # Release and Signing
 
-Argmax releases target macOS as manually distributed app and DMG bundles.
+Argmax releases target macOS as a universal DMG attached to a GitHub Release.
 Automatic self-update is deferred and is not part of the current release scope.
 
-## Optional Distribution Signing
+## Cutting a Release
 
-For a public macOS distribution, load Apple signing and notarization credentials
-from 1Password:
+Releases are tag-driven. [`.github/workflows/release.yml`](../.github/workflows/release.yml)
+runs on a `v*` tag, builds a universal binary on a macOS runner, and opens a
+**draft** GitHub Release with the DMG attached.
 
 ```bash
-export APPLE_ID="$(op read 'op://<vault>/Apple ID/username')"
-export APPLE_APP_SPECIFIC_PASSWORD="$(op read 'op://<vault>/Argmax notarization/password')"
-export APPLE_TEAM_ID="$(op read 'op://<vault>/Argmax notarization/team id')"
-export APPLE_SIGNING_IDENTITY="$(op read 'op://<vault>/Argmax signing/signing identity')"
+# package.json, src-tauri/Cargo.toml and src-tauri/tauri.conf.json carry the
+# same version; move all three, then tag the commit that did it.
+git tag v0.5.0
+git push origin v0.5.0
 ```
 
-Local and personal builds can remain ad hoc signed. They will not pass public
-Gatekeeper assessment.
+CI already gated the commit the tag points at, so the release workflow does not
+re-run the test matrix — it builds and publishes. The release stays a draft
+until you publish it by hand: the DMG is reviewable first, and a botched build
+never becomes a download. Paste the `CHANGELOG.md` section for that version in
+as the release notes.
+
+`workflow_dispatch` re-runs a failed publish. Select a tag as the ref — the
+workflow refuses to release from a branch.
+
+## Signing and Notarization
+
+Without Apple credentials the build falls back to the ad-hoc
+`"signingIdentity": "-"` in `tauri.conf.json`. That produces a DMG macOS
+refuses to open with *"the developer cannot be verified"*, which is fine for
+testing the pipeline and useless for distribution.
+
+A public release needs an Apple Developer Program membership, a Developer ID
+Application certificate, and these repository secrets:
+
+| Secret | What it is |
+|---|---|
+| `APPLE_CERTIFICATE` | The Developer ID `.p12`, base64-encoded |
+| `APPLE_CERTIFICATE_PASSWORD` | The password set when exporting that `.p12` |
+| `APPLE_SIGNING_IDENTITY` | The certificate's name, e.g. `Developer ID Application: Your Name (TEAM123456)` |
+| `APPLE_API_ISSUER` | App Store Connect issuer ID |
+| `APPLE_API_KEY` | App Store Connect key ID |
+| `APPLE_API_KEY_P8` | The `.p8` private key, base64-encoded |
+
+The workflow decodes `APPLE_API_KEY_P8` onto the runner and points Tauri's
+`APPLE_API_KEY_PATH` at it, because Tauri reads that key from a file rather
+than from a variable. Every one of these is optional: the build skips signing
+and notarization when they are absent and picks both up when they appear.
+
+An App Store Connect API key is preferred over the Apple ID route
+(`APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID`). The key is scoped and
+revocable, survives an Apple ID password change, and does not need an
+app-specific password. Note the variable is `APPLE_PASSWORD`, not
+`APPLE_APP_SPECIFIC_PASSWORD`, if you use that route anyway.
+
+**Notarization is not automatic.** `tauri build` signs, notarizes, and staples
+in one pass only when the variables are present while it runs. Building first
+and exporting the credentials afterwards produces an unnotarized bundle; the
+build has to be repeated.
+
+For a local signed build, load the same values from 1Password first:
+
+```bash
+export APPLE_SIGNING_IDENTITY="$(op read 'op://<vault>/Argmax signing/signing identity')"
+export APPLE_API_ISSUER="$(op read 'op://<vault>/Argmax notarization/issuer id')"
+export APPLE_API_KEY="$(op read 'op://<vault>/Argmax notarization/key id')"
+export APPLE_API_KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_XXXXXXXXXX.p8"
+npm run tauri:build:universal
+```
 
 ## App Icons
 
@@ -43,11 +95,16 @@ with 16px (`icp4`) showed a stamp-sized fox in that popup.
 ## Packaging
 
 ```bash
-npm run tauri:build
+npm run tauri:build            # this machine's architecture only
+npm run tauri:build:universal  # Intel + Apple silicon, what a release ships
 ```
 
 Build outputs are placed in `src-tauri/target/release/bundle/`. The current
-configuration creates the DMG and app bundle required for manual distribution.
+configuration creates the DMG and app bundle. The universal build needs both
+`aarch64-apple-darwin` and `x86_64-apple-darwin` Rust targets installed; the
+plain build is the faster one for local checks, and the one a release publishes
+is always universal, because a release built on Apple silicon otherwise ships
+nothing an Intel Mac can run.
 
 Argmax → Check for Updates… opens the GitHub Releases page, because that is
 where a build actually comes from today. The checked-in updater configuration
@@ -59,10 +116,15 @@ artifact and feed contract.
 ## Verification
 
 1. Build the app and DMG.
-2. For a public signed release, verify Gatekeeper validation:
+2. For a public signed release, verify Gatekeeper validation and that the
+   notarization ticket is stapled — the second check is what proves the DMG
+   opens on a machine that has never seen it, offline:
 
 ```bash
 spctl --assess --type execute /Applications/Argmax.app
+xcrun stapler validate /Applications/Argmax.app
 ```
 
 3. Verify app launch, provider execution, chat resume, terminal PTY and diff rendering.
+4. Publish the draft release and update the Homebrew cask — see
+   [homebrew.md](homebrew.md).

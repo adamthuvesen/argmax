@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TimelineEvent } from "../../shared/types.js";
-import { coalesceAssistantGroups, liveThoughtOwnsProgress } from "./sessionTurnView.js";
+import { coalesceAssistantGroups, isProgressNarration, liveThoughtOwnsProgress } from "./sessionTurnView.js";
 import type { ToolCall, TurnToolItem } from "./toolCalls.js";
 
 function assistantEvent(
@@ -564,5 +564,22 @@ describe("liveThoughtOwnsProgress", () => {
     const events = [thought("t", "1")];
     expect(liveThoughtOwnsProgress({ assistantEvents: events, toolItems: [], isLatestTurn: true, sessionRunning: false, isPausedOnUserInput: false })).toBe(false);
     expect(liveThoughtOwnsProgress({ assistantEvents: events, toolItems: [], isLatestTurn: true, sessionRunning: true, isPausedOnUserInput: true })).toBe(false);
+  });
+});
+
+describe("isProgressNarration", () => {
+  // The rule Minimal folds on, mirrored in MobileTranscriptRows.swift.
+  it.each([
+    ["a passing remark", "First part done.", true],
+    ["two sentences on two lines", "Reading the repo now.\nThen I will run the tests.", true],
+    ["a heading", "## What gets built\nOne function.", false],
+    ["a bullet list", "The levers:\n- aov\n- registrations", false],
+    ["a numbered list", "1. Build it\n2. Review it", false],
+    ["a table row", "| Lever | Unit |\n| --- | --- |", false],
+    ["a code fence", "Run this:\n```\njust whatif\n```", false],
+    ["two paragraphs", "Here is the plan.\n\nIt has two parts.", false],
+    ["a long single paragraph", "x".repeat(401), false]
+  ])("%s", (_name, text, expected) => {
+    expect(isProgressNarration(text)).toBe(expected);
   });
 });

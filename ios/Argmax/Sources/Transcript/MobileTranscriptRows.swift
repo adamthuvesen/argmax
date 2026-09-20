@@ -25,6 +25,24 @@ enum MobileTranscriptRow: Equatable, Identifiable {
         }
     }
 
+    /// A remark about the work runs to about three sentences; past that it is writing.
+    private static let narrationMaxCharacters = 400
+
+    /// Is this prose a passing remark about the work, or writing meant to be read?
+    ///
+    /// Mirrors `isProgressNarration` in sessionTurnView.ts. "Let me check the
+    /// docs." is a remark: one short paragraph of plain sentences. Anything
+    /// carrying a heading, list, table, quote or code fence, or running past a
+    /// few sentences or a blank line, is the answer itself — it stays visible
+    /// at Minimal even when a closing tool call follows it.
+    static func isProgressNarration(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.count > narrationMaxCharacters { return false }
+        if trimmed.range(of: "\n[ \t]*\n", options: .regularExpression) != nil { return false }
+        let block = "(?m)^ {0,3}(#{1,6} |[-*+] |\\d+[.)] |> |\\||```|~~~)"
+        return trimmed.range(of: block, options: .regularExpression) == nil
+    }
+
     static func rows(_ items: [TranscriptItem], detail: MobileChatDetail) -> [MobileTranscriptRow] {
         guard detail == .minimal || detail == .compact else { return items.map(Self.item) }
         var narration = Set<String>()
@@ -38,7 +56,10 @@ enum MobileTranscriptRow: Equatable, Identifiable {
                     laterAnswer = false
                 case .thought, .tools: laterWork = true
                 case .assistant(let message):
-                    if laterWork && laterAnswer && message.attachments.isEmpty { narration.insert(item.id) }
+                    if laterWork && laterAnswer && message.attachments.isEmpty
+                        && Self.isProgressNarration(message.text) {
+                        narration.insert(item.id)
+                    }
                     laterAnswer = true
                 default: break
                 }

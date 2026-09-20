@@ -44,14 +44,39 @@ export type AssistantGroup = {
   error?: boolean;
 };
 
+/** A remark about the work runs to about three sentences; past that it is writing. */
+const NARRATION_MAX_CHARS = 400;
+
+/**
+ * Is this prose a passing remark about the work, or writing meant to be read?
+ *
+ * "Let me check the docs." and "First part done." are remarks: one short
+ * paragraph of plain sentences. Anything that carries structure — a heading, a
+ * list, a table, a code fence, a quote — or runs past a few sentences or a
+ * blank line is the answer itself, whatever tool call happens to follow it.
+ */
+export function isProgressNarration(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.length > NARRATION_MAX_CHARS) return false;
+  if (/\n\s*\n/.test(trimmed)) return false;
+  return !/^ {0,3}(#{1,6} |[-*+] |\d+[.)] |> |\||```|~~~)/m.test(trimmed);
+}
+
 /**
  * Minimal verbosity, finished and collapsed: the prose Claude, Codex, Grok,
  * and OpenCode write before each tool is progress, not the answer, so it hides
- * with the tools it narrates. Returns the group ids to drop — everything at or
- * before the last tool except the last prose group, which is kept so collapsing
- * can never leave the chip standing over nothing. A surface that renders the
- * answer itself (the agent pane's result panel) passes `separateAnswer` and
- * keeps nothing.
+ * with the tools it narrates. Returns the group ids to drop — every *remark* at
+ * or before the last tool except the last prose group, which is kept so
+ * collapsing can never leave the chip standing over nothing.
+ *
+ * Only remarks: an agent that writes its answer and then records it with one
+ * last tool call (an edit, a memory write) used to be left showing nothing but
+ * its sign-off, because the answer sat before that final tool. `isProgress-
+ * Narration` is what separates the two.
+ *
+ * A surface that renders the answer itself (the agent pane's result panel)
+ * passes `separateAnswer`: there the answer has its own home, so everything
+ * left in the turn really is work and all of it hides.
  *
  * Claude and Grok emit that text and the following `command.started` from one
  * envelope, so they share a timestamp: same-timestamp prose counts as work.
@@ -69,6 +94,7 @@ export function preToolNarrationGroupIds(
   for (const group of groups) {
     if (group.thinking || group.error) continue;
     if (group.id === lastAnswerId) continue;
+    if (!options.separateAnswer && !isProgressNarration(group.text)) continue;
     if (group.lastActivityAt <= lastToolCreatedAt) hidden.add(group.id);
   }
   return hidden;

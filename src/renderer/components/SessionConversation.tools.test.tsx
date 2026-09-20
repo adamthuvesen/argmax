@@ -986,6 +986,39 @@ describe("SessionConversation — single-line activity mode", () => {
     expect(screen.getByRole("button", { name: "Searched for src/**/*.ts" })).toBeInTheDocument();
   });
 
+  it("keeps a written answer that lands before the turn's closing tool call", () => {
+    // The shape that used to lose the answer: the agent writes the whole plan,
+    // saves it with one last edit, then signs off in a sentence. Minimal showed
+    // only the sign-off, because the plan sat before the last tool.
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event("u1", "user.message", "plan it out", "2026-05-12T15:00:00.000Z"),
+        event(
+          "plan",
+          "message.completed",
+          "## What gets built\n\n- One function, one command.\n- One file per forecast.",
+          "2026-05-12T15:00:01.000Z"
+        ),
+        event("edit-start", "command.started", "Edit", "2026-05-12T15:00:02.000Z", {
+          id: "edit",
+          name: "Edit",
+          input: { file_path: "docs/plan.md" }
+        }),
+        event("edit-end", "command.completed", "tool_result", "2026-05-12T15:00:03.000Z", {
+          tool_use_id: "edit",
+          content: "ok"
+        }),
+        event("signoff", "message.completed", "Plan saved to the Arc folder.", "2026-05-12T15:00:04.000Z")
+      ],
+      { defaultToolCallsDisplay: "single-line" }
+    );
+
+    expect(screen.getByText("What gets built")).toBeInTheDocument();
+    expect(screen.getByText("Plan saved to the Arc folder.")).toBeInTheDocument();
+    expect(screen.queryByText("docs/plan.md")).toBeNull();
+  });
+
   it("keeps the live summary line visible while the session is still running", () => {
     renderConversation(
       baseSession({ state: "running" }),

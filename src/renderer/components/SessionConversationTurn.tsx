@@ -216,11 +216,12 @@ function SessionConversationTurnInner({
     sortPriority?: number;
   };
   const lastToolCreatedAt = latestToolCreatedAt(item.toolItems);
-  // Finished Minimal keeps the answer: assistant text after the last tool.
+  // Finished Minimal keeps the answer and folds away the remarks around it.
   // Claude, Codex, Grok, and OpenCode write progress as `message.completed`
-  // before each tool. Expanding the chip restores the narration with the
-  // tools. Live turns keep it so the user can watch the agent talk while tools
-  // run.
+  // before each tool; only that short narration hides, never a block of
+  // writing that happens to precede a closing tool call. Expanding the chip
+  // restores the narration with the tools. Live turns keep it so the user can
+  // watch the agent talk while tools run.
   // `isStreamingTurn` is this turn's own liveness, not the session's: keying
   // off `sessionIsLive` alone re-expanded every finished turn the moment a new
   // turn started.

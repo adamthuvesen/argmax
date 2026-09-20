@@ -656,13 +656,15 @@
   white-space: nowrap;
 }
 
+/* The pane's metadata reads at one size. --text-xs-plus put this line half a
+   pixel off the chips below it, which reads as a slip rather than a step. */
 .agent-activity-facts {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   margin: 0;
   color: var(--muted);
-  font-size: var(--text-xs-plus);
+  font-size: var(--text-xs);
   line-height: 1.3;
 }
 
@@ -699,7 +701,11 @@
   display: flex;
   box-sizing: border-box;
   flex-direction: column;
-  gap: var(--space-6);
+  /* One rhythm for the pane, measured on ink rather than boxes. A tool row
+     carries ~6px of its own padding and the prose and thinking rows around it
+     carry none, so the old 24px box gap read as 20px above a tool group and
+     27px below it. 16px lands both at ~19px of visible space. */
+  gap: var(--space-4);
   padding: var(--space-6) var(--session-inline-padding) var(--space-8);
 }
 

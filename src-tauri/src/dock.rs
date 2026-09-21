@@ -69,6 +69,10 @@ pub fn clear_badge_on_focus<R: Runtime>(window: &Window<R>, event: &WindowEvent)
     if !matches!(event, WindowEvent::Focused(true)) {
         return;
     }
+    // A browser popup taking focus is not the user looking at their chats.
+    if !crate::windows::is_chat_window(window.label()) {
+        return;
+    }
     // Clear through the service when it is up: a direct window clear would
     // leave `last_text` holding the old count, and the next update at the
     // same count would be deduplicated away instead of re-setting the badge.

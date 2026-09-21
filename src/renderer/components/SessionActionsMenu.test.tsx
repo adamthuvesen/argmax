@@ -351,7 +351,7 @@ describe("SessionActionsMenu — Open in IDE", () => {
       />
     );
     await openMenu();
-    expect(screen.queryByRole("menuitem", { name: /Open in/ })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /^Open in (?!new window)/ })).toBeNull();
     unmount();
 
     render(
@@ -369,7 +369,7 @@ describe("SessionActionsMenu — Open in IDE", () => {
     await openMenu();
     // A greyed-out row nobody can ever click explains nothing; with no IDE
     // installed there is simply no row.
-    expect(screen.queryByRole("menuitem", { name: /Open in/ })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /^Open in (?!new window)/ })).toBeNull();
   });
 });
 

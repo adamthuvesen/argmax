@@ -36,6 +36,9 @@ pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
     "system:set-notifications-enabled",
     "system:set-keep-awake",
     "system:test-notification",
+    // Tears a chat off into a second desktop window.
+    "window:open-session",
+    "window:set-session",
     // Renderer timing entries originate in the desktop WebKit process.
     "system:renderer-stall",
     // Destructive history cleanup is confirmed in desktop Settings.

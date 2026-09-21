@@ -105,6 +105,9 @@ import { setSidebarPeek, toggleSidebarCollapsed, useSidebarChrome } from "./stat
 import { dismissToast, showErrorToast, showInfoToast, showToast, toastSnapshot, useToast } from "./state/toast.js";
 import { subscribeWorkspacePointerDrag } from "./state/workspaceDrag.js";
 import { isBrowserPreview } from "./lib/env.js";
+import { hostsBrowserSurface } from "./lib/tauriBridge.js";
+import { closeCurrentWindow, initialSessionIdFromLocation, isSecondaryWindow } from "./lib/windowRole.js";
+import { chatSessionFor } from "./lib/workspaceChat.js";
 import { animateThemeChange, type ThemeMode } from "./lib/theme.js";
 import type { AccentId } from "./lib/accent.js";
 import { titleFromPrompt } from "./lib/projects.js";
@@ -241,7 +244,11 @@ export function App(): JSX.Element {
     }
   );
   const { collapsed: sidebarCollapsed, peeking: sidebarPeek } = useSidebarChrome();
-  const [isBrowserPageOpen, setIsBrowserPageOpen] = useBooleanUiPreference(BROWSER_PAGE_OPEN_KEY, false);
+  const [browserPageOpenPreference, setIsBrowserPageOpen] = useBooleanUiPreference(BROWSER_PAGE_OPEN_KEY, false);
+  // The preference is shared across windows through localStorage, but the
+  // Browser page can only live where the native tabs do (docs/browser.md):
+  // a torn-off window that read "open" at boot must not mount it.
+  const isBrowserPageOpen = browserPageOpenPreference && hostsBrowserSurface();
   useEffect(() => {
     if (selectedArcId !== null) setIsBrowserPageOpen(false);
   }, [selectedArcId, setIsBrowserPageOpen]);
@@ -495,6 +502,21 @@ export function App(): JSX.Element {
     showErrorToast,
     mirrorFocusedSelection: !isFullLauncherOpen
   });
+  // A torn-off window is the same shell, minus the gestures that only make
+  // sense from the main one: tearing off again, and the browser page, whose
+  // native tabs are children of the main window (docs/browser.md).
+  const secondaryWindow = isSecondaryWindow();
+  // ⌘W: close the focused pane. In a torn-off window, closing the last pane
+  // closes the window — an empty torn-off launcher is not something anyone
+  // asked for.
+  const closeFocusedSurface = useCallback((): boolean => {
+    const paneCount = grid.rows.reduce((count, row) => count + row.length, 0);
+    if (secondaryWindow && paneCount <= 1) {
+      closeCurrentWindow();
+      return true;
+    }
+    return closeFocusedPane();
+  }, [closeFocusedPane, grid.rows, secondaryWindow]);
   const followedSessionMoves = useRef(new Set<string>());
   useEffect(() => {
     if (!selectedSession) return;
@@ -588,6 +610,42 @@ export function App(): JSX.Element {
     if (loadState !== "loading") markFirstContent();
   }, [loadState]);
 
+  // A torn-off window boots on the chat it was opened for (`?session=<id>`,
+  // see lib/windowRole.ts). Seeded once, from the first ready snapshot; if
+  // the chat is gone by then the window shows the launcher like an empty
+  // grid would.
+  const seededWindowSessionRef = useRef<"pending" | "seeded" | "none">("pending");
+  useEffect(() => {
+    if (seededWindowSessionRef.current !== "pending" || loadState !== "ready") return;
+    const sessionId = initialSessionIdFromLocation();
+    const session = sessionId ? snapshot.sessions.find((candidate) => candidate.id === sessionId) : null;
+    if (!session) {
+      seededWindowSessionRef.current = "none";
+      return;
+    }
+    seededWindowSessionRef.current = "seeded";
+    showOnlyPane({ sessionId: session.id, workspaceId: session.workspaceId });
+  }, [loadState, snapshot.sessions]);
+  // Tell the runtime which chat this torn-off window shows now: the sidebar,
+  // ⌘1..9 and the palette all switch it, and "Open in new window" elsewhere
+  // dedupes against that registry.
+  const windowSessionId = secondaryWindow ? (selectedSession?.id ?? null) : null;
+  useEffect(() => {
+    if (!secondaryWindow) return;
+    void window.argmax?.windows.setSession({ sessionId: windowSessionId }).catch(() => undefined);
+  }, [secondaryWindow, windowSessionId]);
+  // The chat a torn-off window was opened for can be archived from another
+  // window or by an agent. The grid prunes the pane, which would leave a
+  // second full launcher behind; close the window instead.
+  const windowSessionGone =
+    secondaryWindow &&
+    seededWindowSessionRef.current === "seeded" &&
+    grid.rows.length === 0 &&
+    !snapshot.sessions.some((session) => session.id === initialSessionIdFromLocation());
+  useEffect(() => {
+    if (windowSessionGone) closeCurrentWindow();
+  }, [windowSessionGone]);
+
   useEffect(() => {
     if (!toast) return;
     // Errors stick until the user dismisses — losing them on a 4 s timer
@@ -657,7 +715,7 @@ export function App(): JSX.Element {
         case "close-surface":
           if (requestCloseActiveBrowserTab()) return;
           if (requestCloseActiveReviewFileTab()) return;
-          closeFocusedPane();
+          closeFocusedSurface();
           return;
         case "toggle-debug-log":
           setDebugLogToggleSignal((signal) => signal + 1);
@@ -666,7 +724,7 @@ export function App(): JSX.Element {
           return;
       }
     },
-    [closeFocusedPane, closeWorkspacePages, isSettingsOpen, openNewSessionPane, openWorkspaceChat]
+    [closeFocusedSurface, closeWorkspacePages, isSettingsOpen, openNewSessionPane, openWorkspaceChat]
   );
 
   // ⌘P / ⌘F / ⌘⇧F are all the ⌘K overlay; only the pre-selected filter differs.
@@ -1013,6 +1071,21 @@ export function App(): JSX.Element {
     },
     [handleOpenInIde]
   );
+  // Sidebar "Open in new window": the chat tears off into a second desktop
+  // window. The row names a workspace; the window is keyed by its chat.
+  const onOpenInWindowRow = useCallback(
+    (workspaceId: string): void => {
+      const session = chatSessionFor(snapshot.sessions, workspaceId);
+      if (!session) {
+        showErrorToast("This chat isn't loaded — try refreshing the dashboard.");
+        return;
+      }
+      void window.argmax?.windows.openSession({ sessionId: session.id }).catch((error: unknown) => {
+        showErrorToast(error instanceof Error ? error.message : "Couldn't open a new window.");
+      });
+    },
+    [snapshot.sessions]
+  );
   // Session-pane "Open in <IDE>" menu action: same handler, no default pinning.
   const onOpenWorkspaceInIdePane = useCallback(
     (workspaceId: string, ide: IdeId): void => {
@@ -1060,6 +1133,7 @@ export function App(): JSX.Element {
     [closeWorkspacePages]
   );
   const onOpenBrowserRow = useCallback((): void => {
+    if (!hostsBrowserSurface()) return;
     hideCommandPalette();
     hideStandalonePage();
     hideFullLauncher();
@@ -1311,7 +1385,7 @@ export function App(): JSX.Element {
 
   useGlobalKeybindings({
     onMenuCommand: handleMenuCommand,
-    onCloseFocusedPane: closeFocusedPane,
+    onCloseFocusedPane: closeFocusedSurface,
     onOpenFilePalette: openFilePalette,
     onOpenSearch: openMessagePalette,
     onOpenContentSearch: openContentPalette,
@@ -1659,7 +1733,10 @@ export function App(): JSX.Element {
         onNewSession: () => handleMenuCommand("new-session"),
         onOpenSettings: () => showSettings("general"),
         onOpenScheduledTasks: showSchedulePage,
-        onOpenBrowser: typeof window !== "undefined" && window.argmax?.browser ? onOpenBrowserRow : undefined,
+        onOpenBrowser:
+          typeof window !== "undefined" && window.argmax?.browser && !secondaryWindow
+            ? onOpenBrowserRow
+            : undefined,
         onOpenUsage: showUsagePage,
         onOpenActivity: showActivityPage,
         onOpenSettingsSection: (group, sectionId) => showSettings(group, sectionId),
@@ -1719,6 +1796,7 @@ export function App(): JSX.Element {
       openWorkspaceChat,
       openMessagePalette,
       onOpenBrowserRow,
+      secondaryWindow,
       closeWorkspacePages,
       setSelectedProjectId,
       themeMode,
@@ -2127,6 +2205,7 @@ export function App(): JSX.Element {
           onRemoveProject={onRemoveProjectRow}
           onArchiveWorkspace={onArchiveWorkspaceRow}
           onOpenInIde={onOpenInIdeRow}
+          onOpenInWindow={secondaryWindow ? undefined : onOpenInWindowRow}
           onOpenProject={onOpenProjectRow}
           onOpenWorkspaceChat={onOpenWorkspaceChatRow}
           onOpenArc={onOpenArcRow}
@@ -2141,7 +2220,7 @@ export function App(): JSX.Element {
           browserSelected={isBrowserPageOpen && !standalonePageOpen}
           scheduleSelected={isScheduledTasksOpen}
           hackingSelected={isLedgerOpen}
-          onOpenBrowser={onOpenBrowserRow}
+          onOpenBrowser={secondaryWindow ? undefined : onOpenBrowserRow}
           snapshot={snapshot}
           detectedIdes={detectedIdes}
           defaultIde={defaultIde}

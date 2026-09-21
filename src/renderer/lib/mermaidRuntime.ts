@@ -182,6 +182,11 @@ function readMermaidThemeVariables(): Record<string, string | boolean> {
     vars.errorBkgColor = rose;
     vars.errorTextColor = well ?? "#ffffff";
   }
+  // neo paints node strokes with a gradient whenever `base` leaves
+  // useGradient on. That silently drops a custom nodeBorder, so a
+  // token-themed diagram would lose its edge. mermaid 12 turns the
+  // gradient off when nodeBorder is overridden; 11.17 does not.
+  vars.useGradient = false;
   return vars;
 }
 
@@ -193,16 +198,17 @@ function mermaidConfig(): Record<string, unknown> {
     suppressErrorRendering: true,
     logLevel: "error",
     theme: "base",
+    look: "neo",
     themeVariables,
     fontFamily: themeVariables.fontFamily,
     flowchart: {
       useMaxWidth: false,
       htmlLabels: true,
       curve: "basis",
-      padding: 18,
-      wrappingWidth: 160,
-      nodeSpacing: 32,
-      rankSpacing: 40
+      padding: 24,
+      wrappingWidth: 200,
+      nodeSpacing: 56,
+      rankSpacing: 64
     },
     sequence: { useMaxWidth: false, actorMargin: 48, boxMargin: 8 },
     gantt: { useMaxWidth: false },
@@ -273,4 +279,22 @@ export function nativeSvgWidth(svg: SVGSVGElement): number {
     // Detached SVGs and jsdom can throw on viewBox.baseVal.
   }
   return 0;
+}
+
+export const MERMAID_LAYOUT_SLACK_PX = 8;
+
+/**
+ * `wide`: native drawing is broader than the prose column, so the figure
+ * should eat session gutters. `overflow`: it is still broader than the
+ * (possibly broken-out) box, so the lightbox is the native-size view.
+ */
+export function mermaidLayout(
+  nativeWidth: number,
+  columnWidth: number,
+  boxWidth: number
+): { wide: boolean; overflow: boolean } {
+  return {
+    wide: nativeWidth > columnWidth + MERMAID_LAYOUT_SLACK_PX,
+    overflow: nativeWidth > boxWidth + MERMAID_LAYOUT_SLACK_PX
+  };
 }

@@ -100,6 +100,8 @@ export const IPC_CHANNELS = [
   "system:set-notifications-enabled",
   "system:set-keep-awake",
   "system:test-notification",
+  "window:open-session",
+  "window:set-session",
   "session:cost-summary",
   "learnings:list",
   "learnings:update",

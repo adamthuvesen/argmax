@@ -110,6 +110,18 @@ describe("MermaidDiagram", () => {
     expect(nativeSvgWidth(svg)).toBe(1440);
   });
 
+  it("marks a drawing that is wider than its column so CSS can break out", async () => {
+    renderMermaidDiagram.mockResolvedValueOnce({
+      svg: `<svg data-testid="mermaid-svg" width="1200"><title>flow</title></svg>`
+    });
+    render(<MermaidDiagram source={"flowchart LR\n  A --> B"} />);
+    const figure = await screen.findByLabelText("Diagram");
+    await waitFor(() => {
+      expect(screen.getByTestId("mermaid-svg")).toBeInTheDocument();
+      expect(figure).toHaveAttribute("data-wide", "true");
+    });
+  });
+
   it("shows a pending status while a live fence is still being drawn", () => {
     render(
       <StreamingCodeContext.Provider value={true}>

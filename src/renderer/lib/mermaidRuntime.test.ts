@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { isMermaidFenceClass } from "./mermaidFence.js";
-import { cssColorToHex, mermaidErrorMessage } from "./mermaidRuntime.js";
+import { cssColorToHex, mermaidErrorMessage, mermaidLayout } from "./mermaidRuntime.js";
 
 describe("isMermaidFenceClass", () => {
   it("recognises mermaid and mmd fences", () => {
@@ -41,5 +43,30 @@ describe("mermaidErrorMessage", () => {
     expect(mermaidErrorMessage(new Error("Parse error on line 2:\n  extra"))).toBe(
       "Parse error on line 2:"
     );
+  });
+});
+
+describe("mermaidLayout", () => {
+  it("hugs a drawing that fits the prose column", () => {
+    expect(mermaidLayout(420, 780, 420)).toEqual({ wide: false, overflow: false });
+  });
+
+  it("breaks out when native width exceeds the prose column", () => {
+    expect(mermaidLayout(1200, 780, 780)).toEqual({ wide: true, overflow: true });
+  });
+
+  it("keeps the lightbox only when the broken-out box is still too narrow", () => {
+    expect(mermaidLayout(1200, 780, 1400)).toEqual({ wide: true, overflow: false });
+  });
+});
+
+describe("mermaid defaults", () => {
+  it("pairs neo look with token-themed base and airy flowchart spacing", () => {
+    const source = readFileSync(fileURLToPath(new URL("./mermaidRuntime.ts", import.meta.url)), "utf8");
+    expect(source).toContain('look: "neo"');
+    expect(source).toContain("vars.useGradient = false");
+    expect(source).toContain("nodeSpacing: 56");
+    expect(source).toContain("rankSpacing: 64");
+    expect(source).toContain("wrappingWidth: 200");
   });
 });

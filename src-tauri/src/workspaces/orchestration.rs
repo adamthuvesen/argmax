@@ -2885,7 +2885,7 @@ async fn read_checkout_status(path: &Path) -> Option<CheckoutStatus> {
     }
     match run_git_text(
         path,
-        &["status", "--porcelain", "--branch"],
+        &["status", "--porcelain", "--untracked-files=all", "--branch"],
         Duration::from_millis(GIT_TIMEOUT_MS),
     )
     .await

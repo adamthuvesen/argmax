@@ -33,7 +33,7 @@ use objc2_user_notifications::{
     UNNotificationPresentationOptions, UNNotificationRequest, UNNotificationResponse,
     UNNotificationSettings, UNUserNotificationCenter, UNUserNotificationCenterDelegate,
 };
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Runtime};
 
 use super::{NotificationOptions, NotificationSink};
 use crate::error::ArgmaxResult;
@@ -58,7 +58,9 @@ enum Authorization {
 }
 
 struct DelegateIvars {
-    on_activate: Box<dyn Fn() + Send + Sync>,
+    /// Called with the clicked notification's identifier: the session id for
+    /// a chat banner, a random id otherwise.
+    on_activate: Box<dyn Fn(String) + Send + Sync>,
 }
 
 define_class!(
@@ -89,17 +91,18 @@ define_class!(
         fn did_receive(
             &self,
             _center: &UNUserNotificationCenter,
-            _response: &UNNotificationResponse,
+            response: &UNNotificationResponse,
             completion: &DynBlock<dyn Fn()>,
         ) {
-            (self.ivars().on_activate)();
+            let identifier = response.notification().request().identifier().to_string();
+            (self.ivars().on_activate)(identifier);
             completion.call(());
         }
     }
 );
 
 impl NotificationDelegate {
-    fn new(on_activate: Box<dyn Fn() + Send + Sync>) -> Retained<Self> {
+    fn new(on_activate: Box<dyn Fn(String) + Send + Sync>) -> Retained<Self> {
         let this = Self::alloc().set_ivars(DelegateIvars { on_activate });
         unsafe { msg_send![super(this), init] }
     }
@@ -115,7 +118,9 @@ impl UserNotificationCenterSink {
     /// answer immediately.
     pub fn new<R: Runtime>(app: AppHandle<R>) -> Self {
         let center = UNUserNotificationCenter::currentNotificationCenter();
-        let delegate = NotificationDelegate::new(Box::new(move || focus_main_window(&app)));
+        let delegate = NotificationDelegate::new(Box::new(move |identifier| {
+            focus_notified_window(&app, identifier)
+        }));
         center.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
         // The delegate property is weak and the center lives for the whole
         // process, so keep the delegate alive the same way (see app_nap.rs).
@@ -161,7 +166,13 @@ impl NotificationSink for UserNotificationCenterSink {
         let content = UNMutableNotificationContent::new();
         content.setTitle(&NSString::from_str(&options.title));
         content.setBody(&NSString::from_str(&options.body));
-        let identifier = NSString::from_str(&uuid::Uuid::new_v4().to_string());
+        // A chat's banner is identified by its session, so a click can find
+        // the window showing it and a newer banner replaces the older one.
+        let identifier = NSString::from_str(
+            &options
+                .session_id
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+        );
         let request = UNNotificationRequest::requestWithIdentifier_content_trigger(
             &identifier,
             &content,
@@ -220,14 +231,11 @@ fn request_authorization(
     );
 }
 
-/// Clicking the banner activates the app; also surface the window in case
-/// it was minimized.
-fn focus_main_window<R: Runtime>(app: &AppHandle<R>) {
+/// Clicking the banner activates the app; also surface the window showing
+/// that chat in case it was minimized or torn off behind the main one.
+fn focus_notified_window<R: Runtime>(app: &AppHandle<R>, identifier: String) {
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || {
-        if let Some(window) = handle.get_window("main") {
-            let _ = window.unminimize();
-            let _ = window.set_focus();
-        }
+        crate::windows::focus_session_window(&handle, Some(identifier.as_str()));
     });
 }

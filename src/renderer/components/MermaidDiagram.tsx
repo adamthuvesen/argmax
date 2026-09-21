@@ -16,6 +16,7 @@ import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
 import {
   MERMAID_STREAM_DEBOUNCE_MS,
   mermaidErrorMessage,
+  mermaidLayout,
   nativeSvgWidth,
   renderMermaidDiagram
 } from "../lib/mermaidRuntime.js";
@@ -55,6 +56,7 @@ export function MermaidDiagram({ source }: { source: string }): JSX.Element {
   const [sourceOpen, setSourceOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
+  const [wide, setWide] = useState(false);
   const [copyFlash, copy] = useCopyToClipboard();
 
   useRestoreFocus(expanded);
@@ -112,22 +114,29 @@ export function MermaidDiagram({ source }: { source: string }): JSX.Element {
   useLayoutEffect(() => {
     if (!svg || sourceOpen || expanded) {
       setOverflows(false);
+      setWide(false);
       return;
     }
     const canvas = canvasRef.current;
     const drawn = canvas?.querySelector("svg");
-    if (!canvas || !(drawn instanceof SVGSVGElement)) {
+    const figure = canvas?.closest(".mermaid-diagram");
+    const column = figure?.parentElement;
+    if (!canvas || !(drawn instanceof SVGSVGElement) || !figure || !column) {
       setOverflows(false);
+      setWide(false);
       return;
     }
     const measure = (): void => {
-      const native = nativeSvgWidth(drawn);
-      setOverflows(native > canvas.clientWidth + 8);
+      const layout = mermaidLayout(nativeSvgWidth(drawn), column.clientWidth, figure.clientWidth);
+      setWide(layout.wide);
+      setOverflows(layout.overflow);
     };
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
     observer.observe(canvas);
+    observer.observe(column);
+    observer.observe(figure);
     return () => observer.disconnect();
   }, [svg, sourceOpen, expanded]);
 
@@ -204,6 +213,7 @@ export function MermaidDiagram({ source }: { source: string }): JSX.Element {
         className="mermaid-diagram"
         data-state={error ? "error" : svg ? "ready" : "pending"}
         data-overflow={overflows ? "true" : undefined}
+        data-wide={wide ? "true" : undefined}
         aria-label="Diagram"
       >
         <div className="mermaid-diagram-toolbar">

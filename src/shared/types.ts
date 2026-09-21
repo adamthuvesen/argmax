@@ -703,6 +703,14 @@ export interface ArgmaxApi {
   menu: {
     onCommand: (listener: (command: MenuCommand) => void) => () => void;
   };
+  windows: {
+    /** Opens the session in a desktop window of its own, or focuses the
+     *  window already showing it. Resolves to that window's label. */
+    openSession: (input: { sessionId: string }) => Promise<{ label: string }>;
+    /** A torn-off window reports the chat it is showing, or null for none,
+     *  so a later "Open in new window" focuses the right window. */
+    setSession: (input: { sessionId: string | null }) => Promise<{ label: string }>;
+  };
   learnings: {
     list: (input: { projectId: string; limit?: number }) => Promise<Learning[]>;
     update: (input: { id: string; summary?: string; verified?: boolean }) => Promise<Learning>;

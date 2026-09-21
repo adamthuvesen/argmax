@@ -311,8 +311,12 @@ pub(super) fn spawn_terminal(
     // Announce the terminal before typing. The renderer subscribes globally
     // and buffers output until xterm adopts this id, so even a command that
     // exits immediately remains visible.
+    // To the window showing this chat, not every window: two renderers
+    // adopting one PTY would each size it and either could terminate it.
     if let Some(app) = app {
-        if let Err(error) = app.emit(
+        let target_window = crate::windows::window_label_for_session(app, &target.session_id);
+        if let Err(error) = app.emit_to(
+            target_window.as_str(),
             "terminal:agent-open",
             AgentTerminalOpen {
                 terminal_id: &spawned.terminal_id,

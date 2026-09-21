@@ -118,6 +118,7 @@ import type {
   WorkspaceSummary,
   WorkspacesMarkViewedInput
 } from "../../shared/types.js";
+import { isSecondaryWindow, windowLabelFromRuntime } from "./windowRole.js";
 import { errorMessage } from "../../shared/error.js";
 import { logger } from "../../shared/logger.js";
 import { createWsTransport } from "./wsTransport.js";
@@ -153,6 +154,19 @@ function invokeThroughTauri<T>(channel: IpcChannel, input: unknown = {}): Promis
   return tauriInvoke<T>(channel, { input });
 }
 
+/**
+ * Whether this window may show the native browser surface. The browser's
+ * tabs are child webviews of the main window and its registry is one per
+ * process (docs/browser.md), so a chat torn off into its own window must not
+ * offer Browser: its `browser:set-bounds` would drag the main window's tab to
+ * wherever this window's panel happens to be. Outside Tauri there is one
+ * window, and the bridge's own presence decides.
+ */
+export function hostsBrowserSurface(): boolean {
+  if (typeof window === "undefined" || !window.argmax?.browser) return false;
+  return !isSecondaryWindow();
+}
+
 function subscribeThroughTauri<T>(channel: string, listener: (payload: T) => void): EventSubscription {
   let unlisten: UnlistenFn | null = null;
   let disposed = false;
@@ -178,9 +192,19 @@ function subscribeThroughTauri<T>(channel: string, listener: (payload: T) => voi
     }, 0);
   };
 
-  const ready = tauriListen<T>(channel, (event) => {
-    if (!disposed) listener(event.payload);
-  }).then((nextUnlisten) => {
+  // Listen as this window, not as "any target": a listener registered with
+  // the default `Any` target receives every `emit_to(label, …)` whatever the
+  // label (tauri `event/listener.rs`, `emit_filter`), so a menu command sent
+  // to the focused window would toggle the sidebar in every open window.
+  // Broadcasts (`app.emit`) still reach a labelled listener.
+  const label = windowLabelFromRuntime();
+  const ready = tauriListen<T>(
+    channel,
+    (event) => {
+      if (!disposed) listener(event.payload);
+    },
+    label ? { target: label } : undefined
+  ).then((nextUnlisten) => {
     if (disposed) {
       queueUnlisten(nextUnlisten);
       return;
@@ -517,6 +541,10 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
     },
     menu: {
       onCommand: (listener) => subscribe<MenuCommand>("menu:command", listener)
+    },
+    windows: {
+      openSession: (input) => invokeCommand<{ label: string }>("window:open-session", input),
+      setSession: (input) => invokeCommand<{ label: string }>("window:set-session", input)
     },
     sources: {
       list: (input) => invokeCommand<ProjectSource[]>("sources:list", input),

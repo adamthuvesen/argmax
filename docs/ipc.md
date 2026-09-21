@@ -70,7 +70,7 @@ Subscribed in `tauriBridge.ts`:
 - `dashboard:delta`
 - `terminal:data`
 - `terminal:exit`
-- `menu:command`
+- `menu:command` (to the window that last had focus; see [runtime.md](runtime.md#chat-windows))
 - `browser:state`
 - `browser:new-tab`
 - `browser:page-command`

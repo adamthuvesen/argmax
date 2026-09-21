@@ -906,6 +906,10 @@ drops a gone session's token, and every tool then fails with `AUTH_FAILED`.
 
 ## What the user sees
 
+A diagram in an answer is a fenced `mermaid` or `mmd` block, drawn as SVG
+wider than the prose. That rule sits on the MCP server instructions next to
+the Markdown-image rule, so every provider is told both channels.
+
 A message from another session is not an ordinary prompt, and the chat says so:
 the user bubble carries a "From `<label>`" header that opens the sending chat,
 and the whole group is labelled "Message from another chat"

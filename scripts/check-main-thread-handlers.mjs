@@ -25,6 +25,8 @@ const MAIN_THREAD_ALLOWLIST = new Map([
   ["system:set-notifications-enabled", "in-memory setting update"],
   ["system:set-keep-awake", "in-memory setting update; the assertion itself is driven from the delta publisher"],
   ["system:test-notification", "fires an in-memory desktop notification toast"],
+  ["window:open-session", "creates a native window, which must happen on the main thread"],
+  ["window:set-session", "in-memory registry update keyed by the calling window"],
   ["system:open-path", "hands the path to the system opener"],
   ["system:debug-snapshot", "reads two in-memory ring buffers; no IO"],
   ["browser:navigate", "manipulates the native child webview"],

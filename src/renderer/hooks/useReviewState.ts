@@ -50,6 +50,8 @@ import {
 import { usePersistedSetting } from "./usePersistedSetting.js";
 import { useFilePreview } from "./useFilePreview.js";
 import { multitaskTabId } from "../lib/agentTabs.js";
+import { hostsBrowserSurface } from "../lib/tauriBridge.js";
+import { isSecondaryWindow } from "../lib/windowRole.js";
 import { useAgentTabs, type AgentTabsState } from "./useAgentTabs.js";
 import { useReviewDiff } from "./useReviewDiff.js";
 import { useWorkspaceFileList } from "./useWorkspaceFileList.js";
@@ -297,7 +299,7 @@ export function useReviewState(
   const availablePanelModes = useMemo<ReviewPanelMode[]>(() => {
     const modes: ReviewPanelMode[] = ["changes", "files"];
     if (options?.sessionId) modes.push("agents");
-    if (typeof window !== "undefined" && window.argmax?.browser) modes.push("browser");
+    if (hostsBrowserSurface()) modes.push("browser");
     if (terminalWorkspaceId) modes.push("terminal");
     return modes;
   }, [options?.sessionId, terminalWorkspaceId]);
@@ -366,6 +368,9 @@ export function useReviewState(
   });
   useEffect(() => {
     if (!panelLayoutKey) return;
+    // A torn-off window cannot show Browser, so its normalized layout would
+    // overwrite the main window's saved Browser mode for this chat.
+    if (isSecondaryWindow()) return;
     try {
       window.localStorage.setItem(panelLayoutKey, JSON.stringify(layout));
     } catch {

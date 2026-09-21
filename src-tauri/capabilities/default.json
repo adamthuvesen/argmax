@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-capability",
-  "description": "Allows the main app window to use required Tauri core APIs.",
-  "windows": ["main"],
+  "description": "Allows the app's chat windows to use required Tauri core APIs.",
+  "windows": ["main", "chat-*"],
   "permissions": [
     "dialog:allow-message",
     "core:event:default",

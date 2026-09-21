@@ -1,4 +1,5 @@
 import {
+  AppWindow,
   Archive,
   Check,
   CircleEllipsis,
@@ -80,6 +81,8 @@ type SidebarSessionRowProps = {
   onOpenWorkspaceChat: (workspaceId: string, modifiers: WorkspaceClickModifiers) => void;
   onArchiveWorkspace: (workspaceId: string) => void;
   onOpenInIde: (workspaceId: string, ide: IdeId, options?: { pinAsDefault?: boolean }) => void;
+  /** Tears the chat off into a desktop window of its own. */
+  onOpenInWindow?: (workspaceId: string) => void;
   onTogglePin?: (workspaceId: string, pinned: boolean) => void;
   onRename?: (workspaceId: string, taskLabel: string) => void;
   detectedIdes: DetectedIde[];
@@ -237,6 +240,7 @@ function SidebarSessionRowInner({
   onOpenWorkspaceChat,
   onArchiveWorkspace,
   onOpenInIde,
+  onOpenInWindow,
   onTogglePin,
   onRename,
   detectedIdes,
@@ -684,6 +688,23 @@ function SidebarSessionRowInner({
                   {defaultIdeLabel ? `Open in ${defaultIdeLabel}` : "Open in IDE"}
                 </button>
               </li>
+              {onOpenInWindow ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      closeContextMenu();
+                      onOpenInWindow(workspace.id);
+                    }}
+                  >
+                    <AppWindow size={13} aria-hidden="true" />
+                    Open in new window
+                  </button>
+                </li>
+              ) : null}
               {copyableIds ? (
                 <li role="none">
                   <button

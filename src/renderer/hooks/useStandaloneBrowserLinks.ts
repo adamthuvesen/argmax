@@ -2,6 +2,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { activateBrowserTab, getBrowserRequest, subscribeBrowserRequest } from "../lib/browserPanel.js";
 import { readStoredLinkTarget } from "../lib/linkTarget.js";
 import { isRemoteBridge } from "../lib/tauriBridge.js";
+import { isSecondaryWindow } from "../lib/windowRole.js";
 
 /**
  * Standalone pages (Usage, Settings, Schedule) replace the chat grid, so no
@@ -26,7 +27,10 @@ export function useStandaloneBrowserLinks(options: {
     if (isRemoteBridge()) return;
 
     const url = pendingBrowserRequest.url;
-    if (pendingBrowserRequest.tabId || pendingBrowserRequest.newTab || readStoredLinkTarget() === "argmax") {
+    if (
+      !isSecondaryWindow() &&
+      (pendingBrowserRequest.tabId || pendingBrowserRequest.newTab || readStoredLinkTarget() === "argmax")
+    ) {
       if (pendingBrowserRequest.tabId) activateBrowserTab(pendingBrowserRequest.tabId);
       onOpenInAppBrowser(url);
       return;

@@ -127,6 +127,8 @@ pub struct AppState {
     pub browser_content_blocking:
         tokio::sync::Mutex<crate::browser::content_blocking::ContentBlockingState>,
     pub(crate) pending_browser_opens: std::sync::Mutex<crate::ipc::browser::PendingBrowserOpens>,
+    /// Sessions torn off into windows of their own, by window label.
+    pub chat_windows: crate::windows::ChatWindows,
 }
 
 // Hand-written because `broadcast::Sender` has no `Default`; every other field
@@ -171,6 +173,7 @@ impl Default for AppState {
             browser_theme: std::sync::Mutex::new(ThemeMode::System),
             browser_content_blocking: Default::default(),
             pending_browser_opens: Default::default(),
+            chat_windows: Default::default(),
         }
     }
 }

@@ -402,7 +402,14 @@ async fn working_tree_file_entry(
 ) -> ArgmaxResult<Option<ChangedFileSummary>> {
     let porcelain = run_git_text(
         repo_path,
-        ["status", "--porcelain=v1", "-z", "--", path],
+        [
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            "-z",
+            "--",
+            path,
+        ],
         GIT_TIMEOUT,
     )
     .await?;
@@ -548,8 +555,12 @@ pub async fn update_file_index(
     if stage {
         run_git_text(&repo_path, ["add", "--", file_path], GIT_TIMEOUT).await?;
     } else {
-        let status =
-            run_git_text(&repo_path, ["status", "--porcelain=v1", "-z"], GIT_TIMEOUT).await?;
+        let status = run_git_text(
+            &repo_path,
+            ["status", "--porcelain=v1", "--untracked-files=all", "-z"],
+            GIT_TIMEOUT,
+        )
+        .await?;
         let files = parse_porcelain_z(&status);
         let old_path = files
             .iter()
@@ -586,7 +597,14 @@ pub async fn update_hunk_index(
     ensure_current_review_revision(&repo_path, revision).await?;
     let status = run_git_text(
         &repo_path,
-        ["status", "--porcelain=v1", "-z", "--", file_path],
+        [
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            "-z",
+            "--",
+            file_path,
+        ],
         GIT_TIMEOUT,
     )
     .await?;
@@ -632,7 +650,14 @@ async fn current_working_tree_file_diff(
 ) -> ArgmaxResult<String> {
     let porcelain = run_git_text(
         repo_path,
-        ["status", "--porcelain=v1", "-z", "--", file_path],
+        [
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            "-z",
+            "--",
+            file_path,
+        ],
         GIT_TIMEOUT,
     )
     .await?;
@@ -682,7 +707,14 @@ pub async fn revert_unstaged_file(
     ensure_current_review_revision(&repo_path, revision).await?;
     let porcelain = run_git_text(
         &repo_path,
-        ["status", "--porcelain=v1", "-z", "--", file_path],
+        [
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            "-z",
+            "--",
+            file_path,
+        ],
         GIT_TIMEOUT,
     )
     .await?;
@@ -859,13 +891,22 @@ async fn apply_patch_to_worktree(repo_path: &Path, patch: &str) -> ArgmaxResult<
 /// mode lists tracked files changed since the merge-base via
 /// `git diff --name-status` (committed + staged + unstaged) and folds in
 /// untracked files from porcelain, since `git diff` never reports those.
+///
+/// Every status read asks for `--untracked-files=all`: by default git folds a
+/// brand-new directory into one `dir/` entry, and the callers below drop
+/// trailing-slash paths, so a feature written into a new directory would
+/// otherwise vanish from the list and its +/- counts.
 async fn collect_changed_files(
     repo_path: &Path,
     comparison: &ResolvedComparison,
 ) -> ArgmaxResult<Vec<ChangedFileSummary>> {
     if !comparison.branch_mode {
-        let porcelain =
-            run_git_text(repo_path, ["status", "--porcelain=v1", "-z"], GIT_TIMEOUT).await?;
+        let porcelain = run_git_text(
+            repo_path,
+            ["status", "--porcelain=v1", "--untracked-files=all", "-z"],
+            GIT_TIMEOUT,
+        )
+        .await?;
         return Ok(parse_porcelain_z(&porcelain)
             .into_iter()
             .filter(|file| !file.path.ends_with('/'))
@@ -884,8 +925,12 @@ async fn collect_changed_files(
     // includes the working tree, and to none that doesn't.
     if !comparison.committed_only {
         let seen: HashSet<String> = files.iter().map(|file| file.path.clone()).collect();
-        let porcelain =
-            run_git_text(repo_path, ["status", "--porcelain=v1", "-z"], GIT_TIMEOUT).await?;
+        let porcelain = run_git_text(
+            repo_path,
+            ["status", "--porcelain=v1", "--untracked-files=all", "-z"],
+            GIT_TIMEOUT,
+        )
+        .await?;
         for file in parse_porcelain_z(&porcelain) {
             if file.status == "??" && !file.path.ends_with('/') && !seen.contains(&file.path) {
                 files.push(file);
@@ -1425,6 +1470,36 @@ mod tests {
         assert_eq!(parsed.get("src/new.rs"), Some(&(5, 0)));
         assert!(!parsed.contains_key("src/old.rs"));
         assert_eq!(parsed.len(), 3);
+    }
+
+    // A new file inside a new directory reaches the list as the file, with its
+    // counts. Default `git status` collapses the directory into one `dir/` row.
+    #[tokio::test]
+    async fn untracked_files_in_new_directories_are_listed_individually() {
+        let dir = review_repo().await;
+        let repo = dir.path();
+        std::fs::create_dir_all(repo.join("src/agent")).expect("mkdir");
+        std::fs::write(repo.join("src/agent/tool.ts"), "a\nb\n").expect("write");
+        std::fs::write(repo.join("src/agent/wiki.ts"), "c\n").expect("write");
+
+        for baseline in [ReviewBaseline::WorkingTree, ReviewBaseline::Branch("main")] {
+            let files = list_changed_files_at_path(repo, baseline)
+                .await
+                .expect("changed files");
+            let mut listed: Vec<_> = files
+                .iter()
+                .map(|file| (file.path.as_str(), file.status.as_str(), file.additions))
+                .collect();
+            listed.sort();
+            assert_eq!(
+                listed,
+                vec![
+                    ("src/agent/tool.ts", "??", 2),
+                    ("src/agent/wiki.ts", "??", 1)
+                ],
+                "{baseline:?}"
+            );
+        }
     }
 
     // The counts must survive being gathered in one batch instead of one

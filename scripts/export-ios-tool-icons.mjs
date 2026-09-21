@@ -28,6 +28,7 @@ const integrations = [
   { key: "github", aliases: ["github"] },
   { key: "vercel", aliases: ["vercel"] },
   { key: "hex", aliases: ["hex"] },
+  { key: "executor", aliases: ["executor"] },
   { key: "engram", aliases: ["engram"] },
   { key: "shunt", aliases: ["shunt"] },
   { key: "trace", aliases: ["trace", "trace hq"] }

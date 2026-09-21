@@ -7,7 +7,7 @@ use crate::util::workspace_paths::normalize;
 use chrono::Utc;
 use serde::Serialize;
 use specta::Type;
-use tauri::{AppHandle, Manager, Runtime, State};
+use tauri::{AppHandle, Runtime, State};
 use tauri_plugin_shell::ShellExt;
 
 use super::inputs::*;
@@ -485,7 +485,7 @@ fn apply_theme<R: Runtime>(app: &AppHandle<R>, mode: ThemeMode) -> ArgmaxResult<
         ThemeMode::System => None,
     };
     app.set_theme(theme);
-    if let Some(window) = app.get_window("main") {
+    for window in crate::windows::chat_windows(app) {
         // No window background colour: the window is transparent so the
         // translucent sidebar can show macOS's sidebar vibrancy through it
         // (tauri.conf.json `windowEffects`), and an opaque NSWindow background

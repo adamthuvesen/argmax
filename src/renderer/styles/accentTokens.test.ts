@@ -521,6 +521,36 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     }
   });
 
+  it("breaks mermaid diagrams out of leftover left gutter, not the workspace-card shift", () => {
+    const conversation = readSource("src/renderer/styles/chat-conversation.css");
+    const formula =
+      "--diagram-breakout: max(\n    0px,\n    calc(var(--session-inline-padding) - var(--session-inline-padding-min, 22px))\n  );";
+    expect(cssRuleBody(conversation, ".conversation-content")).toContain(
+      "--diagram-breakout: max("
+    );
+    expect(cssRuleBody(conversation, ".conversation-content")).toContain(
+      "var(--session-inline-padding) - var(--session-inline-padding-min, 22px)"
+    );
+    expect(cssRuleBody(conversation, ".agent-activity-content")).toContain(
+      "var(--session-inline-padding) - var(--session-inline-padding-min, 22px)"
+    );
+    // The card's extra end pad is --workspace-card-shift. Keying breakout off
+    // --session-inline-padding-end would slide a wide diagram under the card.
+    expect(conversation).not.toContain(
+      "--diagram-breakout: max(\n    0px,\n    calc(var(--session-inline-padding-end)"
+    );
+    expect(conversation).toContain(formula);
+    expect(cssRuleBody(conversation, ".mermaid-diagram[data-wide]")).toContain(
+      "width: calc(100% + 2 * var(--diagram-breakout, 0px));"
+    );
+    expect(cssRuleBody(conversation, ".mermaid-diagram[data-wide]")).toContain(
+      "max-width: calc(100% + 2 * var(--diagram-breakout, 0px));"
+    );
+    expect(cssRuleBody(conversation, ".mermaid-diagram[data-wide]")).toContain(
+      "margin-inline: calc(-1 * var(--diagram-breakout, 0px));"
+    );
+  });
+
   it("restates the monochrome mascot ramp that the iPhone export also bakes", () => {
     const activity = readSource("src/renderer/styles/tool-activity.css");
     const selectors = {

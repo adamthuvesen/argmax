@@ -1,4 +1,5 @@
 import {
+  AppWindow,
   Bug,
   ChevronLeft,
   ChevronRight,
@@ -16,6 +17,7 @@ import { useCallback, useContext, useEffect, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
 import type { DetectedIde, IdeId, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { openBrowserPanel } from "../lib/browserPanel.js";
+import { isSecondaryWindow } from "../lib/windowRole.js";
 import { DeveloperToolsContext } from "../lib/uiPreferences.js";
 import { refreshSessionPrs } from "../lib/sessionPrs.js";
 import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
@@ -106,6 +108,10 @@ export function SessionActionsMenu({
   const pinnedIde =
     defaultIde && detectedIdes.some((entry) => entry.id === defaultIde) ? defaultIde : null;
   const ideChoices = pinnedIde ? detectedIdes.filter((entry) => entry.id === pinnedIde) : guiIdes;
+  // Tearing off is a desktop gesture from the main window: the phone has no
+  // windows, and a window already torn off would only focus itself.
+  const canOpenInWindow =
+    typeof window !== "undefined" && window.argmax?.windows !== undefined && !isSecondaryWindow();
 
   const refreshPrs = useCallback((): void => {
     if (!session?.id || !window.argmax?.prs) return;
@@ -209,21 +215,45 @@ export function SessionActionsMenu({
                   Browse files
                 </button>
               </li>
-              <li role="none">
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="project-picker-item"
-                  title="Open the browser in the review panel"
-                  onClick={() => {
-                    closeActions();
-                    openBrowserPanel();
-                  }}
-                >
-                  <Globe size={14} aria-hidden="true" />
-                  Open browser
-                </button>
-              </li>
+              {!isSecondaryWindow() ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item"
+                    title="Open the browser in the review panel"
+                    onClick={() => {
+                      closeActions();
+                      openBrowserPanel();
+                    }}
+                  >
+                    <Globe size={14} aria-hidden="true" />
+                    Open browser
+                  </button>
+                </li>
+              ) : null}
+              {session && canOpenInWindow ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item"
+                    title="Show this chat in a desktop window of its own"
+                    onClick={() => {
+                      closeActions();
+                      void window.argmax?.windows.openSession({ sessionId: session.id }).catch((error: unknown) => {
+                        setStatus?.({
+                          kind: "error",
+                          message: error instanceof Error ? error.message : "Couldn't open a new window."
+                        });
+                      });
+                    }}
+                  >
+                    <AppWindow size={14} aria-hidden="true" />
+                    Open in new window
+                  </button>
+                </li>
+              ) : null}
               {onOpenInIde
                 ? ideChoices.map((entry) => (
                     <li role="none" key={entry.id}>

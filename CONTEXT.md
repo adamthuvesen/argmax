@@ -217,3 +217,7 @@ Importing sessions that were started in a provider CLI directly, by reading that
 **Cell**:
 One pane in the session grid. A **session cell** shows a session and a **launcher cell** composes a new one and owns its own project selection. Subagents are not cells: they open as tabs in the session's review panel (its **Agents view**).
 _Avoid_: Pane, tile, window
+
+**Chat window**:
+A second desktop window a session was torn off into with **Open in new window**. It runs the whole shell (sidebar and grid), booted on that chat; the main window is the one the app opens. A window is an OS-level thing and never a cell.
+_Avoid_: Popup, detached pane, split window

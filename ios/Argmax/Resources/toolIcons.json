@@ -98,6 +98,13 @@
       ]
     },
     {
+      "key": "executor",
+      "title": "Executor",
+      "aliases": [
+        "executor"
+      ]
+    },
+    {
       "key": "engram",
       "title": "Engram",
       "aliases": [

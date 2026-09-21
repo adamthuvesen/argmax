@@ -1,6 +1,7 @@
 import { openInBrowserPanel } from "./browserPanel.js";
 import { readStoredLinkTarget } from "./linkTarget.js";
 import { isRemoteBridge } from "./tauriBridge.js";
+import { isSecondaryWindow } from "./windowRole.js";
 
 /**
  * Open an http(s) URL the same way a chat link would: Settings → General
@@ -14,7 +15,9 @@ export function openWebUrl(url: string, options?: { flip?: boolean }): void {
     return;
   }
   const flip = options?.flip === true;
-  if ((readStoredLinkTarget() === "argmax") !== flip) {
+  // A torn-off window has no browser surface to open into; the system
+  // browser takes the link there (docs/browser.md).
+  if (!isSecondaryWindow() && (readStoredLinkTarget() === "argmax") !== flip) {
     openInBrowserPanel(url, { newTab: true });
     return;
   }

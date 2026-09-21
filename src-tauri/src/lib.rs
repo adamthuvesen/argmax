@@ -45,6 +45,7 @@ pub mod terminal;
 pub mod updater;
 pub mod usage;
 pub mod util;
+pub mod windows;
 pub mod workspace_assets;
 pub mod workspaces;
 
@@ -468,7 +469,7 @@ pub fn run() {
             if payload.event() == tauri::webview::PageLoadEvent::Finished {
                 // A reload starts the document back at 1.0 and the renderer
                 // back at "no zoom"; restate what the user chose.
-                if webview.label() == "main" {
+                if windows::is_chat_window(webview.label()) {
                     menu::restore_main_window_zoom(webview.app_handle());
                 }
                 let state = tauri::Manager::state::<state::AppState>(webview.app_handle());
@@ -482,7 +483,10 @@ pub fn run() {
         })
         .invoke_handler(specta_builder.invoke_handler())
         .on_menu_event(|app, event| menu::handle_menu_event(app, event.id().as_ref()))
-        .on_window_event(dock::clear_badge_on_focus)
+        .on_window_event(|window, event| {
+            dock::clear_badge_on_focus(window, event);
+            windows::track_window_event(window, event);
+        })
         .setup(move |app| {
             timer.mark("setup.enter");
             // Tracing init is deferred to setup() because `app.path()` is

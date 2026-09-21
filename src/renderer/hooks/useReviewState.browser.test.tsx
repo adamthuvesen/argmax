@@ -44,6 +44,22 @@ describe("useReviewState — browser mode", () => {
     resetBrowserSurfaceForTests();
     resetBrowserTabsForTests();
     delete (window as unknown as { argmax?: unknown }).argmax;
+    delete window.__TAURI_INTERNALS__;
+  });
+
+  it("offers no Browser mode in a window torn off from the main one", () => {
+    // The native tabs are children of the main window; a panel here would
+    // drag them to this window's coordinates through browser:set-bounds.
+    window.localStorage.setItem(
+      "argmax.reviewPanel.layout.session-1",
+      JSON.stringify({ modes: ["browser"], activeIndex: 0, ratio: 0.5 })
+    );
+    window.__TAURI_INTERNALS__ = { metadata: { currentWindow: { label: "chat-1" } } };
+
+    const { result } = renderPanel(true, "session-1");
+
+    expect(result.current.layout.modes).not.toContain("browser");
+    expect(result.current.mode).not.toBe("browser");
   });
 
   it("restores Browser with the current tab URL instead of the start page", () => {

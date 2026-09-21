@@ -78,6 +78,7 @@ import {
 } from "../lib/reviewLayout.js";
 import { importChunk } from "../lib/importChunk.js";
 import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
+import { hostsBrowserSurface } from "../lib/tauriBridge.js";
 import { closeTerminalTab, getWorkspaceTerminalState, subscribeTerminalTabs } from "../lib/terminalTabs.js";
 import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 
@@ -507,7 +508,7 @@ function ReviewPanelPane({
   // The Browser tab needs the desktop bridge; the Agents tab only exists with
   // `agents`, so a mode that outlived a source switch (session pane ->
   // launcher) resolves back to Changes.
-  const hasBrowser = typeof window !== "undefined" && Boolean(window.argmax?.browser);
+  const hasBrowser = hostsBrowserSurface();
   const terminalWorkspaceId = review.terminalWorkspaceId;
   const unavailable =
     (review.mode === "agents" && !agents) ||

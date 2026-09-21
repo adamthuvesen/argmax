@@ -38,6 +38,7 @@ pub mod sync;
 pub mod system;
 pub mod terminal;
 pub mod usage;
+pub mod windows;
 pub mod workspace_files;
 pub mod workspaces;
 
@@ -140,6 +141,8 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "system:set-notifications-enabled",
     "system:set-keep-awake",
     "system:test-notification",
+    "window:open-session",
+    "window:set-session",
     "session:cost-summary",
     "learnings:list",
     "learnings:update",
@@ -363,6 +366,8 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         system::system_set_notifications_enabled,
         system::system_set_keep_awake,
         system::system_test_notification,
+        windows::window_open_session,
+        windows::window_set_session,
         session::session_cost_summary,
         learnings::learnings_list,
         learnings::learnings_update,

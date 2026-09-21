@@ -110,8 +110,35 @@ describe("tauriBridge", () => {
     off();
     await nextEventLoopTurn();
 
-    expect(mocks.listen).toHaveBeenCalledWith("dashboard:delta", expect.any(Function));
+    expect(mocks.listen).toHaveBeenCalledWith("dashboard:delta", expect.any(Function), undefined);
     expect(unlisten).toHaveBeenCalledTimes(1);
+  });
+
+  it("hosts the browser surface only in the main window", async () => {
+    const { hostsBrowserSurface, installTauriBridge } = await import("./tauriBridge.js");
+    window.__TAURI_INTERNALS__ = { metadata: { currentWindow: { label: "chat-1" } } };
+    installTauriBridge();
+    expect(hostsBrowserSurface()).toBe(false);
+
+    delete window.argmax;
+    window.__TAURI_INTERNALS__ = { metadata: { currentWindow: { label: "main" } } };
+    installTauriBridge();
+    expect(hostsBrowserSurface()).toBe(true);
+  });
+
+  it("listens as the window it runs in, so a targeted emit reaches only that window", async () => {
+    // A listener with Tauri's default `Any` target receives every `emit_to`
+    // regardless of label; ⌘B sent to the focused window would then toggle the
+    // sidebar in every open window.
+    window.__TAURI_INTERNALS__ = { metadata: { currentWindow: { label: "chat-2" } } };
+    mocks.listen.mockResolvedValue(vi.fn());
+    const { installTauriBridge } = await import("./tauriBridge.js");
+
+    installTauriBridge();
+    window.argmax!.menu.onCommand(vi.fn());
+    await Promise.resolve();
+
+    expect(mocks.listen).toHaveBeenCalledWith("menu:command", expect.any(Function), { target: "chat-2" });
   });
 
   it("carries the window's zoom to the page that has to undo it", async () => {
@@ -126,7 +153,7 @@ describe("tauriBridge", () => {
     window.argmax!.system.onZoom(listener);
     await Promise.resolve();
 
-    expect(mocks.listen).toHaveBeenCalledWith("ui:zoom", expect.any(Function));
+    expect(mocks.listen).toHaveBeenCalledWith("ui:zoom", expect.any(Function), undefined);
     const zoomCall = mocks.listen.mock.calls.find((call) => call[0] === "ui:zoom");
     const deliver = zoomCall?.[1] as ((event: { payload: number }) => void) | undefined;
     deliver?.({ payload: 0.8 });

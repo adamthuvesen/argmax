@@ -2,6 +2,7 @@ import type { ComponentPropsWithoutRef, JSX } from "react";
 import { openInBrowserPanel } from "../lib/browserPanel.js";
 import { readStoredLinkTarget } from "../lib/linkTarget.js";
 import { isRemoteBridge } from "../lib/tauriBridge.js";
+import { isSecondaryWindow } from "../lib/windowRole.js";
 
 type WebLinkProps = Omit<ComponentPropsWithoutRef<"a">, "href"> & { href: string };
 
@@ -28,7 +29,9 @@ export function WebLink({ href, children, ...rest }: WebLinkProps): JSX.Element 
         // into the phone's browser.
         if (isRemoteBridge()) return;
         const flipped = event.metaKey || event.ctrlKey;
-        if ((readStoredLinkTarget() === "argmax") !== flipped) {
+        // A torn-off chat window has no browser surface to open the link in
+        // (docs/browser.md); the system browser takes it instead.
+        if (!isSecondaryWindow() && (readStoredLinkTarget() === "argmax") !== flipped) {
           event.preventDefault();
           openInBrowserPanel(href, { newTab: true });
           return;

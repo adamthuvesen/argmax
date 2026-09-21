@@ -87,6 +87,7 @@ export let dashboardList: AppTestMockFn<ArgmaxApi["dashboard"]["list"]>;
 export let dashboardDeltaListener: ((delta: DashboardDelta) => void) | null = null;
 export let dashboardDeltaUnsubscribe: AppTestMockFn<() => void>;
 export let launchProvider: AppTestMockFn<ArgmaxApi["providers"]["launch"]>;
+export let openSessionWindow: AppTestMockFn<ArgmaxApi["windows"]["openSession"]>;
 let approvalsPending: AppTestMockFn<ArgmaxApi["approvals"]["pending"]>;
 let approvalsResolve: AppTestMockFn<ArgmaxApi["approvals"]["resolve"]>;
 export let questionsResolve: AppTestMockFn<ArgmaxApi["questions"]["resolve"]>;
@@ -231,6 +232,7 @@ export function setupAppTestMocks(): void {
   dashboardDeltaListener = null;
   dashboardDeltaUnsubscribe = vi.fn<() => void>();
   launchProvider = vi.fn<ArgmaxApi["providers"]["launch"]>().mockResolvedValue(snapshot.sessions[0] ?? missingSession());
+  openSessionWindow = vi.fn<ArgmaxApi["windows"]["openSession"]>().mockResolvedValue({ label: "chat-1" });
   approvalsPending = vi.fn<ArgmaxApi["approvals"]["pending"]>().mockResolvedValue(snapshot.approvals);
   approvalsResolve = vi.fn<ArgmaxApi["approvals"]["resolve"]>().mockImplementation(({ approvalId, status }) =>
     Promise.resolve({
@@ -632,6 +634,10 @@ export function setupAppTestMocks(): void {
           menuCommandListener = null;
         };
       }
+    },
+    windows: {
+      openSession: openSessionWindow,
+      setSession: () => Promise.resolve({ label: "main" })
     },
     sources: {
       list: () => Promise.resolve([]),

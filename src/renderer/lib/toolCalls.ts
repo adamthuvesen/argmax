@@ -204,6 +204,7 @@ const OPENCODE_MCP_SERVERS = new Set([
   "shunt",
   "context7",
   "hex",
+  "executor",
   "profound",
   "confidence-experiments"
 ]);

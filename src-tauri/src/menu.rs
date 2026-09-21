@@ -281,10 +281,23 @@ pub fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
     }
 
     if let Some(command) = MenuCommand::from_id(id) {
-        // Not `get_webview_window`: that returns None once the browser pane
-        // adds child webviews to the main window, silently eating every
+        // A browser popup (an OAuth window a tab opened) can be the key
+        // window. It has no renderer of ours: ⌘W closes it, and the other
+        // commands go to the chat window behind it.
+        if let Some(key) = crate::windows::key_window_label() {
+            if !crate::windows::is_chat_window(&key) && command == MenuCommand::CloseSurface {
+                if let Some(window) = app.get_window(&key) {
+                    let _ = window.close();
+                }
+                return;
+            }
+        }
+        // The menu is app-global, so the command goes to the window the user
+        // is in. Not `get_webview_window`: that returns None once the browser
+        // pane adds child webviews to the main window, silently eating every
         // menu command.
-        if let Err(error) = app.emit_to("main", MENU_COMMAND_EVENT, command.as_str()) {
+        let target = crate::windows::focused_window_label();
+        if let Err(error) = app.emit_to(target.as_str(), MENU_COMMAND_EVENT, command.as_str()) {
             tracing::warn!(
                 command = command.as_str(),
                 ?error,
@@ -296,7 +309,7 @@ pub fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
 
     match id {
         "argmax:dev-reload" | "argmax:dev-force-reload" => {
-            if let Some(webview) = app.get_webview("main") {
+            if let Some(webview) = app.get_webview(&crate::windows::focused_window_label()) {
                 if let Err(error) = webview.reload() {
                     tracing::warn!(?error, "failed to reload webview from menu");
                 }
@@ -514,9 +527,14 @@ fn set_main_window_zoom<R: Runtime>(app: &AppHandle<R>, zoom: f64) {
 }
 
 fn apply_main_window_zoom<R: Runtime>(app: &AppHandle<R>, zoom: f64) {
-    if let Some(webview) = app.get_webview("main") {
+    // One zoom for every chat window: the value is app-wide, and a torn-off
+    // chat at a different size from the window it came from reads as a bug.
+    for (label, webview) in app.webviews() {
+        if !crate::windows::is_chat_window(&label) {
+            continue;
+        }
         if let Err(error) = webview.set_zoom(zoom) {
-            tracing::warn!(?error, zoom, "failed to set webview zoom");
+            tracing::warn!(?error, zoom, label, "failed to set webview zoom");
         }
     }
     if let Err(error) = app.emit(ZOOM_EVENT, zoom) {
@@ -548,7 +566,7 @@ fn open_url<R: Runtime>(app: &AppHandle<R>, url: &str) {
 
 #[cfg(debug_assertions)]
 fn toggle_devtools<R: Runtime>(app: &AppHandle<R>) {
-    if let Some(webview) = app.get_webview("main") {
+    if let Some(webview) = app.get_webview(&crate::windows::focused_window_label()) {
         if webview.is_devtools_open() {
             webview.close_devtools();
         } else {

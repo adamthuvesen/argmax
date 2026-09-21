@@ -225,6 +225,20 @@ const HEX: ServerIcon = {
   ]
 };
 
+// Executor ships its mark as a cream serif E on a black circle, the middle arm
+// a play triangle. Row icons draw at 14px, so this is laid out on a 28-unit
+// grid with every straight edge on an even unit, so it lands on whole pixels at
+// 1x and on retina: the serifs and the outlined triangle go, since at that
+// size they only blur.
+const EXECUTOR: ServerIcon = {
+  title: "Executor",
+  viewBox: "0 0 28 28",
+  layers: [
+    { fill: "#000000", path: "M14 0A14 14 0 1 1 14 28 14 14 0 1 1 14 0Z" },
+    { fill: "#F3EFE7", path: "M8 6h12v4h-8v8h8v4H8zM12 12l5 2-5 2z" }
+  ]
+};
+
 function fromSimpleIcon(icon: { title: string; path: string; hex: string }): ServerIcon {
   // Notion, GitHub and Vercel are black marks: no tint carries them on
   // charcoal, so they fall back to currentColor like the words beside them.
@@ -253,6 +267,7 @@ const SERVER_ICONS: Record<string, ServerIcon> = {
   github: fromSimpleIcon(siGithub),
   vercel: fromSimpleIcon(siVercel),
   hex: HEX,
+  executor: EXECUTOR,
   engram: ENGRAM,
   shunt: SHUNT,
   trace: TRACE,

@@ -44,6 +44,7 @@ npm run tauri:build     # production Tauri bundle
 - **Shared values, not duplicates.** Model labels, ids, reasoning levels, and pricing live in [src/shared/providerModels.ts](src/shared/providerModels.ts).
 - **Provider protocol output is not chat.** Visible chat comes from normalized timeline events; raw transcript fallback is only for human-readable stdout/stderr.
 - **An image reaches the user only through Markdown.** `![what it shows](path)` on its own line, pointing inside the checkout or at a path Argmax handed you (a `browser_screenshot`'s `path`). An image a tool returned lands in the model's context, not the chat, and a remote `http(s)` image is drawn as a link rather than fetched. See [docs/chat-cards.md](docs/chat-cards.md).
+- **A diagram reaches the user as a mermaid fence.** A fenced `mermaid` / `mmd` block in the answer is drawn as SVG, wider than the prose column. Prefer mermaid for architecture, sequence, and flow; prefer a Markdown image for a screenshot or chart already on disk. Skip hex `classDef` / `style` colors — Argmax themes the diagram. See [docs/chat-cards.md](docs/chat-cards.md).
 - **Dashboard state is SQLite-first and delta-driven.** Focused reads plus `dashboard:delta`; no recurring renderer poll.
 - **Thinking state yields to content.** Hide the pre-answer Thinking bubble as soon as any visible assistant event arrives.
 - **Auto-approve is the default permission mode.** Keep provider bypass flags centralized in [src-tauri/src/providers/adapters.rs](src-tauri/src/providers/adapters.rs).

@@ -797,6 +797,30 @@ async systemTestNotification(input: SystemTestNotificationInput) : Promise<Resul
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Opens the session in a window of its own, or focuses the one that already
+ * shows it. Synchronous: creating a native window belongs on the main thread.
+ */
+async windowOpenSession(input: WindowOpenSessionInput) : Promise<Result<WindowOpenSessionResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("window_open_session", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * A torn-off window reports the chat it is showing, so "Open in new window"
+ * keeps focusing the right window after the user switches chats in it.
+ */
+async windowSetSession(input: WindowSetSessionInput) : Promise<Result<WindowOpenSessionResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("window_set_session", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async sessionCostSummary(input: SessionCostSummaryInput) : Promise<Result<SessionCostSummary, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("session_cost_summary", { input }) };
@@ -2503,6 +2527,9 @@ provider?: ProviderId | null }
  */
 export type UsageTokenTotals = { inputUncached: number; cacheRead: number; cacheWrite: number; output: number; reasoning: number }
 export type UsageWindow = "24h" | "7d" | "30d"
+export type WindowOpenSessionInput = { sessionId: string }
+export type WindowOpenSessionResult = { label: string }
+export type WindowSetSessionInput = { sessionId: string | null }
 export type WorkspaceArchiveResult = { workspace: WorkspaceSummary; recoveryPath: string | null }
 export type WorkspaceContentSearchFile = { path: string; matches: WorkspaceContentSearchMatch[] }
 export type WorkspaceContentSearchMatch = { line: number; preview: string }

@@ -196,6 +196,7 @@ export function Sidebar({
   onNewSideChat,
   onArchiveWorkspace,
   onOpenInIde,
+  onOpenInWindow,
   onOpenLauncher,
   onOpenProject,
   onOpenWorkspaceChat,
@@ -227,6 +228,9 @@ export function Sidebar({
   onNewSideChat?: () => void;
   onArchiveWorkspace: (workspaceId: string) => void;
   onOpenInIde: (workspaceId: string, ide: IdeId, options?: { pinAsDefault?: boolean }) => void;
+  /** Tears the chat off into a desktop window of its own. Absent in a window
+   *  that is itself torn off, which hides the action. */
+  onOpenInWindow?: (workspaceId: string) => void;
   onOpenLauncher: () => void;
   onOpenProject: (projectId: string) => void;
   onOpenWorkspaceChat: (workspaceId: string, modifiers: WorkspaceClickModifiers) => void;
@@ -1118,6 +1122,7 @@ export function Sidebar({
                   onOpenWorkspaceChat={onOpenWorkspaceChat}
                   onArchiveWorkspace={onArchiveWorkspace}
                   onOpenInIde={onOpenInIde}
+                  onOpenInWindow={onOpenInWindow}
                   onTogglePin={onToggleWorkspacePinned}
                   onRename={onRenameWorkspace}
                   onSetIcon={onSetWorkspaceIcon}
@@ -1269,6 +1274,7 @@ export function Sidebar({
                   onOpenWorkspaceChat={onOpenWorkspaceChat}
                   onArchiveWorkspace={onArchiveWorkspace}
                   onOpenInIde={onOpenInIde}
+                  onOpenInWindow={onOpenInWindow}
                   onTogglePin={onToggleWorkspacePinned}
                   onRename={onRenameWorkspace}
                   onSetIcon={onSetWorkspaceIcon}
@@ -1327,6 +1333,7 @@ export function Sidebar({
                   onOpenWorkspaceChat={onOpenWorkspaceChat}
                   onArchiveWorkspace={onArchiveWorkspace}
                   onOpenInIde={onOpenInIde}
+                  onOpenInWindow={onOpenInWindow}
                   onTogglePin={onToggleWorkspacePinned}
                   onRename={onRenameWorkspace}
                   onSetIcon={onSetWorkspaceIcon}
@@ -1408,6 +1415,7 @@ export function Sidebar({
                             onOpenWorkspaceChat={onOpenWorkspaceChat}
                             onArchiveWorkspace={onArchiveWorkspace}
                             onOpenInIde={onOpenInIde}
+                            onOpenInWindow={onOpenInWindow}
                             onTogglePin={onToggleWorkspacePinned}
                             onRename={onRenameWorkspace}
                             onSetIcon={onSetWorkspaceIcon}
@@ -1568,6 +1576,7 @@ export function Sidebar({
                         onOpenWorkspaceChat={onOpenWorkspaceChat}
                         onArchiveWorkspace={onArchiveWorkspace}
                         onOpenInIde={onOpenInIde}
+                        onOpenInWindow={onOpenInWindow}
                         onTogglePin={onToggleWorkspacePinned}
                         onRename={onRenameWorkspace}
                         onSetIcon={onSetWorkspaceIcon}

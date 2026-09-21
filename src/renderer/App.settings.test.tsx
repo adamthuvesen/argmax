@@ -49,7 +49,7 @@ async function openArgmaxMenu(): Promise<HTMLElement> {
 // async, so wait for the item to come out of its "no IDEs yet" disabled state.
 async function openIdeMenu(): Promise<HTMLElement> {
   fireEvent.contextMenu(screen.getByRole("button", { name: "Build dashboard" }));
-  const ideItem = await screen.findByRole("menuitem", { name: /Open in/ });
+  const ideItem = await screen.findByRole("menuitem", { name: /^Open in (?!new window)/ });
   await waitFor(() => expect(ideItem).not.toBeDisabled());
   fireEvent.click(ideItem);
   return ideItem;
@@ -459,7 +459,7 @@ describe("App settings", () => {
     await screen.findByRole("button", { name: "Build dashboard" });
 
     fireEvent.contextMenu(screen.getByRole("button", { name: "Build dashboard" }));
-    const ideItem = await screen.findByRole("menuitem", { name: /Open in/ });
+    const ideItem = await screen.findByRole("menuitem", { name: /^Open in (?!new window)/ });
     expect(ideItem).toBeDisabled();
     expect(ideItem).toHaveAttribute("title", "Worktree not ready yet");
   });

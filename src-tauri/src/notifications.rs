@@ -2,7 +2,7 @@ use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 use std::sync::{Arc, Mutex};
 
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Runtime};
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 #[cfg(target_os = "macos")]
@@ -22,6 +22,9 @@ pub struct NotificationOptions {
     pub title: String,
     pub body: String,
     pub icon: Option<String>,
+    /// The chat the banner is about, so a click can raise the window it is
+    /// torn off into rather than the main one.
+    pub session_id: Option<String>,
 }
 
 pub trait NotificationSink: Send + Sync + 'static {
@@ -71,6 +74,7 @@ impl<S: NotificationSink> NotificationService<S> {
             title: "Argmax".to_string(),
             body: "Desktop notifications are working.".to_string(),
             icon: Some("icon".to_string()),
+            session_id: None,
         })
     }
 
@@ -145,6 +149,7 @@ impl<S: NotificationSink> NotificationService<S> {
                 session.model_label
             ),
             icon: Some("icon".to_string()),
+            session_id: Some(session.id.clone()),
         })?;
         Ok(true)
     }
@@ -233,11 +238,7 @@ impl<R: Runtime> NotificationSink for TauriNotificationSink<R> {
 }
 
 pub fn main_window_focus_probe<R: Runtime>(app: AppHandle<R>) -> FocusProbe {
-    Arc::new(move || {
-        app.get_window("main")
-            .and_then(|window| window.is_focused().ok())
-            .unwrap_or(false)
-    })
+    Arc::new(move || crate::windows::any_chat_window_focused(&app))
 }
 
 fn build_session_options(session: &SessionSummary) -> NotificationOptions {
@@ -246,6 +247,7 @@ fn build_session_options(session: &SessionSummary) -> NotificationOptions {
             title: "Chat complete".to_string(),
             body: format!("{} finished — open Argmax to review.", session.model_label),
             icon: Some("icon".to_string()),
+            session_id: Some(session.id.clone()),
         };
     }
 
@@ -256,6 +258,7 @@ fn build_session_options(session: &SessionSummary) -> NotificationOptions {
             session.model_label
         ),
         icon: Some("icon".to_string()),
+        session_id: Some(session.id.clone()),
     }
 }
 

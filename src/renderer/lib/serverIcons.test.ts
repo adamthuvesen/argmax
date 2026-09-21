@@ -44,6 +44,11 @@ describe("serverIconFor", () => {
     expect(layers?.[0]?.path).toMatch(/^M12 0A12 12 /);
   });
 
+  it("draws Executor as its cream E on a black circle", () => {
+    const layers = serverIconFor("executor")?.layers;
+    expect(layers?.map((layer) => layer.fill)).toEqual(["#000000", "#F3EFE7"]);
+  });
+
   it("returns null for a server with no mark wired up", () => {
     expect(serverIconFor("context7")).toBeNull();
     expect(serverIconFor("browser use")).toBeNull();

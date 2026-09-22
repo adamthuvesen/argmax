@@ -30,7 +30,7 @@
     "prepare": "git config core.hooksPath .githooks",
     "coverage": "vitest run --coverage",
     "tauri": "tauri",
-    "generate:bindings": "cargo run --manifest-path src-tauri/Cargo.toml --bin export-bindings -- src/shared/bindings.d.ts",
+    "generate:bindings": "cargo run --manifest-path src-tauri/Cargo.toml --features helper-bins --bin export-bindings -- src/shared/bindings.d.ts",
     "check:tauri-bridge": "node scripts/check-tauri-bridge.mjs",
     "check:main-thread": "node scripts/check-main-thread-handlers.mjs",
     "check:bundle": "node scripts/check-bundle.mjs",

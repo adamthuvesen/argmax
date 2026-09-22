@@ -13,8 +13,12 @@ path = "src/lib.rs"
 # Argmax ships for desktop; Tauri mobile targets require the other library types.
 crate-type = ["rlib"]
 
-# Neither binary carries unit tests; `test = false` keeps `cargo test` from
-# building (and linking) a test harness for each of them.
+# `test = false` keeps `cargo test` from building a harness for each binary.
+# The helper bins are not part of the app. A universal release only lipos the
+# main binary into target/universal-apple-darwin, and Tauri then copies every
+# default bin from that directory. v0.5.0 failed there looking for
+# export-bindings. required-features keeps the helpers out of `tauri build`
+# unless that feature is passed.
 [[bin]]
 name = "argmax"
 path = "src/main.rs"
@@ -24,11 +28,13 @@ test = false
 name = "export-bindings"
 path = "src/bin/export-bindings.rs"
 test = false
+required-features = ["helper-bins"]
 
 [[bin]]
 name = "audit-tool-activity"
 path = "src/bin/audit-tool-activity.rs"
 test = false
+required-features = ["helper-bins"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -232,6 +238,9 @@ tauri = { version = "2.11", features = ["test"] }
 [features]
 # Required by Tauri 2 for production builds; do not remove.
 custom-protocol = ["tauri/custom-protocol"]
+# Opt-in for the helper binaries. Off by default so a release bundle does not
+# look for them.
+helper-bins = []
 # Local-only app automation. Runtime startup additionally requires
 # `ARGMAX_VERIFICATION=1`, so a feature-enabled binary does not listen by
 # accident.

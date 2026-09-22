@@ -27,6 +27,8 @@ Argmax is pre-1.0 and every release is marked a pre-release on GitHub.
 ### Fixed
 
 - Dragging a sidebar row no longer drag-selects the chat list.
+- The universal release bundle no longer expects the helper binaries. v0.5.0
+  failed while copying `export-bindings`, which that build does not produce.
 
 ## 0.5.0 — 2026-09-20
 

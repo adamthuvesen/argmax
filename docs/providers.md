@@ -535,7 +535,7 @@ and existing diff evidence remain available behind the activity disclosure.
 For a bounded, read-only coverage report against real history:
 
 ```bash
-cargo run --manifest-path src-tauri/Cargo.toml --bin audit-tool-activity -- /path/to/argmax.sqlite 1000
+cargo run --manifest-path src-tauri/Cargo.toml --features helper-bins --bin audit-tool-activity -- /path/to/argmax.sqlite 1000
 ```
 
 The sample limit is per provider. Counts describe recorded tool starts, not

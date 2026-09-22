@@ -63,7 +63,7 @@ fn every_command_is_registered() {
 
 /// The committed bindings and secondary channel inventories come from the same
 /// exporter, so drift is a test failure rather than a second full
-/// `cargo run --bin export-bindings` in CI.
+/// `npm run generate:bindings` in CI.
 #[test]
 fn generated_ipc_files_are_current() {
     let dir = tempfile::tempdir().expect("tempdir");

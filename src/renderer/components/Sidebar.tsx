@@ -111,6 +111,7 @@ function markBootSeeded(key: string): void {
 // buckets. `groupWorkspacesByDate` only ever emits today / yesterday / last-7 /
 // older, so these keys can't collide with a date bucket.
 const PINNED_GROUP_KEY = "pinned";
+const ARCS_GROUP_KEY = "arcs";
 const PRIORITY_GROUP_KEY = "priority";
 const SIDE_CHATS_GROUP_KEY = "side-chats";
 const OLDER_GROUP_KEY = "older";
@@ -800,6 +801,18 @@ export function Sidebar({
     knownWorkspaceIdsRef.current = next;
   }, [revealWorkspaceGroup, sidebarWorkspaces]);
 
+  // An arc opened from elsewhere (the palette, a chat's arc label) must not
+  // sit selected inside a collapsed Arcs section.
+  useEffect(() => {
+    if (!selectedArcId) return;
+    setCollapsedDateGroups((current) => {
+      if (!current.has(ARCS_GROUP_KEY)) return current;
+      const next = new Set(current);
+      next.delete(ARCS_GROUP_KEY);
+      return next;
+    });
+  }, [selectedArcId]);
+
   const toggleDateGroupExpansion = useCallback(
     (key: string): void => {
       const next = new Set(expandedDateGroups);
@@ -817,12 +830,14 @@ export function Sidebar({
   // Every sidebar section header (Pinned, Priority, recency buckets) carries
   // the same chevron, tucked inside the label so it hugs the word.
   const renderCollapseButton = useCallback(
-    (groupKey: string, label: string, isCollapsed: boolean): JSX.Element => (
+    // A section of chats is named by its label ("Hide Pinned chats"); one
+    // holding something else names the rows instead ("Hide arcs").
+    (groupKey: string, label: string, isCollapsed: boolean, rowNoun?: string): JSX.Element => (
       <button
         aria-expanded={!isCollapsed}
-        aria-label={`${isCollapsed ? "Show" : "Hide"} ${label} chats`}
+        aria-label={`${isCollapsed ? "Show" : "Hide"} ${rowNoun ?? `${label} chats`}`}
         className="project-visibility"
-        title={`${isCollapsed ? "Show" : "Hide"} chats`}
+        title={`${isCollapsed ? "Show" : "Hide"} ${rowNoun ?? "chats"}`}
         type="button"
         onClick={(event) => {
           event.stopPropagation();
@@ -1028,16 +1043,23 @@ export function Sidebar({
     </div>
   );
   // A first-class section above everything else: an arc spans projects, so it
-  // doesn't belong nested under one. No collapse chevron — the list is
-  // expected to stay short, and "New arc" always needs to be reachable in one
-  // click rather than behind an expand.
+  // doesn't belong nested under one. Like Pinned it opens expanded on launch,
+  // and "New arc" stays on the header so it is one click even when collapsed.
+  const arcsCollapsed = collapsedDateGroups.has(ARCS_GROUP_KEY);
   const arcsSection = (
-    <div className="project-group session-date-group arcs-group">
-      <div className="project-row session-date-row">
+    <div
+      className="project-group session-date-group arcs-group"
+      data-collapsed={arcsCollapsed ? "true" : undefined}
+    >
+      <div
+        className="project-row session-date-row"
+        onClick={() => toggleDateGroupVisibility(ARCS_GROUP_KEY)}
+      >
         <span className="project-name session-date-label">
           <span className="project-name-text">Arcs</span>
+          {renderCollapseButton(ARCS_GROUP_KEY, "Arcs", arcsCollapsed, "arcs")}
         </span>
-        <span className="rail-actions">
+        <span className="rail-actions" onClick={(event) => event.stopPropagation()}>
           <button
             className="small-icon"
             type="button"
@@ -1049,7 +1071,7 @@ export function Sidebar({
           </button>
         </span>
       </div>
-      {arcs.map((arc) => (
+      {(arcsCollapsed ? [] : arcs).map((arc) => (
         <div key={arc.id} className="session-row-wrap">
           <button
             type="button"

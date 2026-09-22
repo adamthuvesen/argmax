@@ -2176,6 +2176,17 @@ describe("Sidebar — Arcs section", () => {
     expect(screen.getByRole("button", { name: "Pricing rollout" })).toHaveAttribute("aria-current", "page");
   });
 
+  it("collapses the Arcs section from its chevron and keeps New arc on the header", () => {
+    render(<Sidebar {...baseProps} snapshot={arcSnapshot} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide arcs" }));
+    expect(screen.queryByRole("button", { name: "Pricing rollout" })).toBeNull();
+    expect(screen.getByRole("button", { name: "New arc" })).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show arcs" }));
+    expect(screen.getByRole("button", { name: "Pricing rollout" })).not.toBeNull();
+  });
+
   it("opens the New arc dialog from the section's New arc button", () => {
     render(<Sidebar {...baseProps} snapshot={arcSnapshot} />);
 

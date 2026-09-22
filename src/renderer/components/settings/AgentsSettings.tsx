@@ -127,7 +127,7 @@ export function AgentsSettings({
         />
         <SettingRow
           label="Fast mode"
-          description="Request faster responses for supported Codex models, with increased usage. Availability depends on your account."
+          description="Request faster responses for supported models, with increased usage. Availability depends on your account."
           control={
             <Toggle
               ariaLabel="Fast mode"

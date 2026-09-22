@@ -653,6 +653,7 @@ fn cursor_model_matches(advertised: &str, input: &ProviderLaunchInput) -> bool {
 fn cursor_acp_family(model_id: &str) -> Option<&str> {
     match model_id {
         "composer-2.5" => Some("composer-2.5"),
+        "grok-4.7-medium" => Some("grok-4.7"),
         "cursor-grok-4.6-medium" => Some("grok-4.6"),
         "cursor-grok-4.5-medium" => Some("grok-4.5"),
         "gemini-3.8-flash-medium" => Some("gemini-3.8-flash"),
@@ -1928,7 +1929,12 @@ mod tests {
 
     #[test]
     fn model_matching_maps_cursor_aliases_to_advertised_families() {
-        let mut input = launch_input("cursor-grok-4.6-medium");
+        let mut input = launch_input("grok-4.7-medium");
+        assert!(cursor_model_matches(
+            "grok-4.7[effort=xhigh,fast=true]",
+            &input
+        ));
+        input.model_id = "cursor-grok-4.6-medium".into();
         assert!(cursor_model_matches(
             "grok-4.6[effort=high,fast=true]",
             &input

@@ -74,6 +74,10 @@ export type RemotePushDevice = Bindings.RemotePushDevice;
 export type RemotePushTestResult = Bindings.RemotePushTestResult;
 export type RemotePushCapability = Bindings.RemotePushCapability;
 export type StartupPhaseRecord = Bindings.StartupPhaseRecord;
+export type CloudPrepareInput = Bindings.CloudPrepareInput;
+export type CloudHandoffPreview = Bindings.CloudHandoffPreview;
+export type CloudLaunchInput = Bindings.CloudLaunchInput;
+export type CloudHandoffResult = Bindings.CloudHandoffResult;
 
 export interface DiscoveredProvider {
   provider: ProviderId;
@@ -522,6 +526,10 @@ export interface ArgmaxApi {
     sendQueuedMessageNow: (
       input: ProvidersSendQueuedMessageNowInput
     ) => Promise<{ ok: true; queued: boolean }>;
+  };
+  cloud: {
+    prepare: (input: CloudPrepareInput) => Promise<CloudHandoffPreview>;
+    launch: (input: CloudLaunchInput) => Promise<CloudHandoffResult>;
   };
   attachments: {
     saveImage: (input: AttachmentSaveImageInput) => Promise<AttachmentSaveImageResult>;

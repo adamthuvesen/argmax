@@ -70,7 +70,8 @@ export const REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultr
  * models run the full low→ultra list. Codex Astra/Sol/Terra match that (their CLI
  * catalog lists max and ultra). Codex Luna stops at Max. Cursor's GPT-5.6
  * Luna/Terra/Sol and Opus 5 Thinking go to Max (no Ultra suffix). Cursor Grok
- * 4.6 and Gemini 3.8 Flash stop at High. OpenCode Go (opencode-go/*) models
+ * 4.7 goes to Extra High; Cursor Grok 4.6/4.5 and Gemini 3.8 Flash stop at
+ * High. OpenCode Go (opencode-go/*) models
  * ship non-prefix variant lists because their CLI exposes only certain
  * discrete levels (e.g. low/high/max). Kept in sync with the Rust adapters'
  * effort → model mapping.
@@ -92,6 +93,9 @@ export function reasoningEffortsForModel(provider: ProviderId, modelId: string):
       modelId.startsWith("gpt-5.6-sol"))
   ) {
     return REASONING_EFFORTS.slice(0, 5); // low → max
+  }
+  if (provider === "cursor" && modelId.startsWith("grok-4.7")) {
+    return REASONING_EFFORTS.slice(0, 4); // low → xhigh
   }
   if (
     provider === "cursor" &&
@@ -208,6 +212,12 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
     { label: "Auto Intelligence (Cursor)", modelId: "auto-smart[optimize_for=intelligence]" },
     { label: "Composer 2.5 (Cursor)", modelId: "composer-2.5", contextWindow: 1_000_000 },
     {
+      label: "Grok 4.7 (Cursor)",
+      modelId: "grok-4.7-medium",
+      supportsReasoningEffort: true,
+      contextWindow: 1_000_000
+    },
+    {
       label: "Grok 4.6 (Cursor)",
       modelId: "cursor-grok-4.6-medium",
       supportsReasoningEffort: true,
@@ -257,10 +267,12 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
     { label: "DeepSeek V4 Pro", modelId: "opencode-go/deepseek-v4-pro", supportsReasoningEffort: true, contextWindow: 1_000_000 },
     { label: "DeepSeek V4 Flash", modelId: "opencode-go/deepseek-v4-flash", supportsReasoningEffort: true, contextWindow: 1_000_000 }
   ],
-  // The two models `grok models` lists. Both take --reasoning-effort up to
-  // xhigh (the CLI rejects max/ultra). Grok Build has no fast-mode switch.
-  // 500K window per xAI's published model card for both.
+  // The models `grok models` lists. All take --reasoning-effort up to xhigh
+  // (the CLI rejects max/ultra). Fast is a separate advertised SKU on 4.7
+  // only (`grok-4.7-build-fast`); 4.6 and 4.5 have no fast counterpart.
+  // 500K window per xAI's published model card.
   grok: [
+    { label: "Grok 4.7", modelId: "grok-4.7", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 500_000 },
     { label: "Grok 4.6", modelId: "grok-4.6", supportsReasoningEffort: true, contextWindow: 500_000 },
     { label: "Grok 4.5", modelId: "grok-4.5", supportsReasoningEffort: true, contextWindow: 500_000 }
   ]
@@ -277,7 +289,8 @@ export const PROVIDER_TITLE_MODEL: Record<ProviderId, string> = {
   codex: "gpt-5.6-luna",
   cursor: "composer-2.5",
   opencode: "opencode/big-pickle",
-  // 4.5 is the pricier SKU; titles ride the cheaper default model.
+  // 4.5 is the pricier SKU. 4.7 matches 4.6's Grok Build rate; titles stay on
+  // 4.6 so a helper call does not ride the new default.
   grok: "grok-4.6"
 };
 
@@ -307,8 +320,8 @@ export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> =
     supportsReasoningEffort: true
   },
   cursor: {
-    label: "Grok 4.6 (Cursor)",
-    modelId: "cursor-grok-4.6-medium",
+    label: "Grok 4.7 (Cursor)",
+    modelId: "grok-4.7-medium",
     supportsReasoningEffort: true
   },
   // GLM-5.3-Flash is an OpenCode Go model. Its variant list is low/high/max
@@ -320,8 +333,8 @@ export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> =
     reasoningEffort: "high"
   },
   grok: {
-    label: "Grok 4.6",
-    modelId: "grok-4.6",
+    label: "Grok 4.7",
+    modelId: "grok-4.7",
     supportsReasoningEffort: true
   }
 };
@@ -359,6 +372,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "auto-smart[optimize_for=balanced]":     { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "auto-smart[optimize_for=intelligence]": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "composer-2.5":                     { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "grok-4.7-medium":                  { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "cursor-grok-4.6-medium":           { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gemini-3.8-flash-medium":          { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gpt-5.6-sol-medium":               { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -380,11 +394,15 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "opencode-go/deepseek-v4-pro":               { input: 0.66,  output: 1.98,   cacheRead: 0.022, cacheWrite: 0 },
   "opencode-go/deepseek-v4-flash":             { input: 0.22,  output: 0.66,   cacheRead: 0.007, cacheWrite: 0 },
 
-  // Grok Build bills its own SKUs (`grok-4.6-build` / `grok-4.5-build` in the
-  // CLI's modelUsage map), not xAI's public API list price. Rates were solved
-  // from the CLI's own `total_cost_usd` across runs with varied token mixes and
-  // reproduce it exactly. Cache writes are never billed separately. Keep in
-  // sync with the Rust pricing mirror.
+  // Grok Build bills its own SKUs (`grok-4.7-build` / `grok-4.6-build` /
+  // `grok-4.5-build` in the CLI's modelUsage map), not xAI's public API list
+  // price. 4.6 rates were solved from the CLI's own `total_cost_usd` across
+  // runs with varied token mixes and reproduce it exactly. 4.7 is served at
+  // that same SKU rate (xAI: same price as 4.6); 4.7 Fast is twice that. Cache
+  // writes are never billed separately. Keep in sync with the Rust pricing
+  // mirror.
+  "grok-4.7":                              { input: 0.34,  output: 1.02,   cacheRead: 0.085, cacheWrite: 0 },
+  "grok-4.7-build-fast":                   { input: 0.68,  output: 2.04,   cacheRead: 0.17,  cacheWrite: 0 },
   "grok-4.6":                              { input: 0.34,  output: 1.02,   cacheRead: 0.085, cacheWrite: 0 },
   "grok-4.5":                              { input: 0.68,  output: 2.04,   cacheRead: 0.102, cacheWrite: 0 }
 };

@@ -381,9 +381,9 @@ describe("LaunchModelSelector — all providers", () => {
     expect(screen.getByRole("button", { name: "Launch model" })).toHaveAttribute("title", "GPT-5.6 Sol · Fast speed");
   });
 
-  const unsupportedFastModeModels = (["claude", "cursor", "opencode", "grok"] as const).flatMap((provider) =>
-    PROVIDER_MODELS[provider].map((model) => ({ provider, ...model }))
-  );
+  const unsupportedFastModeModels = (["claude", "cursor", "opencode", "grok"] as const)
+    .flatMap((provider) => PROVIDER_MODELS[provider].map((model) => ({ provider, ...model })))
+    .filter((model) => !model.supportsFastMode);
 
   it.each(unsupportedFastModeModels)(
     "hides fast mode for $provider $label",
@@ -445,13 +445,14 @@ describe("LaunchModelSelector — all providers", () => {
   });
 
   it.each([
-    { label: "GPT-6 Astra", modelId: "gpt-6-astra" },
-    { label: "GPT-5.6 Sol", modelId: "gpt-5.6-sol" },
-    { label: "GPT-5.6 Terra", modelId: "gpt-5.6-terra" },
-    { label: "GPT-5.6 Luna", modelId: "gpt-5.6-luna" }
-  ])("offers fast mode for Codex $label", ({ label, modelId }) => {
+    { provider: "codex" as const, label: "GPT-6 Astra", modelId: "gpt-6-astra" },
+    { provider: "codex" as const, label: "GPT-5.6 Sol", modelId: "gpt-5.6-sol" },
+    { provider: "codex" as const, label: "GPT-5.6 Terra", modelId: "gpt-5.6-terra" },
+    { provider: "codex" as const, label: "GPT-5.6 Luna", modelId: "gpt-5.6-luna" },
+    { provider: "grok" as const, label: "Grok 4.7", modelId: "grok-4.7" }
+  ])("offers fast mode for $provider $label", ({ provider, label, modelId }) => {
     const value: ModelPickerSelection = {
-      provider: "codex",
+      provider,
       label,
       modelId,
       reasoningEffort: "medium"

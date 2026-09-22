@@ -1575,8 +1575,8 @@ pub fn provider_defaults(provider: &str) -> ProviderDefaults {
             reasoning_effort: Some("medium"),
         },
         "cursor" => ProviderDefaults {
-            model_label: "Grok 4.6 (Cursor)",
-            model_id: "cursor-grok-4.6-medium",
+            model_label: "Grok 4.7 (Cursor)",
+            model_id: "grok-4.7-medium",
             reasoning_effort: Some("medium"),
         },
         "opencode" => ProviderDefaults {
@@ -1585,8 +1585,8 @@ pub fn provider_defaults(provider: &str) -> ProviderDefaults {
             reasoning_effort: Some("high"),
         },
         "grok" => ProviderDefaults {
-            model_label: "Grok 4.6",
-            model_id: "grok-4.6",
+            model_label: "Grok 4.7",
+            model_id: "grok-4.7",
             reasoning_effort: Some("medium"),
         },
         _ => ProviderDefaults {

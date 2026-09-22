@@ -33,6 +33,10 @@ import type {
   BrowserTabInfo,
   AttachmentSaveImageResult,
   ChangedFileSummary,
+  CloudHandoffPreview,
+  CloudHandoffResult,
+  CloudLaunchInput,
+  CloudPrepareInput,
   CheckRun,
   Checkpoint,
   ConnectionSummary,
@@ -363,6 +367,12 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
         invokeCommand<{ ok: true }>("providers:cancel-queued-message", input),
       sendQueuedMessageNow: (input: ProvidersSendQueuedMessageNowInput) =>
         invokeCommand<{ ok: true; queued: boolean }>("providers:send-queued-message-now", input)
+    },
+    cloud: {
+      prepare: (input: CloudPrepareInput) =>
+        invokeCommand<CloudHandoffPreview>("cloud:prepare", input),
+      launch: (input: CloudLaunchInput) =>
+        invokeCommand<CloudHandoffResult>("cloud:launch", input)
     },
     attachments: {
       saveImage: (input: AttachmentSaveImageInput) =>

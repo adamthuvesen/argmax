@@ -18,6 +18,7 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use super::acp::{AcpClient, AcpPermissionDecision, AcpPermissionHandler, AcpPermissionRequest};
+use super::adapters::grok_launch_model_id;
 use super::environment::build_provider_environment;
 use super::normalizer::ProviderOutputStream;
 use super::runtime::{
@@ -328,17 +329,18 @@ async fn select_grok_model(
     input: &ProviderLaunchInput,
     response: &Value,
 ) -> ArgmaxResult<()> {
+    let wanted = grok_launch_model_id(&input.model_id, input.fast_mode);
     let exact_model = response
         .pointer("/models/availableModels")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
         .filter_map(|model| model.get("modelId").and_then(Value::as_str))
-        .find(|model_id| *model_id == input.model_id)
+        .find(|model_id| *model_id == wanted)
         .ok_or_else(|| {
             ArgmaxError::service(
                 "ACP_MODEL_UNAVAILABLE",
-                format!("Grok ACP does not advertise model {}", input.model_id),
+                format!("Grok ACP does not advertise model {wanted}"),
             )
         })?;
     client

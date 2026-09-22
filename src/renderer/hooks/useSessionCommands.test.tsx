@@ -46,7 +46,10 @@ describe("useSessionCommands", () => {
     ["claude", "claude-haiku-4-5", false],
     ["cursor", "gpt-5.6-sol-medium", false],
     ["cursor", "composer-2.5", false],
+    ["cursor", "grok-4.7-medium", false],
+    ["grok", "grok-4.7", true],
     ["grok", "grok-4.6", false],
+    ["grok", "grok-4.5", false],
     ["opencode", "opencode/big-pickle", false]
   ] as const)("gates the saved Fast preference for %s/%s", async (provider, modelId, supported) => {
     const { result, rerender } = renderHook(

@@ -49,9 +49,9 @@ import { connectBridge, readBridgeConfig, realProfileDataDir } from "./bridge-cl
 export const LAUNCH_MODEL_DEFAULTS = {
   claude: { modelLabel: "Opus 5", modelId: "claude-opus-5", reasoningEffort: null },
   codex: { modelLabel: "GPT-5.6 Sol", modelId: "gpt-5.6-sol", reasoningEffort: null },
-  cursor: { modelLabel: "Grok 4.6 (Cursor)", modelId: "cursor-grok-4.6-medium", reasoningEffort: null },
+  cursor: { modelLabel: "Grok 4.7 (Cursor)", modelId: "grok-4.7-medium", reasoningEffort: null },
   opencode: { modelLabel: "GLM-5.3-Flash", modelId: "opencode-go/glm-5.3-flash", reasoningEffort: "high" },
-  grok: { modelLabel: "Grok 4.6", modelId: "grok-4.6", reasoningEffort: null }
+  grok: { modelLabel: "Grok 4.7", modelId: "grok-4.7", reasoningEffort: null }
 };
 
 const TERMINAL_SESSION_STATES = new Set(["complete", "failed", "cancelled"]);

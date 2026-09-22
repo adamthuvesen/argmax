@@ -715,10 +715,6 @@
      27px below it. 16px lands both at ~19px of visible space. */
   gap: var(--space-4);
   padding: var(--space-6) var(--session-inline-padding) var(--space-8);
-  --diagram-breakout: max(
-    0px,
-    calc(var(--session-inline-padding) - var(--session-inline-padding-min, 22px))
-  );
 }
 
 :is(.conversation-content, .agent-activity-content) > * {
@@ -990,13 +986,6 @@
      the list sits at one of its ends. */
   padding: var(--conversation-edge-fade) var(--session-inline-padding) var(--space-8);
   padding-inline-end: var(--session-inline-padding-end, var(--session-inline-padding));
-  /* Eat leftover left gutter, not --session-inline-padding-end: that extra
-     end pad is --workspace-card-shift, and a diagram that keyed off it would
-     slide under the workspace card. */
-  --diagram-breakout: max(
-    0px,
-    calc(var(--session-inline-padding) - var(--session-inline-padding-min, 22px))
-  );
 }
 
 /* The Thinking line's slot: reserved whether the line is in it or not, so the
@@ -1060,6 +1049,8 @@
 }
 
 .markdown {
+  --markdown-prose-width: 780px;
+  --diagram-breakout: 0px;
   font-family: var(--font-prose);
   font-size: var(--text-base);
   /* Prose carries unbreakable tokens — absolute paths, worktree branch names,
@@ -1096,7 +1087,7 @@
 }
 
 .markdown > :where(p, ul, ol, blockquote, h1, h2, h3, h4) {
-  max-width: 780px;
+  max-width: var(--markdown-prose-width);
 }
 
 .markdown p {
@@ -1405,8 +1396,9 @@
 
 /* A mermaid fence is a figure, not a code block: no MERMAID header, no
    highlighter. It sits on the transcript (not in a filled well). A small
-   SVG hugs; a wide one eats --diagram-breakout into the session gutters
-   and scales only if it still overflows. Open the lightbox for native size. */
+   SVG hugs; a wide one eats --diagram-breakout into the session gutters,
+   capped at 20% of the prose measure per side, and scales only if it still
+   overflows. Open the lightbox for native size. */
 .mermaid-diagram {
   position: relative;
   width: fit-content;
@@ -1421,9 +1413,9 @@
 }
 
 .mermaid-diagram[data-wide] {
-  width: calc(100% + 2 * var(--diagram-breakout, 0px));
-  max-width: calc(100% + 2 * var(--diagram-breakout, 0px));
-  margin-inline: calc(-1 * var(--diagram-breakout, 0px));
+  width: calc(min(100%, var(--markdown-prose-width)) + 2 * var(--diagram-breakout, 0px));
+  max-width: calc(min(100%, var(--markdown-prose-width)) + 2 * var(--diagram-breakout, 0px));
+  margin-inline: calc(-1 * var(--diagram-breakout, 0px)) auto;
 }
 
 .mermaid-diagram:hover,
@@ -1526,6 +1518,10 @@
   max-width: 100%;
   height: auto;
   background: transparent;
+}
+
+.mermaid-diagram[data-wide] .mermaid-diagram-canvas svg {
+  width: 100%;
 }
 
 .mermaid-diagram-canvas .nodeLabel,

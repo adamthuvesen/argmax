@@ -69,9 +69,9 @@ export const REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultr
  * Effort levels a given model offers in the picker, low → high. Claude's own
  * models run the full low→ultra list. Codex Astra/Sol/Terra match that (their CLI
  * catalog lists max and ultra). Codex Luna stops at Max. Cursor's GPT-5.6
- * Luna/Terra/Sol and Opus 5 Thinking go to Max (no Ultra suffix). Cursor Grok
- * 4.7 goes to Extra High; Cursor Grok 4.6/4.5 and Gemini 3.8 Flash stop at
- * High. OpenCode Go (opencode-go/*) models
+ * Luna/Terra/Sol, Opus 5 Thinking, and Opus 5.5 go to Max (no Ultra suffix).
+ * Cursor Grok 4.7 goes to Extra High; Cursor Grok 4.6/4.5 and Gemini 3.8 Flash
+ * stop at High. OpenCode Go (opencode-go/*) models
  * ship non-prefix variant lists because their CLI exposes only certain
  * discrete levels (e.g. low/high/max). Kept in sync with the Rust adapters'
  * effort → model mapping.
@@ -88,6 +88,7 @@ export function reasoningEffortsForModel(provider: ProviderId, modelId: string):
   if (
     provider === "cursor" &&
     (modelId.startsWith("claude-opus-5-thinking") ||
+      modelId.startsWith("claude-opus-5-5") ||
       modelId.startsWith("gpt-5.6-luna") ||
       modelId.startsWith("gpt-5.6-terra") ||
       modelId.startsWith("gpt-5.6-sol"))
@@ -191,6 +192,7 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
   // https://code.claude.com/docs/en/fast-mode
   claude: [
     { label: "Fable 5.1", modelId: "claude-fable-5-1", supportsReasoningEffort: true, contextWindow: 1_000_000 },
+    { label: "Opus 5.5", modelId: "claude-opus-5-5", supportsReasoningEffort: true, contextWindow: 1_000_000 },
     { label: "Opus 5", modelId: "claude-opus-5", supportsReasoningEffort: true, contextWindow: 1_000_000 },
     { label: "Sonnet 5", modelId: "claude-sonnet-5", supportsReasoningEffort: true, contextWindow: 200_000 },
     { label: "Haiku 4.5", modelId: "claude-haiku-4-5", contextWindow: 200_000 }
@@ -232,6 +234,12 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
     { label: "GPT-5.6 Sol (Cursor)", modelId: "gpt-5.6-sol-medium", supportsReasoningEffort: true, contextWindow: 1_000_000 },
     { label: "GPT-5.6 Terra (Cursor)", modelId: "gpt-5.6-terra-medium", supportsReasoningEffort: true, contextWindow: 1_000_000 },
     { label: "GPT-5.6 Luna (Cursor)", modelId: "gpt-5.6-luna-medium", supportsReasoningEffort: true, contextWindow: 1_000_000 },
+    {
+      label: "Claude Opus 5.5 (Cursor)",
+      modelId: "claude-opus-5-5-medium",
+      supportsReasoningEffort: true,
+      contextWindow: 1_000_000
+    },
     {
       label: "Claude Opus 5 (Cursor)",
       modelId: "claude-opus-5-thinking-medium",
@@ -355,6 +363,8 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   // Fable 5.1 keeps Fable 5's per-token rates but cache reads drop to
   // $0.25/MTok (0.025x), a quarter of Fable 5's.
   "claude-fable-5-1":    { input: 10,   output: 50,  cacheRead: 0.25,  cacheWrite: 12.5 },
+  // Claude Code 2.1.280 catalog tier `tier_4_20_cache_read_0_20`.
+  "claude-opus-5-5":     { input: 4,    output: 20,  cacheRead: 0.2,   cacheWrite: 5 },
   "claude-opus-5":       { input: 5,    output: 25,  cacheRead: 0.5,   cacheWrite: 6.25 },
   "claude-sonnet-5":     { input: 3,    output: 15,  cacheRead: 0.3,   cacheWrite: 3.75 },
   "claude-haiku-4-5":    { input: 1,    output: 5,   cacheRead: 0.1,   cacheWrite: 1.25 },
@@ -378,6 +388,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "gpt-5.6-sol-medium":               { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gpt-5.6-terra-medium":             { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gpt-5.6-luna-medium":              { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "claude-opus-5-5-medium":           { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "claude-opus-5-thinking-medium":    { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 
   // OpenCode Zen free tier — $0 across the board. OpenCode Go (opencode-go/*)

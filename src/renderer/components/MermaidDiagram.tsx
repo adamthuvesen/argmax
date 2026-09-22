@@ -15,8 +15,10 @@ import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscap
 import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
 import {
   MERMAID_STREAM_DEBOUNCE_MS,
+  mermaidBreakoutWidth,
   mermaidErrorMessage,
   mermaidLayout,
+  mermaidProseWidth,
   nativeSvgWidth,
   renderMermaidDiagram
 } from "../lib/mermaidRuntime.js";
@@ -119,15 +121,45 @@ export function MermaidDiagram({ source }: { source: string }): JSX.Element {
     }
     const canvas = canvasRef.current;
     const drawn = canvas?.querySelector("svg");
-    const figure = canvas?.closest(".mermaid-diagram");
+    const figure = canvas?.closest<HTMLElement>(".mermaid-diagram");
     const column = figure?.parentElement;
     if (!canvas || !(drawn instanceof SVGSVGElement) || !figure || !column) {
       setOverflows(false);
       setWide(false);
       return;
     }
+    const sessionColumn = figure.closest<HTMLElement>(".session-main-column");
+    const transcript = figure.closest<HTMLElement>(
+      ".conversation-content, .agent-activity-content"
+    );
+    const workspaceCard = sessionColumn?.querySelector<HTMLElement>(".workspace-card");
     const measure = (): void => {
-      const layout = mermaidLayout(nativeSvgWidth(drawn), column.clientWidth, figure.clientWidth);
+      const proseWidth = mermaidProseWidth(column);
+      const columnBounds = column.getBoundingClientRect();
+      const sessionBounds = sessionColumn?.getBoundingClientRect();
+      const transcriptBounds = transcript?.getBoundingClientRect();
+      const sessionStyle = sessionColumn ? window.getComputedStyle(sessionColumn) : null;
+      const cardClearance = Number.parseFloat(
+        sessionStyle?.getPropertyValue("--workspace-card-clearance") ?? ""
+      );
+      const visibleCard = workspaceCard && window.getComputedStyle(workspaceCard).display !== "none";
+      const safeLeft = transcriptBounds?.left ?? sessionBounds?.left ?? columnBounds.left;
+      const safeRight = visibleCard
+        ? workspaceCard.getBoundingClientRect().left -
+          (Number.isFinite(cardClearance) ? cardClearance : 0)
+        : transcriptBounds?.right ?? sessionBounds?.right ?? columnBounds.right;
+      const breakout = mermaidBreakoutWidth(
+        proseWidth,
+        columnBounds.left,
+        safeLeft,
+        safeRight
+      );
+      figure.style.setProperty("--diagram-breakout", `${breakout}px`);
+      const layout = mermaidLayout(
+        nativeSvgWidth(drawn),
+        proseWidth,
+        figure.clientWidth
+      );
       setWide(layout.wide);
       setOverflows(layout.overflow);
     };
@@ -137,6 +169,9 @@ export function MermaidDiagram({ source }: { source: string }): JSX.Element {
     observer.observe(canvas);
     observer.observe(column);
     observer.observe(figure);
+    if (sessionColumn) observer.observe(sessionColumn);
+    if (transcript) observer.observe(transcript);
+    if (workspaceCard) observer.observe(workspaceCard);
     return () => observer.disconnect();
   }, [svg, sourceOpen, expanded]);
 

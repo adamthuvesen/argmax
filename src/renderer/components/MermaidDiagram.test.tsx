@@ -20,7 +20,7 @@ vi.mock("../lib/mermaidRuntime.js", async (importOriginal) => {
   };
 });
 
-import { nativeSvgWidth } from "../lib/mermaidRuntime.js";
+import { mermaidProseWidth, nativeSvgWidth } from "../lib/mermaidRuntime.js";
 import { MermaidDiagram } from "./MermaidDiagram.js";
 
 describe("MermaidDiagram", () => {
@@ -110,6 +110,17 @@ describe("MermaidDiagram", () => {
     expect(nativeSvgWidth(svg)).toBe(1440);
   });
 
+  it("measures wide diagrams against the prose measure, not a wider chat column", () => {
+    const column = document.createElement("div");
+    column.style.setProperty("--markdown-prose-width", "780px");
+    Object.defineProperty(column, "clientWidth", { configurable: true, value: 940 });
+    document.body.append(column);
+
+    expect(mermaidProseWidth(column)).toBe(780);
+
+    column.remove();
+  });
+
   it("marks a drawing that is wider than its column so CSS can break out", async () => {
     renderMermaidDiagram.mockResolvedValueOnce({
       svg: `<svg data-testid="mermaid-svg" width="1200"><title>flow</title></svg>`
@@ -119,6 +130,98 @@ describe("MermaidDiagram", () => {
     await waitFor(() => {
       expect(screen.getByTestId("mermaid-svg")).toBeInTheDocument();
       expect(figure).toHaveAttribute("data-wide", "true");
+    });
+  });
+
+  it("sets a symmetric pixel breakout from the rendered session bounds", async () => {
+    renderMermaidDiagram.mockResolvedValueOnce({
+      svg: `<svg data-testid="mermaid-svg" width="1200"><title>flow</title></svg>`
+    });
+    const { container } = render(
+      <div className="session-main-column">
+        <div className="conversation-content">
+          <div className="markdown">
+            <MermaidDiagram source={"flowchart LR\n  A --> B"} />
+          </div>
+        </div>
+      </div>
+    );
+    const session = container.querySelector<HTMLElement>(".session-main-column");
+    const transcript = container.querySelector<HTMLElement>(".conversation-content");
+    const column = container.querySelector<HTMLElement>(".markdown");
+    expect(session).toBeTruthy();
+    expect(transcript).toBeTruthy();
+    expect(column).toBeTruthy();
+    column?.style.setProperty("--markdown-prose-width", "780px");
+    vi.spyOn(session as HTMLElement, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      right: 1200
+    } as DOMRect);
+    vi.spyOn(transcript as HTMLElement, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      right: 1200
+    } as DOMRect);
+    vi.spyOn(column as HTMLElement, "getBoundingClientRect").mockReturnValue({
+      left: 130,
+      right: 1070
+    } as DOMRect);
+    Object.defineProperty(column, "clientWidth", { configurable: true, value: 940 });
+
+    const figure = await screen.findByLabelText("Diagram");
+    await waitFor(() => {
+      expect(figure).toHaveAttribute("data-wide", "true");
+      expect(figure).toHaveStyle({ "--diagram-breakout": "130px" });
+    });
+  });
+
+  it("breaks out to the clearance beside an open workspace card", async () => {
+    renderMermaidDiagram.mockResolvedValueOnce({
+      svg: `<svg data-testid="mermaid-svg" width="1200"><title>flow</title></svg>`
+    });
+    const { container } = render(
+      <div className="session-main-column">
+        <div className="workspace-card" style={{ display: "block" }} />
+        <div className="conversation-content">
+          <div className="chat-bubble assistant">
+            <div className="markdown">
+              <MermaidDiagram source={"flowchart LR\n  A --> B"} />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+    const session = container.querySelector<HTMLElement>(".session-main-column");
+    const card = container.querySelector<HTMLElement>(".workspace-card");
+    const transcript = container.querySelector<HTMLElement>(".conversation-content");
+    const column = container.querySelector<HTMLElement>(".markdown");
+    expect(session).toBeTruthy();
+    expect(card).toBeTruthy();
+    expect(transcript).toBeTruthy();
+    expect(column).toBeTruthy();
+    session?.style.setProperty("--workspace-card-clearance", "14px");
+    column?.style.setProperty("--markdown-prose-width", "780px");
+    vi.spyOn(session as HTMLElement, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      right: 1117
+    } as DOMRect);
+    vi.spyOn(transcript as HTMLElement, "getBoundingClientRect").mockReturnValue({
+      left: 10,
+      right: 1107
+    } as DOMRect);
+    vi.spyOn(card as HTMLElement, "getBoundingClientRect").mockReturnValue({
+      left: 841,
+      right: 1097
+    } as DOMRect);
+    vi.spyOn(column as HTMLElement, "getBoundingClientRect").mockReturnValue({
+      left: 38,
+      right: 790
+    } as DOMRect);
+    Object.defineProperty(column, "clientWidth", { configurable: true, value: 752 });
+
+    const figure = await screen.findByLabelText("Diagram");
+    await waitFor(() => {
+      expect(figure).toHaveAttribute("data-wide", "true");
+      expect(figure).toHaveStyle({ "--diagram-breakout": "28px" });
     });
   });
 

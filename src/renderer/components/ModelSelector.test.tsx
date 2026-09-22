@@ -29,9 +29,10 @@ describe("ModelSelector — one row per model", () => {
   it("lists one row per model, not one per effort", () => {
     openClaudePicker();
     const list = screen.getByRole("listbox", { name: "Chat model" });
-    // Four Claude models: Fable 5.1, Opus 5, Sonnet, Haiku.
-    expect(within(list).getAllByRole("option")).toHaveLength(4);
+    // Five Claude models: Fable 5.1, Opus 5.5, Opus 5, Sonnet, Haiku.
+    expect(within(list).getAllByRole("option")).toHaveLength(5);
     expect(within(list).getByText("Fable 5.1")).toBeInTheDocument();
+    expect(within(list).getByText("Opus 5.5")).toBeInTheDocument();
     expect(within(list).getByText("Opus 5")).toBeInTheDocument();
     expect(within(list).getByText("Sonnet 5")).toBeInTheDocument();
     expect(within(list).getByText("Haiku 4.5")).toBeInTheDocument();
@@ -82,6 +83,7 @@ describe("ModelSelector — one row per model", () => {
     expect(within(list).queryByText("Recent")).not.toBeInTheDocument();
     expect(within(list).getAllByRole("option").map((option) => optionName(option))).toEqual([
       "Fable 5.1",
+      "Opus 5.5",
       "Opus 5",
       "Sonnet 5",
       "Haiku 4.5"
@@ -159,13 +161,13 @@ describe("ModelSelector type to filter", () => {
     openClaudePicker(OPUS_MEDIUM);
     const list = screen.getByRole("listbox", { name: "Chat model" });
     const options = within(list).getAllByRole("option");
-    // Four Claude models: Fable 5.1 (0), Opus 5 (1), Sonnet 5 (2), Haiku 4.5 (3)
-    expect(options[0]).not.toHaveAttribute("data-active");
-    expect(options[0]).toHaveAttribute("aria-selected", "false");
-    expect(options[1]).toHaveAttribute("data-active", "true");
-    expect(options[1]).toHaveAttribute("aria-selected", "true");
-    expect(options[2]).not.toHaveAttribute("data-active");
-    expect(options[2]).toHaveAttribute("aria-selected", "false");
+    // Fable 5.1 (0), Opus 5.5 (1), Opus 5 (2), Sonnet 5 (3), Haiku 4.5 (4)
+    expect(options[1]).not.toHaveAttribute("data-active");
+    expect(options[1]).toHaveAttribute("aria-selected", "false");
+    expect(options[2]).toHaveAttribute("data-active", "true");
+    expect(options[2]).toHaveAttribute("aria-selected", "true");
+    expect(options[3]).not.toHaveAttribute("data-active");
+    expect(options[3]).toHaveAttribute("aria-selected", "false");
   });
 
   it("picks the currently selected model on immediate Enter without typing", () => {
@@ -206,7 +208,7 @@ describe("ModelSelector type to filter", () => {
     // The query is echoed with a match count. A list that silently shrank
     // would leave the user guessing.
     expect(within(list).getByText("h")).toBeInTheDocument();
-    expect(within(list).getByText("1 of 4")).toBeInTheDocument();
+    expect(within(list).getByText("1 of 5")).toBeInTheDocument();
   });
 
   it("picks the highlighted match on Enter", () => {
@@ -232,7 +234,7 @@ describe("ModelSelector type to filter", () => {
     expect(within(list).getByText("No models match")).toBeInTheDocument();
 
     fireEvent.keyDown(list, { key: "Backspace" });
-    expect(within(list).getAllByRole("option")).toHaveLength(4);
+    expect(within(list).getAllByRole("option")).toHaveLength(5);
     expect(within(list).queryByText("No models match")).not.toBeInTheDocument();
   });
 
@@ -246,7 +248,7 @@ describe("ModelSelector type to filter", () => {
     fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
 
     const reopened = screen.getByRole("listbox", { name: "Chat model" });
-    expect(within(reopened).getAllByRole("option")).toHaveLength(4);
+    expect(within(reopened).getAllByRole("option")).toHaveLength(5);
   });
 
   it("does not duplicate recent catalog twins when filtering", () => {

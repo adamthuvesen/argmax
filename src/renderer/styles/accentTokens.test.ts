@@ -521,33 +521,28 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     }
   });
 
-  it("breaks mermaid diagrams out of leftover left gutter, not the workspace-card shift", () => {
+  it("lets measured mermaid diagrams break out beyond the prose width", () => {
     const conversation = readSource("src/renderer/styles/chat-conversation.css");
-    const formula =
-      "--diagram-breakout: max(\n    0px,\n    calc(var(--session-inline-padding) - var(--session-inline-padding-min, 22px))\n  );";
-    expect(cssRuleBody(conversation, ".conversation-content")).toContain(
-      "--diagram-breakout: max("
-    );
-    expect(cssRuleBody(conversation, ".conversation-content")).toContain(
-      "var(--session-inline-padding) - var(--session-inline-padding-min, 22px)"
-    );
-    expect(cssRuleBody(conversation, ".agent-activity-content")).toContain(
-      "var(--session-inline-padding) - var(--session-inline-padding-min, 22px)"
-    );
-    // The card's extra end pad is --workspace-card-shift. Keying breakout off
-    // --session-inline-padding-end would slide a wide diagram under the card.
-    expect(conversation).not.toContain(
-      "--diagram-breakout: max(\n    0px,\n    calc(var(--session-inline-padding-end)"
-    );
-    expect(conversation).toContain(formula);
-    expect(cssRuleBody(conversation, ".mermaid-diagram[data-wide]")).toContain(
-      "width: calc(100% + 2 * var(--diagram-breakout, 0px));"
+    const workspaceCard = readSource("src/renderer/styles/chat-workspace-card.css");
+    const markdown = cssRuleBody(conversation, ".markdown");
+    expect(markdown).toContain("--markdown-prose-width: 780px");
+    expect(markdown).toContain("--diagram-breakout: 0px");
+    expect(cssRuleBody(workspaceCard, ".session-main-column")).toContain(
+      "--workspace-card-clearance: 14px"
     );
     expect(cssRuleBody(conversation, ".mermaid-diagram[data-wide]")).toContain(
-      "max-width: calc(100% + 2 * var(--diagram-breakout, 0px));"
+      "width: calc(min(100%, var(--markdown-prose-width)) + 2 * var(--diagram-breakout, 0px));"
     );
     expect(cssRuleBody(conversation, ".mermaid-diagram[data-wide]")).toContain(
-      "margin-inline: calc(-1 * var(--diagram-breakout, 0px));"
+      "max-width: calc(min(100%, var(--markdown-prose-width)) + 2 * var(--diagram-breakout, 0px));"
+    );
+    expect(cssRuleBody(conversation, ".mermaid-diagram[data-wide]")).toContain(
+      "margin-inline: calc(-1 * var(--diagram-breakout, 0px)) auto;"
+    );
+    expect(
+      cssRuleBody(conversation, ".mermaid-diagram[data-wide] .mermaid-diagram-canvas svg")
+    ).toContain(
+      "width: 100%;"
     );
   });
 

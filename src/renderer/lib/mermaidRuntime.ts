@@ -283,6 +283,30 @@ export function nativeSvgWidth(svg: SVGSVGElement): number {
 
 export const MERMAID_LAYOUT_SLACK_PX = 8;
 
+export function mermaidProseWidth(column: HTMLElement): number {
+  const configured = Number.parseFloat(
+    window.getComputedStyle(column).getPropertyValue("--markdown-prose-width")
+  );
+  return Number.isFinite(configured) ? Math.min(column.clientWidth, configured) : column.clientWidth;
+}
+
+/** Symmetric room a wide diagram can take around the prose without clipping. */
+export function mermaidBreakoutWidth(
+  proseWidth: number,
+  proseLeft: number,
+  safeLeft: number,
+  safeRight: number
+): number {
+  return Math.max(
+    0,
+    Math.min(
+      proseWidth * 0.2,
+      proseLeft - safeLeft,
+      safeRight - (proseLeft + proseWidth)
+    )
+  );
+}
+
 /**
  * `wide`: native drawing is broader than the prose column, so the figure
  * should eat session gutters. `overflow`: it is still broader than the

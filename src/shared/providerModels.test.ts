@@ -62,6 +62,13 @@ describe("reasoningEffortsForModel", () => {
       "xhigh",
       "max"
     ]);
+    expect(reasoningEffortsForModel("cursor", "claude-opus-5-5-medium")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ]);
   });
 
   // Grok Build's CLI rejects anything above xhigh outright:
@@ -181,6 +188,17 @@ describe("costOf — golden fixtures", () => {
     };
     // 5 + 25 + 0.5 + 6.25 = 36.75
     expect(costOf(usage, "claude-opus-5")).toBeCloseTo(36.75, 9);
+  });
+
+  it("prices Opus 5.5 across all four buckets", () => {
+    const usage: UsageCounts = {
+      input: 1_000_000,
+      output: 1_000_000,
+      cacheRead: 1_000_000,
+      cacheWrite: 1_000_000
+    };
+    // 4 + 20 + 0.2 + 5 = 29.2
+    expect(costOf(usage, "claude-opus-5-5")).toBeCloseTo(29.2, 9);
   });
 
   it("prices stored Opus 4.8 sessions via aliases", () => {

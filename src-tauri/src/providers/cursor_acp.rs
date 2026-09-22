@@ -661,6 +661,7 @@ fn cursor_acp_family(model_id: &str) -> Option<&str> {
         "gpt-5.6-terra-medium" => Some("gpt-5.6-terra"),
         "gpt-5.6-luna-medium" => Some("gpt-5.6-luna"),
         "claude-opus-5-thinking-medium" => Some("claude-opus-5"),
+        "claude-opus-5-5-medium" => Some("claude-opus-5-5"),
         _ if model_id.starts_with("auto-smart[") => Some("auto-smart"),
         _ => None,
     }
@@ -1937,6 +1938,15 @@ mod tests {
         input.model_id = "cursor-grok-4.6-medium".into();
         assert!(cursor_model_matches(
             "grok-4.6[effort=high,fast=true]",
+            &input
+        ));
+        input.model_id = "claude-opus-5-5-medium".into();
+        assert!(cursor_model_matches(
+            "claude-opus-5-5[effort=high,fast=false]",
+            &input
+        ));
+        assert!(!cursor_model_matches(
+            "claude-opus-5[effort=high,fast=false]",
             &input
         ));
         // Every `auto-smart` entry maps onto the one variant Cursor lists,

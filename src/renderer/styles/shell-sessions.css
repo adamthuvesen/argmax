@@ -259,6 +259,8 @@
 }
 
 .session-rename-input {
+  user-select: text;
+  -webkit-user-select: text;
   min-width: 0;
   width: 100%;
   padding: 0;
@@ -718,12 +720,17 @@
   display: grid;
   container-type: inline-size;
   place-items: center;
+  /* The launcher rides the chat-width setting so a chat opened from it keeps
+     the measure it was launched at — but only upward. Levels 1 and 2 narrow
+     the transcript for reading; the launcher is a single input row and gets
+     cramped, so it floors at level 3's measure and widens with 4 and 5. */
+  --launcher-measure: max(780px, var(--chat-content-width, 780px));
   /* The gutter gives way before the shell does: 36px while the pane has more
-     than the shell's 760px plus both gutters, shrinking to 16px by the time
-     the pane is 792px, so the shell's width is continuous as the window
-     narrows. A viewport-keyed padding step here made the shell jump wider
-     when the sidebar was still open beside it. */
-  padding: 48px clamp(16px, calc((100% - 760px) / 2), 36px);
+     than the shell's measure plus both gutters, shrinking to 16px by the time
+     the pane is 32px wider than the measure, so the shell's width is
+     continuous as the window narrows. A viewport-keyed padding step here made
+     the shell jump wider when the sidebar was still open beside it. */
+  padding: 48px clamp(16px, calc((100% - var(--launcher-measure)) / 2), 36px);
 }
 
 .launcher-scroll:has(.launcher-shell[data-review-open="true"]) {
@@ -733,7 +740,7 @@
 }
 
 .launcher-shell {
-  width: min(100%, 760px);
+  width: min(100%, var(--launcher-measure, 780px));
 }
 
 /* Same breakpoint as the composer chip fold (chat-composer-chips.css), keyed

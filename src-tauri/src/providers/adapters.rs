@@ -242,7 +242,7 @@ fn cursor_structured_args(
 
 // Cursor picks reasoning effort and fast serving through the model id (e.g.
 // gpt-5.6-sol-high, claude-opus-5-thinking-xhigh-fast). Effort: GPT-5.6
-// Luna/Terra/Sol and Opus 5 Thinking are parameterized up to Max; Grok 4.7
+// Luna/Terra/Sol, Opus 5 Thinking, and Opus 5.5 are parameterized up to Max; Grok 4.7
 // stops at Extra High; Grok 4.6/4.5 and Gemini 3.8 Flash stop at High.
 // Composer has no effort variant and passes through. Fast: append "-fast"
 // after the effort suffix for every model that has a fast variant — all but
@@ -264,7 +264,8 @@ fn cursor_model_for(
             "gpt-5.6-luna-medium"
             | "gpt-5.6-terra-medium"
             | "gpt-5.6-sol-medium"
-            | "claude-opus-5-thinking-medium",
+            | "claude-opus-5-thinking-medium"
+            | "claude-opus-5-5-medium",
             Some(effort),
         ) => {
             let family = model_id.trim_end_matches("-medium");
@@ -676,7 +677,8 @@ fn claude_settings_args(
 // PROVIDER_MODELS.claude (providerModels.ts). Only the launch flag carries the
 // suffix — the CLI reports the bare id back on every message, so usage rows and
 // pricing keep matching MODEL_PRICING.
-const CLAUDE_LONG_CONTEXT_MODELS: [&str; 2] = ["claude-fable-5-1", "claude-opus-5"];
+const CLAUDE_LONG_CONTEXT_MODELS: [&str; 3] =
+    ["claude-fable-5-1", "claude-opus-5-5", "claude-opus-5"];
 
 fn claude_model_arg(model_id: &str) -> String {
     if CLAUDE_LONG_CONTEXT_MODELS.contains(&model_id) {
@@ -772,6 +774,7 @@ mod tests {
         let definition = get_provider_definition(ProviderId::Claude);
         for (model_id, expected) in [
             ("claude-opus-5", "claude-opus-5[1m]"),
+            ("claude-opus-5-5", "claude-opus-5-5[1m]"),
             ("claude-fable-5-1", "claude-fable-5-1[1m]"),
             ("claude-sonnet-5", "claude-sonnet-5"),
             ("claude-haiku-4-5", "claude-haiku-4-5"),
@@ -1333,6 +1336,30 @@ mod tests {
                 .position(|a| a == "--model")
                 .expect("model flag");
             assert_eq!(args[i + 1], expected, "opus effort {effort:?}");
+        }
+    }
+
+    #[test]
+    fn cursor_opus_55_effort_maps_to_variant_capped_at_max() {
+        let cases = [
+            (ReasoningEffort::Low, "claude-opus-5-5-low"),
+            (ReasoningEffort::High, "claude-opus-5-5-high"),
+            (ReasoningEffort::Xhigh, "claude-opus-5-5-xhigh"),
+            (ReasoningEffort::Max, "claude-opus-5-5-max"),
+            (ReasoningEffort::Ultra, "claude-opus-5-5-max"),
+        ];
+        for (effort, expected) in cases {
+            let input = ProviderLaunchInput {
+                model_id: "claude-opus-5-5-medium".to_string(),
+                reasoning_effort: Some(effort),
+                ..launch_input(ProviderId::Cursor)
+            };
+            let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input, None);
+            let i = args
+                .iter()
+                .position(|a| a == "--model")
+                .expect("model flag");
+            assert_eq!(args[i + 1], expected, "opus 5.5 effort {effort:?}");
         }
     }
 

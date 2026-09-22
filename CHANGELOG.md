@@ -11,6 +11,23 @@ Argmax is pre-1.0 and every release is marked a pre-release on GitHub.
 
 ## Unreleased
 
+## 0.5.1 — 2026-09-22
+
+### Added
+
+- Claude and Cursor can launch Opus 5.5. Claude uses `claude-opus-5-5` on the
+  1M window at $4/$20. Cursor uses `claude-opus-5-5-medium`, with effort through Max.
+
+### Changed
+
+- Mermaid diagrams use the space beside the workspace card.
+- The launch composer follows the chat width setting, and stays at least as
+  wide as level 3 so the project and branch pickers fit.
+
+### Fixed
+
+- Dragging a sidebar row no longer drag-selects the chat list.
+
 ## 0.5.0 — 2026-09-20
 
 First tagged release, and the first installable one: a signed, notarized

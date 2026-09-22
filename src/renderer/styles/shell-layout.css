@@ -41,6 +41,11 @@
   padding: 12px 14px 12px 8px;
   border-right: 1px solid var(--line);
   background: var(--sidebar);
+  /* Chat titles are row labels, not prose. Without this a row drag towards the
+     grid also drag-selects the list, and no later click on another row (they
+     are all buttons) collapses the highlight. Rename input opts back in. */
+  user-select: none;
+  -webkit-user-select: none;
   transition: opacity var(--duration-base) var(--ease),
     background var(--duration-base) var(--ease);
 }

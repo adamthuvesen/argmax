@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { isMermaidFenceClass } from "./mermaidFence.js";
-import { cssColorToHex, mermaidErrorMessage, mermaidLayout } from "./mermaidRuntime.js";
+import {
+  cssColorToHex,
+  mermaidBreakoutWidth,
+  mermaidErrorMessage,
+  mermaidLayout
+} from "./mermaidRuntime.js";
 
 describe("isMermaidFenceClass", () => {
   it("recognises mermaid and mmd fences", () => {
@@ -57,6 +62,20 @@ describe("mermaidLayout", () => {
 
   it("keeps the lightbox only when the broken-out box is still too narrow", () => {
     expect(mermaidLayout(1200, 780, 1400)).toEqual({ wide: true, overflow: false });
+  });
+});
+
+describe("mermaidBreakoutWidth", () => {
+  it("caps symmetric breakout at 20% of the prose width", () => {
+    expect(mermaidBreakoutWidth(780, 220, 20, 1200)).toBe(156);
+  });
+
+  it("uses the tighter side when available room is asymmetric", () => {
+    expect(mermaidBreakoutWidth(780, 150, 20, 944)).toBe(14);
+  });
+
+  it("does not break out when either side has no room", () => {
+    expect(mermaidBreakoutWidth(780, 20, 20, 1200)).toBe(0);
   });
 });
 

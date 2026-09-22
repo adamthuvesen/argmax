@@ -41,6 +41,7 @@
    so keep the two in step. The column's gutter formulas read this. */
 .session-main-column {
   --workspace-card-gutter: 290px;
+  --workspace-card-clearance: 14px;
 }
 
 /* The card lives in the right gutter, never on top of the transcript. While

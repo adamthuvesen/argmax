@@ -64,6 +64,20 @@
           "defaultEffort": "medium"
         },
         {
+          "label": "Opus 5.5",
+          "modelId": "claude-opus-5-5",
+          "contextWindow": 1000000,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ],
+          "defaultEffort": "medium"
+        },
+        {
           "label": "Opus 5",
           "modelId": "claude-opus-5",
           "contextWindow": 1000000,
@@ -272,6 +286,19 @@
         {
           "label": "GPT-5.6 Luna (Cursor)",
           "modelId": "gpt-5.6-luna-medium",
+          "contextWindow": 1000000,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultEffort": "medium"
+        },
+        {
+          "label": "Claude Opus 5.5 (Cursor)",
+          "modelId": "claude-opus-5-5-medium",
           "contextWindow": 1000000,
           "reasoningEfforts": [
             "low",

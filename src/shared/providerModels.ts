@@ -79,10 +79,15 @@ export const REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultr
 export function reasoningEffortsForModel(provider: ProviderId, modelId: string): readonly ReasoningEffort[] {
   if (provider === "claude") return REASONING_EFFORTS; // low → ultra
   if (provider === "codex") {
-    if (modelId === "gpt-6-astra" || modelId === "gpt-5.6-sol" || modelId === "gpt-5.6-terra") {
+    if (
+      modelId === "gpt-6-astra" ||
+      modelId === "gpt-6-sol" ||
+      modelId === "gpt-5.6-sol" ||
+      modelId === "gpt-5.6-terra"
+    ) {
       return REASONING_EFFORTS; // low → ultra
     }
-    if (modelId === "gpt-5.6-luna") return REASONING_EFFORTS.slice(0, 5); // low → max
+    if (modelId === "gpt-6-luna" || modelId === "gpt-5.6-luna") return REASONING_EFFORTS.slice(0, 5); // low → max
     return REASONING_EFFORTS.slice(0, 4); // unknown/legacy: low → xhigh
   }
   if (
@@ -197,16 +202,16 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
     { label: "Sonnet 5", modelId: "claude-sonnet-5", supportsReasoningEffort: true, contextWindow: 200_000 },
     { label: "Haiku 4.5", modelId: "claude-haiku-4-5", contextWindow: 200_000 }
   ],
-  // Astra's Codex CLI catalog reports a 272_000 default context. Live rollouts
-  // can replace it with the model_context_window value they report.
+  // The GPT-6 models' Codex CLI catalog reports a 272_000 default context. Live
+  // rollouts can replace it with the model_context_window value they report.
   // 258_400, not the 272_000 the model card advertises: that is the figure
   // Codex itself reports as `model_context_window` in its rollout, and the one
   // the CLI measures occupancy against. Verified against codex-cli 0.149.0.
   codex: [
     { label: "GPT-6 Astra", modelId: "gpt-6-astra", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 272_000 },
-    { label: "GPT-5.6 Sol", modelId: "gpt-5.6-sol", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 258_400 },
+    { label: "GPT-6 Sol", modelId: "gpt-6-sol", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 272_000 },
     { label: "GPT-5.6 Terra", modelId: "gpt-5.6-terra", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 258_400 },
-    { label: "GPT-5.6 Luna", modelId: "gpt-5.6-luna", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 258_400 }
+    { label: "GPT-6 Luna", modelId: "gpt-6-luna", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 272_000 }
   ],
   cursor: [
     { label: "Auto Cost (Cursor)", modelId: "auto-smart[optimize_for=cost]" },
@@ -294,7 +299,7 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
 // fast for this prompt, with matching title quality.
 export const PROVIDER_TITLE_MODEL: Record<ProviderId, string> = {
   claude: "claude-sonnet-5",
-  codex: "gpt-5.6-luna",
+  codex: "gpt-6-luna",
   cursor: "composer-2.5",
   opencode: "opencode/big-pickle",
   // 4.5 is the pricier SKU. 4.7 matches 4.6's Grok Build rate; titles stay on
@@ -318,13 +323,13 @@ export const FORK_CAPABLE_PROVIDERS: ReadonlySet<string> = new Set<ProviderId>([
 
 export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> = {
   claude: {
-    label: "Opus 5",
-    modelId: "claude-opus-5",
+    label: "Opus 5.5",
+    modelId: "claude-opus-5-5",
     supportsReasoningEffort: true
   },
   codex: {
-    label: "GPT-5.6 Sol",
-    modelId: "gpt-5.6-sol",
+    label: "GPT-6 Sol",
+    modelId: "gpt-6-sol",
     supportsReasoningEffort: true
   },
   cursor: {
@@ -366,12 +371,16 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   // Claude Code 2.1.280 catalog tier `tier_4_20_cache_read_0_20`.
   "claude-opus-5-5":     { input: 4,    output: 20,  cacheRead: 0.2,   cacheWrite: 5 },
   "claude-opus-5":       { input: 5,    output: 25,  cacheRead: 0.5,   cacheWrite: 6.25 },
-  "claude-sonnet-5":     { input: 3,    output: 15,  cacheRead: 0.3,   cacheWrite: 3.75 },
+  // Sonnet 5's $2/$10 launch price became the standard rate on 2026-09-01.
+  "claude-sonnet-5":     { input: 2,    output: 10,  cacheRead: 0.2,   cacheWrite: 2.5 },
   "claude-haiku-4-5":    { input: 1,    output: 5,   cacheRead: 0.1,   cacheWrite: 1.25 },
 
   // Short-context rates (<272K). Long-context multipliers are not modeled.
   "gpt-6-astra":         { input: 10,   output: 50,  cacheRead: 1,    cacheWrite: 12.5 },
-  "gpt-5.6-sol":         { input: 5,    output: 30,  cacheRead: 0.5,   cacheWrite: 6.25 },
+  "gpt-6-sol":           { input: 2,    output: 10,  cacheRead: 0.2,   cacheWrite: 2.5 },
+  "gpt-6-luna":          { input: 0.1,  output: 0.5, cacheRead: 0.01,  cacheWrite: 0.125 },
+  // Promotional rate, promised through at least 2026-11-21.
+  "gpt-5.6-sol":         { input: 4,    output: 20,  cacheRead: 0.4,   cacheWrite: 5 },
   "gpt-5.6-terra":       { input: 2,    output: 12,  cacheRead: 0.2,   cacheWrite: 2.5 },
   "gpt-5.6-luna":        { input: 0.2,  output: 1.2, cacheRead: 0.02,  cacheWrite: 0.25 },
 

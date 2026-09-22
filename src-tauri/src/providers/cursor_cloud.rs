@@ -125,7 +125,9 @@ async fn environments_with_base(
     ensure_prepare_success(me_response.status())?;
 
     let credential_hash = credential_hash(api_key);
-    let expected_url = format!("https://github.com/{repository}");
+    // GitHub owner and repository names are case-insensitive, and the origin
+    // URL's casing need not match what Cursor lists.
+    let expected_url = format!("https://github.com/{repository}").to_ascii_lowercase();
     if let Some(has_access) = cached_repository_access(credential_hash, &expected_url) {
         return if has_access {
             Ok(cursor_environment())
@@ -199,6 +201,12 @@ async fn launch_with_base(
     if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
         return Err(cursor_login_error());
     }
+    if status == StatusCode::TOO_MANY_REQUESTS {
+        return Err(ArgmaxError::service(
+            "CLOUD_CURSOR_RATE_LIMITED",
+            "Cursor Cloud is rate-limiting launches. Wait a minute, then try again.",
+        ));
+    }
     if status.is_server_error() {
         return Err(delivery_unknown_error(format!(
             "Cursor Cloud returned HTTP {} after receiving the launch request.",
@@ -222,8 +230,8 @@ async fn launch_with_base(
 
     let created = response_json::<CreateAgentResponse>(
         response,
-        "CLOUD_CURSOR_DELIVERY_UNKNOWN",
-        "Cursor Cloud accepted the task but returned an invalid response. The task may still have started; check Cursor Cloud before trying again.",
+        "CLOUD_LAUNCH_DELIVERY_UNKNOWN",
+        "Cursor Cloud accepted the task but returned an unreadable response. It may have created the task, so Argmax will not retry it. Check cursor.com/agents before sending it again.",
     )
     .await?;
     validate_agent_url(&created.agent.url, &created.agent.id)
@@ -341,7 +349,7 @@ fn repository_not_found_error(repository: &str) -> ArgmaxError {
     ArgmaxError::service(
         "CLOUD_CURSOR_REPOSITORY_NOT_FOUND",
         format!(
-            "Cursor Cloud cannot access {repository}. Connect the repository in Cursor Cloud settings, then try again."
+            "Cursor Cloud cannot see {repository}. Connect it in Cursor's Cloud Agents settings, then try again."
         ),
     )
 }
@@ -370,7 +378,7 @@ fn cursor_prepare_transport_error(error: reqwest::Error) -> ArgmaxError {
     let message = if error.is_timeout() {
         "Cursor Cloud did not finish checking repository access within 45 seconds."
     } else {
-        "Could not reach Cursor Cloud to verify repository access."
+        "Could not reach Cursor Cloud. Check your connection and try again."
     };
     ArgmaxError::service("CLOUD_CURSOR_PREPARE_FAILED", message)
 }
@@ -387,15 +395,15 @@ fn cursor_launch_transport_error(error: reqwest::Error) -> ArgmaxError {
 fn cursor_login_error() -> ArgmaxError {
     ArgmaxError::service(
         "CLOUD_CURSOR_LOGIN_REQUIRED",
-        "Cursor Cloud credentials are unavailable or invalid. Run `keys-sync` or set CURSOR_API_KEY, then try again.",
+        "Cursor Cloud credentials are unavailable or invalid. Set CURSOR_API_KEY in your shell profile, then restart Argmax.",
     )
 }
 
 fn delivery_unknown_error(detail: impl AsRef<str>) -> ArgmaxError {
     ArgmaxError::service(
-        "CLOUD_CURSOR_DELIVERY_UNKNOWN",
+        "CLOUD_LAUNCH_DELIVERY_UNKNOWN",
         format!(
-            "{} The task may still have started; check Cursor Cloud before trying again.",
+            "{} Cursor Cloud may have created the task, so Argmax will not retry it. Check cursor.com/agents before sending it again.",
             detail.as_ref()
         ),
     )
@@ -470,7 +478,7 @@ fn canonical_repository_url(value: &str) -> Option<String> {
     if owner.is_empty() || repository.is_empty() || parts.next().is_some() {
         return None;
     }
-    Some(format!("https://github.com/{owner}/{repository}"))
+    Some(format!("https://github.com/{owner}/{repository}").to_ascii_lowercase())
 }
 
 fn validate_agent_url(value: &str, agent_id: &str) -> ArgmaxResult<String> {
@@ -738,7 +746,7 @@ mod tests {
         assert!(matches!(
             error,
             ArgmaxError::ServiceError { sub_code, .. }
-                if sub_code == "CLOUD_CURSOR_DELIVERY_UNKNOWN"
+                if sub_code == "CLOUD_LAUNCH_DELIVERY_UNKNOWN"
         ));
     }
 

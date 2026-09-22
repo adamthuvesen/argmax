@@ -72,7 +72,7 @@ describe("cloud launch from the composer", () => {
   it("keeps unsupported providers local and explains why", () => {
     renderLauncher({ provider: "opencode", modelId: "openai/gpt-5.5", label: "GPT-5.5", reasoningEffort: "medium" });
     fireEvent.click(screen.getByRole("button", { name: "Run location: Local" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("OpenCode does not support cloud tasks");
+    expect(screen.getByRole("alert")).toHaveTextContent("OpenCode can’t run cloud tasks");
     expect(screen.getByRole("button", { name: "Run location: Local" })).toBeInTheDocument();
     expect(window.argmax!.cloud.prepare).not.toHaveBeenCalled();
   });

@@ -321,16 +321,13 @@ impl ApnsPublisher {
 /// rewriting the snapshot the publisher was built with, because Settings may
 /// have paired or removed a device since.
 pub fn forget_device(app_data_dir: &Path, device_token: &str) {
-    let mut config = crate::remote::load_or_create_config(app_data_dir);
-    let before = config.apns.devices.len();
-    config
-        .apns
-        .devices
-        .retain(|device| device.token != device_token);
-    if config.apns.devices.len() == before {
-        return;
-    }
-    if let Err(error) = crate::remote::save_config(app_data_dir, &config) {
+    let result = crate::remote::update_config(app_data_dir, |config| {
+        config
+            .apns
+            .devices
+            .retain(|device| device.token != device_token);
+    });
+    if let Err(error) = result {
         tracing::warn!(%error, "failed to drop a retired APNs device from remote.json");
     }
 }

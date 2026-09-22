@@ -84,6 +84,17 @@ pub(super) async fn wait_for_sessions(
 
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
+        // A tool call only happens mid-turn, so a caller whose turn is over
+        // (the user pressed Stop, the provider died) has no one left to read
+        // the reply. Collecting now would mark finishes reported and messages
+        // delivered into a closed socket, and the next wait would never see
+        // them.
+        if !caller_turn_is_running(&database, &parent.session_id) {
+            return Err(protocol_error(
+                "WAIT_CALLER_ENDED",
+                "The calling session's turn ended while it was waiting, so nothing was collected.",
+            ));
+        }
         if let Some(outcome) = collect_wait_outcome(
             &database,
             &providers,
@@ -115,6 +126,12 @@ pub(super) async fn wait_for_sessions(
             )));
         }
     }
+}
+
+fn caller_turn_is_running(database: &Database, caller_session_id: &str) -> bool {
+    let connection = database.read_connection();
+    find_session_by_id(&connection, caller_session_id)
+        .is_ok_and(|session| session.state.is_active())
 }
 
 /// What the wait would report right now, or `None` while nothing has happened.

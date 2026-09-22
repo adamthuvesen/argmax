@@ -12,12 +12,20 @@ import { WebLink } from "./WebLink.js";
  */
 export function SessionNote({ message, sourceActivity }: { message: string; sourceActivity?: ProjectSourceActivity }): JSX.Element {
   if (sourceActivity) return <SourceActivity activity={sourceActivity} />;
-  const cloudLink = /^Sent task to Claude Cloud: (https:\/\/claude\.ai\/code\/(?:session|cse)_[A-Za-z0-9_-]+)$/.exec(message)?.[1];
+  const cloudHandoff = CLOUD_HANDOFF_NOTE.exec(message);
   return (
     <div className="conversation-note" role="status" aria-live="polite">
       <span className="conversation-note-text">
-        {cloudLink ? <>Sent task to Claude Cloud · <WebLink href={cloudLink}>Open cloud session</WebLink></> : message}
+        {cloudHandoff
+          ? <>Sent task to {cloudHandoff[1]} Cloud · <WebLink href={cloudHandoff[2]}>Open task</WebLink></>
+          : message}
       </span>
     </div>
   );
 }
+
+/** The note Rust writes after a cloud launch (`handoff_note` in
+ *  providers/cloud.rs). Only each provider's own task URL shape becomes a
+ *  link; anything else stays plain text. */
+const CLOUD_HANDOFF_NOTE =
+  /^Sent task to (Claude|Codex|Cursor) Cloud: (https:\/\/(?:claude\.ai\/code\/(?:session|cse)_|chatgpt\.com\/codex\/tasks\/task_|cursor\.com\/agents\/)[A-Za-z0-9_-]+)$/;

@@ -89,7 +89,7 @@ async fn stdout_cap_is_enforced() {
         GitExecOptions {
             timeout: Duration::from_secs(5),
             stdout_cap_bytes: 1,
-            env: Vec::new(),
+            ..GitExecOptions::default()
         },
     )
     .await
@@ -127,6 +127,24 @@ async fn pathspecs_after_separator_allow_leading_dash_file_names() {
     .expect("dash-prefixed pathspec is data after --");
 
     assert_eq!(stdout, "");
+}
+
+#[tokio::test]
+async fn pathspecs_are_literal_not_globs() {
+    let repo = seed_git_repo(&[("app/[id]/page.tsx", "a\n"), ("app/i/page.tsx", "b\n")]);
+    std::fs::write(repo.path().join("app/[id]/page.tsx"), "a2\n").expect("edit bracket file");
+    std::fs::write(repo.path().join("app/i/page.tsx"), "b2\n").expect("edit sibling");
+
+    run_git_text(
+        repo.path(),
+        ["restore", "--worktree", "--", "app/[id]/page.tsx"],
+        Duration::from_secs(5),
+    )
+    .await
+    .expect("restore bracket file");
+
+    let sibling = std::fs::read_to_string(repo.path().join("app/i/page.tsx")).expect("read");
+    assert_eq!(sibling, "b2\n", "`[id]` must not glob-match `i`");
 }
 
 #[test]

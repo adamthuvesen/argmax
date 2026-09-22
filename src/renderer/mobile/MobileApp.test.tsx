@@ -904,13 +904,13 @@ describe("MobileApp", () => {
     expect(createInput.projectId).toBe(snapshot.projects[0].id);
     expect(createInput.taskLabel).toContain("Fix the flaky archive test");
     // The launch model mirrors the desktop launcher default (factory pick:
-    // Claude Opus 5), not the project's configured provider.
+    // Claude Opus 5.5), not the project's configured provider.
     expect(launchProvider).toHaveBeenCalledWith(
       expect.objectContaining({
         workspaceId: snapshot.workspaces[0].id,
         prompt: "Fix the flaky archive test",
         provider: "claude",
-        modelId: "claude-opus-5",
+        modelId: "claude-opus-5-5",
         fastMode: false
       })
     );
@@ -1206,7 +1206,7 @@ describe("MobileApp", () => {
         workspaceId: "workspace-chat",
         prompt: "Explain event sourcing",
         provider: "claude",
-        modelId: "claude-opus-5"
+        modelId: "claude-opus-5-5"
       })
     );
   });

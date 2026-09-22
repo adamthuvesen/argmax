@@ -22,8 +22,11 @@ the hosted task without claiming it was saved to a local chat. See
 [providers.md](providers.md#cloud-tasks).
 
 An active chat can use `/cloud <prompt>` for the same flow. Argmax confirms the
-current prompt once, lets the user inspect the bounded chat context included in
-the handoff, and clears the draft only after the hosted task launches.
+current prompt once, lets the user inspect the full brief (the bounded chat
+context, closed by that prompt) behind a disclosure, and clears the draft only
+after the hosted task launches. A launch that may have created the task without
+returning a link ("Task status unknown") offers no resend, only a link to the
+provider's task list.
 
 Launcher errors render in a dismissible row below the controls and preserve serialized backend messages. A failed branch switch keeps the current branch and draft, and returns focus to the prompt if the launcher is still active.
 

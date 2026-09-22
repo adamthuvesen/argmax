@@ -129,8 +129,8 @@ describe("SessionComposer provider switch confirmation", () => {
     const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
     const onTerminateSession = vi.fn().mockResolvedValue(undefined);
     const session = baseSession({
-      modelLabel: "GPT-5.6 Luna",
-      modelId: "gpt-5.6-luna",
+      modelLabel: "GPT-6 Luna",
+      modelId: "gpt-6-luna",
       state: "running"
     });
     const { rerender } = renderConversation(session, [], { onSendSessionInput, onTerminateSession });

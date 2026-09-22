@@ -453,7 +453,7 @@ impl CursorAcpSessions {
         // session keeps whatever mode the previous turn left it in, so setting
         // it only at session/new made Plan a one-way door and left a resumed
         // session ignoring the toggle entirely.
-        client
+        if let Err(error) = client
             .request(
                 "session/set_mode",
                 json!({
@@ -461,7 +461,21 @@ impl CursorAcpSessions {
                     "modeId": acp_mode_id(),
                 }),
             )
-            .await?;
+            .await
+        {
+            // No turn task will run to clear the context this invocation just
+            // installed, so drop it here unless a newer turn already replaced it.
+            let mut contexts = workspace
+                .permission_contexts
+                .lock_or_recover("cursor ACP permission contexts");
+            if contexts
+                .get(&acp_session_id)
+                .is_some_and(|context| context.invocation_id == invocation_id)
+            {
+                contexts.remove(&acp_session_id);
+            }
+            return Err(error);
+        }
 
         let permission_contexts = Arc::clone(&workspace.permission_contexts);
         Ok(spawn_turn(

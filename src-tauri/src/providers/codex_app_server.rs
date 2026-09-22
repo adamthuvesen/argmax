@@ -109,6 +109,7 @@ pub async fn launch_turn(
         ArgmaxError::service("CODEX_APP_SERVER_IO", "Codex app-server has no stderr")
     })?;
 
+    let kill_on_app_exit = crate::util::process_control::KillOnAppExit::register(child.id());
     let child = Arc::new(tokio::sync::Mutex::new(child));
     let rpc = Arc::new(RpcPeer::new(stdin));
     let (incoming_tx, mut incoming_rx) = mpsc::unbounded_channel();
@@ -228,6 +229,7 @@ pub async fn launch_turn(
     let approvals: Arc<dyn NativeApprovalBroker> = approvals;
     let questions: Arc<dyn NativeQuestionBroker> = questions;
     tokio::spawn(async move {
+        let _kill_on_app_exit = kill_on_app_exit;
         let mut translation = EventTranslation::default();
         let mut scope = TurnScope::new(&thread_id, &turn_id);
         let mut root_completion: Option<Value> = None;
@@ -427,9 +429,9 @@ fn apply_permission_policy(
 fn effective_effort(input: &ProviderLaunchInput) -> Option<&'static str> {
     let effort = input.reasoning_effort?;
     Some(match input.model_id.as_str() {
-        "gpt-6-astra" | "gpt-5.6-sol" | "gpt-5.6-terra" => effort.as_str(),
-        "gpt-5.6-luna" if effort.as_str() == "ultra" => "max",
-        "gpt-5.6-luna" => effort.as_str(),
+        "gpt-6-astra" | "gpt-6-sol" | "gpt-5.6-sol" | "gpt-5.6-terra" => effort.as_str(),
+        "gpt-6-luna" | "gpt-5.6-luna" if effort.as_str() == "ultra" => "max",
+        "gpt-6-luna" | "gpt-5.6-luna" => effort.as_str(),
         _ if matches!(effort.as_str(), "max" | "ultra") => "xhigh",
         _ => effort.as_str(),
     })

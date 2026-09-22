@@ -7,8 +7,8 @@ const base: SessionSummary = {
   id: "s1",
   workspaceId: "w1",
   provider: "codex",
-  modelLabel: "GPT-5.6 Sol",
-  modelId: "gpt-5.6-sol",
+  modelLabel: "GPT-6 Sol",
+  modelId: "gpt-6-sol",
   permissionMode: "auto-approve",
   providerConversationId: null,
   prompt: "Do the thing",
@@ -27,7 +27,7 @@ const base: SessionSummary = {
 afterEach(cleanup);
 
 describe("ContextRing", () => {
-  it.each(["gemini-3.8-flash-medium", "composer-2.5", "gpt-5.6-sol"])(
+  it.each(["gemini-3.8-flash-medium", "composer-2.5", "gpt-6-sol"])(
     "hides Cursor context usage for %s even with persisted token counts",
     (modelId) => {
       render(

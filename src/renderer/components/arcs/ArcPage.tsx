@@ -20,7 +20,8 @@ import { isTypingTarget } from "../../lib/typingTarget.js";
 import { formatTimeAgo } from "../../lib/arcTimeline.js";
 import { factoryLaunchModel, type ModelPickerSelection } from "../../lib/models.js";
 import { showSchedulePage } from "../../state/overlays.js";
-import { showErrorToast } from "../../state/toast.js";
+import { showErrorToast, showToast } from "../../state/toast.js";
+import { withToast } from "../../lib/withToast.js";
 import { ArcTimeline } from "./ArcTimeline.js";
 
 const ARC_STATE_LABEL: Record<ArcState, string> = {
@@ -648,7 +649,13 @@ export function ArcPage({
                     className="small-icon"
                     aria-label="Reveal arc folder in Finder"
                     title="Reveal in Finder"
-                    onClick={() => void window.argmax?.system.openPath({ path: arc.dir }).catch(() => undefined)}
+                    onClick={() =>
+                      void withToast(
+                        async () => window.argmax?.system.openPath({ path: arc.dir }),
+                        showToast,
+                        "Could not open the arc folder."
+                      )
+                    }
                   >
                     <FolderOpen size={13} aria-hidden="true" />
                   </button>
@@ -656,7 +663,11 @@ export function ArcPage({
                     type="button"
                     className="settings-button"
                     onClick={() =>
-                      void window.argmax?.system.openPath({ path: `${arc.dir}/NOTES.md` }).catch(() => undefined)
+                      void withToast(
+                        async () => window.argmax?.system.openPath({ path: `${arc.dir}/NOTES.md` }),
+                        showToast,
+                        "Could not open NOTES.md."
+                      )
                     }
                   >
                     Open NOTES.md

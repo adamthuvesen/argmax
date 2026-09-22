@@ -36,9 +36,9 @@ describe("useSessionCommands", () => {
 
   it.each([
     ["codex", "gpt-6-astra", true],
-    ["codex", "gpt-5.6-sol", true],
+    ["codex", "gpt-6-sol", true],
     ["codex", "gpt-5.6-terra", true],
-    ["codex", "gpt-5.6-luna", true],
+    ["codex", "gpt-6-luna", true],
     ["codex", "unknown", false],
     ["claude", "claude-fable-5-1", false],
     ["claude", "claude-opus-5", false],

@@ -323,11 +323,25 @@ impl GoalService {
             let Some(goal) = self.active_goal(goal_id)? else {
                 return Ok(());
             };
-            self.wait_for_session(&goal.session_id, &mut states).await?;
+            let settled_state = self.wait_for_session(&goal.session_id, &mut states).await?;
             // Re-read: the user may have cleared the goal while the turn ran.
             let Some(goal) = self.active_goal(goal_id)? else {
                 return Ok(());
             };
+            // A turn that did not finish is not work to judge. Stop is the
+            // person taking the chat back, and re-prompting "keep working"
+            // would override them; a failed turn (provider crash, refused
+            // launch) would most likely fail again, so the goal hands control
+            // back instead of spending its budget on retries.
+            let interrupted = match settled_state {
+                SessionState::Cancelled => Some("Stopped: the turn was cancelled."),
+                SessionState::Failed => Some("Stopped: the turn failed."),
+                _ => None,
+            };
+            if let Some(reason) = interrupted {
+                self.settle(&goal.id, GoalState::Stopped, Some(reason))?;
+                return Ok(());
+            }
 
             let (tail, tool_calls) = {
                 let connection = self.database.read_connection();
@@ -469,10 +483,11 @@ impl GoalService {
             if state.is_settled() {
                 return Ok(state);
             }
+            // An edge is only a wake-up; the row decides. A settled edge can be
+            // stale: one left queued when the row was already settled above,
+            // or a republish of an idle row (a multitask finishing), which
+            // would otherwise judge the next turn while it is still running.
             match states.recv().await {
-                Ok(change) if change.session_id == session_id && change.state.is_settled() => {
-                    return Ok(change.state)
-                }
                 Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => continue,
                 Err(broadcast::error::RecvError::Closed) => {
                     return Err(ArgmaxError::service(

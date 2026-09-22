@@ -8,12 +8,16 @@ use tauri::{AppHandle, Runtime};
 
 #[tauri::command(rename = "attachments:save-image")]
 #[specta::specta]
-pub fn attachments_save_image(
+pub async fn attachments_save_image(
     app: AppHandle,
     input: AttachmentsSaveImageInput,
 ) -> ArgmaxResult<SaveImageResult> {
     let store = AttachmentStore::from_data_dir(data_dir(&app)?);
-    save_image(&store, input)
+    // Up to 10 MiB of base64 decode plus a file write: off the main thread so
+    // pasting a large screenshot cannot freeze the window.
+    tauri::async_runtime::spawn_blocking(move || save_image(&store, input))
+        .await
+        .map_err(|error| ArgmaxError::service("ATTACHMENT_SAVE_JOIN", error.to_string()))?
 }
 
 /// Shared by the native command and the remote dispatcher. The native command

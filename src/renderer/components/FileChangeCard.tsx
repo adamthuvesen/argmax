@@ -4,6 +4,8 @@ import type { FileChange } from "../lib/fileChange.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { DiffBlocks } from "./DiffBlocks.js";
 import { displayPath } from "../lib/displayPath.js";
+import { withToast } from "../lib/withToast.js";
+import { showToast } from "../state/toast.js";
 
 export function FileChangeCard({
   change,
@@ -27,10 +29,13 @@ export function FileChangeCard({
       onOpenFile(shortPath);
       return;
     }
-    if (!window.argmax) return;
-    void window.argmax.system
-      .openPath({ path: change.path, ...(workspaceCwd ? { cwd: workspaceCwd } : {}) })
-      .catch(() => undefined);
+    const api = window.argmax;
+    if (!api) return;
+    void withToast(
+      () => api.system.openPath({ path: change.path, ...(workspaceCwd ? { cwd: workspaceCwd } : {}) }),
+      showToast,
+      "Could not open this file."
+    );
   };
 
   const note = change.kind === "delete" ? null : change.note ?? null;

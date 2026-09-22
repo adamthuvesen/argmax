@@ -170,12 +170,17 @@ pub fn publish(
     }
 }
 
+/// Serializes every read-modify-write of `remote.json`. The phone re-registers
+/// over the bridge while Settings saves and the APNs sender forgets devices;
+/// without it, one writer's load-then-save silently drops another's change.
+static CONFIG_UPDATE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Read `remote.json`, seeding a disabled one when it is missing. Any failure
 /// (unreadable, malformed) is loud and leaves the bridge disabled.
 pub fn load_or_create_config(app_data_dir: &Path) -> RemoteConfig {
     let path = app_data_dir.join(CONFIG_FILE_NAME);
     match std::fs::read_to_string(&path) {
-        Ok(body) => match serde_json::from_str::<RemoteConfig>(&body) {
+        Ok(body) => match parse_config(&body) {
             Ok(config) => config,
             Err(error) => {
                 tracing::warn!(
@@ -209,19 +214,73 @@ pub fn load_or_create_config(app_data_dir: &Path) -> RemoteConfig {
     }
 }
 
-/// Persist `remote.json`. Failures are returned loudly so the Settings panel
-/// can tell the user the change did not stick.
+/// Parse `remote.json`, rejecting a token that is not the generated shape. An
+/// empty or hand-shortened token would otherwise authenticate an empty bearer.
+fn parse_config(body: &str) -> Result<RemoteConfig, String> {
+    let config = serde_json::from_str::<RemoteConfig>(body).map_err(|error| error.to_string())?;
+    if !is_valid_token(&config.token) {
+        return Err("token must be 32 hex characters".to_owned());
+    }
+    Ok(config)
+}
+
+fn is_valid_token(token: &str) -> bool {
+    token.len() == 32 && token.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+/// Load, edit, and save `remote.json` under one lock. Unlike
+/// [`load_or_create_config`], a malformed file is an error here: saving the
+/// disabled fallback over it would rotate the token and strand the paired phone.
+pub fn update_config(
+    app_data_dir: &Path,
+    edit: impl FnOnce(&mut RemoteConfig),
+) -> crate::error::ArgmaxResult<RemoteConfig> {
+    let _guard = CONFIG_UPDATE_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let path = app_data_dir.join(CONFIG_FILE_NAME);
+    let mut config = match std::fs::read_to_string(&path) {
+        Ok(body) => parse_config(&body).map_err(|error| {
+            crate::error::ArgmaxError::service(
+                "REMOTE_CONFIG_MALFORMED",
+                format!(
+                    "{} is malformed ({error}); fix or delete it",
+                    path.display()
+                ),
+            )
+        })?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => RemoteConfig::disabled(),
+        Err(error) => {
+            return Err(crate::error::ArgmaxError::service(
+                "REMOTE_CONFIG_READ",
+                format!("failed to read {}: {error}", path.display()),
+            ))
+        }
+    };
+    edit(&mut config);
+    save_config(app_data_dir, &config)?;
+    Ok(config)
+}
+
+/// Persist `remote.json` atomically, so a crash mid-write cannot leave a
+/// truncated file that loads as a fresh token. Failures are returned loudly so
+/// the Settings panel can tell the user the change did not stick.
 pub fn save_config(app_data_dir: &Path, config: &RemoteConfig) -> crate::error::ArgmaxResult<()> {
     let path = app_data_dir.join(CONFIG_FILE_NAME);
-    let body = serde_json::to_vec_pretty(config).map_err(|error| {
-        crate::error::ArgmaxError::service("REMOTE_CONFIG_ENCODE", error.to_string())
-    })?;
-    std::fs::write(&path, body).map_err(|error| {
+    let write_error = |error: std::io::Error| {
         crate::error::ArgmaxError::service(
             "REMOTE_CONFIG_WRITE",
             format!("failed to write {}: {error}", path.display()),
         )
-    })
+    };
+    let body = serde_json::to_vec_pretty(config).map_err(|error| {
+        crate::error::ArgmaxError::service("REMOTE_CONFIG_ENCODE", error.to_string())
+    })?;
+    let mut file = tempfile::NamedTempFile::new_in(app_data_dir).map_err(write_error)?;
+    std::io::Write::write_all(&mut file, &body).map_err(write_error)?;
+    file.persist(&path)
+        .map_err(|error| write_error(error.error))?;
+    Ok(())
 }
 
 /// A v4 UUID's simple form is exactly 32 hex characters (122 random bits),
@@ -432,7 +491,7 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         std::fs::write(
             dir.path().join(CONFIG_FILE_NAME),
-            r#"{"enabled":true,"port":9001,"token":"abc"}"#,
+            r#"{"enabled":true,"port":9001,"token":"0123456789abcdef0123456789abcdef"}"#,
         )
         .expect("write");
 
@@ -440,6 +499,34 @@ mod tests {
 
         assert!(config.enabled);
         assert_eq!(config.port, 9001);
-        assert_eq!(config.token, "abc");
+        assert_eq!(config.token, "0123456789abcdef0123456789abcdef");
+    }
+
+    /// An empty or hand-shortened token would authenticate an empty bearer.
+    #[test]
+    fn a_token_that_is_not_32_hex_keeps_the_bridge_disabled() {
+        let dir = tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join(CONFIG_FILE_NAME),
+            r#"{"enabled":true,"port":9001,"token":""}"#,
+        )
+        .expect("write");
+
+        assert!(!load_or_create_config(dir.path()).enabled);
+    }
+
+    /// Saving the disabled fallback over a broken file would rotate the token.
+    #[test]
+    fn update_refuses_to_overwrite_a_malformed_config() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join(CONFIG_FILE_NAME);
+        std::fs::write(&path, "{ not json").expect("write");
+
+        let error = update_config(dir.path(), |config| config.enabled = true)
+            .expect_err("malformed config is not overwritten");
+
+        let json = serde_json::to_value(&error).expect("serialize error");
+        assert_eq!(json["sub_code"], "REMOTE_CONFIG_MALFORMED");
+        assert_eq!(std::fs::read_to_string(&path).expect("read"), "{ not json");
     }
 }

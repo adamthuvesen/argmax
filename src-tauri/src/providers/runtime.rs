@@ -9,7 +9,7 @@ use crate::{
 use std::{
     fs::File,
     future::Future,
-    io::{Read, Write},
+    io::Read,
     pin::Pin,
     process::{Command, Stdio},
     sync::{
@@ -409,18 +409,15 @@ fn launch_structured_via_pty(
     // i.e., the "no chat until Stop" symptom. A PTY makes `isatty(stdout)`
     // true so each JSON line flushes as it is written.
     //
-    // Only stdout and stderr go through the PTY. Stdin is an ordinary pipe:
-    // a PTY runs its input through the line discipline, which caps one line
-    // at TTYHOG (1024 bytes on macOS) and, past that, drops the line and
-    // rings a BEL per discarded byte back onto the PTY's output side. A
-    // pasted paragraph longer than that reached Codex as an empty prompt and
-    // reached the renderer as a wall of bells. A pipe has no such limit, and
-    // closing it is a real EOF rather than a canonical-mode Ctrl-D.
+    // Only stdout and stderr go through the PTY. Stdin is /dev/null: every
+    // provider that reaches this path takes its prompt through argv, and a
+    // PTY runs input through the line discipline, which caps one line at
+    // TTYHOG (1024 bytes on macOS) and, past that, drops the line and rings a
+    // BEL per discarded byte back onto the PTY's output side. /dev/null is an
+    // immediate real EOF, so no CLI waits on input that never comes.
     //
     // ECHO is still disabled on the slave so nothing the child writes loops
     // back into the output stream and confuses the JSON normalizer.
-    let definition = get_provider_definition(input.provider);
-
     let OpenptyResult { master, slave } = openpty(None, None).map_err(|error| {
         ArgmaxError::service(
             "PROVIDER_PTY_OPEN_FAILED",
@@ -481,46 +478,35 @@ fn launch_structured_via_pty(
     );
     environment_overrides.extend(mcp_environment);
 
-    let mut child = Command::new(binary_path)
+    let spawned = Command::new(binary_path)
         .args(&args)
         .current_dir(&input.workspace_path)
         .env_clear()
         .envs(build_provider_environment(environment_overrides))
-        .stdin(Stdio::piped())
+        .stdin(Stdio::null())
         .stdout(Stdio::from(stdout_fd))
         .stderr(Stdio::from(stderr_fd))
         .process_group(0)
-        .spawn()
-        .map_err(|error| {
-            ArgmaxError::service(
+        .spawn();
+    let mut child = match spawned {
+        Ok(child) => child,
+        Err(error) => {
+            // Only the wait thread restores the MCP scratch otherwise; without
+            // this the config file keeps a live socket token and its global
+            // lease is never released.
+            mcp_scratch.restore();
+            return Err(ArgmaxError::service(
                 "PROVIDER_SPAWN_FAILED",
                 format!("could not launch {display_name}: {error}"),
-            )
-        })?;
+            ));
+        }
+    };
 
     // The child's stdio now owns the slave fds; drop the parent's
     // reference so the master sees EOF when the child exits.
     drop(slave);
 
     let master_file = File::from(master);
-
-    // Write the prompt payload (Codex reads its prompt from stdin), then drop
-    // the handle so the child sees EOF and starts work. Claude/Cursor pass
-    // their prompt via argv and ignore stdin, so the immediate EOF is
-    // harmless for them.
-    if let Some(mut child_stdin) = child.stdin.take() {
-        if let Some(payload) = (definition.structured_stdin)(input) {
-            let mut write = child_stdin.write_all(payload.as_bytes());
-            if write.is_ok() && !payload.ends_with('\n') {
-                write = child_stdin.write_all(b"\n");
-            }
-            if let Err(error) = write.and_then(|()| child_stdin.flush()) {
-                signal_process_group(child.id(), SignalKind::Kill);
-                let _ = child.wait();
-                return Err(io_error(error));
-            }
-        }
-    }
 
     let pid = child.id();
     let disposed = Arc::new(AtomicBool::new(false));
@@ -652,9 +638,8 @@ impl ProviderRuntimeHandle for ProviderSessionHandle {
 
     fn send_input(&self, _input: &str) {
         // Structured-json sessions are single-shot: the child reads its
-        // prompt from argv (and a payload via stdin at launch for Codex),
-        // then exits. Follow-up messages re-launch via `--resume` rather
-        // than streaming over the existing pipe.
+        // prompt from argv, then exits. Follow-up messages re-launch via
+        // `--resume` rather than streaming over the existing pipe.
     }
 
     fn resize(&self, _cols: u16, _rows: u16) {
@@ -875,10 +860,6 @@ pub(super) fn signal_process(pid: u32, signal: SignalKind) {
 
 #[cfg(not(unix))]
 pub(super) fn signal_process(_pid: u32, _signal: SignalKind) {}
-
-pub(super) fn io_error(error: std::io::Error) -> ArgmaxError {
-    ArgmaxError::service("IO", error.to_string())
-}
 
 pub(super) fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
     ArgmaxError::service("SQLITE", error.to_string())

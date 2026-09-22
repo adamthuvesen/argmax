@@ -16,6 +16,8 @@ use std::{
 };
 use tokio::time::sleep;
 
+use crate::util::sync::LockOrRecover;
+
 #[cfg(unix)]
 use nix::sys::signal::{kill, Signal};
 #[cfg(unix)]
@@ -66,6 +68,51 @@ pub fn signal_target_term_and_kill_blocking(target: SignalTarget, reaped: Option
         return;
     }
     signal_target(target, Signal::SIGKILL);
+}
+
+/// Process groups of provider servers (`codex app-server`, `opencode serve`)
+/// that are alive right now. Their argv carries no session id, so boot orphan
+/// recovery cannot match them; app exit kills them from here instead.
+static KILL_ON_APP_EXIT: std::sync::Mutex<std::collections::BTreeSet<u32>> =
+    std::sync::Mutex::new(std::collections::BTreeSet::new());
+
+/// Keeps a child's process group on the kill-at-exit list until dropped. Hold
+/// it for exactly as long as the child it was registered for.
+pub struct KillOnAppExit(Option<u32>);
+
+impl KillOnAppExit {
+    /// `process_group` is the child's pid, spawned with `process_group(0)`.
+    /// `None` (the child already exited) registers nothing.
+    pub fn register(process_group: Option<u32>) -> Self {
+        if let Some(group) = process_group {
+            KILL_ON_APP_EXIT
+                .lock_or_recover("kill-on-app-exit groups")
+                .insert(group);
+        }
+        Self(process_group)
+    }
+}
+
+impl Drop for KillOnAppExit {
+    fn drop(&mut self) {
+        if let Some(group) = self.0 {
+            KILL_ON_APP_EXIT
+                .lock_or_recover("kill-on-app-exit groups")
+                .remove(&group);
+        }
+    }
+}
+
+/// Kill every registered provider server group. Called from the app's exit
+/// hook, where there is no runtime left to await a graceful escalation.
+pub fn kill_app_exit_groups_blocking() {
+    let groups = std::mem::take(&mut *KILL_ON_APP_EXIT.lock_or_recover("kill-on-app-exit groups"));
+    #[cfg(unix)]
+    for group in groups {
+        signal_target_term_and_kill_blocking(SignalTarget::ProcessGroup(group), None);
+    }
+    #[cfg(not(unix))]
+    drop(groups);
 }
 
 #[cfg(unix)]

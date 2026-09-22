@@ -470,13 +470,15 @@
 }
 
 .chat-mode-toggle[aria-pressed="true"],
-.workspace-mode-toggle[aria-pressed="true"] {
+.workspace-mode-toggle[aria-pressed="true"],
+.composer-run-location[aria-pressed="true"] {
   color: var(--accent-deep);
   background: var(--accent-soft);
 }
 
 .chat-mode-toggle[aria-pressed="true"]:hover,
-.workspace-mode-toggle[aria-pressed="true"]:hover {
+.workspace-mode-toggle[aria-pressed="true"]:hover,
+.composer-run-location[aria-pressed="true"]:hover {
   background: var(--accent-soft);
   color: var(--accent-deep);
   filter: brightness(0.97);
@@ -553,12 +555,14 @@ body > .picker-popover-portaled.settings-picker-popover {
   min-width: 220px;
 }
 
-/* New-session composer chips: open menu below the trigger (default .project-picker-popover is upward). */
+/* New-session composer chips: open menu below the trigger (default .project-picker-popover is upward).
+   The launcher project and branch menus are placed by useAnchoredPopover, which caps
+   their height to the room left under the chip. This 440px ceiling is only the
+   first-paint fallback — a cap measured from 100dvh is taller than that room, so
+   .work-scroll clips the list and the wheel scrolls the ancestor instead. */
 .composer-context .project-picker-popover {
   top: calc(100% + 6px);
   bottom: auto;
-  /* Keep the menu within the viewport so it isn’t clipped by .work-scroll; otherwise the ul’s
-     scrollbar sits in the clipped region / wheel scroll hits the outer scroller instead. */
   min-width: 260px;
   max-height: min(440px, calc(100dvh - 96px));
   overflow-y: auto;

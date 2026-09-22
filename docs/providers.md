@@ -4,7 +4,7 @@ Argmax manages Claude Code, Codex, Cursor Agent, OpenCode, and Grok Build throug
 
 ## Architecture
 
-- [adapters.rs](../src-tauri/src/providers/adapters.rs): Constructs CLI arguments and stdin for structured JSON modes. Centralizes auto-approve bypass flags.
+- [adapters.rs](../src-tauri/src/providers/adapters.rs): Constructs CLI arguments for structured JSON modes. Centralizes auto-approve bypass flags.
 - [environment.rs](../src-tauri/src/providers/environment.rs): Hydrates user login shell environment and PATH for spawned processes.
 - [discovery.rs](../src-tauri/src/providers/discovery.rs): Detects installed provider binaries and versions.
 - [cloud.rs](../src-tauri/src/providers/cloud.rs): Validates pushed GitHub branches, clones isolated launch checkouts, and builds bounded chat context.
@@ -31,8 +31,12 @@ itself rather than a provider capability. See [goals.md](goals.md).
 Argmax can start a hosted task with Claude, Codex, or Cursor from the launch
 composer or send an existing chat to its provider's cloud. Composer launches use the
 registered project's repository checkout and the composer prompt as the task
-brief. Active-chat launches include a bounded visible transcript in the read-only confirmation; they
-exclude tool payloads, raw provider output, and child-agent rows. Both paths
+brief. Active-chat launches send a bounded visible transcript; it
+excludes tool payloads, raw provider output, and child-agent rows.
+`cloud:prepare` builds that brief and closes it with one instruction: the text
+after `/cloud` when there is one (the optional `instruction` input, accepted
+only for a chat), or a fixed "continue this task" line otherwise. The dialog
+launches that brief as returned and shows the full text behind a disclosure. Both paths
 require a GitHub branch whose local `HEAD` matches the branch on `origin`.
 Uncommitted work stays in the local checkout, while unpushed commits must be
 pushed before launch. Neither is uploaded implicitly. The
@@ -562,8 +566,8 @@ The `argmax session …` CLI still speaks the same socket from a terminal. See
 ## Default Model Selection
 
 Defaults are configured in Settings → Agents → Default model (`localStorage.argmax.launch.model`). When unset, the app selects the highest priority installed provider:
-1. Claude (Opus 5)
-2. Codex (GPT-5.6 Sol)
+1. Claude (Opus 5.5)
+2. Codex (GPT-6 Sol)
 3. Cursor (Grok 4.6)
 4. OpenCode (GLM-5.3-Flash)
 5. Grok Build (Grok 4.6)

@@ -11,7 +11,11 @@ import {
   type ReasoningEffort
 } from "../../shared/providerModels.js";
 import type { ProviderId } from "../../shared/types.js";
-import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
+import {
+  PICKER_MENU_EDGE_PADDING_PX,
+  PICKER_MENU_MAX_HEIGHT_PX,
+  useAnchoredPopover
+} from "../hooks/useAnchoredPopover.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
 import { postToNative } from "../mobile/nativeHost.js";
@@ -213,6 +217,7 @@ export function LaunchModelSelector({
   onChange,
   onFastModeEnabledChange,
   open,
+  openBelow = false,
   portaled = false,
   withEffortSlider = false,
   effortOpen,
@@ -229,6 +234,12 @@ export function LaunchModelSelector({
   onChange: (model: ModelPickerSelection) => void;
   onFastModeEnabledChange?: (enabled: boolean) => void;
   open?: boolean;
+  /**
+   * Open under the chip and cap the menu to the same height as the repo picker.
+   * The session composer leaves this off so a menu at the bottom of the pane
+   * can still flip upward.
+   */
+  openBelow?: boolean;
   /** Portal the menu to `<body>` with fixed positioning — for scroll-trapping modals. */
   portaled?: boolean;
   withEffortSlider?: boolean;
@@ -265,6 +276,7 @@ export function LaunchModelSelector({
       onFastModeEnabledChange={onFastModeEnabledChange}
       onOpenChange={onOpenChange}
       open={open}
+      openBelow={openBelow}
       portaled={portaled}
       options={options}
       reasoningEffortsForValue={(model) => reasoningEffortsForModel(model.provider, model.modelId)}
@@ -570,6 +582,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   onFastModeEnabledChange,
   onOpenChange,
   open: controlledOpen,
+  openBelow = false,
   portaled = false,
   options,
   reasoningEffortsForValue,
@@ -592,6 +605,8 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   onFastModeEnabledChange?: (enabled: boolean) => void;
   onOpenChange?: (open: boolean) => void;
   open?: boolean;
+  /** Stay below the chip and share the launcher repo menu's height cap. */
+  openBelow?: boolean;
   portaled?: boolean;
   options: Array<ChipModelOption<T>>;
   /** Effort levels for a given value's provider, low → high. Claude and Codex
@@ -626,12 +641,16 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   // settings both style this menu through descendant selectors, and the chip
   // already establishes the stacking context the menu wants. `flip` picks the
   // side — the agent composer sits at the bottom of its pane so the menu opens
-  // upward there, while settings has room below.
+  // upward there, while settings has room below. The launcher opts out and
+  // drops downward at the same height as the repo menu.
   const flyout = useAnchoredPopover({
     open,
     placement: align === "end" ? "bottom-end" : "bottom-start",
+    flip: !openBelow,
     strategy: portaled ? "fixed" : "absolute",
-    capHeight: portaled
+    capHeight: portaled || openBelow,
+    edgePadding: openBelow ? PICKER_MENU_EDGE_PADDING_PX : undefined,
+    maxHeight: openBelow ? PICKER_MENU_MAX_HEIGHT_PX : undefined
   });
   // The Speed submenu hangs off its own row, so it tracks that row instead of
   // being nudged into place with margins measured against the list.

@@ -716,17 +716,27 @@ export function useDashboardSession(
           stateReconciled = true;
         }
         lastStatusPullAt = now;
+        const deltaRevision = dashboardDeltaRevision.current;
         const status = await window.argmax.workspaces.status({ workspaceIds });
         if (cancelled) {
           return;
         }
-        setSnapshot((current) =>
-          mergeDashboardDelta(current, {
-            workspaces: status.workspaces,
-            sessions: status.sessions,
-            checks: status.checks
-          })
-        );
+        // Same race as refresh(): a delta that landed during the await is
+        // fresher than this read, so drop rows it already moved past.
+        setSnapshot((current) => {
+          const raced = deltaRevision !== dashboardDeltaRevision.current;
+          return mergeDashboardDelta(current, {
+            workspaces: raced
+              ? withoutOutdated(current.workspaces, status.workspaces, (workspace) => workspace.lastActivityAt)
+              : status.workspaces,
+            sessions: raced
+              ? withoutOutdated(current.sessions, status.sessions, (session) => session.lastActivityAt)
+              : status.sessions,
+            checks: raced
+              ? withoutOutdated(current.checks, status.checks, (check) => check.completedAt ?? check.startedAt)
+              : status.checks
+          });
+        });
       } finally {
         inFlight = false;
       }

@@ -171,7 +171,7 @@ pub(crate) async fn fire_routine(
         Ok(next) => next,
         Err(error) => {
             tracing::warn!(routine_id = %fields.id, ?error, "routine schedule invalid; disabling");
-            let _ = mark(
+            mark(
                 database,
                 &fields,
                 &last_run,
@@ -187,7 +187,7 @@ pub(crate) async fn fire_routine(
     let Some((provider, permission_mode)) =
         resolve_routine_permissions(&fields.provider, default_agent)
     else {
-        let _ = mark(
+        mark(
             database,
             &fields,
             &last_run,
@@ -223,7 +223,7 @@ pub(crate) async fn fire_routine(
                 FireOutcome::Recorded
             }
             ArcCoordinatorResolution::NoCoordinator => {
-                let _ = mark(
+                mark(
                     database,
                     &fields,
                     &last_run,
@@ -266,7 +266,7 @@ pub(crate) async fn fire_routine(
                     // coordinator at all, so it backs off the same way rather
                     // than retrying every tick.
                     FollowUpOutcome::Missing => {
-                        let _ = mark(
+                        mark(
                             database,
                             &fields,
                             &last_run,
@@ -278,7 +278,7 @@ pub(crate) async fn fire_routine(
                         FireOutcome::Recorded
                     }
                     FollowUpOutcome::Failed(message) => {
-                        let _ = mark(
+                        mark(
                             database,
                             &fields,
                             &last_run,
@@ -341,7 +341,7 @@ pub(crate) async fn fire_routine(
                     fields = routines::routine_launch_fields(&current);
                 }
                 FollowUpOutcome::Failed(message) => {
-                    let _ = mark(
+                    mark(
                         database,
                         &fields,
                         &last_run,
@@ -408,7 +408,7 @@ pub(crate) async fn fire_routine(
             tracing::warn!(routine_id = %fields.id, code = %error.code, message = %error.message, "scheduled task launch failed");
             // No unbounded retries of a one-shot; the panel surfaces the error
             // and run-now can retry deliberately.
-            let _ = mark(
+            mark(
                 database,
                 &fields,
                 &last_run,
@@ -516,15 +516,16 @@ fn settle_success(
     if fields.run_once_at.is_some() && fields.created_by == RoutineAuthor::Agent {
         match routines::delete_spent_routine(&database.connection(), &fields.id, &fields.updated_at)
         {
-            // `false` is an edit made while the launch was awaiting: the row
-            // is no longer the wake that fired, so leave it as the user left it.
-            Ok(_) => return,
+            Ok(true) => return,
+            // An edit made while the launch was awaiting: the row is kept as
+            // the user left it, but still has to stop firing (below).
+            Ok(false) => {}
             Err(error) => {
                 tracing::warn!(routine_id = %fields.id, ?error, "spent wake could not be deleted; disabling instead");
             }
         }
     }
-    let _ = mark(
+    let recorded = mark(
         database,
         fields,
         last_run,
@@ -533,8 +534,25 @@ fn settle_success(
         stays_scheduled.enabled(),
         launched_session_id,
     );
+    // The edit that beat `mark` kept the one-shot's past time as its
+    // `next_run_at`, so the occurrence that just launched would fire again on
+    // the next tick. Retire it unless the edit rescheduled it.
+    if let (false, Some(fired_run_once_at)) = (recorded, fields.run_once_at.as_deref()) {
+        if let Err(error) = routines::retire_fired_one_shot(
+            &database.connection(),
+            &fields.id,
+            fired_run_once_at,
+            last_run,
+        ) {
+            tracing::warn!(routine_id = %fields.id, ?error, "fired one-shot could not be retired; it may fire again");
+        }
+    }
 }
 
+/// Books a firing on the row and says whether it landed. Nothing upstream can
+/// act on a failure, so both ways of not landing are logged here rather than
+/// dropped: an error, and `false` — an edit or delete made while the launch
+/// was awaiting, which the optimistic `updated_at` token lets win.
 fn mark(
     database: &Arc<Database>,
     fields: &RoutineLaunchFields,
@@ -543,9 +561,9 @@ fn mark(
     last_error: Option<&str>,
     enabled: bool,
     launched_session_id: Option<&str>,
-) -> ArgmaxResult<bool> {
+) -> bool {
     let connection = database.connection();
-    routines::mark_routine_run(
+    match routines::mark_routine_run(
         &connection,
         fields,
         last_run_at,
@@ -553,7 +571,17 @@ fn mark(
         last_error,
         enabled,
         launched_session_id,
-    )
+    ) {
+        Ok(true) => true,
+        Ok(false) => {
+            tracing::warn!(routine_id = %fields.id, "routine run not recorded: the row changed during the launch");
+            false
+        }
+        Err(error) => {
+            tracing::warn!(routine_id = %fields.id, ?error, "routine run could not be recorded");
+            false
+        }
+    }
 }
 
 /// Whether a firing leaves the row scheduled. One helper so the follow-up

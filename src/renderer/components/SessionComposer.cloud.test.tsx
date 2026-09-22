@@ -15,7 +15,7 @@ describe("SessionComposer /cloud", () => {
       repository: "adamthuvesen/commute-cli",
       branch: "main",
       commit: "1234567890abcdef",
-      brief: "Earlier chat context",
+      brief: "Conversation so far:\nUser: Earlier chat context\n\nNew user message:\nFix the parser",
       environmentId: "env-default",
       environmentDescription: "Default",
       environments: [{ id: "env-default", name: "Default" }]
@@ -40,7 +40,8 @@ describe("SessionComposer /cloud", () => {
     expect(prompt()).toHaveValue("/cloud Fix the parser");
     expect(window.argmax!.cloud.prepare).toHaveBeenCalledWith({
       sessionId: "session-a",
-      provider: "codex"
+      provider: "codex",
+      instruction: "Fix the parser"
     });
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(prompt()).toHaveValue("/cloud Fix the parser");
@@ -54,7 +55,7 @@ describe("SessionComposer /cloud", () => {
     expect(window.argmax!.cloud.launch).toHaveBeenCalledWith(expect.objectContaining({
       sessionId: "session-a",
       provider: "codex",
-      brief: "Fix the parser\n\nContext from this chat:\nEarlier chat context"
+      brief: "Conversation so far:\nUser: Earlier chat context\n\nNew user message:\nFix the parser"
     }));
     await waitFor(() => expect(prompt()).toHaveValue(""));
     expect(onSendSessionInput).not.toHaveBeenCalled();

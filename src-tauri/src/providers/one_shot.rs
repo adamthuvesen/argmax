@@ -141,7 +141,7 @@ pub async fn suggest_follow_up(
 pub fn helper_model(provider: ProviderId) -> &'static str {
     match provider {
         ProviderId::Claude => "claude-sonnet-5",
-        ProviderId::Codex => "gpt-5.6-luna",
+        ProviderId::Codex => "gpt-6-luna",
         ProviderId::Cursor => "composer-2.5",
         ProviderId::Opencode => "opencode/big-pickle",
         ProviderId::Grok => "grok-4.6",

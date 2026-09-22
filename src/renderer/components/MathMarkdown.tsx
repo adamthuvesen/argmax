@@ -40,35 +40,3 @@ export function ChatMathMarkdown({
     </ReactMarkdown>
   );
 }
-
-function escapeLeadingListMarker(text: string): string {
-  return text
-    .replace(/^(\s*\d{1,9})([.)])(\s)/, "$1\\$2$3")
-    .replace(/^(\s*)([-*+])(\s)/, "$1\\$2$3");
-}
-
-export function PlanInlineMath({ text }: { text: string }): JSX.Element {
-  return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
-      components={{
-        p: ({ children: kids }) => <>{kids}</>,
-        strong: ({ children: kids }) => <strong className="plan-card-strong">{kids}</strong>,
-        code: ({ className, children: kids, ...rest }) => {
-          const isFenced = typeof className === "string" && className.includes("language-");
-          if (isFenced) {
-            return (
-              <code className={className} {...rest}>
-                {kids}
-              </code>
-            );
-          }
-          return <span className="plan-card-chip">{kids}</span>;
-        }
-      }}
-    >
-      {escapeLeadingListMarker(normalizeMathDelimiters(text))}
-    </ReactMarkdown>
-  );
-}

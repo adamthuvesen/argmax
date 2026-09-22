@@ -47,8 +47,8 @@ import { connectBridge, readBridgeConfig, realProfileDataDir } from "./bridge-cl
 // because that module's import graph is not runnable under plain node;
 // src/test/bridgeDefaults.test.ts fails the suite when the two drift.
 export const LAUNCH_MODEL_DEFAULTS = {
-  claude: { modelLabel: "Opus 5", modelId: "claude-opus-5", reasoningEffort: null },
-  codex: { modelLabel: "GPT-5.6 Sol", modelId: "gpt-5.6-sol", reasoningEffort: null },
+  claude: { modelLabel: "Opus 5.5", modelId: "claude-opus-5-5", reasoningEffort: null },
+  codex: { modelLabel: "GPT-6 Sol", modelId: "gpt-6-sol", reasoningEffort: null },
   cursor: { modelLabel: "Grok 4.7 (Cursor)", modelId: "grok-4.7-medium", reasoningEffort: null },
   opencode: { modelLabel: "GLM-5.3-Flash", modelId: "opencode-go/glm-5.3-flash", reasoningEffort: "high" },
   grok: { modelLabel: "Grok 4.7", modelId: "grok-4.7", reasoningEffort: null }

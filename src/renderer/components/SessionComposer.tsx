@@ -49,6 +49,7 @@ import {
   isHostedCloudProvider,
   type HostedCloudProvider
 } from "../../shared/cloudProviders.js";
+import { PROVIDER_DISPLAY_NAMES } from "../../shared/providerModels.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { canSteerQueuedMessage, hasSteeringContextHeadroom } from "../lib/queuedSteer.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
@@ -380,7 +381,7 @@ export function SessionComposer({
       commands.push({
         name: "cloud",
         label: "Cloud",
-        hint: `Launch a task in ${cloudProviderName(selectedModel.provider)}`,
+        hint: `Send a task to ${cloudProviderName(selectedModel.provider)}`,
         icon: Cloud,
         writesDraft: true,
         run: () => setInput("/cloud ")
@@ -620,7 +621,7 @@ export function SessionComposer({
         return;
       }
       if (!isHostedCloudProvider(selectedModel.provider)) {
-        setStatus({ kind: "error", message: "This provider does not support cloud tasks." });
+        setStatus({ kind: "error", message: `${PROVIDER_DISPLAY_NAMES[selectedModel.provider]} can’t run cloud tasks.` });
         return;
       }
       if (pendingAttachments.length > 0) {

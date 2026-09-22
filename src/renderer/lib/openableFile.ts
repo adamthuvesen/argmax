@@ -11,7 +11,8 @@ import type { ArgmaxApi } from "../../shared/types.js";
  *  1. Literal path — if stat succeeds, use it as-is.
  *  2. Absolute path from another checkout: match its repo-relative suffix
  *     against the workspace file list.
- *  3. Bare basename: use it when exactly one workspace entry matches.
+ *  3. Bare basename: use it when exactly one workspace entry matches, or
+ *     when exactly one of several matches has uncommitted changes.
  * Relative paths with directories are not guessed after a failed literal read.
  */
 export async function resolveOpenablePath(
@@ -39,6 +40,16 @@ export async function resolveOpenablePath(
     const slash = entry.path.lastIndexOf("/");
     return slash >= 0 && entry.path.slice(slash + 1) === path;
   });
-  const only = matches.length === 1 ? matches[0] : undefined;
-  return only ? only.path : null;
+  if (matches.length <= 1) return matches[0]?.path ?? null;
+  // A monorepo has many `instructions.md`; the one the agent just talked
+  // about is almost always the one it changed.
+  let changed;
+  try {
+    changed = await api.review.listChangedFiles({ kind: "workspace", id: workspaceId });
+  } catch {
+    return null;
+  }
+  const changedPaths = new Set(changed.map((file) => file.path));
+  const changedMatches = matches.filter((entry) => changedPaths.has(entry.path));
+  return changedMatches.length === 1 ? (changedMatches[0]?.path ?? null) : null;
 }

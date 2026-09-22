@@ -48,6 +48,16 @@ struct PendingUserEcho {
     acknowledgement: UserEcho,
 }
 
+/// User messages written to stdin that Claude has not echoed back yet, and
+/// whether the reader has ended the turn. One lock covers both: a steer
+/// flushed after the reader found nothing pending, but before it killed the
+/// CLI, would report delivered and then vanish.
+#[derive(Default)]
+struct UserEchoes {
+    pending: VecDeque<PendingUserEcho>,
+    closed: bool,
+}
+
 struct WriteRequest {
     message: Value,
     user_echo: Option<PendingUserEcho>,
@@ -198,13 +208,21 @@ pub async fn launch_turn(
         .stderr
         .take()
         .ok_or_else(|| io_error("Missing Claude stderr"))?;
-    let pending_user_echoes = Arc::new(tokio::sync::Mutex::new(VecDeque::new()));
+    let pending_user_echoes = Arc::new(tokio::sync::Mutex::new(UserEchoes::default()));
     let writer_pending_user_echoes = Arc::clone(&pending_user_echoes);
     let (write_tx, mut write_rx) = mpsc::unbounded_channel::<WriteRequest>();
     let writer = tokio::spawn(async move {
         while let Some(request) = write_rx.recv().await {
-            if let Some(user_echo) = request.user_echo {
-                writer_pending_user_echoes.lock().await.push_back(user_echo);
+            {
+                let mut echoes = writer_pending_user_echoes.lock().await;
+                // Dropping the request drops `written`, which the steer
+                // reports as not delivered, so it is queued for the next turn.
+                if echoes.closed {
+                    continue;
+                }
+                if let Some(user_echo) = request.user_echo {
+                    echoes.pending.push_back(user_echo);
+                }
             }
             stdin
                 .write_all(format!("{}\n", request.message).as_bytes())
@@ -307,9 +325,9 @@ pub async fn launch_turn(
                             if message.get("type").and_then(Value::as_str) == Some("user") {
                                 let acknowledgement = match replayed_user_prompt(&message) {
                                     Some(prompt) => {
-                                        let mut pending = pending_user_echoes.lock().await;
-                                        if pending.front().is_some_and(|pending| user_echo_matches(&message, prompt, &pending.prompt)) {
-                                            pending.pop_front().map(|pending| pending.acknowledgement)
+                                        let mut echoes = pending_user_echoes.lock().await;
+                                        if echoes.pending.front().is_some_and(|pending| user_echo_matches(&message, prompt, &pending.prompt)) {
+                                            echoes.pending.pop_front().map(|pending| pending.acknowledgement)
                                         } else {
                                             None
                                         }
@@ -333,8 +351,16 @@ pub async fn launch_turn(
                                 background_agents.remove(task_id);
                             }
                             if message.get("type").and_then(Value::as_str) == Some("result") {
-                                if !pending_user_echoes.lock().await.is_empty() {
-                                    continue;
+                                {
+                                    let mut echoes = pending_user_echoes.lock().await;
+                                    if !echoes.pending.is_empty() {
+                                        continue;
+                                    }
+                                    // Closed under the same lock the writer
+                                    // checks, so no steer lands after this.
+                                    if background_agents.is_empty() {
+                                        echoes.closed = true;
+                                    }
                                 }
                                 if message.get("is_error").and_then(Value::as_bool) == Some(true) { code=1; }
                                 emit_event(&emit,&input,ProviderRuntimeEventType::Output,format!("{line}\n"),None);

@@ -77,8 +77,12 @@ export function ArcTimeline({
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<ArcTimelineFilter>("all");
   const loadedCount = useRef(0);
+  // Bumped by an arc switch and by every refresh, so an earlier-page load that
+  // started under the old arc or window cannot append into the new one.
+  const requestGeneration = useRef(0);
 
   useEffect(() => {
+    requestGeneration.current += 1;
     loadedCount.current = 0;
     setEvents(null);
     setCursor(null);
@@ -90,6 +94,7 @@ export function ArcTimeline({
       setEvents([]);
       return;
     }
+    requestGeneration.current += 1;
     let cancelled = false;
     void window.argmax.arcs
       .timeline({ arcId, before: null, limit: Math.max(PAGE_SIZE, loadedCount.current) })
@@ -110,9 +115,11 @@ export function ArcTimeline({
 
   const loadEarlier = useCallback(async (): Promise<void> => {
     if (!window.argmax || !cursor) return;
+    const generation = requestGeneration.current;
     setLoadingEarlier(true);
     try {
       const page = await window.argmax.arcs.timeline({ arcId, before: cursor, limit: PAGE_SIZE });
+      if (generation !== requestGeneration.current) return;
       setEvents((current) => {
         const next = [...(current ?? []), ...page.events];
         loadedCount.current = next.length;
@@ -121,6 +128,7 @@ export function ArcTimeline({
       setCursor(page.nextCursor);
       setError(null);
     } catch (cause) {
+      if (generation !== requestGeneration.current) return;
       setError(cause instanceof Error ? cause.message : "Could not load earlier events.");
     } finally {
       setLoadingEarlier(false);

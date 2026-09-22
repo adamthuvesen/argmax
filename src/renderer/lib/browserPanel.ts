@@ -4,14 +4,10 @@
  * callback through every layer; every review panel subscribes and the one
  * taking requests (the focused pane) switches itself to Browser mode.
  *
- * There is one native browser surface, so exactly one review panel shows it at
- * a time. The owner is whichever panel most recently entered Browser mode, not
- * the focused one: clicking into another pane's chat must not yank the page
- * away, while that pane switching to Browser takes it over deliberately.
- *
- * Tab strips are per scope: each chat, the launcher, and the rail's Browser
- * page keep their own tabs, order, and active tab. Native webviews stay in one
- * process-wide pool; a demoted surface hides them rather than destroying them.
+ * Tab strips and surface ownership are per scope: each chat, the launcher,
+ * and the rail's Browser page keep their own tabs, order, and active tab.
+ * Different scopes can show their native webviews at the same time. Two
+ * panels showing the same scope still share one surface for those tabs.
  */
 
 import type { BrowserTabInfo } from "../../shared/types.js";
@@ -91,7 +87,7 @@ export function rememberBrowserUrl(url: string, scopeId: string): void {
 
 // --- Surface ownership ------------------------------------------------------
 
-let ownerId: string | null = null;
+const ownerIds = new Map<string, string>();
 const ownerListeners = new Set<() => void>();
 
 export function subscribeBrowserOwner(listener: () => void): () => void {
@@ -101,22 +97,22 @@ export function subscribeBrowserOwner(listener: () => void): () => void {
   };
 }
 
-export function getBrowserOwnerId(): string | null {
-  return ownerId;
+export function getBrowserOwnerId(scopeId: string): string | null {
+  return ownerIds.get(scopeId) ?? null;
 }
 
-/** Entering Browser mode takes the surface, demoting whoever held it. */
-export function claimBrowserSurface(id: string): void {
-  if (ownerId === id) return;
-  ownerId = id;
+/** Only another panel showing the same scope can displace its surface. */
+export function claimBrowserSurface(id: string, scopeId: string): void {
+  if (ownerIds.get(scopeId) === id) return;
+  ownerIds.set(scopeId, id);
   for (const listener of ownerListeners) listener();
 }
 
 /** No-op from a panel that no longer owns the surface: a demoted panel
  *  leaving Browser mode must not release the claim that displaced it. */
-export function releaseBrowserSurface(id: string): void {
-  if (ownerId !== id) return;
-  ownerId = null;
+export function releaseBrowserSurface(id: string, scopeId: string): void {
+  if (ownerIds.get(scopeId) !== id) return;
+  ownerIds.delete(scopeId);
   for (const listener of ownerListeners) listener();
 }
 
@@ -124,7 +120,7 @@ export function releaseBrowserSurface(id: string): void {
 export function resetBrowserSurfaceForTests(): void {
   openRequest = null;
   nextOpenRequestSeq = 1;
-  ownerId = null;
+  ownerIds.clear();
   for (const listener of requestListeners) listener();
   for (const listener of ownerListeners) listener();
 }

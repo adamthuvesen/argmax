@@ -1162,11 +1162,16 @@ fn is_noisy_provider_tracing(target: &str, message: &str) -> bool {
         .any(|module| target_is(target, module))
 }
 
-/// Plain (non-tracing) Codex stderr advisories printed on every launch.
+/// Plain (non-tracing) CLI stderr advisories printed on every launch. The
+/// SEP-2352 line is one per remote MCP server whose stored OAuth credential
+/// predates the issuer stamp: nothing failed, and the chat drew a red Error
+/// card above a perfectly good answer. Anything else `[mcp-sdk]` writes still
+/// surfaces.
 const NOISY_PLAIN_STDERR_PREFIXES: &[&str] = &[
     CODEX_SKILL_BUDGET_NOTICE_PREFIX,
     "failed to parse plugin hooks config",
     "Reconnecting...",
+    "[mcp-sdk] SEP-2352:",
 ];
 
 const CODEX_SKILL_BUDGET_NOTICE_PREFIX: &str = "Skill descriptions were shortened to fit";
@@ -1498,6 +1503,29 @@ mod tests {
         let kept = normalize_provider_event(
             ProviderId::Codex,
             &stderr("Authentication failed; run `codex login`\n"),
+            &mut context,
+        );
+        assert_eq!(kept.events.len(), 1);
+        assert_eq!(kept.events[0].r#type, "error");
+    }
+
+    #[test]
+    fn mcp_sdk_issuer_advisory_is_dropped_but_other_mcp_sdk_stderr_stays() {
+        let stderr = |message: &str| ProviderOutputEvent {
+            stream: ProviderOutputStream::Stderr,
+            ..output_event(message)
+        };
+        let mut context = NormalizerSessionContext::default();
+        let dropped = normalize_provider_event(
+            ProviderId::Claude,
+            &stderr("[mcp-sdk] SEP-2352: stored OAuth credential has no 'issuer' stamp (pre-upgrade storage or provider not round-tripping the value). SEP-2352 isolation is inactive for this read; ensure your provider round-trips the issuer field.\n"),
+            &mut context,
+        );
+        assert!(dropped.events.is_empty());
+
+        let kept = normalize_provider_event(
+            ProviderId::Claude,
+            &stderr("[mcp-sdk] failed to connect to server executor\n"),
             &mut context,
         );
         assert_eq!(kept.events.len(), 1);

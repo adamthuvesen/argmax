@@ -165,7 +165,20 @@ export function useSlashAutocomplete({
     if (!needle) {
       return skills;
     }
-    return skills.filter((skill) => skill.name.toLowerCase().includes(needle));
+    // Keep substring discovery, but put the skill the user named first and
+    // name prefixes ahead of incidental middle-of-name matches. Array#sort is
+    // stable, so equally relevant skills retain the provider catalog order.
+    const relevance = (name: string): number => {
+      if (name === needle) return 0;
+      if (name.startsWith(needle)) return 1;
+      return 2;
+    };
+    return skills
+      .filter((skill) => skill.name.toLowerCase().includes(needle))
+      .sort(
+        (left, right) =>
+          relevance(left.name.toLowerCase()) - relevance(right.name.toLowerCase())
+      );
   }, [skills, slashQuery]);
 
   const items = useMemo<SlashItem[]>(

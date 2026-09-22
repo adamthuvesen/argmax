@@ -242,12 +242,13 @@ fn cursor_structured_args(
 
 // Cursor picks reasoning effort and fast serving through the model id (e.g.
 // gpt-5.6-sol-high, claude-opus-5-thinking-xhigh-fast). Effort: GPT-5.6
-// Luna/Terra/Sol and Opus 5 Thinking are parameterized up to Max; Grok 4.6 and
-// Gemini 3.8 Flash stop at High. Composer has no effort variant and passes
-// through. Fast: append "-fast" after the effort suffix for every model that
-// has a fast variant — all but Gemini 3.8 Flash and the Auto routing modes. The
-// renderer only enables the Speed toggle for those, so this mirrors it. The
-// adapter guard also protects resumed sessions carrying a stale fast setting.
+// Luna/Terra/Sol and Opus 5 Thinking are parameterized up to Max; Grok 4.7
+// stops at Extra High; Grok 4.6/4.5 and Gemini 3.8 Flash stop at High.
+// Composer has no effort variant and passes through. Fast: append "-fast"
+// after the effort suffix for every model that has a fast variant — all but
+// Gemini 3.8 Flash and the Auto routing modes. The renderer only enables the
+// Speed toggle for those, so this mirrors it. The adapter guard also protects
+// resumed sessions carrying a stale fast setting.
 //
 // Match the picker's exact base ids (see PROVIDER_MODELS in providerModels.ts,
 // and the spellings from `cursor-agent --list-models`) rather than a prefix, so
@@ -268,6 +269,10 @@ fn cursor_model_for(
         ) => {
             let family = model_id.trim_end_matches("-medium");
             format!("{family}-{}", effort_suffix(effort))
+        }
+        ("grok-4.7-medium", Some(effort)) => {
+            let family = model_id.trim_end_matches("-medium");
+            format!("{family}-{}", effort_suffix_capped_at_xhigh(effort))
         }
         (
             "cursor-grok-4.6-medium" | "cursor-grok-4.5-medium" | "gemini-3.8-flash-medium",
@@ -299,6 +304,15 @@ fn effort_suffix(effort: ReasoningEffort) -> &'static str {
         ReasoningEffort::High => "high",
         ReasoningEffort::Xhigh => "xhigh",
         ReasoningEffort::Max | ReasoningEffort::Ultra => "max",
+    }
+}
+
+fn effort_suffix_capped_at_xhigh(effort: ReasoningEffort) -> &'static str {
+    match effort {
+        ReasoningEffort::Low => "low",
+        ReasoningEffort::Medium => "medium",
+        ReasoningEffort::High => "high",
+        ReasoningEffort::Xhigh | ReasoningEffort::Max | ReasoningEffort::Ultra => "xhigh",
     }
 }
 
@@ -509,8 +523,21 @@ fn grok_common_args(input: &ProviderLaunchInput) -> Vec<String> {
     ];
     args.extend(grok_permission_args(input));
     args.extend(grok_reasoning_args(input));
-    args.extend(["--model".to_string(), input.model_id.clone()]);
+    args.extend([
+        "--model".to_string(),
+        grok_launch_model_id(&input.model_id, input.fast_mode).to_string(),
+    ]);
     args
+}
+
+/// Grok 4.7 Fast is a distinct advertised SKU, not a CLI flag. 4.6 and 4.5
+/// have no fast counterpart, so a stale Fast preference on those ids is a
+/// no-op. Shared with the ACP path so both transports pick the same id.
+pub(crate) fn grok_launch_model_id(model_id: &str, fast_mode: bool) -> &str {
+    match (model_id, fast_mode) {
+        ("grok-4.7", true) => "grok-4.7-build-fast",
+        _ => model_id,
+    }
 }
 
 // Grok's headless prompt is a FLAG VALUE (`-p/--single <PROMPT>`), not the
@@ -1197,6 +1224,31 @@ mod tests {
     }
 
     #[test]
+    fn cursor_grok_47_effort_maps_to_variant_capped_at_xhigh() {
+        let cases = [
+            (ReasoningEffort::Low, "grok-4.7-low"),
+            (ReasoningEffort::Medium, "grok-4.7-medium"),
+            (ReasoningEffort::High, "grok-4.7-high"),
+            (ReasoningEffort::Xhigh, "grok-4.7-xhigh"),
+            (ReasoningEffort::Max, "grok-4.7-xhigh"),
+            (ReasoningEffort::Ultra, "grok-4.7-xhigh"),
+        ];
+        for (effort, expected) in cases {
+            let input = ProviderLaunchInput {
+                model_id: "grok-4.7-medium".to_string(),
+                reasoning_effort: Some(effort),
+                ..launch_input(ProviderId::Cursor)
+            };
+            let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input, None);
+            let i = args
+                .iter()
+                .position(|a| a == "--model")
+                .expect("model flag");
+            assert_eq!(args[i + 1], expected, "grok 4.7 effort {effort:?}");
+        }
+    }
+
+    #[test]
     fn cursor_grok_effort_maps_to_variant_capped_at_high() {
         let cases = [
             (ReasoningEffort::Low, "cursor-grok-4.6-low"),
@@ -1529,9 +1581,9 @@ mod tests {
         }
     }
 
-    // Grok has no fast-mode surface; the toggle must not leak a flag.
+    // 4.6 has no Fast SKU; a stale Fast preference must not leak a flag.
     #[test]
-    fn grok_ignores_fast_mode() {
+    fn grok_ignores_fast_mode_without_a_fast_sku() {
         let input = ProviderLaunchInput {
             fast_mode: true,
             ..launch_input(ProviderId::Grok)
@@ -1542,6 +1594,24 @@ mod tests {
             None,
         );
         assert_eq!(on, off);
+        assert_eq!(grok_launch_model_id("grok-4.6", true), "grok-4.6");
+        assert_eq!(grok_launch_model_id("grok-4.5", true), "grok-4.5");
+    }
+
+    #[test]
+    fn grok_47_fast_mode_selects_the_build_fast_sku() {
+        let input = ProviderLaunchInput {
+            model_id: "grok-4.7".to_string(),
+            fast_mode: true,
+            ..launch_input(ProviderId::Grok)
+        };
+        let args = (get_provider_definition(ProviderId::Grok).structured_args)(&input, None);
+        let index = args
+            .iter()
+            .position(|arg| arg == "--model")
+            .expect("model flag");
+        assert_eq!(args[index + 1], "grok-4.7-build-fast");
+        assert_eq!(grok_launch_model_id("grok-4.7", false), "grok-4.7");
     }
 
     fn launch_input(provider_id: ProviderId) -> ProviderLaunchInput {

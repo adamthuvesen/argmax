@@ -16,9 +16,9 @@ use serde_json::Value;
 use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 use crate::ipc::inputs::*;
 use crate::ipc::{
-    activity, approvals, arcs, attachments, checkpoints, checks, connections, dashboard, git_ops,
-    goals, health, learnings, projects, providers, prs, questions, remote, review, session, skills,
-    sources, system, terminal, usage, workspace_files, workspaces,
+    activity, approvals, arcs, attachments, checkpoints, checks, cloud, connections, dashboard,
+    git_ops, goals, health, learnings, projects, providers, prs, questions, remote, review,
+    session, skills, sources, system, terminal, usage, workspace_files, workspaces,
 };
 use crate::state::AppState;
 
@@ -306,6 +306,14 @@ async fn dispatch_standard(
         "providers:send-queued-message-now" => {
             let input: ProvidersSendQueuedMessageNowInput = parse(channel, input)?;
             encode(providers::providers_send_queued_message_now_impl(state, input).await?)
+        }
+        "cloud:prepare" => {
+            let input: cloud::CloudPrepareInput = parse(channel, input)?;
+            encode(cloud::cloud_prepare_impl(state, input).await?)
+        }
+        "cloud:launch" => {
+            let input: cloud::CloudLaunchInput = parse(channel, input)?;
+            encode(cloud::cloud_launch_impl(state, input).await?)
         }
 
         "terminal:spawn" => {

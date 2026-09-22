@@ -3,6 +3,7 @@ import {
   highlightSegments,
   parseFtsSnippet,
   searchPaletteItems,
+  searchFilePaths,
   type PaletteItem
 } from "./paletteSearch.js";
 
@@ -13,6 +14,19 @@ function item(id: string, label: string, subtitle?: string): PaletteItem {
 }
 
 describe("searchPaletteItems", () => {
+  it("matches terms spread across the title and project", () => {
+    const row = { ...item("a", "Fix sidebar resize"), meta: "Argmax" };
+    expect(searchPaletteItems([row], "argmax resize").map((hit) => hit.item.id)).toEqual(["a"]);
+    const hit = searchPaletteItems([row], "argmax resize")[0];
+    expect(highlightSegments(row.label, hit.labelRanges).filter((part) => part.matched).map((part) => part.text)).toEqual(["resize"]);
+    expect(highlightSegments(row.meta, hit.subtitleRanges).filter((part) => part.matched).map((part) => part.text)).toEqual(["Argmax"]);
+  });
+
+  it("keeps exact matches first even beyond the fuzzy ranking threshold", () => {
+    const rows = Array.from({ length: 1100 }, (_, index) => item(String(index), `Search result ${index}`));
+    rows.push(item("exact", "Search"));
+    expect(searchPaletteItems(rows, "Search")[0].item.id).toBe("exact");
+  });
   it("returns items in original order when the query is empty", () => {
     const items = [item("a", "Alpha"), item("b", "Beta"), item("c", "Gamma")];
     const hits = searchPaletteItems(items, "");
@@ -76,6 +90,18 @@ describe("searchPaletteItems", () => {
     const hits = searchPaletteItems(files, "App");
     expect(hits.length).toBeGreaterThan(0);
     expect(hits[0].item.id).toBe("file:src/renderer/App.tsx");
+  });
+});
+
+describe("searchFilePaths", () => {
+  it("prefers a filename match to a directory match", () => {
+    expect(searchFilePaths(["app/docs/README.md", "src/App.tsx", "app/server.ts"], "app")[0]).toBe("src/App.tsx");
+  });
+
+  it("keeps exact filenames first in large result sets", () => {
+    const paths = Array.from({ length: 1100 }, (_, index) => `app/folder-${index}/long.ts`);
+    paths.push("src/app.ts");
+    expect(searchFilePaths(paths, "app", 8)[0]).toBe("src/app.ts");
   });
 });
 

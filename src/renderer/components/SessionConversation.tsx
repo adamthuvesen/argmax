@@ -738,6 +738,17 @@ export function SessionConversation({
     }
     return -1;
   }, [transcriptRenderItems]);
+  // Compaction splits the transcript, but does not finish the provider's work.
+  // Keep the preceding turn active until resumed output owns the next section.
+  // Question-dock selection still uses the actual latest conversation item.
+  const latestTurnIndex = useMemo(() => {
+    for (let index = latestConversationIndex; index >= 0; index -= 1) {
+      const item = transcriptRenderItems[index];
+      if (item?.kind === "compaction" || item?.kind === "session-note") continue;
+      return item?.kind === "turn" ? index : -1;
+    }
+    return -1;
+  }, [latestConversationIndex, transcriptRenderItems]);
   // The plan is folded once for the session and sliced by turn, so scrolling
   // back shows the plan as it stood then rather than as it stands now.
   const todoByTurn = useMemo(() => {
@@ -1679,7 +1690,7 @@ export function SessionConversation({
                     key={item.id}
                     item={item}
                     priorItem={index > 0 ? transcriptRenderItems[index - 1] ?? null : null}
-                    isLatestTurn={index === latestConversationIndex}
+                    isLatestTurn={index === latestTurnIndex}
                     openRunAt={openRunAt}
                     session={session}
                     workspace={workspace}

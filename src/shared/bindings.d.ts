@@ -216,6 +216,22 @@ async providersSendQueuedMessageNow(input: ProvidersSendQueuedMessageNowInput) :
     else return { status: "error", error: e  as any };
 }
 },
+async cloudPrepare(input: CloudPrepareInput) : Promise<Result<CloudHandoffPreview, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("cloud_prepare", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async cloudLaunch(input: CloudLaunchInput) : Promise<Result<CloudHandoffResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("cloud_launch", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async attachmentsSaveImage(input: AttachmentsSaveImageInput) : Promise<Result<SaveImageResult, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("attachments_save_image", { input }) };
@@ -1781,6 +1797,12 @@ export type ChromeHistoryEntry = { url: string; title: string | null; visitedAt:
 export type ChromeHistoryImport = { entries: ChromeHistoryEntry[]; totalAvailable: number }
 export type ChromeProfile = { id: string; name: string }
 export type ChromeProfilesInput = Record<string, never>
+export type CloudEnvironment = { id: string; name: string }
+export type CloudHandoffPreview = { provider: CloudProvider; repository: string; branch: string; commit: string; brief: string; environments: CloudEnvironment[]; environmentDescription: string; environmentId: string }
+export type CloudHandoffResult = { url: string; warning?: string | null }
+export type CloudLaunchInput = { provider: CloudProvider; sessionId?: string | null; projectId?: string | null; repository: string; branch: string; commit: string; brief: string; environmentId: string }
+export type CloudPrepareInput = { provider: CloudProvider; sessionId?: string | null; projectId?: string | null }
+export type CloudProvider = "claude" | "codex" | "cursor"
 export type CommandText = string
 export type ComposerAttachmentInput = { filePath: AttachmentPath; mimeType: AttachmentMimeType; sizeBytes: AttachmentSizeBytes }
 export type ConnectionAuthentication = "authenticated" | "required" | "not-applicable" | "unknown"

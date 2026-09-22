@@ -1,5 +1,12 @@
 import { ChevronDown } from "lucide-react";
-import { useRef, useState, type CSSProperties, type JSX, type ReactNode } from "react";
+import {
+  useRef,
+  useState,
+  type CSSProperties,
+  type JSX,
+  type MutableRefObject,
+  type ReactNode
+} from "react";
 import { createPortal } from "react-dom";
 import { useAnchoredPopover } from "../../hooks/useAnchoredPopover.js";
 import type { DiagnosticsReport } from "../../../shared/types.js";
@@ -282,8 +289,10 @@ export function SettingsListPicker<T extends string>({
   icon,
   inputId,
   onChange,
+  onOpenChange,
   options,
   placement = "below",
+  popoverRef,
   portaled = false,
   value
 }: {
@@ -293,14 +302,21 @@ export function SettingsListPicker<T extends string>({
   icon?: ReactNode;
   inputId?: string;
   onChange: (value: T) => void;
+  onOpenChange?: (open: boolean) => void;
   options: ReadonlyArray<SettingsListPickerOption<T>>;
   /** Set to "above" when the menu would otherwise cover the next group's copy. */
   placement?: "above" | "below";
+  /** Receives the menu element when a modal needs to include a portaled picker in its dismissal and focus boundary. */
+  popoverRef?: MutableRefObject<HTMLElement | null>;
   /** Portal the menu to `<body>` with fixed positioning — for scroll-trapping modals. */
   portaled?: boolean;
   value: T;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
+  const setPickerOpen = (nextOpen: boolean): void => {
+    setOpen(nextOpen);
+    onOpenChange?.(nextOpen);
+  };
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const selected = options.find((option) => option.value === value) ?? options[0];
   const isOpen = open && !disabled;
@@ -314,7 +330,7 @@ export function SettingsListPicker<T extends string>({
   useDismissOnOutsideOrEscape(
     portaled ? flyout.anchorRef : anchorRef,
     isOpen,
-    () => setOpen(false),
+    () => setPickerOpen(false),
     portaled ? flyout.popoverRef : undefined
   );
 
@@ -324,11 +340,14 @@ export function SettingsListPicker<T extends string>({
       role="listbox"
       aria-label={ariaLabel}
       data-placement={portaled ? undefined : placement}
-      ref={portaled ? flyout.setPopover : undefined}
+      ref={(node) => {
+        if (portaled) flyout.setPopover(node);
+        if (popoverRef) popoverRef.current = node;
+      }}
       style={portaled ? flyout.floatingStyles : undefined}
       onClick={(event) => {
         if (!(event.target instanceof Element && event.target.closest("button.project-picker-item"))) {
-          setOpen(false);
+          setPickerOpen(false);
         }
       }}
     >
@@ -351,7 +370,7 @@ export function SettingsListPicker<T extends string>({
               onClick={() => {
                 if (option.disabled) return;
                 onChange(option.value);
-                setOpen(false);
+                setPickerOpen(false);
               }}
             >
               <PickerLead selected={isSelected}>{option.icon}</PickerLead>
@@ -379,7 +398,7 @@ export function SettingsListPicker<T extends string>({
         aria-expanded={isOpen}
         aria-label={ariaLabel}
         disabled={disabled}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setPickerOpen(!open)}
       >
         {triggerIcon}
         <span className="settings-picker-trigger-label" style={selected?.labelStyle}>

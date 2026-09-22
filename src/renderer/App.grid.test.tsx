@@ -1697,6 +1697,28 @@ describe("App grid", () => {
     });
   });
 
+  it("ends a sidebar resize on window blur and protects the drag from native browser pages", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Files" }));
+    const panel = await screen.findByRole("complementary", { name: "Review panel" });
+    const handle = panel.firstElementChild;
+    if (!(handle instanceof HTMLElement)) throw new Error("Expected the sidebar resize handle");
+    vi.spyOn(panel, "getBoundingClientRect").mockReturnValue(new DOMRect(600, 0, 500, 700));
+    fireEvent.mouseDown(handle, { clientX: 600 });
+    expect(document.querySelector('[data-browser-overlay="true"]')).not.toBeNull();
+    fireEvent.mouseMove(document, { clientX: 650 });
+    fireEvent.blur(window);
+    expect(document.body.style.cursor).toBe("");
+    expect(document.body.style.userSelect).toBe("");
+    expect(document.querySelector('[data-browser-overlay="true"]')).toBeNull();
+    expect(window.localStorage.getItem("argmax.session.rightPanel.pinnedWidth")).toBe("450");
+
+    fireEvent.mouseMove(document, { clientX: 700 });
+    fireEvent.mouseUp(document);
+    expect(window.localStorage.getItem("argmax.session.rightPanel.pinnedWidth")).toBe("450");
+  });
+
   it("lets the user drag the divider between side-by-side panes to resize them", async () => {
     const secondWorkspace = paneWorkspace(2, "Resize target", "resize-target");
     const secondSession = paneSession(2, "Resize target");

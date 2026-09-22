@@ -1262,6 +1262,45 @@ describe("SessionConversation — streaming & composer", () => {
     expect(latest?.fields.reason).toBe("shown");
   });
 
+  it.each(["single-line", "collapsed"] as const)(
+    "keeps %s work active through compaction until a resumed message takes over",
+    (defaultToolCallsDisplay) => {
+      vi.useFakeTimers();
+      const session = baseSession({ state: "running" });
+      const options = { defaultToolCallsDisplay };
+      let events = [
+        event("read-end", "command.completed", "Read", "2026-05-12T15:00:03.000Z", { id: "read", content: "file contents" }),
+        event("read", "command.started", "Read", "2026-05-12T15:00:02.000Z", { id: "read", name: "Read", input: { file_path: "package.json" } }),
+        event("narration", "message.completed", "I will inspect the project first.", "2026-05-12T15:00:01.000Z"),
+        event("u1", "user.message", "Review the project", "2026-05-12T15:00:00.000Z")
+      ];
+      const view = renderConversation(session, events, options);
+      const activity = screen.getByRole("button", { name: /Read a file/ });
+      const working = screen.getByRole("button", { name: "Working" });
+
+      for (const [type, at] of [
+        ["session.compacting", "2026-05-12T15:00:04.000Z"],
+        ["session.compacted", "2026-05-12T15:02:04.000Z"]
+      ] as const) {
+        events = [event(type, type, "", at), ...events];
+        rerenderConversation(view.rerender, session, events, options);
+        act(() => { vi.advanceTimersByTime(10000); });
+        expect(working).toBeInTheDocument();
+        expect(working).toHaveAccessibleName("Working");
+        expect(activity).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /^Worked/ })).not.toBeInTheDocument();
+      }
+
+      events = [event("resumed", "message.completed", "I found the cause.", "2026-05-12T15:02:20.000Z"), ...events];
+      rerenderConversation(view.rerender, session, events, options);
+      expect(screen.getByText("I found the cause.")).toBeVisible();
+      expect(screen.getAllByRole("button", { name: "Working" })).toHaveLength(1);
+
+      rerenderConversation(view.rerender, { ...session, state: "complete" }, events, options);
+      expect(screen.queryByRole("button", { name: "Working" })).not.toBeInTheDocument();
+    }
+  );
+
   it("shows Thinking after a send even with a stranded compaction marker", async () => {
     // `session.compacting` closes with `session.compacted`. A turn that died
     // between the two — the app quit mid-compaction, say — strands the opening

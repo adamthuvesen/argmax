@@ -99,9 +99,13 @@ The review panel can show two views stacked vertically. Right-click a view tab a
 
 The dock's width is a third of the pane (floored at its 360px minimum, capped at 560px) until the user drags its inner edge, which pins a pixel width in `argmax.session.rightPanel.pinnedWidth` and holds it from then on. Opening a subagent, Changes, Files, Browser or the Terminal all land on that one width — the dock is one column whichever view is in it.
 
+Resizing temporarily hides native browser pages so they cannot swallow the drag's mouse events. Releasing the mouse or moving focus out of the window ends the drag and restores the cursor.
+
 The session review panel remembers its visibility, view arrangement, and divider position per session in localStorage. Returning to a chat or restarting the app restores them. Closing the whole sidebar preserves the arrangement for its next open. Full-screen review surfaces keep their explicit initial visibility and a single view.
 
-Layouts live in `argmax.reviewPanel.layout.<sessionId>`. The Files view's open tabs and active tab are kept per session in `argmax.reviewPanel.files.<sessionId>`: returning to a chat reopens them and reloads the active file from disk, and closing the last tab clears the entry. The launcher uses one shared `argmax.reviewPanel.layout.launcher` preference across projects. Existing single-mode session preferences remain the fallback until a layout is saved.
+Layouts live in `argmax.reviewPanel.layout.<sessionId>`. The Files view's open tabs and active tab are kept per session in `argmax.reviewPanel.files.<sessionId>`: returning to a chat reopens them and reloads a clean active file from disk, and closing the last tab clears the entry. The launcher uses one shared `argmax.reviewPanel.layout.launcher` preference across projects. Existing single-mode session preferences remain the fallback until a layout is saved.
+
+Unsaved Files edits stay in memory when switching chats or projects, scoped to the pane and source checkout. Returning restores the draft and checks the disk version without replacing the edited text. Saving still uses the draft's original disk timestamp to detect external changes. Draft contents do not survive an app restart.
 
 [src-tauri/src/review/git_review.rs](../src-tauri/src/review/git_review.rs) provides diff calculations and file lists.
 
@@ -113,6 +117,8 @@ Layouts live in `argmax.reviewPanel.layout.<sessionId>`. The Files view's open t
 | Committed | `committed` | `merge-base(base_ref, HEAD)..HEAD` |
 | Uncommitted | `workingTree` | `HEAD` → working tree + untracked |
 | Last turn | `branch` (client-filtered) | File-writing tool calls in the most recent turn |
+
+Last turn keeps the selected diff within its filtered file list. When the selected file drops out, Changes selects the first remaining file or clears the detail view if the list is empty.
 
 Base ref resolution checks `workspace.base_ref`, then `origin/<default>`, then local `<default>`.
 

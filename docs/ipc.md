@@ -41,6 +41,22 @@ client to continue paging. Legacy event/raw row cursors remain supported.
 
 `session:multitask` dispatches a sibling chat from a session that may still be mid-turn, and returns the new session and workspace ids so the composer can draw the card without waiting for the dashboard delta. See [multitask.md](multitask.md).
 
+`cloud:prepare` takes exactly one source, `{ sessionId }` for a handoff or
+`{ projectId }` for a launch from the composer, plus an explicit `provider`
+(`claude`, `codex`, or `cursor`). It returns that provider, the verified GitHub
+repository, branch, source commit, bounded chat context, and available hosted
+environments. A single environment is selected automatically. Multiple Codex
+environments require a choice before sending. A session source supplies a bounded chat
+brief; a project source supplies an empty brief for the composer prompt.
+`cloud:launch` takes the same source plus that preview and the task brief,
+revalidates the checkout and environment, dispatches to the selected provider,
+and returns `{ url }`. Only one launch per source may be in flight.
+A successful session handoff appends a linked `session.note`; a project launch
+does not create a local session or agent. The cloud conversation itself is not
+mirrored into the local timeline. If a handoff launches but the note write
+fails, the result also carries a `warning` so the caller keeps the returned URL
+visible.
+
 `workspaces:mark-viewed` acknowledges a batch of `{ workspaceId, observedActivityAt }`
 entries under `workspaces`. Read stamps only advance to activity the client
 observed, so a newer reply remains unread. Updated workspace rows carry

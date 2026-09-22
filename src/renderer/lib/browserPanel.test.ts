@@ -120,28 +120,28 @@ describe("browser surface ownership", () => {
     const listener = vi.fn();
     const stop = subscribeBrowserOwner(listener);
 
-    claimBrowserSurface("panel-a");
-    expect(getBrowserOwnerId()).toBe("panel-a");
+    claimBrowserSurface("panel-a", "session-a");
+    expect(getBrowserOwnerId("session-a")).toBe("panel-a");
 
-    // A second panel switching to Browser mode demotes the first.
-    claimBrowserSurface("panel-b");
-    expect(getBrowserOwnerId()).toBe("panel-b");
+    // Another panel showing the same scope demotes the first.
+    claimBrowserSurface("panel-b", "session-a");
+    expect(getBrowserOwnerId("session-a")).toBe("panel-b");
 
     // The demoted panel leaving Browser mode must not release panel-b's claim.
-    releaseBrowserSurface("panel-a");
-    expect(getBrowserOwnerId()).toBe("panel-b");
+    releaseBrowserSurface("panel-a", "session-a");
+    expect(getBrowserOwnerId("session-a")).toBe("panel-b");
     expect(listener).toHaveBeenCalledTimes(2);
 
-    releaseBrowserSurface("panel-b");
-    expect(getBrowserOwnerId()).toBeNull();
+    releaseBrowserSurface("panel-b", "session-a");
+    expect(getBrowserOwnerId("session-a")).toBeNull();
     stop();
   });
 
   it("does not notify when the owner re-claims a surface it already holds", () => {
     const listener = vi.fn();
     const stop = subscribeBrowserOwner(listener);
-    claimBrowserSurface("panel-a");
-    claimBrowserSurface("panel-a");
+    claimBrowserSurface("panel-a", "session-a");
+    claimBrowserSurface("panel-a", "session-a");
     expect(listener).toHaveBeenCalledTimes(1);
     stop();
   });

@@ -1,4 +1,5 @@
 import {
+  Cloud,
   Columns2,
   CornerDownLeft,
   CornerUpRight,
@@ -43,6 +44,11 @@ import type {
   SessionSummary,
   WorkspaceSummary
 } from "../../shared/types.js";
+import {
+  cloudProviderName,
+  isHostedCloudProvider,
+  type HostedCloudProvider
+} from "../../shared/cloudProviders.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { canSteerQueuedMessage, hasSteeringContextHeadroom } from "../lib/queuedSteer.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
@@ -65,6 +71,7 @@ import {
 import {
   dispatchedCommandNames,
   isClearCommand,
+  cloudCommandPrompt,
   isMcpCommand,
   type ComposerCommand
 } from "../lib/composerCommands.js";
@@ -75,6 +82,7 @@ import { appendOpenFilesToPrompt, openFilesChipLabel } from "../lib/openFileCont
 import { splitSkillTokens } from "../lib/slashHighlight.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { ChangeCount } from "./ChangeCount.js";
+import { CloudTaskDialog } from "./CloudTaskDialog.js";
 import { ConnectionDialog } from "./ConnectionDialog.js";
 import { isRemoteBridge } from "../lib/tauriBridge.js";
 import { ContextRing } from "./ContextRing.js";
@@ -231,6 +239,12 @@ export function SessionComposer({
   goalStatus?: ReactNode;
 }): JSX.Element {
   const sessionId = session?.id ?? null;
+  const [cloudDraft, setCloudDraft] = useState<{
+    sessionId: string;
+    provider: HostedCloudProvider;
+    initialBrief?: string;
+    draftInput: string;
+  } | null>(null);
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
   const [sendingSessionId, setSendingSessionId] = useState<string | null>(null);
@@ -362,6 +376,16 @@ export function SessionComposer({
         run: () => setConnectionsOpen(true)
       });
     }
+    if (session && workspace?.kind === "git" && isHostedCloudProvider(selectedModel.provider)) {
+      commands.push({
+        name: "cloud",
+        label: "Cloud",
+        hint: `Launch a task in ${cloudProviderName(selectedModel.provider)}`,
+        icon: Cloud,
+        writesDraft: true,
+        run: () => setInput("/cloud ")
+      });
+    }
     if (session && onMultitask) {
       commands.push({
         name: "multitask",
@@ -420,6 +444,7 @@ export function SessionComposer({
     onTerminateSession,
     openFilePicker,
     session,
+    selectedModel.provider,
     setInput,
     workspace
   ]);
@@ -447,9 +472,10 @@ export function SessionComposer({
       dispatchedCommandNames({
         hasSession: session !== null,
         canMultitask: onMultitask !== undefined,
+        canCloud: workspace?.kind === "git",
         goalEnabled
       }),
-    [goalEnabled, onMultitask, session]
+    [goalEnabled, onMultitask, session, workspace?.kind]
   );
   // Tint every `/command` token that maps to a real skill or one of those
   // commands — leading or mid-message — in the accent colour. A textarea can't
@@ -584,6 +610,37 @@ export function SessionComposer({
     const draftInput = input;
     const trimmedInput = draftInput.trim();
     if (!session || !hasSendableContent || isSending || sendingQueuedMessageId) {
+      return;
+    }
+
+    const cloudPrompt = cloudCommandPrompt(trimmedInput);
+    if (cloudPrompt !== null) {
+      if (workspace?.kind !== "git") {
+        setStatus({ kind: "error", message: "Cloud tasks need a chat in a git workspace." });
+        return;
+      }
+      if (!isHostedCloudProvider(selectedModel.provider)) {
+        setStatus({ kind: "error", message: "This provider does not support cloud tasks." });
+        return;
+      }
+      if (pendingAttachments.length > 0) {
+        setStatus({ kind: "error", message: "Cloud tasks support text only. Remove attachments before launching." });
+        return;
+      }
+      if (pendingAnnotations.length > 0 || openFilesAttached) {
+        setStatus({
+          kind: "error",
+          message: "Cloud tasks can’t include local annotations or open files. Remove them before launching."
+        });
+        return;
+      }
+      setStatus(null);
+      setCloudDraft({
+        sessionId: session.id,
+        provider: selectedModel.provider,
+        ...(cloudPrompt ? { initialBrief: cloudPrompt } : {}),
+        draftInput
+      });
       return;
     }
 
@@ -1276,6 +1333,21 @@ export function SessionComposer({
         </p>
       ) : null}
       <ImageLightbox src={lightboxSrc} alt="Attached image" onClose={() => setLightboxSrc(null)} />
+      {session && cloudDraft?.sessionId === session.id ? (
+        <CloudTaskDialog
+          open
+          sessionId={session.id}
+          provider={cloudDraft.provider}
+          initialBrief={cloudDraft.initialBrief}
+          onClose={() => setCloudDraft(null)}
+          onLaunched={() => {
+            if (sessionIdRef.current === cloudDraft.sessionId && input === cloudDraft.draftInput) {
+              setInput("");
+              clearDraft(cloudDraft.sessionId);
+            }
+          }}
+        />
+      ) : null}
       {session && connectionsOpen ? (
         <ConnectionDialog
           anchorRef={inputFormRef}

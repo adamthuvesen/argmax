@@ -46,15 +46,18 @@ export function useDismissOnOutsideOrEscape(
       if (!trapFocus || event.key !== "Tab") return;
       const container = ref.current;
       if (!container) return;
-      const focusable = Array.from(
-        container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
+      const containers = [container, extraRef?.current].filter(
+        (candidate): candidate is HTMLElement => candidate !== null && candidate !== undefined
+      );
+      const focusable = containers.flatMap((candidate) =>
+        Array.from(candidate.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
       ).filter((el) => !el.hasAttribute("inert"));
       if (focusable.length === 0) return;
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
       if (!first || !last) return;
       const active = document.activeElement as HTMLElement | null;
-      const insideContainer = active ? container.contains(active) : false;
+      const insideContainer = active ? containers.some((candidate) => candidate.contains(active)) : false;
       if (event.shiftKey) {
         if (!insideContainer || active === first) {
           event.preventDefault();

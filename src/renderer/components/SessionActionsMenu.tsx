@@ -3,6 +3,7 @@ import {
   Bug,
   ChevronLeft,
   ChevronRight,
+  Cloud,
   CornerUpLeft,
   Folder,
   GitBranch,
@@ -16,6 +17,7 @@ import {
 import { useCallback, useContext, useEffect, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
 import type { DetectedIde, IdeId, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
+import { cloudProviderName, isHostedCloudProvider } from "../../shared/cloudProviders.js";
 import { openBrowserPanel } from "../lib/browserPanel.js";
 import { isSecondaryWindow } from "../lib/windowRole.js";
 import { DeveloperToolsContext } from "../lib/uiPreferences.js";
@@ -23,6 +25,7 @@ import { refreshSessionPrs } from "../lib/sessionPrs.js";
 import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { GitActionsMenu } from "./GitActionsMenu.js";
+import { CloudTaskDialog } from "./CloudTaskDialog.js";
 import type { ComposerStatus } from "./SessionComposer.js";
 
 export function SessionActionsMenu({
@@ -71,6 +74,8 @@ export function SessionActionsMenu({
 }): JSX.Element {
   const [actionsOpen, setActionsOpen] = useState(false);
   const [actionsMode, setActionsMode] = useState<"main" | "git">("main");
+  const [cloudDialogOpen, setCloudDialogOpen] = useState(false);
+  const cloudProvider = session && isHostedCloudProvider(session.provider) ? session.provider : null;
   const developerToolsEnabled = useContext(DeveloperToolsContext);
   const closeActions = useCallback(() => {
     setActionsOpen(false);
@@ -126,7 +131,8 @@ export function SessionActionsMenu({
   }, [session?.id, setStatus]);
 
   return (
-    <div className="session-actions-anchor" ref={menu.setAnchor}>
+    <>
+      <div className="session-actions-anchor" ref={menu.setAnchor}>
       <button
         className="small-icon"
         type="button"
@@ -197,6 +203,23 @@ export function SessionActionsMenu({
                   >
                     <Workflow size={14} aria-hidden="true" />
                     Start an arc from this chat…
+                  </button>
+                </li>
+              ) : null}
+              {session && cloudProvider && workspace?.kind === "git" ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item"
+                    title={`Prepare a task brief and launch a new ${cloudProviderName(cloudProvider)} session`}
+                    onClick={() => {
+                      closeActions();
+                      setCloudDialogOpen(true);
+                    }}
+                  >
+                    <Cloud size={14} aria-hidden="true" />
+                    Send task to {cloudProviderName(cloudProvider)}…
                   </button>
                 </li>
               ) : null}
@@ -351,6 +374,15 @@ export function SessionActionsMenu({
         </div>,
         document.body
       )}
-    </div>
+      </div>
+      {session && cloudProvider ? (
+        <CloudTaskDialog
+          open={cloudDialogOpen}
+          sessionId={session.id}
+          provider={cloudProvider}
+          onClose={() => setCloudDialogOpen(false)}
+        />
+      ) : null}
+    </>
   );
 }

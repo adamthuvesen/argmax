@@ -122,7 +122,7 @@ function SessionConversationTurnInner({
   // marker cannot tick forever.
   const transcriptIsAheadOfRow =
     isLatestTurn && openRunAt !== null && openRunAt > (session?.lastActivityAt ?? "");
-  const sessionIsLive = session?.state === "running" || transcriptIsAheadOfRow;
+  const sessionIsLive = session?.state === "running" || session?.state === "waiting" || transcriptIsAheadOfRow;
   const isStreamingTurn = isLatestTurn && sessionIsLive;
   // Memoized because the state it returns is the input to everything below:
   // `hiddenToolIds` is a fresh Set per call, and it is the only dep of
@@ -150,6 +150,7 @@ function SessionConversationTurnInner({
     ]
   );
   const { visibleAssistantGroups, hiddenToolIds, turnStartedAtMs, isPausedOnUserInput } = turnView;
+  const isTurnPaused = isPausedOnUserInput || session?.state === "waiting";
   // A Thought block is "live" (shown expanded, labelled "Thinking", in place of
   // the generic indicator) while it is the newest thing this working turn has
   // produced (see liveThoughtOwnsProgress). Once anything follows it the label
@@ -171,7 +172,7 @@ function SessionConversationTurnInner({
     toolItems: item.toolItems,
     isLatestTurn,
     sessionRunning: sessionIsLive,
-    isPausedOnUserInput
+    isPausedOnUserInput: isTurnPaused
   });
   const liveThoughtGroupId = lastThinkingGroupId(visibleAssistantGroups);
   // Tool groups expand by default for the current turn (you're watching it
@@ -364,7 +365,6 @@ function SessionConversationTurnInner({
         .filter((tItem): tItem is TurnToolItem => tItem !== null),
     [item.toolItems, hiddenToolIds]
   );
-  const isTurnLiveTicking = isStreamingTurn && !isPausedOnUserInput;
   const toolChildren: AnnotatedChild[] = visibleToolItems
     .map((tItem) => {
         if (isAgentToolName(tItem.tool.name)) {
@@ -553,7 +553,7 @@ function SessionConversationTurnInner({
     (revertCheckpointId || revertUnavailableReason) &&
     workspace &&
     onReverted &&
-    !isTurnLiveTicking ? (
+    !isStreamingTurn ? (
       <TurnRevert
         workspaceId={workspace.id}
         {...(revertCheckpointId ? { checkpointId: revertCheckpointId } : {})}
@@ -568,7 +568,8 @@ function SessionConversationTurnInner({
       toolItems={visibleToolItems}
       assistantTimestamps={item.assistantTimestamps}
       {...(Number.isFinite(turnStartedAtMs) ? { turnStartedAtMs } : {})}
-      isTurnActive={isTurnLiveTicking}
+      isTurnActive={isStreamingTurn}
+      isTurnPaused={isTurnPaused}
       toolsExpanded={toolsExpanded}
       onToggleTools={() => setToolsExpandOverride(!toolsExpanded)}
       hasCollapsibleActivity={compactActivity && bodyChildren.some((child) => child.kind === "tool")}

@@ -5,7 +5,17 @@ import { SessionActionsMenu } from "./SessionActionsMenu.js";
 
 function installArgmax(
   listForSession: ReturnType<typeof vi.fn>,
-  viewOrCreatePr: ReturnType<typeof vi.fn> = vi.fn()
+  viewOrCreatePr: ReturnType<typeof vi.fn> = vi.fn(),
+  prepareCloud: ReturnType<typeof vi.fn> = vi.fn().mockResolvedValue({
+    provider: "codex",
+    repository: "adamthuvesen/private-sandbox",
+    branch: "main",
+    commit: "12345678",
+    brief: "Test task",
+    environmentId: "env-default",
+    environmentDescription: "Default",
+    environments: [{ id: "env-default", name: "Default" }]
+  })
 ): void {
   Object.defineProperty(window, "argmax", {
     configurable: true,
@@ -19,6 +29,10 @@ function installArgmax(
         createBranch: vi.fn(),
         viewOrCreatePr
       },
+      cloud: {
+        prepare: prepareCloud,
+        launch: vi.fn()
+      },
       system: {
         openPath: vi.fn().mockResolvedValue({ ok: true })
       }
@@ -26,7 +40,7 @@ function installArgmax(
   });
 }
 
-function session(): SessionSummary {
+function session(overrides: Partial<SessionSummary> = {}): SessionSummary {
   return {
     id: "session-1",
     workspaceId: "workspace-1",
@@ -46,7 +60,8 @@ function session(): SessionSummary {
     tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextTokens: 0,
     imported: false,
-    launchKind: "agent"
+    launchKind: "agent",
+    ...overrides
   };
 }
 
@@ -153,6 +168,51 @@ describe("SessionActionsMenu", () => {
     expect(requestCount).toBe(1);
     expect(getBrowserRequest()?.url).toBe("");
     unsubscribe();
+  });
+
+  it("offers the session provider's cloud agent for a git-backed session", async () => {
+    const prepareCloud = vi.fn().mockResolvedValue({
+      provider: "codex",
+      repository: "adamthuvesen/private-sandbox",
+      branch: "main",
+      commit: "12345678",
+      brief: "Test task",
+      environmentId: "env-default",
+      environmentDescription: "Default",
+      environments: [{ id: "env-default", name: "Default" }]
+    });
+    installArgmax(listForSession, vi.fn(), prepareCloud);
+
+    render(
+      <SessionActionsMenu
+        isLogOpen={false}
+        onBrowseFiles={vi.fn()}
+        onToggleLog={vi.fn()}
+        session={session()}
+        workspace={workspace()}
+      />
+    );
+
+    await openMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Send task to Codex Cloud…" }));
+
+    expect(await screen.findByRole("dialog", { name: "Send task to Codex Cloud" })).toBeInTheDocument();
+    expect(prepareCloud).toHaveBeenCalledWith({ sessionId: "session-1", provider: "codex" });
+  });
+
+  it("does not offer cloud handoff for providers without hosted agents", async () => {
+    render(
+      <SessionActionsMenu
+        isLogOpen={false}
+        onBrowseFiles={vi.fn()}
+        onToggleLog={vi.fn()}
+        session={session({ provider: "opencode" })}
+        workspace={workspace()}
+      />
+    );
+
+    await openMenu();
+    expect(screen.queryByRole("menuitem", { name: /Cloud/ })).not.toBeInTheDocument();
   });
 
   it("switches between the main menu and git actions in place", async () => {

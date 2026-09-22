@@ -1,6 +1,6 @@
 //! In-app browser pane: one child webview per tab (label `browser-<tabId>`)
-//! glued to a renderer placeholder. The renderer keeps exactly one tab
-//! visible; the others stay hidden but alive, so each keeps its history,
+//! glued to a renderer placeholder. Each visible browser scope shows its active
+//! tab. The others stay hidden but alive, so each keeps its history,
 //! scroll position, and session.
 //!
 //! The tab *list* lives in `browser::registry`, not in the renderer: a session
@@ -59,7 +59,7 @@ pub struct BrowserNewTabEvent {
 
 /// A browser shortcut pressed while the page (not the panel chrome) had
 /// focus. `command` is one of `close-tab`, `new-tab`, `focus-address`,
-/// `reload`, `back`, `forward`, `find`.
+/// `reload`, `back`, `forward`, `find`, or a native-page `focus` notification.
 #[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct BrowserPageCommandEvent {
@@ -186,6 +186,12 @@ const BROWSER_INIT_SCRIPT: &str = r#"
       window.location.href = "argmax-newtab://open?u=" + encodeURIComponent(absolute);
     } catch (e) {}
   };
+  // Native child views do not bubble focus or pointer events into the grid.
+  // Relay focus so app-menu commands follow the page the user is using.
+  window.addEventListener("focus", function () {
+    if (window.__argmaxBrowserPopup) return;
+    window.location.href = "argmax-newtab://command?c=focus";
+  });
   document.addEventListener(
     "click",
     function (event) {
@@ -466,6 +472,7 @@ fn page_command(url: &Url) -> Option<&'static str> {
         "back" => Some("back"),
         "forward" => Some("forward"),
         "find" => Some("find"),
+        "focus" => Some("focus"),
         _ => None,
     }
 }
@@ -1650,6 +1657,8 @@ mod tests {
         assert_eq!(page_command(&forward), Some("forward"));
         let find = Url::parse("argmax-newtab://command?c=find").unwrap();
         assert_eq!(page_command(&find), Some("find"));
+        let focus = Url::parse("argmax-newtab://command?c=focus").unwrap();
+        assert_eq!(page_command(&focus), Some("focus"));
         let unknown = Url::parse("argmax-newtab://command?c=quit-app").unwrap();
         assert_eq!(page_command(&unknown), None);
         // `open` navigations carry URLs, never commands — and vice versa.

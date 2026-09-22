@@ -1,8 +1,12 @@
 pub mod acp;
 pub mod adapters;
+pub mod claude_cloud;
 pub mod claude_control;
+pub mod cloud;
 pub mod codex_app_server;
+pub mod codex_cloud;
 pub mod cursor_acp;
+pub mod cursor_cloud;
 pub mod discovery;
 pub mod environment;
 pub mod flush_queue;

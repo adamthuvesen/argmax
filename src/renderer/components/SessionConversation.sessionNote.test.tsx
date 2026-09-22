@@ -10,6 +10,14 @@ import {
 describe("SessionConversation session note", () => {
   afterEach(cleanup);
 
+  it("keeps a cloud handoff link accessible in the persisted timeline", () => {
+    renderConversation(baseSession({ state: "complete" }), [
+      event("cloud", "session.note", "Sent task to Claude Cloud: https://claude.ai/code/session_test123", "2026-05-12T15:02:00.000Z"),
+      event("answer", "message.completed", "Ready to hand off", "2026-05-12T15:00:01.000Z")
+    ]);
+    expect(screen.getByRole("link", { name: "Open cloud session" })).toHaveAttribute("href", "https://claude.ai/code/session_test123");
+  });
+
   it("shows a note as a quiet line under the turn it lands in", () => {
     renderConversation(baseSession({ state: "complete" }), [
       event(

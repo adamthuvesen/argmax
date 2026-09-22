@@ -176,8 +176,8 @@
       "titleModelId": "composer-2.5",
       "defaultModel": {
         "provider": "cursor",
-        "label": "Grok 4.6 (Cursor)",
-        "modelId": "cursor-grok-4.6-medium",
+        "label": "Grok 4.7 (Cursor)",
+        "modelId": "grok-4.7-medium",
         "reasoningEffort": "medium"
       },
       "models": [
@@ -208,6 +208,18 @@
           "contextWindow": 1000000,
           "reasoningEfforts": [],
           "defaultEffort": null
+        },
+        {
+          "label": "Grok 4.7 (Cursor)",
+          "modelId": "grok-4.7-medium",
+          "contextWindow": 1000000,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "defaultEffort": "medium"
         },
         {
           "label": "Grok 4.6 (Cursor)",
@@ -408,11 +420,23 @@
       "titleModelId": "grok-4.6",
       "defaultModel": {
         "provider": "grok",
-        "label": "Grok 4.6",
-        "modelId": "grok-4.6",
+        "label": "Grok 4.7",
+        "modelId": "grok-4.7",
         "reasoningEffort": "medium"
       },
       "models": [
+        {
+          "label": "Grok 4.7",
+          "modelId": "grok-4.7",
+          "contextWindow": 500000,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "defaultEffort": "medium"
+        },
         {
           "label": "Grok 4.6",
           "modelId": "grok-4.6",
@@ -443,8 +467,8 @@
   "defaultModelIds": {
     "claude": "claude-opus-5",
     "codex": "gpt-5.6-sol",
-    "cursor": "cursor-grok-4.6-medium",
+    "cursor": "grok-4.7-medium",
     "opencode": "opencode-go/glm-5.3-flash",
-    "grok": "grok-4.6"
+    "grok": "grok-4.7"
   }
 }

@@ -35,7 +35,7 @@ describe("PROVIDER_MODEL_DEFAULTS", () => {
     });
     expect(PROVIDER_MODEL_DEFAULTS.codex.reasoningEffort).toBeUndefined();
     expect(PROVIDER_MODEL_DEFAULTS.cursor).toMatchObject({
-      modelId: "cursor-grok-4.6-medium",
+      modelId: "grok-4.7-medium",
       supportsReasoningEffort: true
     });
     expect(PROVIDER_MODEL_DEFAULTS.opencode).toMatchObject({
@@ -77,7 +77,16 @@ describe("reasoningEffortsForModel", () => {
     }
   });
 
-  it("caps Cursor Grok and Gemini 3.8 at High", () => {
+  it("offers Extra High for Cursor Grok 4.7", () => {
+    expect(reasoningEffortsForModel("cursor", "grok-4.7-medium")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ]);
+  });
+
+  it("caps Cursor Grok 4.6/4.5 and Gemini 3.8 at High", () => {
     expect(reasoningEffortsForModel("cursor", "cursor-grok-4.6-medium")).toEqual([
       "low",
       "medium",
@@ -263,6 +272,7 @@ describe("MODEL_PRICING coverage", () => {
     expect(MODEL_PRICING["gpt-5.6-sol"]).toBeDefined();
     expect(MODEL_PRICING["gpt-6-astra"]).toBeDefined();
     expect(MODEL_PRICING["claude-opus-5"]).toBeDefined();
+    expect(MODEL_PRICING["grok-4.7-medium"]).toBeDefined();
     expect(MODEL_PRICING["cursor-grok-4.6-medium"]).toBeDefined();
     expect(MODEL_PRICING["opencode-go/glm-5.3-flash"]).toBeDefined();
   });
@@ -319,12 +329,27 @@ describe("Grok Build pricing", () => {
     }
   });
 
-  // 4.5 is the pricier SKU here, so the default and the title model must stay
-  // on 4.6 — a silent flip would double every session's cost.
-  it("keeps the cheaper model as the default and title model", () => {
-    expect(PROVIDER_MODEL_DEFAULTS.grok.modelId).toBe("grok-4.6");
+  // 4.5 is twice the 4.6/4.7 SKU rate. The default is 4.7 at that cheaper
+  // rate; titles stay on 4.6 so a helper call does not ride the new default.
+  it("keeps the cheaper SKU rate on the default and title models", () => {
+    expect(PROVIDER_MODEL_DEFAULTS.grok.modelId).toBe("grok-4.7");
     expect(PROVIDER_TITLE_MODEL.grok).toBe("grok-4.6");
-    expect(MODEL_PRICING["grok-4.6"].input).toBeLessThan(MODEL_PRICING["grok-4.5"].input);
+    expect(MODEL_PRICING["grok-4.7"]).toEqual(MODEL_PRICING["grok-4.6"]);
+    expect(MODEL_PRICING["grok-4.7"].input).toBeLessThan(MODEL_PRICING["grok-4.5"].input);
+  });
+
+  it("prices Grok 4.7 Fast at twice the standard 4.7 SKU rate", () => {
+    expect(MODEL_PRICING["grok-4.7-build-fast"].input).toBe(MODEL_PRICING["grok-4.7"].input * 2);
+    expect(MODEL_PRICING["grok-4.7-build-fast"].output).toBe(MODEL_PRICING["grok-4.7"].output * 2);
+    expect(MODEL_PRICING["grok-4.7-build-fast"].cacheRead).toBe(MODEL_PRICING["grok-4.7"].cacheRead * 2);
+  });
+
+  it("offers Fast only on Grok 4.7 among Grok Build and Cursor models", () => {
+    expect(PROVIDER_MODELS.grok.filter((model) => model.supportsFastMode).map((model) => model.modelId)).toEqual([
+      "grok-4.7"
+    ]);
+    expect(PROVIDER_MODELS.cursor.every((model) => !model.supportsFastMode)).toBe(true);
+    expect(PROVIDER_MODELS.claude.every((model) => !model.supportsFastMode)).toBe(true);
   });
 });
 

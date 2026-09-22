@@ -14,12 +14,12 @@ import { isTypingTarget } from "../lib/typingTarget.js";
 import { BrowserPanel } from "./BrowserPanel.js";
 
 /**
- * Full-workspace browser: the same native surface the review panel hosts,
+ * Full-workspace browser: its own tab strip and native surface,
  * without Changes / Files / Terminal chrome. The session sidebar stays up
  * so a chat click leaves this page.
  */
 export function BrowserPage({ onClose }: { onClose: () => void }): JSX.Element {
-  const ownerId = useSyncExternalStore(subscribeBrowserOwner, getBrowserOwnerId);
+  const ownerId = useSyncExternalStore(subscribeBrowserOwner, () => getBrowserOwnerId(BROWSER_PAGE_OWNER_ID));
   const browserOwner = ownerId === BROWSER_PAGE_OWNER_ID;
   const [request, setRequest] = useState(() => {
     const pending = getBrowserRequest();
@@ -33,8 +33,8 @@ export function BrowserPage({ onClose }: { onClose: () => void }): JSX.Element {
   });
 
   useLayoutEffect(() => {
-    claimBrowserSurface(BROWSER_PAGE_OWNER_ID);
-    return () => releaseBrowserSurface(BROWSER_PAGE_OWNER_ID);
+    claimBrowserSurface(BROWSER_PAGE_OWNER_ID, BROWSER_PAGE_OWNER_ID);
+    return () => releaseBrowserSurface(BROWSER_PAGE_OWNER_ID, BROWSER_PAGE_OWNER_ID);
   }, []);
 
   useEffect(() => ensureBrowserTabSync(), []);
@@ -61,7 +61,7 @@ export function BrowserPage({ onClose }: { onClose: () => void }): JSX.Element {
   }, [onClose]);
 
   const showHere = useCallback((): void => {
-    claimBrowserSurface(BROWSER_PAGE_OWNER_ID);
+    claimBrowserSurface(BROWSER_PAGE_OWNER_ID, BROWSER_PAGE_OWNER_ID);
     setRequest((current) => ({
       ...current,
       url: lastBrowsedUrl(BROWSER_PAGE_OWNER_ID),

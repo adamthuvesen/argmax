@@ -17,6 +17,7 @@ pub mod browser;
 pub mod browser_import;
 pub mod checkpoints;
 pub mod checks;
+pub mod cloud;
 pub mod connections;
 pub mod dashboard;
 pub mod git_ops;
@@ -70,6 +71,8 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "providers:terminate",
     "providers:cancel-queued-message",
     "providers:send-queued-message-now",
+    "cloud:prepare",
+    "cloud:launch",
     "attachments:save-image",
     "terminal:spawn",
     "terminal:write",
@@ -295,6 +298,8 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         providers::providers_terminate,
         providers::providers_cancel_queued_message,
         providers::providers_send_queued_message_now,
+        cloud::cloud_prepare,
+        cloud::cloud_launch,
         attachments::attachments_save_image,
         terminal::terminal_spawn,
         terminal::terminal_write,

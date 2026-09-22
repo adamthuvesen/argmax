@@ -23,7 +23,6 @@ import {
   subscribeBrowserRequest,
   type BrowserOpenRequest
 } from "../lib/browserPanel.js";
-import { filterToLastTurn } from "../lib/lastTurnFiles.js";
 import {
   consumeTerminalRequest,
   ensureAgentTerminalSync,
@@ -205,7 +204,7 @@ export interface ReviewState {
   /** Open the panel on a multitask's chat, adding its tab if it is not open
    *  yet. Same dock as the subagents: both are work running alongside. */
   openMultitask: (sessionId: string) => void;
-  /** Open the panel on the Browser view, taking the one native surface. */
+  /** Open the panel on the Browser view, showing this scope's native surface. */
   openBrowser: () => void;
   /** Workspace whose integrated terminal this panel hosts. Null on a
    *  project-backed panel (the launcher), which has no workspace to run in —
@@ -216,8 +215,8 @@ export interface ReviewState {
   /** ⌘J and the workspace card's Terminal row: show the terminal, or hide the
    *  panel when it is already the one showing. */
   toggleTerminal: () => void;
-  /** True when this panel holds the browser surface. Only the owner mounts the
-   *  browser chrome; every other panel in Browser mode shows a placeholder. */
+  /** True when this panel holds the browser surface. Other scopes can show their
+   *  own browsers at the same time. */
   browserOwner: boolean;
   /** Chat, launcher, or Browser-page strip this panel shows. */
   browserScopeId: string;
@@ -435,14 +434,14 @@ export function useReviewState(
   const previousSourceId = useRef<string | null>(sourceId);
 
   // --- Browser mode -------------------------------------------------------
-  // One native browser surface exists, so one panel shows it at a time. This
-  // id identifies the panel to the surface-ownership store.
+  // Each scope has its own surface. The panel id prevents two views of the
+  // same scope from positioning the same native webview.
   const panelId = useId();
   const browserScopeId = options?.sessionId ?? LAUNCHER_BROWSER_SCOPE_ID;
   const [browserRequest, setBrowserRequest] = useState<BrowserOpenRequest | null>(() =>
     layout.modes.includes("browser") ? { url: lastBrowsedUrl(browserScopeId), seq: 0 } : null
   );
-  const browserOwner = useSyncExternalStore(subscribeBrowserOwner, getBrowserOwnerId) === panelId;
+  const browserOwner = useSyncExternalStore(subscribeBrowserOwner, () => getBrowserOwnerId(browserScopeId)) === panelId;
 
   const handleBrowserRequest = useCallback((seq: number): void => {
     setBrowserRequest((current) =>
@@ -455,12 +454,12 @@ export function useReviewState(
       // Claim here, not only in the effect below: a demoted panel is already
       // in Browser mode with the panel open, so neither of the effect's deps
       // changes and "Show here" would be a no-op.
-      claimBrowserSurface(panelId);
+      claimBrowserSurface(panelId, browserScopeId);
       setBrowserRequest((current) => ({ url, tabId, newTab, seq: (current?.seq ?? 0) + 1 }));
       setMode("browser");
       setIsPanelOpen(true);
     },
-    [panelId, setMode]
+    [browserScopeId, panelId, setMode]
   );
 
   const openBrowser = useCallback(
@@ -474,9 +473,9 @@ export function useReviewState(
   // already claimed it in the meantime.
   useEffect(() => {
     if (!showsBrowser) return undefined;
-    claimBrowserSurface(panelId);
-    return () => releaseBrowserSurface(panelId);
-  }, [panelId, showsBrowser]);
+    claimBrowserSurface(panelId, browserScopeId);
+    return () => releaseBrowserSurface(panelId, browserScopeId);
+  }, [browserScopeId, panelId, showsBrowser]);
 
   // Handle chat links in the click's batch, without rendering the closed
   // panel first and opening it in a later effect. Only the panel taking
@@ -544,10 +543,11 @@ export function useReviewState(
     enabled: isPanelOpen || (options?.preloadChanges ?? true),
     preloadFirstFile: options?.preloadChanges === true,
     autoSelectFirstFile: isPanelOpen && layout.modes.includes("changes"),
+    lastTurnPaths: changesScope === "lastTurn" ? lastTurnPaths : null,
     onOpenChanges: openChangesMode
   });
 
-  const fileList = useWorkspaceFileList({
+  const fileListState = useWorkspaceFileList({
     sourceId,
     sourceKind,
     changedFilesKey,
@@ -574,7 +574,6 @@ export function useReviewState(
   });
 
   const { resetForSourceChange: resetDiff, ...diffState } = reviewDiff;
-  const { resetForSourceChange: resetFileList, ...fileListState } = fileList;
   const { resetForSourceChange: resetFilePreview, openFile: openWorkspaceFile, ...previewState } = filePreview;
 
   const {
@@ -587,7 +586,6 @@ export function useReviewState(
     if (previousSourceId.current !== sourceId) {
       previousSourceId.current = sourceId;
       resetDiff();
-      resetFileList();
       resetFilePreview();
       resetAgentTabs();
       // An open panel survives a source switch (picking another project from
@@ -605,7 +603,7 @@ export function useReviewState(
     ) {
       setIsPanelOpen(false);
     }
-  }, [sourceId, sourceKind, resetDiff, resetFileList, resetFilePreview, resetAgentTabs, setMode]);
+  }, [sourceId, sourceKind, resetDiff, resetFilePreview, resetAgentTabs, setMode]);
 
   const openInFilesView = useCallback(
     (filePath: string): void => {
@@ -648,15 +646,14 @@ export function useReviewState(
     setIsPanelOpen(false);
   }, []);
 
-  // "Last turn" reuses the branch query and narrows it here, so switching
-  // scopes costs no git work and the diff already loaded for a file stays valid.
-  const visibleFiles =
-    changesScope === "lastTurn" && lastTurnPaths !== null
-      ? filterToLastTurn(diffState.files, lastTurnPaths)
-      : diffState.files;
-
-  const panelRef = useRef({ isPanelOpen, filesCount: 0, files: visibleFiles, mode, layout });
-  panelRef.current = { isPanelOpen, filesCount: visibleFiles.length, files: visibleFiles, mode, layout };
+  const panelRef = useRef({ isPanelOpen, filesCount: 0, files: diffState.files, mode, layout });
+  panelRef.current = {
+    isPanelOpen,
+    filesCount: diffState.files.length,
+    files: diffState.files,
+    mode,
+    layout
+  };
 
   const togglePanel = useCallback((): void => {
     if (
@@ -766,7 +763,7 @@ export function useReviewState(
   };
 
   return {
-    files: visibleFiles,
+    files: diffState.files,
     filesState: diffState.filesState,
     filesError: diffState.filesError,
     selectedFilePath: diffState.selectedFilePath,

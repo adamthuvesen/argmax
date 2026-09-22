@@ -123,6 +123,9 @@ interface RendererOnlyKeybinding {
 
 export const RENDERER_ONLY_KEYBINDINGS: readonly RendererOnlyKeybinding[] = [
   { displayAccelerator: "⌘1 – ⌘9", label: "Jump to chat 1–9" },
+  // Renderer-only so text fields, editors, terminals, and native browser
+  // pages retain the platform's Select All behavior.
+  { displayAccelerator: "⌘A", label: "Open command palette on Actions" },
   // ⌘P opens the same palette as ⌘K with the Files filter pre-selected.
   // Tab cycles filters once it is open, so neither chord is a dead end.
   { displayAccelerator: "⌘P", label: "Open command palette on Files" },

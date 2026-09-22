@@ -8,6 +8,7 @@
   "activity:summary",
   "workspace:status",
   "providers:discover",
+  "cloud:prepare",
   "approvals:pending",
   "session:events-since",
   "session:agent-events",

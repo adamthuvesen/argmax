@@ -514,6 +514,10 @@ export function setupAppTestMocks(): void {
       cancelQueuedMessage: () => Promise.resolve({ ok: true }),
       sendQueuedMessageNow: () => Promise.resolve({ ok: true, queued: false })
     },
+    cloud: {
+      prepare: () => Promise.reject(new Error("Cloud handoff not stubbed")),
+      launch: () => Promise.reject(new Error("Cloud launch not stubbed"))
+    },
     attachments: {
       saveImage: () => Promise.resolve({ filePath: "/tmp/fake.png", sizeBytes: 0 })
     },

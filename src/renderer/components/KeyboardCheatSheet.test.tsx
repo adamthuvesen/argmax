@@ -23,6 +23,12 @@ describe("KeyboardCheatSheet", () => {
     expect(screen.queryByText("Check for Updates")).not.toBeInTheDocument();
   });
 
+  it("shows the renderer-only Actions search shortcut", () => {
+    render(<KeyboardCheatSheet open={true} onClose={vi.fn()} />);
+    expect(screen.getByText("⌘A")).toBeInTheDocument();
+    expect(screen.getByText("Open command palette on Actions")).toBeInTheDocument();
+  });
+
   it("closes on Escape even when focus is in a typing target outside the dialog", () => {
     const onClose = vi.fn();
     // External textarea simulating the chat composer holding focus when the

@@ -1,5 +1,7 @@
 import {
+  ArrowRight,
   Bot,
+  Cloud,
   Folder,
   FolderGit2,
   GitBranch,
@@ -33,6 +35,12 @@ import {
   type ProjectSummary,
   type WorkspaceSummary
 } from "../../shared/types.js";
+import { PROVIDER_DISPLAY_NAMES } from "../../shared/providerModels.js";
+import {
+  cloudProviderName,
+  isHostedCloudProvider,
+  type HostedCloudProvider
+} from "../../shared/cloudProviders.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { errorMessage } from "../../shared/error.js";
 import {
@@ -73,6 +81,7 @@ import {
   writeWorkspaceMode,
   type WorkspaceMode
 } from "../lib/workspaceMode.js";
+import { CloudTaskDialog } from "./CloudTaskDialog.js";
 import { ConnectionDialog } from "./ConnectionDialog.js";
 import { PickerFilterRow } from "./PickerFilterRow.js";
 import { PickerLead } from "./PickerLead.js";
@@ -201,6 +210,17 @@ export function LaunchSurface({
   // instant; every repo-coupled hook below reads `activeProject` instead of
   // `project` so chat mode disables them without unmounting the surface.
   const chatMode = sideChatMode && onLaunchSideChat !== undefined;
+  const [cloudSelected, setCloudSelected] = useState(false);
+  const cloudProvider = isHostedCloudProvider(model.provider) ? model.provider : null;
+  const cloudMode = cloudSelected && !chatMode && cloudProvider !== null;
+  useEffect(() => {
+    if (chatMode || !isHostedCloudProvider(model.provider)) setCloudSelected(false);
+  }, [chatMode, model.provider]);
+  const [cloudDraft, setCloudDraft] = useState<{
+    projectId: string;
+    provider: HostedCloudProvider;
+    brief: string;
+  } | null>(null);
   const activeProject = chatMode ? null : project;
   // The unsent prompt and its screenshots belong to the project they will be
   // launched in, not to the mounted launcher: a grid cell that retargets its
@@ -378,7 +398,7 @@ export function LaunchSurface({
       if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.altKey) return;
       if (event.isComposing || event.repeat) return;
       const key = event.key.toLowerCase();
-      if (key === "m") {
+      if (key === "m" && !cloudMode) {
         event.preventDefault();
         setProjectPickerOpen(false);
         setBranchPickerOpen(false);
@@ -386,7 +406,7 @@ export function LaunchSurface({
         setModelPickerOpen((open) => !open);
         return;
       }
-      if (key === "e" && supportsEffort) {
+      if (key === "e" && supportsEffort && !cloudMode) {
         event.preventDefault();
         setProjectPickerOpen(false);
         setBranchPickerOpen(false);
@@ -419,11 +439,12 @@ export function LaunchSurface({
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [chatMode, isFocused, reviewClosePane, reviewIsPanelOpen, reviewModes, reviewOpenBrowser, supportsEffort]);
+  }, [chatMode, cloudMode, isFocused, reviewClosePane, reviewIsPanelOpen, reviewModes, reviewOpenBrowser, supportsEffort]);
 
   useEffect(() => {
     if (resetSignal === lastResetSignal.current) return;
     lastResetSignal.current = resetSignal;
+    setCloudSelected(false);
     reviewClosePanel();
     if (draftKey) setPrompt(readDraft(draftKey).text);
   }, [draftKey, resetSignal, reviewClosePanel, setPrompt]);
@@ -463,6 +484,7 @@ export function LaunchSurface({
   const launcherMode: LauncherMode = chatMode ? "chat" : "auto";
 
   const toggleMode = useCallback((): void => {
+    setCloudSelected(false);
     const next = cycleLauncherMode(launcherMode, chatAvailable);
     if (next === "chat") {
       closeContextPickers();
@@ -750,7 +772,7 @@ export function LaunchSurface({
   ]);
 
   const slashAutocomplete = useSlashAutocomplete({
-    input: prompt,
+    input: cloudMode ? "" : prompt,
     setInput: setPrompt,
     provider: model.provider,
     workspaceId: null,
@@ -759,10 +781,10 @@ export function LaunchSurface({
   });
 
   const fileAutocomplete = useFileAutocomplete({
-    input: prompt,
+    input: cloudMode ? "" : prompt,
     setInput: setPrompt,
     inputRef: promptInputRef,
-    source: activeProject ? { kind: "project", id: activeProject.id } : null
+    source: activeProject && !cloudMode ? { kind: "project", id: activeProject.id } : null
   });
 
   // Same accent tint for `/skill` tokens as the session composer: a mirror
@@ -814,10 +836,25 @@ export function LaunchSurface({
     if (!hasSendableContent || isSubmitting) {
       return;
     }
-    if (isMcpCommand(trimmedPrompt)) {
+    if (!cloudMode && isMcpCommand(trimmedPrompt)) {
       setPrompt("");
       if (draftKey) clearDraft(draftKey);
       setConnectionsOpen(true);
+      return;
+    }
+
+    if (cloudMode) {
+      if (!project || !cloudProvider) return;
+      if (pendingAttachments.length > 0) {
+        setStatus("Cloud tasks support text only. Remove attachments or switch to Local.");
+        return;
+      }
+      if (/^\/goal(?:\s|$)/i.test(trimmedPrompt)) {
+        setStatus("Goals run locally. Switch to Local or write a task without /goal.");
+        return;
+      }
+      setStatus(null);
+      setCloudDraft({ projectId: project.id, provider: cloudProvider, brief: trimmedPrompt });
       return;
     }
 
@@ -910,10 +947,14 @@ export function LaunchSurface({
         data-type-scale={chatFontSize === undefined ? "composer" : undefined}
         ref={formRef}
         onSubmit={(event) => void submitPrompt(event)}
-        onDragEnter={onComposerDragEnter}
+        onDragEnter={cloudMode ? undefined : onComposerDragEnter}
         onDragOver={onComposerDragOver}
         onDragLeave={onComposerDragLeave}
-        onDrop={onComposerDrop}
+        onDrop={(event) => {
+          if (!cloudMode) return onComposerDrop(event);
+          event.preventDefault();
+          setStatus("Cloud tasks support text only. Switch to Local to attach files.");
+        }}
       >
         <div className="composer-drop-overlay" aria-hidden="true">
           <Paperclip size={20} />
@@ -991,7 +1032,13 @@ export function LaunchSurface({
               fileAutocomplete.onSelectionChange(event);
             }}
             onKeyDown={onPromptKeyDown}
-            onPaste={onComposerPaste}
+            onPaste={(event) => {
+              if (!cloudMode) return onComposerPaste(event);
+              if (event.clipboardData.files.length > 0) {
+                event.preventDefault();
+                setStatus("Cloud tasks support text only. Switch to Local to attach files.");
+              }
+            }}
             onScroll={syncHighlightScroll}
             onSelect={fileAutocomplete.onSelectionChange}
             onClick={fileAutocomplete.onSelectionChange}
@@ -1006,24 +1053,33 @@ export function LaunchSurface({
             className="send-button"
             type="submit"
             disabled={isSubmitting || !hasSendableContent}
-            title="Start agent"
-            aria-label="Start agent"
+            title={cloudMode ? "Review cloud task" : "Start agent"}
+            aria-label={cloudMode ? "Review cloud task" : "Start agent"}
           >
-            <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+            {cloudMode ? <ArrowRight size={15} aria-hidden="true" /> : <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" />}
           </button>
         </div>
         <div className="composer-context">
           <button
             className="composer-tool"
             type="button"
-            title="Attach file"
+            title={cloudMode ? "Attachments are available in Local" : "Attach file"}
             aria-label="Attach file"
+            disabled={cloudMode}
             onClick={openFilePicker}
           >
             <Plus size={14} />
           </button>
           <div className="composer-context-group composer-context-group--model">
-            <LaunchModelSelector
+            {cloudMode ? (
+              <span
+                className="composer-context-chip composer-cloud-provider"
+                title={`${cloudProviderName(cloudProvider)} chooses the model for this task`}
+              >
+                <Cloud size={14} aria-hidden="true" />
+                <span className="model-picker-label">{cloudProviderName(cloudProvider)}</span>
+              </span>
+            ) : <LaunchModelSelector
               ariaLabel="Switch model"
               availability={providerAvailability}
               fastModeEnabled={fastModeEnabled}
@@ -1035,7 +1091,7 @@ export function LaunchSurface({
               value={model}
               onChange={onModelChange}
               onFastModeEnabledChange={onFastModeEnabledChange}
-            />
+            />}
           </div>
           {chatMode ? null : (
           <div
@@ -1219,6 +1275,32 @@ export function LaunchSurface({
           </div>
           )}
           <div className="composer-context-group composer-context-group--behavior">
+            {!chatMode ? (
+              <button
+                type="button"
+                className="composer-context-chip composer-run-location"
+                aria-label={`Run location: ${cloudMode ? "Cloud" : "Local"}`}
+                disabled={isSubmitting}
+                title={cloudMode
+                  ? "Switch to Local"
+                  : isHostedCloudProvider(model.provider)
+                    ? `Switch to Cloud · ${cloudProviderName(model.provider)}`
+                    : "Cloud is unavailable for this provider"}
+                onClick={() => {
+                  if (!cloudMode && !isHostedCloudProvider(model.provider)) {
+                    setStatus(`${PROVIDER_DISPLAY_NAMES[model.provider]} does not support cloud tasks. Your model is unchanged.`);
+                    return;
+                  }
+                  closeContextPickers();
+                  setCloudSelected((selected) => !selected);
+                  setStatus(!cloudMode && pendingAttachments.length > 0
+                    ? "Cloud tasks support text only. Remove attachments or switch to Local."
+                    : null);
+                }}
+              >
+                {cloudMode ? "Cloud" : "Local"}
+              </button>
+            ) : null}
             {/* Auto is the resting mode and carries no flags, so it stays unlabelled.
                 The chip appears only for a scratch Chat. */}
             {launcherMode === "auto" ? null : (
@@ -1233,7 +1315,7 @@ export function LaunchSurface({
                 {LAUNCHER_MODE_LABELS[launcherMode]}
               </button>
             )}
-            {chatMode ? null : (
+            {chatMode || cloudMode ? null : (
               <button
                 type="button"
                 className="composer-context-chip workspace-mode-toggle"
@@ -1269,6 +1351,21 @@ export function LaunchSurface({
         ) : null}
       </form>
       </div>
+      {cloudDraft ? (
+        <CloudTaskDialog
+          open
+          projectId={cloudDraft.projectId}
+          provider={cloudDraft.provider}
+          initialBrief={cloudDraft.brief}
+          onClose={() => setCloudDraft(null)}
+          onLaunched={() => {
+            if (project?.id === cloudDraft.projectId && prompt.trim() === cloudDraft.brief) {
+              setPrompt("");
+              if (draftKey) clearDraft(draftKey);
+            }
+          }}
+        />
+      ) : null}
       <ImageLightbox src={lightboxSrc} alt="Attached image" onClose={() => setLightboxSrc(null)} />
       {connectionsOpen ? (
         <ConnectionDialog

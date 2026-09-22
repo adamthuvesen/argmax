@@ -7,6 +7,8 @@ Argmax manages Claude Code, Codex, Cursor Agent, OpenCode, and Grok Build throug
 - [adapters.rs](../src-tauri/src/providers/adapters.rs): Constructs CLI arguments and stdin for structured JSON modes. Centralizes auto-approve bypass flags.
 - [environment.rs](../src-tauri/src/providers/environment.rs): Hydrates user login shell environment and PATH for spawned processes.
 - [discovery.rs](../src-tauri/src/providers/discovery.rs): Detects installed provider binaries and versions.
+- [cloud.rs](../src-tauri/src/providers/cloud.rs): Validates pushed GitHub branches, clones isolated launch checkouts, and builds bounded chat context.
+- [claude_cloud.rs](../src-tauri/src/providers/claude_cloud.rs), [codex_cloud.rs](../src-tauri/src/providers/codex_cloud.rs), and [cursor_cloud.rs](../src-tauri/src/providers/cursor_cloud.rs): Discover provider environments and launch separate hosted tasks.
 - [runtime.rs](../src-tauri/src/providers/runtime.rs): Selects native bidirectional transports for chats. Claude uses SDK control, Codex uses app-server, Cursor and Grok use ACP, and OpenCode uses HTTP/SSE. See [approval settings](approvals-checks.md). Legacy structured argument builders remain available for fixtures and restricted helper flows.
 - [session_service.rs](../src-tauri/src/providers/session_service.rs): Orchestrates launch, resume, user input, resize, cancellation, and orphan recovery.
 - [follow_up.rs](../src-tauri/src/providers/follow_up.rs): Composes the prompt a follow-up turn launches with. A session holding a native resume id sends the user's message alone because the CLI replays its own rollout. Without one, such as after a provider switch, the prompt carries a capped visible transcript: 12 messages, 12k chars, with child-agent rows excluded. A pending project handoff note rides along either way. Claude, Codex, OpenCode, and eligible Cursor native subagent references are resolved against the current parent conversation at delivery time.
@@ -15,7 +17,7 @@ Argmax manages Claude Code, Codex, Cursor Agent, OpenCode, and Grok Build throug
 - [flush_queue.rs](../src-tauri/src/providers/flush_queue.rs): Batches event writes to SQLite and emits `dashboard:delta`. Complete ordinary output shares a bounded ~25 ms persistence window per session. Newline-less fragments retain a short idle debounce so arbitrary PTY chunk boundaries stay intact. Approvals, permission blocks, errors, completion, process exit, and cancellation flush immediately.
 - [subagent_trace/](../src-tauri/src/providers/subagent_trace): Imports trace-backed child activity and reconciles authoritative child lineage when a provider omits a launch row.
 - [pricing.rs](../src-tauri/src/providers/pricing.rs): Token pricing models matching `src/shared/providerModels.ts`.
-- [one_shot.rs](../src-tauri/src/providers/one_shot.rs): One-shot helper calls to a provider CLI, all on the cheap `PROVIDER_TITLE_MODEL` (`providerModels.ts`) with tools and config loading off. Two callers: short session titles (`workspaces:autotitle`) and the composer's suggested follow-up (`session:suggest-follow-up`). Claude uses `claude-sonnet-5 --effort low`; OpenCode stays on the free `opencode/big-pickle` model; Grok uses `grok-4.6` (the cheaper of its two SKUs) with `--disallowed-tools` (an empty `--tools` allowlist is ignored), `--max-turns 1`, `--output-format json`, and a `{title}` JSON schema on the title path so a screenshot launch cannot land the "I'll glance at…" tool-loop preamble as the sidebar label.
+- [one_shot.rs](../src-tauri/src/providers/one_shot.rs): One-shot helper calls to a provider CLI, all on the cheap `PROVIDER_TITLE_MODEL` (`providerModels.ts`) with tools and config loading off. Two callers: short session titles (`workspaces:autotitle`) and the composer's suggested follow-up (`session:suggest-follow-up`). Claude uses `claude-sonnet-5 --effort low`; OpenCode stays on the free `opencode/big-pickle` model; Grok uses `grok-4.6` (same Grok Build SKU rate as 4.7, cheaper than 4.5) with `--disallowed-tools` (an empty `--tools` allowlist is ignored), `--max-turns 1`, `--output-format json`, and a `{title}` JSON schema on the title path so a screenshot launch cannot land the "I'll glance at…" tool-loop preamble as the sidebar label.
 
 The title prompt frames the launch prompt as data addressed to a *different* agent, because the helper has none of the session's tools: a prompt like "read this Notion page and answer her questions" otherwise reads as a question put to the titler, which answers it. That framing is a nudge, not a guarantee, so `sanitize_title` is the gate that holds for all five providers — it sits after each provider's answer extraction, scans line by line so a "Here's the title:" preamble costs only its own line, and rejects any line that opens conversationally or runs past twelve words. A rejected answer leaves the renderer's prompt-derived label (`titleFromPrompt`) in place rather than pinning a truncated refusal to the sidebar.
 
@@ -23,6 +25,82 @@ Raw provider output is saved for debugging, but only normalized timeline events 
 
 Goals work on every provider: the evaluator is a one-shot call Argmax makes
 itself rather than a provider capability. See [goals.md](goals.md).
+
+## Cloud tasks
+
+Argmax can start a hosted task with Claude, Codex, or Cursor from the launch
+composer or send an existing chat to its provider's cloud. Composer launches use the
+registered project's repository checkout and the composer prompt as the task
+brief. Active-chat launches include a bounded visible transcript in the read-only confirmation; they
+exclude tool payloads, raw provider output, and child-agent rows. Both paths
+require a GitHub branch whose local `HEAD` matches the branch on `origin`.
+Uncommitted work stays in the local checkout, while unpushed commits must be
+pushed before launch. Neither is uploaded implicitly. The
+selected provider is retained. The hosted service chooses its cloud model,
+so the local model and reasoning settings are not advertised as cloud settings.
+
+### Claude Cloud
+
+Setup stays in Claude Code and git. Sign in to a first-party Claude Code
+account with cloud access, use `/remote-env` to select a hosted environment,
+and make sure the local machine can fetch the repository's GitHub origin.
+Argmax uses those existing credentials and settings. Its bundle handoff does
+not require the Claude GitHub App to be installed for the repository; direct
+GitHub clone and push workflows inside the hosted session still do.
+
+Launch revalidates the checkout, clones the remote branch into a temporary
+directory, verifies its source commit, and runs `claude --cloud` there. It uses
+`--safe-mode`, forces the repository bundle path, and passes the hosted
+environment ID currently selected in Claude Code settings. Argmax does not
+store a personal environment ID. Claude Cloud can create a synthetic commit
+from that bundle, so the cloud checkout's `HEAD` may differ from the source
+commit shown in the handoff dialog even though its contents came from that
+verified revision.
+
+This integration is version-sensitive. It was verified with Claude Code
+2.1.278 and currently relies on that CLI's `--cloud` command plus its internal
+`CCR_FORCE_BUNDLE=1` switch. Reverify the launch path when upgrading Claude
+Code.
+
+### Codex Cloud
+
+Sign in to the Codex CLI with a ChatGPT account and configure a cloud
+environment for the repository at chatgpt.com/codex. Preparation reads the
+CLI's file-backed ChatGPT credentials and discovers environments associated with the
+selected GitHub repository. A single matching environment is selected
+automatically. If there are several, choose one in the review dialog.
+Argmax rechecks that association before launching, rather than storing a
+personal environment ID or accepting an environment from another repository.
+
+Launch runs in an isolated temporary checkout and uses `codex cloud exec --env <id> --branch <branch> --attempts 1`
+with the task brief passed as a positional argument after `--`. Codex resolves
+the branch remotely. The reviewed commit is the verified branch tip at
+submission, not a guarantee against a subsequent remote branch update.
+Environment discovery uses the same version-sensitive ChatGPT backend route
+as the Codex CLI's cloud task browser. Reverify it when upgrading Codex.
+
+### Cursor Cloud
+
+Provide `CURSOR_API_KEY` through the shell credential setup or the `keys-sync`
+cache and grant Cursor access to the repository. Argmax checks its hydrated
+login-shell environment first, then reads only the Cursor key from
+`~/.local/share/dotfiles/agent-secrets.json`. The cache must be a regular,
+non-symlink file owned by the user with mode `0600`. Preparation checks the
+Cloud Agents API and repository access. Cursor uses the repository's hosted
+environment setup, so there is no separate environment ID to select.
+
+Launch calls the Cursor Cloud Agents API with the GitHub repository and
+verified commit SHA. Automatic pull request creation and work on the current
+branch are disabled. Cursor's local ACP connection is separate from this API.
+
+### Results
+
+The new cloud conversation is not synchronized back into Argmax. A successful
+handoff writes a provider-named hosted link as a `session.note`. A launch
+from the composer returns the hosted link directly and does not create a local
+session or agent. A timeout or an exit without a link is reported as
+delivery-unknown and is never retried automatically because the billable cloud
+session may already exist.
 
 ## Verification profiles
 
@@ -186,7 +264,7 @@ account and a temporary project.
 - **Forking:** `session:fork` creates a new session flagged with `resume_fork`. The next turn invokes the provider's fork flag (`--fork-session` for Claude and Grok, `exec fork` for Codex, `--fork` for OpenCode). Cursor does not support session forking.
 - **Session moves:** An agent-requested move waits for the current turn to settle and copies the transcript into a fresh session at the destination. A cross-project move always clears `provider_conversation_id`. A move to another checkout of the same project carries it where the provider allows — see below. The first destination turn receives the handoff note, plus the capped transcript when the conversation did not travel.
 - **Default agent:** one model and one reasoning effort for the whole app (Settings → Agents), not a per-project setting. A model that doesn't offer the chosen effort runs at Medium instead, and failing that at the nearest level it does offer — see `effortForModel` in [providerModels.ts](../src/shared/providerModels.ts). A fresh install starts on Opus 5 at Medium. The renderer owns the preference and mirrors it through `system:set-default-agent` so the sessions Argmax starts on its own (the PR check-failure fix chat) use it too.
-- **Fast mode:** The model catalog explicitly marks eligible models. The picker offers Speed and shows the Fast indicator only for those entries, and launch and follow-up requests gate the saved preference by that eligibility. Currently Codex Astra, Sol, Terra, and Luna are eligible. Codex app-server receives `serviceTier: "priority"` per turn. Availability depends on the provider account. Cursor ACP controls its advertised speed, so Argmax offers no Speed control for Cursor. OpenCode and Grok have none either. Claude's settings flag remains wired, but the current Claude catalog has no verified eligible models: [Claude's documentation](https://code.claude.com/docs/en/fast-mode) restricts Fast to Opus 4.6 and says enabling it on other models switches models. Unknown models default to ineligible. [Codex's speed documentation](https://learn.chatgpt.com/docs/agent-configuration/speed) covers Astra and the GPT-5.6 family.
+- **Fast mode:** The model catalog explicitly marks eligible models. The picker offers Speed and shows the Fast indicator only for those entries, and launch and follow-up requests gate the saved preference by that eligibility. Eligible today: Codex Astra, Sol, Terra, and Luna (`serviceTier: "priority"` per turn), and Grok 4.7 (`grok-4.7-build-fast` on ACP and the CLI). Availability depends on the provider account. Cursor ACP advertises exactly one variant per family and `session/set_model` rejects any other id, including a flipped `fast=` parameter, so Argmax offers no Speed control for Cursor. OpenCode has none. Claude's settings flag remains wired, but the current Claude catalog has no verified eligible models: [Claude's documentation](https://code.claude.com/docs/en/fast-mode) restricts Fast to Opus 4.6 and says enabling it on other models switches models. Unknown models default to ineligible. [Codex's speed documentation](https://learn.chatgpt.com/docs/agent-configuration/speed) covers Astra and the GPT-5.6 family.
 - **Reasoning effort:** Claude uses `--append-system-prompt` for effort (including Max/Ultra). Codex app-server receives the effort per turn (Astra/Sol/Terra through ultra, Luna through max). Cursor ACP takes the advertised configuration described below. Legacy CLI builders retain Codex's `service_tier` and `model_reasoning_effort` overrides and Cursor's effort and `-fast` model suffixes for helper flows. Grok's CLI accepts only low/medium/high/xhigh, so Max and Ultra clamp to xhigh.
 - **Context window:** Claude's 1M models launch on the `[1m]` spelling of their id (`claude-opus-5[1m]`), since the CLI only resolves a bare id's window through a first-party lookup — behind a custom `ANTHROPIC_BASE_URL` it assumes 200k and auto-compacts there, a fifth of the way into the advertised window. The suffix rides on the launch flag alone; the CLI reports the bare id back, so usage and pricing are unchanged. The catalog's `contextWindow` decides which ids get it (`CLAUDE_LONG_CONTEXT_MODELS` in [adapters.rs](../src-tauri/src/providers/adapters.rs)).
 
@@ -332,7 +410,7 @@ Grok Build chats use a pooled `grok agent stdio` ACP process, isolated by worksp
 - **`--cwd` is passed explicitly** even though the child is already spawned in the worktree: with `[cli] use_leader` enabled the turn runs inside a shared leader process whose cwd is not the child's. Same trap OpenCode's `--dir` covers.
 - **Repo-local MCP servers are gated on folder trust.** `grok inspect --json` reports `projectTrusted: false` for a checkout the user has never accepted, and the `.grok/config.toml` Argmax writes is ignored until it is true. A launch therefore records the workspace in Grok's own `trusted_folders.toml` and gives the entry back at the end ([agent-tools.md](agent-tools.md)).
 - **Skills** come from `.grok/skills`, `.agents/skills`, and — by Grok's own compatibility rules — `.claude/skills`, plus `~/.grok/installed-plugins/<plugin>/skills` and the bundled cache at `~/.grok/bundled/skills`.
-- **Pricing** is the `grok-4.6-build` / `grok-4.5-build` SKU rate, not xAI's published API list price. The rates in `MODEL_PRICING` were solved from the CLI's own `total_cost_usd` and reproduce it exactly; note 4.5 costs twice 4.6, so the default and title model both stay on 4.6.
+- **Pricing** is the `grok-4.7-build` / `grok-4.6-build` / `grok-4.5-build` SKU rate, not xAI's published API list price. The 4.6 rates in `MODEL_PRICING` were solved from the CLI's own `total_cost_usd` and reproduce it exactly; 4.7 is served at that same rate, and 4.5 costs twice as much. The default is 4.7; titles stay on 4.6.
 - **Session sync is not supported.** Grok stores transcripts under `~/.grok/sessions/<percent-encoded-cwd>/<uuid>/` (`$GROK_HOME/sessions/…` when that variable is set), which is a lossless cwd mapping, but Argmax has no reader for it yet — the Settings toggle renders disabled.
 
 ## Subagent Activity

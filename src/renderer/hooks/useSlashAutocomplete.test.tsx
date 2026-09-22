@@ -84,6 +84,23 @@ describe("useSlashAutocomplete — stale-state + failure-latch guards", () => {
     expect(screen.getByTestId("selection-index").textContent).toBe("2");
   });
 
+  it("ranks exact skill names before prefixes and substring matches", async () => {
+    skillsList.mockResolvedValue([
+      { name: "plan-review", description: "Review a plan", source: "user" },
+      { name: "review-notes", description: "Review notes", source: "user" },
+      { name: "review", description: "Review code", source: "user" },
+      { name: "code-review", description: "Review code", source: "user" }
+    ]);
+
+    render(<Harness initialInput="/review" />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("labels").textContent).toBe(
+        "review,review-notes,plan-review,code-review"
+      )
+    );
+  });
+
   it("fires exactly one skills.list IPC for repeated keystrokes during an in-flight fetch", async () => {
     // `fetchedFor.current = cacheKey` must be set before `api.list`. We hold
     // the first promise open so the effect's cache-latch is the only thing

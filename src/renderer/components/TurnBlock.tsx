@@ -60,6 +60,7 @@ export function TurnBlock({
   body,
   turnStartedAtMs,
   isTurnActive,
+  isTurnPaused = false,
   toolsExpanded,
   onToggleTools,
   hasCollapsibleActivity = false,
@@ -83,9 +84,11 @@ export function TurnBlock({
   // including the thinking phase before any tools fire.
   turnStartedAtMs?: number;
   // Authoritative "agent is still working" signal from the parent. The parent
-  // knows about session state and user-input pauses (QuestionDock),
-  // including thinking-only phases without active tools.
+  // knows about session state, including thinking-only phases and pauses
+  // that can resume without ending the turn.
   isTurnActive?: boolean;
+  /** Waiting for approval or input is unfinished, but has no working ticker. */
+  isTurnPaused?: boolean;
   // Whether this turn's tool groups are expanded. Owned by the parent (which
   // builds the tool nodes) so the chip and the per-group toggles share one
   // source of truth; the chip reflects it and flips it via `onToggleTools`.
@@ -133,11 +136,11 @@ export function TurnBlock({
     () => toolItems.some((item) => item.tool.status === "running"),
     [toolItems]
   );
-  // `running` controls the chip's "Working" label and live ticker —
-  // the parent's isTurnActive flag is authoritative because it also knows
-  // about thinking phases and user-input pauses (QuestionDock).
+  // The parent's active flag is authoritative, including resumable pauses.
+  // Only a finished turn may settle its activity and expose its footer.
   // Fall back to tool status for isolated component tests and narrow callers.
   const running = isTurnActive ?? toolRunning;
+  const paused = running && isTurnPaused;
   const wasRunning = useRef(running);
   const [settling, setSettling] = useState(false);
   // Minimal keeps freshly finished activity readable for one brief beat.
@@ -186,7 +189,7 @@ export function TurnBlock({
       ? ` · ${toolItems.length} ${toolItems.length === 1 ? "step" : "steps"}`
       : "";
   const staticChipLabel = running
-    ? "Working"
+    ? paused ? "Waiting" : "Working"
     : `${elapsedLabel ? `Worked for ${elapsedLabel}` : "Worked"}${stepCount}`;
   const headerTimestampLabel = useMemo(() => {
     if (!headerTimestampIso) return "";
@@ -210,7 +213,7 @@ export function TurnBlock({
   const hasDisclosure = hasTools || hasCollapsibleActivity || hasHiddenWork;
   const interactiveChip = running || hasDisclosure;
 
-  const liveStartMs = running && startedAtMs > 0 ? startedAtMs : null;
+  const liveStartMs = running && !paused && startedAtMs > 0 ? startedAtMs : null;
   const liveRef = useRef<HTMLSpanElement | null>(null);
   // Layout effect, not a passive one: the ticker's span renders empty and the
   // timer fills it. After a passive effect the browser has already painted the

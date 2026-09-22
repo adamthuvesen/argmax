@@ -49,7 +49,8 @@
 :is(.composer-context, .session-input-toolbar)
   :is(.composer-context-chip, .composer-footer-chip):not(
     [aria-pressed="true"],
-    .model-picker-cluster--chip *
+    .model-picker-cluster--chip *,
+    .composer-cloud-provider
   ):hover {
   background: var(--composer-chip-hover);
   color: var(--muted-strong);
@@ -1240,4 +1241,14 @@
 
 .session-stop-button:hover:not(:disabled) {
   background-color: var(--stop-hover);
+}
+
+.composer-context .composer-cloud-provider {
+  cursor: default;
+  color: var(--text);
+}
+
+.composer-run-location:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

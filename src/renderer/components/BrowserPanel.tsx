@@ -82,6 +82,8 @@ interface BrowserPanelProps {
   onRequestHandled?: (seq: number) => void;
   /** A split swap can move the surface without changing its size. */
   panePosition?: "top" | "bottom";
+  /** Only the focused grid pane answers window-level browser commands. */
+  isFocused?: boolean;
   onClose: () => void;
 }
 
@@ -143,12 +145,12 @@ function TabFavicon({ url }: { url: string }): JSX.Element {
 /**
  * Chrome for the native browser tabs, filling the review panel's body in
  * Browser mode. Each tab is its own child webview glued onto
- * `.browser-panel-surface` via `browser:set-bounds`; only the active tab's
- * webview is visible, the rest stay hidden but alive. Native webviews always
+ * `.browser-panel-surface` via `browser:set-bounds`. Each scope's active tab
+ * is visible, while its other tabs stay hidden but alive. Native webviews always
  * paint above the renderer DOM, so this component hides the active one
  * while the collapsed sidebar peeks or a dialog overlaps the surface.
  *
- * Only the owner mounts this chrome. Changing owners unmounts it, while
+ * Only the scope's owner mounts this chrome. Changing owners unmounts it, while
  * swapping halves inside a split panel keeps it mounted and updates its bounds.
  */
 export function BrowserPanel({
@@ -159,6 +161,7 @@ export function BrowserPanel({
   requestNewTab,
   onRequestHandled,
   panePosition,
+  isFocused = true,
   onClose
 }: BrowserPanelProps): JSX.Element {
   const browser = window.argmax?.browser ?? null;
@@ -203,6 +206,7 @@ export function BrowserPanel({
   const findQueryRef = useRef("");
   const findOpenRef = useRef(false);
   const findTimerRef = useRef<number | null>(null);
+  const findRequestRef = useRef(0);
   const noticeTimerRef = useRef<number | null>(null);
 
   const showNotice = useCallback((message: string) => {
@@ -483,7 +487,9 @@ export function BrowserPanel({
     if (!browser) return;
     const subscription = browser.onNewTab((event) => {
       const parent = findBrowserTab(event.tabId);
-      if (parent && parent.scopeId !== scopeId) return;
+      // Native events are broadcast to every mounted BrowserPanel. The source
+      // tab is the routing key, so only its strip may answer the request.
+      if (parent?.scopeId !== scopeId) return;
       const active = getActiveBrowserTabId(scopeId);
       if (event.tabId !== active) {
         // A hidden background tab opened a popup (timer, ad): add the tab
@@ -517,11 +523,17 @@ export function BrowserPanel({
   // open (the bar is layout between toolbar and surface, never an overlay).
   const runFind = useCallback(
     (action: "search" | "step", delta = 0): void => {
+      const request = ++findRequestRef.current;
       const tabId = getActiveBrowserTabId(scopeId);
       if (!browser || !tabId || !findOpenRef.current) return;
+      const query = findQueryRef.current;
       void browser
-        .evaluate({ tabId, script: browserFindScript(action, findQueryRef.current, delta) })
-        .then((result) => setFindMatches(parseFindResult(result.resultJson)))
+        .evaluate({ tabId, script: browserFindScript(action, query, delta) })
+        .then((result) => {
+          if (request !== findRequestRef.current || !findOpenRef.current ||
+              tabId !== getActiveBrowserTabId(scopeId) || query !== findQueryRef.current) return;
+          setFindMatches(parseFindResult(result.resultJson));
+        })
         // A page mid-navigation answers slowly or not at all; the next
         // keystroke retries, and a stale counter is quieter than a notice.
         .catch(() => undefined);
@@ -530,6 +542,7 @@ export function BrowserPanel({
   );
 
   const scheduleFind = useCallback((): void => {
+    findRequestRef.current += 1;
     if (findTimerRef.current !== null) window.clearTimeout(findTimerRef.current);
     findTimerRef.current = window.setTimeout(() => {
       findTimerRef.current = null;
@@ -544,6 +557,7 @@ export function BrowserPanel({
   }, [scopeId]);
 
   const closeFind = useCallback((): void => {
+    findRequestRef.current += 1;
     if (findTimerRef.current !== null) {
       window.clearTimeout(findTimerRef.current);
       findTimerRef.current = null;
@@ -576,6 +590,7 @@ export function BrowserPanel({
   // The bar's unmount must not leave highlights behind in the page.
   useEffect(
     () => () => {
+      findRequestRef.current += 1;
       const tabId = getActiveBrowserTabId(scopeId);
       if (findOpenRef.current && tabId) {
         const cleanup = window.argmax?.browser;
@@ -593,6 +608,15 @@ export function BrowserPanel({
   useEffect(() => {
     if (!browser) return;
     const subscription = browser.onPageCommand((event) => {
+      // Every panel receives the bridge event. Without this guard, a shortcut
+      // from one native page also mutates every other mounted grid pane.
+      if (findBrowserTab(event.tabId)?.scopeId !== scopeId) return;
+      if (event.command === "focus") {
+        // Update the grid and split-panel focus through their existing capture
+        // handlers without moving native keyboard focus out of the page.
+        panelRef.current?.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+        return;
+      }
       if (event.command === "reload") {
         void browser.reload(event.tabId).catch(reportError);
         return;
@@ -623,7 +647,7 @@ export function BrowserPanel({
       }
     });
     return () => subscription();
-  }, [addTab, browser, closeTab, goBack, goForward, openFind, reportError]);
+  }, [addTab, browser, closeTab, goBack, goForward, openFind, reportError, scopeId]);
 
   // Mouse thumb buttons over the pane chrome (toolbar, tab strip). Clicks
   // landing on the page itself go to the native webview instead and come back
@@ -646,12 +670,14 @@ export function BrowserPanel({
 
   // Menu ⌘W with the pane open: App routes it here to close the active tab.
   useEffect(
-    () =>
-      onBrowserCloseActiveTabRequest(() => {
+    () => {
+      if (!isFocused) return undefined;
+      return onBrowserCloseActiveTabRequest(() => {
         const active = getActiveBrowserTabId(scopeId);
         if (active) closeTab(active);
-      }),
-    [closeTab, scopeId]
+      });
+    },
+    [closeTab, isFocused, scopeId]
   );
 
   // Hide the active webview when the panel unmounts; the tab store and the
@@ -723,6 +749,8 @@ export function BrowserPanel({
     if (!browser) return;
     const timers = loadingTimersRef.current;
     const subscription = browser.onState((event) => {
+      const eventTab = findBrowserTab(event.tabId);
+      if (eventTab?.scopeId !== scopeId) return;
       updateBrowserTabState(event.tabId, event.url, event.title);
       setBrowserTabLoading(event.tabId, event.loading);
       const timer = timers.get(event.tabId);
@@ -871,12 +899,13 @@ export function BrowserPanel({
     }
   };
 
-  // Panel-wide shortcuts. ⌘L, ⌘T and ⌘F work from anywhere while the panel is
-  // open; ⌘W/⌘R only fire while focus is inside the panel chrome, so typing in
-  // a chat does not close or reload a browser tab. Keys pressed inside a page
-  // land in the native webview instead — the init-script intercept relays
-  // those as browser:page-command events.
+  // Panel-wide shortcuts. The focused grid pane answers ⌘L, ⌘T and ⌘F from
+  // anywhere; ⌘W/⌘R only fire while focus is inside its panel chrome, so
+  // typing in a chat does not close or reload a browser tab. Keys pressed
+  // inside a page land in the native webview instead — the init-script
+  // intercept relays those as browser:page-command events.
   useEffect(() => {
+    if (!isFocused) return undefined;
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.ctrlKey && event.key === "Tab") {
         event.preventDefault();
@@ -936,7 +965,7 @@ export function BrowserPanel({
     };
     document.addEventListener("keydown", onKeyDown, true);
     return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [addTab, browser, closeTab, cycleTab, hideTabWebview, openFind, openTabWebview, reportError, scopeId]);
+  }, [addTab, browser, closeTab, cycleTab, hideTabWebview, isFocused, openFind, openTabWebview, reportError, scopeId]);
 
   const handleFillCredentials = (): void => {
     if (!browser || !activeTabId) return;

@@ -144,7 +144,6 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
   const sessions: PaletteCommand[] = snapshot.sessions
     // Ephemeral "More details" popup sessions are not navigable surfaces.
     .filter((session) => workspaceById.get(session.workspaceId)?.kind !== "popup")
-    .slice(0, 40)
     .map((session) => {
     const workspace = workspaceById.get(session.workspaceId) ?? null;
     const project = workspace ? projectById.get(workspace.projectId) ?? null : null;
@@ -186,7 +185,6 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
     // The hidden scratch project backs repo-less side chats; it is not an
     // openable repository.
     .filter((project) => project.id !== SCRATCH_PROJECT_ID)
-    .slice(0, 40)
     .map((project) => ({
     id: `project:${project.id}`,
     label: project.name,

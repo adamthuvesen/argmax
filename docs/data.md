@@ -126,6 +126,8 @@ paths and subsequent user changes to project settings are preserved.
 
 Typed modules (`projects.rs`, `workspaces.rs`, `sessions.rs`, `events.rs`, `approvals.rs`, `checks.rs`, `usage.rs`, `learnings.rs`, `gh.rs`, `routines.rs`) expose queries to services and IPC.
 
+Message search accepts Unicode word prefixes and prioritizes user messages and completed assistant messages over activity labels. Within each group, it ranks FTS matches by relevance, then newest event timestamp and row ID for ties. It excludes streaming `message.delta` fragments so a completed answer does not compete with its own partial text for result slots. File-content search uses case-insensitive literal matching through `git grep`.
+
 Focused reads in `dashboard.rs`:
 - `dashboard:list`: Returns projects, workspaces, sessions, checks, and Arc summaries.
 - `session:events-since`: A cursorless request returns an authoritative bounded

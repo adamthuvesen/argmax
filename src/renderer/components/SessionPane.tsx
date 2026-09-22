@@ -718,6 +718,7 @@ export function SessionPane({
   const startPanelResize = useCallback(
     (event: ReactMouseEvent, dock: "left" | "right"): void => {
       event.preventDefault();
+      dragCleanupRef.current?.();
       const startX = event.clientX;
       // Measure the panel the handle sits in rather than reading the stored
       // width: on an automatic width there is no stored number, and the drag
@@ -727,6 +728,8 @@ export function SessionPane({
         ? Math.round(panel.getBoundingClientRect().width)
         : SESSION_RIGHT_PANEL_MIN;
       let pinned = startWidth;
+      const previousCursor = document.body.style.cursor;
+      const previousUserSelect = document.body.style.userSelect;
       setIsPanelResizing(true);
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
@@ -750,15 +753,17 @@ export function SessionPane({
         // here on outranks the automatic share.
         if (pinned !== startWidth) writePinnedPanelWidth(pinned);
         setIsPanelResizing(false);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
+        document.body.style.cursor = previousCursor;
+        document.body.style.userSelect = previousUserSelect;
         document.removeEventListener("mousemove", onMouseMove);
         document.removeEventListener("mouseup", onMouseUp);
+        window.removeEventListener("blur", cleanup);
         dragCleanupRef.current = null;
       };
       const onMouseUp = (): void => cleanup();
       document.addEventListener("mousemove", onMouseMove);
       document.addEventListener("mouseup", onMouseUp);
+      window.addEventListener("blur", cleanup);
       dragCleanupRef.current = cleanup;
     },
     []
@@ -783,6 +788,9 @@ export function SessionPane({
       style={gridStyle}
       data-panel-resizing={isPanelResizing ? "true" : undefined}
     >
+      {isPanelResizing ? (
+        <div className="session-panel-resize-shield" data-browser-overlay="true" aria-hidden="true" />
+      ) : null}
       <div className="session-main-column">
         <SessionConversation
           isFocused={isFocused}

@@ -54,7 +54,7 @@ describe("BrowserPage", () => {
 
     expect(screen.getByRole("region", { name: "Browser" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Browser" })).toBeInTheDocument();
-    expect(getBrowserOwnerId()).toBe(BROWSER_PAGE_OWNER_ID);
+    expect(getBrowserOwnerId(BROWSER_PAGE_OWNER_ID)).toBe(BROWSER_PAGE_OWNER_ID);
     expect(screen.queryByRole("tab", { name: "Files" })).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "Changes" })).not.toBeInTheDocument();
   });
@@ -86,10 +86,10 @@ describe("BrowserPage", () => {
 
   it("releases the surface on unmount", () => {
     const { unmount } = render(<BrowserPage onClose={() => undefined} />);
-    expect(getBrowserOwnerId()).toBe(BROWSER_PAGE_OWNER_ID);
+    expect(getBrowserOwnerId(BROWSER_PAGE_OWNER_ID)).toBe(BROWSER_PAGE_OWNER_ID);
 
     unmount();
 
-    expect(getBrowserOwnerId()).toBeNull();
+    expect(getBrowserOwnerId(BROWSER_PAGE_OWNER_ID)).toBeNull();
   });
 });

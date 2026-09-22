@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "./App.js";
-import { setupAppTestMocks } from "../test/appTestHarness.js";
+import { setupAppTestMocks, mockDashboardSnapshot, snapshot } from "../test/appTestHarness.js";
 
 describe("App unified search palette", () => {
   afterEach(() => {
@@ -21,6 +21,29 @@ describe("App unified search palette", () => {
     const dialog = await screen.findByRole("dialog", { name: "Command palette" });
     expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("All");
     expect(dialog).toBeInTheDocument();
+  });
+
+  it("searches chats and projects beyond the first forty catalog entries", async () => {
+    mockDashboardSnapshot({
+      ...snapshot,
+      workspaces: Array.from({ length: 51 }, (_, index) => ({
+        ...snapshot.workspaces[0], id: `workspace-${index}`, taskLabel: index === 50 ? "Zircon chat" : `Task ${index}`
+      })),
+      sessions: Array.from({ length: 51 }, (_, index) => ({
+        ...snapshot.sessions[0], id: `session-${index}`, workspaceId: `workspace-${index}`
+      })),
+      projects: [...snapshot.projects, ...Array.from({ length: 41 }, (_, index) => ({
+        ...snapshot.projects[0], id: `project-extra-${index}`, name: index === 40 ? "Zircon project" : `Project ${index}`
+      }))]
+    });
+    render(<App />);
+    await screen.findByRole("button", { name: "Task 0" });
+    fireEvent.keyDown(document, { key: "k", metaKey: true });
+    fireEvent.change(await screen.findByRole("searchbox", { name: "Command palette query" }), {
+      target: { value: "Zircon" }
+    });
+    expect(screen.getByRole("option", { name: /Zircon chat/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Zircon project/ })).toBeInTheDocument();
   });
 
   it("⌘P opens the same palette with the Files filter selected", async () => {

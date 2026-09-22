@@ -33,15 +33,98 @@ type SaveOutcome = "saved" | "stale" | "aborted" | "error";
 // for the lifetime of a pane.
 const CLOSED_FILE_CACHE_LIMIT = 12;
 
-function createWorkspaceFileTab(path: string): WorkspaceFileTabState {
+type TextWorkspaceFilePreview = Extract<WorkspaceFilePreview, { kind: "text" }>;
+
+interface DirtyFileBuffer {
+  buffer: string;
+  original: string | null;
+  diskMtimeMs: number | null;
+  preview: TextWorkspaceFilePreview;
+}
+
+interface BufferedFilesSnapshot extends StoredOpenFiles {
+  dirtyBuffers: Map<string, DirtyFileBuffer>;
+}
+
+// Buffers can be as large as 1 MiB each. Keep unsaved contents in memory
+// rather than writing them to localStorage on every keystroke; the existing
+// localStorage entry still restores the lightweight tab list after restart.
+// The owner and source are both part of the key so two chats on one checkout,
+// or two projects with the same relative path, never share a draft.
+const bufferedFilesByOwnerAndSource = new Map<string, BufferedFilesSnapshot>();
+
+function bufferedFilesKey(
+  storageKey: string | null,
+  sourceKind: ReviewSourceKind | null,
+  sourceId: string | null
+): string | null {
+  if (!sourceKind || !sourceId) return null;
+  return `${storageKey ?? "launcher"}\u0000${sourceKind}\u0000${sourceId}`;
+}
+
+function hasDirtyBuffer(tab: WorkspaceFileTabState): boolean {
+  return tab.buffer !== null && tab.buffer !== tab.original;
+}
+
+function snapshotBufferedFiles(
+  tabs: WorkspaceFileTabState[],
+  activePath: string | null,
+  pendingSavePaths: ReadonlySet<string>
+): BufferedFilesSnapshot {
+  const dirtyBuffers = new Map<string, DirtyFileBuffer>();
+  for (const tab of tabs) {
+    const savePending = pendingSavePaths.has(tab.path);
+    if (
+      (!hasDirtyBuffer(tab) && !savePending) ||
+      tab.buffer === null ||
+      tab.preview?.kind !== "text"
+    ) continue;
+    dirtyBuffers.set(tab.path, {
+      buffer: tab.buffer,
+      // A save may already be carrying different contents to disk. If the
+      // user then edits back to the old original, restoring it as clean could
+      // let the in-flight write silently replace their chosen text.
+      original: savePending && !hasDirtyBuffer(tab) ? null : tab.original,
+      diskMtimeMs: tab.diskMtimeMs,
+      preview: tab.preview
+    });
+  }
+  return {
+    paths: tabs.map((tab) => tab.path),
+    activePath,
+    dirtyBuffers
+  };
+}
+
+function rememberBufferedFiles(
+  store: Map<string, BufferedFilesSnapshot>,
+  key: string | null,
+  tabs: WorkspaceFileTabState[],
+  activePath: string | null,
+  pendingSavePaths: ReadonlySet<string>
+): void {
+  if (!key) return;
+  const snapshot = snapshotBufferedFiles(tabs, activePath, pendingSavePaths);
+  if (snapshot.dirtyBuffers.size === 0) {
+    store.delete(key);
+    return;
+  }
+  store.set(key, snapshot);
+}
+
+function createWorkspaceFileTab(path: string, dirtyBuffer?: DirtyFileBuffer): WorkspaceFileTabState {
   return {
     path,
-    preview: null,
-    previewState: "idle",
+    preview: dirtyBuffer?.preview ?? null,
+    // A retained draft already has the text preview needed to render the
+    // editor. The focus/mount stat check revalidates its old mtime without a
+    // disk read that could hide the draft when the file was removed or became
+    // binary while this chat was away.
+    previewState: dirtyBuffer ? "ready" : "idle",
     previewError: null,
-    buffer: null,
-    original: null,
-    diskMtimeMs: null,
+    buffer: dirtyBuffer?.buffer ?? null,
+    original: dirtyBuffer?.original ?? null,
+    diskMtimeMs: dirtyBuffer?.diskMtimeMs ?? null,
     externalChange: false,
     saveState: "idle",
     saveError: null
@@ -72,8 +155,7 @@ function readStoredOpenFiles(storageKey: string | null): StoredOpenFiles {
 }
 
 function isWorkspaceFileTabDirty(tab: WorkspaceFileTabState | null, canEdit: boolean): boolean {
-  if (!canEdit || !tab || tab.buffer === null) return false;
-  return tab.buffer !== tab.original;
+  return Boolean(canEdit && tab && hasDirtyBuffer(tab));
 }
 
 export function useFilePreview(args: {
@@ -94,19 +176,45 @@ export function useFilePreview(args: {
   const dispatchRef = useRef<ReviewIpcDispatch | null>(dispatch);
   dispatchRef.current = dispatch;
 
+  // Launchers do not have a persistence owner. Their drafts only need to
+  // survive source switches within this mounted picker, so keep that cache
+  // hook-local. Session-owned buffers use the module store to survive a pane
+  // unmount while navigating between chats.
+  const transientBufferedFiles = useRef(new Map<string, BufferedFilesSnapshot>());
+  const nextBufferedFilesStoreRef = useRef(bufferedFilesByOwnerAndSource);
+  nextBufferedFilesStoreRef.current = storageKey
+    ? bufferedFilesByOwnerAndSource
+    : transientBufferedFiles.current;
+  const activeBufferedFilesStoreRef = useRef(nextBufferedFilesStoreRef.current);
+  const nextBufferedFilesKeyRef = useRef<string | null>(null);
+  nextBufferedFilesKeyRef.current = bufferedFilesKey(storageKey, sourceKind, sourceId);
+  const activeBufferedFilesKeyRef = useRef(nextBufferedFilesKeyRef.current);
+  const pendingSavePaths = useRef(new Set<string>());
+
   const workspaceTabLifetimeSeq = useRef(0);
   const workspaceTabLifetimes = useRef(new Map<string, number>());
 
   // Restored tabs start idle and load when shown, like a freshly opened file.
   // Each needs a lifetime, or its first save would be dropped as aborted.
-  const restoreTabs = (stored: StoredOpenFiles): WorkspaceFileTabState[] =>
+  const restoreTabs = (
+    stored: StoredOpenFiles,
+    dirtyBuffers = new Map<string, DirtyFileBuffer>()
+  ): WorkspaceFileTabState[] =>
     stored.paths.map((path) => {
       workspaceTabLifetimes.current.set(path, ++workspaceTabLifetimeSeq.current);
-      return createWorkspaceFileTab(path);
+      return createWorkspaceFileTab(path, dirtyBuffers.get(path));
     });
-  const [initialStored] = useState(() => readStoredOpenFiles(storageKey));
-  const [tabs, setTabs] = useState<WorkspaceFileTabState[]>(() => restoreTabs(initialStored));
-  const [activeTabPath, setActiveTabPath] = useState<string | null>(initialStored.activePath);
+  const [initialFiles] = useState<BufferedFilesSnapshot>(() => {
+    const buffered = activeBufferedFilesKeyRef.current
+      ? activeBufferedFilesStoreRef.current.get(activeBufferedFilesKeyRef.current)
+      : undefined;
+    if (buffered) return buffered;
+    return { ...readStoredOpenFiles(storageKey), dirtyBuffers: new Map<string, DirtyFileBuffer>() };
+  });
+  const [tabs, setTabs] = useState<WorkspaceFileTabState[]>(() =>
+    restoreTabs(initialFiles, initialFiles.dirtyBuffers)
+  );
+  const [activeTabPath, setActiveTabPath] = useState<string | null>(initialFiles.activePath);
   const [dirtyClosePath, setDirtyClosePath] = useState<string | null>(null);
 
   const tabPathsKey = JSON.stringify(tabs.map((tab) => tab.path));
@@ -123,6 +231,20 @@ export function useFilePreview(args: {
       // Quota or private-mode failures are non-fatal for view state.
     }
   }, [storageKey, tabPathsKey, activeTabPath]);
+
+  useEffect(() => {
+    // `activeBufferedFilesKeyRef` intentionally trails rendered props until
+    // resetForSourceChange runs. React executes this hook's effects before the
+    // parent hook's source-reset effect, so old tabs cannot be filed under the
+    // newly rendered source by mistake.
+    rememberBufferedFiles(
+      activeBufferedFilesStoreRef.current,
+      activeBufferedFilesKeyRef.current,
+      tabs,
+      activeTabPath,
+      pendingSavePaths.current
+    );
+  }, [tabs, activeTabPath]);
 
   const workspaceReadSeq = useRef(0);
   const workspaceReadTokens = useRef(new Map<string, number>());
@@ -187,19 +309,36 @@ export function useFilePreview(args: {
   storageKeyRef.current = storageKey;
 
   const resetForSourceChange = useCallback((): void => {
+    rememberBufferedFiles(
+      activeBufferedFilesStoreRef.current,
+      activeBufferedFilesKeyRef.current,
+      listenerStateRef.current.workspaceFileTabs,
+      listenerStateRef.current.workspaceActiveFilePath,
+      pendingSavePaths.current
+    );
     sourceGeneration.current += 1;
     workspaceReadTokens.current.clear();
     workspaceStatTokens.current.clear();
     workspaceSaveTokens.current.clear();
     workspaceSaveQueues.current.clear();
+    pendingSavePaths.current.clear();
     workspaceSaveMtimes.current.clear();
     workspaceTabLifetimes.current.clear();
     previewCache.current.clear();
-    // The stored tabs belong to the pane, not the source: a session whose
-    // source resolves late or moves checkouts keeps its files, reloaded fresh.
-    const stored = readStoredOpenFiles(storageKeyRef.current);
-    setTabs(restoreTabs(stored));
-    setActiveTabPath(stored.activePath);
+    activeBufferedFilesStoreRef.current = nextBufferedFilesStoreRef.current;
+    activeBufferedFilesKeyRef.current = nextBufferedFilesKeyRef.current;
+    const buffered = activeBufferedFilesKeyRef.current
+      ? activeBufferedFilesStoreRef.current.get(activeBufferedFilesKeyRef.current)
+      : undefined;
+    // A known source gets its own open tabs and drafts back. A source first
+    // resolving for a session falls back to that pane's stored tab list, but
+    // never borrows dirty contents from the previous source.
+    const restored = buffered ?? {
+      ...readStoredOpenFiles(storageKeyRef.current),
+      dirtyBuffers: new Map<string, DirtyFileBuffer>()
+    };
+    setTabs(restoreTabs(restored, restored.dirtyBuffers));
+    setActiveTabPath(restored.activePath);
     setDirtyClosePath(null);
   }, []);
 
@@ -325,6 +464,7 @@ export function useFilePreview(args: {
     workspaceStatTokens.current.delete(filePath);
     workspaceSaveTokens.current.delete(filePath);
     workspaceSaveQueues.current.delete(filePath);
+    pendingSavePaths.current.delete(filePath);
     workspaceSaveMtimes.current.delete(filePath);
     workspaceTabLifetimes.current.delete(filePath);
   }, []);
@@ -485,9 +625,11 @@ export function useFilePreview(args: {
         .catch(() => "error" as const)
         .then(() => saveFilePathNow(filePath, generation, tabLifetime, contentToSave));
       workspaceSaveQueues.current.set(filePath, queued);
+      pendingSavePaths.current.add(filePath);
       void queued.finally(() => {
         if (workspaceSaveQueues.current.get(filePath) === queued) {
           workspaceSaveQueues.current.delete(filePath);
+          pendingSavePaths.current.delete(filePath);
         }
       });
       return queued;

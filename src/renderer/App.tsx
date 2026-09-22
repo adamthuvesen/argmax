@@ -727,7 +727,8 @@ export function App(): JSX.Element {
     [closeFocusedSurface, closeWorkspacePages, isSettingsOpen, openNewSessionPane, openWorkspaceChat]
   );
 
-  // ⌘P / ⌘F / ⌘⇧F are all the ⌘K overlay; only the pre-selected filter differs.
+  // ⌘A / ⌘P / ⌘F / ⌘⇧F are all the ⌘K overlay; only the pre-selected filter differs.
+  const openActionPalette = useCallback((): void => showCommandPalette("actions"), []);
   const openFilePalette = useCallback((): void => showCommandPalette("files"), []);
   const openMessagePalette = useCallback((): void => showCommandPalette("messages"), []);
   const openContentPalette = useCallback((): void => showCommandPalette("contents"), []);
@@ -1386,6 +1387,7 @@ export function App(): JSX.Element {
   useGlobalKeybindings({
     onMenuCommand: handleMenuCommand,
     onCloseFocusedPane: closeFocusedSurface,
+    onOpenActionPalette: openActionPalette,
     onOpenFilePalette: openFilePalette,
     onOpenSearch: openMessagePalette,
     onOpenContentSearch: openContentPalette,

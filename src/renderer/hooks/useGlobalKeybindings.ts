@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { commitChatCycle, stepChatCycle } from "../lib/chatCycle.js";
 import { requestCloseActiveReviewFileTab } from "../lib/reviewFilePanel.js";
 import { listVisibleSidebarWorkspaceIds, selectedSidebarWorkspaceId } from "../lib/sidebarOrder.js";
+import { isTypingTarget } from "../lib/typingTarget.js";
 import type { MenuCommand } from "../../shared/types.js";
 
 interface GlobalKeybindingArgs {
@@ -9,6 +10,8 @@ interface GlobalKeybindingArgs {
   onMenuCommand: (command: MenuCommand) => void;
   /** Cmd+P opens the command palette with its Files filter pre-selected. */
   onOpenFilePalette: () => void;
+  /** Cmd+A opens the command palette with its Actions filter pre-selected. */
+  onOpenActionPalette: () => void;
   /** Cmd+F opens the command palette with its Messages filter pre-selected. */
   onOpenSearch: () => void;
   /** Cmd+Shift+F opens the palette on Contents — file-content search via git grep. */
@@ -50,6 +53,7 @@ function parseDigitShortcut(event: KeyboardEvent): number | null {
  *   Cmd/Ctrl+,    → open-settings (menu command)
  *   Cmd/Ctrl+N    → new-session (menu command)
  *   Cmd/Ctrl+K    → open-command-palette (menu command), All filter
+ *   Cmd/Ctrl+A    → same palette, Actions filter (outside typing targets)
  *   Cmd/Ctrl+P    → same palette, Files filter pre-selected
  *   Cmd/Ctrl+/    → open-cheat-sheet (menu command)
  *   Cmd/Ctrl+F    → same palette, Messages filter pre-selected
@@ -67,6 +71,7 @@ const CHAT_CYCLE_CODES = new Set(["Backquote", "IntlBackslash"]);
 export function useGlobalKeybindings({
   onMenuCommand,
   onOpenFilePalette,
+  onOpenActionPalette,
   onOpenSearch,
   onOpenContentSearch,
   onToggleTerminal,
@@ -77,6 +82,16 @@ export function useGlobalKeybindings({
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (!(event.metaKey || event.ctrlKey)) return;
+      // Preserve the platform's Select All in text fields, CodeMirror,
+      // xterm's hidden textarea, and other editable controls. Native browser
+      // pages receive the chord in their own webview and never reach this
+      // renderer listener.
+      if (event.key.toLowerCase() === "a" && !event.shiftKey && !event.altKey) {
+        if (event.defaultPrevented || event.isComposing || event.repeat || isTypingTarget(event.target)) return;
+        event.preventDefault();
+        onOpenActionPalette();
+        return;
+      }
       // Cmd+W closes the focused pane — fires regardless of typing context so
       // the shortcut works while the user is in a composer textarea. Skip
       // during IME composition (some Linux IMEs send `w` while modifying)
@@ -175,6 +190,7 @@ export function useGlobalKeybindings({
   }, [
     onMenuCommand,
     onOpenFilePalette,
+    onOpenActionPalette,
     onOpenSearch,
     onOpenContentSearch,
     onToggleTerminal,

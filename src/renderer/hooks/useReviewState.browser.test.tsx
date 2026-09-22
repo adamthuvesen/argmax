@@ -2,6 +2,7 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getBrowserOwnerId,
+  LAUNCHER_BROWSER_SCOPE_ID,
   openInBrowserPanel,
   rememberBrowserUrl,
   requestAgentBrowserOpen,
@@ -144,7 +145,22 @@ describe("useReviewState — browser mode", () => {
     expect(snapshots[0]).toEqual({ isPanelOpen: true, mode: "browser" });
   });
 
-  it("hands the surface to the second panel that enters Browser mode", () => {
+  it("keeps both session browsers visible when another cell opens and closes its browser", () => {
+    const first = renderPanel(true, "session-a");
+    const second = renderPanel(false, "session-b");
+    act(() => first.result.current.openBrowser());
+    const firstRequest = first.result.current.browserRequest;
+    act(() => second.result.current.openBrowser());
+    expect(first.result.current.browserOwner).toBe(true);
+    expect(second.result.current.browserOwner).toBe(true);
+    expect(first.result.current.browserRequest).toBe(firstRequest);
+    act(() => second.result.current.closePanel());
+    expect(first.result.current.browserOwner).toBe(true);
+    second.unmount();
+    expect(first.result.current.browserOwner).toBe(true);
+  });
+
+  it("hands the surface to a second panel showing the same scope", () => {
     const first = renderPanel(true);
     const second = renderPanel(false);
 
@@ -177,18 +193,18 @@ describe("useReviewState — browser mode", () => {
     const panel = renderPanel(true);
 
     act(() => panel.result.current.openBrowser());
-    expect(getBrowserOwnerId()).not.toBeNull();
+    expect(getBrowserOwnerId(LAUNCHER_BROWSER_SCOPE_ID)).not.toBeNull();
 
     act(() => panel.result.current.setMode("changes"));
-    expect(getBrowserOwnerId()).toBeNull();
+    expect(getBrowserOwnerId(LAUNCHER_BROWSER_SCOPE_ID)).toBeNull();
 
     act(() => panel.result.current.openBrowser());
     act(() => panel.result.current.closePanel());
-    expect(getBrowserOwnerId()).toBeNull();
+    expect(getBrowserOwnerId(LAUNCHER_BROWSER_SCOPE_ID)).toBeNull();
 
     act(() => panel.result.current.openBrowser());
     panel.unmount();
-    expect(getBrowserOwnerId()).toBeNull();
+    expect(getBrowserOwnerId(LAUNCHER_BROWSER_SCOPE_ID)).toBeNull();
   });
 
   it("keeps the browser surface while Browser remains visible in an inactive split pane", () => {
@@ -203,7 +219,7 @@ describe("useReviewState — browser mode", () => {
     expect(panel.result.current.browserOwner).toBe(true);
 
     act(() => panel.result.current.closePane(0));
-    expect(getBrowserOwnerId()).toBeNull();
+    expect(getBrowserOwnerId(LAUNCHER_BROWSER_SCOPE_ID)).toBeNull();
   });
 
   it("re-navigates when the same URL is requested twice", () => {

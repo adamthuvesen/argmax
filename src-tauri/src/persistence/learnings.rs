@@ -234,8 +234,9 @@ pub fn search_events_raw(
                events_fts.rank AS rank
         FROM events_fts
         JOIN events ON events.rowid = events_fts.rowid
-        WHERE events_fts MATCH ?
-        ORDER BY events_fts.rank
+        WHERE events_fts MATCH ? AND events.type <> 'message.delta'
+        ORDER BY CASE WHEN events.type IN ('user.message', 'message.completed') THEN 0 ELSE 1 END,
+                 events_fts.rank, events.created_at DESC, events.rowid DESC
         LIMIT ?
         "#,
         )
@@ -300,7 +301,7 @@ where
 
 fn build_fts_prefix_query(query: &str) -> String {
     let tokens = query
-        .split(|character: char| !character.is_ascii_alphanumeric() && character != '_')
+        .split(|character: char| !character.is_alphanumeric() && character != '_')
         .filter(|token| !token.is_empty())
         .collect::<Vec<_>>();
     if tokens.is_empty() {

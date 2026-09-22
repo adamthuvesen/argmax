@@ -20,8 +20,9 @@ use tauri::{Url, Webview};
 use crate::error::{ArgmaxError, ArgmaxResult};
 
 /// What every tab says by default.
+/// Slack rejects Safari 18 at the HTTP gate, before loading the sign-in page.
 pub const SAFARI: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
-    AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Safari/605.1.15";
+    AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15";
 
 /// What a Google Docs editor tab says, for the full-resolution grid.
 pub const DOCS_EDITOR: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \

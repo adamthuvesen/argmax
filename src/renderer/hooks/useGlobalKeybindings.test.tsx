@@ -29,6 +29,7 @@ describe("useGlobalKeybindings", () => {
     renderHook(() =>
       useGlobalKeybindings({
         onMenuCommand,
+        onOpenActionPalette: vi.fn(),
         onOpenFilePalette: vi.fn(),
         onOpenSearch: vi.fn(),
         onOpenContentSearch: vi.fn(),
@@ -60,6 +61,7 @@ describe("useGlobalKeybindings", () => {
     renderHook(() =>
       useGlobalKeybindings({
         onMenuCommand: vi.fn(),
+        onOpenActionPalette: vi.fn(),
         onOpenFilePalette: vi.fn(),
         onOpenSearch: vi.fn(),
         onOpenContentSearch: vi.fn(),
@@ -91,6 +93,7 @@ describe("useGlobalKeybindings", () => {
     renderHook(() =>
       useGlobalKeybindings({
         onMenuCommand: vi.fn(),
+        onOpenActionPalette: vi.fn(),
         onOpenFilePalette: vi.fn(),
         onOpenSearch: vi.fn(),
         onOpenContentSearch: vi.fn(),
@@ -118,6 +121,7 @@ describe("useGlobalKeybindings", () => {
     renderHook(() =>
       useGlobalKeybindings({
         onMenuCommand: vi.fn(),
+        onOpenActionPalette: vi.fn(),
         onOpenFilePalette: vi.fn(),
         onOpenSearch: vi.fn(),
         onOpenContentSearch: vi.fn(),
@@ -142,6 +146,7 @@ describe("useGlobalKeybindings", () => {
     renderHook(() =>
       useGlobalKeybindings({
         onMenuCommand: vi.fn(),
+        onOpenActionPalette: vi.fn(),
         onOpenFilePalette: vi.fn(),
         onOpenSearch: vi.fn(),
         onOpenContentSearch: vi.fn(),
@@ -165,6 +170,7 @@ describe("useGlobalKeybindings", () => {
     renderHook(() =>
       useGlobalKeybindings({
         onMenuCommand,
+        onOpenActionPalette: vi.fn(),
         onOpenFilePalette: vi.fn(),
         onOpenSearch,
         onOpenContentSearch,
@@ -185,5 +191,100 @@ describe("useGlobalKeybindings", () => {
 
     fireEvent.keyDown(input, { key: "F", metaKey: true, shiftKey: true });
     expect(onOpenContentSearch).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens Actions on Cmd+A outside typing targets", () => {
+    const onOpenActionPalette = vi.fn();
+    renderHook(() =>
+      useGlobalKeybindings({
+        onMenuCommand: vi.fn(),
+        onOpenActionPalette,
+        onOpenFilePalette: vi.fn(),
+        onOpenSearch: vi.fn(),
+        onOpenContentSearch: vi.fn(),
+        onSelectWorkspace: vi.fn(),
+        onCloseSettings: vi.fn()
+      })
+    );
+
+    const button = document.createElement("button");
+    document.body.appendChild(button);
+    button.focus();
+
+    const event = new KeyboardEvent("keydown", {
+      key: "a",
+      metaKey: true,
+      bubbles: true,
+      cancelable: true
+    });
+    button.dispatchEvent(event);
+
+    expect(onOpenActionPalette).toHaveBeenCalledTimes(1);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it.each([
+    ["input", () => document.createElement("input")],
+    ["textarea", () => document.createElement("textarea")],
+    ["contenteditable editor", () => {
+      const editor = document.createElement("div");
+      editor.setAttribute("contenteditable", "true");
+      return editor;
+    }],
+    ["role textbox editor", () => {
+      const editor = document.createElement("div");
+      editor.setAttribute("role", "textbox");
+      editor.tabIndex = 0;
+      return editor;
+    }]
+  ])("keeps Select All in a focused %s", (_label, makeTarget) => {
+    const onOpenActionPalette = vi.fn();
+    renderHook(() =>
+      useGlobalKeybindings({
+        onMenuCommand: vi.fn(),
+        onOpenActionPalette,
+        onOpenFilePalette: vi.fn(),
+        onOpenSearch: vi.fn(),
+        onOpenContentSearch: vi.fn(),
+        onSelectWorkspace: vi.fn(),
+        onCloseSettings: vi.fn()
+      })
+    );
+
+    const target = makeTarget();
+    document.body.appendChild(target);
+    target.focus();
+    const event = new KeyboardEvent("keydown", {
+      key: "a",
+      metaKey: true,
+      bubbles: true,
+      cancelable: true
+    });
+    target.dispatchEvent(event);
+
+    expect(onOpenActionPalette).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("ignores Cmd+A during composition, autorepeat, or with another modifier", () => {
+    const onOpenActionPalette = vi.fn();
+    renderHook(() =>
+      useGlobalKeybindings({
+        onMenuCommand: vi.fn(),
+        onOpenActionPalette,
+        onOpenFilePalette: vi.fn(),
+        onOpenSearch: vi.fn(),
+        onOpenContentSearch: vi.fn(),
+        onSelectWorkspace: vi.fn(),
+        onCloseSettings: vi.fn()
+      })
+    );
+
+    fireEvent.keyDown(document, { key: "a", metaKey: true, isComposing: true });
+    fireEvent.keyDown(document, { key: "a", metaKey: true, repeat: true });
+    fireEvent.keyDown(document, { key: "a", metaKey: true, shiftKey: true });
+    fireEvent.keyDown(document, { key: "a", metaKey: true, altKey: true });
+
+    expect(onOpenActionPalette).not.toHaveBeenCalled();
   });
 });

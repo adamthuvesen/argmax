@@ -616,6 +616,134 @@ fn event_approval_check_and_usage_repositories_round_trip() {
 }
 
 #[test]
+fn event_search_excludes_stream_deltas_and_breaks_relevance_ties_by_recency() {
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+    persist_session(&connection, &session_input()).expect("persist session");
+
+    for (id, event_type, message, created_at) in [
+        (
+            "stream-delta",
+            "message.delta",
+            "stream duplicate sentinel",
+            "2026-05-24T10:00:00.000Z",
+        ),
+        (
+            "stream-completed",
+            "message.completed",
+            "stream duplicate sentinel",
+            "2026-05-24T10:00:01.000Z",
+        ),
+        (
+            "older",
+            "message.completed",
+            "recency tie sentinel",
+            "2026-05-24T10:01:00.000Z",
+        ),
+        (
+            "newer",
+            "message.completed",
+            "recency tie sentinel",
+            "2026-05-24T10:02:00.000Z",
+        ),
+        (
+            "same-time-first",
+            "message.completed",
+            "rowid tie sentinel",
+            "2026-05-24T10:03:00.000Z",
+        ),
+        (
+            "same-time-second",
+            "message.completed",
+            "rowid tie sentinel",
+            "2026-05-24T10:03:00.000Z",
+        ),
+        (
+            "activity-label",
+            "command.completed",
+            "rankedsignal",
+            "2026-05-24T10:05:00.000Z",
+        ),
+        (
+            "user-question",
+            "user.message",
+            "Please explain the rankedsignal results in this project",
+            "2026-05-24T10:04:00.000Z",
+        ),
+    ] {
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: id.to_owned(),
+                session_id: "s1".to_owned(),
+                r#type: event_type.to_owned(),
+                message: message.to_owned(),
+                payload: serde_json::json!({}),
+                created_at: Some(created_at.to_owned()),
+            },
+        )
+        .expect("persist searchable event");
+    }
+
+    let stream = search_events(&connection, "stream duplicate sentinel", 10)
+        .expect("search streaming answer");
+    assert_eq!(
+        stream
+            .iter()
+            .map(|result| result.event_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["stream-completed"]
+    );
+
+    let recency =
+        search_events(&connection, "recency tie sentinel", 10).expect("search equal-rank events");
+    assert_eq!(recency[0].event_id, "newer");
+    assert_eq!(recency[1].event_id, "older");
+
+    let rowid =
+        search_events(&connection, "rowid tie sentinel", 10).expect("search equal-time events");
+    assert_eq!(rowid[0].event_id, "same-time-second");
+    assert_eq!(rowid[1].event_id, "same-time-first");
+
+    let activity =
+        search_events(&connection, "rankedsignal", 10).expect("search messages and activity");
+    assert_eq!(activity[0].event_id, "user-question");
+    assert_eq!(activity[1].event_id, "activity-label");
+}
+
+#[test]
+fn event_search_accepts_unicode_words() {
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+    persist_session(&connection, &session_input()).expect("persist session");
+    persist_timeline_event(
+        &connection,
+        &PersistTimelineEventInput {
+            id: "unicode".to_owned(),
+            session_id: "s1".to_owned(),
+            r#type: "message.completed".to_owned(),
+            message: "Meet Søren in München before 東京 station".to_owned(),
+            payload: serde_json::json!({}),
+            created_at: Some("2026-05-24T10:00:00.000Z".to_owned()),
+        },
+    )
+    .expect("persist Unicode event");
+
+    for query in ["Søren", "München", "東京"] {
+        assert_eq!(
+            search_events(&connection, query, 10)
+                .unwrap_or_else(|error| panic!("search {query:?}: {error}"))[0]
+                .event_id,
+            "unicode"
+        );
+    }
+}
+
+#[test]
 fn list_session_agent_events_returns_parent_child_and_thread_rows() {
     let database = Database::open_in_memory().expect("open db");
     let connection = database.connection();
@@ -1130,7 +1258,7 @@ fn gh_and_learning_repositories_round_trip() {
         &PersistTimelineEventInput {
             id: "e-search".to_owned(),
             session_id: "s1".to_owned(),
-            r#type: "message.delta".to_owned(),
+            r#type: "message.completed".to_owned(),
             message: "FTS search can find this peculiar phrase".to_owned(),
             payload: serde_json::json!({}),
             created_at: Some("2026-05-24T10:02:00.000Z".to_owned()),

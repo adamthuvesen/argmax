@@ -1,6 +1,7 @@
 import { ArrowLeft, Search } from "lucide-react";
 import { useMemo, useState, type JSX } from "react";
 import { SETTINGS_GROUPS, type SettingsGroupId } from "./settingsMeta.js";
+import { searchPaletteItems } from "../../lib/paletteSearch.js";
 
 type SectionHit = { group: SettingsGroupId; groupLabel: string; sectionId: string; sectionLabel: string };
 
@@ -34,10 +35,14 @@ export function SettingsRail({
   const trimmed = query.trim().toLowerCase();
   const hits = useMemo(() => {
     if (trimmed === "") return null;
-    return ALL_SECTIONS.filter(
-      (hit) =>
-        hit.sectionLabel.toLowerCase().includes(trimmed) || hit.groupLabel.toLowerCase().includes(trimmed)
-    );
+    const commands = ALL_SECTIONS.map((hit, index) => ({
+      id: String(index),
+      label: hit.sectionLabel,
+      subtitle: hit.groupLabel,
+      group: "Settings" as const,
+      run: () => undefined
+    }));
+    return searchPaletteItems(commands, trimmed).map(({ item }) => ALL_SECTIONS[Number(item.id)]);
   }, [trimmed]);
 
   return (

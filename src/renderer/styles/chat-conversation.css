@@ -172,6 +172,14 @@
   height: 50%;
 }
 
+/* Native browser pages sit above renderer mouse events. Hide them across the
+   window while a sidebar drag can cross their bounds. */
+.session-panel-resize-shield {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
 .session-grid {
   --session-main-column-min-width: 320px;
   --session-inline-padding-min: 28px;

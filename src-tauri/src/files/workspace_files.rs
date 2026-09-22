@@ -404,7 +404,7 @@ async fn grep_content_at_path(
         });
     }
     // git grep flags: -n line numbers, --null NUL-separate fields,
-    // --no-color strip ANSI, -I skip binaries, -F fixed-string,
+    // --no-color strip ANSI, -I skip binaries, -F fixed-string, -i ignore case,
     // --untracked include untracked, -e separator so a query starting
     // with '-' isn't parsed as a flag.
     let result = run_git_text_with_allowed_exit_codes(
@@ -416,6 +416,7 @@ async fn grep_content_at_path(
             "--no-color",
             "-I",
             "-F",
+            "-i",
             "--untracked",
             "-e",
             trimmed,
@@ -794,7 +795,7 @@ mod tests {
         let workspace_id = fixture_workspace(&database, repo.path());
         let svc = WorkspaceFilesService::new(database);
         let hit = svc
-            .grep_content(WorkspaceTargetKind::Workspace, &workspace_id, "hello")
+            .grep_content(WorkspaceTargetKind::Workspace, &workspace_id, "HELLO")
             .await
             .unwrap();
         assert!(hit.files.iter().any(|file| file.path == "README.md"));

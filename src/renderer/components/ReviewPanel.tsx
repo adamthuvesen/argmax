@@ -818,6 +818,7 @@ function ReviewPanelPane({
           review.browserOwner ? (
             <BrowserPanel
               scopeId={review.browserScopeId}
+              isFocused={isFocused}
               url={review.browserRequest?.url ?? ""}
               requestSeq={review.browserRequest?.seq}
               requestTabId={review.browserRequest?.tabId}
@@ -827,9 +828,7 @@ function ReviewPanelPane({
               onClose={review.closePanel}
             />
           ) : (
-            // One native surface, one browser: this panel kept Browser mode
-            // but the page went elsewhere — another pane took it over, or the
-            // pane that held it closed its panel.
+            // Another panel showing this same scope holds its native webview.
             <div className="review-empty">
               <span className="review-empty-mark" aria-hidden="true">↗</span>
               <span>The browser moved to another pane.</span>

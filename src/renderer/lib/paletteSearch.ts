@@ -39,6 +39,21 @@ export interface PaletteHit {
   item: PaletteItem;
   labelRanges: number[] | null;
   subtitleRanges: number[] | null;
+  matchRank?: number;
+}
+
+/** Lower is better. Fuzzy order breaks ties, preserving recency for equal hits. */
+export function searchMatchRank(text: string, rawQuery: string): number {
+  const value = text.toLocaleLowerCase().trim();
+  const query = rawQuery.toLocaleLowerCase().trim();
+  if (value === query) return 0;
+  if (value.startsWith(query)) return 1;
+  const words = value.split(/[\s/\\._-]+/u);
+  if (words.some((word) => word === query)) return 2;
+  const terms = query.split(/\s+/u);
+  if (terms.every((term) => words.some((word) => word.startsWith(term)))) return 3;
+  if (value.includes(query)) return 4;
+  return 5;
 }
 
 // Single-error typo tolerance (one substitution/transposition/insertion/deletion
@@ -79,21 +94,18 @@ export function searchFilePaths(paths: string[], rawQuery: string, limit = 50): 
   }
   const [idxs, info, order] = filePathFuzzy.search(paths, query, 1, 1000);
   if (!idxs) return [];
-  if (info && order && order.length > 0) {
-    const out: string[] = [];
-    for (let i = 0; i < order.length && out.length < limit; i++) {
-      out.push(paths[info.idx[order[i]]]);
-    }
-    return out;
-  }
-  // Fallback: info-pass produced no ranked order (uFuzzy can return this even
-  // when `idxs` has pre-filter hits — e.g. a prefix that doesn't satisfy the
-  // right-boundary rule). Use the pre-filter idxs in haystack order.
-  const out: string[] = [];
-  for (let i = 0; i < idxs.length && out.length < limit; i++) {
-    out.push(paths[idxs[i]]);
-  }
-  return out;
+  const ranked = info && order?.length ? order.map((index) => info.idx[index]) : idxs;
+  const pathQuery = /[/\\]/u.test(query);
+  return ranked.map((index) => {
+    const path = paths[index];
+    const name = path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1);
+    const nameRank = searchMatchRank(name, query);
+    return {
+      path,
+      rank: pathQuery ? searchMatchRank(path, query)
+        : nameRank < 5 ? nameRank : 6 + searchMatchRank(path, query)
+    };
+  }).sort((left, right) => left.rank - right.rank).slice(0, limit).map(({ path }) => path);
 }
 
 export function searchPaletteItems(items: PaletteItem[], rawQuery: string): PaletteHit[] {
@@ -113,7 +125,25 @@ export function searchPaletteItems(items: PaletteItem[], rawQuery: string): Pale
       ? rankBy(remaining, remaining.map(secondaryText), query, "subtitle")
       : [];
 
-  return [...labelHits, ...subtitleHits];
+  for (const hit of subtitleHits) matched.add(hit.item.id);
+  const combinedItems = items.filter((item) => secondaryText(item) && !matched.has(item.id));
+  const combinedHits = rankBy(combinedItems,
+    combinedItems.map((item) => `${item.label} ${secondaryText(item)}`), query, "label");
+  for (const hit of combinedHits) {
+    const offset = hit.item.label.length + 1;
+    const ranges = hit.labelRanges ?? [];
+    hit.labelRanges = [];
+    hit.subtitleRanges = [];
+    for (let index = 0; index < ranges.length; index += 2) {
+      const start = ranges[index];
+      const end = ranges[index + 1];
+      if (start < offset - 1) hit.labelRanges.push(start, Math.min(end, offset - 1));
+      if (end > offset) hit.subtitleRanges.push(Math.max(0, start - offset), end - offset);
+    }
+    hit.matchRank = 6 + (hit.matchRank ?? 5);
+  }
+  return [...labelHits, ...subtitleHits, ...combinedHits]
+    .sort((left, right) => (left.matchRank ?? 5) - (right.matchRank ?? 5));
 }
 
 /** The row's one piece of secondary text, wherever it renders. */
@@ -132,13 +162,20 @@ function rankBy(
   const [idxs, info, order] = fuzzy.search(haystack, needle, 1, 1000);
   if (!idxs) return [];
   if (!info || !order) {
-    // Pre-filter matched but the result set exceeded infoThresh; return idxs
-    // in haystack order without highlight ranges.
-    return idxs.map((idx) => ({
-      item: items[idx],
-      labelRanges: null,
-      subtitleRanges: null
-    }));
+    // Large sets and out-of-order terms can skip uFuzzy's detail pass.
+    // Highlight literal terms without guessing the position of a typo match.
+    const terms = needle.split(/\s+/u).map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const literalTerms = new RegExp(terms.join("|"), "giu");
+    return idxs.map((idx) => {
+      const ranges = Array.from(haystack[idx].matchAll(literalTerms))
+        .flatMap((match) => [match.index, match.index + match[0].length]);
+      return {
+        item: items[idx],
+        labelRanges: field === "label" ? ranges : null,
+        subtitleRanges: field === "subtitle" ? ranges : null,
+        matchRank: searchMatchRank(haystack[idx], needle) + (field === "subtitle" ? 6 : 0)
+      };
+    }).sort((left, right) => left.matchRank - right.matchRank);
   }
   const hits: PaletteHit[] = [];
   for (let i = 0; i < order.length; i++) {
@@ -147,11 +184,12 @@ function rankBy(
     const ranges = info.ranges[infoIdx] ?? EMPTY_RANGES;
     hits.push({
       item: items[itemIdx],
+      matchRank: searchMatchRank(haystack[itemIdx], needle) + (field === "subtitle" ? 6 : 0),
       labelRanges: field === "label" ? ranges : null,
       subtitleRanges: field === "subtitle" ? ranges : null
     });
   }
-  return hits;
+  return hits.sort((left, right) => (left.matchRank ?? 5) - (right.matchRank ?? 5));
 }
 
 type HighlightSegment = { text: string; matched: boolean };

@@ -17,6 +17,7 @@ import {
   highlightSegments,
   searchFilePaths,
   searchPaletteItems,
+  searchMatchRank,
   type PaletteGroup,
   type PaletteHit,
   type PaletteItem
@@ -208,7 +209,7 @@ export function CommandPalette({
 }: CommandPaletteProps): JSX.Element | null {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<PaletteScope>(initialScope);
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
   const [messageHits, setMessageHits] = useState<MessageHit[]>([]);
   const [messagesRunning, setMessagesRunning] = useState(false);
   const [messageError, setMessageError] = useState<string | null>(null);
@@ -249,7 +250,7 @@ export function CommandPalette({
         filesTokenRef.current += 1;
         contentTokenRef.current += 1;
         setQuery("");
-        setSelectedIndex(0);
+        setSelectedRowKey(null);
         setMessageHits([]);
         setMessagesRunning(false);
         setFilePaths([]);
@@ -293,6 +294,8 @@ export function CommandPalette({
       return;
     }
     const token = ++messageTokenRef.current;
+    setMessageHits([]);
+    setMessageError(null);
     setMessagesRunning(true);
     const handle = window.setTimeout(() => {
       const run = searchMessagesRef.current;
@@ -339,6 +342,8 @@ export function CommandPalette({
       return;
     }
     const token = ++contentTokenRef.current;
+    setContentResult(EMPTY_CONTENT_RESULT);
+    setContentError(null);
     setContentsRunning(true);
     const handle = window.setTimeout(() => {
       void searchContents(trimmed)
@@ -384,6 +389,8 @@ export function CommandPalette({
     }
     const token = ++filesTokenRef.current;
     filesCacheKeyRef.current = cacheKey;
+    setFilePaths([]);
+    setFilesError(null);
     setFilesRunning(true);
     void loadFiles(fileSource)
       .then((paths) => {
@@ -445,8 +452,20 @@ export function CommandPalette({
       }
     }
 
+    const groups = [...visibleGroups];
+    if (query.trim()) {
+      const bestRank = (group: PaletteGroup): number => {
+        const hits = group === "Files" ? fileHits : byGroup.get(group) ?? [];
+        return Math.min(...hits.map((hit) => hit.matchRank ??
+          Math.min(searchMatchRank(hit.item.label, query),
+            6 + searchMatchRank(hit.item.subtitle ?? hit.item.meta ?? "", query))));
+      };
+      // Keep groups legible, but let the strongest match lead instead of
+      // making every chat match outrank an exact file or action name.
+      groups.sort((left, right) => bestRank(left) - bestRank(right));
+    }
     const rows: PaletteRow[] = [];
-    for (const group of visibleGroups) {
+    for (const group of groups) {
       if (group === "Files") {
         for (const hit of fileHits) {
           rows.push({ kind: "hit", hit, group });
@@ -476,6 +495,8 @@ export function CommandPalette({
     }
     return rows;
   }, [contentResult.files, fileHits, localHits, messageHits, query, visibleGroups]);
+
+  const selectedIndex = Math.max(0, flatRows.findIndex((row) => rowKey(row) === selectedRowKey));
 
   // Every row commits the same way, whichever list it came from. Content rows
   // open their file: the file header and its match rows both land on the path,
@@ -510,7 +531,7 @@ export function CommandPalette({
 
   const selectScope = useCallback((next: PaletteScope): void => {
     setScope(next);
-    setSelectedIndex(0);
+    setSelectedRowKey(null);
     inputRef.current?.focus();
   }, []);
 
@@ -524,10 +545,10 @@ export function CommandPalette({
   );
 
   useEffect(() => {
-    if (selectedIndex >= flatRows.length) {
-      setSelectedIndex(0);
+    if (selectedRowKey && !flatRows.some((row) => rowKey(row) === selectedRowKey)) {
+      setSelectedRowKey(null);
     }
-  }, [flatRows, selectedIndex]);
+  }, [flatRows, selectedRowKey]);
 
   // Keep the active row visible when ArrowUp/Down moves selection past the
   // viewport. `block: "nearest"` avoids jumping when the row is already in
@@ -540,11 +561,12 @@ export function CommandPalette({
     // Guard scrollIntoView for environments without layout (jsdom) — production
     // browsers always have it, but the App test harness doesn't stub it.
     active?.scrollIntoView?.({ block: "nearest" });
-  }, [selectedIndex, open]);
+  }, [selectedIndex, selectedRowKey, open]);
 
   if (!open && motionState !== "closing") return null;
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>): void => {
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
     // Tab changes the filter instead of moving focus — the input is the only
     // thing that should ever hold focus while the overlay is open. The focus
     // trap in useDismissOnOutsideOrEscape catches Tab from anywhere else.
@@ -555,12 +577,14 @@ export function CommandPalette({
     }
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setSelectedIndex((index) => Math.min(index + 1, Math.max(flatRows.length - 1, 0)));
+      const row = flatRows[Math.min(selectedIndex + 1, flatRows.length - 1)];
+      setSelectedRowKey(row ? rowKey(row) : null);
       return;
     }
     if (event.key === "ArrowUp") {
       event.preventDefault();
-      setSelectedIndex((index) => Math.max(index - 1, 0));
+      const row = flatRows[Math.max(selectedIndex - 1, 0)];
+      setSelectedRowKey(row ? rowKey(row) : null);
       return;
     }
     if (event.key === "Enter") {
@@ -608,6 +632,8 @@ export function CommandPalette({
             type="search"
             placeholder={SCOPE_PLACEHOLDER[scope]}
             aria-label="Command palette query"
+            aria-controls="command-palette-results"
+            aria-activedescendant={flatRows.length > 0 ? `command-palette-option-${selectedIndex}` : undefined}
             spellCheck={false}
             autoCorrect="off"
             autoCapitalize="off"
@@ -615,7 +641,7 @@ export function CommandPalette({
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);
-              setSelectedIndex(0);
+              setSelectedRowKey(null);
             }}
             onKeyDown={handleKeyDown}
           />
@@ -706,6 +732,10 @@ export function CommandPalette({
                 ) : null}
                 <li
                   role="option"
+                  id={`command-palette-option-${index}`}
+                  aria-label={row.kind === "hit"
+                    ? [row.hit.item.label, row.hit.item.subtitle, row.hit.item.meta].filter(Boolean).join(" ")
+                    : undefined}
                   aria-selected={isSelected}
                   className={`command-palette-result${isSelected ? " selected" : ""}`}
                   data-group={row.group}

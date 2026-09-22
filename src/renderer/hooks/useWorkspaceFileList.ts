@@ -13,7 +13,6 @@ interface UseWorkspaceFileListResult {
    *  changed-files signature, which misses files an agent never touched
    *  through git — a manual `mkdir`, an untracked scratch file. */
   refresh: () => void;
-  resetForSourceChange: () => void;
 }
 
 export function useWorkspaceFileList(args: {
@@ -41,15 +40,18 @@ export function useWorkspaceFileList(args: {
     setRefreshCount((count) => count + 1);
   }, []);
 
-  const resetForSourceChange = useCallback((): void => {
+  useEffect(() => {
+    listContextRef.current = null;
     setEntries([]);
     setListState("idle");
     setListError(null);
-  }, []);
+  }, [sourceId, sourceKind]);
 
   useEffect(() => {
-    if (mode !== "files" || !isPanelOpen) return;
     const token = ++workspaceListToken.current;
+    // Hidden views still change source. Invalidate the previous request before
+    // deciding whether this view needs a replacement load.
+    if (mode !== "files" || !isPanelOpen) return;
     if (!sourceId || !sourceKind || !dispatch || !window.argmax) {
       listContextRef.current = null;
       setEntries([]);
@@ -80,13 +82,13 @@ export function useWorkspaceFileList(args: {
         setListState("error");
         setListError(errorMessage(error) || "Could not load files.");
       });
+    return () => { workspaceListToken.current += 1; };
   }, [mode, isPanelOpen, sourceId, sourceKind, changedFilesKey, dispatch, refreshCount]);
 
   return {
     entries,
     listState,
     listError,
-    refresh,
-    resetForSourceChange
+    refresh
   };
 }

@@ -10,6 +10,21 @@ The chat surface renders assistant bubbles, tools, and interactive cards: **Ques
 - **Composer:** [SessionComposer.tsx](../src/renderer/components/SessionComposer.tsx) handles prompt inputs, file attachments, the model chip, follow-up queues, send/stop, and `/clear`. The launcher composer in [LaunchSurface.tsx](../src/renderer/components/LaunchSurface.tsx) cycles Auto / Chat with Tab; Auto is the resting mode and shows no chip, so the chip appears only on Chat (the command palette lists both). Chat launches a scratch workspace with no repository attached, so the project picker hides and no longer offers a Chat row. The project chip is the source of truth while composing: Full-view new chat hides the grid without dropping it, and a dashboard delta must not retarget the picker back to that hidden session's repo. The last project the user picked is persisted ([launchProjectPreference.ts](../src/renderer/lib/launchProjectPreference.ts)) and survives leaving new chat to open a session: the next new chat shows that project, not the session they just viewed. Both the project picker and the model picker list recently chosen rows first, except mid-turn: the provider is locked then, so the model chip lists only that provider's models. Stopping a just-launched chat within 10 seconds restores this composer with the prompt and target kept, and archives the workspace so the cancelled chat does not stay in the sidebar ([earlyStop.ts](../src/renderer/lib/earlyStop.ts)). Under width the model and its effort outrank the workspace: the toolbar's spacer collapses first, then the branch label ellipsizes, and below the 600px container breakpoint (the composer's own width) the branch and the changed-file count fold together behind a `…` anchored to `.composer-chips-context-group` — the count is the way into the Changes panel, so it folds rather than disappears, and the trigger carries a dot while the tree is dirty. The panel opens upward, unlike the launcher's, because this composer is docked to the bottom of the pane.
 - **Actions Menu:** [SessionActionsMenu.tsx](../src/renderer/components/SessionActionsMenu.tsx) handles workspace actions, PR refreshes, git shortcuts, and panel toggles.
 
+The launch composer defaults to **Local**. Its Local / Cloud chip launches the
+hosted agent for the selected Claude, Codex, or Cursor provider while preserving
+the local model choice. Cloud mode names that hosted provider and hides local-only
+model, effort, and worktree controls. Sending opens a compact confirmation with
+the prompt, pushed source, and cloud environment. The prompt is read-only, so it
+is written once in the composer. It starts no local agent. Cancelling or a launch
+error preserves the draft. Cloud tasks currently accept text only, and local
+goals must be removed or sent with Local instead. The result links directly to
+the hosted task without claiming it was saved to a local chat. See
+[providers.md](providers.md#cloud-tasks).
+
+An active chat can use `/cloud <prompt>` for the same flow. Argmax confirms the
+current prompt once, lets the user inspect the bounded chat context included in
+the handoff, and clears the draft only after the hosted task launches.
+
 Launcher errors render in a dismissible row below the controls and preserve serialized backend messages. A failed branch switch keeps the current branch and draft, and returns focus to the prompt if the launcher is still active.
 
 Composer autofocus belongs to the active pane. Selecting a session or new-chat
@@ -358,7 +373,7 @@ Tool activity renders as text, not chrome. One grammar covers every row and ever
 | Part | Component | Styling |
 |---|---|---|
 | Verb (`Edited`, `Read`) | `splitLeadingVerb` in [toolCalls.ts](../src/renderer/lib/toolCalls.ts) | `--tool-row-ink`, UI font |
-| Target (file name, headline remainder) | `.tool-call-row-target`, `.tool-call-group-eyebrow-detail` | `--tool-row-ink`, UI font; `--font-code` only for `data-tool-type="bash"` |
+| Target (file name, command, headline remainder) | `.tool-call-row-target`, `.tool-call-group-eyebrow-detail` | `--tool-row-ink`, same font as the summary verb, including shell commands. Expanded code, terminal output, and diffs retain monospace. |
 | Line stat | [ActivityStat.tsx](../src/renderer/components/ActivityStat.tsx) | `--diff-add-gutter-fg` / `--diff-del-gutter-fg`, tabular |
 | Chevron | `.tool-call-row-chevron` | Only on rows that expand to something. Hidden until hover on rows; shown at rest on group headlines, which are sometimes a turn's only control — except at Minimal (`data-chevron="hover"`), where the headline reports work the reader chose to hide and the glyph waits for a hover, a focus, or an open group. `--tool-row-ink` |
 
@@ -482,6 +497,8 @@ Model reasoning traces (`content: "thinking"` in the canonical timeline event fr
 - **Codex summary boundaries:** the app-server translator separates streamed reasoning parts and does not replay a completed item already streamed. Each live summary is a `**Header**` fragment; joining those without a break collapses the delimiters into `****` and the Thought block reads as one run-on line. `appendThinking` opens a paragraph at that seam (and splits a fragment that already arrived glued), matching the iPhone projection. Historical items whose summary parts were concatenated without separators are corrected during desktop replay when the completed summary matches that saved suffix, ignoring the paragraph breaks already inserted.
 
 ## Context Compaction & Provider Handoff
+
+Compaction creates a transcript boundary, not a completed provider turn. The preceding turn keeps its active display through the quiet gap, including after `session.compacted`, until resumed output takes over or the session actually ends. User prompts and provider handoffs remain turn boundaries. A pending approval or blocking question similarly keeps the turn unfinished: its chip says **Waiting**, with no working ticker or completed-turn collapse.
 
 - **Context compaction:** Provider compaction events (`session.compacting` / `session.compacted`) are collapsed into a single `compaction` render item by [foldConversation.ts](../src/renderer/lib/foldConversation.ts) and rendered by [CompactionNotice.tsx](../src/renderer/components/CompactionNotice.tsx) (`Compacted context · 471k → 10.7k`). Claude repeats the opening row — `system/status status:"compacting"` is a heartbeat every 30s for as long as the run takes — so the collapse folds consecutive running markers too, not just the start/end pair, and the seam keeps the first row's id. Codex brackets the same seam with `item.started` / `item.completed` on a `context_compaction` item, mapped in [normalizer/codex.rs](../src-tauri/src/providers/normalizer/codex.rs); that item carries no token counts, so its notice reads `Compacting context` and then `Compacted context` with no sizes. Synthetic summary prompts injected by the provider are dropped. A compaction is total provider silence, so `isCompacting` only trusts an opening row that is still the newest event — a marker stranded by a Stop mid-compaction never gets its closing row, and trusting it forever suppressed the progress cue for the rest of the chat's life.
 - **Provider handoff:** Changing providers on an idle session creates a `session.provider-changed` marker rendered by [ProviderSwitchNotice.tsx](../src/renderer/components/ProviderSwitchNotice.tsx) (`Cursor → Codex · GPT-5.6 Sol`). Follow-ups restart fresh with the capped transcript.

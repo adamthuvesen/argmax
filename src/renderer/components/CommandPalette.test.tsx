@@ -35,6 +35,17 @@ describe("CommandPalette", () => {
     expect(screen.getByRole("searchbox", { name: "Command palette query" })).toHaveFocus();
   });
 
+  it("puts an exact action before weaker chat matches in All", () => {
+    render(<CommandPalette open commands={[
+      { id: "chat", label: "Settings redesign", group: "Sessions", run: vi.fn() },
+      { id: "action", label: "Settings", group: "Actions", run: vi.fn() }
+    ]} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByRole("searchbox", { name: "Command palette query" }), {
+      target: { value: "Settings" }
+    });
+    expect(screen.getAllByRole("option")[0]).toHaveTextContent(/^Settings$/);
+  });
+
   it("ArrowDown moves selection and keeps the active row in view", () => {
     render(<CommandPalette open={true} commands={COMMANDS} onClose={vi.fn()} />);
     const input = screen.getByRole("searchbox", { name: "Command palette query" });
@@ -48,6 +59,24 @@ describe("CommandPalette", () => {
     // currently-selected DOM element was the scroll target.
     expect(screen.getByRole("option", { selected: true })).toHaveTextContent("Command 1");
     expect(scrollSpy).toHaveBeenCalled();
+  });
+
+  it("keeps the chosen action selected when files arrive ahead of it", async () => {
+    let finishFiles!: (paths: string[]) => void;
+    const run = vi.fn();
+    render(<CommandPalette open commands={[
+      { id: "first", label: "Open settings", group: "Actions", run: vi.fn() },
+      { id: "second", label: "Open usage", group: "Actions", run }
+    ]} onClose={vi.fn()} fileSource={{ kind: "workspace", id: "a" }}
+      onFilePick={vi.fn()} loadFiles={() => new Promise((resolve) => { finishFiles = resolve; })} />);
+    const input = screen.getByRole("searchbox", { name: "Command palette query" });
+    fireEvent.change(input, { target: { value: "Open" } });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    const selectedText = screen.getByRole("option", { selected: true }).textContent;
+    await act(async () => { finishFiles(["Open.ts"]); await Promise.resolve(); });
+    const selected = screen.getByRole("option", { selected: true });
+    expect(selected).toHaveTextContent(selectedText);
+    expect(input).toHaveAttribute("aria-activedescendant", selected.id);
   });
 
   it("Enter activates the selected command and closes the palette", () => {
@@ -86,6 +115,31 @@ describe("CommandPalette", () => {
       key: "Escape"
     });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not activate a result when Enter commits IME composition", () => {
+    const run = vi.fn();
+    render(<CommandPalette open commands={[{ id: "a", label: "Action", group: "Actions", run }]} onClose={vi.fn()} />);
+    fireEvent.keyDown(screen.getByRole("searchbox", { name: "Command palette query" }), {
+      key: "Enter", isComposing: true
+    });
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it.each(["messages", "contents"] as const)("removes obsolete %s results as soon as the query changes", async (scope) => {
+    const run = vi.fn();
+    render(<CommandPalette open commands={[]} onClose={vi.fn()} initialScope={scope}
+      fileSource={{ kind: "workspace", id: "a" }} onFilePick={run}
+      searchMessages={vi.fn().mockResolvedValue([{ id: "old", sessionId: "a", label: "Old result", snippetSegments: [], run }])}
+      searchContents={vi.fn().mockResolvedValue({ files: [{ path: "old.ts", matches: [{ line: 1, preview: "Old result" }] }], truncated: false })}
+    />);
+    const input = screen.getByRole("searchbox", { name: "Command palette query" });
+    fireEvent.change(input, { target: { value: "old" } });
+    await screen.findByText("Old result");
+    fireEvent.change(input, { target: { value: "new" } });
+    expect(screen.queryAllByRole("option")).toHaveLength(0);
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(run).not.toHaveBeenCalled();
   });
 
   it("ranks files beyond the first 200 paths before capping visible rows", async () => {

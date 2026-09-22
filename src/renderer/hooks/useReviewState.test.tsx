@@ -418,6 +418,45 @@ describe("useReviewState — IPC fan-out resistance", () => {
     expect(listChangedFiles).toHaveBeenLastCalledWith({ kind: "workspace", id: "workspace-1" }, "branch");
   });
 
+  it("keeps the selected diff inside the Last turn file list as its paths change", async () => {
+    listChangedFiles.mockResolvedValue([
+      { path: "src/a.ts", status: "M", additions: 1, deletions: 0, staged: false },
+      { path: "src/b.ts", status: "M", additions: 2, deletions: 0, staged: false },
+      { path: "src/c.ts", status: "M", additions: 3, deletions: 0, staged: false }
+    ]);
+    const loadDiff = window.argmax!.review.loadDiff as ReturnType<typeof vi.fn>;
+    loadDiff
+      .mockResolvedValueOnce({ workspaceId: "workspace-1", filePath: "src/a.ts", content: "diff a" })
+      .mockResolvedValueOnce({ workspaceId: "workspace-1", filePath: "src/b.ts", content: "diff b" })
+      .mockResolvedValueOnce({ workspaceId: "workspace-1", filePath: "src/c.ts", content: "diff c" });
+
+    const { result, rerender } = renderHook(
+      ({ lastTurnPaths }: { lastTurnPaths: string[] }) =>
+        useReviewState(workspaceSource(makeWorkspace()), lastTurnPaths),
+      { initialProps: { lastTurnPaths: ["/abs/repo/src/b.ts"] } }
+    );
+    await waitFor(() => expect(result.current.files).toHaveLength(3));
+
+    act(() => result.current.openChangesPanel());
+    await waitFor(() => expect(result.current.selectedFilePath).toBe("src/a.ts"));
+
+    act(() => result.current.setChangesScope("lastTurn"));
+    await waitFor(() => expect(result.current.selectedFilePath).toBe("src/b.ts"));
+    expect(result.current.files.map((file) => file.path)).toEqual(["src/b.ts"]);
+    await waitFor(() => expect(result.current.diff?.filePath).toBe("src/b.ts"));
+
+    rerender({ lastTurnPaths: ["/abs/repo/src/c.ts"] });
+    await waitFor(() => expect(result.current.selectedFilePath).toBe("src/c.ts"));
+    expect(result.current.files.map((file) => file.path)).toEqual(["src/c.ts"]);
+    await waitFor(() => expect(result.current.diff?.filePath).toBe("src/c.ts"));
+
+    rerender({ lastTurnPaths: [] });
+    await waitFor(() => expect(result.current.selectedFilePath).toBeNull());
+    expect(result.current.files).toEqual([]);
+    await waitFor(() => expect(result.current.diff).toBeNull());
+    expect(listChangedFiles).toHaveBeenCalledTimes(1);
+  });
+
   it("reloads the diff under the new baseline when the scope changes (cache busted)", async () => {
     listChangedFiles.mockResolvedValue([{ path: "src/a.ts", status: "M", additions: 1, deletions: 0, staged: false }]);
     const loadDiff = window.argmax!.review.loadDiff as ReturnType<typeof vi.fn>;
@@ -1126,8 +1165,17 @@ describe("useReviewState — IPC fan-out resistance", () => {
     expect(result.current.isPanelOpen).toBe(true);
     expect(result.current.mode).toBe("files");
 
+    await waitFor(() => expect(result.current.workspaceFiles.listState).toBe("ready"));
+    let finishList!: (entries: { path: string }[]) => void;
+    listWorkspaceFiles.mockImplementationOnce(() => new Promise((resolve) => { finishList = resolve; }));
     rerender({ source: projectSource(makeProject({ id: "project-2", name: "Other" })) });
 
+    expect(result.current.workspaceFiles.listState).toBe("loading");
+    await act(async () => {
+      finishList([{ path: "other.ts" }]);
+      await Promise.resolve();
+    });
+    expect(result.current.workspaceFiles.entries).toEqual([{ path: "other.ts" }]);
     await waitFor(() => expect(result.current.isPanelOpen).toBe(true));
     expect(result.current.mode).toBe("files");
   });

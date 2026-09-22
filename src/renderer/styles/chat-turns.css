@@ -1028,7 +1028,7 @@
 
 .tool-call-group-header {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 2px 7px;
   width: 100%;
@@ -1085,13 +1085,9 @@
    Basis 0 is what keeps the summary whole: the caption contributes nothing to
    the overflow, so it absorbs the shortfall instead of squeezing the headline. */
 .tool-call-group-preview {
-  /* The floor is what keeps the inline caption honest: a pane too narrow to
-     show a readable stub wraps it back under the headline instead of printing
-     three characters and an ellipsis. */
-  min-width: 18ch;
+  min-width: 0;
   flex: 1 1 0;
-  /* Inline this is the gap that separates caption from headline; wrapped onto
-     its own line it lines the caption up with the headline's text. */
+  /* Separate the inline caption from the headline. */
   padding-left: calc(var(--activity-mark-size) + 7px);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1278,10 +1274,8 @@ button.tool-call-row-button {
   color: var(--muted-strong);
 }
 
-/* The target rides in the UI face, not monospace: a proportional file name
-   reads as the agent narrating what it touched, where a monospace one reads as
-   embedded code output. Monospace is reserved for the diff body and for shell
-   commands, which genuinely are code (see the bash override below). */
+/* Targets share the summary's face, including filenames and shell commands.
+   Expanded code, terminal output, and diffs keep their monospace styles. */
 .tool-call-row-target {
   min-width: 0;
   /* Hugs the verb instead of stretching, so the stat that follows travels with
@@ -1296,7 +1290,6 @@ button.tool-call-row-button {
 }
 
 .tool-call-row[data-tool-type="bash"] .tool-call-row-target {
-  font-family: var(--font-code);
   /* Ligatures off, same reason as every other surface showing text the app did
      not author: Geist Mono fuses `===` into one solid bar, so a command read as
      struck through in the row while the block under it rendered it cleanly. */

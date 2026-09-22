@@ -1,4 +1,5 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi, BrowserStateEvent } from "../../shared/types.js";
 import {
@@ -912,13 +913,141 @@ describe("BrowserPanel", () => {
   it("adds a background tab's popup without stealing focus", () => {
     render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     const firstTab = activeTabId();
+    const backgroundTab = createBrowserTab(BROWSER_PAGE_OWNER_ID, "https://background.example.com", false);
     browserStub.open.mockClear();
 
-    act(() => newTabListener?.({ tabId: "some-background-tab", url: "https://ads.example.com" }));
+    act(() => newTabListener?.({ tabId: backgroundTab.id, url: "https://ads.example.com" }));
 
     expect(activeTabId()).toBe(firstTab);
     expect(browserStub.open).not.toHaveBeenCalled();
-    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    expect(screen.getAllByRole("tab")).toHaveLength(3);
+  });
+
+  it("routes bridge events and global shortcuts only to their browser scope", () => {
+    const firstScope = "first-grid-pane";
+    const secondScope = "second-grid-pane";
+    render(
+      <>
+        <BrowserPanel
+          scopeId={firstScope}
+          url="https://first.example.com"
+          isFocused={false}
+          onClose={() => undefined}
+        />
+        <BrowserPanel
+          scopeId={secondScope}
+          url="https://second.example.com"
+          isFocused
+          onClose={() => undefined}
+        />
+      </>
+    );
+    const firstTab = activeTabId(firstScope);
+    const secondTab = activeTabId(secondScope);
+    const panels = screen.getAllByRole("group", { name: "Browser" });
+    const firstPanel = panels[0];
+    const secondPanel = panels[1];
+    if (!firstPanel || !secondPanel) throw new Error("expected two browser panels");
+
+    browserStub.open.mockClear();
+    const pageCommandListeners = browserStub.onPageCommand.mock.calls.map(([listener]) => listener);
+    act(() => {
+      for (const listener of pageCommandListeners) listener({ tabId: secondTab, command: "new-tab" });
+    });
+    expect(getBrowserTabs(firstScope)).toHaveLength(1);
+    expect(getBrowserTabs(secondScope)).toHaveLength(2);
+    expect(browserStub.open).toHaveBeenCalledOnce();
+
+    browserStub.reload.mockClear();
+    act(() => {
+      for (const listener of pageCommandListeners) listener({ tabId: secondTab, command: "reload" });
+    });
+    expect(browserStub.reload).toHaveBeenCalledExactlyOnceWith(secondTab);
+
+    act(() => {
+      for (const listener of pageCommandListeners) listener({ tabId: secondTab, command: "focus-address" });
+    });
+    expect(within(secondPanel).getByRole("textbox", { name: "Address" })).toHaveFocus();
+    expect(within(firstPanel).getByRole("textbox", { name: "Address" })).not.toHaveFocus();
+
+    const activeSecondTab = activeTabId(secondScope);
+    browserStub.open.mockClear();
+    const newTabListeners = browserStub.onNewTab.mock.calls.map(([listener]) => listener);
+    act(() => {
+      for (const listener of newTabListeners) {
+        listener({ tabId: activeSecondTab, url: "https://popup.example.com" });
+      }
+    });
+    expect(getBrowserTabs(firstScope)).toHaveLength(1);
+    expect(getBrowserTabs(secondScope)).toHaveLength(3);
+    expect(browserStub.open).toHaveBeenCalledOnce();
+
+    fireEvent.keyDown(document.body, { key: "t", metaKey: true });
+    expect(getBrowserTabs(firstScope)).toHaveLength(1);
+    expect(getBrowserTabs(secondScope)).toHaveLength(4);
+
+    const focusedActiveTab = activeTabId(secondScope);
+    browserStub.close.mockClear();
+    act(() => {
+      requestCloseActiveBrowserTab();
+    });
+    expect(browserStub.close).toHaveBeenCalledExactlyOnceWith(focusedActiveTab);
+    expect(getActiveBrowserTabId(firstScope)).toBe(firstTab);
+  });
+
+  it("moves grid focus with the native page before the menu closes a tab", () => {
+    const firstScope = "first-grid-pane";
+    const secondScope = "second-grid-pane";
+
+    function GridBrowsers() {
+      const [focusedScope, setFocusedScope] = useState(firstScope);
+      return (
+        <>
+          <div
+            data-testid="first-grid-pane"
+            data-focused={focusedScope === firstScope ? "true" : undefined}
+            onFocusCapture={() => setFocusedScope(firstScope)}
+          >
+            <BrowserPanel
+              scopeId={firstScope}
+              url="https://first.example.com"
+              isFocused={focusedScope === firstScope}
+              onClose={() => undefined}
+            />
+          </div>
+          <div
+            data-testid="second-grid-pane"
+            data-focused={focusedScope === secondScope ? "true" : undefined}
+            onFocusCapture={() => setFocusedScope(secondScope)}
+          >
+            <BrowserPanel
+              scopeId={secondScope}
+              url="https://second.example.com"
+              isFocused={focusedScope === secondScope}
+              onClose={() => undefined}
+            />
+          </div>
+        </>
+      );
+    }
+
+    render(<GridBrowsers />);
+    const firstTab = activeTabId(firstScope);
+    const secondTab = activeTabId(secondScope);
+    expect(screen.getByTestId("first-grid-pane")).toHaveAttribute("data-focused", "true");
+
+    const pageCommandListeners = browserStub.onPageCommand.mock.calls.map(([listener]) => listener);
+    act(() => {
+      for (const listener of pageCommandListeners) listener({ tabId: secondTab, command: "focus" });
+    });
+    expect(screen.getByTestId("second-grid-pane")).toHaveAttribute("data-focused", "true");
+
+    browserStub.close.mockClear();
+    act(() => {
+      requestCloseActiveBrowserTab();
+    });
+    expect(browserStub.close).toHaveBeenCalledExactlyOnceWith(secondTab);
+    expect(browserStub.close).not.toHaveBeenCalledWith(firstTab);
   });
 
   it("recreates a restored neighbor's webview when closing the active tab", () => {
@@ -1024,6 +1153,27 @@ describe("BrowserPanel", () => {
       const calls = browserStub.evaluate.mock.calls.filter(([call]) => call.tabId === tabId);
       expect(calls.some(([call]) => call.script.includes('__argmaxFind.search("install")'))).toBe(true);
       expect(screen.getByText("1/2")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the latest find result when an older query finishes afterward", async () => {
+    vi.useFakeTimers();
+    try {
+      render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+      act(() => pageCommandListener?.({ tabId: activeTabId(), command: "find" }));
+      const input = screen.getByRole("textbox", { name: "Find in page" });
+      let resolveOld!: (result: { resultJson: string }) => void;
+      browserStub.evaluate.mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }));
+      fireEvent.change(input, { target: { value: "old" } });
+      act(() => { vi.advanceTimersByTime(250); });
+      fireEvent.change(input, { target: { value: "install" } });
+      await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+      expect(screen.getByText("1/2")).toBeInTheDocument();
+      await act(async () => { resolveOld({ resultJson: JSON.stringify({ count: 9, index: 1 }) }); await Promise.resolve(); });
+      expect(screen.getByText("1/2")).toBeInTheDocument();
+      expect(screen.queryByText("1/9")).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }

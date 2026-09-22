@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { JSX } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionSummary } from "../../shared/types.js";
@@ -103,10 +103,72 @@ function renderTurn(
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   collectTurnFileChanges.mockClear();
 });
 
 describe("SessionConversationTurn", () => {
+  it.each(["complete", "failed", "cancelled"] as const)(
+    "settles a waiting turn when its session becomes %s",
+    (state) => {
+      vi.useFakeTimers();
+      const options = {
+        session: { ...session, state: "waiting" as SessionSummary["state"] },
+        defaultToolCallsDisplay: "single-line" as const
+      };
+      const { rerender } = renderTurn(options);
+      expect(screen.getByRole("button", { name: "Waiting" })).toBeInTheDocument();
+      options.session = { ...options.session, state };
+      rerender();
+      act(() => { vi.advanceTimersByTime(600); });
+      expect(screen.queryByRole("button", { name: "Waiting" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^Worked/ })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Edited/ })).not.toBeInTheDocument();
+    }
+  );
+
+  it.each(["single-line", "collapsed"] as const)(
+    "keeps %s activity open across a waiting pause and a later reply",
+    (defaultToolCallsDisplay) => {
+      vi.useFakeTimers();
+      const options = {
+        session: { ...session, state: "running" as SessionSummary["state"] },
+        item: turn,
+        defaultToolCallsDisplay
+      };
+      const { rerender } = renderTurn(options);
+      const activity = screen.getByRole("button", { name: /Edited/ });
+      expect(screen.getByRole("button", { name: "Working" })).toBeInTheDocument();
+
+      options.session = { ...options.session, state: "waiting", attention: "approval-needed" };
+      rerender();
+      act(() => { vi.advanceTimersByTime(10000); });
+      expect(activity).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^Worked/ })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Waiting" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Copy reply" })).not.toBeInTheDocument();
+
+      options.session = { ...options.session, state: "running", attention: "normal" };
+      options.item = {
+        ...turn,
+        assistantEvents: [...turn.assistantEvents, {
+          id: "late-answer", sessionId: session.id, type: "message.completed",
+          message: "The approved operation has now finished.", payload: {},
+          createdAt: "2026-05-12T15:00:20.000Z"
+        }]
+      };
+      rerender();
+      expect(screen.getByRole("button", { name: "Working" })).toBeInTheDocument();
+      expect(screen.getByText(/The approved operation has now finished/)).toBeVisible();
+
+      options.session = { ...options.session, state: "complete" };
+      rerender();
+      act(() => { vi.advanceTimersByTime(600); });
+      expect(screen.getByRole("button", { name: /^Worked/ })).toBeInTheDocument();
+      if (defaultToolCallsDisplay === "single-line") expect(activity).not.toBeInTheDocument();
+    }
+  );
+
   it("does not re-derive the turn's file changes when nothing about the turn changed", () => {
     // Every mounted turn used to re-run the whole render-state derivation on
     // each streaming delta: `buildTurnRenderState` returns a fresh

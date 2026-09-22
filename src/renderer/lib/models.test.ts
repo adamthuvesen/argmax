@@ -188,10 +188,10 @@ describe("preferredLaunchModel", () => {
     });
   });
 
-  it("defaults Cursor to Grok 4.6 at medium effort", () => {
+  it("defaults Cursor to Grok 4.7 at medium effort", () => {
     expect(modelDefaultForProvider("cursor")).toEqual({
-      label: "Grok 4.6 (Cursor)",
-      modelId: "cursor-grok-4.6-medium",
+      label: "Grok 4.7 (Cursor)",
+      modelId: "grok-4.7-medium",
       reasoningEffort: "medium"
     });
   });
@@ -229,8 +229,8 @@ describe("PROVIDER_LAUNCH_PRIORITY", () => {
   it("picks Grok when it is the only installed provider", () => {
     expect(preferredLaunchModel([discovered("grok")])).toEqual({
       provider: "grok",
-      label: "Grok 4.6",
-      modelId: "grok-4.6",
+      label: "Grok 4.7",
+      modelId: "grok-4.7",
       reasoningEffort: "medium"
     });
   });

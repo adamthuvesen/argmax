@@ -37,15 +37,18 @@ export interface ComposerCommand {
 export function dispatchedCommandNames({
   hasSession,
   canMultitask,
+  canCloud = false,
   goalEnabled
 }: {
   hasSession: boolean;
   canMultitask: boolean;
+  canCloud?: boolean;
   goalEnabled: boolean;
 }): Set<string> {
   const names = new Set(["clear"]);
   if (hasSession) {
     names.add("mcp");
+    if (canCloud) names.add("cloud");
     if (canMultitask) names.add("multitask");
     if (goalEnabled) names.add("goal");
   }
@@ -60,6 +63,12 @@ export function isClearCommand(input: string): boolean {
 /** True when the composer draft is exactly `/mcp` (optional trailing space). */
 export function isMcpCommand(input: string): boolean {
   return /^\/mcp\s*$/i.test(input.trim());
+}
+
+/** The task after a leading `/cloud`, or `null` when this is ordinary prose. */
+export function cloudCommandPrompt(input: string): string | null {
+  const match = /^\/cloud(?:\s+([\s\S]*))?$/i.exec(input.trim());
+  return match ? (match[1]?.trim() ?? "") : null;
 }
 
 /** Badge on a skill row, saying where the skill was discovered. */

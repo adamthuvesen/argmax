@@ -15,9 +15,9 @@
   --code-surface: color-mix(in oklab, #f4f6f7, var(--background-code-target) var(--background-pull));
   --terminal-surface: color-mix(in oklab, #fbfbfa, var(--background-terminal-target) var(--background-pull));
   --tool-block-surface: color-mix(in oklab, #f5f6f7, var(--background-tool-target) var(--background-pull));
-  --line: color-mix(in oklab, #e3e6e8, var(--background-line-target) var(--background-pull));
-  --line-soft: color-mix(in oklab, #eceeef, var(--background-line-soft-target) var(--background-pull));
-  --line-strong: color-mix(in oklab, #cfd5d8, var(--background-line-strong-target) var(--background-pull));
+  --line: color-mix(in oklab, #d9dde0, var(--background-line-target) var(--background-pull));
+  --line-soft: color-mix(in oklab, #e4e7e8, var(--background-line-soft-target) var(--background-pull));
+  --line-strong: color-mix(in oklab, #c6ccd0, var(--background-line-strong-target) var(--background-pull));
   --scrollbar-thumb: color-mix(in oklab, #dce1e4, var(--background-scrollbar-target) var(--background-pull));
   --scrollbar-thumb-hover: color-mix(in oklab, #cfd5d8, var(--background-scrollbar-hover-target) var(--background-pull));
   --overlay-panel: color-mix(in oklab, #ffffff, var(--background-overlay-target) var(--background-pull));

@@ -66,9 +66,12 @@
      hole punched in the transcript instead of a quiet raised surface. */
   --tool-block-surface: #f5f6f7;
 
-  --line: #e3e6e8;
-  --line-soft: #eceeef;
-  --line-strong: #cfd5d8;
+  /* One step darker than the first paper pass (#e3e6e8 / #eceeef / #cfd5d8):
+     white cards, popovers and the composer ring sit on a near-white ground,
+     so their edge is the line, and the lighter set let them blend in. */
+  --line: #d9dde0;
+  --line-soft: #e4e7e8;
+  --line-strong: #c6ccd0;
   --scrollbar-thumb: #dce1e4;
   --scrollbar-thumb-hover: #cfd5d8;
   /* Hairline around the two composer cards and the multitask lane above them.

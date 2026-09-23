@@ -548,7 +548,8 @@
 
 .review-mode-tabs {
   --sliding-tab-background: var(--row-selected);
-  --sliding-tab-radius: var(--radius-md);
+  /* Near-pill corners on a 24px tab, the softer shape the boxed icons echo. */
+  --sliding-tab-radius: var(--radius-lg);
   display: inline-flex;
   gap: var(--space-1_5);
 }
@@ -563,7 +564,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-lg);
   font: inherit;
   color: var(--muted);
   cursor: pointer;
@@ -588,7 +589,7 @@
 
 .review-panel-pane[data-wide="true"] .review-mode-tabs button {
   width: auto;
-  padding: 0 9px;
+  padding: 0 11px 0 10px;
 }
 
 .review-panel-pane[data-wide="true"] .review-mode-tab-label {

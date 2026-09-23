@@ -104,6 +104,12 @@
   place-items: center;
   width: 14px;
   height: 18px;
+  /* Half ink washes out on the light surface; dark keeps the quieter step. */
+  --lead-ring-opacity: 0.7;
+}
+
+:root[data-theme="dark"] .session-link-lead-ring {
+  --lead-ring-opacity: 0.5;
 }
 
 .session-link-lead-ring::before {
@@ -112,11 +118,11 @@
   height: 7px;
   border: 1px solid var(--muted);
   border-radius: 50%;
-  opacity: 0.5;
+  opacity: var(--lead-ring-opacity);
 }
 
 /* A chat row swaps the ring for a bubble at the ring's weight: same box, same
-   1px muted stroke, same half opacity, so the two alternate in one list without
+   1px muted stroke, same opacity, so the two alternate in one list without
    the bubble reading as a signal. */
 .session-link-lead-ring[data-chat="true"]::before {
   content: none;
@@ -124,7 +130,7 @@
 
 .session-link-lead-ring[data-chat="true"] svg {
   color: var(--muted);
-  opacity: 0.5;
+  opacity: var(--lead-ring-opacity);
 }
 
 .session-unread-marker {

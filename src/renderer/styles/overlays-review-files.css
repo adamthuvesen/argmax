@@ -466,7 +466,7 @@
 }
 
 /* Tabs read as quiet labels: icon plus muted name, no surface. Only the active
-   tab lifts to a rounded, hairline-ringed pill, and the close ✕ stays invisible
+   tab lifts to a rounded pill (hairline-ringed in dark), and the close ✕ stays invisible
    (but in flow, so nothing shifts) until the tab is hovered or focused. */
 .file-tab {
   display: inline-flex;
@@ -494,11 +494,13 @@
     0 1px 2px rgba(31, 28, 24, 0.16);
 }
 
-/* On paper the hairline ring and the shadow already say "active", so the fill
-   shares --row-selected with the sidebar and neutral bubbles instead of a
-   separate ink mix that drifted cool gray. Dark keeps the ink lift above. */
+/* On paper the active tab is the sidebar's selected row: the --row-selected
+   fill alone, flat. The ring and shadow only showed at the rounded corners,
+   where they stacked into four dark smudges while the straight edges vanished
+   into the fill. Dark keeps the ink lift and ring above. */
 :root:not([data-theme="dark"]) .file-tab[data-active="true"] {
   background: var(--row-selected);
+  box-shadow: none;
 }
 
 /* Padding math keeps the pill visually symmetric: 10px from the left edge to

@@ -105,12 +105,13 @@ type BlockTools = typeof MarkdownBlocks;
 let blockTools: BlockTools | null = null;
 let blockToolsLoad: Promise<BlockTools> | null = null;
 
-/** The block splitter and tail healer, fetched the first time a block is
-    live. Until they land a live block renders as one document. */
-function useBlockTools(wanted: boolean): BlockTools | null {
+/** The block splitter and tail healer. Fetched when the first Markdown of the
+    session mounts (a chat's history renders before anything streams in it),
+    so they are usually in hand before a block goes live. */
+function useBlockTools(): BlockTools | null {
   const [tools, setTools] = useState(blockTools);
   useEffect(() => {
-    if (!wanted || tools) return;
+    if (tools) return;
     let cancelled = false;
     blockToolsLoad ??= importChunk(() => import("../lib/markdownBlocks.js"));
     blockToolsLoad.then(
@@ -125,7 +126,7 @@ function useBlockTools(wanted: boolean): BlockTools | null {
     return () => {
       cancelled = true;
     };
-  }, [wanted, tools]);
+  }, [tools]);
   return tools;
 }
 
@@ -569,18 +570,21 @@ export function StreamingMarkdown({
   // A block still typing out its remainder after the stream ended keeps the
   // live rendering path until the last character lands.
   const live = streaming || revealing;
-  // A block that was ever live keeps rendering block by block, so finishing
-  // does not swap its DOM for a whole-document render. History never splits.
+  // Whether this block renders block by block is decided once, the first
+  // time it is live, and kept: finishing must not swap its DOM for a
+  // whole-document render, nor may the tools arriving mid-stream swap it the
+  // other way. History that was never live renders as one document.
   const splitRef = useRef<MarkdownBlockSplit | null>(null);
-  const everLiveRef = useRef(live);
-  everLiveRef.current ||= live;
+  const tools = useBlockTools();
+  const splitModeRef = useRef<boolean | null>(null);
+  if (live && splitModeRef.current === null) splitModeRef.current = tools !== null;
   const segments = useMemo(() => splitLogSegments(visibleText), [visibleText]);
   const hasLogs = segments.some((segment) => segment.kind === "log");
   const markdownText = hasLogs ? visibleText : segments.map((segment) => segment.text).join("");
-  const tools = useBlockTools(everLiveRef.current);
+  const splitMode = splitModeRef.current === true;
   const split = useMemo(
-    () => (tools && everLiveRef.current && !hasLogs ? tools.splitMarkdownBlocks(markdownText, splitRef.current) : null),
-    [tools, hasLogs, markdownText]
+    () => (tools && splitMode && !hasLogs ? tools.splitMarkdownBlocks(markdownText, splitRef.current) : null),
+    [tools, splitMode, hasLogs, markdownText]
   );
   useLayoutEffect(() => {
     splitRef.current = split;

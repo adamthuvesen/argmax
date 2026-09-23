@@ -1,54 +1,31 @@
-export type CodePointSliceCursor = {
-  text: string;
-  codePointCount: number;
-  utf16Offset: number;
-};
+/** Words longer than this (URLs, hashes, minified code) reveal a character at
+    a time instead of waiting to arrive whole. */
+const REVEAL_LONGEST_WORD = 32;
 
-function nextCodePointOffset(text: string, offset: number): number {
-  const code = text.charCodeAt(offset);
-  if (code >= 0xd800 && code <= 0xdbff && offset + 1 < text.length) {
-    const trailing = text.charCodeAt(offset + 1);
-    if (trailing >= 0xdc00 && trailing <= 0xdfff) return offset + 2;
-  }
-  return offset + 1;
-}
-
-/** Counts Unicode code points without allocating an array of characters. */
-export function codePointLength(text: string): number {
-  let length = 0;
-  for (let offset = 0; offset < text.length; length += 1) {
-    offset = nextCodePointOffset(text, offset);
-  }
-  return length;
+function isWhitespace(code: number): boolean {
+  return code === 32 || code === 10 || code === 9 || code === 13;
 }
 
 /**
- * Returns a code-point-safe prefix. When the same text advances, `previous`
- * lets the next call scan only the newly revealed characters.
+ * Where to cut the text for a reveal that has reached `position`: the end of
+ * the word the position falls in, so words appear whole and a half-typed
+ * `**bo` never flashes. While streaming, a word that has not fully arrived
+ * waits for the rest of it. Never cuts a surrogate pair.
  */
-export function sliceCodePointPrefix(
-  text: string,
-  codePointCount: number,
-  previous?: CodePointSliceCursor | null
-): { text: string; cursor: CodePointSliceCursor } {
-  let visible = 0;
-  let offset = 0;
-  if (
-    previous?.text === text &&
-    previous.codePointCount <= codePointCount &&
-    previous.utf16Offset <= text.length
-  ) {
-    visible = previous.codePointCount;
-    offset = previous.utf16Offset;
+export function revealBoundary(text: string, position: number, streaming: boolean): number {
+  const cut = Math.floor(position);
+  if (cut >= text.length) return text.length;
+  if (cut <= 0) return 0;
+  const limit = Math.min(text.length, cut + REVEAL_LONGEST_WORD);
+  for (let index = cut; index < limit; index += 1) {
+    if (isWhitespace(text.charCodeAt(index))) return index;
   }
-
-  while (offset < text.length && visible < codePointCount) {
-    offset = nextCodePointOffset(text, offset);
-    visible += 1;
+  if (limit === text.length) {
+    if (!streaming) return text.length;
+    for (let index = cut - 1; index > cut - REVEAL_LONGEST_WORD && index > 0; index -= 1) {
+      if (isWhitespace(text.charCodeAt(index))) return index;
+    }
   }
-
-  return {
-    text: text.slice(0, offset),
-    cursor: { text, codePointCount: visible, utf16Offset: offset }
-  };
+  const code = text.charCodeAt(cut);
+  return code >= 0xdc00 && code <= 0xdfff ? cut + 1 : cut;
 }

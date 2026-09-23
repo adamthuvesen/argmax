@@ -253,16 +253,19 @@ JS loops that CSS pausing cannot reach check `document.hidden` themselves:
   never runs while hidden: it is mounted only for the ~1s of its own sweep, and
   a hidden document skips the sweep outright rather than queueing one. A settled
   transcript of two hundred turns paints nothing and schedules no frames.
-- The chat typewriter ([StreamingMarkdown](../src/renderer/components/StreamingMarkdown.tsx),
-  64 ms tick, paced per arrival so a whole backlog drains in ~1.3 s) catches up
-  silently while hidden instead of pausing the prefix: a backgrounded live turn
-  can land several finished bubbles, and holding them at character zero made
-  them all type out together on return. Every revealing block shares one
-  interval, started by the first and cleared with the last, so React batches
-  all of their advances into one render per tick. The 64 ms cadence halves the
-  maximum React and Markdown render rate while keeping reveal throughput steady.
-  The fresh-run fade on top of it animates opacity only, on the handful of spans
-  still fading (see [chat-cards.md](chat-cards.md)); nothing under them repaints.
+- The chat typewriter ([StreamingMarkdown](../src/renderer/components/StreamingMarkdown.tsx))
+  runs on the animation frame, so a hidden window schedules nothing, and it
+  catches up silently when it returns instead of pausing the prefix: a
+  backgrounded live turn can land several finished bubbles, and holding them
+  at character zero made them all type out together on return. Every revealing
+  block shares one frame loop, started by the first and cancelled with the
+  last, so React batches all of their advances into one render per frame, and
+  a block renders only when its reveal crosses into a new word. Only the open
+  Markdown block re-parses per render ([chat-cards.md](chat-cards.md)), which
+  took a 6,300-character replayed Claude turn from 9.9 ms of script per
+  visible update to 3.9 ms while updating 2.4 times as often (total script
+  2.8 s → 2.4 s). The fresh-run fade on top of it animates opacity only, on
+  the handful of spans still fading; nothing under them repaints.
 - The 1.5 s open-agent poll in
   [AgentActivity](../src/renderer/components/AgentActivity.tsx) runs only for
   the Agents dock tab that is shown, and still skips ticks while the document is

@@ -355,8 +355,22 @@ pub fn configure_connection(connection: &Connection) -> ArgmaxResult<()> {
     let _: i64 = connection
         .query_row("PRAGMA wal_autocheckpoint = 1000", [], |row| row.get(0))
         .map_err(|error| sqlite_error_with("SQLITE_PRAGMA_WAL_AUTOCHECKPOINT", error))?;
+    // Without a limit the WAL file keeps the size of its largest burst for
+    // good: a live profile was found carrying a 4.2 GB WAL beside a 4.3 GB
+    // database. Truncating it to 64 MB when the log restarts gives the space
+    // back and keeps recovery at launch short.
+    let _: i64 = connection
+        .query_row(
+            &format!("PRAGMA journal_size_limit = {WAL_SIZE_LIMIT_BYTES}"),
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| sqlite_error_with("SQLITE_PRAGMA_JOURNAL_SIZE_LIMIT", error))?;
     Ok(())
 }
+
+/// What the WAL file is truncated to once a checkpoint lets the log restart.
+pub const WAL_SIZE_LIMIT_BYTES: i64 = 64 * 1024 * 1024;
 
 pub fn prune_old_raw_outputs(connection: &Connection) -> ArgmaxResult<usize> {
     connection
@@ -564,6 +578,10 @@ mod tests {
         let synchronous: i64 = connection
             .query_row("PRAGMA synchronous", [], |row| row.get(0))
             .expect("synchronous pragma");
+        let journal_size_limit: i64 = connection
+            .query_row("PRAGMA journal_size_limit", [], |row| row.get(0))
+            .expect("journal size limit pragma");
+        assert_eq!(journal_size_limit, WAL_SIZE_LIMIT_BYTES);
         let migration_count: i64 = connection
             .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
                 row.get(0)

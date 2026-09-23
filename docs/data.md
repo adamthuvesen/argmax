@@ -1,6 +1,6 @@
 # Data
 
-Rust manages SQLite storage under [src-tauri/src/persistence](../src-tauri/src/persistence). The database file is `local-state/argmax.sqlite` in the Tauri app data folder, operating with WAL and SHM sidecars. `ARGMAX_DATA_DIR` overrides that app data folder for scratch profiles.
+Rust manages SQLite storage under [src-tauri/src/persistence](../src-tauri/src/persistence). The database file is `local-state/argmax.sqlite` in the Tauri app data folder, operating with WAL and SHM sidecars. The writer sets `journal_size_limit` to 64 MB, so the WAL file shrinks back after a large write burst instead of keeping its peak size (a live profile carried a 4.2 GB WAL beside its 4.3 GB database; on a scratch database a 305 MB burst now leaves 64 MB instead of 305 MB). `ARGMAX_DATA_DIR` overrides that app data folder for scratch profiles.
 
 ## Migrations
 

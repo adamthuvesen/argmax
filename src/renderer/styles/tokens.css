@@ -88,15 +88,18 @@
      without a second declaration, and one step further on hover. On paper the
      base picks up a little of --row-selected so chips share the same greige
      family as sidebar selection without matching it outright. This is what
-     replaced the carets: the fill is what says a control is a control. */
+     replaced the carets: the fill is what says a control is a control.
+     --composer-chip-ink is the ink share: paper takes 8% so the chips read
+     against the white card, dark keeps 5%. Hover adds four points to either. */
+  --composer-chip-ink: 8%;
   --composer-chip: color-mix(
     in oklab,
-    var(--text) 5%,
+    var(--text) var(--composer-chip-ink),
     color-mix(in oklab, var(--composer-surface) 88%, var(--row-selected))
   );
   --composer-chip-hover: color-mix(
     in oklab,
-    var(--text) 9%,
+    var(--text) calc(var(--composer-chip-ink) + 4%),
     color-mix(in oklab, var(--composer-surface) 84%, var(--row-selected))
   );
   /* Model-suggested follow-ups are guidance, not entered text. Light
@@ -549,6 +552,7 @@
   /* No edge on charcoal: --composer-surface already sits a step above --panel,
      and a line drawn on top of that lift reads as a double border. */
   --composer-edge: transparent;
+  --composer-chip-ink: 5%;
 
   /* Ink pulled back off paper-white: #f4f2ec bloomed on dark charcoal and read
      as bold at regular weight. Chrome labels sit on --text-soft, so the gap

@@ -278,7 +278,7 @@ export function SessionConversation({
   /** Opens a launcher pane beside this one, for a task in any repository. */
   onNewSession?: (seed?: NewSessionSeed) => void;
   /** Launches a repo-less side chat with the given first message. Enables the
-      selection toolbar's "Ask in side chat" action when provided. */
+      selection toolbar's "Ask in new chat" action when provided. */
   onOpenSideChat?: (seedPrompt: string) => Promise<void>;
   /** Focus another chat by session id — the origin bubble's "From <label>"
    *  link, and the actions menu's "Open launching chat". */
@@ -559,7 +559,7 @@ export function SessionConversation({
       void onOpenSideChat(buildSideChatSeed(selection.text, conversationEvents)).catch((error) => {
         setStatus({
           kind: "error",
-          message: error instanceof Error ? error.message : "Could not open a side chat."
+          message: error instanceof Error ? error.message : "Could not open a chat."
         });
       });
     };

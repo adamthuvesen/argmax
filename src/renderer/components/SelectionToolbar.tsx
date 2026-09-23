@@ -19,7 +19,7 @@ interface SelectionToolbarProps {
    *  multi-grid) never shows this instance's toolbar. */
   containerRef: RefObject<HTMLElement | null>;
   onAddToChat: (selection: ChatSelection) => void;
-  /** When provided, adds an "Ask in side chat" action that opens a repo-less
+  /** When provided, adds an "Ask in new chat" action that opens a repo-less
    *  side chat seeded with the selection. */
   onAskSideChat?: (selection: ChatSelection) => void;
   /** When provided, adds a "More details" action that opens the explainer
@@ -194,12 +194,12 @@ export function SelectionToolbar({
         <button
           type="button"
           className="selection-toolbar-action"
-          aria-label="Ask about selection in side chat"
-          title="Open a side chat seeded with this excerpt"
+          aria-label="Ask about selection in a new chat"
+          title="Open a chat without a repository, seeded with this excerpt"
           onClick={() => consumeSelection(onAskSideChat)}
         >
           <MessagesSquare size={13} aria-hidden="true" />
-          <span>Ask in side chat</span>
+          <span>Ask in new chat</span>
         </button>
       ) : null}
     </div>

@@ -353,7 +353,7 @@ export function NewSessionScreen({
     : null;
 
   const workspaceValue = sideChat
-    ? "Side chat"
+    ? "Chat"
     : workspaceMode === "worktree"
       ? chosenBaseRef
         ? `New worktree · from ${baseWorktree?.taskLabel ?? chosenBaseRef}`
@@ -560,7 +560,7 @@ export function NewSessionScreen({
               </>
             )}
             <SheetOption
-              label="Side chat"
+              label="Chat"
               selected={sideChat}
               onSelect={() => {
                 setSideChatChosen(true);

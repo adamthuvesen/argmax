@@ -791,7 +791,7 @@ func compactElapsed(since date: Date?, now: Date) -> String {
             ) {}
             .plainRow()
             ChatListRow(
-                row: .preview(label: "Side chat about ISO timestamps", project: "Side chats", kind: .scratch),
+                row: .preview(label: "Side chat about ISO timestamps", project: "Chat", kind: .scratch),
                 now: .now,
                 separated: false
             ) {}

@@ -31,7 +31,7 @@ _Avoid_: Current workspace, main workspace, non-isolated workspace
 Two surfaces still say `current` for this: the `argmax.workspaceMode` value stored in `localStorage` (`worktree` | `current`) and the launcher's "Worktree" toggle. Those are wire and label values, not the domain term — leave them alone and say "shared checkout" everywhere else.
 
 **Scratch workspace**:
-A repo-less workspace backed by an app-owned directory under `local-state/side-chats/`, initialized as a minimal git repo so provider CLIs that demand a checkout still run. Surfaced to the user as a **side chat**.
+A repo-less workspace backed by an app-owned directory under `local-state/side-chats/`, initialized as a minimal git repo so provider CLIs that demand a checkout still run. Surfaced to the user as a chat labelled **Chat**; older code and comments call it a side chat.
 _Avoid_: Chat workspace, temp workspace
 
 **Popup workspace**:

@@ -193,7 +193,7 @@ enum WorkspaceKind: OpenWireEnum {
 
 /// Stable id of the hidden singleton project every side chat belongs to.
 /// Mirrors `SCRATCH_PROJECT_ID` in `src/shared/types.ts`; the host names it
-/// "Side chats", which is the label a side-chat row wears.
+/// "Chat", which is the label a repo-less chat's row wears.
 let scratchProjectID = "scratch-side-chats"
 
 /// `ProjectSummary`. `settings` and `counts` are desktop-only and dropped.

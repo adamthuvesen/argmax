@@ -2986,7 +2986,7 @@ fn ensure_scratch_project(
         connection,
         &PersistProjectInput {
             id: SCRATCH_PROJECT_ID.to_string(),
-            name: "Side chats".to_string(),
+            name: "Chat".to_string(),
             repo_path: scratch_root.display().to_string(),
             current_branch: "main".to_string(),
             default_branch: Some("main".to_string()),

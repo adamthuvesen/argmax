@@ -48,7 +48,7 @@ let previewSnapshot = DashboardSnapshot(
         ),
         ProjectSummary(
             id: scratchProjectID,
-            name: "Side chats",
+            name: "Chat",
             repoPath: "/Users/you/Library/Application Support/com.argmax.rs/local-state/side-chats",
             currentBranch: "main",
             defaultBranch: "main",

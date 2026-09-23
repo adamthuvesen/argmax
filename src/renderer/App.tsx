@@ -1564,7 +1564,7 @@ export function App(): JSX.Element {
     [launchModel, startSessionInWorkspace]
   );
 
-  // Sidebar's "New side chat": the launcher surface pre-set to chat mode.
+  // The sidebar Chat group's "+": the launcher surface pre-set to chat mode.
   const openSideChatLauncher = useCallback((): void => {
     hideStandalonePage();
     closeWorkspacePages();

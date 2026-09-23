@@ -342,7 +342,7 @@ struct ChatRow: Identifiable, Hashable, Sendable {
     /// The chat this row opens. A workspace without one is a dead row and
     /// never reaches here.
     var session: SessionSummary
-    /// The project's name, or "Side chats" for a scratch workspace, which is
+    /// The project's name, or "Chat" for a scratch workspace, which is
     /// what the hidden singleton project is called.
     var projectName: String?
     /// The attention the row wears, or nil when it has nothing to say.

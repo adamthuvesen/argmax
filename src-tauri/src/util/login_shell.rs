@@ -28,6 +28,20 @@ use std::{
 /// user already did.
 pub const OP_APP_INTEGRATION_ENV: &str = "OP_BIOMETRIC_UNLOCK_ENABLED";
 
+/// The locale a child gets when nothing in its environment names one.
+///
+/// Launched from Finder, Argmax has no `LANG`, so its children run in the C
+/// locale: zsh then counts each byte of a multibyte character as a column, and
+/// a `❯` prompt or an `å` throws every redraw off — Backspace, history, and
+/// autosuggestions erase the wrong cells. Terminals set a UTF-8 locale for the
+/// same reason; Ghostty picks this value too.
+pub const DEFAULT_UTF8_LANG: &str = "en_US.UTF-8";
+
+/// True when one of the variables that decide the character encoding is set.
+pub fn names_a_locale(is_set: impl Fn(&str) -> bool) -> bool {
+    ["LC_ALL", "LC_CTYPE", "LANG"].into_iter().any(is_set)
+}
+
 /// The user's login-shell environment, resolved once and cached.
 ///
 /// Empty when resolution fails or on non-Unix platforms — callers then fall

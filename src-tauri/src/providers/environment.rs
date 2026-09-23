@@ -118,6 +118,12 @@ fn merge_provider_environment(
     if !env_map.iter().any(|(key, _)| key == op_integration) {
         env_map.push((op_integration.to_string(), "true".to_string()));
     }
+    if !login_shell::names_a_locale(|name| env_map.iter().any(|(key, _)| key == name)) {
+        env_map.push((
+            "LANG".to_string(),
+            login_shell::DEFAULT_UTF8_LANG.to_string(),
+        ));
+    }
 
     let current_path = env_map
         .iter()
@@ -194,6 +200,16 @@ mod tests {
             lookup(&merged, "OP_BIOMETRIC_UNLOCK_ENABLED"),
             Some("false")
         );
+    }
+
+    #[test]
+    fn merge_gives_a_utf8_locale_only_when_none_is_named() {
+        let merged = merge_provider_environment(Vec::new(), Vec::new(), []);
+        assert_eq!(lookup(&merged, "LANG"), Some("en_US.UTF-8"));
+
+        let base = pairs(&[("LC_CTYPE", "sv_SE.UTF-8")]);
+        let merged = merge_provider_environment(base, Vec::new(), []);
+        assert_eq!(lookup(&merged, "LANG"), None);
     }
 
     #[test]

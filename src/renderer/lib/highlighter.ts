@@ -171,22 +171,48 @@ export function plainCodeLines(code: string): HighlightToken[][] {
   return code.split("\n").map((line) => [{ content: line }]);
 }
 
+/** Highlighted fences, keyed by theme, language, and source. Shiki's
+    tokenizer is synchronous, and a chat reopened after a switch tokenized
+    every code block in its history again. Bounded by source characters. */
+const highlighted = new Map<string, HighlightToken[][]>();
+let highlightedChars = 0;
+const HIGHLIGHTED_CHAR_LIMIT = 2_000_000;
+
 export function highlightCode(
   code: string,
   lang: string | null,
-  appearance?: HighlightAppearance
+  appearance?: HighlightAppearance,
+  /** False for a fence still being written: its prefixes are never asked for again. */
+  keep = true
 ): HighlightToken[][] {
   if (!lang) return plainCodeLines(code);
   const instance = ensureHighlighter();
   if (!instance) return plainCodeLines(code);
+  const key = `${activeThemeName(appearance)}\u0000${lang}\u0000${code}`;
+  const cached = highlighted.get(key);
+  if (cached) {
+    highlighted.delete(key);
+    highlighted.set(key, cached);
+    return cached;
+  }
+  let lines: HighlightToken[][];
   try {
     const result = instance.codeToTokens(code, { theme: activeThemeName(appearance), lang });
-    return result.tokens.map((line) =>
+    lines = result.tokens.map((line) =>
       line.map((token) => ({ content: token.content, color: token.color }))
     );
   } catch {
     return plainCodeLines(code);
   }
+  if (!keep) return lines;
+  highlighted.set(key, lines);
+  highlightedChars += key.length;
+  for (const [oldest] of highlighted) {
+    if (highlightedChars <= HIGHLIGHTED_CHAR_LIMIT) break;
+    highlighted.delete(oldest);
+    highlightedChars -= oldest.length;
+  }
+  return lines;
 }
 
 // Fence tags from markdown (```ts, ```bash, etc.) map to shiki language ids.

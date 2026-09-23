@@ -87,7 +87,7 @@ function useCodeHighlight(
       pending.current = null;
       const current = latest.current;
       if (current.code.split("\n", LIVE_HIGHLIGHT_MAX_LINES + 1).length > LIVE_HIGHLIGHT_MAX_LINES) return;
-      setDeferred({ ...current, lines: highlightCode(current.code, current.lang, current.appearance) });
+      setDeferred({ ...current, lines: highlightCode(current.code, current.lang, current.appearance, false) });
     }, LIVE_HIGHLIGHT_INTERVAL_MS);
   }, [streaming, code, lang, appearance]);
   useEffect(

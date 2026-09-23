@@ -322,6 +322,12 @@ is kept by its text, 4 million source characters at most, so a chat reopened
 after a switch does not parse its history again. Measured 2026-09-23
 remounting 60 real answers (production build): 28 ms of script to 5 ms.
 Live text and fading blocks still parse per render.
+Highlighted code fences are kept the same way in
+[highlighter.ts](../src/renderer/lib/highlighter.ts), by theme, language, and
+source (2 million characters); a fence still being written is not kept, since
+its prefixes are never asked for again. Remounting 40 real answers with code:
+script 66 to 51 ms, paint-ready 144 to 120 ms. The rest is the first style and
+layout of the new DOM.
 
 The paced reveal cuts the source at a word or surrogate-pair boundary
 ([streamingText.ts](../src/renderer/lib/streamingText.ts) `revealBoundary`),

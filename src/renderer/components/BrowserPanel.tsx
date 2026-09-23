@@ -182,7 +182,7 @@ export function BrowserPanel({
   const [completionSeq, setCompletionSeq] = useState(0);
   const overlayOpenRef = useRef(false);
   /** A still of the page drawn in the surface while an overlay hides the webview. */
-  const [frozenFrame, setFrozenFrame] = useState<string | null>(null);
+  const [frozenFrame, setFrozenFrame] = useState<{ src: string; width: number; height: number } | null>(null);
   const frozenFrameRequestRef = useRef(0);
   const lastBoundsRef = useRef<{ tabId: string; bounds: BrowserBounds; visible: boolean } | null>(null);
   const tabs = useSyncExternalStore(subscribeBrowserTabs, () => getBrowserTabs(scopeId));
@@ -301,7 +301,11 @@ export function BrowserPanel({
     void browser
       .screenshot({ tabId })
       .then((shot) => {
-        if (frozenFrameRequestRef.current === request) setFrozenFrame(`data:image/png;base64,${shot.pngBase64}`);
+        if (frozenFrameRequestRef.current !== request) return;
+        // Drawn at the size it was taken, not stretched to the surface: a panel
+        // resize hides the webview too, and a still that scaled with the drag
+        // grew the whole page until the pointer let go.
+        setFrozenFrame({ src: `data:image/png;base64,${shot.pngBase64}`, width: bounds.width, height: bounds.height });
       })
       // Best-effort: without a still the surface is only empty, as before.
       .catch(() => undefined);
@@ -1333,7 +1337,14 @@ export function BrowserPanel({
         </div>
       ) : null}
       <div ref={surfaceRef} className="browser-panel-surface">
-        {frozenFrame ? <img className="browser-panel-frozen-frame" src={frozenFrame} alt="" /> : null}
+        {frozenFrame ? (
+          <img
+            className="browser-panel-frozen-frame"
+            src={frozenFrame.src}
+            alt=""
+            style={{ width: frozenFrame.width, height: frozenFrame.height }}
+          />
+        ) : null}
       </div>
       {historyImportOpen ? (
         <BrowserHistoryImport onClose={() => setHistoryImportOpen(false)} />

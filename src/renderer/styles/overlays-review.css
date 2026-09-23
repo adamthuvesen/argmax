@@ -1402,16 +1402,15 @@
   position: relative;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
-/* The page's last frame, shown while an overlay hides the native webview. The
-   capture is the webview's own size, so pin it top-left instead of scaling. */
+/* The page's last frame, shown while an overlay or a panel resize hides the
+   native webview. Sized inline to the capture and pinned top-left, so a
+   resize crops or uncovers it instead of zooming it. */
 .browser-panel-frozen-frame {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: left top;
+  top: 0;
+  left: 0;
   pointer-events: none;
 }

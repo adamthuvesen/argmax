@@ -162,7 +162,9 @@ export function TerminalTabsPanel({
           focusTab(last.id);
           return;
         }
-        if (event.key === "Delete" || event.key === "Backspace") {
+        // Delete only: clicking the tab already showing leaves focus on it,
+        // and a Backspace meant for the shell must not kill that shell.
+        if (event.key === "Delete") {
           event.preventDefault();
           closeTab(tabId);
         }

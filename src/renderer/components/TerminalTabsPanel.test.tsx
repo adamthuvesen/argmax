@@ -35,6 +35,7 @@ vi.mock("@xterm/xterm", () => ({
     loadAddon = vi.fn();
     open = vi.fn();
     onData = vi.fn(() => ({ dispose: vi.fn() }));
+    attachCustomKeyEventHandler = vi.fn();
     write = vi.fn();
     focus = vi.fn();
     dispose = vi.fn();
@@ -486,7 +487,7 @@ describe("TerminalTabsPanel", () => {
     );
   });
 
-  it("Delete on a focused tab closes it and terminates its PTY", async () => {
+  it("Delete on a focused tab closes it and terminates its PTY; Backspace does not", async () => {
     render(
       <TerminalTabsPanel
         workspaceId="ws-1"
@@ -500,6 +501,8 @@ describe("TerminalTabsPanel", () => {
 
     const second = screen.getByRole("tab", { name: "zsh 2" });
     second.focus();
+    fireEvent.keyDown(second, { key: "Backspace" });
+    expect(stub.terminate).not.toHaveBeenCalled();
     fireEvent.keyDown(second, { key: "Delete" });
 
     await waitFor(() => expect(stub.terminate).toHaveBeenCalledWith("pty-2"));

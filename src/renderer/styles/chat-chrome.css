@@ -1004,8 +1004,10 @@ body > .picker-popover-portaled.settings-picker-popover {
   color: var(--muted);
 }
 
+/* Hover and the keyboard cursor wear the sidebar's selection fill. On paper
+   --panel-soft sits one unit under a white popover and read as no fill. */
 .project-picker-item:hover {
-  background: var(--panel-soft);
+  background: var(--row-selected);
   color: var(--text);
 }
 
@@ -1132,7 +1134,7 @@ body > .picker-popover-portaled.settings-picker-popover {
    land on the same affordance. */
 .project-picker-popover li[data-active="true"] > .project-picker-item,
 .project-picker-popover li[data-active="true"].model-picker-row {
-  background: var(--panel-soft);
+  background: var(--row-selected);
   color: var(--text);
 }
 

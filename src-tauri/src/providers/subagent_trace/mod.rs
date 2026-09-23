@@ -268,8 +268,11 @@ fn reconcile_session_subagent_traces_from_home_database(
     session_id: &str,
     home: &Path,
 ) -> ArgmaxResult<usize> {
+    // The plan only reads, so it takes a pooled reader: on the writer it
+    // stalled every provider's deltas for as long as it took to scan a long
+    // session's tool rows.
     let Some(plan) = ({
-        let connection = database.connection();
+        let connection = database.read_connection();
         reconciliation_plan(&connection, session_id)?
     }) else {
         return Ok(0);

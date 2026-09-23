@@ -4643,7 +4643,7 @@ impl ProviderSessionService {
         Ok(written)
     }
 
-    fn schedule_subagent_trace_reconciliation(&self, session_id: &str) {
+    pub(crate) fn schedule_subagent_trace_reconciliation(&self, session_id: &str) {
         let session_id = session_id.to_string();
         {
             let mut reconciliations = self

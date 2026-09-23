@@ -93,11 +93,18 @@ async fn session_events_since_with_budget_impl(
             })
         })
         .transpose()?;
+    let providers = state.providers.get().cloned();
     read_off_main(move || {
-        // Reconcile only the initial backfill. Running panes call this command
-        // every 250 ms with a cursor, which must remain a cheap SQLite tail.
+        // Reconcile only on the initial backfill, and never ahead of it: a
+        // Codex reconcile walks the provider's rollout folders for the chat's
+        // whole lifetime, which held opening a long chat for seconds. The
+        // background pass publishes a revision hint when it writes, and the
+        // open pane pulls those rows like any other change.
         if change_cursor.is_none() && event_cursor.is_none() {
-            reconcile_subagent_traces_with_warning(&database, &session_id);
+            match providers {
+                Some(providers) => providers.schedule_subagent_trace_reconciliation(&session_id),
+                None => reconcile_subagent_traces_with_warning(&database, &session_id),
+            }
         }
         let connection = database.read_connection();
         match change_page_budget_bytes {

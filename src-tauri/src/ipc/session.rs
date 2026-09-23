@@ -6,6 +6,7 @@ use crate::{
     persistence::{
         dashboard::{list_session_agent_tail, list_session_tail, list_session_tail_for_remote},
         events::{latest_agent_message, SessionEventsSinceResult},
+        follow_up_suggestions::{cached_follow_up_suggestion, store_follow_up_suggestion},
         learnings::{search_events, EventSearchResult},
         sessions::SessionSummary,
         usage::{get_session_cost_summary, SessionCostSummary},
@@ -43,15 +44,40 @@ pub(crate) async fn session_suggest_follow_up_impl(
 ) -> ArgmaxResult<FollowUpSuggestion> {
     let database = live_database(state)?;
     let session_id = input.session_id.into_string();
-    let Some(last_message) =
-        read_off_main(move || latest_agent_message(&database.read_connection(), &session_id))
-            .await?
-    else {
+    let lookup = {
+        let database = Arc::clone(&database);
+        let session_id = session_id.clone();
+        read_off_main(move || {
+            let connection = database.read_connection();
+            let Some(message) = latest_agent_message(&connection, &session_id)? else {
+                return Ok(None);
+            };
+            let cached = cached_follow_up_suggestion(&connection, &session_id, &message)?;
+            Ok(Some((message, cached)))
+        })
+        .await?
+    };
+    let Some((last_message, cached)) = lookup else {
         return Ok(FollowUpSuggestion { suggestion: None });
     };
+    // A turn's suggestion outlives the renderer's cache: minting it again
+    // boots a provider CLI for every chat opened after a restart.
+    if cached.is_some() {
+        return Ok(FollowUpSuggestion { suggestion: cached });
+    }
 
     let suggestion =
         suggest_follow_up(input.provider, input.model_id.as_str(), &last_message).await;
+    // Only a real suggestion is kept, so a failed call retries next time.
+    if let Some(minted) = suggestion.clone() {
+        let stored = read_off_main(move || {
+            store_follow_up_suggestion(&database.connection(), &session_id, &last_message, &minted)
+        })
+        .await;
+        if let Err(error) = stored {
+            tracing::warn!(error = %error, "could not keep the follow-up suggestion");
+        }
+    }
     Ok(FollowUpSuggestion { suggestion })
 }
 

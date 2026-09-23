@@ -329,6 +329,14 @@ its prefixes are never asked for again. Remounting 40 real answers with code:
 script 66 to 51 ms, paint-ready 144 to 120 ms. The rest is the first style and
 layout of the new DOM.
 
+A fence that is not in that cache paints plain and queues its highlight
+(`queueHighlight` in the same module): jobs run in the order fences mounted, 6
+ms at a time between frames. Before, once Shiki had loaded, every fence in a
+newly opened chat was tokenized inside its first render. Measured 2026-09-23
+opening 40 real answers with code: the longest task went from 312 ms to 102 ms
+(the Markdown render itself), and code finished coloring at about 160 ms instead
+of 396 ms.
+
 The paced reveal cuts the source at a word or surrogate-pair boundary
 ([streamingText.ts](../src/renderer/lib/streamingText.ts) `revealBoundary`),
 scanning at most one word from the reveal position, and slices the string

@@ -178,6 +178,49 @@ const highlighted = new Map<string, HighlightToken[][]>();
 let highlightedChars = 0;
 const HIGHLIGHTED_CHAR_LIMIT = 2_000_000;
 
+function highlightedKey(code: string, lang: string, appearance?: HighlightAppearance): string {
+  return `${activeThemeName(appearance)}\u0000${lang}\u0000${code}`;
+}
+
+/** The colors already computed for this fence, without computing them. */
+export function peekHighlightedCode(
+  code: string,
+  lang: string | null,
+  appearance?: HighlightAppearance
+): HighlightToken[][] | null {
+  if (!lang || !highlighter) return null;
+  return highlighted.get(highlightedKey(code, lang, appearance)) ?? null;
+}
+
+/**
+ * Highlighting jobs run a few milliseconds at a time between frames, in the
+ * order they were queued. A chat opened with dozens of fences highlighted all
+ * of them inside its first render — one 300 ms task — where queued, it paints
+ * plain at once and colors each fence a slice later.
+ */
+const highlightJobs = new Set<() => void>();
+let highlightTimer: ReturnType<typeof setTimeout> | null = null;
+const HIGHLIGHT_SLICE_MS = 6;
+
+function runHighlightSlice(): void {
+  highlightTimer = null;
+  const deadline = performance.now() + HIGHLIGHT_SLICE_MS;
+  for (const job of highlightJobs) {
+    highlightJobs.delete(job);
+    job();
+    if (performance.now() >= deadline) break;
+  }
+  if (highlightJobs.size > 0) highlightTimer = setTimeout(runHighlightSlice, 0);
+}
+
+export function queueHighlight(job: () => void): () => void {
+  highlightJobs.add(job);
+  highlightTimer ??= setTimeout(runHighlightSlice, 0);
+  return () => {
+    highlightJobs.delete(job);
+  };
+}
+
 export function highlightCode(
   code: string,
   lang: string | null,
@@ -188,7 +231,7 @@ export function highlightCode(
   if (!lang) return plainCodeLines(code);
   const instance = ensureHighlighter();
   if (!instance) return plainCodeLines(code);
-  const key = `${activeThemeName(appearance)}\u0000${lang}\u0000${code}`;
+  const key = highlightedKey(code, lang, appearance);
   const cached = highlighted.get(key);
   if (cached) {
     highlighted.delete(key);

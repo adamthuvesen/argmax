@@ -2,7 +2,9 @@ import { Check, Code2, Copy, WrapText } from "lucide-react";
 import { Children, useContext, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import {
   highlightCode,
+  peekHighlightedCode,
   plainCodeLines,
+  queueHighlight,
   resolveFenceLang,
   useHighlightThemeAppearance,
   useHighlighterReady,
@@ -65,10 +67,22 @@ function useCodeHighlight(
   streaming: boolean,
   appearance: HighlightAppearance
 ): HighlightToken[][] {
-  const syncLines = useMemo(
-    () => (streaming ? null : highlightCode(code, lang, appearance)),
-    [streaming, code, lang, appearance]
-  );
+  // A settled fence colored before paints colored; one that has not been
+  // paints plain and queues its highlight, so a chat full of code opens at
+  // once rather than tokenizing every fence inside its first render.
+  const cachedLines = streaming ? null : peekHighlightedCode(code, lang, appearance);
+  const [queued, setQueued] = useState<{ key: string; lines: HighlightToken[][] } | null>(null);
+  const settledKey = `${appearance}\u0000${lang}\u0000${code}`;
+  const needsQueue = !streaming && lang !== null && cachedLines === null;
+  useEffect(() => {
+    if (!needsQueue) return;
+    return queueHighlight(() => {
+      setQueued({ key: settledKey, lines: highlightCode(code, lang, appearance) });
+    });
+  }, [needsQueue, settledKey, code, lang, appearance]);
+  const syncLines = streaming
+    ? null
+    : cachedLines ?? (queued?.key === settledKey ? queued.lines : plainCodeLines(code));
   const [deferred, setDeferred] = useState<{
     code: string;
     lang: string | null;

@@ -235,6 +235,36 @@ function loadMermaid(): Promise<MermaidApi> {
   return mermaidPromise;
 }
 
+/** Drawn diagrams, keyed by theme and source. A chat that remounts (a switch
+    back to it) paints its diagrams in the first frame instead of laying each
+    one out again behind a placeholder. Bounded: sessions are revisited in
+    small working sets. */
+const drawn = new Map<string, MermaidRenderResult>();
+const DRAWN_LIMIT = 48;
+
+function drawnKey(source: string, themeKey: string): string {
+  return `${themeKey}\n${source}`;
+}
+
+/** The diagram already drawn for this source under this theme, if any. */
+export function drawnMermaidDiagram(source: string, themeKey: string): MermaidRenderResult | null {
+  return drawn.get(drawnKey(source, themeKey)) ?? null;
+}
+
+export function resetDrawnMermaidDiagramsForTests(): void {
+  drawn.clear();
+}
+
+export function rememberDrawnMermaidDiagram(source: string, themeKey: string, result: MermaidRenderResult): void {
+  const key = drawnKey(source, themeKey);
+  drawn.delete(key);
+  drawn.set(key, result);
+  if (drawn.size > DRAWN_LIMIT) {
+    const oldest = drawn.keys().next();
+    if (!oldest.done) drawn.delete(oldest.value);
+  }
+}
+
 /**
  * Render one diagram to SVG. Calls are serialized: mermaid keeps layout
  * state on the module, and overlapping `render()` calls can poison later

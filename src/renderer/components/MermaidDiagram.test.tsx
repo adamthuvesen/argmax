@@ -20,7 +20,7 @@ vi.mock("../lib/mermaidRuntime.js", async (importOriginal) => {
   };
 });
 
-import { mermaidProseWidth, nativeSvgWidth } from "../lib/mermaidRuntime.js";
+import { mermaidProseWidth, nativeSvgWidth, resetDrawnMermaidDiagramsForTests } from "../lib/mermaidRuntime.js";
 import { MermaidDiagram } from "./MermaidDiagram.js";
 
 describe("MermaidDiagram", () => {
@@ -29,6 +29,7 @@ describe("MermaidDiagram", () => {
   });
 
   afterEach(() => {
+  resetDrawnMermaidDiagramsForTests();
     cleanup();
   });
 
@@ -50,6 +51,21 @@ describe("MermaidDiagram", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Copy diagram source" }));
     expect(writeText).toHaveBeenCalledWith(source);
+  });
+
+  it("paints a diagram drawn before at once when its chat remounts", async () => {
+    const source = "flowchart LR\n  A --> B";
+    const first = render(<MermaidDiagram source={source} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("mermaid-svg")).toBeInTheDocument();
+    });
+    first.unmount();
+    renderMermaidDiagram.mockClear();
+
+    render(<MermaidDiagram source={source} />);
+    // No pending status and no second layout: the first render has the SVG.
+    expect(screen.getByTestId("mermaid-svg")).toBeInTheDocument();
+    expect(renderMermaidDiagram).not.toHaveBeenCalled();
   });
 
   it("toggles the mermaid source without leaving the diagram", async () => {

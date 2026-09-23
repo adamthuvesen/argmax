@@ -6,6 +6,7 @@ import type * as MermaidRuntime from "../lib/mermaidRuntime.js";
 import { ATTACHMENT_PROTOCOL_SCHEME } from "../../shared/attachmentProtocol.js";
 import { WORKSPACE_ASSET_PROTOCOL_SCHEME } from "../../shared/assetProtocol.js";
 import { FRESH_RUN_FADE_MS } from "../lib/streamFreshRuns.js";
+import { resetDrawnMermaidDiagramsForTests } from "../lib/mermaidRuntime.js";
 import { StreamingMarkdown } from "./StreamingMarkdown.js";
 
 const FRAME_MS = 16;
@@ -30,6 +31,7 @@ vi.mock("../lib/tauriBridge.js", () => ({
 }));
 
 afterEach(() => {
+  resetDrawnMermaidDiagramsForTests();
   cleanup();
   vi.useRealTimers();
   vi.restoreAllMocks();

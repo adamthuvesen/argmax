@@ -571,7 +571,9 @@ function SidebarSessionRowInner({
               (workspace.kind === "scratch" ? (
                 // A repo-less chat has no checkout to report on; its calm
                 // glyph says what it is instead.
-                <MessageCircle size={14} aria-hidden className="status-marker" data-chat="true" />
+                <span className="session-link-lead-ring" data-chat="true" aria-hidden="true">
+                  <MessageCircle size={11} strokeWidth={1} absoluteStrokeWidth />
+                </span>
               ) : (
                 <span className="session-link-lead-ring" aria-hidden="true" />
               ))}

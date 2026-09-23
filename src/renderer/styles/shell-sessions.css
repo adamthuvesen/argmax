@@ -115,6 +115,18 @@
   opacity: 0.5;
 }
 
+/* A chat row swaps the ring for a bubble at the ring's weight: same box, same
+   1px muted stroke, same half opacity, so the two alternate in one list without
+   the bubble reading as a signal. */
+.session-link-lead-ring[data-chat="true"]::before {
+  content: none;
+}
+
+.session-link-lead-ring[data-chat="true"] svg {
+  color: var(--muted);
+  opacity: 0.5;
+}
+
 .session-unread-marker {
   display: grid;
   place-items: center;

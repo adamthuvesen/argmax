@@ -25,7 +25,11 @@ const LIGHT_XTERM_THEME = {
   magenta: "#8a4577",
   cyan: "#3f7a85",
   white: "#5d594f",
-  brightBlack: "#3a3833",
+  // Shells draw "not typed yet" in ANSI 8: zsh-autosuggestions' default is
+  // fg=8. Near the foreground, a suggestion reads as typed text, and Backspace
+  // looks dead because the deleted character comes back as the suggestion.
+  // A mid gray keeps 4.6:1 on the background so minimumContrastRatio leaves it.
+  brightBlack: "#76726a",
   brightRed: "#cc6873",
   brightGreen: "#5a8f72",
   brightYellow: "#c89653",

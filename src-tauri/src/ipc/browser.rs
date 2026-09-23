@@ -853,6 +853,12 @@ fn open_tab_with_url(
             format!("install popup close callback: {error}"),
         )
     })?;
+    crate::browser::js_dialogs::install(&created).map_err(|error| {
+        ArgmaxError::service(
+            "BROWSER_CREATE_FAILED",
+            format!("install page dialogs: {error}"),
+        )
+    })?;
     if !visible {
         let _ = created.hide();
     }

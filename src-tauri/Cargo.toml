@@ -179,6 +179,9 @@ rmcp = { version = "3.2", default-features = false, features = [
 # `takeSnapshotWithConfiguration:completionHandler:` itself. All of these are
 # already in the tree via wry at the same versions; nothing new is downloaded.
 #
+# `NSAlert` and friends answer a tab's `alert` / `confirm` / `prompt`, which
+# wry's UI delegate leaves unimplemented. See browser/js_dialogs.rs.
+#
 # `objc2-user-notifications` is the desktop notification path: the Tauri
 # plugin sends through the deprecated `NSUserNotificationCenter`, which macOS
 # never shows as a banner while Argmax is frontmost and whose permission
@@ -209,11 +212,19 @@ objc2-user-notifications = { version = "0.3", default-features = false, features
 ] }
 objc2-app-kit = { version = "0.3", default-features = false, features = [
     "std",
+    "block2",
+    "NSAlert",
+    "NSApplication",
     "NSBitmapImageRep",
     "NSAppearance",
+    "NSControl",
     "NSGraphics",
     "NSImage",
     "NSImageRep",
+    "NSResponder",
+    "NSTextField",
+    "NSView",
+    "NSWindow",
 ] }
 objc2-web-kit = { version = "0.3", default-features = false, features = [
     "std",

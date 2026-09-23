@@ -39,6 +39,7 @@ const browserStub = {
   contentBlocking: vi.fn(() => Promise.resolve({ supported: true, disabledHosts: [] as string[] })),
   setSiteBlocking: vi.fn(() => Promise.resolve({ supported: true, disabledHosts: [] as string[] })),
   setBounds: vi.fn(() => Promise.resolve({ ok: true as const })),
+  screenshot: vi.fn(() => Promise.resolve({ pngBase64: "c3RpbGw=", width: 800, height: 1480 })),
   focus: vi.fn(() => Promise.resolve({ ok: true as const })),
   close: vi.fn(() => Promise.resolve({ ok: true as const })),
   stop: vi.fn(() => Promise.resolve({ ok: true as const })),
@@ -761,11 +762,15 @@ describe("BrowserPanel", () => {
     expect(browserStub.setBounds).toHaveBeenCalledWith(
       expect.objectContaining({ visible: false, tabId: activeTabId() })
     );
+    // The hidden page leaves a still of itself behind, not an empty hole.
+    expect(browserStub.screenshot).toHaveBeenCalledWith({ tabId: activeTabId() });
+    await waitFor(() => expect(surface.querySelector("img")).toHaveAttribute("src", "data:image/png;base64,c3RpbGw="));
     overlapping.remove();
     await act(async () => { await Promise.resolve(); });
     expect(browserStub.setBounds).toHaveBeenLastCalledWith(
       expect.objectContaining({ visible: true, tabId: activeTabId() })
     );
+    expect(surface.querySelector("img")).toBeNull();
   });
 
   it("repositions the native webview when a review pane moves without resizing", async () => {

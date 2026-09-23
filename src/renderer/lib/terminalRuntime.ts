@@ -75,6 +75,30 @@ export function syncTerminalSize(runtime: TerminalTabRuntime): void {
   void window.argmax?.terminal.resize({ terminalId: runtime.terminalId, ...size });
 }
 
+/**
+ * The bytes a macOS terminal sends for the text-editing chords xterm leaves
+ * alone or encodes for Linux. xterm drops ⌘←/⌘→, sends ⌘⌫ as a plain
+ * Backspace, and sends ⌥←/⌥→ as `ESC[1;3D`/`ESC[1;3C`, which bash and a stock
+ * zsh don't bind. Ghostty, iTerm2 and Terminal.app map them to the readline
+ * keys every shell binds, so the same fingers work here. Null leaves the key
+ * to xterm.
+ */
+export function macEditingKeySequence(event: KeyboardEvent): string | null {
+  if (event.type !== "keydown" || event.ctrlKey || event.shiftKey || event.isComposing) return null;
+  if (event.metaKey && !event.altKey) {
+    if (event.key === "Backspace") return "\x15"; // ⌘⌫: kill the line (Ctrl+U)
+    if (event.key === "ArrowLeft") return "\x01"; // ⌘←: line start (Ctrl+A)
+    if (event.key === "ArrowRight") return "\x05"; // ⌘→: line end (Ctrl+E)
+    return null;
+  }
+  if (event.altKey && !event.metaKey) {
+    if (event.key === "ArrowLeft") return "\x1bb"; // ⌥←: word back
+    if (event.key === "ArrowRight") return "\x1bf"; // ⌥→: word forward
+    if (event.key === "Delete") return "\x1bd"; // ⌥⌦: delete the next word
+  }
+  return null;
+}
+
 interface RuntimeEntry extends TerminalTabRuntime {
   host: HTMLDivElement;
   disposed: boolean;
@@ -133,6 +157,15 @@ export function attachTerminalTab(
   const fit = new FitAddon();
   term.loadAddon(fit);
   term.open(host);
+  term.attachCustomKeyEventHandler((event) => {
+    const sequence = macEditingKeySequence(event);
+    if (sequence === null) return true;
+    event.preventDefault();
+    event.stopPropagation();
+    // `input` fires `onData` like a typed key, so it takes the same write path.
+    term.input(sequence, true);
+    return false;
+  });
 
   const entry: RuntimeEntry = {
     term,

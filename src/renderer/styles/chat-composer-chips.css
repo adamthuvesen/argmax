@@ -986,9 +986,9 @@
   pointer-events: none;
 }
 
-.composer-highlight-backdrop::after {
-  /* Keep a trailing blank line, like the textarea, so both can scroll equally. */
-  content: "\200b";
+/* Moved by transform to the textarea's scrollTop (see syncHighlightScroll). */
+.composer-highlight-text {
+  will-change: transform;
 }
 
 /* In the launcher the field is 60px tall and centres a 52px textarea, so a

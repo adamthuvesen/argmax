@@ -24,6 +24,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -31,8 +32,7 @@ import {
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent,
   type MutableRefObject,
-  type ReactNode,
-  type UIEvent as ReactUIEvent
+  type ReactNode
 } from "react";
 import type {
   AgentMode,
@@ -493,11 +493,18 @@ export function SessionComposer({
       ),
     [dispatchedNames, input, slashAutocomplete.skillNames]
   );
-  const highlightBackdropRef = useRef<HTMLDivElement | null>(null);
-  const syncHighlightScroll = useCallback((event: ReactUIEvent<HTMLTextAreaElement>): void => {
-    const backdrop = highlightBackdropRef.current;
-    if (backdrop) backdrop.scrollTop = event.currentTarget.scrollTop;
-  }, []);
+  // The mirror follows the textarea's scroll by transform, not by its own
+  // scrollTop: WebKit leaves the div's bottom padding out of its scroll range,
+  // so a long prompt scrolled to the end clamped the mirror a line short and
+  // the caret sat a line above the text it belongs to. Synced after every
+  // render as well, since the mirror mounts into an already-scrolled field.
+  const highlightTextRef = useRef<HTMLDivElement | null>(null);
+  const syncHighlightScroll = useCallback((): void => {
+    const text = highlightTextRef.current;
+    const field = inputRef.current;
+    if (text && field) text.style.transform = `translateY(${-field.scrollTop}px)`;
+  }, [inputRef]);
+  useLayoutEffect(syncHighlightScroll, [skillHighlight, syncHighlightScroll]);
   const changeSummaryText = changeSummary
     ? `${changeSummary.fileCount} ${changeSummary.fileCount === 1 ? "file" : "files"} changed`
     : null;
@@ -1099,16 +1106,20 @@ export function SessionComposer({
       ) : null}
       <div className="session-input-field">
         {skillHighlight ? (
-          <div className="composer-highlight-backdrop" aria-hidden="true" ref={highlightBackdropRef}>
-            {skillHighlight.map((segment, index) =>
-              segment.skill ? (
-                <span key={index} className="skill-token">
-                  {segment.text}
-                </span>
-              ) : (
-                segment.text
-              )
-            )}
+          <div className="composer-highlight-backdrop" aria-hidden="true">
+            <div className="composer-highlight-text" ref={highlightTextRef}>
+              {skillHighlight.map((segment, index) =>
+                segment.skill ? (
+                  <span key={index} className="skill-token">
+                    {segment.text}
+                  </span>
+                ) : (
+                  segment.text
+                )
+              )}
+              {/* Holds open the empty last line a trailing newline makes, as the textarea does. */}
+              {input.endsWith("\n") ? "\u200b" : null}
+            </div>
           </div>
         ) : null}
         <textarea

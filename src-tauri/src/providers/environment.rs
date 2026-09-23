@@ -113,6 +113,12 @@ fn merge_provider_environment(
         }
     }
 
+    // After the merge, so a login-shell or override value is kept.
+    let op_integration = login_shell::OP_APP_INTEGRATION_ENV;
+    if !env_map.iter().any(|(key, _)| key == op_integration) {
+        env_map.push((op_integration.to_string(), "true".to_string()));
+    }
+
     let current_path = env_map
         .iter()
         .find_map(|(key, value)| (key == "PATH").then_some(value.as_str()));
@@ -175,6 +181,19 @@ mod tests {
 
         assert_eq!(lookup(&merged, "NO_COLOR"), Some("1"));
         assert_eq!(lookup(&merged, "TERM"), Some("xterm-256color"));
+    }
+
+    #[test]
+    fn merge_turns_on_op_app_integration_unless_the_shell_set_it() {
+        let merged = merge_provider_environment(Vec::new(), Vec::new(), []);
+        assert_eq!(lookup(&merged, "OP_BIOMETRIC_UNLOCK_ENABLED"), Some("true"));
+
+        let base = pairs(&[("OP_BIOMETRIC_UNLOCK_ENABLED", "false")]);
+        let merged = merge_provider_environment(base, Vec::new(), []);
+        assert_eq!(
+            lookup(&merged, "OP_BIOMETRIC_UNLOCK_ENABLED"),
+            Some("false")
+        );
     }
 
     #[test]

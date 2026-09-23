@@ -32,6 +32,14 @@ every process group still in the shell's PTY session, then escalates from
 up ordinary background jobs from that session too. Processes that deliberately
 create a new session keep their independent lifecycle.
 
+The shell starts with `OP_BIOMETRIC_UNLOCK_ENABLED=true` unless Argmax's own
+environment sets it, and the rc files run after, so an export there wins.
+Without it `op` fails here where Ghostty works: `op` first reads 1Password's
+settings file in the app's group container, macOS app-data protection denies
+that read to processes Argmax spawns, and `op` reports "No accounts configured"
+instead of the error. Provider CLIs get the same default through
+[environment.rs](../src-tauri/src/providers/environment.rs).
+
 The `terminal_spawn` agent tool uses the same service and can type a command
 into the new shell. The PTY belongs to Argmax, so it survives the provider turn
 that created it. `terminal:agent-open` adds it to the workspace's terminal tabs

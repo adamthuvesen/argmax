@@ -848,6 +848,11 @@ fn default_shell_factory() -> ShellFactory {
         if let Ok(home) = std::env::var("HOME") {
             cmd.env("HOME", home);
         }
+        // Set before the shell's rc files run, so an export there still wins.
+        let op_integration = crate::util::login_shell::OP_APP_INTEGRATION_ENV;
+        if std::env::var_os(op_integration).is_none() {
+            cmd.env(op_integration, "true");
+        }
         cmd
     })
 }

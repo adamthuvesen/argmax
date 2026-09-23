@@ -19,6 +19,15 @@ use std::{
     sync::OnceLock,
 };
 
+/// Asks 1Password's `op` to use the desktop app without reading the app's
+/// settings file first. That file lives in 1Password's group container, and
+/// macOS app-data protection refuses the read to anything Argmax spawns
+/// (`operation not permitted`), which `op` reports as "No accounts configured"
+/// and then offers `op account add`. Every child that can run `op` — the
+/// terminal's shell, provider CLIs, the browser's autofill — sets it unless the
+/// user already did.
+pub const OP_APP_INTEGRATION_ENV: &str = "OP_BIOMETRIC_UNLOCK_ENABLED";
+
 /// The user's login-shell environment, resolved once and cached.
 ///
 /// Empty when resolution fails or on non-Unix platforms — callers then fall

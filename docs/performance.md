@@ -315,13 +315,19 @@ wheel notch committed about 1,500 components before, and one button after. Mouse
 ([chat-cards.md](chat-cards.md#follow-scroll)) writes `scrollTop` from JS every
 frame, so any main-thread work during a scroll now shows as a stutter.
 
-Paced markdown reveals use a numeric Unicode cursor and slice the source
-string without retaining a character array or joining each visible prefix.
-Reveal timing, Markdown rendering, and tool-call presentation are unchanged.
-Completed, unpaced, and reduced-motion blocks render the source text directly.
-An isolated local benchmark of 1,000 prefixes over 100,800 code points took
-about 400 ms with the previous array slicing and joining, and under 2 ms with
-the cursor. This measures prefix preparation, not end-to-end rendering.
+Settled Markdown renders from a parse cache in
+[StreamingMarkdown](../src/renderer/components/StreamingMarkdown.tsx): the
+parsed element tree of a finished message (or a closed block of a live one)
+is kept by its text, 4 million source characters at most, so a chat reopened
+after a switch does not parse its history again. Measured 2026-09-23
+remounting 60 real answers (production build): 28 ms of script to 5 ms.
+Live text and fading blocks still parse per render.
+
+The paced reveal cuts the source at a word or surrogate-pair boundary
+([streamingText.ts](../src/renderer/lib/streamingText.ts) `revealBoundary`),
+scanning at most one word from the reveal position, and slices the string
+once per render; it never builds a character array. Completed, unpaced, and
+reduced-motion blocks render the source text directly.
 
 Usage and Activity prefetches share in-flight requests with visible panels.
 Each summary cache retains at most eight filter combinations, preserving the

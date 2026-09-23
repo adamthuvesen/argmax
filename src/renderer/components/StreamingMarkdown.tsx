@@ -471,13 +471,54 @@ const markdownComponents: Components = {
   pre: ({ children }) => <>{children}</>
 };
 
+/**
+ * Parsed trees of settled Markdown, keyed by the text. `ReactMarkdown` is a
+ * pure function of its source, and a chat reopened after a switch parsed
+ * every message again (about 19 ms of a switch's script). The trees hold no
+ * state: components inside them still mount fresh and read the current
+ * workspace from context. Bounded by source characters, least recent first.
+ */
+const parsedMarkdown = new Map<string, JSX.Element>();
+let parsedMarkdownChars = 0;
+const PARSED_MARKDOWN_CHAR_LIMIT = 4_000_000;
+
+function parsedMarkdownTree(text: string): JSX.Element {
+  const cached = parsedMarkdown.get(text);
+  if (cached) {
+    parsedMarkdown.delete(text);
+    parsedMarkdown.set(text, cached);
+    return cached;
+  }
+  const tree = ReactMarkdown({
+    children: text,
+    remarkPlugins: [remarkGfm],
+    urlTransform: chatUrlTransform,
+    components: markdownComponents
+  });
+  parsedMarkdown.set(text, tree);
+  parsedMarkdownChars += text.length;
+  for (const [oldest] of parsedMarkdown) {
+    if (parsedMarkdownChars <= PARSED_MARKDOWN_CHAR_LIMIT) break;
+    parsedMarkdown.delete(oldest);
+    parsedMarkdownChars -= oldest.length;
+  }
+  return tree;
+}
+
 // Keep the plain render visible while the optional math chunk loads.
 const MarkdownBody = memo(function MarkdownBody({
   text,
   freshRuns,
+  settled = false,
   workspace,
   onOpenFile
-}: MarkdownContextValue & { text: string; freshRuns?: readonly FreshRun[] }): JSX.Element {
+}: MarkdownContextValue & {
+  text: string;
+  freshRuns?: readonly FreshRun[];
+  /** The text will not change: a finished message, or a closed block of a
+      live one. Only settled text is worth keeping parsed. */
+  settled?: boolean;
+}): JSX.Element {
   const context = useMemo(() => ({ workspace, onOpenFile }), [workspace, onOpenFile]);
   const withMath = needsMath(text);
   // Math renders through its own pipeline, where a span cut into a formula's
@@ -486,16 +527,25 @@ const MarkdownBody = memo(function MarkdownBody({
     () => (freshRuns && freshRuns.length > 0 && !withMath ? [rehypeFreshRuns(freshRuns)] : undefined),
     [freshRuns, withMath]
   );
-  const plain = (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      rehypePlugins={rehypePlugins}
-      urlTransform={chatUrlTransform}
-      components={markdownComponents}
-    >
+  // Settled text renders from the parse cache. Live text changes every frame,
+  // and a fading block's tree changes with its runs, so those parse as they go.
+  // Both paths call the parser directly rather than mounting a
+  // <ReactMarkdown> element, so the tree has the same shape either way and a
+  // block settling keeps its DOM (and a code block its scroll position).
+  const plain = withMath ? (
+    // Only the fallback while the math chunk loads, so it stays lazy.
+    <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={chatUrlTransform} components={markdownComponents}>
       {text}
     </ReactMarkdown>
-  );
+  ) : !settled || rehypePlugins
+      ? ReactMarkdown({
+          children: text,
+          remarkPlugins: [remarkGfm],
+          rehypePlugins,
+          urlTransform: chatUrlTransform,
+          components: markdownComponents
+        })
+      : parsedMarkdownTree(text);
   return (
     <MarkdownContext.Provider value={context}>
       {withMath ? (
@@ -615,7 +665,7 @@ export function StreamingMarkdown({
         <LogBlock key={`log-${index}`} text={segment.text} />
       ) : (
         <div key={`md-${index}`} className="markdown">
-          <MarkdownBody text={segment.text} workspace={workspace} onOpenFile={onOpenFile} />
+          <MarkdownBody text={segment.text} settled={!live} workspace={workspace} onOpenFile={onOpenFile} />
         </div>
       )
     );
@@ -630,6 +680,7 @@ export function StreamingMarkdown({
           <MarkdownBody
             text={open && tools ? tools.healStreamingTail(block.text) : block.text}
             freshRuns={blockFreshRuns(freshRuns, block, blockRunsRef.current)}
+            settled={index < split.blocks.length - 2 || !live}
             workspace={workspace}
             onOpenFile={onOpenFile}
           />
@@ -641,6 +692,7 @@ export function StreamingMarkdown({
       <MarkdownBody
         text={markdownText}
         freshRuns={freshRuns}
+        settled={!live}
         workspace={workspace}
         onOpenFile={onOpenFile}
       />

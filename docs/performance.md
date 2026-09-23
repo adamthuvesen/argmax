@@ -334,6 +334,18 @@ screen, including mobile, do not warm the desktop diff. Diff previews retain
 at most 12 entries and 8 MiB of estimated UTF-16 text per pane, excluding the
 currently displayed diff. Oversized diffs remain viewable without being cached.
 
+Diff hunks are highlighted off the render path
+([diffHighlight.ts](../src/renderer/lib/diffHighlight.ts)): each hunk is
+tokenized as its two sides (the new file's context and additions, the old
+file's context and deletions) in 200-line chunks that carry Shiki's grammar
+state, 6 ms at a time between frames, and a hunk re-renders only when its own
+lines gain colors. Lines paint plain until then. Measured 2026-09-23 on a real
+2,847-line diff of `App.tsx` (production build, headless Chrome): the longest
+main-thread task went from 760 ms to 109 ms (4x CPU throttle: 3,243 ms to
+254 ms), and what remains is the first render of the lines and Shiki's
+one-time grammar compile, not the tokenizing. Because a side is tokenized as
+one document, a string or comment spanning lines now colors correctly.
+
 Workspace file inventories sort and deduplicate borrowed paths before creating
 owned entries, avoiding tree-node and duplicate string allocations while
 preserving sorted results.

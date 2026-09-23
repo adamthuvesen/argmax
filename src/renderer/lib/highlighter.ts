@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import type { HighlighterCore, LanguageInput, ThemeInput } from "shiki/core";
+import type { GrammarState, HighlighterCore, LanguageInput, ThemeInput } from "shiki/core";
 import { errorMessage } from "../../shared/error.js";
 import { logger } from "../../shared/logger.js";
 import { themeAppearance } from "./theme.js";
@@ -138,24 +138,29 @@ export function useHighlighterReady(): boolean {
   return ready;
 }
 
-export function highlightLine(
-  content: string,
-  lang: string | null,
-  appearance?: HighlightAppearance
-): HighlightToken[] {
-  if (!lang) return [{ content }];
+/**
+ * Tokenizes several lines in one call, continuing from `grammarState` when the
+ * text is the next slice of a longer document. One call per slice rather than
+ * per line: each call pays for grammar setup, and a line tokenized alone loses
+ * the string or comment it sits inside. `null` while the highlighter or the
+ * grammar is unavailable.
+ */
+export function tokenizeLines(
+  code: string,
+  lang: string,
+  appearance: HighlightAppearance,
+  grammarState?: GrammarState
+): { lines: HighlightToken[][]; grammarState?: GrammarState } | null {
   const instance = ensureHighlighter();
-  if (!instance) return [{ content }];
+  if (!instance) return null;
   try {
-    const result = instance.codeToTokens(content, { theme: activeThemeName(appearance), lang });
-    const firstLine = result.tokens[0];
-    if (!firstLine) return [{ content }];
-    return firstLine.map((token) => ({ content: token.content, color: token.color }));
+    const result = instance.codeToTokens(code, { theme: activeThemeName(appearance), lang, grammarState });
+    return {
+      lines: result.tokens.map((line) => line.map((token) => ({ content: token.content, color: token.color }))),
+      grammarState: result.grammarState
+    };
   } catch {
-    // codeToTokens throws on unloaded grammars; we already restrict to the
-    // curated set, but a stale alias slipping through shouldn't break the
-    // review pane. Fall back to plain text.
-    return [{ content }];
+    return null;
   }
 }
 

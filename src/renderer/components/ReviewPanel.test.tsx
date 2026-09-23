@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 // Stub the highlighter so this test never touches shiki.
 vi.mock("../lib/highlighter.js", () => ({
-  highlightLine: vi.fn((content: string) => [{ content }]),
+  tokenizeLines: vi.fn(() => null),
   useHighlighterReady: vi.fn(() => true),
   useHighlightThemeAppearance: vi.fn(() => "light"),
   langFromPath: vi.fn(() => null)

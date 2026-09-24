@@ -130,8 +130,18 @@ final class TranscriptStore: ObservableObject {
         contentVersion = 0
         hasMoreHistory = false
         phase = .loading
+        var catchesUp = false
         if let cached = recent[id] {
             restore(cached.stored)
+            // Only content read live in this process is ever stored, and its
+            // cursors were captured with it, so this chat catches up through
+            // the change feed like a reconnect does. Coming back to a chat
+            // re-downloaded its whole history instead. A saved copy read from
+            // disk below still takes the authoritative read.
+            eventCursor = cached.stored.page.eventCursor
+            rawOutputCursor = cached.stored.page.rawOutputCursor
+            changeCursor = cached.stored.page.changeCursor
+            catchesUp = changeCursor != nil
             // Painted in this frame, so its documents must be ready in this
             // frame too. The cache may have evicted some since the chat was
             // last open; the few missing ones cost far less here than a
@@ -155,7 +165,7 @@ final class TranscriptStore: ObservableObject {
                 self.updateProjection()
             }
         }
-        authoritativeReadRequested = true
+        if catchesUp { transcriptDirty = true } else { authoritativeReadRequested = true }
         metadataDirty = true
         scheduleReads()
     }
@@ -541,7 +551,8 @@ final class TranscriptStore: ObservableObject {
         eventsByID = Dictionary(cached.page.events.map { ($0.id, $0) }, uniquingKeysWith: { _, newer in newer })
         rawOutputsByID = Dictionary(cached.page.rawOutputs.map { ($0.id, $0) }, uniquingKeysWith: { _, newer in newer })
         workspacePath = cached.workspacePath
-        // Cached cursors are never a substitute for authoritative recovery.
+        // Cursors saved to disk are never a substitute for authoritative
+        // recovery; `openSession` adopts only those of an in-memory copy.
         if metadata == nil, let row = cached.metadata {
             ingest(metadata: row, title: cached.title, pendingMessages: [])
         }

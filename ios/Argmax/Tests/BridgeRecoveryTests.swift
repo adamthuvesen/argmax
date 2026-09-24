@@ -306,6 +306,45 @@ final class BridgeRecoveryTests: XCTestCase {
         await client.disconnect()
     }
 
+    @MainActor
+    func testReturningToAChatHeldInMemoryCatchesUpFromItsChangeCursor() async throws {
+        let socket = TestBridgeSocket()
+        let (client, directory) = try makeClient([socket])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = TranscriptStore(client: client, cache: DeviceCache(directory: directory))
+        func transcriptReads() -> [[String: Any]] {
+            socket.requests.filter { $0["channel"] as? String == "session:events-since" }
+        }
+        func page(_ session: String, _ ids: [String], changeCursor: Int, reset: Bool) -> [String: Any] {
+            ["events": ids.enumerated().map { index, id in
+                ["id": id, "sessionId": session, "type": "message.completed", "message": id,
+                 "payload": [String: Any](), "createdAt": "2026-01-01T00:00:0\(index + 1).000Z", "rowCursor": index + 1]
+             },
+             "rawOutputs": [Any](), "eventCursor": ids.count, "rawOutputCursor": 0, "changeCursor": changeCursor,
+             "deletedEventIds": [Any](), "deletedRawOutputIds": [Any](), "resetRequired": reset, "hasMore": false]
+        }
+        store.openSession("s-1")
+        try await wait { transcriptReads().count == 1 }
+        socket.reply(to: transcriptReads()[0], ok: page("s-1", ["hello"], changeCursor: 5, reset: true))
+        try await wait { !store.items.isEmpty }
+        store.openSession("s-2")
+        try await wait { transcriptReads().count == 2 }
+        socket.reply(to: transcriptReads()[1], ok: page("s-2", ["other"], changeCursor: 9, reset: true))
+        await store.flushCache()
+
+        store.openSession("s-1")
+        try await wait { transcriptReads().count == 3 }
+        let input = try XCTUnwrap(transcriptReads()[2]["input"] as? [String: Any])
+        XCTAssertEqual(input["changeCursor"] as? Int, 5, "A chat read live this session resumes from its cursor")
+        let before = store.items
+        socket.reply(to: transcriptReads()[2], ok: page("s-1", ["hello", "again"], changeCursor: 7, reset: false))
+        try await wait { !store.showingCachedContent }
+        await store.waitForProjection()
+        XCTAssertNotEqual(store.items, before, "The catch-up page lands on the restored rows")
+        store.closeSession()
+        await client.disconnect()
+    }
+
     func testDashboardReadsShareOneRequestUntilTheHostSignalsAChange() async throws {
         let socket = TestBridgeSocket()
         let (client, directory) = try makeClient([socket])

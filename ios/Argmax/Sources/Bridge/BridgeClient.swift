@@ -384,7 +384,7 @@ actor BridgeClient {
             read = SharedDashboardRead(id: id, epoch: dashboardEpoch, startedAt: .now, task: task)
             dashboardRead = read
             dashboardReadTasks[id] = task
-            Task { await self.finishDashboardRead(id, with: await task.result) }
+            Task { self.finishDashboardRead(id, with: await task.result) }
         }
         // Each caller waits on its own continuation so that one cancelled
         // caller stops waiting at once, without cancelling the read for the

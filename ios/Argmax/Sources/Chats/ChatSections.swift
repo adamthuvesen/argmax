@@ -332,7 +332,7 @@ func parseWireTimestamp(_ text: String) -> Date? {
 /// an offset, another fraction length, a year before the formatter's
 /// Gregorian cutover matters — is nil here and goes to the formatters.
 private func parseUTCTimestamp(_ text: String) -> Date? {
-    var utf8 = text.utf8
+    let utf8 = text.utf8
     return utf8.withContiguousStorageIfAvailable { bytes -> Date? in
         guard bytes.count == 20 || bytes.count == 24, bytes[bytes.count - 1] == UInt8(ascii: "Z"),
               bytes[4] == UInt8(ascii: "-"), bytes[7] == UInt8(ascii: "-"), bytes[10] == UInt8(ascii: "T"),

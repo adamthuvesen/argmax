@@ -356,7 +356,7 @@ pub(crate) fn tokens_match(candidate: &str, expected: &str) -> bool {
 }
 
 pub fn auth_ok_frame() -> String {
-    json!({ "type": "auth-ok", "operationReplay": true }).to_string()
+    json!({ "type": "auth-ok", "operationReplay": true, "dashboardChanges": true }).to_string()
 }
 
 pub fn auth_error_frame() -> String {

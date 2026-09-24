@@ -146,6 +146,12 @@ actor BridgeClient {
     private let operationStore: RemoteOperationStore
     private var activeOperationIDs: Set<String> = []
     private var operationReplay = false
+    /// The host answers `dashboard:changes` (see DashboardChanges.swift).
+    private var dashboardChanges = false
+    /// The last dashboard merged, which the next `dashboard:changes` is a
+    /// diff against. Kept across reconnects: the host holds it by digest,
+    /// not by socket, so a return from the background reads only what moved.
+    private var dashboardBase: DashboardChanges.Snapshot?
     private var generation = 0
     private var lifecycle = 0
     private var authTask: Task<Void, Never>?
@@ -380,7 +386,7 @@ actor BridgeClient {
             read = current
         } else {
             let id = UUID()
-            let task = Task { try await self.sendUnshared(channel: "dashboard:list", input: input) }
+            let task = Task { try await self.readDashboard(input: input) }
             read = SharedDashboardRead(id: id, epoch: dashboardEpoch, startedAt: .now, task: task)
             dashboardRead = read
             dashboardReadTasks[id] = task
@@ -423,6 +429,29 @@ actor BridgeClient {
 
     private func invalidateDashboardRead() {
         dashboardEpoch += 1
+    }
+
+    /// `dashboard:list`, or from a host that offers it, the same snapshot as
+    /// a diff against the last one merged. An answer that does not apply
+    /// costs one full read, never a guess.
+    private func readDashboard(input: some Encodable & Sendable) async throws -> Data {
+        try await waitUntilAuthenticated()
+        guard dashboardChanges else { return try await sendUnshared(channel: "dashboard:list", input: input) }
+        let base = dashboardBase
+        let reply = try await sendUnshared(channel: "dashboard:changes",
+                                           input: DashboardChanges.Input(baseDigest: base?.digest))
+        let merged: DashboardChanges.Snapshot
+        do {
+            merged = try DashboardChanges.merge(reply, into: base)
+        } catch where base != nil {
+            dashboardBase = nil
+            let full = try await sendUnshared(channel: "dashboard:changes", input: DashboardChanges.Input(baseDigest: nil))
+            merged = try DashboardChanges.merge(full, into: nil)
+        }
+        dashboardBase = merged
+        let snapshot = try JSONSerialization.data(withJSONObject: merged.value)
+        NativePerformance.log.debug("dashboard:changes wireBytes=\(reply.count) snapshotBytes=\(snapshot.count) diff=\(base?.digest != nil)")
+        return snapshot
     }
 
     private func sendUnshared(channel: String, input: some Encodable & Sendable) async throws -> Data {
@@ -788,6 +817,7 @@ actor BridgeClient {
         case "auth-ok":
             authenticated = true
             operationReplay = frame["operationReplay"] as? Bool == true
+            dashboardChanges = frame["dashboardChanges"] as? Bool == true
             reconnectAttempt = 0
             droppedAt = nil
             publish(.live)
@@ -916,6 +946,7 @@ actor BridgeClient {
         generation += 1
         authenticated = false
         operationReplay = false
+        dashboardChanges = false
         authTask?.cancel()
         authTask = nil
         receiveLoop?.cancel()

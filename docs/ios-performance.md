@@ -141,7 +141,22 @@ dashboard on the same hint. A delta that hints at a change or carries rows, a
 resync, a dropped socket, and any mutation this phone sends retire the shared
 answer; otherwise it is reused for at most five seconds. With a chat open on a
 busy Mac this halved the dashboard reads sent (24 asked, 13 sent in a minute)
-at about 740 KB each. A transcript read queued while the socket reconnects
+at about 740 KB each. A Mac that advertises `dashboardChanges` at authentication
+answers that read as `dashboard:changes` instead: a diff against the last
+snapshot this phone merged, named by its digest, which `BridgeClient` merges
+below the shared read ([DashboardChanges.swift](../ios/Argmax/Sources/Bridge/DashboardChanges.swift)),
+so every caller still receives a whole snapshot. An answer that does not apply
+to exactly that base costs one full read instead. The base survives reconnects,
+since the host keys it by digest rather than by socket. Against the isolated dev
+instance, a chat launch, a turn and six pins produced nine reads of 0.8–4.7 KB
+each for a 51.7 KB list, and the store equalled an independent `dashboard:list`
+afterwards. On the real 206-chat profile the same change after a hint is one
+row, about 1 KB, against 684 KB. The budget: a hint moves only the rows it
+changed. On that profile a median chat's rows are 1.1 KB (session) and 0.7 KB
+(workspace), the largest 11 KB and 25 KB (a long first prompt, a PR list), and
+a new chat also carries the id orders, 16 KB; a hint that costs more than the
+rows it names plus those orders is a regression. The perf log line `dashboard:changes wireBytes= snapshotBytes=` shows
+both sides. A transcript read queued while the socket reconnects
 goes out on the new connection, so reconnecting does not request the chat a
 second time.
 

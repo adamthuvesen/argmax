@@ -336,6 +336,53 @@ final class BridgeRecoveryTests: XCTestCase {
         await client.disconnect()
     }
 
+    func testDashboardReadsMergeTheHostsChangesIntoTheLastSnapshot() async throws {
+        let socket = TestBridgeSocket(dashboardChanges: true)
+        let (client, directory) = try makeClient([socket])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var events = client.events.makeAsyncIterator()
+        func read(answering answers: [[String: Any]]) async throws -> NSDictionary {
+            if !socket.requests.isEmpty {
+                socket.push(["type": "event", "channel": "dashboard:delta", "payload": ["dashboardChanged": true]])
+                _ = await events.next()
+            }
+            let before = socket.requests.count
+            let result = Task { try await client.request("dashboard:list") }
+            for (index, answer) in answers.enumerated() {
+                socket.reply(to: try await request(on: socket, count: before + index + 1), ok: answer)
+            }
+            let data = try await result.value
+            return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? NSDictionary)
+        }
+        func baseDigest(_ index: Int) -> String? {
+            (socket.requests[index]["input"] as? [String: Any])?["baseDigest"] as? String
+        }
+
+        let first = try await read(answering: [["digest": "d1", "snapshot": [
+            "sessions": [["id": "a", "state": "idle"], ["id": "b", "state": "idle"]], "arcs": []]]])
+        XCTAssertEqual(socket.requests[0]["channel"] as? String, "dashboard:changes")
+        XCTAssertNil(baseDigest(0))
+        XCTAssertEqual(first, ["sessions": [["id": "a", "state": "idle"], ["id": "b", "state": "idle"]], "arcs": []])
+
+        let changed = try await read(answering: [["digest": "d2", "base": "d1", "remove": [],
+            "collections": ["sessions": ["upsert": [["id": "c", "state": "idle"], ["id": "b", "state": "running"]],
+                                         "remove": ["a"], "order": ["c", "b"]]],
+            "replace": ["arcs": [["id": "x"]]]]])
+        XCTAssertEqual(baseDigest(1), "d1")
+        XCTAssertEqual(changed, ["sessions": [["id": "c", "state": "idle"], ["id": "b", "state": "running"]],
+                                 "arcs": [["id": "x"]]])
+
+        // A diff against anything but what this phone holds is never applied.
+        let recovered = try await read(answering: [
+            ["digest": "d4", "base": "d3", "collections": [:], "replace": [:], "remove": []],
+            ["digest": "d5", "snapshot": ["sessions": [], "arcs": []]],
+        ])
+        XCTAssertEqual(baseDigest(2), "d2")
+        XCTAssertNil(baseDigest(3))
+        XCTAssertEqual(recovered, ["sessions": [], "arcs": []])
+        await client.disconnect()
+    }
+
     private func makeClient(
         _ sockets: [TestBridgeSocket],
         httpLoader: (@Sendable (URLRequest) async throws -> (Data, URLResponse))? = nil
@@ -423,7 +470,11 @@ final class TestBridgeSocket: BridgeSocket, @unchecked Sendable {
     private var auth: CheckedContinuation<Void, Error>?
     private var closed = false
     private let holdAuth: Bool
-    init(holdAuth: Bool = false) { self.holdAuth = holdAuth }
+    private let dashboardChanges: Bool
+    init(holdAuth: Bool = false, dashboardChanges: Bool = false) {
+        self.holdAuth = holdAuth
+        self.dashboardChanges = dashboardChanges
+    }
     var requests: [[String: Any]] { lock.withLock { messages.filter { $0["type"] as? String == "request" } } }
     var isClosed: Bool { lock.withLock { closed } }
     var authIsHeld: Bool { lock.withLock { auth != nil } }
@@ -448,7 +499,7 @@ final class TestBridgeSocket: BridgeSocket, @unchecked Sendable {
         lock.withLock { messages.append(frame) }
         if frame["type"] as? String == "auth" {
             if holdAuth { try await withCheckedThrowingContinuation { continuation in lock.withLock { auth = continuation } } }
-            else { feed(["type": "auth-ok", "operationReplay": true]) }
+            else { feed(["type": "auth-ok", "operationReplay": true, "dashboardChanges": dashboardChanges]) }
         }
     }
     func receive() async throws -> URLSessionWebSocketTask.Message {

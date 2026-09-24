@@ -184,6 +184,16 @@ async fn dispatch_standard(
             let _input: DashboardListInput = parse(channel, input)?;
             encode(dashboard::dashboard_list_impl(state).await?)
         }
+        // Remote-only: the same read, answered as a diff against the
+        // snapshot the client names. See `dashboard_changes`.
+        "dashboard:changes" => {
+            let input: crate::remote::dashboard_changes::DashboardChangesInput =
+                parse(channel, input)?;
+            let snapshot = encode(dashboard::dashboard_list_impl(state).await?)?;
+            Ok(state
+                .remote_dashboard_baselines
+                .changes(snapshot, input.base_digest.as_deref()))
+        }
         "usage:summary" => {
             let input: UsageSummaryInput = parse(channel, input)?;
             encode(usage::usage_summary_impl(state, input).await?)

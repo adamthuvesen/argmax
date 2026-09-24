@@ -3,6 +3,7 @@
   "projects:list",
   "projects:list-branches",
   "dashboard:list",
+  "dashboard:changes",
   "usage:summary",
   "usage:remaining",
   "activity:summary",

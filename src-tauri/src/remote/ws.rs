@@ -1,10 +1,12 @@
 // WebSocket protocol for the remote bridge.
 //
-// Frames are JSON text in both directions:
-//   client → {"type":"auth","token":"…"}
+// Frames are JSON text in both directions, except that a client whose auth
+// frame asks for `"compression":"deflate"` gets frames over 16 KiB as binary:
+// a zero byte, then the JSON as raw DEFLATE (`outbound_message`).
+//   client → {"type":"auth","token":"…","compression":"deflate"}
 //            {"type":"request","id":1,"channel":"dashboard:list","input":{}}
 //            {"type":"ping"}
-//   server → {"type":"auth-ok"}
+//   server → {"type":"auth-ok","operationReplay":true,"dashboardChanges":true,"compression":"deflate"}
 //            {"type":"response","id":1,"ok":…} | {"type":"response","id":1,"error":…}
 //            {"type":"event","channel":"dashboard:delta","payload":…}
 //            {"type":"pong"}
@@ -51,6 +53,8 @@ const MAX_IN_FLIGHT_REQUESTS: usize = 16;
 pub enum ClientMessage {
     Auth {
         token: String,
+        /// The client reads binary deflate frames (`deflate_frame`).
+        deflate: bool,
     },
     Request {
         id: i64,
@@ -63,10 +67,7 @@ pub enum ClientMessage {
     Ping,
     /// Not a frame we understand. `id` is echoed back when the client sent one,
     /// so a request with a bad body still resolves instead of hanging.
-    Malformed {
-        id: Option<i64>,
-        detail: String,
-    },
+    Malformed { id: Option<i64>, detail: String },
 }
 
 #[derive(Debug, PartialEq)]
@@ -90,8 +91,13 @@ async fn serve_client(socket: WebSocket, bridge: Arc<RemoteBridge>) {
     let (mut sender, mut receiver) = socket.split();
 
     let first = tokio::time::timeout(AUTH_TIMEOUT, receiver.next()).await;
+    let mut deflate = false;
     let outcome = match &first {
-        Ok(Some(Ok(Message::Text(text)))) => auth_outcome(&parse_client_frame(text), &bridge.token),
+        Ok(Some(Ok(Message::Text(text)))) => {
+            let frame = parse_client_frame(text);
+            deflate = matches!(frame, ClientMessage::Auth { deflate: true, .. });
+            auth_outcome(&frame, &bridge.token)
+        }
         Ok(Some(Ok(_))) => AuthOutcome::Rejected("first frame was not text"),
         Ok(Some(Err(_))) | Ok(None) => AuthOutcome::Rejected("socket closed before auth"),
         Err(_) => AuthOutcome::Rejected("auth timed out"),
@@ -114,7 +120,7 @@ async fn serve_client(socket: WebSocket, bridge: Arc<RemoteBridge>) {
         }
     }
     if sender
-        .send(Message::Text(auth_ok_frame().into()))
+        .send(Message::Text(auth_ok_frame(deflate).into()))
         .await
         .is_err()
     {
@@ -147,7 +153,7 @@ async fn serve_client(socket: WebSocket, bridge: Arc<RemoteBridge>) {
                 WriterStep::Skip => continue,
                 WriterStep::Stop => break,
             };
-            if sender.send(Message::Text(frame.into())).await.is_err() {
+            if sender.send(outbound_message(frame, deflate)).await.is_err() {
                 break;
             }
         }
@@ -286,6 +292,7 @@ pub fn parse_client_frame(text: &str) -> ClientMessage {
         Some("auth") => match value.get("token").and_then(Value::as_str) {
             Some(token) => ClientMessage::Auth {
                 token: token.to_string(),
+                deflate: value.get("compression").and_then(Value::as_str) == Some("deflate"),
             },
             None => ClientMessage::Malformed {
                 id,
@@ -333,7 +340,7 @@ pub fn parse_client_frame(text: &str) -> ClientMessage {
 
 pub fn auth_outcome(message: &ClientMessage, expected_token: &str) -> AuthOutcome {
     match message {
-        ClientMessage::Auth { token } if tokens_match(token, expected_token) => {
+        ClientMessage::Auth { token, .. } if tokens_match(token, expected_token) => {
             AuthOutcome::Accepted
         }
         ClientMessage::Auth { .. } => AuthOutcome::BadToken,
@@ -355,8 +362,37 @@ pub(crate) fn tokens_match(candidate: &str, expected: &str) -> bool {
         == 0
 }
 
-pub fn auth_ok_frame() -> String {
-    json!({ "type": "auth-ok", "operationReplay": true, "dashboardChanges": true }).to_string()
+pub fn auth_ok_frame(deflate: bool) -> String {
+    let mut frame = json!({ "type": "auth-ok", "operationReplay": true, "dashboardChanges": true });
+    if deflate {
+        frame["compression"] = json!("deflate");
+    }
+    frame.to_string()
+}
+
+/// Frames below this go out as text either way: deflate saves little on a
+/// heartbeat or a streamed chunk's hint, and the phone's radio pays per
+/// byte, not per frame.
+const DEFLATE_OVER_BYTES: usize = 16 * 1_024;
+
+/// A frame for a client that asked for compression at authentication goes
+/// out as a binary message: a zero byte, then the JSON text as raw DEFLATE.
+/// Dashboard and transcript JSON shrink five- to sixfold, which is most of
+/// what a phone on cellular spends opening a chat or reconnecting.
+pub fn outbound_message(frame: String, deflate: bool) -> Message {
+    if deflate && frame.len() >= DEFLATE_OVER_BYTES {
+        if let Some(compressed) = deflate_frame(&frame) {
+            return Message::Binary(compressed.into());
+        }
+    }
+    Message::Text(frame.into())
+}
+
+fn deflate_frame(frame: &str) -> Option<Vec<u8>> {
+    use std::io::Write;
+    let mut encoder = flate2::write::DeflateEncoder::new(vec![0u8], flate2::Compression::default());
+    encoder.write_all(frame.as_bytes()).ok()?;
+    encoder.finish().ok()
 }
 
 pub fn auth_error_frame() -> String {
@@ -533,6 +569,42 @@ mod tests {
             responses.send("late response".to_string()).await.is_err(),
             "a disconnected client retained the response receiver"
         );
+    }
+
+    #[test]
+    fn a_client_that_asks_for_deflate_gets_large_frames_compressed() {
+        use std::io::Read;
+        let asks = parse_client_frame(r#"{"type":"auth","token":"t","compression":"deflate"}"#);
+        assert!(matches!(asks, ClientMessage::Auth { deflate: true, .. }));
+        let plain = parse_client_frame(r#"{"type":"auth","token":"t"}"#);
+        assert!(matches!(plain, ClientMessage::Auth { deflate: false, .. }));
+        assert_eq!(
+            serde_json::from_str::<Value>(&auth_ok_frame(true)).unwrap()["compression"],
+            "deflate"
+        );
+        assert!(serde_json::from_str::<Value>(&auth_ok_frame(false))
+            .unwrap()
+            .get("compression")
+            .is_none());
+
+        let large =
+            json!({"type": "response", "id": 1, "ok": {"rows": vec!["row"; 10_000]}}).to_string();
+        let Message::Binary(bytes) = outbound_message(large.clone(), true) else {
+            panic!("large frame for a deflate client is binary");
+        };
+        assert_eq!(bytes[0], 0);
+        assert!(bytes.len() * 5 < large.len());
+        let mut inflated = String::new();
+        flate2::read::DeflateDecoder::new(&bytes[1..])
+            .read_to_string(&mut inflated)
+            .unwrap();
+        assert_eq!(inflated, large);
+
+        assert!(matches!(outbound_message(large, false), Message::Text(_)));
+        assert!(matches!(
+            outbound_message(r#"{"type":"pong"}"#.to_string(), true),
+            Message::Text(_)
+        ));
     }
 
     #[test]

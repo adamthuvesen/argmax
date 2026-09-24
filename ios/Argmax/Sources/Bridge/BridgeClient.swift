@@ -4,12 +4,14 @@ import Network
 
 // The phone's half of the remote bridge protocol (docs/remote.md, and
 // src-tauri/src/remote/ws.rs for the host's half). JSON text frames over one
-// WebSocket:
+// WebSocket, except that a host told `"compression":"deflate"` at auth sends
+// frames over 16 KiB as binary: a zero byte, then the JSON as raw DEFLATE.
 //
-//   client → {"type":"auth","token":"…"}
+//   client → {"type":"auth","token":"…","compression":"deflate"}
 //            {"type":"request","id":1,"channel":"…","input":{},"operation":{…}}
 //            {"type":"ping"}
-//   host   → {"type":"auth-ok","operationReplay":true} | {"type":"auth-error"}
+//   host   → {"type":"auth-ok","operationReplay":true,"dashboardChanges":true,
+//             "compression":"deflate"} | {"type":"auth-error"}
 //            {"type":"response","id":1,"ok":…} | {"type":"response","id":1,"error":…}
 //            {"type":"event","channel":"dashboard:delta","payload":…}
 //            {"type":"pong"} | {"type":"resync"}
@@ -438,19 +440,19 @@ actor BridgeClient {
         try await waitUntilAuthenticated()
         guard dashboardChanges else { return try await sendUnshared(channel: "dashboard:list", input: input) }
         let base = dashboardBase
-        let reply = try await sendUnshared(channel: "dashboard:changes",
+        var reply = try await sendUnshared(channel: "dashboard:changes",
                                            input: DashboardChanges.Input(baseDigest: base?.digest))
         let merged: DashboardChanges.Snapshot
         do {
             merged = try DashboardChanges.merge(reply, into: base)
         } catch where base != nil {
             dashboardBase = nil
-            let full = try await sendUnshared(channel: "dashboard:changes", input: DashboardChanges.Input(baseDigest: nil))
-            merged = try DashboardChanges.merge(full, into: nil)
+            reply = try await sendUnshared(channel: "dashboard:changes", input: DashboardChanges.Input(baseDigest: nil))
+            merged = try DashboardChanges.merge(reply, into: nil)
         }
         dashboardBase = merged
         let snapshot = try JSONSerialization.data(withJSONObject: merged.value)
-        NativePerformance.log.debug("dashboard:changes wireBytes=\(reply.count) snapshotBytes=\(snapshot.count) diff=\(base?.digest != nil)")
+        NativePerformance.log.debug("dashboard:changes answerBytes=\(reply.count) snapshotBytes=\(snapshot.count) whole=\(merged.arrivedWhole)")
         return snapshot
     }
 
@@ -773,7 +775,10 @@ actor BridgeClient {
         // seconds, so this goes first and everything else waits behind it.
         authTask = Task {
             do {
-                let auth = try JSONSerialization.data(withJSONObject: ["type": "auth", "token": token])
+                // A host that knows `compression` sends its large frames
+                // deflated; one that does not ignores the field.
+                let auth = try JSONSerialization.data(withJSONObject: ["type": "auth", "token": token,
+                                                                       "compression": "deflate"])
                 try await socket.send(.string(String(decoding: auth, as: UTF8.self)))
             } catch {
                 self.socketFailed(generation: mine)
@@ -796,17 +801,18 @@ actor BridgeClient {
 
     private func receive(_ message: URLSessionWebSocketTask.Message, generation mine: Int) {
         guard mine == generation else { return }
-        let data: Data
+        let wire: Data
         switch message {
-        case .string(let text): data = Data(text.utf8)
-        case .data(let raw): data = raw
+        case .string(let text): wire = Data(text.utf8)
+        case .data(let raw): wire = raw
         @unknown default: return
         }
         let clock = ContinuousClock()
         let parseStarted = clock.now
+        guard let data = Self.inflated(wire) else { return }
         defer {
             if data.count > 64 * 1_024 {
-                NativePerformance.log.debug("frame bytes=\(data.count) actorMs=\((clock.now - parseStarted).milliseconds)")
+                NativePerformance.log.debug("frame bytes=\(data.count) wireBytes=\(wire.count) actorMs=\((clock.now - parseStarted).milliseconds)")
             }
         }
         guard let frame = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -975,6 +981,14 @@ actor BridgeClient {
     private func reconnectIfCurrent(_ mine: Int) {
         guard generation == mine, !stopped else { return }
         openSocket()
+    }
+
+    /// A binary frame that opens with a zero byte is the rest of it as raw
+    /// DEFLATE, which the host sends only because this client asked at
+    /// authentication; JSON never starts with one.
+    static func inflated(_ wire: Data) -> Data? {
+        guard wire.first == 0 else { return wire }
+        return try? (Data(wire.dropFirst()) as NSData).decompressed(using: .zlib) as Data
     }
 
     private static func canonicalInput(_ data: Data) -> Data? {

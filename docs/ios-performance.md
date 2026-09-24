@@ -156,7 +156,10 @@ changed. On that profile a median chat's rows are 1.1 KB (session) and 0.7 KB
 (workspace), the largest 11 KB and 25 KB (a long first prompt, a PR list), and
 a new chat also carries the id orders, 16 KB; a hint that costs more than the
 rows it names plus those orders is a regression. The perf log line `dashboard:changes wireBytes= snapshotBytes=` shows
-both sides. A transcript read queued while the socket reconnects
+both sides. The phone also asks at authentication for frames of 16 KiB or more
+to arrive deflated (docs/remote.md); the `frame bytes= wireBytes=` log line shows
+the JSON and wire sizes of each large one. Chat histories read 4-6x smaller,
+and inflating a frame costs 0-2 ms. A transcript read queued while the socket reconnects
 goes out on the new connection, so reconnecting does not request the chat a
 second time.
 

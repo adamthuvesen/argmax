@@ -336,6 +336,20 @@ final class BridgeRecoveryTests: XCTestCase {
         await client.disconnect()
     }
 
+    func testDeflatedFramesFromTheHostReadLikeText() async throws {
+        let socket = TestBridgeSocket()
+        let (client, directory) = try makeClient([socket])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let rows = Array(repeating: ["id": "row", "text": "the same words again"], count: 2_000)
+        let result = Task { try await client.request("projects:list") }
+        let request = try await request(on: socket)
+        XCTAssertEqual(socket.authFrame?["compression"] as? String, "deflate")
+        socket.pushDeflated(["type": "response", "id": request["id"]!, "ok": rows])
+        let data = try await result.value
+        XCTAssertEqual(try JSONSerialization.jsonObject(with: data) as? NSArray, rows as NSArray)
+        await client.disconnect()
+    }
+
     func testDashboardReadsMergeTheHostsChangesIntoTheLastSnapshot() async throws {
         let socket = TestBridgeSocket(dashboardChanges: true)
         let (client, directory) = try makeClient([socket])
@@ -520,6 +534,15 @@ final class TestBridgeSocket: BridgeSocket, @unchecked Sendable {
         feed(response)
     }
     func push(_ frame: [String: Any]) { feed(frame) }
+    /// The host's binary frame: a zero byte, then the JSON as raw DEFLATE.
+    func pushDeflated(_ frame: [String: Any]) {
+        do {
+            let json = try JSONSerialization.data(withJSONObject: frame)
+            let compressed = try (json as NSData).compressed(using: .zlib) as Data
+            deliver(.success(.data(Data([0]) + compressed)))
+        } catch { deliver(.failure(error)) }
+    }
+    var authFrame: [String: Any]? { lock.withLock { messages.first { $0["type"] as? String == "auth" } } }
     private func feed(_ frame: [String: Any]) {
         do { deliver(.success(.data(try JSONSerialization.data(withJSONObject: frame)))) }
         catch { deliver(.failure(error)) }

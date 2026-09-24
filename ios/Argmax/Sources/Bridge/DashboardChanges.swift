@@ -12,6 +12,8 @@ enum DashboardChanges {
     struct Snapshot {
         let digest: String
         let value: [String: Any]
+        /// The host sent the whole snapshot rather than a diff.
+        var arrivedWhole = false
     }
 
     struct Input: Encodable, Sendable {
@@ -26,7 +28,7 @@ enum DashboardChanges {
               let digest = answer["digest"] as? String
         else { throw BridgeError.malformedResponse }
         if let snapshot = answer["snapshot"] as? [String: Any] {
-            return Snapshot(digest: digest, value: snapshot)
+            return Snapshot(digest: digest, value: snapshot, arrivedWhole: true)
         }
         guard let base, answer["base"] as? String == base.digest,
               let collections = answer["collections"] as? [String: Any],

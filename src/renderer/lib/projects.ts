@@ -30,7 +30,7 @@ function loadStoredChoice<T extends string>(storageKey: string, allowed: readonl
   if (typeof window === "undefined") return fallback;
   const raw = window.localStorage.getItem(storageKey);
   if (raw === null) return fallback;
-  let parsed: unknown = raw;
+  let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {

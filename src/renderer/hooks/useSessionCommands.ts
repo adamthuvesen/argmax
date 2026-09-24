@@ -123,7 +123,7 @@ export function useSessionCommands({
       try {
         await window.argmax.providers.sendQueuedMessageNow({ sessionId, messageId, delivery });
       } catch (error) {
-        throw new Error(errorMessage(error));
+        throw new Error(errorMessage(error), { cause: error });
       } finally {
         // An already-collected inbox message is removed even when sending rejects.
         await Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);

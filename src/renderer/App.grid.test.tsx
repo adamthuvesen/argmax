@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 import { MIN_RESIZABLE_CELL_WIDTH_PX } from "./components/SessionMultiGrid.js";
-import { THINKING_WORDS } from "./components/ThinkingLabel.js";
+import { THINKING_WORDS } from "./lib/thinkingWords.js";
 import type { DashboardSnapshot, SessionEventsSinceResult } from "../shared/types.js";
 import {
   archiveWorkspace,

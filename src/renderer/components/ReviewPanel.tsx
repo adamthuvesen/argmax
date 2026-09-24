@@ -1137,7 +1137,7 @@ export function ReviewPanel({
   const handleDrop = (event: ReactDragEvent<HTMLDivElement>): void => {
     if (!acceptsCurrentDrag(event)) return;
     const position = dropPosition;
-    let payload: { mode?: unknown; panelId?: unknown } | null = null;
+    let payload: { mode?: unknown; panelId?: unknown } | null;
     try {
       payload = JSON.parse(event.dataTransfer.getData(REVIEW_MODE_DRAG_MIME)) as {
         mode?: unknown;

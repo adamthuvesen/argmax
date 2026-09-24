@@ -30,7 +30,7 @@ function copyWithCommand(text: string): boolean {
   holder.style.top = "0";
   holder.style.left = "-9999px";
   document.body.appendChild(holder);
-  let copied = false;
+  let copied: boolean;
   try {
     holder.select();
     copied = document.execCommand("copy");

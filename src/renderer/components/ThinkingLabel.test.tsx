@@ -1,7 +1,8 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { __liveTimerTickForTest } from "../lib/liveTimer.js";
-import { THINKING_WORDS, ThinkingLabel } from "./ThinkingLabel.js";
+import { THINKING_WORDS } from "../lib/thinkingWords.js";
+import { ThinkingLabel } from "./ThinkingLabel.js";
 
 afterEach(() => {
   cleanup();

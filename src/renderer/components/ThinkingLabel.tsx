@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState, type JSX } from "react";
 import { formatElapsedSeconds } from "../formatElapsed.js";
 import { registerLiveTimer } from "../lib/liveTimer.js";
 import { useReadingWave } from "../lib/readingWave.js";
+import { THINKING_WORDS } from "../lib/thinkingWords.js";
 
 /** Below this the count is noise: a normal beat between two tool calls is over
  *  before it would read, and a number that flickers in and out on every short
@@ -9,79 +10,6 @@ import { useReadingWave } from "../lib/readingWave.js";
  *  wants to know whether anything is still happening — a relaunched provider
  *  can take ten to thirty seconds to say its first word. */
 const ELAPSED_VISIBLE_AFTER_MS = 3_000;
-
-// One word per silent beat, so the set has to be big enough that a long turn
-// never repeats itself into looking stuck. US spelling throughout, gerunds
-// only, and each one names work the agent actually does — nothing that
-// advertises guessing. The rare draws sit at the end: Argmaxing, the
-// signature, then the jokes.
-export const THINKING_WORDS = [
-  "Brainstorming",
-  "Disentangling",
-  "Sanity-checking",
-  "Theorizing",
-  "Deciphering",
-  "Synthesizing",
-  "Deconstructing",
-  "Distilling",
-  "Reconciling",
-  "Refining",
-  "Calculating",
-  "Thinking",
-  "Computing",
-  "Analyzing",
-  "Philosophizing",
-  "Reasoning",
-  "Deducing",
-  "Inferring",
-  "Extrapolating",
-  "Hypothesizing",
-  "Deliberating",
-  "Contemplating",
-  "Dissecting",
-  "Unpacking",
-  "Parsing",
-  "Triangulating",
-  "Cross-referencing",
-  "Correlating",
-  "Diagnosing",
-  "Investigating",
-  "Excavating",
-  "Spelunking",
-  "Retracing",
-  "Surveying",
-  "Sleuthing",
-  "Formulating",
-  "Composing",
-  "Drafting",
-  "Assembling",
-  "Consolidating",
-  "Architecting",
-  "Scrutinizing",
-  "Second-guessing",
-  "Stress-testing",
-  "Interrogating",
-  "Falsifying",
-  "Auditing",
-  "Verifying",
-  "Optimizing",
-  "Converging",
-  "Approximating",
-  "Quantifying",
-  "Simulating",
-  "Enumerating",
-  "Backpropagating",
-  "Condensing",
-  "Sharpening",
-  "Tightening",
-  "Weighing",
-  "Prioritizing",
-  "Argmaxing",
-  "Yak-shaving",
-  "Tail-chasing",
-  "Overthinking",
-  "Gradient-descending"
-] as const;
 
 /** The jokes only work while they stay surprises, so they are drawn from their
  *  own band rather than earning a regular slot. They also read as honest on a

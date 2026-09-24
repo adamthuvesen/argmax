@@ -477,7 +477,7 @@ function EffortSlider({
         aria-valuenow={index}
         aria-valuetext={effortLabel(draft)}
         onKeyDown={(event) => {
-          let next = index;
+          let next: number;
           if (event.key === "ArrowRight" || event.key === "ArrowUp") next = index + 1;
           else if (event.key === "ArrowLeft" || event.key === "ArrowDown") next = index - 1;
           else if (event.key === "Home") next = 0;

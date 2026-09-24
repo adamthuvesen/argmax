@@ -367,6 +367,10 @@ final class TranscriptStore: ObservableObject {
     private func scheduleReads() {
         guard openSessionID != nil else { return }
         if readTask == nil, transcriptDirty || authoritativeReadRequested {
+            // Recorded here, not when the task first runs: the socket can go
+            // live in between, and that transition must see this read as the
+            // one that will go out on it.
+            readAwaitsConnection = connection != .live
             readTask = Task { [weak self] in await self?.drainTranscriptReads() }
         }
         if metadataTask == nil, metadataDirty {

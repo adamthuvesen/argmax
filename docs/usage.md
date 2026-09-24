@@ -96,7 +96,10 @@ the variable is unset; it survives as a stale item nothing refreshes, so it is
 read only as a fallback. The config dir is resolved from the login-shell
 environment, the same one provider launches are hydrated with: a Finder-launched
 Argmax inherits launchd's minimal environment and would otherwise read a
-different credential store than the sessions it starts. A token that reads but
+different credential store than the sessions it starts. When `.credentials.json`
+and the keychain both hold a token, the one with the later `expiresAt` wins: on
+macOS the CLI refreshes only the keychain, so a file left by a run that could
+not reach it keeps an expired token forever. A token that reads but
 gets a 401 says the login expired, never "sign in".
 
 Parsers live in [usage/claude.rs](../src-tauri/src/usage/claude.rs),

@@ -544,20 +544,13 @@ enum TranscriptProjection {
         var completionObserved: Bool
         var completionStatus: String?
         var backgroundLaunch: Bool
+        let facts: ToolFacts
 
         var isAgent: Bool { TranscriptProjection.isAgentTool(normalizedToolName(name)) }
-        var preview: String? {
-            TranscriptProjection.preview(name: name, input: inputObject, workspacePath: workspacePath)
-        }
+        var preview: String? { facts.preview }
 
         var presentation: TranscriptTool {
-            let activityPath = activity.kind == .edit && activity.targets.count == 1
-                ? activity.targets.first
-                : nil
-            // Codex file_change carries its path inside input.changes[]. The
-            // host already extracts that shape into activity.targets, so use
-            // the single observed target when there is no top-level path.
-            let filePath = TranscriptProjection.path(in: inputObject) ?? activityPath
+            let filePath = facts.filePath
             var tool = TranscriptTool(
                 id: "tool-\(id)",
                 toolUseId: toolUseId,
@@ -570,8 +563,8 @@ enum TranscriptProjection {
                 createdAt: createdAt,
                 completedAt: completedAt,
                 filePath: filePath,
-                fileLabel: filePath.map { TranscriptProjection.relativePath($0, workspacePath: workspacePath) },
-                changeCounts: TranscriptProjection.changeCounts(activity: activity, input: inputObject),
+                fileLabel: facts.fileLabel,
+                changeCounts: facts.changeCounts,
                 activity: activity,
                 completionObserved: completionObserved,
                 completionStatus: completionStatus
@@ -637,18 +630,16 @@ enum TranscriptProjection {
             let invocation = payload["providerInvocationId"]?.string
             let completion = completions[start.id]
             let endPayload = completion?.payloadObject ?? [:]
-            let input = mergedInput(payload, endPayload)
-            let name = toolName(payload)
-            let failed = isFailed(endPayload)
+            let facts = toolFacts(start: start, completion: completion, workspacePath: workspacePath)
+            let input = facts.input
+            let name = facts.name
+            let failed = facts.failed
             let lifecycle = isAgentTool(normalizedToolName(name))
                 ? nativeAgentLifecycles[nativeAgentLifecycleKey(invocationID: invocation, runID: toolUseID)]
                 : nil
             let hasLaterAnswer = latestAnswer.map { compare(start, $0) == .orderedAscending } ?? false
             let isAgent = isAgentTool(normalizedToolName(name))
-            let activity = mergedActivity(
-                start: decodedActivity(payload["activity"]),
-                end: decodedActivity(endPayload["activity"])
-            ) ?? legacyActivity(name: name, input: input)
+            let activity = facts.activity
             let transportStatus: TranscriptToolStatus = completion == nil
                 ? (sessionRunning && (!hasLaterAnswer || isAgent) ? .running : .done)
                 : (failed ? .failed : .done)
@@ -683,9 +674,9 @@ enum TranscriptProjection {
                 toolUseId: toolUseID,
                 name: name,
                 inputObject: input,
-                inputText: formatted(displayInput(input, name: name)),
-                output: displayOutput(output(endPayload), name: name),
-                error: status == .failed ? displayOutput(error(endPayload), name: name) : nil,
+                inputText: facts.inputText,
+                output: facts.output,
+                error: status == .failed ? facts.failureText : nil,
                 status: status,
                 createdAt: start.createdAt,
                 completedAt: status == .running
@@ -704,11 +695,98 @@ enum TranscriptProjection {
                 workspacePath: workspacePath,
                 activity: activity,
                 completionObserved: completion != nil,
-                completionStatus: completionStatus(endPayload),
-                backgroundLaunch: backgroundLaunch
+                completionStatus: facts.completionStatus,
+                backgroundLaunch: backgroundLaunch,
+                facts: facts
             )
         }
         return result
+    }
+
+    /// What one tool call's own events say, whatever the rest of the chat
+    /// does: its name, input, output text, activity and file facts.
+    struct ToolFacts: Sendable {
+        let name: String
+        let input: [String: TranscriptJSONValue]
+        let inputText: String?
+        let output: String?
+        let failureText: String?
+        let failed: Bool
+        let activity: TranscriptToolActivity
+        let completionStatus: String?
+        let preview: String?
+        let filePath: String?
+        let fileLabel: String?
+        let changeCounts: TranscriptChangeCounts?
+    }
+
+    /// A streaming chat projects its whole history per chunk, and deriving
+    /// these for every tool each time — formatting inputs, parsing diffs for
+    /// line counts — was most of what was left of that projection. A tool
+    /// whose two events are unchanged reuses them; comparing unchanged events
+    /// is cheap because they share storage with the last projection's.
+    private final class ToolFactsCache: @unchecked Sendable {
+        private struct Entry {
+            let start: TranscriptEvent
+            let completion: TranscriptEvent?
+            let workspacePath: String?
+            let facts: ToolFacts
+        }
+        private let lock = NSLock()
+        private var entries: [String: Entry] = [:]
+        private static let limit = 8_192
+
+        func facts(start: TranscriptEvent, completion: TranscriptEvent?, workspacePath: String?,
+                   derive: () -> ToolFacts) -> ToolFacts {
+            if let entry = lock.withLock({ entries[start.id] }), entry.workspacePath == workspacePath,
+               entry.start == start, entry.completion == completion {
+                return entry.facts
+            }
+            let facts = derive()
+            lock.withLock {
+                if entries.count >= Self.limit { entries.removeAll(keepingCapacity: true) }
+                entries[start.id] = Entry(start: start, completion: completion,
+                                          workspacePath: workspacePath, facts: facts)
+            }
+            return facts
+        }
+    }
+
+    private static let toolFactsCache = ToolFactsCache()
+
+    private static func toolFacts(start: TranscriptEvent, completion: TranscriptEvent?,
+                                  workspacePath: String?) -> ToolFacts {
+        toolFactsCache.facts(start: start, completion: completion, workspacePath: workspacePath) {
+            let payload = start.payloadObject
+            let endPayload = completion?.payloadObject ?? [:]
+            let input = mergedInput(payload, endPayload)
+            let name = toolName(payload)
+            let activity = mergedActivity(
+                start: decodedActivity(payload["activity"]),
+                end: decodedActivity(endPayload["activity"])
+            ) ?? legacyActivity(name: name, input: input)
+            // Codex file_change carries its path inside input.changes[]. The
+            // host already extracts that shape into activity.targets, so use
+            // the single observed target when there is no top-level path.
+            let activityPath = activity.kind == .edit && activity.targets.count == 1
+                ? activity.targets.first
+                : nil
+            let filePath = path(in: input) ?? activityPath
+            return ToolFacts(
+                name: name,
+                input: input,
+                inputText: formatted(displayInput(input, name: name)),
+                output: displayOutput(output(endPayload), name: name),
+                failureText: displayOutput(error(endPayload), name: name),
+                failed: isFailed(endPayload),
+                activity: activity,
+                completionStatus: completionStatus(endPayload),
+                preview: preview(name: name, input: input, workspacePath: workspacePath),
+                filePath: filePath,
+                fileLabel: filePath.map { relativePath($0, workspacePath: workspacePath) },
+                changeCounts: changeCounts(activity: activity, input: input)
+            )
+        }
     }
 
     /// Each tool start's completion: the first `command.completed`, in

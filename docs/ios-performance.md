@@ -88,12 +88,13 @@ ledger's preload. The existing freshness window remains in effect.
 
 Transcript projection coalesces pending changes and runs on a background task.
 A streaming chat projects its whole history per chunk, so the projection has to
-stay linear: completions are matched to tool starts through a keyed queue, and
-patterns are compiled once. The store writes the open chat's saved copy after a
+stay linear: completions are matched to tool starts through a keyed queue,
+patterns are compiled once, and each tool's own derived text (formatted input,
+output, diff line counts) is reused while its two events are unchanged. The store writes the open chat's saved copy after a
 300 ms pause, or every five seconds during a long stream, encoding it once for
 both the size budget and the disk; leaving the chat stores what is pending.
 Replaying a real 2,200-event chat at 20 chunks a second, these cut the process
-CPU from 15.7 s to 5.4 s over 11 s of streaming.
+CPU from 15.7 s to 3.6 s over 11 s of streaming.
 Only a matching session generation and content revision may publish. Completed
 Markdown documents have a bounded cache, with at most two active preparations.
 Opening a chat prepares the newest 96 prose documents before its first paint,

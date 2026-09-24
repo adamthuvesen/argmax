@@ -178,7 +178,7 @@
      reused under a clearer name. */
   /* Palette offered by the session row's Edit Icon picker. Decorative only:
      status stays on the semantic tokens above, so these never carry meaning. */
-  --session-icon-green: #4f8a63;
+  --session-icon-green: #2f9a57;
   --session-icon-teal: #2f8079;
   --session-icon-blue: #3f7fd8;
   --session-icon-violet: #7b56d6;

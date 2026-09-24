@@ -176,6 +176,7 @@ final class DashboardStore: ObservableObject {
             // needed, so never let this older answer erase those rows.
             guard snapshotVersion == requestedAtVersion else { return }
             ingest(snapshot: loaded)
+            reportFirstContent()
         } catch let error as BridgeError {
             loadFailure = error
         } catch {
@@ -304,15 +305,22 @@ final class DashboardStore: ObservableObject {
         let grouped = groupChatRows(snapshot: snapshot, now: now, unreadWorkspaceIDs: unreadWorkspaceIDs)
         if grouped != sections { sections = grouped }
         updateDateGroups(chats: grouped.chats)
-        if !reportedFirstContent[isCachedSnapshot ? 0 : 1], !snapshot.sessions.isEmpty {
-            reportedFirstContent[isCachedSnapshot ? 0 : 1] = true
-            NativePerformance.event("Chat list content")
-            NativePerformance.log.debug("launch→list ms=\(Int(NativePerformance.millisecondsSinceLaunch())) cached=\(self.isCachedSnapshot) sessions=\(self.snapshot.sessions.count)")
-        }
+        reportFirstContent()
     }
 
-    /// Whether the first cached and first live list have been timed.
+    /// Whether the first saved and first live list have been timed.
     private var reportedFirstContent = [false, false]
+
+    /// The `perf` log's launch milestones. A live answer equal to the saved
+    /// list changes nothing on screen, so it is reported where it lands
+    /// rather than where rows change.
+    private func reportFirstContent() {
+        let slot = isCachedSnapshot ? 0 : 1
+        guard !reportedFirstContent[slot], !snapshot.sessions.isEmpty else { return }
+        reportedFirstContent[slot] = true
+        NativePerformance.event("Chat list content")
+        NativePerformance.log.debug("launch→list ms=\(Int(NativePerformance.millisecondsSinceLaunch())) cached=\(self.isCachedSnapshot) sessions=\(self.snapshot.sessions.count)")
+    }
 
     private func updateDateGroups(chats: [ChatRow]) {
         let day = Calendar.current.startOfDay(for: now)

@@ -117,6 +117,16 @@ connection. Foregrounding and network-path changes prompt recovery, with
 bounded backoff and heartbeat as fallback. A usable network path does not
 prove the Mac is reachable.
 
+Every `dashboard:list` caller shares one read per host change: the list, the
+open chat's composer metadata, and delegated-work cards each read the whole
+dashboard on the same hint. A delta that hints at a change or carries rows, a
+resync, a dropped socket, and any mutation this phone sends retire the shared
+answer; otherwise it is reused for at most five seconds. With a chat open on a
+busy Mac this halved the dashboard reads sent (24 asked, 13 sent in a minute)
+at about 740 KB each. A transcript read queued while the socket reconnects
+goes out on the new connection, so reconnecting does not request the chat a
+second time.
+
 A new mutation waits for authentication and replay capability before being
 journaled or sent. The protected, pairing-scoped journal stores canonical input
 and the original operation identity. A dropped response retries that same

@@ -83,6 +83,9 @@ final class TranscriptStore: ObservableObject {
     private var readTask: Task<Void, Never>?
     private var metadataTask: Task<Void, Never>?
     private var transcriptDirty = false
+    /// The read in flight began while the socket was not live, so the
+    /// request is sent after the next authentication.
+    private var readAwaitsConnection = false
     private var authoritativeReadRequested = false
     private var metadataDirty = false
 
@@ -246,7 +249,11 @@ final class TranscriptStore: ObservableObject {
         switch state {
         case .live:
             if openSessionID != nil, case .failed = phase { phase = .loading }
-            authoritativeReadRequested = true
+            // A read queued while the socket was down goes out on this
+            // connection, so it already sees everything the gap missed.
+            // Asking again downloaded the whole chat twice on every cold
+            // open, a notification tap's included.
+            if readTask == nil || !readAwaitsConnection { authoritativeReadRequested = true }
             metadataDirty = true
             scheduleReads()
         case .unauthorized:
@@ -372,6 +379,7 @@ final class TranscriptStore: ObservableObject {
         }
         while !Task.isCancelled, generation == startedGeneration, let id = openSessionID {
             let authoritative = authoritativeReadRequested || changeCursor == nil
+            readAwaitsConnection = connection != .live
             authoritativeReadRequested = false
             transcriptDirty = false
             do {

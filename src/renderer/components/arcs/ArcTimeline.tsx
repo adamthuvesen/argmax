@@ -95,6 +95,8 @@ export function ArcTimeline({
       return;
     }
     requestGeneration.current += 1;
+    // An earlier-page load from the old generation no longer owns the button.
+    setLoadingEarlier(false);
     let cancelled = false;
     void window.argmax.arcs
       .timeline({ arcId, before: null, limit: Math.max(PAGE_SIZE, loadedCount.current) })
@@ -131,7 +133,7 @@ export function ArcTimeline({
       if (generation !== requestGeneration.current) return;
       setError(cause instanceof Error ? cause.message : "Could not load earlier events.");
     } finally {
-      setLoadingEarlier(false);
+      if (generation === requestGeneration.current) setLoadingEarlier(false);
     }
   }, [arcId, cursor]);
 

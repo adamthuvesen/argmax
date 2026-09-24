@@ -103,5 +103,8 @@
     "typescript-eslint": "^8.61.1",
     "vite": "^8",
     "vitest": "^5.0.1"
+  },
+  "overrides": {
+    "lodash-es": "^4.18.1"
   }
 }

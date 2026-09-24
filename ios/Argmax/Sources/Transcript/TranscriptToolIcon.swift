@@ -220,6 +220,34 @@ private struct TranscriptToolIconCatalog: Decodable {
 
     var icons: [Icon]
     var mcpServersWithoutIcons: [String]
+    /// Normalized once rather than per lookup: every tool row asks on every
+    /// render, and rebuilding and sorting the alias list each time was the
+    /// largest piece of app code in opening a chat.
+    private var prefixSpellings: [(dash: String, underscore: String, server: String)] = []
+    private var iconsByAlias: [String: Icon] = [:]
+
+    private enum CodingKeys: String, CodingKey {
+        case icons, mcpServersWithoutIcons
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        icons = try container.decode([Icon].self, forKey: .icons)
+        mcpServersWithoutIcons = try container.decode([String].self, forKey: .mcpServersWithoutIcons)
+        prefixSpellings = (icons.flatMap(\.aliases) + mcpServersWithoutIcons)
+            .sorted { $0.count > $1.count }
+            .map { server in
+                let normalized = Self.normalize(server)
+                return (normalized.replacingOccurrences(of: " ", with: "-"),
+                        normalized.replacingOccurrences(of: " ", with: "_"),
+                        normalized)
+            }
+        for icon in icons {
+            for alias in icon.aliases where iconsByAlias[Self.normalize(alias)] == nil {
+                iconsByAlias[Self.normalize(alias)] = icon
+            }
+        }
+    }
 
     static let bundled: TranscriptToolIconCatalog = {
         guard let url = Bundle(for: TranscriptToolIconBundleMarker.self)
@@ -238,19 +266,16 @@ private struct TranscriptToolIconCatalog: Decodable {
     }()
 
     func icon(for server: String) -> Icon? {
-        let server = Self.normalize(server)
-        return icons.first { icon in icon.aliases.contains { Self.normalize($0) == server } }
+        iconsByAlias[Self.normalize(server)]
     }
 
     /// OpenCode calls MCP tools `<server>_<tool>` without an MCP marker.
     /// Longest first keeps `google-drive_*` ahead of its `drive` alias.
     func serverPrefix(in toolName: String) -> String? {
-        let known = icons.flatMap(\.aliases) + mcpServersWithoutIcons
-        for server in known.sorted(by: { $0.count > $1.count }) {
-            for spelling in [Self.normalize(server).replacingOccurrences(of: " ", with: "-"),
-                             Self.normalize(server).replacingOccurrences(of: " ", with: "_")] {
+        for entry in prefixSpellings {
+            for spelling in [entry.dash, entry.underscore] {
                 if toolName == spelling || toolName.hasPrefix("\(spelling)_") {
-                    return Self.normalize(server)
+                    return entry.server
                 }
             }
         }

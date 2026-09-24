@@ -44,6 +44,28 @@ In Instruments, use Time Profiler, SwiftUI, Hangs, and Points of Interest.
 Markdown preparation, image-thumbnail preparation, file-tree preparation, and
 review-document preparation in both Debug and Release builds.
 
+The same builds log the user-facing milestones under the `perf` category, so a
+run on real data can be timed without Instruments:
+
+```sh
+xcrun simctl spawn booted log stream --level debug \
+  --predicate 'subsystem == "com.argmax.remote" AND category == "perf"'
+```
+
+- `launch→list` is milliseconds from process start (pre-main included) to the
+  first chat list, once from the saved snapshot and once from the Mac.
+- `chat open→saved` and `chat open→live` are milliseconds from opening a chat
+  to its first rows, saved and authoritative.
+- `request` lines carry each bridge read's channel, response bytes, round trip,
+  and decode time. `frame` lines time the socket actor's frame parse for
+  frames over 64 KiB.
+
+Launch a paired simulator build with `-argmax-pair <link>` and optionally
+`-argmax-open-session <id>` to open a real chat. Drive taps from a UI test by
+coordinate: an element query takes an accessibility snapshot of the whole
+transcript, which occupies the main thread for seconds and swamps the
+measurement.
+
 ## Content and preloading
 
 `DeviceCache` is disposable, pairing-scoped storage with a 32 MiB total and

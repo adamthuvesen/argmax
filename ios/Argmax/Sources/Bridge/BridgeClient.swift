@@ -324,9 +324,14 @@ actor BridgeClient {
         input: some Encodable & Sendable,
         as: Output.Type
     ) async throws -> Output {
+        let clock = ContinuousClock()
+        let started = clock.now
         let payload = try await send(channel: channel, input: input)
+        let received = clock.now
         do {
-            return try JSONDecoder().decode(Output.self, from: payload)
+            let decoded = try JSONDecoder().decode(Output.self, from: payload)
+            NativePerformance.log.debug("request \(channel, privacy: .public) bytes=\(payload.count) roundTripMs=\((received - started).milliseconds) decodeMs=\((clock.now - received).milliseconds)")
+            return decoded
         } catch {
             throw BridgeError.malformedResponse
         }
@@ -674,6 +679,13 @@ actor BridgeClient {
         case .string(let text): data = Data(text.utf8)
         case .data(let raw): data = raw
         @unknown default: return
+        }
+        let clock = ContinuousClock()
+        let parseStarted = clock.now
+        defer {
+            if data.count > 64 * 1_024 {
+                NativePerformance.log.debug("frame bytes=\(data.count) actorMs=\((clock.now - parseStarted).milliseconds)")
+            }
         }
         guard let frame = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = frame["type"] as? String

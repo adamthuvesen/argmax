@@ -304,7 +304,15 @@ final class DashboardStore: ObservableObject {
         let grouped = groupChatRows(snapshot: snapshot, now: now, unreadWorkspaceIDs: unreadWorkspaceIDs)
         if grouped != sections { sections = grouped }
         updateDateGroups(chats: grouped.chats)
+        if !reportedFirstContent[isCachedSnapshot ? 0 : 1], !snapshot.sessions.isEmpty {
+            reportedFirstContent[isCachedSnapshot ? 0 : 1] = true
+            NativePerformance.event("Chat list content")
+            NativePerformance.log.debug("launch→list ms=\(Int(NativePerformance.millisecondsSinceLaunch())) cached=\(self.isCachedSnapshot) sessions=\(self.snapshot.sessions.count)")
+        }
     }
+
+    /// Whether the first cached and first live list have been timed.
+    private var reportedFirstContent = [false, false]
 
     private func updateDateGroups(chats: [ChatRow]) {
         let day = Calendar.current.startOfDay(for: now)

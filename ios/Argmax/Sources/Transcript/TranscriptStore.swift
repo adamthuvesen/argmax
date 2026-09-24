@@ -48,6 +48,8 @@ final class TranscriptStore: ObservableObject {
 
     private var ownerID: UUID?
     private var openSessionID: String?
+    /// When the open chat was asked for, until its live rows are published.
+    private var openedAt: ContinuousClock.Instant?
     private var metadata: TranscriptSessionMetadata?
     private var workspacePath: String?
     private var eventsByID: [String: TranscriptEvent] = [:]
@@ -120,6 +122,7 @@ final class TranscriptStore: ObservableObject {
         }
         discardOpenChat()
         openSessionID = id
+        openedAt = ContinuousClock.now
         showingCachedContent = false
         contentVersion = 0
         hasMoreHistory = false
@@ -128,6 +131,7 @@ final class TranscriptStore: ObservableObject {
             restore(cached.stored)
             items = cached.items
             phase = .ready
+            reportOpened(cached: true)
             recentOrder.removeAll { $0 == id }
             recentOrder.append(id)
         } else {
@@ -579,6 +583,7 @@ final class TranscriptStore: ObservableObject {
                 self.publishProjection(projected.isEmpty ? fallback : projected)
                 // Readiness and the rows it describes must change together.
                 if includesLiveContent { self.showingCachedContent = false }
+                self.reportOpened(cached: !includesLiveContent)
                 // Content has arrived by now (the guard above), so an empty
                 // projection is a genuinely empty chat.
                 if self.phase == .loading { self.phase = .ready }
@@ -603,6 +608,15 @@ final class TranscriptStore: ObservableObject {
             }
         }
         return keys
+    }
+
+    /// The `perf` log's chat-open milestones: first rows of any kind, then
+    /// the first rows built from the host's authoritative read.
+    private func reportOpened(cached: Bool) {
+        guard let openedAt, !items.isEmpty else { return }
+        NativePerformance.event("Chat painted")
+        NativePerformance.log.debug("chat open→\(cached ? "saved" : "live", privacy: .public) rows ms=\((ContinuousClock.now - openedAt).milliseconds) rows=\(self.items.count) events=\(self.eventsByID.count)")
+        if !cached { self.openedAt = nil }
     }
 
     private func publishProjection(_ projected: [TranscriptItem]) {

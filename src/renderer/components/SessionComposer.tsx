@@ -605,8 +605,13 @@ export function SessionComposer({
           ? recalled.index
           : null;
       const { selectionStart, selectionEnd } = event.currentTarget;
+      // ↑ leaves a recalled prompt only from its first line and ↓ only from
+      // its last, so the caret still walks a multiline prompt's lines.
       const caretAtEdge =
-        selectionStart === selectionEnd && (selectionStart === 0 || selectionEnd === input.length);
+        selectionStart === selectionEnd &&
+        (step === -1
+          ? !input.slice(0, selectionStart).includes("\n")
+          : !input.slice(selectionEnd).includes("\n"));
       let nextIndex: number | null = null;
       if (recalledIndex !== null && caretAtEdge) nextIndex = recalledIndex + step;
       else if (recalledIndex === null && input.length === 0 && step === -1) {

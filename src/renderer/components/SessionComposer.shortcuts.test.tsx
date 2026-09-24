@@ -60,4 +60,24 @@ describe("SessionComposer picker shortcuts", () => {
     fireEvent.keyDown(prompt, { key: "ArrowUp" });
     expect(prompt).toHaveValue("Second ask, and more");
   });
+
+  it("keeps ↑ on a recalled multiline message's lines until the caret reaches the first one", () => {
+    renderConversation(baseSession({ state: "complete" }), [
+      event("user-1", "user.message", "First ask", "2026-05-12T15:30:00.000Z"),
+      event("user-2", "user.message", "Line one\nLine two", "2026-05-12T15:40:00.000Z")
+    ]);
+    const prompt = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Chat prompt" });
+
+    fireEvent.keyDown(prompt, { key: "ArrowUp" });
+    expect(prompt).toHaveValue("Line one\nLine two");
+    prompt.setSelectionRange(prompt.value.length, prompt.value.length);
+    fireEvent.keyDown(prompt, { key: "ArrowUp" });
+    expect(prompt).toHaveValue("Line one\nLine two");
+
+    prompt.setSelectionRange(0, 0);
+    fireEvent.keyDown(prompt, { key: "ArrowDown" });
+    expect(prompt).toHaveValue("Line one\nLine two");
+    fireEvent.keyDown(prompt, { key: "ArrowUp" });
+    expect(prompt).toHaveValue("First ask");
+  });
 });

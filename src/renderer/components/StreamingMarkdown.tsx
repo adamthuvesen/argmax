@@ -105,16 +105,38 @@ type BlockTools = typeof MarkdownBlocks;
 let blockTools: BlockTools | null = null;
 let blockToolsLoad: Promise<BlockTools> | null = null;
 
-/** The block splitter and tail healer. Fetched when the first Markdown of the
-    session mounts (a chat's history renders before anything streams in it),
-    so they are usually in hand before a block goes live. */
+function loadBlockTools(): Promise<BlockTools> {
+  blockToolsLoad ??= importChunk(() => import("../lib/markdownBlocks.js"));
+  return blockToolsLoad;
+}
+
+// A block latches whole or split the first time it is live, so the tools must
+// be here before the first answer of a fresh chat streams, when no earlier
+// Markdown has mounted to fetch them. Fetch them once the chat code is idle.
+if (typeof window !== "undefined") {
+  const whenIdle = typeof window.requestIdleCallback === "function"
+    ? (run: () => void) => window.requestIdleCallback(run)
+    : (run: () => void) => window.setTimeout(run, 0);
+  whenIdle(() => {
+    loadBlockTools().then(
+      (loaded) => {
+        blockTools = loaded;
+      },
+      () => {
+        blockToolsLoad = null;
+      }
+    );
+  });
+}
+
+/** The block splitter and tail healer. Fetched at idle once this module loads,
+    and by the first Markdown to mount if that has not landed yet. */
 function useBlockTools(): BlockTools | null {
   const [tools, setTools] = useState(blockTools);
   useEffect(() => {
     if (tools) return;
     let cancelled = false;
-    blockToolsLoad ??= importChunk(() => import("../lib/markdownBlocks.js"));
-    blockToolsLoad.then(
+    loadBlockTools().then(
       (loaded) => {
         blockTools = loaded;
         if (!cancelled) setTools(loaded);

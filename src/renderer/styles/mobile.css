@@ -632,8 +632,11 @@ html:has(.mobile-shell[data-embed]) body,
    to the chrome step rather than the surrounding screen (see
    [data-type-scale="composer"] in tokens.css), so on the phone it needs one
    step less than the desktop to land on the conversation. The 16px is a floor,
-   not taste: iOS zooms the page when a focused field is smaller. */
-.mobile-shell .session-input textarea {
+   not taste: iOS zooms the page when a focused field is smaller. The skill
+   highlight mirror takes the same metrics, or the painted text runs short of
+   the caret by a little more with every character. */
+.mobile-shell .session-input textarea,
+.mobile-shell .session-input .composer-highlight-backdrop {
   font-size: max(16px, var(--text-md));
   line-height: 1.45;
 }

@@ -172,7 +172,7 @@ export function AdvancedSettings({
 
         <SettingRow
           label="Archived workspaces"
-          description="Find files kept from workspaces archived in the last 14 days."
+          description="Find files kept from workspaces archived in the last two days."
           control={
             <button
               type="button"

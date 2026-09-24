@@ -9,7 +9,6 @@ import {
   GitPullRequest,
   GitPullRequestArrow,
   GitPullRequestClosed,
-  Github,
   MoreHorizontal,
   SquareTerminal,
   X
@@ -33,6 +32,7 @@ import { AgentEmblem } from "./AgentEmblem.js";
 import { WorkingNest } from "./WorkingNest.js";
 import { ChangeCount } from "./ChangeCount.js";
 import type { ComposerStatus } from "./SessionComposer.js";
+import { GithubIcon } from "./GithubIcon.js";
 
 /** Avatars shown before the stack folds into a +N chip. Matches the reference
  *  density: four or five colored marks read as a team, more read as noise. */
@@ -511,7 +511,7 @@ function branchWithBreakOpportunities(branch: string): ReactNode {
  *  yet keeps the plain GitHub mark rather than guessing at one. */
 function PrStateIcon({ state }: { state: string | null }): JSX.Element {
   if (state !== "OPEN" && state !== "MERGED" && state !== "CLOSED") {
-    return <Github size={13} aria-hidden="true" />;
+    return <GithubIcon size={13} aria-hidden="true" />;
   }
   const Icon = state === "MERGED" ? GitMerge : state === "OPEN" ? GitPullRequest : GitPullRequestClosed;
   return <Icon size={13} aria-hidden="true" className="workspace-card-pr-state" data-pr-state={state} />;

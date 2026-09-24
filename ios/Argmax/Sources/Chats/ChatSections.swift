@@ -320,8 +320,53 @@ private func idleDeadline(_ lastActivityAt: String) -> Date? {
 /// Wire timestamps are ISO-8601 UTC, usually with milliseconds and sometimes
 /// without — SQLite rows written before the column carried them.
 func parseWireTimestamp(_ text: String) -> Date? {
+    if let date = parseUTCTimestamp(text) { return date }
     if let date = ISO8601DateFormatter.withMilliseconds.date(from: text) { return date }
     return ISO8601DateFormatter.wholeSeconds.date(from: text)
+}
+
+/// The two shapes the host writes, `2026-09-23T16:19:11.287Z` and
+/// `2026-09-23T16:19:11Z`, read without a formatter. The list parses every
+/// chat's timestamps on each regroup and row render, and a formatter spends
+/// most of that time on the pattern rather than the digits. Anything else —
+/// an offset, another fraction length, a year before the formatter's
+/// Gregorian cutover matters — is nil here and goes to the formatters.
+private func parseUTCTimestamp(_ text: String) -> Date? {
+    var utf8 = text.utf8
+    return utf8.withContiguousStorageIfAvailable { bytes -> Date? in
+        guard bytes.count == 20 || bytes.count == 24, bytes[bytes.count - 1] == UInt8(ascii: "Z"),
+              bytes[4] == UInt8(ascii: "-"), bytes[7] == UInt8(ascii: "-"), bytes[10] == UInt8(ascii: "T"),
+              bytes[13] == UInt8(ascii: ":"), bytes[16] == UInt8(ascii: ":") else { return nil }
+        func number(_ start: Int, _ count: Int) -> Int? {
+            var value = 0
+            for index in start..<(start + count) {
+                let digit = Int(bytes[index]) - 48
+                guard (0...9).contains(digit) else { return nil }
+                value = value * 10 + digit
+            }
+            return value
+        }
+        guard let year = number(0, 4), let month = number(5, 2), let day = number(8, 2),
+              let hour = number(11, 2), let minute = number(14, 2), let second = number(17, 2),
+              year >= 1900, (1...12).contains(month), hour < 24, minute < 60, second < 60 else { return nil }
+        let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+        let monthDays = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
+        guard (1...monthDays).contains(day) else { return nil }
+        var milliseconds = 0
+        if bytes.count == 24 {
+            guard bytes[19] == UInt8(ascii: "."), let fraction = number(20, 3) else { return nil }
+            milliseconds = fraction
+        }
+        // Days from the civil calendar (Howard Hinnant's algorithm).
+        let y = month <= 2 ? year - 1 : year
+        let era = (y >= 0 ? y : y - 399) / 400
+        let yearOfEra = y - era * 400
+        let dayOfYear = (153 * (month > 2 ? month - 3 : month + 9) + 2) / 5 + day - 1
+        let dayOfEra = yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear
+        let days = era * 146_097 + dayOfEra - 719_468
+        let seconds = days * 86_400 + hour * 3_600 + minute * 60 + second
+        return Date(timeIntervalSince1970: Double(seconds) + Double(milliseconds) / 1_000)
+    } ?? nil
 }
 
 extension ISO8601DateFormatter {

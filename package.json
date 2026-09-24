@@ -35,7 +35,7 @@
     "check:main-thread": "node scripts/check-main-thread-handlers.mjs",
     "check:bundle": "node scripts/check-bundle.mjs",
     "check:ios-fonts": "node scripts/check-ios-fonts.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "node node_modules/typescript-7/bin/tsc --noEmit"
   },
   "dependencies": {
     "@codemirror/lang-css": "^6.3.1",
@@ -99,6 +99,7 @@
     "eslint-plugin-react-refresh": "^0.4.16",
     "jsdom": "^25.0.1",
     "typescript": "^5.7.2",
+    "typescript-7": "npm:typescript@^7.0.2",
     "typescript-eslint": "^8.61.1",
     "vite": "^8",
     "vitest": "^4.1.11"

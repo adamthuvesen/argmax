@@ -267,7 +267,8 @@ step("main-thread handler allowlist", "node", ["scripts/check-main-thread-handle
 
 if (scope.js) {
   step("eslint", "npx", ["eslint", ".", "--cache", "--cache-location", "node_modules/.cache/eslint/"]);
-  step("tsc", "npx", ["tsc", "--noEmit"]);
+  // TypeScript 7 (the `typescript-7` alias); see docs/testing.md.
+  step("tsc", "node", ["node_modules/typescript-7/bin/tsc", "--noEmit"]);
   // `--changed` runs only the test files whose import graph reaches a
   // changed file; a config or setup change widens it to the full suite.
   step(

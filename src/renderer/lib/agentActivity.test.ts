@@ -531,7 +531,7 @@ describe("buildAgentActivity", () => {
       event("initial-start", "agent.started", "2026-05-12T15:00:01.000Z", "Agent started", {
         providerInvocationId: "invocation-a", providerParentConversationId: "parent-native",
         providerChildSessionId: "child-native", agentRootToolUseId: "task-root",
-        agentRunId: "task-root", agentModelId: "claude-opus-5", agentReasoningEffort: "high"
+        agentRunId: "task-root", agentModelId: "claude-opus-5-5", agentReasoningEffort: "high"
       }),
       event("continued-start", "agent.started", "2026-05-12T15:01:01.000Z", "Agent started", {
         providerInvocationId: "invocation-b", providerParentConversationId: "parent-native",
@@ -551,14 +551,14 @@ describe("buildAgentActivity", () => {
       events, sessionRunning: false, provider: "claude"
     });
 
-    expect(initial.model).toEqual({ label: "Opus 5", effort: "High" });
+    expect(initial.model).toEqual({ label: "Opus 5.5", effort: "High" });
     expect(continued.model).toEqual({ label: "Sonnet 5", effort: "Medium" });
   });
 
   it("chooses the newest matching model regardless of event storage order", () => {
     const older = event("older", "message.completed", "2026-05-12T15:00:01.000Z", "Starting", {
       parent_tool_use_id: "task-root", agentRunId: "task-root",
-      agentModelId: "claude-opus-5", agentReasoningEffort: "high"
+      agentModelId: "claude-opus-5-5", agentReasoningEffort: "high"
     });
     const newer = event("newer", "message.completed", "2026-05-12T15:00:02.000Z", "Continuing", {
       parent_tool_use_id: "task-root", agentRunId: "task-root",
@@ -589,7 +589,7 @@ describe("buildAgentActivity", () => {
         id: "a-read", name: "Read", parent_tool_use_id: "task-reused",
         providerInvocationId: "invocation-a", providerParentConversationId: "parent-native",
         providerChildSessionId: "child-a", agentRunId: "task-reused",
-        agentModelId: "claude-opus-5", agentReasoningEffort: "high",
+        agentModelId: "claude-opus-5-5", agentReasoningEffort: "high",
         input: { file_path: "a.ts" }
       }),
       event("b-tool", "command.started", "2026-05-12T15:01:02.000Z", "Read", {
@@ -612,7 +612,7 @@ describe("buildAgentActivity", () => {
       events, sessionRunning: false, provider: "claude"
     });
 
-    expect(childA.model).toEqual({ label: "Opus 5", effort: "High" });
+    expect(childA.model).toEqual({ label: "Opus 5.5", effort: "High" });
     expect(childB.model).toEqual({ label: "Sonnet 5", effort: "Medium" });
   });
 

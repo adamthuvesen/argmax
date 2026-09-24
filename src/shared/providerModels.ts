@@ -198,7 +198,6 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
   claude: [
     { label: "Fable 5.1", modelId: "claude-fable-5-1", supportsReasoningEffort: true, contextWindow: 1_000_000 },
     { label: "Opus 5.5", modelId: "claude-opus-5-5", supportsReasoningEffort: true, contextWindow: 1_000_000 },
-    { label: "Opus 5", modelId: "claude-opus-5", supportsReasoningEffort: true, contextWindow: 1_000_000 },
     { label: "Sonnet 5", modelId: "claude-sonnet-5", supportsReasoningEffort: true, contextWindow: 200_000 },
     { label: "Haiku 4.5", modelId: "claude-haiku-4-5", contextWindow: 200_000 }
   ],
@@ -242,12 +241,6 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
     {
       label: "Claude Opus 5.5 (Cursor)",
       modelId: "claude-opus-5-5-medium",
-      supportsReasoningEffort: true,
-      contextWindow: 1_000_000
-    },
-    {
-      label: "Claude Opus 5 (Cursor)",
-      modelId: "claude-opus-5-thinking-medium",
       supportsReasoningEffort: true,
       contextWindow: 1_000_000
     }

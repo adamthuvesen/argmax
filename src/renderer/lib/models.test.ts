@@ -75,18 +75,18 @@ describe("modelSelectionFromSession", () => {
   });
 
   it("shows the catalog label when a session stored a raw API id", () => {
-    // An imported Claude session records `claude-opus-5` as its label, because
-    // that is what the provider's transcript names. The chip must read "Opus 5".
+    // An imported Claude session records `claude-opus-5-5` as its label, because
+    // that is what the provider's transcript names. The chip must read "Opus 5.5".
     const imported: SessionSummary = {
       ...BASE_SESSION,
       provider: "claude",
-      modelLabel: "claude-opus-5",
-      modelId: "claude-opus-5"
+      modelLabel: "claude-opus-5-5",
+      modelId: "claude-opus-5-5"
     };
 
     expect(modelSelectionFromSession(imported)).toEqual({
-      label: "Opus 5",
-      modelId: "claude-opus-5",
+      label: "Opus 5.5",
+      modelId: "claude-opus-5-5",
       reasoningEffort: "medium"
     });
   });

@@ -566,7 +566,7 @@ describe("App settings", () => {
   });
 
   it.each([
-    ["claude", "claude-opus-5", "auto-approve"],
+    ["claude", "claude-opus-5-5", "auto-approve"],
     ["codex", "gpt-6-sol", "provider-defaults"]
   ] as const)("keeps provider choices independent after reload and launches %s with its own policy", async (provider, modelId, permissionMode) => {
     window.localStorage.setItem("argmax.permissionMode", "auto-approve");
@@ -638,7 +638,7 @@ describe("App settings", () => {
 
   it.each([
     ["codex", "gpt-6-sol", true],
-    ["claude", "claude-opus-5", false]
+    ["claude", "claude-opus-5-5", false]
   ] as const)("settings Fast mode persists and gates the next %s launch", async (provider, modelId, fastMode) => {
     window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider, modelId }));
     render(<App />);

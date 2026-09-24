@@ -77,10 +77,10 @@ describe("ContextRing", () => {
   it("falls back to the per-model table when the provider reports no window", () => {
     render(
       <ContextRing
-        session={{ ...base, provider: "claude", modelId: "claude-opus-5", contextTokens: 100000, contextWindow: null }}
+        session={{ ...base, provider: "claude", modelId: "claude-opus-5-5", contextTokens: 100000, contextWindow: null }}
       />
     );
-    // Opus 5's 1M table entry → 100000 / 1000000 = 10%.
+    // Opus 5.5's 1M table entry → 100000 / 1000000 = 10%.
     expect(screen.getByRole("button", { name: /Context window 10% full/ })).toBeInTheDocument();
   });
 

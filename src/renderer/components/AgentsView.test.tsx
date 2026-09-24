@@ -445,7 +445,7 @@ describe("AgentsView", () => {
         launch("task-1", "Explore repo"),
         event("child", "message.completed", "2026-05-12T15:00:02.000Z", "Mapped it.", {
           parent_tool_use_id: "task-1",
-          agentModelId: "claude-opus-5",
+          agentModelId: "claude-opus-5-5",
           agentReasoningEffort: "xhigh"
         })
       ]
@@ -453,7 +453,7 @@ describe("AgentsView", () => {
 
     expect(screen.getByRole("heading", { name: "Explore repo" })).toBeInTheDocument();
     const details = screen.getByLabelText("Agent details");
-    expect(details).toHaveTextContent(/Gauss\s*·\s*Opus 5\s*·\s*Extra High/);
+    expect(details).toHaveTextContent(/Gauss\s*·\s*Opus 5\.5\s*·\s*Extra High/);
     expect(screen.queryByRole("status", { name: "Agent model" })).toBeNull();
   });
 

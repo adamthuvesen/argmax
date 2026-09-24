@@ -51,7 +51,7 @@ describe("launch model preference", () => {
     persistDefaultEffort("xhigh");
     window.localStorage.setItem(
       LAUNCH_MODEL_KEY,
-      JSON.stringify({ provider: "claude", modelId: "claude-opus-5" })
+      JSON.stringify({ provider: "claude", modelId: "claude-opus-5-5" })
     );
 
     expect(readStoredLaunchModel()?.reasoningEffort).toBe("xhigh");
@@ -94,7 +94,7 @@ describe("launch model preference", () => {
   });
 
   it("records model recency so the picker can sort by last use", () => {
-    persistLaunchModel({ provider: "claude", label: "Opus 5", modelId: "claude-opus-5", reasoningEffort: "medium" });
+    persistLaunchModel({ provider: "claude", label: "Opus 5.5", modelId: "claude-opus-5-5", reasoningEffort: "medium" });
     persistLaunchModel({
       provider: "codex",
       label: "GPT-5.6 Sol",
@@ -102,7 +102,7 @@ describe("launch model preference", () => {
       reasoningEffort: "medium"
     });
 
-    expect(readLaunchModelRecency()).toEqual(["codex:gpt-5.6-sol", "claude:claude-opus-5"]);
+    expect(readLaunchModelRecency()).toEqual(["codex:gpt-5.6-sol", "claude:claude-opus-5-5"]);
     expect(window.localStorage.getItem(LAUNCH_MODEL_RECENCY_KEY)).toContain("codex:gpt-5.6-sol");
   });
 });

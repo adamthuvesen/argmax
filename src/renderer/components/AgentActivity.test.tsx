@@ -916,7 +916,7 @@ describe("AgentActivity", () => {
               description: "Explore repo",
               prompt: "Map the repo.",
               subagent_type: "implementer",
-              model: "claude-opus-5",
+              model: "claude-opus-5-5",
               reasoning_effort: "xhigh"
             }
           })
@@ -928,9 +928,9 @@ describe("AgentActivity", () => {
     );
 
     const details = screen.getByLabelText("Agent details");
-    expect(details).toHaveTextContent(/Implementer\s*·\s*Opus 5\s*·\s*Extra High/);
+    expect(details).toHaveTextContent(/Implementer\s*·\s*Opus 5\.5\s*·\s*Extra High/);
     const instructions = screen.getByRole("region", { name: "Agent instructions" });
-    expect(within(instructions).queryByText(/Opus 5/)).toBeNull();
+    expect(within(instructions).queryByText(/Opus 5\.5/)).toBeNull();
   });
 
   it("opens a finished run's changed file in the Changes view", () => {

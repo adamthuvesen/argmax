@@ -254,7 +254,20 @@ final class TranscriptStore: ObservableObject {
             // connection, so it already sees everything the gap missed.
             // Asking again downloaded the whole chat twice on every cold
             // open, a notification tap's included.
-            if readTask == nil || !readAwaitsConnection { authoritativeReadRequested = true }
+            if readTask == nil || !readAwaitsConnection {
+                // Content read live in this process catches up through the
+                // change feed, which records every insert, update and
+                // deletion made while the socket was down and answers a
+                // pruned cursor with a full reset. A return from the
+                // background re-downloaded the whole chat instead. Saved
+                // content's cursors came from disk, so it still takes the
+                // authoritative read.
+                if contentVersion > 0, !showingCachedContent, changeCursor != nil {
+                    transcriptDirty = true
+                } else {
+                    authoritativeReadRequested = true
+                }
+            }
             metadataDirty = true
             scheduleReads()
         case .unauthorized:

@@ -78,7 +78,10 @@ The dashboard restores its last snapshot. The transcript retains up to eight
 recent chats within a 16 MiB estimated memory budget and persists recent
 transcript snapshots. Saved transcript content is labeled as saved and is
 reconciled using the existing authoritative tail read. Cached cursors never
-replace that read. Host removal cancels pending preparation and invalidates
+replace that read. A chat read live in this process instead catches up after a
+reconnect through the host's change feed, which answers a pruned cursor with a
+full reset; returning from the background to a 1,471-event chat moved 173 bytes
+of transcript instead of 1.7 MB. Host removal cancels pending preparation and invalidates
 the open chat's cache.
 
 Usage and Activity still preload from `RootView` at launch and on foreground

@@ -275,6 +275,37 @@ final class BridgeRecoveryTests: XCTestCase {
         await client.disconnect()
     }
 
+    /// A chat read live in this process catches up through the change feed
+    /// after a reconnect instead of downloading itself again.
+    @MainActor
+    func testReconnectCatchesALiveChatUpFromItsChangeCursor() async throws {
+        let first = TestBridgeSocket(), second = TestBridgeSocket()
+        let (client, directory) = try makeClient([first, second])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = TranscriptStore(client: client, cache: DeviceCache(directory: directory))
+        func transcriptReads(_ socket: TestBridgeSocket) -> [[String: Any]] {
+            socket.requests.filter { $0["channel"] as? String == "session:events-since" }
+        }
+        store.openSession("s-1")
+        try await wait { !transcriptReads(first).isEmpty }
+        first.reply(to: try XCTUnwrap(transcriptReads(first).first), ok: [
+            "events": [["id": "e-1", "sessionId": "s-1", "type": "message.completed", "message": "Hello",
+                        "payload": [String: Any](), "createdAt": "2026-01-01T00:00:01.000Z", "rowCursor": 1]],
+            "rawOutputs": [Any](), "eventCursor": 1, "rawOutputCursor": 0, "changeCursor": 5,
+            "deletedEventIds": [Any](), "deletedRawOutputIds": [Any](), "resetRequired": true, "hasMore": false,
+        ])
+        try await wait { !store.items.isEmpty }
+
+        store.receive(connection: .reconnecting(since: Date()))
+        await client.reconnectNow(force: true)
+        store.receive(connection: .live)
+        try await wait { !transcriptReads(second).isEmpty }
+        let input = try XCTUnwrap(transcriptReads(second).first?["input"] as? [String: Any])
+        XCTAssertEqual(input["changeCursor"] as? Int, 5, "A live chat resumes from its change cursor")
+        store.closeSession()
+        await client.disconnect()
+    }
+
     func testDashboardReadsShareOneRequestUntilTheHostSignalsAChange() async throws {
         let socket = TestBridgeSocket()
         let (client, directory) = try makeClient([socket])

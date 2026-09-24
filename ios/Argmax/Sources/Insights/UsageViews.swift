@@ -165,8 +165,12 @@ struct UsageProviderCards: View {
 
 // MARK: - Daily chart
 
-struct UsageDailyChart: View {
-    @ObservedObject var store: InsightsStore
+/// Takes its values rather than the store: a chart of every provider's day
+/// is a few hundred marks, and observing the store rebuilt them each time a
+/// loading flag moved while the page opened.
+struct UsageDailyChart: View, Equatable {
+    let usage: UsageSummary?
+    let mode: InsightsStore.UsageMode
 
     private struct Bucket: Identifiable {
         let id: String
@@ -178,8 +182,8 @@ struct UsageDailyChart: View {
     /// Dense: every provider has a value on every day. A stacked area with
     /// days missing interpolates across the gap and draws stray curves.
     private var buckets: [Bucket] {
-        let points = store.usage?.series ?? []
-        let useTokens = store.usageMode == .tokens
+        let points = usage?.series ?? []
+        let useTokens = mode == .tokens
         let providers = Array(Set(points.flatMap { $0.values.map(\.provider) })).sorted()
         return points.flatMap { point -> [Bucket] in
             guard let date = InsightsFormat.parse(point.bucketStart) else { return [] }
@@ -203,7 +207,7 @@ struct UsageDailyChart: View {
         let buckets = buckets
         let providers = Array(Set(buckets.map(\.provider))).sorted()
         InsightsCard(
-            title: store.usageMode == .tokens ? "Daily tokens" : "Daily cost",
+            title: mode == .tokens ? "Daily tokens" : "Daily cost",
             trailing: legendTrailing
         ) {
             if buckets.isEmpty {
@@ -228,7 +232,7 @@ struct UsageDailyChart: View {
                 }
                 .chartLegend(.hidden)
                 .insightsChartAxes(dayStride: max(1, daySpan / 4)) { number in
-                    store.usageMode == .tokens
+                    mode == .tokens
                         ? InsightsFormat.compact(number)
                         : InsightsFormat.usdCompact(number)
                 }
@@ -240,11 +244,11 @@ struct UsageDailyChart: View {
     }
 
     private var daySpan: Int {
-        max(1, store.usage?.series.count ?? 0)
+        max(1, usage?.series.count ?? 0)
     }
 
     private var legendTrailing: String? {
-        guard let summary = store.usage else { return nil }
+        guard let summary = usage else { return nil }
         return "\(InsightsFormat.compact(Double(summary.sessions))) sessions"
     }
 
@@ -266,11 +270,11 @@ struct UsageDailyChart: View {
     }
 
     private var dailyAccessibility: String {
-        guard let summary = store.usage else { return "Daily usage chart" }
-        let total = store.usageMode == .tokens
+        guard let summary = usage else { return "Daily usage chart" }
+        let total = mode == .tokens
             ? "\(InsightsFormat.compact(summary.tokens.processed)) tokens"
             : InsightsFormat.usdFull(summary.costUsd)
-        return "Daily \(store.usageMode == .tokens ? "tokens" : "cost"), \(total) total."
+        return "Daily \(mode == .tokens ? "tokens" : "cost"), \(total) total."
     }
 }
 

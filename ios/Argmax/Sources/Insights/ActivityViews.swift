@@ -204,8 +204,12 @@ struct ActivityHeatmap: View {
 
 // MARK: - Daily commits chart
 
-struct ActivityDailyChart: View {
-    @ObservedObject var store: InsightsStore
+/// Takes its values rather than the store, for the reason `UsageDailyChart`
+/// gives.
+struct ActivityDailyChart: View, Equatable {
+    let activity: ActivitySummary?
+    let mode: InsightsStore.ActivityMode
+    let projectFilter: String?
 
     /// Named repositories get their own band; the rest pool into one tail,
     /// as on the desktop (`ACTIVITY_SERIES_SLOTS`): thirty stacked bands in
@@ -234,10 +238,10 @@ struct ActivityDailyChart: View {
     }
 
     private var series: Series {
-        let points = store.activitySeries()
-        let useLines = store.activityMode == .lines
-        let ranked = (store.activity?.repositories ?? []).filter {
-            store.projectFilter == nil || $0.projectId == store.projectFilter
+        let points = InsightsStore.activitySeries(activity, projectFilter: projectFilter)
+        let useLines = mode == .lines
+        let ranked = (activity?.repositories ?? []).filter {
+            projectFilter == nil || $0.projectId == projectFilter
         }
         let named = Array(ranked.prefix(Self.namedSlots))
         let names = Dictionary(uniqueKeysWithValues: named.map { ($0.projectId, $0.name) })
@@ -288,7 +292,7 @@ struct ActivityDailyChart: View {
         // would rebuild every bucket for every mark.
         let series = series
         InsightsCard(
-            title: store.activityMode == .lines ? "Daily lines" : "Daily commits",
+            title: mode == .lines ? "Daily lines" : "Daily commits",
             trailing: nil
         ) {
             if series.buckets.isEmpty {
@@ -310,14 +314,14 @@ struct ActivityDailyChart: View {
                 }
                 .frame(height: 190)
                 .accessibilityLabel(
-                    "Daily \(store.activityMode == .lines ? "lines changed" : "commits") by repository."
+                    "Daily \(mode == .lines ? "lines changed" : "commits") by repository."
                 )
                 legend(series)
             }
         }
     }
 
-    private var daySpan: Int { max(1, store.activitySeries().count) }
+    private var daySpan: Int { max(1, InsightsStore.activitySeries(activity, projectFilter: projectFilter).count) }
 
     /// Rank colour by band order, so the legend and the chart agree; the
     /// pooled tail is always muted.

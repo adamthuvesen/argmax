@@ -487,28 +487,30 @@ final class NativeTranscriptListTests: XCTestCase {
     }
 
     func testTranscriptRowWindowPagesWithoutGrowingOrFollowingLiveOutput() {
-        var ids = (0..<240).map { "row-\($0)" }
+        let capacity = TranscriptRowWindow.capacity
+        let step = TranscriptRowWindow.step
+        let total = 2 * capacity
+        var ids = (0..<total).map { "row-\($0)" }
         var window = TranscriptRowWindow()
 
-        XCTAssertEqual(window.bounds(in: ids, following: true), 120..<240)
+        XCTAssertEqual(window.bounds(in: ids, following: true), capacity..<total)
         window.freeze(in: ids)
-        ids.append("row-240")
-        XCTAssertEqual(window.bounds(in: ids, following: false), 120..<240,
+        ids.append("row-\(total)")
+        XCTAssertEqual(window.bounds(in: ids, following: false), capacity..<total,
                        "Live output must not shift a detached reader's rows")
 
         window.revealEarlier(in: ids)
-        XCTAssertEqual(window.bounds(in: ids, following: false), 60..<180)
-        XCTAssertEqual(window.bounds(in: ids, following: false).count,
-                       TranscriptRowWindow.capacity)
+        XCTAssertEqual(window.bounds(in: ids, following: false), (capacity - step)..<(total - step))
+        XCTAssertEqual(window.bounds(in: ids, following: false).count, capacity)
 
         window.revealEarlier(in: ids)
-        XCTAssertEqual(window.bounds(in: ids, following: false), 0..<120)
+        XCTAssertEqual(window.bounds(in: ids, following: false), 0..<capacity)
         window.revealLater(in: ids)
-        XCTAssertEqual(window.bounds(in: ids, following: false), 60..<180)
+        XCTAssertEqual(window.bounds(in: ids, following: false), step..<(capacity + step))
         window.revealLater(in: ids)
-        XCTAssertEqual(window.bounds(in: ids, following: false), 120..<240)
+        XCTAssertEqual(window.bounds(in: ids, following: false), capacity..<total)
         window.revealLater(in: ids)
-        XCTAssertEqual(window.bounds(in: ids, following: false), 121..<241)
+        XCTAssertEqual(window.bounds(in: ids, following: false), (capacity + 1)..<(total + 1))
     }
 
     func testReadingPositionCannotAnchorToAnEvictedWindowRow() {

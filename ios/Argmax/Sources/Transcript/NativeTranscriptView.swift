@@ -195,9 +195,15 @@ struct TranscriptListRow: View, Equatable {
 /// the reader. Stable boundary ids keep live output from moving a detached
 /// history window, while fixed-size steps let either edge page through rows
 /// already projected by `TranscriptStore`.
+///
+/// Every mounted row is laid out, shaped, and drawn whether it is on screen
+/// or not, so the window is the cost of opening a chat: 120 rows held the
+/// main thread for 1.2 s opening a 94-row chat on the simulator, 32 rows
+/// for 0.4 s. A reader heading into history is paged in well before the
+/// window's edge (`NativeTranscriptList.requestWindowPage`).
 struct TranscriptRowWindow: Equatable {
-    static let capacity = 120
-    static let step = 60
+    static let capacity = 32
+    static let step = 16
 
     private var firstID: String?
     private var lastID: String?

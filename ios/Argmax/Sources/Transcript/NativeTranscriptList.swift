@@ -241,13 +241,16 @@ where Item.ID == String {
         whileFollowing isFollowing: Bool
     ) {
         guard !isFollowing, !phase.isUserControlled else { return }
-        if hasEarlier, geometry.visibleTop <= 240,
+        // Two screens of lead: the window is a few dozen rows, so a page has
+        // to land while the reader still has content above them to read.
+        let lead = max(240, 2 * geometry.viewportHeight)
+        if hasEarlier, geometry.visibleTop <= lead,
            let boundary = items.first?.id, earlierBoundaryRequested != boundary {
             earlierBoundaryRequested = boundary
             onLoadEarlier()
             return
         }
-        if hasLater, geometry.tailGap <= 240,
+        if hasLater, geometry.tailGap <= lead,
            let boundary = items.last?.id, laterBoundaryRequested != boundary {
             laterBoundaryRequested = boundary
             onLoadLater()

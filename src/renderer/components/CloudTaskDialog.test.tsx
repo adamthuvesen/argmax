@@ -69,7 +69,9 @@ describe("CloudTaskDialog", () => {
     pending.resolve(preview);
     expect(await screen.findByText("Continue this chat in Claude Cloud.")).toBeInTheDocument();
     expect(screen.getByText(preview.brief)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Send task" })).toHaveFocus();
+    // The preview renders one microtask before `preparing` clears, and only
+    // then does focus move to the launch button.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send task" })).toHaveFocus());
     expect(screen.getByText("adamthuvesen/private-sandbox")).toBeInTheDocument();
     expect(screen.getByText("Default")).toBeInTheDocument();
     expect(screen.getByTitle("env-default")).toHaveTextContent("Default");

@@ -103,12 +103,17 @@ describe("FileChip", () => {
     delete (window as { argmax?: unknown }).argmax;
   });
 
-  it("calls workspaces.openInIde when workspaceId is provided", () => {
+  it("opens the file itself, not the whole repo, when workspaceId is provided", () => {
     render(<FileChip path="src-tauri/src.ts" line={10} workspaceId="ws-1" workspaceCwd="/repo" />);
     screen.getByRole("button", { name: "Open src-tauri/src.ts at line 10" }).click();
-    const ide = (window as unknown as { argmax: { workspaces: { openInIde: ReturnType<typeof vi.fn> } } }).argmax
-      .workspaces.openInIde;
-    expect(ide).toHaveBeenCalledWith({ workspaceId: "ws-1", ide: "default" });
+    const api = (window as unknown as {
+      argmax: {
+        workspaces: { openInIde: ReturnType<typeof vi.fn> };
+        system: { openPath: ReturnType<typeof vi.fn> };
+      };
+    }).argmax;
+    expect(api.system.openPath).toHaveBeenCalledWith({ path: "src-tauri/src.ts", cwd: "/repo" });
+    expect(api.workspaces.openInIde).not.toHaveBeenCalled();
   });
 
   it("falls back to system.openPath when workspaceId is missing", () => {

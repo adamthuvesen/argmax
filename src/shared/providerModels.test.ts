@@ -25,12 +25,12 @@ describe("PROVIDER_MODEL_DEFAULTS", () => {
   // DEFAULT_REASONING_EFFORT via modelDefaultForProvider when unset here.
   it("matches the documented launch defaults", () => {
     expect(PROVIDER_MODEL_DEFAULTS.claude).toMatchObject({
-      modelId: "claude-opus-5",
+      modelId: "claude-opus-5-5",
       supportsReasoningEffort: true
     });
     expect(PROVIDER_MODEL_DEFAULTS.claude.reasoningEffort).toBeUndefined();
     expect(PROVIDER_MODEL_DEFAULTS.codex).toMatchObject({
-      modelId: "gpt-5.6-sol",
+      modelId: "gpt-6-sol",
       supportsReasoningEffort: true
     });
     expect(PROVIDER_MODEL_DEFAULTS.codex.reasoningEffort).toBeUndefined();
@@ -120,7 +120,7 @@ describe("reasoningEffortsForModel", () => {
       "max",
       "ultra"
     ]);
-    expect(reasoningEffortsForModel("codex", "gpt-5.6-sol")).toEqual([
+    expect(reasoningEffortsForModel("codex", "gpt-6-sol")).toEqual([
       "low",
       "medium",
       "high",
@@ -136,7 +136,7 @@ describe("reasoningEffortsForModel", () => {
       "max",
       "ultra"
     ]);
-    expect(reasoningEffortsForModel("codex", "gpt-5.6-luna")).toEqual([
+    expect(reasoningEffortsForModel("codex", "gpt-6-luna")).toEqual([
       "low",
       "medium",
       "high",
@@ -148,9 +148,9 @@ describe("reasoningEffortsForModel", () => {
   it("lists Codex models Astra → Sol → Terra → Luna", () => {
     expect(PROVIDER_MODELS.codex.map((model) => model.modelId)).toEqual([
       "gpt-6-astra",
-      "gpt-5.6-sol",
+      "gpt-6-sol",
       "gpt-5.6-terra",
-      "gpt-5.6-luna"
+      "gpt-6-luna"
     ]);
     expect(PROVIDER_MODELS.codex[0]).toMatchObject({
       label: "GPT-6 Astra",
@@ -168,7 +168,7 @@ describe("normalizeModelId", () => {
 
   it("leaves bare ids untouched", () => {
     expect(normalizeModelId("claude-sonnet-5")).toBe("claude-sonnet-5");
-    expect(normalizeModelId("gpt-5.6-sol")).toBe("gpt-5.6-sol");
+    expect(normalizeModelId("gpt-6-sol")).toBe("gpt-6-sol");
   });
 
   it("does not strip non-date trailing suffixes", () => {
@@ -212,16 +212,16 @@ describe("costOf — golden fixtures", () => {
     expect(costOf(usage, "claude-opus-4-8")).toBeCloseTo(36.75, 9);
   });
 
-  it("prices Sonnet 5 input-only at $3/M", () => {
-    expect(costOf(million, "claude-sonnet-5")).toBeCloseTo(3.0, 9);
+  it("prices Sonnet 5 input-only at $2/M", () => {
+    expect(costOf(million, "claude-sonnet-5")).toBeCloseTo(2.0, 9);
   });
 
   it("prices Haiku 4.5 input-only at $1/M", () => {
     expect(costOf(million, "claude-haiku-4-5")).toBeCloseTo(1.0, 9);
   });
 
-  it("prices GPT-5.6 Sol input-only at $5/M", () => {
-    expect(costOf(million, "gpt-5.6-sol")).toBeCloseTo(5.0, 9);
+  it("prices GPT-6 Sol input-only at $2/M", () => {
+    expect(costOf(million, "gpt-6-sol")).toBeCloseTo(2.0, 9);
   });
 
   it("prices GPT-6 Astra at its current list rates", () => {
@@ -233,8 +233,8 @@ describe("costOf — golden fixtures", () => {
     ).toBeCloseTo(73.5, 9);
   });
 
-  it("prices GPT-5.6 Luna / Terra at published short-context rates", () => {
-    expect(costOf(million, "gpt-5.6-luna")).toBeCloseTo(0.2, 9);
+  it("prices GPT-6 Luna / Terra at published short-context rates", () => {
+    expect(costOf(million, "gpt-6-luna")).toBeCloseTo(0.1, 9);
     expect(costOf(million, "gpt-5.6-terra")).toBeCloseTo(2.0, 9);
   });
 
@@ -247,7 +247,7 @@ describe("costOf — golden fixtures", () => {
     const suffixed = costOf(million, "claude-sonnet-5-20250101");
     const bare = costOf(million, "claude-sonnet-5");
     expect(suffixed).toBe(bare);
-    expect(suffixed).toBeCloseTo(3.0, 9);
+    expect(suffixed).toBeCloseTo(2.0, 9);
   });
 
   it("prices persisted model ids without restoring them to the model table", () => {
@@ -287,7 +287,7 @@ describe("MODEL_PRICING coverage", () => {
   it("ships entries for the launch-default model ids", () => {
     expect(MODEL_PRICING["claude-sonnet-5"]).toBeDefined();
     expect(MODEL_PRICING["claude-haiku-4-5"]).toBeDefined();
-    expect(MODEL_PRICING["gpt-5.6-sol"]).toBeDefined();
+    expect(MODEL_PRICING["gpt-6-sol"]).toBeDefined();
     expect(MODEL_PRICING["gpt-6-astra"]).toBeDefined();
     expect(MODEL_PRICING["claude-opus-5"]).toBeDefined();
     expect(MODEL_PRICING["grok-4.7-medium"]).toBeDefined();
@@ -374,7 +374,7 @@ describe("Grok Build pricing", () => {
 describe("effortForModel", () => {
   it("keeps the app-wide default effort when the model offers it", () => {
     expect(effortForModel("claude", "claude-opus-5", "ultra")).toBe("ultra");
-    expect(effortForModel("codex", "gpt-5.6-luna", "max")).toBe("max");
+    expect(effortForModel("codex", "gpt-6-luna", "max")).toBe("max");
   });
 
   it("falls back to Medium when the model's ladder stops lower", () => {

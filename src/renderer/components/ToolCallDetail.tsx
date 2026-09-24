@@ -15,6 +15,8 @@ import {
 import { FileChangeCard } from "./FileChangeCard.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { displayPath } from "../lib/displayPath.js";
+import { withToast } from "../lib/withToast.js";
+import { showToast } from "../state/toast.js";
 import {
   displayCommandFull,
   displayCommandPreview,
@@ -55,10 +57,13 @@ export function ToolCallDetail({
       onOpenFile(path);
       return;
     }
-    if (!window.argmax) return;
-    void window.argmax.system
-      .openPath({ path, ...(workspaceCwd ? { cwd: workspaceCwd } : {}) })
-      .catch(() => undefined);
+    const api = window.argmax;
+    if (!api) return;
+    void withToast(
+      () => api.system.openPath({ path, ...(workspaceCwd ? { cwd: workspaceCwd } : {}) }),
+      showToast,
+      "Could not open this file."
+    );
   };
   const [showFullOutput, setShowFullOutput] = useState(false);
   const changes = useMemo(

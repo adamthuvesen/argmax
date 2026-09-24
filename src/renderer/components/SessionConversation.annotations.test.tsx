@@ -120,7 +120,7 @@ describe("SessionConversation selection annotations", () => {
     renderConversation(baseSession(), EVENTS, { onOpenSideChat });
     selectAssistantText();
 
-    fireEvent.click(screen.getByRole("button", { name: "Ask about selection in side chat" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ask about selection in a new chat" }));
 
     await waitFor(() => expect(onOpenSideChat).toHaveBeenCalledTimes(1));
     const seed = onOpenSideChat.mock.calls[0]?.[0] as string;
@@ -136,7 +136,7 @@ describe("SessionConversation selection annotations", () => {
     selectAssistantText();
 
     expect(screen.getByRole("toolbar", { name: "Selection actions" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Ask about selection in side chat" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Ask about selection in a new chat" })).toBeNull();
   });
 
   it("opens the details popup seeded with the excerpt", async () => {

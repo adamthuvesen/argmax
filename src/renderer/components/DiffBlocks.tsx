@@ -1,21 +1,23 @@
 import {
   memo,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
 import { ChevronRight, ChevronsUpDown, Plus } from "lucide-react";
 import { type ParsedDiffBlock } from "../lib/diff.js";
 import {
-  highlightLine,
   langFromPath,
   useHighlighterReady,
   useHighlightThemeAppearance,
-  type HighlightAppearance
+  type HighlightToken
 } from "../lib/highlighter.js";
+import { highlightHunksInSlices, hunkLineTokens, hunkTokensVersion, subscribeHunkTokens } from "../lib/diffHighlight.js";
 import type { DiffNoteAnchor } from "../lib/composerAnnotations.js";
 
 type DiffHunk = Extract<ParsedDiffBlock, { kind: "hunk" }>;
@@ -72,6 +74,11 @@ export const DiffBlocks = memo(function DiffBlocks({
   const lang = useMemo(() => langFromPath(filePath ?? null), [filePath]);
   const effectiveLang = ready ? lang : null;
   const [selection, setSelection] = useState<CommentSelection | null>(null);
+  useEffect(() => {
+    if (!effectiveLang) return;
+    const hunkLines = blocks.flatMap((block) => (block.kind === "hunk" ? [block.lines] : []));
+    return highlightHunksInSlices(hunkLines, effectiveLang, appearance);
+  }, [blocks, effectiveLang, appearance]);
   // A refreshed diff can reuse hunk ids and line numbers for different code.
   const activeSelection = selection && selection.filePath === filePath && blocks.includes(selection.block)
     ? selection
@@ -229,6 +236,12 @@ function UnifiedHunk({
   selection: CommentSelection | null;
   onSelectionChange: (selection: CommentSelection | null) => void;
 }): JSX.Element {
+  const tokensKey = `${lang}:${appearance}`;
+  // Re-render as this hunk's slices of highlighting land, and only this hunk.
+  useSyncExternalStore(
+    useCallback((listener: () => void) => subscribeHunkTokens(block.lines, listener), [block.lines]),
+    () => hunkTokensVersion(block.lines)
+  );
   const start = selection ? Math.min(selection.anchor, selection.focus) : -1;
   const end = selection ? Math.max(selection.anchor, selection.focus) : -1;
   const selectedLines = selection ? block.lines.slice(start, end + 1) : [];
@@ -296,7 +309,7 @@ function UnifiedHunk({
                 ) : null}
               </span>
               <code>
-                <DiffLineContent content={line.content || " "} lang={lang} appearance={appearance} />
+                <DiffLineContent content={line.content || " "} tokens={lang ? hunkLineTokens(block.lines, tokensKey, index) : undefined} />
               </code>
             </div>
             {commentable && selection && !selection.dragging && index === end && firstLine && lastLine ? (
@@ -392,19 +405,15 @@ function DiffCommentForm({
 
 // Selection changes must not tokenize unchanged code again. Appearance stays
 // in the memo's props because it selects the Shiki theme for each line.
-const DiffLineContent = memo(function DiffLineContent({ content, lang, appearance }: {
+const DiffLineContent = memo(function DiffLineContent({ content, tokens }: {
   content: string;
-  lang: string | null;
-  appearance: HighlightAppearance;
+  /** Undefined until this line's slice of the hunk has been highlighted. */
+  tokens: HighlightToken[] | undefined;
 }): JSX.Element {
-  if (!lang) {
+  if (!tokens || (tokens.length === 1 && tokens[0] && !tokens[0].color)) {
+    // Not highlighted yet, or Shiki found nothing to color: skip the span
+    // wrapper noise.
     return <>{content}</>;
-  }
-  const tokens = highlightLine(content, lang, appearance);
-  if (tokens.length === 1 && tokens[0] && !tokens[0].color) {
-    // Shiki returned a single uncolored token — equivalent to the plain
-    // fallback. Skip the span wrapper noise.
-    return <>{tokens[0].content}</>;
   }
   return (
     <>

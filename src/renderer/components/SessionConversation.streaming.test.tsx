@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import type { PendingMessage, RawProviderOutput, TimelineEvent } from "../../shared/types.js";
 import { SessionConversation } from "./SessionConversation.js";
-import { THINKING_WORDS } from "./ThinkingLabel.js";
+import { THINKING_WORDS } from "../lib/thinkingWords.js";
 import { clearRendererLog, rendererLogSnapshot } from "../lib/rendererLogRing.js";
 import { startedAgentName } from "../../test/agentRowName.js";
 import {

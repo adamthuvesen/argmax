@@ -40,7 +40,6 @@ const MAIN_THREAD_ALLOWLIST = new Map([
   ["browser:close", "manipulates the native child webview"],
   ["browser:list-tabs", "reads the in-memory tab registry"],
   ["browser:open-for-session", "manipulates the native child webview"],
-  ["attachments:save-image", "one small write to the app-owned attachment store"],
   ["approvals:resolve", "single-row write on a small table"],
   ["approvals:pending", "single-row read on a small table"],
   ["providers:resize", "in-memory PTY size update"],

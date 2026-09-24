@@ -1801,7 +1801,12 @@ export type CloudEnvironment = { id: string; name: string }
 export type CloudHandoffPreview = { provider: CloudProvider; repository: string; branch: string; commit: string; brief: string; environments: CloudEnvironment[]; environmentDescription: string; environmentId: string }
 export type CloudHandoffResult = { url: string; warning?: string | null }
 export type CloudLaunchInput = { provider: CloudProvider; sessionId?: string | null; projectId?: string | null; repository: string; branch: string; commit: string; brief: string; environmentId: string }
-export type CloudPrepareInput = { provider: CloudProvider; sessionId?: string | null; projectId?: string | null }
+export type CloudPrepareInput = { provider: CloudProvider; sessionId?: string | null; projectId?: string | null;
+/**
+ * What the user typed after `/cloud`. Only a chat source takes one: it
+ * becomes the brief's closing instruction after the chat's transcript.
+ */
+instruction?: string | null }
 export type CloudProvider = "claude" | "codex" | "cursor"
 export type CommandText = string
 export type ComposerAttachmentInput = { filePath: AttachmentPath; mimeType: AttachmentMimeType; sizeBytes: AttachmentSizeBytes }

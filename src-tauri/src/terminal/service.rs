@@ -187,6 +187,27 @@ struct SpawnedPty {
     child: Box<dyn portable_pty::Child + Send + Sync>,
 }
 
+/// Turns on `IUTF8`, so the kernel's line editing — `read`, a `[Y/n]` prompt,
+/// anything in canonical mode — erases a whole UTF-8 character on Backspace
+/// instead of one byte of it. Terminals set it; a fresh PTY does not.
+/// Best-effort: a PTY without it still works, only rubs out `å` in halves.
+#[cfg(unix)]
+fn enable_utf8_line_editing(master: &dyn MasterPty) {
+    use nix::sys::termios::{tcgetattr, tcsetattr, InputFlags, SetArg};
+    let Some(raw_fd) = master.as_raw_fd() else {
+        return;
+    };
+    // SAFETY: the master owns the descriptor and outlives this call.
+    let fd = unsafe { BorrowedFd::borrow_raw(raw_fd) };
+    let result = tcgetattr(fd).and_then(|mut termios| {
+        termios.input_flags.insert(InputFlags::IUTF8);
+        tcsetattr(fd, SetArg::TCSANOW, &termios)
+    });
+    if let Err(error) = result {
+        tracing::warn!(%error, "could not enable IUTF8 on the terminal PTY");
+    }
+}
+
 /// Builds every fallible parent-side PTY handle before starting the child.
 /// Once spawn succeeds, no setup error can strand a live process without an
 /// exit watcher.
@@ -390,6 +411,9 @@ impl TerminalService {
                     format!("could not open terminal PTY: {error}"),
                 )
             })?;
+
+        #[cfg(unix)]
+        enable_utf8_line_editing(&*pair.master);
 
         let mut cmd = (self.shell_factory)(&workspace.path);
         cmd.cwd(&workspace.path);
@@ -835,6 +859,9 @@ fn is_usable_shell(shell: &str) -> bool {
 fn default_shell_factory() -> ShellFactory {
     Arc::new(|_cwd: &str| {
         let mut cmd = CommandBuilder::new(pick_shell());
+        // A login shell, as macOS terminals start one: without it zsh skips
+        // `.zprofile`, where PATH setup like `brew shellenv` usually lives.
+        cmd.arg("-l");
         cmd.env("TERM", "xterm-256color");
         cmd.env("TERM_PROGRAM", "Argmax");
         cmd.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
@@ -847,6 +874,15 @@ fn default_shell_factory() -> ShellFactory {
         }
         if let Ok(home) = std::env::var("HOME") {
             cmd.env("HOME", home);
+        }
+        // Both are set before the shell's rc files run, so an export there
+        // still wins.
+        let op_integration = crate::util::login_shell::OP_APP_INTEGRATION_ENV;
+        if std::env::var_os(op_integration).is_none() {
+            cmd.env(op_integration, "true");
+        }
+        if !crate::util::login_shell::names_a_locale(|key| std::env::var_os(key).is_some()) {
+            cmd.env("LANG", crate::util::login_shell::DEFAULT_UTF8_LANG);
         }
         cmd
     })
@@ -1064,6 +1100,46 @@ mod tests {
             "expected hi in stdout, got: {combined:?}"
         );
         assert_eq!(svc.live_count(), 0, "terminal removed on exit");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn pty_erases_whole_utf8_characters_in_line_mode() {
+        let (database, workspace_id, _db, _cwd) = setup();
+        let chunks: Arc<StdMutex<Vec<String>>> = Arc::new(StdMutex::new(Vec::new()));
+        let chunks_for_sink = Arc::clone(&chunks);
+        let on_data: OutputSink = Arc::new(move |chunk| {
+            chunks_for_sink.lock().unwrap().push(chunk.data);
+        });
+        let (exit_tx, exit_rx) = oneshot::channel::<TerminalExitInfo>();
+        let exit_tx = StdMutex::new(Some(exit_tx));
+        let on_exit: ExitSink = Arc::new(move |info| {
+            if let Some(tx) = exit_tx.lock().unwrap().take() {
+                let _ = tx.send(info);
+            }
+        });
+        let svc = TerminalService::with_shell_factory(
+            database,
+            on_data,
+            on_exit,
+            script_factory("stty -a; exit 0"),
+        );
+        svc.spawn(TerminalSpawnInput {
+            workspace_id,
+            cols: 80,
+            rows: 24,
+        })
+        .unwrap();
+        timeout(Duration::from_secs(5), exit_rx)
+            .await
+            .expect("exit watcher did not fire")
+            .expect("exit channel closed before sending");
+
+        let modes = chunks.lock().unwrap().join("");
+        assert!(
+            modes.contains("iutf8") && !modes.contains("-iutf8"),
+            "expected iutf8 on the PTY, got: {modes:?}"
+        );
     }
 
     #[tokio::test]

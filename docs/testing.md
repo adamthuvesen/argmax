@@ -40,6 +40,12 @@ touches:
 | `ios/**` | `check:ios-fonts` |
 | any JS lane change | `vite build` + the bundle budget |
 
+`npm run typecheck` (the tsc lane here and in CI) runs TypeScript 7, the native
+compiler, installed as the `typescript-7` alias: it checks the renderer in about
+1 s against 4.5–4.9 s for TypeScript 5.9, and reports the same diagnostics. The
+`typescript` 5.9 package stays because typescript-eslint's type-aware rules
+support only `<6.1`, and editors load their language service from it.
+
 Workflow changes run both language lanes. Paths are read from Git without quoting,
 so spaces and non-ASCII filenames cannot hide a change. Documentation-only
 changes skip checks. An unclassified path runs both language lanes until it is

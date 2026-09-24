@@ -3,6 +3,8 @@ import { openInBrowserPanel } from "../lib/browserPanel.js";
 import { readStoredLinkTarget } from "../lib/linkTarget.js";
 import { isRemoteBridge } from "../lib/tauriBridge.js";
 import { isSecondaryWindow } from "../lib/windowRole.js";
+import { withToast } from "../lib/withToast.js";
+import { showToast } from "../state/toast.js";
 
 type WebLinkProps = Omit<ComponentPropsWithoutRef<"a">, "href"> & { href: string };
 
@@ -16,7 +18,7 @@ type WebLinkProps = Omit<ComponentPropsWithoutRef<"a">, "href"> & { href: string
  * so an unhandled click would do nothing. The anchor default stays only for
  * the browser demo, where window.argmax is absent.
  */
-export function WebLink({ href, children, ...rest }: WebLinkProps): JSX.Element {
+export function WebLink({ href, children, onClick, ...rest }: WebLinkProps): JSX.Element {
   return (
     <a
       href={href}
@@ -27,18 +29,22 @@ export function WebLink({ href, children, ...rest }: WebLinkProps): JSX.Element 
         // pane and system:open-path would open the link on the host, not in
         // the reader's hand. Let the anchor's own target="_blank" carry it
         // into the phone's browser.
-        if (isRemoteBridge()) return;
-        const flipped = event.metaKey || event.ctrlKey;
-        // A torn-off chat window has no browser surface to open the link in
-        // (docs/browser.md); the system browser takes it instead.
-        if (!isSecondaryWindow() && (readStoredLinkTarget() === "argmax") !== flipped) {
-          event.preventDefault();
-          openInBrowserPanel(href, { newTab: true });
-          return;
+        if (!isRemoteBridge()) {
+          const flipped = event.metaKey || event.ctrlKey;
+          // A torn-off chat window has no browser surface to open the link in
+          // (docs/browser.md); the system browser takes it instead.
+          if (!isSecondaryWindow() && (readStoredLinkTarget() === "argmax") !== flipped) {
+            event.preventDefault();
+            openInBrowserPanel(href, { newTab: true });
+          } else if (window.argmax) {
+            event.preventDefault();
+            const api = window.argmax;
+            void withToast(() => api.system.openPath({ path: href }), showToast, "Could not open this link.");
+          }
         }
-        if (!window.argmax) return;
-        event.preventDefault();
-        void window.argmax.system.openPath({ path: href }).catch(() => undefined);
+        // After the link is handed off. A caller can dismiss a dialog here
+        // without replacing the open.
+        onClick?.(event);
       }}
       {...rest}
     >

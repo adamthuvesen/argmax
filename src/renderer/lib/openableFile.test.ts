@@ -2,11 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi } from "../../shared/types.js";
 import { resolveOpenablePath } from "./openableFile.js";
 
-function apiWithFiles(files: string[]): ArgmaxApi {
+function apiWithFiles(files: string[], changed: string[] = []): ArgmaxApi {
   return {
     workspace: {
       statFile: vi.fn().mockRejectedValue(new Error("outside workspace")),
       listFiles: vi.fn().mockResolvedValue(files.map((path) => ({ path })))
+    },
+    review: {
+      listChangedFiles: vi.fn().mockResolvedValue(changed.map((path) => ({ path })))
     }
   } as unknown as ArgmaxApi;
 }
@@ -30,6 +33,16 @@ describe("resolveOpenablePath", () => {
         "workspace-1",
         "README.md"
       )
+    ).resolves.toBeNull();
+  });
+
+  it("breaks a basename tie with the one changed match", async () => {
+    const files = ["apps/a/instructions.md", "apps/b/instructions.md", "apps/c/instructions.md"];
+    await expect(
+      resolveOpenablePath(apiWithFiles(files, ["apps/b/instructions.md", "apps/b/agent.ts"]), "workspace-1", "instructions.md")
+    ).resolves.toBe("apps/b/instructions.md");
+    await expect(
+      resolveOpenablePath(apiWithFiles(files, ["apps/a/instructions.md", "apps/c/instructions.md"]), "workspace-1", "instructions.md")
     ).resolves.toBeNull();
   });
 });

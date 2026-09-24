@@ -43,7 +43,7 @@
      same trick --tool-block-surface plays, and the reason the column can't
      just take --panel-sunken (in dark that is the darkest surface in the app
      and the column would read as a hole rather than a sidebar). */
-  --review-sidebar: #f8f8f5;
+  --review-sidebar: #fafaf7;
   --panel-soft: #fafafa;
   /* The two composers (.composer in the launcher, .session-input in a session).
      They are cards, but the one card the user types into, so dark lifts them a
@@ -54,8 +54,10 @@
   --panel-sunken: #eef0f1;
   /* Greige selection fill — sidebar rows, panel tabs, neutral bubbles, active
      file tabs, and the review mode sliding indicator. Same weight as the old
-     cool gray mix, with the blue cast traded for a hint of paper warmth. */
-  --row-selected: #f1f0ee;
+     cool gray mix, with the blue cast traded for a hint of paper warmth.
+     Darkened a step from #f1f0ee, which blended into the paper sidebar,
+     and held near neutral: a warmer #ebe9e5 read as beige. */
+  --row-selected: #eaeae8;
   /* Code/terminal block fill in chat. Lighter than --panel-sunken in light
      mode so output blocks read airier; dark reuses its sunken surface. */
   --code-surface: #f4f6f7;
@@ -66,9 +68,12 @@
      hole punched in the transcript instead of a quiet raised surface. */
   --tool-block-surface: #f5f6f7;
 
-  --line: #e3e6e8;
-  --line-soft: #eceeef;
-  --line-strong: #cfd5d8;
+  /* One step darker than the first paper pass (#e3e6e8 / #eceeef / #cfd5d8):
+     white cards, popovers and the composer ring sit on a near-white ground,
+     so their edge is the line, and the lighter set let them blend in. */
+  --line: #d9dde0;
+  --line-soft: #e4e7e8;
+  --line-strong: #c6ccd0;
   --scrollbar-thumb: #dce1e4;
   --scrollbar-thumb-hover: #cfd5d8;
   /* Hairline around the two composer cards and the multitask lane above them.
@@ -83,15 +88,18 @@
      without a second declaration, and one step further on hover. On paper the
      base picks up a little of --row-selected so chips share the same greige
      family as sidebar selection without matching it outright. This is what
-     replaced the carets: the fill is what says a control is a control. */
+     replaced the carets: the fill is what says a control is a control.
+     --composer-chip-ink is the ink share: paper takes 8% so the chips read
+     against the white card, dark keeps 5%. Hover adds four points to either. */
+  --composer-chip-ink: 8%;
   --composer-chip: color-mix(
     in oklab,
-    var(--text) 5%,
+    var(--text) var(--composer-chip-ink),
     color-mix(in oklab, var(--composer-surface) 88%, var(--row-selected))
   );
   --composer-chip-hover: color-mix(
     in oklab,
-    var(--text) 9%,
+    var(--text) calc(var(--composer-chip-ink) + 4%),
     color-mix(in oklab, var(--composer-surface) 84%, var(--row-selected))
   );
   /* Model-suggested follow-ups are guidance, not entered text. Light
@@ -170,7 +178,7 @@
      reused under a clearer name. */
   /* Palette offered by the session row's Edit Icon picker. Decorative only:
      status stays on the semantic tokens above, so these never carry meaning. */
-  --session-icon-green: #4f8a63;
+  --session-icon-green: #2f9a57;
   --session-icon-teal: #2f8079;
   --session-icon-blue: #3f7fd8;
   --session-icon-violet: #7b56d6;
@@ -529,7 +537,7 @@
   --sidebar: #171717;
   --panel: #1a1a1a;
   --review-panel: #171717;
-  --review-sidebar: #202020;
+  --review-sidebar: #1b1b1b;
   --panel-soft: #212121;
   --composer-surface: #202020;
   --panel-sunken: #0f0f0f;
@@ -544,6 +552,7 @@
   /* No edge on charcoal: --composer-surface already sits a step above --panel,
      and a line drawn on top of that lift reads as a double border. */
   --composer-edge: transparent;
+  --composer-chip-ink: 5%;
 
   /* Ink pulled back off paper-white: #f4f2ec bloomed on dark charcoal and read
      as bold at regular weight. Chrome labels sit on --text-soft, so the gap

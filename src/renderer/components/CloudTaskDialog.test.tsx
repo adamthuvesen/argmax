@@ -60,14 +60,18 @@ describe("CloudTaskDialog", () => {
 
     render(<CloudTaskDialog open provider="claude" sessionId="session-1" onClose={onClose} />);
 
-    expect(screen.getByRole("status", { name: "Preparing cloud task" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Close cloud task dialog" })).toBeEnabled();
+    const preparing = screen.getByRole("status", { name: "Preparing cloud task" });
+    expect(preparing.querySelectorAll(".loading-block").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Close dialog" })).toBeEnabled();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
 
     pending.resolve(preview);
-    expect(await screen.findByText(preview.brief)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Send task" })).toHaveFocus();
+    expect(await screen.findByText("Continue this chat in Claude Cloud.")).toBeInTheDocument();
+    expect(screen.getByText(preview.brief)).toBeInTheDocument();
+    // The preview renders one microtask before `preparing` clears, and only
+    // then does focus move to the launch button.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send task" })).toHaveFocus());
     expect(screen.getByText("adamthuvesen/private-sandbox")).toBeInTheDocument();
     expect(screen.getByText("Default")).toBeInTheDocument();
     expect(screen.getByTitle("env-default")).toHaveTextContent("Default");
@@ -142,6 +146,8 @@ describe("CloudTaskDialog", () => {
       "https://claude.ai/code/task-1"
     );
     expect(screen.getByRole("link", { name: "Open in Claude Cloud" })).toHaveFocus();
+    expect(screen.getByTitle("https://claude.ai/code/task-1")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy link" })).toBeInTheDocument();
     expect(launch).toHaveBeenLastCalledWith({
       sessionId: "session-1",
       provider: "claude",
@@ -151,6 +157,25 @@ describe("CloudTaskDialog", () => {
       brief: preview.brief,
       environmentId: "env-default"
     });
+  });
+
+  it("offers no resend when the provider may already have the task", async () => {
+    const launch = vi.fn().mockRejectedValueOnce({
+      sub_code: "CLOUD_LAUNCH_DELIVERY_UNKNOWN",
+      message: "Claude Cloud may have created the task."
+    });
+    installCloudApi(vi.fn().mockResolvedValue(preview), launch);
+
+    render(<CloudTaskDialog open provider="claude" sessionId="session-1" onClose={vi.fn()} />);
+    await screen.findByText(preview.brief);
+    fireEvent.click(screen.getByRole("button", { name: "Send task" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("may have created the task");
+    expect(screen.getByRole("dialog", { name: "Task status unknown" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Send task" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Check Claude Cloud" })).toHaveAttribute("href", "https://claude.ai/code");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Close" })).toHaveFocus());
+    expect(launch).toHaveBeenCalledTimes(1);
   });
 
   it("does not launch twice while the first request is pending", async () => {
@@ -221,19 +246,45 @@ describe("CloudTaskDialog", () => {
 
   it("reports an unavailable bridge instead of waiting indefinitely", async () => {
     render(<CloudTaskDialog open provider="claude" sessionId="session-1" onClose={vi.fn()} />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("Cloud handoff is unavailable");
+    expect(await screen.findByRole("alert")).toHaveTextContent("available only in the Argmax desktop app");
     expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
     expect(screen.getByRole("dialog")).toHaveAttribute("aria-busy", "false");
+  });
+
+  it("opens the cloud task and dismisses the dialog", async () => {
+    const openPath = vi.fn().mockResolvedValue({ ok: true });
+    const onClose = vi.fn();
+    installCloudApi(
+      vi.fn().mockResolvedValue({ ...preview, provider: "cursor" }),
+      vi.fn().mockResolvedValue({ url: "https://cursor.com/agents/task-1" })
+    );
+    Object.assign(window.argmax!.system, { openPath });
+
+    render(
+      <CloudTaskDialog
+        open
+        provider="cursor"
+        sessionId="session-1"
+        onClose={onClose}
+      />
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Send task" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Open in Cursor Cloud" }));
+
+    expect(openPath).toHaveBeenCalledWith({ path: "https://cursor.com/agents/task-1" });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it("shows the current prompt once and includes inspectable chat context in the launch", async () => {
     const codexPreview: CloudHandoffPreview = {
       ...preview,
       provider: "codex",
-      brief: "The previous turn established the failing parser behavior."
+      brief: "Conversation so far:\nThe previous turn established the failing parser behavior.\n\nNew user message:\nFix the parser"
     };
+    const prepare = vi.fn().mockResolvedValue(codexPreview);
     const launch = vi.fn().mockResolvedValue({ url: "https://chatgpt.com/codex/tasks/task-1" });
-    installCloudApi(vi.fn().mockResolvedValue(codexPreview), launch);
+    installCloudApi(prepare, launch);
 
     render(
       <CloudTaskDialog
@@ -247,14 +298,15 @@ describe("CloudTaskDialog", () => {
 
     expect(await screen.findByText("Fix the parser")).toBeInTheDocument();
     expect(screen.getAllByText("Fix the parser")).toHaveLength(1);
-    fireEvent.click(screen.getByText("Chat context included"));
-    expect(screen.getByText(codexPreview.brief)).toBeInTheDocument();
+    expect(prepare).toHaveBeenCalledWith({ sessionId: "session-1", provider: "codex", instruction: "Fix the parser" });
+    fireEvent.click(screen.getByText("Includes context from this chat"));
+    expect(screen.getByText(/The previous turn established the failing parser behavior/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Send task" }));
 
     await screen.findByRole("link", { name: "Open in Codex Cloud" });
     expect(launch).toHaveBeenCalledWith(expect.objectContaining({
       provider: "codex",
-      brief: "Fix the parser\n\nContext from this chat:\nThe previous turn established the failing parser behavior."
+      brief: codexPreview.brief
     }));
   });
 

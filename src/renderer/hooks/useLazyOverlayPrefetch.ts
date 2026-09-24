@@ -48,11 +48,14 @@ export function useLazyOverlayPrefetch(): void {
     // independently so functionality isn't lost; this just keeps the
     // unhandledrejection handler quiet (R-032).
     const swallow = (): void => undefined;
-    const ric = (window as Window & {
-      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
-      cancelIdleCallback?: (id: number) => void;
-    }).requestIdleCallback;
-    const cic = (window as Window & { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback;
+    // Called through `window`, and checked first: Safari only gained
+    // requestIdleCallback recently.
+    const ric = typeof window.requestIdleCallback === "function"
+      ? (cb: () => void, opts: { timeout: number }): number => window.requestIdleCallback(cb, opts)
+      : null;
+    const cic = typeof window.cancelIdleCallback === "function"
+      ? (id: number): void => window.cancelIdleCallback(id)
+      : null;
     const timers: number[] = [];
     const ricIds: number[] = [];
     // Two passes, in priority order. The palette serves every search chord and
@@ -70,7 +73,7 @@ export function useLazyOverlayPrefetch(): void {
       importReviewPanel().catch(swallow);
     };
     const scheduleHeavy = (): void => {
-      if (typeof ric === "function") {
+      if (ric) {
         ricIds.push(ric(warmHeavy, { timeout: 3000 }));
       } else {
         timers.push(window.setTimeout(warmHeavy, 600));
@@ -80,13 +83,13 @@ export function useLazyOverlayPrefetch(): void {
       importCommandPalette().catch(swallow);
       scheduleHeavy();
     };
-    if (typeof ric === "function") {
+    if (ric) {
       ricIds.push(ric(warmSearch, { timeout: 800 }));
     } else {
       timers.push(window.setTimeout(warmSearch, 400));
     }
     return () => {
-      if (typeof cic === "function") ricIds.forEach((id) => cic(id));
+      if (cic) ricIds.forEach((id) => cic(id));
       timers.forEach((id) => window.clearTimeout(id));
     };
   }, []);

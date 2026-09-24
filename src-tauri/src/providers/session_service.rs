@@ -3615,14 +3615,18 @@ impl ProviderSessionService {
             },
         )?;
         self.pause_queue_with_connection(&connection, session_id)?;
-        self.publish(DashboardDelta {
+        let delta = DashboardDelta {
             projects: list_projects(&connection)?,
             workspaces: vec![workspace],
             sessions: vec![session],
             events: vec![event],
             ..DashboardDelta::default()
-        });
+        };
+        // The writer connection is dropped before publishing: the delta's
+        // push body reads through `read_connection`, whose fallback would
+        // re-lock the writer this thread is still holding.
         drop(connection);
+        self.publish(delta);
         // A launch that never started is still this session's turn ending, and
         // whoever launched it is owed that news: without it a multitask whose
         // CLI could not start leaves a row that says "Running" for as long as
@@ -4639,7 +4643,7 @@ impl ProviderSessionService {
         Ok(written)
     }
 
-    fn schedule_subagent_trace_reconciliation(&self, session_id: &str) {
+    pub(crate) fn schedule_subagent_trace_reconciliation(&self, session_id: &str) {
         let session_id = session_id.to_string();
         {
             let mut reconciliations = self

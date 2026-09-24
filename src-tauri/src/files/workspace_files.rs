@@ -22,7 +22,9 @@ use super::git_grep_parser::{
     parse_git_grep_output, GrepParseOptions, WorkspaceContentSearchResult,
 };
 use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::git::exec::{run_git_text, run_git_text_with_allowed_exit_codes};
+use crate::git::exec::{
+    run_git_text, run_git_text_with_allowed_exit_codes_and_options, GitExecOptions,
+};
 use crate::persistence::database::Database;
 use crate::persistence::projects::require_project;
 use crate::persistence::workspaces::find_workspace_by_id;
@@ -350,8 +352,10 @@ fn atomic_write_file(
     let parent = resolved
         .parent()
         .ok_or_else(|| ArgmaxError::service("WORKSPACE_FILE_NO_PARENT", "no parent directory"))?;
-    let _ = resolve_inside_or_err(repo_path, parent_relative(repo_path, parent).as_str())?;
-    let mut staged = tempfile::NamedTempFile::new_in(parent).map_err(io_error)?;
+    // Pass the absolute parent: stripping a non-canonical repo path off the
+    // canonical `resolved` failed for symlinked roots and re-checked `.`.
+    let parent = resolve_inside(Path::new(repo_path), parent).map_err(path_error)?;
+    let mut staged = tempfile::NamedTempFile::new_in(&parent).map_err(io_error)?;
     staged
         .as_file_mut()
         .set_permissions(metadata.permissions())
@@ -407,7 +411,7 @@ async fn grep_content_at_path(
     // --no-color strip ANSI, -I skip binaries, -F fixed-string, -i ignore case,
     // --untracked include untracked, -e separator so a query starting
     // with '-' isn't parsed as a flag.
-    let result = run_git_text_with_allowed_exit_codes(
+    let result = run_git_text_with_allowed_exit_codes_and_options(
         Path::new(repo_path),
         [
             "grep",
@@ -422,7 +426,11 @@ async fn grep_content_at_path(
             trimmed,
         ],
         &[1],
-        GIT_TIMEOUT,
+        GitExecOptions {
+            timeout: GIT_TIMEOUT,
+            ..GitExecOptions::default()
+        }
+        .lossy_display(),
     )
     .await?;
     if result.exit_code == 1 {
@@ -449,14 +457,6 @@ async fn looks_binary(path: &Path) -> ArgmaxResult<bool> {
 
 fn resolve_inside_or_err(root: &str, candidate: &str) -> ArgmaxResult<PathBuf> {
     resolve_inside(Path::new(root), Path::new(candidate)).map_err(path_error)
-}
-
-fn parent_relative(root: &str, parent: &Path) -> String {
-    let root = Path::new(root);
-    parent
-        .strip_prefix(root)
-        .map(|relative| relative.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| ".".to_string())
 }
 
 fn mtime_ms(metadata: &std::fs::Metadata) -> f64 {

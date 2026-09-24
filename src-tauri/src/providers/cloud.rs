@@ -14,6 +14,9 @@ use crate::{
 };
 
 const GIT_TIMEOUT: Duration = Duration::from_secs(30);
+/// A shallow clone of a large repository legitimately takes minutes. Nothing
+/// has been sent to the provider yet, so a longer wait costs only time.
+const CLONE_TIMEOUT: Duration = Duration::from_secs(180);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -32,67 +35,88 @@ pub struct CheckoutSnapshot {
 }
 
 pub async fn validate_checkout(path: PathBuf) -> ArgmaxResult<CheckoutSnapshot> {
+    let reading = "reading the checkout";
     let (branch, commit, origin_url) = tokio::try_join!(
-        git_stdout(&path, &["symbolic-ref", "--quiet", "--short", "HEAD"]),
-        git_stdout(&path, &["rev-parse", "--verify", "HEAD"]),
-        git_stdout(&path, &["remote", "get-url", "origin"]),
+        run_git(
+            &path,
+            &["symbolic-ref", "--quiet", "--short", "HEAD"],
+            reading,
+            GIT_TIMEOUT
+        ),
+        run_git(
+            &path,
+            &["rev-parse", "--verify", "HEAD"],
+            reading,
+            GIT_TIMEOUT
+        ),
+        run_git(
+            &path,
+            &["remote", "get-url", "origin"],
+            reading,
+            GIT_TIMEOUT
+        ),
     )?;
 
+    // Each of these fails with a non-zero exit and little or no stderr (a
+    // detached HEAD prints nothing at all), so the exit status is the answer.
     let branch = required_git_value(
         branch,
         "CLOUD_DETACHED_HEAD",
-        "The checkout must be on a branch before it can be sent to a cloud agent.",
+        "Check out a branch first. Cloud tasks run from a pushed branch, not a detached HEAD.",
     )?;
     let commit = required_git_value(
         commit,
         "CLOUD_GIT_HEAD_MISSING",
-        "The checkout has no commit to send to a cloud agent.",
+        "The checkout has no commits yet. Commit and push before sending a cloud task.",
     )?;
     let origin_url = required_git_value(
         origin_url,
         "CLOUD_GITHUB_ORIGIN_REQUIRED",
-        "The checkout needs a GitHub origin before it can be sent to a cloud agent.",
+        "Cloud tasks need a GitHub remote named origin.",
     )?;
     let repository = parse_github_repository(&origin_url).ok_or_else(|| {
         ArgmaxError::service(
             "CLOUD_GITHUB_ORIGIN_REQUIRED",
-            "Cloud tasks currently require a github.com origin.",
+            format!(
+                "Cloud tasks need origin to be a github.com URL (git@github.com:owner/repo or https://github.com/owner/repo). This checkout's origin is {}.",
+                origin_for_display(&origin_url)
+            ),
         )
     })?;
 
+    // Without `--exit-code`, a branch origin does not have is an empty answer
+    // rather than a silent exit 2, so it gets the push hint below.
     let remote_ref = format!("refs/heads/{branch}");
-    let remote = git_stdout(
+    let remote = run_git(
         &path,
         &[
             "-c",
             "protocol.ext.allow=never",
             "ls-remote",
-            "--exit-code",
             origin_url.as_str(),
             remote_ref.as_str(),
         ],
+        "checking origin",
+        GIT_TIMEOUT,
     )
-    .await
-    .map_err(|error| match error {
-        ArgmaxError::ServiceError { message, .. } => ArgmaxError::service(
+    .await?
+    .map_err(|stderr| {
+        ArgmaxError::service(
             "CLOUD_REMOTE_REF_UNAVAILABLE",
-            format!("Could not verify origin/{branch}: {message}"),
-        ),
-        other => other,
+            format!("Could not reach origin to check {branch}: {stderr}"),
+        )
     })?;
     let remote_commit = parse_ls_remote_commit(&remote).ok_or_else(|| {
         ArgmaxError::service(
             "CLOUD_REMOTE_REF_UNAVAILABLE",
-            format!(
-                "origin does not have branch {branch}. Push it before sending this cloud task."
-            ),
+            format!("{branch} is not on origin yet. Push it before sending this cloud task."),
         )
     })?;
     if remote_commit != commit {
         return Err(ArgmaxError::service(
             "CLOUD_UNPUSHED_COMMIT",
             format!(
-                "The local HEAD ({}) does not match origin/{branch} ({}). Push the branch before sending this cloud task.",
+                "Local {branch} ({}) does not match GitHub ({}). Push it, then try again.",
                 short_sha(&commit),
                 short_sha(remote_commit)
             ),
@@ -108,13 +132,21 @@ pub async fn validate_checkout(path: PathBuf) -> ArgmaxResult<CheckoutSnapshot> 
     })
 }
 
-pub fn handoff_brief(connection: &rusqlite::Connection, session_id: &str) -> ArgmaxResult<String> {
-    super::follow_up::compose_follow_up_prompt(
-        connection,
-        session_id,
-        "Continue this task in the selected cloud agent. Use the conversation context above and inspect the repository before making changes.",
-        false,
-    )
+const DEFAULT_HANDOFF_INSTRUCTION: &str = "Continue this task in the selected cloud agent. Use the conversation context above and inspect the repository before making changes.";
+
+/// The brief a chat hands to a cloud agent: the chat's transcript, then one
+/// closing instruction. The user's own words after `/cloud` take that place,
+/// so the agent never reads two competing "new messages".
+pub fn handoff_brief(
+    connection: &rusqlite::Connection,
+    session_id: &str,
+    instruction: Option<&str>,
+) -> ArgmaxResult<String> {
+    let instruction = instruction
+        .map(str::trim)
+        .filter(|instruction| !instruction.is_empty())
+        .unwrap_or(DEFAULT_HANDOFF_INSTRUCTION);
+    super::follow_up::compose_follow_up_prompt(connection, session_id, instruction, false)
 }
 
 pub async fn clone_verified_checkout(
@@ -128,7 +160,7 @@ pub async fn clone_verified_checkout(
     })?;
     let destination = directory.path().join("repository");
     let destination_text = destination.to_string_lossy().into_owned();
-    git_stdout(
+    run_git(
         directory.path(),
         &[
             "-c",
@@ -143,20 +175,28 @@ pub async fn clone_verified_checkout(
             snapshot.origin_url.as_str(),
             destination_text.as_str(),
         ],
+        "cloning the branch",
+        CLONE_TIMEOUT,
     )
-    .await
-    .map_err(|error| match error {
-        ArgmaxError::ServiceError { message, .. } => ArgmaxError::service(
+    .await?
+    .map_err(|stderr| {
+        ArgmaxError::service(
             "CLOUD_TEMP_CHECKOUT_FAILED",
-            format!("Could not clone the verified remote branch: {message}"),
-        ),
-        other => other,
+            format!("Could not clone {}: {stderr}", snapshot.branch),
+        )
     })?;
-    let cloned_commit = git_stdout(&destination, &["rev-parse", "--verify", "HEAD"]).await?;
+    let cloned_commit = run_git(
+        &destination,
+        &["rev-parse", "--verify", "HEAD"],
+        "reading the clone",
+        GIT_TIMEOUT,
+    )
+    .await?
+    .map_err(|stderr| ArgmaxError::service("CLOUD_TEMP_CHECKOUT_FAILED", stderr))?;
     if cloned_commit != snapshot.commit {
         return Err(ArgmaxError::service(
             "CLOUD_REMOTE_CHANGED",
-            "The remote branch changed while the cloud task was being prepared. Review the new commit and try again.",
+            "The branch changed on GitHub while this task was being prepared. Try again to send the latest commit.",
         ));
     }
     Ok(directory)
@@ -180,7 +220,15 @@ pub fn handoff_note(
     }
 }
 
-async fn git_stdout(path: &Path, args: &[&str]) -> ArgmaxResult<String> {
+/// Run git once. The outer error is git not running at all (spawn failure or
+/// timeout); the inner one is a non-zero exit, carrying its last stderr line,
+/// so each caller can say what that exit means for its own step.
+async fn run_git(
+    path: &Path,
+    args: &[&str],
+    step: &str,
+    timeout: Duration,
+) -> ArgmaxResult<Result<String, String>> {
     let run = async {
         let mut command = Command::new("git");
         command
@@ -190,12 +238,15 @@ async fn git_stdout(path: &Path, args: &[&str]) -> ArgmaxResult<String> {
             .kill_on_drop(true);
         command.output().await
     };
-    let output = tokio::time::timeout(GIT_TIMEOUT, run)
+    let output = tokio::time::timeout(timeout, run)
         .await
         .map_err(|_| {
             ArgmaxError::service(
                 "CLOUD_GIT_TIMEOUT",
-                "Git did not respond within 30 seconds.",
+                format!(
+                    "Git timed out after {} seconds while {step}. Check your network connection and try again.",
+                    timeout.as_secs()
+                ),
             )
         })?
         .map_err(|error| {
@@ -203,28 +254,29 @@ async fn git_stdout(path: &Path, args: &[&str]) -> ArgmaxResult<String> {
         })?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(ArgmaxError::service(
-            "CLOUD_GIT_FAILED",
-            stderr
-                .lines()
-                .last()
-                .unwrap_or("git failed")
-                .trim()
-                .to_string(),
-        ));
+        let detail = stderr.lines().last().map(str::trim).unwrap_or_default();
+        return Ok(Err(if detail.is_empty() {
+            format!(
+                "git exited with status {}",
+                output.status.code().unwrap_or(-1)
+            )
+        } else {
+            detail.to_string()
+        }));
     }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    Ok(Ok(String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .to_string()))
 }
 
 fn required_git_value(
-    value: String,
+    value: Result<String, String>,
     code: &'static str,
     message: &'static str,
 ) -> ArgmaxResult<String> {
-    if value.is_empty() {
-        Err(ArgmaxError::service(code, message))
-    } else {
-        Ok(value)
+    match value {
+        Ok(value) if !value.is_empty() => Ok(value),
+        _ => Err(ArgmaxError::service(code, message)),
     }
 }
 
@@ -257,6 +309,20 @@ fn parse_github_repository(origin: &str) -> Option<String> {
         return None;
     }
     Some(format!("{owner}/{repository}"))
+}
+
+/// The origin as an error message may show it: an HTTPS remote can carry a
+/// token in its userinfo or query, and the message lands in the dialog.
+fn origin_for_display(origin: &str) -> String {
+    let origin = origin.split(['?', '#']).next().unwrap_or(origin);
+    let Some((scheme, rest)) = origin.split_once("://") else {
+        return origin.to_string();
+    };
+    let authority_end = rest.find('/').unwrap_or(rest.len());
+    match rest[..authority_end].rfind('@') {
+        Some(at) => format!("{scheme}://{}", &rest[at + 1..]),
+        None => origin.to_string(),
+    }
 }
 
 fn valid_github_component(value: &str) -> bool {
@@ -298,6 +364,60 @@ mod tests {
         ] {
             assert_eq!(parse_github_repository(origin), None, "{origin}");
         }
+    }
+
+    #[test]
+    fn rejected_origins_are_shown_without_credentials() {
+        assert_eq!(
+            origin_for_display("https://user:ghp_secret@gitlab.com/o/r.git?token=x"),
+            "https://gitlab.com/o/r.git"
+        );
+        assert_eq!(
+            origin_for_display("git@gitlab.com:o/r.git"),
+            "git@gitlab.com:o/r.git"
+        );
+    }
+
+    fn git(path: &Path, args: &[&str]) {
+        let status = std::process::Command::new("git")
+            .args(["-c", "user.email=t@example.com", "-c", "user.name=T"])
+            .args(args)
+            .current_dir(path)
+            .output()
+            .expect("run git")
+            .status;
+        assert!(status.success(), "git {args:?}");
+    }
+
+    async fn validation_code(path: &Path) -> String {
+        let error = validate_checkout(path.to_path_buf())
+            .await
+            .expect_err("checkout is not sendable");
+        serde_json::to_value(&error).expect("serialize")["sub_code"]
+            .as_str()
+            .expect("sub_code")
+            .to_owned()
+    }
+
+    /// Each of these exits non-zero with little or no stderr, which used to
+    /// surface as a bare "git failed" instead of what to fix.
+    #[tokio::test]
+    async fn local_checkout_problems_get_their_own_messages() {
+        let repo = tempfile::tempdir().expect("tempdir");
+        git(repo.path(), &["init", "-q", "-b", "main"]);
+        assert_eq!(validation_code(repo.path()).await, "CLOUD_GIT_HEAD_MISSING");
+
+        git(
+            repo.path(),
+            &["commit", "-q", "--allow-empty", "-m", "first"],
+        );
+        assert_eq!(
+            validation_code(repo.path()).await,
+            "CLOUD_GITHUB_ORIGIN_REQUIRED"
+        );
+
+        git(repo.path(), &["checkout", "-q", "--detach"]);
+        assert_eq!(validation_code(repo.path()).await, "CLOUD_DETACHED_HEAD");
     }
 
     #[test]

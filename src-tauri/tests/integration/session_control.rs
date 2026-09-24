@@ -763,12 +763,32 @@ async fn observing_stopping_and_waiting_on_a_launched_session() {
     assert_eq!(entries[3]["text"], "pong");
     assert!(read["read"]["nextCursor"].as_i64().expect("cursor") > 0);
 
+    // A wait is a tool call, so its caller is mid-turn. A caller whose turn
+    // is over has no one to read the reply, and collects nothing.
+    let set_parent_state = |state: SessionState| {
+        let connection = database.connection();
+        update_session_state(
+            &connection,
+            "session-parent",
+            &SessionStateInput::transition(state),
+        )
+        .expect("set parent state");
+    };
+    let ended = as_parent(json!({
+        "wait": { "sessions": ["session-child"], "timeoutS": 1 }
+    }))
+    .await;
+    assert_eq!(ended["error"]["code"], "WAIT_CALLER_ENDED");
+
     // A wait on a session that is still working runs out rather than lying.
+    set_parent_state(SessionState::Running);
     let timed_out = as_parent(json!({
         "wait": { "sessions": ["session-child"], "timeoutS": 1 }
     }))
     .await;
     assert_eq!(timed_out["waited"]["timedOut"], true);
+    // Idle again, so the stop below delivers its notice as a new turn.
+    set_parent_state(SessionState::Complete);
 
     // A session cannot stop its own turn.
     let stop_self = as_parent(json!({ "stop": { "sessionId": "session-parent" } })).await;

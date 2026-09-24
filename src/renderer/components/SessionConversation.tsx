@@ -278,7 +278,7 @@ export function SessionConversation({
   /** Opens a launcher pane beside this one, for a task in any repository. */
   onNewSession?: (seed?: NewSessionSeed) => void;
   /** Launches a repo-less side chat with the given first message. Enables the
-      selection toolbar's "Ask in side chat" action when provided. */
+      selection toolbar's "Ask in new chat" action when provided. */
   onOpenSideChat?: (seedPrompt: string) => Promise<void>;
   /** Focus another chat by session id — the origin bubble's "From <label>"
    *  link, and the actions menu's "Open launching chat". */
@@ -559,7 +559,7 @@ export function SessionConversation({
       void onOpenSideChat(buildSideChatSeed(selection.text, conversationEvents)).catch((error) => {
         setStatus({
           kind: "error",
-          message: error instanceof Error ? error.message : "Could not open a side chat."
+          message: error instanceof Error ? error.message : "Could not open a chat."
         });
       });
     };
@@ -790,16 +790,18 @@ export function SessionConversation({
     return null;
   }, [transcriptRenderItems]);
 
-  // ⌘↑ in an empty composer brings this back for editing: the last thing the
-  // user typed, steer or not, which is the one a typo or afterthought is in.
-  const lastSentPrompt = useMemo(() => {
-    for (let i = transcriptRenderItems.length - 1; i >= 0; i -= 1) {
-      const item = transcriptRenderItems[i];
-      if (!item || item.kind !== "user-message") continue;
+  // ↑ in an empty composer steps back through these for editing, newest
+  // first: everything the user typed, steers included, since the last one is
+  // where a typo or afterthought is. A repeat of the prompt before it is one
+  // stop, not two.
+  const sentPrompts = useMemo(() => {
+    const prompts: string[] = [];
+    for (const item of transcriptRenderItems) {
+      if (item.kind !== "user-message") continue;
       const text = item.event.message.trim();
-      if (text) return text;
+      if (text && text !== prompts[prompts.length - 1]) prompts.push(text);
     }
-    return null;
+    return prompts;
   }, [transcriptRenderItems]);
 
   // The card floats in the right gutter whenever the conversation column is
@@ -1820,7 +1822,7 @@ export function SessionConversation({
         inputRef={inputRef}
         isQueueing={isQueueing}
         defaultFollowUpDelivery={defaultFollowUpDelivery}
-        lastSentPrompt={lastSentPrompt}
+        sentPrompts={sentPrompts}
         onFastModeEnabledChange={onFastModeEnabledChange}
         onDraftPresentChange={setComposerDraftPresent}
         onCancelQueuedMessage={onCancelQueuedMessage}

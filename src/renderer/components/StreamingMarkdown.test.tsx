@@ -6,9 +6,10 @@ import type * as MermaidRuntime from "../lib/mermaidRuntime.js";
 import { ATTACHMENT_PROTOCOL_SCHEME } from "../../shared/attachmentProtocol.js";
 import { WORKSPACE_ASSET_PROTOCOL_SCHEME } from "../../shared/assetProtocol.js";
 import { FRESH_RUN_FADE_MS } from "../lib/streamFreshRuns.js";
+import { resetDrawnMermaidDiagramsForTests } from "../lib/mermaidRuntime.js";
 import { StreamingMarkdown } from "./StreamingMarkdown.js";
 
-const STREAM_TICK_MS = 64;
+const FRAME_MS = 16;
 
 const renderMermaidDiagram = vi.hoisted(() =>
   vi.fn(() => Promise.resolve({ svg: `<svg data-testid="mermaid-svg"><title>flow</title></svg>` }))
@@ -30,6 +31,7 @@ vi.mock("../lib/tauriBridge.js", () => ({
 }));
 
 afterEach(() => {
+  resetDrawnMermaidDiagramsForTests();
   cleanup();
   vi.useRealTimers();
   vi.restoreAllMocks();
@@ -189,55 +191,83 @@ describe("<StreamingMarkdown />", () => {
     });
   });
 
-  it("reveals large streaming chunks at a steady cadence", () => {
+  it("writes a streaming block out word by word over successive frames", () => {
     vi.useFakeTimers();
-    const text = "A".repeat(120);
+    const text = "word ".repeat(60).trim();
 
     const { container } = render(<StreamingMarkdown text={text} streaming />);
-
     const markdown = container.querySelector(".markdown");
     expect(markdown?.textContent).toBe("");
 
-    act(() => {
-      vi.advanceTimersByTime(STREAM_TICK_MS);
-    });
-    expect(markdown?.textContent).toBe("A".repeat(10));
+    const seen: string[] = [];
+    for (let frame = 0; frame < 20; frame += 1) {
+      act(() => {
+        vi.advanceTimersByTime(FRAME_MS);
+      });
+      seen.push(markdown?.textContent ?? "");
+    }
+    // It grows a little every few frames, never shrinks, and never shows half
+    // a word.
+    expect(new Set(seen).size).toBeGreaterThan(5);
+    for (const [index, prefix] of seen.entries()) {
+      expect(text.startsWith(prefix)).toBe(true);
+      if (index > 0) expect(prefix.length).toBeGreaterThanOrEqual(seen[index - 1].length);
+      if (prefix) expect(prefix.endsWith("word")).toBe(true);
+    }
+    expect(seen.at(-1)!.length).toBeLessThan(text.length);
 
     act(() => {
-      vi.advanceTimersByTime(STREAM_TICK_MS);
+      vi.advanceTimersByTime(2_000);
     });
-    expect(markdown?.textContent).toBe("A".repeat(20));
-
-    act(() => {
-      vi.advanceTimersByTime(5_000);
-    });
-    // The last runs are still fading, so the paragraph is still cut into spans;
-    // one more beat and the block is one settled piece of text again.
     act(() => {
       vi.advanceTimersByTime(FRESH_RUN_FADE_MS + 100);
     });
     expect(screen.getByText(text)).toBeInTheDocument();
   });
 
-  it("marks each tick's words so they fade up, and settles the block once they have", () => {
+  it("keeps a quarter second of arrived text in hand while delivery keeps up", () => {
+    // Deltas arrive every 50 ms at ~400 characters a second, like a Claude
+    // answer. The reveal should trail delivery by about REVEAL_LAG_S, not by
+    // the whole backlog.
     vi.useFakeTimers();
-    const text = "A".repeat(200);
+    const words = Array.from({ length: 400 }, (_, index) => `w${index % 10}`);
+    let text = "";
+    const { container, rerender } = render(<StreamingMarkdown text={text} streaming />);
+    const markdown = container.querySelector(".markdown");
+    for (let tick = 0; tick < 40; tick += 1) {
+      text = words.slice(0, (tick + 1) * 7).join(" ");
+      rerender(<StreamingMarkdown text={text} streaming />);
+      act(() => {
+        vi.advanceTimersByTime(50);
+      });
+    }
+    const shown = markdown?.textContent?.length ?? 0;
+    const behind = text.length - shown;
+    // ~420 characters a second, so a quarter second is ~105 characters.
+    expect(behind).toBeGreaterThan(20);
+    expect(behind).toBeLessThan(260);
+  });
+
+  it("marks what each frame reveals so it fades up, and settles once it has", () => {
+    vi.useFakeTimers();
+    const text = "fade ".repeat(80).trim();
 
     const { container } = render(<StreamingMarkdown text={text} streaming />);
     act(() => {
-      vi.advanceTimersByTime(STREAM_TICK_MS * 3);
+      vi.advanceTimersByTime(FRAME_MS * 3);
     });
 
     const runs = [...container.querySelectorAll(".stream-fresh")];
-    // Three ticks inside one `act` paint once, so they are one run: a fresh run
-    // is what arrived since the reader last saw the block, not a fixed slice.
-    expect(runs.map((run) => run.textContent)).toEqual(["A".repeat(30)]);
+    // Reveals within one merge window share a run: a handful of fading spans,
+    // not one per frame.
+    expect(runs.length).toBeGreaterThan(0);
+    expect(runs.length).toBeLessThanOrEqual(2);
     // Each run carries when it was revealed: the fade is anchored to that, not
     // to the span, which changes hands as the markdown is re-parsed.
     expect(Number(runs[0]?.getAttribute("data-at"))).toBeGreaterThan(0);
 
     act(() => {
-      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(3_000);
     });
     act(() => {
       vi.advanceTimersByTime(FRESH_RUN_FADE_MS + 100);
@@ -252,7 +282,7 @@ describe("<StreamingMarkdown />", () => {
     );
     rerender(<StreamingMarkdown text={"A".repeat(240)} streaming paced={false} />);
     act(() => {
-      vi.advanceTimersByTime(STREAM_TICK_MS * 2);
+      vi.advanceTimersByTime(FRAME_MS * 4);
     });
     expect(container.querySelectorAll(".stream-fresh")).toHaveLength(0);
   });
@@ -264,137 +294,116 @@ describe("<StreamingMarkdown />", () => {
     );
     rerender(<StreamingMarkdown text={"A".repeat(240)} streaming restoring />);
     act(() => {
-      vi.advanceTimersByTime(STREAM_TICK_MS * 2);
+      vi.advanceTimersByTime(FRAME_MS * 4);
     });
     expect(container.querySelectorAll(".stream-fresh")).toHaveLength(0);
   });
 
-  it("drives every revealing block from one shared interval", () => {
+  it("drives every revealing block from one shared animation frame", () => {
     vi.useFakeTimers();
-    const setIntervalSpy = vi.spyOn(window, "setInterval");
-    const clearIntervalSpy = vi.spyOn(window, "clearInterval");
+    const requestSpy = vi.spyOn(window, "requestAnimationFrame");
+    const cancelSpy = vi.spyOn(window, "cancelAnimationFrame");
 
-    const first = render(<StreamingMarkdown text={"A".repeat(120)} streaming />);
-    const second = render(<StreamingMarkdown text={"B".repeat(120)} streaming />);
-    expect(setIntervalSpy).toHaveBeenCalledTimes(1);
-    expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), STREAM_TICK_MS);
+    const first = render(<StreamingMarkdown text={"a ".repeat(120)} streaming />);
+    const second = render(<StreamingMarkdown text={"b ".repeat(120)} streaming />);
+    expect(requestSpy).toHaveBeenCalledTimes(1);
 
     act(() => {
-      vi.advanceTimersByTime(STREAM_TICK_MS);
+      vi.advanceTimersByTime(FRAME_MS * 4);
     });
-    expect(first.container.querySelector(".markdown")?.textContent).toBe("A".repeat(10));
-    expect(second.container.querySelector(".markdown")?.textContent).toBe("B".repeat(10));
+    // One request per frame for both blocks.
+    expect(requestSpy.mock.calls.length).toBeLessThanOrEqual(6);
+    expect(first.container.querySelector(".markdown")?.textContent).not.toBe("");
+    expect(second.container.querySelector(".markdown")?.textContent).not.toBe("");
 
-    // The tick outlives one block and stops with the last.
+    // The loop outlives one block and stops with the last.
     first.unmount();
-    expect(clearIntervalSpy).not.toHaveBeenCalled();
-    act(() => {
-      vi.advanceTimersByTime(STREAM_TICK_MS);
-    });
-    expect(second.container.querySelector(".markdown")?.textContent).toBe("B".repeat(20));
+    expect(cancelSpy).not.toHaveBeenCalled();
     second.unmount();
-    expect(clearIntervalSpy).toHaveBeenCalledTimes(1);
+    expect(cancelSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps Unicode prefixes intact through stream growth and completion", () => {
+  it("never cuts a surrogate pair through stream growth and completion", () => {
     vi.useFakeTimers();
     const first = "😀".repeat(120);
     const grown = `${first}${"🧠".repeat(80)}`;
 
     const { container, rerender } = render(<StreamingMarkdown text={first} streaming />);
     const markdown = container.querySelector(".markdown");
-    act(() => {
-      vi.advanceTimersByTime(STREAM_TICK_MS * 2);
-    });
-    expect(markdown?.textContent).toBe("😀".repeat(20));
-
+    const wellFormed = (): boolean => {
+      const value = markdown?.textContent ?? "";
+      return value.length % 2 === 0 && [...value].every((char) => char === "😀" || char === "🧠");
+    };
+    for (let frame = 0; frame < 10; frame += 1) {
+      act(() => {
+        vi.advanceTimersByTime(FRAME_MS);
+      });
+      expect(wellFormed()).toBe(true);
+    }
     rerender(<StreamingMarkdown text={grown} streaming />);
-    act(() => {
-      vi.advanceTimersByTime(STREAM_TICK_MS);
-    });
-    expect(markdown?.textContent).toBe("😀".repeat(30));
-
+    for (let frame = 0; frame < 10; frame += 1) {
+      act(() => {
+        vi.advanceTimersByTime(FRAME_MS);
+      });
+      expect(wellFormed()).toBe(true);
+    }
     rerender(<StreamingMarkdown text={grown} streaming={false} />);
-    expect(markdown?.textContent).toBe("😀".repeat(30));
+    expect(wellFormed()).toBe(true);
     act(() => {
-      vi.advanceTimersByTime(STREAM_TICK_MS * 20);
+      vi.advanceTimersByTime(2_000);
     });
     expect(markdown?.textContent).toBe(grown);
   });
 
-  it("spreads a large arriving block over a bounded window instead of crawling", () => {
-    // Codex and OpenCode land the whole answer as one completed message. At
-    // the floor cadence a 2000-character answer took thirteen seconds, and the
-    // session state flipped long before that, dumping the rest in one block.
+  it("sweeps a large arriving block in within a bounded window instead of crawling", () => {
+    // Codex and OpenCode land the whole answer as one completed message.
     vi.useFakeTimers();
-    const text = "E".repeat(2000);
+    const text = "sweep ".repeat(400).trim();
 
     const { container } = render(<StreamingMarkdown text={text} streaming />);
     const markdown = container.querySelector(".markdown");
     expect(markdown?.textContent).toBe("");
 
     act(() => {
-      vi.advanceTimersByTime(STREAM_TICK_MS);
+      vi.advanceTimersByTime(300);
     });
-    // 2000 / 20 ticks = 100 per tick.
-    expect(markdown?.textContent).toBe("E".repeat(100));
+    const partial = markdown?.textContent?.length ?? 0;
+    expect(partial).toBeGreaterThan(0);
+    expect(partial).toBeLessThan(text.length);
 
     act(() => {
-      vi.advanceTimersByTime(STREAM_TICK_MS * 19);
+      vi.advanceTimersByTime(1_300);
     });
     expect(markdown?.textContent).toBe(text);
   });
 
-  it("finishes typing out the remainder when the stream ends instead of dumping it", () => {
+  it("finishes writing out the remainder when the stream ends instead of dumping it", () => {
     vi.useFakeTimers();
-    const text = "F".repeat(400);
+    const text = "tail ".repeat(160).trim();
 
     const { container, rerender } = render(<StreamingMarkdown text={text} streaming />);
     const markdown = container.querySelector(".markdown");
     act(() => {
-      vi.advanceTimersByTime(STREAM_TICK_MS * 4);
+      vi.advanceTimersByTime(FRAME_MS * 6);
     });
-    // 400 / 20 = 20 per tick.
-    expect(markdown?.textContent).toBe("F".repeat(80));
+    const before = markdown?.textContent?.length ?? 0;
+    expect(before).toBeGreaterThan(0);
+    expect(before).toBeLessThan(text.length);
 
-    // The session state flipped to complete with 320 characters unrevealed.
+    // The session state flipped to complete with most of the block unrevealed.
     rerender(<StreamingMarkdown text={text} streaming={false} />);
-    expect(markdown?.textContent).toBe("F".repeat(80));
+    expect(markdown?.textContent?.length).toBe(before);
 
     act(() => {
-      vi.advanceTimersByTime(STREAM_TICK_MS);
+      vi.advanceTimersByTime(FRAME_MS);
     });
-    // The remainder keeps the pace it was streaming at: never a snap.
-    expect(markdown?.textContent).toBe("F".repeat(100));
+    // The remainder keeps writing: never a snap.
+    const next = markdown?.textContent?.length ?? 0;
+    expect(next).toBeGreaterThanOrEqual(before);
+    expect(next).toBeLessThan(text.length);
 
     act(() => {
-      vi.advanceTimersByTime(STREAM_TICK_MS * 15);
-    });
-    expect(markdown?.textContent).toBe(text);
-  });
-
-  it("finishes a burst that ended mid-reveal within the same bounded window", () => {
-    // Cursor delivers an answer as a burst of deltas and ends the turn at once.
-    vi.useFakeTimers();
-    const first = "G".repeat(400);
-    const text = "G".repeat(2000);
-
-    const { container, rerender } = render(<StreamingMarkdown text={first} streaming />);
-    const markdown = container.querySelector(".markdown");
-    act(() => {
-      vi.advanceTimersByTime(STREAM_TICK_MS * 2);
-    });
-    // 400 / 20 = 20 per tick.
-    expect(markdown?.textContent).toBe("G".repeat(40));
-
-    rerender(<StreamingMarkdown text={text} streaming={false} />);
-    act(() => {
-      vi.advanceTimersByTime(STREAM_TICK_MS);
-    });
-    // 1960 / 20 = 98 per tick: faster than before, bounded to ~1.3 s.
-    expect(markdown?.textContent).toBe("G".repeat(138));
-    act(() => {
-      vi.advanceTimersByTime(STREAM_TICK_MS * 20);
+      vi.advanceTimersByTime(2_000);
     });
     expect(markdown?.textContent).toBe(text);
   });
@@ -423,7 +432,7 @@ describe("<StreamingMarkdown />", () => {
 
     act(() => {
       // Reveal past the heading and into the paragraph, but not to the end.
-      vi.advanceTimersByTime(STREAM_TICK_MS * 6);
+      vi.advanceTimersByTime(FRAME_MS * 30);
     });
 
     expect(screen.getByRole("heading", { name: "Title" })).toBeInTheDocument();
@@ -443,18 +452,20 @@ describe("<StreamingMarkdown />", () => {
 
   it("resumes where it left off when the pane remounts mid-stream", () => {
     vi.useFakeTimers();
-    const text = "C".repeat(120);
+    const text = "resume ".repeat(40).trim();
 
     const first = render(<StreamingMarkdown text={text} streaming revealKey="session-a:t0:g0" />);
     act(() => {
-      vi.advanceTimersByTime(STREAM_TICK_MS * 4);
+      vi.advanceTimersByTime(FRAME_MS * 6);
     });
-    expect(first.container.querySelector(".markdown")?.textContent).toBe("C".repeat(40));
+    const shown = first.container.querySelector(".markdown")?.textContent ?? "";
+    expect(shown.length).toBeGreaterThan(0);
+    expect(shown.length).toBeLessThan(text.length);
     // Switching to another session unmounts the pane; coming back mounts a new one.
     first.unmount();
 
     const second = render(<StreamingMarkdown text={text} streaming revealKey="session-a:t0:g0" />);
-    expect(second.container.querySelector(".markdown")?.textContent).toBe("C".repeat(40));
+    expect(second.container.querySelector(".markdown")?.textContent).toBe(shown);
   });
 
   it("types out a block it has never revealed before", () => {
@@ -492,7 +503,7 @@ describe("<StreamingMarkdown />", () => {
     );
     expect(container.querySelector(".markdown")?.textContent).toBe(text);
     act(() => {
-      vi.advanceTimersByTime(STREAM_TICK_MS * 4);
+      vi.advanceTimersByTime(FRAME_MS * 16);
     });
     expect(container.querySelector(".markdown")?.textContent).toBe(text);
   });
@@ -510,14 +521,14 @@ describe("<StreamingMarkdown />", () => {
 
     Object.defineProperty(document, "hidden", { configurable: true, value: false });
     act(() => {
-      vi.advanceTimersByTime(STREAM_TICK_MS * 4);
+      vi.advanceTimersByTime(FRAME_MS * 16);
     });
     expect(container.querySelector(".markdown")?.textContent).toBe(text);
   });
 
   it("catches up a live block that grew while the document was hidden", () => {
     vi.useFakeTimers();
-    const first = "H".repeat(120);
+    const first = "hidden ".repeat(20).trim();
     const { container, rerender } = render(
       <StreamingMarkdown text={first} streaming revealKey="session-hidden:g1" />
     );
@@ -525,19 +536,20 @@ describe("<StreamingMarkdown />", () => {
 
     Object.defineProperty(document, "hidden", { configurable: true, value: true });
     act(() => {
-      vi.advanceTimersByTime(STREAM_TICK_MS);
+      vi.advanceTimersByTime(FRAME_MS);
     });
     expect(container.querySelector(".markdown")?.textContent).toBe(first);
 
-    rerender(
-      <StreamingMarkdown text={"H".repeat(200)} streaming revealKey="session-hidden:g1" />
-    );
+    const grown = `${first} ${"more ".repeat(20).trim()}`;
+    rerender(<StreamingMarkdown text={grown} streaming revealKey="session-hidden:g1" />);
     Object.defineProperty(document, "hidden", { configurable: true, value: false });
     act(() => {
-      vi.advanceTimersByTime(STREAM_TICK_MS * 4);
+      vi.advanceTimersByTime(FRAME_MS * 2);
     });
-    // Already-arrived text stays; only the growth after becoming visible types.
-    expect(container.querySelector(".markdown")?.textContent).toBe("H".repeat(160));
+    // Already-arrived text stays; only the growth after becoming visible writes.
+    const shown = container.querySelector(".markdown")?.textContent ?? "";
+    expect(shown.startsWith(first)).toBe(true);
+    expect(shown.length).toBeLessThan(grown.length);
   });
 
   it("boxes a table in its own sideways scroller", () => {

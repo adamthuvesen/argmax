@@ -212,7 +212,7 @@ export function SessionActionsMenu({
                     type="button"
                     role="menuitem"
                     className="project-picker-item"
-                    title={`Prepare a task brief and launch a new ${cloudProviderName(cloudProvider)} session`}
+                    title={`Continue this chat as a ${cloudProviderName(cloudProvider)} task, from the pushed branch`}
                     onClick={() => {
                       closeActions();
                       setCloudDialogOpen(true);

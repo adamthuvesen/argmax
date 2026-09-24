@@ -1,4 +1,4 @@
-import { Plus, SquareTerminal, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -17,6 +17,7 @@ import {
   subscribeTerminalTabs,
   type TerminalTabMeta
 } from "../lib/terminalTabs.js";
+import { TerminalIcon } from "./ReviewModeIcons.js";
 
 /**
  * Cosmetic label only — actual shell selection happens in the main process.
@@ -208,7 +209,7 @@ export function TerminalTabsPanel({
                   onKeyDown={handleTabKeyDown(tab.id)}
                 >
                   <span className="file-tab-icon" aria-hidden="true">
-                    <SquareTerminal size={13} />
+                    <TerminalIcon size={13} />
                   </span>
                   <span className="file-tab-name">{tab.label}</span>
                 </button>

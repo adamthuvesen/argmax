@@ -158,11 +158,20 @@ try_from_string!(TaskLabel, |value| validate_byte_cap(
     200
 )
 .and_then(|value| non_empty("taskLabel", value)));
-try_from_string!(StreamChunk, |value| validate_byte_cap(
-    "data",
-    value,
-    MAX_STREAM_CHUNK_BYTES
-));
+// Terminal keystrokes, so NUL is data here: Ctrl+Space and Ctrl+@ both send
+// it (Emacs and zsh set-mark). Only the size is capped.
+try_from_string!(
+    StreamChunk,
+    |value: String| if value.len() > MAX_STREAM_CHUNK_BYTES {
+        Err(issue(
+            "data",
+            "STRING_TOO_LARGE",
+            format!("must not exceed {MAX_STREAM_CHUNK_BYTES} bytes when encoded as UTF-8"),
+        ))
+    } else {
+        Ok(value)
+    }
+);
 try_from_string!(FileContent, |value| validate_byte_cap(
     "content",
     value,

@@ -4,10 +4,8 @@ import {
   Copy,
   Folder,
   FolderOpen,
-  GitBranch,
   Globe,
   PanelRightClose,
-  SquareTerminal,
   X
 } from "lucide-react";
 import {
@@ -32,6 +30,7 @@ import { useAnchoredPopover, type AnchorPoint } from "../hooks/useAnchoredPopove
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { PickerLead } from "./PickerLead.js";
+import { ChangesIcon, TerminalIcon } from "./ReviewModeIcons.js";
 import { SlidingTabIndicator } from "./SlidingTabIndicator.js";
 import {
   REVIEW_SCOPE_LABELS,
@@ -182,7 +181,7 @@ function ReviewModeTabs({
     mode: ReviewPanelMode;
     showSingleCount?: boolean;
   }> = [
-    { mode: "changes", label: "Changes", icon: <GitBranch size={14} aria-hidden="true" /> },
+    { mode: "changes", label: "Changes", icon: <ChangesIcon /> },
     { mode: "files", label: "Files", icon: <Folder size={14} aria-hidden="true" /> },
     ...(hasAgents
       ? [{ mode: "agents" as const, label: "Agents", icon: <Bot size={16} aria-hidden="true" />, count: agentCount, showSingleCount: true }]
@@ -191,7 +190,7 @@ function ReviewModeTabs({
       ? [{ mode: "browser" as const, label: "Browser", icon: <Globe size={14} aria-hidden="true" /> }]
       : []),
     ...(hasTerminal
-      ? [{ mode: "terminal" as const, label: "Terminal", icon: <SquareTerminal size={14} aria-hidden="true" />, count: terminalCount }]
+      ? [{ mode: "terminal" as const, label: "Terminal", icon: <TerminalIcon />, count: terminalCount }]
       : [])
   ];
 
@@ -1138,7 +1137,7 @@ export function ReviewPanel({
   const handleDrop = (event: ReactDragEvent<HTMLDivElement>): void => {
     if (!acceptsCurrentDrag(event)) return;
     const position = dropPosition;
-    let payload: { mode?: unknown; panelId?: unknown } | null = null;
+    let payload: { mode?: unknown; panelId?: unknown } | null;
     try {
       payload = JSON.parse(event.dataTransfer.getData(REVIEW_MODE_DRAG_MIME)) as {
         mode?: unknown;

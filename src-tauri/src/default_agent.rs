@@ -35,8 +35,8 @@ impl DefaultAgent {
     pub fn factory() -> Self {
         Self {
             provider: "claude".to_string(),
-            model_label: "Opus 5".to_string(),
-            model_id: "claude-opus-5".to_string(),
+            model_label: "Opus 5.5".to_string(),
+            model_id: "claude-opus-5-5".to_string(),
             reasoning_effort: Some("medium".to_string()),
             permission_mode: crate::providers::PermissionMode::ProviderDefaults,
             permission_modes: HashMap::new(),

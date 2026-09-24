@@ -12,3 +12,12 @@ export function errorMessage(error: unknown): string {
   }
   return String(error);
 }
+
+/** The `sub_code` a Tauri command error carries, when it has one. */
+export function errorSubCode(error: unknown): string | undefined {
+  if (error && typeof error === "object" && "sub_code" in error) {
+    const subCode = (error as { sub_code?: unknown }).sub_code;
+    if (typeof subCode === "string") return subCode;
+  }
+  return undefined;
+}

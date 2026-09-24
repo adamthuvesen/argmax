@@ -36,6 +36,10 @@ pub struct CloudPrepareInput {
     pub session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_id: Option<String>,
+    /// What the user typed after `/cloud`. Only a chat source takes one: it
+    /// becomes the brief's closing instruction after the chat's transcript.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instruction: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
@@ -160,7 +164,7 @@ impl CloudLaunchGuard {
         if !launches.insert(source_key.to_string()) {
             return Err(ArgmaxError::service(
                 "CLOUD_LAUNCH_IN_PROGRESS",
-                "This task is already being sent to a cloud agent.",
+                "This task is already being sent. Wait for it to finish.",
             ));
         }
         Ok(Self(source_key.to_string()))
@@ -192,7 +196,13 @@ pub(crate) async fn cloud_prepare_impl(
 ) -> ArgmaxResult<CloudHandoffPreview> {
     let provider = input.provider;
     let source = CloudSource::from_ids(input.session_id.as_deref(), input.project_id.as_deref())?;
-    let checkout = cloud_checkout(state, source).await?;
+    if input.instruction.is_some() && source.session_id().is_none() {
+        return Err(ArgmaxError::service(
+            "CLOUD_INSTRUCTION_NEEDS_CHAT",
+            "Only a chat's cloud task takes a separate instruction. A project's task is its brief.",
+        ));
+    }
+    let checkout = cloud_checkout(state, source, input.instruction).await?;
     let snapshot = validate_checkout(checkout.path).await?;
     let environments = prepare_provider(state, provider, &snapshot.repository).await?;
     let (environment_id, environment_description) = selected_environment(&environments);
@@ -233,7 +243,7 @@ pub(crate) async fn cloud_launch_impl(
     }
     let _launch_guard = CloudLaunchGuard::acquire(&source.launch_key())?;
 
-    let checkout = cloud_checkout(state, source.clone()).await?;
+    let checkout = cloud_checkout(state, source.clone(), None).await?;
     let snapshot = validate_checkout(checkout.path).await?;
     ensure_preview_is_current(&snapshot, &input)?;
     if !environment_is_current(state, provider, &snapshot.repository, &input.environment_id).await?
@@ -257,7 +267,7 @@ pub(crate) async fn cloud_launch_impl(
                     provider = provider.key(),
                     "Cloud task launched, but its session note could not be persisted"
                 );
-                "The task was launched, but its link could not be saved in this chat. Copy or open the link before closing.".to_string()
+                "The task started, but its link could not be saved in this chat. Open or copy it before you close.".to_string()
             })
     } else {
         None
@@ -273,12 +283,14 @@ async fn environment_is_current(
 ) -> ArgmaxResult<bool> {
     match provider {
         CloudProvider::Claude => {
+            // Binary first: without Claude Code installed, "run /remote-env"
+            // is advice the user cannot follow.
+            let _ = claude_cloud::claude_binary_path(&state.provider_discovery).await?;
             let selected = tauri::async_runtime::spawn_blocking(claude_cloud::selected_environment)
                 .await
                 .map_err(|error| {
                     ArgmaxError::service("CLOUD_ENVIRONMENT_JOIN_FAILED", error.to_string())
                 })??;
-            let _ = claude_cloud::claude_binary_path(&state.provider_discovery).await?;
             Ok(selected.0 == environment_id)
         }
         CloudProvider::Codex => {
@@ -304,12 +316,14 @@ async fn prepare_provider(
 ) -> ArgmaxResult<Vec<CloudEnvironment>> {
     match provider {
         CloudProvider::Claude => {
+            // Binary first: without Claude Code installed, "run /remote-env"
+            // is advice the user cannot follow.
+            let _ = claude_cloud::claude_binary_path(&state.provider_discovery).await?;
             let selected = tauri::async_runtime::spawn_blocking(claude_cloud::selected_environment)
                 .await
                 .map_err(|error| {
                     ArgmaxError::service("CLOUD_ENVIRONMENT_JOIN_FAILED", error.to_string())
                 })??;
-            let _ = claude_cloud::claude_binary_path(&state.provider_discovery).await?;
             Ok(vec![CloudEnvironment {
                 id: selected.0,
                 name: selected.1,
@@ -366,11 +380,15 @@ async fn launch_provider(
     }
 }
 
-async fn cloud_checkout(state: &AppState, source: CloudSource) -> ArgmaxResult<CloudCheckout> {
+async fn cloud_checkout(
+    state: &AppState,
+    source: CloudSource,
+    instruction: Option<String>,
+) -> ArgmaxResult<CloudCheckout> {
     let database = super::live_database(state)?;
     super::read_off_main(move || {
         let connection = database.read_connection();
-        checkout_from_connection(&connection, &source)
+        checkout_from_connection(&connection, &source, instruction.as_deref())
     })
     .await
 }
@@ -378,6 +396,7 @@ async fn cloud_checkout(state: &AppState, source: CloudSource) -> ArgmaxResult<C
 fn checkout_from_connection(
     connection: &rusqlite::Connection,
     source: &CloudSource,
+    instruction: Option<&str>,
 ) -> ArgmaxResult<CloudCheckout> {
     match source {
         CloudSource::Session(session_id) => {
@@ -386,10 +405,10 @@ fn checkout_from_connection(
             if workspace.kind != "git" {
                 return Err(ArgmaxError::service(
                     "CLOUD_GIT_CHECKOUT_REQUIRED",
-                    "Cloud handoff requires a git-backed workspace.",
+                    "Cloud tasks need a chat in a git repository.",
                 ));
             }
-            let brief = handoff_brief(connection, session_id)?;
+            let brief = handoff_brief(connection, session_id, instruction)?;
             Ok(CloudCheckout {
                 path: PathBuf::from(workspace.path),
                 brief,
@@ -415,7 +434,7 @@ fn ensure_preview_is_current(
     {
         return Err(ArgmaxError::service(
             "CLOUD_HANDOFF_CHANGED",
-            "The repository, branch, or commit changed after this handoff was prepared. Review it and try again.",
+            "The repository, branch, or commit changed after this task was prepared. Review it and try again.",
         ));
     }
     Ok(())
@@ -538,15 +557,71 @@ mod tests {
         )
         .expect("persist project");
 
-        let checkout =
-            checkout_from_connection(&connection, &CloudSource::Project("project-1".to_string()))
-                .expect("resolve project checkout");
+        let checkout = checkout_from_connection(
+            &connection,
+            &CloudSource::Project("project-1".to_string()),
+            None,
+        )
+        .expect("resolve project checkout");
         assert_eq!(checkout.path, PathBuf::from("/tmp/private-sandbox"));
         assert!(checkout.brief.is_empty());
         assert!(checkout_from_connection(
             &connection,
-            &CloudSource::Project("missing-project".to_string())
+            &CloudSource::Project("missing-project".to_string()),
+            None
         )
         .is_err());
+    }
+
+    #[test]
+    fn chat_brief_closes_on_the_users_instruction_instead_of_the_default() {
+        use crate::persistence::{
+            database::Database,
+            events::{persist_timeline_event, PersistTimelineEventInput},
+        };
+
+        let database = Database::open_in_memory().expect("database");
+        let connection = database.connection();
+        for statement in [
+            "INSERT INTO projects (id, name, repo_path, current_branch, worktree_location, created_at, updated_at) VALUES ('p1', 'p1', '/tmp/p1', 'main', '~/.argmax', '2026-05-24T10:00:00.000Z', '2026-05-24T10:00:00.000Z')",
+            "INSERT INTO workspaces (id, project_id, task_label, branch, base_ref, path, state, last_activity_at, created_at, updated_at) VALUES ('w1', 'p1', 'task', 'branch', 'main', '/tmp/w1', 'running', '2026-05-24T10:00:00.000Z', '2026-05-24T10:00:00.000Z', '2026-05-24T10:00:00.000Z')",
+            "INSERT INTO sessions (id, workspace_id, provider, model_label, model_id, reasoning_effort, permission_mode, agent_mode, prompt, state, attention, started_at, last_activity_at) VALUES ('s1', 'w1', 'claude', 'Sonnet', 'claude-sonnet-5', NULL, 'auto-approve', 'auto', 'prompt', 'complete', 'none', '2026-05-24T10:00:00.000Z', '2026-05-24T10:00:00.000Z')",
+        ] {
+            connection.execute(statement, []).expect("seed chat");
+        }
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: "event-1".to_string(),
+                session_id: "s1".to_string(),
+                r#type: "user.message".to_string(),
+                message: "Why does the sidebar flicker?".to_string(),
+                payload: serde_json::json!({}),
+                created_at: Some("2026-05-24T10:00:01.000Z".to_string()),
+            },
+        )
+        .expect("insert message");
+        let session = CloudSource::Session("s1".to_string());
+
+        let brief = checkout_from_connection(&connection, &session, Some("  Fix the flicker.  "))
+            .expect("brief with instruction")
+            .brief;
+        assert!(
+            brief.contains("User: Why does the sidebar flicker?"),
+            "{brief}"
+        );
+        assert!(
+            brief.ends_with("New user message:\nFix the flicker."),
+            "{brief}"
+        );
+        assert!(!brief.contains("Continue this task"), "{brief}");
+
+        let default_brief = checkout_from_connection(&connection, &session, Some("   "))
+            .expect("brief without instruction")
+            .brief;
+        assert!(
+            default_brief.contains("New user message:\nContinue this task"),
+            "{default_brief}"
+        );
     }
 }

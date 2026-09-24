@@ -5,13 +5,13 @@ import {
   GitBranch,
   GitCommitHorizontal,
   GitPullRequestArrow,
-  Github,
   Upload
 } from "lucide-react";
 import { useCallback, useState, type FormEvent, type JSX, type MouseEvent } from "react";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { openWebUrl } from "../lib/openWebUrl.js";
 import { primaryWorkspacePr } from "../lib/sessionPrs.js";
+import { GithubIcon } from "./GithubIcon.js";
 
 const BRANCH_NAME_PATTERN = /^[A-Za-z0-9._/-]+$/;
 
@@ -191,7 +191,7 @@ export function GitActionsMenu({
                 }
                 onClick={openPrimaryPr}
               >
-                <Github size={14} aria-hidden="true" />
+                <GithubIcon size={14} aria-hidden="true" />
                 Open pull request #{primaryPr.prNumber}
               </button>
             </li>

@@ -181,6 +181,9 @@ export function BrowserPanel({
   const pendingSelectionRef = useRef<{ value: string; start: number } | null>(null);
   const [completionSeq, setCompletionSeq] = useState(0);
   const overlayOpenRef = useRef(false);
+  /** A still of the page drawn in the surface while an overlay hides the webview. */
+  const [frozenFrame, setFrozenFrame] = useState<{ src: string; width: number; height: number } | null>(null);
+  const frozenFrameRequestRef = useRef(0);
   const lastBoundsRef = useRef<{ tabId: string; bounds: BrowserBounds; visible: boolean } | null>(null);
   const tabs = useSyncExternalStore(subscribeBrowserTabs, () => getBrowserTabs(scopeId));
   const activeTabId = useSyncExternalStore(subscribeBrowserTabs, () => getActiveBrowserTabId(scopeId));
@@ -288,6 +291,24 @@ export function BrowserPanel({
         // A failed update must not prevent a later resize from trying again.
         if (lastBoundsRef.current === next) lastBoundsRef.current = null;
       });
+    // Hidden, the page would leave an empty hole under the palette or dialog.
+    // WebKit still rasterises a hidden webview, so paint its last frame there.
+    const request = ++frozenFrameRequestRef.current;
+    if (visible) {
+      setFrozenFrame(null);
+      return;
+    }
+    void browser
+      .screenshot({ tabId })
+      .then((shot) => {
+        if (frozenFrameRequestRef.current !== request) return;
+        // Drawn at the size it was taken, not stretched to the surface: a panel
+        // resize hides the webview too, and a still that scaled with the drag
+        // grew the whole page until the pointer let go.
+        setFrozenFrame({ src: `data:image/png;base64,${shot.pngBase64}`, width: bounds.width, height: bounds.height });
+      })
+      // Best-effort: without a still the surface is only empty, as before.
+      .catch(() => undefined);
   }, [browser, measureBounds, overlaysSurface, scopeId]);
 
   /** Hand the window's keyboard focus to a page the user just activated. The
@@ -1315,7 +1336,16 @@ export function BrowserPanel({
           </button>
         </div>
       ) : null}
-      <div ref={surfaceRef} className="browser-panel-surface" />
+      <div ref={surfaceRef} className="browser-panel-surface">
+        {frozenFrame ? (
+          <img
+            className="browser-panel-frozen-frame"
+            src={frozenFrame.src}
+            alt=""
+            style={{ width: frozenFrame.width, height: frozenFrame.height }}
+          />
+        ) : null}
+      </div>
       {historyImportOpen ? (
         <BrowserHistoryImport onClose={() => setHistoryImportOpen(false)} />
       ) : null}

@@ -111,6 +111,7 @@ function markBootSeeded(key: string): void {
 // buckets. `groupWorkspacesByDate` only ever emits today / yesterday / last-7 /
 // older, so these keys can't collide with a date bucket.
 const PINNED_GROUP_KEY = "pinned";
+const ARCS_GROUP_KEY = "arcs";
 const PRIORITY_GROUP_KEY = "priority";
 const SIDE_CHATS_GROUP_KEY = "side-chats";
 const OLDER_GROUP_KEY = "older";
@@ -400,7 +401,7 @@ export function Sidebar({
 
   const orderedProjects = useMemo(
     // The hidden scratch project never renders as a project group: its
-    // side chats live in the dedicated bottom section instead.
+    // chats get the Chat group at the bottom of the projects view instead.
     () =>
       sortProjectsBy(
         snapshot.projects.filter((project) => project.id !== SCRATCH_PROJECT_ID),
@@ -548,8 +549,8 @@ export function Sidebar({
     workingWorkspaces
   );
 
-  // Side chats live in their own bottom section and are conversational by
-  // nature — they never escalate into the Priority triage list.
+  // Repo-less chats are conversational by nature — they never escalate into
+  // the Priority triage list.
   // An unread reply ages out 30 minutes after it lands, so the section has to
   // move without a delta to prompt it. Rather than poll a clock, arm one timer
   // for the exact moment the next listed row crosses that line. Rows held by
@@ -635,15 +636,14 @@ export function Sidebar({
   );
 
   // Flat, date-bucketed list for the "sessions" view mode — every non-archived,
-  // unpinned workspace that has a session, regardless of project. Pinned ones
-  // live in the pinned section above instead, and working or attention-worthy
-  // ones in Priority.
+  // unpinned workspace that has a session, regardless of project, repo-less
+  // chats included. Pinned ones live in the pinned section above instead, and
+  // working or attention-worthy ones in Priority.
   const dateGroups = useMemo(
     () =>
       groupWorkspacesByDate(
         sidebarWorkspaces.filter(
           (workspace) =>
-            workspace.kind === "git" &&
             !workspace.pinned &&
             workspace.state !== "archived" &&
             !priorityWorkspaceIds.has(workspace.id) &&
@@ -653,9 +653,9 @@ export function Sidebar({
     [sidebarWorkspaces, priorityWorkspaceIds, workspaceIdsWithSessions]
   );
 
-  // Side chats keep their own section at the very bottom, below the date
-  // buckets and project groups, in both view modes. Pinned and Priority still
-  // win — a row lives in exactly one section.
+  // The projects view has no project to file a repo-less chat under, so they
+  // gather in a Chat group below the project groups. Pinned still wins — a row
+  // lives in exactly one section.
   const sideChatWorkspaces = useMemo(
     () =>
       sidebarWorkspaces
@@ -726,17 +726,17 @@ export function Sidebar({
   }, []);
 
   // Expand whichever section hosts the given row: its recency bucket (or
-  // Pinned / Priority / Side chats) in the Sessions view, its project group in
+  // Pinned / Priority) in the Sessions view, its project group (or Chat) in
   // the Projects view. The order mirrors the render order above — Priority
-  // only takes git workspaces, so a running side chat stays with the side
-  // chats. Shared by the two reveal effects below.
+  // only takes git workspaces, so a running chat stays in its recency bucket
+  // or the Chat group. Shared by the two reveal effects below.
   const revealWorkspaceGroup = useCallback(
     (workspace: DashboardSnapshot["workspaces"][number]): void => {
       const groupKey = workspace.pinned
         ? PINNED_GROUP_KEY
         : priorityWorkspaceIds.has(workspace.id)
           ? PRIORITY_GROUP_KEY
-          : workspace.kind === "scratch"
+          : viewMode === "projects" && workspace.kind === "scratch"
             ? SIDE_CHATS_GROUP_KEY
             : viewMode === "sessions"
               ? dateGroups.find((group) => group.items.some((item) => item.id === workspace.id))
@@ -800,6 +800,18 @@ export function Sidebar({
     knownWorkspaceIdsRef.current = next;
   }, [revealWorkspaceGroup, sidebarWorkspaces]);
 
+  // An arc opened from elsewhere (the palette, a chat's arc label) must not
+  // sit selected inside a collapsed Arcs section.
+  useEffect(() => {
+    if (!selectedArcId) return;
+    setCollapsedDateGroups((current) => {
+      if (!current.has(ARCS_GROUP_KEY)) return current;
+      const next = new Set(current);
+      next.delete(ARCS_GROUP_KEY);
+      return next;
+    });
+  }, [selectedArcId]);
+
   const toggleDateGroupExpansion = useCallback(
     (key: string): void => {
       const next = new Set(expandedDateGroups);
@@ -817,12 +829,14 @@ export function Sidebar({
   // Every sidebar section header (Pinned, Priority, recency buckets) carries
   // the same chevron, tucked inside the label so it hugs the word.
   const renderCollapseButton = useCallback(
-    (groupKey: string, label: string, isCollapsed: boolean): JSX.Element => (
+    // A section of chats is named by its label ("Hide Pinned chats"); one
+    // holding something else names the rows instead ("Hide arcs").
+    (groupKey: string, label: string, isCollapsed: boolean, rowNoun?: string): JSX.Element => (
       <button
         aria-expanded={!isCollapsed}
-        aria-label={`${isCollapsed ? "Show" : "Hide"} ${label} chats`}
+        aria-label={`${isCollapsed ? "Show" : "Hide"} ${rowNoun ?? `${label} chats`}`}
         className="project-visibility"
-        title={`${isCollapsed ? "Show" : "Hide"} chats`}
+        title={`${isCollapsed ? "Show" : "Hide"} ${rowNoun ?? "chats"}`}
         type="button"
         onClick={(event) => {
           event.stopPropagation();
@@ -1028,16 +1042,23 @@ export function Sidebar({
     </div>
   );
   // A first-class section above everything else: an arc spans projects, so it
-  // doesn't belong nested under one. No collapse chevron — the list is
-  // expected to stay short, and "New arc" always needs to be reachable in one
-  // click rather than behind an expand.
+  // doesn't belong nested under one. Like Pinned it opens expanded on launch,
+  // and "New arc" stays on the header so it is one click even when collapsed.
+  const arcsCollapsed = collapsedDateGroups.has(ARCS_GROUP_KEY);
   const arcsSection = (
-    <div className="project-group session-date-group arcs-group">
-      <div className="project-row session-date-row">
+    <div
+      className="project-group session-date-group arcs-group"
+      data-collapsed={arcsCollapsed ? "true" : undefined}
+    >
+      <div
+        className="project-row session-date-row"
+        onClick={() => toggleDateGroupVisibility(ARCS_GROUP_KEY)}
+      >
         <span className="project-name session-date-label">
           <span className="project-name-text">Arcs</span>
+          {renderCollapseButton(ARCS_GROUP_KEY, "Arcs", arcsCollapsed, "arcs")}
         </span>
-        <span className="rail-actions">
+        <span className="rail-actions" onClick={(event) => event.stopPropagation()}>
           <button
             className="small-icon"
             type="button"
@@ -1049,7 +1070,7 @@ export function Sidebar({
           </button>
         </span>
       </div>
-      {arcs.map((arc) => (
+      {(arcsCollapsed ? [] : arcs).map((arc) => (
         <div key={arc.id} className="session-row-wrap">
           <button
             type="button"
@@ -1073,10 +1094,10 @@ export function Sidebar({
   const sideChatsExpanded = expandedDateGroups.has(SIDE_CHATS_GROUP_KEY);
   const visibleSideChats = visibleSidebarItems(sideChatWorkspaces, selectedWorkspaceId, sideChatsExpanded);
   const hiddenSideChatCount = sideChatWorkspaces.length - visibleSideChats.length;
-  // Rendered below the date buckets (sessions view) and project groups
-  // (projects view): side chats are their own bottom section in both.
+  // Projects view only, below the project groups. The sessions view files
+  // chats into the recency buckets like any other row.
   const sideChatsSection =
-    onNewSideChat || sideChatWorkspaces.length > 0 ? (
+    viewMode === "projects" && (onNewSideChat || sideChatWorkspaces.length > 0) ? (
       <div
         className="project-group session-date-group"
         data-collapsed={sideChatsCollapsed ? "true" : undefined}
@@ -1086,16 +1107,16 @@ export function Sidebar({
           onClick={() => toggleDateGroupVisibility(SIDE_CHATS_GROUP_KEY)}
         >
           <span className="project-name session-date-label">
-            <span className="project-name-text">Side Chats</span>
-            {renderCollapseButton(SIDE_CHATS_GROUP_KEY, "Side Chats", sideChatsCollapsed)}
+            <span className="project-name-text">Chat</span>
+            {renderCollapseButton(SIDE_CHATS_GROUP_KEY, "Chat", sideChatsCollapsed, "chats")}
           </span>
           {onNewSideChat ? (
             <span className="rail-actions" onClick={(event) => event.stopPropagation()}>
               <button
                 className="small-icon"
                 type="button"
-                title="New side chat — a chat without a repository"
-                aria-label="New side chat"
+                title="New chat without a repository"
+                aria-label="New chat without a repository"
                 onClick={onNewSideChat}
               >
                 <Plus size={14} />
@@ -1140,8 +1161,8 @@ export function Sidebar({
                 aria-expanded={sideChatsExpanded}
                 aria-label={
                   sideChatsExpanded
-                    ? "Show fewer side chats"
-                    : `Show ${hiddenSideChatCount} more side chats`
+                    ? "Show fewer chats"
+                    : `Show ${hiddenSideChatCount} more chats`
                 }
                 onClick={() => toggleDateGroupExpansion(SIDE_CHATS_GROUP_KEY)}
               >

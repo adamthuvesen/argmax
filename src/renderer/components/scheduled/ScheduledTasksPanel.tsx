@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type Dispatch,
   type JSX,
@@ -152,15 +153,22 @@ export function ScheduledTasksPanel({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // A timer reload and an action's reload can overlap; only the latest one
+  // may commit, or an older list lands over the fresher one.
+  const reloadSeq = useRef(0);
   const reload = useCallback(async (): Promise<void> => {
     if (!window.argmax) {
       setLoadError("Open Argmax on your Mac to manage scheduled tasks.");
       return;
     }
+    const seq = ++reloadSeq.current;
     try {
-      setRoutines(await window.argmax.routines.list());
+      const next = await window.argmax.routines.list();
+      if (seq !== reloadSeq.current) return;
+      setRoutines(next);
       setLoadError(null);
     } catch (error) {
+      if (seq !== reloadSeq.current) return;
       setLoadError(errorMessage(error, "Could not load scheduled tasks."));
     }
   }, []);

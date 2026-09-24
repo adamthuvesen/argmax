@@ -27,16 +27,17 @@
   gap: var(--space-2_5);
   align-items: start;
   flex-shrink: 0;
-  padding: 24px 24px 0;
+  padding: 20px 24px 0;
 }
 
 .cloud-task-dialog-body {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: var(--space-4);
   min-height: 0;
   overflow-y: auto;
-  padding: var(--space-4) 24px 0;
+  padding: var(--space-4) 24px;
 }
 
 .cloud-task-dialog-header h2,
@@ -44,9 +45,14 @@
   margin: 0;
 }
 
+.cloud-task-dialog-body:empty {
+  display: none;
+}
+
 .cloud-task-dialog-header h2 {
   font-size: var(--text-md-plus);
   line-height: 1.3;
+  letter-spacing: -0.01em;
 }
 
 .cloud-task-dialog-header p {
@@ -74,11 +80,64 @@
   cursor: not-allowed;
 }
 
-.cloud-task-dialog-loading {
-  min-height: 180px;
+.cloud-task-dialog-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.cloud-task-dialog-skeleton-summary {
+  height: 72px;
+  border-radius: var(--radius-lg);
+}
+
+.cloud-task-dialog-skeleton-rows {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line-soft);
+}
+
+.cloud-task-dialog-skeleton-row {
   display: grid;
-  place-items: center;
-  margin: 0;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: center;
+  min-height: 34px;
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.cloud-task-dialog-skeleton-row:last-child {
+  border-bottom: 0;
+}
+
+.cloud-task-dialog-skeleton-label,
+.cloud-task-dialog-skeleton-value {
+  height: 10px;
+}
+
+.cloud-task-dialog-skeleton-label {
+  width: 64px;
+}
+
+.cloud-task-dialog-skeleton-value {
+  justify-self: end;
+}
+
+.cloud-task-dialog-skeleton-row:nth-child(1) .cloud-task-dialog-skeleton-value {
+  width: 28%;
+}
+
+.cloud-task-dialog-skeleton-row:nth-child(2) .cloud-task-dialog-skeleton-value {
+  width: 62%;
+}
+
+.cloud-task-dialog-skeleton-row:nth-child(3) .cloud-task-dialog-skeleton-value {
+  width: 46%;
+}
+
+.cloud-task-dialog-skeleton-row:nth-child(4) .cloud-task-dialog-skeleton-value {
+  width: 34%;
 }
 
 .cloud-task-dialog-details {
@@ -101,22 +160,42 @@
   color: var(--muted-strong);
 }
 
+/* One line per value: a long repository or branch ellipsizes (its full name
+   is in the title) instead of wrapping ragged against the right edge. */
 .cloud-task-dialog-details dd {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
   margin: 0;
   color: var(--text-soft);
-  text-align: right;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+}
+
+.cloud-task-dialog-details dd > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cloud-task-dialog-details .cloud-task-dialog-commit {
+  flex-shrink: 0;
+  color: var(--muted-strong);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
 }
 
 .cloud-task-dialog-details > div:last-child {
   border-bottom: 0;
 }
 
+/* Six lines, so an overflowing brief clips on a line boundary. */
 .cloud-task-dialog-task-summary {
-  max-height: 128px;
+  max-height: calc(6 * 1.55em + 2 * var(--space-2_5));
   margin: 0;
   overflow-y: auto;
-  padding: 11px 12px;
+  padding: var(--space-2_5) var(--space-3);
   border-radius: var(--radius-lg);
   background: var(--panel-sunken);
   color: var(--text);
@@ -132,10 +211,38 @@
   font-size: var(--text-xs);
 }
 
+/* The arc dialog's chevron, not the native triangle, so every disclosure in
+   a modal reads as one control. */
 .cloud-task-dialog-context summary {
-  width: fit-content;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: max-content;
+  list-style: none;
   cursor: pointer;
   font-weight: calc(500 + var(--font-weight-offset));
+}
+
+.cloud-task-dialog-context summary::-webkit-details-marker {
+  display: none;
+}
+
+.cloud-task-dialog-context summary::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-right: 1.25px solid currentColor;
+  border-bottom: 1.25px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--motion-base) var(--ease);
+}
+
+.cloud-task-dialog-context[open] summary::before {
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.cloud-task-dialog-context summary:hover {
+  color: var(--text);
 }
 
 .cloud-task-dialog-context p {
@@ -161,23 +268,84 @@
   font-weight: calc(400 + var(--font-weight-offset));
 }
 
-.cloud-task-dialog-error {
+.cloud-task-dialog-notice {
   display: flex;
   align-items: flex-start;
   gap: var(--space-1_5);
   margin: 0;
   padding: var(--space-2) var(--space-2_5);
   border-radius: var(--radius-md);
-  background: var(--rose-soft);
-  color: var(--rose);
   font-size: var(--text-sm);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
 
-.cloud-task-dialog-error svg {
+.cloud-task-dialog-notice--error {
+  background: var(--rose-soft);
+  color: var(--rose);
+}
+
+/* Not a failure: the task may exist, or exists without a saved link. The
+   words stay in body ink; only the mark carries the amber. */
+.cloud-task-dialog-notice--caution {
+  background: var(--amber-soft);
+  color: var(--text-soft);
+}
+
+.cloud-task-dialog-notice--caution svg {
+  color: var(--amber);
+}
+
+.cloud-task-dialog-notice svg {
   flex: 0 0 auto;
-  margin-top: 1px;
+  margin-top: 0.2em;
+}
+
+.cloud-task-dialog-notice code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+/* The launched task's link, readable and copyable before the dialog closes. */
+.cloud-task-dialog-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-1_5) var(--space-1_5) var(--space-1_5) var(--space-3);
+  border-radius: var(--radius-lg);
+  background: var(--panel-sunken);
+}
+
+.cloud-task-dialog-link > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cloud-task-dialog-link > button {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-1_5);
+  height: 26px;
+  padding: 0 var(--space-2_5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.cloud-task-dialog-link > button:hover {
+  background: var(--panel-sunken);
 }
 
 .cloud-task-dialog-actions {
@@ -185,8 +353,8 @@
   justify-content: flex-end;
   flex-wrap: wrap;
   flex-shrink: 0;
-  margin-top: var(--space-4);
-  padding: var(--space-3) 24px 20px;
+  margin-top: auto;
+  padding: var(--space-3) 24px 18px;
   border-top: 1px solid var(--line-soft);
   background: var(--panel);
   gap: var(--space-2);
@@ -198,7 +366,7 @@
   justify-content: center;
   gap: var(--space-1_5);
   text-decoration: none;
-  height: 32px;
+  height: 30px;
   padding: 0 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -213,6 +381,7 @@
   border-color: var(--ink);
   background: var(--ink);
   color: var(--bubble-on-ink);
+  font-weight: calc(500 + var(--font-weight-offset));
 }
 
 .cloud-task-dialog-actions button:is([disabled], [aria-disabled="true"]) {
@@ -226,21 +395,17 @@
   }
 
   .cloud-task-dialog-body {
-    padding: var(--space-4) 18px 0;
+    padding: var(--space-4) 18px;
   }
 
   .cloud-task-dialog-actions {
     padding: var(--space-3) 18px 18px;
   }
 
-  .cloud-task-dialog-details > div {
+  .cloud-task-dialog-details > div,
+  .cloud-task-dialog-skeleton-row {
     grid-template-columns: 76px minmax(0, 1fr);
   }
-}
-
-.cloud-task-dialog :is(button, a, summary):focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
 }
 
 .cloud-task-dialog-header > button:hover:not(:disabled),

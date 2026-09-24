@@ -15,7 +15,21 @@ describe("SessionConversation session note", () => {
       event("cloud", "session.note", "Sent task to Claude Cloud: https://claude.ai/code/session_test123", "2026-05-12T15:02:00.000Z"),
       event("answer", "message.completed", "Ready to hand off", "2026-05-12T15:00:01.000Z")
     ]);
-    expect(screen.getByRole("link", { name: "Open cloud session" })).toHaveAttribute("href", "https://claude.ai/code/session_test123");
+    expect(screen.getByRole("link", { name: "Open task" })).toHaveAttribute("href", "https://claude.ai/code/session_test123");
+  });
+
+  it("links every hosted provider's task and leaves a foreign URL as text", () => {
+    renderConversation(baseSession({ state: "complete" }), [
+      event("foreign", "session.note", "Sent task to Codex Cloud: https://example.com/codex/tasks/task_x", "2026-05-12T15:04:00.000Z"),
+      event("cursor", "session.note", "Sent task to Cursor Cloud: https://cursor.com/agents/bc-7f3e2a91", "2026-05-12T15:03:00.000Z"),
+      event("codex", "session.note", "Sent task to Codex Cloud: https://chatgpt.com/codex/tasks/task_e_0123", "2026-05-12T15:02:00.000Z"),
+      event("answer", "message.completed", "Ready to hand off", "2026-05-12T15:00:01.000Z")
+    ]);
+    expect(screen.getAllByRole("link", { name: "Open task" }).map((link) => link.getAttribute("href"))).toEqual([
+      "https://chatgpt.com/codex/tasks/task_e_0123",
+      "https://cursor.com/agents/bc-7f3e2a91"
+    ]);
+    expect(screen.getByText("Sent task to Codex Cloud: https://example.com/codex/tasks/task_x")).toBeInTheDocument();
   });
 
   it("shows a note as a quiet line under the turn it lands in", () => {

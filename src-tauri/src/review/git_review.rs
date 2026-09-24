@@ -13,7 +13,10 @@ use tokio::{sync::Semaphore, task::JoinSet};
 use crate::{
     error::{ArgmaxError, ArgmaxResult},
     git::{
-        exec::{reject_leading_dash, run_git_text, run_git_text_with_allowed_exit_codes},
+        exec::{
+            reject_leading_dash, run_git_text, run_git_text_with_allowed_exit_codes,
+            run_git_text_with_options, GitExecOptions,
+        },
         ops::checkout_write_lock,
         tree_snapshot::{fingerprint_worktree, index_tree},
     },
@@ -1124,7 +1127,16 @@ async fn load_file_diff(
             args.push(old_path.clone());
         }
         args.push(file.path.clone());
-        run_git_text(repo_path, args, GIT_TIMEOUT).await?
+        run_git_text_with_options(
+            repo_path,
+            args,
+            GitExecOptions {
+                timeout: GIT_TIMEOUT,
+                ..GitExecOptions::default()
+            }
+            .lossy_display(),
+        )
+        .await?
     };
     Ok(cap_diff(raw))
 }

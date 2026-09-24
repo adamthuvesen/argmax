@@ -31,7 +31,13 @@ pub enum AssetStatus {
     NotFound,
     Forbidden,
     BadRequest,
+    TooLarge,
 }
+
+/// Far past any image a chat would show. The same handler serves the phone
+/// over the bridge, where one oversized file would otherwise be read whole
+/// into memory on every request.
+const MAX_ASSET_BYTES: u64 = 50 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct AssetResponse {
@@ -55,6 +61,13 @@ impl AssetResponse {
             bytes: Vec::new(),
         }
     }
+    fn too_large() -> Self {
+        Self {
+            status: AssetStatus::TooLarge,
+            content_type: None,
+            bytes: Vec::new(),
+        }
+    }
     fn bad_request() -> Self {
         Self {
             status: AssetStatus::BadRequest,
@@ -70,6 +83,7 @@ impl AssetResponse {
             AssetStatus::BadRequest => 400,
             AssetStatus::Forbidden => 403,
             AssetStatus::NotFound => 404,
+            AssetStatus::TooLarge => 413,
         }
     }
 }
@@ -152,6 +166,11 @@ pub async fn serve_workspace_asset_path(roots: &[PathBuf], decoded: &str) -> Ass
     };
     if !is_inside_any_root(&canonical, roots).await {
         return AssetResponse::forbidden();
+    }
+    match fs::metadata(&canonical).await {
+        Ok(metadata) if metadata.len() > MAX_ASSET_BYTES => return AssetResponse::too_large(),
+        Ok(_) => {}
+        Err(_) => return AssetResponse::not_found(),
     }
 
     let bytes = match fs::read(&canonical).await {

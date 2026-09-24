@@ -33,10 +33,14 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
     // Claude Code 2.1.280 catalog tier `tier_4_20_cache_read_0_20`.
     "claude-opus-5-5" => ModelPricing { input: 4.0, output: 20.0, cache_read: 0.2, cache_write: 5.0 },
     "claude-opus-5" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },
-    "claude-sonnet-5" => ModelPricing { input: 3.0, output: 15.0, cache_read: 0.3, cache_write: 3.75 },
+    // Sonnet 5's $2/$10 launch price became the standard rate on 2026-09-01.
+    "claude-sonnet-5" => ModelPricing { input: 2.0, output: 10.0, cache_read: 0.2, cache_write: 2.5 },
     "claude-haiku-4-5" => ModelPricing { input: 1.0, output: 5.0, cache_read: 0.1, cache_write: 1.25 },
     "gpt-6-astra" => ModelPricing { input: 10.0, output: 50.0, cache_read: 1.0, cache_write: 12.5 },
-    "gpt-5.6-sol" => ModelPricing { input: 5.0, output: 30.0, cache_read: 0.5, cache_write: 6.25 },
+    "gpt-6-sol" => ModelPricing { input: 2.0, output: 10.0, cache_read: 0.2, cache_write: 2.5 },
+    "gpt-6-luna" => ModelPricing { input: 0.1, output: 0.5, cache_read: 0.01, cache_write: 0.125 },
+    // Promotional rate, promised through at least 2026-11-21.
+    "gpt-5.6-sol" => ModelPricing { input: 4.0, output: 20.0, cache_read: 0.4, cache_write: 5.0 },
     "gpt-5.6-terra" => ModelPricing { input: 2.0, output: 12.0, cache_read: 0.2, cache_write: 2.5 },
     "gpt-5.6-luna" => ModelPricing { input: 0.2, output: 1.2, cache_read: 0.02, cache_write: 0.25 },
     // Cursor billing is not estimated here. Auto uses the existing Cursor

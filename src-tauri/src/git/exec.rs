@@ -27,6 +27,10 @@ pub struct GitExecOptions {
     /// Extra env vars layered onto git's environment, including the scratch
     /// index used for selected-file commits.
     pub env: Vec<(OsString, OsString)>,
+    /// For output that is only shown to the user (diffs, search hits): decode
+    /// non-UTF-8 bytes lossily and truncate at the cap instead of failing, so
+    /// one legacy-encoded or oversized file cannot fail the whole read.
+    pub lossy_display: bool,
 }
 
 impl Default for GitExecOptions {
@@ -35,6 +39,7 @@ impl Default for GitExecOptions {
             timeout: GIT_DEFAULT_TIMEOUT,
             stdout_cap_bytes: GIT_STDOUT_CAP_BYTES,
             env: Vec::new(),
+            lossy_display: false,
         }
     }
 }
@@ -42,6 +47,11 @@ impl Default for GitExecOptions {
 impl GitExecOptions {
     pub fn with_env<K: Into<OsString>, V: Into<OsString>>(mut self, key: K, value: V) -> Self {
         self.env.push((key.into(), value.into()));
+        self
+    }
+
+    pub fn lossy_display(mut self) -> Self {
+        self.lossy_display = true;
         self
     }
 }
@@ -93,8 +103,9 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
+    let lossy_display = options.lossy_display;
     let output = run_git_output(workspace_path.as_ref(), args, options).await?;
-    decode_stdout(output)
+    decode_stdout(output, lossy_display)
 }
 
 /// Blocking counterpart to [`run_git_text`], for the callers that have no
@@ -145,17 +156,33 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    let args = collect_args(args);
-    let output = run_git_command(
-        workspace_path.as_ref(),
-        &args,
+    run_git_text_with_allowed_exit_codes_and_options(
+        workspace_path,
+        args,
+        allowed_exit_codes,
         GitExecOptions {
             timeout,
             ..GitExecOptions::default()
         },
     )
-    .await?;
-    let stdout = decode_stdout(output.stdout)?;
+    .await
+}
+
+pub async fn run_git_text_with_allowed_exit_codes_and_options<P, I, S>(
+    workspace_path: P,
+    args: I,
+    allowed_exit_codes: &[i32],
+    options: GitExecOptions,
+) -> ArgmaxResult<GitExit>
+where
+    P: AsRef<Path>,
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let args = collect_args(args);
+    let lossy_display = options.lossy_display;
+    let output = run_git_command(workspace_path.as_ref(), &args, options).await?;
+    let stdout = decode_stdout(output.stdout, lossy_display)?;
     let exit_code = output.status.code().unwrap_or(-1);
 
     if output.status.success() || allowed_exit_codes.contains(&exit_code) {
@@ -261,7 +288,11 @@ async fn run_git_command(
         // concurrent with the user's own git, where that lock causes contention and
         // spurious failures for no benefit. Commands that genuinely need the
         // lock still take it.
-        .env("GIT_OPTIONAL_LOCKS", "0");
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        // Every path Argmax hands git is a literal file name. Without this, a
+        // Next.js route like `app/[id]/page.tsx` is a glob that also matches
+        // `app/i/page.tsx`, so revert/stage/commit would touch both.
+        .env("GIT_LITERAL_PATHSPECS", "1");
     if let Some(home) = std::env::var_os("HOME") {
         command.env("HOME", home);
     }
@@ -309,7 +340,13 @@ async fn run_git_command(
                 )
             })
     };
-    let stdout = read_capped(stdout, options.stdout_cap_bytes);
+    let stdout = async {
+        if options.lossy_display {
+            read_truncated(stdout, options.stdout_cap_bytes).await
+        } else {
+            read_capped(stdout, options.stdout_cap_bytes).await
+        }
+    };
     let stderr = read_truncated(stderr, GIT_STDERR_CAP_BYTES);
 
     let (status, stdout, stderr) = tokio::try_join!(wait, stdout, stderr)?;
@@ -359,7 +396,7 @@ where
         let read = reader.read(&mut buffer).await.map_err(|error| {
             ArgmaxError::service(
                 "GIT_PIPE_READ_FAILED",
-                format!("failed to read git stderr: {error}"),
+                format!("failed to read git output: {error}"),
             )
         })?;
         if read == 0 {
@@ -382,7 +419,10 @@ where
         .collect()
 }
 
-fn decode_stdout(stdout: Vec<u8>) -> ArgmaxResult<String> {
+fn decode_stdout(stdout: Vec<u8>, lossy_display: bool) -> ArgmaxResult<String> {
+    if lossy_display {
+        return Ok(String::from_utf8_lossy(&stdout).into_owned());
+    }
     String::from_utf8(stdout).map_err(|error| {
         ArgmaxError::service(
             "GIT_STDOUT_NOT_UTF8",

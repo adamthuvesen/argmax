@@ -19,13 +19,13 @@ import {
   lazy,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type FormEvent,
   type JSX,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type UIEvent as ReactUIEvent
+  type KeyboardEvent as ReactKeyboardEvent
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -58,6 +58,11 @@ import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscap
 import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
 import { useProjectCheckoutTerminal } from "../hooks/useProjectCheckoutTerminal.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
+import {
+  PICKER_MENU_EDGE_PADDING_PX,
+  PICKER_MENU_MAX_HEIGHT_PX,
+  useAnchoredPopover
+} from "../hooks/useAnchoredPopover.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
 import { LAUNCHER_TITLE, SIDE_CHAT_PLACEHOLDER, SIDE_CHAT_TITLE } from "../lib/launcherTitle.js";
@@ -265,10 +270,8 @@ export function LaunchSurface({
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(readStoredWorkspaceMode);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
-  const projectPickerRef = useRef<HTMLDivElement | null>(null);
   const [branchPickerOpen, setBranchPickerOpen] = useState(false);
   const [branches, setBranches] = useState<string[]>([]);
-  const branchPickerRef = useRef<HTMLDivElement | null>(null);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [effortPickerOpen, setEffortPickerOpen] = useState(false);
   const [compactContextOpen, setCompactContextOpen] = useState(false);
@@ -468,8 +471,44 @@ export function LaunchSurface({
     return () => document.removeEventListener("keydown", handler);
   }, [activeProject, reviewClosePanel, reviewIsPanelOpen]);
 
-  useDismissOnOutsideOrEscape(projectPickerRef, projectPickerOpen, () => setProjectPickerOpen(false));
-  useDismissOnOutsideOrEscape(branchPickerRef, branchPickerOpen, () => setBranchPickerOpen(false));
+  // The launcher composer sits mid-viewport. A menu that only knows "open
+  // downward, at most 440px" runs off the bottom of .work-scroll; the clipped
+  // list's wheel then scrolls that ancestor. Stay below the chip — flipping
+  // would put this menu above the composer while the model menu dropped the
+  // other way — and cap to the room actually left. Stay in the anchor's
+  // stacking context too: a body portal paints under the dismiss layer.
+  const projectPopover = useAnchoredPopover({
+    open: projectPickerOpen,
+    placement: "bottom-start",
+    flip: false,
+    strategy: "absolute",
+    capHeight: true,
+    edgePadding: PICKER_MENU_EDGE_PADDING_PX,
+    maxHeight: PICKER_MENU_MAX_HEIGHT_PX
+  });
+  const branchPopover = useAnchoredPopover({
+    open: branchPickerOpen,
+    placement: "bottom-start",
+    flip: false,
+    strategy: "absolute",
+    capHeight: true,
+    edgePadding: PICKER_MENU_EDGE_PADDING_PX,
+    maxHeight: PICKER_MENU_MAX_HEIGHT_PX
+  });
+  const {
+    setAnchor: setProjectAnchor,
+    setPopover: setProjectPopover,
+    anchorRef: projectAnchorRef,
+    floatingStyles: projectFloatingStyles
+  } = projectPopover;
+  const {
+    setAnchor: setBranchAnchor,
+    setPopover: setBranchPopover,
+    anchorRef: branchAnchorRef,
+    floatingStyles: branchFloatingStyles
+  } = branchPopover;
+  useDismissOnOutsideOrEscape(projectAnchorRef, projectPickerOpen, () => setProjectPickerOpen(false));
+  useDismissOnOutsideOrEscape(branchAnchorRef, branchPickerOpen, () => setBranchPickerOpen(false));
   useDismissOnOutsideOrEscape(compactContextRef, compactContextOpen, () => setCompactContextOpen(false));
   const anyContextPickerOpen = projectPickerOpen || branchPickerOpen || modelPickerOpen;
 
@@ -560,6 +599,16 @@ export function LaunchSurface({
   // focus while open, so characters land here instead of in the prompt behind.
   const projectListRef = useRef<HTMLUListElement | null>(null);
   const branchListRef = useRef<HTMLUListElement | null>(null);
+  // One node is both the positioned menu and the list useTypeToFilter focuses.
+  // A fresh inline ref would detach and reattach every render.
+  const setProjectListNode = useCallback((node: HTMLUListElement | null): void => {
+    projectListRef.current = node;
+    setProjectPopover(node);
+  }, [setProjectPopover]);
+  const setBranchListNode = useCallback((node: HTMLUListElement | null): void => {
+    branchListRef.current = node;
+    setBranchPopover(node);
+  }, [setBranchPopover]);
   const pickProject = useCallback(
     (candidate: ProjectSummary): void => {
       persistLaunchProjectId(candidate.id);
@@ -800,11 +849,18 @@ export function LaunchSurface({
       ),
     [goalEnabled, prompt, slashAutocomplete.skillNames]
   );
-  const highlightBackdropRef = useRef<HTMLDivElement | null>(null);
-  const syncHighlightScroll = useCallback((event: ReactUIEvent<HTMLTextAreaElement>): void => {
-    const backdrop = highlightBackdropRef.current;
-    if (backdrop) backdrop.scrollTop = event.currentTarget.scrollTop;
-  }, []);
+  // The mirror follows the textarea's scroll by transform, not by its own
+  // scrollTop: WebKit leaves the div's bottom padding out of its scroll range,
+  // so a long prompt scrolled to the end clamped the mirror a line short and
+  // the caret sat a line above the text it belongs to. Synced after every
+  // render as well, since the mirror mounts into an already-scrolled field.
+  const highlightTextRef = useRef<HTMLDivElement | null>(null);
+  const syncHighlightScroll = useCallback((): void => {
+    const text = highlightTextRef.current;
+    const field = promptInputRef.current;
+    if (text && field) text.style.transform = `translateY(${-field.scrollTop}px)`;
+  }, [promptInputRef]);
+  useLayoutEffect(syncHighlightScroll, [skillHighlight, syncHighlightScroll]);
 
   const onPromptKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>): void => {
     slashAutocomplete.onKeyDown(event);
@@ -1002,16 +1058,20 @@ export function LaunchSurface({
         ) : null}
         <div className="composer-input">
           {skillHighlight ? (
-            <div className="composer-highlight-backdrop" aria-hidden="true" ref={highlightBackdropRef}>
-              {skillHighlight.map((segment, index) =>
-                segment.skill ? (
-                  <span key={index} className="skill-token">
-                    {segment.text}
-                  </span>
-                ) : (
-                  segment.text
-                )
-              )}
+            <div className="composer-highlight-backdrop" aria-hidden="true">
+              <div className="composer-highlight-text" ref={highlightTextRef}>
+                {skillHighlight.map((segment, index) =>
+                  segment.skill ? (
+                    <span key={index} className="skill-token">
+                      {segment.text}
+                    </span>
+                  ) : (
+                    segment.text
+                  )
+                )}
+                {/* Holds open the empty last line a trailing newline makes, as the textarea does. */}
+                {prompt.endsWith("\n") ? "\u200b" : null}
+              </div>
             </div>
           ) : null}
           <textarea
@@ -1063,7 +1123,7 @@ export function LaunchSurface({
           <button
             className="composer-tool"
             type="button"
-            title={cloudMode ? "Attachments are available in Local" : "Attach file"}
+            title={cloudMode ? "Cloud tasks take text only. Switch to Local to attach files." : "Attach file"}
             aria-label="Attach file"
             disabled={cloudMode}
             onClick={openFilePicker}
@@ -1074,7 +1134,7 @@ export function LaunchSurface({
             {cloudMode ? (
               <span
                 className="composer-context-chip composer-cloud-provider"
-                title={`${cloudProviderName(cloudProvider)} chooses the model for this task`}
+                title={`${cloudProviderName(cloudProvider)} picks the model`}
               >
                 <Cloud size={14} aria-hidden="true" />
                 <span className="model-picker-label">{cloudProviderName(cloudProvider)}</span>
@@ -1085,6 +1145,7 @@ export function LaunchSurface({
               fastModeEnabled={fastModeEnabled}
               open={modelPickerOpen}
               onOpenChange={setModelPickerOpen}
+              openBelow
               withEffortSlider
               effortOpen={effortPickerOpen}
               onEffortOpenChange={setEffortPickerOpen}
@@ -1122,7 +1183,7 @@ export function LaunchSurface({
               role={compactContextOpen ? "dialog" : undefined}
               aria-label={compactContextOpen ? "Project and branch" : undefined}
             >
-            <div className="project-picker-anchor" ref={projectPickerRef}>
+            <div className="project-picker-anchor" ref={setProjectAnchor}>
             <button
               className="composer-context-chip"
               type="button"
@@ -1143,7 +1204,8 @@ export function LaunchSurface({
                 data-type-scale="chrome"
                 role="listbox"
                 aria-label="Select project"
-                ref={projectListRef}
+                ref={setProjectListNode}
+                style={projectFloatingStyles}
                 tabIndex={-1}
                 onKeyDown={projectFilter.onKeyDown}
                 onClick={(event) => {
@@ -1206,7 +1268,7 @@ export function LaunchSurface({
             )}
             </div>
             {project ? (
-            <div className="project-picker-anchor" ref={branchPickerRef}>
+            <div className="project-picker-anchor" ref={setBranchAnchor}>
             <button
               className="composer-context-chip branch-chip"
               type="button"
@@ -1225,7 +1287,8 @@ export function LaunchSurface({
                 data-type-scale="chrome"
                 role="listbox"
                 aria-label="Select branch"
-                ref={branchListRef}
+                ref={setBranchListNode}
+                style={branchFloatingStyles}
                 tabIndex={-1}
                 onKeyDown={branchFilter.onKeyDown}
                 onClick={(event) => {
@@ -1280,15 +1343,16 @@ export function LaunchSurface({
                 type="button"
                 className="composer-context-chip composer-run-location"
                 aria-label={`Run location: ${cloudMode ? "Cloud" : "Local"}`}
+                aria-pressed={cloudMode}
                 disabled={isSubmitting}
                 title={cloudMode
                   ? "Switch to Local"
                   : isHostedCloudProvider(model.provider)
                     ? `Switch to Cloud · ${cloudProviderName(model.provider)}`
-                    : "Cloud is unavailable for this provider"}
+                    : `${PROVIDER_DISPLAY_NAMES[model.provider]} can’t run cloud tasks`}
                 onClick={() => {
                   if (!cloudMode && !isHostedCloudProvider(model.provider)) {
-                    setStatus(`${PROVIDER_DISPLAY_NAMES[model.provider]} does not support cloud tasks. Your model is unchanged.`);
+                    setStatus(`${PROVIDER_DISPLAY_NAMES[model.provider]} can’t run cloud tasks. Pick a Claude, Codex, or Cursor model to use Cloud.`);
                     return;
                   }
                   closeContextPickers();

@@ -24,6 +24,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -31,8 +32,7 @@ import {
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent,
   type MutableRefObject,
-  type ReactNode,
-  type UIEvent as ReactUIEvent
+  type ReactNode
 } from "react";
 import type {
   AgentMode,
@@ -49,6 +49,7 @@ import {
   isHostedCloudProvider,
   type HostedCloudProvider
 } from "../../shared/cloudProviders.js";
+import { PROVIDER_DISPLAY_NAMES } from "../../shared/providerModels.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { canSteerQueuedMessage, hasSteeringContextHeadroom } from "../lib/queuedSteer.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
@@ -96,6 +97,7 @@ import type { FontSize } from "../lib/fonts.js";
 import type { FollowUpDelivery } from "../lib/uiPreferences.js";
 
 const PROMPT_MAX_HEIGHT_PX = 168;
+const NO_SENT_PROMPTS: readonly string[] = [];
 
 /**
  * Feedback line floating above the composer. Pane-local actions surface their
@@ -133,7 +135,7 @@ export function SessionComposer({
   isFocused = true,
   isQueueing,
   defaultFollowUpDelivery = "queue",
-  lastSentPrompt = null,
+  sentPrompts = NO_SENT_PROMPTS,
   onFastModeEnabledChange,
   onDraftPresentChange,
   onCancelQueuedMessage,
@@ -172,8 +174,9 @@ export function SessionComposer({
   floating?: boolean;
   inputRef: MutableRefObject<HTMLTextAreaElement | null>;
   isFocused?: boolean;
-  /** The user's most recent message in this chat; ⌘↑ in an empty draft recalls it. */
-  lastSentPrompt?: string | null;
+  /** The user's messages in this chat, oldest first; ↑ in an empty draft
+      steps back through them. */
+  sentPrompts?: readonly string[];
   isQueueing: boolean;
   /** Settings → General: the first action for a mid-turn follow-up. */
   defaultFollowUpDelivery?: FollowUpDelivery;
@@ -380,7 +383,7 @@ export function SessionComposer({
       commands.push({
         name: "cloud",
         label: "Cloud",
-        hint: `Launch a task in ${cloudProviderName(selectedModel.provider)}`,
+        hint: `Send a task to ${cloudProviderName(selectedModel.provider)}`,
         icon: Cloud,
         writesDraft: true,
         run: () => setInput("/cloud ")
@@ -490,11 +493,18 @@ export function SessionComposer({
       ),
     [dispatchedNames, input, slashAutocomplete.skillNames]
   );
-  const highlightBackdropRef = useRef<HTMLDivElement | null>(null);
-  const syncHighlightScroll = useCallback((event: ReactUIEvent<HTMLTextAreaElement>): void => {
-    const backdrop = highlightBackdropRef.current;
-    if (backdrop) backdrop.scrollTop = event.currentTarget.scrollTop;
-  }, []);
+  // The mirror follows the textarea's scroll by transform, not by its own
+  // scrollTop: WebKit leaves the div's bottom padding out of its scroll range,
+  // so a long prompt scrolled to the end clamped the mirror a line short and
+  // the caret sat a line above the text it belongs to. Synced after every
+  // render as well, since the mirror mounts into an already-scrolled field.
+  const highlightTextRef = useRef<HTMLDivElement | null>(null);
+  const syncHighlightScroll = useCallback((): void => {
+    const text = highlightTextRef.current;
+    const field = inputRef.current;
+    if (text && field) text.style.transform = `translateY(${-field.scrollTop}px)`;
+  }, [inputRef]);
+  useLayoutEffect(syncHighlightScroll, [skillHighlight, syncHighlightScroll]);
   const changeSummaryText = changeSummary
     ? `${changeSummary.fileCount} ${changeSummary.fileCount === 1 ? "file" : "files"} changed`
     : null;
@@ -518,6 +528,10 @@ export function SessionComposer({
   // render that carries the new text: seeking on the old value would land in
   // the wrong place, or out of range.
   const caretAfterInput = useRef<number | null>(null);
+  // Which sent prompt ↑/↓ last put in the draft. It only counts while the
+  // draft still holds that prompt verbatim: an edit makes it the user's text,
+  // and the arrows go back to moving the caret.
+  const recalledPrompt = useRef<{ sessionId: string | null; index: number } | null>(null);
   useEffect(() => {
     const caret = caretAfterInput.current;
     if (caret === null) return;
@@ -572,21 +586,48 @@ export function SessionComposer({
       inputFormRef.current?.requestSubmit();
       return;
     }
-    // ⌘↑ in an empty draft recalls the last sent message for editing, the
-    // chat-app reflex for a typo or an afterthought. A draft in progress
-    // keeps the key's native meaning: jump to the start of the text.
+    // ↑ in an empty draft recalls the last sent message for editing, the
+    // chat-app reflex for a typo or an afterthought; more ↑ steps further
+    // back and ↓ comes forward again, past the newest to an empty draft.
+    // A draft the user wrote keeps the keys' native meaning, and so does a
+    // caret inside a recalled prompt, so arrows still move between its lines.
     if (
-      event.key === "ArrowUp" &&
-      event.metaKey &&
+      (event.key === "ArrowUp" || event.key === "ArrowDown") &&
       !event.shiftKey &&
       !event.altKey &&
       !event.ctrlKey &&
-      input.length === 0 &&
-      lastSentPrompt
+      !event.nativeEvent.isComposing
     ) {
+      const step = event.key === "ArrowUp" ? -1 : 1;
+      const recalled = recalledPrompt.current;
+      const recalledIndex =
+        recalled?.sessionId === sessionId && sentPrompts[recalled.index] === input
+          ? recalled.index
+          : null;
+      const { selectionStart, selectionEnd } = event.currentTarget;
+      // ↑ leaves a recalled prompt only from its first line and ↓ only from
+      // its last, so the caret still walks a multiline prompt's lines.
+      const caretAtEdge =
+        selectionStart === selectionEnd &&
+        (step === -1
+          ? !input.slice(0, selectionStart).includes("\n")
+          : !input.slice(selectionEnd).includes("\n"));
+      let nextIndex: number | null = null;
+      if (recalledIndex !== null && caretAtEdge) nextIndex = recalledIndex + step;
+      else if (recalledIndex === null && input.length === 0 && step === -1) {
+        nextIndex = sentPrompts.length - 1;
+      }
+      if (nextIndex === null || nextIndex < 0) return;
       event.preventDefault();
-      caretAfterInput.current = lastSentPrompt.length;
-      setInput(lastSentPrompt);
+      const nextPrompt = sentPrompts[nextIndex];
+      if (nextPrompt === undefined) {
+        recalledPrompt.current = null;
+        setInput("");
+        return;
+      }
+      recalledPrompt.current = { sessionId, index: nextIndex };
+      caretAfterInput.current = nextPrompt.length;
+      setInput(nextPrompt);
     }
   };
 
@@ -620,7 +661,7 @@ export function SessionComposer({
         return;
       }
       if (!isHostedCloudProvider(selectedModel.provider)) {
-        setStatus({ kind: "error", message: "This provider does not support cloud tasks." });
+        setStatus({ kind: "error", message: `${PROVIDER_DISPLAY_NAMES[selectedModel.provider]} can’t run cloud tasks.` });
         return;
       }
       if (pendingAttachments.length > 0) {
@@ -1070,16 +1111,20 @@ export function SessionComposer({
       ) : null}
       <div className="session-input-field">
         {skillHighlight ? (
-          <div className="composer-highlight-backdrop" aria-hidden="true" ref={highlightBackdropRef}>
-            {skillHighlight.map((segment, index) =>
-              segment.skill ? (
-                <span key={index} className="skill-token">
-                  {segment.text}
-                </span>
-              ) : (
-                segment.text
-              )
-            )}
+          <div className="composer-highlight-backdrop" aria-hidden="true">
+            <div className="composer-highlight-text" ref={highlightTextRef}>
+              {skillHighlight.map((segment, index) =>
+                segment.skill ? (
+                  <span key={index} className="skill-token">
+                    {segment.text}
+                  </span>
+                ) : (
+                  segment.text
+                )
+              )}
+              {/* Holds open the empty last line a trailing newline makes, as the textarea does. */}
+              {input.endsWith("\n") ? "\u200b" : null}
+            </div>
           </div>
         ) : null}
         <textarea

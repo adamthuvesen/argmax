@@ -76,12 +76,12 @@ describe("App side chat launcher", () => {
     expect(within(picker).queryByRole("button", { name: "Chat" })).toBeNull();
   });
 
-  it("opens the launcher pre-set to chat mode from the sidebar's New side chat", async () => {
+  it("opens the launcher pre-set to chat mode from the sidebar's Chat group", async () => {
     render(<App />);
     await screen.findByLabelText("Task prompt");
     expect(screen.queryByText(SIDE_CHAT_TITLE)).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "New side chat" }));
+    fireEvent.click(screen.getByRole("button", { name: "New chat without a repository" }));
 
     expect(await screen.findByText(SIDE_CHAT_TITLE)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Chat mode" })).toHaveTextContent("Chat");

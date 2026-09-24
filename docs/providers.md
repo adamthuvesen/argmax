@@ -4,7 +4,7 @@ Argmax manages Claude Code, Codex, Cursor Agent, OpenCode, and Grok Build throug
 
 ## Architecture
 
-- [adapters.rs](../src-tauri/src/providers/adapters.rs): Constructs CLI arguments and stdin for structured JSON modes. Centralizes auto-approve bypass flags.
+- [adapters.rs](../src-tauri/src/providers/adapters.rs): Constructs CLI arguments for structured JSON modes. Centralizes auto-approve bypass flags.
 - [environment.rs](../src-tauri/src/providers/environment.rs): Hydrates user login shell environment and PATH for spawned processes.
 - [discovery.rs](../src-tauri/src/providers/discovery.rs): Detects installed provider binaries and versions.
 - [cloud.rs](../src-tauri/src/providers/cloud.rs): Validates pushed GitHub branches, clones isolated launch checkouts, and builds bounded chat context.
@@ -31,8 +31,12 @@ itself rather than a provider capability. See [goals.md](goals.md).
 Argmax can start a hosted task with Claude, Codex, or Cursor from the launch
 composer or send an existing chat to its provider's cloud. Composer launches use the
 registered project's repository checkout and the composer prompt as the task
-brief. Active-chat launches include a bounded visible transcript in the read-only confirmation; they
-exclude tool payloads, raw provider output, and child-agent rows. Both paths
+brief. Active-chat launches send a bounded visible transcript; it
+excludes tool payloads, raw provider output, and child-agent rows.
+`cloud:prepare` builds that brief and closes it with one instruction: the text
+after `/cloud` when there is one (the optional `instruction` input, accepted
+only for a chat), or a fixed "continue this task" line otherwise. The dialog
+launches that brief as returned and shows the full text behind a disclosure. Both paths
 require a GitHub branch whose local `HEAD` matches the branch on `origin`.
 Uncommitted work stays in the local checkout, while unpushed commits must be
 pushed before launch. Neither is uploaded implicitly. The
@@ -436,7 +440,7 @@ Lineage alone is not enough for Codex, because Codex runs review threads of its 
 
 A Codex turn ends when its root `turn/completed` arrives and nothing it spawned is still working. The app-server declares children through a collab tool call's `receiverThreadIds` and `agentsStates`, and a turn holds for those. It can also send none of that — Codex 0.154.0 delivered no `spawnAgent` item at all and every `wait` row with both fields empty — and ending the turn kills the app-server process group and each child thread inside it. A turn that has answered therefore also asks the rollouts on disk, every two seconds, whether a child of its thread is still writing: a rollout that names this thread as its parent, carries a `thread_source: "subagent"` spawn (a fork or a guardian review names a parent too, and neither is work anyone is waiting on), has no `task_complete` or `turn_aborted` in its last records, and has been touched in the last two minutes. The silence window is what stops a killed or wedged child from holding the session forever.
 
-Initial session backfill and open agent panes run reconciliation off the main thread. Live agent-control events queue one serialized scan per session. Active Codex invocations also request a scan every two seconds, because the provider can omit both spawn and wait events while its children work. The watcher stops when its invocation is replaced or its handle ends or is removed. Unchanged trace files stay cached. Background scans and agent-pane reads publish a session-change hint after writing or deleting rows, so recovery reaches an open chat even when the parent is silent. A terminal provider event waits for the final serialized scan and includes its new launch or tombstone rows in the same dashboard delta.
+Opening a session queues its reconciliation behind the first page rather than ahead of it: the page returns at once, and the scan (which walks the provider's rollout folders for the session's lifetime) lands as a revision hint if it writes anything. Measured 2026-09-23 on a release build over a copy of a 4.3 GB database, a warm first page of the two largest Codex sessions went from 93 ms to 50 ms and from 130 ms to 63 ms. The scan's plan reads through the reader pool, so it no longer holds the writer every provider persists through. Open agent panes run reconciliation off the main thread. Live agent-control events queue one serialized scan per session. Active Codex invocations also request a scan every two seconds, because the provider can omit both spawn and wait events while its children work. The watcher stops when its invocation is replaced or its handle ends or is removed. Unchanged trace files stay cached. Background scans and agent-pane reads publish a session-change hint after writing or deleting rows, so recovery reaches an open chat even when the parent is silent. A terminal provider event waits for the final serialized scan and includes its new launch or tombstone rows in the same dashboard delta.
 
 ## Measured File-Change Diffs
 
@@ -562,8 +566,8 @@ The `argmax session …` CLI still speaks the same socket from a terminal. See
 ## Default Model Selection
 
 Defaults are configured in Settings → Agents → Default model (`localStorage.argmax.launch.model`). When unset, the app selects the highest priority installed provider:
-1. Claude (Opus 5)
-2. Codex (GPT-5.6 Sol)
+1. Claude (Opus 5.5)
+2. Codex (GPT-6 Sol)
 3. Cursor (Grok 4.6)
 4. OpenCode (GLM-5.3-Flash)
 5. Grok Build (Grok 4.6)

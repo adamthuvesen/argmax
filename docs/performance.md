@@ -253,16 +253,19 @@ JS loops that CSS pausing cannot reach check `document.hidden` themselves:
   never runs while hidden: it is mounted only for the ~1s of its own sweep, and
   a hidden document skips the sweep outright rather than queueing one. A settled
   transcript of two hundred turns paints nothing and schedules no frames.
-- The chat typewriter ([StreamingMarkdown](../src/renderer/components/StreamingMarkdown.tsx),
-  64 ms tick, paced per arrival so a whole backlog drains in ~1.3 s) catches up
-  silently while hidden instead of pausing the prefix: a backgrounded live turn
-  can land several finished bubbles, and holding them at character zero made
-  them all type out together on return. Every revealing block shares one
-  interval, started by the first and cleared with the last, so React batches
-  all of their advances into one render per tick. The 64 ms cadence halves the
-  maximum React and Markdown render rate while keeping reveal throughput steady.
-  The fresh-run fade on top of it animates opacity only, on the handful of spans
-  still fading (see [chat-cards.md](chat-cards.md)); nothing under them repaints.
+- The chat typewriter ([StreamingMarkdown](../src/renderer/components/StreamingMarkdown.tsx))
+  runs on the animation frame, so a hidden window schedules nothing, and it
+  catches up silently when it returns instead of pausing the prefix: a
+  backgrounded live turn can land several finished bubbles, and holding them
+  at character zero made them all type out together on return. Every revealing
+  block shares one frame loop, started by the first and cancelled with the
+  last, so React batches all of their advances into one render per frame, and
+  a block renders only when its reveal crosses into a new word. Only the open
+  Markdown block re-parses per render ([chat-cards.md](chat-cards.md)), which
+  took a 6,300-character replayed Claude turn from 9.9 ms of script per
+  visible update to 3.9 ms while updating 2.4 times as often (total script
+  2.8 s → 2.4 s). The fresh-run fade on top of it animates opacity only, on
+  the handful of spans still fading; nothing under them repaints.
 - The 1.5 s open-agent poll in
   [AgentActivity](../src/renderer/components/AgentActivity.tsx) runs only for
   the Agents dock tab that is shown, and still skips ticks while the document is
@@ -312,13 +315,33 @@ wheel notch committed about 1,500 components before, and one button after. Mouse
 ([chat-cards.md](chat-cards.md#follow-scroll)) writes `scrollTop` from JS every
 frame, so any main-thread work during a scroll now shows as a stutter.
 
-Paced markdown reveals use a numeric Unicode cursor and slice the source
-string without retaining a character array or joining each visible prefix.
-Reveal timing, Markdown rendering, and tool-call presentation are unchanged.
-Completed, unpaced, and reduced-motion blocks render the source text directly.
-An isolated local benchmark of 1,000 prefixes over 100,800 code points took
-about 400 ms with the previous array slicing and joining, and under 2 ms with
-the cursor. This measures prefix preparation, not end-to-end rendering.
+Settled Markdown renders from a parse cache in
+[StreamingMarkdown](../src/renderer/components/StreamingMarkdown.tsx): the
+parsed element tree of a finished message (or a closed block of a live one)
+is kept by its text, 4 million source characters at most, so a chat reopened
+after a switch does not parse its history again. Measured 2026-09-23
+remounting 60 real answers (production build): 28 ms of script to 5 ms.
+Live text and fading blocks still parse per render.
+Highlighted code fences are kept the same way in
+[highlighter.ts](../src/renderer/lib/highlighter.ts), by theme, language, and
+source (2 million characters); a fence still being written is not kept, since
+its prefixes are never asked for again. Remounting 40 real answers with code:
+script 66 to 51 ms, paint-ready 144 to 120 ms. The rest is the first style and
+layout of the new DOM.
+
+A fence that is not in that cache paints plain and queues its highlight
+(`queueHighlight` in the same module): jobs run in the order fences mounted, 6
+ms at a time between frames. Before, once Shiki had loaded, every fence in a
+newly opened chat was tokenized inside its first render. Measured 2026-09-23
+opening 40 real answers with code: the longest task went from 312 ms to 102 ms
+(the Markdown render itself), and code finished coloring at about 160 ms instead
+of 396 ms.
+
+The paced reveal cuts the source at a word or surrogate-pair boundary
+([streamingText.ts](../src/renderer/lib/streamingText.ts) `revealBoundary`),
+scanning at most one word from the reveal position, and slices the string
+once per render; it never builds a character array. Completed, unpaced, and
+reduced-motion blocks render the source text directly.
 
 Usage and Activity prefetches share in-flight requests with visible panels.
 Each summary cache retains at most eight filter combinations, preserving the
@@ -330,6 +353,18 @@ are reused on opening, while failed preloads retry. Hosts with their own review
 screen, including mobile, do not warm the desktop diff. Diff previews retain
 at most 12 entries and 8 MiB of estimated UTF-16 text per pane, excluding the
 currently displayed diff. Oversized diffs remain viewable without being cached.
+
+Diff hunks are highlighted off the render path
+([diffHighlight.ts](../src/renderer/lib/diffHighlight.ts)): each hunk is
+tokenized as its two sides (the new file's context and additions, the old
+file's context and deletions) in 200-line chunks that carry Shiki's grammar
+state, 6 ms at a time between frames, and a hunk re-renders only when its own
+lines gain colors. Lines paint plain until then. Measured 2026-09-23 on a real
+2,847-line diff of `App.tsx` (production build, headless Chrome): the longest
+main-thread task went from 760 ms to 109 ms (4x CPU throttle: 3,243 ms to
+254 ms), and what remains is the first render of the lines and Shiki's
+one-time grammar compile, not the tokenizing. Because a side is tokenized as
+one document, a string or comment spanning lines now colors correctly.
 
 Workspace file inventories sort and deduplicate borrowed paths before creating
 owned entries, avoiding tree-node and duplicate string allocations while

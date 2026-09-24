@@ -59,7 +59,7 @@ describe("SessionComposer follow-up suggestion", () => {
       provider: "codex",
       // The cheap title model, not the session's own — a placeholder is a
       // handful of tokens and must not queue behind an expensive model.
-      modelId: "gpt-5.6-luna"
+      modelId: "gpt-6-luna"
     });
   });
 

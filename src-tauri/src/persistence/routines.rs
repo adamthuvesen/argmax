@@ -386,6 +386,34 @@ pub fn mark_routine_run(
     Ok(changes > 0)
 }
 
+/// Retires a one-shot whose occurrence already launched, for when
+/// `mark_routine_run` lost its `updated_at` race to an edit made during the
+/// launch. An edit keeps a past `run_once_at` as `next_run_at`, so without
+/// this the same occurrence fires again on the next tick. Keyed on the fired
+/// `run_once_at` rather than `updated_at`: an edit that moved the time or
+/// switched to a cron schedule is a new occurrence and is left alone.
+pub fn retire_fired_one_shot(
+    connection: &Connection,
+    id: &str,
+    fired_run_once_at: &str,
+    last_run_at: &str,
+) -> ArgmaxResult<bool> {
+    let updated_at = next_routine_updated_at(connection, id)?;
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+            UPDATE routines
+            SET enabled = 0, next_run_at = NULL, last_run_at = ?, updated_at = ?
+            WHERE id = ? AND cron_expr IS NULL AND run_once_at = ?
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let changes = statement
+        .execute((last_run_at, updated_at.as_str(), id, fired_run_once_at))
+        .map_err(sqlite_error)?;
+    Ok(changes > 0)
+}
+
 fn row_to_routine(row: &Row<'_>) -> rusqlite::Result<Routine> {
     let run_target: String = row
         .get("run_target")
@@ -603,6 +631,50 @@ mod tests {
             routine.last_run_at.as_deref(),
             Some("2026-01-01T09:00:00.000Z")
         );
+    }
+
+    #[test]
+    fn a_one_shot_edited_during_its_launch_is_retired_unless_rescheduled() {
+        let database = database_with_project();
+        let connection = database.connection();
+        let fired_at = "2026-01-01T09:00:00.000Z";
+        for id in ["renamed", "moved"] {
+            let once = UpsertRoutineInput {
+                cron_expr: None,
+                run_once_at: Some(fired_at.to_string()),
+                ..input(id)
+            };
+            upsert_routine(&connection, &once, Some(fired_at.into())).unwrap();
+        }
+        let renamed = routine_launch_fields(&find_routine_by_id(&connection, "renamed").unwrap());
+        // A rename mid-launch keeps the past time as `next_run_at`.
+        let edit = UpsertRoutineInput {
+            name: "Renamed".to_string(),
+            cron_expr: None,
+            run_once_at: Some(fired_at.to_string()),
+            ..input("renamed")
+        };
+        upsert_routine(&connection, &edit, Some(fired_at.into())).unwrap();
+        assert!(
+            !mark_routine_run(&connection, &renamed, fired_at, None, None, false, None).unwrap()
+        );
+        assert!(retire_fired_one_shot(&connection, "renamed", fired_at, fired_at).unwrap());
+        assert!(due_routines(&connection, "2026-01-02T00:00:00.000Z")
+            .unwrap()
+            .iter()
+            .all(|routine| routine.id != "renamed"));
+
+        let later = "2026-01-03T09:00:00.000Z";
+        let moved = UpsertRoutineInput {
+            cron_expr: None,
+            run_once_at: Some(later.to_string()),
+            ..input("moved")
+        };
+        upsert_routine(&connection, &moved, Some(later.into())).unwrap();
+        assert!(!retire_fired_one_shot(&connection, "moved", fired_at, fired_at).unwrap());
+        let routine = find_routine_by_id(&connection, "moved").unwrap();
+        assert!(routine.enabled);
+        assert_eq!(routine.next_run_at.as_deref(), Some(later));
     }
 
     /// `routines:run-now` reads its launch fields straight off the row, so the

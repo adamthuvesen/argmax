@@ -1024,6 +1024,14 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &EMPTY_EXPECTED_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 55,
+        name: "rename_scratch_project_to_chat",
+        up: RENAME_SCRATCH_PROJECT_TO_CHAT,
+        affected_tables: &["projects"],
+        expected_columns: &EMPTY_EXPECTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
 
 // GitHub state belongs to a project and PR number. Session links keep the
@@ -1410,6 +1418,13 @@ CREATE INDEX idx_routines_arc_id ON routines(arc_id);
 // Dropping an index rewrites no table rows.
 const DROP_RAW_OUTPUTS_SESSION_CREATED_INDEX: &str = r#"
 DROP INDEX IF EXISTS idx_raw_outputs_session_created;
+"#;
+
+// Repo-less chats are called "Chat" in the UI now. The scratch project's name
+// is the label its rows wear (sidebar subtitle, phone list), so rename the row
+// seeded under the old name.
+const RENAME_SCRATCH_PROJECT_TO_CHAT: &str = r#"
+UPDATE projects SET name = 'Chat' WHERE id = 'scratch-side-chats' AND name = 'Side chats';
 "#;
 
 // The disposal an agent asked for while its own turn was still running.
@@ -2664,6 +2679,10 @@ mod tests {
                 (
                     54,
                     compute_migration_checksum(DROP_RAW_OUTPUTS_SESSION_CREATED_INDEX)
+                ),
+                (
+                    55,
+                    compute_migration_checksum(RENAME_SCRATCH_PROJECT_TO_CHAT)
                 ),
             ]
         );

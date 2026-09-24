@@ -62,7 +62,7 @@ describe("App", () => {
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Argmax" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Build dashboard" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Switch model" })).toHaveTextContent("Opus 5");
+    expect(screen.getByRole("button", { name: "Switch model" })).toHaveTextContent("Opus 5.5");
     expect(screen.queryByRole("button", { name: "Dashboard" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Board" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Cockpit" })).not.toBeInTheDocument();
@@ -74,13 +74,13 @@ describe("App", () => {
   it("restores the persisted launcher default model", async () => {
     persistLaunchModel({
       provider: "codex",
-      label: "GPT-5.6 Sol",
-      modelId: "gpt-5.6-sol",
+      label: "GPT-6 Sol",
+      modelId: "gpt-6-sol",
       reasoningEffort: "high"
     });
     render(<App />);
 
-    expect(await screen.findByRole("button", { name: "Switch model" })).toHaveTextContent("GPT-5.6 Sol");
+    expect(await screen.findByRole("button", { name: "Switch model" })).toHaveTextContent("GPT-6 Sol");
   });
 
   it("toggles project sessions in the sidebar and remembers collapsed projects", async () => {
@@ -626,7 +626,7 @@ describe("App", () => {
   it("starts the default provider from the composer", async () => {
     render(<App />);
 
-    expect(await screen.findByRole("button", { name: "Switch model" })).toHaveTextContent("Opus 5");
+    expect(await screen.findByRole("button", { name: "Switch model" })).toHaveTextContent("Opus 5.5");
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
       target: { value: "Implement PTY launch" }
     });
@@ -642,8 +642,8 @@ describe("App", () => {
       workspaceId: "workspace-1",
       provider: "claude",
       prompt: "Implement PTY launch",
-      modelLabel: "Opus 5",
-      modelId: "claude-opus-5",
+      modelLabel: "Opus 5.5",
+      modelId: "claude-opus-5-5",
       reasoningEffort: "medium",
       fastMode: false,
       agentMode: "auto",

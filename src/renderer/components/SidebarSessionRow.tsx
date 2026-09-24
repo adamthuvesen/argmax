@@ -10,6 +10,7 @@ import {
   GitPullRequest,
   GitPullRequestClosed,
   ListPlus,
+  MessageCircle,
   Palette,
   Pencil,
   Pin,
@@ -566,7 +567,16 @@ function SidebarSessionRowInner({
               });
             }}
           >
-            {leadingGlyph ?? <span className="session-link-lead-ring" aria-hidden="true" />}
+            {leadingGlyph ??
+              (workspace.kind === "scratch" ? (
+                // A repo-less chat has no checkout to report on; its calm
+                // glyph says what it is instead.
+                <span className="session-link-lead-ring" data-chat="true" aria-hidden="true">
+                  <MessageCircle size={11} strokeWidth={1} absoluteStrokeWidth />
+                </span>
+              ) : (
+                <span className="session-link-lead-ring" aria-hidden="true" />
+              ))}
             {subtitle || importedProvider || launchedByLabel || arcLabel ? (
               <span className="session-link-text">
                 <span>{displayLabel}</span>

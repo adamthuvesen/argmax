@@ -34,14 +34,14 @@ pub fn selected_environment() -> ArgmaxResult<(String, String)> {
         .ok_or_else(|| {
             ArgmaxError::service(
                 "CLOUD_ENVIRONMENT_NOT_SELECTED",
-                "Claude's config directory could not be resolved. Select Default with /remote-env in Claude Code first.",
+                "Argmax could not find Claude Code's settings. In Claude Code, run /remote-env and choose Default, then try again.",
             )
         })?;
     let settings_path = config_dir.join("settings.json");
     let settings = std::fs::read_to_string(&settings_path).map_err(|_| {
         ArgmaxError::service(
             "CLOUD_ENVIRONMENT_NOT_SELECTED",
-            "No Claude Cloud environment is selected. Run /remote-env in Claude Code and select Default.",
+            "Claude Cloud has no default environment. In Claude Code, run /remote-env and choose Default, then try again.",
         )
     })?;
     let value: serde_json::Value = serde_json::from_str(&settings).map_err(|error| {
@@ -57,11 +57,11 @@ pub fn selected_environment() -> ArgmaxResult<(String, String)> {
         .ok_or_else(|| {
             ArgmaxError::service(
                 "CLOUD_ENVIRONMENT_NOT_SELECTED",
-                "No hosted Claude Cloud environment is selected. Run /remote-env in Claude Code and select Default.",
+                "Claude Cloud has no default environment. In Claude Code, run /remote-env and choose Default, then try again.",
             )
         })?
         .to_string();
-    Ok((id, "Selected in Claude Code".to_string()))
+    Ok((id, "Claude Code default".to_string()))
 }
 
 pub async fn launch(
@@ -73,7 +73,7 @@ pub async fn launch(
     if !valid_environment_id(environment_id) {
         return Err(ArgmaxError::service(
             "CLOUD_ENVIRONMENT_CHANGED",
-            "The selected Claude Cloud environment is no longer valid. Select Default with /remote-env and prepare the handoff again.",
+            "Your Claude Cloud environment changed. In Claude Code, run /remote-env and choose Default, then try again.",
         ));
     }
     let binary_path = binary_path.to_string();
@@ -253,17 +253,27 @@ fn launch_blocking(
             .unwrap_or_default();
         return Err(ArgmaxError::service(
             "CLOUD_LAUNCH_DELIVERY_UNKNOWN",
-            format!("Claude Cloud did not return a session link within 60 seconds.{detail} The task may have been created, so Argmax will not retry it automatically. Check claude.ai/code before trying again."),
+            format!("Claude Cloud did not return a session link within 60 seconds.{detail} It may have created the task, so Argmax will not retry it. Check claude.ai/code before sending it again."),
         ));
     }
-    let detail = output
-        .lines()
-        .rev()
-        .find(|line| !line.trim().is_empty())
-        .unwrap_or("Claude exited before returning a cloud session link.");
+    let detail = safe_cloud_output_detail(&output)
+        .map(|line| format!(": {line}"))
+        .unwrap_or_default();
+    // A non-zero exit without a link is Claude refusing before it created a
+    // session (sign-in, cloud access, environment). Only a clean exit that
+    // printed no link leaves the outcome unknown.
+    if !status.success() {
+        return Err(ArgmaxError::service(
+            "CLOUD_LAUNCH_FAILED",
+            format!(
+                "Claude Cloud did not create the task (exit code {}){detail}. Check that Claude Code is signed in with an account that has cloud access.",
+                status.exit_code()
+            ),
+        ));
+    }
     Err(ArgmaxError::service(
         "CLOUD_LAUNCH_DELIVERY_UNKNOWN",
-        format!("Claude exited with {status} without returning a cloud session link ({detail}). The task may have been created, so Argmax will not retry it automatically."),
+        format!("Claude exited without returning a cloud session link{detail}. It may have created the task, so Argmax will not retry it. Check claude.ai/code before sending it again."),
     ))
 }
 
@@ -286,6 +296,7 @@ fn has_workspace_trust_prompt(output: &str) -> bool {
 }
 
 fn safe_cloud_output_detail(output: &str) -> Option<String> {
+    let output = strip_osc_sequences(output);
     let line = output.lines().rev().find_map(|line| {
         let line = line.trim();
         (!line.is_empty()).then_some(line)
@@ -355,6 +366,31 @@ fn valid_cloud_session_id(value: &str) -> bool {
             .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'))
 }
 
+/// Drop OSC sequences (window title, hyperlinks, colour queries), which run
+/// to BEL or ST (`ESC \`). Only for text shown to the user: an OSC 8
+/// hyperlink can carry the session URL itself, so link detection keeps them.
+fn strip_osc_sequences(value: &str) -> String {
+    let mut result = String::with_capacity(value.len());
+    let mut chars = value.chars().peekable();
+    while let Some(character) = chars.next() {
+        if character == '\u{1b}' && chars.peek() == Some(&']') {
+            chars.next();
+            while let Some(next) = chars.next() {
+                if next == '\u{7}' {
+                    break;
+                }
+                if next == '\u{1b}' && chars.peek() == Some(&'\\') {
+                    chars.next();
+                    break;
+                }
+            }
+        } else {
+            result.push(character);
+        }
+    }
+    result
+}
+
 fn strip_terminal_sequences(value: &str) -> String {
     let mut result = String::with_capacity(value.len());
     let mut chars = value.chars().peekable();
@@ -399,6 +435,15 @@ pub async fn claude_binary_path(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn error_detail_drops_osc_sequences() {
+        let output = "\u{1b}]0;claude\u{7}Not signed in\u{1b}]8;;https://x\u{1b}\\ here\n";
+        assert_eq!(
+            safe_cloud_output_detail(output).as_deref(),
+            Some("Not signed in here")
+        );
+    }
 
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;

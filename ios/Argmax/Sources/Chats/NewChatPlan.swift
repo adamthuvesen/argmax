@@ -29,7 +29,7 @@ enum NewChatMode: String, CaseIterable, Hashable, Sendable, Identifiable {
         case .worktree: return "New worktree"
         case .current: return "Current checkout"
         case .branchFrom: return "Branch from…"
-        case .sideChat: return "Side chat"
+        case .sideChat: return "Chat"
         }
     }
 

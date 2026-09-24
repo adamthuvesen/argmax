@@ -10,6 +10,7 @@ pub mod checks;
 pub mod dashboard;
 pub mod database;
 pub mod events;
+pub mod follow_up_suggestions;
 pub mod gh;
 pub mod goals;
 pub mod learnings;

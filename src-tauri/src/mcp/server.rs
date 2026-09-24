@@ -1,7 +1,7 @@
 //! The `argmax` MCP server: stdio transport in, socket calls out.
 
 use rmcp::{
-    model::{ServerCapabilities, ServerInfo},
+    model::{ServerCapabilities, ServerConfig},
     tool_handler, ServerHandler, ServiceExt,
 };
 
@@ -44,8 +44,8 @@ pub fn serve_stdio() -> i32 {
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for ArgmaxTools {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_instructions(agent_tools_instruction(self.browser_tools))
     }
 }

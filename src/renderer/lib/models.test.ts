@@ -17,8 +17,8 @@ const BASE_SESSION: SessionSummary = {
   id: "session-1",
   workspaceId: "workspace-1",
   provider: "codex",
-  modelLabel: "GPT-5.6 Sol",
-  modelId: "gpt-5.6-sol",
+  modelLabel: "GPT-6 Sol",
+  modelId: "gpt-6-sol",
   permissionMode: "auto-approve",
   providerConversationId: null,
   prompt: "Review this",
@@ -38,24 +38,24 @@ describe("modelSelectionFromSession", () => {
   it("preserves the stored session model", () => {
     const session: SessionSummary = { ...BASE_SESSION, reasoningEffort: "high" };
     expect(modelSelectionFromSession(session)).toEqual({
-      label: "GPT-5.6 Sol",
-      modelId: "gpt-5.6-sol",
+      label: "GPT-6 Sol",
+      modelId: "gpt-6-sol",
       reasoningEffort: "high"
     });
     expect(modelPickerSelectionFromSession(session)).toEqual({
       provider: "codex",
-      label: "GPT-5.6 Sol",
-      modelId: "gpt-5.6-sol",
+      label: "GPT-6 Sol",
+      modelId: "gpt-6-sol",
       reasoningEffort: "high"
     });
   });
 
   it("names the default effort when the session row carries none", () => {
     // Imported sessions and older rows have no effort, but the model runs at
-    // one — the composer chip reads "GPT-5.6 Sol Medium", not the model alone.
+    // one — the composer chip reads "GPT-6 Sol Medium", not the model alone.
     expect(modelSelectionFromSession(BASE_SESSION)).toEqual({
-      label: "GPT-5.6 Sol",
-      modelId: "gpt-5.6-sol",
+      label: "GPT-6 Sol",
+      modelId: "gpt-6-sol",
       reasoningEffort: "medium"
     });
   });
@@ -75,18 +75,18 @@ describe("modelSelectionFromSession", () => {
   });
 
   it("shows the catalog label when a session stored a raw API id", () => {
-    // An imported Claude session records `claude-opus-5` as its label, because
-    // that is what the provider's transcript names. The chip must read "Opus 5".
+    // An imported Claude session records `claude-opus-5-5` as its label, because
+    // that is what the provider's transcript names. The chip must read "Opus 5.5".
     const imported: SessionSummary = {
       ...BASE_SESSION,
       provider: "claude",
-      modelLabel: "claude-opus-5",
-      modelId: "claude-opus-5"
+      modelLabel: "claude-opus-5-5",
+      modelId: "claude-opus-5-5"
     };
 
     expect(modelSelectionFromSession(imported)).toEqual({
-      label: "Opus 5",
-      modelId: "claude-opus-5",
+      label: "Opus 5.5",
+      modelId: "claude-opus-5-5",
       reasoningEffort: "medium"
     });
   });
@@ -125,11 +125,11 @@ function discovered(
 }
 
 describe("preferredLaunchModel", () => {
-  it("seeds Claude Opus 5 as the factory default", () => {
+  it("seeds Claude Opus 5.5 as the factory default", () => {
     expect(factoryLaunchModel()).toEqual({
       provider: "claude",
-      label: "Opus 5",
-      modelId: "claude-opus-5",
+      label: "Opus 5.5",
+      modelId: "claude-opus-5-5",
       reasoningEffort: "medium"
     });
   });

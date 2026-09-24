@@ -123,6 +123,7 @@ pub async fn launch_turn(
             ));
         }
     };
+    let kill_on_app_exit = crate::util::process_control::KillOnAppExit::register(child.id());
 
     let http = ureq::AgentBuilder::new()
         .timeout_connect(Duration::from_millis(250))
@@ -168,6 +169,7 @@ pub async fn launch_turn(
     });
     let input = input.clone();
     tokio::spawn(async move {
+        let _kill_on_app_exit = kill_on_app_exit;
         run_turn(
             &http,
             &endpoint,

@@ -1232,6 +1232,10 @@ pub fn run() {
                 if let Some(pool) = state.grok_acp.get() {
                     pool.kill_all_blocking();
                 }
+                // Same reason for `codex app-server` and `opencode serve`:
+                // no session id in argv, and OpenCode's null stdin gives it
+                // no signal that Argmax is gone.
+                crate::util::process_control::kill_app_exit_groups_blocking();
             }
         });
 }
@@ -1570,8 +1574,8 @@ pub struct ProviderDefaults {
 pub fn provider_defaults(provider: &str) -> ProviderDefaults {
     match provider {
         "codex" => ProviderDefaults {
-            model_label: "GPT-5.6 Sol",
-            model_id: "gpt-5.6-sol",
+            model_label: "GPT-6 Sol",
+            model_id: "gpt-6-sol",
             reasoning_effort: Some("medium"),
         },
         "cursor" => ProviderDefaults {
@@ -1590,8 +1594,8 @@ pub fn provider_defaults(provider: &str) -> ProviderDefaults {
             reasoning_effort: Some("medium"),
         },
         _ => ProviderDefaults {
-            model_label: "Opus 5",
-            model_id: "claude-opus-5",
+            model_label: "Opus 5.5",
+            model_id: "claude-opus-5-5",
             reasoning_effort: Some("medium"),
         },
     }
@@ -1932,15 +1936,15 @@ mod tests {
     #[test]
     fn check_failure_follow_up_falls_back_to_the_factory_agent() {
         // Nothing mirrored yet — a fresh install launches the fix chat on the
-        // same agent the launcher shows: Opus 5 at Medium.
+        // same agent the launcher shows: Opus 5.5 at Medium.
         let input = build_check_failure_follow_up_input(
             "w1",
             &default_agent::DefaultAgent::factory(),
             &follow_up_context(),
         )
         .expect("follow-up input");
-        assert_eq!(input.model_label.as_str(), "Opus 5");
-        assert_eq!(input.model_id.as_str(), "claude-opus-5");
+        assert_eq!(input.model_label.as_str(), "Opus 5.5");
+        assert_eq!(input.model_id.as_str(), "claude-opus-5-5");
         assert_eq!(
             input.reasoning_effort.map(|effort| effort.as_str()),
             Some("medium")

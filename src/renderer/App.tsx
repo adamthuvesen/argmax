@@ -23,6 +23,8 @@ import type {
   WorkspaceSummary
 } from "../shared/types.js";
 import { SCRATCH_PROJECT_ID } from "../shared/types.js";
+import { errorMessage } from "../shared/error.js";
+import { logger } from "../shared/logger.js";
 import { launcherDraftKey, writeDraftText } from "./lib/composerDrafts.js";
 import type { NewSessionSeed } from "./components/SessionComposer.js";
 import { effortForModel, PROVIDER_TITLE_MODEL, type ReasoningEffort } from "../shared/providerModels.js";
@@ -1440,7 +1442,12 @@ export function App(): JSX.Element {
       } catch (error) {
         void api.workspaces
           .archive({ workspaceId: workspace.id, force: true })
-          .catch(() => undefined);
+          .catch((archiveError: unknown) => {
+            logger.warn("renderer.launcher", "failed-launch worktree cleanup failed", {
+              workspaceId: workspace.id,
+              error: errorMessage(archiveError)
+            });
+          });
         throw error;
       }
       registerLaunchedSession(workspace, launchedSession);
@@ -1557,7 +1564,7 @@ export function App(): JSX.Element {
     [launchModel, startSessionInWorkspace]
   );
 
-  // Sidebar's "New side chat": the launcher surface pre-set to chat mode.
+  // The sidebar Chat group's "+": the launcher surface pre-set to chat mode.
   const openSideChatLauncher = useCallback((): void => {
     hideStandalonePage();
     closeWorkspacePages();

@@ -692,6 +692,20 @@
   text-align: center;
 }
 
+/* A link inside a note (a cloud task's "Open task") stays in the caption's
+   quiet ink; nothing else in the app styles a bare anchor. */
+.conversation-note-text a {
+  color: var(--muted-strong);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 2px;
+}
+
+.conversation-note-text a:hover {
+  color: var(--text);
+}
+
 /* Compaction runs for minutes in complete silence, so the live marker is the
    pane's only progress cue (SessionConversation suppresses Thinking while it
    runs). A breath, not a blink: the curve is symmetric and flat at both ends,

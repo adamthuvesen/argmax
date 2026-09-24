@@ -143,6 +143,10 @@ impl AcpClient {
 
         let reader_client = Arc::clone(self);
         tokio::spawn(async move {
+            // Marks the client dead however this task ends, a panic included:
+            // otherwise pending waiters hang and the pool keeps reusing a
+            // process nobody reads from.
+            let _dead_on_exit = MarkDeadOnDrop(Arc::clone(&reader_client));
             let mut lines = BufReader::new(stdout).lines();
             loop {
                 match lines.next_line().await {
@@ -154,7 +158,6 @@ impl AcpClient {
                     }
                 }
             }
-            reader_client.mark_dead();
         });
     }
 
@@ -164,7 +167,7 @@ impl AcpClient {
             return;
         }
         let Ok(message) = serde_json::from_str::<Value>(line) else {
-            tracing::debug!(line = %&line[..line.len().min(200)], "ACP non-JSON line ignored");
+            tracing::debug!(line = %log_preview(line), "ACP non-JSON line ignored");
             return;
         };
         let id = message.get("id").cloned();
@@ -343,25 +346,29 @@ impl AcpClient {
     }
 
     pub async fn request(&self, method: &str, params: Value) -> ArgmaxResult<Value> {
-        let future = self.request_future(method, params)?;
+        let (id, future) = self.request_future(method, params)?;
         if method == "session/prompt" {
             return future.await;
         }
-        tokio::time::timeout(SETUP_REQUEST_TIMEOUT, future)
-            .await
-            .map_err(|_| {
-                ArgmaxError::service(
+        match tokio::time::timeout(SETUP_REQUEST_TIMEOUT, future).await {
+            Ok(result) => result,
+            Err(_) => {
+                // A late response would find nothing to resolve; without this
+                // the sender sits in `pending` for the life of the process.
+                self.pending.lock_or_recover("acp pending").remove(&id);
+                Err(ArgmaxError::service(
                     "ACP_REQUEST_TIMEOUT",
                     format!("ACP {method} timed out after {SETUP_REQUEST_TIMEOUT:?}"),
-                )
-            })?
+                ))
+            }
+        }
     }
 
     fn request_future(
         &self,
         method: &str,
         params: Value,
-    ) -> ArgmaxResult<impl std::future::Future<Output = ArgmaxResult<Value>>> {
+    ) -> ArgmaxResult<(u64, impl std::future::Future<Output = ArgmaxResult<Value>>)> {
         if self.is_dead() {
             return Err(ArgmaxError::service(
                 "ACP_CONNECTION_DEAD",
@@ -380,14 +387,14 @@ impl AcpClient {
                 "ACP writer closed",
             ));
         }
-        Ok(async move {
+        Ok((id, async move {
             rx.await.unwrap_or_else(|_| {
                 Err(ArgmaxError::service(
                     "ACP_CONNECTION_DEAD",
                     "ACP request dropped without a response",
                 ))
             })
-        })
+        }))
     }
 
     pub fn notify(&self, method: &str, params: Value) {
@@ -412,6 +419,20 @@ impl AcpClient {
         }
         self.mark_dead();
     }
+}
+
+struct MarkDeadOnDrop(Arc<AcpClient>);
+
+impl Drop for MarkDeadOnDrop {
+    fn drop(&mut self) {
+        self.0.mark_dead();
+    }
+}
+
+/// The first 200 bytes of `line` for a log field, cut back to a char
+/// boundary so a multibyte character straddling byte 200 cannot panic.
+fn log_preview(line: &str) -> &str {
+    &line[..line.floor_char_boundary(200)]
 }
 
 #[cfg(test)]
@@ -442,7 +463,7 @@ mod tests {
     #[tokio::test]
     async fn request_resolves_on_matching_response() {
         let (client, mut writer_rx) = test_client();
-        let future = client
+        let (_, future) = client
             .request_future("session/new", json!({"cwd": "/tmp"}))
             .unwrap();
         let sent: Value = serde_json::from_str(&writer_rx.recv().await.unwrap()).unwrap();
@@ -458,7 +479,7 @@ mod tests {
     #[tokio::test]
     async fn error_response_becomes_err() {
         let (client, mut writer_rx) = test_client();
-        let future = client
+        let (_, future) = client
             .request_future("session/set_model", json!({}))
             .unwrap();
         let sent: Value = serde_json::from_str(&writer_rx.recv().await.unwrap()).unwrap();
@@ -589,12 +610,20 @@ mod tests {
     #[tokio::test]
     async fn death_fails_pending_and_closes_subscribers() {
         let (client, _writer_rx) = test_client();
-        let future = client.request_future("session/prompt", json!({})).unwrap();
+        let (_, future) = client.request_future("session/prompt", json!({})).unwrap();
         let (_token, mut updates) = client.subscribe("s1");
         client.mark_dead();
         assert!(future.await.is_err());
         assert!(updates.recv().await.is_none());
         assert!(client.request_future("session/new", json!({})).is_err());
+    }
+
+    #[test]
+    fn log_preview_never_splits_a_multibyte_char() {
+        // 199 ASCII bytes put the 3-byte "€" across byte 200.
+        let line = format!("{}€ tail", "a".repeat(199));
+        assert_eq!(log_preview(&line), "a".repeat(199));
+        assert_eq!(log_preview("short"), "short");
     }
 
     #[tokio::test]

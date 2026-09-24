@@ -24,7 +24,6 @@ pub struct ProviderLaunchDefinition {
         fn(&ProviderLaunchInput, Option<&SessionLaunchProcessConfig>) -> Vec<String>,
     pub structured_resume_args:
         fn(&ProviderLaunchInput, &str, Option<&SessionLaunchProcessConfig>) -> Vec<String>,
-    pub structured_stdin: fn(&ProviderLaunchInput) -> Option<String>,
     pub approval_support: ApprovalSupport,
     /// Whether a session move may carry its conversation to the destination
     /// checkout instead of starting cold there. Two provider facts have to
@@ -59,7 +58,6 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 5] = [
         status_args: &["auth", "status"],
         structured_args: claude_structured_args,
         structured_resume_args: claude_structured_resume_args,
-        structured_stdin: |_| None,
         approval_support: ApprovalSupport::Respondable,
         move_carries_conversation: true,
     },
@@ -70,7 +68,6 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 5] = [
         status_args: &["login", "status"],
         structured_args: codex_structured_args,
         structured_resume_args: codex_structured_resume_args,
-        structured_stdin: codex_structured_stdin,
         approval_support: ApprovalSupport::Respondable,
         move_carries_conversation: true,
     },
@@ -81,7 +78,6 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 5] = [
         status_args: &["status"],
         structured_args: cursor_structured_args,
         structured_resume_args: cursor_structured_resume_args,
-        structured_stdin: |_| None,
         approval_support: ApprovalSupport::Respondable,
         move_carries_conversation: false,
     },
@@ -92,7 +88,6 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 5] = [
         status_args: &["providers", "list"],
         structured_args: opencode_structured_args,
         structured_resume_args: opencode_structured_resume_args,
-        structured_stdin: |_| None,
         approval_support: ApprovalSupport::Respondable,
         move_carries_conversation: false,
     },
@@ -105,7 +100,6 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 5] = [
         status_args: &["models"],
         structured_args: grok_structured_args,
         structured_resume_args: grok_structured_resume_args,
-        structured_stdin: |_| None,
         approval_support: ApprovalSupport::Respondable,
         move_carries_conversation: false,
     },
@@ -216,10 +210,6 @@ fn codex_common_args(
     args.extend(codex_fast_mode_args(input));
     args.extend(mcp_injection::mcp_args(ProviderId::Codex, mcp));
     args
-}
-
-fn codex_structured_stdin(input: &ProviderLaunchInput) -> Option<String> {
-    Some(input.prompt.clone())
 }
 
 // Cursor exposes both reasoning effort and fast serving as distinct model ids
@@ -715,8 +705,8 @@ fn codex_reasoning_args(input: &ProviderLaunchInput) -> Vec<String> {
 // Clamp is a backstop for provider-switch and resume paths that skip the picker.
 fn codex_effort_value(model_id: &str, effort: ReasoningEffort) -> &'static str {
     match model_id {
-        "gpt-6-astra" | "gpt-5.6-sol" | "gpt-5.6-terra" => effort.as_str(),
-        "gpt-5.6-luna" => match effort {
+        "gpt-6-astra" | "gpt-6-sol" | "gpt-5.6-sol" | "gpt-5.6-terra" => effort.as_str(),
+        "gpt-6-luna" | "gpt-5.6-luna" => match effort {
             ReasoningEffort::Ultra => "max",
             other => other.as_str(),
         },
@@ -766,7 +756,6 @@ mod tests {
                 "Implement the task",
             ]
         );
-        assert_eq!((definition.structured_stdin)(&input), None);
     }
 
     #[test]
@@ -952,10 +941,6 @@ mod tests {
                 "-",
             ]
         );
-        assert_eq!(
-            (definition.structured_stdin)(&input),
-            Some("Implement the task".to_string())
-        );
     }
 
     #[test]
@@ -1096,7 +1081,6 @@ mod tests {
                 "Implement the task",
             ]
         );
-        assert_eq!((definition.structured_stdin)(&input), None);
     }
 
     #[test]
@@ -1400,7 +1384,6 @@ mod tests {
                 "Implement the task",
             ]
         );
-        assert_eq!((definition.structured_stdin)(&input), None);
     }
 
     #[test]
@@ -1471,10 +1454,6 @@ mod tests {
             match provider_id {
                 ProviderId::Codex => {
                     assert!(!args.contains(&input.prompt));
-                    assert_eq!(
-                        (definition.structured_stdin)(&input),
-                        Some("- read this\nthen implement".to_string())
-                    );
                 }
                 ProviderId::Claude | ProviderId::Cursor | ProviderId::Opencode => {
                     let prompt_index = args
@@ -1542,7 +1521,6 @@ mod tests {
                 "grok-4.6",
             ]
         );
-        assert_eq!((definition.structured_stdin)(&input), None);
     }
 
     // -p takes the prompt as its VALUE, unlike Claude's trailing `-- <prompt>`.

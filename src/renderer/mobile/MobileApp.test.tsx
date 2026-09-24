@@ -53,7 +53,7 @@ vi.mock("../lib/wsTransport.js", () => ({
   subscribeRemoteConnection: remote.subscribe
 }));
 
-// A repo-less side chat: the hidden "Side chats" project, a scratch workspace
+// A repo-less side chat: the hidden scratch project ("Chat"), a scratch workspace
 // and its session, and nothing git-backed — so the section a side chat lands
 // in is unambiguous.
 function sideChatSnapshot(): DashboardSnapshot {
@@ -63,7 +63,7 @@ function sideChatSnapshot(): DashboardSnapshot {
       {
         ...snapshot.projects[0],
         id: SCRATCH_PROJECT_ID,
-        name: "Side chats",
+        name: "Chat",
         repoPath: "/tmp/argmax-data/side-chats"
       }
     ],
@@ -904,13 +904,13 @@ describe("MobileApp", () => {
     expect(createInput.projectId).toBe(snapshot.projects[0].id);
     expect(createInput.taskLabel).toContain("Fix the flaky archive test");
     // The launch model mirrors the desktop launcher default (factory pick:
-    // Claude Opus 5), not the project's configured provider.
+    // Claude Opus 5.5), not the project's configured provider.
     expect(launchProvider).toHaveBeenCalledWith(
       expect.objectContaining({
         workspaceId: snapshot.workspaces[0].id,
         prompt: "Fix the flaky archive test",
         provider: "claude",
-        modelId: "claude-opus-5",
+        modelId: "claude-opus-5-5",
         fastMode: false
       })
     );
@@ -1145,7 +1145,7 @@ describe("MobileApp", () => {
     });
   });
 
-  it("lists a side chat under the Side chats project, outside Priority", async () => {
+  it("lists a side chat under the Chat project, outside Priority", async () => {
     mockDashboardSnapshot(sideChatSnapshot());
 
     render(<MobileApp />);
@@ -1154,7 +1154,7 @@ describe("MobileApp", () => {
     // activity section even while its session is the only one on the phone.
     const section = await screen.findByRole("region", { name: "All chats" });
     const row = within(section).getByRole("button", { name: /Explain event sourcing/ });
-    expect(row).toHaveTextContent("Side chats");
+    expect(row).toHaveTextContent("Chat");
     expect(screen.queryByRole("region", { name: "Priority" })).not.toBeInTheDocument();
   });
 
@@ -1184,7 +1184,7 @@ describe("MobileApp", () => {
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
     fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
     const sheet = await screen.findByRole("dialog", { name: "Choose workspace" });
-    fireEvent.click(within(sheet).getByRole("button", { name: "Side chat" }));
+    fireEvent.click(within(sheet).getByRole("button", { name: "Chat" }));
 
     // No repository is involved, so the project row goes with it and the
     // screen adopts the desktop side-chat title.
@@ -1206,7 +1206,7 @@ describe("MobileApp", () => {
         workspaceId: "workspace-chat",
         prompt: "Explain event sourcing",
         provider: "claude",
-        modelId: "claude-opus-5"
+        modelId: "claude-opus-5-5"
       })
     );
   });
@@ -1223,7 +1223,7 @@ describe("MobileApp", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(SIDE_CHAT_TITLE);
     fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
     const sheet = await screen.findByRole("dialog", { name: "Choose workspace" });
-    expect(within(sheet).getByRole("button", { name: "Side chat" })).toBeInTheDocument();
+    expect(within(sheet).getByRole("button", { name: "Chat" })).toBeInTheDocument();
     expect(within(sheet).queryByRole("button", { name: /Current branch/ })).not.toBeInTheDocument();
     expect(within(sheet).queryByRole("button", { name: "New worktree" })).not.toBeInTheDocument();
   });

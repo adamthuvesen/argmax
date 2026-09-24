@@ -548,7 +548,8 @@
 
 .review-mode-tabs {
   --sliding-tab-background: var(--row-selected);
-  --sliding-tab-radius: var(--radius-md);
+  /* Near-pill corners on a 24px tab, the softer shape the boxed icons echo. */
+  --sliding-tab-radius: var(--radius-lg);
   display: inline-flex;
   gap: var(--space-1_5);
 }
@@ -563,7 +564,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-lg);
   font: inherit;
   color: var(--muted);
   cursor: pointer;
@@ -588,7 +589,7 @@
 
 .review-panel-pane[data-wide="true"] .review-mode-tabs button {
   width: auto;
-  padding: 0 9px;
+  padding: 0 11px 0 10px;
 }
 
 .review-panel-pane[data-wide="true"] .review-mode-tab-label {
@@ -1398,6 +1399,18 @@
 }
 
 .browser-panel-surface {
+  position: relative;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+}
+
+/* The page's last frame, shown while an overlay or a panel resize hides the
+   native webview. Sized inline to the capture and pinned top-left, so a
+   resize crops or uncovers it instead of zooming it. */
+.browser-panel-frozen-frame {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
 }

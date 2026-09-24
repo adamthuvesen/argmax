@@ -1826,7 +1826,7 @@ describe("Sidebar — boot collapse defaults", () => {
   });
 });
 
-describe("Sidebar — Side Chats section", () => {
+describe("Sidebar — repo-less chats", () => {
   const TODAY = new Date(2026, 5, 5, 9, 0, 0).toISOString();
 
   const session = (workspaceId: string) => ({
@@ -1884,7 +1884,7 @@ describe("Sidebar — Side Chats section", () => {
 
   const scratchProject = {
     id: SCRATCH_PROJECT_ID,
-    name: "Side Chats",
+    name: "Chat",
     repoPath: "/tmp/side-chats",
     currentBranch: "main",
     defaultBranch: "main",
@@ -1916,13 +1916,13 @@ describe("Sidebar — Side Chats section", () => {
     cleanup();
   });
 
-  it("lists side chats in their own bottom section, out of the project groups", () => {
+  it("groups chats under Chat below the project groups in projects view", () => {
     render(<Sidebar {...baseProps} snapshot={sideChatSnapshot} />);
 
     // The hidden scratch project never renders as a project row.
     expect(getProjectButtonOrder()).toEqual(["Argmax"]);
 
-    const header = screen.getByText("Side Chats");
+    const header = screen.getByRole("button", { name: "Hide chats" });
     expect(screen.getByRole("button", { name: /Explain quantization/ })).toBeInTheDocument();
     // Bottom of the list: after the project group rows.
     expect(
@@ -1930,21 +1930,28 @@ describe("Sidebar — Side Chats section", () => {
     ).toBe(true);
   });
 
-  it("keeps side chats below the date buckets in sessions view", () => {
+  it("files chats into the date buckets in sessions view, with no section of their own", () => {
     window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
 
-    render(<Sidebar {...baseProps} snapshot={sideChatSnapshot} />);
+    render(<Sidebar {...baseProps} snapshot={sideChatSnapshot} onNewSideChat={vi.fn()} />);
 
-    expect(screen.getByRole("button", { name: /Repo task/ })).toBeInTheDocument();
-    expect(rendersAfter(screen.getByText("Today"), screen.getByText("Side Chats"))).toBe(true);
-    // The side chat lives in its own section, not in a date bucket, so the
-    // date buckets hold exactly the repo session.
-    expect(screen.getByRole("button", { name: /Explain quantization/ })).toBeInTheDocument();
+    const today = screen.getByText("Today");
+    expect(rendersAfter(today, screen.getByRole("button", { name: /Repo task/ }))).toBe(true);
+    expect(rendersAfter(today, screen.getByRole("button", { name: /Explain quantization/ }))).toBe(true);
+    // A calm chat row leads with the speech bubble; a calm repo row keeps the ring.
+    expect(
+      screen.getByRole("button", { name: /Explain quantization/ }).querySelector('[data-chat="true"]')
+    ).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: /Repo task/ }).querySelector('[data-chat="true"]')
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Hide chats" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "New chat without a repository" })).toBeNull();
   });
 
-  it("reveals a running side chat in Side Chats, which Priority never takes", () => {
-    // Priority only floats git workspaces, so a running scratch row stays with
-    // the side chats — and the reveal has to expand that section, not Priority.
+  it("reveals a running chat in the Chat group, which Priority never takes", () => {
+    // Priority only floats git workspaces, so a running scratch row stays in
+    // the Chat group — and the reveal has to expand that group, not Priority.
     window.localStorage.setItem(collapsedDateGroupsStorageKey, JSON.stringify(["side-chats"]));
 
     render(
@@ -1963,17 +1970,17 @@ describe("Sidebar — Side Chats section", () => {
     expect(window.localStorage.getItem(collapsedDateGroupsStorageKey)).toBe(JSON.stringify([]));
   });
 
-  it("opens the side-chat launcher from the section's new-chat button", () => {
+  it("opens the chat launcher from the Chat group's new-chat button", () => {
     const onNewSideChat = vi.fn();
     render(<Sidebar {...baseProps} snapshot={sideChatSnapshot} onNewSideChat={onNewSideChat} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "New side chat" }));
+    fireEvent.click(screen.getByRole("button", { name: "New chat without a repository" }));
     expect(onNewSideChat).toHaveBeenCalledTimes(1);
   });
 
-  it("hides the section entirely without side chats or a launch handler", () => {
+  it("hides the Chat group entirely without chats or a launch handler", () => {
     render(<Sidebar {...baseProps} snapshot={snapshot} />);
-    expect(screen.queryByText("Side Chats")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Hide chats" })).toBeNull();
   });
 });
 
@@ -2174,6 +2181,17 @@ describe("Sidebar — Arcs section", () => {
     );
 
     expect(screen.getByRole("button", { name: "Pricing rollout" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("collapses the Arcs section from its chevron and keeps New arc on the header", () => {
+    render(<Sidebar {...baseProps} snapshot={arcSnapshot} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide arcs" }));
+    expect(screen.queryByRole("button", { name: "Pricing rollout" })).toBeNull();
+    expect(screen.getByRole("button", { name: "New arc" })).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show arcs" }));
+    expect(screen.getByRole("button", { name: "Pricing rollout" })).not.toBeNull();
   });
 
   it("opens the New arc dialog from the section's New arc button", () => {

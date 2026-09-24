@@ -18,9 +18,12 @@ import type { Element, Nodes, Parents, RootContent } from "hast";
 
 export const FRESH_RUN_CLASS = "stream-fresh";
 
-/** How long a run takes to reach full ink. About six ticks: enough runs are in
-    flight at once to read as one soft gradient behind the writing head. */
+/** How long a run takes to reach full ink: several runs are in flight at once,
+    which reads as one soft gradient behind the writing head. */
 export const FRESH_RUN_FADE_MS = 420;
+
+/** Reveals this close together fade as one run. */
+const FRESH_RUN_MERGE_MS = 60;
 
 /** Where a run starts, against the ground. */
 const FRESH_RUN_FROM_OPACITY = 0.3;
@@ -55,10 +58,16 @@ export function trackFreshRuns(
   now: number
 ): readonly FreshRun[] {
   if (lastEnd === null || end < lastEnd) return NO_FRESH_RUNS;
-  return expireFreshRuns(
-    end > lastEnd ? [...previous, { start: lastEnd, end, at: now }] : previous,
-    now
-  );
+  if (end === lastEnd) return expireFreshRuns(previous, now);
+  const last = previous.at(-1);
+  // The reveal advances every frame. Words revealed within one merge window
+  // share a run, so a stream keeps a handful of fading spans rather than one
+  // per frame; a word joining a run starts at most that far into its fade.
+  const next =
+    last && last.end === lastEnd && now - last.at < FRESH_RUN_MERGE_MS
+      ? [...previous.slice(0, -1), { start: last.start, end, at: last.at }]
+      : [...previous, { start: lastEnd, end, at: now }];
+  return expireFreshRuns(next, now);
 }
 
 /** Tags whose text is not prose: a code block has its own reveal, and fading

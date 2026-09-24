@@ -32,6 +32,23 @@ every process group still in the shell's PTY session, then escalates from
 up ordinary background jobs from that session too. Processes that deliberately
 create a new session keep their independent lifecycle.
 
+The shell is a login shell (`$SHELL -l`), as macOS terminals start one, so
+`.zprofile` runs. Its PTY has `IUTF8` on, so line-mode prompts (`read`, a
+`[Y/n]`) erase a whole `å` rather than half of it. It starts with
+`LANG=en_US.UTF-8` when nothing names a locale: from Finder Argmax has none,
+and in the C locale zsh counts each byte of `❯` or `å` as a column, so every
+redraw after it lands in the wrong cells — Backspace looks dead while the text
+is in fact gone. Input may carry NUL, which Ctrl+Space and Ctrl+@ send.
+
+It also starts with `OP_BIOMETRIC_UNLOCK_ENABLED=true` unless Argmax's own
+environment sets it. Both defaults are set before the rc files run, so an
+export there wins.
+Without it `op` fails here where Ghostty works: `op` first reads 1Password's
+settings file in the app's group container, macOS app-data protection denies
+that read to processes Argmax spawns, and `op` reports "No accounts configured"
+instead of the error. Provider CLIs get the same default through
+[environment.rs](../src-tauri/src/providers/environment.rs).
+
 The `terminal_spawn` agent tool uses the same service and can type a command
 into the new shell. The PTY belongs to Argmax, so it survives the provider turn
 that created it. `terminal:agent-open` adds it to the workspace's terminal tabs

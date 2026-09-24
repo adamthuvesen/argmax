@@ -130,21 +130,23 @@ pub async fn remote_set_config(
     let ntfy_topic = normalize_ntfy_topic(&input.ntfy_topic)?;
 
     let app_data_dir = state.require_app_data_dir()?;
-    // Patched rather than rebuilt, so the pairing token (rotation would
-    // strand the paired phone) and the APNs block survive every save here.
-    let mut config = remote::load_or_create_config(app_data_dir);
-    config.enabled = input.enabled;
-    config.port = input.port;
-    config.ntfy_topic = ntfy_topic;
     // Persisted so the push publishers can deep-link at boot, where the async
     // tailnet probe is out of reach. Saving Settings is what keeps it current
-    // after the tailnet name changes.
-    config.mobile_url = Some(mobile_page_url(
+    // after the tailnet name changes. Probed before the update so the config
+    // lock is never held across an await.
+    let mobile_url = mobile_page_url(
         probe_tailscale().await.as_ref(),
         input.port,
         probe_serve_tls_port(input.port).await,
-    ));
-    remote::save_config(app_data_dir, &config)?;
+    );
+    // Patched rather than rebuilt, so the pairing token (rotation would
+    // strand the paired phone) and the APNs block survive every save here.
+    let config = remote::update_config(app_data_dir, |config| {
+        config.enabled = input.enabled;
+        config.port = input.port;
+        config.ntfy_topic = ntfy_topic;
+        config.mobile_url = Some(mobile_url);
+    })?;
     remote::apply(&app, config.clone());
 
     // A failed bind surfaces as serving=false in the response; give the
@@ -187,12 +189,12 @@ pub async fn remote_set_apns_config(
     let team_id = normalize_apple_id("apnsTeamId", &input.team_id)?;
 
     let app_data_dir = state.require_app_data_dir()?;
-    let mut config = remote::load_or_create_config(app_data_dir);
-    config.apns.key_path = key_path;
-    config.apns.key_id = key_id;
-    config.apns.team_id = team_id;
-    config.apns.sandbox = input.sandbox;
-    remote::save_config(app_data_dir, &config)?;
+    let config = remote::update_config(app_data_dir, |config| {
+        config.apns.key_path = key_path;
+        config.apns.key_id = key_id;
+        config.apns.team_id = team_id;
+        config.apns.sandbox = input.sandbox;
+    })?;
     remote::apply_push(&state, &config);
 
     build_status(&state, config).await
@@ -217,27 +219,27 @@ pub fn remote_register_push_device_impl(
     let name = normalize_device_name(&input.name)?;
 
     let app_data_dir = state.require_app_data_dir()?;
-    let mut config = remote::load_or_create_config(app_data_dir);
     let registered_at = chrono::Utc::now().to_rfc3339();
-    // The app re-registers on every launch, so a token we already hold is a
-    // rename plus a fresher timestamp, never a duplicate row.
-    match config
-        .apns
-        .devices
-        .iter_mut()
-        .find(|device| device.token == token)
-    {
-        Some(existing) => {
-            existing.name = name;
-            existing.registered_at = registered_at;
+    let config = remote::update_config(app_data_dir, |config| {
+        // The app re-registers on every launch, so a token we already hold is
+        // a rename plus a fresher timestamp, never a duplicate row.
+        match config
+            .apns
+            .devices
+            .iter_mut()
+            .find(|device| device.token == token)
+        {
+            Some(existing) => {
+                existing.name = name;
+                existing.registered_at = registered_at;
+            }
+            None => config.apns.devices.push(PushDevice {
+                token,
+                name,
+                registered_at,
+            }),
         }
-        None => config.apns.devices.push(PushDevice {
-            token,
-            name,
-            registered_at,
-        }),
-    }
-    remote::save_config(app_data_dir, &config)?;
+    })?;
     remote::apply_push(state, &config);
 
     Ok(push_devices(&config))
@@ -259,9 +261,9 @@ pub fn remote_unregister_push_device_impl(
     let token = normalize_device_token(&input.token)?;
 
     let app_data_dir = state.require_app_data_dir()?;
-    let mut config = remote::load_or_create_config(app_data_dir);
-    config.apns.devices.retain(|device| device.token != token);
-    remote::save_config(app_data_dir, &config)?;
+    let config = remote::update_config(app_data_dir, |config| {
+        config.apns.devices.retain(|device| device.token != token);
+    })?;
     remote::apply_push(state, &config);
 
     Ok(push_devices(&config))

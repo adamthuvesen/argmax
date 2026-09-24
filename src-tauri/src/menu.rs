@@ -4,8 +4,8 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tauri_plugin_shell::ShellExt;
 
 const APP_NAME: &str = "Argmax";
-// Mirrored in src/shared/appLinks.ts, which the in-app links read. The menu is
-// built before the renderer loads, so it cannot import them.
+// ISSUES_URL is mirrored in src/shared/appLinks.ts, which the in-app links
+// read. The menu is built before the renderer loads, so it cannot import it.
 const DOCS_URL: &str = "https://github.com/adamthuvesen/argmax/blob/main/README.md";
 const ISSUES_URL: &str = "https://github.com/adamthuvesen/argmax/issues";
 const RELEASES_URL: &str = "https://github.com/adamthuvesen/argmax/releases";

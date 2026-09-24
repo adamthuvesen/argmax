@@ -1,6 +1,6 @@
 import {
   autoUpdate,
-  flip,
+  flip as flipToFit,
   offset,
   shift,
   size,
@@ -37,6 +37,12 @@ interface AnchoredPopoverOptions {
   open: boolean;
   /** Preferred side. `flip` takes the opposite one when this won't fit. */
   placement?: Placement;
+  /**
+   * Move to the opposite side when the preferred one cannot hold the menu.
+   * Launcher chips opt out: the model and repo menus stay below the row and
+   * shrink, instead of one of them flipping up over the composer.
+   */
+  flip?: boolean;
   /** Gap between the anchor and the popover. */
   gutter?: number;
   /** Smallest gap kept between the popover and the viewport edge. */
@@ -47,6 +53,13 @@ interface AnchoredPopoverOptions {
    * screen once neither side can hold it whole.
    */
   capHeight?: boolean;
+  /**
+   * Hard ceiling in pixels, applied after the viewport cap. A stylesheet
+   * `max-height` cannot do this job: the inline cap replaces it, and reading
+   * the computed value back would freeze the menu at whatever height it had
+   * on the previous pass.
+   */
+  maxHeight?: number;
   /**
    * `fixed` for popovers portaled to `<body>`. `absolute` for one that stays
    * inside its anchor's subtree, so it keeps inheriting the surrounding
@@ -78,6 +91,25 @@ interface AnchoredPopover {
 /** A capped popover never shrinks below this; below it, scrolling is useless. */
 const MIN_CAPPED_HEIGHT = 120;
 
+/** Shared ceiling for the launcher model and repo menus, matching the stylesheet. */
+export const PICKER_MENU_MAX_HEIGHT_PX = 440;
+
+/** Gap the launcher menus keep from the window edge, so a capped list ends
+ *  visibly above the bottom rather than running into it. */
+export const PICKER_MENU_EDGE_PADDING_PX = 24;
+
+/**
+ * Height the popover may actually use. `availableHeight` is the room left on
+ * the chosen side of the anchor; `maxHeight` is the menu's own ceiling. A
+ * stylesheet cap measured from the viewport (for example `100dvh - 96px`) is
+ * taller than the room under a mid-screen trigger, so the list runs off the
+ * clip and the ancestor scroller takes the wheel.
+ */
+export function cappedPopoverMaxHeight(availableHeight: number, maxHeight?: number): number {
+  const room = Math.max(MIN_CAPPED_HEIGHT, Math.round(availableHeight));
+  return maxHeight === undefined ? room : Math.min(room, maxHeight);
+}
+
 function popoverTransformOrigin(placement: Placement): string {
   const [side, alignment = "center"] = placement.split("-");
   const blockOrigin = side === "top" ? "bottom" : side === "bottom" ? "top" : "center";
@@ -106,31 +138,30 @@ function pointReference({ x, y }: AnchorPoint): VirtualElement {
 export function useAnchoredPopover({
   open,
   placement = "bottom-start",
+  flip = true,
   gutter = 6,
   edgePadding = 8,
   capHeight = false,
+  maxHeight,
   strategy = "fixed"
 }: AnchoredPopoverOptions): AnchoredPopover {
   const middleware = useMemo(
     () => [
       offset(gutter),
-      flip({ padding: edgePadding }),
+      ...(flip ? [flipToFit({ padding: edgePadding })] : []),
       shift({ padding: edgePadding }),
       ...(capHeight
         ? [
             size({
               padding: edgePadding,
               apply({ availableHeight, elements }) {
-                elements.floating.style.maxHeight = `${Math.max(
-                  MIN_CAPPED_HEIGHT,
-                  Math.round(availableHeight)
-                )}px`;
+                elements.floating.style.maxHeight = `${cappedPopoverMaxHeight(availableHeight, maxHeight)}px`;
               }
             })
           ]
         : [])
     ],
-    [gutter, edgePadding, capHeight]
+    [gutter, edgePadding, capHeight, maxHeight, flip]
   );
 
   const {

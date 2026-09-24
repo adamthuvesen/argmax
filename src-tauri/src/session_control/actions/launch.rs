@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::{
+    collections::HashMap,
+    sync::{Arc, LazyLock, Mutex},
+};
 
 use chrono::{Duration, Utc};
 
@@ -34,11 +37,27 @@ use crate::{
         workspaces::find_workspace_by_id,
     },
     providers::session_service::ProviderSessionService,
+    util::sync::LockOrRecover,
     workspaces::{
         orchestration::{resolve_registered_checkout, WorkspacesCreateAlongsideInput},
         WorkspaceService,
     },
 };
+
+/// One lock per budget, held from the launch caps check until the launch is
+/// recorded. The caps are read before the launch and only counted once it
+/// lands, with awaits between, so concurrent `session_launch` calls would
+/// otherwise all pass the same check. An Arc's budget is shared by every
+/// member, so a parent in an Arc takes the Arc's lock; any other parent takes
+/// its own. Entries are never removed: one small lock per key that ever
+/// launched, like the gh refresh locks.
+static LAUNCH_BUDGET_LOCKS: LazyLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn launch_budget_lock(key: String) -> Arc<tokio::sync::Mutex<()>> {
+    let mut locks = LAUNCH_BUDGET_LOCKS.lock_or_recover("launch budget locks");
+    Arc::clone(locks.entry(key).or_default())
+}
 
 /// Everything needed to launch a top-level session. The session-launch
 /// socket derives it from a parent session's settings; the scheduled-task
@@ -250,6 +269,18 @@ pub(super) async fn launch_session(
     // Before the workspace, the worktree and the provider process: a bad
     // check-in is worth refusing while nothing has been spent on it.
     let check_in_minutes = check_in_minutes(action.check_in_minutes)?;
+    let budget_key = {
+        let connection = database.read_connection();
+        match find_session_by_id(&connection, &parent.session_id)
+            .map_err(argmax_protocol_error)?
+            .arc_id
+        {
+            Some(arc_id) => format!("arc:{arc_id}"),
+            None => format!("session:{}", parent.session_id),
+        }
+    };
+    let launch_budget_lock = launch_budget_lock(budget_key);
+    let launch_budget_turn = launch_budget_lock.lock().await;
     let (parent_project_id, lineage, parent_arc) = {
         let connection = database.connection();
         let parent_session =
@@ -371,6 +402,7 @@ pub(super) async fn launch_session(
         )
         .map_err(argmax_protocol_error)?;
     }
+    drop(launch_budget_turn);
     if let Some(minutes) = check_in_minutes {
         schedule_check_in(
             &database,

@@ -92,13 +92,16 @@ how the agent should prove it.
 
 The driver ([service.rs](../src-tauri/src/goals/service.rs)) owns continuation.
 It waits for the session to settle, evaluates, and either sends the next turn or
-settles the Goal. Three things stop it besides a verdict:
+settles the Goal. Four things stop it besides a verdict:
 
 - **The turn budget.** Every evaluated turn counts. At the cap the Goal settles
   `stopped` and hands control back.
 - **No progress.** Three consecutive turns with no tool calls settle the Goal
   rather than letting the agent talk to the evaluator in a loop.
 - **`/goal clear`**, or the Clear button on the strip.
+- **A turn that did not finish.** A cancelled turn (the Stop button) or a failed
+  one is not judged: the Goal settles `stopped` rather than prompting the agent
+  to keep working over the person's Stop, or retrying a crash.
 
 An evaluator that fails — CLI missing, timeout, junk output — is not a verdict.
 The settled turn is simply judged again, and the agent is never told "not met

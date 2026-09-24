@@ -38,10 +38,15 @@ function fixture() {
   ]) {
     writeFileSync(path.join(repository, "scripts", name), stub);
   }
+  writeFileSync(path.join(repository, ".gitignore"), "node_modules/\n");
+  const tscBin = path.join(repository, "node_modules/typescript-7/bin");
+  mkdirSync(tscBin, { recursive: true });
+  writeFileSync(path.join(repository, "node_modules/typescript-7/package.json"), '{"type":"module"}');
+  writeFileSync(path.join(tscBin, "tsc"), stub);
   writeFileSync(path.join(repository, "scripts/precheck.mjs"), readFileSync(new URL("../../scripts/precheck.mjs", import.meta.url)));
   for (const args of [
     ["init", "-q", "-b", "main"],
-    ["add", "scripts", ...files],
+    ["add", ".gitignore", "scripts", ...files],
     ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--no-gpg-sign", "-qm", "fixture"],
   ]) {
     const result = spawnSync("git", args, { cwd: repository, env, encoding: "utf8" });
@@ -83,7 +88,7 @@ function fixture() {
 
 describe("precheck CLI", () => {
   it.each([
-    ["src/café.ts", ["eslint", "vite build", "check-bundle.mjs"]],
+    ["src/café.ts", ["eslint", "typescript-7/bin/tsc --noEmit", "vite build", "check-bundle.mjs"]],
     [".github/workflows/ci.yml", ["eslint", "cargo test", "check-bundle.mjs"]],
     ["vite.config.ts", ["vite build", "check-bundle.mjs"]],
     ["src-tauri/src/lib.rs", ["eslint", "cargo test", "check-bundle.mjs"]],

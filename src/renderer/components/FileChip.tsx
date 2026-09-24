@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { formatFileChipLabel } from "../lib/fileChipPath.js";
 import { useFilePreview } from "../lib/filePreview.js";
 import { resolveOpenablePath } from "../lib/openableFile.js";
+import { withToast } from "../lib/withToast.js";
+import { showToast } from "../state/toast.js";
 import { FilePreviewPopover } from "./FilePreviewPopover.js";
 
 export type FileChipOpenOptions = {
@@ -36,18 +38,15 @@ export function FileChip({
       onOpen(path, { line, preferIde });
       return;
     }
-    if (!window.argmax) return;
-    if (workspaceId) {
-      // Use the workspace IDE shortcut so the file lands in the user's editor
-      // (VS Code / Cursor / Zed), matching what the file list does on click.
-      void window.argmax.workspaces.openInIde({ workspaceId, ide: "default" }).catch(() => undefined);
-      return;
-    }
-    if (workspaceCwd) {
-      void window.argmax.system.openPath({ path, cwd: workspaceCwd }).catch(() => undefined);
-      return;
-    }
-    void window.argmax.system.openPath({ path }).catch(() => undefined);
+    const api = window.argmax;
+    if (!api) return;
+    // `workspaces.openInIde` takes no path and would open the whole repo, so
+    // hand the file itself to the system, resolved against the workspace.
+    void withToast(
+      () => api.system.openPath(workspaceCwd ? { path, cwd: workspaceCwd } : { path }),
+      showToast,
+      "Could not open this file."
+    );
   };
 
   // Hover-intent + popover wiring. The popover only mounts (and fetches) once
@@ -85,7 +84,7 @@ export function FileChip({
     const resolved = await resolveOpenablePath(window.argmax, workspaceId, path);
     if (previewRequestRef.current !== request) return;
     setPreviewPath(resolved);
-    setPreviewResolutionError(resolved ? null : "File not found in this workspace.");
+    setPreviewResolutionError(resolved ? null : "No single matching file in this workspace.");
     setAnchorRect(node.getBoundingClientRect());
   };
 

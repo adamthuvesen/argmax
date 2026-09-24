@@ -366,7 +366,7 @@ export function useConversationScroll({
 
   // Reconcile before every paint. This covers child replacement and prepend
   // commits; ResizeObserver handles size changes that happen without React.
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- reconciliation intentionally runs after every commit
+  // No dependency array: reconciliation intentionally runs after every commit.
   useLayoutEffect(() => {
     const previous = identityRef.current;
     const reset =

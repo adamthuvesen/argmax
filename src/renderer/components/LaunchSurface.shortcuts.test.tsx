@@ -53,6 +53,44 @@ describe("LaunchSurface picker shortcuts", () => {
     expect(screen.queryByRole("listbox", { name: "Select project" })).toBeNull();
   });
 
+  it("opens the model and project menus downward at the same height", async () => {
+    render(launcher());
+    await act(async () => {});
+
+    fireEvent.click(screen.getByRole("button", { name: "Switch model" }));
+    fireEvent.click(screen.getByRole("button", { name: "Switch project" }));
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
+    });
+
+    const modelMenu = screen.getByRole("listbox", { name: "Switch model" }).parentElement;
+    const projectMenu = screen.getByRole("listbox", { name: "Select project" });
+    expect(modelMenu).toHaveStyle({ position: "absolute", bottom: "auto" });
+    expect(projectMenu).toHaveStyle({ position: "absolute", bottom: "auto" });
+    // jsdom has no layout, so both caps land on the minimum scrollable height.
+    // The match is the point: one ceiling, both below the chip.
+    expect(modelMenu).toHaveStyle({ maxHeight: "120px" });
+    expect(projectMenu).toHaveStyle({ maxHeight: "120px" });
+  });
+
+  it("anchors the project menu so its height can stay inside the viewport", async () => {
+    render(launcher());
+    await act(async () => {});
+
+    fireEvent.click(screen.getByRole("button", { name: "Switch project" }));
+    // Floating UI measures in autoUpdate, which waits a frame. jsdom has no
+    // layout, so the cap lands on the minimum scrollable height.
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
+    });
+    const list = screen.getByRole("listbox", { name: "Select project" });
+
+    // The hook clears the stylesheet's far edges and writes the viewport cap
+    // inline. A menu positioned only by `top: calc(100% + 6px)` has neither.
+    expect(list).toHaveStyle({ bottom: "auto", right: "auto", position: "absolute" });
+    expect(list.style.maxHeight).toBe("120px");
+  });
+
   it("leaves the pickers alone when another pane holds focus", async () => {
     render(launcher({ isFocused: false }));
     await act(async () => {});

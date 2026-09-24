@@ -247,7 +247,7 @@ impl ActivityScanner {
                     crate::git::exec::GitExecOptions {
                         timeout: LOG_TIMEOUT,
                         stdout_cap_bytes: LOG_STDOUT_CAP_BYTES,
-                        env: Vec::new(),
+                        ..crate::git::exec::GitExecOptions::default()
                     },
                 )
                 .await

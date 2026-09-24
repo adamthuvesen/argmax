@@ -19,7 +19,9 @@ import {
   mermaidErrorMessage,
   mermaidLayout,
   mermaidProseWidth,
+  drawnMermaidDiagram,
   nativeSvgWidth,
+  rememberDrawnMermaidDiagram,
   renderMermaidDiagram
 } from "../lib/mermaidRuntime.js";
 import { StreamingCodeContext } from "./streamingCodeContext.js";
@@ -52,8 +54,10 @@ export function MermaidDiagram({ source }: { source: string }): JSX.Element {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const lightboxRef = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
-  const bindRef = useRef<((element: Element) => void) | undefined>(undefined);
-  const [svg, setSvg] = useState<string | null>(null);
+  // A diagram drawn before (this chat was open earlier) paints at once.
+  const [initial] = useState(() => drawnMermaidDiagram(source.trim(), appearanceKey));
+  const bindRef = useRef<((element: Element) => void) | undefined>(initial?.bindFunctions);
+  const [svg, setSvg] = useState<string | null>(initial?.svg ?? null);
   const [error, setError] = useState<string | null>(null);
   const [sourceOpen, setSourceOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -79,10 +83,18 @@ export function MermaidDiagram({ source }: { source: string }): JSX.Element {
     }
 
     let cancelled = false;
+    const drawnAlready = drawnMermaidDiagram(trimmed, appearanceKey);
+    if (drawnAlready) {
+      bindRef.current = drawnAlready.bindFunctions;
+      setSvg(drawnAlready.svg);
+      setError(null);
+      return;
+    }
     const delay = streaming ? MERMAID_STREAM_DEBOUNCE_MS : 0;
     const handle = window.setTimeout(() => {
       void renderMermaidDiagram(trimmed)
         .then((result) => {
+          if (!streaming) rememberDrawnMermaidDiagram(trimmed, appearanceKey, result);
           if (cancelled) return;
           bindRef.current = result.bindFunctions;
           setSvg(result.svg);

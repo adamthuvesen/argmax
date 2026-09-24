@@ -63,7 +63,7 @@
 .session-row[data-active="true"] .session-link,
 .session-link.active {
   color: var(--text);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: calc(400 + var(--font-weight-offset));
 }
 
 /* Keyboard focus inside the sidebar — use an inset shadow instead of the
@@ -104,6 +104,12 @@
   place-items: center;
   width: 14px;
   height: 18px;
+  /* Half ink washes out on the light surface; dark keeps the quieter step. */
+  --lead-ring-opacity: 0.7;
+}
+
+:root[data-theme="dark"] .session-link-lead-ring {
+  --lead-ring-opacity: 0.5;
 }
 
 .session-link-lead-ring::before {
@@ -112,7 +118,19 @@
   height: 7px;
   border: 1px solid var(--muted);
   border-radius: 50%;
-  opacity: 0.5;
+  opacity: var(--lead-ring-opacity);
+}
+
+/* A chat row swaps the ring for a bubble at the ring's weight: same box, same
+   1px muted stroke, same opacity, so the two alternate in one list without
+   the bubble reading as a signal. */
+.session-link-lead-ring[data-chat="true"]::before {
+  content: none;
+}
+
+.session-link-lead-ring[data-chat="true"] svg {
+  color: var(--muted);
+  opacity: var(--lead-ring-opacity);
 }
 
 .session-unread-marker {
@@ -725,12 +743,14 @@
      the transcript for reading; the launcher is a single input row and gets
      cramped, so it floors at level 3's measure and widens with 4 and 5. */
   --launcher-measure: max(780px, var(--chat-content-width, 780px));
-  /* The gutter gives way before the shell does: 36px while the pane has more
-     than the shell's measure plus both gutters, shrinking to 16px by the time
-     the pane is 32px wider than the measure, so the shell's width is
-     continuous as the window narrows. A viewport-keyed padding step here made
-     the shell jump wider when the sidebar was still open beside it. */
-  padding: 48px clamp(16px, calc((100% - var(--launcher-measure)) / 2), 36px);
+  /* Held even when the pane is narrower than the measure. The shell then
+     narrows instead of the gutter, so widths 4 and 5 stay inset on a small
+     window instead of running out to the chrome. While the pane is wider than
+     the measure plus both edges, place-items centers the shell and the visual
+     gutter is the leftover. A fixed inset on this pane: a viewport-keyed
+     padding step jumped the shell wider while the sidebar was open. */
+  --launcher-edge: 64px;
+  padding: 48px var(--launcher-edge);
 }
 
 .launcher-scroll:has(.launcher-shell[data-review-open="true"]) {

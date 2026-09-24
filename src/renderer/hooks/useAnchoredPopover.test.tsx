@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { useAnchoredPopover } from "./useAnchoredPopover.js";
+import { cappedPopoverMaxHeight, useAnchoredPopover } from "./useAnchoredPopover.js";
 
 function Popover({ open = true }: { open?: boolean }): React.JSX.Element {
   const popover = useAnchoredPopover({ open });
@@ -15,6 +15,22 @@ function Popover({ open = true }: { open?: boolean }): React.JSX.Element {
     </div>
   );
 }
+
+describe("cappedPopoverMaxHeight", () => {
+  it("shrinks a long menu to the room left under a mid-screen trigger", () => {
+    // The stylesheet ceiling is 440px. A launcher chip sits near the middle of
+    // the window, so 440px runs off the bottom and .work-scroll steals the wheel.
+    expect(cappedPopoverMaxHeight(280, 440)).toBe(280);
+  });
+
+  it("keeps the menu's own ceiling when the window has room", () => {
+    expect(cappedPopoverMaxHeight(700, 440)).toBe(440);
+  });
+
+  it("does not shrink a menu below a scrollable height", () => {
+    expect(cappedPopoverMaxHeight(40)).toBe(120);
+  });
+});
 
 describe("useAnchoredPopover", () => {
   // Every popover stylesheet in the app predates this hook and still names the

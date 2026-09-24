@@ -161,10 +161,10 @@ pub const SCRATCH_PROJECT_ID: &str = "scratch-side-chats";
 pub const ARCHIVE_RECOVERY_DIR: &str = "workspace-archive";
 /// How long an archived worktree stays in recovery storage. An archive keeps
 /// the whole checkout, ignored files and `node_modules` included, so a single
-/// one can run to gigabytes. Two weeks is long enough to notice a workspace was
-/// archived too early; after that only the checkout is removed, and the branch
-/// and its commits stay in the repository.
-pub const ARCHIVE_RECOVERY_EXPIRY: Duration = Duration::from_secs(14 * 24 * 60 * 60);
+/// one can run to gigabytes, and a busy day archives dozens. Two days is long
+/// enough to notice a workspace was archived too early; after that only the
+/// checkout is removed, and the branch and its commits stay in the repository.
+pub const ARCHIVE_RECOVERY_EXPIRY: Duration = Duration::from_secs(2 * 24 * 60 * 60);
 /// `git worktree remove` deletes the checkout file by file, and an archive can
 /// hold hundreds of thousands of them. A timeout only falls back to deleting
 /// the directory directly, so it can be generous.
@@ -2986,7 +2986,7 @@ fn ensure_scratch_project(
         connection,
         &PersistProjectInput {
             id: SCRATCH_PROJECT_ID.to_string(),
-            name: "Side chats".to_string(),
+            name: "Chat".to_string(),
             repo_path: scratch_root.display().to_string(),
             current_branch: "main".to_string(),
             default_branch: Some("main".to_string()),

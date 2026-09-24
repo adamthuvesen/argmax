@@ -669,10 +669,11 @@
   overflow: hidden;
 }
 
-/* On paper the 58% mix nearly matches the white card; lean further into
-   the sunken tone so the tab reads as a separate layer. */
+/* On paper the 58% mix nearly matches the white card; the tab takes the full
+   sunken tone plus a touch of ink so it reads as a separate layer, a step
+   past the composer chips. The goal strip wears this class too. */
 :root:not([data-theme="dark"]) .composer-queued-lane {
-  background: color-mix(in oklab, var(--composer-surface) 30%, var(--panel-sunken));
+  background: color-mix(in oklab, var(--text) 3%, var(--panel-sunken));
 }
 
 .composer-queued-chip {
@@ -985,9 +986,9 @@
   pointer-events: none;
 }
 
-.composer-highlight-backdrop::after {
-  /* Keep a trailing blank line, like the textarea, so both can scroll equally. */
-  content: "\200b";
+/* Moved by transform to the textarea's scrollTop (see syncHighlightScroll). */
+.composer-highlight-text {
+  will-change: transform;
 }
 
 /* In the launcher the field is 60px tall and centres a 52px textarea, so a

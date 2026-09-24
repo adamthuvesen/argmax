@@ -107,7 +107,7 @@ fn fetch_environments(
     if environments.is_empty() {
         return Err(ArgmaxError::service(
             "CLOUD_CODEX_ENVIRONMENT_NOT_FOUND",
-            format!("No Codex Cloud environment is connected to {repository}. Add this repository in Codex Cloud settings first."),
+            format!("{repository} has no Codex Cloud environment. Create one in Codex Cloud settings, then try again."),
         ));
     }
     Ok(environments)
@@ -134,7 +134,7 @@ fn read_auth_file() -> ArgmaxResult<CodexAuthFile> {
 fn codex_login_error() -> ArgmaxError {
     ArgmaxError::service(
         "CLOUD_CODEX_LOGIN_REQUIRED",
-        "Codex Cloud file credentials are unavailable. Set `cli_auth_credentials_store = \"file\"` in Codex config and run `codex login`, then try again.",
+        "Argmax cannot read your Codex sign-in. Add `cli_auth_credentials_store = \"file\"` to ~/.codex/config.toml, run `codex login`, then try again.",
     )
 }
 
@@ -142,7 +142,7 @@ fn codex_environment_request_error(error: ureq::Error) -> ArgmaxError {
     match error {
         ureq::Error::Status(401 | 403, _) => ArgmaxError::service(
             "CLOUD_CODEX_LOGIN_REQUIRED",
-            "Codex Cloud authentication expired. Run `codex login`, then try again.",
+            "Your Codex sign-in expired. Run `codex login`, then try again.",
         ),
         ureq::Error::Status(404, _) => ArgmaxError::service(
             "CLOUD_CODEX_ENVIRONMENT_NOT_FOUND",
@@ -154,7 +154,7 @@ fn codex_environment_request_error(error: ureq::Error) -> ArgmaxError {
         ),
         ureq::Error::Transport(_) => ArgmaxError::service(
             "CLOUD_CODEX_ENVIRONMENTS_FAILED",
-            "Codex Cloud could not be reached while listing environments.",
+            "Could not reach Codex Cloud. Check your connection and try again.",
         ),
     }
 }
@@ -217,7 +217,7 @@ pub async fn launch(
             tokio::join!(read_bounded(stdout), read_bounded(stderr), child.wait());
         Ok::<_, std::io::Error>((stdout?, stderr?, status?))
     };
-    let (stdout, stderr, _status) = tokio::time::timeout(LAUNCH_TIMEOUT, completed)
+    let (stdout, stderr, status) = tokio::time::timeout(LAUNCH_TIMEOUT, completed)
         .await
         .map_err(|_| delivery_unknown("Codex Cloud did not return a task link within 60 seconds."))?
         .map_err(|_| {
@@ -236,9 +236,28 @@ pub async fn launch(
         .chain(stdout.lines())
         .rev()
         .find(|line| !line.trim().is_empty())
-        .map(safe_output_detail)
-        .unwrap_or_else(|| "Codex exited before returning a task link.".to_string());
-    Err(delivery_unknown(&detail))
+        .map(safe_output_detail);
+    // A non-zero exit without a link is Codex refusing the request (sign-in,
+    // environment, arguments) before creating anything. Only a clean exit
+    // that printed no link leaves the outcome unknown.
+    if !status.success() {
+        let exit = status
+            .code()
+            .map(|code| format!("exit code {code}"))
+            .unwrap_or_else(|| "a signal".to_string());
+        let detail = detail
+            .map(|detail| format!(": {detail}"))
+            .unwrap_or_default();
+        return Err(ArgmaxError::service(
+            "CLOUD_CODEX_LAUNCH_FAILED",
+            format!("Codex Cloud did not create the task ({exit}){detail}"),
+        ));
+    }
+    Err(delivery_unknown(
+        detail
+            .as_deref()
+            .unwrap_or("Codex exited without returning a task link."),
+    ))
 }
 
 async fn read_bounded(mut reader: impl AsyncRead + Unpin) -> std::io::Result<Vec<u8>> {
@@ -260,7 +279,7 @@ async fn read_bounded(mut reader: impl AsyncRead + Unpin) -> std::io::Result<Vec
 fn delivery_unknown(detail: &str) -> ArgmaxError {
     ArgmaxError::service(
         "CLOUD_LAUNCH_DELIVERY_UNKNOWN",
-        format!("{detail} The task may have been created, so Argmax will not retry it automatically. Check Codex Cloud before trying again."),
+        format!("{detail} Codex Cloud may have created the task, so Argmax will not retry it. Check chatgpt.com/codex before sending it again."),
     )
 }
 

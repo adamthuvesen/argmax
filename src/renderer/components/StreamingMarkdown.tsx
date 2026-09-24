@@ -1,17 +1,15 @@
-import { createContext, useContext, lazy, memo, Suspense, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type JSX } from "react";
+import { createContext, useContext, lazy, memo, Suspense, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type JSX, type ReactNode } from "react";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { WorkspaceSummary } from "../../shared/types.js";
 import { matchFileChip, normalizeFileChipPath } from "../lib/fileChipPath.js";
 import { splitLogSegments } from "../lib/logDump.js";
 import { isMermaidFenceClass } from "../lib/mermaidFence.js";
+import type * as MarkdownBlocks from "../lib/markdownBlocks.js";
+import type { MarkdownBlock, MarkdownBlockSplit } from "../lib/markdownBlocks.js";
+import { revealBoundary } from "../lib/streamingText.js";
 import { needsMath } from "../lib/needsMath.js";
 import { importChunk } from "../lib/importChunk.js";
-import {
-  codePointLength,
-  sliceCodePointPrefix,
-  type CodePointSliceCursor
-} from "../lib/streamingText.js";
 import {
   FRESH_RUN_FADE_MS,
   NO_FRESH_RUNS,
@@ -45,48 +43,55 @@ const ChatMathMarkdown = lazy(() =>
   }))
 );
 
-const SMOOTH_STREAM_TICK_MS = 64;
-/** Floor of the typewriter: what a block reveals per tick once it has caught up
-    with delivery (~156 characters a second). */
-const SMOOTH_STREAM_MIN_CHARS_PER_TICK = 10;
+/** Seconds of arrived text the reveal keeps in hand. Enough to ride out the
+    gaps between deliveries, so the writing never stops and starts, and little
+    enough that the answer still reads as live. */
+const REVEAL_LAG_S = 0.25;
+/** How quickly the reveal's speed follows a change in delivery rate. Speed
+    eases toward the target rather than jumping, so a burst of deltas speeds
+    the writing up instead of landing as a block. */
+const REVEAL_SPEED_SMOOTHING_S = 0.15;
+/** Floor, so the last few words of a stream never crawl. */
+const REVEAL_MIN_CHARS_PER_S = 60;
+/** Ceiling for steady streaming (~15 words a frame would read as a jump). */
+const REVEAL_MAX_CHARS_PER_S = 2400;
+/** A larger backlog still lands within this long. Codex and OpenCode deliver a
+    whole answer as one `message.completed`; it sweeps in rather than crawls. */
+const REVEAL_BURST_S = 1.1;
+/** A frame gap this long means the window was hidden or throttled. The text
+    that arrived meanwhile had no reader, so it shows at once. */
+const REVEAL_RESYNC_GAP_MS = 1000;
+/** A block this short shows at once instead of being typed. */
 const SMOOTH_STREAM_MIN_CHARS = 80;
-/** Ticks a newly arrived backlog is spread over (~1.3 s). Delivery is not
-    typewriter-shaped: Claude sends ~130-character chunks every 0.7 s, Codex
-    and OpenCode land the whole answer as one `message.completed`, and Cursor
-    fires a burst of word-sized deltas inside a few hundred milliseconds. A
-    fixed cadence fell behind every one of them, and whatever was still
-    unrevealed when the block stopped streaming was dumped in one piece.
-    Pacing each new backlog over a bounded window keeps a live stream a beat
-    behind delivery and gives an atomic answer a visible sweep instead of a
-    fourteen-second crawl. The same window finishes a block whose stream has
-    ended, so the end of a turn completes the reveal rather than cutting it
-    short. */
-const SMOOTH_STREAM_DRAIN_TICKS = 20;
 /** Blocks to remember reveal progress for. Bounded so a long-running app can't
     accumulate an entry per streamed block for the rest of the process. */
 const MAX_REMEMBERED_BLOCKS = 200;
 
 /**
- * One interval for every block that is revealing. A live turn with subagents
- * can have several bubbles typing at once across panes, and an interval each
- * woke the main thread once per bubble per tick; one shared tick lets React
- * batch every bubble's advance into a single render.
+ * One animation-frame loop for every block that is revealing. A live turn with
+ * subagents can have several bubbles typing at once across panes; one shared
+ * loop lets React batch every bubble's advance into a single render per frame,
+ * and the loop stops with the last block.
  */
-const streamTickListeners = new Set<() => void>();
-let streamTickInterval: number | null = null;
+const frameListeners = new Set<(now: number) => void>();
+let frameHandle: number | null = null;
 
-function subscribeToStreamTick(listener: () => void): () => void {
-  streamTickListeners.add(listener);
-  if (streamTickInterval === null) {
-    streamTickInterval = window.setInterval(() => {
-      for (const tick of streamTickListeners) tick();
-    }, SMOOTH_STREAM_TICK_MS);
+function runRevealFrame(now: number): void {
+  frameHandle = null;
+  for (const listener of frameListeners) listener(now);
+  if (frameListeners.size > 0 && frameHandle === null) {
+    frameHandle = window.requestAnimationFrame(runRevealFrame);
   }
+}
+
+function subscribeToRevealFrames(listener: (now: number) => void): () => void {
+  frameListeners.add(listener);
+  if (frameHandle === null) frameHandle = window.requestAnimationFrame(runRevealFrame);
   return () => {
-    streamTickListeners.delete(listener);
-    if (streamTickListeners.size === 0 && streamTickInterval !== null) {
-      window.clearInterval(streamTickInterval);
-      streamTickInterval = null;
+    frameListeners.delete(listener);
+    if (frameListeners.size === 0 && frameHandle !== null) {
+      window.cancelAnimationFrame(frameHandle);
+      frameHandle = null;
     }
   };
 }
@@ -94,6 +99,57 @@ function subscribeToStreamTick(listener: () => void): () => void {
 function chatUrlTransform(value: string): string {
   if (/^argmax-(?:asset|attachment):\/\//i.test(value)) return value;
   return defaultUrlTransform(value);
+}
+
+type BlockTools = typeof MarkdownBlocks;
+let blockTools: BlockTools | null = null;
+let blockToolsLoad: Promise<BlockTools> | null = null;
+
+function loadBlockTools(): Promise<BlockTools> {
+  blockToolsLoad ??= importChunk(() => import("../lib/markdownBlocks.js"));
+  return blockToolsLoad;
+}
+
+// A block latches whole or split the first time it is live, so the tools must
+// be here before the first answer of a fresh chat streams, when no earlier
+// Markdown has mounted to fetch them. Fetch them once the chat code is idle.
+if (typeof window !== "undefined") {
+  const whenIdle = typeof window.requestIdleCallback === "function"
+    ? (run: () => void) => window.requestIdleCallback(run)
+    : (run: () => void) => window.setTimeout(run, 0);
+  whenIdle(() => {
+    loadBlockTools().then(
+      (loaded) => {
+        blockTools = loaded;
+      },
+      () => {
+        blockToolsLoad = null;
+      }
+    );
+  });
+}
+
+/** The block splitter and tail healer. Fetched at idle once this module loads,
+    and by the first Markdown to mount if that has not landed yet. */
+function useBlockTools(): BlockTools | null {
+  const [tools, setTools] = useState(blockTools);
+  useEffect(() => {
+    if (tools) return;
+    let cancelled = false;
+    loadBlockTools().then(
+      (loaded) => {
+        blockTools = loaded;
+        if (!cancelled) setTools(loaded);
+      },
+      () => {
+        blockToolsLoad = null;
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [tools]);
+  return tools;
 }
 
 /**
@@ -154,18 +210,20 @@ function initialVisibleLength(
 }
 
 type RevealState = {
-  /** Code points shown so far. */
+  /** UTF-16 units shown so far, always on a word or surrogate boundary. */
   visible: number;
-  /** The stream has ended but the block is still typing out its remainder. */
+  /** The stream has ended but the block is still writing out its remainder. */
   finishing: boolean;
 };
 
-type RevealPace = {
-  forTarget: number;
-  finishing: boolean;
-  charsPerTick: number;
-};
-
+/**
+ * The typewriter. Each frame moves a reveal position toward the end of the
+ * arrived text at a speed that eases toward `backlog / REVEAL_LAG_S`: it keeps
+ * about a quarter second of text in hand, so the words flow at the rate they
+ * arrive, a burst speeds the writing up smoothly instead of landing in one
+ * piece, and a pause in delivery drains to a stop rather than cutting off.
+ * React only renders when the reveal crosses into a new word.
+ */
 function useSmoothStreamingText(
   text: string,
   streaming: boolean,
@@ -175,25 +233,13 @@ function useSmoothStreamingText(
   const prefersReducedMotion = usePrefersReducedMotion();
   const paced = streaming && !prefersReducedMotion && !restoring;
   const [reveal, setReveal] = useState<RevealState>(() => ({
-    visible: initialVisibleLength(
-      paced ? codePointLength(text) : text.length,
-      paced,
-      revealKey
-    ),
+    visible: initialVisibleLength(text.length, paced, revealKey),
     finishing: false
   }));
   const revealing = paced || reveal.finishing;
-  const targetLength = useMemo(
-    () => (revealing ? codePointLength(text) : text.length),
-    [revealing, text]
-  );
-  const targetLengthRef = useRef(targetLength);
-  const sliceCursorRef = useRef<CodePointSliceCursor | null>(null);
-  const paceRef = useRef<RevealPace>({
-    forTarget: -1,
-    finishing: false,
-    charsPerTick: SMOOTH_STREAM_MIN_CHARS_PER_TICK
-  });
+  const textRef = useRef(text);
+  const streamingRef = useRef(streaming);
+  const motionRef = useRef({ position: reveal.visible, speed: 0, lastFrame: null as number | null });
 
   useEffect(() => {
     if (revealKey && streaming) rememberRevealed(revealKey, reveal.visible);
@@ -203,106 +249,82 @@ function useSmoothStreamingText(
   // `finishing` still false it would show the whole block for one frame before
   // the catch-up reveal took over.
   useLayoutEffect(() => {
-    targetLengthRef.current = targetLength;
+    textRef.current = text;
+    streamingRef.current = streaming;
+    const motion = motionRef.current;
     if (prefersReducedMotion || restoring) {
+      motion.position = text.length;
       setReveal((current) =>
-        current.visible === targetLength && !current.finishing
+        current.visible === text.length && !current.finishing
           ? current
-          : { visible: targetLength, finishing: false }
+          : { visible: text.length, finishing: false }
       );
       return;
     }
     if (streaming) {
       setReveal((current) => {
         const visible =
-          targetLength <= SMOOTH_STREAM_MIN_CHARS && current.visible === 0
-            ? targetLength
-            : Math.min(current.visible, targetLength);
+          text.length <= SMOOTH_STREAM_MIN_CHARS && current.visible === 0
+            ? text.length
+            : Math.min(current.visible, text.length);
+        if (visible < motion.position) motion.position = visible;
         return visible === current.visible && !current.finishing
           ? current
           : { visible, finishing: false };
       });
       return;
     }
-    // The stream ended. Whatever is still unrevealed types out at a catch-up
-    // pace rather than landing as one block. `visible` counts code points and
-    // `text.length` UTF-16 units, so reaching the latter proves the block is
-    // fully shown without counting; only a genuine remainder pays for the count.
+    // The stream ended. Whatever is still unrevealed writes out at the pace it
+    // was going rather than landing as one block.
     setReveal((current) => {
-      if (current.visible >= text.length) {
-        return current.finishing ? { visible: current.visible, finishing: false } : current;
-      }
-      const target = codePointLength(text);
-      const visible = Math.min(current.visible, target);
-      const finishing = visible < target;
+      const visible = Math.min(current.visible, text.length);
+      const finishing = visible < text.length;
       return visible === current.visible && finishing === current.finishing
         ? current
         : { visible, finishing };
     });
-  }, [prefersReducedMotion, restoring, streaming, targetLength, text]);
+  }, [prefersReducedMotion, restoring, streaming, text]);
 
   useEffect(() => {
-    if (!revealing) {
-      return;
-    }
-    return subscribeToStreamTick(() => {
-      // Backgrounded windows can't show the typewriter advance. Catch up
-      // silently: pausing at the last painted prefix made every finished
-      // bubble in a live turn type out together when the user came back.
-      if (document.hidden) {
-        setReveal((current) => {
-          const target = targetLengthRef.current;
-          if (current.visible >= target && !current.finishing) return current;
-          return { visible: target, finishing: false };
-        });
-        return;
+    if (!revealing) return;
+    const motion = motionRef.current;
+    motion.lastFrame = null;
+    return subscribeToRevealFrames((now) => {
+      const current = textRef.current;
+      const target = current.length;
+      const lastFrame = motion.lastFrame;
+      motion.lastFrame = now;
+      if (document.hidden || (lastFrame !== null && now - lastFrame > REVEAL_RESYNC_GAP_MS)) {
+        // Backgrounded or throttled: catch up silently. Pausing at the last
+        // painted prefix made every finished bubble in a live turn type out
+        // together when the user came back.
+        motion.position = target;
+        motion.speed = 0;
+      } else if (motion.position < target) {
+        const dt = lastFrame === null ? 1 / 60 : Math.max(0, now - lastFrame) / 1000;
+        const backlog = target - motion.position;
+        const wanted = Math.min(
+          Math.max(backlog / REVEAL_LAG_S, REVEAL_MIN_CHARS_PER_S),
+          Math.max(REVEAL_MAX_CHARS_PER_S, backlog / REVEAL_BURST_S)
+        );
+        motion.speed += (wanted - motion.speed) * (1 - Math.exp(-dt / REVEAL_SPEED_SMOOTHING_S));
+        motion.position = Math.min(target, motion.position + Math.max(motion.speed, REVEAL_MIN_CHARS_PER_S) * dt);
       }
-      setReveal((current) => {
-        const target = targetLengthRef.current;
-        if (current.visible >= target) {
-          return current.finishing ? { visible: current.visible, finishing: false } : current;
-        }
-        // The pace is set once per arrival and held until the next one, so a
-        // chunk reveals at one speed instead of pulsing as its backlog drains.
-        const pace = paceRef.current;
-        if (pace.forTarget !== target || pace.finishing !== current.finishing) {
-          const spread = Math.ceil((target - current.visible) / SMOOTH_STREAM_DRAIN_TICKS);
-          paceRef.current = {
-            forTarget: target,
-            finishing: current.finishing,
-            charsPerTick: Math.max(
-              SMOOTH_STREAM_MIN_CHARS_PER_TICK,
-              // Finishing never slows a block down below the speed it was
-              // already streaming at.
-              current.finishing ? Math.max(pace.charsPerTick, spread) : spread
-            )
-          };
-        }
-        const visible = Math.min(current.visible + paceRef.current.charsPerTick, target);
-        // The tick that lands the last character also ends the finishing
+      const boundary = revealBoundary(current, motion.position, streamingRef.current);
+      setReveal((state) => {
+        const visible = Math.max(state.visible, Math.min(boundary, target));
+        // The frame that lands the last character also ends the finishing
         // pass, so the block settles into its history rendering at once.
-        return { visible, finishing: current.finishing && visible < target };
+        const finishing = state.finishing && visible < target;
+        return visible === state.visible && finishing === state.finishing ? state : { visible, finishing };
       });
     });
   }, [revealing]);
 
-  const visiblePrefix = useMemo(
-    () =>
-      revealing && reveal.visible < targetLength
-        ? sliceCodePointPrefix(text, reveal.visible, sliceCursorRef.current)
-        : null,
-    [revealing, reveal.visible, targetLength, text]
-  );
-  useLayoutEffect(() => {
-    // Do not retain completed answers in the cursor. History renders the full
-    // string directly and should not grow this optimization's memory use.
-    sliceCursorRef.current = visiblePrefix?.cursor ?? null;
-  }, [visiblePrefix]);
-
-  if (!visiblePrefix) {
+  if (!revealing || reveal.visible >= text.length) {
     return { text, revealing };
   }
-  return { text: visiblePrefix.text, revealing };
+  return { text: text.slice(0, reveal.visible), revealing };
 }
 
 /**
@@ -471,13 +493,54 @@ const markdownComponents: Components = {
   pre: ({ children }) => <>{children}</>
 };
 
+/**
+ * Parsed trees of settled Markdown, keyed by the text. `ReactMarkdown` is a
+ * pure function of its source, and a chat reopened after a switch parsed
+ * every message again (about 19 ms of a switch's script). The trees hold no
+ * state: components inside them still mount fresh and read the current
+ * workspace from context. Bounded by source characters, least recent first.
+ */
+const parsedMarkdown = new Map<string, JSX.Element>();
+let parsedMarkdownChars = 0;
+const PARSED_MARKDOWN_CHAR_LIMIT = 4_000_000;
+
+function parsedMarkdownTree(text: string): JSX.Element {
+  const cached = parsedMarkdown.get(text);
+  if (cached) {
+    parsedMarkdown.delete(text);
+    parsedMarkdown.set(text, cached);
+    return cached;
+  }
+  const tree = ReactMarkdown({
+    children: text,
+    remarkPlugins: [remarkGfm],
+    urlTransform: chatUrlTransform,
+    components: markdownComponents
+  });
+  parsedMarkdown.set(text, tree);
+  parsedMarkdownChars += text.length;
+  for (const [oldest] of parsedMarkdown) {
+    if (parsedMarkdownChars <= PARSED_MARKDOWN_CHAR_LIMIT) break;
+    parsedMarkdown.delete(oldest);
+    parsedMarkdownChars -= oldest.length;
+  }
+  return tree;
+}
+
 // Keep the plain render visible while the optional math chunk loads.
 const MarkdownBody = memo(function MarkdownBody({
   text,
   freshRuns,
+  settled = false,
   workspace,
   onOpenFile
-}: MarkdownContextValue & { text: string; freshRuns?: readonly FreshRun[] }): JSX.Element {
+}: MarkdownContextValue & {
+  text: string;
+  freshRuns?: readonly FreshRun[];
+  /** The text will not change: a finished message, or a closed block of a
+      live one. Only settled text is worth keeping parsed. */
+  settled?: boolean;
+}): JSX.Element {
   const context = useMemo(() => ({ workspace, onOpenFile }), [workspace, onOpenFile]);
   const withMath = needsMath(text);
   // Math renders through its own pipeline, where a span cut into a formula's
@@ -486,16 +549,25 @@ const MarkdownBody = memo(function MarkdownBody({
     () => (freshRuns && freshRuns.length > 0 && !withMath ? [rehypeFreshRuns(freshRuns)] : undefined),
     [freshRuns, withMath]
   );
-  const plain = (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      rehypePlugins={rehypePlugins}
-      urlTransform={chatUrlTransform}
-      components={markdownComponents}
-    >
+  // Settled text renders from the parse cache. Live text changes every frame,
+  // and a fading block's tree changes with its runs, so those parse as they go.
+  // Both paths call the parser directly rather than mounting a
+  // <ReactMarkdown> element, so the tree has the same shape either way and a
+  // block settling keeps its DOM (and a code block its scroll position).
+  const plain = withMath ? (
+    // Only the fallback while the math chunk loads, so it stays lazy.
+    <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={chatUrlTransform} components={markdownComponents}>
       {text}
     </ReactMarkdown>
-  );
+  ) : !settled || rehypePlugins
+      ? ReactMarkdown({
+          children: text,
+          remarkPlugins: [remarkGfm],
+          rehypePlugins,
+          urlTransform: chatUrlTransform,
+          components: markdownComponents
+        })
+      : parsedMarkdownTree(text);
   return (
     <MarkdownContext.Provider value={context}>
       {withMath ? (
@@ -506,6 +578,36 @@ const MarkdownBody = memo(function MarkdownBody({
     </MarkdownContext.Provider>
   );
 });
+
+/** Fresh runs clipped and shifted into one block's own offsets. The same
+    array comes back while nothing about the block's runs changed, so a
+    finished block is not re-parsed every frame while the tail is writing. */
+function blockFreshRuns(
+  runs: readonly FreshRun[],
+  block: MarkdownBlock,
+  cache: Map<number, readonly FreshRun[]>
+): readonly FreshRun[] {
+  const end = block.start + block.text.length;
+  const inside: FreshRun[] = [];
+  for (const run of runs) {
+    if (run.end <= block.start || run.start >= end) continue;
+    inside.push({
+      start: Math.max(0, run.start - block.start),
+      end: Math.min(block.text.length, run.end - block.start),
+      at: run.at
+    });
+  }
+  const previous = cache.get(block.start) ?? NO_FRESH_RUNS;
+  const same =
+    previous.length === inside.length &&
+    inside.every(
+      (run, index) =>
+        run.start === previous[index].start && run.end === previous[index].end && run.at === previous[index].at
+    );
+  const next = same ? previous : inside.length === 0 ? NO_FRESH_RUNS : inside;
+  cache.set(block.start, next);
+  return next;
+}
 
 export function StreamingMarkdown({
   text,
@@ -538,12 +640,28 @@ export function StreamingMarkdown({
     restoring
   );
   // A block still typing out its remainder after the stream ended keeps the
-  // live rendering path — the committed/tail split and deferred code
-  // highlighting — until the last character lands.
+  // live rendering path until the last character lands.
   const live = streaming || revealing;
+  // Whether this block renders block by block is decided once, the first
+  // time it is live, and kept: finishing must not swap its DOM for a
+  // whole-document render, nor may the tools arriving mid-stream swap it the
+  // other way. History that was never live renders as one document.
+  const splitRef = useRef<MarkdownBlockSplit | null>(null);
+  const tools = useBlockTools();
+  const splitModeRef = useRef<boolean | null>(null);
+  if (live && splitModeRef.current === null) splitModeRef.current = tools !== null;
   const segments = useMemo(() => splitLogSegments(visibleText), [visibleText]);
   const hasLogs = segments.some((segment) => segment.kind === "log");
   const markdownText = hasLogs ? visibleText : segments.map((segment) => segment.text).join("");
+  const splitMode = splitModeRef.current === true;
+  const split = useMemo(
+    () => (tools && splitMode && !hasLogs ? tools.splitMarkdownBlocks(markdownText, splitRef.current) : null),
+    [tools, splitMode, hasLogs, markdownText]
+  );
+  useLayoutEffect(() => {
+    splitRef.current = split;
+  }, [split]);
+  const blockRunsRef = useRef(new Map<number, readonly FreshRun[]>());
   // A fresh run is an offset into the markdown the parser sees. Lifting a log
   // dump out of the prose moves every offset after it, so a block with logs in
   // it reveals the way it always did.
@@ -562,6 +680,47 @@ export function StreamingMarkdown({
   });
   if (segments.length === 0 && visibleText.length > 0) return null;
 
+  let body: ReactNode;
+  if (hasLogs) {
+    body = segments.map((segment, index) =>
+      segment.kind === "log" ? (
+        <LogBlock key={`log-${index}`} text={segment.text} />
+      ) : (
+        <div key={`md-${index}`} className="markdown">
+          <MarkdownBody text={segment.text} settled={!live} workspace={workspace} onOpenFile={onOpenFile} />
+        </div>
+      )
+    );
+  } else if (split) {
+    // Only the last block is still being written, so only it re-parses as the
+    // reveal advances; the others keep their rendering, and a finished code
+    // block highlights the moment the next block starts.
+    body = split.blocks.map((block, index) => {
+      const open = live && index === split.blocks.length - 1;
+      return (
+        <StreamingCodeContext.Provider key={block.start} value={open}>
+          <MarkdownBody
+            text={open && tools ? tools.healStreamingTail(block.text) : block.text}
+            freshRuns={blockFreshRuns(freshRuns, block, blockRunsRef.current)}
+            settled={index < split.blocks.length - 2 || !live}
+            workspace={workspace}
+            onOpenFile={onOpenFile}
+          />
+        </StreamingCodeContext.Provider>
+      );
+    });
+  } else {
+    body = (
+      <MarkdownBody
+        text={markdownText}
+        freshRuns={freshRuns}
+        settled={!live}
+        workspace={workspace}
+        onOpenFile={onOpenFile}
+      />
+    );
+  }
+
   return (
     <div
       ref={bodyRef}
@@ -571,26 +730,7 @@ export function StreamingMarkdown({
           : `markdown${live ? " markdown-streaming" : ""}`
       }
     >
-      <StreamingCodeContext.Provider value={live}>
-        {hasLogs
-          ? segments.map((segment, index) =>
-              segment.kind === "log" ? (
-                <LogBlock key={`log-${index}`} text={segment.text} />
-              ) : (
-                <div key={`md-${index}`} className="markdown">
-                  <MarkdownBody text={segment.text} workspace={workspace} onOpenFile={onOpenFile} />
-                </div>
-              )
-            )
-          : (
-            <MarkdownBody
-              text={markdownText}
-              freshRuns={freshRuns}
-              workspace={workspace}
-              onOpenFile={onOpenFile}
-            />
-          )}
-      </StreamingCodeContext.Provider>
+      {split ? body : <StreamingCodeContext.Provider value={live}>{body}</StreamingCodeContext.Provider>}
     </div>
   );
 }

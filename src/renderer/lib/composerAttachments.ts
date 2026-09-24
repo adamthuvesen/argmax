@@ -259,7 +259,7 @@ const MAX_ATTACHMENT_DIMENSION_PX = 1920;
 export async function downscaleImageBlob(blob: Blob): Promise<Blob> {
   if (blob.type === "image/gif") return blob;
   if (typeof createImageBitmap !== "function" || typeof document === "undefined") return blob;
-  let bitmap: ImageBitmap | null = null;
+  let bitmap: ImageBitmap;
   try {
     bitmap = await createImageBitmap(blob);
   } catch {

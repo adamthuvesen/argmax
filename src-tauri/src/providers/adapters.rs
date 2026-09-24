@@ -642,9 +642,15 @@ fn claude_settings_args(
     // cost 46,305 prefix tokens with tool search off and 19,076 with it on.
     // The cost is a search round trip before the first tool call, and a tool
     // the model never thinks to search for is one it will not find.
+    //
+    // Claude Code withholds the Artifact tools (Slides, Design, Docs) from
+    // `-p` sessions, which it counts as the Agent SDK, and `enableArtifact`
+    // does not override that. CLAUDE_CODE_ARTIFACT does, verified against
+    // 2.1.281, but it is undocumented, so a CLI update could change it.
     settings.insert(
         "env".to_string(),
         serde_json::json!({
+            "CLAUDE_CODE_ARTIFACT": "1",
             "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
             "ENABLE_TOOL_SEARCH": "true",
         }),
@@ -742,7 +748,7 @@ mod tests {
                 "--append-system-prompt",
                 CLAUDE_NATIVE_AGENT_GUIDANCE,
                 "--settings",
-                r#"{"env":{"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1","ENABLE_TOOL_SEARCH":"true"},"fastMode":false}"#,
+                r#"{"env":{"CLAUDE_CODE_ARTIFACT":"1","CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1","ENABLE_TOOL_SEARCH":"true"},"fastMode":false}"#,
                 "--model",
                 "haiku",
                 "--session-id",
@@ -848,7 +854,7 @@ mod tests {
                 "--append-system-prompt",
                 CLAUDE_NATIVE_AGENT_GUIDANCE,
                 "--settings",
-                r#"{"env":{"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1","ENABLE_TOOL_SEARCH":"true"},"fastMode":false}"#,
+                r#"{"env":{"CLAUDE_CODE_ARTIFACT":"1","CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1","ENABLE_TOOL_SEARCH":"true"},"fastMode":false}"#,
                 "--model",
                 "haiku",
                 "--output-format",
@@ -890,7 +896,7 @@ mod tests {
             .expect("settings flag");
         assert_eq!(
             args[index + 1],
-            r#"{"env":{"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1","ENABLE_TOOL_SEARCH":"true"},"fastMode":true}"#
+            r#"{"env":{"CLAUDE_CODE_ARTIFACT":"1","CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1","ENABLE_TOOL_SEARCH":"true"},"fastMode":true}"#
         );
     }
 

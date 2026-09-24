@@ -461,9 +461,8 @@ export function SessionPane({
       void importAgentOverlay().catch(() => undefined);
       void importAgentsView().catch(() => undefined);
     };
-    const idle = window.requestIdleCallback;
-    if (typeof idle === "function") {
-      const id = idle(warm);
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(warm);
       return () => window.cancelIdleCallback?.(id);
     }
     const timer = window.setTimeout(warm, 1500);
@@ -544,9 +543,8 @@ export function SessionPane({
   // session's own first paint; Vite caches the import, so the real open is instant.
   useEffect(() => {
     if (!workspaceId) return;
-    const idle = window.requestIdleCallback;
-    if (typeof idle === "function") {
-      const id = idle(() => void importTerminalView().catch(() => undefined));
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(() => void importTerminalView().catch(() => undefined));
       return () => window.cancelIdleCallback?.(id);
     }
     const timer = window.setTimeout(() => void importTerminalView().catch(() => undefined), 1500);

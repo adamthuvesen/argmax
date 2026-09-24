@@ -20,6 +20,7 @@ const nativeConsole = {
   error: console.error,
   debug: console.debug
 };
+// eslint-disable-next-line @typescript-eslint/unbound-method -- restored as-is after each test
 const nativeFetch = window.fetch;
 // Stored so each test reinstalls the shipped wrapper on a clean XHR prototype.
 // eslint-disable-next-line @typescript-eslint/unbound-method
@@ -811,7 +812,9 @@ describe("actions.js", () => {
     expect(measured).toEqual(["measured on frame"]);
 
     api().dragEnd("d5");
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- identity check against the saved native
     expect(window.requestAnimationFrame).toBe(nativeRaf);
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- identity check against the saved native
     expect(window.cancelAnimationFrame).toBe(nativeCancel);
   });
 

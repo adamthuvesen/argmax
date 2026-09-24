@@ -55,9 +55,10 @@
   /* Greige selection fill — sidebar rows, panel tabs, neutral bubbles, active
      file tabs, and the review mode sliding indicator. Same weight as the old
      cool gray mix, with the blue cast traded for a hint of paper warmth.
-     Darkened a step from #f1f0ee, which blended into the paper sidebar,
-     and held near neutral: a warmer #ebe9e5 read as beige. */
-  --row-selected: #eaeae8;
+     Sits between #f1f0ee, which blended into the paper sidebar, and #eaeae8,
+     which read as a heavy gray block; held near neutral, as a warmer #ebe9e5
+     read as beige. */
+  --row-selected: #eeeeec;
   /* Code/terminal block fill in chat. Lighter than --panel-sunken in light
      mode so output blocks read airier; dark reuses its sunken surface. */
   --code-surface: #f4f6f7;
@@ -89,9 +90,10 @@
      base picks up a little of --row-selected so chips share the same greige
      family as sidebar selection without matching it outright. This is what
      replaced the carets: the fill is what says a control is a control.
-     --composer-chip-ink is the ink share: paper takes 8% so the chips read
-     against the white card, dark keeps 5%. Hover adds four points to either. */
-  --composer-chip-ink: 8%;
+     --composer-chip-ink is the ink share: paper takes 6% so the chips read
+     against the white card without going gray, dark keeps 5%. Hover adds four
+     points to either. */
+  --composer-chip-ink: 6%;
   --composer-chip: color-mix(
     in oklab,
     var(--text) var(--composer-chip-ink),

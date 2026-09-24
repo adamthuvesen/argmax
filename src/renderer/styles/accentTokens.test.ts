@@ -222,7 +222,7 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
       styles.indexOf('url("./styles/background-intensity.css")')
     );
     expect(cssRuleBody(tokens, ":root")).toContain("--bg: #fcfcfb;");
-    expect(cssRuleBody(tokens, ":root")).toContain("--row-selected: #eaeae8;");
+    expect(cssRuleBody(tokens, ":root")).toContain("--row-selected: #eeeeec;");
     expect(cssRuleBody(tokens, ':root[data-theme="dark"]')).toContain("--bg: #141414;");
     expect(cssRuleBody(tokens, ':root[data-theme="dark"]')).toContain(
       "--row-selected: var(--panel-soft);"

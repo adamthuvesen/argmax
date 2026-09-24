@@ -78,7 +78,8 @@ pub async fn validate_checkout(path: PathBuf) -> ArgmaxResult<CheckoutSnapshot> 
         ArgmaxError::service(
             "CLOUD_GITHUB_ORIGIN_REQUIRED",
             format!(
-                "Cloud tasks need origin to be a github.com URL (git@github.com:owner/repo or https://github.com/owner/repo). This checkout's origin is {origin_url}."
+                "Cloud tasks need origin to be a github.com URL (git@github.com:owner/repo or https://github.com/owner/repo). This checkout's origin is {}.",
+                origin_for_display(&origin_url)
             ),
         )
     })?;
@@ -310,6 +311,20 @@ fn parse_github_repository(origin: &str) -> Option<String> {
     Some(format!("{owner}/{repository}"))
 }
 
+/// The origin as an error message may show it: an HTTPS remote can carry a
+/// token in its userinfo or query, and the message lands in the dialog.
+fn origin_for_display(origin: &str) -> String {
+    let origin = origin.split(['?', '#']).next().unwrap_or(origin);
+    let Some((scheme, rest)) = origin.split_once("://") else {
+        return origin.to_string();
+    };
+    let authority_end = rest.find('/').unwrap_or(rest.len());
+    match rest[..authority_end].rfind('@') {
+        Some(at) => format!("{scheme}://{}", &rest[at + 1..]),
+        None => origin.to_string(),
+    }
+}
+
 fn valid_github_component(value: &str) -> bool {
     !value.is_empty()
         && value.chars().all(|character| {
@@ -349,6 +364,18 @@ mod tests {
         ] {
             assert_eq!(parse_github_repository(origin), None, "{origin}");
         }
+    }
+
+    #[test]
+    fn rejected_origins_are_shown_without_credentials() {
+        assert_eq!(
+            origin_for_display("https://user:ghp_secret@gitlab.com/o/r.git?token=x"),
+            "https://gitlab.com/o/r.git"
+        );
+        assert_eq!(
+            origin_for_display("git@gitlab.com:o/r.git"),
+            "git@gitlab.com:o/r.git"
+        );
     }
 
     fn git(path: &Path, args: &[&str]) {

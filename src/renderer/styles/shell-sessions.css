@@ -63,7 +63,7 @@
 .session-row[data-active="true"] .session-link,
 .session-link.active {
   color: var(--text);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: calc(400 + var(--font-weight-offset));
 }
 
 /* Keyboard focus inside the sidebar — use an inset shadow instead of the
